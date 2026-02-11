@@ -10,7 +10,7 @@ import Foundation
 
 /// A critical MTA service alert returned by /alerts.
 struct TransitAlert: Identifiable, Codable {
-    var id: String { (routeId ?? "system") + title }
+    var id: String { (routeId ?? "system") + "-" + title }
 
     let routeId: String?
     let title: String
@@ -27,7 +27,7 @@ struct TransitAlert: Identifiable, Codable {
 
 /// An elevator or escalator currently out of service, returned by /accessibility.
 struct ElevatorStatus: Identifiable, Codable {
-    var id: String { station + equipmentType }
+    var id: String { station + "-" + equipmentType }
 
     let station: String
     let equipmentType: String
