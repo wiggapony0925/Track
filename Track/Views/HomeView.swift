@@ -261,7 +261,7 @@ struct HomeView: View {
                     HStack(spacing: 4) {
                         Image(systemName: "clock.arrow.circlepath")
                             .font(.system(size: 11, weight: .medium))
-                        Text("Updated \(lastUpdated, style: .relative) ago")
+                        Text("Updated \(lastUpdated, style: .relative)")
                             .font(.system(size: 12, weight: .medium))
                     }
                     .foregroundColor(AppTheme.Colors.textSecondary)

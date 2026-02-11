@@ -244,12 +244,12 @@ struct TrackWidgetEntryView: View {
                     if entry.arrivals.count > 1 {
                         Divider()
                             .padding(.horizontal, 8)
-                        let next = entry.arrivals[1]
+                        let nextArrival = entry.arrivals[1]
                         HStack(spacing: 4) {
-                            transitBadge(next, size: 16)
-                            Text("\(next.minutesAway) min")
+                            transitBadge(nextArrival, size: 16)
+                            Text("\(nextArrival.minutesAway) min")
                                 .font(.system(size: 10, weight: .semibold, design: .rounded))
-                                .foregroundColor(AppTheme.Colors.countdown(next.minutesAway))
+                                .foregroundColor(AppTheme.Colors.countdown(nextArrival.minutesAway))
                         }
                     }
                 }
@@ -377,7 +377,7 @@ struct TrackWidgetEntryView: View {
                 // Footer
                 HStack {
                     Spacer()
-                    Text("Updated \(entry.date, style: .relative) ago")
+                    Text("Updated \(entry.date, style: .relative)")
                         .font(.system(size: 10, weight: .medium))
                         .foregroundColor(AppTheme.Colors.textSecondary)
                 }
