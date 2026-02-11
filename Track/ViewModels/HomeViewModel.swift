@@ -85,11 +85,19 @@ final class HomeViewModel {
     private let liveActivityManager = LiveActivityManager.shared
 
     /// The effective location for data fetching — either the search pin or user location.
+    /// If the GPS fix is outside the NYC service area, falls back to Midtown Manhattan
+    /// so the app always shows MTA transit data.
     func effectiveLocation(userLocation: CLLocation?) -> CLLocation? {
         if isSearchPinActive, let pin = searchPinCoordinate {
             return CLLocation(latitude: pin.latitude, longitude: pin.longitude)
         }
-        return userLocation
+        guard let location = userLocation else { return nil }
+        if AppTheme.MapConfig.isInServiceArea(location.coordinate) {
+            return location
+        }
+        // Outside NYC — fall back to Midtown Manhattan
+        let nyc = AppTheme.MapConfig.nycCenter
+        return CLLocation(latitude: nyc.latitude, longitude: nyc.longitude)
     }
 
     /// Refreshes the view based on current location and transport mode.

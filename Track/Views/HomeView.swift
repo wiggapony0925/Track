@@ -25,10 +25,9 @@ struct HomeView: View {
 
     var body: some View {
         ZStack {
-            // Map background — bounds disabled to allow free centering
-            // on user location. Re-enable AppTheme.MapConfig.cameraBounds
-            // once location centering is confirmed working.
-            Map(position: $cameraPosition) {
+            // Map background bounded to NYC 5 boroughs + Long Island.
+            Map(position: $cameraPosition,
+                bounds: AppTheme.MapConfig.cameraBounds) {
 
                 // User location — replaced by pulsing GO icon when tracking
                 if viewModel.isGoModeActive {
@@ -796,75 +795,24 @@ struct HomeView: View {
 
     // MARK: - Out of Service Area Card
 
-    /// Themed card shown when the user is outside the MTA service area.
-    /// Displays the user's current GPS coordinates for debugging and
-    /// a clear explanation of why no transit is appearing.
+    /// Themed card shown when no nearby transit is found and
+    /// no nearest metro recommendation is available.
     private var outOfServiceAreaCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // Header
             HStack(spacing: 8) {
-                Image(systemName: "location.slash.fill")
+                Image(systemName: "tram.fill")
                     .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(AppTheme.Colors.warningYellow)
-                Text("Outside Service Area")
+                    .foregroundColor(AppTheme.Colors.mtaBlue)
+                Text("No Nearby Transit")
                     .font(.system(size: 17, weight: .semibold, design: .rounded))
                     .foregroundColor(AppTheme.Colors.textPrimary)
                 Spacer()
             }
 
-            Text("Track covers the NYC MTA network — subway, bus, and LIRR. Move within the service area to see live arrivals.")
+            Text("We couldn't find any arrivals nearby. Try moving closer to a subway station or bus stop, or use the search pin to explore a different area.")
                 .font(.system(size: 14, weight: .regular))
                 .foregroundColor(AppTheme.Colors.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
-
-            // Current coordinates
-            if let loc = locationManager.currentLocation {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Your Location")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(AppTheme.Colors.textSecondary)
-                        .textCase(.uppercase)
-
-                    HStack(spacing: 16) {
-                        Label(
-                            String(format: "%.6f", loc.coordinate.latitude),
-                            systemImage: "arrow.up.arrow.down"
-                        )
-                        Label(
-                            String(format: "%.6f", loc.coordinate.longitude),
-                            systemImage: "arrow.left.arrow.right"
-                        )
-                    }
-                    .font(.system(size: 14, weight: .medium, design: .monospaced))
-                    .foregroundColor(AppTheme.Colors.textPrimary)
-                }
-                .padding(10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(AppTheme.Colors.background)
-                .cornerRadius(8)
-            }
-
-            // Recenter button
-            Button {
-                withAnimation(.easeInOut(duration: 0.6)) {
-                    cameraPosition = .userLocation(
-                        fallback: .region(AppTheme.MapConfig.fallbackRegion)
-                    )
-                }
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "location.fill")
-                        .font(.system(size: 13, weight: .bold))
-                    Text("Center on My Location")
-                        .font(.system(size: 15, weight: .semibold))
-                }
-                .foregroundColor(AppTheme.Colors.textOnColor)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .background(AppTheme.Colors.mtaBlue)
-                .cornerRadius(AppTheme.Layout.cornerRadius)
-            }
-            .accessibilityHint("Centers the map on your current GPS position")
         }
         .padding(AppTheme.Layout.cardPadding)
         .background(AppTheme.Colors.cardBackground)

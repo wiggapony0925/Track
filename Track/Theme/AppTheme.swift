@@ -177,5 +177,23 @@ struct AppTheme {
         static let initialPosition: MapCameraPosition = .userLocation(
             fallback: .region(fallbackRegion)
         )
+
+        // MARK: - Service Area Validation
+
+        /// Generous bounding box for the NYC MTA service area.
+        /// Covers the 5 boroughs, Long Island, and nearby NJ/Westchester.
+        /// Used to detect whether a GPS fix is within the service area.
+        private static let serviceAreaMinLat: Double = 40.40
+        private static let serviceAreaMaxLat: Double = 41.10
+        private static let serviceAreaMinLon: Double = -74.35
+        private static let serviceAreaMaxLon: Double = -72.40
+
+        /// Returns `true` if the coordinate is within the NYC metro service area.
+        static func isInServiceArea(_ coordinate: CLLocationCoordinate2D) -> Bool {
+            coordinate.latitude  >= serviceAreaMinLat &&
+            coordinate.latitude  <= serviceAreaMaxLat &&
+            coordinate.longitude >= serviceAreaMinLon &&
+            coordinate.longitude <= serviceAreaMaxLon
+        }
     }
 }
