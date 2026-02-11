@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import CoreLocation
 
 /// Centralized API client for the Track backend.
 struct TrackAPI {
@@ -103,6 +104,28 @@ struct TrackAPI {
         }
         let data = try await get(url: url)
         return try decoder.decode([NearbyTransitResponse].self, from: data)
+    }
+
+    // MARK: - Bus Vehicles & Route Shapes
+
+    /// Fetches live vehicle positions for a bus route.
+    ///
+    /// - Parameter routeID: Fully-qualified route ID (e.g. "MTA NYCT_B63").
+    /// - Returns: Array of `BusVehicleResponse` with GPS positions.
+    static func fetchBusVehicles(routeID: String) async throws -> [BusVehicleResponse] {
+        let encoded = routeID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? routeID
+        let data = try await get(path: "/bus/vehicles/\(encoded)")
+        return try decoder.decode([BusVehicleResponse].self, from: data)
+    }
+
+    /// Fetches the route shape (polylines + stops) for a bus route.
+    ///
+    /// - Parameter routeID: Fully-qualified route ID (e.g. "MTA NYCT_B63").
+    /// - Returns: A `RouteShapeResponse` with encoded polylines and stops.
+    static func fetchRouteShape(routeID: String) async throws -> RouteShapeResponse {
+        let encoded = routeID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? routeID
+        let data = try await get(path: "/bus/route-shape/\(encoded)")
+        return try decoder.decode(RouteShapeResponse.self, from: data)
     }
 
     // MARK: - Private
@@ -222,4 +245,98 @@ struct NearbyTransitResponse: Codable, Identifiable {
         case status
         case mode
     }
+}
+
+/// Matches the backend's `BusVehicle` JSON schema.
+struct BusVehicleResponse: Codable, Identifiable {
+    var id: String { vehicleId }
+
+    let vehicleId: String
+    let routeId: String
+    let lat: Double
+    let lon: Double
+    let bearing: Double?
+    let nextStop: String?
+    let statusText: String?
+
+    /// Strips "MTA NYCT_" prefix for display.
+    var displayRouteName: String {
+        if routeId.hasPrefix("MTA NYCT_") {
+            return String(routeId.dropFirst(9))
+        }
+        return routeId
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case vehicleId = "vehicle_id"
+        case routeId = "route_id"
+        case lat, lon, bearing
+        case nextStop = "next_stop"
+        case statusText = "status_text"
+    }
+}
+
+/// Matches the backend's `RouteShape` JSON schema.
+struct RouteShapeResponse: Codable {
+    let routeId: String
+    let polylines: [String]
+    let stops: [BusStop]
+
+    enum CodingKeys: String, CodingKey {
+        case routeId = "route_id"
+        case polylines, stops
+    }
+
+    /// Decodes all Google-encoded polylines into coordinate arrays.
+    var decodedPolylines: [[CLLocationCoordinate2D]] {
+        polylines.map { decodePolyline($0) }
+    }
+}
+
+/// Decodes a Google-encoded polyline string into an array of coordinates.
+func decodePolyline(_ encoded: String) -> [CLLocationCoordinate2D] {
+    var coordinates: [CLLocationCoordinate2D] = []
+    var index = encoded.startIndex
+    var lat: Int32 = 0
+    var lon: Int32 = 0
+
+    while index < encoded.endIndex {
+        var shift: Int32 = 0
+        var result: Int32 = 0
+        var byte: Int32
+
+        repeat {
+            byte = Int32(encoded[index].asciiValue ?? 0) - 63
+            index = encoded.index(after: index)
+            result |= (byte & 0x1F) << shift
+            shift += 5
+        } while byte >= 0x20 && index < encoded.endIndex
+
+        let dlat = (result & 1) != 0 ? ~(result >> 1) : (result >> 1)
+        lat += dlat
+
+        shift = 0
+        result = 0
+
+        guard index < encoded.endIndex else { break }
+
+        repeat {
+            byte = Int32(encoded[index].asciiValue ?? 0) - 63
+            index = encoded.index(after: index)
+            result |= (byte & 0x1F) << shift
+            shift += 5
+        } while byte >= 0x20 && index < encoded.endIndex
+
+        let dlon = (result & 1) != 0 ? ~(result >> 1) : (result >> 1)
+        lon += dlon
+
+        coordinates.append(
+            CLLocationCoordinate2D(
+                latitude: Double(lat) / 1e5,
+                longitude: Double(lon) / 1e5
+            )
+        )
+    }
+
+    return coordinates
 }

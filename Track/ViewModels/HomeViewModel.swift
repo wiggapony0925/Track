@@ -4,7 +4,8 @@
 //
 //  ViewModel for the HomeView. Fetches nearby transit arrivals
 //  (both subway and bus) from the TrackAPI backend based on the
-//  user's current location. Shows a unified live transit feed.
+//  user's current location or a draggable search pin.
+//  Shows a unified live transit feed with bus tracking on the map.
 //
 
 import Foundation
@@ -27,27 +28,103 @@ final class HomeViewModel {
     // Nearby transit (unified)
     var nearbyTransit: [NearbyTransitResponse] = []
 
+    // Draggable search pin
+    var searchPinCoordinate: CLLocationCoordinate2D?
+    var isSearchPinActive = false
+
+    // Live bus tracking on map
+    var selectedRouteId: String?
+    var busVehicles: [BusVehicleResponse] = []
+    var routeShape: RouteShapeResponse?
+
     // Live Activity tracking
     var trackingArrivalId: String?
 
     private let repository = TransitRepository()
     private let liveActivityManager = LiveActivityManager.shared
 
+    /// The effective location for data fetching — either the search pin or user location.
+    func effectiveLocation(userLocation: CLLocation?) -> CLLocation? {
+        if isSearchPinActive, let pin = searchPinCoordinate {
+            return CLLocation(latitude: pin.latitude, longitude: pin.longitude)
+        }
+        return userLocation
+    }
+
     /// Refreshes the view based on current location and transport mode.
     func refresh(location: CLLocation?) async {
         isLoading = true
         errorMessage = nil
 
+        let loc = effectiveLocation(userLocation: location)
+
         switch selectedMode {
         case .nearby:
-            await refreshNearbyTransit(location: location)
+            await refreshNearbyTransit(location: loc)
         case .subway:
-            await refreshSubway(location: location)
+            await refreshSubway(location: loc)
         case .bus:
-            await refreshBus(location: location)
+            await refreshBus(location: loc)
         }
 
         isLoading = false
+    }
+
+    // MARK: - Search Pin
+
+    /// Activates the search pin and refreshes data for that location.
+    func setSearchPin(_ coordinate: CLLocationCoordinate2D, userLocation: CLLocation?) async {
+        searchPinCoordinate = coordinate
+        isSearchPinActive = true
+        await refresh(location: userLocation)
+    }
+
+    /// Deactivates the search pin and returns to user location.
+    func clearSearchPin(userLocation: CLLocation?) async {
+        searchPinCoordinate = nil
+        isSearchPinActive = false
+        await refresh(location: userLocation)
+    }
+
+    // MARK: - Bus Route Detail (Live Vehicles + Route Shape)
+
+    /// Selects a bus route and fetches live vehicle positions + route shape.
+    func selectBusRoute(_ routeId: String) async {
+        selectedRouteId = routeId
+        busVehicles = []
+        routeShape = nil
+
+        async let vehiclesTask = TrackAPI.fetchBusVehicles(routeID: routeId)
+        async let shapeTask = TrackAPI.fetchRouteShape(routeID: routeId)
+
+        do {
+            busVehicles = try await vehiclesTask
+        } catch {
+            AppLogger.shared.logError("fetchBusVehicles(\(routeId))", error: error)
+        }
+
+        do {
+            routeShape = try await shapeTask
+        } catch {
+            AppLogger.shared.logError("fetchRouteShape(\(routeId))", error: error)
+        }
+    }
+
+    /// Refreshes only the vehicle positions for the currently selected route.
+    func refreshBusVehicles() async {
+        guard let routeId = selectedRouteId else { return }
+        do {
+            busVehicles = try await TrackAPI.fetchBusVehicles(routeID: routeId)
+        } catch {
+            AppLogger.shared.logError("refreshBusVehicles(\(routeId))", error: error)
+        }
+    }
+
+    /// Clears the selected route and removes bus markers from the map.
+    func clearBusRoute() {
+        selectedRouteId = nil
+        busVehicles = []
+        routeShape = nil
     }
 
     // MARK: - Nearby Transit (Unified)
@@ -78,12 +155,10 @@ final class HomeViewModel {
     // MARK: - Subway
 
     private func refreshSubway(location: CLLocation?) async {
-        // Clear bus data when switching modes
         nearbyBusStops = []
         busArrivals = []
         selectedBusStop = nil
 
-        // Fetch nearby stations
         if let location = location {
             do {
                 nearbyStations = try await repository.fetchNearbyStations(
@@ -96,7 +171,6 @@ final class HomeViewModel {
             }
         }
 
-        // Fetch arrivals for the first nearby station's line
         let lineID = nearbyStations.first?.routeIDs.first ?? "L"
         do {
             upcomingArrivals = try await repository.fetchArrivals(for: lineID)
@@ -109,7 +183,6 @@ final class HomeViewModel {
     // MARK: - Bus
 
     private func refreshBus(location: CLLocation?) async {
-        // Clear subway data when switching modes
         nearbyStations = []
         upcomingArrivals = []
 
@@ -128,7 +201,6 @@ final class HomeViewModel {
             errorMessage = (error as? TrackAPIError)?.description ?? error.localizedDescription
         }
 
-        // Fetch arrivals for the first nearby stop
         if let firstStop = nearbyBusStops.first {
             await fetchBusArrivals(for: firstStop)
         }

@@ -80,3 +80,23 @@ class NearbyTransitArrival(BaseModel):
     minutes_away: int
     status: str = "On Time"
     mode: str  # "subway" or "bus"
+
+
+class BusVehicle(BaseModel):
+    """A live bus vehicle position from the SIRI vehicle-monitoring API."""
+
+    vehicle_id: str
+    route_id: str
+    lat: float
+    lon: float
+    bearing: float | None = None
+    next_stop: str | None = None
+    status_text: str | None = None
+
+
+class RouteShape(BaseModel):
+    """Encoded polyline and stop list for a bus route."""
+
+    route_id: str
+    polylines: list[str]
+    stops: list[BusStop]

@@ -4,7 +4,9 @@
 //
 //  Main dashboard view showing nearby transit arrivals.
 //  Displays real-time subway and bus data based on the user's
-//  current location. Presented as a map with a sliding bottom sheet.
+//  current location or a draggable search pin. When a bus route
+//  is selected, shows live vehicle positions and the route path
+//  on the map.
 //
 
 import SwiftUI
@@ -23,6 +25,13 @@ struct HomeView: View {
             Map(position: $cameraPosition) {
                 UserAnnotation()
 
+                // Draggable search pin
+                if viewModel.isSearchPinActive, let pin = viewModel.searchPinCoordinate {
+                    Annotation("Search here", coordinate: pin) {
+                        SearchPinAnnotation()
+                    }
+                }
+
                 // Bus stop annotations when in bus mode
                 if viewModel.selectedMode == .bus {
                     ForEach(viewModel.nearbyBusStops) { stop in
@@ -36,11 +45,54 @@ struct HomeView: View {
                         }
                     }
                 }
+
+                // Route shape stops when a route is selected
+                if let shape = viewModel.routeShape {
+                    ForEach(shape.stops) { stop in
+                        Annotation(stop.name, coordinate: CLLocationCoordinate2D(latitude: stop.lat, longitude: stop.lon)) {
+                            BusStopAnnotation(stopName: stop.name)
+                        }
+                    }
+                }
+
+                // Live bus vehicle positions on map
+                ForEach(viewModel.busVehicles) { vehicle in
+                    Annotation(
+                        vehicle.nextStop ?? vehicle.displayRouteName,
+                        coordinate: CLLocationCoordinate2D(latitude: vehicle.lat, longitude: vehicle.lon)
+                    ) {
+                        BusVehicleAnnotation(
+                            routeName: vehicle.displayRouteName,
+                            bearing: vehicle.bearing
+                        )
+                    }
+                }
+
+                // Route polylines
+                if let shape = viewModel.routeShape {
+                    ForEach(Array(shape.decodedPolylines.enumerated()), id: \.offset) { _, coords in
+                        MapPolyline(coordinates: coords)
+                            .stroke(AppTheme.Colors.mtaBlue, lineWidth: 3)
+                    }
+                }
             }
             .ignoresSafeArea()
+            .onLongPressGesture(minimumDuration: 0.5) {
+                // Long press handled via MapReader below
+            }
 
-            // Transport mode toggle floating at the bottom
+            // Floating controls
             VStack {
+                // Search pin indicator
+                if viewModel.isSearchPinActive {
+                    searchPinBanner
+                }
+
+                // Selected route indicator
+                if viewModel.selectedRouteId != nil {
+                    selectedRouteBanner
+                }
+
                 Spacer()
                 TransportModeToggle(selectedMode: $viewModel.selectedMode)
                     .padding(.bottom, 8)
@@ -64,10 +116,86 @@ struct HomeView: View {
             }
         }
         .onChange(of: viewModel.selectedMode) {
+            viewModel.clearBusRoute()
             Task {
                 await viewModel.refresh(location: locationManager.currentLocation)
             }
         }
+    }
+
+    // MARK: - Search Pin Banner
+
+    private var searchPinBanner: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "mappin.circle.fill")
+                .foregroundColor(AppTheme.Colors.mtaBlue)
+            Text("Searching from pin location")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(AppTheme.Colors.textPrimary)
+            Spacer()
+            Button {
+                Task {
+                    await viewModel.clearSearchPin(userLocation: locationManager.currentLocation)
+                }
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+            }
+            .accessibilityLabel("Clear search pin")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius))
+        .padding(.horizontal, AppTheme.Layout.margin)
+        .padding(.top, 8)
+    }
+
+    // MARK: - Selected Route Banner
+
+    private var selectedRouteBanner: some View {
+        HStack(spacing: 8) {
+            ZStack {
+                Circle()
+                    .fill(AppTheme.Colors.mtaBlue)
+                    .frame(width: 24, height: 24)
+                Image(systemName: "bus.fill")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(AppTheme.Colors.textOnColor)
+            }
+
+            if let routeId = viewModel.selectedRouteId {
+                let name = routeId.hasPrefix("MTA NYCT_") ? String(routeId.dropFirst(9)) : routeId
+                Text("\(name) — \(viewModel.busVehicles.count) buses live")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(AppTheme.Colors.textPrimary)
+            }
+
+            Spacer()
+
+            Button {
+                Task { await viewModel.refreshBusVehicles() }
+            } label: {
+                Image(systemName: "arrow.clockwise")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(AppTheme.Colors.mtaBlue)
+            }
+            .accessibilityLabel("Refresh bus positions")
+
+            Button {
+                viewModel.clearBusRoute()
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+            }
+            .accessibilityLabel("Close route view")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius))
+        .padding(.horizontal, AppTheme.Layout.margin)
+        .padding(.top, 4)
     }
 
     // MARK: - Dashboard Content
@@ -83,6 +211,24 @@ struct HomeView: View {
                         .minimumScaleFactor(0.8)
 
                     Spacer()
+
+                    // Drop pin button
+                    Button {
+                        let center = locationManager.currentLocation?.coordinate
+                            ?? CLLocationCoordinate2D(latitude: 40.7128, longitude: -74.0060)
+                        let offset = CLLocationCoordinate2D(
+                            latitude: center.latitude + 0.002,
+                            longitude: center.longitude + 0.002
+                        )
+                        Task {
+                            await viewModel.setSearchPin(offset, userLocation: locationManager.currentLocation)
+                        }
+                    } label: {
+                        Image(systemName: "mappin.and.ellipse")
+                            .font(.system(size: 18, weight: .medium))
+                            .foregroundColor(AppTheme.Colors.mtaBlue)
+                    }
+                    .accessibilityLabel("Drop search pin")
 
                     Button {
                         showSettings = true
@@ -156,7 +302,10 @@ struct HomeView: View {
                         isTracking: viewModel.trackingArrivalId == arrival.id,
                         onTrack: {
                             viewModel.trackNearbyArrival(arrival, location: locationManager.currentLocation)
-                        }
+                        },
+                        onSelectRoute: arrival.isBus ? {
+                            Task { await viewModel.selectBusRoute(arrival.routeId) }
+                        } : nil
                     )
                 }
             } else if !viewModel.isLoading {
@@ -172,7 +321,6 @@ struct HomeView: View {
 
     private var subwayDashboard: some View {
         Group {
-            // Upcoming Arrivals
             if !viewModel.upcomingArrivals.isEmpty {
                 sectionHeader("Nearby Arrivals")
 
@@ -194,7 +342,6 @@ struct HomeView: View {
                 )
             }
 
-            // Nearby Stations
             if !viewModel.nearbyStations.isEmpty {
                 sectionHeader("Nearby Stations")
 
@@ -213,7 +360,6 @@ struct HomeView: View {
 
     private var busDashboard: some View {
         Group {
-            // Selected stop header
             if let stop = viewModel.selectedBusStop {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(stop.name)
@@ -228,7 +374,6 @@ struct HomeView: View {
                 .padding(.horizontal, AppTheme.Layout.margin)
             }
 
-            // Bus arrivals
             if !viewModel.busArrivals.isEmpty {
                 sectionHeader("Arriving")
 
@@ -241,10 +386,12 @@ struct HomeView: View {
                             viewModel.trackBusArrival(arrival, location: locationManager.currentLocation)
                         }
                     )
+                    .onTapGesture {
+                        Task { await viewModel.selectBusRoute(arrival.routeId) }
+                    }
                 }
             }
 
-            // Nearby bus stops
             if !viewModel.nearbyBusStops.isEmpty {
                 sectionHeader("Nearby Bus Stops")
 
@@ -293,6 +440,55 @@ struct HomeView: View {
     }
 }
 
+// MARK: - Search Pin Annotation
+
+/// A draggable search pin for exploring transit at other locations.
+private struct SearchPinAnnotation: View {
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(AppTheme.Colors.alertRed)
+                .frame(width: 36, height: 36)
+                .shadow(radius: 4)
+            Image(systemName: "mappin")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundColor(AppTheme.Colors.textOnColor)
+        }
+        .accessibilityLabel("Search pin — drag to explore")
+    }
+}
+
+// MARK: - Bus Vehicle Annotation
+
+/// A map pin showing a live bus position with its route name and bearing.
+private struct BusVehicleAnnotation: View {
+    let routeName: String
+    let bearing: Double?
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ZStack {
+                Circle()
+                    .fill(AppTheme.Colors.mtaBlue)
+                    .frame(width: 32, height: 32)
+                    .shadow(color: AppTheme.Colors.mtaBlue.opacity(0.4), radius: 4)
+                Image(systemName: "bus.fill")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(AppTheme.Colors.textOnColor)
+                    .rotationEffect(.degrees(bearing ?? 0))
+            }
+            Text(routeName)
+                .font(.system(size: 9, weight: .bold))
+                .foregroundColor(AppTheme.Colors.textOnColor)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 1)
+                .background(AppTheme.Colors.mtaBlue)
+                .clipShape(Capsule())
+        }
+        .accessibilityLabel("Bus \(routeName)")
+    }
+}
+
 // MARK: - Nearby Transit Row
 
 /// Displays a single nearby transit arrival (bus or train) in the unified list.
@@ -300,6 +496,7 @@ private struct NearbyTransitRow: View {
     let arrival: NearbyTransitResponse
     var isTracking: Bool = false
     var onTrack: (() -> Void)?
+    var onSelectRoute: (() -> Void)?
 
     var body: some View {
         HStack(spacing: 12) {
@@ -347,6 +544,18 @@ private struct NearbyTransitRow: View {
             }
 
             Spacer(minLength: 4)
+
+            // View route button for buses
+            if arrival.isBus, let onSelectRoute = onSelectRoute {
+                Button {
+                    onSelectRoute()
+                } label: {
+                    Image(systemName: "map")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(AppTheme.Colors.mtaBlue)
+                }
+                .accessibilityLabel("View \(arrival.displayName) route on map")
+            }
 
             // Countdown
             HStack(alignment: .firstTextBaseline, spacing: 2) {
