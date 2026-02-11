@@ -536,7 +536,7 @@ private struct BusVehicleAnnotation: View {
 // MARK: - Nearby Transit Row
 
 /// Displays a single nearby transit arrival (bus or train) in the unified list.
-struct NearbyTransitRow: View {
+private struct NearbyTransitRow: View {
     let arrival: NearbyTransitResponse
     var isTracking: Bool = false
     var onTrack: (() -> Void)?
@@ -628,7 +628,7 @@ struct NearbyTransitRow: View {
 // MARK: - Nearby Bus Stop Row
 
 /// Displays a nearby bus stop in the list. Tapping selects it.
-struct NearbyBusStopRow: View {
+private struct NearbyBusStopRow: View {
     let stop: BusStop
 
     var body: some View {

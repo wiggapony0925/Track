@@ -99,7 +99,7 @@ struct LoginView: View {
                     .padding(.vertical, 12)
             }
             .accessibilityLabel("Continue without account")
-            .accessibilityHint("Skip sign in and use Track without saving data to the cloud")
+            .accessibilityHint("Skip sign in and use Track without an account")
 
             if isLoading {
                 ProgressView()
