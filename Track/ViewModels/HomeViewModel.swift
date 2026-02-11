@@ -9,6 +9,7 @@
 //
 
 import Foundation
+import SwiftUI
 import SwiftData
 import CoreLocation
 import MapKit
@@ -375,18 +376,40 @@ final class HomeViewModel {
         passedStopIds.contains(stop.id)
     }
 
+    /// Distance threshold (meters) for marking a stop as passed.
+    /// When the user is within this radius of a stop, it is dimmed.
+    private static let stopPassedThreshold: CLLocationDistance = 100
+
     /// Updates the list of passed stops based on the user's current
-    /// position relative to the route shape stops. Stops whose
-    /// latitude is "behind" the user (in the direction of travel) are
-    /// dimmed automatically.
+    /// position and bearing relative to the route shape stops.
+    ///
+    /// A stop is marked as passed if the user is within
+    /// ``stopPassedThreshold`` meters **and** the user's heading
+    /// indicates they are moving away from the stop (or they have
+    /// already been marked once).
     func updatePassedStops(userLocation: CLLocation?) {
         guard isGoModeActive, let loc = userLocation, let shape = routeShape else { return }
-        let userCoord = loc.coordinate
+        let userBearing = loc.course  // -1 if unavailable
         for stop in shape.stops {
+            // Already passed — skip
+            if passedStopIds.contains(stop.id) { continue }
+
             let stopLoc = CLLocation(latitude: stop.lat, longitude: stop.lon)
             let distance = loc.distance(from: stopLoc)
-            // Mark stops within 100 m behind the user as passed
-            if distance < 100 {
+
+            guard distance < Self.stopPassedThreshold else { continue }
+
+            if userBearing >= 0 {
+                // Use bearing to confirm the stop is behind the user
+                let bearingToStop = loc.bearing(to: stopLoc)
+                let angleDiff = abs(userBearing - bearingToStop)
+                let normalized = angleDiff > 180 ? 360 - angleDiff : angleDiff
+                // If the stop is more than 90° behind, mark as passed
+                if normalized > 90 {
+                    passedStopIds.insert(stop.id)
+                }
+            } else {
+                // No bearing data — fall back to proximity only
                 passedStopIds.insert(stop.id)
             }
         }
@@ -426,4 +449,30 @@ final class HomeViewModel {
             transitEtaMinutes = nil
         }
     }
+}
+
+// MARK: - CLLocation Bearing Extension
+
+extension CLLocation {
+    /// Calculates the bearing (in degrees, 0–360) from this location
+    /// to another location. Used for determining if a stop is behind
+    /// the user during GO mode tracking.
+    func bearing(to destination: CLLocation) -> CLLocationDirection {
+        let lat1 = coordinate.latitude.degreesToRadians
+        let lon1 = coordinate.longitude.degreesToRadians
+        let lat2 = destination.coordinate.latitude.degreesToRadians
+        let lon2 = destination.coordinate.longitude.degreesToRadians
+
+        let dLon = lon2 - lon1
+        let y = sin(dLon) * cos(lat2)
+        let x = cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(dLon)
+        let bearing = atan2(y, x).radiansToDegrees
+
+        return (bearing + 360).truncatingRemainder(dividingBy: 360)
+    }
+}
+
+private extension Double {
+    var degreesToRadians: Double { self * .pi / 180 }
+    var radiansToDegrees: Double { self * 180 / .pi }
 }

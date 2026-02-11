@@ -175,15 +175,15 @@ struct HomeView: View {
                                 withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
                                     viewModel.activateGoMode(routeName: routeName, routeColor: routeColor)
                                 }
-                                // Calculate transit ETA if possible
+                                // Calculate transit ETA to the last stop on the route
                                 if let loc = locationManager.currentLocation?.coordinate,
-                                   let firstStop = viewModel.routeShape?.stops.first {
+                                   let lastStop = viewModel.routeShape?.stops.last {
                                     Task {
                                         await viewModel.fetchTransitETA(
                                             from: loc,
                                             to: CLLocationCoordinate2D(
-                                                latitude: firstStop.lat,
-                                                longitude: firstStop.lon
+                                                latitude: lastStop.lat,
+                                                longitude: lastStop.lon
                                             )
                                         )
                                     }
