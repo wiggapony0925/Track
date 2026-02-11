@@ -126,43 +126,46 @@ struct AppTheme {
 
     // MARK: - NYC Metro Map Configuration
 
-    /// Geographic bounds and camera constraints for the New York Metropolitan Area.
+    /// Geographic bounds and camera constraints for the NYC 5 boroughs + Long Island.
     ///
-    /// The map is bounded to the Tri-State region so users cannot scroll
-    /// into Pennsylvania or Massachusetts. Zoom limits keep context
-    /// between street-level detail and the full metro overview.
+    /// The map is bounded to the NYC metro core so users stay within
+    /// the service area. Zoom limits keep context between street-level
+    /// detail and the full boroughs + Long Island overview.
     ///
     /// References:
     /// - ``MapCameraBounds`` — https://developer.apple.com/documentation/mapkit/mapcamerabounds
     /// - ``MKCoordinateRegion`` — https://developer.apple.com/documentation/mapkit/mkcoordinateregion
     struct MapConfig {
-        /// Geographic center of NYC (near the East River for balance).
-        static let metroCenter = CLLocationCoordinate2D(latitude: 40.7306, longitude: -73.9352)
+        /// Geographic center of the NYC 5 boroughs + Long Island bounding region.
+        static let metroCenter = CLLocationCoordinate2D(latitude: 40.72, longitude: -73.55)
 
-        /// Covers the 5 boroughs + immediate suburbs (Westchester, Newark, Nassau).
-        /// Latitude ~1.0 covers from Sandy Hook to White Plains.
-        /// Longitude ~1.2 covers from Newark to Oyster Bay.
-        static let metroSpan = MKCoordinateSpan(latitudeDelta: 1.0, longitudeDelta: 1.2)
+        /// Coordinate span covering the 5 boroughs and Long Island.
+        /// North ~40.97 (Bronx) → South ~40.42 (Staten Island) ≈ 0.55
+        /// West ~-74.45 (Staten Island) → East ~-72.65 (Suffolk) ≈ 1.80
+        static let metroSpan = MKCoordinateSpan(latitudeDelta: 0.55, longitudeDelta: 1.80)
 
-        /// The full metro region used to initialize the map and constrain panning.
+        /// The region used to constrain map panning to the 5 boroughs + Long Island.
         static let metroRegion = MKCoordinateRegion(center: metroCenter, span: metroSpan)
 
-        /// Camera bounds that restrict user panning to the NYC metro area.
-        /// - minimumDistance: 300 m (slightly tighter zoom for subway entrances)
-        /// - maximumDistance: 150 km (plenty to see the whole system)
+        /// Camera bounds that restrict user panning to the NYC boroughs + Long Island.
+        /// - minimumDistance: 300 m (tight zoom for subway entrances)
+        /// - maximumDistance: 150 km (see the whole region)
         static let cameraBounds = MapCameraBounds(
             centerCoordinateBounds: metroRegion,
             minimumDistance: 300,
             maximumDistance: 150_000
         )
 
-        /// Default NYC center (Midtown) for specific fallback scenarios.
-        static let nycCenter = metroCenter
+        /// User-facing fallback center (Midtown Manhattan).
+        static let nycCenter = CLLocationCoordinate2D(latitude: 40.7128, longitude: -74.0060)
 
-        /// Initial camera position centered on the user, falling back to the metro region.
-        /// This ensures "my locations" are always prioritized.
-        static let initialPosition: MapCameraPosition = .userLocation(
-            fallback: .region(metroRegion)
+        /// Default zoom distance (meters) for centering on the user's location.
+        static let userZoomDistance: Double = 3000
+
+        /// Initial camera position — starts on NYC center; replaced by user
+        /// location once CoreLocation delivers the first fix.
+        static let initialPosition: MapCameraPosition = .camera(
+            MapCamera(centerCoordinate: nycCenter, distance: userZoomDistance)
         )
     }
 }

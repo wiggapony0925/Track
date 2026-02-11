@@ -136,8 +136,9 @@ struct AppTheme {
     /// - ``MapCameraBounds`` — https://developer.apple.com/documentation/mapkit/mapcamerabounds
     /// - ``MKCoordinateRegion`` — https://developer.apple.com/documentation/mapkit/mkcoordinateregion
     struct MapConfig {
-        /// Geographic center of the NYC 5 boroughs + Long Island area.
-        /// Positioned to balance the boroughs (west) with Long Island (east).
+        /// Geographic center of the NYC 5 boroughs + Long Island bounding region.
+        /// This is the midpoint of the pan-limit region, NOT where the user sees
+        /// on launch — see ``nycCenter`` for the visible fallback.
         static let metroCenter = CLLocationCoordinate2D(latitude: 40.72, longitude: -73.55)
 
         /// Coordinate span covering the 5 boroughs and Long Island.
@@ -157,7 +158,8 @@ struct AppTheme {
             maximumDistance: 150_000
         )
 
-        /// Default NYC center (Midtown) for fallback scenarios.
+        /// User-facing fallback center (Midtown Manhattan) shown before the
+        /// first CoreLocation fix arrives.
         static let nycCenter = CLLocationCoordinate2D(latitude: 40.7128, longitude: -74.0060)
 
         /// Default zoom distance (meters) for centering on the user's location.
