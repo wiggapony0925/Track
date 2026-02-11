@@ -19,21 +19,6 @@ struct TrainArrival: Identifiable {
     let minutesAway: Int
 }
 
-/// Represents a transit alert or service change.
-struct TransitAlert: Identifiable {
-    let id = UUID()
-    let routeID: String?
-    let title: String
-    let message: String
-    let severity: AlertSeverity
-
-    enum AlertSeverity: String {
-        case info
-        case warning
-        case severe
-    }
-}
-
 /// Error types for transit data fetching.
 enum TransitError: Error, CustomStringConvertible {
     case networkUnavailable
@@ -77,15 +62,6 @@ final class TransitRepository {
             AppLogger.shared.logError("fetchArrivals(\(lineID))", error: error)
             throw TransitError.unknown(error)
         }
-    }
-
-    /// Fetches active alerts for a given route.
-    ///
-    /// - Parameter routeID: The route identifier (optional, nil fetches all)
-    /// - Returns: Array of TransitAlerts
-    func fetchAlerts(for routeID: String? = nil) async throws -> [TransitAlert] {
-        // Alerts endpoint not yet implemented on backend — return empty
-        return []
     }
 
     /// Fetches nearby stations from the local CSV data.
