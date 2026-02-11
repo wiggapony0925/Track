@@ -176,7 +176,7 @@ struct BusArrivalRow: View {
         if let expectedArrival = arrival.expectedArrival {
             let formatter = DateFormatter()
             formatter.dateFormat = "h:mm a"
-            let minutes = max(0, Int(expectedArrival.timeIntervalSinceNow / 60))
+            let minutes = Int(expectedArrival.timeIntervalSinceNow / 60)
             if minutes <= 0 {
                 return "Arriving now"
             }

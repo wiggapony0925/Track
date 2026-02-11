@@ -45,6 +45,7 @@ final class LocationManager: NSObject, CLLocationManagerDelegate {
                 let defaults = UserDefaults(suiteName: "group.com.track.shared") ?? UserDefaults.standard
                 defaults.set(location.coordinate.latitude, forKey: "lastLatitude")
                 defaults.set(location.coordinate.longitude, forKey: "lastLongitude")
+                defaults.set(true, forKey: "hasLastLocation")
             }
         }
     }

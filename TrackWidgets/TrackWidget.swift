@@ -48,9 +48,10 @@ struct TrackWidgetProvider: TimelineProvider {
         let defaults = UserDefaults(suiteName: "group.com.track.shared") ?? UserDefaults.standard
         let lat = defaults.double(forKey: "lastLatitude")
         let lon = defaults.double(forKey: "lastLongitude")
+        let hasLocation = defaults.bool(forKey: "hasLastLocation")
 
         // If no location cached, fall back
-        guard lat != 0, lon != 0 else {
+        guard hasLocation, (-90...90).contains(lat), (-180...180).contains(lon) else {
             completion(nil)
             return
         }
