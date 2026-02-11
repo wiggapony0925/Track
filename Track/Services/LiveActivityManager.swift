@@ -131,6 +131,7 @@ final class LiveActivityManager {
                 pushType: nil
             )
             currentActivityID = activity.id
+            HapticManager.notification(.success)
         } catch {
             // Live Activities may not be available on all devices
             print("Failed to start Live Activity: \(error)")

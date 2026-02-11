@@ -56,24 +56,17 @@ struct TrackWidgetProvider: TimelineProvider {
 
     /// Queries SwiftData for the user's most likely route at this time of day.
     private func buildSmartEntry() -> TrackWidgetEntry? {
-        do {
-            let schema = Schema([CommutePattern.self])
-            let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
-            let container = try ModelContainer(for: schema, configurations: [config])
-            let context = ModelContext(container)
+        let context = ModelContext(DataController.shared.container)
 
-            if let suggestion = SmartSuggester.suggestedRoute(context: context) {
-                return TrackWidgetEntry(
-                    date: Date(),
-                    lineId: suggestion.routeID,
-                    destination: suggestion.destinationName,
-                    minutesAway: 5,
-                    status: "On Time",
-                    isBus: false
-                )
-            }
-        } catch {
-            // Fall through to nil if SwiftData fails
+        if let suggestion = SmartSuggester.suggestedRoute(context: context) {
+            return TrackWidgetEntry(
+                date: Date(),
+                lineId: suggestion.routeID,
+                destination: suggestion.destinationName,
+                minutesAway: 5,
+                status: "On Time",
+                isBus: false
+            )
         }
         return nil
     }

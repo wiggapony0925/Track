@@ -103,13 +103,18 @@ struct HomeView: View {
                 }
                 .padding(.horizontal, AppTheme.Layout.margin)
 
-                // Mode-specific content
-                switch viewModel.selectedMode {
-                case .subway:
-                    subwayDashboard
-                case .bus:
-                    busDashboard
+                // Mode-specific content with smooth transitions
+                Group {
+                    switch viewModel.selectedMode {
+                    case .subway:
+                        subwayDashboard
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    case .bus:
+                        busDashboard
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
                 }
+                .animation(.spring(response: 0.4, dampingFraction: 0.7), value: viewModel.selectedMode)
 
                 // Network error banner
                 if let error = viewModel.errorMessage {

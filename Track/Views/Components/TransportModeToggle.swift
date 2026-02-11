@@ -18,6 +18,7 @@ struct TransportModeToggle: View {
                     withAnimation(.easeInOut(duration: 0.2)) {
                         selectedMode = mode
                     }
+                    HapticManager.impact(.medium)
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: mode.icon)
