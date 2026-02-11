@@ -5,35 +5,73 @@
 //  Created by Jeffrey Fernandez on 2/10/26.
 //
 //  Root view of the Track NYC Transit app.
-//  Hosts a tab-based interface with the transit dashboard and trip history.
+//  Hosts onboarding, location gate, and the tab-based dashboard.
 //
 
 import SwiftUI
 import SwiftData
 
 struct ContentView: View {
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
+    @AppStorage("appTheme") private var appTheme = "system"
     @State private var selectedTab: Tab = .home
+    @State private var locationManager = LocationManager()
 
     enum Tab: String {
         case home
         case history
     }
 
-    var body: some View {
-        TabView(selection: $selectedTab) {
-            HomeView()
-                .tabItem {
-                    Label("Home", systemImage: "tram.fill")
-                }
-                .tag(Tab.home)
+    /// True when the user has granted location access.
+    private var locationGranted: Bool {
+        locationManager.authorizationStatus == .authorizedWhenInUse ||
+        locationManager.authorizationStatus == .authorizedAlways
+    }
 
-            TripHistoryView()
-                .tabItem {
-                    Label("History", systemImage: "clock.arrow.circlepath")
-                }
-                .tag(Tab.history)
+    /// Maps the appTheme string to a ColorScheme.
+    private var colorScheme: ColorScheme? {
+        switch appTheme {
+        case "dark": return .dark
+        case "light": return .light
+        default: return nil
         }
-        .tint(AppTheme.Colors.mtaBlue)
+    }
+
+    var body: some View {
+        Group {
+            if !hasCompletedOnboarding {
+                OnboardingView()
+            } else if locationGranted {
+                TabView(selection: $selectedTab) {
+                    HomeView()
+                        .tabItem {
+                            Label("Home", systemImage: "tram.fill")
+                        }
+                        .tag(Tab.home)
+
+                    TripHistoryView()
+                        .tabItem {
+                            Label("History", systemImage: "clock.arrow.circlepath")
+                        }
+                        .tag(Tab.history)
+                }
+                .tint(AppTheme.Colors.mtaBlue)
+            } else {
+                LocationPermissionView(
+                    authorizationStatus: $locationManager.authorizationStatus,
+                    onRequestPermission: {
+                        locationManager.requestPermission()
+                    }
+                )
+            }
+        }
+        .preferredColorScheme(colorScheme)
+        .onAppear {
+            // Trigger the system prompt on first launch if not yet determined
+            if hasCompletedOnboarding && locationManager.authorizationStatus == .notDetermined {
+                locationManager.requestPermission()
+            }
+        }
     }
 }
 

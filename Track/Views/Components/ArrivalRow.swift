@@ -3,6 +3,7 @@
 //  Track
 //
 //  Displays a single train arrival with delay-adjusted timing.
+//  Tapping the row starts a Live Activity to track the arrival.
 //
 
 import SwiftUI
@@ -10,6 +11,9 @@ import SwiftUI
 struct ArrivalRow: View {
     let arrival: TrainArrival
     let prediction: DelayPrediction?
+    var isTracking: Bool = false
+    var reliabilityWarning: Int? = nil
+    var onTrack: (() -> Void)?
 
     var body: some View {
         HStack(spacing: 12) {
@@ -17,15 +21,34 @@ struct ArrivalRow: View {
 
             // Direction
             VStack(alignment: .leading, spacing: 2) {
-                Text(arrival.direction)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(AppTheme.Colors.textPrimary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                Text(arrival.stationID)
-                    .font(.system(size: 12, weight: .regular))
-                    .foregroundColor(AppTheme.Colors.textSecondary)
-                    .lineLimit(1)
+                HStack(spacing: 4) {
+                    Text(arrival.direction)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(AppTheme.Colors.textPrimary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                    if isTracking {
+                        Text("LIVE")
+                            .font(.system(size: 9, weight: .heavy))
+                            .foregroundColor(AppTheme.Colors.textOnColor)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(AppTheme.Colors.alertRed)
+                            .clipShape(Capsule())
+                    }
+                }
+                HStack(spacing: 4) {
+                    Text(arrival.stationID)
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+                        .lineLimit(1)
+                    if let delay = reliabilityWarning {
+                        Text("⚠️ Usually \(delay)m late")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(AppTheme.Colors.warningYellow)
+                            .lineLimit(1)
+                    }
+                }
             }
 
             Spacer(minLength: 4)
@@ -43,8 +66,13 @@ struct ArrivalRow: View {
         }
         .padding(.vertical, 8)
         .padding(.horizontal, AppTheme.Layout.margin)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            onTrack?()
+        }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(arrival.routeID) train, \(arrival.direction), \(arrival.minutesAway) minutes away")
+        .accessibilityHint(isTracking ? "Currently tracking" : "Tap to track this arrival")
     }
 }
 
@@ -64,7 +92,19 @@ struct ArrivalRow: View {
                 originalMinutes: 5,
                 adjustmentReason: "Adjusted for rain (+1m)",
                 delayFactor: 1.2
-            )
+            ),
+            isTracking: true
+        )
+        ArrivalRow(
+            arrival: TrainArrival(
+                routeID: "G",
+                stationID: "G29",
+                direction: "Church Av",
+                scheduledTime: Date().addingTimeInterval(480),
+                estimatedTime: Date().addingTimeInterval(480),
+                minutesAway: 8
+            ),
+            prediction: nil
         )
     }
     .background(AppTheme.Colors.background)

@@ -37,7 +37,7 @@ struct RouteBadge: View {
     var body: some View {
         Text(routeID)
             .font(.system(size: size.fontSize, weight: .heavy, design: .monospaced))
-            .foregroundColor(.white)
+            .foregroundColor(AppTheme.Colors.textOnColor)
             .minimumScaleFactor(0.7)
             .lineLimit(1)
             .frame(width: size.dimension, height: size.dimension)

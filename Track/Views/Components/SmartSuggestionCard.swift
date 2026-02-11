@@ -69,7 +69,7 @@ struct SmartSuggestionCard: View {
             Button(action: onStartTrip) {
                 Text("Start Trip")
                     .font(.system(size: 16, weight: .bold))
-                    .foregroundColor(.white)
+                    .foregroundColor(AppTheme.Colors.textOnColor)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
                     .background(AppTheme.Colors.successGreen)
@@ -89,14 +89,21 @@ struct SmartSuggestionCard: View {
 
     private var noPredictionCard: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Where are you headed?")
-                .font(.system(size: 20, weight: .semibold, design: .rounded))
-                .foregroundColor(AppTheme.Colors.textPrimary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-                .matchedGeometryEffect(id: "title", in: cardAnimation)
+            HStack(spacing: 8) {
+                Image(systemName: "hand.wave.fill")
+                    .font(.system(size: 22))
+                    .foregroundColor(AppTheme.Colors.mtaBlue)
+                    .accessibilityHidden(true)
 
-            Text("We'll learn your commute and suggest routes over time.")
+                Text("Welcome Back")
+                    .font(.system(size: 20, weight: .semibold, design: .rounded))
+                    .foregroundColor(AppTheme.Colors.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .matchedGeometryEffect(id: "title", in: cardAnimation)
+            }
+
+            Text("Tap a station to start learning your commute.")
                 .font(.system(size: 14, weight: .regular))
                 .foregroundColor(AppTheme.Colors.textSecondary)
                 .lineLimit(2)
