@@ -17,31 +17,29 @@ struct NearbyStationRow: View {
             Image(systemName: "tram.fill")
                 .font(.system(size: 18))
                 .foregroundColor(AppTheme.Colors.mtaBlue)
-                .frame(width: 36, height: 36)
+                .frame(width: AppTheme.Layout.badgeSizeMedium, height: AppTheme.Layout.badgeSizeMedium)
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(name)
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundColor(AppTheme.Colors.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
 
                 HStack(spacing: 4) {
                     ForEach(routeIDs, id: \.self) { route in
-                        Text(route)
-                            .font(.system(size: 11, weight: .heavy, design: .monospaced))
-                            .foregroundColor(.white)
-                            .frame(width: 22, height: 22)
-                            .background(AppTheme.Colors.mtaBlue)
-                            .clipShape(Circle())
+                        RouteBadge(routeID: route, size: .small)
                     }
                 }
             }
 
-            Spacer()
+            Spacer(minLength: 4)
 
             Text(formattedDistance)
                 .font(.system(size: 14, weight: .medium))
                 .foregroundColor(AppTheme.Colors.textSecondary)
+                .lineLimit(1)
         }
         .padding(.vertical, 8)
         .padding(.horizontal, AppTheme.Layout.margin)

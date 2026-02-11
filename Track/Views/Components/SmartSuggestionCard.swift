@@ -33,30 +33,28 @@ struct SmartSuggestionCard: View {
                 Text("Going to \(suggestion.destinationName)?")
                     .font(.system(size: 20, weight: .semibold, design: .rounded))
                     .foregroundColor(AppTheme.Colors.textPrimary)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.8)
                     .matchedGeometryEffect(id: "title", in: cardAnimation)
 
-                Spacer()
+                Spacer(minLength: 0)
             }
 
             HStack(spacing: 12) {
-                // Route Badge
-                Text(suggestion.routeID)
-                    .font(.system(size: 22, weight: .heavy, design: .monospaced))
-                    .foregroundColor(.white)
-                    .frame(width: 44, height: 44)
-                    .background(AppTheme.Colors.mtaBlue)
-                    .clipShape(Circle())
-                    .accessibilityLabel("Route \(suggestion.routeID)")
+                RouteBadge(routeID: suggestion.routeID, size: .large)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("\(suggestion.direction)")
+                    Text(suggestion.direction)
                         .font(.system(size: 14, weight: .medium))
                         .foregroundColor(AppTheme.Colors.textSecondary)
+                        .lineLimit(1)
 
                     HStack(alignment: .firstTextBaseline, spacing: 4) {
                         Text("\(minutesAway)")
-                            .font(.system(size: 36, weight: .bold, design: .rounded))
+                            .font(.system(size: 32, weight: .bold, design: .rounded))
                             .foregroundColor(AppTheme.Colors.textPrimary)
+                            .minimumScaleFactor(0.7)
+                            .lineLimit(1)
                         Text("min")
                             .font(.system(size: 16, weight: .medium))
                             .foregroundColor(AppTheme.Colors.textSecondary)
@@ -65,7 +63,7 @@ struct SmartSuggestionCard: View {
                     .accessibilityLabel("\(minutesAway) minutes away")
                 }
 
-                Spacer()
+                Spacer(minLength: 0)
             }
 
             Button(action: onStartTrip) {
@@ -94,11 +92,15 @@ struct SmartSuggestionCard: View {
             Text("Where are you headed?")
                 .font(.system(size: 20, weight: .semibold, design: .rounded))
                 .foregroundColor(AppTheme.Colors.textPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
                 .matchedGeometryEffect(id: "title", in: cardAnimation)
 
             Text("We'll learn your commute and suggest routes over time.")
                 .font(.system(size: 14, weight: .regular))
                 .foregroundColor(AppTheme.Colors.textSecondary)
+                .lineLimit(2)
+                .minimumScaleFactor(0.8)
         }
         .padding(AppTheme.Layout.margin)
         .frame(maxWidth: .infinity, alignment: .leading)

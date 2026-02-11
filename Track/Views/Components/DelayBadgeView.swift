@@ -11,31 +11,32 @@ struct DelayBadgeView: View {
     let prediction: DelayPrediction
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .firstTextBaseline, spacing: 4) {
+        VStack(alignment: .trailing, spacing: 2) {
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
                 Text("\(prediction.adjustedMinutes)")
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
+                    .font(.system(size: 20, weight: .bold, design: .rounded))
                     .foregroundColor(badgeColor)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
                 Text("min")
-                    .font(.system(size: 14, weight: .medium))
+                    .font(.system(size: 12, weight: .medium))
                     .foregroundColor(AppTheme.Colors.textSecondary)
 
                 if prediction.adjustedMinutes != prediction.originalMinutes {
-                    Text("(Adjusted)")
-                        .font(.system(size: 12, weight: .medium))
+                    Text("(Adj)")
+                        .font(.system(size: 10, weight: .medium))
                         .foregroundColor(AppTheme.Colors.warningYellow)
                 }
             }
 
             if let reason = prediction.adjustmentReason {
                 Text(reason)
-                    .font(.system(size: 12, weight: .regular))
+                    .font(.system(size: 10, weight: .regular))
                     .foregroundColor(AppTheme.Colors.textSecondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
             }
         }
-        .padding(AppTheme.Layout.margin)
-        .background(AppTheme.Colors.cardBackground)
-        .cornerRadius(AppTheme.Layout.cornerRadius)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityDescription)
     }

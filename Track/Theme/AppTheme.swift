@@ -42,5 +42,15 @@ struct AppTheme {
         static let margin: CGFloat = 16.0
         static let cornerRadius: CGFloat = 12.0
         static let shadowRadius: CGFloat = 4.0
+
+        // Reusable badge sizes
+        static let badgeSizeSmall: CGFloat = 22.0
+        static let badgeSizeMedium: CGFloat = 32.0
+        static let badgeSizeLarge: CGFloat = 40.0
+
+        // Font sizes for badges
+        static let badgeFontSmall: CGFloat = 11.0
+        static let badgeFontMedium: CGFloat = 14.0
+        static let badgeFontLarge: CGFloat = 18.0
     }
 }

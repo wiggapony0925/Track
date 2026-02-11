@@ -102,26 +102,22 @@ struct TripLogRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            // Route badge
-            Text(log.routeID)
-                .font(.system(size: 14, weight: .heavy, design: .monospaced))
-                .foregroundColor(.white)
-                .frame(width: 32, height: 32)
-                .background(AppTheme.Colors.mtaBlue)
-                .clipShape(Circle())
-                .accessibilityLabel("Route \(log.routeID)")
+            RouteBadge(routeID: log.routeID, size: .medium)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("\(log.originStationID) → \(log.destinationStationID)")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundColor(AppTheme.Colors.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
 
                 Text(log.tripDate, format: .dateTime.month().day().hour().minute())
                     .font(.system(size: 12, weight: .regular))
                     .foregroundColor(AppTheme.Colors.textSecondary)
+                    .lineLimit(1)
             }
 
-            Spacer()
+            Spacer(minLength: 4)
 
             // Delay indicator
             if log.delaySeconds != 0 {
@@ -140,6 +136,7 @@ struct TripLogRow: View {
         return Text(text)
             .font(.system(size: 13, weight: .bold, design: .rounded))
             .foregroundColor(color)
+            .lineLimit(1)
             .accessibilityLabel(isLate ? "\(minutes) minutes late" : "\(abs(minutes)) minutes early")
     }
 }

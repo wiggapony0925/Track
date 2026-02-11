@@ -55,6 +55,8 @@ struct HomeView: View {
                 // Header
                 AppTheme.Typography.headerLarge("Track")
                     .foregroundColor(AppTheme.Colors.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
                     .padding(.horizontal, AppTheme.Layout.margin)
 
                 // Smart Suggestion Card
@@ -69,10 +71,13 @@ struct HomeView: View {
 
                 // Error message
                 if let error = viewModel.errorMessage {
-                    HStack {
+                    HStack(spacing: 6) {
                         Image(systemName: "wifi.slash")
+                            .font(.system(size: 14))
                         Text(error)
                             .font(.system(size: 14, weight: .medium))
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.8)
                     }
                     .foregroundColor(AppTheme.Colors.alertRed)
                     .padding(.horizontal, AppTheme.Layout.margin)
@@ -110,6 +115,10 @@ struct HomeView: View {
                     }
                     .padding()
                 }
+
+                // Bottom padding so content is not hidden behind home indicator
+                Spacer()
+                    .frame(height: 20)
             }
             .padding(.top, AppTheme.Layout.margin)
         }
@@ -121,6 +130,7 @@ struct HomeView: View {
             .font(.system(size: 14, weight: .semibold))
             .foregroundColor(AppTheme.Colors.textSecondary)
             .textCase(.uppercase)
+            .lineLimit(1)
             .padding(.horizontal, AppTheme.Layout.margin)
             .padding(.top, 8)
     }
