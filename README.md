@@ -1,61 +1,119 @@
-# Track — NYC Transit AI
+# Track — NYC Transit Companion
 
-Track is an intelligent transit companion for iOS that learns your commute habits and predicts *real* arrival times using local on-device data, a custom backend proxy, and the MTA's live feeds.
+Track is an iOS transit app for New York City that shows real-time subway, bus, and LIRR arrivals based on your location. It uses a custom FastAPI backend that proxies live MTA feeds (GTFS-Realtime, SIRI, JSON) and outputs clean, normalized JSON for the iOS client.
 
-## 🏗 Architecture
+---
+
+## Table of Contents
+
+- [Architecture](#architecture)
+- [Features](#features)
+- [Setup](#setup)
+  - [iOS App](#ios-app)
+  - [Backend (Local)](#backend-local)
+  - [Backend (Docker)](#backend-docker)
+  - [Backend (Render)](#backend-render)
+  - [Running Tests](#running-tests)
+- [API Reference](#api-reference)
+  - [Config](#config)
+  - [Nearby Transit](#nearby-transit)
+  - [Subway](#subway)
+  - [Bus](#bus)
+  - [LIRR](#lirr)
+  - [Service Status](#service-status)
+- [Project Structure](#project-structure)
+  - [iOS App](#ios-app-structure)
+  - [Backend](#backend-structure)
+  - [Widgets](#widget-extension)
+- [Map and UI](#map-and-ui)
+- [Privacy](#privacy)
+- [Accessibility](#accessibility)
+
+---
+
+## Architecture
 
 ```
-┌──────────────────────────────────────┐
-│            iOS App (Track)           │
-│  ┌────────┐  ┌────────┐  ┌────────┐ │
-│  │HomeView│  │Widgets │  │ Live   │ │
-│  │  Map   │  │Nearby  │  │Activity│ │
-│  └───┬────┘  └───┬────┘  └───┬────┘ │
-│      └───────────┼───────────┘      │
-│           ┌──────┴──────┐           │
-│           │  TrackAPI   │           │
-│           │ (Network)   │           │
-│           └──────┬──────┘           │
-│    ┌─────────────┼─────────────┐    │
-│    │ SwiftData (App Groups)    │    │
-│    │ CommutePattern · TripLog  │    │
-│    └───────────────────────────┘    │
-└──────────────┬───────────────────────┘
-               │ HTTPS / JSON
-┌──────────────┴───────────────────────┐
-│       TrackBackend (FastAPI)         │
-│  ┌─────────┐  ┌──────────────────┐  │
-│  │ Routers │  │    Services      │  │
-│  │ /nearby │  │  mta_client.py   │  │
-│  │ /subway │  │  bus_client.py   │  │
-│  │ /bus    │  │  data_cleaner.py │  │
-│  │ /alerts │  └────────┬─────────┘  │
-│  └────┬────┘           │            │
-│       └────────────────┘            │
-└──────────────┬───────────────────────┘
-               │ Protobuf / SIRI / JSON
-┌──────────────┴───────────────────────┐
-│          MTA Data Feeds              │
-│  GTFS-RT (Subway/LIRR) · SIRI (Bus) │
-│  Alerts JSON · Elevator JSON         │
-└──────────────────────────────────────┘
+                         iOS App (Track)
+    +---------------------------------------------------------+
+    |                                                         |
+    |   HomeView       Widgets        Live Activity           |
+    |   (Map + Feed)   (Lock Screen)  (Dynamic Island)        |
+    |       |              |               |                  |
+    |       +--------------+---------------+                  |
+    |                      |                                  |
+    |              HomeViewModel                              |
+    |                      |                                  |
+    |                  TrackAPI                                |
+    |              (Network Client)                           |
+    |                      |                                  |
+    |       SwiftData (App Groups)                            |
+    |       CommutePattern / TripLog                          |
+    +-----------+---------------------------------------------+
+                |
+                | HTTPS / JSON
+                |
+    +-----------+---------------------------------------------+
+    |           TrackBackend (FastAPI)                         |
+    |                                                         |
+    |   Routers:            Services:                         |
+    |    /nearby              mta_client.py                   |
+    |    /nearby/grouped      bus_client.py                   |
+    |    /subway/{line}       data_cleaner.py                 |
+    |    /bus/*                                               |
+    |    /lirr                                                |
+    |    /alerts                                              |
+    |    /accessibility                                       |
+    +-----------+---------------------------------------------+
+                |
+                | Protobuf / SIRI / JSON
+                |
+    +-----------+---------------------------------------------+
+    |             MTA Data Feeds                              |
+    |   GTFS-RT (Subway, LIRR)  |  SIRI (Bus)                |
+    |   Alerts JSON             |  Elevator JSON              |
+    +-------------------------------------------------------------+
 ```
 
-**iOS App** — SwiftUI + SwiftData + ActivityKit + WidgetKit. Talks only to the backend.
+**iOS App** — SwiftUI, SwiftData, MapKit, ActivityKit, WidgetKit. Talks only to the backend. All user data stays on-device.
 
-**TrackBackend** — Python FastAPI proxy that ingests raw MTA Protobuf/SIRI/JSON and outputs clean, normalized JSON.
+**TrackBackend** — Python FastAPI proxy that ingests raw MTA Protobuf, SIRI XML, and JSON feeds, then returns normalized JSON.
 
-**MTA Feeds** — Real-time GTFS-Realtime for subway/LIRR, SIRI for bus, JSON for alerts and elevators.
+**MTA Feeds** — Real-time GTFS-Realtime for subway and LIRR, SIRI for buses, JSON for service alerts and elevator outages.
 
-## 🚀 Setup
+---
+
+## Features
+
+| Feature | How It Works |
+|---------|-------------|
+| Nearby Transit | Unified feed showing nearest buses and trains sorted by arrival time |
+| Route Detail Sheet | Tap a route to see arrivals grouped by direction (swipeable tabs) with a mini route map |
+| Live Bus Tracking | Tap a bus route to see active buses on the map with GPS positions and bearing arrows |
+| Route Visualization | Full polyline path drawn on the map with stop annotations for any selected bus route |
+| GO Mode | Hands-free tracking mode that follows your vehicle, dims passed stops, and shows transit ETA |
+| Live Activities | Track an arrival on your Dynamic Island and Lock Screen with a live countdown |
+| LIRR Support | Long Island Rail Road departures in a dedicated tab |
+| Service Alerts | Critical MTA alerts shown in the dashboard alongside nearby arrivals |
+| Elevator/Escalator Outages | Real-time accessibility info for stations with broken equipment |
+| Nearest Metro | When no transit is within walking distance, recommends the closest stop with distance |
+| Draggable Search Pin | Drop a pin anywhere on the map to search for transit at that location |
+| Smart Predictions | On-device ML learns commute patterns and suggests routes before you ask |
+| Lock Screen Widget | Shows nearest live transit, refreshes every 5 minutes |
+| Haptic Feedback | Tactile response on mode switching, tracking, and navigation |
+| Quad-Mode UI | Nearby / Subway / Bus / LIRR tabs with a floating transport mode toggle |
+
+---
+
+## Setup
 
 ### iOS App
 
-1. **Clone** the repo and open `Track.xcodeproj` in Xcode 16+.
-2. **Capabilities:** Enable *App Groups* (`group.com.yourname.track`) on both the `Track` and `TrackWidgets` targets.
-3. **Capabilities:** Enable *Live Activities* (`NSSupportsLiveActivities = YES`) in the main app's Info.plist.
-4. **Environment:** In `TrackAPI.swift`, set `useLocalServer = true` for Simulator or `false` for a physical device pointing to the cloud.
-5. **Build:** Run on iPhone 15 Pro Simulator or later (iOS 18+).
+1. Clone the repo and open `Track.xcodeproj` in Xcode 16+.
+2. Enable **App Groups** (`group.com.yourname.track`) on both `Track` and `TrackWidgets` targets.
+3. Enable **Live Activities** (`NSSupportsLiveActivities = YES`) in the main app's Info.plist.
+4. In Developer Settings (within the app's Settings view), toggle between localhost and a custom IP for local development.
+5. Build and run on an iPhone simulator or device running iOS 18+.
 
 ### Backend (Local)
 
@@ -67,7 +125,7 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
-The API will be available at `http://127.0.0.1:8000`. Auto-generated docs at `/docs`.
+The API runs at `http://127.0.0.1:8000`. Interactive docs at `/docs`.
 
 ### Backend (Docker)
 
@@ -77,7 +135,7 @@ docker build -t track-api .
 docker run -p 8000:8000 track-api
 ```
 
-### Backend (Cloud — Render)
+### Backend (Render)
 
 1. Push the repo to GitHub.
 2. Create a new **Web Service** on [Render](https://render.com).
@@ -85,6 +143,8 @@ docker run -p 8000:8000 track-api
 4. Set the **Build Command** to `pip install -r requirements.txt`.
 5. Set the **Start Command** to `uvicorn app.main:app --host 0.0.0.0 --port $PORT`.
 6. Update `prodURL` in `TrackAPI.swift` with the deployed URL.
+
+Production is currently deployed at `https://track-api.onrender.com`.
 
 ### Running Tests
 
@@ -94,93 +154,229 @@ pip install pytest pytest-asyncio httpx
 python -m pytest tests/ -v
 ```
 
-## ✨ Features
+---
 
-| Feature | Description |
-|---------|-------------|
-| **Nearby Transit** | Unified view showing nearest buses AND trains sorted by arrival time — like a live departure board |
-| **Draggable Search Pin** | Drop a pin anywhere on the map to search for transit at that location |
-| **Live Bus Tracking** | Tap a bus route to see all active buses on the map with real-time positions and bearing |
-| **Route Visualization** | View the full route path of any bus on the map with stop annotations |
-| **Smart Predictions** | On-device ML learns your commute patterns and predicts the route you need before you ask |
-| **Live Activities** | Track a train/bus on your Dynamic Island and Lock Screen with live countdown |
-| **Bus + Subway** | Tri-mode UI (Nearby / Subway / Bus) with a floating transport toggle |
-| **Reliability Scores** | Historical trip data flags routes that are frequently delayed |
-| **Offline Learning** | All habit data stored locally via SwiftData — no cloud account needed |
-| **Lock Screen Widget** | Shows your nearest live transit automatically, refreshing every 5 minutes |
-| **Haptic Feedback** | Tactile feedback on mode switching and trip tracking for a premium feel |
+## API Reference
 
-## 📂 Project Structure
+All endpoints return JSON. The iOS app communicates exclusively through `TrackAPI.swift`.
 
-```
-Track/
-├── Track/                          # iOS App
-│   ├── Models/                     # SwiftData models (Station, Route, TripLog, etc.)
-│   ├── Network/                    # TrackAPI client (subway, bus, nearby, vehicles, shapes)
-│   ├── Services/                   # LiveActivityManager, SmartSuggester, etc.
-│   ├── ViewModels/                 # HomeViewModel (unified transit, search pin, bus tracking)
-│   ├── Views/                      # SwiftUI views (HomeView with map, dashboard, annotations)
-│   ├── Theme/                      # AppTheme (colors, typography, layout)
-│   ├── Data/                       # DataController (shared App Group container)
-│   └── Utilities/                  # HapticManager
-├── TrackWidgets/                   # Widget Extension (Nearby Transit + Live Activity)
-├── TrackBackend/                   # Python FastAPI backend
-│   ├── app/
-│   │   ├── main.py                 # App entry point with /config endpoint
-│   │   ├── config.py               # Pydantic settings loader
-│   │   ├── models.py               # Pydantic response schemas
-│   │   ├── services/               # MTA client, bus client, data cleaner
-│   │   └── routers/                # subway, bus, nearby, lirr, status endpoints
-│   ├── tests/                      # Backend test suite
-│   ├── settings.json               # Master configuration
-│   ├── requirements.txt            # Python dependencies
-│   └── Dockerfile                  # Container for cloud deployment
-└── README.md
-```
-
-## 🔌 API Endpoints
+### Config
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/config` | App settings from settings.json |
-| GET | `/nearby?lat=&lon=` | **Unified nearby transit** — buses + trains sorted by arrival time |
-| GET | `/subway/{line_id}` | Real-time arrivals for a subway line |
-| GET | `/lirr` | Real-time LIRR arrivals |
-| GET | `/bus/routes` | All MTA bus routes |
-| GET | `/bus/stops/{route_id}` | Stops for a bus route |
-| GET | `/bus/nearby?lat=&lon=` | Nearby bus stops |
-| GET | `/bus/live/{stop_id}` | Live bus arrivals at a stop |
-| GET | `/bus/vehicles/{route_id}` | **Live bus vehicle positions** with GPS, bearing, next stop |
-| GET | `/bus/route-shape/{route_id}` | **Route polylines + stops** for map visualization |
-| GET | `/alerts` | Critical subway service alerts |
-| GET | `/accessibility` | Currently broken elevators/escalators |
+| GET | `/config` | Returns app settings from `settings.json` |
 
-## 🗺 Map Features
+### Nearby Transit
 
-The map uses Apple's MapKit with the following capabilities:
+| Method | Path | Query Params | Description |
+|--------|------|-------------|-------------|
+| GET | `/nearby` | `lat`, `lon`, `radius` (default 500m) | Flat list of nearest buses and trains sorted by arrival time |
+| GET | `/nearby/grouped` | `lat`, `lon`, `radius` (default 500m) | Routes grouped by ID with swipeable direction sub-groups |
 
-- **User Location** — Blue dot showing your current position
-- **Search Pin** — Tap the pin button in the header to drop a draggable search pin; transit data updates for that location
-- **Bus Stop Annotations** — Blue circle pins for nearby bus stops (in Bus mode)
-- **Live Bus Vehicles** — When you select a bus route, active buses appear on the map as blue circles with bearing rotation
-- **Route Polylines** — The full route path is drawn on the map when a bus route is selected
-- **Stop Annotations** — All stops along a selected route are shown on the map
+The grouped endpoint is used for the main dashboard cards. The flat endpoint is the fallback and powers the nearest-metro recommendation when no transit is within walking distance.
 
-## 🔒 Privacy
+### Subway
 
-- Location data is used only to find nearby stations and predict commute patterns.
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/subway/{line_id}` | Real-time arrivals for a subway line (e.g. `/subway/L`) |
+
+### Bus
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/bus/routes` | All MTA bus routes with short name, long name, and color |
+| GET | `/bus/stops/{route_id}` | Ordered stops for a specific route |
+| GET | `/bus/nearby?lat=&lon=` | Nearby bus stops by coordinates |
+| GET | `/bus/live/{stop_id}` | Live arrivals at a specific stop (SIRI feed) |
+| GET | `/bus/vehicles/{route_id}` | Live vehicle GPS positions with bearing and next stop |
+| GET | `/bus/route-shape/{route_id}` | Encoded polylines and stop list for drawing the route on a map |
+
+Route IDs use the fully qualified MTA format: `MTA NYCT_B63`, `MTA NYCT_Q10`, etc.
+
+### LIRR
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/lirr` | Upcoming LIRR departures from the GTFS-Realtime feed |
+
+### Service Status
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/alerts` | Critical MTA service alerts with route, title, description, severity |
+| GET | `/accessibility` | Currently out-of-service elevators and escalators |
+
+---
+
+## Project Structure
+
+### iOS App Structure
+
+```
+Track/
+|-- Models/
+|   |-- Station.swift               SwiftData model for subway stations
+|   |-- Route.swift                  SwiftData model for transit routes
+|   |-- TransportMode.swift          Enum: .nearby, .subway, .bus, .lirr
+|   |-- BusModels.swift              BusStop, BusArrival structs
+|   |-- ServiceModels.swift          TransitAlert, ElevatorStatus, BusRoute
+|   |-- TripLog.swift                SwiftData model for trip history
+|   |-- CommutePattern.swift         SwiftData model for learned commute habits
+|   |-- WeatherCondition.swift       Weather state enum
+|   |-- TrackActivityAttributes.swift  ActivityKit attributes for Live Activities
+|
+|-- Network/
+|   |-- TrackAPI.swift               API client: all backend calls, response models,
+|                                     error types, polyline decoder
+|
+|-- Repositories/
+|   |-- TransitRepository.swift      TrainArrival model, TransitError enum,
+|                                     bridges TrackAPI to ViewModels
+|
+|-- ViewModels/
+|   |-- HomeViewModel.swift          State for all modes (nearby, subway, bus, LIRR),
+|                                     search pin, bus route selection, GO mode,
+|                                     Live Activity tracking, transit ETA
+|
+|-- Views/
+|   |-- HomeView.swift               Main view: map, bottom sheet, dashboard sections,
+|                                     mode switching, settings/route detail sheets
+|   |-- LoginView.swift              Authentication screen
+|   |-- OnboardingView.swift         First-run setup flow
+|   |-- SettingsView.swift           Preferences, developer tools, theme toggle
+|   |-- LocationPermissionView.swift Location access gate
+|   |-- ContentView.swift            Root router (login -> onboarding -> home)
+|   |
+|   |-- Components/
+|       |-- ArrivalRow.swift           Subway/LIRR arrival row (expandable)
+|       |-- BusArrivalRow.swift        Bus arrival row with SIRI status text
+|       |-- NearbyTransitRow.swift     Unified bus/train row for nearby feed
+|       |-- GroupedRouteRow.swift       Route card with soonest arrival across directions
+|       |-- NearbyBusStopRow.swift      Bus stop list item
+|       |-- NearbyStationRow.swift      Subway station list item with distance
+|       |-- NearestMetroCard.swift      Recommendation card when no transit is nearby
+|       |-- RouteDetailSheet.swift      Route detail modal: direction tabs, mini map,
+|                                        arrival list, GO button, swipe gestures
+|       |-- RouteBadge.swift            Colored circle badge for route names
+|       |-- SmartSuggestionCard.swift   ML-based commute suggestion
+|       |-- DelayBadgeView.swift        Service delay indicator
+|       |-- TransportModeToggle.swift   Floating mode selector (Nearby/Subway/Bus/LIRR)
+|       |-- MapAnnotations.swift        SearchPinAnnotation, BusVehicleAnnotation
+|       |-- BusStopAnnotation.swift     Bus stop map marker
+|       |-- GoModeAnnotations.swift     GO mode user icon, passed-stop dimming
+|       |-- LiveTrackingOverlay.swift   Live activity card during GO mode
+|       |-- NetworkErrorBanner.swift    Error message banner
+|
+|-- Services/
+|   |-- LocationManager.swift        CoreLocation wrapper, permission handling
+|   |-- LiveActivityManager.swift    ActivityKit live activity lifecycle
+|   |-- AppLogger.swift              File-based request/response logger
+|   |-- SmartSuggester.swift         On-device commute pattern ML
+|   |-- TripLogger.swift             SwiftData trip history writer
+|   |-- DelayCalculator.swift        Service delay computation
+|
+|-- Theme/
+|   |-- AppTheme.swift               Colors, typography, layout constants,
+|                                     subway line colors, map configuration
+|
+|-- Utilities/
+|   |-- FormatUtils.swift            formatArrivalTime(), formatDistance(),
+|                                     stripMTAPrefix(), transitStatusColor()
+|   |-- DirectionUtils.swift         directionLabel(), shortDirectionLabel()
+|   |-- ColorExtensions.swift        Color(hex:) initializer
+|   |-- LocationExtensions.swift     CLLocation.bearing(to:), degree/radian conversion
+|   |-- HapticManager.swift          UIFeedbackGenerator wrappers
+|
+|-- Data/
+|   |-- DataController.swift         SwiftData container using App Group
+|
+|-- TrackApp.swift                   @main entry point
+```
+
+### Backend Structure
+
+```
+TrackBackend/
+|-- app/
+|   |-- main.py                     FastAPI entry point, CORS, router registration
+|   |-- config.py                   Pydantic settings from settings.json
+|   |-- models.py                   Response schemas: TrackArrival, BusRoute, BusStop,
+|                                    BusArrival, BusVehicle, NearbyTransitArrival,
+|                                    GroupedNearbyTransit, TransitAlert, ElevatorStatus,
+|                                    RouteShape
+|   |-- routers/
+|   |   |-- subway.py               GET /subway/{line_id}
+|   |   |-- bus.py                  GET /bus/routes, /bus/stops, /bus/nearby,
+|   |   |                            /bus/live, /bus/vehicles, /bus/route-shape
+|   |   |-- nearby.py               GET /nearby, /nearby/grouped
+|   |   |-- lirr.py                 GET /lirr
+|   |   |-- status.py               GET /alerts, /accessibility
+|   |
+|   |-- services/
+|       |-- mta_client.py           Async HTTP client for MTA Protobuf/JSON
+|       |-- bus_client.py           OBA + SIRI dual-API for bus data
+|       |-- data_cleaner.py         Protobuf parser for arrivals, alerts, elevators
+|
+|-- tests/
+|   |-- test_nearby.py              Unit tests for the nearby endpoint
+|
+|-- utils/
+|   |-- logger.py                   Colored console logging
+|
+|-- settings.json                   API keys, feed URLs, app configuration
+|-- requirements.txt                Python dependencies
+|-- Dockerfile                      Container build for deployment
+```
+
+### Widget Extension
+
+```
+TrackWidgets/
+|-- TrackWidget.swift               Widget timeline provider + UI
+|-- TrackWidgetBundle.swift          @WidgetBundle entry point
+|-- TrackWidgetLiveActivity.swift    Dynamic Island + Lock Screen live activity UI
+|-- Shared/                         Models and theme shared via App Group
+|   |-- AppTheme.swift, Station.swift, Route.swift, CommutePattern.swift,
+|   |-- TripLog.swift, WeatherCondition.swift, TrackActivityAttributes.swift,
+|   |-- SmartSuggester.swift, DataController.swift
+```
+
+---
+
+## Map and UI
+
+The map uses Apple MapKit with bounded camera constraints covering the NYC five boroughs and Long Island.
+
+- **User location dot** that auto-centers on launch via `.userLocation(fallback:)`
+- **Recenter button** in the dashboard header to snap back to your position
+- **Search pin** for exploring transit at any location by tapping the pin button
+- **Bus stop annotations** shown when in Bus mode
+- **Live bus vehicles** appear as blue markers with bearing rotation when a route is selected
+- **Route polylines** draw the full path on the map when viewing a bus route detail
+- **GO mode** replaces the blue dot with a pulsing vehicle icon that follows the route, dims passed stops, and shows transit ETA
+- **Transport mode toggle** floats above the bottom sheet for switching between Nearby, Subway, Bus, and LIRR views
+
+The bottom sheet dashboard shows mode-specific content:
+
+| Mode | Content |
+|------|---------|
+| Nearby | Grouped route cards, nearest metro fallback, service alerts, elevator outages |
+| Subway | Nearby station arrivals with expandable detail rows |
+| Bus | Selected stop arrivals, nearby bus stop list |
+| LIRR | LIRR departure list |
+
+---
+
+## Privacy
+
+- Location data is used only to find nearby stations and learn commute patterns.
 - All user habit data is stored locally on-device via SwiftData.
 - No user data is transmitted to third-party services.
 - The backend proxies MTA public data only.
 
-## ♿ Accessibility
+---
 
-All UI components include accessibility labels and hints for VoiceOver support.
+## Accessibility
 
-## 📱 App Icon
-
-The App Icon folder structure is set up at `Assets.xcassets/AppIcon.appiconset`. To set your icon:
-
-1. Create a **1024×1024 PNG** image.
-2. Drag it into `Assets.xcassets → AppIcon` in Xcode.
-3. Xcode will use this single image at all required sizes.
+All UI components include accessibility labels and hints for VoiceOver support. The app reports real-time elevator and escalator outages from the MTA accessibility feed.
