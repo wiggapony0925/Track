@@ -8,13 +8,15 @@
 
 import Foundation
 
-/// The two transport modes supported by Track.
+/// The transport modes supported by Track.
 enum TransportMode: String, CaseIterable {
+    case nearby
     case subway
     case bus
 
     var label: String {
         switch self {
+        case .nearby: return "Nearby"
         case .subway: return "Subway"
         case .bus: return "Bus"
         }
@@ -22,6 +24,7 @@ enum TransportMode: String, CaseIterable {
 
     var icon: String {
         switch self {
+        case .nearby: return "location.fill"
         case .subway: return "tram.fill"
         case .bus: return "bus.fill"
         }

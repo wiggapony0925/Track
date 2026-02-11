@@ -81,6 +81,30 @@ struct TrackAPI {
         return try decoder.decode([BusArrival].self, from: data)
     }
 
+    // MARK: - Nearby Transit
+
+    /// Fetches the nearest buses and trains with live countdowns.
+    /// Returns a unified list sorted by minutes away.
+    ///
+    /// - Parameters:
+    ///   - lat: User's latitude.
+    ///   - lon: User's longitude.
+    /// - Returns: Array of `NearbyTransitResponse`.
+    static func fetchNearbyTransit(lat: Double, lon: Double) async throws -> [NearbyTransitResponse] {
+        guard var components = URLComponents(string: baseURL + "/nearby") else {
+            throw TrackAPIError.invalidURL
+        }
+        components.queryItems = [
+            URLQueryItem(name: "lat", value: String(lat)),
+            URLQueryItem(name: "lon", value: String(lon)),
+        ]
+        guard let url = components.url else {
+            throw TrackAPIError.invalidURL
+        }
+        let data = try await get(url: url)
+        return try decoder.decode([NearbyTransitResponse].self, from: data)
+    }
+
     // MARK: - Private
 
     private static let decoder: JSONDecoder = {
@@ -166,5 +190,36 @@ private struct SubwayArrivalResponse: Codable {
             estimatedTime: now.addingTimeInterval(Double(minutesAway) * 60),
             minutesAway: minutesAway
         )
+    }
+}
+
+/// Matches the backend's `NearbyTransitArrival` JSON schema.
+struct NearbyTransitResponse: Codable, Identifiable {
+    var id: String { "\(routeId)-\(stopName)-\(minutesAway)" }
+
+    let routeId: String
+    let stopName: String
+    let direction: String
+    let minutesAway: Int
+    let status: String
+    let mode: String
+
+    var isBus: Bool { mode == "bus" }
+
+    /// Strips "MTA NYCT_" prefix for display.
+    var displayName: String {
+        if routeId.hasPrefix("MTA NYCT_") {
+            return String(routeId.dropFirst(9))
+        }
+        return routeId
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case routeId = "route_id"
+        case stopName = "stop_name"
+        case direction
+        case minutesAway = "minutes_away"
+        case status
+        case mode
     }
 }

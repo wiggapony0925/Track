@@ -2,9 +2,9 @@
 //  HomeViewModel.swift
 //  Track
 //
-//  ViewModel for the HomeView. Fetches nearby subway arrivals and bus stops
-//  from the TrackAPI backend based on the user's current location.
-//  Supports Subway and Bus transport modes.
+//  ViewModel for the HomeView. Fetches nearby transit arrivals
+//  (both subway and bus) from the TrackAPI backend based on the
+//  user's current location. Shows a unified live transit feed.
 //
 
 import Foundation
@@ -19,10 +19,13 @@ final class HomeViewModel {
     var errorMessage: String?
 
     // Bus mode
-    var selectedMode: TransportMode = .subway
+    var selectedMode: TransportMode = .nearby
     var nearbyBusStops: [BusStop] = []
     var busArrivals: [BusArrival] = []
     var selectedBusStop: BusStop?
+
+    // Nearby transit (unified)
+    var nearbyTransit: [NearbyTransitResponse] = []
 
     // Live Activity tracking
     var trackingArrivalId: String?
@@ -36,10 +39,37 @@ final class HomeViewModel {
         errorMessage = nil
 
         switch selectedMode {
+        case .nearby:
+            await refreshNearbyTransit(location: location)
         case .subway:
             await refreshSubway(location: location)
         case .bus:
             await refreshBus(location: location)
+        }
+
+        isLoading = false
+    }
+
+    // MARK: - Nearby Transit (Unified)
+
+    /// Fetches all nearby transit (buses + trains) in one call.
+    func refreshNearbyTransit(location: CLLocation?) async {
+        guard let location = location else {
+            errorMessage = "Location required"
+            return
+        }
+
+        isLoading = true
+        errorMessage = nil
+
+        do {
+            nearbyTransit = try await TrackAPI.fetchNearbyTransit(
+                lat: location.coordinate.latitude,
+                lon: location.coordinate.longitude
+            )
+        } catch {
+            AppLogger.shared.logError("fetchNearbyTransit", error: error)
+            errorMessage = (error as? TrackAPIError)?.description ?? error.localizedDescription
         }
 
         isLoading = false
@@ -145,6 +175,19 @@ final class HomeViewModel {
             arrivalTime: arrivalTime,
             isBus: true,
             stationId: arrival.stopId
+        )
+    }
+
+    /// Starts tracking a nearby transit arrival via Live Activity.
+    func trackNearbyArrival(_ arrival: NearbyTransitResponse, location: CLLocation?) {
+        trackingArrivalId = arrival.id
+        let arrivalTime = Date().addingTimeInterval(Double(arrival.minutesAway) * 60)
+        liveActivityManager.startActivity(
+            lineId: arrival.displayName,
+            destination: arrival.direction,
+            arrivalTime: arrivalTime,
+            isBus: arrival.isBus,
+            stationId: arrival.stopName
         )
     }
 

@@ -69,3 +69,14 @@ class BusArrival(BaseModel):
     expected_arrival: datetime | None = None
     distance_meters: float | None = None
     bearing: float | None = None
+
+
+class NearbyTransitArrival(BaseModel):
+    """A single upcoming transit arrival (bus or train) near the user."""
+
+    route_id: str
+    stop_name: str
+    direction: str
+    minutes_away: int
+    status: str = "On Time"
+    mode: str  # "subway" or "bus"
