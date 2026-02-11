@@ -18,7 +18,7 @@ from typing import Any
 import httpx
 
 from app.config import get_settings
-from app.models import BusArrival, BusRoute, BusStop
+from app.models import BusArrival, BusRoute, BusStop, BusVehicle, RouteShape
 
 _TIMEOUT = httpx.Timeout(15.0, connect=10.0)
 
@@ -246,3 +246,143 @@ async def get_realtime_arrivals(stop_id: str) -> list[BusArrival]:
         )
 
     return arrivals
+
+
+# ---------------------------------------------------------------------------
+# SIRI (Vehicle Monitoring) helpers
+# ---------------------------------------------------------------------------
+
+
+async def get_vehicle_positions(route_id: str) -> list[BusVehicle]:
+    """Fetch live vehicle positions for a bus route via SIRI ``vehicle-monitoring``.
+
+    Navigates ``Siri.ServiceDelivery.VehicleMonitoringDelivery[0]
+    .VehicleActivity`` and extracts GPS position, bearing, and status.
+
+    *route_id* must be fully qualified (e.g. ``"MTA NYCT_B63"``).
+    """
+    settings = get_settings()
+    eps = settings.urls.bus_endpoints
+    if eps is None:
+        return []
+
+    url = settings.urls.bus_siri_base + eps.vehicle_monitoring
+    params = {
+        "key": settings.api_keys.mta_bus_key,
+        "version": "2",
+        "LineRef": route_id,
+    }
+
+    data = await _fetch_bus_json(url, params)
+
+    deliveries: list[dict[str, Any]] = (
+        data.get("Siri", {})
+        .get("ServiceDelivery", {})
+        .get("VehicleMonitoringDelivery", [])
+        if isinstance(data, dict)
+        else []
+    )
+    if not deliveries:
+        return []
+
+    activities: list[dict[str, Any]] = deliveries[0].get("VehicleActivity", [])
+
+    vehicles: list[BusVehicle] = []
+    for activity in activities:
+        journey = activity.get("MonitoredVehicleJourney", {})
+        location = journey.get("VehicleLocation", {})
+
+        lat = location.get("Latitude")
+        lon = location.get("Longitude")
+        if lat is None or lon is None:
+            continue
+
+        try:
+            lat_f = float(lat)
+            lon_f = float(lon)
+        except (ValueError, TypeError):
+            continue
+
+        bearing: float | None = None
+        raw_bearing = journey.get("Bearing")
+        if raw_bearing is not None:
+            try:
+                bearing = float(raw_bearing)
+            except (ValueError, TypeError):
+                pass
+
+        # Next stop name
+        monitored_call = journey.get("MonitoredCall", {})
+        next_stop = monitored_call.get("StopPointName")
+        if isinstance(next_stop, list) and next_stop:
+            next_stop = next_stop[0]
+
+        # Status text from extensions
+        extensions = monitored_call.get("Extensions", {})
+        distances = extensions.get("Distances", {})
+        status_text = distances.get("PresentableDistance")
+
+        vehicles.append(
+            BusVehicle(
+                vehicle_id=journey.get("VehicleRef", ""),
+                route_id=journey.get("LineRef", route_id),
+                lat=lat_f,
+                lon=lon_f,
+                bearing=bearing,
+                next_stop=next_stop,
+                status_text=status_text,
+            )
+        )
+
+    return vehicles
+
+
+async def get_route_shape(route_id: str) -> RouteShape:
+    """Fetch the route shape (polylines + stops) from OBA ``stops-for-route``.
+
+    Returns encoded polylines for drawing the route on a map, along with
+    all stops on the route. *route_id* must be fully qualified.
+    """
+    settings = get_settings()
+    eps = settings.urls.bus_endpoints
+    if eps is None:
+        return RouteShape(route_id=route_id, polylines=[], stops=[])
+
+    path = eps.stops_for_route.replace("{route_id}", route_id)
+    url = settings.urls.bus_oba_base + path
+    params = {
+        "key": settings.api_keys.mta_bus_key,
+        "includePolylines": "true",
+        "version": "2",
+    }
+
+    data = await _fetch_bus_json(url, params)
+
+    # Extract polylines
+    polylines: list[str] = []
+    entry = data.get("data", {}).get("entry", {}) if isinstance(data, dict) else {}
+    for poly in entry.get("polylines", []):
+        encoded = poly.get("points", "")
+        if encoded:
+            polylines.append(encoded)
+
+    # Extract stops from references
+    stops_data: list[dict[str, Any]] = (
+        data.get("data", {}).get("references", {}).get("stops", [])
+        if isinstance(data, dict)
+        else []
+    )
+
+    stops: list[BusStop] = []
+    for s in stops_data:
+        stops.append(
+            BusStop(
+                id=s.get("id", ""),
+                name=s.get("name", ""),
+                lat=s.get("lat", 0.0),
+                lon=s.get("lon", 0.0),
+                direction=s.get("direction"),
+            )
+        )
+
+    return RouteShape(route_id=route_id, polylines=polylines, stops=stops)

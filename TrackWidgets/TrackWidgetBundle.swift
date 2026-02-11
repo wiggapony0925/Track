@@ -3,7 +3,7 @@
 //  TrackWidgets
 //
 //  Entry point for the Widget Extension.
-//  Registers the "Next Train" widget and the Live Activity.
+//  Registers the Nearby Transit widget and the Live Activity.
 //
 
 import SwiftUI
@@ -13,9 +13,6 @@ import WidgetKit
 struct TrackWidgetBundle: WidgetBundle {
     var body: some Widget {
         TrackWidget()
-        TrackWidgets()
-        TrackWidgetsControl()
         TrackWidgetLiveActivity()
-        TrackWidgetsLiveActivity()
     }
 }

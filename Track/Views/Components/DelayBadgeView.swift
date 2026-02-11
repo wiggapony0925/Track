@@ -55,13 +55,7 @@ struct DelayBadgeView: View {
     }
 
     private var badgeColor: Color {
-        if prediction.adjustedMinutes <= 2 {
-            return AppTheme.Colors.alertRed
-        } else if prediction.adjustedMinutes <= 5 {
-            return AppTheme.Colors.successGreen
-        } else {
-            return AppTheme.Colors.textPrimary
-        }
+        AppTheme.Colors.countdown(prediction.adjustedMinutes)
     }
 }
 

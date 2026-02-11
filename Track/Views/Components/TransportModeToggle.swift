@@ -2,7 +2,7 @@
 //  TransportModeToggle.swift
 //  Track
 //
-//  A floating capsule segment control for switching between Subway and Bus modes.
+//  A floating capsule segment control for switching between Nearby, Subway, and Bus modes.
 //  Sits at the bottom center of the map overlay.
 //
 
@@ -32,8 +32,8 @@ struct TransportModeToggle: View {
                     .foregroundColor(selectedMode == mode ? AppTheme.Colors.textOnColor : AppTheme.Colors.textPrimary)
                     .background(
                         selectedMode == mode
-                            ? (mode == .subway ? AppTheme.Colors.subwayBlack : AppTheme.Colors.mtaBlue)
-                            : Color.clear
+                            ? selectedBackground(for: mode)
+                            : AppTheme.Colors.cardBackground.opacity(0.001)
                     )
                     .clipShape(Capsule())
                 }
@@ -46,14 +46,23 @@ struct TransportModeToggle: View {
         .clipShape(Capsule())
         .shadow(radius: AppTheme.Layout.shadowRadius)
     }
+
+    /// Returns the appropriate background color for a selected mode.
+    private func selectedBackground(for mode: TransportMode) -> Color {
+        switch mode {
+        case .nearby: return AppTheme.Colors.mtaBlue
+        case .subway: return AppTheme.Colors.subwayBlack
+        case .bus: return AppTheme.Colors.mtaBlue
+        }
+    }
 }
 
 #Preview {
     ZStack {
-        Color.gray.opacity(0.3).ignoresSafeArea()
+        AppTheme.Colors.background.opacity(0.3).ignoresSafeArea()
         VStack {
             Spacer()
-            TransportModeToggle(selectedMode: .constant(.subway))
+            TransportModeToggle(selectedMode: .constant(.nearby))
                 .padding(.bottom, 20)
         }
     }
