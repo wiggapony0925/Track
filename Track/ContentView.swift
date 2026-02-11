@@ -10,6 +10,7 @@
 
 import SwiftUI
 import SwiftData
+import CoreLocation
 
 struct ContentView: View {
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false

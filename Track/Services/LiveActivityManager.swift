@@ -14,6 +14,7 @@
 import Foundation
 import ActivityKit
 import SwiftData
+import UIKit
 
 @Observable
 final class LiveActivityManager {

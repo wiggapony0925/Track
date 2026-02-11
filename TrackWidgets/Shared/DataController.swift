@@ -5,8 +5,7 @@
 //  Shared data container using App Groups so both the main app
 //  and the Widget Extension can access the same SwiftData store.
 //
-//  Target Membership: Track AND TrackWidgets
-//
+//  NOTE: Shared copy for widget target — must stay in sync with Track/Data/DataController.swift
 
 import Foundation
 import SwiftData

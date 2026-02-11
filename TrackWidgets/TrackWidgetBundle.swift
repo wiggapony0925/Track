@@ -13,6 +13,9 @@ import WidgetKit
 struct TrackWidgetBundle: WidgetBundle {
     var body: some Widget {
         TrackWidget()
+        TrackWidgets()
+        TrackWidgetsControl()
         TrackWidgetLiveActivity()
+        TrackWidgetsLiveActivity()
     }
 }

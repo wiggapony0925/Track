@@ -13,6 +13,14 @@ struct TrackAPI {
 
     // MARK: - Environment Configuration
 
+<<<<<<< HEAD
+=======
+    /// Toggle between local development server and production.
+    /// Set to `false` when deploying or testing on a physical device.
+    private static var useLocalServer = true
+
+    private static let localURL = "http://192.168.12.101:8000"
+>>>>>>> cf9bf3d (feat: Add widget extension, fix build errors, configure App Groups & ATS)
     private static let prodURL = "https://track-api.onrender.com"
 
     /// The active backend URL, determined by the Developer Settings in SettingsView.

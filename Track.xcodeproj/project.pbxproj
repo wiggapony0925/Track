@@ -6,6 +6,12 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		256476532F3C5AB300762B65 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 256476522F3C5AB300762B65 /* WidgetKit.framework */; };
+		256476552F3C5AB300762B65 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 256476542F3C5AB300762B65 /* SwiftUI.framework */; };
+		256476662F3C5AB400762B65 /* TrackWidgetsExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 256476502F3C5AB300762B65 /* TrackWidgetsExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		256475532F3C387C00762B65 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -21,13 +27,48 @@
 			remoteGlobalIDString = 256475422F3C387B00762B65;
 			remoteInfo = Track;
 		};
+		256476642F3C5AB400762B65 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 2564753B2F3C387B00762B65 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 2564764F2F3C5AB300762B65;
+			remoteInfo = TrackWidgetsExtension;
+		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		256476672F3C5AB400762B65 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				256476662F3C5AB400762B65 /* TrackWidgetsExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		256475432F3C387B00762B65 /* Track.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Track.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		256475522F3C387C00762B65 /* TrackTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TrackTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		2564755C2F3C387C00762B65 /* TrackUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TrackUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		256476502F3C5AB300762B65 /* TrackWidgetsExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = TrackWidgetsExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		256476522F3C5AB300762B65 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		256476542F3C5AB300762B65 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
+		256476722F3C5B7600762B65 /* TrackWidgetsExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = TrackWidgetsExtension.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		2564766A2F3C5AB400762B65 /* Exceptions for "TrackWidgets" folder in "TrackWidgetsExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 2564764F2F3C5AB300762B65 /* TrackWidgetsExtension */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		256475452F3C387B00762B65 /* Track */ = {
@@ -43,6 +84,14 @@
 		2564755F2F3C387C00762B65 /* TrackUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = TrackUITests;
+			sourceTree = "<group>";
+		};
+		256476562F3C5AB300762B65 /* TrackWidgets */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				2564766A2F3C5AB400762B65 /* Exceptions for "TrackWidgets" folder in "TrackWidgetsExtension" target */,
+			);
+			path = TrackWidgets;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -69,15 +118,27 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		2564764D2F3C5AB300762B65 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				256476552F3C5AB300762B65 /* SwiftUI.framework in Frameworks */,
+				256476532F3C5AB300762B65 /* WidgetKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		2564753A2F3C387B00762B65 = {
 			isa = PBXGroup;
 			children = (
+				256476722F3C5B7600762B65 /* TrackWidgetsExtension.entitlements */,
 				256475452F3C387B00762B65 /* Track */,
 				256475552F3C387C00762B65 /* TrackTests */,
 				2564755F2F3C387C00762B65 /* TrackUITests */,
+				256476562F3C5AB300762B65 /* TrackWidgets */,
+				256476512F3C5AB300762B65 /* Frameworks */,
 				256475442F3C387B00762B65 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -88,8 +149,18 @@
 				256475432F3C387B00762B65 /* Track.app */,
 				256475522F3C387C00762B65 /* TrackTests.xctest */,
 				2564755C2F3C387C00762B65 /* TrackUITests.xctest */,
+				256476502F3C5AB300762B65 /* TrackWidgetsExtension.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		256476512F3C5AB300762B65 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				256476522F3C5AB300762B65 /* WidgetKit.framework */,
+				256476542F3C5AB300762B65 /* SwiftUI.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -102,10 +173,12 @@
 				2564753F2F3C387B00762B65 /* Sources */,
 				256475402F3C387B00762B65 /* Frameworks */,
 				256475412F3C387B00762B65 /* Resources */,
+				256476672F3C5AB400762B65 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				256476652F3C5AB400762B65 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				256475452F3C387B00762B65 /* Track */,
@@ -163,6 +236,28 @@
 			productReference = 2564755C2F3C387C00762B65 /* TrackUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		2564764F2F3C5AB300762B65 /* TrackWidgetsExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 2564766B2F3C5AB400762B65 /* Build configuration list for PBXNativeTarget "TrackWidgetsExtension" */;
+			buildPhases = (
+				2564764C2F3C5AB300762B65 /* Sources */,
+				2564764D2F3C5AB300762B65 /* Frameworks */,
+				2564764E2F3C5AB300762B65 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				256476562F3C5AB300762B65 /* TrackWidgets */,
+			);
+			name = TrackWidgetsExtension;
+			packageProductDependencies = (
+			);
+			productName = TrackWidgetsExtension;
+			productReference = 256476502F3C5AB300762B65 /* TrackWidgetsExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -184,6 +279,9 @@
 						CreatedOnToolsVersion = 26.3;
 						TestTargetID = 256475422F3C387B00762B65;
 					};
+					2564764F2F3C5AB300762B65 = {
+						CreatedOnToolsVersion = 26.3;
+					};
 				};
 			};
 			buildConfigurationList = 2564753E2F3C387B00762B65 /* Build configuration list for PBXProject "Track" */;
@@ -203,6 +301,7 @@
 				256475422F3C387B00762B65 /* Track */,
 				256475512F3C387C00762B65 /* TrackTests */,
 				2564755B2F3C387C00762B65 /* TrackUITests */,
+				2564764F2F3C5AB300762B65 /* TrackWidgetsExtension */,
 			);
 		};
 /* End PBXProject section */
@@ -223,6 +322,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		2564755A2F3C387C00762B65 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		2564764E2F3C5AB300762B65 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -253,6 +359,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		2564764C2F3C5AB300762B65 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -265,6 +378,11 @@
 			isa = PBXTargetDependency;
 			target = 256475422F3C387B00762B65 /* Track */;
 			targetProxy = 2564755D2F3C387C00762B65 /* PBXContainerItemProxy */;
+		};
+		256476652F3C5AB400762B65 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 2564764F2F3C5AB300762B65 /* TrackWidgetsExtension */;
+			targetProxy = 256476642F3C5AB400762B65 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -393,10 +511,13 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Track/Track.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = DCU7GHRVUQ;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Track uses your location to find nearby stations and predict your commute.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -425,10 +546,13 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Track/Track.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = DCU7GHRVUQ;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Track uses your location to find nearby stations and predict your commute.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -532,6 +656,68 @@
 			};
 			name = Release;
 		};
+		256476682F3C5AB400762B65 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = TrackWidgetsExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = DCU7GHRVUQ;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = TrackWidgets/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = TrackWidgets;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = JFMCAPITALGROUP.Track.TrackWidgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		256476692F3C5AB400762B65 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = TrackWidgetsExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = DCU7GHRVUQ;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = TrackWidgets/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = TrackWidgets;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = JFMCAPITALGROUP.Track.TrackWidgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -567,6 +753,15 @@
 			buildConfigurations = (
 				2564756D2F3C387C00762B65 /* Debug */,
 				2564756E2F3C387C00762B65 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		2564766B2F3C5AB400762B65 /* Build configuration list for PBXNativeTarget "TrackWidgetsExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				256476682F3C5AB400762B65 /* Debug */,
+				256476692F3C5AB400762B65 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
