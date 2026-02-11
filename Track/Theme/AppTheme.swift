@@ -181,12 +181,12 @@ struct AppTheme {
         // MARK: - Service Area Validation
 
         /// Generous bounding box for the NYC MTA service area.
-        /// Covers the 5 boroughs, Long Island, and nearby NJ/Westchester.
-        /// Used to detect whether a GPS fix is within the service area.
-        private static let serviceAreaMinLat: Double = 40.40
-        private static let serviceAreaMaxLat: Double = 41.10
-        private static let serviceAreaMinLon: Double = -74.35
-        private static let serviceAreaMaxLon: Double = -72.40
+        /// Latitude: south Staten Island (40.50) to north Bronx/Westchester (41.10) with buffer.
+        /// Longitude: west NJ/Staten Island (-74.35) to east Suffolk/Montauk (-72.40) with buffer.
+        private static let serviceAreaMinLat: Double = 40.40  // south of Staten Island
+        private static let serviceAreaMaxLat: Double = 41.10  // north of the Bronx
+        private static let serviceAreaMinLon: Double = -74.35 // west of Staten Island
+        private static let serviceAreaMaxLon: Double = -72.40 // east of Long Island
 
         /// Returns `true` if the coordinate is within the NYC metro service area.
         static func isInServiceArea(_ coordinate: CLLocationCoordinate2D) -> Bool {

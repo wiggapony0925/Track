@@ -96,6 +96,7 @@ final class HomeViewModel {
             return location
         }
         // Outside NYC — fall back to Midtown Manhattan
+        AppLogger.shared.log("LOCATION", message: "GPS outside service area (\(location.coordinate.latitude), \(location.coordinate.longitude)) — using NYC fallback")
         let nyc = AppTheme.MapConfig.nycCenter
         return CLLocation(latitude: nyc.latitude, longitude: nyc.longitude)
     }
