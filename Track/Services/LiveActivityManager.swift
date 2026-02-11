@@ -66,13 +66,13 @@ final class LiveActivityManager {
         activeExpectedDuration = arrivalTime.timeIntervalSince(now)
         activeDestination = destination
 
-        // Record commute pattern in SwiftData
-        if let context = context {
+        // Record commute pattern in SwiftData (only with valid location)
+        if let context = context, let location = location {
             let calendar = Calendar.current
             let hour = calendar.component(.hour, from: now)
             let weekday = calendar.component(.weekday, from: now)
-            let lat = location?.latitude ?? 0.0
-            let lon = location?.longitude ?? 0.0
+            let lat = location.latitude
+            let lon = location.longitude
 
             let pattern = CommutePattern(
                 routeID: lineId,
