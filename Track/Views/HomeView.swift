@@ -20,13 +20,13 @@ struct HomeView: View {
     @State private var showSettings = false
     @State private var lastUpdated: Date?
     @State private var refreshTimer: Timer?
-    @State private var hasCenteredOnUser = false
+    /// Tracks whether we've done the first data fetch after receiving a location fix.
+    @State private var hasLoadedInitialData = false
 
     var body: some View {
         ZStack {
             // Map background bounded to NYC 5 boroughs + Long Island.
-            // Uses MapCameraBounds to restrict panning (300 m – 150 km zoom),
-            // and a transit-emphasized map style that dims driving elements.
+            // Uses MapCameraBounds to restrict panning and zoom.
             // Ref: https://developer.apple.com/documentation/mapkit/mapcamerabounds
             Map(position: $cameraPosition,
                 bounds: AppTheme.MapConfig.cameraBounds) {
@@ -204,10 +204,7 @@ struct HomeView: View {
         .onAppear {
             locationManager.requestPermission()
             locationManager.startUpdating()
-            Task {
-                await viewModel.refresh(location: locationManager.currentLocation)
-                lastUpdated = Date()
-            }
+            // Initial data fetch will happen in onChange once location arrives.
             // Auto-refresh every 30 seconds
             refreshTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { _ in
                 Task { @MainActor in
@@ -227,21 +224,20 @@ struct HomeView: View {
                 lastUpdated = Date()
             }
         }
-        // Center map on user location — initial fix + GO mode auto-follow
+        // When a new location fix arrives, load data (first time) and follow in GO mode
         .onChange(of: locationManager.currentLocation) {
             guard let loc = locationManager.currentLocation else { return }
 
-            if !hasCenteredOnUser {
-                // First location fix — center the map on the user
-                hasCenteredOnUser = true
-                withAnimation(.easeInOut(duration: 0.6)) {
-                    cameraPosition = .camera(MapCamera(
-                        centerCoordinate: loc.coordinate,
-                        distance: AppTheme.MapConfig.userZoomDistance
-                    ))
+            // First location fix — fetch transit data now that we have coordinates
+            if !hasLoadedInitialData {
+                hasLoadedInitialData = true
+                Task {
+                    await viewModel.refresh(location: loc)
+                    lastUpdated = Date()
                 }
             }
 
+            // GO mode auto-follow — keep camera pinned on user
             if viewModel.isGoModeActive {
                 withAnimation(.easeInOut(duration: 0.8)) {
                     cameraPosition = .camera(MapCamera(
@@ -364,13 +360,10 @@ struct HomeView: View {
 
                     // Recenter on user location
                     Button {
-                        if let loc = locationManager.currentLocation {
-                            withAnimation(.easeInOut(duration: 0.6)) {
-                                cameraPosition = .camera(MapCamera(
-                                    centerCoordinate: loc.coordinate,
-                                    distance: AppTheme.MapConfig.userZoomDistance
-                                ))
-                            }
+                        withAnimation(.easeInOut(duration: 0.6)) {
+                            cameraPosition = .userLocation(
+                                fallback: .region(AppTheme.MapConfig.fallbackRegion)
+                            )
                         }
                     } label: {
                         Image(systemName: "location.fill")
