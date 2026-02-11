@@ -112,7 +112,7 @@ final class LiveActivityManager {
                 )
                 await activity.end(
                     ActivityContent(state: finalState, staleDate: nil),
-                    dismissalPolicy: .after(.now.addingTimeInterval(30))
+                    dismissalPolicy: .after(Date.now.addingTimeInterval(30))
                 )
             }
         }
