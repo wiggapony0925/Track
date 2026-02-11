@@ -24,6 +24,7 @@ struct RouteDetailSheet: View {
     @Binding var busVehicles: [BusVehicleResponse]
     @Binding var routeShape: RouteShapeResponse?
     var onTrack: ((NearbyTransitResponse) -> Void)?
+    var onGoMode: ((_ routeName: String, _ routeColor: Color) -> Void)?
     var onDismiss: (() -> Void)?
 
     @State private var selectedDirectionIndex = 0
@@ -35,6 +36,10 @@ struct RouteDetailSheet: View {
                     // Route header
                     routeHeader
                         .padding(.top, 8)
+
+                    // "GO" button — activates live tracking mode
+                    goButton
+                        .padding(.top, 12)
 
                     // Mini map showing route shape + stops
                     routeMapSection
@@ -122,6 +127,33 @@ struct RouteDetailSheet: View {
         .padding(.vertical, 12)
     }
 
+    // MARK: - GO Button
+
+    /// The signature "GO" button that activates live tracking mode.
+    /// Inspired by the Transit app — a large, prominent play button
+    /// that transforms the interface from planning to cockpit view.
+    private var goButton: some View {
+        Button {
+            onGoMode?(group.displayName, routeColor)
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "play.fill")
+                    .font(.system(size: 18, weight: .bold))
+                Text("GO")
+                    .font(.system(size: 20, weight: .heavy, design: .rounded))
+            }
+            .foregroundColor(.white)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .background(AppTheme.Colors.goGreen)
+            .cornerRadius(AppTheme.Layout.cornerRadius)
+            .shadow(color: AppTheme.Colors.goGreen.opacity(0.4), radius: 8, y: 4)
+        }
+        .padding(.horizontal, AppTheme.Layout.margin)
+        .accessibilityLabel("GO — start live tracking for \(group.displayName)")
+        .accessibilityHint("Activates hands-free transit tracking mode")
+    }
+
     // MARK: - Route Map
 
     private var routeMapSection: some View {
@@ -137,7 +169,7 @@ struct RouteDetailSheet: View {
             }
             .padding(.horizontal, AppTheme.Layout.margin)
 
-            Map {
+            Map(bounds: AppTheme.MapConfig.cameraBounds) {
                 // Route polylines
                 if let shape = routeShape {
                     ForEach(Array(shape.decodedPolylines.enumerated()), id: \.offset) { _, coords in
@@ -183,6 +215,7 @@ struct RouteDetailSheet: View {
                     }
                 }
             }
+            .mapStyle(.standard(emphasis: .muted, showsTraffic: false))
             .frame(height: 200)
             .clipShape(RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius))
             .padding(.horizontal, AppTheme.Layout.margin)
