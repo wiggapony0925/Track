@@ -11,8 +11,19 @@ import Foundation
 /// Centralized API client for the Track backend.
 struct TrackAPI {
 
-    /// Base URL for the backend API. Change this when deploying to a real server.
-    static var baseURL = "http://127.0.0.1:8000"
+    // MARK: - Environment Configuration
+
+    /// Toggle between local development server and production.
+    /// Set to `false` when deploying or testing on a physical device.
+    private static var useLocalServer = true
+
+    private static let localURL = "http://127.0.0.1:8000"
+    private static let prodURL = "https://track-api.onrender.com"
+
+    /// The active backend URL, determined by the environment toggle.
+    static var baseURL: String {
+        useLocalServer ? localURL : prodURL
+    }
 
     // MARK: - Config
 
