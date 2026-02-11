@@ -82,6 +82,24 @@ struct TrackAPI {
         return try decoder.decode([BusArrival].self, from: data)
     }
 
+    /// Fetches all MTA bus routes.
+    ///
+    /// - Returns: Array of `BusRoute` with short name, long name, and color.
+    static func fetchBusRoutes() async throws -> [BusRoute] {
+        let data = try await get(path: "/bus/routes")
+        return try decoder.decode([BusRoute].self, from: data)
+    }
+
+    /// Fetches stops for a specific bus route.
+    ///
+    /// - Parameter routeID: Fully-qualified route ID (e.g. "MTA NYCT_B63").
+    /// - Returns: Array of `BusStop` along the route.
+    static func fetchBusStopsForRoute(routeID: String) async throws -> [BusStop] {
+        let encoded = routeID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? routeID
+        let data = try await get(path: "/bus/stops/\(encoded)")
+        return try decoder.decode([BusStop].self, from: data)
+    }
+
     // MARK: - Nearby Transit
 
     /// Fetches the nearest buses and trains with live countdowns.
@@ -90,14 +108,16 @@ struct TrackAPI {
     /// - Parameters:
     ///   - lat: User's latitude.
     ///   - lon: User's longitude.
+    ///   - radius: Search radius in meters (default 500).
     /// - Returns: Array of `NearbyTransitResponse`.
-    static func fetchNearbyTransit(lat: Double, lon: Double) async throws -> [NearbyTransitResponse] {
+    static func fetchNearbyTransit(lat: Double, lon: Double, radius: Int = 500) async throws -> [NearbyTransitResponse] {
         guard var components = URLComponents(string: baseURL + "/nearby") else {
             throw TrackAPIError.invalidURL
         }
         components.queryItems = [
             URLQueryItem(name: "lat", value: String(lat)),
             URLQueryItem(name: "lon", value: String(lon)),
+            URLQueryItem(name: "radius", value: String(radius)),
         ]
         guard let url = components.url else {
             throw TrackAPIError.invalidURL
@@ -112,14 +132,16 @@ struct TrackAPI {
     /// - Parameters:
     ///   - lat: User's latitude.
     ///   - lon: User's longitude.
+    ///   - radius: Search radius in meters (default 500).
     /// - Returns: Array of `GroupedNearbyTransitResponse`.
-    static func fetchNearbyGrouped(lat: Double, lon: Double) async throws -> [GroupedNearbyTransitResponse] {
+    static func fetchNearbyGrouped(lat: Double, lon: Double, radius: Int = 500) async throws -> [GroupedNearbyTransitResponse] {
         guard var components = URLComponents(string: baseURL + "/nearby/grouped") else {
             throw TrackAPIError.invalidURL
         }
         components.queryItems = [
             URLQueryItem(name: "lat", value: String(lat)),
             URLQueryItem(name: "lon", value: String(lon)),
+            URLQueryItem(name: "radius", value: String(radius)),
         ]
         guard let url = components.url else {
             throw TrackAPIError.invalidURL
@@ -148,6 +170,34 @@ struct TrackAPI {
         let encoded = routeID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? routeID
         let data = try await get(path: "/bus/route-shape/\(encoded)")
         return try decoder.decode(RouteShapeResponse.self, from: data)
+    }
+
+    // MARK: - Service Status
+
+    /// Fetches critical MTA service alerts.
+    ///
+    /// - Returns: Array of `TransitAlert`.
+    static func fetchAlerts() async throws -> [TransitAlert] {
+        let data = try await get(path: "/alerts")
+        return try decoder.decode([TransitAlert].self, from: data)
+    }
+
+    /// Fetches currently broken elevators and escalators.
+    ///
+    /// - Returns: Array of `ElevatorStatus`.
+    static func fetchAccessibility() async throws -> [ElevatorStatus] {
+        let data = try await get(path: "/accessibility")
+        return try decoder.decode([ElevatorStatus].self, from: data)
+    }
+
+    // MARK: - LIRR
+
+    /// Fetches upcoming LIRR arrivals from the GTFS-Realtime feed.
+    ///
+    /// - Returns: Array of decoded `TrainArrival` objects.
+    static func fetchLIRRArrivals() async throws -> [TrainArrival] {
+        let data = try await get(path: "/lirr")
+        return try decoder.decode([SubwayArrivalResponse].self, from: data).map { $0.toTrainArrival() }
     }
 
     // MARK: - Private

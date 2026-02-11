@@ -421,6 +421,48 @@ struct HomeView: View {
                     )
                 }
 
+                // Service alerts
+                if !viewModel.serviceAlerts.isEmpty {
+                    sectionHeader("Service Alerts")
+
+                    VStack(spacing: 0) {
+                        ForEach(Array(viewModel.serviceAlerts.prefix(3).enumerated()), id: \.element.id) { index, alert in
+                            HStack(spacing: 10) {
+                                if let routeId = alert.routeId {
+                                    RouteBadge(routeID: routeId, size: .small)
+                                } else {
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                        .font(.system(size: 14, weight: .semibold))
+                                        .foregroundColor(AppTheme.Colors.warningYellow)
+                                }
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(alert.title)
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundColor(AppTheme.Colors.textPrimary)
+                                        .lineLimit(1)
+                                    Text(alert.description)
+                                        .font(.system(size: 12, weight: .regular))
+                                        .foregroundColor(AppTheme.Colors.textSecondary)
+                                        .lineLimit(2)
+                                }
+
+                                Spacer(minLength: 0)
+                            }
+                            .padding(.horizontal, AppTheme.Layout.cardPadding)
+                            .padding(.vertical, 8)
+
+                            if index < min(viewModel.serviceAlerts.count, 3) - 1 {
+                                Divider()
+                                    .padding(.leading, AppTheme.Layout.cardPadding + 34)
+                            }
+                        }
+                    }
+                    .background(AppTheme.Colors.cardBackground)
+                    .cornerRadius(AppTheme.Layout.cornerRadius)
+                    .padding(.horizontal, AppTheme.Layout.margin)
+                }
+
                 // Loading indicator
                 if viewModel.isLoading {
                     HStack {
@@ -493,10 +535,29 @@ struct HomeView: View {
                 .cornerRadius(AppTheme.Layout.cornerRadius)
                 .padding(.horizontal, AppTheme.Layout.margin)
             } else if !viewModel.isLoading {
-                emptyStateView(
-                    icon: "location.fill",
-                    message: "No transit nearby"
-                )
+                // No transit within walking distance
+                if let nearest = viewModel.nearestTransit {
+                    // Show the nearest metro recommendation
+                    sectionHeader("Nearest Metro")
+
+                    NearestMetroCard(
+                        arrival: nearest,
+                        distanceMeters: viewModel.nearestTransitDistance,
+                        onCenter: { coordinate in
+                            withAnimation(.easeInOut(duration: 0.6)) {
+                                cameraPosition = .camera(MapCamera(
+                                    centerCoordinate: coordinate,
+                                    distance: AppTheme.MapConfig.userZoomDistance
+                                ))
+                            }
+                        }
+                    )
+                } else {
+                    emptyStateView(
+                        icon: "location.fill",
+                        message: "No transit nearby"
+                    )
+                }
             }
         }
     }

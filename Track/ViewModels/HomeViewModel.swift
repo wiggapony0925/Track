@@ -33,6 +33,14 @@ final class HomeViewModel {
     // Grouped nearby transit (one card per route)
     var groupedTransit: [GroupedNearbyTransitResponse] = []
 
+    // Nearest metro recommendation (shown when no nearby transit)
+    var nearestTransit: NearbyTransitResponse?
+    /// Distance in meters from the user to the nearest transit stop.
+    var nearestTransitDistance: Double?
+
+    // Service alerts
+    var serviceAlerts: [TransitAlert] = []
+
     // Route detail sheet
     var selectedGroupedRoute: GroupedNearbyTransitResponse?
     var isRouteDetailPresented = false
@@ -181,8 +189,13 @@ final class HomeViewModel {
 
     // MARK: - Nearby Transit (Unified)
 
+    /// Search radius (meters) used for the wider "nearest metro" fallback.
+    private static let nearestMetroRadius = 5000
+
     /// Fetches all nearby transit (buses + trains) in one call.
     /// Uses the grouped endpoint to deduplicate routes.
+    /// When no results are found within the default radius, fetches
+    /// with a wider radius and exposes the closest stop as ``nearestTransit``.
     func refreshNearbyTransit(location: CLLocation?) async {
         guard let location = location else {
             errorMessage = "Location required"
@@ -191,25 +204,55 @@ final class HomeViewModel {
 
         isLoading = true
         errorMessage = nil
+        nearestTransit = nil
+        nearestTransitDistance = nil
+
+        let lat = location.coordinate.latitude
+        let lon = location.coordinate.longitude
 
         do {
-            async let flatTask = TrackAPI.fetchNearbyTransit(
-                lat: location.coordinate.latitude,
-                lon: location.coordinate.longitude
-            )
-            async let groupedTask = TrackAPI.fetchNearbyGrouped(
-                lat: location.coordinate.latitude,
-                lon: location.coordinate.longitude
-            )
+            async let flatTask = TrackAPI.fetchNearbyTransit(lat: lat, lon: lon)
+            async let groupedTask = TrackAPI.fetchNearbyGrouped(lat: lat, lon: lon)
+            async let alertsTask = TrackAPI.fetchAlerts()
 
             nearbyTransit = try await flatTask
             groupedTransit = try await groupedTask
+
+            // Fetch alerts silently — don't fail the whole refresh
+            do { serviceAlerts = try await alertsTask } catch {}
         } catch {
             AppLogger.shared.logError("fetchNearbyTransit", error: error)
             errorMessage = (error as? TrackAPIError)?.description ?? error.localizedDescription
         }
 
+        // If no nearby transit found, search a wider radius for a recommendation
+        if nearbyTransit.isEmpty && groupedTransit.isEmpty && errorMessage == nil {
+            await fetchNearestMetro(location: location)
+        }
+
         isLoading = false
+    }
+
+    /// Searches a wider radius to find the nearest metro stop when
+    /// the default radius returns empty results.
+    private func fetchNearestMetro(location: CLLocation) async {
+        do {
+            let results = try await TrackAPI.fetchNearbyTransit(
+                lat: location.coordinate.latitude,
+                lon: location.coordinate.longitude,
+                radius: Self.nearestMetroRadius
+            )
+            guard let closest = results.first else { return }
+            nearestTransit = closest
+
+            // Compute distance from user to the stop
+            if let stopLat = closest.stopLat, let stopLon = closest.stopLon {
+                let stopLocation = CLLocation(latitude: stopLat, longitude: stopLon)
+                nearestTransitDistance = location.distance(from: stopLocation)
+            }
+        } catch {
+            AppLogger.shared.logError("fetchNearestMetro", error: error)
+        }
     }
 
     // MARK: - Subway
