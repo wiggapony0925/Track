@@ -241,7 +241,7 @@ async def _fetch_nearby_buses(lat: float, lon: float) -> list[NearbyTransitArriv
         return results
 
     if not stops:
-        TrackLogger.info(f"No bus stops found near ({lat}, {lon})")
+        TrackLogger.info("No bus stops found within search radius")
         return results
 
     # Fetch arrivals for up to 3 nearest stops
