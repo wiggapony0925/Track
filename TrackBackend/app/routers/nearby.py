@@ -96,8 +96,13 @@ async def _collect_all(lat: float, lon: float) -> list[NearbyTransitArrival]:
 
     if isinstance(subway_results, list):
         results.extend(subway_results)
+    elif isinstance(subway_results, Exception):
+        TrackLogger.error(f"Subway feed failed: {subway_results}")
+
     if isinstance(bus_results, list):
         results.extend(bus_results)
+    elif isinstance(bus_results, Exception):
+        TrackLogger.error(f"Bus feed failed: {bus_results}")
 
     return results
 
@@ -189,9 +194,14 @@ async def _fetch_nearby_subway() -> list[NearbyTransitArrival]:
     tasks = [get_arrivals_for_line(line) for line in feed_lines]
     feed_results = await asyncio.gather(*tasks, return_exceptions=True)
 
+    success_count = 0
     for line, arrivals in zip(feed_lines, feed_results):
-        if isinstance(arrivals, Exception) or not isinstance(arrivals, list):
+        if isinstance(arrivals, Exception):
+            TrackLogger.error(f"Subway feed '{line}' failed: {arrivals}")
             continue
+        if not isinstance(arrivals, list):
+            continue
+        success_count += 1
         for arrival in arrivals[:5]:  # Top 5 per feed
             # Skip stale arrivals that show 0 minutes (already arrived)
             if arrival.minutes_away <= 0:
@@ -207,6 +217,11 @@ async def _fetch_nearby_subway() -> list[NearbyTransitArrival]:
                 )
             )
 
+    if success_count == 0 and len(feed_lines) > 0:
+        TrackLogger.error(
+            f"All {len(feed_lines)} subway feeds failed — check MTA API key and network"
+        )
+
     return results
 
 
@@ -221,7 +236,12 @@ async def _fetch_nearby_buses(lat: float, lon: float) -> list[NearbyTransitArriv
 
     try:
         stops = await get_nearby_stops(lat, lon)
-    except Exception:
+    except Exception as exc:
+        TrackLogger.error(f"Bus stops fetch failed: {exc}")
+        return results
+
+    if not stops:
+        TrackLogger.info(f"No bus stops found near ({lat}, {lon})")
         return results
 
     # Fetch arrivals for up to 3 nearest stops
@@ -229,7 +249,11 @@ async def _fetch_nearby_buses(lat: float, lon: float) -> list[NearbyTransitArriv
     stop_results = await asyncio.gather(*tasks, return_exceptions=True)
 
     for i, arrivals in enumerate(stop_results):
-        if isinstance(arrivals, Exception) or not isinstance(arrivals, list):
+        if isinstance(arrivals, Exception):
+            stop_name = stops[i].name if i < len(stops) else "unknown"
+            TrackLogger.error(f"Bus arrivals for stop '{stop_name}' failed: {arrivals}")
+            continue
+        if not isinstance(arrivals, list):
             continue
         stop = stops[i] if i < len(stops) else None
         stop_name = stop.name if stop else "Bus Stop"
