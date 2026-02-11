@@ -143,7 +143,7 @@ struct HomeView: View {
             }
             .accessibilityLabel("Clear search pin")
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, AppTheme.Layout.cardPadding)
         .padding(.vertical, 8)
         .background(.ultraThinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius))
@@ -190,7 +190,7 @@ struct HomeView: View {
             }
             .accessibilityLabel("Close route view")
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, AppTheme.Layout.cardPadding)
         .padding(.vertical, 8)
         .background(.ultraThinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius))
@@ -296,18 +296,27 @@ struct HomeView: View {
             if !viewModel.nearbyTransit.isEmpty {
                 sectionHeader("Live Arrivals")
 
-                ForEach(viewModel.nearbyTransit) { arrival in
-                    NearbyTransitRow(
-                        arrival: arrival,
-                        isTracking: viewModel.trackingArrivalId == arrival.id,
-                        onTrack: {
-                            viewModel.trackNearbyArrival(arrival, location: locationManager.currentLocation)
-                        },
-                        onSelectRoute: arrival.isBus ? {
-                            Task { await viewModel.selectBusRoute(arrival.routeId) }
-                        } : nil
-                    )
+                VStack(spacing: 0) {
+                    ForEach(Array(viewModel.nearbyTransit.enumerated()), id: \.element.id) { index, arrival in
+                        NearbyTransitRow(
+                            arrival: arrival,
+                            isTracking: viewModel.trackingArrivalId == arrival.id,
+                            onTrack: {
+                                viewModel.trackNearbyArrival(arrival, location: locationManager.currentLocation)
+                            },
+                            onSelectRoute: arrival.isBus ? {
+                                Task { await viewModel.selectBusRoute(arrival.routeId) }
+                            } : nil
+                        )
+                        if index < viewModel.nearbyTransit.count - 1 {
+                            Divider()
+                                .padding(.leading, AppTheme.Layout.margin + AppTheme.Layout.badgeSizeMedium + 12)
+                        }
+                    }
                 }
+                .background(AppTheme.Colors.cardBackground)
+                .cornerRadius(AppTheme.Layout.cornerRadius)
+                .padding(.horizontal, AppTheme.Layout.margin)
             } else if !viewModel.isLoading {
                 emptyStateView(
                     icon: "location.fill",
@@ -324,17 +333,26 @@ struct HomeView: View {
             if !viewModel.upcomingArrivals.isEmpty {
                 sectionHeader("Nearby Arrivals")
 
-                ForEach(viewModel.upcomingArrivals) { arrival in
-                    ArrivalRow(
-                        arrival: arrival,
-                        prediction: nil,
-                        isTracking: viewModel.trackingArrivalId == arrival.id.uuidString,
-                        reliabilityWarning: nil,
-                        onTrack: {
-                            viewModel.trackSubwayArrival(arrival, location: locationManager.currentLocation)
+                VStack(spacing: 0) {
+                    ForEach(Array(viewModel.upcomingArrivals.enumerated()), id: \.element.id) { index, arrival in
+                        ArrivalRow(
+                            arrival: arrival,
+                            prediction: nil,
+                            isTracking: viewModel.trackingArrivalId == arrival.id.uuidString,
+                            reliabilityWarning: nil,
+                            onTrack: {
+                                viewModel.trackSubwayArrival(arrival, location: locationManager.currentLocation)
+                            }
+                        )
+                        if index < viewModel.upcomingArrivals.count - 1 {
+                            Divider()
+                                .padding(.leading, AppTheme.Layout.margin + AppTheme.Layout.badgeSizeMedium + 12)
                         }
-                    )
+                    }
                 }
+                .background(AppTheme.Colors.cardBackground)
+                .cornerRadius(AppTheme.Layout.cornerRadius)
+                .padding(.horizontal, AppTheme.Layout.margin)
             } else if !viewModel.isLoading {
                 emptyStateView(
                     icon: "tram.fill",
@@ -345,13 +363,22 @@ struct HomeView: View {
             if !viewModel.nearbyStations.isEmpty {
                 sectionHeader("Nearby Stations")
 
-                ForEach(viewModel.nearbyStations, id: \.stationID) { station in
-                    NearbyStationRow(
-                        name: station.name,
-                        distance: station.distance,
-                        routeIDs: station.routeIDs
-                    )
+                VStack(spacing: 0) {
+                    ForEach(Array(viewModel.nearbyStations.enumerated()), id: \.element.stationID) { index, station in
+                        NearbyStationRow(
+                            name: station.name,
+                            distance: station.distance,
+                            routeIDs: station.routeIDs
+                        )
+                        if index < viewModel.nearbyStations.count - 1 {
+                            Divider()
+                                .padding(.leading, AppTheme.Layout.margin + AppTheme.Layout.badgeSizeMedium + 12)
+                        }
+                    }
                 }
+                .background(AppTheme.Colors.cardBackground)
+                .cornerRadius(AppTheme.Layout.cornerRadius)
+                .padding(.horizontal, AppTheme.Layout.margin)
             }
         }
     }
@@ -377,34 +404,52 @@ struct HomeView: View {
             if !viewModel.busArrivals.isEmpty {
                 sectionHeader("Arriving")
 
-                ForEach(viewModel.busArrivals) { arrival in
-                    BusArrivalRow(
-                        arrival: arrival,
-                        isTracking: viewModel.trackingArrivalId == arrival.id,
-                        reliabilityWarning: nil,
-                        onTrack: {
-                            viewModel.trackBusArrival(arrival, location: locationManager.currentLocation)
+                VStack(spacing: 0) {
+                    ForEach(Array(viewModel.busArrivals.enumerated()), id: \.element.id) { index, arrival in
+                        BusArrivalRow(
+                            arrival: arrival,
+                            isTracking: viewModel.trackingArrivalId == arrival.id,
+                            reliabilityWarning: nil,
+                            onTrack: {
+                                viewModel.trackBusArrival(arrival, location: locationManager.currentLocation)
+                            }
+                        )
+                        .onTapGesture {
+                            Task { await viewModel.selectBusRoute(arrival.routeId) }
                         }
-                    )
-                    .onTapGesture {
-                        Task { await viewModel.selectBusRoute(arrival.routeId) }
+                        if index < viewModel.busArrivals.count - 1 {
+                            Divider()
+                                .padding(.leading, AppTheme.Layout.margin + AppTheme.Layout.badgeSizeMedium + 12)
+                        }
                     }
                 }
+                .background(AppTheme.Colors.cardBackground)
+                .cornerRadius(AppTheme.Layout.cornerRadius)
+                .padding(.horizontal, AppTheme.Layout.margin)
             }
 
             if !viewModel.nearbyBusStops.isEmpty {
                 sectionHeader("Nearby Bus Stops")
 
-                ForEach(viewModel.nearbyBusStops) { stop in
-                    Button {
-                        Task {
-                            await viewModel.fetchBusArrivals(for: stop)
+                VStack(spacing: 0) {
+                    ForEach(Array(viewModel.nearbyBusStops.enumerated()), id: \.element.id) { index, stop in
+                        Button {
+                            Task {
+                                await viewModel.fetchBusArrivals(for: stop)
+                            }
+                        } label: {
+                            NearbyBusStopRow(stop: stop)
                         }
-                    } label: {
-                        NearbyBusStopRow(stop: stop)
+                        .buttonStyle(.plain)
+                        if index < viewModel.nearbyBusStops.count - 1 {
+                            Divider()
+                                .padding(.leading, AppTheme.Layout.margin + AppTheme.Layout.badgeSizeMedium + 12)
+                        }
                     }
-                    .buttonStyle(.plain)
                 }
+                .background(AppTheme.Colors.cardBackground)
+                .cornerRadius(AppTheme.Layout.cornerRadius)
+                .padding(.horizontal, AppTheme.Layout.margin)
             } else if !viewModel.isLoading {
                 emptyStateView(
                     icon: "bus.fill",
@@ -417,8 +462,7 @@ struct HomeView: View {
     // MARK: - Helpers
 
     private func sectionHeader(_ title: String) -> some View {
-        Text(title)
-            .font(.system(size: 14, weight: .semibold))
+        AppTheme.Typography.sectionHeader(title)
             .foregroundColor(AppTheme.Colors.textSecondary)
             .textCase(.uppercase)
             .lineLimit(1)
@@ -449,7 +493,7 @@ private struct SearchPinAnnotation: View {
             Circle()
                 .fill(AppTheme.Colors.alertRed)
                 .frame(width: 36, height: 36)
-                .shadow(radius: 4)
+                .shadow(color: AppTheme.Colors.alertRed.opacity(0.4), radius: AppTheme.Layout.shadowRadius)
             Image(systemName: "mappin")
                 .font(.system(size: 18, weight: .bold))
                 .foregroundColor(AppTheme.Colors.textOnColor)
@@ -470,10 +514,10 @@ private struct BusVehicleAnnotation: View {
             ZStack {
                 Circle()
                     .fill(AppTheme.Colors.mtaBlue)
-                    .frame(width: 32, height: 32)
-                    .shadow(color: AppTheme.Colors.mtaBlue.opacity(0.4), radius: 4)
+                    .frame(width: AppTheme.Layout.badgeSizeMedium, height: AppTheme.Layout.badgeSizeMedium)
+                    .shadow(color: AppTheme.Colors.mtaBlue.opacity(0.4), radius: AppTheme.Layout.shadowRadius)
                 Image(systemName: "bus.fill")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.system(size: AppTheme.Layout.badgeFontMedium, weight: .bold))
                     .foregroundColor(AppTheme.Colors.textOnColor)
                     .rotationEffect(.degrees(bearing ?? 0))
             }
@@ -492,7 +536,7 @@ private struct BusVehicleAnnotation: View {
 // MARK: - Nearby Transit Row
 
 /// Displays a single nearby transit arrival (bus or train) in the unified list.
-private struct NearbyTransitRow: View {
+struct NearbyTransitRow: View {
     let arrival: NearbyTransitResponse
     var isTracking: Bool = false
     var onTrack: (() -> Void)?
@@ -507,11 +551,11 @@ private struct NearbyTransitRow: View {
                     .frame(width: AppTheme.Layout.badgeSizeMedium, height: AppTheme.Layout.badgeSizeMedium)
                 if arrival.isBus {
                     Image(systemName: "bus.fill")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.system(size: AppTheme.Layout.badgeFontMedium, weight: .bold))
                         .foregroundColor(AppTheme.Colors.textOnColor)
                 } else {
                     Text(arrival.displayName)
-                        .font(.system(size: 14, weight: .heavy, design: .monospaced))
+                        .font(.system(size: AppTheme.Layout.badgeFontMedium, weight: .heavy, design: .monospaced))
                         .foregroundColor(AppTheme.Colors.textOnColor)
                         .minimumScaleFactor(0.5)
                         .lineLimit(1)
@@ -551,7 +595,7 @@ private struct NearbyTransitRow: View {
                     onSelectRoute()
                 } label: {
                     Image(systemName: "map")
-                        .font(.system(size: 14, weight: .medium))
+                        .font(.system(size: AppTheme.Layout.badgeFontMedium, weight: .medium))
                         .foregroundColor(AppTheme.Colors.mtaBlue)
                 }
                 .accessibilityLabel("View \(arrival.displayName) route on map")
@@ -561,7 +605,7 @@ private struct NearbyTransitRow: View {
             HStack(alignment: .firstTextBaseline, spacing: 2) {
                 Text("\(arrival.minutesAway)")
                     .font(.system(size: 20, weight: .bold, design: .rounded))
-                    .foregroundColor(countdownColor(arrival.minutesAway))
+                    .foregroundColor(AppTheme.Colors.countdown(arrival.minutesAway))
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
                 Text("min")
@@ -569,7 +613,7 @@ private struct NearbyTransitRow: View {
                     .foregroundColor(AppTheme.Colors.textSecondary)
             }
         }
-        .padding(.vertical, 8)
+        .padding(.vertical, 10)
         .padding(.horizontal, AppTheme.Layout.margin)
         .contentShape(Rectangle())
         .onTapGesture {
@@ -579,21 +623,12 @@ private struct NearbyTransitRow: View {
         .accessibilityLabel("\(arrival.isBus ? "Bus" : "Train") \(arrival.displayName), \(arrival.stopName), \(arrival.minutesAway) minutes away")
         .accessibilityHint(isTracking ? "Currently tracking" : "Tap to track this arrival")
     }
-
-    private func countdownColor(_ minutes: Int) -> Color {
-        if minutes <= 2 {
-            return AppTheme.Colors.alertRed
-        } else if minutes <= 5 {
-            return AppTheme.Colors.successGreen
-        }
-        return AppTheme.Colors.textPrimary
-    }
 }
 
 // MARK: - Nearby Bus Stop Row
 
 /// Displays a nearby bus stop in the list. Tapping selects it.
-private struct NearbyBusStopRow: View {
+struct NearbyBusStopRow: View {
     let stop: BusStop
 
     var body: some View {
@@ -603,7 +638,7 @@ private struct NearbyBusStopRow: View {
                     .fill(AppTheme.Colors.mtaBlue)
                     .frame(width: AppTheme.Layout.badgeSizeMedium, height: AppTheme.Layout.badgeSizeMedium)
                 Image(systemName: "bus.fill")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.system(size: AppTheme.Layout.badgeFontMedium, weight: .bold))
                     .foregroundColor(AppTheme.Colors.textOnColor)
             }
             .accessibilityHidden(true)
@@ -622,7 +657,7 @@ private struct NearbyBusStopRow: View {
                     .foregroundColor(AppTheme.Colors.textSecondary)
             }
         }
-        .padding(.vertical, 8)
+        .padding(.vertical, 10)
         .padding(.horizontal, AppTheme.Layout.margin)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Bus stop: \(stop.name)")

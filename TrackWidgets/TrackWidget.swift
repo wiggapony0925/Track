@@ -107,28 +107,40 @@ struct TrackWidgetEntryView: View {
         }
     }
 
-    // MARK: - Small Widget (top arrival only)
+    // MARK: - Small Widget
 
     private var smallView: some View {
         Group {
             if let arrival = entry.arrivals.first {
                 VStack(spacing: 6) {
                     // Mode badge
-                    transitBadge(arrival, size: 40)
+                    transitBadge(arrival, size: AppTheme.Layout.badgeSizeLarge)
 
                     // Big countdown
-                    Text("\(arrival.minutesAway)")
-                        .font(.system(size: 36, weight: .bold, design: .rounded))
-                        .foregroundColor(AppTheme.Colors.textPrimary)
-                    Text("min")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(AppTheme.Colors.textSecondary)
+                    HStack(alignment: .firstTextBaseline, spacing: 2) {
+                        Text("\(arrival.minutesAway)")
+                            .font(.system(size: 36, weight: .bold, design: .rounded))
+                            .foregroundColor(AppTheme.Colors.countdown(arrival.minutesAway))
+                        Text("min")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
+                    }
 
+                    // Stop name
                     Text(arrival.stopName)
                         .font(.system(size: 11, weight: .medium))
                         .foregroundColor(AppTheme.Colors.textSecondary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
+
+                    // Status pill
+                    Text(arrival.status)
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(AppTheme.Colors.textOnColor)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(statusColor(arrival.status))
+                        .clipShape(Capsule())
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -148,12 +160,15 @@ struct TrackWidgetEntryView: View {
         }
     }
 
-    // MARK: - Medium Widget (list of arrivals)
+    // MARK: - Medium Widget
 
     private var mediumView: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Header
             HStack {
+                Image(systemName: "tram.fill")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(AppTheme.Colors.mtaBlue)
                 Text("Nearby Transit")
                     .font(.system(size: 14, weight: .bold, design: .rounded))
                     .foregroundColor(AppTheme.Colors.textPrimary)
@@ -162,30 +177,36 @@ struct TrackWidgetEntryView: View {
                     .font(.system(size: 11, weight: .medium))
                     .foregroundColor(AppTheme.Colors.textSecondary)
             }
-            .padding(.bottom, 6)
+            .padding(.bottom, 8)
 
             if entry.arrivals.isEmpty {
                 Spacer()
                 HStack {
                     Spacer()
-                    Text("No nearby arrivals")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(AppTheme.Colors.textSecondary)
+                    VStack(spacing: 4) {
+                        Image(systemName: "tram.fill")
+                            .font(.system(size: 20, weight: .light))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
+                        Text("No nearby arrivals")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
+                    }
                     Spacer()
                 }
                 Spacer()
             } else {
                 // Show up to 3 arrivals
-                ForEach(Array(entry.arrivals.prefix(3).enumerated()), id: \.offset) { _, arrival in
+                ForEach(Array(entry.arrivals.prefix(3).enumerated()), id: \.offset) { index, arrival in
                     arrivalRow(arrival)
-                    if arrival != entry.arrivals.prefix(3).last {
+                    if index < min(entry.arrivals.count, 3) - 1 {
                         Divider()
+                            .padding(.leading, 36)
                             .padding(.vertical, 2)
                     }
                 }
             }
         }
-        .padding(12)
+        .padding(AppTheme.Layout.cardPadding)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .containerBackground(for: .widget) {
             AppTheme.Colors.background
@@ -215,7 +236,7 @@ struct TrackWidgetEntryView: View {
             HStack(alignment: .firstTextBaseline, spacing: 2) {
                 Text("\(arrival.minutesAway)")
                     .font(.system(size: 20, weight: .bold, design: .rounded))
-                    .foregroundColor(countdownColor(arrival.minutesAway))
+                    .foregroundColor(AppTheme.Colors.countdown(arrival.minutesAway))
                 Text("min")
                     .font(.system(size: 10, weight: .medium))
                     .foregroundColor(AppTheme.Colors.textSecondary)
@@ -243,13 +264,14 @@ struct TrackWidgetEntryView: View {
         }
     }
 
-    private func countdownColor(_ minutes: Int) -> Color {
-        if minutes <= 2 {
-            return AppTheme.Colors.alertRed
-        } else if minutes <= 5 {
+    private func statusColor(_ status: String) -> Color {
+        let lower = status.lowercased()
+        if lower.contains("on time") {
             return AppTheme.Colors.successGreen
+        } else if lower.contains("delayed") || lower.contains("late") {
+            return AppTheme.Colors.alertRed
         }
-        return AppTheme.Colors.textPrimary
+        return AppTheme.Colors.mtaBlue
     }
 }
 

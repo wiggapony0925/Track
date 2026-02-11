@@ -4,11 +4,16 @@
 //
 //  Central design system for the Track NYC Transit App.
 //  All styling, colors, and typography must reference this file.
+//  Every view, widget, and component should pull values from here —
+//  never hardcode colors, fonts, or layout constants.
 //
 
 import SwiftUI
 
 struct AppTheme {
+
+    // MARK: - Colors
+
     struct Colors {
         // NYC Identity
         static let subwayBlack = Color("SubwayBlack")
@@ -25,11 +30,26 @@ struct AppTheme {
 
         /// White text used on colored badges, buttons, and banners.
         static let textOnColor = Color.white
+
+        /// Returns the appropriate countdown color for a given minutes value.
+        /// Red ≤ 2 min, green ≤ 5 min, primary otherwise.
+        static func countdown(_ minutes: Int) -> Color {
+            if minutes <= 2 { return alertRed }
+            if minutes <= 5 { return successGreen }
+            return textPrimary
+        }
     }
+
+    // MARK: - Typography
 
     struct Typography {
         static func headerLarge(_ text: String) -> Text {
             Text(text).font(.system(size: 34, weight: .bold, design: .rounded))
+        }
+
+        static func sectionHeader(_ text: String) -> Text {
+            Text(text)
+                .font(.system(size: 14, weight: .semibold))
         }
 
         static func routeLabel(_ text: String) -> Text {
@@ -41,10 +61,15 @@ struct AppTheme {
         }
     }
 
+    // MARK: - Layout
+
     struct Layout {
         static let margin: CGFloat = 16.0
         static let cornerRadius: CGFloat = 12.0
         static let shadowRadius: CGFloat = 4.0
+
+        /// Inner padding for card-style containers.
+        static let cardPadding: CGFloat = 12.0
 
         // Reusable badge sizes
         static let badgeSizeSmall: CGFloat = 22.0

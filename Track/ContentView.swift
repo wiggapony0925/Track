@@ -2,16 +2,15 @@
 //  ContentView.swift
 //  Track
 //
-//  Created by Jeffrey Fernandez on 2/10/26.
-//
 //  Root view of the Track NYC Transit app.
-//  Hosts onboarding, location gate, and the main dashboard.
+//  Hosts login, onboarding, location gate, and the main dashboard.
 //
 
 import SwiftUI
 import CoreLocation
 
 struct ContentView: View {
+    @AppStorage("isLoggedIn") private var isLoggedIn = false
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @AppStorage("appTheme") private var appTheme = "system"
     @State private var locationManager = LocationManager()
@@ -33,7 +32,9 @@ struct ContentView: View {
 
     var body: some View {
         Group {
-            if !hasCompletedOnboarding {
+            if !isLoggedIn {
+                LoginView()
+            } else if !hasCompletedOnboarding {
                 OnboardingView()
             } else if locationGranted {
                 HomeView()
@@ -48,7 +49,7 @@ struct ContentView: View {
         }
         .preferredColorScheme(colorScheme)
         .onAppear {
-            if hasCompletedOnboarding && locationManager.authorizationStatus == .notDetermined {
+            if isLoggedIn && hasCompletedOnboarding && locationManager.authorizationStatus == .notDetermined {
                 locationManager.requestPermission()
             }
         }

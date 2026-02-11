@@ -2,7 +2,7 @@
 //  SettingsView.swift
 //  Track
 //
-//  User-facing settings for developer configuration and appearance.
+//  User-facing settings for appearance, developer configuration, and account.
 //
 
 import SwiftUI
@@ -11,6 +11,7 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
 
     @AppStorage("appTheme") private var appTheme = "system"
+    @AppStorage("isLoggedIn") private var isLoggedIn = false
 
     @AppStorage("dev_use_localhost") private var useLocalhost = false
     @AppStorage("dev_custom_ip") private var customIP = "192.168.12.101"
@@ -19,6 +20,7 @@ struct SettingsView: View {
         NavigationStack {
             List {
                 appearanceSection
+                accountSection
                 developerSettingsSection
             }
             .navigationTitle("Settings")
@@ -43,6 +45,24 @@ struct SettingsView: View {
             }
         } header: {
             Text("Appearance")
+        }
+    }
+
+    // MARK: - Account
+
+    private var accountSection: some View {
+        Section {
+            Button(role: .destructive) {
+                isLoggedIn = false
+            } label: {
+                HStack {
+                    Image(systemName: "rectangle.portrait.and.arrow.right")
+                    Text("Sign Out")
+                }
+                .foregroundColor(AppTheme.Colors.alertRed)
+            }
+        } header: {
+            Text("Account")
         }
     }
 
