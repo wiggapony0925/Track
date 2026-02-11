@@ -18,6 +18,7 @@ struct NearbyStationRow: View {
                 .font(.system(size: 18))
                 .foregroundColor(AppTheme.Colors.mtaBlue)
                 .frame(width: 36, height: 36)
+                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(name)
@@ -44,6 +45,8 @@ struct NearbyStationRow: View {
         }
         .padding(.vertical, 8)
         .padding(.horizontal, AppTheme.Layout.margin)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(name) station, routes \(routeIDs.joined(separator: ", ")), \(formattedDistance) away")
     }
 
     private var formattedDistance: String {

@@ -36,6 +36,19 @@ struct DelayBadgeView: View {
         .padding(AppTheme.Layout.margin)
         .background(AppTheme.Colors.cardBackground)
         .cornerRadius(AppTheme.Layout.cornerRadius)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityDescription)
+    }
+
+    private var accessibilityDescription: String {
+        var label = "\(prediction.adjustedMinutes) minutes"
+        if prediction.adjustedMinutes != prediction.originalMinutes {
+            label += ", adjusted from \(prediction.originalMinutes) minutes"
+        }
+        if let reason = prediction.adjustmentReason {
+            label += ". \(reason)"
+        }
+        return label
     }
 
     private var badgeColor: Color {

@@ -20,6 +20,7 @@ struct ArrivalRow: View {
                 .frame(width: 36, height: 36)
                 .background(AppTheme.Colors.mtaBlue)
                 .clipShape(Circle())
+                .accessibilityLabel("Route \(arrival.routeID)")
 
             // Direction
             VStack(alignment: .leading, spacing: 2) {
@@ -46,6 +47,8 @@ struct ArrivalRow: View {
         }
         .padding(.vertical, 8)
         .padding(.horizontal, AppTheme.Layout.margin)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(arrival.routeID) train, \(arrival.direction), \(arrival.minutesAway) minutes away")
     }
 }
 

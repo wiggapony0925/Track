@@ -46,6 +46,7 @@ struct SmartSuggestionCard: View {
                     .frame(width: 44, height: 44)
                     .background(AppTheme.Colors.mtaBlue)
                     .clipShape(Circle())
+                    .accessibilityLabel("Route \(suggestion.routeID)")
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text("\(suggestion.direction)")
@@ -60,6 +61,8 @@ struct SmartSuggestionCard: View {
                             .font(.system(size: 16, weight: .medium))
                             .foregroundColor(AppTheme.Colors.textSecondary)
                     }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("\(minutesAway) minutes away")
                 }
 
                 Spacer()
@@ -74,11 +77,14 @@ struct SmartSuggestionCard: View {
                     .background(AppTheme.Colors.successGreen)
                     .cornerRadius(AppTheme.Layout.cornerRadius)
             }
+            .accessibilityHint("Begins tracking your trip on the \(suggestion.routeID) train")
         }
         .padding(AppTheme.Layout.margin)
         .background(AppTheme.Colors.cardBackground)
         .cornerRadius(AppTheme.Layout.cornerRadius)
         .shadow(radius: AppTheme.Layout.shadowRadius)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Smart suggestion: \(suggestion.routeID) train to \(suggestion.destinationName), \(minutesAway) minutes away")
     }
 
     // MARK: - State 2: No Prediction

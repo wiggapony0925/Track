@@ -29,7 +29,7 @@ struct TrackApp: App {
 
     var body: some Scene {
         WindowGroup {
-            HomeView()
+            ContentView()
         }
         .modelContainer(sharedModelContainer)
     }

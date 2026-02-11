@@ -4,58 +4,154 @@
 //
 //  Created by Jeffrey Fernandez on 2/10/26.
 //
+//  Root view of the Track NYC Transit app.
+//  Hosts a tab-based interface with the transit dashboard and trip history.
+//
 
 import SwiftUI
 import SwiftData
 
 struct ContentView: View {
-    @Environment(\.modelContext) private var modelContext
-    @Query private var items: [Item]
+    @State private var selectedTab: Tab = .home
+
+    enum Tab: String {
+        case home
+        case history
+    }
 
     var body: some View {
-        NavigationSplitView {
-            List {
-                ForEach(items) { item in
-                    NavigationLink {
-                        Text("Item at \(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))")
-                    } label: {
-                        Text(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))
-                    }
+        TabView(selection: $selectedTab) {
+            HomeView()
+                .tabItem {
+                    Label("Home", systemImage: "tram.fill")
                 }
-                .onDelete(perform: deleteItems)
+                .tag(Tab.home)
+
+            TripHistoryView()
+                .tabItem {
+                    Label("History", systemImage: "clock.arrow.circlepath")
+                }
+                .tag(Tab.history)
+        }
+        .tint(AppTheme.Colors.mtaBlue)
+    }
+}
+
+// MARK: - Trip History View
+
+/// Displays past trip logs so the user can review their commute history.
+struct TripHistoryView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Query(sort: \TripLog.tripDate, order: .reverse) private var tripLogs: [TripLog]
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if tripLogs.isEmpty {
+                    emptyState
+                } else {
+                    tripList
+                }
             }
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    EditButton()
-                }
-                ToolbarItem {
-                    Button(action: addItem) {
-                        Label("Add Item", systemImage: "plus")
-                    }
-                }
-            }
-        } detail: {
-            Text("Select an item")
+            .navigationTitle("Trip History")
         }
     }
 
-    private func addItem() {
-        withAnimation {
-            let newItem = Item(timestamp: Date())
-            modelContext.insert(newItem)
+    private var emptyState: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "tram")
+                .font(.system(size: 48))
+                .foregroundColor(AppTheme.Colors.textSecondary)
+                .accessibilityHidden(true)
+            Text("No trips yet")
+                .font(.system(size: 20, weight: .semibold, design: .rounded))
+                .foregroundColor(AppTheme.Colors.textPrimary)
+            Text("Your trip history will appear here after you start tracking rides.")
+                .font(.system(size: 14, weight: .regular))
+                .foregroundColor(AppTheme.Colors.textSecondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 40)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(AppTheme.Colors.background)
     }
 
-    private func deleteItems(offsets: IndexSet) {
+    private var tripList: some View {
+        List {
+            ForEach(tripLogs) { log in
+                TripLogRow(log: log)
+            }
+            .onDelete(perform: deleteLogs)
+        }
+        .listStyle(.plain)
+    }
+
+    private func deleteLogs(offsets: IndexSet) {
         withAnimation {
             for index in offsets {
-                modelContext.delete(items[index])
+                modelContext.delete(tripLogs[index])
             }
         }
     }
 }
 
+// MARK: - Trip Log Row
+
+struct TripLogRow: View {
+    let log: TripLog
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // Route badge
+            Text(log.routeID)
+                .font(.system(size: 14, weight: .heavy, design: .monospaced))
+                .foregroundColor(.white)
+                .frame(width: 32, height: 32)
+                .background(AppTheme.Colors.mtaBlue)
+                .clipShape(Circle())
+                .accessibilityLabel("Route \(log.routeID)")
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(log.originStationID) → \(log.destinationStationID)")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(AppTheme.Colors.textPrimary)
+                    .accessibilityLabel("From \(log.originStationID) to \(log.destinationStationID)")
+
+                Text(log.tripDate, format: .dateTime.month().day().hour().minute())
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+            }
+
+            Spacer()
+
+            // Delay indicator
+            if log.delaySeconds != 0 {
+                delayLabel
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private var delayLabel: some View {
+        let minutes = log.delaySeconds / 60
+        let isLate = log.delaySeconds > 0
+        let text = isLate ? "+\(minutes)m" : "\(minutes)m"
+        let color = isLate ? AppTheme.Colors.alertRed : AppTheme.Colors.successGreen
+
+        return Text(text)
+            .font(.system(size: 13, weight: .bold, design: .rounded))
+            .foregroundColor(color)
+            .accessibilityLabel(isLate ? "\(minutes) minutes late" : "\(abs(minutes)) minutes early")
+    }
+}
+
 #Preview {
     ContentView()
-        .modelContainer(for: Item.self, inMemory: true)
+        .modelContainer(for: [
+            Item.self,
+            Station.self,
+            Route.self,
+            TripLog.self,
+            CommutePattern.self,
+        ], inMemory: true)
 }
