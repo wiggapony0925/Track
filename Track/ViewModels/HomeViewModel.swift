@@ -27,6 +27,9 @@ final class HomeViewModel {
     var busArrivals: [BusArrival] = []
     var selectedBusStop: BusStop?
 
+    // Bus routes (browse all routes)
+    var allBusRoutes: [BusRoute] = []
+
     // Nearby transit (unified)
     var nearbyTransit: [NearbyTransitResponse] = []
 
@@ -38,8 +41,12 @@ final class HomeViewModel {
     /// Distance in meters from the user to the nearest transit stop.
     var nearestTransitDistance: Double?
 
-    // Service alerts
+    // LIRR mode
+    var lirrArrivals: [TrainArrival] = []
+
+    // Service alerts & accessibility
     var serviceAlerts: [TransitAlert] = []
+    var elevatorOutages: [ElevatorStatus] = []
 
     // Route detail sheet
     var selectedGroupedRoute: GroupedNearbyTransitResponse?
@@ -99,6 +106,8 @@ final class HomeViewModel {
             await refreshSubway(location: loc)
         case .bus:
             await refreshBus(location: loc)
+        case .lirr:
+            await refreshLIRR()
         }
 
         isLoading = false
@@ -214,12 +223,14 @@ final class HomeViewModel {
             async let flatTask = TrackAPI.fetchNearbyTransit(lat: lat, lon: lon)
             async let groupedTask = TrackAPI.fetchNearbyGrouped(lat: lat, lon: lon)
             async let alertsTask = TrackAPI.fetchAlerts()
+            async let accessTask = TrackAPI.fetchAccessibility()
 
             nearbyTransit = try await flatTask
             groupedTransit = try await groupedTask
 
-            // Fetch alerts silently — don't fail the whole refresh
+            // Fetch alerts and accessibility silently — don't fail the whole refresh
             do { serviceAlerts = try await alertsTask } catch {}
+            do { elevatorOutages = try await accessTask } catch {}
         } catch {
             AppLogger.shared.logError("fetchNearbyTransit", error: error)
             errorMessage = (error as? TrackAPIError)?.description ?? error.localizedDescription
@@ -288,6 +299,7 @@ final class HomeViewModel {
     private func refreshBus(location: CLLocation?) async {
         nearbyStations = []
         upcomingArrivals = []
+        lirrArrivals = []
 
         guard let location = location else {
             errorMessage = "Location required for bus stops"
@@ -295,10 +307,16 @@ final class HomeViewModel {
         }
 
         do {
-            nearbyBusStops = try await TrackAPI.fetchNearbyBusStops(
+            async let stopsTask = TrackAPI.fetchNearbyBusStops(
                 lat: location.coordinate.latitude,
                 lon: location.coordinate.longitude
             )
+            async let routesTask = TrackAPI.fetchBusRoutes()
+
+            nearbyBusStops = try await stopsTask
+
+            // Bus routes fetched silently — don't fail the whole refresh
+            do { allBusRoutes = try await routesTask } catch {}
         } catch {
             AppLogger.shared.logError("fetchNearbyBusStops", error: error)
             errorMessage = (error as? TrackAPIError)?.description ?? error.localizedDescription
@@ -318,6 +336,27 @@ final class HomeViewModel {
             AppLogger.shared.logError("fetchBusArrivals(\(stop.id))", error: error)
             errorMessage = (error as? TrackAPIError)?.description ?? error.localizedDescription
         }
+    }
+
+    // MARK: - LIRR
+
+    private func refreshLIRR() async {
+        nearbyStations = []
+        upcomingArrivals = []
+        nearbyBusStops = []
+        busArrivals = []
+        selectedBusStop = nil
+
+        do {
+            lirrArrivals = try await TrackAPI.fetchLIRRArrivals()
+        } catch {
+            AppLogger.shared.logError("fetchLIRRArrivals", error: error)
+            errorMessage = (error as? TrackAPIError)?.description ?? error.localizedDescription
+        }
+
+        // Fetch alerts and accessibility alongside LIRR
+        do { serviceAlerts = try await TrackAPI.fetchAlerts() } catch {}
+        do { elevatorOutages = try await TrackAPI.fetchAccessibility() } catch {}
     }
 
     // MARK: - Live Activity

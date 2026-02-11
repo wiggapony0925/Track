@@ -407,6 +407,9 @@ struct HomeView: View {
                     case .bus:
                         busDashboard
                             .transition(.move(edge: .bottom).combined(with: .opacity))
+                    case .lirr:
+                        lirrDashboard
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
                 }
                 .animation(.spring(response: 0.4, dampingFraction: 0.7), value: viewModel.selectedMode)
@@ -453,6 +456,47 @@ struct HomeView: View {
                             .padding(.vertical, 8)
 
                             if index < min(viewModel.serviceAlerts.count, 3) - 1 {
+                                Divider()
+                                    .padding(.leading, AppTheme.Layout.cardPadding + 34)
+                            }
+                        }
+                    }
+                    .background(AppTheme.Colors.cardBackground)
+                    .cornerRadius(AppTheme.Layout.cornerRadius)
+                    .padding(.horizontal, AppTheme.Layout.margin)
+                }
+
+                // Elevator / escalator outages
+                if !viewModel.elevatorOutages.isEmpty {
+                    sectionHeader("Elevator & Escalator Outages")
+
+                    VStack(spacing: 0) {
+                        ForEach(Array(viewModel.elevatorOutages.prefix(5).enumerated()), id: \.element.id) { index, outage in
+                            HStack(spacing: 10) {
+                                Image(systemName: outage.equipmentType.lowercased().contains("elevator")
+                                      ? "arrow.up.arrow.down.circle.fill"
+                                      : "stairs")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundColor(AppTheme.Colors.alertRed)
+                                    .frame(width: 24)
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(outage.station)
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundColor(AppTheme.Colors.textPrimary)
+                                        .lineLimit(1)
+                                    Text(outage.description)
+                                        .font(.system(size: 12, weight: .regular))
+                                        .foregroundColor(AppTheme.Colors.textSecondary)
+                                        .lineLimit(2)
+                                }
+
+                                Spacer(minLength: 0)
+                            }
+                            .padding(.horizontal, AppTheme.Layout.cardPadding)
+                            .padding(.vertical, 8)
+
+                            if index < min(viewModel.elevatorOutages.count, 5) - 1 {
                                 Divider()
                                     .padding(.leading, AppTheme.Layout.cardPadding + 34)
                             }
@@ -687,6 +731,42 @@ struct HomeView: View {
                 emptyStateView(
                     icon: "bus.fill",
                     message: "No bus stops nearby"
+                )
+            }
+        }
+    }
+
+    // MARK: - LIRR Dashboard
+
+    private var lirrDashboard: some View {
+        Group {
+            if !viewModel.lirrArrivals.isEmpty {
+                sectionHeader("LIRR Departures")
+
+                VStack(spacing: 0) {
+                    ForEach(Array(viewModel.lirrArrivals.prefix(15).enumerated()), id: \.element.id) { index, arrival in
+                        ArrivalRow(
+                            arrival: arrival,
+                            prediction: nil,
+                            isTracking: viewModel.trackingArrivalId == arrival.id.uuidString,
+                            reliabilityWarning: nil,
+                            onTrack: {
+                                viewModel.trackSubwayArrival(arrival, location: locationManager.currentLocation)
+                            }
+                        )
+                        if index < min(viewModel.lirrArrivals.count, 15) - 1 {
+                            Divider()
+                                .padding(.leading, AppTheme.Layout.margin + AppTheme.Layout.badgeSizeMedium + 12)
+                        }
+                    }
+                }
+                .background(AppTheme.Colors.cardBackground)
+                .cornerRadius(AppTheme.Layout.cornerRadius)
+                .padding(.horizontal, AppTheme.Layout.margin)
+            } else if !viewModel.isLoading {
+                emptyStateView(
+                    icon: "train.side.front.car",
+                    message: "No LIRR departures available"
                 )
             }
         }

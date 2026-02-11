@@ -13,12 +13,14 @@ enum TransportMode: String, CaseIterable {
     case nearby
     case subway
     case bus
+    case lirr
 
     var label: String {
         switch self {
         case .nearby: return "Nearby"
         case .subway: return "Subway"
         case .bus: return "Bus"
+        case .lirr: return "LIRR"
         }
     }
 
@@ -27,6 +29,7 @@ enum TransportMode: String, CaseIterable {
         case .nearby: return "location.fill"
         case .subway: return "tram.fill"
         case .bus: return "bus.fill"
+        case .lirr: return "train.side.front.car"
         }
     }
 }
