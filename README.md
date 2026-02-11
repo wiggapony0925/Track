@@ -173,7 +173,7 @@ All endpoints return JSON. The iOS app communicates exclusively through `TrackAP
 | GET | `/nearby` | `lat`, `lon`, `radius` (default 500m) | Flat list of nearest buses and trains sorted by arrival time |
 | GET | `/nearby/grouped` | `lat`, `lon`, `radius` (default 500m) | Routes grouped by ID with swipeable direction sub-groups |
 
-The grouped endpoint is used for the main dashboard cards. The flat endpoint is the fallback and powers the nearest-metro recommendation when no transit is within walking distance.
+The grouped endpoint is used for the main dashboard cards. The flat endpoint is the fallback and powers the nearest metro recommendation when no transit is within walking distance.
 
 ### Subway
 
