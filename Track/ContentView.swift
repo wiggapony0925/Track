@@ -115,7 +115,6 @@ struct TripLogRow: View {
                 Text("\(log.originStationID) → \(log.destinationStationID)")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundColor(AppTheme.Colors.textPrimary)
-                    .accessibilityLabel("From \(log.originStationID) to \(log.destinationStationID)")
 
                 Text(log.tripDate, format: .dateTime.month().day().hour().minute())
                     .font(.system(size: 12, weight: .regular))

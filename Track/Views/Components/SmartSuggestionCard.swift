@@ -83,7 +83,7 @@ struct SmartSuggestionCard: View {
         .background(AppTheme.Colors.cardBackground)
         .cornerRadius(AppTheme.Layout.cornerRadius)
         .shadow(radius: AppTheme.Layout.shadowRadius)
-        .accessibilityElement(children: .contain)
+        .accessibilityElement(children: .combine)
         .accessibilityLabel("Smart suggestion: \(suggestion.routeID) train to \(suggestion.destinationName), \(minutesAway) minutes away")
     }
 
