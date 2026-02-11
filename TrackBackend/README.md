@@ -36,6 +36,8 @@ The API will be available at `http://127.0.0.1:8000`. Auto-generated docs are at
 
 All behavior is controlled by `settings.json` in the project root. The iOS app fetches `/config` on launch to receive dynamic settings.
 
+> **Important:** Replace the `mta_api_key` value `"YOUR_KEY_HERE"` in `settings.json` with your actual MTA API key before deploying. Never commit real API keys to source control.
+
 ## Directory Structure
 
 ```
