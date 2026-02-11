@@ -3,7 +3,7 @@
 //  TrackWidgets
 //
 //  Live Activity views for the Dynamic Island and Lock Screen.
-//  Shows real-time countdown for tracked subway and bus arrivals.
+// No changes real-time countdown for tracked subway and bus arrivals.
 //
 
 import ActivityKit

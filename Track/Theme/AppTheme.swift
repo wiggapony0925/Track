@@ -47,22 +47,17 @@ struct AppTheme {
     // MARK: - Typography
 
     struct Typography {
-        static func headerLarge(_ text: String) -> Text {
-            Text(text).font(.system(size: 34, weight: .bold, design: .rounded))
-        }
+        /// Large rounded header (Dynamic Type: Large Title).
+        static let headerLarge: Font = .system(.largeTitle, design: .rounded).weight(.bold)
 
-        static func sectionHeader(_ text: String) -> Text {
-            Text(text)
-                .font(.system(size: 14, weight: .semibold))
-        }
+        /// Section headers (Dynamic Type: Subheadline).
+        static let sectionHeader: Font = .system(.subheadline, design: .default).weight(.semibold)
 
-        static func routeLabel(_ text: String) -> Text {
-            Text(text).font(.system(size: 18, weight: .heavy, design: .monospaced))
-        }
+        /// Monospaced route labels (Dynamic Type: Body).
+        static let routeLabel: Font = .system(.body, design: .monospaced).weight(.heavy)
 
-        static func body(_ text: String) -> Text {
-            Text(text).font(.system(size: 16, weight: .medium, design: .default))
-        }
+        /// Standard body text (Dynamic Type: Callout).
+        static let body: Font = .system(.callout, design: .default).weight(.medium)
     }
 
     // MARK: - Subway Line Colors
@@ -146,23 +141,23 @@ struct AppTheme {
         static let metroCenter = CLLocationCoordinate2D(latitude: 40.72, longitude: -73.55)
 
         /// Coordinate span covering the 5 boroughs and Long Island.
-        /// North ~40.92 (Bronx) → South ~40.50 (Staten Island) ≈ 0.50
-        /// West ~-74.26 (Staten Island) → East ~-72.50 (Suffolk) ≈ 1.80
+        /// North ~40.97 (Bronx) → South ~40.42 (Staten Island) ≈ 0.55
+        /// West ~-74.45 (Staten Island) → East ~-72.65 (Suffolk) ≈ 1.80
         static let metroSpan = MKCoordinateSpan(latitudeDelta: 0.55, longitudeDelta: 1.80)
 
         /// The region used to constrain map panning to the 5 boroughs + Long Island.
         static let metroRegion = MKCoordinateRegion(center: metroCenter, span: metroSpan)
 
         /// Camera bounds that restrict user panning to the NYC boroughs + Long Island.
-        /// - minimumDistance: 500 m (street-level zoom)
+        /// - minimumDistance: 300 m (tight zoom for subway entrances)
         /// - maximumDistance: 150 km (see the whole region)
         static let cameraBounds = MapCameraBounds(
             centerCoordinateBounds: metroRegion,
-            minimumDistance: 500,
+            minimumDistance: 300,
             maximumDistance: 150_000
         )
 
-        /// Default NYC center (Manhattan) for fallback when user location is unavailable.
+        /// Default NYC center (Midtown) for fallback scenarios.
         static let nycCenter = CLLocationCoordinate2D(latitude: 40.7128, longitude: -74.0060)
 
         /// Default zoom distance (meters) for centering on the user's location.

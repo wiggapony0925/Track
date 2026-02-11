@@ -7,9 +7,9 @@
 //  Every view, widget, and component should pull values from here —
 //  never hardcode colors, fonts, or layout constants.
 //
-//  NOTE: This is a shared copy that must stay in sync with Track/Theme/AppTheme.swift
 
 import SwiftUI
+import MapKit
 
 struct AppTheme {
 
@@ -32,6 +32,9 @@ struct AppTheme {
         /// White text used on colored badges, buttons, and banners.
         static let textOnColor = Color.white
 
+        /// Pulsing "GO" mode accent — a vivid green for the live tracking state.
+        static let goGreen = Color(red: 52/255, green: 199/255, blue: 89/255)
+
         /// Returns the appropriate countdown color for a given minutes value.
         /// Red ≤ 2 min, green ≤ 5 min, primary otherwise.
         static func countdown(_ minutes: Int) -> Color {
@@ -44,22 +47,17 @@ struct AppTheme {
     // MARK: - Typography
 
     struct Typography {
-        static func headerLarge(_ text: String) -> Text {
-            Text(text).font(.system(size: 34, weight: .bold, design: .rounded))
-        }
+        /// Large rounded header (Dynamic Type: Large Title).
+        static let headerLarge: Font = .system(.largeTitle, design: .rounded).weight(.bold)
 
-        static func sectionHeader(_ text: String) -> Text {
-            Text(text)
-                .font(.system(size: 14, weight: .semibold))
-        }
+        /// Section headers (Dynamic Type: Subheadline).
+        static let sectionHeader: Font = .system(.subheadline, design: .default).weight(.semibold)
 
-        static func routeLabel(_ text: String) -> Text {
-            Text(text).font(.system(size: 18, weight: .heavy, design: .monospaced))
-        }
+        /// Monospaced route labels (Dynamic Type: Body).
+        static let routeLabel: Font = .system(.body, design: .monospaced).weight(.heavy)
 
-        static func body(_ text: String) -> Text {
-            Text(text).font(.system(size: 16, weight: .medium, design: .default))
-        }
+        /// Standard body text (Dynamic Type: Callout).
+        static let body: Font = .system(.callout, design: .default).weight(.medium)
     }
 
     // MARK: - Subway Line Colors
@@ -124,5 +122,47 @@ struct AppTheme {
         static let badgeFontSmall: CGFloat = 11.0
         static let badgeFontMedium: CGFloat = 14.0
         static let badgeFontLarge: CGFloat = 18.0
+    }
+
+    // MARK: - NYC Metro Map Configuration
+
+    /// Geographic bounds and camera constraints for the New York Metropolitan Area.
+    ///
+    /// The map is bounded to the Tri-State region so users cannot scroll
+    /// into Pennsylvania or Massachusetts. Zoom limits keep context
+    /// between street-level detail and the full metro overview.
+    ///
+    /// References:
+    /// - ``MapCameraBounds`` — https://developer.apple.com/documentation/mapkit/mapcamerabounds
+    /// - ``MKCoordinateRegion`` — https://developer.apple.com/documentation/mapkit/mkcoordinateregion
+    struct MapConfig {
+        /// Geographic center of NYC (near the East River for balance).
+        static let metroCenter = CLLocationCoordinate2D(latitude: 40.7306, longitude: -73.9352)
+
+        /// Covers the 5 boroughs + immediate suburbs (Westchester, Newark, Nassau).
+        /// Latitude ~1.0 covers from Sandy Hook to White Plains.
+        /// Longitude ~1.2 covers from Newark to Oyster Bay.
+        static let metroSpan = MKCoordinateSpan(latitudeDelta: 1.0, longitudeDelta: 1.2)
+
+        /// The full metro region used to initialize the map and constrain panning.
+        static let metroRegion = MKCoordinateRegion(center: metroCenter, span: metroSpan)
+
+        /// Camera bounds that restrict user panning to the NYC metro area.
+        /// - minimumDistance: 300 m (slightly tighter zoom for subway entrances)
+        /// - maximumDistance: 150 km (plenty to see the whole system)
+        static let cameraBounds = MapCameraBounds(
+            centerCoordinateBounds: metroRegion,
+            minimumDistance: 300,
+            maximumDistance: 150_000
+        )
+
+        /// Default NYC center (Midtown) for specific fallback scenarios.
+        static let nycCenter = metroCenter
+
+        /// Initial camera position centered on the user, falling back to the metro region.
+        /// This ensures "my locations" are always prioritized.
+        static let initialPosition: MapCameraPosition = .userLocation(
+            fallback: .region(metroRegion)
+        )
     }
 }
