@@ -210,7 +210,8 @@ async def _fetch_nearby_subway() -> list[NearbyTransitArrival]:
         success_count += 1
         total_raw += len(arrivals)
         for arrival in arrivals[:10]:  # Top 10 per feed
-            if arrival.minutes_away < 1:
+            # 0 minutes means already at the station / stale — skip it
+            if arrival.minutes_away <= 0:
                 continue
             total_kept += 1
             results.append(

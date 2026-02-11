@@ -128,10 +128,13 @@ async def get_nearby_stops(
     if eps is None:
         return []
 
-    # Convert meters → degrees.  Use generous factors so we don't
-    # miss stops at the edge of the radius.
-    lat_span = max(0.005, radius_m / 111_000)
-    lon_span = max(0.005, radius_m / 85_000)
+    # Convert meters → degrees.
+    # 1° latitude ≈ 111 km everywhere; 1° longitude ≈ 85 km at NYC's 40.7° latitude.
+    _METERS_PER_DEG_LAT = 111_000
+    _METERS_PER_DEG_LON_NYC = 85_000
+
+    lat_span = max(0.005, radius_m / _METERS_PER_DEG_LAT)
+    lon_span = max(0.005, radius_m / _METERS_PER_DEG_LON_NYC)
 
     url = settings.urls.bus_oba_base + eps.stops_near_location
     params = {
