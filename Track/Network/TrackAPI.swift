@@ -305,10 +305,7 @@ struct NearbyTransitResponse: Codable, Identifiable {
 
     /// Strips "MTA NYCT_" prefix for display.
     var displayName: String {
-        if routeId.hasPrefix("MTA NYCT_") {
-            return String(routeId.dropFirst(9))
-        }
-        return routeId
+        stripMTAPrefix(routeId)
     }
 
     enum CodingKeys: String, CodingKey {
@@ -372,10 +369,7 @@ struct BusVehicleResponse: Codable, Identifiable {
 
     /// Strips "MTA NYCT_" prefix for display.
     var displayRouteName: String {
-        if routeId.hasPrefix("MTA NYCT_") {
-            return String(routeId.dropFirst(9))
-        }
-        return routeId
+        stripMTAPrefix(routeId)
     }
 
     enum CodingKeys: String, CodingKey {

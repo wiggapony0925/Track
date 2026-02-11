@@ -184,25 +184,17 @@ struct ArrivalRow: View {
     }
 
     private var arrivalTimeDescription: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "h:mm a"
         if arrival.minutesAway <= 0 {
             return "Arriving now"
         } else if arrival.minutesAway == 1 {
-            return "In 1 minute — \(formatter.string(from: arrival.estimatedTime))"
+            return formatArrivalTime(minutesAway: 1)
         } else {
-            return "In \(arrival.minutesAway) min — \(formatter.string(from: arrival.estimatedTime))"
+            return formatArrivalTime(minutesAway: arrival.minutesAway)
         }
     }
 
     private var statusText: String {
-        if arrival.minutesAway <= 0 {
-            return "Arriving"
-        } else if arrival.minutesAway <= 2 {
-            return "Approaching"
-        } else {
-            return "On Time"
-        }
+        arrivalStatusPill(minutesAway: arrival.minutesAway).label
     }
 }
 
