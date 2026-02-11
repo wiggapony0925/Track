@@ -59,7 +59,8 @@ final class HomeViewModel {
         selectedBusStop = nil
 
         // Get smart suggestion (respects user preference)
-        if UserDefaults.standard.bool(forKey: "predictCommuteEnabled") != false {
+        let predictEnabled = UserDefaults.standard.object(forKey: "predictCommuteEnabled") as? Bool ?? true
+        if predictEnabled {
             suggestion = SmartSuggester.predict(
                 context: context,
                 currentLocation: location,

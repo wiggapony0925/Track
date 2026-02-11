@@ -67,8 +67,7 @@ final class LiveActivityManager {
         activeDestination = destination
 
         // Record commute pattern in SwiftData (only with valid location and if learning enabled)
-        let learningEnabled = UserDefaults.standard.object(forKey: "backgroundLearningEnabled") == nil
-            || UserDefaults.standard.bool(forKey: "backgroundLearningEnabled")
+        let learningEnabled = UserDefaults.standard.object(forKey: "backgroundLearningEnabled") as? Bool ?? true
         if let context = context, let location = location, learningEnabled {
             let calendar = Calendar.current
             let hour = calendar.component(.hour, from: now)
@@ -175,8 +174,7 @@ final class LiveActivityManager {
     /// - Parameter context: SwiftData model context for recording the trip log.
     func endActivity(context: ModelContext? = nil) {
         // Record trip log if we have trip metadata and learning is enabled
-        let learningEnabled = UserDefaults.standard.object(forKey: "backgroundLearningEnabled") == nil
-            || UserDefaults.standard.bool(forKey: "backgroundLearningEnabled")
+        let learningEnabled = UserDefaults.standard.object(forKey: "backgroundLearningEnabled") as? Bool ?? true
         if let context = context,
            learningEnabled,
            let startTime = activeTripStartTime,
