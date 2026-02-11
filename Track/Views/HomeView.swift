@@ -151,8 +151,9 @@ struct HomeView: View {
                         arrival: arrival,
                         prediction: nil,
                         isTracking: viewModel.trackingArrivalId == arrival.id.uuidString,
+                        reliabilityWarning: viewModel.reliabilityWarnings[arrival.routeID],
                         onTrack: {
-                            viewModel.trackSubwayArrival(arrival)
+                            viewModel.trackSubwayArrival(arrival, context: modelContext, location: locationManager.currentLocation)
                         }
                     )
                 }
@@ -200,8 +201,9 @@ struct HomeView: View {
                     BusArrivalRow(
                         arrival: arrival,
                         isTracking: viewModel.trackingArrivalId == arrival.id,
+                        reliabilityWarning: viewModel.reliabilityWarnings[arrival.routeId],
                         onTrack: {
-                            viewModel.trackBusArrival(arrival)
+                            viewModel.trackBusArrival(arrival, context: modelContext, location: locationManager.currentLocation)
                         }
                     )
                 }

@@ -6,9 +6,14 @@
 //  Handles starting, updating, and ending trip tracking activities
 //  that appear on the Dynamic Island and Lock Screen.
 //
+//  Also records trip data to SwiftData for the intelligence layer:
+//  - CommutePattern on start (trains the SmartSuggester)
+//  - TripLog on end (tracks actual vs expected duration)
+//
 
 import Foundation
 import ActivityKit
+import SwiftData
 
 @Observable
 final class LiveActivityManager {
@@ -19,6 +24,13 @@ final class LiveActivityManager {
 
     /// Whether a Live Activity is currently running.
     var isTracking: Bool { currentActivityID != nil }
+
+    // Trip data capture
+    private(set) var activeTripStartTime: Date?
+    private(set) var activeLineId: String?
+    private(set) var activeStationId: String?
+    private(set) var activeExpectedDuration: TimeInterval?
+    private(set) var activeDestination: String?
 
     private init() {}
 
@@ -31,14 +43,71 @@ final class LiveActivityManager {
     ///   - destination: The direction/destination name.
     ///   - arrivalTime: The estimated arrival time.
     ///   - isBus: Whether this is a bus trip.
+    ///   - stationId: The station/stop the user is at.
+    ///   - context: SwiftData model context for recording the commute pattern.
+    ///   - location: The user's current location for pattern recording.
     func startActivity(
         lineId: String,
         destination: String,
         arrivalTime: Date,
-        isBus: Bool
+        isBus: Bool,
+        stationId: String = "",
+        context: ModelContext? = nil,
+        location: (latitude: Double, longitude: Double)? = nil
     ) {
         // End any existing activity first
         endActivity()
+
+        // Record trip metadata
+        let now = Date()
+        activeTripStartTime = now
+        activeLineId = lineId
+        activeStationId = stationId
+        activeExpectedDuration = arrivalTime.timeIntervalSince(now)
+        activeDestination = destination
+
+        // Record commute pattern in SwiftData
+        if let context = context {
+            let calendar = Calendar.current
+            let hour = calendar.component(.hour, from: now)
+            let weekday = calendar.component(.weekday, from: now)
+            let lat = location?.latitude ?? 0.0
+            let lon = location?.longitude ?? 0.0
+
+            let pattern = CommutePattern(
+                routeID: lineId,
+                direction: destination,
+                startLatitude: lat,
+                startLongitude: lon,
+                destinationStationID: stationId,
+                destinationName: destination,
+                timeOfDay: hour,
+                dayOfWeek: weekday
+            )
+
+            // Check for existing matching pattern and increment frequency
+            let predicate = #Predicate<CommutePattern> { p in
+                p.routeID == lineId &&
+                p.direction == destination &&
+                p.timeOfDay >= (hour - 1) &&
+                p.timeOfDay <= (hour + 1)
+            }
+            let descriptor = FetchDescriptor<CommutePattern>(predicate: predicate)
+
+            do {
+                let existing = try context.fetch(descriptor)
+                if let match = existing.first {
+                    match.frequency += 1
+                    match.lastUsed = now
+                } else {
+                    context.insert(pattern)
+                }
+                try? context.save()
+            } catch {
+                context.insert(pattern)
+                try? context.save()
+            }
+        }
 
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
 
@@ -99,8 +168,45 @@ final class LiveActivityManager {
 
     // MARK: - End
 
-    /// Ends the current Live Activity.
-    func endActivity() {
+    /// Ends the current Live Activity and records a TripLog in SwiftData.
+    ///
+    /// - Parameter context: SwiftData model context for recording the trip log.
+    func endActivity(context: ModelContext? = nil) {
+        // Record trip log if we have trip metadata
+        if let context = context,
+           let startTime = activeTripStartTime,
+           let lineId = activeLineId,
+           let expectedDuration = activeExpectedDuration {
+            let now = Date()
+            let actualDuration = now.timeIntervalSince(startTime)
+            let delayDelta = Int(actualDuration - expectedDuration)
+            let calendar = Calendar.current
+            let hour = calendar.component(.hour, from: startTime)
+            let weekday = calendar.component(.weekday, from: startTime)
+
+            let log = TripLog(
+                routeID: lineId,
+                originStationID: activeStationId ?? "",
+                destinationStationID: activeDestination ?? "",
+                timeOfDay: hour,
+                dayOfWeek: weekday,
+                weatherCondition: .clear,
+                mtaPredictedTime: startTime.addingTimeInterval(expectedDuration),
+                actualArrivalTime: now,
+                delaySeconds: delayDelta,
+                tripDate: startTime
+            )
+            context.insert(log)
+            try? context.save()
+        }
+
+        // Clear trip metadata
+        activeTripStartTime = nil
+        activeLineId = nil
+        activeStationId = nil
+        activeExpectedDuration = nil
+        activeDestination = nil
+
         guard let activityID = currentActivityID else { return }
 
         Task {

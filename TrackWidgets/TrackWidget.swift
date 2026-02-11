@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import SwiftData
 import WidgetKit
 
 // MARK: - Timeline Provider
@@ -24,7 +25,7 @@ struct TrackWidgetProvider: TimelineProvider {
     }
 
     func getSnapshot(in context: Context, completion: @escaping (TrackWidgetEntry) -> Void) {
-        let entry = TrackWidgetEntry(
+        let entry = buildSmartEntry() ?? TrackWidgetEntry(
             date: Date(),
             lineId: "L",
             destination: "Manhattan",
@@ -37,7 +38,8 @@ struct TrackWidgetProvider: TimelineProvider {
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<TrackWidgetEntry>) -> Void) {
         let currentDate = Date()
-        let entry = TrackWidgetEntry(
+
+        let entry = buildSmartEntry() ?? TrackWidgetEntry(
             date: currentDate,
             lineId: "L",
             destination: "Manhattan",
@@ -45,10 +47,35 @@ struct TrackWidgetProvider: TimelineProvider {
             status: "On Time",
             isBus: false
         )
+
         // Refresh every 5 minutes
         let refreshDate = Calendar.current.date(byAdding: .minute, value: 5, to: currentDate)!
         let timeline = Timeline(entries: [entry], policy: .after(refreshDate))
         completion(timeline)
+    }
+
+    /// Queries SwiftData for the user's most likely route at this time of day.
+    private func buildSmartEntry() -> TrackWidgetEntry? {
+        do {
+            let schema = Schema([CommutePattern.self])
+            let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+            let container = try ModelContainer(for: schema, configurations: [config])
+            let context = ModelContext(container)
+
+            if let suggestion = SmartSuggester.suggestedRoute(context: context) {
+                return TrackWidgetEntry(
+                    date: Date(),
+                    lineId: suggestion.routeID,
+                    destination: suggestion.destinationName,
+                    minutesAway: 5,
+                    status: "On Time",
+                    isBus: false
+                )
+            }
+        } catch {
+            // Fall through to nil if SwiftData fails
+        }
+        return nil
     }
 }
 

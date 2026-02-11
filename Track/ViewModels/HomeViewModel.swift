@@ -4,6 +4,7 @@
 //
 //  ViewModel for the HomeView, handling smart suggestions and arrivals.
 //  Supports both Subway and Bus transport modes.
+//  Provides reliability scoring based on historical trip data.
 //
 
 import Foundation
@@ -27,6 +28,9 @@ final class HomeViewModel {
 
     // Live Activity tracking
     var trackingArrivalId: String?
+
+    // Reliability warnings: routeID → average delay in minutes (if > 5)
+    var reliabilityWarnings: [String: Int] = [:]
 
     private let repository = TransitRepository()
     private let liveActivityManager = LiveActivityManager.shared
@@ -81,6 +85,15 @@ final class HomeViewModel {
         } catch {
             errorMessage = (error as? TransitError)?.description ?? error.localizedDescription
         }
+
+        // Compute reliability warnings for displayed routes
+        let routeIDs = Set(upcomingArrivals.map { $0.routeID })
+        for routeID in routeIDs {
+            let avgDelay = getReliabilityScore(for: routeID, context: context)
+            if avgDelay > 5 {
+                reliabilityWarnings[routeID] = avgDelay
+            }
+        }
     }
 
     // MARK: - Bus
@@ -124,18 +137,21 @@ final class HomeViewModel {
     // MARK: - Live Activity
 
     /// Starts tracking a subway arrival via Live Activity.
-    func trackSubwayArrival(_ arrival: TrainArrival) {
+    func trackSubwayArrival(_ arrival: TrainArrival, context: ModelContext, location: CLLocation?) {
         trackingArrivalId = arrival.id.uuidString
         liveActivityManager.startActivity(
             lineId: arrival.routeID,
             destination: arrival.direction,
             arrivalTime: arrival.estimatedTime,
-            isBus: false
+            isBus: false,
+            stationId: arrival.stationID,
+            context: context,
+            location: location.map { ($0.coordinate.latitude, $0.coordinate.longitude) }
         )
     }
 
     /// Starts tracking a bus arrival via Live Activity.
-    func trackBusArrival(_ arrival: BusArrival) {
+    func trackBusArrival(_ arrival: BusArrival, context: ModelContext, location: CLLocation?) {
         trackingArrivalId = arrival.id
         let arrivalTime = arrival.expectedArrival ?? Date().addingTimeInterval(300)
         let routeName: String
@@ -148,13 +164,46 @@ final class HomeViewModel {
             lineId: routeName,
             destination: arrival.statusText,
             arrivalTime: arrivalTime,
-            isBus: true
+            isBus: true,
+            stationId: arrival.stopId,
+            context: context,
+            location: location.map { ($0.coordinate.latitude, $0.coordinate.longitude) }
         )
     }
 
     /// Stops tracking the current Live Activity.
-    func stopTracking() {
+    func stopTracking(context: ModelContext) {
         trackingArrivalId = nil
-        liveActivityManager.endActivity()
+        liveActivityManager.endActivity(context: context)
+    }
+
+    // MARK: - Reliability
+
+    /// Calculates the average delay (in minutes) for a route based on the last 10 TripLog entries.
+    ///
+    /// - Parameters:
+    ///   - routeID: The route to check.
+    ///   - context: SwiftData model context.
+    /// - Returns: Average delay in minutes (positive = late). Returns 0 if no data.
+    func getReliabilityScore(for routeID: String, context: ModelContext) -> Int {
+        let predicate = #Predicate<TripLog> { log in
+            log.routeID == routeID && log.actualArrivalTime != nil
+        }
+
+        var descriptor = FetchDescriptor<TripLog>(
+            predicate: predicate,
+            sortBy: [SortDescriptor(\.tripDate, order: .reverse)]
+        )
+        descriptor.fetchLimit = 10
+
+        do {
+            let logs = try context.fetch(descriptor)
+            guard !logs.isEmpty else { return 0 }
+            let totalDelay = logs.reduce(0) { $0 + $1.delaySeconds }
+            let averageDelaySeconds = totalDelay / logs.count
+            return averageDelaySeconds / 60
+        } catch {
+            return 0
+        }
     }
 }

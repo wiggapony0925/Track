@@ -13,6 +13,7 @@ import SwiftUI
 struct BusArrivalRow: View {
     let arrival: BusArrival
     var isTracking: Bool = false
+    var reliabilityWarning: Int? = nil
     var onTrack: (() -> Void)?
 
     var body: some View {
@@ -46,10 +47,18 @@ struct BusArrivalRow: View {
                             .clipShape(Capsule())
                     }
                 }
-                Text(arrival.stopId)
-                    .font(.system(size: 12, weight: .regular))
-                    .foregroundColor(AppTheme.Colors.textSecondary)
-                    .lineLimit(1)
+                HStack(spacing: 4) {
+                    Text(arrival.stopId)
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+                        .lineLimit(1)
+                    if let delay = reliabilityWarning {
+                        Text("⚠️ Usually \(delay)m late")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(AppTheme.Colors.warningYellow)
+                            .lineLimit(1)
+                    }
+                }
             }
 
             Spacer(minLength: 4)
