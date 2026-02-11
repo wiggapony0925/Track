@@ -2,17 +2,15 @@
 //  HomeView.swift
 //  Track
 //
-//  Main dashboard view with the "Magic Card" smart suggestion,
-//  upcoming arrivals, and nearby stations. Presented as a map-based
-//  view with a sliding bottom sheet. Supports Subway and Bus modes.
+//  Main dashboard view showing nearby transit arrivals.
+//  Displays real-time subway and bus data based on the user's
+//  current location. Presented as a map with a sliding bottom sheet.
 //
 
 import SwiftUI
-import SwiftData
 import MapKit
 
 struct HomeView: View {
-    @Environment(\.modelContext) private var modelContext
     @State private var viewModel = HomeViewModel()
     @State private var locationManager = LocationManager()
     @State private var sheetDetent: PresentationDetent = .fraction(0.4)
@@ -41,7 +39,7 @@ struct HomeView: View {
             }
             .ignoresSafeArea()
 
-            // Transport mode toggle floating at the bottom of the map
+            // Transport mode toggle floating at the bottom
             VStack {
                 Spacer()
                 TransportModeToggle(selectedMode: $viewModel.selectedMode)
@@ -62,21 +60,14 @@ struct HomeView: View {
             locationManager.requestPermission()
             locationManager.startUpdating()
             Task {
-                await viewModel.refresh(
-                    context: modelContext,
-                    location: locationManager.currentLocation
-                )
+                await viewModel.refresh(location: locationManager.currentLocation)
             }
         }
         .onChange(of: viewModel.selectedMode) {
             Task {
-                await viewModel.refresh(
-                    context: modelContext,
-                    location: locationManager.currentLocation
-                )
+                await viewModel.refresh(location: locationManager.currentLocation)
             }
         }
-
     }
 
     // MARK: - Dashboard Content
@@ -104,7 +95,7 @@ struct HomeView: View {
                 }
                 .padding(.horizontal, AppTheme.Layout.margin)
 
-                // Mode-specific content with smooth transitions
+                // Mode-specific content
                 Group {
                     switch viewModel.selectedMode {
                     case .subway:
@@ -138,44 +129,41 @@ struct HomeView: View {
                     .padding()
                 }
 
-                // Bottom padding
                 Spacer()
                     .frame(height: 20)
             }
             .padding(.top, AppTheme.Layout.margin)
         }
         .background(AppTheme.Colors.background)
+        .refreshable {
+            await viewModel.refresh(location: locationManager.currentLocation)
+        }
     }
 
     // MARK: - Subway Dashboard
 
     private var subwayDashboard: some View {
         Group {
-            // Smart Suggestion Card
-            SmartSuggestionCard(
-                suggestion: viewModel.suggestion,
-                minutesAway: viewModel.upcomingArrivals.first?.minutesAway ?? 0,
-                onStartTrip: {
-                    // Trip start action placeholder
-                }
-            )
-            .padding(.horizontal, AppTheme.Layout.margin)
-
             // Upcoming Arrivals
             if !viewModel.upcomingArrivals.isEmpty {
-                sectionHeader("Upcoming Arrivals")
+                sectionHeader("Nearby Arrivals")
 
                 ForEach(viewModel.upcomingArrivals) { arrival in
                     ArrivalRow(
                         arrival: arrival,
                         prediction: nil,
                         isTracking: viewModel.trackingArrivalId == arrival.id.uuidString,
-                        reliabilityWarning: viewModel.reliabilityWarnings[arrival.routeID],
+                        reliabilityWarning: nil,
                         onTrack: {
-                            viewModel.trackSubwayArrival(arrival, context: modelContext, location: locationManager.currentLocation)
+                            viewModel.trackSubwayArrival(arrival, location: locationManager.currentLocation)
                         }
                     )
                 }
+            } else if !viewModel.isLoading {
+                emptyStateView(
+                    icon: "tram.fill",
+                    message: "No subway arrivals nearby"
+                )
             }
 
             // Nearby Stations
@@ -220,9 +208,9 @@ struct HomeView: View {
                     BusArrivalRow(
                         arrival: arrival,
                         isTracking: viewModel.trackingArrivalId == arrival.id,
-                        reliabilityWarning: viewModel.reliabilityWarnings[arrival.routeId],
+                        reliabilityWarning: nil,
                         onTrack: {
-                            viewModel.trackBusArrival(arrival, context: modelContext, location: locationManager.currentLocation)
+                            viewModel.trackBusArrival(arrival, location: locationManager.currentLocation)
                         }
                     )
                 }
@@ -242,9 +230,16 @@ struct HomeView: View {
                     }
                     .buttonStyle(.plain)
                 }
+            } else if !viewModel.isLoading {
+                emptyStateView(
+                    icon: "bus.fill",
+                    message: "No bus stops nearby"
+                )
             }
         }
     }
+
+    // MARK: - Helpers
 
     private func sectionHeader(_ title: String) -> some View {
         Text(title)
@@ -254,6 +249,19 @@ struct HomeView: View {
             .lineLimit(1)
             .padding(.horizontal, AppTheme.Layout.margin)
             .padding(.top, 8)
+    }
+
+    private func emptyStateView(icon: String, message: String) -> some View {
+        VStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 32, weight: .light))
+                .foregroundColor(AppTheme.Colors.textSecondary)
+            Text(message)
+                .font(.system(size: 15, weight: .medium))
+                .foregroundColor(AppTheme.Colors.textSecondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 32)
     }
 }
 
@@ -284,7 +292,6 @@ private struct NearbyBusStopRow: View {
             Spacer(minLength: 4)
 
             if let direction = stop.direction {
-                // OBA direction: "0" = first direction of travel, "1" = reverse
                 Text(direction == "0" ? "→" : "←")
                     .font(.system(size: 16, weight: .medium))
                     .foregroundColor(AppTheme.Colors.textSecondary)
@@ -299,10 +306,4 @@ private struct NearbyBusStopRow: View {
 
 #Preview {
     HomeView()
-        .modelContainer(for: [
-            Station.self,
-            Route.self,
-            TripLog.self,
-            CommutePattern.self,
-        ], inMemory: true)
 }
