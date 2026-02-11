@@ -186,8 +186,6 @@ struct ArrivalRow: View {
     private var arrivalTimeDescription: String {
         if arrival.minutesAway <= 0 {
             return "Arriving now"
-        } else if arrival.minutesAway == 1 {
-            return formatArrivalTime(minutesAway: 1)
         } else {
             return formatArrivalTime(minutesAway: arrival.minutesAway)
         }

@@ -431,11 +431,15 @@ private struct RouteDetailArrivalRow: View {
     }
 
     private var statusLabel: String {
-        arrivalStatusPill(minutesAway: arrival.minutesAway).label
+        if arrival.minutesAway <= 0 { return "Now" }
+        if arrival.minutesAway <= 2 { return "Approaching" }
+        return arrival.status
     }
 
     private var statusColor: Color {
-        arrivalStatusPill(minutesAway: arrival.minutesAway).color
+        if arrival.minutesAway <= 0 { return AppTheme.Colors.alertRed }
+        if arrival.minutesAway <= 2 { return AppTheme.Colors.warningYellow }
+        return AppTheme.Colors.successGreen
     }
 }
 
