@@ -13,27 +13,51 @@ import SwiftData
 
 struct ContentView: View {
     @State private var selectedTab: Tab = .home
+    @State private var locationManager = LocationManager()
 
     enum Tab: String {
         case home
         case history
     }
 
-    var body: some View {
-        TabView(selection: $selectedTab) {
-            HomeView()
-                .tabItem {
-                    Label("Home", systemImage: "tram.fill")
-                }
-                .tag(Tab.home)
+    /// True when the user has granted location access.
+    private var locationGranted: Bool {
+        locationManager.authorizationStatus == .authorizedWhenInUse ||
+        locationManager.authorizationStatus == .authorizedAlways
+    }
 
-            TripHistoryView()
-                .tabItem {
-                    Label("History", systemImage: "clock.arrow.circlepath")
+    var body: some View {
+        Group {
+            if locationGranted {
+                TabView(selection: $selectedTab) {
+                    HomeView()
+                        .tabItem {
+                            Label("Home", systemImage: "tram.fill")
+                        }
+                        .tag(Tab.home)
+
+                    TripHistoryView()
+                        .tabItem {
+                            Label("History", systemImage: "clock.arrow.circlepath")
+                        }
+                        .tag(Tab.history)
                 }
-                .tag(Tab.history)
+                .tint(AppTheme.Colors.mtaBlue)
+            } else {
+                LocationPermissionView(
+                    authorizationStatus: $locationManager.authorizationStatus,
+                    onRequestPermission: {
+                        locationManager.requestPermission()
+                    }
+                )
+            }
         }
-        .tint(AppTheme.Colors.mtaBlue)
+        .onAppear {
+            // Trigger the system prompt on first launch if not yet determined
+            if locationManager.authorizationStatus == .notDetermined {
+                locationManager.requestPermission()
+            }
+        }
     }
 }
 

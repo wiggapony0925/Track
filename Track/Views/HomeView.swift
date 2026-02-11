@@ -16,12 +16,15 @@ struct HomeView: View {
     @State private var viewModel = HomeViewModel()
     @State private var locationManager = LocationManager()
     @State private var sheetDetent: PresentationDetent = .fraction(0.4)
+    @State private var cameraPosition: MapCameraPosition = .userLocation(fallback: .automatic)
 
     var body: some View {
         ZStack {
-            // Map background
-            Map()
-                .ignoresSafeArea()
+            // Map background centered on user location
+            Map(position: $cameraPosition) {
+                UserAnnotation()
+            }
+            .ignoresSafeArea()
 
             // Bottom sheet overlay
             VStack {
