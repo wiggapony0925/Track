@@ -61,13 +61,13 @@ async def _fetch_nearby_subway() -> list[NearbyTransitArrival]:
     tasks = [get_arrivals_for_line(line) for line in feed_lines]
     feed_results = await asyncio.gather(*tasks, return_exceptions=True)
 
-    for arrivals in feed_results:
+    for line, arrivals in zip(feed_lines, feed_results):
         if isinstance(arrivals, Exception) or not isinstance(arrivals, list):
             continue
         for arrival in arrivals[:5]:  # Top 5 per feed
             results.append(
                 NearbyTransitArrival(
-                    route_id=arrival.direction,
+                    route_id=line,
                     stop_name=arrival.station,
                     direction=arrival.direction,
                     minutes_away=arrival.minutes_away,
