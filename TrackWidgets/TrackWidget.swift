@@ -11,6 +11,7 @@
 import SwiftUI
 import SwiftData
 import WidgetKit
+import CoreLocation
 
 // MARK: - Timeline Provider
 
@@ -20,16 +21,91 @@ struct TrackWidgetProvider: TimelineProvider {
     }
 
     func getSnapshot(in context: Context, completion: @escaping (TrackWidgetEntry) -> Void) {
-        completion(buildSmartEntry() ?? .placeholder)
+        if context.isPreview {
+            completion(.placeholder)
+            return
+        }
+        fetchLiveEntry { entry in
+            completion(entry ?? .placeholder)
+        }
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<TrackWidgetEntry>) -> Void) {
-        let entry = buildSmartEntry() ?? .placeholder
+        fetchLiveEntry { entry in
+            let resolvedEntry = entry ?? buildSmartEntry() ?? .placeholder
 
-        // Refresh every 5 minutes
-        let refreshDate = Calendar.current.date(byAdding: .minute, value: 5, to: Date())!
-        let timeline = Timeline(entries: [entry], policy: .after(refreshDate))
-        completion(timeline)
+            // Refresh every 5 minutes
+            let refreshDate = Calendar.current.date(byAdding: .minute, value: 5, to: Date())!
+            let timeline = Timeline(entries: [resolvedEntry], policy: .after(refreshDate))
+            completion(timeline)
+        }
+    }
+
+    /// Fetches live nearby transit data from the backend API.
+    /// Uses the user's last known location from shared UserDefaults.
+    private func fetchLiveEntry(completion: @escaping (TrackWidgetEntry?) -> Void) {
+        // Read cached location from App Group UserDefaults
+        let defaults = UserDefaults(suiteName: "group.com.track.shared") ?? UserDefaults.standard
+        let lat = defaults.double(forKey: "lastLatitude")
+        let lon = defaults.double(forKey: "lastLongitude")
+
+        // If no location cached, fall back
+        guard lat != 0, lon != 0 else {
+            completion(nil)
+            return
+        }
+
+        let useLocalhost = defaults.bool(forKey: "dev_use_localhost")
+        let baseURL: String
+        if useLocalhost {
+            baseURL = "http://127.0.0.1:8000"
+        } else {
+            let storedIP = defaults.string(forKey: "dev_custom_ip") ?? "192.168.12.101"
+            baseURL = "http://\(storedIP):8000"
+        }
+
+        guard var components = URLComponents(string: baseURL + "/nearby") else {
+            completion(nil)
+            return
+        }
+        components.queryItems = [
+            URLQueryItem(name: "lat", value: String(lat)),
+            URLQueryItem(name: "lon", value: String(lon)),
+        ]
+        guard let url = components.url else {
+            completion(nil)
+            return
+        }
+
+        let task = URLSession.shared.dataTask(with: url) { data, response, error in
+            guard let data = data,
+                  let http = response as? HTTPURLResponse,
+                  (200...299).contains(http.statusCode),
+                  error == nil else {
+                completion(nil)
+                return
+            }
+
+            do {
+                let decoder = JSONDecoder()
+                decoder.dateDecodingStrategy = .iso8601
+                let responses = try decoder.decode([WidgetNearbyResponse].self, from: data)
+                let arrivals = responses.prefix(5).map { item in
+                    NearbyArrival(
+                        routeId: item.routeId,
+                        stopName: item.stopName,
+                        direction: item.direction,
+                        minutesAway: item.minutesAway,
+                        status: item.status,
+                        mode: item.mode
+                    )
+                }
+                completion(TrackWidgetEntry(date: Date(), arrivals: Array(arrivals)))
+            } catch {
+                completion(nil)
+            }
+        }
+        task.resume()
     }
 
     /// Queries SwiftData for the user's most likely route at this time of day.
@@ -45,13 +121,32 @@ struct TrackWidgetProvider: TimelineProvider {
                         stopName: suggestion.destinationName,
                         direction: suggestion.direction,
                         minutesAway: 5,
-                        status: "On Time",
+                        status: "Predicted",
                         mode: "subway"
                     )
                 ]
             )
         }
         return nil
+    }
+}
+
+/// Lightweight Codable model for decoding the /nearby API response in the widget.
+private struct WidgetNearbyResponse: Codable {
+    let routeId: String
+    let stopName: String
+    let direction: String
+    let minutesAway: Int
+    let status: String
+    let mode: String
+
+    enum CodingKeys: String, CodingKey {
+        case routeId = "route_id"
+        case stopName = "stop_name"
+        case direction
+        case minutesAway = "minutes_away"
+        case status
+        case mode
     }
 }
 
@@ -112,7 +207,7 @@ struct TrackWidgetEntryView: View {
     private var smallView: some View {
         Group {
             if let arrival = entry.arrivals.first {
-                VStack(spacing: 6) {
+                VStack(spacing: 4) {
                     // Mode badge
                     transitBadge(arrival, size: AppTheme.Layout.badgeSizeLarge)
 
@@ -129,6 +224,13 @@ struct TrackWidgetEntryView: View {
                     // Stop name
                     Text(arrival.stopName)
                         .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+
+                    // Direction
+                    Text("→ \(arrival.direction)")
+                        .font(.system(size: 10, weight: .regular))
                         .foregroundColor(AppTheme.Colors.textSecondary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
@@ -224,22 +326,34 @@ struct TrackWidgetEntryView: View {
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(AppTheme.Colors.textPrimary)
                     .lineLimit(1)
-                Text(arrival.stopName)
-                    .font(.system(size: 11, weight: .regular))
-                    .foregroundColor(AppTheme.Colors.textSecondary)
-                    .lineLimit(1)
+                HStack(spacing: 4) {
+                    Text(arrival.stopName)
+                        .font(.system(size: 11, weight: .regular))
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+                        .lineLimit(1)
+                    Text("→ \(arrival.direction)")
+                        .font(.system(size: 10, weight: .regular))
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+                        .lineLimit(1)
+                }
             }
 
             Spacer(minLength: 4)
 
-            // Countdown
-            HStack(alignment: .firstTextBaseline, spacing: 2) {
-                Text("\(arrival.minutesAway)")
-                    .font(.system(size: 20, weight: .bold, design: .rounded))
-                    .foregroundColor(AppTheme.Colors.countdown(arrival.minutesAway))
-                Text("min")
-                    .font(.system(size: 10, weight: .medium))
+            // Status pill + Countdown
+            VStack(alignment: .trailing, spacing: 2) {
+                HStack(alignment: .firstTextBaseline, spacing: 2) {
+                    Text("\(arrival.minutesAway)")
+                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                        .foregroundColor(AppTheme.Colors.countdown(arrival.minutesAway))
+                    Text("min")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+                }
+                Text(arrival.status)
+                    .font(.system(size: 9, weight: .semibold))
                     .foregroundColor(AppTheme.Colors.textSecondary)
+                    .lineLimit(1)
             }
         }
     }

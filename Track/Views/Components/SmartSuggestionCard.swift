@@ -10,7 +10,7 @@ import SwiftUI
 struct SmartSuggestionCard: View {
     let suggestion: RouteSuggestion?
     let minutesAway: Int
-    let onStartTrip: () -> Void
+    let onTrack: () -> Void
 
     @Namespace private var cardAnimation
 
@@ -30,7 +30,7 @@ struct SmartSuggestionCard: View {
     private func predictionCard(_ suggestion: RouteSuggestion) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Going to \(suggestion.destinationName)?")
+                Text("Your usual: \(suggestion.destinationName)")
                     .font(.system(size: 20, weight: .semibold, design: .rounded))
                     .foregroundColor(AppTheme.Colors.textPrimary)
                     .lineLimit(2)
@@ -52,7 +52,7 @@ struct SmartSuggestionCard: View {
                     HStack(alignment: .firstTextBaseline, spacing: 4) {
                         Text("\(minutesAway)")
                             .font(.system(size: 32, weight: .bold, design: .rounded))
-                            .foregroundColor(AppTheme.Colors.textPrimary)
+                            .foregroundColor(AppTheme.Colors.countdown(minutesAway))
                             .minimumScaleFactor(0.7)
                             .lineLimit(1)
                         Text("min")
@@ -66,23 +66,27 @@ struct SmartSuggestionCard: View {
                 Spacer(minLength: 0)
             }
 
-            Button(action: onStartTrip) {
-                Text("Start Trip")
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundColor(AppTheme.Colors.textOnColor)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(AppTheme.Colors.successGreen)
-                    .cornerRadius(AppTheme.Layout.cornerRadius)
+            Button(action: onTrack) {
+                HStack(spacing: 6) {
+                    Image(systemName: "bell.fill")
+                        .font(.system(size: 13, weight: .bold))
+                    Text("Track Arrival")
+                        .font(.system(size: 16, weight: .bold))
+                }
+                .foregroundColor(AppTheme.Colors.textOnColor)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(AppTheme.Colors.mtaBlue)
+                .cornerRadius(AppTheme.Layout.cornerRadius)
             }
-            .accessibilityHint("Begins tracking your trip on the \(suggestion.routeID) train")
+            .accessibilityHint("Track the \(suggestion.routeID) train arrival")
         }
         .padding(AppTheme.Layout.margin)
         .background(AppTheme.Colors.cardBackground)
         .cornerRadius(AppTheme.Layout.cornerRadius)
         .shadow(radius: AppTheme.Layout.shadowRadius)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Smart suggestion: \(suggestion.routeID) train to \(suggestion.destinationName), \(minutesAway) minutes away")
+        .accessibilityLabel("Predicted route: \(suggestion.routeID) train to \(suggestion.destinationName), \(minutesAway) minutes away")
     }
 
     // MARK: - State 2: No Prediction
@@ -103,7 +107,7 @@ struct SmartSuggestionCard: View {
                     .matchedGeometryEffect(id: "title", in: cardAnimation)
             }
 
-            Text("Tap a station to start learning your commute.")
+            Text("Browse nearby buses and trains to see what's arriving.")
                 .font(.system(size: 14, weight: .regular))
                 .foregroundColor(AppTheme.Colors.textSecondary)
                 .lineLimit(2)
@@ -127,13 +131,13 @@ struct SmartSuggestionCard: View {
                 score: 5
             ),
             minutesAway: 4,
-            onStartTrip: {}
+            onTrack: {}
         )
 
         SmartSuggestionCard(
             suggestion: nil,
             minutesAway: 0,
-            onStartTrip: {}
+            onTrack: {}
         )
     }
     .padding()

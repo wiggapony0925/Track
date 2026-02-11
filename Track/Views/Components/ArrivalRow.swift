@@ -15,64 +15,194 @@ struct ArrivalRow: View {
     var reliabilityWarning: Int? = nil
     var onTrack: (() -> Void)?
 
-    var body: some View {
-        HStack(spacing: 12) {
-            RouteBadge(routeID: arrival.routeID, size: .medium)
+    @State private var isExpanded = false
 
-            // Direction
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 4) {
-                    Text(arrival.direction)
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(AppTheme.Colors.textPrimary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                    if isTracking {
-                        Text("LIVE")
-                            .font(.system(size: 9, weight: .heavy))
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                RouteBadge(routeID: arrival.routeID, size: .medium)
+
+                // Direction
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 4) {
+                        Text(arrival.direction)
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(AppTheme.Colors.textPrimary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                        if isTracking {
+                            Image(systemName: "antenna.radiowaves.left.and.right")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(AppTheme.Colors.successGreen)
+                        }
+                    }
+                    HStack(spacing: 4) {
+                        Text(arrival.stationID)
+                            .font(.system(size: 12, weight: .regular))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
+                            .lineLimit(1)
+                        if let delay = reliabilityWarning {
+                            Text("⚠️ Usually \(delay)m late")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundColor(AppTheme.Colors.warningYellow)
+                                .lineLimit(1)
+                        }
+                    }
+                }
+
+                Spacer(minLength: 4)
+
+                // Time display
+                if let prediction = prediction {
+                    DelayBadgeView(prediction: prediction)
+                } else {
+                    HStack(alignment: .firstTextBaseline, spacing: 2) {
+                        Text("\(arrival.minutesAway)")
+                            .font(.system(size: 20, weight: .bold, design: .rounded))
+                            .foregroundColor(AppTheme.Colors.countdown(arrival.minutesAway))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                        Text("min")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
+                    }
+                }
+
+                // Expand chevron
+                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+            }
+            .padding(.vertical, 8)
+            .padding(.horizontal, AppTheme.Layout.margin)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    isExpanded.toggle()
+                }
+            }
+
+            // Expanded detail section
+            if isExpanded {
+                VStack(alignment: .leading, spacing: 8) {
+                    Divider()
+
+                    // Estimated arrival time
+                    HStack(spacing: 10) {
+                        Image(systemName: "clock.fill")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(AppTheme.Colors.mtaBlue)
+                            .frame(width: 20)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Estimated Arrival")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(AppTheme.Colors.textSecondary)
+                                .textCase(.uppercase)
+                            Text(arrivalTimeDescription)
+                                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                .foregroundColor(AppTheme.Colors.textPrimary)
+                        }
+
+                        Spacer()
+
+                        // Status pill
+                        Text(statusText)
+                            .font(.system(size: 11, weight: .semibold))
                             .foregroundColor(AppTheme.Colors.textOnColor)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 2)
-                            .background(AppTheme.Colors.alertRed)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(arrival.minutesAway <= 2 ? AppTheme.Colors.alertRed : AppTheme.Colors.successGreen)
                             .clipShape(Capsule())
                     }
-                }
-                HStack(spacing: 4) {
-                    Text(arrival.stationID)
-                        .font(.system(size: 12, weight: .regular))
-                        .foregroundColor(AppTheme.Colors.textSecondary)
-                        .lineLimit(1)
-                    if let delay = reliabilityWarning {
-                        Text("⚠️ Usually \(delay)m late")
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundColor(AppTheme.Colors.warningYellow)
-                            .lineLimit(1)
+
+                    // Direction info
+                    HStack(spacing: 10) {
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(AppTheme.Colors.mtaBlue)
+                            .frame(width: 20)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Direction")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(AppTheme.Colors.textSecondary)
+                                .textCase(.uppercase)
+                            Text(arrival.direction)
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(AppTheme.Colors.textPrimary)
+                                .lineLimit(1)
+                        }
+                    }
+
+                    // Delay prediction info if available
+                    if let prediction = prediction, prediction.adjustedMinutes != prediction.originalMinutes {
+                        HStack(spacing: 10) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(AppTheme.Colors.warningYellow)
+                                .frame(width: 20)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Delay Prediction")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundColor(AppTheme.Colors.textSecondary)
+                                    .textCase(.uppercase)
+                                Text(prediction.adjustmentReason ?? "Adjusted by +\(prediction.adjustedMinutes - prediction.originalMinutes) min")
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundColor(AppTheme.Colors.warningYellow)
+                                    .lineLimit(2)
+                            }
+                        }
+                    }
+
+                    // Track button
+                    Button {
+                        onTrack?()
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: isTracking ? "antenna.radiowaves.left.and.right" : "bell.fill")
+                                .font(.system(size: 12, weight: .bold))
+                            Text(isTracking ? "Tracking" : "Track This Train")
+                                .font(.system(size: 13, weight: .bold))
+                        }
+                        .foregroundColor(AppTheme.Colors.textOnColor)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(isTracking ? AppTheme.Colors.successGreen : AppTheme.Colors.mtaBlue)
+                        .cornerRadius(AppTheme.Layout.cornerRadius)
                     }
                 }
+                .padding(.horizontal, AppTheme.Layout.margin)
+                .padding(.bottom, 10)
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
-
-            Spacer(minLength: 4)
-
-            // Time display
-            if let prediction = prediction {
-                DelayBadgeView(prediction: prediction)
-            } else {
-                Text("\(arrival.minutesAway) min")
-                    .font(.system(size: 18, weight: .bold, design: .rounded))
-                    .foregroundColor(AppTheme.Colors.textPrimary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-            }
-        }
-        .padding(.vertical, 8)
-        .padding(.horizontal, AppTheme.Layout.margin)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            onTrack?()
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(arrival.routeID) train, \(arrival.direction), \(arrival.minutesAway) minutes away")
-        .accessibilityHint(isTracking ? "Currently tracking" : "Tap to track this arrival")
+        .accessibilityHint(isExpanded ? "Expanded. Shows arrival details." : "Tap to see arrival details")
+    }
+
+    private var arrivalTimeDescription: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "h:mm a"
+        if arrival.minutesAway <= 0 {
+            return "Arriving now"
+        } else if arrival.minutesAway == 1 {
+            return "In 1 minute — \(formatter.string(from: arrival.estimatedTime))"
+        } else {
+            return "In \(arrival.minutesAway) min — \(formatter.string(from: arrival.estimatedTime))"
+        }
+    }
+
+    private var statusText: String {
+        if arrival.minutesAway <= 0 {
+            return "Arriving"
+        } else if arrival.minutesAway <= 2 {
+            return "Approaching"
+        } else {
+            return "On Time"
+        }
     }
 }
 
