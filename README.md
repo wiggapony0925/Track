@@ -155,4 +155,4 @@ The App Icon folder structure is set up at `Assets.xcassets/AppIcon.appiconset`.
 
 1. Create a **1024×1024 PNG** image.
 2. Drag it into `Assets.xcassets → AppIcon` in Xcode.
-3. Xcode will automatically generate all required sizes.
+3. Xcode will use this single image at all required sizes.
