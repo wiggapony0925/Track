@@ -93,6 +93,7 @@ struct TrackAPI {
         guard let url = URL(string: baseURL + path) else {
             throw TrackAPIError.invalidURL
         }
+        AppLogger.shared.logRequest(method: "GET", url: url.absoluteString)
         return try await get(url: url)
     }
 
@@ -101,6 +102,15 @@ struct TrackAPI {
         guard let http = response as? HTTPURLResponse else {
             throw TrackAPIError.networkError
         }
+
+        // Log the response JSON
+        let jsonString = String(data: data, encoding: .utf8) ?? "<binary>"
+        AppLogger.shared.logResponse(
+            url: url.absoluteString,
+            statusCode: http.statusCode,
+            json: jsonString
+        )
+
         guard (200...299).contains(http.statusCode) else {
             throw TrackAPIError.serverError(statusCode: http.statusCode)
         }

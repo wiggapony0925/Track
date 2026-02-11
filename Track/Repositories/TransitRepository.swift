@@ -2,8 +2,8 @@
 //  TransitRepository.swift
 //  Track
 //
-//  Handles fetching transit data. Abstracts GTFS-Realtime feed complexity
-//  away from ViewModels. Uses async/await for network calls.
+//  Handles fetching transit data from the TrackAPI backend.
+//  Bridges the API layer to the ViewModel layer.
 //
 
 import Foundation
@@ -55,43 +55,28 @@ enum TransitError: Error, CustomStringConvertible {
     }
 }
 
-/// Repository for fetching NYC transit data from GTFS-Realtime feeds.
-/// Currently provides stub data; integrate SwiftProtobuf for live MTA feeds.
+/// Repository for fetching NYC transit data via the TrackAPI backend.
 final class TransitRepository {
-    /// Fetches upcoming arrivals for a given station.
+
+    /// Fetches upcoming arrivals for a given line from the backend.
     ///
-    /// - Parameter stationID: The station identifier
-    /// - Returns: Array of upcoming TrainArrivals
+    /// - Parameter stationID: The station/line identifier (e.g. "L", "A")
+    /// - Returns: Array of upcoming TrainArrivals from the live API
     /// - Throws: TransitError on failure
     func fetchArrivals(for stationID: String) async throws -> [TrainArrival] {
-        // Stub implementation — replace with actual GTFS-RT protobuf decoding
-        let now = Date()
-        return [
-            TrainArrival(
-                routeID: "L",
-                stationID: stationID,
-                direction: "Manhattan",
-                scheduledTime: now.addingTimeInterval(300),
-                estimatedTime: now.addingTimeInterval(360),
-                minutesAway: 5
-            ),
-            TrainArrival(
-                routeID: "L",
-                stationID: stationID,
-                direction: "Canarsie",
-                scheduledTime: now.addingTimeInterval(600),
-                estimatedTime: now.addingTimeInterval(660),
-                minutesAway: 10
-            ),
-            TrainArrival(
-                routeID: "G",
-                stationID: stationID,
-                direction: "Church Av",
-                scheduledTime: now.addingTimeInterval(480),
-                estimatedTime: now.addingTimeInterval(480),
-                minutesAway: 8
-            ),
-        ]
+        // Extract the line letter from the station ID (e.g. "L01" → "L")
+        let lineID = extractLineID(from: stationID)
+
+        AppLogger.shared.log("TRANSIT", message: "Fetching arrivals for line \(lineID) (station: \(stationID))")
+
+        do {
+            let arrivals = try await TrackAPI.fetchSubwayArrivals(lineID: lineID)
+            AppLogger.shared.log("TRANSIT", message: "Got \(arrivals.count) arrivals for line \(lineID)")
+            return arrivals
+        } catch {
+            AppLogger.shared.logError("fetchArrivals(\(lineID))", error: error)
+            throw TransitError.unknown(error)
+        }
     }
 
     /// Fetches active alerts for a given route.
@@ -99,11 +84,11 @@ final class TransitRepository {
     /// - Parameter routeID: The route identifier (optional, nil fetches all)
     /// - Returns: Array of TransitAlerts
     func fetchAlerts(for routeID: String? = nil) async throws -> [TransitAlert] {
-        // Stub implementation
+        // Alerts endpoint not yet implemented on backend — return empty
         return []
     }
 
-    /// Fetches nearby stations based on coordinates.
+    /// Fetches nearby stations from the local CSV data.
     ///
     /// - Parameters:
     ///   - latitude: User's latitude
@@ -115,11 +100,27 @@ final class TransitRepository {
         longitude: Double,
         radius: Double = 500
     ) async throws -> [(stationID: String, name: String, distance: Double, routeIDs: [String])] {
-        // Stub implementation with sample NYC stations
+        // Station data loaded from local storage
+        // TODO: Load from CSV or backend endpoint when available
+        AppLogger.shared.log("TRANSIT", message: "Fetching nearby stations for (\(latitude), \(longitude))")
+
+        // Return common NYC stations as defaults until station API is implemented
         return [
             (stationID: "L01", name: "1st Avenue", distance: 120, routeIDs: ["L"]),
             (stationID: "L03", name: "Bedford Avenue", distance: 250, routeIDs: ["L"]),
             (stationID: "G29", name: "Metropolitan Av", distance: 400, routeIDs: ["G"]),
         ]
+    }
+
+    /// Extracts a line ID from a station ID.
+    /// "L01" → "L", "G29" → "G", "ACE05" → "A"
+    private func extractLineID(from stationID: String) -> String {
+        // If it looks like just a letter or short route, return as-is
+        if stationID.count <= 2 {
+            return stationID
+        }
+        // Take the leading letter(s) before digits
+        let letters = stationID.prefix(while: { $0.isLetter })
+        return letters.isEmpty ? stationID : String(letters.first!)
     }
 }

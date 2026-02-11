@@ -17,8 +17,8 @@ struct SettingsView: View {
     @AppStorage("backgroundLearningEnabled") private var backgroundLearningEnabled = true
     @AppStorage("appTheme") private var appTheme = "system"
 
-    @AppStorage("dev_use_localhost") private var useLocalhost = true
-    @AppStorage("dev_custom_ip") private var customIP = "192.168.1.X"
+    @AppStorage("dev_use_localhost") private var useLocalhost = false
+    @AppStorage("dev_custom_ip") private var customIP = "192.168.12.101"
 
     @State private var showClearHistoryConfirmation = false
     @State private var showResetScoresConfirmation = false

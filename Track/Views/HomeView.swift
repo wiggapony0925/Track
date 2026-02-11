@@ -54,6 +54,9 @@ struct HomeView: View {
                 .presentationDragIndicator(.visible)
                 .presentationBackgroundInteraction(.enabled)
                 .interactiveDismissDisabled()
+                .sheet(isPresented: $showSettings) {
+                    SettingsView()
+                }
         }
         .onAppear {
             locationManager.requestPermission()
@@ -73,9 +76,7 @@ struct HomeView: View {
                 )
             }
         }
-        .sheet(isPresented: $showSettings) {
-            SettingsView()
-        }
+
     }
 
     // MARK: - Dashboard Content

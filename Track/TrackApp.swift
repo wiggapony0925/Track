@@ -10,6 +10,11 @@ import SwiftData
 
 @main
 struct TrackApp: App {
+    init() {
+        // Initialize the file logger — clears log.app on every launch
+        _ = AppLogger.shared
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()
