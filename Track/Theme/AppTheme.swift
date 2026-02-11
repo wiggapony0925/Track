@@ -183,7 +183,7 @@ struct AppTheme {
         /// Generous bounding box for the NYC MTA service area.
         /// Latitude: south Staten Island (40.50) to north Bronx/Westchester (41.10) with buffer.
         /// Longitude: west NJ/Staten Island (-74.35) to east Suffolk/Montauk (-72.40) with buffer.
-        private static let serviceAreaMinLat: Double = 40.40  // south of Staten Island
+        private static let serviceAreaMinLat: Double = 40.40  // buffer south of Staten Island
         private static let serviceAreaMaxLat: Double = 41.10  // north of the Bronx
         private static let serviceAreaMinLon: Double = -74.35 // west of Staten Island
         private static let serviceAreaMaxLon: Double = -72.40 // east of Long Island
