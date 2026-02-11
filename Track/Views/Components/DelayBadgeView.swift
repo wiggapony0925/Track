@@ -23,9 +23,11 @@ struct DelayBadgeView: View {
                     .foregroundColor(AppTheme.Colors.textSecondary)
 
                 if prediction.adjustedMinutes != prediction.originalMinutes {
-                    Text("(Adj)")
-                        .font(.system(size: 10, weight: .medium))
+                    Text("(Adjusted)")
+                        .font(.system(size: 9, weight: .medium))
                         .foregroundColor(AppTheme.Colors.warningYellow)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
                 }
             }
 
