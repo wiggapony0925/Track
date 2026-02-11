@@ -45,7 +45,17 @@ struct TrackAPI {
     ///   - lon: User's longitude.
     /// - Returns: Array of `BusStop`.
     static func fetchNearbyBusStops(lat: Double, lon: Double) async throws -> [BusStop] {
-        let data = try await get(path: "/bus/nearby?lat=\(lat)&lon=\(lon)")
+        guard var components = URLComponents(string: baseURL + "/bus/nearby") else {
+            throw TrackAPIError.invalidURL
+        }
+        components.queryItems = [
+            URLQueryItem(name: "lat", value: String(lat)),
+            URLQueryItem(name: "lon", value: String(lon)),
+        ]
+        guard let url = components.url else {
+            throw TrackAPIError.invalidURL
+        }
+        let data = try await get(url: url)
         return try decoder.decode([BusStop].self, from: data)
     }
 
@@ -71,6 +81,10 @@ struct TrackAPI {
         guard let url = URL(string: baseURL + path) else {
             throw TrackAPIError.invalidURL
         }
+        return try await get(url: url)
+    }
+
+    private static func get(url: URL) async throws -> Data {
         let (data, response) = try await URLSession.shared.data(from: url)
         guard let http = response as? HTTPURLResponse else {
             throw TrackAPIError.networkError

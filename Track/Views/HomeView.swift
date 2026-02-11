@@ -250,6 +250,7 @@ private struct NearbyBusStopRow: View {
             Spacer(minLength: 4)
 
             if let direction = stop.direction {
+                // OBA direction: "0" = first direction of travel, "1" = reverse
                 Text(direction == "0" ? "→" : "←")
                     .font(.system(size: 16, weight: .medium))
                     .foregroundColor(AppTheme.Colors.textSecondary)

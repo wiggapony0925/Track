@@ -8,26 +8,6 @@
 
 import SwiftUI
 
-/// The two transport modes supported by Track.
-enum TransportMode: String, CaseIterable {
-    case subway
-    case bus
-
-    var label: String {
-        switch self {
-        case .subway: return "Subway"
-        case .bus: return "Bus"
-        }
-    }
-
-    var icon: String {
-        switch self {
-        case .subway: return "tram.fill"
-        case .bus: return "bus.fill"
-        }
-    }
-}
-
 struct TransportModeToggle: View {
     @Binding var selectedMode: TransportMode
 
