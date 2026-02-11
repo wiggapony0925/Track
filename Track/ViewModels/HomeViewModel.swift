@@ -427,11 +427,9 @@ final class HomeViewModel {
     ///   - from: User's current location.
     ///   - to: Destination coordinate (e.g. a bus stop or station).
     func fetchTransitETA(from source: CLLocationCoordinate2D, to destination: CLLocationCoordinate2D) async {
-        let sourcePlacemark = MKPlacemark(coordinate: source)
-        let destPlacemark = MKPlacemark(coordinate: destination)
-
-        let sourceItem = MKMapItem(placemark: sourcePlacemark)
-        let destItem = MKMapItem(placemark: destPlacemark)
+        // MKPlacemark is deprecated in iOS 26.0
+        let sourceItem = MKMapItem(location: CLLocation(latitude: source.latitude, longitude: source.longitude), address: nil)
+        let destItem = MKMapItem(location: CLLocation(latitude: destination.latitude, longitude: destination.longitude), address: nil)
 
         let request = MKDirections.Request()
         request.source = sourceItem

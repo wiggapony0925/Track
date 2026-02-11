@@ -47,22 +47,17 @@ struct AppTheme {
     // MARK: - Typography
 
     struct Typography {
-        static func headerLarge(_ text: String) -> Text {
-            Text(text).font(.system(size: 34, weight: .bold, design: .rounded))
-        }
+        /// Large rounded header (Dynamic Type: Large Title).
+        static let headerLarge: Font = .system(.largeTitle, design: .rounded).weight(.bold)
 
-        static func sectionHeader(_ text: String) -> Text {
-            Text(text)
-                .font(.system(size: 14, weight: .semibold))
-        }
+        /// Section headers (Dynamic Type: Subheadline).
+        static let sectionHeader: Font = .system(.subheadline, design: .default).weight(.semibold)
 
-        static func routeLabel(_ text: String) -> Text {
-            Text(text).font(.system(size: 18, weight: .heavy, design: .monospaced))
-        }
+        /// Monospaced route labels (Dynamic Type: Body).
+        static let routeLabel: Font = .system(.body, design: .monospaced).weight(.heavy)
 
-        static func body(_ text: String) -> Text {
-            Text(text).font(.system(size: 16, weight: .medium, design: .default))
-        }
+        /// Standard body text (Dynamic Type: Callout).
+        static let body: Font = .system(.callout, design: .default).weight(.medium)
     }
 
     // MARK: - Subway Line Colors
@@ -141,30 +136,31 @@ struct AppTheme {
     /// - ``MapCameraBounds`` — https://developer.apple.com/documentation/mapkit/mapcamerabounds
     /// - ``MKCoordinateRegion`` — https://developer.apple.com/documentation/mapkit/mkcoordinateregion
     struct MapConfig {
-        /// Geographic center of the NYC Metropolitan Area (Tri-State).
-        static let metroCenter = CLLocationCoordinate2D(latitude: 40.90, longitude: -73.45)
+        /// Geographic center of NYC (near the East River for balance).
+        static let metroCenter = CLLocationCoordinate2D(latitude: 40.7306, longitude: -73.9352)
 
-        /// Coordinate span covering the full metro area.
-        /// North 41.60° → South 40.20° (delta 1.4)
-        /// West -75.10° → East -71.80° (delta 3.3)
-        static let metroSpan = MKCoordinateSpan(latitudeDelta: 1.4, longitudeDelta: 3.3)
+        /// Covers the 5 boroughs + immediate suburbs (Westchester, Newark, Nassau).
+        /// Latitude ~1.0 covers from Sandy Hook to White Plains.
+        /// Longitude ~1.2 covers from Newark to Oyster Bay.
+        static let metroSpan = MKCoordinateSpan(latitudeDelta: 1.0, longitudeDelta: 1.2)
 
         /// The full metro region used to initialize the map and constrain panning.
         static let metroRegion = MKCoordinateRegion(center: metroCenter, span: metroSpan)
 
         /// Camera bounds that restrict user panning to the NYC metro area.
-        /// - minimumDistance: 500 m (street-level zoom)
-        /// - maximumDistance: 250 km (see the whole region)
+        /// - minimumDistance: 300 m (slightly tighter zoom for subway entrances)
+        /// - maximumDistance: 150 km (plenty to see the whole system)
         static let cameraBounds = MapCameraBounds(
             centerCoordinateBounds: metroRegion,
-            minimumDistance: 500,
-            maximumDistance: 250_000
+            minimumDistance: 300,
+            maximumDistance: 150_000
         )
 
-        /// Default NYC center (Manhattan) for fallback when user location is unavailable.
-        static let nycCenter = CLLocationCoordinate2D(latitude: 40.7128, longitude: -74.0060)
+        /// Default NYC center (Midtown) for specific fallback scenarios.
+        static let nycCenter = metroCenter
 
-        /// Initial camera position centered on the user, bounded to metro region.
+        /// Initial camera position centered on the user, falling back to the metro region.
+        /// This ensures "my locations" are always prioritized.
         static let initialPosition: MapCameraPosition = .userLocation(
             fallback: .region(metroRegion)
         )

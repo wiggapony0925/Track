@@ -24,7 +24,7 @@ struct HomeView: View {
     var body: some View {
         ZStack {
             // Map background bounded to the NYC Metropolitan Area.
-            // Uses MapCameraBounds to restrict panning (500 m – 250 km zoom),
+            // Uses MapCameraBounds to restrict panning (300 m – 150 km zoom),
             // and a transit-emphasized map style that dims driving elements.
             // Ref: https://developer.apple.com/documentation/mapkit/mapcamerabounds
             Map(position: $cameraPosition,
@@ -322,7 +322,8 @@ struct HomeView: View {
             VStack(alignment: .leading, spacing: 16) {
                 // Header with settings gear
                 HStack {
-                    AppTheme.Typography.headerLarge("Track")
+                    Text("Track")
+                        .font(AppTheme.Typography.headerLarge)
                         .foregroundColor(AppTheme.Colors.textPrimary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
@@ -332,7 +333,7 @@ struct HomeView: View {
                     // Drop pin button
                     Button {
                         let center = locationManager.currentLocation?.coordinate
-                            ?? CLLocationCoordinate2D(latitude: 40.7128, longitude: -74.0060)
+                            ?? AppTheme.MapConfig.nycCenter
                         let offset = CLLocationCoordinate2D(
                             latitude: center.latitude + 0.002,
                             longitude: center.longitude + 0.002
@@ -609,7 +610,8 @@ struct HomeView: View {
     // MARK: - Helpers
 
     private func sectionHeader(_ title: String) -> some View {
-        AppTheme.Typography.sectionHeader(title)
+        Text(title)
+            .font(AppTheme.Typography.sectionHeader)
             .foregroundColor(AppTheme.Colors.textSecondary)
             .textCase(.uppercase)
             .lineLimit(1)
