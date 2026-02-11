@@ -25,7 +25,11 @@ final class HomeViewModel {
     var busArrivals: [BusArrival] = []
     var selectedBusStop: BusStop?
 
+    // Live Activity tracking
+    var trackingArrivalId: String?
+
     private let repository = TransitRepository()
+    private let liveActivityManager = LiveActivityManager.shared
 
     /// Refreshes the home screen data based on current context and transport mode.
     func refresh(context: ModelContext, location: CLLocation?) async {
@@ -115,5 +119,42 @@ final class HomeViewModel {
         } catch {
             errorMessage = (error as? TrackAPIError)?.description ?? error.localizedDescription
         }
+    }
+
+    // MARK: - Live Activity
+
+    /// Starts tracking a subway arrival via Live Activity.
+    func trackSubwayArrival(_ arrival: TrainArrival) {
+        trackingArrivalId = arrival.id.uuidString
+        liveActivityManager.startActivity(
+            lineId: arrival.routeID,
+            destination: arrival.direction,
+            arrivalTime: arrival.estimatedTime,
+            isBus: false
+        )
+    }
+
+    /// Starts tracking a bus arrival via Live Activity.
+    func trackBusArrival(_ arrival: BusArrival) {
+        trackingArrivalId = arrival.id
+        let arrivalTime = arrival.expectedArrival ?? Date().addingTimeInterval(300)
+        let routeName: String
+        if arrival.routeId.hasPrefix("MTA NYCT_") {
+            routeName = String(arrival.routeId.dropFirst(9))
+        } else {
+            routeName = arrival.routeId
+        }
+        liveActivityManager.startActivity(
+            lineId: routeName,
+            destination: arrival.statusText,
+            arrivalTime: arrivalTime,
+            isBus: true
+        )
+    }
+
+    /// Stops tracking the current Live Activity.
+    func stopTracking() {
+        trackingArrivalId = nil
+        liveActivityManager.endActivity()
     }
 }

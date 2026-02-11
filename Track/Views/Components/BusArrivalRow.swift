@@ -5,12 +5,15 @@
 //  Displays a single bus arrival with the status text from the SIRI API.
 //  Unlike subway rows that show calculated minutes, bus rows show direct
 //  strings like "Approaching" or "3 stops away".
+//  Tapping the row starts a Live Activity to track the bus.
 //
 
 import SwiftUI
 
 struct BusArrivalRow: View {
     let arrival: BusArrival
+    var isTracking: Bool = false
+    var onTrack: (() -> Void)?
 
     var body: some View {
         HStack(spacing: 12) {
@@ -27,11 +30,22 @@ struct BusArrivalRow: View {
 
             // Route info
             VStack(alignment: .leading, spacing: 2) {
-                Text(shortRouteName)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(AppTheme.Colors.textPrimary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                HStack(spacing: 4) {
+                    Text(shortRouteName)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(AppTheme.Colors.textPrimary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                    if isTracking {
+                        Text("LIVE")
+                            .font(.system(size: 9, weight: .heavy))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(AppTheme.Colors.alertRed)
+                            .clipShape(Capsule())
+                    }
+                }
                 Text(arrival.stopId)
                     .font(.system(size: 12, weight: .regular))
                     .foregroundColor(AppTheme.Colors.textSecondary)
@@ -49,8 +63,13 @@ struct BusArrivalRow: View {
         }
         .padding(.vertical, 8)
         .padding(.horizontal, AppTheme.Layout.margin)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            onTrack?()
+        }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Bus \(shortRouteName), \(arrival.statusText)")
+        .accessibilityHint(isTracking ? "Currently tracking" : "Tap to track this bus")
     }
 
     /// Strips the "MTA NYCT_" prefix for display.
@@ -74,14 +93,17 @@ struct BusArrivalRow: View {
 
 #Preview {
     VStack {
-        BusArrivalRow(arrival: BusArrival(
-            routeId: "MTA NYCT_B63",
-            vehicleId: "MTA NYCT_7582",
-            stopId: "MTA_308214",
-            statusText: "Approaching",
-            expectedArrival: nil,
-            distanceMeters: 50
-        ))
+        BusArrivalRow(
+            arrival: BusArrival(
+                routeId: "MTA NYCT_B63",
+                vehicleId: "MTA NYCT_7582",
+                stopId: "MTA_308214",
+                statusText: "Approaching",
+                expectedArrival: nil,
+                distanceMeters: 50
+            ),
+            isTracking: true
+        )
         BusArrivalRow(arrival: BusArrival(
             routeId: "MTA NYCT_B63",
             vehicleId: "MTA NYCT_7590",

@@ -147,7 +147,14 @@ struct HomeView: View {
                 sectionHeader("Upcoming Arrivals")
 
                 ForEach(viewModel.upcomingArrivals) { arrival in
-                    ArrivalRow(arrival: arrival, prediction: nil)
+                    ArrivalRow(
+                        arrival: arrival,
+                        prediction: nil,
+                        isTracking: viewModel.trackingArrivalId == arrival.id.uuidString,
+                        onTrack: {
+                            viewModel.trackSubwayArrival(arrival)
+                        }
+                    )
                 }
             }
 
@@ -190,7 +197,13 @@ struct HomeView: View {
                 sectionHeader("Arriving")
 
                 ForEach(viewModel.busArrivals) { arrival in
-                    BusArrivalRow(arrival: arrival)
+                    BusArrivalRow(
+                        arrival: arrival,
+                        isTracking: viewModel.trackingArrivalId == arrival.id,
+                        onTrack: {
+                            viewModel.trackBusArrival(arrival)
+                        }
+                    )
                 }
             }
 
