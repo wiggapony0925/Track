@@ -25,7 +25,7 @@ struct BusArrivalRow: View {
                     .frame(width: AppTheme.Layout.badgeSizeMedium, height: AppTheme.Layout.badgeSizeMedium)
                 Image(systemName: "bus.fill")
                     .font(.system(size: 14, weight: .bold))
-                    .foregroundColor(.white)
+                    .foregroundColor(AppTheme.Colors.textOnColor)
             }
             .accessibilityHidden(true)
 
@@ -40,7 +40,7 @@ struct BusArrivalRow: View {
                     if isTracking {
                         Text("LIVE")
                             .font(.system(size: 9, weight: .heavy))
-                            .foregroundColor(.white)
+                            .foregroundColor(AppTheme.Colors.textOnColor)
                             .padding(.horizontal, 5)
                             .padding(.vertical, 2)
                             .background(AppTheme.Colors.alertRed)

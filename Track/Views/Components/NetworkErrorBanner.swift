@@ -16,11 +16,11 @@ struct NetworkErrorBanner: View {
         HStack(spacing: 8) {
             Image(systemName: "wifi.exclamationmark")
                 .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(.white)
+                .foregroundColor(AppTheme.Colors.textOnColor)
 
             Text(message)
                 .font(.system(size: 13, weight: .medium))
-                .foregroundColor(.white)
+                .foregroundColor(AppTheme.Colors.textOnColor)
                 .lineLimit(2)
                 .minimumScaleFactor(0.8)
 
@@ -32,7 +32,7 @@ struct NetworkErrorBanner: View {
                 } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(.white.opacity(0.8))
+                        .foregroundColor(AppTheme.Colors.textOnColor.opacity(0.8))
                 }
                 .accessibilityLabel("Dismiss error")
             }

@@ -114,16 +114,16 @@ struct TrackWidgetEntryView: View {
             // Line badge
             ZStack {
                 Circle()
-                    .fill(entry.isBus ? Color.blue : Color.black)
+                    .fill(entry.isBus ? AppTheme.Colors.mtaBlue : AppTheme.Colors.subwayBlack)
                     .frame(width: 44, height: 44)
                 if entry.isBus {
                     Image(systemName: "bus.fill")
                         .font(.system(size: 20, weight: .bold))
-                        .foregroundColor(.white)
+                        .foregroundColor(AppTheme.Colors.textOnColor)
                 } else {
                     Text(entry.lineId)
                         .font(.system(size: 20, weight: .heavy, design: .monospaced))
-                        .foregroundColor(.white)
+                        .foregroundColor(AppTheme.Colors.textOnColor)
                         .minimumScaleFactor(0.5)
                         .lineLimit(1)
                 }
@@ -132,34 +132,34 @@ struct TrackWidgetEntryView: View {
             // Big countdown
             Text("\(entry.minutesAway)")
                 .font(.system(size: 36, weight: .bold, design: .rounded))
-                .foregroundColor(.primary)
+                .foregroundColor(AppTheme.Colors.textPrimary)
             Text("min")
                 .font(.system(size: 14, weight: .medium))
-                .foregroundColor(.secondary)
+                .foregroundColor(AppTheme.Colors.textSecondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .containerBackground(for: .widget) {
-            Color(.systemBackground)
+            AppTheme.Colors.background
         }
     }
 
     // MARK: - Medium Widget
 
     private var mediumView: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: AppTheme.Layout.margin) {
             // Line badge
             ZStack {
                 Circle()
-                    .fill(entry.isBus ? Color.blue : Color.black)
+                    .fill(entry.isBus ? AppTheme.Colors.mtaBlue : AppTheme.Colors.subwayBlack)
                     .frame(width: 48, height: 48)
                 if entry.isBus {
                     Image(systemName: "bus.fill")
                         .font(.system(size: 22, weight: .bold))
-                        .foregroundColor(.white)
+                        .foregroundColor(AppTheme.Colors.textOnColor)
                 } else {
                     Text(entry.lineId)
                         .font(.system(size: 22, weight: .heavy, design: .monospaced))
-                        .foregroundColor(.white)
+                        .foregroundColor(AppTheme.Colors.textOnColor)
                         .minimumScaleFactor(0.5)
                         .lineLimit(1)
                 }
@@ -169,11 +169,11 @@ struct TrackWidgetEntryView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(entry.destination)
                     .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(.primary)
+                    .foregroundColor(AppTheme.Colors.textPrimary)
                     .lineLimit(1)
                 Text(entry.status)
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(entry.status == "On Time" ? .green : .orange)
+                    .foregroundColor(entry.status == "On Time" ? AppTheme.Colors.successGreen : AppTheme.Colors.warningYellow)
                     .lineLimit(1)
             }
 
@@ -183,16 +183,16 @@ struct TrackWidgetEntryView: View {
             VStack(spacing: 2) {
                 Text("\(entry.minutesAway)")
                     .font(.system(size: 32, weight: .bold, design: .rounded))
-                    .foregroundColor(.primary)
+                    .foregroundColor(AppTheme.Colors.textPrimary)
                 Text("min")
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(.secondary)
+                    .foregroundColor(AppTheme.Colors.textSecondary)
             }
         }
-        .padding(16)
+        .padding(AppTheme.Layout.margin)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .containerBackground(for: .widget) {
-            Color(.systemBackground)
+            AppTheme.Colors.background
         }
     }
 }

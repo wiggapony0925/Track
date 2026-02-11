@@ -22,6 +22,9 @@ struct AppTheme {
         static let cardBackground = Color("CardSurface")
         static let textPrimary = Color("TextPrimary")
         static let textSecondary = Color("TextSecondary")
+
+        /// White text used on colored badges, buttons, and banners.
+        static let textOnColor = Color.white
     }
 
     struct Typography {

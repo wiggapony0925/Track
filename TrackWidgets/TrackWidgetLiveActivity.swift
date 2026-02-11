@@ -24,20 +24,20 @@ struct TrackWidgetLiveActivity: Widget {
                 DynamicIslandExpandedRegion(.trailing) {
                     Text(context.state.arrivalTime, style: .timer)
                         .font(.system(size: 18, weight: .bold, design: .rounded))
-                        .foregroundColor(.white)
+                        .foregroundColor(AppTheme.Colors.textOnColor)
                         .monospacedDigit()
                         .frame(maxWidth: .infinity, alignment: .trailing)
                 }
                 DynamicIslandExpandedRegion(.center) {
                     // Progress bar
                     ProgressView(value: context.state.progress)
-                        .tint(context.attributes.isBus ? .blue : .white)
+                        .tint(context.attributes.isBus ? AppTheme.Colors.mtaBlue : AppTheme.Colors.textOnColor)
                         .padding(.horizontal, 4)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
                     Text("To \(context.attributes.destination)")
                         .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(.secondary)
+                        .foregroundColor(AppTheme.Colors.textSecondary)
                         .lineLimit(1)
                 }
             } compactLeading: {
@@ -68,11 +68,11 @@ struct TrackWidgetLiveActivity: Widget {
             VStack(alignment: .leading, spacing: 2) {
                 Text(context.state.statusText)
                     .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(.primary)
+                    .foregroundColor(AppTheme.Colors.textPrimary)
                     .lineLimit(1)
                 Text("To \(context.attributes.destination)")
                     .font(.system(size: 12, weight: .regular))
-                    .foregroundColor(.secondary)
+                    .foregroundColor(AppTheme.Colors.textSecondary)
                     .lineLimit(1)
             }
 
@@ -82,10 +82,10 @@ struct TrackWidgetLiveActivity: Widget {
             Text(context.state.arrivalTime, style: .timer)
                 .font(.system(size: 22, weight: .bold, design: .rounded))
                 .monospacedDigit()
-                .foregroundColor(.primary)
+                .foregroundColor(AppTheme.Colors.textPrimary)
         }
-        .padding(16)
-        .background(context.attributes.isBus ? Color.blue.opacity(0.15) : Color.black.opacity(0.05))
+        .padding(AppTheme.Layout.margin)
+        .background(context.attributes.isBus ? AppTheme.Colors.mtaBlue.opacity(0.15) : AppTheme.Colors.subwayBlack.opacity(0.05))
     }
 
     // MARK: - Badge Helpers
@@ -94,16 +94,16 @@ struct TrackWidgetLiveActivity: Widget {
     private func lineBadge(context: ActivityViewContext<TrackActivityAttributes>) -> some View {
         ZStack {
             Circle()
-                .fill(context.attributes.isBus ? Color.blue : Color.black)
+                .fill(context.attributes.isBus ? AppTheme.Colors.mtaBlue : AppTheme.Colors.subwayBlack)
                 .frame(width: 36, height: 36)
             if context.attributes.isBus {
                 Image(systemName: "bus.fill")
                     .font(.system(size: 16, weight: .bold))
-                    .foregroundColor(.white)
+                    .foregroundColor(AppTheme.Colors.textOnColor)
             } else {
                 Text(context.attributes.lineId)
                     .font(.system(size: 16, weight: .heavy, design: .monospaced))
-                    .foregroundColor(.white)
+                    .foregroundColor(AppTheme.Colors.textOnColor)
                     .minimumScaleFactor(0.6)
                     .lineLimit(1)
             }
@@ -114,16 +114,16 @@ struct TrackWidgetLiveActivity: Widget {
     private func compactLineBadge(context: ActivityViewContext<TrackActivityAttributes>) -> some View {
         ZStack {
             Circle()
-                .fill(context.attributes.isBus ? Color.blue : Color.black)
+                .fill(context.attributes.isBus ? AppTheme.Colors.mtaBlue : AppTheme.Colors.subwayBlack)
                 .frame(width: 24, height: 24)
             if context.attributes.isBus {
                 Image(systemName: "bus.fill")
                     .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(.white)
+                    .foregroundColor(AppTheme.Colors.textOnColor)
             } else {
                 Text(context.attributes.lineId)
                     .font(.system(size: 11, weight: .heavy, design: .monospaced))
-                    .foregroundColor(.white)
+                    .foregroundColor(AppTheme.Colors.textOnColor)
                     .minimumScaleFactor(0.5)
                     .lineLimit(1)
             }

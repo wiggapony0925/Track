@@ -28,7 +28,7 @@ struct TransportModeToggle: View {
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
-                    .foregroundColor(selectedMode == mode ? .white : AppTheme.Colors.textPrimary)
+                    .foregroundColor(selectedMode == mode ? AppTheme.Colors.textOnColor : AppTheme.Colors.textPrimary)
                     .background(
                         selectedMode == mode
                             ? (mode == .subway ? AppTheme.Colors.subwayBlack : AppTheme.Colors.mtaBlue)

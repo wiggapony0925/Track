@@ -69,7 +69,7 @@ struct SmartSuggestionCard: View {
             Button(action: onStartTrip) {
                 Text("Start Trip")
                     .font(.system(size: 16, weight: .bold))
-                    .foregroundColor(.white)
+                    .foregroundColor(AppTheme.Colors.textOnColor)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
                     .background(AppTheme.Colors.successGreen)

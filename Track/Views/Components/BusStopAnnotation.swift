@@ -19,7 +19,7 @@ struct BusStopAnnotation: View {
 
             Image(systemName: "bus.fill")
                 .font(.system(size: 14, weight: .bold))
-                .foregroundColor(.white)
+                .foregroundColor(AppTheme.Colors.textOnColor)
         }
         .accessibilityLabel("Bus stop: \(stopName)")
     }

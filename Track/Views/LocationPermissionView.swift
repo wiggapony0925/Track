@@ -52,7 +52,7 @@ struct LocationPermissionView: View {
                         Button(action: openSettings) {
                             Text("Open Settings")
                                 .font(.system(size: 17, weight: .semibold))
-                                .foregroundColor(.white)
+                                .foregroundColor(AppTheme.Colors.textOnColor)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 16)
                                 .background(AppTheme.Colors.mtaBlue)
@@ -66,7 +66,7 @@ struct LocationPermissionView: View {
                     Button(action: onRequestPermission) {
                         Text("Share My Location")
                             .font(.system(size: 17, weight: .semibold))
-                            .foregroundColor(.white)
+                            .foregroundColor(AppTheme.Colors.textOnColor)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 16)
                             .background(AppTheme.Colors.mtaBlue)

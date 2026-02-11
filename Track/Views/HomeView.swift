@@ -265,7 +265,7 @@ private struct NearbyBusStopRow: View {
                     .frame(width: AppTheme.Layout.badgeSizeMedium, height: AppTheme.Layout.badgeSizeMedium)
                 Image(systemName: "bus.fill")
                     .font(.system(size: 14, weight: .bold))
-                    .foregroundColor(.white)
+                    .foregroundColor(AppTheme.Colors.textOnColor)
             }
             .accessibilityHidden(true)
 

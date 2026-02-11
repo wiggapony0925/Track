@@ -30,7 +30,7 @@ struct ArrivalRow: View {
                     if isTracking {
                         Text("LIVE")
                             .font(.system(size: 9, weight: .heavy))
-                            .foregroundColor(.white)
+                            .foregroundColor(AppTheme.Colors.textOnColor)
                             .padding(.horizontal, 5)
                             .padding(.vertical, 2)
                             .background(AppTheme.Colors.alertRed)

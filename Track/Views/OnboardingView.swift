@@ -57,7 +57,7 @@ struct OnboardingView: View {
             } label: {
                 Text("Allow Location")
                     .font(.system(size: 17, weight: .semibold))
-                    .foregroundColor(.white)
+                    .foregroundColor(AppTheme.Colors.textOnColor)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
                     .background(AppTheme.Colors.mtaBlue)
@@ -96,7 +96,7 @@ struct OnboardingView: View {
             } label: {
                 Text("Enable Activities")
                     .font(.system(size: 17, weight: .semibold))
-                    .foregroundColor(.white)
+                    .foregroundColor(AppTheme.Colors.textOnColor)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
                     .background(AppTheme.Colors.successGreen)
@@ -134,7 +134,7 @@ struct OnboardingView: View {
             } label: {
                 Text("Get Started")
                     .font(.system(size: 17, weight: .semibold))
-                    .foregroundColor(.white)
+                    .foregroundColor(AppTheme.Colors.textOnColor)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
                     .background(AppTheme.Colors.mtaBlue)
