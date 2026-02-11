@@ -14,7 +14,16 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.models import BusStop, BusVehicle, NearbyTransitArrival, RouteShape, TrackArrival
+from app.models import (
+    BusStop,
+    BusVehicle,
+    DirectionArrivals,
+    GroupedNearbyTransit,
+    NearbyTransitArrival,
+    RouteShape,
+    TrackArrival,
+)
+from app.routers.nearby import _group_arrivals
 
 client = TestClient(app)
 
@@ -284,3 +293,184 @@ class TestRouteShapeEndpoint:
         data = response.json()
         assert data["polylines"] == []
         assert data["stops"] == []
+
+
+class TestGroupedModels:
+    """Tests for the DirectionArrivals and GroupedNearbyTransit models."""
+
+    def test_direction_arrivals(self):
+        da = DirectionArrivals(
+            direction="N",
+            arrivals=[
+                NearbyTransitArrival(
+                    route_id="L", stop_name="1st Ave", direction="N",
+                    minutes_away=3, mode="subway",
+                ),
+            ],
+        )
+        assert da.direction == "N"
+        assert len(da.arrivals) == 1
+
+    def test_grouped_transit(self):
+        group = GroupedNearbyTransit(
+            route_id="L",
+            display_name="L",
+            mode="subway",
+            color_hex="#A7A9AC",
+            directions=[
+                DirectionArrivals(direction="N", arrivals=[]),
+                DirectionArrivals(direction="S", arrivals=[]),
+            ],
+        )
+        assert group.route_id == "L"
+        assert len(group.directions) == 2
+        assert group.color_hex == "#A7A9AC"
+
+    def test_arrival_with_stop_coords(self):
+        arrival = NearbyTransitArrival(
+            route_id="B63", stop_name="5 Av", direction="E",
+            minutes_away=4, mode="bus",
+            stop_lat=40.67, stop_lon=-73.98,
+        )
+        assert arrival.stop_lat == 40.67
+        assert arrival.stop_lon == -73.98
+
+
+class TestGroupingLogic:
+    """Tests for the _group_arrivals helper."""
+
+    def test_groups_by_route(self):
+        flat = [
+            NearbyTransitArrival(
+                route_id="A", stop_name="S1", direction="N",
+                minutes_away=3, mode="subway",
+            ),
+            NearbyTransitArrival(
+                route_id="A", stop_name="S2", direction="S",
+                minutes_away=5, mode="subway",
+            ),
+            NearbyTransitArrival(
+                route_id="L", stop_name="S3", direction="N",
+                minutes_away=2, mode="subway",
+            ),
+        ]
+        groups = _group_arrivals(flat)
+        assert len(groups) == 2
+        route_ids = {g.route_id for g in groups}
+        assert route_ids == {"A", "L"}
+
+    def test_sorts_by_soonest_arrival(self):
+        flat = [
+            NearbyTransitArrival(
+                route_id="A", stop_name="S1", direction="N",
+                minutes_away=10, mode="subway",
+            ),
+            NearbyTransitArrival(
+                route_id="L", stop_name="S2", direction="N",
+                minutes_away=2, mode="subway",
+            ),
+        ]
+        groups = _group_arrivals(flat)
+        assert groups[0].route_id == "L"
+        assert groups[1].route_id == "A"
+
+    def test_directions_sorted_alphabetically(self):
+        flat = [
+            NearbyTransitArrival(
+                route_id="A", stop_name="S1", direction="S",
+                minutes_away=3, mode="subway",
+            ),
+            NearbyTransitArrival(
+                route_id="A", stop_name="S2", direction="N",
+                minutes_away=5, mode="subway",
+            ),
+        ]
+        groups = _group_arrivals(flat)
+        assert len(groups) == 1
+        assert groups[0].directions[0].direction == "N"
+        assert groups[0].directions[1].direction == "S"
+
+    def test_empty_input(self):
+        assert _group_arrivals([]) == []
+
+    def test_subway_color_assigned(self):
+        flat = [
+            NearbyTransitArrival(
+                route_id="L", stop_name="S1", direction="N",
+                minutes_away=3, mode="subway",
+            ),
+        ]
+        groups = _group_arrivals(flat)
+        assert groups[0].color_hex == "#A7A9AC"
+
+    def test_bus_no_color(self):
+        flat = [
+            NearbyTransitArrival(
+                route_id="MTA NYCT_B63", stop_name="5 Av", direction="E",
+                minutes_away=4, mode="bus",
+            ),
+        ]
+        groups = _group_arrivals(flat)
+        assert groups[0].color_hex is None
+        assert groups[0].display_name == "B63"
+
+
+class TestNearbyGroupedEndpoint:
+    """Tests for the GET /nearby/grouped endpoint."""
+
+    @patch("app.routers.nearby._fetch_nearby_subway", new_callable=AsyncMock)
+    @patch("app.routers.nearby._fetch_nearby_buses", new_callable=AsyncMock)
+    def test_grouped_returns_grouped_results(self, mock_buses, mock_subway):
+        mock_subway.return_value = [
+            NearbyTransitArrival(
+                route_id="A", stop_name="S1", direction="N",
+                minutes_away=3, mode="subway",
+            ),
+            NearbyTransitArrival(
+                route_id="A", stop_name="S2", direction="S",
+                minutes_away=5, mode="subway",
+            ),
+        ]
+        mock_buses.return_value = []
+
+        response = client.get("/nearby/grouped?lat=40.7&lon=-73.9")
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 1
+        assert data[0]["route_id"] == "A"
+        assert data[0]["display_name"] == "A"
+        assert len(data[0]["directions"]) == 2
+
+    @patch("app.routers.nearby._fetch_nearby_subway", new_callable=AsyncMock)
+    @patch("app.routers.nearby._fetch_nearby_buses", new_callable=AsyncMock)
+    def test_grouped_empty(self, mock_buses, mock_subway):
+        mock_subway.return_value = []
+        mock_buses.return_value = []
+
+        response = client.get("/nearby/grouped?lat=40.7&lon=-73.9")
+        assert response.status_code == 200
+        assert response.json() == []
+
+    @patch("app.routers.nearby._fetch_nearby_subway", new_callable=AsyncMock)
+    @patch("app.routers.nearby._fetch_nearby_buses", new_callable=AsyncMock)
+    def test_grouped_mixed_modes(self, mock_buses, mock_subway):
+        mock_subway.return_value = [
+            NearbyTransitArrival(
+                route_id="L", stop_name="1st Av", direction="N",
+                minutes_away=4, mode="subway",
+            ),
+        ]
+        mock_buses.return_value = [
+            NearbyTransitArrival(
+                route_id="MTA NYCT_B63", stop_name="5 Av", direction="E",
+                minutes_away=2, mode="bus",
+            ),
+        ]
+
+        response = client.get("/nearby/grouped?lat=40.7&lon=-73.9")
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 2
+        # Bus should be first (soonest arrival)
+        assert data[0]["mode"] == "bus"
+        assert data[1]["mode"] == "subway"

@@ -106,6 +106,28 @@ struct TrackAPI {
         return try decoder.decode([NearbyTransitResponse].self, from: data)
     }
 
+    /// Fetches nearby transit grouped by route with direction sub-groups.
+    /// Each route appears once; directions are swipeable in the detail sheet.
+    ///
+    /// - Parameters:
+    ///   - lat: User's latitude.
+    ///   - lon: User's longitude.
+    /// - Returns: Array of `GroupedNearbyTransitResponse`.
+    static func fetchNearbyGrouped(lat: Double, lon: Double) async throws -> [GroupedNearbyTransitResponse] {
+        guard var components = URLComponents(string: baseURL + "/nearby/grouped") else {
+            throw TrackAPIError.invalidURL
+        }
+        components.queryItems = [
+            URLQueryItem(name: "lat", value: String(lat)),
+            URLQueryItem(name: "lon", value: String(lon)),
+        ]
+        guard let url = components.url else {
+            throw TrackAPIError.invalidURL
+        }
+        let data = try await get(url: url)
+        return try decoder.decode([GroupedNearbyTransitResponse].self, from: data)
+    }
+
     // MARK: - Bus Vehicles & Route Shapes
 
     /// Fetches live vehicle positions for a bus route.
@@ -226,6 +248,8 @@ struct NearbyTransitResponse: Codable, Identifiable {
     let minutesAway: Int
     let status: String
     let mode: String
+    let stopLat: Double?
+    let stopLon: Double?
 
     var isBus: Bool { mode == "bus" }
 
@@ -244,6 +268,43 @@ struct NearbyTransitResponse: Codable, Identifiable {
         case minutesAway = "minutes_away"
         case status
         case mode
+        case stopLat = "stop_lat"
+        case stopLon = "stop_lon"
+    }
+}
+
+/// Arrivals for a single direction within a grouped route.
+struct DirectionArrivalsResponse: Codable, Identifiable {
+    var id: String { direction }
+
+    let direction: String
+    let arrivals: [NearbyTransitResponse]
+}
+
+/// Matches the backend's `GroupedNearbyTransit` JSON schema.
+/// One entry per route; directions are swipeable sub-groups.
+struct GroupedNearbyTransitResponse: Codable, Identifiable {
+    var id: String { routeId }
+
+    let routeId: String
+    let displayName: String
+    let mode: String
+    let colorHex: String?
+    let directions: [DirectionArrivalsResponse]
+
+    var isBus: Bool { mode == "bus" }
+
+    /// The soonest arrival across all directions.
+    var soonestMinutes: Int {
+        directions.flatMap(\.arrivals).map(\.minutesAway).min() ?? 99
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case routeId = "route_id"
+        case displayName = "display_name"
+        case mode
+        case colorHex = "color_hex"
+        case directions
     }
 }
 

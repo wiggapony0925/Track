@@ -16,16 +16,33 @@ struct HomeView: View {
     @State private var viewModel = HomeViewModel()
     @State private var locationManager = LocationManager()
     @State private var sheetDetent: PresentationDetent = .fraction(0.4)
-    @State private var cameraPosition: MapCameraPosition = .userLocation(fallback: .automatic)
+    @State private var cameraPosition: MapCameraPosition = AppTheme.MapConfig.initialPosition
     @State private var showSettings = false
     @State private var lastUpdated: Date?
     @State private var refreshTimer: Timer?
 
     var body: some View {
         ZStack {
-            // Map background centered on user location
-            Map(position: $cameraPosition) {
-                UserAnnotation()
+            // Map background bounded to the NYC Metropolitan Area.
+            // Uses MapCameraBounds to restrict panning (500 m – 250 km zoom),
+            // and a transit-emphasized map style that dims driving elements.
+            // Ref: https://developer.apple.com/documentation/mapkit/mapcamerabounds
+            Map(position: $cameraPosition,
+                bounds: AppTheme.MapConfig.cameraBounds) {
+
+                // User location — replaced by pulsing GO icon when tracking
+                if viewModel.isGoModeActive {
+                    // Pulsing vehicle icon snapped to the route line
+                    if let loc = locationManager.currentLocation?.coordinate {
+                        Annotation("You", coordinate: loc) {
+                            GoModeUserAnnotation(
+                                routeColor: viewModel.goModeRouteColor ?? AppTheme.Colors.mtaBlue
+                            )
+                        }
+                    }
+                } else {
+                    UserAnnotation()
+                }
 
                 // Draggable search pin
                 if viewModel.isSearchPinActive, let pin = viewModel.searchPinCoordinate {
@@ -52,7 +69,16 @@ struct HomeView: View {
                 if let shape = viewModel.routeShape {
                     ForEach(shape.stops) { stop in
                         Annotation(stop.name, coordinate: CLLocationCoordinate2D(latitude: stop.lat, longitude: stop.lon)) {
-                            BusStopAnnotation(stopName: stop.name)
+                            // Passed stops dim in GO mode (checklist behavior)
+                            if viewModel.isGoModeActive {
+                                GoModeStopAnnotation(
+                                    stopName: stop.name,
+                                    isPassed: viewModel.isStopPassed(stop),
+                                    routeColor: viewModel.goModeRouteColor ?? AppTheme.Colors.mtaBlue
+                                )
+                            } else {
+                                BusStopAnnotation(stopName: stop.name)
+                            }
                         }
                     }
                 }
@@ -74,10 +100,15 @@ struct HomeView: View {
                 if let shape = viewModel.routeShape {
                     ForEach(Array(shape.decodedPolylines.enumerated()), id: \.offset) { _, coords in
                         MapPolyline(coordinates: coords)
-                            .stroke(AppTheme.Colors.mtaBlue, lineWidth: 3)
+                            .stroke(
+                                viewModel.goModeRouteColor ?? AppTheme.Colors.mtaBlue,
+                                lineWidth: viewModel.isGoModeActive ? 5 : 3
+                            )
                     }
                 }
             }
+            // Transit-emphasized map style: dims driving roads, highlights transit lines/stations.
+            .mapStyle(.standard(emphasis: .muted, showsTraffic: false))
             .ignoresSafeArea()
             .onLongPressGesture(minimumDuration: 0.5) {
                 // Long press handled via MapReader below
@@ -90,17 +121,38 @@ struct HomeView: View {
                     searchPinBanner
                 }
 
-                // Selected route indicator
-                if viewModel.selectedRouteId != nil {
+                // Selected route indicator (hidden during GO mode — overlay replaces it)
+                if viewModel.selectedRouteId != nil && !viewModel.isGoModeActive {
                     selectedRouteBanner
                 }
 
                 Spacer()
-                TransportModeToggle(selectedMode: $viewModel.selectedMode)
-                    .padding(.bottom, 8)
+
+                // GO mode live tracking overlay (replaces bottom sheet content)
+                if viewModel.isGoModeActive {
+                    LiveTrackingOverlay(
+                        routeName: viewModel.goModeRouteName ?? "—",
+                        routeColor: viewModel.goModeRouteColor ?? AppTheme.Colors.mtaBlue,
+                        etaMinutes: viewModel.transitEtaMinutes,
+                        stops: viewModel.routeShape?.stops ?? [],
+                        passedStopIds: viewModel.passedStopIds,
+                        onGetOff: {
+                            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                                viewModel.deactivateGoMode()
+                            }
+                        }
+                    )
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .padding(.horizontal, 8)
+                    .padding(.bottom, 4)
+                } else {
+                    TransportModeToggle(selectedMode: $viewModel.selectedMode)
+                        .padding(.bottom, 8)
+                }
             }
         }
-        .sheet(isPresented: .constant(true)) {
+        // Bottom sheet — hidden during GO mode (the LiveTrackingOverlay replaces it)
+        .sheet(isPresented: .constant(!viewModel.isGoModeActive)) {
             dashboardContent
                 .presentationDetents([.fraction(0.4), .large])
                 .presentationDragIndicator(.visible)
@@ -108,6 +160,44 @@ struct HomeView: View {
                 .interactiveDismissDisabled()
                 .sheet(isPresented: $showSettings) {
                     SettingsView()
+                }
+                .sheet(isPresented: $viewModel.isRouteDetailPresented) {
+                    if let group = viewModel.selectedGroupedRoute {
+                        RouteDetailSheet(
+                            group: group,
+                            busVehicles: $viewModel.busVehicles,
+                            routeShape: $viewModel.routeShape,
+                            onTrack: { arrival in
+                                viewModel.trackNearbyArrival(arrival, location: locationManager.currentLocation)
+                            },
+                            onGoMode: { routeName, routeColor in
+                                viewModel.isRouteDetailPresented = false
+                                withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                                    viewModel.activateGoMode(routeName: routeName, routeColor: routeColor)
+                                }
+                                // Calculate transit ETA to the last stop on the route
+                                if let loc = locationManager.currentLocation?.coordinate,
+                                   let lastStop = viewModel.routeShape?.stops.last {
+                                    Task {
+                                        await viewModel.fetchTransitETA(
+                                            from: loc,
+                                            to: CLLocationCoordinate2D(
+                                                latitude: lastStop.lat,
+                                                longitude: lastStop.lon
+                                            )
+                                        )
+                                    }
+                                }
+                            },
+                            onDismiss: {
+                                viewModel.isRouteDetailPresented = false
+                                viewModel.selectedGroupedRoute = nil
+                                viewModel.clearBusRoute()
+                            }
+                        )
+                        .presentationDetents([.large])
+                        .presentationDragIndicator(.visible)
+                    }
                 }
         }
         .onAppear {
@@ -134,6 +224,18 @@ struct HomeView: View {
             Task {
                 await viewModel.refresh(location: locationManager.currentLocation)
                 lastUpdated = Date()
+            }
+        }
+        // Camera follow in GO mode — auto-pan to keep user centered
+        .onChange(of: locationManager.currentLocation) {
+            if viewModel.isGoModeActive, let loc = locationManager.currentLocation {
+                withAnimation(.easeInOut(duration: 0.8)) {
+                    cameraPosition = .camera(MapCamera(
+                        centerCoordinate: loc.coordinate,
+                        distance: 2000
+                    ))
+                }
+                viewModel.updatePassedStops(userLocation: loc)
             }
         }
     }
@@ -321,7 +423,27 @@ struct HomeView: View {
 
     private var nearbyDashboard: some View {
         Group {
-            if !viewModel.nearbyTransit.isEmpty {
+            if !viewModel.groupedTransit.isEmpty {
+                sectionHeader("Live Arrivals")
+
+                VStack(spacing: 0) {
+                    ForEach(Array(viewModel.groupedTransit.enumerated()), id: \.element.id) { index, group in
+                        GroupedRouteRow(group: group)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                Task { await viewModel.selectGroupedRoute(group) }
+                            }
+                        if index < viewModel.groupedTransit.count - 1 {
+                            Divider()
+                                .padding(.leading, AppTheme.Layout.margin + AppTheme.Layout.badgeSizeMedium + 12)
+                        }
+                    }
+                }
+                .background(AppTheme.Colors.cardBackground)
+                .cornerRadius(AppTheme.Layout.cornerRadius)
+                .padding(.horizontal, AppTheme.Layout.margin)
+            } else if !viewModel.nearbyTransit.isEmpty {
+                // Fallback to flat list if grouped endpoint failed
                 sectionHeader("Live Arrivals")
 
                 VStack(spacing: 0) {
@@ -794,6 +916,110 @@ private struct NearbyBusStopRow: View {
         .padding(.horizontal, AppTheme.Layout.margin)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Bus stop: \(stop.name)")
+    }
+}
+
+// MARK: - Grouped Route Row
+
+/// A compact row for a grouped route card. Shows the route badge,
+/// display name, direction count, and soonest arrival countdown.
+/// Tapping opens the ``RouteDetailSheet``.
+private struct GroupedRouteRow: View {
+    let group: GroupedNearbyTransitResponse
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // Mode badge
+            ZStack {
+                Circle()
+                    .fill(badgeColor)
+                    .frame(width: AppTheme.Layout.badgeSizeMedium,
+                           height: AppTheme.Layout.badgeSizeMedium)
+                if group.isBus {
+                    Image(systemName: "bus.fill")
+                        .font(.system(size: AppTheme.Layout.badgeFontMedium, weight: .bold))
+                        .foregroundColor(.white)
+                } else {
+                    Text(group.displayName)
+                        .font(.system(size: AppTheme.Layout.badgeFontMedium,
+                                      weight: .heavy, design: .monospaced))
+                        .foregroundColor(AppTheme.SubwayColors.textColor(for: group.displayName))
+                        .minimumScaleFactor(0.5)
+                        .lineLimit(1)
+                }
+            }
+            .accessibilityHidden(true)
+
+            // Route info
+            VStack(alignment: .leading, spacing: 2) {
+                Text(group.displayName)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(AppTheme.Colors.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+
+                HStack(spacing: 4) {
+                    ForEach(group.directions, id: \.direction) { dir in
+                        Text(shortDirection(dir.direction))
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
+                    }
+                    if group.directions.count > 1 {
+                        Text("·")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
+                        Text("\(group.directions.count) directions")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
+                    }
+                }
+            }
+
+            Spacer(minLength: 4)
+
+            // Soonest countdown
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                Text("\(group.soonestMinutes)")
+                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                    .foregroundColor(AppTheme.Colors.countdown(group.soonestMinutes))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                Text("min")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+            }
+
+            // Chevron
+            Image(systemName: "chevron.right")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(AppTheme.Colors.textSecondary)
+        }
+        .padding(.vertical, 10)
+        .padding(.horizontal, AppTheme.Layout.margin)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            "\(group.isBus ? "Bus" : "Train") \(group.displayName), next in \(group.soonestMinutes) minutes"
+        )
+        .accessibilityHint("Tap to see arrivals in both directions")
+    }
+
+    private var badgeColor: Color {
+        if let hex = group.colorHex {
+            return Color(hex: hex)
+        }
+        return group.isBus
+            ? AppTheme.Colors.mtaBlue
+            : AppTheme.SubwayColors.color(for: group.displayName)
+    }
+
+    private func shortDirection(_ d: String) -> String {
+        switch d.uppercased() {
+        case "N": return "↑ North"
+        case "S": return "↓ South"
+        case "E": return "→ East"
+        case "W": return "← West"
+        default: return d
+        }
     }
 }
 

@@ -80,6 +80,29 @@ class NearbyTransitArrival(BaseModel):
     minutes_away: int
     status: str = "On Time"
     mode: str  # "subway" or "bus"
+    stop_lat: float | None = None
+    stop_lon: float | None = None
+
+
+class DirectionArrivals(BaseModel):
+    """Arrivals for a single direction of a route."""
+
+    direction: str
+    arrivals: list[NearbyTransitArrival]
+
+
+class GroupedNearbyTransit(BaseModel):
+    """Arrivals grouped by route with directions as sub-groups.
+
+    The iOS app shows one card per route; tapping opens a detail sheet
+    with swipeable direction tabs.
+    """
+
+    route_id: str
+    display_name: str
+    mode: str  # "subway" or "bus"
+    color_hex: str | None = None
+    directions: list[DirectionArrivals]
 
 
 class BusVehicle(BaseModel):

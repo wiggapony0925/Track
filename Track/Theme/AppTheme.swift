@@ -9,6 +9,7 @@
 //
 
 import SwiftUI
+import MapKit
 
 struct AppTheme {
 
@@ -30,6 +31,9 @@ struct AppTheme {
 
         /// White text used on colored badges, buttons, and banners.
         static let textOnColor = Color.white
+
+        /// Pulsing "GO" mode accent — a vivid green for the live tracking state.
+        static let goGreen = Color(red: 52/255, green: 199/255, blue: 89/255)
 
         /// Returns the appropriate countdown color for a given minutes value.
         /// Red ≤ 2 min, green ≤ 5 min, primary otherwise.
@@ -123,5 +127,46 @@ struct AppTheme {
         static let badgeFontSmall: CGFloat = 11.0
         static let badgeFontMedium: CGFloat = 14.0
         static let badgeFontLarge: CGFloat = 18.0
+    }
+
+    // MARK: - NYC Metro Map Configuration
+
+    /// Geographic bounds and camera constraints for the New York Metropolitan Area.
+    ///
+    /// The map is bounded to the Tri-State region so users cannot scroll
+    /// into Pennsylvania or Massachusetts. Zoom limits keep context
+    /// between street-level detail and the full metro overview.
+    ///
+    /// References:
+    /// - ``MapCameraBounds`` — https://developer.apple.com/documentation/mapkit/mapcamerabounds
+    /// - ``MKCoordinateRegion`` — https://developer.apple.com/documentation/mapkit/mkcoordinateregion
+    struct MapConfig {
+        /// Geographic center of the NYC Metropolitan Area (Tri-State).
+        static let metroCenter = CLLocationCoordinate2D(latitude: 40.90, longitude: -73.45)
+
+        /// Coordinate span covering the full metro area.
+        /// North 41.60° → South 40.20° (delta 1.4)
+        /// West -75.10° → East -71.80° (delta 3.3)
+        static let metroSpan = MKCoordinateSpan(latitudeDelta: 1.4, longitudeDelta: 3.3)
+
+        /// The full metro region used to initialize the map and constrain panning.
+        static let metroRegion = MKCoordinateRegion(center: metroCenter, span: metroSpan)
+
+        /// Camera bounds that restrict user panning to the NYC metro area.
+        /// - minimumDistance: 500 m (street-level zoom)
+        /// - maximumDistance: 250 km (see the whole region)
+        static let cameraBounds = MapCameraBounds(
+            centerCoordinateBounds: metroRegion,
+            minimumDistance: 500,
+            maximumDistance: 250_000
+        )
+
+        /// Default NYC center (Manhattan) for fallback when user location is unavailable.
+        static let nycCenter = CLLocationCoordinate2D(latitude: 40.7128, longitude: -74.0060)
+
+        /// Initial camera position centered on the user, bounded to metro region.
+        static let initialPosition: MapCameraPosition = .userLocation(
+            fallback: .region(metroRegion)
+        )
     }
 }
