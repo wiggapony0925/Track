@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import BaseModel
 
 
@@ -35,3 +37,35 @@ class ElevatorStatus(BaseModel):
     equipment_type: str
     description: str
     outage_since: str | None = None
+
+
+class BusRoute(BaseModel):
+    """A normalized bus route from the OBA API."""
+
+    id: str
+    short_name: str
+    long_name: str
+    color: str
+    description: str
+
+
+class BusStop(BaseModel):
+    """A normalized bus stop from the OBA API."""
+
+    id: str
+    name: str
+    lat: float
+    lon: float
+    direction: str | None = None
+
+
+class BusArrival(BaseModel):
+    """A normalized real-time bus arrival from the SIRI API."""
+
+    route_id: str
+    vehicle_id: str
+    stop_id: str
+    status_text: str
+    expected_arrival: datetime | None = None
+    distance_meters: float | None = None
+    bearing: float | None = None

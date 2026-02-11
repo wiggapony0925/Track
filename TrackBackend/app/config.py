@@ -25,6 +25,15 @@ class AppSettings(BaseModel):
 
 class ApiKeys(BaseModel):
     mta_api_key: str = "YOUR_KEY_HERE"
+    mta_bus_key: str = ""
+
+
+class BusEndpoints(BaseModel):
+    vehicle_monitoring: str
+    stop_monitoring: str
+    routes_for_agency: str
+    stops_for_route: str
+    stops_near_location: str
 
 
 class Urls(BaseModel):
@@ -39,6 +48,9 @@ class Urls(BaseModel):
     lirr: str
     alerts_json: str
     elevators_json: str
+    bus_siri_base: str = ""
+    bus_oba_base: str = ""
+    bus_endpoints: BusEndpoints | None = None
 
 
 class Settings(BaseModel):

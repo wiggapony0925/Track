@@ -13,7 +13,7 @@ from typing import Any
 from fastapi import FastAPI
 
 from app.config import get_settings
-from app.routers import lirr, status, subway
+from app.routers import bus, lirr, status, subway
 
 app = FastAPI(
     title="Track API",
@@ -25,6 +25,7 @@ app = FastAPI(
 app.include_router(subway.router)
 app.include_router(lirr.router)
 app.include_router(status.router)
+app.include_router(bus.router)
 
 
 @app.get("/config")

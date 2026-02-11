@@ -5,7 +5,8 @@
     "show_ghost_trains": false
   },
   "api_keys": {
-    "mta_api_key": "YOUR_KEY_HERE"
+    "mta_api_key": "YOUR_KEY_HERE",
+    "mta_bus_key": "d5e1a531-5aa6-4db0-bd29-8dbdec47a27a"
   },
   "urls": {
     "subway_ace": "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-ace",
@@ -18,6 +19,15 @@
     "subway_si": "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-si",
     "lirr": "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/lirr%2Fgtfs-lirr",
     "alerts_json": "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fsubway-alerts.json",
-    "elevators_json": "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fnyct_ene.json"
+    "elevators_json": "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fnyct_ene.json",
+    "bus_siri_base": "http://bustime.mta.info/api/siri",
+    "bus_oba_base": "http://bustime.mta.info/api/where",
+    "bus_endpoints": {
+      "vehicle_monitoring": "/vehicle-monitoring.json",
+      "stop_monitoring": "/stop-monitoring.json",
+      "routes_for_agency": "/routes-for-agency/MTA%20NYCT.json",
+      "stops_for_route": "/stops-for-route/{route_id}.json",
+      "stops_near_location": "/stops-for-location.json"
+    }
   }
 }
