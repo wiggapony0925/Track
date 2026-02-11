@@ -61,6 +61,49 @@ struct AppTheme {
         }
     }
 
+    // MARK: - Subway Line Colors
+
+    /// Official MTA subway line colors. Used by RouteBadge and widget
+    /// transit badges to display the correct color per line.
+    struct SubwayColors {
+        static func color(for routeID: String) -> Color {
+            switch routeID.uppercased() {
+            case "1", "2", "3":
+                return Color(red: 238/255, green: 53/255, blue: 46/255)    // IRT Red
+            case "4", "5", "6":
+                return Color(red: 0/255, green: 147/255, blue: 60/255)     // IRT Green
+            case "7":
+                return Color(red: 185/255, green: 51/255, blue: 173/255)   // IRT Purple
+            case "A", "C", "E":
+                return Color(red: 0/255, green: 57/255, blue: 166/255)     // IND Blue
+            case "B", "D", "F", "M":
+                return Color(red: 255/255, green: 99/255, blue: 25/255)    // IND Orange
+            case "G":
+                return Color(red: 108/255, green: 190/255, blue: 69/255)   // IND Light Green
+            case "J", "Z":
+                return Color(red: 153/255, green: 102/255, blue: 51/255)   // BMT Brown
+            case "L":
+                return Color(red: 167/255, green: 169/255, blue: 172/255)  // BMT Grey
+            case "N", "Q", "R", "W":
+                return Color(red: 252/255, green: 204/255, blue: 10/255)   // BMT Yellow
+            case "S", "SI":
+                return Color(red: 128/255, green: 129/255, blue: 131/255)  // Shuttle Grey
+            default:
+                return Colors.mtaBlue
+            }
+        }
+
+        /// Returns white for most lines, black for yellow lines for readability.
+        static func textColor(for routeID: String) -> Color {
+            switch routeID.uppercased() {
+            case "N", "Q", "R", "W":
+                return .black
+            default:
+                return .white
+            }
+        }
+    }
+
     // MARK: - Layout
 
     struct Layout {

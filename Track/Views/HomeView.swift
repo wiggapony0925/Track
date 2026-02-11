@@ -18,6 +18,8 @@ struct HomeView: View {
     @State private var sheetDetent: PresentationDetent = .fraction(0.4)
     @State private var cameraPosition: MapCameraPosition = .userLocation(fallback: .automatic)
     @State private var showSettings = false
+    @State private var lastUpdated: Date?
+    @State private var refreshTimer: Timer?
 
     var body: some View {
         ZStack {
@@ -113,12 +115,25 @@ struct HomeView: View {
             locationManager.startUpdating()
             Task {
                 await viewModel.refresh(location: locationManager.currentLocation)
+                lastUpdated = Date()
             }
+            // Auto-refresh every 30 seconds
+            refreshTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { _ in
+                Task { @MainActor in
+                    await viewModel.refresh(location: locationManager.currentLocation)
+                    lastUpdated = Date()
+                }
+            }
+        }
+        .onDisappear {
+            refreshTimer?.invalidate()
+            refreshTimer = nil
         }
         .onChange(of: viewModel.selectedMode) {
             viewModel.clearBusRoute()
             Task {
                 await viewModel.refresh(location: locationManager.currentLocation)
+                lastUpdated = Date()
             }
         }
     }
@@ -241,6 +256,18 @@ struct HomeView: View {
                 }
                 .padding(.horizontal, AppTheme.Layout.margin)
 
+                // Last updated timestamp
+                if let lastUpdated = lastUpdated {
+                    HStack(spacing: 4) {
+                        Image(systemName: "clock.arrow.circlepath")
+                            .font(.system(size: 11, weight: .medium))
+                        Text("Updated \(lastUpdated, style: .relative) ago")
+                            .font(.system(size: 12, weight: .medium))
+                    }
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+                    .padding(.horizontal, AppTheme.Layout.margin)
+                }
+
                 // Mode-specific content
                 Group {
                     switch viewModel.selectedMode {
@@ -286,6 +313,7 @@ struct HomeView: View {
         .background(AppTheme.Colors.background)
         .refreshable {
             await viewModel.refresh(location: locationManager.currentLocation)
+            lastUpdated = Date()
         }
     }
 
@@ -548,7 +576,7 @@ private struct NearbyTransitRow: View {
                 // Mode badge
                 ZStack {
                     Circle()
-                        .fill(arrival.isBus ? AppTheme.Colors.mtaBlue : AppTheme.Colors.subwayBlack)
+                        .fill(arrival.isBus ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: arrival.displayName))
                         .frame(width: AppTheme.Layout.badgeSizeMedium, height: AppTheme.Layout.badgeSizeMedium)
                     if arrival.isBus {
                         Image(systemName: "bus.fill")
@@ -557,7 +585,7 @@ private struct NearbyTransitRow: View {
                     } else {
                         Text(arrival.displayName)
                             .font(.system(size: AppTheme.Layout.badgeFontMedium, weight: .heavy, design: .monospaced))
-                            .foregroundColor(AppTheme.Colors.textOnColor)
+                            .foregroundColor(AppTheme.SubwayColors.textColor(for: arrival.displayName))
                             .minimumScaleFactor(0.5)
                             .lineLimit(1)
                     }

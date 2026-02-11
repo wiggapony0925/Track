@@ -180,8 +180,10 @@ struct TrackWidgetEntry: TimelineEntry {
         date: Date(),
         arrivals: [
             NearbyArrival(routeId: "L", stopName: "1st Avenue", direction: "Manhattan", minutesAway: 3, status: "On Time", mode: "subway"),
-            NearbyArrival(routeId: "B63", stopName: "5 Av / Union St", direction: "Approaching", minutesAway: 5, status: "Approaching", mode: "bus"),
+            NearbyArrival(routeId: "B63", stopName: "5 Av / Union St", direction: "Cobble Hill", minutesAway: 5, status: "Approaching", mode: "bus"),
             NearbyArrival(routeId: "G", stopName: "Metropolitan Av", direction: "Church Av", minutesAway: 8, status: "On Time", mode: "subway"),
+            NearbyArrival(routeId: "A", stopName: "Fulton St", direction: "Far Rockaway", minutesAway: 11, status: "On Time", mode: "subway"),
+            NearbyArrival(routeId: "4", stopName: "Bowling Green", direction: "Woodlawn", minutesAway: 14, status: "On Time", mode: "subway"),
         ]
     )
 }
@@ -198,6 +200,8 @@ struct TrackWidgetEntryView: View {
             smallView
         case .systemMedium:
             mediumView
+        case .systemLarge:
+            largeView
         default:
             smallView
         }
@@ -208,17 +212,17 @@ struct TrackWidgetEntryView: View {
     private var smallView: some View {
         Group {
             if let arrival = entry.arrivals.first {
-                VStack(spacing: 4) {
+                VStack(spacing: 3) {
                     // Mode badge
                     transitBadge(arrival, size: AppTheme.Layout.badgeSizeLarge)
 
                     // Big countdown
                     HStack(alignment: .firstTextBaseline, spacing: 2) {
                         Text("\(arrival.minutesAway)")
-                            .font(.system(size: 36, weight: .bold, design: .rounded))
+                            .font(.system(size: 34, weight: .bold, design: .rounded))
                             .foregroundColor(AppTheme.Colors.countdown(arrival.minutesAway))
                         Text("min")
-                            .font(.system(size: 14, weight: .medium))
+                            .font(.system(size: 13, weight: .medium))
                             .foregroundColor(AppTheme.Colors.textSecondary)
                     }
 
@@ -236,14 +240,18 @@ struct TrackWidgetEntryView: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
 
-                    // Status pill
-                    Text(arrival.status)
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(AppTheme.Colors.textOnColor)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(statusColor(arrival.status))
-                        .clipShape(Capsule())
+                    // Next arrival preview if available
+                    if entry.arrivals.count > 1 {
+                        Divider()
+                            .padding(.horizontal, 8)
+                        let next = entry.arrivals[1]
+                        HStack(spacing: 4) {
+                            transitBadge(next, size: 16)
+                            Text("\(next.minutesAway) min")
+                                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                                .foregroundColor(AppTheme.Colors.countdown(next.minutesAway))
+                        }
+                    }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -316,6 +324,121 @@ struct TrackWidgetEntryView: View {
         }
     }
 
+    // MARK: - Large Widget
+
+    private var largeView: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Header
+            HStack {
+                Image(systemName: "tram.fill")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(AppTheme.Colors.mtaBlue)
+                Text("Nearby Transit")
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .foregroundColor(AppTheme.Colors.textPrimary)
+                Spacer()
+                Text(entry.date, style: .time)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+            }
+            .padding(.bottom, 10)
+
+            if entry.arrivals.isEmpty {
+                Spacer()
+                HStack {
+                    Spacer()
+                    VStack(spacing: 6) {
+                        Image(systemName: "tram.fill")
+                            .font(.system(size: 28, weight: .light))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
+                        Text("No nearby arrivals")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
+                        Text("Open Track to refresh")
+                            .font(.system(size: 12, weight: .regular))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
+                    }
+                    Spacer()
+                }
+                Spacer()
+            } else {
+                // Show up to 5 arrivals
+                ForEach(Array(entry.arrivals.prefix(5).enumerated()), id: \.offset) { index, arrival in
+                    largeArrivalRow(arrival)
+                    if index < min(entry.arrivals.count, 5) - 1 {
+                        Divider()
+                            .padding(.leading, 40)
+                            .padding(.vertical, 3)
+                    }
+                }
+
+                Spacer(minLength: 8)
+
+                // Footer
+                HStack {
+                    Spacer()
+                    Text("Updated \(entry.date, style: .relative) ago")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+                }
+            }
+        }
+        .padding(AppTheme.Layout.cardPadding)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .containerBackground(for: .widget) {
+            AppTheme.Colors.background
+        }
+    }
+
+    /// A taller arrival row for the large widget with more detail.
+    private func largeArrivalRow(_ arrival: NearbyArrival) -> some View {
+        HStack(spacing: 10) {
+            transitBadge(arrival, size: 32)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(arrival.displayName)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(AppTheme.Colors.textPrimary)
+                    .lineLimit(1)
+                Text(arrival.stopName)
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+                    .lineLimit(1)
+                Text("→ \(arrival.direction)")
+                    .font(.system(size: 11, weight: .regular))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 4)
+
+            VStack(alignment: .trailing, spacing: 3) {
+                HStack(alignment: .firstTextBaseline, spacing: 2) {
+                    Text("\(arrival.minutesAway)")
+                        .font(.system(size: 22, weight: .bold, design: .rounded))
+                        .foregroundColor(AppTheme.Colors.countdown(arrival.minutesAway))
+                    Text("min")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+                }
+                Text(arrival.status)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(statusTextColor(arrival.status))
+                    .lineLimit(1)
+            }
+        }
+    }
+
+    private func statusTextColor(_ status: String) -> Color {
+        let lower = status.lowercased()
+        if lower.contains("on time") {
+            return AppTheme.Colors.successGreen
+        } else if lower.contains("delayed") || lower.contains("late") {
+            return AppTheme.Colors.alertRed
+        }
+        return AppTheme.Colors.textSecondary
+    }
+
     // MARK: - Shared Components
 
     private func arrivalRow(_ arrival: NearbyArrival) -> some View {
@@ -363,7 +486,7 @@ struct TrackWidgetEntryView: View {
     private func transitBadge(_ arrival: NearbyArrival, size: CGFloat) -> some View {
         ZStack {
             Circle()
-                .fill(arrival.isBus ? AppTheme.Colors.mtaBlue : AppTheme.Colors.subwayBlack)
+                .fill(arrival.isBus ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: arrival.displayName))
                 .frame(width: size, height: size)
             if arrival.isBus {
                 Image(systemName: "bus.fill")
@@ -372,7 +495,7 @@ struct TrackWidgetEntryView: View {
             } else {
                 Text(arrival.displayName)
                     .font(.system(size: size * 0.45, weight: .heavy, design: .monospaced))
-                    .foregroundColor(AppTheme.Colors.textOnColor)
+                    .foregroundColor(AppTheme.SubwayColors.textColor(for: arrival.displayName))
                     .minimumScaleFactor(0.5)
                     .lineLimit(1)
             }
@@ -401,7 +524,7 @@ struct TrackWidget: Widget {
         }
         .configurationDisplayName("Nearby Transit")
         .description("Live countdowns for the nearest buses and trains.")
-        .supportedFamilies([.systemSmall, .systemMedium])
+        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
     }
 }
 
@@ -412,6 +535,12 @@ struct TrackWidget: Widget {
 }
 
 #Preview(as: .systemMedium) {
+    TrackWidget()
+} timeline: {
+    TrackWidgetEntry.placeholder
+}
+
+#Preview(as: .systemLarge) {
     TrackWidget()
 } timeline: {
     TrackWidgetEntry.placeholder
