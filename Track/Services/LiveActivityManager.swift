@@ -66,8 +66,10 @@ final class LiveActivityManager {
         activeExpectedDuration = arrivalTime.timeIntervalSince(now)
         activeDestination = destination
 
-        // Record commute pattern in SwiftData (only with valid location)
-        if let context = context, let location = location {
+        // Record commute pattern in SwiftData (only with valid location and if learning enabled)
+        let learningEnabled = UserDefaults.standard.object(forKey: "backgroundLearningEnabled") == nil
+            || UserDefaults.standard.bool(forKey: "backgroundLearningEnabled")
+        if let context = context, let location = location, learningEnabled {
             let calendar = Calendar.current
             let hour = calendar.component(.hour, from: now)
             let weekday = calendar.component(.weekday, from: now)
@@ -172,8 +174,11 @@ final class LiveActivityManager {
     ///
     /// - Parameter context: SwiftData model context for recording the trip log.
     func endActivity(context: ModelContext? = nil) {
-        // Record trip log if we have trip metadata
+        // Record trip log if we have trip metadata and learning is enabled
+        let learningEnabled = UserDefaults.standard.object(forKey: "backgroundLearningEnabled") == nil
+            || UserDefaults.standard.bool(forKey: "backgroundLearningEnabled")
         if let context = context,
+           learningEnabled,
            let startTime = activeTripStartTime,
            let lineId = activeLineId,
            let expectedDuration = activeExpectedDuration {

@@ -17,6 +17,7 @@ struct HomeView: View {
     @State private var locationManager = LocationManager()
     @State private var sheetDetent: PresentationDetent = .fraction(0.4)
     @State private var cameraPosition: MapCameraPosition = .userLocation(fallback: .automatic)
+    @State private var showSettings = false
 
     var body: some View {
         ZStack {
@@ -72,6 +73,9 @@ struct HomeView: View {
                 )
             }
         }
+        .sheet(isPresented: $showSettings) {
+            SettingsView()
+        }
     }
 
     // MARK: - Dashboard Content
@@ -79,12 +83,25 @@ struct HomeView: View {
     private var dashboardContent: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                // Header
-                AppTheme.Typography.headerLarge("Track")
-                    .foregroundColor(AppTheme.Colors.textPrimary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                    .padding(.horizontal, AppTheme.Layout.margin)
+                // Header with settings gear
+                HStack {
+                    AppTheme.Typography.headerLarge("Track")
+                        .foregroundColor(AppTheme.Colors.textPrimary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+
+                    Spacer()
+
+                    Button {
+                        showSettings = true
+                    } label: {
+                        Image(systemName: "gearshape.fill")
+                            .font(.system(size: 20, weight: .medium))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
+                    }
+                    .accessibilityLabel("Settings")
+                }
+                .padding(.horizontal, AppTheme.Layout.margin)
 
                 // Mode-specific content
                 switch viewModel.selectedMode {
@@ -94,18 +111,14 @@ struct HomeView: View {
                     busDashboard
                 }
 
-                // Error message
+                // Network error banner
                 if let error = viewModel.errorMessage {
-                    HStack(spacing: 6) {
-                        Image(systemName: "wifi.slash")
-                            .font(.system(size: 14))
-                        Text(error)
-                            .font(.system(size: 14, weight: .medium))
-                            .lineLimit(2)
-                            .minimumScaleFactor(0.8)
-                    }
-                    .foregroundColor(AppTheme.Colors.alertRed)
-                    .padding(.horizontal, AppTheme.Layout.margin)
+                    NetworkErrorBanner(
+                        message: error,
+                        onDismiss: {
+                            viewModel.errorMessage = nil
+                        }
+                    )
                 }
 
                 // Loading indicator

@@ -5,13 +5,15 @@
 //  Created by Jeffrey Fernandez on 2/10/26.
 //
 //  Root view of the Track NYC Transit app.
-//  Hosts a tab-based interface with the transit dashboard and trip history.
+//  Hosts onboarding, location gate, and the tab-based dashboard.
 //
 
 import SwiftUI
 import SwiftData
 
 struct ContentView: View {
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
+    @AppStorage("appTheme") private var appTheme = "system"
     @State private var selectedTab: Tab = .home
     @State private var locationManager = LocationManager()
 
@@ -26,9 +28,20 @@ struct ContentView: View {
         locationManager.authorizationStatus == .authorizedAlways
     }
 
+    /// Maps the appTheme string to a ColorScheme.
+    private var colorScheme: ColorScheme? {
+        switch appTheme {
+        case "dark": return .dark
+        case "light": return .light
+        default: return nil
+        }
+    }
+
     var body: some View {
         Group {
-            if locationGranted {
+            if !hasCompletedOnboarding {
+                OnboardingView()
+            } else if locationGranted {
                 TabView(selection: $selectedTab) {
                     HomeView()
                         .tabItem {
@@ -52,9 +65,10 @@ struct ContentView: View {
                 )
             }
         }
+        .preferredColorScheme(colorScheme)
         .onAppear {
             // Trigger the system prompt on first launch if not yet determined
-            if locationManager.authorizationStatus == .notDetermined {
+            if hasCompletedOnboarding && locationManager.authorizationStatus == .notDetermined {
                 locationManager.requestPermission()
             }
         }

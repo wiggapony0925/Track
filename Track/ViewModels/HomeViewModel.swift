@@ -58,12 +58,16 @@ final class HomeViewModel {
         busArrivals = []
         selectedBusStop = nil
 
-        // Get smart suggestion
-        suggestion = SmartSuggester.predict(
-            context: context,
-            currentLocation: location,
-            currentTime: Date()
-        )
+        // Get smart suggestion (respects user preference)
+        if UserDefaults.standard.bool(forKey: "predictCommuteEnabled") != false {
+            suggestion = SmartSuggester.predict(
+                context: context,
+                currentLocation: location,
+                currentTime: Date()
+            )
+        } else {
+            suggestion = nil
+        }
 
         // Fetch nearby stations
         if let location = location {
