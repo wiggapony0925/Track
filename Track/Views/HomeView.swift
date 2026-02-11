@@ -751,7 +751,7 @@ struct HomeView: View {
                             isTracking: viewModel.trackingArrivalId == arrival.id.uuidString,
                             reliabilityWarning: nil,
                             onTrack: {
-                                viewModel.trackSubwayArrival(arrival, location: locationManager.currentLocation)
+                                viewModel.trackLIRRArrival(arrival, location: locationManager.currentLocation)
                             }
                         )
                         if index < min(viewModel.lirrArrivals.count, 15) - 1 {

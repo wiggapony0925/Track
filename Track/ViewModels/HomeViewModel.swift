@@ -373,6 +373,18 @@ final class HomeViewModel {
         )
     }
 
+    /// Starts tracking a LIRR arrival via Live Activity.
+    func trackLIRRArrival(_ arrival: TrainArrival, location: CLLocation?) {
+        trackingArrivalId = arrival.id.uuidString
+        liveActivityManager.startActivity(
+            lineId: "LIRR",
+            destination: arrival.direction,
+            arrivalTime: arrival.estimatedTime,
+            isBus: false,
+            stationId: arrival.stationID
+        )
+    }
+
     /// Starts tracking a bus arrival via Live Activity.
     func trackBusArrival(_ arrival: BusArrival, location: CLLocation?) {
         trackingArrivalId = arrival.id
