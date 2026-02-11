@@ -22,6 +22,7 @@ from fastapi import APIRouter, Query
 from app.models import DirectionArrivals, GroupedNearbyTransit, NearbyTransitArrival
 from app.services.bus_client import get_nearby_stops, get_realtime_arrivals
 from app.services.data_cleaner import get_arrivals_for_line
+from app.utils.logger import TrackLogger
 
 # Subway line → hex color mapping (official MTA colors).
 _SUBWAY_COLORS: dict[str, str] = {
@@ -52,6 +53,7 @@ async def nearby_transit(
     SIRI, sorted by ``minutes_away``. No routing or trips — just a
     flat list of what's arriving soon nearby.
     """
+    TrackLogger.location(lat, lon, "nearby")
     results = await _collect_all(lat, lon)
     results.sort(key=lambda a: a.minutes_away)
     return results[:20]
@@ -71,6 +73,7 @@ async def nearby_transit_grouped(
     Southbound).  The first arrival's ``minutes_away`` is used to sort
     the groups so the soonest route appears first.
     """
+    TrackLogger.location(lat, lon, "nearby/grouped")
     flat = await _collect_all(lat, lon)
     return _group_arrivals(flat)
 

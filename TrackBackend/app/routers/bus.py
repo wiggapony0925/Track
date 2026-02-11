@@ -20,6 +20,7 @@ from app.services.bus_client import (
     get_stops,
     get_vehicle_positions,
 )
+from app.utils.logger import TrackLogger
 
 router = APIRouter(prefix="/bus", tags=["bus"])
 
@@ -62,6 +63,7 @@ async def bus_nearby(
     lon: float = Query(..., description="Longitude"),
 ) -> list[BusStop]:
     """Return bus stops near a GPS coordinate."""
+    TrackLogger.location(lat, lon, "bus/nearby")
     try:
         return await get_nearby_stops(lat, lon)
     except httpx.HTTPStatusError as exc:

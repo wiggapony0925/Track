@@ -25,11 +25,10 @@ struct HomeView: View {
 
     var body: some View {
         ZStack {
-            // Map background bounded to NYC 5 boroughs + Long Island.
-            // Uses MapCameraBounds to restrict panning and zoom.
-            // Ref: https://developer.apple.com/documentation/mapkit/mapcamerabounds
-            Map(position: $cameraPosition,
-                bounds: AppTheme.MapConfig.cameraBounds) {
+            // Map background — bounds disabled to allow free centering
+            // on user location. Re-enable AppTheme.MapConfig.cameraBounds
+            // once location centering is confirmed working.
+            Map(position: $cameraPosition) {
 
                 // User location — replaced by pulsing GO icon when tracking
                 if viewModel.isGoModeActive {
