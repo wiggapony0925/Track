@@ -20,11 +20,12 @@ struct HomeView: View {
     @State private var showSettings = false
     @State private var lastUpdated: Date?
     @State private var refreshTimer: Timer?
+    @State private var hasCenteredOnUser = false
 
     var body: some View {
         ZStack {
-            // Map background bounded to the NYC Metropolitan Area.
-            // Uses MapCameraBounds to restrict panning (500 m – 250 km zoom),
+            // Map background bounded to NYC 5 boroughs + Long Island.
+            // Uses MapCameraBounds to restrict panning (500 m – 150 km zoom),
             // and a transit-emphasized map style that dims driving elements.
             // Ref: https://developer.apple.com/documentation/mapkit/mapcamerabounds
             Map(position: $cameraPosition,
@@ -226,9 +227,22 @@ struct HomeView: View {
                 lastUpdated = Date()
             }
         }
-        // Camera follow in GO mode — auto-pan to keep user centered
+        // Center map on user location — initial fix + GO mode auto-follow
         .onChange(of: locationManager.currentLocation) {
-            if viewModel.isGoModeActive, let loc = locationManager.currentLocation {
+            guard let loc = locationManager.currentLocation else { return }
+
+            if !hasCenteredOnUser {
+                // First location fix — center the map on the user
+                hasCenteredOnUser = true
+                withAnimation(.easeInOut(duration: 0.6)) {
+                    cameraPosition = .camera(MapCamera(
+                        centerCoordinate: loc.coordinate,
+                        distance: AppTheme.MapConfig.userZoomDistance
+                    ))
+                }
+            }
+
+            if viewModel.isGoModeActive {
                 withAnimation(.easeInOut(duration: 0.8)) {
                     cameraPosition = .camera(MapCamera(
                         centerCoordinate: loc.coordinate,
