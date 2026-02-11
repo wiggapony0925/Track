@@ -37,11 +37,11 @@ struct RouteBadge: View {
     var body: some View {
         Text(routeID)
             .font(.system(size: size.fontSize, weight: .heavy, design: .monospaced))
-            .foregroundColor(AppTheme.Colors.textOnColor)
+            .foregroundColor(AppTheme.SubwayColors.textColor(for: routeID))
             .minimumScaleFactor(0.7)
             .lineLimit(1)
             .frame(width: size.dimension, height: size.dimension)
-            .background(AppTheme.Colors.mtaBlue)
+            .background(AppTheme.SubwayColors.color(for: routeID))
             .clipShape(Circle())
             .accessibilityLabel("Route \(routeID)")
     }
