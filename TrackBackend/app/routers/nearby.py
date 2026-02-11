@@ -54,7 +54,7 @@ async def nearby_transit(
     flat list of what's arriving soon nearby.
     """
     TrackLogger.location(lat, lon, "nearby")
-    results = await _collect_all(lat, lon)
+    results = await _collect_all(lat, lon, radius)
     results.sort(key=lambda a: a.minutes_away)
     return results[:20]
 
@@ -74,7 +74,7 @@ async def nearby_transit_grouped(
     the groups so the soonest route appears first.
     """
     TrackLogger.location(lat, lon, "nearby/grouped")
-    flat = await _collect_all(lat, lon)
+    flat = await _collect_all(lat, lon, radius)
     return _group_arrivals(flat)
 
 
@@ -83,12 +83,14 @@ async def nearby_transit_grouped(
 # ---------------------------------------------------------------------------
 
 
-async def _collect_all(lat: float, lon: float) -> list[NearbyTransitArrival]:
+async def _collect_all(
+    lat: float, lon: float, radius: int = 500,
+) -> list[NearbyTransitArrival]:
     """Gather subway + bus arrivals in parallel."""
     results: list[NearbyTransitArrival] = []
 
     subway_task = _fetch_nearby_subway()
-    bus_task = _fetch_nearby_buses(lat, lon)
+    bus_task = _fetch_nearby_buses(lat, lon, radius)
 
     subway_results, bus_results = await asyncio.gather(
         subway_task, bus_task, return_exceptions=True,
@@ -183,8 +185,10 @@ def _soonest_minutes(group: GroupedNearbyTransit) -> int:
 async def _fetch_nearby_subway() -> list[NearbyTransitArrival]:
     """Fetch arrivals from all subway feeds and return as NearbyTransitArrival.
 
-    Filters out arrivals with ``minutes_away == 0`` (already arrived /
-    stale data) to avoid the "all times are 0" display bug.
+    Each GTFS-RT feed covers a family of lines (e.g. ACE, BDFM).  We
+    request one representative line per feed and then keep arrivals
+    for **all** routes found in that feed — not just the representative
+    letter — so the user sees every train coming through.
     """
     results: list[NearbyTransitArrival] = []
 
@@ -195,6 +199,8 @@ async def _fetch_nearby_subway() -> list[NearbyTransitArrival]:
     feed_results = await asyncio.gather(*tasks, return_exceptions=True)
 
     success_count = 0
+    total_raw = 0
+    total_kept = 0
     for line, arrivals in zip(feed_lines, feed_results):
         if isinstance(arrivals, Exception):
             TrackLogger.error(f"Subway feed '{line}' failed: {arrivals}")
@@ -202,10 +208,11 @@ async def _fetch_nearby_subway() -> list[NearbyTransitArrival]:
         if not isinstance(arrivals, list):
             continue
         success_count += 1
-        for arrival in arrivals[:5]:  # Top 5 per feed
-            # Skip stale arrivals that show 0 minutes (already arrived)
-            if arrival.minutes_away <= 0:
+        total_raw += len(arrivals)
+        for arrival in arrivals[:10]:  # Top 10 per feed
+            if arrival.minutes_away < 1:
                 continue
+            total_kept += 1
             results.append(
                 NearbyTransitArrival(
                     route_id=line,
@@ -221,6 +228,11 @@ async def _fetch_nearby_subway() -> list[NearbyTransitArrival]:
         TrackLogger.error(
             f"All {len(feed_lines)} subway feeds failed — check MTA API key and network"
         )
+    elif success_count > 0:
+        TrackLogger.info(
+            f"Subway: {success_count}/{len(feed_lines)} feeds OK, "
+            f"{total_raw} raw arrivals → {total_kept} kept"
+        )
 
     return results
 
@@ -230,12 +242,14 @@ async def _fetch_nearby_subway() -> list[NearbyTransitArrival]:
 # ---------------------------------------------------------------------------
 
 
-async def _fetch_nearby_buses(lat: float, lon: float) -> list[NearbyTransitArrival]:
+async def _fetch_nearby_buses(
+    lat: float, lon: float, radius: int = 500,
+) -> list[NearbyTransitArrival]:
     """Fetch live bus arrivals from nearby stops."""
     results: list[NearbyTransitArrival] = []
 
     try:
-        stops = await get_nearby_stops(lat, lon)
+        stops = await get_nearby_stops(lat, lon, radius_m=radius)
     except Exception as exc:
         TrackLogger.error(f"Bus stops fetch failed: {exc}")
         return results
