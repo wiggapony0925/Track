@@ -11,6 +11,7 @@
 import Foundation
 import SwiftData
 import CoreLocation
+import MapKit
 
 @Observable
 final class HomeViewModel {
@@ -27,6 +28,13 @@ final class HomeViewModel {
 
     // Nearby transit (unified)
     var nearbyTransit: [NearbyTransitResponse] = []
+
+    // Grouped nearby transit (one card per route)
+    var groupedTransit: [GroupedNearbyTransitResponse] = []
+
+    // Route detail sheet
+    var selectedGroupedRoute: GroupedNearbyTransitResponse?
+    var isRouteDetailPresented = false
 
     // Draggable search pin
     var searchPinCoordinate: CLLocationCoordinate2D?
@@ -86,6 +94,32 @@ final class HomeViewModel {
         await refresh(location: userLocation)
     }
 
+    // MARK: - Route Detail
+
+    /// Opens the route detail sheet for a grouped route and loads its
+    /// route shape / vehicle positions on the map.
+    func selectGroupedRoute(_ group: GroupedNearbyTransitResponse) async {
+        selectedGroupedRoute = group
+        isRouteDetailPresented = true
+
+        // Load route shape + vehicles for bus routes
+        if group.isBus {
+            await selectBusRoute(group.routeId)
+        }
+    }
+
+    /// Returns a camera position centered on the first arrival's stop.
+    func cameraPositionForRoute(_ group: GroupedNearbyTransitResponse) -> MapCameraPosition {
+        if let first = group.directions.first?.arrivals.first,
+           let lat = first.stopLat, let lon = first.stopLon {
+            return .camera(MapCamera(
+                centerCoordinate: CLLocationCoordinate2D(latitude: lat, longitude: lon),
+                distance: 3000
+            ))
+        }
+        return .automatic
+    }
+
     // MARK: - Bus Route Detail (Live Vehicles + Route Shape)
 
     /// Selects a bus route and fetches live vehicle positions + route shape.
@@ -130,6 +164,7 @@ final class HomeViewModel {
     // MARK: - Nearby Transit (Unified)
 
     /// Fetches all nearby transit (buses + trains) in one call.
+    /// Uses the grouped endpoint to deduplicate routes.
     func refreshNearbyTransit(location: CLLocation?) async {
         guard let location = location else {
             errorMessage = "Location required"
@@ -140,10 +175,17 @@ final class HomeViewModel {
         errorMessage = nil
 
         do {
-            nearbyTransit = try await TrackAPI.fetchNearbyTransit(
+            async let flatTask = TrackAPI.fetchNearbyTransit(
                 lat: location.coordinate.latitude,
                 lon: location.coordinate.longitude
             )
+            async let groupedTask = TrackAPI.fetchNearbyGrouped(
+                lat: location.coordinate.latitude,
+                lon: location.coordinate.longitude
+            )
+
+            nearbyTransit = try await flatTask
+            groupedTransit = try await groupedTask
         } catch {
             AppLogger.shared.logError("fetchNearbyTransit", error: error)
             errorMessage = (error as? TrackAPIError)?.description ?? error.localizedDescription
