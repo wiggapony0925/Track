@@ -596,10 +596,8 @@ struct HomeView: View {
                         }
                     )
                 } else {
-                    emptyStateView(
-                        icon: "location.fill",
-                        message: "No transit nearby"
-                    )
+                    // Outside MTA service area — show location debug card
+                    outOfServiceAreaCard
                 }
             }
         }
@@ -794,6 +792,84 @@ struct HomeView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 32)
+    }
+
+    // MARK: - Out of Service Area Card
+
+    /// Themed card shown when the user is outside the MTA service area.
+    /// Displays the user's current GPS coordinates for debugging and
+    /// a clear explanation of why no transit is appearing.
+    private var outOfServiceAreaCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Header
+            HStack(spacing: 8) {
+                Image(systemName: "location.slash.fill")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(AppTheme.Colors.warningYellow)
+                Text("Outside Service Area")
+                    .font(.system(size: 17, weight: .semibold, design: .rounded))
+                    .foregroundColor(AppTheme.Colors.textPrimary)
+                Spacer()
+            }
+
+            Text("Track covers the NYC MTA network — subway, bus, and LIRR. Move within the service area to see live arrivals.")
+                .font(.system(size: 14, weight: .regular))
+                .foregroundColor(AppTheme.Colors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            // Current coordinates
+            if let loc = locationManager.currentLocation {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Your Location")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+                        .textCase(.uppercase)
+
+                    HStack(spacing: 16) {
+                        Label(
+                            String(format: "%.6f", loc.coordinate.latitude),
+                            systemImage: "arrow.up.arrow.down"
+                        )
+                        Label(
+                            String(format: "%.6f", loc.coordinate.longitude),
+                            systemImage: "arrow.left.arrow.right"
+                        )
+                    }
+                    .font(.system(size: 14, weight: .medium, design: .monospaced))
+                    .foregroundColor(AppTheme.Colors.textPrimary)
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(AppTheme.Colors.background)
+                .cornerRadius(8)
+            }
+
+            // Recenter button
+            Button {
+                withAnimation(.easeInOut(duration: 0.6)) {
+                    cameraPosition = .userLocation(
+                        fallback: .region(AppTheme.MapConfig.fallbackRegion)
+                    )
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "location.fill")
+                        .font(.system(size: 13, weight: .bold))
+                    Text("Center on My Location")
+                        .font(.system(size: 15, weight: .semibold))
+                }
+                .foregroundColor(AppTheme.Colors.textOnColor)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(AppTheme.Colors.mtaBlue)
+                .cornerRadius(AppTheme.Layout.cornerRadius)
+            }
+            .accessibilityHint("Centers the map on your current GPS position")
+        }
+        .padding(AppTheme.Layout.cardPadding)
+        .background(AppTheme.Colors.cardBackground)
+        .cornerRadius(AppTheme.Layout.cornerRadius)
+        .padding(.horizontal, AppTheme.Layout.margin)
     }
 }
 
