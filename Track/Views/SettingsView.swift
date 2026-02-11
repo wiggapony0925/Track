@@ -17,6 +17,9 @@ struct SettingsView: View {
     @AppStorage("backgroundLearningEnabled") private var backgroundLearningEnabled = true
     @AppStorage("appTheme") private var appTheme = "system"
 
+    @AppStorage("dev_use_localhost") private var useLocalhost = true
+    @AppStorage("dev_custom_ip") private var customIP = "192.168.1.X"
+
     @State private var showClearHistoryConfirmation = false
     @State private var showResetScoresConfirmation = false
 
@@ -26,6 +29,7 @@ struct SettingsView: View {
                 smartFeaturesSection
                 dataManagementSection
                 appearanceSection
+                developerSettingsSection
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
@@ -107,6 +111,26 @@ struct SettingsView: View {
             }
         } header: {
             Text("Appearance")
+        }
+    }
+
+    // MARK: - Developer Settings
+
+    private var developerSettingsSection: some View {
+        Section {
+            Toggle("Use Simulator (Localhost)", isOn: $useLocalhost)
+                .tint(AppTheme.Colors.mtaBlue)
+
+            if !useLocalhost {
+                HStack {
+                    Text("http://")
+                    TextField("192.168.1.X", text: $customIP)
+                        .keyboardType(.numbersAndPunctuation)
+                    Text(":8000")
+                }
+            }
+        } header: {
+            Text("Developer Settings")
         }
     }
 

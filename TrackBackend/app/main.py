@@ -10,10 +10,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 
 from app.config import get_settings
 from app.routers import bus, lirr, status, subway
+from app.utils.logger import TrackLogger
 
 app = FastAPI(
     title="Track API",
@@ -26,6 +27,19 @@ app.include_router(subway.router)
 app.include_router(lirr.router)
 app.include_router(status.router)
 app.include_router(bus.router)
+
+
+@app.on_event("startup")
+async def startup_event():
+    TrackLogger.startup()
+
+
+# Middleware to log every request with color
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    response = await call_next(request)
+    TrackLogger.request(request.method, request.url.path, response.status_code)
+    return response
 
 
 @app.get("/config")
