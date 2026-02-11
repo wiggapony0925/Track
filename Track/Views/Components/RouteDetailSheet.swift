@@ -237,16 +237,6 @@ struct RouteDetailSheet: View {
             .background(AppTheme.Colors.cardBackground)
             .clipShape(RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius))
             .padding(.horizontal, AppTheme.Layout.margin)
-
-            // Swipeable content
-            TabView(selection: $selectedDirectionIndex) {
-                ForEach(Array(group.directions.enumerated()), id: \.element.id) { index, _ in
-                    Color.clear
-                        .tag(index)
-                }
-            }
-            .tabViewStyle(.page(indexDisplayMode: .never))
-            .frame(height: 0)
         }
     }
 
@@ -295,15 +285,33 @@ struct RouteDetailSheet: View {
                 .padding(.horizontal, AppTheme.Layout.margin)
             }
         }
+        .gesture(
+            DragGesture(minimumDistance: 50, coordinateSpace: .local)
+                .onEnded { value in
+                    guard group.directions.count > 1 else { return }
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        if value.translation.width < 0 {
+                            // Swipe left → next direction
+                            selectedDirectionIndex = min(selectedDirectionIndex + 1,
+                                                        group.directions.count - 1)
+                        } else if value.translation.width > 0 {
+                            // Swipe right → previous direction
+                            selectedDirectionIndex = max(selectedDirectionIndex - 1, 0)
+                        }
+                    }
+                }
+        )
+        .accessibilityHint(group.directions.count > 1 ? "Swipe to switch direction" : "")
     }
 
     // MARK: - Helpers
 
     private var safeDirection: DirectionArrivalsResponse {
+        guard !group.directions.isEmpty else {
+            return DirectionArrivalsResponse(direction: "—", arrivals: [])
+        }
         let idx = min(selectedDirectionIndex, group.directions.count - 1)
-        return group.directions.indices.contains(idx)
-            ? group.directions[idx]
-            : DirectionArrivalsResponse(direction: "—", arrivals: [])
+        return group.directions[idx]
     }
 
     private var routeColor: Color {

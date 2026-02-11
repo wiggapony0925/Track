@@ -152,13 +152,19 @@ def _group_arrivals(flat: list[NearbyTransitArrival]) -> list[GroupedNearbyTrans
         )
 
     # Sort groups by the soonest arrival across all directions
-    groups.sort(key=lambda g: min(
-        a.minutes_away
-        for d in g.directions
-        for a in d.arrivals
-    ) if g.directions and any(d.arrivals for d in g.directions) else 999)
+    groups.sort(key=_soonest_minutes)
 
     return groups
+
+
+def _soonest_minutes(group: GroupedNearbyTransit) -> int:
+    """Return the smallest ``minutes_away`` across all directions."""
+    mins = [
+        a.minutes_away
+        for d in group.directions
+        for a in d.arrivals
+    ]
+    return min(mins) if mins else 999
 
 
 # ---------------------------------------------------------------------------
