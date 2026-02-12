@@ -132,7 +132,7 @@ struct RouteDetailSheet: View {
 
     private var countdownSection: some View {
         let direction = safeDirection
-        let nextArrivals = Array(direction.arrivals.prefix(4))
+        let nextArrivals = Array(direction.arrivals.prefix(AppSettings.shared.maxRouteDetailArrivals))
 
         return VStack(alignment: .leading, spacing: 8) {
             Text("Next Arrivals")

@@ -63,7 +63,7 @@ final class LiveActivityManager {
         do {
             let activity = try Activity.request(
                 attributes: attributes,
-                content: .init(state: initialState, staleDate: arrivalTime.addingTimeInterval(60)),
+                content: .init(state: initialState, staleDate: arrivalTime.addingTimeInterval(AppSettings.shared.liveActivityStaleDateSeconds)),
                 pushType: nil
             )
             currentActivityID = activity.id
@@ -99,7 +99,7 @@ final class LiveActivityManager {
         Task {
             for activity in Activity<TrackActivityAttributes>.activities where activity.id == activityID {
                 await activity.update(
-                    ActivityContent(state: updatedState, staleDate: arrivalTime.addingTimeInterval(60))
+                    ActivityContent(state: updatedState, staleDate: arrivalTime.addingTimeInterval(AppSettings.shared.liveActivityStaleDateSeconds))
                 )
             }
         }
@@ -120,7 +120,7 @@ final class LiveActivityManager {
                 )
                 await activity.end(
                     ActivityContent(state: finalState, staleDate: nil),
-                    dismissalPolicy: .after(Date.now.addingTimeInterval(30))
+                    dismissalPolicy: .after(Date.now.addingTimeInterval(AppSettings.shared.liveActivityDismissalSeconds))
                 )
             }
         }

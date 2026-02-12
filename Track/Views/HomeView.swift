@@ -136,10 +136,11 @@ struct HomeView: View {
                 showsTraffic: false
             ))
             .onMapCameraChange(frequency: .continuous) { context in
-                // Show stations only when zoomed in < 3500 meters
+                // Show stations only when zoomed in past the configured threshold
+                let zoomThreshold = AppSettings.shared.stationVisibilityZoomMeters
                 let d = context.camera.distance
-                if (d < 3500) != showStations {
-                    showStations = d < 3500
+                if (d < zoomThreshold) != showStations {
+                    showStations = d < zoomThreshold
                 }
             }
             .ignoresSafeArea()
@@ -483,7 +484,7 @@ struct HomeView: View {
                     sectionHeader("Service Alerts")
 
                     VStack(spacing: 0) {
-                        ForEach(Array(viewModel.serviceAlerts.prefix(3).enumerated()), id: \.element.id) { index, alert in
+                        ForEach(Array(viewModel.serviceAlerts.prefix(AppSettings.shared.maxServiceAlerts).enumerated()), id: \.element.id) { index, alert in
                             HStack(spacing: 10) {
                                 if let routeId = alert.routeId {
                                     RouteBadge(routeID: routeId, size: .small)
@@ -509,7 +510,7 @@ struct HomeView: View {
                             .padding(.horizontal, AppTheme.Layout.cardPadding)
                             .padding(.vertical, 8)
 
-                            if index < min(viewModel.serviceAlerts.count, 3) - 1 {
+                            if index < min(viewModel.serviceAlerts.count, AppSettings.shared.maxServiceAlerts) - 1 {
                                 Divider()
                                     .padding(.leading, AppTheme.Layout.cardPadding + 34)
                             }
@@ -525,7 +526,7 @@ struct HomeView: View {
                     sectionHeader("Elevator & Escalator Outages")
 
                     VStack(spacing: 0) {
-                        ForEach(Array(viewModel.elevatorOutages.prefix(5).enumerated()), id: \.element.id) { index, outage in
+                        ForEach(Array(viewModel.elevatorOutages.prefix(AppSettings.shared.maxElevatorOutages).enumerated()), id: \.element.id) { index, outage in
                             HStack(spacing: 10) {
                                 Image(systemName: outage.equipmentType.lowercased().contains("elevator")
                                       ? "arrow.up.arrow.down.circle.fill"
@@ -550,7 +551,7 @@ struct HomeView: View {
                             .padding(.horizontal, AppTheme.Layout.cardPadding)
                             .padding(.vertical, 8)
 
-                            if index < min(viewModel.elevatorOutages.count, 5) - 1 {
+                            if index < min(viewModel.elevatorOutages.count, AppSettings.shared.maxElevatorOutages) - 1 {
                                 Divider()
                                     .padding(.leading, AppTheme.Layout.cardPadding + 34)
                             }
@@ -796,7 +797,7 @@ struct HomeView: View {
                 sectionHeader("LIRR Departures")
 
                 VStack(spacing: 0) {
-                    ForEach(Array(viewModel.lirrArrivals.prefix(15).enumerated()), id: \.element.id) { index, arrival in
+                    ForEach(Array(viewModel.lirrArrivals.prefix(AppSettings.shared.maxLirrArrivals).enumerated()), id: \.element.id) { index, arrival in
                         ArrivalRow(
                             arrival: arrival,
                             prediction: nil,
@@ -806,7 +807,7 @@ struct HomeView: View {
                                 viewModel.trackLIRRArrival(arrival, location: locationManager.currentLocation)
                             }
                         )
-                        if index < min(viewModel.lirrArrivals.count, 15) - 1 {
+                        if index < min(viewModel.lirrArrivals.count, AppSettings.shared.maxLirrArrivals) - 1 {
                             Divider()
                                 .padding(.leading, AppTheme.Layout.margin + AppTheme.Layout.badgeSizeMedium + 12)
                         }
@@ -879,20 +880,4 @@ struct HomeView: View {
 
 #Preview {
     HomeView()
-}
-
-struct SubwayStationMarker: View {
-    let station: HomeViewModel.CachedSubwayStation
-    
-    var body: some View {
-        Circle()
-            .fill(Color.white)
-            .frame(width: 12, height: 12)
-            .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
-            .overlay(
-                Circle()
-                    .stroke(AppTheme.Colors.mtaBlue, lineWidth: 3)
-            )
-            .accessibilityLabel("Station: \(station.name)")
-    }
 }

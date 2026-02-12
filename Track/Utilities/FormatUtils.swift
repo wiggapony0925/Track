@@ -53,14 +53,18 @@ func formatArrivalTime(date: Date?, fallback: String = "—") -> String {
 
 /// Formats a distance in meters into a human-readable string.
 ///
-/// - Parameter meters: Distance in meters.
-/// - Returns: e.g. "250m away", "1.2km away", "450 m", "2.3 km"
+/// - Parameters:
+///   - meters: Distance in meters.
+///   - suffix: Optional suffix appended after the value (e.g. "away"). Defaults to "away".
+/// - Returns: e.g. "250m away", "1.2km away", "250m", "1.2km"
 func formatDistance(_ meters: Double, suffix: String = "away") -> String {
+    let value: String
     if meters < 1000 {
-        return "\(Int(meters))m \(suffix)"
+        value = "\(Int(meters))m"
     } else {
-        return String(format: "%.1fkm \(suffix)", meters / 1000)
+        value = String(format: "%.1fkm", meters / 1000)
     }
+    return suffix.isEmpty ? value : "\(value) \(suffix)"
 }
 
 // MARK: - MTA Route Name

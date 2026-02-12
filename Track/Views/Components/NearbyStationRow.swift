@@ -48,11 +48,7 @@ struct NearbyStationRow: View {
     }
 
     private var formattedDistance: String {
-        if distance < 1000 {
-            return "\(Int(distance))m"
-        } else {
-            return String(format: "%.1fkm", distance / 1000)
-        }
+        formatDistance(distance, suffix: "")
     }
 }
 

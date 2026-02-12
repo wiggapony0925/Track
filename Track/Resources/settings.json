@@ -8,6 +8,18 @@
     "default_device_ip": "192.168.12.101",
     "local_port": 8000
   },
+  "display": {
+    "max_service_alerts": 3,
+    "max_elevator_outages": 5,
+    "max_lirr_arrivals": 15,
+    "max_route_detail_arrivals": 4,
+    "station_visibility_zoom_meters": 3500
+  },
+  "live_activity": {
+    "stale_date_seconds": 60,
+    "dismissal_seconds": 30,
+    "default_arrival_fallback_seconds": 300
+  },
   "location": {
     "distance_filter_meters": 50,
     "commute_pattern_match_radius_meters": 200,

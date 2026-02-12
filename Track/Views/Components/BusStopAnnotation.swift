@@ -2,7 +2,7 @@
 //  BusStopAnnotation.swift
 //  Track
 //
-//  A small circular blue pin with a white bus icon for bus stop map annotations.
+//  A small white dot with a blue stroke for bus stop map annotations.
 //
 
 import SwiftUI

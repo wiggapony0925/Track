@@ -8,6 +8,8 @@
     "nearby_bus_stops_limit": 3,
     "http_timeout_seconds": 15.0,
     "http_connect_timeout_seconds": 10.0,
+    "http_max_retries": 2,
+    "http_retry_delay_seconds": 1.0,
     "show_ghost_trains": false
   },
   "api_keys": {
