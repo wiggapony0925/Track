@@ -20,77 +20,60 @@ struct NearbyTransitRow: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
-                // Mode badge
+                // MARK: Route Badge
                 ZStack {
                     Circle()
                         .fill(arrival.isBus ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: arrival.displayName))
-                        .frame(width: AppTheme.Layout.badgeSizeMedium, height: AppTheme.Layout.badgeSizeMedium)
+                        .frame(width: 42, height: 42)
                     if arrival.isBus {
                         Image(systemName: "bus.fill")
-                            .font(.system(size: AppTheme.Layout.badgeFontMedium, weight: .bold))
-                            .foregroundColor(AppTheme.Colors.textOnColor)
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(.white)
                     } else {
                         Text(arrival.displayName)
-                            .font(.system(size: AppTheme.Layout.badgeFontMedium, weight: .heavy, design: .monospaced))
+                            .font(.system(size: 20, weight: .bold, design: .rounded))
                             .foregroundColor(AppTheme.SubwayColors.textColor(for: arrival.displayName))
-                            .minimumScaleFactor(0.5)
-                            .lineLimit(1)
                     }
                 }
                 .accessibilityHidden(true)
 
-                // Info
+                // MARK: Station & Destination
                 VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 4) {
-                        Text(arrival.displayName)
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundColor(AppTheme.Colors.textPrimary)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
-                        if isTracking {
-                            Image(systemName: "antenna.radiowaves.left.and.right")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundColor(AppTheme.Colors.successGreen)
-                        }
-                    }
                     Text(arrival.stopName)
-                        .font(.system(size: 12, weight: .regular))
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(AppTheme.Colors.textPrimary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.9)
+                    
+                    Text(shortDirectionLabel(arrival.destination ?? arrival.direction))
+                        .font(.system(size: 13, weight: .medium))
                         .foregroundColor(AppTheme.Colors.textSecondary)
                         .lineLimit(1)
                 }
-
-                Spacer(minLength: 4)
-
-                // View route button for buses
-                if arrival.isBus, let onSelectRoute = onSelectRoute {
-                    Button {
-                        onSelectRoute()
-                    } label: {
-                        Image(systemName: "map")
-                            .font(.system(size: AppTheme.Layout.badgeFontMedium, weight: .medium))
-                            .foregroundColor(AppTheme.Colors.mtaBlue)
+                
+                Spacer(minLength: 8)
+                
+                // MARK: Right Side (Time + Status)
+                VStack(alignment: .trailing, spacing: 2) {
+                    HStack(alignment: .firstTextBaseline, spacing: 2) {
+                        Text("\(arrival.minutesAway)")
+                            .font(.system(size: 24, weight: .bold, design: .rounded))
+                            .foregroundColor(AppTheme.Colors.countdown(arrival.minutesAway))
+                        Text("min")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
                     }
-                    .accessibilityLabel("View \(arrival.displayName) route on map")
+                    
+                    Text(arrival.status)
+                        .font(.system(size: 10, weight: .bold))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(transitStatusColor(for: arrival.status).opacity(0.15))
+                        .foregroundColor(transitStatusColor(for: arrival.status))
+                        .clipShape(Capsule())
                 }
-
-                // Countdown
-                HStack(alignment: .firstTextBaseline, spacing: 2) {
-                    Text("\(arrival.minutesAway)")
-                        .font(.system(size: 20, weight: .bold, design: .rounded))
-                        .foregroundColor(AppTheme.Colors.countdown(arrival.minutesAway))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                    Text("min")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(AppTheme.Colors.textSecondary)
-                }
-
-                // Expand chevron
-                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(AppTheme.Colors.textSecondary)
             }
-            .padding(.vertical, 10)
+            .padding(.vertical, 12)
             .padding(.horizontal, AppTheme.Layout.margin)
             .contentShape(Rectangle())
             .onTapGesture {

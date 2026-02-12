@@ -255,11 +255,17 @@ async def _fetch_nearby_subway(
 
             # Use the actual route_id from the GTFS-RT trip, not the feed line
             total_kept += 1
+            
+            # Use destination (e.g. "Wakefield-241 St") for direction label if available.
+            # Otherwise fallback to "N"/"S" which frontend maps to North/Southbound.
+            display_dir = arrival.destination if arrival.destination else arrival.direction
+            
             results.append(
                 NearbyTransitArrival(
                     route_id=arrival.route_id or line,
                     stop_name=stop_name,
-                    direction=arrival.direction,
+                    direction=display_dir,
+                    destination=arrival.destination,
                     minutes_away=arrival.minutes_away,
                     status=arrival.status,
                     mode="subway",

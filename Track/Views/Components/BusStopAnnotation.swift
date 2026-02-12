@@ -11,17 +11,15 @@ struct BusStopAnnotation: View {
     let stopName: String
 
     var body: some View {
-        ZStack {
-            Circle()
-                .fill(AppTheme.Colors.mtaBlue)
-                .frame(width: 30, height: 30)
-                .shadow(radius: 2)
-
-            Image(systemName: "bus.fill")
-                .font(.system(size: 14, weight: .bold))
-                .foregroundColor(AppTheme.Colors.textOnColor)
-        }
-        .accessibilityLabel("Bus stop: \(stopName)")
+        Circle()
+            .fill(Color.white)
+            .frame(width: 8, height: 8)
+            .shadow(radius: 2)
+            .overlay(
+                Circle()
+                    .stroke(AppTheme.Colors.mtaBlue, lineWidth: 2)
+            )
+            .accessibilityLabel("Bus stop: \(stopName)")
     }
 }
 

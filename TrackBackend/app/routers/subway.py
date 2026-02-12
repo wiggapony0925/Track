@@ -12,13 +12,15 @@ from fastapi import APIRouter, HTTPException
 from app.config import LINE_TO_URL_KEY
 from app.models import (
     AllSubwayLinesResponse,
+    AllSubwayStationsResponse,
     BusStop,
     RouteShape,
     SubwayLineOverlay,
+    SubwayStation,
     TrackArrival,
 )
 from app.services.data_cleaner import get_arrivals_for_line
-from app.services.subway_shapes import get_subway_route_shape
+from app.services.subway_shapes import get_all_subway_stations, get_subway_route_shape
 from app.utils.logger import TrackLogger
 
 router = APIRouter(tags=["subway"])
@@ -74,6 +76,21 @@ async def subway_shapes_all() -> AllSubwayLinesResponse:
 
     TrackLogger.info(f"Subway shapes/all: {len(overlays)} lines returned")
     return AllSubwayLinesResponse(lines=overlays)
+
+
+@router.get("/subway/stations/all", response_model=AllSubwayStationsResponse)
+async def subway_stations_all() -> AllSubwayStationsResponse:
+    """Return all unique subway stations with the lines that serve them.
+
+    This data allows the map to display "Penn Station (1 2 3 A C E)"
+    markers just like Apple Maps.
+    """
+    raw_stations = get_all_subway_stations()
+    stations = []
+    for s in raw_stations:
+        stations.append(SubwayStation(**s))
+
+    return AllSubwayStationsResponse(stations=stations)
 
 
 @router.get("/subway/shape/{route_id}", response_model=RouteShape)

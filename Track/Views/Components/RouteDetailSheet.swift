@@ -16,8 +16,22 @@ struct RouteDetailSheet: View {
     @Binding var routeShape: RouteShapeResponse?
     var onTrack: ((NearbyTransitResponse) -> Void)?
     var onDismiss: (() -> Void)?
+    
+    @State private var selectedDirectionIndex: Int
 
-    @State private var selectedDirectionIndex = 0
+    init(group: GroupedNearbyTransitResponse,
+         busVehicles: Binding<[BusVehicleResponse]>,
+         routeShape: Binding<RouteShapeResponse?>,
+         initialDirectionIndex: Int = 0,
+         onTrack: ((NearbyTransitResponse) -> Void)? = nil,
+         onDismiss: (() -> Void)? = nil) {
+        self.group = group
+        self._busVehicles = busVehicles
+        self._routeShape = routeShape
+        self.onTrack = onTrack
+        self.onDismiss = onDismiss
+        self._selectedDirectionIndex = State(initialValue: initialDirectionIndex)
+    }
 
     /// Route color from the group data or the theme palette.
     private var routeColor: Color {
@@ -254,65 +268,15 @@ struct RouteDetailSheet: View {
                 VStack(spacing: 0) {
                     ForEach(Array(direction.arrivals.enumerated()), id: \.element.id) { index, arrival in
                         // Row — same HStack layout as NearbyTransitRow
-                        HStack(spacing: 12) {
-                            // Route badge
-                            if group.isBus {
-                                ZStack {
-                                    Circle()
-                                        .fill(routeColor)
-                                        .frame(width: AppTheme.Layout.badgeSizeMedium,
-                                               height: AppTheme.Layout.badgeSizeMedium)
-                                    Image(systemName: "bus.fill")
-                                        .font(.system(size: AppTheme.Layout.badgeFontMedium, weight: .bold))
-                                        .foregroundColor(AppTheme.Colors.textOnColor)
-                                }
-                            } else {
-                                RouteBadge(routeID: group.displayName, size: .medium)
+                        // Use the shared NearbyTransitRow which implements the requested "Transit" style
+                        NearbyTransitRow(
+                            arrival: arrival,
+                            isTracking: false, // Tracking feedback handled by HomeView/Toast for now
+                            onTrack: {
+                                onTrack?(arrival)
                             }
-
-                            // Stop name + direction
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(arrival.stopName)
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .foregroundColor(AppTheme.Colors.textPrimary)
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.8)
-
-                                Text(arrival.direction)
-                                    .font(.system(size: 12, weight: .regular))
-                                    .foregroundColor(AppTheme.Colors.textSecondary)
-                                    .lineLimit(1)
-                            }
-
-                            Spacer(minLength: 4)
-
-                            // Status pill
-                            Text(arrival.status)
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundColor(AppTheme.Colors.textOnColor)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(transitStatusColor(for: arrival.status))
-                                .clipShape(Capsule())
-
-                            // Countdown
-                            HStack(alignment: .firstTextBaseline, spacing: 2) {
-                                Text("\(arrival.minutesAway)")
-                                    .font(.system(size: 20, weight: .bold, design: .rounded))
-                                    .foregroundColor(AppTheme.Colors.countdown(arrival.minutesAway))
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.7)
-                                Text("min")
-                                    .font(.system(size: 12, weight: .medium))
-                                    .foregroundColor(AppTheme.Colors.textSecondary)
-                            }
-                        }
-                        .padding(.vertical, 10)
-                        .padding(.horizontal, AppTheme.Layout.margin)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            onTrack?(arrival)
-                        }
+                        )
+                        .padding(.horizontal, 0) // NearbyTransitRow has internal padding
                         .accessibilityElement(children: .combine)
                         .accessibilityLabel("\(arrival.stopName), \(arrival.minutesAway) minutes, \(arrival.status)")
 
@@ -390,11 +354,13 @@ struct RouteDetailSheet: View {
                     arrivals: [
                         NearbyTransitResponse(
                             routeId: "A", stopName: "Canal St", direction: "N",
+                            destination: "Inwood-207 St",
                             minutesAway: 3, status: "On Time", mode: "subway",
                             stopLat: 40.72, stopLon: -74.0
                         ),
                         NearbyTransitResponse(
                             routeId: "A", stopName: "14 St", direction: "N",
+                            destination: "Inwood-207 St",
                             minutesAway: 8, status: "On Time", mode: "subway",
                             stopLat: 40.74, stopLon: -74.0
                         ),
@@ -405,6 +371,7 @@ struct RouteDetailSheet: View {
                     arrivals: [
                         NearbyTransitResponse(
                             routeId: "A", stopName: "Fulton St", direction: "S",
+                            destination: "Far Rockaway",
                             minutesAway: 5, status: "Delayed", mode: "subway",
                             stopLat: 40.71, stopLon: -74.01
                         ),

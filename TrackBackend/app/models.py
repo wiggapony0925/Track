@@ -18,6 +18,7 @@ class TrackArrival(BaseModel):
     route_id: str = ""
     station: str
     direction: str
+    destination: str | None = None  # e.g. "Wakefield-241 St"
     minutes_away: int
     status: str = "On Time"
 
@@ -78,6 +79,7 @@ class NearbyTransitArrival(BaseModel):
     route_id: str
     stop_name: str
     direction: str
+    destination: str | None = None  # e.g. "Wakefield-241 St"
     minutes_away: int
     status: str = "On Time"
     mode: str  # "subway" or "bus"
@@ -141,4 +143,20 @@ class AllSubwayLinesResponse(BaseModel):
     """All subway line overlays for drawing the full system map."""
 
     lines: list[SubwayLineOverlay]
+
+
+class SubwayStation(BaseModel):
+    """A subway station marker with list of lines served."""
+
+    id: str
+    name: str
+    lat: float
+    lon: float
+    routes: list[str]
+
+
+class AllSubwayStationsResponse(BaseModel):
+    """All subway stations for the system map."""
+
+    stations: list[SubwayStation]
 

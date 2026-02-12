@@ -201,3 +201,54 @@ def get_subway_route_shape(
         return None
 
     return polylines, all_stops
+
+
+def get_all_subway_stations() -> list[dict]:
+    """Return all unique stations with the lines that serve them.
+
+    Groups stops by parent ID (e.g. '120N' and '120S' -> '120') so that
+    Transfer/Express stations show up as a single dot with all lines.
+    """
+    route_shapes = _load_route_shapes()
+
+    # Map parent_id -> {name, lat, lon, routes: set}
+    stations: dict[str, dict] = {}
+
+    for route_id, directions in route_shapes.items():
+        # Only process one direction per route to avoid double counting,
+        # BUT some stops might only be on one side. Better to process all.
+        visited_shapes = set()
+        for shape_id in directions.values():
+            if shape_id in visited_shapes:
+                continue
+            visited_shapes.add(shape_id)
+
+            stops = _get_stops_for_shape(shape_id)
+            for stop in stops:
+                # Convert child ID (L06N) to parent ID (L06)
+                # Standard MTA IDs are 3 chars + N/S. Some are different.
+                # If it ends in N or S and len > 1, strip it.
+                parent_id = stop.stop_id
+                if len(parent_id) > 1 and parent_id[-1] in "NS":
+                    parent_id = parent_id[:-1]
+
+                if parent_id not in stations:
+                    stations[parent_id] = {
+                        "id": parent_id,
+                        # Use the stop name (e.g. "8 Av")
+                        "name": stop.name,
+                        "lat": stop.lat,
+                        "lon": stop.lon,
+                        "routes": set(),
+                    }
+                
+                stations[parent_id]["routes"].add(route_id)
+
+    # Convert to list
+    results = []
+    for s in stations.values():
+        # Sort routes: 1,2,3,A,C,E...
+        s["routes"] = sorted(list(s["routes"]))
+        results.append(s)
+
+    return results

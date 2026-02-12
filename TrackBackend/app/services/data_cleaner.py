@@ -16,6 +16,7 @@ from google.transit import gtfs_realtime_pb2  # type: ignore[import-untyped]
 from app.config import get_feed_url
 from app.models import ElevatorStatus, TrackArrival, TransitAlert
 from app.services.mta_client import fetch_json, fetch_protobuf
+from app.services.station_lookup import get_stop_name
 
 
 def _minutes_until(epoch: int) -> int:
@@ -47,6 +48,19 @@ async def get_arrivals_for_line(line_id: str) -> list[TrackArrival]:
             continue
         trip = entity.trip_update
         route = trip.trip.route_id  # e.g. "A", "C", "E" from the ACE feed
+        
+        # Determine destination from the last stop in the update
+        destination = None
+        if trip.stop_time_update:
+            last_stop_id = trip.stop_time_update[-1].stop_id
+            destination = get_stop_name(last_stop_id)
+            # If default lookup failed (returned "Unknown"), try parent ID
+            if destination == "Unknown" and len(last_stop_id) > 1 and last_stop_id[-1] in "NS":
+                destination = get_stop_name(last_stop_id[:-1])
+            
+            if destination == "Unknown":
+                destination = None
+
         for stu in trip.stop_time_update:
             arrival_time = stu.arrival.time if stu.HasField("arrival") else 0
             if arrival_time == 0:
@@ -58,6 +72,7 @@ async def get_arrivals_for_line(line_id: str) -> list[TrackArrival]:
                     route_id=route,
                     station=stu.stop_id,
                     direction=direction,
+                    destination=destination,
                     minutes_away=minutes,
                     status="On Time",
                 )

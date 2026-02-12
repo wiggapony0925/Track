@@ -49,12 +49,18 @@ final class HomeViewModel {
     var elevatorOutages: [ElevatorStatus] = []
 
     // Route detail sheet
+    // Route detail sheet
     var selectedGroupedRoute: GroupedNearbyTransitResponse?
+    var selectedDirectionIndex: Int?
     var isRouteDetailPresented = false
 
     // Draggable search pin
     var searchPinCoordinate: CLLocationCoordinate2D?
     var isSearchPinActive = false
+    
+    // Walking route to the nearest station
+    var walkingRoute: MKRoute?
+    var nearestStopCoordinate: CLLocationCoordinate2D?
 
     // Live bus/train tracking on map
     var selectedRouteId: String?
@@ -69,8 +75,20 @@ final class HomeViewModel {
     }
     var cachedSystemMap: [CachedSubwayLine] = []
 
+    // Full subway station list with served lines
+    struct CachedSubwayStation: Identifiable {
+        let id: String
+        let name: String
+        let coordinate: CLLocationCoordinate2D
+        let routes: [String]
+    }
+    var cachedStations: [CachedSubwayStation] = []
+
     init() {
-        Task { await loadSystemMap() }
+        Task {
+            await loadSystemMap()
+            await loadStations()
+        }
     }
 
     /// Fetches the full subway system map (polylines for all 22 lines).
@@ -92,6 +110,26 @@ final class HomeViewModel {
             }
         } catch {
             AppLogger.shared.logError("loadSystemMap", error: error)
+        }
+    }
+    
+    /// Fetches all subway stations and their served lines.
+    func loadStations() async {
+        do {
+            let response = try await TrackAPI.fetchAllSubwayStations()
+            let stations = response.stations.map { s in
+                CachedSubwayStation(
+                    id: s.id,
+                    name: s.name,
+                    coordinate: CLLocationCoordinate2D(latitude: s.lat, longitude: s.lon),
+                    routes: s.routes
+                )
+            }
+            await MainActor.run {
+                self.cachedStations = stations
+            }
+        } catch {
+            AppLogger.shared.logError("loadStations", error: error)
         }
     }
 
@@ -176,24 +214,53 @@ final class HomeViewModel {
 
     /// Opens the route detail sheet for a grouped route and loads its
     /// route shape / vehicle positions on the map.
-    func selectGroupedRoute(_ group: GroupedNearbyTransitResponse) async {
+    /// Also centers the map on the nearest station and calculates walking directions.
+    func selectGroupedRoute(_ group: GroupedNearbyTransitResponse, directionIndex: Int = 0, userLocation: CLLocation?) async {
         selectedGroupedRoute = group
+        selectedDirectionIndex = directionIndex
         isRouteDetailPresented = true
+        
+        // Reset previous route data
+        walkingRoute = nil
+        nearestStopCoordinate = nil
+        busVehicles = []
+        routeShape = nil
+        
+        selectedRouteId = group.routeId
 
         if group.isBus {
             // Load route shape + vehicles for bus routes
             await selectBusRoute(group.routeId)
         } else {
             // For subway: fetch the full line geometry from the backend
-            // so the map draws the ENTIRE line (e.g. all 40 stops of the C train)
-            selectedRouteId = group.routeId
-            busVehicles = []
-            routeShape = nil
-
             do {
                 routeShape = try await TrackAPI.fetchSubwayShape(routeID: group.displayName)
             } catch {
                 AppLogger.shared.logError("fetchSubwayShape(\(group.displayName))", error: error)
+            }
+        }
+        
+        // Find nearest stop and calculate walking route
+        if let shape = routeShape, !shape.stops.isEmpty, let userLoc = userLocation {
+            var closestStop: BusStop?
+            var minDistance: CLLocationDistance = .greatestFiniteMagnitude
+            
+            for stop in shape.stops {
+                let stopLoc = CLLocation(latitude: stop.lat, longitude: stop.lon)
+                let distance = userLoc.distance(from: stopLoc)
+                if distance < minDistance {
+                    minDistance = distance
+                    closestStop = stop
+                }
+            }
+            
+            if let closest = closestStop {
+                nearestStopCoordinate = CLLocationCoordinate2D(latitude: closest.lat, longitude: closest.lon)
+                
+                // Fetch walking route in background
+                Task {
+                    await fetchWalkingRoute(from: userLoc.coordinate, to: nearestStopCoordinate!)
+                }
             }
         }
     }
@@ -589,6 +656,34 @@ final class HomeViewModel {
             AppLogger.shared.logError("Transit ETA calculation", error: error)
             // Transit directions may not be available in all areas — fail silently
             transitEtaMinutes = nil
+        }
+    }
+    
+    // MARK: - Walking Route
+    
+    /// Fetches walking directions from user to a destination and stores the route polyline.
+    func fetchWalkingRoute(from source: CLLocationCoordinate2D, to destination: CLLocationCoordinate2D) async {
+        let sourceItem = MKMapItem(location: CLLocation(latitude: source.latitude, longitude: source.longitude), address: nil)
+        let destItem = MKMapItem(location: CLLocation(latitude: destination.latitude, longitude: destination.longitude), address: nil)
+        
+        let request = MKDirections.Request()
+        request.source = sourceItem
+        request.destination = destItem
+        request.transportType = .walking
+        
+        let directions = MKDirections(request: request)
+        do {
+            let response = try await directions.calculate()
+            if let route = response.routes.first {
+                await MainActor.run {
+                    self.walkingRoute = route
+                }
+            }
+        } catch {
+            AppLogger.shared.logError("Walking route calculation", error: error)
+            await MainActor.run {
+                self.walkingRoute = nil
+            }
         }
     }
 }

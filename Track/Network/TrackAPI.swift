@@ -194,6 +194,13 @@ struct TrackAPI {
         return try decoder.decode(AllSubwayLinesResponse.self, from: data)
     }
 
+    /// Fetches all subway stations for map markers.
+    /// - Returns: An `AllSubwayStationsResponse` with all stations and their routes.
+    static func fetchAllSubwayStations() async throws -> AllSubwayStationsResponse {
+        let data = try await get(path: "/subway/stations/all")
+        return try decoder.decode(AllSubwayStationsResponse.self, from: data)
+    }
+
     // MARK: - Service Status
 
     /// Fetches critical MTA service alerts.
@@ -317,6 +324,7 @@ struct NearbyTransitResponse: Codable, Identifiable {
     let routeId: String
     let stopName: String
     let direction: String
+    let destination: String?
     let minutesAway: Int
     let status: String
     let mode: String
@@ -334,6 +342,7 @@ struct NearbyTransitResponse: Codable, Identifiable {
         case routeId = "route_id"
         case stopName = "stop_name"
         case direction
+        case destination
         case minutesAway = "minutes_away"
         case status
         case mode
@@ -366,6 +375,14 @@ struct GroupedNearbyTransitResponse: Codable, Identifiable {
     /// The soonest arrival across all directions.
     var soonestMinutes: Int {
         directions.flatMap(\.arrivals).map(\.minutesAway).min() ?? 99
+    }
+
+    /// The name of the direction (destination) for the soonest arrival.
+    var soonestDirectionName: String? {
+        let all = directions.flatMap { dir in 
+            dir.arrivals.map { (dir.direction, $0.minutesAway) }
+        }
+        return all.min(by: { $0.1 < $1.1 })?.0
     }
 
     enum CodingKeys: String, CodingKey {
@@ -425,6 +442,18 @@ struct SubwayLineOverlay: Codable, Identifiable {
 /// Response containing all subway lines for the system map.
 struct AllSubwayLinesResponse: Codable {
     let lines: [SubwayLineOverlay]
+}
+
+struct SubwayStation: Codable, Identifiable {
+    let id: String
+    let name: String
+    let lat: Double
+    let lon: Double
+    let routes: [String]
+}
+
+struct AllSubwayStationsResponse: Codable {
+    let stations: [SubwayStation]
 }
 
 /// Matches the backend's `RouteShape` JSON schema.

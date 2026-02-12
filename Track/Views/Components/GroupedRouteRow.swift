@@ -12,10 +12,13 @@ import SwiftUI
 
 struct GroupedRouteRow: View {
     let group: GroupedNearbyTransitResponse
+    var onSelect: ((Int) -> Void)? = nil
+
+    @State private var currentDirectionIndex = 0
 
     var body: some View {
         HStack(spacing: 12) {
-            // Mode badge
+            // Mode badge remains static on the left
             ZStack {
                 Circle()
                     .fill(badgeColor)
@@ -36,57 +39,83 @@ struct GroupedRouteRow: View {
             }
             .accessibilityHidden(true)
 
-            // Route info
-            VStack(alignment: .leading, spacing: 2) {
-                Text(group.displayName)
+            // Swipeable content area
+            if group.directions.isEmpty {
+                Text("No active service")
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(AppTheme.Colors.textPrimary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-
-                HStack(spacing: 4) {
-                    ForEach(group.directions, id: \.direction) { dir in
-                        Text(shortDirectionLabel(dir.direction))
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(AppTheme.Colors.textSecondary)
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+                Spacer()
+            } else {
+                VStack(alignment: .leading, spacing: 4) {
+                    TabView(selection: $currentDirectionIndex) {
+                        ForEach(Array(group.directions.enumerated()), id: \.element.id) { index, direction in
+                            // Destination Label
+                            let label = direction.arrivals.first?.destination ?? directionLabel(direction.direction)
+                            Text(label)
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundColor(AppTheme.Colors.textPrimary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.9)
+                                .tag(index)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
                     }
+                    .tabViewStyle(.page(indexDisplayMode: .never))
+                    .frame(height: 20) // Just enough for text
+                    
+                    // Custom Pagination Dots
                     if group.directions.count > 1 {
-                        Text("·")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(AppTheme.Colors.textSecondary)
-                        Text("\(group.directions.count) directions")
-                            .font(.system(size: 11, weight: .medium))
+                        HStack(spacing: 4) {
+                            ForEach(0..<group.directions.count, id: \.self) { index in
+                                Circle()
+                                    .fill(index == currentDirectionIndex 
+                                          ? AppTheme.Colors.textPrimary 
+                                          : AppTheme.Colors.textSecondary.opacity(0.3))
+                                    .frame(width: 5, height: 5)
+                            }
+                        }
+                    }
+                }
+                .frame(height: 32)
+            }
+
+            Spacer(minLength: 8)
+
+            // Big Countdown for the CURRENT direction
+            if !group.directions.isEmpty {
+                let currentDir = group.directions[min(currentDirectionIndex, group.directions.count - 1)]
+                if let first = currentDir.arrivals.first {
+                    HStack(alignment: .firstTextBaseline, spacing: 2) {
+                        Text("\(first.minutesAway)")
+                            .font(.system(size: 24, weight: .bold, design: .rounded))
+                            .foregroundColor(AppTheme.Colors.countdown(first.minutesAway))
+                        Text("min")
+                            .font(.system(size: 12, weight: .medium))
                             .foregroundColor(AppTheme.Colors.textSecondary)
                     }
+                } else {
+                    Text("--")
+                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                        .foregroundColor(AppTheme.Colors.textSecondary)
                 }
             }
 
-            Spacer(minLength: 4)
-
-            // Soonest countdown
-            HStack(alignment: .firstTextBaseline, spacing: 2) {
-                Text("\(group.soonestMinutes)")
-                    .font(.system(size: 20, weight: .bold, design: .rounded))
-                    .foregroundColor(AppTheme.Colors.countdown(group.soonestMinutes))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                Text("min")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(AppTheme.Colors.textSecondary)
-            }
-
-            // Chevron
+            // Chevron (outside the swipe area so it's always visible)
             Image(systemName: "chevron.right")
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundColor(AppTheme.Colors.textSecondary)
         }
-        .padding(.vertical, 10)
+        .padding(.vertical, 14) // Increased padding for better touch target
         .padding(.horizontal, AppTheme.Layout.margin)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            onSelect?(currentDirectionIndex)
+        }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
-            "\(group.isBus ? "Bus" : "Train") \(group.displayName), next in \(group.soonestMinutes) minutes"
+            "\(group.isBus ? "Bus" : "Train") \(group.displayName), swipe for directions"
         )
-        .accessibilityHint("Tap to see arrivals in both directions")
+        .accessibilityHint("Double tap to see details for current direction")
     }
 
     private var badgeColor: Color {
