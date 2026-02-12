@@ -215,7 +215,14 @@ struct RouteDetailSheet: View {
                     }
                 }
             }
-            .mapStyle(.standard(emphasis: .muted, showsTraffic: false))
+            .mapStyle(.standard(
+                emphasis: .muted,
+                pointsOfInterest: .including([.publicTransport]),
+                showsTraffic: false
+            ))
+            .mapControls {
+                MapScaleView()
+            }
             .frame(height: 200)
             .clipShape(RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius))
             .padding(.horizontal, AppTheme.Layout.margin)

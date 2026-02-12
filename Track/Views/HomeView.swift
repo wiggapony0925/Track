@@ -106,8 +106,20 @@ struct HomeView: View {
                     }
                 }
             }
-            // Transit-emphasized map style: dims driving roads, highlights transit lines/stations.
-            .mapStyle(.standard(emphasis: .muted, showsTraffic: false))
+            // Transit-emphasized map style: dims driving roads, highlights transit
+            // stations natively via pointsOfInterest.
+            .mapStyle(.standard(
+                emphasis: .muted,
+                pointsOfInterest: .including([.publicTransport]),
+                showsTraffic: false
+            ))
+            // Native MapKit controls — compass auto-hides when north-facing,
+            // scale auto-shows during zoom, user location button recenters.
+            .mapControls {
+                MapUserLocationButton()
+                MapCompass()
+                MapScaleView()
+            }
             .ignoresSafeArea()
             .onLongPressGesture(minimumDuration: 0.5) {
                 // Long press handled via MapReader below
@@ -355,20 +367,6 @@ struct HomeView: View {
                             .foregroundColor(AppTheme.Colors.mtaBlue)
                     }
                     .accessibilityLabel("Drop search pin")
-
-                    // Recenter on user location
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.6)) {
-                            cameraPosition = .userLocation(
-                                fallback: .region(AppTheme.MapConfig.fallbackRegion)
-                            )
-                        }
-                    } label: {
-                        Image(systemName: "location.fill")
-                            .font(.system(size: 18, weight: .medium))
-                            .foregroundColor(AppTheme.Colors.mtaBlue)
-                    }
-                    .accessibilityLabel("Recenter on my location")
 
                     Button {
                         showSettings = true
