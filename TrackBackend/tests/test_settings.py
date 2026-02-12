@@ -24,7 +24,7 @@ class TestSettingsLoaded:
 
     def test_search_radius_meters(self):
         settings = get_settings()
-        assert settings.app_settings.search_radius_meters == 500
+        assert settings.app_settings.search_radius_meters == 800
 
     def test_refresh_interval_seconds(self):
         settings = get_settings()
@@ -58,6 +58,14 @@ class TestSettingsLoaded:
         settings = get_settings()
         assert settings.app_settings.show_ghost_trains is False
 
+    def test_http_max_retries(self):
+        settings = get_settings()
+        assert settings.app_settings.http_max_retries == 2
+
+    def test_http_retry_delay_seconds(self):
+        settings = get_settings()
+        assert settings.app_settings.http_retry_delay_seconds == 1.0
+
 
 class TestConfigEndpoint:
     """Tests that the /config endpoint exposes all app_settings."""
@@ -66,7 +74,7 @@ class TestConfigEndpoint:
         response = client.get("/config")
         assert response.status_code == 200
         data = response.json()
-        assert data["search_radius_meters"] == 500
+        assert data["search_radius_meters"] == 800
         assert data["refresh_interval_seconds"] == 30
         assert data["nearest_metro_fallback_radius_meters"] == 5000
         assert data["max_nearby_results"] == 20
@@ -74,6 +82,8 @@ class TestConfigEndpoint:
         assert data["nearby_bus_stops_limit"] == 3
         assert data["http_timeout_seconds"] == 15.0
         assert data["http_connect_timeout_seconds"] == 10.0
+        assert data["http_max_retries"] == 2
+        assert data["http_retry_delay_seconds"] == 1.0
         assert data["show_ghost_trains"] is False
 
     def test_config_matches_settings_json(self):

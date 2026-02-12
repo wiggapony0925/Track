@@ -121,7 +121,7 @@ async def get_stops(route_id: str) -> list[BusStop]:
 
 
 async def get_nearby_stops(
-    lat: float, lon: float, radius_m: int = 500,
+    lat: float, lon: float, radius_m: int | None = None,
 ) -> list[BusStop]:
     """Fetch bus stops near a GPS coordinate using OBA ``stops-for-location``.
 
@@ -135,6 +135,7 @@ async def get_nearby_stops(
     import asyncio
 
     settings = get_settings()
+    effective_radius = radius_m if radius_m is not None else settings.app_settings.search_radius_meters
     eps = settings.urls.bus_endpoints
     if eps is None:
         return []
@@ -143,8 +144,8 @@ async def get_nearby_stops(
     _METERS_PER_DEG_LAT = 111_000
     _METERS_PER_DEG_LON_NYC = 85_000
 
-    lat_span = max(0.005, radius_m / _METERS_PER_DEG_LAT)
-    lon_span = max(0.005, radius_m / _METERS_PER_DEG_LON_NYC)
+    lat_span = max(0.005, effective_radius / _METERS_PER_DEG_LAT)
+    lon_span = max(0.005, effective_radius / _METERS_PER_DEG_LON_NYC)
 
     url = settings.urls.bus_oba_base + eps.stops_near_location
     params = {
@@ -155,8 +156,9 @@ async def get_nearby_stops(
         "lonSpan": f"{lon_span:.6f}",
     }
 
-    # Retry up to 2 times on timeout / 5xx errors
-    max_retries = 2
+    # Retry logic driven by settings
+    max_retries = settings.app_settings.http_max_retries
+    retry_delay = settings.app_settings.http_retry_delay_seconds
     last_error: Exception | None = None
     for attempt in range(max_retries + 1):
         try:
@@ -182,7 +184,7 @@ async def get_nearby_stops(
         except (httpx.HTTPStatusError, httpx.TimeoutException) as exc:
             last_error = exc
             if attempt < max_retries:
-                await asyncio.sleep(1)  # Brief pause before retry
+                await asyncio.sleep(retry_delay)  # Brief pause before retry
 
     # All retries exhausted — raise so caller can handle
     if last_error:

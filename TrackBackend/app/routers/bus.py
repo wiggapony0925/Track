@@ -11,6 +11,7 @@ from __future__ import annotations
 import httpx
 from fastapi import APIRouter, HTTPException, Query
 
+from app.config import get_settings
 from app.models import BusArrival, BusRoute, BusStop, BusVehicle, RouteShape
 from app.services.bus_client import (
     get_nearby_stops,
@@ -61,12 +62,14 @@ async def bus_stops(route_id: str) -> list[BusStop]:
 async def bus_nearby(
     lat: float = Query(..., description="Latitude"),
     lon: float = Query(..., description="Longitude"),
-    radius: int = Query(800, description="Search radius in meters"),
+    radius: int | None = Query(None, description="Search radius in meters"),
 ) -> list[BusStop]:
     """Return bus stops near a GPS coordinate."""
+    settings = get_settings()
+    effective_radius = radius if radius is not None else settings.app_settings.search_radius_meters
     TrackLogger.location(lat, lon, "bus/nearby")
     try:
-        return await get_nearby_stops(lat, lon, radius_m=radius)
+        return await get_nearby_stops(lat, lon, radius_m=effective_radius)
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code in (401, 403):
             raise HTTPException(
