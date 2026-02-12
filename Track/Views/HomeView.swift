@@ -92,6 +92,14 @@ struct HomeView: View {
                         MapPolyline(coordinates: coords)
                             .stroke(selectedRouteColor, lineWidth: 4)
                     }
+                } else {
+                    // Full system map (all lines) shown by default
+                    ForEach(viewModel.cachedSystemMap) { line in
+                        ForEach(Array(line.coordinates.enumerated()), id: \.offset) { _, coords in
+                            MapPolyline(coordinates: coords)
+                                .stroke(line.color, lineWidth: 2)
+                        }
+                    }
                 }
             }
             // Transit-emphasized map style: dims driving roads, highlights transit
@@ -148,36 +156,37 @@ struct HomeView: View {
                     .padding(.bottom, 8)
             }
         }
-        // Bottom sheet
+        // Bottom sheet — single modal that swaps between dashboard and route detail
         .sheet(isPresented: .constant(true)) {
-            dashboardContent
-                .presentationDetents([.fraction(0.4), .large])
-                .presentationDragIndicator(.visible)
-                .presentationBackgroundInteraction(.enabled)
-                .interactiveDismissDisabled()
-                .sheet(isPresented: $showSettings) {
-                    SettingsView()
-                }
-                .sheet(isPresented: $viewModel.isRouteDetailPresented) {
-                    if let group = viewModel.selectedGroupedRoute {
-                        RouteDetailSheet(
-                            group: group,
-                            busVehicles: $viewModel.busVehicles,
-                            routeShape: $viewModel.routeShape,
-                            onTrack: { arrival in
-                                viewModel.trackNearbyArrival(arrival, location: locationManager.currentLocation)
-                            },
-                            onDismiss: {
+            Group {
+                if viewModel.isRouteDetailPresented,
+                   let group = viewModel.selectedGroupedRoute {
+                    RouteDetailSheet(
+                        group: group,
+                        busVehicles: $viewModel.busVehicles,
+                        routeShape: $viewModel.routeShape,
+                        onTrack: { arrival in
+                            viewModel.trackNearbyArrival(arrival, location: locationManager.currentLocation)
+                        },
+                        onDismiss: {
+                            withAnimation(.easeInOut(duration: 0.25)) {
                                 viewModel.isRouteDetailPresented = false
                                 viewModel.selectedGroupedRoute = nil
                                 viewModel.clearBusRoute()
                             }
-                        )
-                        .presentationDetents([.medium, .large])
-                        .presentationDragIndicator(.visible)
-                        .presentationBackgroundInteraction(.enabled)
-                    }
+                        }
+                    )
+                } else {
+                    dashboardContent
                 }
+            }
+            .presentationDetents([.fraction(0.4), .large])
+            .presentationDragIndicator(.visible)
+            .presentationBackgroundInteraction(.enabled)
+            .interactiveDismissDisabled()
+            .sheet(isPresented: $showSettings) {
+                SettingsView()
+            }
         }
         .onAppear {
             locationManager.requestPermission()

@@ -56,10 +56,44 @@ final class HomeViewModel {
     var searchPinCoordinate: CLLocationCoordinate2D?
     var isSearchPinActive = false
 
-    // Live bus tracking on map
+    // Live bus/train tracking on map
     var selectedRouteId: String?
     var busVehicles: [BusVehicleResponse] = []
     var routeShape: RouteShapeResponse?
+
+    // Full subway system map (pre-decoded for performance)
+    struct CachedSubwayLine: Identifiable {
+        let id: String
+        let color: Color
+        let coordinates: [[CLLocationCoordinate2D]]
+    }
+    var cachedSystemMap: [CachedSubwayLine] = []
+
+    init() {
+        Task { await loadSystemMap() }
+    }
+
+    /// Fetches the full subway system map (polylines for all 22 lines).
+    func loadSystemMap() async {
+        do {
+            let response = try await TrackAPI.fetchAllSubwayShapes()
+            
+            // Pre-decode coordinates on a background thread to avoid UI hitch
+            let decoded = response.lines.map { line in
+                CachedSubwayLine(
+                    id: line.routeId,
+                    color: Color(hex: line.colorHex),
+                    coordinates: line.decodedPolylines
+                )
+            }
+            
+            await MainActor.run {
+                self.cachedSystemMap = decoded
+            }
+        } catch {
+            AppLogger.shared.logError("loadSystemMap", error: error)
+        }
+    }
 
     // Live Activity tracking
     var trackingArrivalId: String?

@@ -124,3 +124,21 @@ class RouteShape(BaseModel):
     route_id: str
     polylines: list[str]
     stops: list[BusStop]
+
+
+class SubwayLineOverlay(BaseModel):
+    """Lightweight shape for drawing a single subway line on the map.
+
+    Intentionally excludes stops to keep the all-lines payload small.
+    """
+
+    route_id: str
+    color_hex: str
+    polylines: list[str]
+
+
+class AllSubwayLinesResponse(BaseModel):
+    """All subway line overlays for drawing the full system map."""
+
+    lines: list[SubwayLineOverlay]
+

@@ -185,6 +185,15 @@ struct TrackAPI {
         return try decoder.decode(RouteShapeResponse.self, from: data)
     }
 
+    /// Fetches polylines + colors for ALL subway lines (the full system map).
+    ///
+    /// Called once on app launch to draw every line on the map.
+    /// - Returns: An `AllSubwayLinesResponse` with lightweight overlay data per line.
+    static func fetchAllSubwayShapes() async throws -> AllSubwayLinesResponse {
+        let data = try await get(path: "/subway/shapes/all")
+        return try decoder.decode(AllSubwayLinesResponse.self, from: data)
+    }
+
     // MARK: - Service Status
 
     /// Fetches critical MTA service alerts.
@@ -392,6 +401,30 @@ struct BusVehicleResponse: Codable, Identifiable {
         case nextStop = "next_stop"
         case statusText = "status_text"
     }
+}
+
+/// Lightweight overlay for drawing a single subway line on the full map.
+struct SubwayLineOverlay: Codable, Identifiable {
+    var id: String { routeId }
+    let routeId: String
+    let colorHex: String
+    let polylines: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case routeId = "route_id"
+        case colorHex = "color_hex"
+        case polylines
+    }
+
+    /// Decodes polylines on demand.
+    var decodedPolylines: [[CLLocationCoordinate2D]] {
+        polylines.map { decodePolyline($0) }
+    }
+}
+
+/// Response containing all subway lines for the system map.
+struct AllSubwayLinesResponse: Codable {
+    let lines: [SubwayLineOverlay]
 }
 
 /// Matches the backend's `RouteShape` JSON schema.

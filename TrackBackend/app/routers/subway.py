@@ -10,16 +10,71 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 
 from app.config import LINE_TO_URL_KEY
-from app.models import BusStop, RouteShape, TrackArrival
+from app.models import (
+    AllSubwayLinesResponse,
+    BusStop,
+    RouteShape,
+    SubwayLineOverlay,
+    TrackArrival,
+)
 from app.services.data_cleaner import get_arrivals_for_line
 from app.services.subway_shapes import get_subway_route_shape
 from app.utils.logger import TrackLogger
 
 router = APIRouter(tags=["subway"])
 
+# Official MTA subway line colors
+_SUBWAY_COLORS: dict[str, str] = {
+    "1": "#EE352E", "2": "#EE352E", "3": "#EE352E",
+    "4": "#00933C", "5": "#00933C", "6": "#00933C",
+    "7": "#B933AD",
+    "A": "#0039A6", "C": "#0039A6", "E": "#0039A6",
+    "B": "#FF6319", "D": "#FF6319", "F": "#FF6319", "M": "#FF6319",
+    "G": "#6CBE45",
+    "J": "#996633", "Z": "#996633",
+    "L": "#A7A9AC",
+    "N": "#FCCC0A", "Q": "#FCCC0A", "R": "#FCCC0A", "W": "#FCCC0A",
+    "S": "#808183", "SI": "#808183",
+}
 
-# NOTE: shape endpoint MUST be declared before the wildcard /{line_id}
-# endpoint, otherwise FastAPI would match "shape" as a line_id.
+# All subway lines to include in the full system map
+_ALL_LINES = [
+    "1", "2", "3", "4", "5", "6", "7",
+    "A", "C", "E", "B", "D", "F", "M",
+    "G", "J", "Z", "L", "N", "Q", "R", "W",
+]
+
+
+# NOTE: Static path endpoints MUST be declared before the wildcard /{line_id}
+# endpoint, otherwise FastAPI would match literal segments as a line_id.
+
+
+@router.get("/subway/shapes/all", response_model=AllSubwayLinesResponse)
+async def subway_shapes_all() -> AllSubwayLinesResponse:
+    """Return polylines for ALL subway lines — the full system map.
+
+    This is called once on app launch to draw every subway line on the
+    map with the correct MTA colors.  The response is lightweight
+    (polylines + color only, no stop lists) to keep it fast.
+    """
+    overlays: list[SubwayLineOverlay] = []
+
+    for line in _ALL_LINES:
+        result = get_subway_route_shape(line)
+        if result is None:
+            continue
+        polylines_raw, _stops = result
+        encoded = [_encode_polyline(coords) for coords in polylines_raw]
+        color = _SUBWAY_COLORS.get(line, "#808183")
+        overlays.append(SubwayLineOverlay(
+            route_id=line,
+            color_hex=color,
+            polylines=encoded,
+        ))
+
+    TrackLogger.info(f"Subway shapes/all: {len(overlays)} lines returned")
+    return AllSubwayLinesResponse(lines=overlays)
+
 
 @router.get("/subway/shape/{route_id}", response_model=RouteShape)
 async def subway_shape(route_id: str) -> RouteShape:
