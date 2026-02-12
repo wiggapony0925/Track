@@ -14,7 +14,7 @@ struct SettingsView: View {
     @AppStorage("isLoggedIn") private var isLoggedIn = false
 
     @AppStorage("dev_use_localhost") private var useLocalhost = false
-    @AppStorage("dev_custom_ip") private var customIP = "192.168.12.101"
+    @AppStorage("dev_custom_ip") private var customIP = AppSettings.shared.defaultDeviceIP
 
     var body: some View {
         NavigationStack {

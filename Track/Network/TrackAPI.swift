@@ -14,16 +14,15 @@ struct TrackAPI {
 
     // MARK: - Environment Configuration
 
-    private static let prodURL = "https://track-api.onrender.com"
-
     /// The active backend URL, determined by the Developer Settings in SettingsView.
     static var baseURL: String {
+        let settings = AppSettings.shared
         let useLocalhost = UserDefaults.standard.bool(forKey: "dev_use_localhost")
         if useLocalhost {
-            return "http://127.0.0.1:8000"
+            return settings.localBaseURL
         } else {
-            let storedIP = UserDefaults.standard.string(forKey: "dev_custom_ip") ?? "192.168.12.101"
-            return "http://\(storedIP):8000"
+            let storedIP = UserDefaults.standard.string(forKey: "dev_custom_ip") ?? settings.defaultDeviceIP
+            return "http://\(storedIP):\(settings.localPort)"
         }
     }
 
@@ -108,16 +107,17 @@ struct TrackAPI {
     /// - Parameters:
     ///   - lat: User's latitude.
     ///   - lon: User's longitude.
-    ///   - radius: Search radius in meters (default 500).
+    ///   - radius: Search radius in meters (from settings.json by default).
     /// - Returns: Array of `NearbyTransitResponse`.
-    static func fetchNearbyTransit(lat: Double, lon: Double, radius: Int = 500) async throws -> [NearbyTransitResponse] {
+    static func fetchNearbyTransit(lat: Double, lon: Double, radius: Int? = nil) async throws -> [NearbyTransitResponse] {
+        let effectiveRadius = radius ?? AppSettings.shared.defaultSearchRadiusMeters
         guard var components = URLComponents(string: baseURL + "/nearby") else {
             throw TrackAPIError.invalidURL
         }
         components.queryItems = [
             URLQueryItem(name: "lat", value: String(lat)),
             URLQueryItem(name: "lon", value: String(lon)),
-            URLQueryItem(name: "radius", value: String(radius)),
+            URLQueryItem(name: "radius", value: String(effectiveRadius)),
         ]
         guard let url = components.url else {
             throw TrackAPIError.invalidURL
@@ -132,16 +132,17 @@ struct TrackAPI {
     /// - Parameters:
     ///   - lat: User's latitude.
     ///   - lon: User's longitude.
-    ///   - radius: Search radius in meters (default 500).
+    ///   - radius: Search radius in meters (from settings.json by default).
     /// - Returns: Array of `GroupedNearbyTransitResponse`.
-    static func fetchNearbyGrouped(lat: Double, lon: Double, radius: Int = 500) async throws -> [GroupedNearbyTransitResponse] {
+    static func fetchNearbyGrouped(lat: Double, lon: Double, radius: Int? = nil) async throws -> [GroupedNearbyTransitResponse] {
+        let effectiveRadius = radius ?? AppSettings.shared.defaultSearchRadiusMeters
         guard var components = URLComponents(string: baseURL + "/nearby/grouped") else {
             throw TrackAPIError.invalidURL
         }
         components.queryItems = [
             URLQueryItem(name: "lat", value: String(lat)),
             URLQueryItem(name: "lon", value: String(lon)),
-            URLQueryItem(name: "radius", value: String(radius)),
+            URLQueryItem(name: "radius", value: String(effectiveRadius)),
         ]
         guard let url = components.url else {
             throw TrackAPIError.invalidURL

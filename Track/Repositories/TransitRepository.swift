@@ -74,7 +74,7 @@ final class TransitRepository {
     func fetchNearbyStations(
         latitude: Double,
         longitude: Double,
-        radius: Double = 500
+        radius: Double = Double(AppSettings.shared.defaultSearchRadiusMeters)
     ) async throws -> [(stationID: String, name: String, distance: Double, routeIDs: [String])] {
         // Station data loaded from local storage
         // TODO: Load from CSV or backend endpoint when available

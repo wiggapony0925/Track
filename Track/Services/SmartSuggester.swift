@@ -22,7 +22,7 @@ struct SmartSuggester {
     ///
     /// Algorithm:
     /// 1. Fetch all CommutePattern logs from SwiftData
-    /// 2. Filter where startLocation is within 200m of current location
+    /// 2. Filter where startLocation is within the configured match radius of current location
     /// 3. Filter where timeOfDay is within ±1 hour of current time
     /// 4. Rank by frequency (higher = more likely)
     ///
@@ -56,12 +56,13 @@ struct SmartSuggester {
             // Filter by proximity (200m radius) if location available
             let filtered: [CommutePattern]
             if let location = currentLocation {
+                let matchRadius = AppSettings.shared.commutePatternMatchRadiusMeters
                 filtered = patterns.filter { pattern in
                     let patternLocation = CLLocation(
                         latitude: pattern.startLatitude,
                         longitude: pattern.startLongitude
                     )
-                    return location.distance(from: patternLocation) <= 200
+                    return location.distance(from: patternLocation) <= matchRadius
                 }
             } else {
                 filtered = patterns
@@ -109,13 +110,14 @@ struct SmartSuggester {
         do {
             let existing = try context.fetch(descriptor)
 
-            // Find one within 200m
+            // Find one within the configured match radius
+            let matchRadius = AppSettings.shared.commutePatternMatchRadiusMeters
             let match = existing.first { pattern in
                 let patternLoc = CLLocation(
                     latitude: pattern.startLatitude,
                     longitude: pattern.startLongitude
                 )
-                return startLocation.distance(from: patternLoc) <= 200
+                return startLocation.distance(from: patternLoc) <= matchRadius
             }
 
             if let match = match {

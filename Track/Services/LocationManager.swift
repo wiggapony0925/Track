@@ -20,7 +20,7 @@ final class LocationManager: NSObject, CLLocationManagerDelegate {
         super.init()
         manager.delegate = self
         manager.desiredAccuracy = kCLLocationAccuracyBest
-        manager.distanceFilter = 50
+        manager.distanceFilter = AppSettings.shared.distanceFilterMeters
     }
 
     func requestPermission() {

@@ -208,7 +208,7 @@ final class HomeViewModel {
     // MARK: - Nearby Transit (Unified)
 
     /// Search radius (meters) used for the wider "nearest metro" fallback.
-    private static let nearestMetroRadius = 5000
+    private static let nearestMetroRadius = AppSettings.shared.nearestMetroFallbackRadiusMeters
 
     /// Fetches all nearby transit (buses + trains) in one call.
     /// Uses the grouped endpoint to deduplicate routes.
@@ -476,7 +476,7 @@ final class HomeViewModel {
 
     /// Distance threshold (meters) for marking a stop as passed.
     /// When the user is within this radius of a stop, it is dimmed.
-    private static let stopPassedThreshold: CLLocationDistance = 100
+    private static let stopPassedThreshold: CLLocationDistance = AppSettings.shared.stopPassedThresholdMeters
 
     /// Updates the list of passed stops based on the user's current
     /// position and bearing relative to the route shape stops.

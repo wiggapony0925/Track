@@ -222,8 +222,9 @@ struct HomeView: View {
             locationManager.requestPermission()
             locationManager.startUpdating()
             // Initial data fetch will happen in onChange once location arrives.
-            // Auto-refresh every 30 seconds
-            refreshTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { _ in
+            // Auto-refresh at the interval defined in settings.json
+            let interval = TimeInterval(AppSettings.shared.refreshIntervalSeconds)
+            refreshTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { _ in
                 Task { @MainActor in
                     await viewModel.refresh(location: locationManager.currentLocation)
                     lastUpdated = Date()

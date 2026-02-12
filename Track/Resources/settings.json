@@ -1,0 +1,31 @@
+{
+  "api": {
+    "default_search_radius_meters": 500,
+    "nearest_metro_fallback_radius_meters": 5000,
+    "refresh_interval_seconds": 30,
+    "prod_base_url": "https://track-api.onrender.com",
+    "local_base_url": "http://127.0.0.1:8000",
+    "default_device_ip": "192.168.12.101",
+    "local_port": 8000
+  },
+  "location": {
+    "distance_filter_meters": 50,
+    "commute_pattern_match_radius_meters": 200,
+    "stop_passed_threshold_meters": 100
+  },
+  "map": {
+    "user_zoom_distance": 3000,
+    "min_camera_distance": 300,
+    "max_camera_distance": 80000,
+    "nyc_center_lat": 40.7580,
+    "nyc_center_lon": -73.9855,
+    "bounds_center_lat": 40.71,
+    "bounds_center_lon": -73.38,
+    "bounds_lat_delta": 0.60,
+    "bounds_lon_delta": 2.00,
+    "service_area_min_lat": 40.40,
+    "service_area_max_lat": 41.10,
+    "service_area_min_lon": -74.35,
+    "service_area_max_lon": -72.40
+  }
+}

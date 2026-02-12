@@ -136,34 +136,30 @@ struct AppTheme {
     /// - ``MapCameraBounds`` — https://developer.apple.com/documentation/mapkit/mapcamerabounds
     /// - ``MKCoordinateRegion`` — https://developer.apple.com/documentation/mapkit/mkcoordinateregion
     struct MapConfig {
+        private static let s = AppSettings.shared
+
         /// Center of the NYC 5 boroughs + Long Island bounding box.
-        /// Lat ≈ midpoint of Bronx (40.92) and Staten Island (40.50).
-        /// Lon ≈ midpoint of Staten Island (-74.26) and Suffolk (-72.50).
-        static let boundsCenter = CLLocationCoordinate2D(latitude: 40.71, longitude: -73.38)
+        static let boundsCenter = CLLocationCoordinate2D(latitude: s.boundsCenterLat, longitude: s.boundsCenterLon)
 
         /// Span that covers the 5 boroughs and Long Island with margin.
-        /// Lat 0.60° ≈ north Bronx to south Staten Island + buffer.
-        /// Lon 2.00° ≈ west Staten Island to eastern Suffolk + buffer.
-        static let boundsSpan = MKCoordinateSpan(latitudeDelta: 0.60, longitudeDelta: 2.00)
+        static let boundsSpan = MKCoordinateSpan(latitudeDelta: s.boundsLatDelta, longitudeDelta: s.boundsLonDelta)
 
         /// The region used to constrain map panning.
         static let boundsRegion = MKCoordinateRegion(center: boundsCenter, span: boundsSpan)
 
         /// Camera bounds that restrict panning and zoom.
-        /// - minimumDistance: 300 m (street-level zoom for subway entrances)
-        /// - maximumDistance: 80 km (enough to see the full service area)
         static let cameraBounds = MapCameraBounds(
             centerCoordinateBounds: boundsRegion,
-            minimumDistance: 300,
-            maximumDistance: 80_000
+            minimumDistance: s.minCameraDistance,
+            maximumDistance: s.maxCameraDistance
         )
 
         /// Default zoom distance (meters) used when centering on the user.
-        static let userZoomDistance: Double = 3000
+        static let userZoomDistance: Double = s.userZoomDistance
 
         /// Fallback center (Midtown Manhattan) shown before CoreLocation
         /// delivers the first fix.
-        static let nycCenter = CLLocationCoordinate2D(latitude: 40.7580, longitude: -73.9855)
+        static let nycCenter = CLLocationCoordinate2D(latitude: s.nycCenterLat, longitude: s.nycCenterLon)
 
         /// Fallback region centered on Midtown at a comfortable zoom level.
         static let fallbackRegion = MKCoordinateRegion(
@@ -180,20 +176,12 @@ struct AppTheme {
 
         // MARK: - Service Area Validation
 
-        /// Generous bounding box for the NYC MTA service area.
-        /// Latitude: south Staten Island (40.50) to north Bronx/Westchester (41.10) with buffer.
-        /// Longitude: west NJ/Staten Island (-74.35) to east Suffolk/Montauk (-72.40) with buffer.
-        private static let serviceAreaMinLat: Double = 40.40  // buffer south of Staten Island
-        private static let serviceAreaMaxLat: Double = 41.10  // north of the Bronx
-        private static let serviceAreaMinLon: Double = -74.35 // west of Staten Island
-        private static let serviceAreaMaxLon: Double = -72.40 // east of Long Island
-
         /// Returns `true` if the coordinate is within the NYC metro service area.
         static func isInServiceArea(_ coordinate: CLLocationCoordinate2D) -> Bool {
-            coordinate.latitude  >= serviceAreaMinLat &&
-            coordinate.latitude  <= serviceAreaMaxLat &&
-            coordinate.longitude >= serviceAreaMinLon &&
-            coordinate.longitude <= serviceAreaMaxLon
+            coordinate.latitude  >= s.serviceAreaMinLat &&
+            coordinate.latitude  <= s.serviceAreaMaxLat &&
+            coordinate.longitude >= s.serviceAreaMinLon &&
+            coordinate.longitude <= s.serviceAreaMaxLon
         }
     }
 }
