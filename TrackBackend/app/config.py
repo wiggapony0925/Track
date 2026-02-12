@@ -24,7 +24,7 @@ class AppSettings(BaseModel):
 
 
 class ApiKeys(BaseModel):
-    mta_api_key: str = "YOUR_KEY_HERE"
+    mta_api_key: str = ""
     mta_bus_key: str = ""
 
 

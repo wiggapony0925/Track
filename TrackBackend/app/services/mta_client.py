@@ -20,7 +20,9 @@ _TIMEOUT = httpx.Timeout(15.0, connect=10.0)
 async def fetch_protobuf(url: str) -> bytes:
     """Fetch a GTFS-Realtime Protobuf feed and return raw bytes."""
     settings = get_settings()
-    headers = {"x-api-key": settings.api_keys.mta_api_key}
+    headers = {}
+    if settings.api_keys.mta_api_key:
+        headers["x-api-key"] = settings.api_keys.mta_api_key
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
         response = await client.get(url, headers=headers)
         response.raise_for_status()
@@ -30,7 +32,9 @@ async def fetch_protobuf(url: str) -> bytes:
 async def fetch_json(url: str) -> Any:
     """Fetch a JSON feed and return the parsed object."""
     settings = get_settings()
-    headers = {"x-api-key": settings.api_keys.mta_api_key}
+    headers = {}
+    if settings.api_keys.mta_api_key:
+        headers["x-api-key"] = settings.api_keys.mta_api_key
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
         response = await client.get(url, headers=headers)
         response.raise_for_status()

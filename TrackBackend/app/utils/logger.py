@@ -26,3 +26,12 @@ class TrackLogger:
     def request(method, path, status):
         color = Fore.GREEN if status < 400 else Fore.RED
         print(f"{Fore.BLUE}[REQ]{Style.RESET_ALL} {method} {path} -> {color}{status}{Style.RESET_ALL}")
+
+    @staticmethod
+    def location(lat, lon, endpoint=""):
+        print(
+            f"{Fore.MAGENTA}[LOCATION]{Style.RESET_ALL} "
+            f"lat={Fore.CYAN}{lat}{Style.RESET_ALL}, "
+            f"lon={Fore.CYAN}{lon}{Style.RESET_ALL} "
+            f"({endpoint})"
+        )

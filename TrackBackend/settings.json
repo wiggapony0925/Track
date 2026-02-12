@@ -5,7 +5,7 @@
     "show_ghost_trains": false
   },
   "api_keys": {
-    "mta_api_key": "YOUR_KEY_HERE",
+    "mta_api_key": "",
     "mta_bus_key": "d5e1a531-5aa6-4db0-bd29-8dbdec47a27a"
   },
   "urls": {

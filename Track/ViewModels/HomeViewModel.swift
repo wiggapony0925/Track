@@ -27,11 +27,26 @@ final class HomeViewModel {
     var busArrivals: [BusArrival] = []
     var selectedBusStop: BusStop?
 
+    // Bus routes (browse all routes)
+    var allBusRoutes: [BusRoute] = []
+
     // Nearby transit (unified)
     var nearbyTransit: [NearbyTransitResponse] = []
 
     // Grouped nearby transit (one card per route)
     var groupedTransit: [GroupedNearbyTransitResponse] = []
+
+    // Nearest metro recommendation (shown when no nearby transit)
+    var nearestTransit: NearbyTransitResponse?
+    /// Distance in meters from the user to the nearest transit stop.
+    var nearestTransitDistance: Double?
+
+    // LIRR mode
+    var lirrArrivals: [TrainArrival] = []
+
+    // Service alerts & accessibility
+    var serviceAlerts: [TransitAlert] = []
+    var elevatorOutages: [ElevatorStatus] = []
 
     // Route detail sheet
     var selectedGroupedRoute: GroupedNearbyTransitResponse?
@@ -70,11 +85,20 @@ final class HomeViewModel {
     private let liveActivityManager = LiveActivityManager.shared
 
     /// The effective location for data fetching — either the search pin or user location.
+    /// If the GPS fix is outside the NYC service area, falls back to Midtown Manhattan
+    /// so the app always shows MTA transit data.
     func effectiveLocation(userLocation: CLLocation?) -> CLLocation? {
         if isSearchPinActive, let pin = searchPinCoordinate {
             return CLLocation(latitude: pin.latitude, longitude: pin.longitude)
         }
-        return userLocation
+        guard let location = userLocation else { return nil }
+        if AppTheme.MapConfig.isInServiceArea(location.coordinate) {
+            return location
+        }
+        // Outside NYC — fall back to Midtown Manhattan
+        AppLogger.shared.log("LOCATION", message: "GPS outside service area (\(location.coordinate.latitude), \(location.coordinate.longitude)) — using NYC fallback")
+        let nyc = AppTheme.MapConfig.nycCenter
+        return CLLocation(latitude: nyc.latitude, longitude: nyc.longitude)
     }
 
     /// Refreshes the view based on current location and transport mode.
@@ -91,6 +115,8 @@ final class HomeViewModel {
             await refreshSubway(location: loc)
         case .bus:
             await refreshBus(location: loc)
+        case .lirr:
+            await refreshLIRR()
         }
 
         isLoading = false
@@ -181,8 +207,13 @@ final class HomeViewModel {
 
     // MARK: - Nearby Transit (Unified)
 
+    /// Search radius (meters) used for the wider "nearest metro" fallback.
+    private static let nearestMetroRadius = 5000
+
     /// Fetches all nearby transit (buses + trains) in one call.
     /// Uses the grouped endpoint to deduplicate routes.
+    /// When no results are found within the default radius, fetches
+    /// with a wider radius and exposes the closest stop as ``nearestTransit``.
     func refreshNearbyTransit(location: CLLocation?) async {
         guard let location = location else {
             errorMessage = "Location required"
@@ -191,25 +222,57 @@ final class HomeViewModel {
 
         isLoading = true
         errorMessage = nil
+        nearestTransit = nil
+        nearestTransitDistance = nil
+
+        let lat = location.coordinate.latitude
+        let lon = location.coordinate.longitude
 
         do {
-            async let flatTask = TrackAPI.fetchNearbyTransit(
-                lat: location.coordinate.latitude,
-                lon: location.coordinate.longitude
-            )
-            async let groupedTask = TrackAPI.fetchNearbyGrouped(
-                lat: location.coordinate.latitude,
-                lon: location.coordinate.longitude
-            )
+            async let flatTask = TrackAPI.fetchNearbyTransit(lat: lat, lon: lon)
+            async let groupedTask = TrackAPI.fetchNearbyGrouped(lat: lat, lon: lon)
+            async let alertsTask = TrackAPI.fetchAlerts()
+            async let accessTask = TrackAPI.fetchAccessibility()
 
             nearbyTransit = try await flatTask
             groupedTransit = try await groupedTask
+
+            // Fetch alerts and accessibility silently — don't fail the whole refresh
+            do { serviceAlerts = try await alertsTask } catch {}
+            do { elevatorOutages = try await accessTask } catch {}
         } catch {
             AppLogger.shared.logError("fetchNearbyTransit", error: error)
             errorMessage = (error as? TrackAPIError)?.description ?? error.localizedDescription
         }
 
+        // If no nearby transit found, search a wider radius for a recommendation
+        if nearbyTransit.isEmpty && groupedTransit.isEmpty && errorMessage == nil {
+            await fetchNearestMetro(location: location)
+        }
+
         isLoading = false
+    }
+
+    /// Searches a wider radius to find the nearest metro stop when
+    /// the default radius returns empty results.
+    private func fetchNearestMetro(location: CLLocation) async {
+        do {
+            let results = try await TrackAPI.fetchNearbyTransit(
+                lat: location.coordinate.latitude,
+                lon: location.coordinate.longitude,
+                radius: Self.nearestMetroRadius
+            )
+            guard let closest = results.first else { return }
+            nearestTransit = closest
+
+            // Compute distance from user to the stop
+            if let stopLat = closest.stopLat, let stopLon = closest.stopLon {
+                let stopLocation = CLLocation(latitude: stopLat, longitude: stopLon)
+                nearestTransitDistance = location.distance(from: stopLocation)
+            }
+        } catch {
+            AppLogger.shared.logError("fetchNearestMetro", error: error)
+        }
     }
 
     // MARK: - Subway
@@ -245,6 +308,7 @@ final class HomeViewModel {
     private func refreshBus(location: CLLocation?) async {
         nearbyStations = []
         upcomingArrivals = []
+        lirrArrivals = []
 
         guard let location = location else {
             errorMessage = "Location required for bus stops"
@@ -252,10 +316,16 @@ final class HomeViewModel {
         }
 
         do {
-            nearbyBusStops = try await TrackAPI.fetchNearbyBusStops(
+            async let stopsTask = TrackAPI.fetchNearbyBusStops(
                 lat: location.coordinate.latitude,
                 lon: location.coordinate.longitude
             )
+            async let routesTask = TrackAPI.fetchBusRoutes()
+
+            nearbyBusStops = try await stopsTask
+
+            // Bus routes fetched silently — don't fail the whole refresh
+            do { allBusRoutes = try await routesTask } catch {}
         } catch {
             AppLogger.shared.logError("fetchNearbyBusStops", error: error)
             errorMessage = (error as? TrackAPIError)?.description ?? error.localizedDescription
@@ -277,6 +347,27 @@ final class HomeViewModel {
         }
     }
 
+    // MARK: - LIRR
+
+    private func refreshLIRR() async {
+        nearbyStations = []
+        upcomingArrivals = []
+        nearbyBusStops = []
+        busArrivals = []
+        selectedBusStop = nil
+
+        do {
+            lirrArrivals = try await TrackAPI.fetchLIRRArrivals()
+        } catch {
+            AppLogger.shared.logError("fetchLIRRArrivals", error: error)
+            errorMessage = (error as? TrackAPIError)?.description ?? error.localizedDescription
+        }
+
+        // Fetch alerts and accessibility alongside LIRR
+        do { serviceAlerts = try await TrackAPI.fetchAlerts() } catch {}
+        do { elevatorOutages = try await TrackAPI.fetchAccessibility() } catch {}
+    }
+
     // MARK: - Live Activity
 
     /// Starts tracking a subway arrival via Live Activity.
@@ -291,16 +382,23 @@ final class HomeViewModel {
         )
     }
 
+    /// Starts tracking a LIRR arrival via Live Activity.
+    func trackLIRRArrival(_ arrival: TrainArrival, location: CLLocation?) {
+        trackingArrivalId = arrival.id.uuidString
+        liveActivityManager.startActivity(
+            lineId: "LIRR",
+            destination: arrival.direction,
+            arrivalTime: arrival.estimatedTime,
+            isBus: false,
+            stationId: arrival.stationID
+        )
+    }
+
     /// Starts tracking a bus arrival via Live Activity.
     func trackBusArrival(_ arrival: BusArrival, location: CLLocation?) {
         trackingArrivalId = arrival.id
         let arrivalTime = arrival.expectedArrival ?? Date().addingTimeInterval(300)
-        let routeName: String
-        if arrival.routeId.hasPrefix("MTA NYCT_") {
-            routeName = String(arrival.routeId.dropFirst(9))
-        } else {
-            routeName = arrival.routeId
-        }
+        let routeName = stripMTAPrefix(arrival.routeId)
         liveActivityManager.startActivity(
             lineId: routeName,
             destination: arrival.statusText,
@@ -447,30 +545,4 @@ final class HomeViewModel {
             transitEtaMinutes = nil
         }
     }
-}
-
-// MARK: - CLLocation Bearing Extension
-
-extension CLLocation {
-    /// Calculates the bearing (in degrees, 0–360) from this location
-    /// to another location. Used for determining if a stop is behind
-    /// the user during GO mode tracking.
-    func bearing(to destination: CLLocation) -> CLLocationDirection {
-        let lat1 = coordinate.latitude.degreesToRadians
-        let lon1 = coordinate.longitude.degreesToRadians
-        let lat2 = destination.coordinate.latitude.degreesToRadians
-        let lon2 = destination.coordinate.longitude.degreesToRadians
-
-        let dLon = lon2 - lon1
-        let y = sin(dLon) * cos(lat2)
-        let x = cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(dLon)
-        let bearing = atan2(y, x).radiansToDegrees
-
-        return (bearing + 360).truncatingRemainder(dividingBy: 360)
-    }
-}
-
-private extension Double {
-    var degreesToRadians: Double { self * .pi / 180 }
-    var radiansToDegrees: Double { self * 180 / .pi }
 }

@@ -113,20 +113,36 @@ async def get_stops(route_id: str) -> list[BusStop]:
     return results
 
 
-async def get_nearby_stops(lat: float, lon: float) -> list[BusStop]:
-    """Fetch bus stops near a GPS coordinate using OBA ``stops-for-location``."""
+async def get_nearby_stops(
+    lat: float, lon: float, radius_m: int = 500,
+) -> list[BusStop]:
+    """Fetch bus stops near a GPS coordinate using OBA ``stops-for-location``.
+
+    *radius_m* is the search radius in meters.  It is converted to a
+    degree-based bounding box (``latSpan`` / ``lonSpan``) for the OBA
+    API.  One degree of latitude ≈ 111 km; one degree of longitude ≈
+    85 km at NYC's latitude.
+    """
     settings = get_settings()
     eps = settings.urls.bus_endpoints
     if eps is None:
         return []
+
+    # Convert meters → degrees.
+    # 1° latitude ≈ 111 km everywhere; 1° longitude ≈ 85 km at NYC's 40.7° latitude.
+    _METERS_PER_DEG_LAT = 111_000
+    _METERS_PER_DEG_LON_NYC = 85_000
+
+    lat_span = max(0.005, radius_m / _METERS_PER_DEG_LAT)
+    lon_span = max(0.005, radius_m / _METERS_PER_DEG_LON_NYC)
 
     url = settings.urls.bus_oba_base + eps.stops_near_location
     params = {
         "key": settings.api_keys.mta_bus_key,
         "lat": str(lat),
         "lon": str(lon),
-        "latSpan": "0.005",
-        "lonSpan": "0.005",
+        "latSpan": f"{lat_span:.6f}",
+        "lonSpan": f"{lon_span:.6f}",
     }
 
     data = await _fetch_bus_json(url, params)

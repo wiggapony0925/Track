@@ -20,13 +20,19 @@ struct HomeView: View {
     @State private var showSettings = false
     @State private var lastUpdated: Date?
     @State private var refreshTimer: Timer?
+    /// Tracks whether we've done the first data fetch after receiving a location fix.
+    @State private var hasLoadedInitialData = false
 
     var body: some View {
         ZStack {
+<<<<<<< HEAD
             // Map background bounded to the NYC Metropolitan Area.
             // Uses MapCameraBounds to restrict panning (300 m – 150 km zoom),
             // and a transit-emphasized map style that dims driving elements.
             // Ref: https://developer.apple.com/documentation/mapkit/mapcamerabounds
+=======
+            // Map background bounded to NYC 5 boroughs + Long Island.
+>>>>>>> copilot/fix-map-centering-logic
             Map(position: $cameraPosition,
                 bounds: AppTheme.MapConfig.cameraBounds) {
 
@@ -107,8 +113,20 @@ struct HomeView: View {
                     }
                 }
             }
-            // Transit-emphasized map style: dims driving roads, highlights transit lines/stations.
-            .mapStyle(.standard(emphasis: .muted, showsTraffic: false))
+            // Transit-emphasized map style: dims driving roads, highlights transit
+            // stations natively via pointsOfInterest.
+            .mapStyle(.standard(
+                emphasis: .muted,
+                pointsOfInterest: .including([.publicTransport]),
+                showsTraffic: false
+            ))
+            // Native MapKit controls — compass auto-hides when north-facing,
+            // scale auto-shows during zoom, user location button recenters.
+            .mapControls {
+                MapUserLocationButton()
+                MapCompass()
+                MapScaleView()
+            }
             .ignoresSafeArea()
             .onLongPressGesture(minimumDuration: 0.5) {
                 // Long press handled via MapReader below
@@ -203,10 +221,7 @@ struct HomeView: View {
         .onAppear {
             locationManager.requestPermission()
             locationManager.startUpdating()
-            Task {
-                await viewModel.refresh(location: locationManager.currentLocation)
-                lastUpdated = Date()
-            }
+            // Initial data fetch will happen in onChange once location arrives.
             // Auto-refresh every 30 seconds
             refreshTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { _ in
                 Task { @MainActor in
@@ -226,9 +241,21 @@ struct HomeView: View {
                 lastUpdated = Date()
             }
         }
-        // Camera follow in GO mode — auto-pan to keep user centered
+        // When a new location fix arrives, load data (first time) and follow in GO mode
         .onChange(of: locationManager.currentLocation) {
-            if viewModel.isGoModeActive, let loc = locationManager.currentLocation {
+            guard let loc = locationManager.currentLocation else { return }
+
+            // First location fix — fetch transit data now that we have coordinates
+            if !hasLoadedInitialData {
+                hasLoadedInitialData = true
+                Task {
+                    await viewModel.refresh(location: loc)
+                    lastUpdated = Date()
+                }
+            }
+
+            // GO mode auto-follow — keep camera pinned on user
+            if viewModel.isGoModeActive {
                 withAnimation(.easeInOut(duration: 0.8)) {
                     cameraPosition = .camera(MapCamera(
                         centerCoordinate: loc.coordinate,
@@ -282,7 +309,7 @@ struct HomeView: View {
             }
 
             if let routeId = viewModel.selectedRouteId {
-                let name = routeId.hasPrefix("MTA NYCT_") ? String(routeId.dropFirst(9)) : routeId
+                let name = stripMTAPrefix(routeId)
                 Text("\(name) — \(viewModel.busVehicles.count) buses live")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(AppTheme.Colors.textPrimary)
@@ -383,6 +410,9 @@ struct HomeView: View {
                     case .bus:
                         busDashboard
                             .transition(.move(edge: .bottom).combined(with: .opacity))
+                    case .lirr:
+                        lirrDashboard
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
                 }
                 .animation(.spring(response: 0.4, dampingFraction: 0.7), value: viewModel.selectedMode)
@@ -395,6 +425,89 @@ struct HomeView: View {
                             viewModel.errorMessage = nil
                         }
                     )
+                }
+
+                // Service alerts
+                if !viewModel.serviceAlerts.isEmpty {
+                    sectionHeader("Service Alerts")
+
+                    VStack(spacing: 0) {
+                        ForEach(Array(viewModel.serviceAlerts.prefix(3).enumerated()), id: \.element.id) { index, alert in
+                            HStack(spacing: 10) {
+                                if let routeId = alert.routeId {
+                                    RouteBadge(routeID: routeId, size: .small)
+                                } else {
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                        .font(.system(size: 14, weight: .semibold))
+                                        .foregroundColor(AppTheme.Colors.warningYellow)
+                                }
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(alert.title)
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundColor(AppTheme.Colors.textPrimary)
+                                        .lineLimit(1)
+                                    Text(alert.description)
+                                        .font(.system(size: 12, weight: .regular))
+                                        .foregroundColor(AppTheme.Colors.textSecondary)
+                                        .lineLimit(2)
+                                }
+
+                                Spacer(minLength: 0)
+                            }
+                            .padding(.horizontal, AppTheme.Layout.cardPadding)
+                            .padding(.vertical, 8)
+
+                            if index < min(viewModel.serviceAlerts.count, 3) - 1 {
+                                Divider()
+                                    .padding(.leading, AppTheme.Layout.cardPadding + 34)
+                            }
+                        }
+                    }
+                    .background(AppTheme.Colors.cardBackground)
+                    .cornerRadius(AppTheme.Layout.cornerRadius)
+                    .padding(.horizontal, AppTheme.Layout.margin)
+                }
+
+                // Elevator / escalator outages
+                if !viewModel.elevatorOutages.isEmpty {
+                    sectionHeader("Elevator & Escalator Outages")
+
+                    VStack(spacing: 0) {
+                        ForEach(Array(viewModel.elevatorOutages.prefix(5).enumerated()), id: \.element.id) { index, outage in
+                            HStack(spacing: 10) {
+                                Image(systemName: outage.equipmentType.lowercased().contains("elevator")
+                                      ? "arrow.up.arrow.down.circle.fill"
+                                      : "stairs")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundColor(AppTheme.Colors.alertRed)
+                                    .frame(width: 24)
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(outage.station)
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundColor(AppTheme.Colors.textPrimary)
+                                        .lineLimit(1)
+                                    Text(outage.description)
+                                        .font(.system(size: 12, weight: .regular))
+                                        .foregroundColor(AppTheme.Colors.textSecondary)
+                                        .lineLimit(2)
+                                }
+
+                                Spacer(minLength: 0)
+                            }
+                            .padding(.horizontal, AppTheme.Layout.cardPadding)
+                            .padding(.vertical, 8)
+
+                            if index < min(viewModel.elevatorOutages.count, 5) - 1 {
+                                Divider()
+                                    .padding(.leading, AppTheme.Layout.cardPadding + 34)
+                            }
+                        }
+                    }
+                    .background(AppTheme.Colors.cardBackground)
+                    .cornerRadius(AppTheme.Layout.cornerRadius)
+                    .padding(.horizontal, AppTheme.Layout.margin)
                 }
 
                 // Loading indicator
@@ -469,10 +582,27 @@ struct HomeView: View {
                 .cornerRadius(AppTheme.Layout.cornerRadius)
                 .padding(.horizontal, AppTheme.Layout.margin)
             } else if !viewModel.isLoading {
-                emptyStateView(
-                    icon: "location.fill",
-                    message: "No transit nearby"
-                )
+                // No transit within walking distance
+                if let nearest = viewModel.nearestTransit {
+                    // Show the nearest metro recommendation
+                    sectionHeader("Nearest Metro")
+
+                    NearestMetroCard(
+                        arrival: nearest,
+                        distanceMeters: viewModel.nearestTransitDistance,
+                        onCenter: { coordinate in
+                            withAnimation(.easeInOut(duration: 0.6)) {
+                                cameraPosition = .camera(MapCamera(
+                                    centerCoordinate: coordinate,
+                                    distance: AppTheme.MapConfig.userZoomDistance
+                                ))
+                            }
+                        }
+                    )
+                } else {
+                    // Outside MTA service area — show location debug card
+                    outOfServiceAreaCard
+                }
             }
         }
     }
@@ -607,6 +737,42 @@ struct HomeView: View {
         }
     }
 
+    // MARK: - LIRR Dashboard
+
+    private var lirrDashboard: some View {
+        Group {
+            if !viewModel.lirrArrivals.isEmpty {
+                sectionHeader("LIRR Departures")
+
+                VStack(spacing: 0) {
+                    ForEach(Array(viewModel.lirrArrivals.prefix(15).enumerated()), id: \.element.id) { index, arrival in
+                        ArrivalRow(
+                            arrival: arrival,
+                            prediction: nil,
+                            isTracking: viewModel.trackingArrivalId == arrival.id.uuidString,
+                            reliabilityWarning: nil,
+                            onTrack: {
+                                viewModel.trackLIRRArrival(arrival, location: locationManager.currentLocation)
+                            }
+                        )
+                        if index < min(viewModel.lirrArrivals.count, 15) - 1 {
+                            Divider()
+                                .padding(.leading, AppTheme.Layout.margin + AppTheme.Layout.badgeSizeMedium + 12)
+                        }
+                    }
+                }
+                .background(AppTheme.Colors.cardBackground)
+                .cornerRadius(AppTheme.Layout.cornerRadius)
+                .padding(.horizontal, AppTheme.Layout.margin)
+            } else if !viewModel.isLoading {
+                emptyStateView(
+                    icon: "train.side.front.car",
+                    message: "No LIRR departures available"
+                )
+            }
+        }
+    }
+
     // MARK: - Helpers
 
     private func sectionHeader(_ title: String) -> some View {
@@ -631,397 +797,32 @@ struct HomeView: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 32)
     }
-}
 
-// MARK: - Search Pin Annotation
+    // MARK: - Out of Service Area Card
 
-/// A draggable search pin for exploring transit at other locations.
-private struct SearchPinAnnotation: View {
-    var body: some View {
-        ZStack {
-            Circle()
-                .fill(AppTheme.Colors.alertRed)
-                .frame(width: 36, height: 36)
-                .shadow(color: AppTheme.Colors.alertRed.opacity(0.4), radius: AppTheme.Layout.shadowRadius)
-            Image(systemName: "mappin")
-                .font(.system(size: 18, weight: .bold))
-                .foregroundColor(AppTheme.Colors.textOnColor)
-        }
-        .accessibilityLabel("Search pin — drag to explore")
-    }
-}
-
-// MARK: - Bus Vehicle Annotation
-
-/// A map pin showing a live bus position with its route name and bearing.
-private struct BusVehicleAnnotation: View {
-    let routeName: String
-    let bearing: Double?
-
-    var body: some View {
-        VStack(spacing: 0) {
-            ZStack {
-                Circle()
-                    .fill(AppTheme.Colors.mtaBlue)
-                    .frame(width: AppTheme.Layout.badgeSizeMedium, height: AppTheme.Layout.badgeSizeMedium)
-                    .shadow(color: AppTheme.Colors.mtaBlue.opacity(0.4), radius: AppTheme.Layout.shadowRadius)
-                Image(systemName: "bus.fill")
-                    .font(.system(size: AppTheme.Layout.badgeFontMedium, weight: .bold))
-                    .foregroundColor(AppTheme.Colors.textOnColor)
-                    .rotationEffect(.degrees(bearing ?? 0))
-            }
-            Text(routeName)
-                .font(.system(size: 9, weight: .bold))
-                .foregroundColor(AppTheme.Colors.textOnColor)
-                .padding(.horizontal, 4)
-                .padding(.vertical, 1)
-                .background(AppTheme.Colors.mtaBlue)
-                .clipShape(Capsule())
-        }
-        .accessibilityLabel("Bus \(routeName)")
-    }
-}
-
-// MARK: - Nearby Transit Row
-
-/// Displays a single nearby transit arrival (bus or train) in the unified list.
-/// Tapping expands the row to show arrival details, direction, and status.
-private struct NearbyTransitRow: View {
-    let arrival: NearbyTransitResponse
-    var isTracking: Bool = false
-    var onTrack: (() -> Void)?
-    var onSelectRoute: (() -> Void)?
-
-    @State private var isExpanded = false
-
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 12) {
-                // Mode badge
-                ZStack {
-                    Circle()
-                        .fill(arrival.isBus ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: arrival.displayName))
-                        .frame(width: AppTheme.Layout.badgeSizeMedium, height: AppTheme.Layout.badgeSizeMedium)
-                    if arrival.isBus {
-                        Image(systemName: "bus.fill")
-                            .font(.system(size: AppTheme.Layout.badgeFontMedium, weight: .bold))
-                            .foregroundColor(AppTheme.Colors.textOnColor)
-                    } else {
-                        Text(arrival.displayName)
-                            .font(.system(size: AppTheme.Layout.badgeFontMedium, weight: .heavy, design: .monospaced))
-                            .foregroundColor(AppTheme.SubwayColors.textColor(for: arrival.displayName))
-                            .minimumScaleFactor(0.5)
-                            .lineLimit(1)
-                    }
-                }
-                .accessibilityHidden(true)
-
-                // Info
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 4) {
-                        Text(arrival.displayName)
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundColor(AppTheme.Colors.textPrimary)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
-                        if isTracking {
-                            Image(systemName: "antenna.radiowaves.left.and.right")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundColor(AppTheme.Colors.successGreen)
-                        }
-                    }
-                    Text(arrival.stopName)
-                        .font(.system(size: 12, weight: .regular))
-                        .foregroundColor(AppTheme.Colors.textSecondary)
-                        .lineLimit(1)
-                }
-
-                Spacer(minLength: 4)
-
-                // View route button for buses
-                if arrival.isBus, let onSelectRoute = onSelectRoute {
-                    Button {
-                        onSelectRoute()
-                    } label: {
-                        Image(systemName: "map")
-                            .font(.system(size: AppTheme.Layout.badgeFontMedium, weight: .medium))
-                            .foregroundColor(AppTheme.Colors.mtaBlue)
-                    }
-                    .accessibilityLabel("View \(arrival.displayName) route on map")
-                }
-
-                // Countdown
-                HStack(alignment: .firstTextBaseline, spacing: 2) {
-                    Text("\(arrival.minutesAway)")
-                        .font(.system(size: 20, weight: .bold, design: .rounded))
-                        .foregroundColor(AppTheme.Colors.countdown(arrival.minutesAway))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                    Text("min")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(AppTheme.Colors.textSecondary)
-                }
-
-                // Expand chevron
-                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(AppTheme.Colors.textSecondary)
-            }
-            .padding(.vertical, 10)
-            .padding(.horizontal, AppTheme.Layout.margin)
-            .contentShape(Rectangle())
-            .onTapGesture {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    isExpanded.toggle()
-                }
-            }
-
-            // Expanded detail section
-            if isExpanded {
-                VStack(alignment: .leading, spacing: 8) {
-                    Divider()
-
-                    // Next arrival details
-                    HStack(spacing: 10) {
-                        Image(systemName: arrival.isBus ? "bus.fill" : "tram.fill")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(AppTheme.Colors.mtaBlue)
-                            .frame(width: 20)
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Next Arrival")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundColor(AppTheme.Colors.textSecondary)
-                                .textCase(.uppercase)
-                            Text(arrivalTimeDescription)
-                                .font(.system(size: 14, weight: .semibold, design: .rounded))
-                                .foregroundColor(AppTheme.Colors.textPrimary)
-                        }
-
-                        Spacer()
-
-                        // Status pill
-                        Text(arrival.status)
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(AppTheme.Colors.textOnColor)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(statusColor)
-                            .clipShape(Capsule())
-                    }
-
-                    // Direction info
-                    HStack(spacing: 10) {
-                        Image(systemName: "arrow.right")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(AppTheme.Colors.mtaBlue)
-                            .frame(width: 20)
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Direction")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundColor(AppTheme.Colors.textSecondary)
-                                .textCase(.uppercase)
-                            Text(arrival.direction)
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundColor(AppTheme.Colors.textPrimary)
-                                .lineLimit(1)
-                        }
-                    }
-
-                    // Track button
-                    Button {
-                        onTrack?()
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: isTracking ? "antenna.radiowaves.left.and.right" : "bell.fill")
-                                .font(.system(size: 12, weight: .bold))
-                            Text(isTracking ? "Tracking" : "Track This Arrival")
-                                .font(.system(size: 13, weight: .bold))
-                        }
-                        .foregroundColor(AppTheme.Colors.textOnColor)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background(isTracking ? AppTheme.Colors.successGreen : AppTheme.Colors.mtaBlue)
-                        .cornerRadius(AppTheme.Layout.cornerRadius)
-                    }
-                }
-                .padding(.horizontal, AppTheme.Layout.margin)
-                .padding(.bottom, 10)
-                .transition(.opacity.combined(with: .move(edge: .top)))
-            }
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(arrival.isBus ? "Bus" : "Train") \(arrival.displayName), \(arrival.stopName), \(arrival.minutesAway) minutes away")
-        .accessibilityHint(isExpanded ? "Expanded. Shows arrival details." : "Tap to see arrival details")
-    }
-
-    private var arrivalTimeDescription: String {
-        if arrival.minutesAway <= 0 {
-            return "Arriving now"
-        } else if arrival.minutesAway == 1 {
-            return "In 1 minute"
-        } else {
-            let arrivalTime = Date().addingTimeInterval(Double(arrival.minutesAway) * 60)
-            let formatter = DateFormatter()
-            formatter.dateFormat = "h:mm a"
-            return "In \(arrival.minutesAway) min — \(formatter.string(from: arrivalTime))"
-        }
-    }
-
-    private var statusColor: Color {
-        let lower = arrival.status.lowercased()
-        if lower.contains("on time") {
-            return AppTheme.Colors.successGreen
-        } else if lower.contains("delayed") || lower.contains("late") {
-            return AppTheme.Colors.alertRed
-        } else if lower.contains("approaching") || lower.contains("at stop") {
-            return AppTheme.Colors.successGreen
-        }
-        return AppTheme.Colors.mtaBlue
-    }
-}
-
-// MARK: - Nearby Bus Stop Row
-
-/// Displays a nearby bus stop in the list. Tapping selects it.
-private struct NearbyBusStopRow: View {
-    let stop: BusStop
-
-    var body: some View {
-        HStack(spacing: 12) {
-            ZStack {
-                Circle()
-                    .fill(AppTheme.Colors.mtaBlue)
-                    .frame(width: AppTheme.Layout.badgeSizeMedium, height: AppTheme.Layout.badgeSizeMedium)
-                Image(systemName: "bus.fill")
-                    .font(.system(size: AppTheme.Layout.badgeFontMedium, weight: .bold))
-                    .foregroundColor(AppTheme.Colors.textOnColor)
-            }
-            .accessibilityHidden(true)
-
-            Text(stop.name)
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundColor(AppTheme.Colors.textPrimary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-
-            Spacer(minLength: 4)
-
-            if let direction = stop.direction {
-                Text(direction == "0" ? "→" : "←")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(AppTheme.Colors.textSecondary)
-            }
-        }
-        .padding(.vertical, 10)
-        .padding(.horizontal, AppTheme.Layout.margin)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Bus stop: \(stop.name)")
-    }
-}
-
-// MARK: - Grouped Route Row
-
-/// A compact row for a grouped route card. Shows the route badge,
-/// display name, direction count, and soonest arrival countdown.
-/// Tapping opens the ``RouteDetailSheet``.
-private struct GroupedRouteRow: View {
-    let group: GroupedNearbyTransitResponse
-
-    var body: some View {
-        HStack(spacing: 12) {
-            // Mode badge
-            ZStack {
-                Circle()
-                    .fill(badgeColor)
-                    .frame(width: AppTheme.Layout.badgeSizeMedium,
-                           height: AppTheme.Layout.badgeSizeMedium)
-                if group.isBus {
-                    Image(systemName: "bus.fill")
-                        .font(.system(size: AppTheme.Layout.badgeFontMedium, weight: .bold))
-                        .foregroundColor(.white)
-                } else {
-                    Text(group.displayName)
-                        .font(.system(size: AppTheme.Layout.badgeFontMedium,
-                                      weight: .heavy, design: .monospaced))
-                        .foregroundColor(AppTheme.SubwayColors.textColor(for: group.displayName))
-                        .minimumScaleFactor(0.5)
-                        .lineLimit(1)
-                }
-            }
-            .accessibilityHidden(true)
-
-            // Route info
-            VStack(alignment: .leading, spacing: 2) {
-                Text(group.displayName)
-                    .font(.system(size: 15, weight: .semibold))
+    /// Themed card shown when no nearby transit is found and
+    /// no nearest metro recommendation is available.
+    private var outOfServiceAreaCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "tram.fill")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(AppTheme.Colors.mtaBlue)
+                Text("No Nearby Transit")
+                    .font(.system(size: 17, weight: .semibold, design: .rounded))
                     .foregroundColor(AppTheme.Colors.textPrimary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-
-                HStack(spacing: 4) {
-                    ForEach(group.directions, id: \.direction) { dir in
-                        Text(shortDirection(dir.direction))
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(AppTheme.Colors.textSecondary)
-                    }
-                    if group.directions.count > 1 {
-                        Text("·")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(AppTheme.Colors.textSecondary)
-                        Text("\(group.directions.count) directions")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(AppTheme.Colors.textSecondary)
-                    }
-                }
+                Spacer()
             }
 
-            Spacer(minLength: 4)
-
-            // Soonest countdown
-            HStack(alignment: .firstTextBaseline, spacing: 2) {
-                Text("\(group.soonestMinutes)")
-                    .font(.system(size: 20, weight: .bold, design: .rounded))
-                    .foregroundColor(AppTheme.Colors.countdown(group.soonestMinutes))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                Text("min")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(AppTheme.Colors.textSecondary)
-            }
-
-            // Chevron
-            Image(systemName: "chevron.right")
-                .font(.system(size: 12, weight: .semibold))
+            Text("We couldn't find any arrivals nearby. Try moving closer to a subway station or bus stop, or use the search pin to explore a different area.")
+                .font(.system(size: 14, weight: .regular))
                 .foregroundColor(AppTheme.Colors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(.vertical, 10)
+        .padding(AppTheme.Layout.cardPadding)
+        .background(AppTheme.Colors.cardBackground)
+        .cornerRadius(AppTheme.Layout.cornerRadius)
         .padding(.horizontal, AppTheme.Layout.margin)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(
-            "\(group.isBus ? "Bus" : "Train") \(group.displayName), next in \(group.soonestMinutes) minutes"
-        )
-        .accessibilityHint("Tap to see arrivals in both directions")
-    }
-
-    private var badgeColor: Color {
-        if let hex = group.colorHex {
-            return Color(hex: hex)
-        }
-        return group.isBus
-            ? AppTheme.Colors.mtaBlue
-            : AppTheme.SubwayColors.color(for: group.displayName)
-    }
-
-    private func shortDirection(_ d: String) -> String {
-        switch d.uppercased() {
-        case "N": return "↑ North"
-        case "S": return "↓ South"
-        case "E": return "→ East"
-        case "W": return "← West"
-        default: return d
-        }
     }
 }
 

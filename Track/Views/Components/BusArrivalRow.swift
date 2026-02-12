@@ -166,41 +166,19 @@ struct BusArrivalRow: View {
 
     /// Strips the "MTA NYCT_" prefix for display.
     private var shortRouteName: String {
-        if arrival.routeId.hasPrefix("MTA NYCT_") {
-            return String(arrival.routeId.dropFirst(9))
-        }
-        return arrival.routeId
+        stripMTAPrefix(arrival.routeId)
     }
 
     private var arrivalTimeDescription: String {
-        if let expectedArrival = arrival.expectedArrival {
-            let formatter = DateFormatter()
-            formatter.dateFormat = "h:mm a"
-            let minutes = Int(expectedArrival.timeIntervalSinceNow / 60)
-            if minutes <= 0 {
-                return "Arriving now"
-            }
-            return "In \(minutes) min — \(formatter.string(from: expectedArrival))"
-        }
-        return arrival.statusText
+        formatArrivalTime(date: arrival.expectedArrival, fallback: arrival.statusText)
     }
 
     private func formattedDistance(_ meters: Double) -> String {
-        if meters < 1000 {
-            return "\(Int(meters))m away"
-        } else {
-            return String(format: "%.1fkm away", meters / 1000)
-        }
+        formatDistance(meters)
     }
 
     private var statusColor: Color {
-        let lower = arrival.statusText.lowercased()
-        if lower.contains("approaching") || lower.contains("at stop") {
-            return AppTheme.Colors.successGreen
-        } else if lower.contains("1 stop") {
-            return AppTheme.Colors.warningYellow
-        }
-        return AppTheme.Colors.mtaBlue
+        transitStatusColor(for: arrival.statusText)
     }
 }
 

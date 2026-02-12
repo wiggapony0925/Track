@@ -53,6 +53,7 @@ struct TransportModeToggle: View {
         case .nearby: return AppTheme.Colors.mtaBlue
         case .subway: return AppTheme.Colors.subwayBlack
         case .bus: return AppTheme.Colors.mtaBlue
+        case .lirr: return AppTheme.Colors.mtaBlue
         }
     }
 }

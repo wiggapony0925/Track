@@ -215,7 +215,14 @@ struct RouteDetailSheet: View {
                     }
                 }
             }
-            .mapStyle(.standard(emphasis: .muted, showsTraffic: false))
+            .mapStyle(.standard(
+                emphasis: .muted,
+                pointsOfInterest: .including([.publicTransport]),
+                showsTraffic: false
+            ))
+            .mapControls {
+                MapScaleView()
+            }
             .frame(height: 200)
             .clipShape(RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius))
             .padding(.horizontal, AppTheme.Layout.margin)
@@ -358,16 +365,6 @@ struct RouteDetailSheet: View {
         AppTheme.SubwayColors.textColor(for: group.displayName)
     }
 
-    /// Converts raw direction codes (e.g. "N", "S") to human-readable labels.
-    private func directionLabel(_ direction: String) -> String {
-        switch direction.uppercased() {
-        case "N": return "Northbound"
-        case "S": return "Southbound"
-        case "E": return "Eastbound"
-        case "W": return "Westbound"
-        default: return direction
-        }
-    }
 }
 
 // MARK: - Arrival Row (inside Route Detail)
@@ -437,13 +434,7 @@ private struct RouteDetailArrivalRow: View {
     }
 
     private var arrivalTimeDescription: String {
-        if arrival.minutesAway <= 0 {
-            return "Arriving now"
-        }
-        let arrivalTime = Date().addingTimeInterval(Double(arrival.minutesAway) * 60)
-        let formatter = DateFormatter()
-        formatter.dateFormat = "h:mm a"
-        return formatter.string(from: arrivalTime)
+        formatArrivalTime(minutesAway: arrival.minutesAway)
     }
 
     private var statusLabel: String {
@@ -456,27 +447,6 @@ private struct RouteDetailArrivalRow: View {
         if arrival.minutesAway <= 0 { return AppTheme.Colors.alertRed }
         if arrival.minutesAway <= 2 { return AppTheme.Colors.warningYellow }
         return AppTheme.Colors.successGreen
-    }
-}
-
-// MARK: - Color from hex string
-
-extension Color {
-    /// Creates a Color from a CSS hex string like ``"#FF6319"`` or ``"FF6319"``.
-    init(hex: String) {
-        let cleaned = hex.trimmingCharacters(in: .alphanumerics.inverted)
-        var int: UInt64 = 0
-        Scanner(string: cleaned).scanHexInt64(&int)
-        let r, g, b: Double
-        switch cleaned.count {
-        case 6:
-            r = Double((int >> 16) & 0xFF) / 255
-            g = Double((int >> 8) & 0xFF) / 255
-            b = Double(int & 0xFF) / 255
-        default:
-            r = 0; g = 0; b = 0
-        }
-        self.init(red: r, green: g, blue: b)
     }
 }
 

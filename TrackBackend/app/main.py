@@ -35,11 +35,12 @@ async def startup_event():
     TrackLogger.startup()
 
 
-# Middleware to log every request with color
+# Middleware to log every request with color and query params
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     response = await call_next(request)
-    TrackLogger.request(request.method, request.url.path, response.status_code)
+    query = f"?{request.url.query}" if request.url.query else ""
+    TrackLogger.request(request.method, f"{request.url.path}{query}", response.status_code)
     return response
 
 
