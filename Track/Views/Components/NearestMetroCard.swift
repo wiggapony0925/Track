@@ -83,12 +83,8 @@ struct NearestMetroCard: View {
         .padding(.horizontal, AppTheme.Layout.margin)
     }
 
-    /// Formats meters as a human-readable distance string.
+    /// Formats meters as a human-readable distance string using the shared utility.
     private func formattedDistance(_ meters: Double) -> String {
-        if meters < 1000 {
-            return "\(Int(meters)) m"
-        }
-        let km = meters / 1000
-        return String(format: "%.1f km", km)
+        formatDistance(meters, suffix: "")
     }
 }

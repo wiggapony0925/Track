@@ -49,7 +49,6 @@ final class HomeViewModel {
     var elevatorOutages: [ElevatorStatus] = []
 
     // Route detail sheet
-    // Route detail sheet
     var selectedGroupedRoute: GroupedNearbyTransitResponse?
     var selectedDirectionIndex: Int?
     var isRouteDetailPresented = false
