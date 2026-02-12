@@ -52,6 +52,7 @@ struct AppSettings {
               let data = try? Data(contentsOf: url),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             // Fall back to hardcoded defaults if settings.json is missing
+            print("[AppSettings] WARNING: settings.json not found in bundle — using hardcoded defaults")
             self.defaultSearchRadiusMeters = 500
             self.nearestMetroFallbackRadiusMeters = 5000
             self.refreshIntervalSeconds = 30
