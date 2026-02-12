@@ -25,14 +25,7 @@ struct HomeView: View {
 
     var body: some View {
         ZStack {
-<<<<<<< HEAD
-            // Map background bounded to the NYC Metropolitan Area.
-            // Uses MapCameraBounds to restrict panning (300 m – 150 km zoom),
-            // and a transit-emphasized map style that dims driving elements.
-            // Ref: https://developer.apple.com/documentation/mapkit/mapcamerabounds
-=======
             // Map background bounded to NYC 5 boroughs + Long Island.
->>>>>>> copilot/fix-map-centering-logic
             Map(position: $cameraPosition,
                 bounds: AppTheme.MapConfig.cameraBounds) {
 
