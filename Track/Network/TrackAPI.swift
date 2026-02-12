@@ -56,13 +56,15 @@ struct TrackAPI {
     ///   - lat: User's latitude.
     ///   - lon: User's longitude.
     /// - Returns: Array of `BusStop`.
-    static func fetchNearbyBusStops(lat: Double, lon: Double) async throws -> [BusStop] {
+    static func fetchNearbyBusStops(lat: Double, lon: Double, radius: Int? = nil) async throws -> [BusStop] {
+        let effectiveRadius = radius ?? AppSettings.shared.defaultSearchRadiusMeters
         guard var components = URLComponents(string: baseURL + "/bus/nearby") else {
             throw TrackAPIError.invalidURL
         }
         components.queryItems = [
             URLQueryItem(name: "lat", value: String(lat)),
             URLQueryItem(name: "lon", value: String(lon)),
+            URLQueryItem(name: "radius", value: String(effectiveRadius)),
         ]
         guard let url = components.url else {
             throw TrackAPIError.invalidURL
@@ -170,6 +172,16 @@ struct TrackAPI {
     static func fetchRouteShape(routeID: String) async throws -> RouteShapeResponse {
         let encoded = routeID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? routeID
         let data = try await get(path: "/bus/route-shape/\(encoded)")
+        return try decoder.decode(RouteShapeResponse.self, from: data)
+    }
+
+    /// Fetches the full route geometry for a subway line (e.g. the entire C train).
+    ///
+    /// - Parameter routeID: Subway line letter/number (e.g. "C", "L", "1").
+    /// - Returns: A `RouteShapeResponse` with the complete polyline and all stations.
+    static func fetchSubwayShape(routeID: String) async throws -> RouteShapeResponse {
+        let encoded = routeID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? routeID
+        let data = try await get(path: "/subway/shape/\(encoded)")
         return try decoder.decode(RouteShapeResponse.self, from: data)
     }
 
@@ -445,4 +457,37 @@ func decodePolyline(_ encoded: String) -> [CLLocationCoordinate2D] {
     }
 
     return coordinates
+}
+
+/// Encodes an array of coordinates into a Google-encoded polyline string.
+/// This is the inverse of `decodePolyline` — used to build polyline strings
+/// from known stop coordinates (e.g. subway station locations).
+func encodePolyline(_ coordinates: [CLLocationCoordinate2D]) -> String {
+    var encoded = ""
+    var prevLat: Int32 = 0
+    var prevLon: Int32 = 0
+
+    for coord in coordinates {
+        let lat = Int32(round(coord.latitude * 1e5))
+        let lon = Int32(round(coord.longitude * 1e5))
+
+        encodeValue(lat - prevLat, into: &encoded)
+        encodeValue(lon - prevLon, into: &encoded)
+
+        prevLat = lat
+        prevLon = lon
+    }
+
+    return encoded
+}
+
+/// Encodes a single signed value into the Google polyline encoding format.
+private func encodeValue(_ value: Int32, into result: inout String) {
+    var v = value < 0 ? ~(value << 1) : (value << 1)
+    while v >= 0x20 {
+        let chunk = Int32((v & 0x1F) | 0x20) + 63
+        result.append(Character(UnicodeScalar(Int(chunk))!))
+        v >>= 5
+    }
+    result.append(Character(UnicodeScalar(Int(v + 63))!))
 }

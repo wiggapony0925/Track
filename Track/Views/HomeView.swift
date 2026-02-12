@@ -23,25 +23,25 @@ struct HomeView: View {
     /// Tracks whether we've done the first data fetch after receiving a location fix.
     @State private var hasLoadedInitialData = false
 
+    /// Color of the currently selected route, used for polylines and annotations.
+    private var selectedRouteColor: Color {
+        if let group = viewModel.selectedGroupedRoute, let hex = group.colorHex {
+            return Color(hex: hex)
+        }
+        if let group = viewModel.selectedGroupedRoute {
+            return group.isBus ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: group.displayName)
+        }
+        return AppTheme.Colors.mtaBlue
+    }
+
     var body: some View {
         ZStack {
             // Map background bounded to NYC 5 boroughs + Long Island.
             Map(position: $cameraPosition,
                 bounds: AppTheme.MapConfig.cameraBounds) {
 
-                // User location — replaced by pulsing GO icon when tracking
-                if viewModel.isGoModeActive {
-                    // Pulsing vehicle icon snapped to the route line
-                    if let loc = locationManager.currentLocation?.coordinate {
-                        Annotation("You", coordinate: loc) {
-                            GoModeUserAnnotation(
-                                routeColor: viewModel.goModeRouteColor ?? AppTheme.Colors.mtaBlue
-                            )
-                        }
-                    }
-                } else {
-                    UserAnnotation()
-                }
+                // User location
+                UserAnnotation()
 
                 // Draggable search pin
                 if viewModel.isSearchPinActive, let pin = viewModel.searchPinCoordinate {
@@ -68,16 +68,7 @@ struct HomeView: View {
                 if let shape = viewModel.routeShape {
                     ForEach(shape.stops) { stop in
                         Annotation(stop.name, coordinate: CLLocationCoordinate2D(latitude: stop.lat, longitude: stop.lon)) {
-                            // Passed stops dim in GO mode (checklist behavior)
-                            if viewModel.isGoModeActive {
-                                GoModeStopAnnotation(
-                                    stopName: stop.name,
-                                    isPassed: viewModel.isStopPassed(stop),
-                                    routeColor: viewModel.goModeRouteColor ?? AppTheme.Colors.mtaBlue
-                                )
-                            } else {
-                                BusStopAnnotation(stopName: stop.name)
-                            }
+                            BusStopAnnotation(stopName: stop.name)
                         }
                     }
                 }
@@ -99,10 +90,7 @@ struct HomeView: View {
                 if let shape = viewModel.routeShape {
                     ForEach(Array(shape.decodedPolylines.enumerated()), id: \.offset) { _, coords in
                         MapPolyline(coordinates: coords)
-                            .stroke(
-                                viewModel.goModeRouteColor ?? AppTheme.Colors.mtaBlue,
-                                lineWidth: viewModel.isGoModeActive ? 5 : 3
-                            )
+                            .stroke(selectedRouteColor, lineWidth: 4)
                     }
                 }
             }
@@ -113,18 +101,7 @@ struct HomeView: View {
                 pointsOfInterest: .including([.publicTransport]),
                 showsTraffic: false
             ))
-            // Native MapKit controls — compass auto-hides when north-facing,
-            // scale auto-shows during zoom, user location button recenters.
-            .mapControls {
-                MapUserLocationButton()
-                MapCompass()
-                MapScaleView()
-            }
             .ignoresSafeArea()
-            .onLongPressGesture(minimumDuration: 0.5) {
-                // Long press handled via MapReader below
-            }
-
             // Floating controls
             VStack {
                 // Search pin indicator
@@ -132,38 +109,47 @@ struct HomeView: View {
                     searchPinBanner
                 }
 
-                // Selected route indicator (hidden during GO mode — overlay replaces it)
-                if viewModel.selectedRouteId != nil && !viewModel.isGoModeActive {
+                // Selected route indicator
+                if viewModel.selectedRouteId != nil {
                     selectedRouteBanner
                 }
 
                 Spacer()
 
-                // GO mode live tracking overlay (replaces bottom sheet content)
-                if viewModel.isGoModeActive {
-                    LiveTrackingOverlay(
-                        routeName: viewModel.goModeRouteName ?? "—",
-                        routeColor: viewModel.goModeRouteColor ?? AppTheme.Colors.mtaBlue,
-                        etaMinutes: viewModel.transitEtaMinutes,
-                        stops: viewModel.routeShape?.stops ?? [],
-                        passedStopIds: viewModel.passedStopIds,
-                        onGetOff: {
-                            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                                viewModel.deactivateGoMode()
+                // Custom Map Controls (Bottom Right)
+                HStack {
+                    Spacer()
+                    VStack(spacing: 12) {
+                        // User Location Button
+                        Button {
+                            guard let loc = locationManager.currentLocation else { return }
+                            withAnimation(.spring(duration: 0.6)) {
+                                cameraPosition = .camera(MapCamera(
+                                    centerCoordinate: loc.coordinate,
+                                    distance: AppTheme.MapConfig.userZoomDistance
+                                ))
                             }
+                        } label: {
+                            Image(systemName: "location.fill")
+                                .font(.system(size: 20, weight: .semibold))
+                                .foregroundColor(AppTheme.Colors.mtaBlue)
+                                .frame(width: 44, height: 44)
+                                .background(.ultraThinMaterial)
+                                .clipShape(Circle())
+                                .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
                         }
-                    )
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                    .padding(.horizontal, 8)
-                    .padding(.bottom, 4)
-                } else {
-                    TransportModeToggle(selectedMode: $viewModel.selectedMode)
-                        .padding(.bottom, 8)
+                        .accessibilityLabel("Recenter on my location")
+                    }
+                    .padding(.trailing, AppTheme.Layout.margin)
+                    .padding(.bottom, 24)
                 }
+
+                TransportModeToggle(selectedMode: $viewModel.selectedMode)
+                    .padding(.bottom, 8)
             }
         }
-        // Bottom sheet — hidden during GO mode (the LiveTrackingOverlay replaces it)
-        .sheet(isPresented: .constant(!viewModel.isGoModeActive)) {
+        // Bottom sheet
+        .sheet(isPresented: .constant(true)) {
             dashboardContent
                 .presentationDetents([.fraction(0.4), .large])
                 .presentationDragIndicator(.visible)
@@ -181,33 +167,15 @@ struct HomeView: View {
                             onTrack: { arrival in
                                 viewModel.trackNearbyArrival(arrival, location: locationManager.currentLocation)
                             },
-                            onGoMode: { routeName, routeColor in
-                                viewModel.isRouteDetailPresented = false
-                                withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
-                                    viewModel.activateGoMode(routeName: routeName, routeColor: routeColor)
-                                }
-                                // Calculate transit ETA to the last stop on the route
-                                if let loc = locationManager.currentLocation?.coordinate,
-                                   let lastStop = viewModel.routeShape?.stops.last {
-                                    Task {
-                                        await viewModel.fetchTransitETA(
-                                            from: loc,
-                                            to: CLLocationCoordinate2D(
-                                                latitude: lastStop.lat,
-                                                longitude: lastStop.lon
-                                            )
-                                        )
-                                    }
-                                }
-                            },
                             onDismiss: {
                                 viewModel.isRouteDetailPresented = false
                                 viewModel.selectedGroupedRoute = nil
                                 viewModel.clearBusRoute()
                             }
                         )
-                        .presentationDetents([.large])
+                        .presentationDetents([.medium, .large])
                         .presentationDragIndicator(.visible)
+                        .presentationBackgroundInteraction(.enabled)
                     }
                 }
         }
@@ -235,7 +203,7 @@ struct HomeView: View {
                 lastUpdated = Date()
             }
         }
-        // When a new location fix arrives, load data (first time) and follow in GO mode
+        // When a new location fix arrives, load data (first time)
         .onChange(of: locationManager.currentLocation) {
             guard let loc = locationManager.currentLocation else { return }
 
@@ -246,17 +214,6 @@ struct HomeView: View {
                     await viewModel.refresh(location: loc)
                     lastUpdated = Date()
                 }
-            }
-
-            // GO mode auto-follow — keep camera pinned on user
-            if viewModel.isGoModeActive {
-                withAnimation(.easeInOut(duration: 0.8)) {
-                    cameraPosition = .camera(MapCamera(
-                        centerCoordinate: loc.coordinate,
-                        distance: 2000
-                    ))
-                }
-                viewModel.updatePassedStops(userLocation: loc)
             }
         }
     }
@@ -293,32 +250,43 @@ struct HomeView: View {
 
     private var selectedRouteBanner: some View {
         HStack(spacing: 8) {
+            let isSubway = viewModel.selectedGroupedRoute?.isBus == false
+
             ZStack {
                 Circle()
-                    .fill(AppTheme.Colors.mtaBlue)
+                    .fill(selectedRouteColor)
                     .frame(width: 24, height: 24)
-                Image(systemName: "bus.fill")
+                Image(systemName: isSubway ? "tram.fill" : "bus.fill")
                     .font(.system(size: 11, weight: .bold))
                     .foregroundColor(AppTheme.Colors.textOnColor)
             }
 
             if let routeId = viewModel.selectedRouteId {
                 let name = stripMTAPrefix(routeId)
-                Text("\(name) — \(viewModel.busVehicles.count) buses live")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(AppTheme.Colors.textPrimary)
+                if isSubway {
+                    let stopsCount = viewModel.routeShape?.stops.count ?? 0
+                    Text("\(name) Train — \(stopsCount) stops")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(AppTheme.Colors.textPrimary)
+                } else {
+                    Text("\(name) — \(viewModel.busVehicles.count) buses live")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(AppTheme.Colors.textPrimary)
+                }
             }
 
             Spacer()
 
-            Button {
-                Task { await viewModel.refreshBusVehicles() }
-            } label: {
-                Image(systemName: "arrow.clockwise")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(AppTheme.Colors.mtaBlue)
+            if !isSubway {
+                Button {
+                    Task { await viewModel.refreshBusVehicles() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(selectedRouteColor)
+                }
+                .accessibilityLabel("Refresh bus positions")
             }
-            .accessibilityLabel("Refresh bus positions")
 
             Button {
                 viewModel.clearBusRoute()

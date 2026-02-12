@@ -61,11 +61,12 @@ async def bus_stops(route_id: str) -> list[BusStop]:
 async def bus_nearby(
     lat: float = Query(..., description="Latitude"),
     lon: float = Query(..., description="Longitude"),
+    radius: int = Query(800, description="Search radius in meters"),
 ) -> list[BusStop]:
     """Return bus stops near a GPS coordinate."""
     TrackLogger.location(lat, lon, "bus/nearby")
     try:
-        return await get_nearby_stops(lat, lon)
+        return await get_nearby_stops(lat, lon, radius_m=radius)
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code in (401, 403):
             raise HTTPException(

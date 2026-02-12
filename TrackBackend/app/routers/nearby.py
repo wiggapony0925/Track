@@ -23,6 +23,7 @@ from app.config import get_settings
 from app.models import DirectionArrivals, GroupedNearbyTransit, NearbyTransitArrival
 from app.services.bus_client import get_nearby_stops, get_realtime_arrivals
 from app.services.data_cleaner import get_arrivals_for_line
+from app.services.station_lookup import get_nearby_stop_ids, get_stop_info
 from app.utils.logger import TrackLogger
 
 # Subway line → hex color mapping (official MTA colors).
@@ -38,6 +39,9 @@ _SUBWAY_COLORS: dict[str, str] = {
     "N": "#FCCC0A", "Q": "#FCCC0A", "R": "#FCCC0A", "W": "#FCCC0A",
     "S": "#808183", "SI": "#808183",
 }
+
+# Default bus color (MTA blue) — used when bus routes don't provide one
+_BUS_DEFAULT_COLOR = "#0039A6"
 
 router = APIRouter(tags=["nearby"])
 
@@ -96,7 +100,7 @@ async def _collect_all(
     effective_radius = radius if radius is not None else settings.app_settings.search_radius_meters
     results: list[NearbyTransitArrival] = []
 
-    subway_task = _fetch_nearby_subway()
+    subway_task = _fetch_nearby_subway(lat, lon, effective_radius)
     bus_task = _fetch_nearby_buses(lat, lon, effective_radius)
 
     subway_results, bus_results = await asyncio.gather(
@@ -148,7 +152,12 @@ def _group_arrivals(flat: list[NearbyTransitArrival]) -> list[GroupedNearbyTrans
     groups: list[GroupedNearbyTransit] = []
     for route_id, dir_map in by_route.items():
         mode, display = route_meta[route_id]
-        color = _SUBWAY_COLORS.get(display.upper()) if mode == "subway" else None
+        # Assign color: subway lines use the official palette,
+        # bus routes get the default MTA blue
+        if mode == "subway":
+            color = _SUBWAY_COLORS.get(display.upper())
+        else:
+            color = _BUS_DEFAULT_COLOR
 
         directions: list[DirectionArrivals] = []
         for direction, arrivals in dir_map.items():
@@ -189,17 +198,29 @@ def _soonest_minutes(group: GroupedNearbyTransit) -> int:
 # ---------------------------------------------------------------------------
 
 
-async def _fetch_nearby_subway() -> list[NearbyTransitArrival]:
-    """Fetch arrivals from all subway feeds and return as NearbyTransitArrival.
+async def _fetch_nearby_subway(
+    lat: float, lon: float, radius: int,
+) -> list[NearbyTransitArrival]:
+    """Fetch arrivals from all subway feeds, filtered to nearby stations.
 
-    Each GTFS-RT feed covers a family of lines (e.g. ACE, BDFM).  We
-    request one representative line per feed and then keep arrivals
-    for **all** routes found in that feed — not just the representative
-    letter — so the user sees every train coming through.
+    Uses the GTFS stops.txt station database to determine which stop_ids
+    are within the user's search radius, so we only return trains that
+    are actually arriving at stations the user could walk to.
     """
     settings = get_settings()
-    max_per_feed = settings.app_settings.max_arrivals_per_feed
     results: list[NearbyTransitArrival] = []
+
+    # Pre-compute which stop_ids are within range of the user
+    nearby_stops = get_nearby_stop_ids(lat, lon, float(radius))
+    if not nearby_stops:
+        TrackLogger.info(
+            f"No subway stations within {radius}m of ({lat:.5f}, {lon:.5f})"
+        )
+        return results
+
+    TrackLogger.info(
+        f"Found {len(nearby_stops)} subway stop_ids within {radius}m"
+    )
 
     # Pick representative lines (one per feed) to avoid duplicate fetches
     feed_lines = ["A", "G", "N", "1", "B", "J", "L"]
@@ -218,19 +239,32 @@ async def _fetch_nearby_subway() -> list[NearbyTransitArrival]:
             continue
         success_count += 1
         total_raw += len(arrivals)
-        for arrival in arrivals[:max_per_feed]:  # Top N per feed
-            # 0 minutes means already at the station / stale — skip it
+        for arrival in arrivals:
+            # Skip stale arrivals (already at station)
             if arrival.minutes_away <= 0:
                 continue
+            # Only keep arrivals at stops within range
+            if arrival.station not in nearby_stops:
+                continue
+
+            # Resolve the human-readable station name and coordinates
+            stop_info = get_stop_info(arrival.station)
+            stop_name = stop_info.name if stop_info else arrival.station
+            stop_lat = stop_info.lat if stop_info else None
+            stop_lon = stop_info.lon if stop_info else None
+
+            # Use the actual route_id from the GTFS-RT trip, not the feed line
             total_kept += 1
             results.append(
                 NearbyTransitArrival(
-                    route_id=line,
-                    stop_name=arrival.station,
+                    route_id=arrival.route_id or line,
+                    stop_name=stop_name,
                     direction=arrival.direction,
                     minutes_away=arrival.minutes_away,
                     status=arrival.status,
                     mode="subway",
+                    stop_lat=stop_lat,
+                    stop_lon=stop_lon,
                 )
             )
 
@@ -241,7 +275,7 @@ async def _fetch_nearby_subway() -> list[NearbyTransitArrival]:
     elif success_count > 0:
         TrackLogger.info(
             f"Subway: {success_count}/{len(feed_lines)} feeds OK, "
-            f"{total_raw} raw arrivals → {total_kept} kept"
+            f"{total_raw} raw → {total_kept} kept (nearby)"
         )
 
     return results

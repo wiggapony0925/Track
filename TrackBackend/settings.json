@@ -1,6 +1,6 @@
 {
   "app_settings": {
-    "search_radius_meters": 500,
+    "search_radius_meters": 800,
     "refresh_interval_seconds": 30,
     "nearest_metro_fallback_radius_meters": 5000,
     "max_nearby_results": 20,

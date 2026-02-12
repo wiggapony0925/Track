@@ -25,7 +25,12 @@ def _minutes_until(epoch: int) -> int:
 
 
 async def get_arrivals_for_line(line_id: str) -> list[TrackArrival]:
-    """Fetch & decode GTFS-RT Protobuf for *line_id*, returning clean arrivals."""
+    """Fetch & decode GTFS-RT Protobuf for *line_id*, returning clean arrivals.
+
+    Each feed covers a family of lines (e.g. ACE, BDFM).  We return
+    ALL routes found in the feed — not just the representative letter —
+    so the caller gets every train from that feed.
+    """
     url = get_feed_url(line_id)
     if url is None:
         return []
@@ -36,15 +41,12 @@ async def get_arrivals_for_line(line_id: str) -> list[TrackArrival]:
     feed.ParseFromString(raw)
 
     arrivals: list[TrackArrival] = []
-    upper_line = line_id.upper()
 
     for entity in feed.entity:
         if not entity.HasField("trip_update"):
             continue
         trip = entity.trip_update
-        route = trip.trip.route_id
-        if route.upper() != upper_line:
-            continue
+        route = trip.trip.route_id  # e.g. "A", "C", "E" from the ACE feed
         for stu in trip.stop_time_update:
             arrival_time = stu.arrival.time if stu.HasField("arrival") else 0
             if arrival_time == 0:
@@ -53,6 +55,7 @@ async def get_arrivals_for_line(line_id: str) -> list[TrackArrival]:
             direction = "N" if stu.stop_id.endswith("N") else "S"
             arrivals.append(
                 TrackArrival(
+                    route_id=route,
                     station=stu.stop_id,
                     direction=direction,
                     minutes_away=minutes,

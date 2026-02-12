@@ -74,8 +74,14 @@ final class TransitRepository {
     func fetchNearbyStations(
         latitude: Double,
         longitude: Double,
-        radius: Double = Double(AppSettings.shared.defaultSearchRadiusMeters)
+        radius: Double? = nil
     ) async throws -> [(stationID: String, name: String, distance: Double, routeIDs: [String])] {
+        if let radius = radius {
+            _ = radius // kept if needed for logic later, or just verify not nil
+        } else {
+            // Access MainActor-isolated AppSettings safely
+            _ = await MainActor.run { Double(AppSettings.shared.defaultSearchRadiusMeters) }
+        }
         // Station data loaded from local storage
         // TODO: Load from CSV or backend endpoint when available
         AppLogger.shared.log("TRANSIT", message: "Fetching nearby stations for (\(latitude), \(longitude))")

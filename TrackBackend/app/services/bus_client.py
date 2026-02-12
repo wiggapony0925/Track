@@ -129,14 +129,17 @@ async def get_nearby_stops(
     degree-based bounding box (``latSpan`` / ``lonSpan``) for the OBA
     API.  One degree of latitude ≈ 111 km; one degree of longitude ≈
     85 km at NYC's latitude.
+
+    Includes retry logic because the MTA OBA API frequently returns 504.
     """
+    import asyncio
+
     settings = get_settings()
     eps = settings.urls.bus_endpoints
     if eps is None:
         return []
 
     # Convert meters → degrees.
-    # 1° latitude ≈ 111 km everywhere; 1° longitude ≈ 85 km at NYC's 40.7° latitude.
     _METERS_PER_DEG_LAT = 111_000
     _METERS_PER_DEG_LON_NYC = 85_000
 
@@ -152,25 +155,39 @@ async def get_nearby_stops(
         "lonSpan": f"{lon_span:.6f}",
     }
 
-    data = await _fetch_bus_json(url, params)
-    stops_data: list[dict[str, Any]] = (
-        data.get("data", {}).get("list", [])
-        if isinstance(data, dict)
-        else []
-    )
-
-    results: list[BusStop] = []
-    for s in stops_data:
-        results.append(
-            BusStop(
-                id=s.get("id", ""),
-                name=s.get("name", ""),
-                lat=s.get("lat", 0.0),
-                lon=s.get("lon", 0.0),
-                direction=s.get("direction"),
+    # Retry up to 2 times on timeout / 5xx errors
+    max_retries = 2
+    last_error: Exception | None = None
+    for attempt in range(max_retries + 1):
+        try:
+            data = await _fetch_bus_json(url, params)
+            stops_data: list[dict[str, Any]] = (
+                data.get("data", {}).get("list", [])
+                if isinstance(data, dict)
+                else []
             )
-        )
-    return results
+
+            results: list[BusStop] = []
+            for s in stops_data:
+                results.append(
+                    BusStop(
+                        id=s.get("id", ""),
+                        name=s.get("name", ""),
+                        lat=s.get("lat", 0.0),
+                        lon=s.get("lon", 0.0),
+                        direction=s.get("direction"),
+                    )
+                )
+            return results
+        except (httpx.HTTPStatusError, httpx.TimeoutException) as exc:
+            last_error = exc
+            if attempt < max_retries:
+                await asyncio.sleep(1)  # Brief pause before retry
+
+    # All retries exhausted — raise so caller can handle
+    if last_error:
+        raise last_error
+    return []
 
 
 # ---------------------------------------------------------------------------

@@ -15,6 +15,7 @@ from pydantic import BaseModel
 class TrackArrival(BaseModel):
     """A single upcoming train arrival at a station."""
 
+    route_id: str = ""
     station: str
     direction: str
     minutes_away: int

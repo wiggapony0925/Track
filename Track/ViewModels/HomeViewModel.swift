@@ -146,9 +146,21 @@ final class HomeViewModel {
         selectedGroupedRoute = group
         isRouteDetailPresented = true
 
-        // Load route shape + vehicles for bus routes
         if group.isBus {
+            // Load route shape + vehicles for bus routes
             await selectBusRoute(group.routeId)
+        } else {
+            // For subway: fetch the full line geometry from the backend
+            // so the map draws the ENTIRE line (e.g. all 40 stops of the C train)
+            selectedRouteId = group.routeId
+            busVehicles = []
+            routeShape = nil
+
+            do {
+                routeShape = try await TrackAPI.fetchSubwayShape(routeID: group.displayName)
+            } catch {
+                AppLogger.shared.logError("fetchSubwayShape(\(group.displayName))", error: error)
+            }
         }
     }
 

@@ -2,326 +2,329 @@
 //  RouteDetailSheet.swift
 //  Track
 //
-//  Route detail modal presented when tapping a grouped route card.
-//  Displays a swipeable TabView of directions (e.g. Northbound /
-//  Southbound) with live arrival countdowns, a mini route map using
-//  MapKit's ``Map`` view with ``MKMapItem`` placemarks and polylines,
-//  and a "Track" button for Live Activity integration.
-//
-//  References:
-//  - https://developer.apple.com/documentation/mapkit/mkmapitem/init(placemark:)
-//  - https://developer.apple.com/documentation/mapkit/map
+//  Route detail view presented when tapping a grouped route card.
+//  Uses the same AppTheme design system, RouteBadge, and card layout
+//  patterns as the rest of the app. No separate map — the MAIN map
+//  behind this sheet draws the route polylines and live vehicles.
 //
 
 import SwiftUI
-import MapKit
 
-/// A sheet that shows route details with swipeable direction tabs.
-/// Inspired by subway apps like Citymapper and Transit — focused on
-/// quick arrival checking rather than trip planning.
 struct RouteDetailSheet: View {
     let group: GroupedNearbyTransitResponse
     @Binding var busVehicles: [BusVehicleResponse]
     @Binding var routeShape: RouteShapeResponse?
     var onTrack: ((NearbyTransitResponse) -> Void)?
-    var onGoMode: ((_ routeName: String, _ routeColor: Color) -> Void)?
     var onDismiss: (() -> Void)?
 
     @State private var selectedDirectionIndex = 0
 
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 0) {
-                    // Route header
-                    routeHeader
-                        .padding(.top, 8)
-
-                    // "GO" button — activates live tracking mode
-                    goButton
-                        .padding(.top, 12)
-
-                    // Mini map showing route shape + stops
-                    routeMapSection
-                        .padding(.top, 12)
-
-                    // Direction picker (swipeable tabs)
-                    if group.directions.count > 1 {
-                        directionPicker
-                            .padding(.top, 16)
-                    }
-
-                    // Arrival list for selected direction
-                    arrivalList
-                        .padding(.top, 12)
-
-                    Spacer()
-                        .frame(height: 24)
-                }
-            }
-            .background(AppTheme.Colors.background)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        onDismiss?()
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 24, weight: .medium))
-                            .foregroundStyle(AppTheme.Colors.textSecondary)
-                    }
-                    .accessibilityLabel("Close")
-                }
-            }
+    /// Route color from the group data or the theme palette.
+    private var routeColor: Color {
+        if let hex = group.colorHex {
+            return Color(hex: hex)
         }
+        return group.isBus ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: group.displayName)
     }
 
-    // MARK: - Route Header
+    /// Current direction bucket, clamped to bounds.
+    private var safeDirection: DirectionArrivalsResponse {
+        guard !group.directions.isEmpty else {
+            return DirectionArrivalsResponse(direction: "—", arrivals: [])
+        }
+        let idx = min(selectedDirectionIndex, group.directions.count - 1)
+        return group.directions[idx]
+    }
+
+    var body: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 16) {
+                // MARK: - Header Row
+                routeHeader
+
+                // MARK: - Countdown Chips
+                countdownSection
+
+                // MARK: - Direction Picker
+                if group.directions.count > 1 {
+                    directionPicker
+                }
+
+                // MARK: - Arrivals List
+                arrivalsList
+
+                // MARK: - Route Info Footer
+                routeInfoFooter
+
+                Spacer()
+                    .frame(height: 20)
+            }
+            .padding(.top, AppTheme.Layout.margin)
+        }
+        .background(AppTheme.Colors.background)
+    }
+
+    // MARK: - Header
 
     private var routeHeader: some View {
-        VStack(spacing: 8) {
-            // Route badge
-            ZStack {
-                Circle()
-                    .fill(routeColor)
-                    .frame(width: AppTheme.Layout.badgeSizeLarge,
-                           height: AppTheme.Layout.badgeSizeLarge)
-                    .shadow(color: routeColor.opacity(0.4),
-                            radius: AppTheme.Layout.shadowRadius)
-                if group.isBus {
+        HStack(spacing: 12) {
+            // Reuse existing RouteBadge for subway, custom badge for bus
+            if group.isBus {
+                ZStack {
+                    Circle()
+                        .fill(routeColor)
+                        .frame(width: AppTheme.Layout.badgeSizeLarge,
+                               height: AppTheme.Layout.badgeSizeLarge)
                     Image(systemName: "bus.fill")
                         .font(.system(size: AppTheme.Layout.badgeFontLarge, weight: .bold))
-                        .foregroundColor(.white)
-                } else {
-                    Text(group.displayName)
-                        .font(.system(size: AppTheme.Layout.badgeFontLarge,
-                                      weight: .heavy, design: .monospaced))
-                        .foregroundColor(subwayTextColor)
-                        .minimumScaleFactor(0.5)
+                        .foregroundColor(AppTheme.Colors.textOnColor)
+                }
+            } else {
+                RouteBadge(routeID: group.displayName, size: .large)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(group.displayName)
+                    .font(AppTheme.Typography.headerLarge)
+                    .foregroundColor(AppTheme.Colors.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+
+                if group.directions.indices.contains(selectedDirectionIndex) {
+                    let dir = group.directions[selectedDirectionIndex]
+                    Text(directionLabel(dir.direction))
+                        .font(AppTheme.Typography.body)
+                        .foregroundColor(AppTheme.Colors.textSecondary)
                         .lineLimit(1)
                 }
             }
 
-            Text(group.displayName)
-                .font(.system(size: 22, weight: .bold, design: .rounded))
-                .foregroundColor(AppTheme.Colors.textPrimary)
+            Spacer()
 
-            Text(group.isBus ? "Bus" : "Subway")
-                .font(.system(size: 14, weight: .medium))
-                .foregroundColor(AppTheme.Colors.textSecondary)
-
-            // Soonest arrival highlight
-            HStack(spacing: 4) {
-                Image(systemName: "clock.fill")
-                    .font(.system(size: 12, weight: .medium))
-                Text("Next in \(group.soonestMinutes) min")
-                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+            // Close button
+            Button {
+                onDismiss?()
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 24, weight: .medium))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
             }
-            .foregroundColor(AppTheme.Colors.countdown(group.soonestMinutes))
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(AppTheme.Colors.countdown(group.soonestMinutes).opacity(0.12))
-            .clipShape(Capsule())
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 12)
-    }
-
-    // MARK: - GO Button
-
-    /// The signature "GO" button that activates live tracking mode.
-    /// Inspired by the Transit app — a large, prominent play button
-    /// that transforms the interface from planning to cockpit view.
-    private var goButton: some View {
-        Button {
-            onGoMode?(group.displayName, routeColor)
-        } label: {
-            HStack(spacing: 10) {
-                Image(systemName: "play.fill")
-                    .font(.system(size: 18, weight: .bold))
-                Text("GO")
-                    .font(.system(size: 20, weight: .heavy, design: .rounded))
-            }
-            .foregroundColor(.white)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
-            .background(AppTheme.Colors.goGreen)
-            .cornerRadius(AppTheme.Layout.cornerRadius)
-            .shadow(color: AppTheme.Colors.goGreen.opacity(0.4), radius: 8, y: 4)
+            .accessibilityLabel("Close")
         }
         .padding(.horizontal, AppTheme.Layout.margin)
-        .accessibilityLabel("GO — start live tracking for \(group.displayName)")
-        .accessibilityHint("Activates hands-free transit tracking mode")
     }
 
-    // MARK: - Route Map
+    // MARK: - Countdown Chips
 
-    private var routeMapSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                Image(systemName: "map.fill")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(AppTheme.Colors.mtaBlue)
-                Text("Route Map")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(AppTheme.Colors.textSecondary)
-                    .textCase(.uppercase)
-            }
-            .padding(.horizontal, AppTheme.Layout.margin)
+    private var countdownSection: some View {
+        let direction = safeDirection
+        let nextArrivals = Array(direction.arrivals.prefix(4))
 
-            Map(bounds: AppTheme.MapConfig.cameraBounds) {
-                // Route polylines
-                if let shape = routeShape {
-                    ForEach(Array(shape.decodedPolylines.enumerated()), id: \.offset) { _, coords in
-                        MapPolyline(coordinates: coords)
-                            .stroke(routeColor, lineWidth: 3)
+        return VStack(alignment: .leading, spacing: 8) {
+            Text("Next Arrivals")
+                .font(AppTheme.Typography.sectionHeader)
+                .foregroundColor(AppTheme.Colors.textSecondary)
+                .textCase(.uppercase)
+                .padding(.horizontal, AppTheme.Layout.margin)
+
+            if nextArrivals.isEmpty {
+                HStack {
+                    Spacer()
+                    VStack(spacing: 6) {
+                        Image(systemName: "clock")
+                            .font(.system(size: 24, weight: .light))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
+                        Text("No upcoming arrivals")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
                     }
-                    // Stop annotations along the route
-                    ForEach(shape.stops) { stop in
-                        Annotation(
-                            stop.name,
-                            coordinate: CLLocationCoordinate2D(
-                                latitude: stop.lat, longitude: stop.lon
-                            )
-                        ) {
-                            Circle()
-                                .fill(.white)
-                                .frame(width: 8, height: 8)
-                                .overlay(
-                                    Circle()
-                                        .stroke(routeColor, lineWidth: 2)
-                                )
+                    Spacer()
+                }
+                .padding(.vertical, 16)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        ForEach(Array(nextArrivals.enumerated()), id: \.element.id) { index, arrival in
+                            VStack(spacing: 4) {
+                                // Big countdown number
+                                Text("\(arrival.minutesAway)")
+                                    .font(.system(size: index == 0 ? 36 : 28,
+                                                  weight: .black, design: .rounded))
+                                    .foregroundColor(AppTheme.Colors.countdown(arrival.minutesAway))
+
+                                Text("min")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundColor(AppTheme.Colors.textSecondary)
+
+                                // Status pill
+                                Text(arrival.status)
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundColor(AppTheme.Colors.textOnColor)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 3)
+                                    .background(transitStatusColor(for: arrival.status))
+                                    .clipShape(Capsule())
+                            }
+                            .frame(width: index == 0 ? 90 : 76)
+                            .padding(.vertical, 12)
+                            .background(AppTheme.Colors.cardBackground)
+                            .cornerRadius(AppTheme.Layout.cornerRadius)
                         }
                     }
-                }
-
-                // Live bus vehicle positions
-                ForEach(busVehicles) { vehicle in
-                    Annotation(
-                        vehicle.nextStop ?? vehicle.displayRouteName,
-                        coordinate: CLLocationCoordinate2D(
-                            latitude: vehicle.lat, longitude: vehicle.lon
-                        )
-                    ) {
-                        ZStack {
-                            Circle()
-                                .fill(AppTheme.Colors.mtaBlue)
-                                .frame(width: 24, height: 24)
-                            Image(systemName: "bus.fill")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(.white)
-                                .rotationEffect(.degrees(vehicle.bearing ?? 0))
-                        }
-                    }
+                    .padding(.horizontal, AppTheme.Layout.margin)
                 }
             }
-            .mapStyle(.standard(
-                emphasis: .muted,
-                pointsOfInterest: .including([.publicTransport]),
-                showsTraffic: false
-            ))
-            .mapControls {
-                MapScaleView()
-            }
-            .frame(height: 200)
-            .clipShape(RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius))
-            .padding(.horizontal, AppTheme.Layout.margin)
         }
     }
 
     // MARK: - Direction Picker
 
     private var directionPicker: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                ForEach(Array(group.directions.enumerated()), id: \.element.id) { index, dir in
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            selectedDirectionIndex = index
-                        }
-                    } label: {
-                        VStack(spacing: 4) {
-                            Text(directionLabel(dir.direction))
-                                .font(.system(size: 14, weight: selectedDirectionIndex == index ? .bold : .medium))
-                                .foregroundColor(
-                                    selectedDirectionIndex == index
-                                        ? AppTheme.Colors.textPrimary
-                                        : AppTheme.Colors.textSecondary
-                                )
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.7)
-
-                            // Count badge
-                            Text("\(dir.arrivals.count)")
-                                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                                .foregroundColor(
-                                    selectedDirectionIndex == index
-                                        ? .white
-                                        : AppTheme.Colors.textSecondary
-                                )
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 2)
-                                .background(
-                                    selectedDirectionIndex == index
-                                        ? routeColor
-                                        : AppTheme.Colors.cardBackground
-                                )
-                                .clipShape(Capsule())
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
+        HStack(spacing: 0) {
+            ForEach(Array(group.directions.enumerated()), id: \.element.id) { index, dir in
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        selectedDirectionIndex = index
                     }
-                    .accessibilityLabel("\(directionLabel(dir.direction)), \(dir.arrivals.count) arrivals")
+                } label: {
+                    HStack(spacing: 6) {
+                        Text(shortDirectionLabel(dir.direction))
+                            .font(.system(size: 14, weight: selectedDirectionIndex == index ? .bold : .medium))
+                            .foregroundColor(
+                                selectedDirectionIndex == index
+                                    ? AppTheme.Colors.textPrimary
+                                    : AppTheme.Colors.textSecondary
+                            )
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+
+                        Text("\(dir.arrivals.count)")
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .foregroundColor(AppTheme.Colors.textOnColor)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(
+                                selectedDirectionIndex == index
+                                    ? routeColor
+                                    : AppTheme.Colors.textSecondary
+                            )
+                            .clipShape(Capsule())
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(
+                        selectedDirectionIndex == index
+                            ? routeColor.opacity(0.12)
+                            : Color.clear
+                    )
                 }
+                .accessibilityLabel("\(directionLabel(dir.direction)), \(dir.arrivals.count) arrivals")
             }
-            .background(AppTheme.Colors.cardBackground)
-            .clipShape(RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius))
-            .padding(.horizontal, AppTheme.Layout.margin)
         }
+        .background(AppTheme.Colors.cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius))
+        .padding(.horizontal, AppTheme.Layout.margin)
     }
 
-    // MARK: - Arrival List
+    // MARK: - Arrivals List (same card pattern as HomeView)
 
-    private var arrivalList: some View {
+    private var arrivalsList: some View {
         let direction = safeDirection
-        return VStack(spacing: 0) {
-            HStack {
-                Text(directionLabel(direction.direction))
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(AppTheme.Colors.textSecondary)
-                    .textCase(.uppercase)
-                Spacer()
-            }
-            .padding(.horizontal, AppTheme.Layout.margin)
-            .padding(.bottom, 6)
+
+        return VStack(alignment: .leading, spacing: 8) {
+            Text("Arrivals")
+                .font(AppTheme.Typography.sectionHeader)
+                .foregroundColor(AppTheme.Colors.textSecondary)
+                .textCase(.uppercase)
+                .padding(.horizontal, AppTheme.Layout.margin)
 
             if direction.arrivals.isEmpty {
+                // Empty state — matches HomeView's emptyStateView pattern
                 VStack(spacing: 8) {
-                    Image(systemName: "clock")
-                        .font(.system(size: 28, weight: .light))
+                    Image(systemName: "tram.fill")
+                        .font(.system(size: 32, weight: .light))
                         .foregroundColor(AppTheme.Colors.textSecondary)
-                    Text("No upcoming arrivals")
-                        .font(.system(size: 14, weight: .medium))
+                    Text("No arrivals in this direction")
+                        .font(.system(size: 15, weight: .medium))
                         .foregroundColor(AppTheme.Colors.textSecondary)
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 24)
+                .padding(.vertical, 32)
             } else {
                 VStack(spacing: 0) {
                     ForEach(Array(direction.arrivals.enumerated()), id: \.element.id) { index, arrival in
-                        RouteDetailArrivalRow(
-                            arrival: arrival,
-                            routeColor: routeColor,
-                            onTrack: { onTrack?(arrival) }
-                        )
+                        // Row — same HStack layout as NearbyTransitRow
+                        HStack(spacing: 12) {
+                            // Route badge
+                            if group.isBus {
+                                ZStack {
+                                    Circle()
+                                        .fill(routeColor)
+                                        .frame(width: AppTheme.Layout.badgeSizeMedium,
+                                               height: AppTheme.Layout.badgeSizeMedium)
+                                    Image(systemName: "bus.fill")
+                                        .font(.system(size: AppTheme.Layout.badgeFontMedium, weight: .bold))
+                                        .foregroundColor(AppTheme.Colors.textOnColor)
+                                }
+                            } else {
+                                RouteBadge(routeID: group.displayName, size: .medium)
+                            }
+
+                            // Stop name + direction
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(arrival.stopName)
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundColor(AppTheme.Colors.textPrimary)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.8)
+
+                                Text(arrival.direction)
+                                    .font(.system(size: 12, weight: .regular))
+                                    .foregroundColor(AppTheme.Colors.textSecondary)
+                                    .lineLimit(1)
+                            }
+
+                            Spacer(minLength: 4)
+
+                            // Status pill
+                            Text(arrival.status)
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(AppTheme.Colors.textOnColor)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(transitStatusColor(for: arrival.status))
+                                .clipShape(Capsule())
+
+                            // Countdown
+                            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                                Text("\(arrival.minutesAway)")
+                                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                                    .foregroundColor(AppTheme.Colors.countdown(arrival.minutesAway))
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.7)
+                                Text("min")
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundColor(AppTheme.Colors.textSecondary)
+                            }
+                        }
+                        .padding(.vertical, 10)
+                        .padding(.horizontal, AppTheme.Layout.margin)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            onTrack?(arrival)
+                        }
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel("\(arrival.stopName), \(arrival.minutesAway) minutes, \(arrival.status)")
+
+                        // Divider between rows — same pattern as HomeView
                         if index < direction.arrivals.count - 1 {
                             Divider()
-                                .padding(.leading, AppTheme.Layout.margin + 44)
+                                .padding(.leading, AppTheme.Layout.margin + AppTheme.Layout.badgeSizeMedium + 12)
                         }
                     }
                 }
                 .background(AppTheme.Colors.cardBackground)
-                .clipShape(RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius))
+                .cornerRadius(AppTheme.Layout.cornerRadius)
                 .padding(.horizontal, AppTheme.Layout.margin)
             }
         }
@@ -331,11 +334,9 @@ struct RouteDetailSheet: View {
                     guard group.directions.count > 1 else { return }
                     withAnimation(.easeInOut(duration: 0.2)) {
                         if value.translation.width < 0 {
-                            // Swipe left → next direction
                             selectedDirectionIndex = min(selectedDirectionIndex + 1,
                                                         group.directions.count - 1)
                         } else if value.translation.width > 0 {
-                            // Swipe right → previous direction
                             selectedDirectionIndex = max(selectedDirectionIndex - 1, 0)
                         }
                     }
@@ -344,109 +345,35 @@ struct RouteDetailSheet: View {
         .accessibilityHint(group.directions.count > 1 ? "Swipe to switch direction" : "")
     }
 
-    // MARK: - Helpers
+    // MARK: - Route Info Footer
 
-    private var safeDirection: DirectionArrivalsResponse {
-        guard !group.directions.isEmpty else {
-            return DirectionArrivalsResponse(direction: "—", arrivals: [])
-        }
-        let idx = min(selectedDirectionIndex, group.directions.count - 1)
-        return group.directions[idx]
-    }
-
-    private var routeColor: Color {
-        if let hex = group.colorHex {
-            return Color(hex: hex)
-        }
-        return group.isBus ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: group.displayName)
-    }
-
-    private var subwayTextColor: Color {
-        AppTheme.SubwayColors.textColor(for: group.displayName)
-    }
-
-}
-
-// MARK: - Arrival Row (inside Route Detail)
-
-/// A single arrival row inside the route detail sheet.
-private struct RouteDetailArrivalRow: View {
-    let arrival: NearbyTransitResponse
-    let routeColor: Color
-    var onTrack: (() -> Void)?
-
-    var body: some View {
-        HStack(spacing: 12) {
-            // Time circle
-            ZStack {
-                Circle()
-                    .fill(AppTheme.Colors.countdown(arrival.minutesAway).opacity(0.12))
-                    .frame(width: 44, height: 44)
-                VStack(spacing: 0) {
-                    Text("\(arrival.minutesAway)")
-                        .font(.system(size: 18, weight: .bold, design: .rounded))
-                        .foregroundColor(AppTheme.Colors.countdown(arrival.minutesAway))
-                    Text("min")
-                        .font(.system(size: 9, weight: .semibold))
+    private var routeInfoFooter: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            // Route stops count
+            if let shape = routeShape, !shape.stops.isEmpty {
+                HStack(spacing: 6) {
+                    Image(systemName: "mappin.and.ellipse")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+                    Text("\(shape.stops.count) stops on route")
+                        .font(.system(size: 13, weight: .medium))
                         .foregroundColor(AppTheme.Colors.textSecondary)
                 }
             }
 
-            // Stop info
-            VStack(alignment: .leading, spacing: 2) {
-                Text(arrival.stopName)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(AppTheme.Colors.textPrimary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-
-                Text(arrivalTimeDescription)
-                    .font(.system(size: 12, weight: .regular))
-                    .foregroundColor(AppTheme.Colors.textSecondary)
-                    .lineLimit(1)
+            // Live vehicles count
+            if !busVehicles.isEmpty {
+                HStack(spacing: 6) {
+                    Image(systemName: "location.fill")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(AppTheme.Colors.successGreen)
+                    Text("\(busVehicles.count) \(group.isBus ? "buses" : "trains") live on map")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(AppTheme.Colors.successGreen)
+                }
             }
-
-            Spacer(minLength: 4)
-
-            // Status pill
-            Text(statusLabel)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(.white)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(statusColor)
-                .clipShape(Capsule())
-
-            // Track button
-            Button {
-                onTrack?()
-            } label: {
-                Image(systemName: "bell.fill")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(routeColor)
-            }
-            .accessibilityLabel("Track arrival at \(arrival.stopName)")
         }
-        .padding(.vertical, 10)
         .padding(.horizontal, AppTheme.Layout.margin)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(arrival.minutesAway) minutes, \(arrival.stopName), \(statusLabel)")
-    }
-
-    private var arrivalTimeDescription: String {
-        formatArrivalTime(minutesAway: arrival.minutesAway)
-    }
-
-    private var statusLabel: String {
-        if arrival.minutesAway <= 0 { return "Now" }
-        if arrival.minutesAway <= 2 { return "Approaching" }
-        return arrival.status
-    }
-
-    private var statusColor: Color {
-        if arrival.minutesAway <= 0 { return AppTheme.Colors.alertRed }
-        if arrival.minutesAway <= 2 { return AppTheme.Colors.warningYellow }
-        return AppTheme.Colors.successGreen
     }
 }
 
@@ -478,7 +405,7 @@ private struct RouteDetailArrivalRow: View {
                     arrivals: [
                         NearbyTransitResponse(
                             routeId: "A", stopName: "Fulton St", direction: "S",
-                            minutesAway: 5, status: "On Time", mode: "subway",
+                            minutesAway: 5, status: "Delayed", mode: "subway",
                             stopLat: 40.71, stopLon: -74.01
                         ),
                     ]
