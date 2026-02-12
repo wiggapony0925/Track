@@ -23,6 +23,20 @@ struct AppSettings {
     let defaultDeviceIP: String
     let localPort: Int
 
+    // MARK: - Display Settings
+
+    let maxServiceAlerts: Int
+    let maxElevatorOutages: Int
+    let maxLirrArrivals: Int
+    let maxRouteDetailArrivals: Int
+    let stationVisibilityZoomMeters: Double
+
+    // MARK: - Live Activity Settings
+
+    let liveActivityStaleDateSeconds: Double
+    let liveActivityDismissalSeconds: Double
+    let defaultArrivalFallbackSeconds: Double
+
     // MARK: - Location Settings
 
     let distanceFilterMeters: Double
@@ -53,13 +67,21 @@ struct AppSettings {
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             // Fall back to hardcoded defaults if settings.json is missing
             print("[AppSettings] WARNING: settings.json not found in bundle — using hardcoded defaults")
-            self.defaultSearchRadiusMeters = 500
+            self.defaultSearchRadiusMeters = 800
             self.nearestMetroFallbackRadiusMeters = 5000
             self.refreshIntervalSeconds = 30
             self.prodBaseURL = "https://track-api.onrender.com"
             self.localBaseURL = "http://127.0.0.1:8000"
             self.defaultDeviceIP = "192.168.12.101"
             self.localPort = 8000
+            self.maxServiceAlerts = 3
+            self.maxElevatorOutages = 5
+            self.maxLirrArrivals = 15
+            self.maxRouteDetailArrivals = 4
+            self.stationVisibilityZoomMeters = 3500
+            self.liveActivityStaleDateSeconds = 60
+            self.liveActivityDismissalSeconds = 30
+            self.defaultArrivalFallbackSeconds = 300
             self.distanceFilterMeters = 50
             self.commutePatternMatchRadiusMeters = 200
             self.stopPassedThresholdMeters = 100
@@ -80,16 +102,28 @@ struct AppSettings {
         }
 
         let api = json["api"] as? [String: Any] ?? [:]
+        let display = json["display"] as? [String: Any] ?? [:]
+        let liveActivity = json["live_activity"] as? [String: Any] ?? [:]
         let location = json["location"] as? [String: Any] ?? [:]
         let map = json["map"] as? [String: Any] ?? [:]
 
-        self.defaultSearchRadiusMeters = api["default_search_radius_meters"] as? Int ?? 500
+        self.defaultSearchRadiusMeters = api["default_search_radius_meters"] as? Int ?? 800
         self.nearestMetroFallbackRadiusMeters = api["nearest_metro_fallback_radius_meters"] as? Int ?? 5000
         self.refreshIntervalSeconds = api["refresh_interval_seconds"] as? Int ?? 30
         self.prodBaseURL = api["prod_base_url"] as? String ?? "https://track-api.onrender.com"
         self.localBaseURL = api["local_base_url"] as? String ?? "http://127.0.0.1:8000"
         self.defaultDeviceIP = api["default_device_ip"] as? String ?? "192.168.12.101"
         self.localPort = api["local_port"] as? Int ?? 8000
+
+        self.maxServiceAlerts = display["max_service_alerts"] as? Int ?? 3
+        self.maxElevatorOutages = display["max_elevator_outages"] as? Int ?? 5
+        self.maxLirrArrivals = display["max_lirr_arrivals"] as? Int ?? 15
+        self.maxRouteDetailArrivals = display["max_route_detail_arrivals"] as? Int ?? 4
+        self.stationVisibilityZoomMeters = display["station_visibility_zoom_meters"] as? Double ?? 3500
+
+        self.liveActivityStaleDateSeconds = liveActivity["stale_date_seconds"] as? Double ?? 60
+        self.liveActivityDismissalSeconds = liveActivity["dismissal_seconds"] as? Double ?? 30
+        self.defaultArrivalFallbackSeconds = liveActivity["default_arrival_fallback_seconds"] as? Double ?? 300
 
         self.distanceFilterMeters = location["distance_filter_meters"] as? Double ?? 50
         self.commutePatternMatchRadiusMeters = location["commute_pattern_match_radius_meters"] as? Double ?? 200

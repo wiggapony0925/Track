@@ -509,7 +509,7 @@ final class HomeViewModel {
     /// Starts tracking a bus arrival via Live Activity.
     func trackBusArrival(_ arrival: BusArrival, location: CLLocation?) {
         trackingArrivalId = arrival.id
-        let arrivalTime = arrival.expectedArrival ?? Date().addingTimeInterval(300)
+        let arrivalTime = arrival.expectedArrival ?? Date().addingTimeInterval(AppSettings.shared.defaultArrivalFallbackSeconds)
         let routeName = stripMTAPrefix(arrival.routeId)
         liveActivityManager.startActivity(
             lineId: routeName,
