@@ -22,7 +22,7 @@ extension CLLocation {
         let y = sin(dLon) * cos(lat2)
         let x = cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(dLon)
         let bearing = atan2(y, x).radiansToDegrees
-
+        
         return (bearing + 360).truncatingRemainder(dividingBy: 360)
     }
 }
@@ -30,4 +30,11 @@ extension CLLocation {
 extension Double {
     var degreesToRadians: Double { self * .pi / 180 }
     var radiansToDegrees: Double { self * 180 / .pi }
+}
+
+/// Allows direct comparison of coordinates in SwiftUI onChange modifiers.
+extension CLLocationCoordinate2D: Equatable {
+    public static func == (lhs: CLLocationCoordinate2D, rhs: CLLocationCoordinate2D) -> Bool {
+        return lhs.latitude == rhs.latitude && lhs.longitude == rhs.longitude
+    }
 }

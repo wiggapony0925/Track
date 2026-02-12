@@ -70,11 +70,16 @@ struct HomeView: View {
                 if let shape = viewModel.routeShape {
                     ForEach(shape.stops) { stop in
                         Annotation(stop.name, coordinate: CLLocationCoordinate2D(latitude: stop.lat, longitude: stop.lon)) {
-                            Circle()
-                                .fill(AppTheme.Colors.mtaBlue)
-                                .frame(width: 10, height: 10)
-                                .shadow(radius: 2)
-                                .accessibilityLabel(stop.name)
+                            ZStack {
+                                Circle()
+                                    .fill(Color.white)
+                                    .frame(width: 12, height: 12)
+                                    .shadow(color: .black.opacity(0.4), radius: 2, x: 0, y: 1)
+                                Circle()
+                                    .stroke(selectedRouteColor, lineWidth: 3)
+                                    .frame(width: 12, height: 12)
+                            }
+                            .accessibilityLabel(stop.name)
                         }
                     }
                 }
@@ -882,11 +887,11 @@ struct SubwayStationMarker: View {
     var body: some View {
         Circle()
             .fill(Color.white)
-            .frame(width: 8, height: 8)
+            .frame(width: 12, height: 12)
             .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
             .overlay(
                 Circle()
-                    .stroke(AppTheme.Colors.mtaBlue, lineWidth: 2)
+                    .stroke(AppTheme.Colors.mtaBlue, lineWidth: 3)
             )
             .accessibilityLabel("Station: \(station.name)")
     }
