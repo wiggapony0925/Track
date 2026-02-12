@@ -19,6 +19,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Query
 
+from app.config import get_settings
 from app.models import DirectionArrivals, GroupedNearbyTransit, NearbyTransitArrival
 from app.services.bus_client import get_nearby_stops, get_realtime_arrivals
 from app.services.data_cleaner import get_arrivals_for_line
@@ -45,7 +46,7 @@ router = APIRouter(tags=["nearby"])
 async def nearby_transit(
     lat: float = Query(..., description="User latitude"),
     lon: float = Query(..., description="User longitude"),
-    radius: int = Query(500, description="Search radius in meters"),
+    radius: int | None = Query(None, description="Search radius in meters"),
 ) -> list[NearbyTransitArrival]:
     """Return the nearest buses and trains with live countdowns.
 
@@ -53,17 +54,19 @@ async def nearby_transit(
     SIRI, sorted by ``minutes_away``. No routing or trips — just a
     flat list of what's arriving soon nearby.
     """
+    settings = get_settings()
+    effective_radius = radius if radius is not None else settings.app_settings.search_radius_meters
     TrackLogger.location(lat, lon, "nearby")
-    results = await _collect_all(lat, lon, radius)
+    results = await _collect_all(lat, lon, effective_radius)
     results.sort(key=lambda a: a.minutes_away)
-    return results[:20]
+    return results[:settings.app_settings.max_nearby_results]
 
 
 @router.get("/nearby/grouped", response_model=list[GroupedNearbyTransit])
 async def nearby_transit_grouped(
     lat: float = Query(..., description="User latitude"),
     lon: float = Query(..., description="User longitude"),
-    radius: int = Query(500, description="Search radius in meters"),
+    radius: int | None = Query(None, description="Search radius in meters"),
 ) -> list[GroupedNearbyTransit]:
     """Return nearby arrivals grouped by route with direction sub-groups.
 
@@ -73,8 +76,10 @@ async def nearby_transit_grouped(
     Southbound).  The first arrival's ``minutes_away`` is used to sort
     the groups so the soonest route appears first.
     """
+    settings = get_settings()
+    effective_radius = radius if radius is not None else settings.app_settings.search_radius_meters
     TrackLogger.location(lat, lon, "nearby/grouped")
-    flat = await _collect_all(lat, lon, radius)
+    flat = await _collect_all(lat, lon, effective_radius)
     return _group_arrivals(flat)
 
 
@@ -84,13 +89,15 @@ async def nearby_transit_grouped(
 
 
 async def _collect_all(
-    lat: float, lon: float, radius: int = 500,
+    lat: float, lon: float, radius: int | None = None,
 ) -> list[NearbyTransitArrival]:
     """Gather subway + bus arrivals in parallel."""
+    settings = get_settings()
+    effective_radius = radius if radius is not None else settings.app_settings.search_radius_meters
     results: list[NearbyTransitArrival] = []
 
     subway_task = _fetch_nearby_subway()
-    bus_task = _fetch_nearby_buses(lat, lon, radius)
+    bus_task = _fetch_nearby_buses(lat, lon, effective_radius)
 
     subway_results, bus_results = await asyncio.gather(
         subway_task, bus_task, return_exceptions=True,
@@ -190,6 +197,8 @@ async def _fetch_nearby_subway() -> list[NearbyTransitArrival]:
     for **all** routes found in that feed — not just the representative
     letter — so the user sees every train coming through.
     """
+    settings = get_settings()
+    max_per_feed = settings.app_settings.max_arrivals_per_feed
     results: list[NearbyTransitArrival] = []
 
     # Pick representative lines (one per feed) to avoid duplicate fetches
@@ -209,7 +218,7 @@ async def _fetch_nearby_subway() -> list[NearbyTransitArrival]:
             continue
         success_count += 1
         total_raw += len(arrivals)
-        for arrival in arrivals[:10]:  # Top 10 per feed
+        for arrival in arrivals[:max_per_feed]:  # Top N per feed
             # 0 minutes means already at the station / stale — skip it
             if arrival.minutes_away <= 0:
                 continue
@@ -244,13 +253,15 @@ async def _fetch_nearby_subway() -> list[NearbyTransitArrival]:
 
 
 async def _fetch_nearby_buses(
-    lat: float, lon: float, radius: int = 500,
+    lat: float, lon: float, radius: int | None = None,
 ) -> list[NearbyTransitArrival]:
     """Fetch live bus arrivals from nearby stops."""
+    settings = get_settings()
+    effective_radius = radius if radius is not None else settings.app_settings.search_radius_meters
     results: list[NearbyTransitArrival] = []
 
     try:
-        stops = await get_nearby_stops(lat, lon, radius_m=radius)
+        stops = await get_nearby_stops(lat, lon, radius_m=effective_radius)
     except Exception as exc:
         TrackLogger.error(f"Bus stops fetch failed: {exc}")
         return results
@@ -259,8 +270,9 @@ async def _fetch_nearby_buses(
         TrackLogger.info("No bus stops found within search radius")
         return results
 
-    # Fetch arrivals for up to 3 nearest stops
-    tasks = [get_realtime_arrivals(stop.id) for stop in stops[:3]]
+    # Fetch arrivals for the nearest stops (limit from settings)
+    bus_stops_limit = settings.app_settings.nearby_bus_stops_limit
+    tasks = [get_realtime_arrivals(stop.id) for stop in stops[:bus_stops_limit]]
     stop_results = await asyncio.gather(*tasks, return_exceptions=True)
 
     for i, arrivals in enumerate(stop_results):

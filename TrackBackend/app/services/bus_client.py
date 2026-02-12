@@ -20,7 +20,14 @@ import httpx
 from app.config import get_settings
 from app.models import BusArrival, BusRoute, BusStop, BusVehicle, RouteShape
 
-_TIMEOUT = httpx.Timeout(15.0, connect=10.0)
+
+def _get_timeout() -> httpx.Timeout:
+    """Build an httpx Timeout from settings."""
+    settings = get_settings()
+    return httpx.Timeout(
+        settings.app_settings.http_timeout_seconds,
+        connect=settings.app_settings.http_connect_timeout_seconds,
+    )
 
 
 async def _fetch_bus_json(url: str, params: dict[str, str]) -> Any:
@@ -29,7 +36,7 @@ async def _fetch_bus_json(url: str, params: dict[str, str]) -> Any:
     Raises :class:`httpx.HTTPStatusError` on 4xx/5xx responses so callers
     can translate 401/403 into a clean 503 for the iOS client.
     """
-    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+    async with httpx.AsyncClient(timeout=_get_timeout()) as client:
         response = await client.get(url, params=params)
         response.raise_for_status()
         return response.json()

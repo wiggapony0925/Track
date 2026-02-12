@@ -2,6 +2,12 @@
   "app_settings": {
     "search_radius_meters": 500,
     "refresh_interval_seconds": 30,
+    "nearest_metro_fallback_radius_meters": 5000,
+    "max_nearby_results": 20,
+    "max_arrivals_per_feed": 10,
+    "nearby_bus_stops_limit": 3,
+    "http_timeout_seconds": 15.0,
+    "http_connect_timeout_seconds": 10.0,
     "show_ghost_trains": false
   },
   "api_keys": {

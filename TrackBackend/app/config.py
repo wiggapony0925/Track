@@ -20,6 +20,12 @@ _SETTINGS_PATH = Path(__file__).resolve().parent.parent / "settings.json"
 class AppSettings(BaseModel):
     search_radius_meters: int = 500
     refresh_interval_seconds: int = 30
+    nearest_metro_fallback_radius_meters: int = 5000
+    max_nearby_results: int = 20
+    max_arrivals_per_feed: int = 10
+    nearby_bus_stops_limit: int = 3
+    http_timeout_seconds: float = 15.0
+    http_connect_timeout_seconds: float = 10.0
     show_ghost_trains: bool = False
 
 
