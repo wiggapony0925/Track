@@ -652,39 +652,22 @@ struct HomeView: View {
 
     private var nearbyDashboard: some View {
         VStack(alignment: .leading, spacing: 16) {
+            // Use active search pin OR user location for distance calculation
+            let refLocation = viewModel.effectiveLocation(userLocation: locationManager.currentLocation)
+
             if !viewModel.groupedTransit.isEmpty {
                 let filtered = viewModel.filteredGroupedTransit
                 
-                // Sort groups by closest arrival time
+                // Sort groups by distance (closest entrance/stop)
                 let sorted = filtered.sorted { group1, group2 in
-                    let t1 = group1.directions.flatMap { $0.arrivals }.map { $0.minutesAway }.min() ?? Int.max
-                    let t2 = group2.directions.flatMap { $0.arrivals }.map { $0.minutesAway }.min() ?? Int.max
-                    return t1 < t2
+                    guard let loc = refLocation else { return group1.soonestMinutes < group2.soonestMinutes }
+                    return minDistance(for: group1, from: loc) < minDistance(for: group2, from: loc)
                 }
                 
-                // Partition: Mixed Top 3, then Categorized Remaining
-                let topMixed = Array(sorted.prefix(3))
-                let remaining = Array(sorted.dropFirst(3))
-                
-                let remainingSubways = remaining.filter { !$0.isBus }
-                let remainingBuses = remaining.filter { $0.isBus }
-                
-                // 1. ARRIVING NOW (Top Mixed)
-                if !topMixed.isEmpty {
+                // Display ALL nearby transit sorted by distance
+                if !sorted.isEmpty {
                     sectionHeader("Buses & Trains Arriving", updated: lastUpdated)
-                    groupedRouteList(groups: topMixed)
-                }
-                
-                // 2. TRAINS ARRIVING (Remaining Subways)
-                if !remainingSubways.isEmpty {
-                    sectionHeader("Trains arriving", updated: topMixed.isEmpty ? lastUpdated : nil)
-                    groupedRouteList(groups: remainingSubways)
-                }
-                
-                // 3. BUSES ARRIVING NOW (Remaining Buses)
-                if !remainingBuses.isEmpty {
-                    sectionHeader("Buses arriving now", updated: (topMixed.isEmpty && remainingSubways.isEmpty) ? lastUpdated : nil)
-                    groupedRouteList(groups: remainingBuses)
+                    groupedRouteList(groups: sorted)
                 }
                 
                 if filtered.isEmpty {
@@ -695,28 +678,15 @@ struct HomeView: View {
                 }
                 
             } else if !viewModel.nearbyTransit.isEmpty {
-                // Fallback: Flat list sorted by time
-                let sorted = viewModel.nearbyTransit.sorted { $0.minutesAway < $1.minutesAway }
+                // Fallback: Flat list sorted by distance
+                let sorted = viewModel.nearbyTransit.sorted { arrival1, arrival2 in
+                    guard let loc = refLocation else { return arrival1.minutesAway < arrival2.minutesAway }
+                    return distance(for: arrival1, from: loc) < distance(for: arrival2, from: loc)
+                }
                 
-                let topMixed = Array(sorted.prefix(3))
-                let remaining = Array(sorted.dropFirst(3))
-                
-                let remainingSubways = remaining.filter { !$0.isBus }
-                let remainingBuses = remaining.filter { $0.isBus }
-                
-                if !topMixed.isEmpty {
+                if !sorted.isEmpty {
                     sectionHeader("Buses & Trains Arriving", updated: lastUpdated)
-                    flatTransitList(arrivals: topMixed)
-                }
-                
-                if !remainingSubways.isEmpty {
-                    sectionHeader("Trains arriving", updated: topMixed.isEmpty ? lastUpdated : nil)
-                    flatTransitList(arrivals: remainingSubways)
-                }
-                
-                if !remainingBuses.isEmpty {
-                    sectionHeader("Buses arriving now", updated: (topMixed.isEmpty && remainingSubways.isEmpty) ? lastUpdated : nil)
-                    flatTransitList(arrivals: remainingBuses)
+                    flatTransitList(arrivals: sorted)
                 }
                 
             } else if !viewModel.isLoading {
@@ -744,6 +714,20 @@ struct HomeView: View {
     }
     
     // MARK: - Dashboard Helpers
+
+    private func minDistance(for group: GroupedNearbyTransitResponse, from location: CLLocation) -> CLLocationDistance {
+        let allArrivals = group.directions.flatMap { $0.arrivals }
+        let distances = allArrivals.compactMap { arrival -> CLLocationDistance? in
+            guard let lat = arrival.stopLat, let lon = arrival.stopLon else { return nil }
+            return location.distance(from: CLLocation(latitude: lat, longitude: lon))
+        }
+        return distances.min() ?? Double.greatestFiniteMagnitude
+    }
+
+    private func distance(for arrival: NearbyTransitResponse, from location: CLLocation) -> CLLocationDistance {
+        guard let lat = arrival.stopLat, let lon = arrival.stopLon else { return Double.greatestFiniteMagnitude }
+        return location.distance(from: CLLocation(latitude: lat, longitude: lon))
+    }
 
     private func groupedRouteList(groups: [GroupedNearbyTransitResponse]) -> some View {
         VStack(spacing: 0) {
