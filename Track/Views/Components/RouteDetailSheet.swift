@@ -9,6 +9,7 @@
 //
 
 import SwiftUI
+import MapKit
 
 struct RouteDetailSheet: View {
     let group: GroupedNearbyTransitResponse
@@ -17,12 +18,24 @@ struct RouteDetailSheet: View {
     var onTrack: ((NearbyTransitResponse) -> Void)?
     var onDismiss: (() -> Void)?
     
+    // Map controls (shown in header when sheet is expanded)
+    var isSheetExpanded: Bool = false
+    @Binding var is3DMode: Bool
+    @Binding var cameraPosition: MapCameraPosition
+    var currentLocation: CLLocationCoordinate2D?
+    var searchPinCoordinate: CLLocationCoordinate2D?
+    
     @State private var selectedDirectionIndex: Int
 
     init(group: GroupedNearbyTransitResponse,
          busVehicles: Binding<[BusVehicleResponse]>,
          routeShape: Binding<RouteShapeResponse?>,
          initialDirectionIndex: Int = 0,
+         isSheetExpanded: Bool = false,
+         is3DMode: Binding<Bool> = .constant(false),
+         cameraPosition: Binding<MapCameraPosition> = .constant(.automatic),
+         currentLocation: CLLocationCoordinate2D? = nil,
+         searchPinCoordinate: CLLocationCoordinate2D? = nil,
          onTrack: ((NearbyTransitResponse) -> Void)? = nil,
          onDismiss: (() -> Void)? = nil) {
         self.group = group
@@ -30,6 +43,11 @@ struct RouteDetailSheet: View {
         self._routeShape = routeShape
         self.onTrack = onTrack
         self.onDismiss = onDismiss
+        self.isSheetExpanded = isSheetExpanded
+        self._is3DMode = is3DMode
+        self._cameraPosition = cameraPosition
+        self.currentLocation = currentLocation
+        self.searchPinCoordinate = searchPinCoordinate
         self._selectedDirectionIndex = State(initialValue: initialDirectionIndex)
     }
 
@@ -114,6 +132,49 @@ struct RouteDetailSheet: View {
             }
 
             Spacer()
+
+            // Map controls (shown as compact icons when sheet is expanded)
+            if isSheetExpanded {
+                HStack(spacing: 8) {
+                    // 3D / 2D Toggle
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.5)) {
+                            is3DMode.toggle()
+                            if let loc = currentLocation ?? searchPinCoordinate {
+                                cameraPosition = .camera(MapCamera(
+                                    centerCoordinate: loc,
+                                    distance: AppTheme.MapConfig.userZoomDistance,
+                                    heading: 0,
+                                    pitch: is3DMode ? 45 : 0
+                                ))
+                            }
+                        }
+                    } label: {
+                        Image(systemName: is3DMode ? "view.2d" : "view.3d")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
+                    }
+                    .accessibilityLabel(is3DMode ? "Switch to 2D" : "Switch to 3D")
+
+                    // Recenter / Location Button
+                    Button {
+                        let target = currentLocation ?? AppTheme.MapConfig.nycCenter
+                        withAnimation(.spring(duration: 0.8)) {
+                            cameraPosition = .camera(MapCamera(
+                                centerCoordinate: target,
+                                distance: AppTheme.MapConfig.userZoomDistance,
+                                heading: 0,
+                                pitch: is3DMode ? 45 : 0
+                            ))
+                        }
+                    } label: {
+                        Image(systemName: "location.fill")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundColor(AppTheme.Colors.mtaBlue)
+                    }
+                    .accessibilityLabel("Recenter on my location")
+                }
+            }
 
             // Close button
             Button {

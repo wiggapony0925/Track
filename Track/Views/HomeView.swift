@@ -161,58 +161,6 @@ struct HomeView: View {
                     }
                     
                     Spacer()
-                    
-                    // Map Controls (Top Right)
-                    // Placed here to avoid being covered by the bottom sheet
-                    VStack(spacing: 12) {
-                        // 3D / 2D Toggle
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.5)) {
-                                is3DMode.toggle()
-                                if let loc = locationManager.currentLocation?.coordinate ?? viewModel.searchPinCoordinate {
-                                    cameraPosition = .camera(MapCamera(
-                                        centerCoordinate: loc,
-                                        distance: AppTheme.MapConfig.userZoomDistance,
-                                        heading: 0,
-                                        pitch: is3DMode ? 45 : 0
-                                    ))
-                                }
-                            }
-                        } label: {
-                            Text(is3DMode ? "2D" : "3D")
-                                .font(.system(size: 15, weight: .bold))
-                                .foregroundColor(AppTheme.Colors.textPrimary)
-                                .frame(width: 44, height: 44)
-                                .background(.thinMaterial) // Glassmorphism
-                                .clipShape(Circle())
-                                .shadow(color: .black.opacity(0.15), radius: 6, x: 0, y: 3)
-                        }
-                        .accessibilityLabel(is3DMode ? "Switch to 2D" : "Switch to 3D")
-
-                        // Recenter / Location Button
-                        Button {
-                            let target = locationManager.currentLocation?.coordinate ?? AppTheme.MapConfig.nycCenter
-                            withAnimation(.spring(duration: 0.8)) {
-                                cameraPosition = .camera(MapCamera(
-                                    centerCoordinate: target,
-                                    distance: AppTheme.MapConfig.userZoomDistance,
-                                    heading: 0,
-                                    pitch: is3DMode ? 45 : 0
-                                ))
-                            }
-                        } label: {
-                            Image(systemName: "location.fill")
-                                .font(.system(size: 20, weight: .semibold))
-                                .foregroundColor(AppTheme.Colors.mtaBlue)
-                                .frame(width: 44, height: 44)
-                                .background(.thinMaterial)
-                                .clipShape(Circle())
-                                .shadow(color: .black.opacity(0.15), radius: 6, x: 0, y: 3)
-                        }
-                        .accessibilityLabel("Recenter on my location")
-                    }
-                    .padding(.trailing, AppTheme.Layout.margin)
-                    .padding(.top, 40) // Add top padding to clear status bar/dynamic island area if needed
                 }
                 
                 Spacer()
@@ -233,6 +181,11 @@ struct HomeView: View {
                         busVehicles: $viewModel.busVehicles,
                         routeShape: $viewModel.routeShape,
                         initialDirectionIndex: viewModel.selectedDirectionIndex ?? 0,
+                        isSheetExpanded: sheetDetent == .large,
+                        is3DMode: $is3DMode,
+                        cameraPosition: $cameraPosition,
+                        currentLocation: locationManager.currentLocation?.coordinate,
+                        searchPinCoordinate: viewModel.searchPinCoordinate,
                         onTrack: { arrival in
                             viewModel.trackNearbyArrival(arrival, location: locationManager.currentLocation)
                         },
@@ -248,12 +201,67 @@ struct HomeView: View {
                     dashboardContent
                 }
             }
-            .presentationDetents([.fraction(0.4), .large])
+            .presentationDetents([.fraction(0.4), .large], selection: $sheetDetent)
             .presentationDragIndicator(.visible)
             .presentationBackgroundInteraction(.enabled)
             .interactiveDismissDisabled()
             .sheet(isPresented: $showSettings) {
                 SettingsView()
+            }
+        }
+        // Map Controls Overlay - floats above sheet when collapsed, hidden when expanded (controls move into sheet header)
+        .overlay(alignment: .topTrailing) {
+            if sheetDetent != .large {
+                VStack(spacing: 12) {
+                    // 3D / 2D Toggle
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.5)) {
+                            is3DMode.toggle()
+                            if let loc = locationManager.currentLocation?.coordinate ?? viewModel.searchPinCoordinate {
+                                cameraPosition = .camera(MapCamera(
+                                    centerCoordinate: loc,
+                                    distance: AppTheme.MapConfig.userZoomDistance,
+                                    heading: 0,
+                                    pitch: is3DMode ? 45 : 0
+                                ))
+                            }
+                        }
+                    } label: {
+                        Text(is3DMode ? "2D" : "3D")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundColor(AppTheme.Colors.textPrimary)
+                            .frame(width: 44, height: 44)
+                            .background(.thinMaterial)
+                            .clipShape(Circle())
+                            .shadow(color: .black.opacity(0.15), radius: 6, x: 0, y: 3)
+                    }
+                    .accessibilityLabel(is3DMode ? "Switch to 2D" : "Switch to 3D")
+
+                    // Recenter / Location Button
+                    Button {
+                        let target = locationManager.currentLocation?.coordinate ?? AppTheme.MapConfig.nycCenter
+                        withAnimation(.spring(duration: 0.8)) {
+                            cameraPosition = .camera(MapCamera(
+                                centerCoordinate: target,
+                                distance: AppTheme.MapConfig.userZoomDistance,
+                                heading: 0,
+                                pitch: is3DMode ? 45 : 0
+                            ))
+                        }
+                    } label: {
+                        Image(systemName: "location.fill")
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundColor(AppTheme.Colors.mtaBlue)
+                            .frame(width: 44, height: 44)
+                            .background(.thinMaterial)
+                            .clipShape(Circle())
+                            .shadow(color: .black.opacity(0.15), radius: 6, x: 0, y: 3)
+                    }
+                    .accessibilityLabel("Recenter on my location")
+                }
+                .padding(.trailing, AppTheme.Layout.margin)
+                .padding(.bottom, UIScreen.main.bounds.height * 0.42) // Position above the 40% sheet
+                .transition(.opacity)
             }
         }
         .onAppear {
@@ -397,61 +405,28 @@ struct HomeView: View {
     // MARK: - Dashboard Content
 
     private var dashboardContent: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                // Header with settings gear
-                HStack {
-                    Text("Track")
-                        .font(AppTheme.Typography.headerLarge)
-                        .foregroundColor(AppTheme.Colors.textPrimary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-
-                    Spacer()
-
-                    // Drop pin button
-                    Button {
-                        let center = locationManager.currentLocation?.coordinate
-                            ?? AppTheme.MapConfig.nycCenter
-                        let offset = CLLocationCoordinate2D(
-                            latitude: center.latitude + 0.002,
-                            longitude: center.longitude + 0.002
-                        )
-                        Task {
-                            await viewModel.setSearchPin(offset, userLocation: locationManager.currentLocation)
-                        }
-                    } label: {
-                        Image(systemName: "mappin.and.ellipse")
-                            .font(.system(size: 18, weight: .medium))
-                            .foregroundColor(AppTheme.Colors.mtaBlue)
+        VStack(spacing: 0) {
+            // MARK: - Navbar (Fixed Header)
+            ModalNavbar(
+                searchText: $viewModel.searchText,
+                showSettings: $showSettings,
+                lastUpdated: lastUpdated,
+                onDropPin: {
+                    let center = locationManager.currentLocation?.coordinate
+                        ?? AppTheme.MapConfig.nycCenter
+                    let offset = CLLocationCoordinate2D(
+                        latitude: center.latitude + 0.002,
+                        longitude: center.longitude + 0.002
+                    )
+                    Task {
+                        await viewModel.setSearchPin(offset, userLocation: locationManager.currentLocation)
                     }
-                    .accessibilityLabel("Drop search pin")
-
-                    Button {
-                        showSettings = true
-                    } label: {
-                        Image(systemName: "gearshape.fill")
-                            .font(.system(size: 20, weight: .medium))
-                            .foregroundColor(AppTheme.Colors.textSecondary)
-                    }
-                    .accessibilityLabel("Settings")
                 }
-                .padding(.horizontal, AppTheme.Layout.margin)
-
-                // Search bar for filtering transit results
-                TrainSearchBar(text: $viewModel.searchText)
-
-                // Last updated timestamp
-                if let lastUpdated = lastUpdated {
-                    HStack(spacing: 4) {
-                        Image(systemName: "clock.arrow.circlepath")
-                            .font(.system(size: 11, weight: .medium))
-                        Text("Updated \(lastUpdated, style: .relative)")
-                            .font(.system(size: 12, weight: .medium))
-                    }
-                    .foregroundColor(AppTheme.Colors.textSecondary)
-                    .padding(.horizontal, AppTheme.Layout.margin)
-                }
+            )
+            
+            // MARK: - Scrollable Content
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
 
                 // Mode-specific content
                 Group {
@@ -580,6 +555,7 @@ struct HomeView: View {
                     .frame(height: 20)
             }
             .padding(.top, AppTheme.Layout.margin)
+        }
         }
         .background(AppTheme.Colors.background)
         .refreshable {

@@ -28,16 +28,30 @@ final class HomeViewModel {
 
     /// Grouped transit results filtered by the current search query.
     /// Returns all results when the search text is empty.
+    /// Searches route names, directions, current arrival stops, AND all stations served by the route.
     var filteredGroupedTransit: [GroupedNearbyTransitResponse] {
         guard !searchText.isEmpty else { return groupedTransit }
         let query = searchText.lowercased()
+        
+        // Find all routes that serve stations matching the search query
+        let matchingStationRoutes = Set(
+            cachedStations
+                .filter { $0.name.lowercased().contains(query) }
+                .flatMap { $0.routes }
+        )
+        
         return groupedTransit.filter { group in
+            // Match by route display name or ID
             group.displayName.lowercased().contains(query) ||
             group.routeId.lowercased().contains(query) ||
+            // Match by direction or current arrival stop names
             group.directions.contains { direction in
                 direction.direction.lowercased().contains(query) ||
                 direction.arrivals.contains { $0.stopName.lowercased().contains(query) }
-            }
+            } ||
+            // Match if this route serves any station matching the query
+            matchingStationRoutes.contains(group.displayName) ||
+            matchingStationRoutes.contains(group.routeId)
         }
     }
 
