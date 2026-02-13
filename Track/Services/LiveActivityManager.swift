@@ -33,12 +33,16 @@ final class LiveActivityManager {
     ///   - arrivalTime: The estimated arrival time.
     ///   - isBus: Whether this is a bus trip.
     ///   - stationId: The station/stop the user is at.
+    ///   - stopsAway: Number of stops until arrival (nil if unknown).
+    ///   - nextArrivals: Minutes until the next 2–3 trains/buses.
     func startActivity(
         lineId: String,
         destination: String,
         arrivalTime: Date,
         isBus: Bool,
-        stationId: String = ""
+        stationId: String = "",
+        stopsAway: Int? = nil,
+        nextArrivals: [Int] = []
     ) {
         // End any existing activity first
         endActivity()
@@ -57,7 +61,9 @@ final class LiveActivityManager {
         let initialState = TrackActivityAttributes.ContentState(
             statusText: "Tracking...",
             arrivalTime: arrivalTime,
-            progress: 0.0
+            progress: 0.0,
+            stopsAway: stopsAway,
+            nextArrivals: nextArrivals
         )
 
         do {
@@ -78,22 +84,31 @@ final class LiveActivityManager {
     // MARK: - Update
 
     /// Updates the running Live Activity with new arrival information.
+    /// The arrivalTime can move forward or backward — the countdown
+    /// adjusts automatically since SwiftUI's `.timer` style reads
+    /// the absolute Date each render.
     ///
     /// - Parameters:
     ///   - statusText: Updated status (e.g. "Arriving in 1 min").
-    ///   - arrivalTime: Updated ETA.
+    ///   - arrivalTime: Updated ETA (can be sooner or later than before).
     ///   - progress: Updated progress (0.0–1.0).
+    ///   - stopsAway: Updated stop count (nil if unknown).
+    ///   - nextArrivals: Updated upcoming arrival minutes.
     func updateActivity(
         statusText: String,
         arrivalTime: Date,
-        progress: Double
+        progress: Double,
+        stopsAway: Int? = nil,
+        nextArrivals: [Int] = []
     ) {
         guard let activityID = currentActivityID else { return }
 
         let updatedState = TrackActivityAttributes.ContentState(
             statusText: statusText,
             arrivalTime: arrivalTime,
-            progress: min(1.0, max(0.0, progress))
+            progress: min(1.0, max(0.0, progress)),
+            stopsAway: stopsAway,
+            nextArrivals: nextArrivals
         )
 
         Task {
@@ -116,7 +131,9 @@ final class LiveActivityManager {
                 let finalState = TrackActivityAttributes.ContentState(
                     statusText: "Arrived",
                     arrivalTime: Date(),
-                    progress: 1.0
+                    progress: 1.0,
+                    stopsAway: 0,
+                    nextArrivals: []
                 )
                 await activity.end(
                     ActivityContent(state: finalState, staleDate: nil),
