@@ -134,7 +134,7 @@ struct RouteDetailSheet: View {
                                     centerCoordinate: loc,
                                     distance: AppTheme.MapConfig.userZoomDistance,
                                     heading: 0,
-                                    pitch: is3DMode ? 45 : 0
+                                    pitch: is3DMode ? 60 : 0
                                 ))
                             }
                         }
@@ -153,7 +153,7 @@ struct RouteDetailSheet: View {
                                 centerCoordinate: target,
                                 distance: AppTheme.MapConfig.userZoomDistance,
                                 heading: 0,
-                                pitch: is3DMode ? 45 : 0
+                                pitch: is3DMode ? 60 : 0
                             ))
                         }
                     } label: {

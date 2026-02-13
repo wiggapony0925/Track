@@ -53,15 +53,23 @@ struct RouteBadge: View {
     var body: some View {
         Text(routeID)
             .font(.custom("Helvetica-Bold", size: size.fontSize))
-            .foregroundColor(AppTheme.SubwayColors.textColor(for: routeID))
+            .foregroundColor(isBus ? .white : AppTheme.SubwayColors.textColor(for: routeID))
             .minimumScaleFactor(0.4)
             .lineLimit(1)
-            .padding(.horizontal, isBus ? 6 : 0)
+            .padding(.horizontal, isBus ? 8 : 0)
             .frame(minWidth: size.dimension, minHeight: size.dimension)
-            .fixedSize(horizontal: isBus, vertical: true)
+            .frame(width: isBus ? nil : size.dimension, height: size.dimension)
             .background(backgroundColor)
-            .clipShape(Capsule())
+            .clipShape(shape)
             .accessibilityLabel("\(isBus ? "Bus" : "Subway") Route \(routeID)")
+    }
+    
+    private var shape: some Shape {
+        if isBus {
+            return AnyShape(Capsule())
+        } else {
+            return AnyShape(Circle())
+        }
     }
 }
 

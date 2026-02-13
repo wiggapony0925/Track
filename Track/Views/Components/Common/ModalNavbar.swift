@@ -87,18 +87,6 @@ struct ModalNavbar: View {
             .padding(.top, 16)
             .padding(.bottom, 16)
             
-            // Last updated timestamp (moved to content area below navbar)
-            if let lastUpdated = lastUpdated {
-                HStack(spacing: 4) {
-                    Image(systemName: "clock.arrow.circlepath")
-                        .font(.system(size: 11, weight: .medium))
-                    Text("Updated \(lastUpdated, style: .relative)")
-                        .font(.system(size: 12, weight: .medium))
-                }
-                .foregroundColor(AppTheme.Colors.textSecondary)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 12)
-            }
         }
         .background(AppTheme.Colors.background)
     }

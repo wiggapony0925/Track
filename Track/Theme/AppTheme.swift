@@ -123,21 +123,21 @@ struct AppTheme {
 
     struct Layout {
         static let margin: CGFloat = 16.0
-        static let cornerRadius: CGFloat = 12.0
+        static let cornerRadius: CGFloat = 20.0 // Larger, softer corners like Apple Maps
         static let shadowRadius: CGFloat = 4.0
 
         /// Inner padding for card-style containers.
-        static let cardPadding: CGFloat = 12.0
+        static let cardPadding: CGFloat = 16.0 // More breathing room
 
         // Reusable badge sizes
-        static let badgeSizeSmall: CGFloat = 22.0
-        static let badgeSizeMedium: CGFloat = 32.0
-        static let badgeSizeLarge: CGFloat = 40.0
+        static let badgeSizeSmall: CGFloat = 26.0
+        static let badgeSizeMedium: CGFloat = 36.0 // Bigger icons
+        static let badgeSizeLarge: CGFloat = 44.0
 
         // Font sizes for badges
-        static let badgeFontSmall: CGFloat = 11.0
-        static let badgeFontMedium: CGFloat = 14.0
-        static let badgeFontLarge: CGFloat = 18.0
+        static let badgeFontSmall: CGFloat = 13.0
+        static let badgeFontMedium: CGFloat = 18.0
+        static let badgeFontLarge: CGFloat = 22.0
     }
 
     // MARK: - NYC Metro Map Configuration

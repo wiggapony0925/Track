@@ -26,6 +26,10 @@ struct HomeView: View {
     // Zoom-level visibility for stations
     @State private var showStations = true
 
+    // Track current map state for smooth 3D transitions
+    @State private var currentMapCenter: CLLocationCoordinate2D?
+    @State private var currentMapDistance: Double?
+
     /// Color of the currently selected route, used for polylines and annotations.
     private var selectedRouteColor: Color {
         if let group = viewModel.selectedGroupedRoute, let hex = group.colorHex {
@@ -176,6 +180,10 @@ struct HomeView: View {
                 showsTraffic: false
             ))
             .onMapCameraChange(frequency: .continuous) { context in
+                // Track camera state for smooth mode switching
+                currentMapCenter = context.camera.centerCoordinate
+                currentMapDistance = context.camera.distance
+
                 // Show stations only when zoomed in past the configured threshold
                 let zoomThreshold = AppSettings.shared.stationVisibilityZoomMeters
                 let d = context.camera.distance
@@ -255,16 +263,19 @@ struct HomeView: View {
                 VStack(spacing: 12) {
                     // 3D / 2D Toggle
                     Button {
-                        withAnimation(.easeInOut(duration: 0.5)) {
+                        withAnimation(.easeInOut(duration: 0.8)) {
                             is3DMode.toggle()
-                            if let loc = locationManager.currentLocation?.coordinate ?? viewModel.searchPinCoordinate {
-                                cameraPosition = .camera(MapCamera(
-                                    centerCoordinate: loc,
-                                    distance: AppTheme.MapConfig.userZoomDistance,
-                                    heading: 0,
-                                    pitch: is3DMode ? 45 : 0
-                                ))
-                            }
+                            
+                            // Use current center if available to avoid jumping, fallback to user location
+                            let center = currentMapCenter ?? locationManager.currentLocation?.coordinate ?? viewModel.searchPinCoordinate ?? AppTheme.MapConfig.nycCenter
+                            let distance = currentMapDistance ?? AppTheme.MapConfig.userZoomDistance
+
+                            cameraPosition = .camera(MapCamera(
+                                centerCoordinate: center,
+                                distance: distance,
+                                heading: 0,
+                                pitch: is3DMode ? 60 : 0 // Deeper pitch for better 3D effect
+                            ))
                         }
                     } label: {
                         Text(is3DMode ? "2D" : "3D")
@@ -470,7 +481,7 @@ struct HomeView: View {
                 centerCoordinate: center,
                 distance: zoomDistance,
                 heading: 0,
-                pitch: (target == nil && is3DMode) ? 45 : 0 // Only pitch if centering on user in 3D mode
+                pitch: is3DMode ? 60 : 0
             ))
         }
     }
@@ -627,7 +638,7 @@ struct HomeView: View {
                 Spacer()
                     .frame(height: 20)
             }
-            .padding(.top, AppTheme.Layout.margin)
+            .padding(.top, 4)
         }
         }
         .background(AppTheme.Colors.background)
@@ -643,83 +654,143 @@ struct HomeView: View {
         VStack(alignment: .leading, spacing: 16) {
             if !viewModel.groupedTransit.isEmpty {
                 let filtered = viewModel.filteredGroupedTransit
-
-                if !filtered.isEmpty {
-                    sectionHeader("Live Arrivals")
-
-                    VStack(spacing: 0) {
-                        ForEach(Array(filtered.enumerated()), id: \.element.id) { index, group in
-                            GroupedRouteRow(group: group) { directionIndex in
-                                Task {
-                                    await viewModel.selectGroupedRoute(group, directionIndex: directionIndex, userLocation: locationManager.currentLocation)
-                                }
-                            }
-                            if index < filtered.count - 1 {
-                                Divider()
-                                    .padding(.leading, AppTheme.Layout.margin + AppTheme.Layout.badgeSizeMedium + 12)
-                            }
-                        }
-                    }
-                    .background(AppTheme.Colors.cardBackground)
-                    .cornerRadius(AppTheme.Layout.cornerRadius)
-                    .padding(.horizontal, AppTheme.Layout.margin)
-                } else {
-                    // Search active but no matching results
+                
+                // Sort groups by closest arrival time
+                let sorted = filtered.sorted { group1, group2 in
+                    let t1 = group1.directions.flatMap { $0.arrivals }.map { $0.minutesAway }.min() ?? Int.max
+                    let t2 = group2.directions.flatMap { $0.arrivals }.map { $0.minutesAway }.min() ?? Int.max
+                    return t1 < t2
+                }
+                
+                // Partition: Mixed Top 3, then Categorized Remaining
+                let topMixed = Array(sorted.prefix(3))
+                let remaining = Array(sorted.dropFirst(3))
+                
+                let remainingSubways = remaining.filter { !$0.isBus }
+                let remainingBuses = remaining.filter { $0.isBus }
+                
+                // 1. ARRIVING NOW (Top Mixed)
+                if !topMixed.isEmpty {
+                    sectionHeader("Buses & Trains Arriving", updated: lastUpdated)
+                    groupedRouteList(groups: topMixed)
+                }
+                
+                // 2. TRAINS ARRIVING (Remaining Subways)
+                if !remainingSubways.isEmpty {
+                    sectionHeader("Trains arriving", updated: topMixed.isEmpty ? lastUpdated : nil)
+                    groupedRouteList(groups: remainingSubways)
+                }
+                
+                // 3. BUSES ARRIVING NOW (Remaining Buses)
+                if !remainingBuses.isEmpty {
+                    sectionHeader("Buses arriving now", updated: (topMixed.isEmpty && remainingSubways.isEmpty) ? lastUpdated : nil)
+                    groupedRouteList(groups: remainingBuses)
+                }
+                
+                if filtered.isEmpty {
                     emptyStateView(
                         icon: "magnifyingglass",
                         message: "No results for \"\(viewModel.searchText)\""
                     )
                 }
+                
             } else if !viewModel.nearbyTransit.isEmpty {
-                // Fallback to flat list if grouped endpoint failed
-                sectionHeader("Live Arrivals")
-
-                VStack(spacing: 0) {
-                    ForEach(Array(viewModel.nearbyTransit.enumerated()), id: \.element.id) { index, arrival in
-                        NearbyTransitRow(
-                            arrival: arrival,
-                            isTracking: viewModel.trackingArrivalId == arrival.id,
-                            onTrack: {
-                                viewModel.trackNearbyArrival(arrival, location: locationManager.currentLocation)
-                            },
-                            onSelectRoute: arrival.isBus ? {
-                                Task { await viewModel.selectArrival(arrival, userLocation: locationManager.currentLocation) }
-                            } : nil,
-                            userLocation: locationManager.currentLocation
-                        )
-                        if index < viewModel.nearbyTransit.count - 1 {
-                            Divider()
-                                .padding(.leading, AppTheme.Layout.margin + AppTheme.Layout.badgeSizeMedium + 12)
-                        }
-                    }
+                // Fallback: Flat list sorted by time
+                let sorted = viewModel.nearbyTransit.sorted { $0.minutesAway < $1.minutesAway }
+                
+                let topMixed = Array(sorted.prefix(3))
+                let remaining = Array(sorted.dropFirst(3))
+                
+                let remainingSubways = remaining.filter { !$0.isBus }
+                let remainingBuses = remaining.filter { $0.isBus }
+                
+                if !topMixed.isEmpty {
+                    sectionHeader("Buses & Trains Arriving", updated: lastUpdated)
+                    flatTransitList(arrivals: topMixed)
                 }
-                .background(AppTheme.Colors.cardBackground)
-                .cornerRadius(AppTheme.Layout.cornerRadius)
-                .padding(.horizontal, AppTheme.Layout.margin)
+                
+                if !remainingSubways.isEmpty {
+                    sectionHeader("Trains arriving", updated: topMixed.isEmpty ? lastUpdated : nil)
+                    flatTransitList(arrivals: remainingSubways)
+                }
+                
+                if !remainingBuses.isEmpty {
+                    sectionHeader("Buses arriving now", updated: (topMixed.isEmpty && remainingSubways.isEmpty) ? lastUpdated : nil)
+                    flatTransitList(arrivals: remainingBuses)
+                }
+                
             } else if !viewModel.isLoading {
-                // No transit within walking distance
                 if let nearest = viewModel.nearestTransit {
-                    // Show the nearest metro recommendation
                     sectionHeader("Nearest Metro")
-
                     NearestMetroCard(
                         arrival: nearest,
                         distanceMeters: viewModel.nearestTransitDistance,
                         onCenter: { coordinate in
-                            withAnimation(.easeInOut(duration: 0.6)) {
-                                cameraPosition = .camera(MapCamera(
-                                    centerCoordinate: coordinate,
-                                    distance: AppTheme.MapConfig.userZoomDistance
-                                ))
-                            }
+                             withAnimation(.easeInOut(duration: 0.6)) {
+                                 cameraPosition = .camera(MapCamera(
+                                     centerCoordinate: coordinate,
+                                     distance: AppTheme.MapConfig.userZoomDistance,
+                                    heading: 0,
+                                    pitch: is3DMode ? 60 : 0
+                                 ))
+                             }
                         }
                     )
                 } else {
-                    // Outside MTA service area — show location debug card
                     outOfServiceAreaCard
                 }
             }
         }
+    }
+    
+    // MARK: - Dashboard Helpers
+
+    private func groupedRouteList(groups: [GroupedNearbyTransitResponse]) -> some View {
+        VStack(spacing: 0) {
+            ForEach(Array(groups.enumerated()), id: \.element.id) { index, group in
+                GroupedRouteRow(group: group) { directionIndex in
+                    RouteAnalyticsManager.shared.logInteraction(routeId: group.routeId)
+                    Task {
+                        await viewModel.selectGroupedRoute(group, directionIndex: directionIndex, userLocation: locationManager.currentLocation)
+                    }
+                }
+                if index < groups.count - 1 {
+                    Divider()
+                        .padding(.leading, AppTheme.Layout.margin + AppTheme.Layout.badgeSizeMedium + 12)
+                }
+            }
+        }
+        .padding(.vertical, 8)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius, style: .continuous))
+        .padding(.horizontal, AppTheme.Layout.margin)
+    }
+
+    private func flatTransitList(arrivals: [NearbyTransitResponse]) -> some View {
+        VStack(spacing: 0) {
+             ForEach(Array(arrivals.enumerated()), id: \.element.id) { index, arrival in
+                NearbyTransitRow(
+                    arrival: arrival,
+                    isTracking: viewModel.trackingArrivalId == arrival.id,
+                    onTrack: {
+                        viewModel.trackNearbyArrival(arrival, location: locationManager.currentLocation)
+                    },
+                    onSelectRoute: arrival.isBus ? {
+                        RouteAnalyticsManager.shared.logInteraction(routeId: arrival.routeId)
+                        Task { await viewModel.selectArrival(arrival, userLocation: locationManager.currentLocation) }
+                    } : nil,
+                    userLocation: locationManager.currentLocation
+                )
+                if index < arrivals.count - 1 {
+                    Divider()
+                        .padding(.leading, AppTheme.Layout.margin + AppTheme.Layout.badgeSizeMedium + 12)
+                }
+            }
+        }
+        .padding(.vertical, 8)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius, style: .continuous))
+        .padding(.horizontal, AppTheme.Layout.margin)
     }
 
     // MARK: - Subway Dashboard
@@ -727,7 +798,7 @@ struct HomeView: View {
     private var subwayDashboard: some View {
         VStack(alignment: .leading, spacing: 16) {
             if !viewModel.upcomingArrivals.isEmpty {
-                sectionHeader("Nearby Arrivals")
+                sectionHeader("Nearby Arrivals", updated: lastUpdated)
 
                 VStack(spacing: 0) {
                     ForEach(Array(viewModel.upcomingArrivals.enumerated()), id: \.element.id) { index, arrival in
@@ -757,7 +828,7 @@ struct HomeView: View {
             }
 
             if !viewModel.nearbyStations.isEmpty {
-                sectionHeader("Nearby Stations")
+                sectionHeader("Nearby Stations", updated: viewModel.upcomingArrivals.isEmpty ? lastUpdated : nil)
 
                 VStack(spacing: 0) {
                     ForEach(Array(viewModel.nearbyStations.enumerated()), id: \.element.stationID) { index, station in
@@ -798,7 +869,7 @@ struct HomeView: View {
             }
 
             if !viewModel.busArrivals.isEmpty {
-                sectionHeader("Arriving")
+                sectionHeader("Arriving", updated: lastUpdated)
 
                 VStack(spacing: 0) {
                     ForEach(Array(viewModel.busArrivals.enumerated()), id: \.element.id) { index, arrival in
@@ -822,7 +893,7 @@ struct HomeView: View {
             }
 
             if !viewModel.nearbyBusStops.isEmpty {
-                sectionHeader("Nearby Bus Stops")
+                sectionHeader("Nearby Bus Stops", updated: viewModel.busArrivals.isEmpty ? lastUpdated : nil)
 
                 VStack(spacing: 0) {
                     ForEach(Array(viewModel.nearbyBusStops.enumerated()), id: \.element.id) { index, stop in
@@ -857,7 +928,7 @@ struct HomeView: View {
     private var lirrDashboard: some View {
         VStack(alignment: .leading, spacing: 16) {
             if !viewModel.lirrArrivals.isEmpty {
-                sectionHeader("LIRR Departures")
+                sectionHeader("LIRR Departures", updated: lastUpdated)
 
                 VStack(spacing: 0) {
                     ForEach(Array(viewModel.lirrArrivals.prefix(AppSettings.shared.maxLirrArrivals).enumerated()), id: \.element.id) { index, arrival in
@@ -890,14 +961,25 @@ struct HomeView: View {
 
     // MARK: - Helpers
 
-    private func sectionHeader(_ title: String) -> some View {
-        Text(title)
-            .font(AppTheme.Typography.sectionHeader)
-            .foregroundColor(AppTheme.Colors.textSecondary)
-            .textCase(.uppercase)
-            .lineLimit(1)
-            .padding(.horizontal, AppTheme.Layout.margin)
-            .padding(.top, 8)
+    private func sectionHeader(_ title: String, updated: Date? = nil) -> some View {
+        HStack {
+            Text(title)
+                .font(AppTheme.Typography.sectionHeader)
+                .foregroundColor(AppTheme.Colors.textSecondary)
+                .textCase(.uppercase)
+                .lineLimit(1)
+            
+            if let updated = updated {
+                Spacer()
+                Text("Updated \(updated, style: .time)")
+                    .font(.custom("Helvetica", size: 12))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+            } else {
+                Spacer()
+            }
+        }
+        .padding(.horizontal, AppTheme.Layout.margin)
+        .padding(.top, 8)
     }
 
     private func emptyStateView(icon: String, message: String) -> some View {
@@ -933,6 +1015,26 @@ struct HomeView: View {
                 .font(.system(size: 14, weight: .regular))
                 .foregroundColor(AppTheme.Colors.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
+
+            Button {
+                withAnimation(.easeInOut(duration: 1.0)) {
+                    cameraPosition = .camera(MapCamera(
+                        centerCoordinate: AppTheme.MapConfig.nycCenter,
+                        distance: AppTheme.MapConfig.userZoomDistance * 1.5,
+                        heading: 0,
+                        pitch: is3DMode ? 60 : 0
+                    ))
+                }
+            } label: {
+                Text("Explore New York City")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(AppTheme.Colors.mtaBlue)
+                    .cornerRadius(10)
+            }
+            .padding(.top, 4)
         }
         .padding(AppTheme.Layout.cardPadding)
         .background(AppTheme.Colors.cardBackground)

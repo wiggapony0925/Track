@@ -91,7 +91,11 @@ struct TrackWidgetProvider: TimelineProvider {
                 let decoder = JSONDecoder()
                 decoder.dateDecodingStrategy = .iso8601
                 let responses = try decoder.decode([WidgetNearbyResponse].self, from: data)
-                let arrivals = responses.prefix(5).map { item in
+
+                // Load interaction stats for sorting
+                let stats = defaults.dictionary(forKey: "route_interaction_stats") as? [String: Int] ?? [:]
+
+                let arrivals = responses.map { item in
                     NearbyArrival(
                         routeId: item.routeId,
                         stopName: item.stopName,
@@ -101,6 +105,19 @@ struct TrackWidgetProvider: TimelineProvider {
                         mode: item.mode
                     )
                 }
+                .sorted { a, b in
+                    // Prioritize routes with more user interactions
+                    let countA = stats[a.routeId] ?? 0
+                    let countB = stats[b.routeId] ?? 0
+                    
+                    if countA != countB {
+                        return countA > countB
+                    }
+                    // Fallback to soonest arrival
+                    return a.minutesAway < b.minutesAway
+                }
+                .prefix(5)
+
                 completion(TrackWidgetEntry(date: Date(), arrivals: Array(arrivals)))
             } catch {
                 completion(nil)
