@@ -9,7 +9,7 @@
 
 import Foundation
 
-/// Converts a raw direction code (e.g. "N", "S") to a full human-readable label.
+/// Converts a raw direction code (e.g. "N", "S", "SW") to a full human-readable label.
 ///
 /// - Parameter direction: Raw direction string from the backend.
 /// - Returns: e.g. "Northbound", "Southbound", or the original string if not a compass code.
@@ -19,6 +19,10 @@ func directionLabel(_ direction: String) -> String {
     case "S": return "Southbound"
     case "E": return "Eastbound"
     case "W": return "Westbound"
+    case "NE": return "Northeast"
+    case "NW": return "Northwest"
+    case "SE": return "Southeast"
+    case "SW": return "Southwest"
     default: return direction
     }
 }
@@ -33,6 +37,10 @@ func shortDirectionLabel(_ direction: String) -> String {
     case "S": return "↓ South"
     case "E": return "→ East"
     case "W": return "← West"
+    case "NE": return "↗ NE"
+    case "NW": return "↖ NW"
+    case "SE": return "↘ SE"
+    case "SW": return "↙ SW"
     default: return direction
     }
 }

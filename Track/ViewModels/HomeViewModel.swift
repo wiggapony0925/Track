@@ -311,6 +311,20 @@ final class HomeViewModel {
                     await fetchWalkingRoute(from: userLoc.coordinate, to: nearestStopCoordinate!)
                 }
             }
+        } else if routeShape == nil || routeShape?.stops.isEmpty == true {
+            // Fallback: zoom to the first arrival's stop coordinates when
+            // route shape data is unavailable (common for buses when the
+            // OBA API is slow or returns empty data).
+            if let first = group.directions.first?.arrivals.first,
+               let lat = first.stopLat, let lon = first.stopLon {
+                nearestStopCoordinate = CLLocationCoordinate2D(latitude: lat, longitude: lon)
+                
+                if let userLoc = userLocation {
+                    Task {
+                        await fetchWalkingRoute(from: userLoc.coordinate, to: nearestStopCoordinate!)
+                    }
+                }
+            }
         }
     }
 

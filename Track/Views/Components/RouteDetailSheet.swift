@@ -304,7 +304,7 @@ struct RouteDetailSheet: View {
             if direction.arrivals.isEmpty {
                 // Empty state — matches HomeView's emptyStateView pattern
                 VStack(spacing: 8) {
-                    Image(systemName: "tram.fill")
+                    Image(systemName: group.isBus ? "bus.fill" : "tram.fill")
                         .font(.system(size: 32, weight: .light))
                         .foregroundColor(AppTheme.Colors.textSecondary)
                     Text("No arrivals in this direction")
