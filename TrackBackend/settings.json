@@ -1,11 +1,11 @@
 {
   "app_settings": {
-    "search_radius_meters": 800,
+    "search_radius_meters": 1200,
     "refresh_interval_seconds": 30,
     "nearest_metro_fallback_radius_meters": 5000,
-    "max_nearby_results": 20,
+    "max_nearby_results": 40,
     "max_arrivals_per_feed": 10,
-    "nearby_bus_stops_limit": 3,
+    "nearby_bus_stops_limit": 10,
     "http_timeout_seconds": 15.0,
     "http_connect_timeout_seconds": 10.0,
     "http_max_retries": 2,

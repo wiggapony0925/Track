@@ -46,18 +46,30 @@ struct AppTheme {
 
     // MARK: - Typography
 
+    // MARK: - Typography
+
     struct Typography {
         /// Large rounded header (Dynamic Type: Large Title).
-        static let headerLarge: Font = .system(.largeTitle, design: .rounded).weight(.bold)
+        static let headerLarge: Font = .custom("Helvetica-Bold", size: 34)
 
         /// Section headers (Dynamic Type: Subheadline).
-        static let sectionHeader: Font = .system(.subheadline, design: .default).weight(.semibold)
+        static let sectionHeader: Font = .custom("Helvetica-Bold", size: 15)
 
         /// Monospaced route labels (Dynamic Type: Body).
-        static let routeLabel: Font = .system(.body, design: .monospaced).weight(.heavy)
+        /// Using Helvetica-Bold instead of generic heavy monospaced for better brand alignment.
+        static let routeLabel: Font = .custom("Helvetica-Bold", size: 17)
 
         /// Standard body text (Dynamic Type: Callout).
-        static let body: Font = .system(.callout, design: .default).weight(.medium)
+        static let body: Font = .custom("Helvetica", size: 16)
+        
+        /// Helper to get Helvetica with specific weight/size
+        static func helvetica(size: CGFloat, weight: Font.Weight = .regular) -> Font {
+            // Helvetica handles weights via font names mostly, but SwiftUI can apply weights too.
+            // Standard Helvetica doesn't always support all weights via .weight() modifier on ".custom",
+            // so we stick to the main ones or let system simulate.
+            // For safety and consistency:
+            return .custom("Helvetica", size: size).weight(weight)
+        }
     }
 
     // MARK: - Subway Line Colors
@@ -88,6 +100,8 @@ struct AppTheme {
             case "S", "SI":
                 return Color(red: 128/255, green: 129/255, blue: 131/255)  // Shuttle Grey
             default:
+                // Determine if it's likely a bus (e.g. Bx12, M15, Q32) or just unknown.
+                // MTA buses are generally blue. LIRR is also often blue/yellow but we treat default as MTA blue.
                 return Colors.mtaBlue
             }
         }
@@ -96,8 +110,10 @@ struct AppTheme {
         static func textColor(for routeID: String) -> Color {
             switch routeID.uppercased() {
             case "N", "Q", "R", "W":
+                // Standard yellow lines use black text.
                 return .black
             default:
+                // All others (Red, Green, Blue, Orange, Grey, Purple, Buses) use white.
                 return .white
             }
         }

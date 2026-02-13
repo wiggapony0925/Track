@@ -164,7 +164,7 @@ async def get_nearby_stops(
         try:
             data = await _fetch_bus_json(url, params)
             stops_data: list[dict[str, Any]] = (
-                data.get("data", {}).get("list", [])
+                data.get("data", {}).get("stops", [])
                 if isinstance(data, dict)
                 else []
             )
@@ -275,9 +275,15 @@ async def get_realtime_arrivals(stop_id: str) -> list[BusArrival]:
             except (ValueError, TypeError):
                 pass
 
+        # Route identifier - prefer LineRef, fallback to PublishedLineName
+        raw_route = journey.get("LineRef")
+        if not raw_route:
+            names = journey.get("PublishedLineName", [])
+            raw_route = names[0] if names else ""
+
         arrivals.append(
             BusArrival(
-                route_id=journey.get("LineRef", ""),
+                route_id=raw_route or "",
                 vehicle_id=journey.get("VehicleRef", ""),
                 stop_id=stop_id,
                 status_text=status_text or "En Route",

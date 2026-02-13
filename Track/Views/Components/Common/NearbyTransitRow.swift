@@ -23,28 +23,16 @@ struct NearbyTransitRow: View {
         VStack(spacing: 0) {
             HStack(spacing: 14) {
                 // MARK: Route Badge (Larger & More Prominent)
-                ZStack {
-                    Circle()
-                        .fill(arrival.isBus ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: arrival.displayName))
-                        .frame(width: 54, height: 54)
-                        .shadow(color: .black.opacity(0.15), radius: 3, x: 0, y: 2)
-                    if arrival.isBus {
-                        Image(systemName: "bus.fill")
-                            .font(.system(size: 22, weight: .bold))
-                            .foregroundColor(.white)
-                    } else {
-                        Text(arrival.displayName)
-                            .font(.system(size: 24, weight: .heavy, design: .rounded))
-                            .foregroundColor(AppTheme.SubwayColors.textColor(for: arrival.displayName))
-                    }
-                }
-                .accessibilityHidden(true)
+                // MARK: Route Badge (Larger & More Prominent)
+                RouteBadge(routeID: arrival.displayName, size: .custom(54, 22))
+                    .shadow(color: .black.opacity(0.15), radius: 3, x: 0, y: 2)
+                    .accessibilityHidden(true)
 
                 // MARK: Station & Destination Info
                 VStack(alignment: .leading, spacing: 4) {
                     // Station name
                     Text(arrival.stopName)
-                        .font(.system(size: 17, weight: .bold))
+                        .font(.custom("Helvetica-Bold", size: 17))
                         .foregroundColor(AppTheme.Colors.textPrimary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.85)
@@ -56,7 +44,7 @@ struct NearbyTransitRow: View {
                             .foregroundColor(AppTheme.Colors.textSecondary)
                         
                         Text(shortDirectionLabel(arrival.destination ?? arrival.direction))
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.custom("Helvetica-Bold", size: 14))
                             .foregroundColor(AppTheme.Colors.textSecondary)
                             .lineLimit(1)
                     }
@@ -90,10 +78,10 @@ struct NearbyTransitRow: View {
                     // Minutes countdown
                     HStack(alignment: .firstTextBaseline, spacing: 3) {
                         Text("\(arrival.minutesAway)")
-                            .font(.system(size: 32, weight: .heavy, design: .rounded))
+                            .font(.custom("Helvetica-Bold", size: 32))
                             .foregroundColor(AppTheme.Colors.countdown(arrival.minutesAway))
                         Text("min")
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.custom("Helvetica-Bold", size: 13))
                             .foregroundColor(AppTheme.Colors.textSecondary)
                             .offset(y: -2)
                     }
@@ -105,7 +93,7 @@ struct NearbyTransitRow: View {
                             .frame(width: 6, height: 6)
                         
                         Text(arrival.status)
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.custom("Helvetica-Bold", size: 11))
                             .textCase(.uppercase)
                     }
                     .foregroundColor(transitStatusColor(for: arrival.status))
@@ -140,11 +128,11 @@ struct NearbyTransitRow: View {
 
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Next Arrival")
-                                .font(.system(size: 11, weight: .semibold))
+                                .font(.custom("Helvetica-Bold", size: 11))
                                 .foregroundColor(AppTheme.Colors.textSecondary)
                                 .textCase(.uppercase)
                             Text(formatArrivalTime(minutesAway: arrival.minutesAway))
-                                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                .font(.custom("Helvetica-Bold", size: 14))
                                 .foregroundColor(AppTheme.Colors.textPrimary)
                         }
 
@@ -152,7 +140,7 @@ struct NearbyTransitRow: View {
 
                         // Status pill
                         Text(arrival.status)
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.custom("Helvetica-Bold", size: 11))
                             .foregroundColor(AppTheme.Colors.textOnColor)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
@@ -169,11 +157,11 @@ struct NearbyTransitRow: View {
 
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Direction")
-                                .font(.system(size: 11, weight: .semibold))
+                                .font(.custom("Helvetica-Bold", size: 11))
                                 .foregroundColor(AppTheme.Colors.textSecondary)
                                 .textCase(.uppercase)
                             Text(arrival.direction)
-                                .font(.system(size: 14, weight: .medium))
+                                .font(.custom("Helvetica", size: 14))
                                 .foregroundColor(AppTheme.Colors.textPrimary)
                                 .lineLimit(1)
                         }
@@ -187,7 +175,7 @@ struct NearbyTransitRow: View {
                             Image(systemName: isTracking ? "antenna.radiowaves.left.and.right" : "bell.fill")
                                 .font(.system(size: 12, weight: .bold))
                             Text(isTracking ? "Tracking" : "Track This Arrival")
-                                .font(.system(size: 13, weight: .bold))
+                                .font(.custom("Helvetica-Bold", size: 13))
                         }
                         .foregroundColor(AppTheme.Colors.textOnColor)
                         .frame(maxWidth: .infinity)

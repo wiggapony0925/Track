@@ -22,7 +22,7 @@ struct NearbyStationRow: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(name)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.custom("Helvetica-Bold", size: 15))
                     .foregroundColor(AppTheme.Colors.textPrimary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
@@ -37,7 +37,7 @@ struct NearbyStationRow: View {
             Spacer(minLength: 4)
 
             Text(formattedDistance)
-                .font(.system(size: 14, weight: .medium))
+                .font(.custom("Helvetica", size: 14))
                 .foregroundColor(AppTheme.Colors.textSecondary)
                 .lineLimit(1)
         }

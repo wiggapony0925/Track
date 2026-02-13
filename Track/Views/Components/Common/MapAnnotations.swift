@@ -29,6 +29,7 @@ struct SearchPinAnnotation: View {
 // MARK: - Bus Vehicle Annotation
 
 /// A map pin showing a live bus position with its route name and bearing.
+/// A map pin showing a live bus position with its route name and bearing.
 struct BusVehicleAnnotation: View {
     let routeName: String
     let bearing: Double?
@@ -36,23 +37,35 @@ struct BusVehicleAnnotation: View {
     var body: some View {
         VStack(spacing: 0) {
             ZStack {
-                Circle()
+                // Bus Body (Top-down view)
+                RoundedRectangle(cornerRadius: 4)
                     .fill(AppTheme.Colors.mtaBlue)
-                    .frame(width: AppTheme.Layout.badgeSizeMedium, height: AppTheme.Layout.badgeSizeMedium)
-                    .shadow(color: AppTheme.Colors.mtaBlue.opacity(0.4), radius: AppTheme.Layout.shadowRadius)
-                Image(systemName: "bus.fill")
-                    .font(.system(size: AppTheme.Layout.badgeFontMedium, weight: .bold))
-                    .foregroundColor(AppTheme.Colors.textOnColor)
-                    .rotationEffect(.degrees(bearing ?? 0))
+                    .frame(width: 22, height: 44)
+                    .overlay(
+                        VStack(spacing: 2) {
+                            // Windshield
+                            Rectangle()
+                                .fill(Color.black.opacity(0.6))
+                                .frame(height: 6)
+                            Spacer()
+                            // Rear window
+                            Rectangle()
+                                .fill(Color.black.opacity(0.4))
+                                .frame(height: 4)
+                        }
+                        .padding(.vertical, 2)
+                    )
+                    .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 2)
+                
+                // Route Label on Roof
+                Text(routeName)
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundColor(.white)
+                    .rotationEffect(.degrees(-90)) // Rotate text to run along bus length
             }
-            Text(routeName)
-                .font(.system(size: 9, weight: .bold))
-                .foregroundColor(AppTheme.Colors.textOnColor)
-                .padding(.horizontal, 4)
-                .padding(.vertical, 1)
-                .background(AppTheme.Colors.mtaBlue)
-                .clipShape(Capsule())
+            .rotationEffect(.degrees(bearing ?? 0))
         }
         .accessibilityLabel("Bus \(routeName)")
     }
 }
+

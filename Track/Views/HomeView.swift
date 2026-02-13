@@ -38,7 +38,8 @@ struct HomeView: View {
     }
 
     var body: some View {
-        ZStack {
+        GeometryReader { geometry in
+            ZStack {
             // Map background bounded to NYC 5 boroughs + Long Island.
             Map(position: $cameraPosition,
                 bounds: AppTheme.MapConfig.cameraBounds) {
@@ -96,6 +97,7 @@ struct HomeView: View {
                         )
                     }
                 }
+
 
                 // Walking route indicator
                 if let walkingRoute = viewModel.walkingRoute {
@@ -173,7 +175,7 @@ struct HomeView: View {
         }
         // Bottom sheet — single modal that swaps between dashboard and route detail
         .sheet(isPresented: .constant(true)) {
-            Group {
+            VStack(spacing: 0) {
                 if viewModel.isRouteDetailPresented,
                    let group = viewModel.selectedGroupedRoute {
                     RouteDetailSheet(
@@ -193,7 +195,7 @@ struct HomeView: View {
                             withAnimation(.easeInOut(duration: 0.25)) {
                                 viewModel.isRouteDetailPresented = false
                                 viewModel.selectedGroupedRoute = nil
-                                viewModel.clearBusRoute()
+                                viewModel.clearRoute()
                             }
                         }
                     )
@@ -228,7 +230,7 @@ struct HomeView: View {
                         }
                     } label: {
                         Text(is3DMode ? "2D" : "3D")
-                            .font(.system(size: 15, weight: .bold))
+                            .font(.custom("Helvetica-Bold", size: 15))
                             .foregroundColor(AppTheme.Colors.textPrimary)
                             .frame(width: 44, height: 44)
                             .background(.thinMaterial)
@@ -252,7 +254,7 @@ struct HomeView: View {
                     .accessibilityLabel("Recenter on my location")
                 }
                 .padding(.trailing, AppTheme.Layout.margin)
-                .padding(.bottom, UIScreen.main.bounds.height * 0.42) // Position above the 40% sheet
+                .padding(.bottom, geometry.size.height * 0.42) // Position above the 40% sheet
                 .transition(.opacity)
             }
         }
@@ -274,7 +276,7 @@ struct HomeView: View {
             refreshTimer = nil
         }
         .onChange(of: viewModel.selectedMode) {
-            viewModel.clearBusRoute()
+            viewModel.clearRoute()
             Task {
                 await viewModel.refresh(location: locationManager.currentLocation)
                 lastUpdated = Date()
@@ -283,7 +285,7 @@ struct HomeView: View {
         // When a new location fix arrives, load data (first time)
         .onChange(of: locationManager.currentLocation) {
             guard let loc = locationManager.currentLocation else { return }
-
+            
             // First location fix — fetch transit data now that we have coordinates
             if !hasLoadedInitialData {
                 hasLoadedInitialData = true
@@ -294,10 +296,11 @@ struct HomeView: View {
             }
         }
         // When nearest stop is identified (after route selection), pan camera to it.
-        .onChange(of: viewModel.nearestStopCoordinate) {
+        .onChange(of: viewModel.nearestStopCoordinate?.latitude) {
             if let coordinate = viewModel.nearestStopCoordinate {
                 centerMap(on: coordinate)
             }
+        }
         }
     }
 
@@ -308,7 +311,7 @@ struct HomeView: View {
             Image(systemName: "mappin.circle.fill")
                 .foregroundColor(AppTheme.Colors.mtaBlue)
             Text("Searching from pin location")
-                .font(.system(size: 13, weight: .medium))
+                .font(.custom("Helvetica", size: 13))
                 .foregroundColor(AppTheme.Colors.textPrimary)
             Spacer()
             Button {
@@ -346,14 +349,16 @@ struct HomeView: View {
 
             if let routeId = viewModel.selectedRouteId {
                 let name = stripMTAPrefix(routeId)
-                if isSubway {
-                    let stopsCount = viewModel.routeShape?.stops.count ?? 0
-                    Text("\(name) Train — \(stopsCount) stops")
-                        .font(.system(size: 13, weight: .semibold))
+                let stopsCount = viewModel.routeShape?.stops.count ?? 0
+                
+                if let firstStop = viewModel.routeShape?.stops.first?.name,
+                   let lastStop = viewModel.routeShape?.stops.last?.name {
+                    Text("\(name) — \(firstStop) to \(lastStop)")
+                        .font(.custom("Helvetica-Bold", size: 13))
                         .foregroundColor(AppTheme.Colors.textPrimary)
                 } else {
-                    Text("\(name) — \(viewModel.busVehicles.count) buses live")
-                        .font(.system(size: 13, weight: .semibold))
+                    Text("\(name) — \(stopsCount) stops")
+                        .font(.custom("Helvetica-Bold", size: 13))
                         .foregroundColor(AppTheme.Colors.textPrimary)
                 }
             }
@@ -372,7 +377,7 @@ struct HomeView: View {
             }
 
             Button {
-                viewModel.clearBusRoute()
+                viewModel.clearRoute()
             } label: {
                 Image(systemName: "xmark.circle.fill")
                     .foregroundColor(AppTheme.Colors.textSecondary)
@@ -504,11 +509,11 @@ struct HomeView: View {
 
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(alert.title)
-                                        .font(.system(size: 13, weight: .semibold))
+                                        .font(.custom("Helvetica-Bold", size: 13))
                                         .foregroundColor(AppTheme.Colors.textPrimary)
                                         .lineLimit(1)
                                     Text(alert.description)
-                                        .font(.system(size: 12, weight: .regular))
+                                        .font(.custom("Helvetica", size: 12))
                                         .foregroundColor(AppTheme.Colors.textSecondary)
                                         .lineLimit(2)
                                 }
@@ -545,11 +550,11 @@ struct HomeView: View {
 
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(outage.station)
-                                        .font(.system(size: 13, weight: .semibold))
+                                        .font(.custom("Helvetica-Bold", size: 13))
                                         .foregroundColor(AppTheme.Colors.textPrimary)
                                         .lineLimit(1)
                                     Text(outage.description)
-                                        .font(.system(size: 12, weight: .regular))
+                                        .font(.custom("Helvetica", size: 12))
                                         .foregroundColor(AppTheme.Colors.textSecondary)
                                         .lineLimit(2)
                                 }
@@ -597,7 +602,7 @@ struct HomeView: View {
     // MARK: - Nearby Transit Dashboard (Unified)
 
     private var nearbyDashboard: some View {
-        Group {
+        VStack(alignment: .leading, spacing: 16) {
             if !viewModel.groupedTransit.isEmpty {
                 let filtered = viewModel.filteredGroupedTransit
 
@@ -640,7 +645,7 @@ struct HomeView: View {
                                 viewModel.trackNearbyArrival(arrival, location: locationManager.currentLocation)
                             },
                             onSelectRoute: arrival.isBus ? {
-                                Task { await viewModel.selectBusRoute(arrival.routeId) }
+                                Task { await viewModel.selectArrival(arrival, userLocation: locationManager.currentLocation) }
                             } : nil,
                             userLocation: locationManager.currentLocation
                         )
@@ -682,7 +687,7 @@ struct HomeView: View {
     // MARK: - Subway Dashboard
 
     private var subwayDashboard: some View {
-        Group {
+        VStack(alignment: .leading, spacing: 16) {
             if !viewModel.upcomingArrivals.isEmpty {
                 sectionHeader("Nearby Arrivals")
 
@@ -739,16 +744,16 @@ struct HomeView: View {
     // MARK: - Bus Dashboard
 
     private var busDashboard: some View {
-        Group {
+        VStack(alignment: .leading, spacing: 16) {
             if let stop = viewModel.selectedBusStop {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(stop.name)
-                        .font(.system(size: 20, weight: .semibold, design: .rounded))
+                        .font(.custom("Helvetica-Bold", size: 20))
                         .foregroundColor(AppTheme.Colors.textPrimary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
                     Text("Live Bus Arrivals")
-                        .font(.system(size: 14, weight: .regular))
+                        .font(.custom("Helvetica", size: 14))
                         .foregroundColor(AppTheme.Colors.textSecondary)
                 }
                 .padding(.horizontal, AppTheme.Layout.margin)
@@ -812,7 +817,7 @@ struct HomeView: View {
     // MARK: - LIRR Dashboard
 
     private var lirrDashboard: some View {
-        Group {
+        VStack(alignment: .leading, spacing: 16) {
             if !viewModel.lirrArrivals.isEmpty {
                 sectionHeader("LIRR Departures")
 

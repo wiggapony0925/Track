@@ -18,13 +18,13 @@ struct NearbyBusStopRow: View {
                     .fill(AppTheme.Colors.mtaBlue)
                     .frame(width: AppTheme.Layout.badgeSizeMedium, height: AppTheme.Layout.badgeSizeMedium)
                 Image(systemName: "bus.fill")
-                    .font(.system(size: AppTheme.Layout.badgeFontMedium, weight: .bold))
+                    .font(.custom("Helvetica-Bold", size: AppTheme.Layout.badgeFontMedium))
                     .foregroundColor(AppTheme.Colors.textOnColor)
             }
             .accessibilityHidden(true)
 
             Text(stop.name)
-                .font(.system(size: 15, weight: .semibold))
+                .font(.custom("Helvetica-Bold", size: 15))
                 .foregroundColor(AppTheme.Colors.textPrimary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
@@ -33,7 +33,7 @@ struct NearbyBusStopRow: View {
 
             if let direction = stop.direction {
                 Text(direction == "0" ? "→" : "←")
-                    .font(.system(size: 16, weight: .medium))
+                    .font(.custom("Helvetica", size: 16))
                     .foregroundColor(AppTheme.Colors.textSecondary)
             }
         }

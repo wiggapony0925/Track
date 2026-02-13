@@ -16,12 +16,14 @@ struct RouteBadge: View {
         case small
         case medium
         case large
+        case custom(CGFloat, CGFloat) // dimension, fontSize
 
         var dimension: CGFloat {
             switch self {
             case .small: return AppTheme.Layout.badgeSizeSmall
             case .medium: return AppTheme.Layout.badgeSizeMedium
             case .large: return AppTheme.Layout.badgeSizeLarge
+            case .custom(let d, _): return d
             }
         }
 
@@ -30,15 +32,16 @@ struct RouteBadge: View {
             case .small: return AppTheme.Layout.badgeFontSmall
             case .medium: return AppTheme.Layout.badgeFontMedium
             case .large: return AppTheme.Layout.badgeFontLarge
+            case .custom(_, let f): return f
             }
         }
     }
 
     var body: some View {
         Text(routeID)
-            .font(.system(size: size.fontSize, weight: .heavy, design: .monospaced))
+            .font(.custom("Helvetica-Bold", size: size.fontSize))
             .foregroundColor(AppTheme.SubwayColors.textColor(for: routeID))
-            .minimumScaleFactor(0.7)
+            .minimumScaleFactor(0.4)
             .lineLimit(1)
             .frame(width: size.dimension, height: size.dimension)
             .background(AppTheme.SubwayColors.color(for: routeID))

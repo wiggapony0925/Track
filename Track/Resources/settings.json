@@ -1,6 +1,6 @@
 {
   "api": {
-    "default_search_radius_meters": 800,
+    "default_search_radius_meters": 1200,
     "nearest_metro_fallback_radius_meters": 5000,
     "refresh_interval_seconds": 30,
     "prod_base_url": "https://track-api.onrender.com",
