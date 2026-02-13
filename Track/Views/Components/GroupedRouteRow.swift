@@ -19,8 +19,13 @@ struct GroupedRouteRow: View {
     var body: some View {
         HStack(spacing: 12) {
             // Unified route badge — shows route name for both bus and train
-            RouteBadge(routeID: group.displayName, size: .medium)
-                .accessibilityHidden(true)
+            RouteBadge(
+                routeID: group.displayName,
+                size: .medium,
+                isBus: group.isBus,
+                hexColor: group.colorHex
+            )
+            .accessibilityHidden(true)
 
             // Swipeable content area
             if group.directions.isEmpty {

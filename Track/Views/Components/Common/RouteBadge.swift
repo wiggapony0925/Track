@@ -37,16 +37,31 @@ struct RouteBadge: View {
         }
     }
 
+    var isBus: Bool = false
+    var hexColor: String? = nil
+
+    private var backgroundColor: Color {
+        if let hex = hexColor {
+            return Color(hex: hex)
+        }
+        if isBus {
+            return AppTheme.Colors.mtaBlue
+        }
+        return AppTheme.SubwayColors.color(for: routeID)
+    }
+
     var body: some View {
         Text(routeID)
             .font(.custom("Helvetica-Bold", size: size.fontSize))
             .foregroundColor(AppTheme.SubwayColors.textColor(for: routeID))
             .minimumScaleFactor(0.4)
             .lineLimit(1)
-            .frame(width: size.dimension, height: size.dimension)
-            .background(AppTheme.SubwayColors.color(for: routeID))
-            .clipShape(Circle())
-            .accessibilityLabel("Route \(routeID)")
+            .padding(.horizontal, isBus ? 6 : 0)
+            .frame(minWidth: size.dimension, minHeight: size.dimension)
+            .fixedSize(horizontal: isBus, vertical: true)
+            .background(backgroundColor)
+            .clipShape(Capsule())
+            .accessibilityLabel("\(isBus ? "Bus" : "Subway") Route \(routeID)")
     }
 }
 
