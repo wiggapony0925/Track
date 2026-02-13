@@ -181,17 +181,17 @@ struct TrackWidgetLiveActivity: Widget {
             HStack(spacing: 3) {
                 Text("Next:")
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.white.opacity(0.5))
+                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
 
                 ForEach(Array(context.state.nextArrivals.prefix(2).enumerated()), id: \.offset) { index, mins in
                     if index > 0 {
                         Text("•")
                             .font(.system(size: 10))
-                            .foregroundColor(.white.opacity(0.3))
+                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.4))
                     }
                     Text("\(mins)m")
                         .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.white.opacity(0.5))
+                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
                 }
             }
         }
