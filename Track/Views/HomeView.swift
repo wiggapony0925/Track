@@ -438,6 +438,9 @@ struct HomeView: View {
                 }
                 .padding(.horizontal, AppTheme.Layout.margin)
 
+                // Search bar for filtering transit results
+                TrainSearchBar(text: $viewModel.searchText)
+
                 // Last updated timestamp
                 if let lastUpdated = lastUpdated {
                     HStack(spacing: 4) {
@@ -590,24 +593,34 @@ struct HomeView: View {
     private var nearbyDashboard: some View {
         Group {
             if !viewModel.groupedTransit.isEmpty {
-                sectionHeader("Live Arrivals")
+                let filtered = viewModel.filteredGroupedTransit
 
-                VStack(spacing: 0) {
-                    ForEach(Array(viewModel.groupedTransit.enumerated()), id: \.element.id) { index, group in
-                        GroupedRouteRow(group: group) { directionIndex in
-                            Task {
-                                await viewModel.selectGroupedRoute(group, directionIndex: directionIndex, userLocation: locationManager.currentLocation)
+                if !filtered.isEmpty {
+                    sectionHeader("Live Arrivals")
+
+                    VStack(spacing: 0) {
+                        ForEach(Array(filtered.enumerated()), id: \.element.id) { index, group in
+                            GroupedRouteRow(group: group) { directionIndex in
+                                Task {
+                                    await viewModel.selectGroupedRoute(group, directionIndex: directionIndex, userLocation: locationManager.currentLocation)
+                                }
+                            }
+                            if index < filtered.count - 1 {
+                                Divider()
+                                    .padding(.leading, AppTheme.Layout.margin + AppTheme.Layout.badgeSizeMedium + 12)
                             }
                         }
-                        if index < viewModel.groupedTransit.count - 1 {
-                            Divider()
-                                .padding(.leading, AppTheme.Layout.margin + AppTheme.Layout.badgeSizeMedium + 12)
-                        }
                     }
+                    .background(AppTheme.Colors.cardBackground)
+                    .cornerRadius(AppTheme.Layout.cornerRadius)
+                    .padding(.horizontal, AppTheme.Layout.margin)
+                } else {
+                    // Search active but no matching results
+                    emptyStateView(
+                        icon: "magnifyingglass",
+                        message: "No results for \"\(viewModel.searchText)\""
+                    )
                 }
-                .background(AppTheme.Colors.cardBackground)
-                .cornerRadius(AppTheme.Layout.cornerRadius)
-                .padding(.horizontal, AppTheme.Layout.margin)
             } else if !viewModel.nearbyTransit.isEmpty {
                 // Fallback to flat list if grouped endpoint failed
                 sectionHeader("Live Arrivals")

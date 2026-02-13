@@ -21,6 +21,26 @@ final class HomeViewModel {
     var isLoading = false
     var errorMessage: String?
 
+    // MARK: - Search
+
+    /// User-entered search text for filtering transit results.
+    var searchText = ""
+
+    /// Grouped transit results filtered by the current search query.
+    /// Returns all results when the search text is empty.
+    var filteredGroupedTransit: [GroupedNearbyTransitResponse] {
+        guard !searchText.isEmpty else { return groupedTransit }
+        let query = searchText.lowercased()
+        return groupedTransit.filter { group in
+            group.displayName.lowercased().contains(query) ||
+            group.routeId.lowercased().contains(query) ||
+            group.directions.contains { direction in
+                direction.direction.lowercased().contains(query) ||
+                direction.arrivals.contains { $0.stopName.lowercased().contains(query) }
+            }
+        }
+    }
+
     // Bus mode
     var selectedMode: TransportMode = .nearby
     var nearbyBusStops: [BusStop] = []
