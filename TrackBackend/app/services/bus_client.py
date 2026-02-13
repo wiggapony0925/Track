@@ -84,12 +84,16 @@ async def get_stops(route_id: str) -> list[BusStop]:
     *route_id* must be fully qualified (e.g. ``"MTA NYCT_B63"``).
     Polylines are disabled to keep the payload small.
     """
+    from urllib.parse import quote
+
     settings = get_settings()
     eps = settings.urls.bus_endpoints
     if eps is None:
         return []
 
-    path = eps.stops_for_route.replace("{route_id}", route_id)
+    # URL-encode the route_id for the path
+    encoded_id = quote(route_id, safe="")
+    path = eps.stops_for_route.replace("{route_id}", encoded_id)
     url = settings.urls.bus_oba_base + path
     params = {
         "key": settings.api_keys.mta_bus_key,
@@ -391,12 +395,16 @@ async def get_route_shape(route_id: str) -> RouteShape:
     Returns encoded polylines for drawing the route on a map, along with
     all stops on the route. *route_id* must be fully qualified.
     """
+    from urllib.parse import quote
+
     settings = get_settings()
     eps = settings.urls.bus_endpoints
     if eps is None:
         return RouteShape(route_id=route_id, polylines=[], stops=[])
 
-    path = eps.stops_for_route.replace("{route_id}", route_id)
+    # URL-encode the route_id for the path (e.g. "MTA NYCT_B63" → "MTA%20NYCT_B63")
+    encoded_id = quote(route_id, safe="")
+    path = eps.stops_for_route.replace("{route_id}", encoded_id)
     url = settings.urls.bus_oba_base + path
     params = {
         "key": settings.api_keys.mta_bus_key,

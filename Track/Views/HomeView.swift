@@ -69,16 +69,29 @@ struct HomeView: View {
 
                 // Route shape stops when a route is selected
                 if let shape = viewModel.routeShape {
+                    let isBusRoute = viewModel.selectedGroupedRoute?.isBus == true
                     ForEach(shape.stops) { stop in
                         Annotation(stop.name, coordinate: CLLocationCoordinate2D(latitude: stop.lat, longitude: stop.lon)) {
                             ZStack {
-                                Circle()
-                                    .fill(Color.white)
-                                    .frame(width: 12, height: 12)
-                                    .shadow(color: .black.opacity(0.4), radius: 2, x: 0, y: 1)
-                                Circle()
-                                    .stroke(selectedRouteColor, lineWidth: 3)
-                                    .frame(width: 12, height: 12)
+                                if isBusRoute {
+                                    // Bus stops: rounded square marker
+                                    RoundedRectangle(cornerRadius: 3)
+                                        .fill(Color.white)
+                                        .frame(width: 12, height: 12)
+                                        .shadow(color: .black.opacity(0.4), radius: 2, x: 0, y: 1)
+                                    RoundedRectangle(cornerRadius: 3)
+                                        .stroke(selectedRouteColor, lineWidth: 3)
+                                        .frame(width: 12, height: 12)
+                                } else {
+                                    // Subway stops: circle marker
+                                    Circle()
+                                        .fill(Color.white)
+                                        .frame(width: 12, height: 12)
+                                        .shadow(color: .black.opacity(0.4), radius: 2, x: 0, y: 1)
+                                    Circle()
+                                        .stroke(selectedRouteColor, lineWidth: 3)
+                                        .frame(width: 12, height: 12)
+                                }
                             }
                             .accessibilityLabel(stop.name)
                         }
@@ -107,9 +120,29 @@ struct HomeView: View {
 
                 // Route polylines
                 if let shape = viewModel.routeShape {
-                    ForEach(Array(shape.decodedPolylines.enumerated()), id: \.offset) { _, coords in
-                        MapPolyline(coordinates: coords)
-                            .stroke(selectedRouteColor, lineWidth: 4)
+                    let isBusRoute = viewModel.selectedGroupedRoute?.isBus == true
+                    let polylines = shape.decodedPolylines
+                    
+                    if !polylines.isEmpty {
+                        // Draw decoded route polylines
+                        ForEach(Array(polylines.enumerated()), id: \.offset) { _, coords in
+                            if isBusRoute {
+                                // Bus routes: dashed line for visual distinction
+                                MapPolyline(coordinates: coords)
+                                    .stroke(selectedRouteColor, style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round, dash: [12, 6]))
+                            } else {
+                                // Subway routes: solid line
+                                MapPolyline(coordinates: coords)
+                                    .stroke(selectedRouteColor, lineWidth: 4)
+                            }
+                        }
+                    } else if !shape.stops.isEmpty {
+                        // Fallback: draw a line through all stops when polylines are empty
+                        let stopCoords = shape.stops.map {
+                            CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lon)
+                        }
+                        MapPolyline(coordinates: stopCoords)
+                            .stroke(selectedRouteColor, style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round, dash: [12, 6]))
                     }
                 } else {
                     // Full system map (all lines) shown by default

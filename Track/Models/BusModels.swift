@@ -45,7 +45,13 @@ struct BusArrival: Identifiable, Codable {
 
 /// Matches the backend's `BusVehicle` JSON schema.
 struct BusVehicleResponse: Codable, Identifiable {
-    var id: String { vehicleId }
+    /// Unique ID combining vehicle, route, and position for stable SwiftUI identity.
+    var id: String {
+        if vehicleId.isEmpty {
+            return "\(routeId)-\(lat)-\(lon)"
+        }
+        return vehicleId
+    }
 
     let vehicleId: String
     let routeId: String
