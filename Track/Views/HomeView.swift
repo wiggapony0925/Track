@@ -37,6 +37,11 @@ struct HomeView: View {
         return AppTheme.Colors.mtaBlue
     }
 
+    /// Dashed stroke style for bus route polylines — visually distinct from subway solid lines.
+    private var busRouteStrokeStyle: StrokeStyle {
+        StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round, dash: [12, 6])
+    }
+
     var body: some View {
         GeometryReader { geometry in
             ZStack {
@@ -129,7 +134,7 @@ struct HomeView: View {
                             if isBusRoute {
                                 // Bus routes: dashed line for visual distinction
                                 MapPolyline(coordinates: coords)
-                                    .stroke(selectedRouteColor, style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round, dash: [12, 6]))
+                                    .stroke(selectedRouteColor, style: busRouteStrokeStyle)
                             } else {
                                 // Subway routes: solid line
                                 MapPolyline(coordinates: coords)
@@ -142,7 +147,7 @@ struct HomeView: View {
                             CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lon)
                         }
                         MapPolyline(coordinates: stopCoords)
-                            .stroke(selectedRouteColor, style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round, dash: [12, 6]))
+                            .stroke(selectedRouteColor, style: busRouteStrokeStyle)
                     }
                 } else {
                     // Full system map (all lines) shown by default

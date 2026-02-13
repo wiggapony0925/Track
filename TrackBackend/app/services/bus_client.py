@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -84,8 +85,6 @@ async def get_stops(route_id: str) -> list[BusStop]:
     *route_id* must be fully qualified (e.g. ``"MTA NYCT_B63"``).
     Polylines are disabled to keep the payload small.
     """
-    from urllib.parse import quote
-
     settings = get_settings()
     eps = settings.urls.bus_endpoints
     if eps is None:
@@ -395,8 +394,6 @@ async def get_route_shape(route_id: str) -> RouteShape:
     Returns encoded polylines for drawing the route on a map, along with
     all stops on the route. *route_id* must be fully qualified.
     """
-    from urllib.parse import quote
-
     settings = get_settings()
     eps = settings.urls.bus_endpoints
     if eps is None:
