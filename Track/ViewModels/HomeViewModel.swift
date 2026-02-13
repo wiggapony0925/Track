@@ -15,11 +15,46 @@ import CoreLocation
 import MapKit
 
 @Observable
+@MainActor
 final class HomeViewModel {
     var nearbyStations: [(stationID: String, name: String, distance: Double, routeIDs: [String])] = []
     var upcomingArrivals: [TrainArrival] = []
     var isLoading = false
     var errorMessage: String?
+
+    // MARK: - Search
+
+    /// User-entered search text for filtering transit results.
+    var searchText = ""
+
+    /// Grouped transit results filtered by the current search query.
+    /// Returns all results when the search text is empty.
+    /// Searches route names, directions, current arrival stops, AND all stations served by the route.
+    var filteredGroupedTransit: [GroupedNearbyTransitResponse] {
+        guard !searchText.isEmpty else { return groupedTransit }
+        let query = searchText.lowercased()
+        
+        // Find all routes that serve stations matching the search query
+        let matchingStationRoutes = Set(
+            cachedStations
+                .filter { $0.name.lowercased().contains(query) }
+                .flatMap { $0.routes }
+        )
+        
+        return groupedTransit.filter { group in
+            // Match by route display name or ID
+            group.displayName.lowercased().contains(query) ||
+            group.routeId.lowercased().contains(query) ||
+            // Match by direction or current arrival stop names
+            group.directions.contains { direction in
+                direction.direction.lowercased().contains(query) ||
+                direction.arrivals.contains { $0.stopName.lowercased().contains(query) }
+            } ||
+            // Match if this route serves any station matching the query
+            matchingStationRoutes.contains(group.displayName) ||
+            matchingStationRoutes.contains(group.routeId)
+        }
+    }
 
     // Bus mode
     var selectedMode: TransportMode = .nearby
@@ -204,9 +239,10 @@ final class HomeViewModel {
 
     /// Deactivates the search pin and returns to user location.
     func clearSearchPin(userLocation: CLLocation?) async {
-        searchPinCoordinate = nil
         isSearchPinActive = false
-        await refresh(location: userLocation)
+        searchPinCoordinate = nil
+        walkingRoute = nil
+        nearestStopCoordinate = nil
     }
 
     // MARK: - Route Detail
@@ -229,11 +265,25 @@ final class HomeViewModel {
 
         if group.isBus {
             // Load route shape + vehicles for bus routes
-            await selectBusRoute(group.routeId)
+            async let vehiclesTask = TrackAPI.fetchBusVehicles(routeID: group.routeId)
+            async let shapeTask = TrackAPI.fetchRouteShape(routeID: group.routeId)
+            
+            do {
+                busVehicles = try await vehiclesTask
+            } catch {
+                AppLogger.shared.logError("fetchBusVehicles(\(group.routeId))", error: error)
+            }
+            
+            do {
+                routeShape = try await shapeTask
+            } catch {
+                AppLogger.shared.logError("fetchRouteShape(\(group.routeId))", error: error)
+            }
         } else {
             // For subway: fetch the full line geometry from the backend
             do {
-                routeShape = try await TrackAPI.fetchSubwayShape(routeID: group.displayName)
+                let shape = try await TrackAPI.fetchSubwayShape(routeID: group.displayName)
+                routeShape = shape
             } catch {
                 AppLogger.shared.logError("fetchSubwayShape(\(group.displayName))", error: error)
             }
@@ -261,6 +311,20 @@ final class HomeViewModel {
                     await fetchWalkingRoute(from: userLoc.coordinate, to: nearestStopCoordinate!)
                 }
             }
+        } else if routeShape == nil || routeShape?.stops.isEmpty == true {
+            // Fallback: zoom to the first arrival's stop coordinates when
+            // route shape data is unavailable (common for buses when the
+            // OBA API is slow or returns empty data).
+            if let first = group.directions.first?.arrivals.first,
+               let lat = first.stopLat, let lon = first.stopLon {
+                nearestStopCoordinate = CLLocationCoordinate2D(latitude: lat, longitude: lon)
+                
+                if let userLoc = userLocation {
+                    Task {
+                        await fetchWalkingRoute(from: userLoc.coordinate, to: nearestStopCoordinate!)
+                    }
+                }
+            }
         }
     }
 
@@ -276,29 +340,30 @@ final class HomeViewModel {
         return .automatic
     }
 
-    // MARK: - Bus Route Detail (Live Vehicles + Route Shape)
-
-    /// Selects a bus route and fetches live vehicle positions + route shape.
-    func selectBusRoute(_ routeId: String) async {
-        selectedRouteId = routeId
-        busVehicles = []
-        routeShape = nil
-
-        async let vehiclesTask = TrackAPI.fetchBusVehicles(routeID: routeId)
-        async let shapeTask = TrackAPI.fetchRouteShape(routeID: routeId)
-
-        do {
-            busVehicles = try await vehiclesTask
-        } catch {
-            AppLogger.shared.logError("fetchBusVehicles(\(routeId))", error: error)
-        }
-
-        do {
-            routeShape = try await shapeTask
-        } catch {
-            AppLogger.shared.logError("fetchRouteShape(\(routeId))", error: error)
+    /// Selects a specific arrival (from flat list or search) and treats it as a route selection.
+    func selectArrival(_ arrival: NearbyTransitResponse, userLocation: CLLocation?) async {
+        // Find if this arrival already exists in our grouped list
+        if let existingGroup = groupedTransit.first(where: { $0.routeId == arrival.routeId }) {
+            let dirIndex = existingGroup.directions.firstIndex(where: { $0.direction == arrival.direction }) ?? 0
+            await selectGroupedRoute(existingGroup, directionIndex: dirIndex, userLocation: userLocation)
+        } else {
+            // Create a minimal group to satisfy the unified logic
+            let mockGroup = GroupedNearbyTransitResponse(
+                routeId: arrival.routeId,
+                displayName: arrival.displayName,
+                mode: arrival.isBus ? "bus" : "subway",
+                colorHex: nil,
+                directions: [
+                    DirectionArrivalsResponse(
+                        direction: arrival.direction,
+                        arrivals: [arrival]
+                    )
+                ]
+            )
+            await selectGroupedRoute(mockGroup, directionIndex: 0, userLocation: userLocation)
         }
     }
+
 
     /// Refreshes only the vehicle positions for the currently selected route.
     func refreshBusVehicles() async {
@@ -310,11 +375,13 @@ final class HomeViewModel {
         }
     }
 
-    /// Clears the selected route and removes bus markers from the map.
-    func clearBusRoute() {
+    /// Clears the selected route and removes bus/train markers from the map.
+    func clearRoute() {
         selectedRouteId = nil
         busVehicles = []
         routeShape = nil
+        errorMessage = nil
+        nearestStopCoordinate = nil
     }
 
     // MARK: - Nearby Transit (Unified)
@@ -352,9 +419,11 @@ final class HomeViewModel {
             // Fetch alerts and accessibility silently — don't fail the whole refresh
             do { serviceAlerts = try await alertsTask } catch {}
             do { elevatorOutages = try await accessTask } catch {}
+            
+
         } catch {
             AppLogger.shared.logError("fetchNearbyTransit", error: error)
-            errorMessage = (error as? TrackAPIError)?.description ?? error.localizedDescription
+            errorMessage = (error as? TransitError)?.description ?? error.localizedDescription
         }
 
         // If no nearby transit found, search a wider radius for a recommendation
@@ -364,6 +433,8 @@ final class HomeViewModel {
 
         isLoading = false
     }
+
+
 
     /// Searches a wider radius to find the nearest metro stop when
     /// the default radius returns empty results.
@@ -409,11 +480,13 @@ final class HomeViewModel {
         let lineID = nearbyStations.first?.routeIDs.first ?? "L"
         do {
             upcomingArrivals = try await repository.fetchArrivals(for: lineID)
+            
         } catch {
             AppLogger.shared.logError("fetchArrivals(\(lineID))", error: error)
             errorMessage = (error as? TransitError)?.description ?? error.localizedDescription
         }
     }
+
 
     // MARK: - Bus
 
@@ -440,13 +513,14 @@ final class HomeViewModel {
             do { allBusRoutes = try await routesTask } catch {}
         } catch {
             AppLogger.shared.logError("fetchNearbyBusStops", error: error)
-            errorMessage = (error as? TrackAPIError)?.description ?? error.localizedDescription
         }
 
         if let firstStop = nearbyBusStops.first {
             await fetchBusArrivals(for: firstStop)
         }
     }
+    
+
 
     /// Fetches live bus arrivals for a specific stop.
     func fetchBusArrivals(for stop: BusStop) async {
@@ -455,9 +529,11 @@ final class HomeViewModel {
             busArrivals = try await TrackAPI.fetchBusArrivals(stopID: stop.id)
         } catch {
             AppLogger.shared.logError("fetchBusArrivals(\(stop.id))", error: error)
-            errorMessage = (error as? TrackAPIError)?.description ?? error.localizedDescription
+            errorMessage = (error as? TransitError)?.description ?? error.localizedDescription
         }
     }
+    
+
 
     // MARK: - LIRR
 

@@ -1,6 +1,6 @@
 {
   "api": {
-    "default_search_radius_meters": 800,
+    "default_search_radius_meters": 1200,
     "nearest_metro_fallback_radius_meters": 5000,
     "refresh_interval_seconds": 30,
     "prod_base_url": "https://track-api.onrender.com",
@@ -29,6 +29,9 @@
     "user_zoom_distance": 3000,
     "min_camera_distance": 300,
     "max_camera_distance": 80000,
+    "smart_zoom_min_altitude": 2400,
+    "smart_zoom_max_altitude": 20000,
+    "smart_zoom_padding_multiplier": 4.5,
     "nyc_center_lat": 40.7580,
     "nyc_center_lon": -73.9855,
     "bounds_center_lat": 40.71,

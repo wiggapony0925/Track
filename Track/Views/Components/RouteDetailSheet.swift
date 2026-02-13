@@ -9,6 +9,7 @@
 //
 
 import SwiftUI
+import MapKit
 
 struct RouteDetailSheet: View {
     let group: GroupedNearbyTransitResponse
@@ -17,12 +18,24 @@ struct RouteDetailSheet: View {
     var onTrack: ((NearbyTransitResponse) -> Void)?
     var onDismiss: (() -> Void)?
     
+    // Map controls (shown in header when sheet is expanded)
+    var isSheetExpanded: Bool = false
+    @Binding var is3DMode: Bool
+    @Binding var cameraPosition: MapCameraPosition
+    var currentLocation: CLLocationCoordinate2D?
+    var searchPinCoordinate: CLLocationCoordinate2D?
+    
     @State private var selectedDirectionIndex: Int
 
     init(group: GroupedNearbyTransitResponse,
          busVehicles: Binding<[BusVehicleResponse]>,
          routeShape: Binding<RouteShapeResponse?>,
          initialDirectionIndex: Int = 0,
+         isSheetExpanded: Bool = false,
+         is3DMode: Binding<Bool> = .constant(false),
+         cameraPosition: Binding<MapCameraPosition> = .constant(.automatic),
+         currentLocation: CLLocationCoordinate2D? = nil,
+         searchPinCoordinate: CLLocationCoordinate2D? = nil,
          onTrack: ((NearbyTransitResponse) -> Void)? = nil,
          onDismiss: (() -> Void)? = nil) {
         self.group = group
@@ -30,6 +43,11 @@ struct RouteDetailSheet: View {
         self._routeShape = routeShape
         self.onTrack = onTrack
         self.onDismiss = onDismiss
+        self.isSheetExpanded = isSheetExpanded
+        self._is3DMode = is3DMode
+        self._cameraPosition = cameraPosition
+        self.currentLocation = currentLocation
+        self.searchPinCoordinate = searchPinCoordinate
         self._selectedDirectionIndex = State(initialValue: initialDirectionIndex)
     }
 
@@ -83,19 +101,8 @@ struct RouteDetailSheet: View {
     private var routeHeader: some View {
         HStack(spacing: 12) {
             // Reuse existing RouteBadge for subway, custom badge for bus
-            if group.isBus {
-                ZStack {
-                    Circle()
-                        .fill(routeColor)
-                        .frame(width: AppTheme.Layout.badgeSizeLarge,
-                               height: AppTheme.Layout.badgeSizeLarge)
-                    Image(systemName: "bus.fill")
-                        .font(.system(size: AppTheme.Layout.badgeFontLarge, weight: .bold))
-                        .foregroundColor(AppTheme.Colors.textOnColor)
-                }
-            } else {
-                RouteBadge(routeID: group.displayName, size: .large)
-            }
+            // Unified badge for both buses and subways
+            RouteBadge(routeID: group.displayName, size: .large)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(group.displayName)
@@ -115,12 +122,55 @@ struct RouteDetailSheet: View {
 
             Spacer()
 
+            // Map controls (shown as compact icons when sheet is expanded)
+            if isSheetExpanded {
+                HStack(spacing: 8) {
+                    // 3D / 2D Toggle
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.5)) {
+                            is3DMode.toggle()
+                            if let loc = currentLocation ?? searchPinCoordinate {
+                                cameraPosition = .camera(MapCamera(
+                                    centerCoordinate: loc,
+                                    distance: AppTheme.MapConfig.userZoomDistance,
+                                    heading: 0,
+                                    pitch: is3DMode ? 60 : 0
+                                ))
+                            }
+                        }
+                    } label: {
+                        Image(systemName: is3DMode ? "view.2d" : "view.3d")
+                            .font(.custom("Helvetica-Bold", size: 18))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
+                    }
+                    .accessibilityLabel(is3DMode ? "Switch to 2D" : "Switch to 3D")
+
+                    // Recenter / Location Button
+                    Button {
+                        let target = currentLocation ?? AppTheme.MapConfig.nycCenter
+                        withAnimation(.spring(duration: 0.8)) {
+                            cameraPosition = .camera(MapCamera(
+                                centerCoordinate: target,
+                                distance: AppTheme.MapConfig.userZoomDistance,
+                                heading: 0,
+                                pitch: is3DMode ? 60 : 0
+                            ))
+                        }
+                    } label: {
+                        Image(systemName: "location.fill")
+                            .font(.custom("Helvetica-Bold", size: 18))
+                            .foregroundColor(AppTheme.Colors.mtaBlue)
+                    }
+                    .accessibilityLabel("Recenter on my location")
+                }
+            }
+
             // Close button
             Button {
                 onDismiss?()
             } label: {
                 Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 24, weight: .medium))
+                    .font(.custom("Helvetica", size: 24))
                     .foregroundColor(AppTheme.Colors.textSecondary)
             }
             .accessibilityLabel("Close")
@@ -149,7 +199,7 @@ struct RouteDetailSheet: View {
                             .font(.system(size: 24, weight: .light))
                             .foregroundColor(AppTheme.Colors.textSecondary)
                         Text("No upcoming arrivals")
-                            .font(.system(size: 14, weight: .medium))
+                            .font(.custom("Helvetica-Bold", size: 14))
                             .foregroundColor(AppTheme.Colors.textSecondary)
                     }
                     Spacer()
@@ -162,17 +212,16 @@ struct RouteDetailSheet: View {
                             VStack(spacing: 4) {
                                 // Big countdown number
                                 Text("\(arrival.minutesAway)")
-                                    .font(.system(size: index == 0 ? 36 : 28,
-                                                  weight: .black, design: .rounded))
+                                    .font(.custom("Helvetica-Bold", size: index == 0 ? 36 : 28))
                                     .foregroundColor(AppTheme.Colors.countdown(arrival.minutesAway))
 
                                 Text("min")
-                                    .font(.system(size: 12, weight: .semibold))
+                                    .font(.custom("Helvetica-Bold", size: 12))
                                     .foregroundColor(AppTheme.Colors.textSecondary)
 
                                 // Status pill
                                 Text(arrival.status)
-                                    .font(.system(size: 10, weight: .bold))
+                                    .font(.custom("Helvetica-Bold", size: 10))
                                     .foregroundColor(AppTheme.Colors.textOnColor)
                                     .padding(.horizontal, 8)
                                     .padding(.vertical, 3)
@@ -203,7 +252,7 @@ struct RouteDetailSheet: View {
                 } label: {
                     HStack(spacing: 6) {
                         Text(shortDirectionLabel(dir.direction))
-                            .font(.system(size: 14, weight: selectedDirectionIndex == index ? .bold : .medium))
+                            .font(.custom("Helvetica", size: 14).weight(selectedDirectionIndex == index ? .bold : .medium))
                             .foregroundColor(
                                 selectedDirectionIndex == index
                                     ? AppTheme.Colors.textPrimary
@@ -213,7 +262,7 @@ struct RouteDetailSheet: View {
                             .minimumScaleFactor(0.7)
 
                         Text("\(dir.arrivals.count)")
-                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .font(.custom("Helvetica-Bold", size: 11))
                             .foregroundColor(AppTheme.Colors.textOnColor)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
@@ -255,11 +304,11 @@ struct RouteDetailSheet: View {
             if direction.arrivals.isEmpty {
                 // Empty state — matches HomeView's emptyStateView pattern
                 VStack(spacing: 8) {
-                    Image(systemName: "tram.fill")
+                    Image(systemName: group.isBus ? "bus.fill" : "tram.fill")
                         .font(.system(size: 32, weight: .light))
                         .foregroundColor(AppTheme.Colors.textSecondary)
                     Text("No arrivals in this direction")
-                        .font(.system(size: 15, weight: .medium))
+                        .font(.custom("Helvetica-Bold", size: 15))
                         .foregroundColor(AppTheme.Colors.textSecondary)
                 }
                 .frame(maxWidth: .infinity)
@@ -274,7 +323,8 @@ struct RouteDetailSheet: View {
                             isTracking: false, // Tracking feedback handled by HomeView/Toast for now
                             onTrack: {
                                 onTrack?(arrival)
-                            }
+                            },
+                            userLocation: currentLocation.map { CLLocation(latitude: $0.latitude, longitude: $0.longitude) }
                         )
                         .padding(.horizontal, 0) // NearbyTransitRow has internal padding
                         .accessibilityElement(children: .combine)
@@ -320,7 +370,7 @@ struct RouteDetailSheet: View {
                         .font(.system(size: 12, weight: .medium))
                         .foregroundColor(AppTheme.Colors.textSecondary)
                     Text("\(shape.stops.count) stops on route")
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.custom("Helvetica", size: 13))
                         .foregroundColor(AppTheme.Colors.textSecondary)
                 }
             }
@@ -332,7 +382,7 @@ struct RouteDetailSheet: View {
                         .font(.system(size: 12, weight: .medium))
                         .foregroundColor(AppTheme.Colors.successGreen)
                     Text("\(busVehicles.count) \(group.isBus ? "buses" : "trains") live on map")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.custom("Helvetica-Bold", size: 13))
                         .foregroundColor(AppTheme.Colors.successGreen)
                 }
             }

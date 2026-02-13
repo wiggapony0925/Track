@@ -18,31 +18,19 @@ struct GroupedRouteRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            // Mode badge remains static on the left
-            ZStack {
-                Circle()
-                    .fill(badgeColor)
-                    .frame(width: AppTheme.Layout.badgeSizeMedium,
-                           height: AppTheme.Layout.badgeSizeMedium)
-                if group.isBus {
-                    Image(systemName: "bus.fill")
-                        .font(.system(size: AppTheme.Layout.badgeFontMedium, weight: .bold))
-                        .foregroundColor(.white)
-                } else {
-                    Text(group.displayName)
-                        .font(.system(size: AppTheme.Layout.badgeFontMedium,
-                                      weight: .heavy, design: .monospaced))
-                        .foregroundColor(AppTheme.SubwayColors.textColor(for: group.displayName))
-                        .minimumScaleFactor(0.5)
-                        .lineLimit(1)
-                }
-            }
+            // Unified route badge — shows route name for both bus and train
+            RouteBadge(
+                routeID: group.displayName,
+                size: .medium,
+                isBus: group.isBus,
+                hexColor: group.colorHex
+            )
             .accessibilityHidden(true)
 
             // Swipeable content area
             if group.directions.isEmpty {
                 Text("No active service")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.custom("Helvetica-Bold", size: 15))
                     .foregroundColor(AppTheme.Colors.textSecondary)
                 Spacer()
             } else {
@@ -52,7 +40,7 @@ struct GroupedRouteRow: View {
                             // Destination Label
                             let label = direction.arrivals.first?.destination ?? directionLabel(direction.direction)
                             Text(label)
-                                .font(.system(size: 15, weight: .semibold))
+                                .font(.custom("Helvetica-Bold", size: 15))
                                 .foregroundColor(AppTheme.Colors.textPrimary)
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.9)
@@ -87,15 +75,15 @@ struct GroupedRouteRow: View {
                 if let first = currentDir.arrivals.first {
                     HStack(alignment: .firstTextBaseline, spacing: 2) {
                         Text("\(first.minutesAway)")
-                            .font(.system(size: 24, weight: .bold, design: .rounded))
+                            .font(.custom("Helvetica-Bold", size: 24))
                             .foregroundColor(AppTheme.Colors.countdown(first.minutesAway))
                         Text("min")
-                            .font(.system(size: 12, weight: .medium))
+                            .font(.custom("Helvetica", size: 12))
                             .foregroundColor(AppTheme.Colors.textSecondary)
                     }
                 } else {
                     Text("--")
-                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                        .font(.custom("Helvetica-Bold", size: 20))
                         .foregroundColor(AppTheme.Colors.textSecondary)
                 }
             }
@@ -116,14 +104,5 @@ struct GroupedRouteRow: View {
             "\(group.isBus ? "Bus" : "Train") \(group.displayName), swipe for directions"
         )
         .accessibilityHint("Double tap to see details for current direction")
-    }
-
-    private var badgeColor: Color {
-        if let hex = group.colorHex {
-            return Color(hex: hex)
-        }
-        return group.isBus
-            ? AppTheme.Colors.mtaBlue
-            : AppTheme.SubwayColors.color(for: group.displayName)
     }
 }

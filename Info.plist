@@ -7,7 +7,9 @@
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
 	</dict>
-	<key>NSSupportsLiveActivities</key>
-	<true/>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Track uses speech recognition to help you search for trains and stations using your voice.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Track needs microphone access to enable voice search.</string>
 </dict>
 </plist>

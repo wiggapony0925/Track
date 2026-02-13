@@ -135,9 +135,9 @@ def _display_name(route_id: str) -> str:
 def _group_arrivals(flat: list[NearbyTransitArrival]) -> list[GroupedNearbyTransit]:
     """Collapse a flat arrival list into one entry per route.
 
-    Each route gets two direction buckets (e.g. "N" / "S" for subway,
-    or the SIRI status text for buses).  Arrivals inside each direction
-    are sorted by ``minutes_away``.
+    Each route gets direction buckets (e.g. "N" / "S" for subway,
+    or compass directions like "SW" / "NE" for buses).  Arrivals
+    inside each direction are sorted by ``minutes_away``.
     """
     by_route: dict[str, dict[str, list[NearbyTransitArrival]]] = defaultdict(
         lambda: defaultdict(list),
@@ -328,11 +328,16 @@ async def _fetch_nearby_buses(
         stop_lon = stop.lon if stop else None
         for arrival in arrivals:
             minutes = _bus_minutes_away(arrival.expected_arrival)
+            # Use the bus stop's compass direction (e.g. "SW") for grouping,
+            # falling back to the stop name when direction is unavailable.
+            # status_text stays in the `status` field for display purposes.
+            bus_direction = stop.direction if (stop and stop.direction) else stop_name
             results.append(
                 NearbyTransitArrival(
                     route_id=arrival.route_id,
                     stop_name=stop_name,
-                    direction=arrival.status_text,
+                    direction=bus_direction,
+                    destination=stop_name,
                     minutes_away=minutes,
                     status=arrival.status_text,
                     mode="bus",

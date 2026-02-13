@@ -48,6 +48,9 @@ struct AppSettings {
     let userZoomDistance: Double
     let minCameraDistance: Double
     let maxCameraDistance: Double
+    let smartZoomMinAltitude: Double
+    let smartZoomMaxAltitude: Double
+    let smartZoomPaddingMultiplier: Double
     let nycCenterLat: Double
     let nycCenterLon: Double
     let boundsCenterLat: Double
@@ -88,6 +91,9 @@ struct AppSettings {
             self.userZoomDistance = 3000
             self.minCameraDistance = 300
             self.maxCameraDistance = 80_000
+            self.smartZoomMinAltitude = 2400
+            self.smartZoomMaxAltitude = 20000
+            self.smartZoomPaddingMultiplier = 4.5
             self.nycCenterLat = 40.7580
             self.nycCenterLon = -73.9855
             self.boundsCenterLat = 40.71
@@ -132,6 +138,9 @@ struct AppSettings {
         self.userZoomDistance = map["user_zoom_distance"] as? Double ?? 3000
         self.minCameraDistance = map["min_camera_distance"] as? Double ?? 300
         self.maxCameraDistance = map["max_camera_distance"] as? Double ?? 80_000
+        self.smartZoomMinAltitude = map["smart_zoom_min_altitude"] as? Double ?? 2400
+        self.smartZoomMaxAltitude = map["smart_zoom_max_altitude"] as? Double ?? 20000
+        self.smartZoomPaddingMultiplier = map["smart_zoom_padding_multiplier"] as? Double ?? 4.5
         self.nycCenterLat = map["nyc_center_lat"] as? Double ?? 40.7580
         self.nycCenterLon = map["nyc_center_lon"] as? Double ?? -73.9855
         self.boundsCenterLat = map["bounds_center_lat"] as? Double ?? 40.71

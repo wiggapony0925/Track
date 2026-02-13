@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -89,7 +90,9 @@ async def get_stops(route_id: str) -> list[BusStop]:
     if eps is None:
         return []
 
-    path = eps.stops_for_route.replace("{route_id}", route_id)
+    # URL-encode the route_id for the path
+    encoded_id = quote(route_id, safe="")
+    path = eps.stops_for_route.replace("{route_id}", encoded_id)
     url = settings.urls.bus_oba_base + path
     params = {
         "key": settings.api_keys.mta_bus_key,
@@ -164,7 +167,7 @@ async def get_nearby_stops(
         try:
             data = await _fetch_bus_json(url, params)
             stops_data: list[dict[str, Any]] = (
-                data.get("data", {}).get("list", [])
+                data.get("data", {}).get("stops", [])
                 if isinstance(data, dict)
                 else []
             )
@@ -275,9 +278,15 @@ async def get_realtime_arrivals(stop_id: str) -> list[BusArrival]:
             except (ValueError, TypeError):
                 pass
 
+        # Route identifier - prefer LineRef, fallback to PublishedLineName
+        raw_route = journey.get("LineRef")
+        if not raw_route:
+            names = journey.get("PublishedLineName", [])
+            raw_route = names[0] if names else ""
+
         arrivals.append(
             BusArrival(
-                route_id=journey.get("LineRef", ""),
+                route_id=raw_route or "",
                 vehicle_id=journey.get("VehicleRef", ""),
                 stop_id=stop_id,
                 status_text=status_text or "En Route",
@@ -390,7 +399,9 @@ async def get_route_shape(route_id: str) -> RouteShape:
     if eps is None:
         return RouteShape(route_id=route_id, polylines=[], stops=[])
 
-    path = eps.stops_for_route.replace("{route_id}", route_id)
+    # URL-encode the route_id for the path (e.g. "MTA NYCT_B63" → "MTA%20NYCT_B63")
+    encoded_id = quote(route_id, safe="")
+    path = eps.stops_for_route.replace("{route_id}", encoded_id)
     url = settings.urls.bus_oba_base + path
     params = {
         "key": settings.api_keys.mta_bus_key,

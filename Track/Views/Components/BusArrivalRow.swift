@@ -21,22 +21,15 @@ struct BusArrivalRow: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
-                // Bus route badge
-                ZStack {
-                    Circle()
-                        .fill(AppTheme.Colors.mtaBlue)
-                        .frame(width: AppTheme.Layout.badgeSizeMedium, height: AppTheme.Layout.badgeSizeMedium)
-                    Image(systemName: "bus.fill")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(AppTheme.Colors.textOnColor)
-                }
-                .accessibilityHidden(true)
+                // Bus route badge (now matches train style)
+                RouteBadge(routeID: shortRouteName, size: .medium)
+                    .accessibilityHidden(true)
 
                 // Route info
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 4) {
                         Text(shortRouteName)
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.custom("Helvetica-Bold", size: 15))
                             .foregroundColor(AppTheme.Colors.textPrimary)
                             .lineLimit(1)
                             .minimumScaleFactor(0.8)
@@ -48,12 +41,12 @@ struct BusArrivalRow: View {
                     }
                     HStack(spacing: 4) {
                         Text(arrival.stopId)
-                            .font(.system(size: 12, weight: .regular))
+                            .font(.custom("Helvetica", size: 12))
                             .foregroundColor(AppTheme.Colors.textSecondary)
                             .lineLimit(1)
                         if let delay = reliabilityWarning {
                             Text("⚠️ Usually \(delay)m late")
-                                .font(.system(size: 10, weight: .medium))
+                                .font(.custom("Helvetica-Bold", size: 10))
                                 .foregroundColor(AppTheme.Colors.warningYellow)
                                 .lineLimit(1)
                         }
@@ -64,7 +57,7 @@ struct BusArrivalRow: View {
 
                 // Status text (e.g. "Approaching", "2 stops away")
                 Text(arrival.statusText)
-                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .font(.custom("Helvetica-Bold", size: 15))
                     .foregroundColor(statusColor)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
@@ -97,11 +90,11 @@ struct BusArrivalRow: View {
 
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Estimated Arrival")
-                                .font(.system(size: 11, weight: .semibold))
+                                .font(.custom("Helvetica-Bold", size: 11))
                                 .foregroundColor(AppTheme.Colors.textSecondary)
                                 .textCase(.uppercase)
                             Text(arrivalTimeDescription)
-                                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                .font(.custom("Helvetica-Bold", size: 14))
                                 .foregroundColor(AppTheme.Colors.textPrimary)
                         }
 
@@ -109,7 +102,7 @@ struct BusArrivalRow: View {
 
                         // Status pill
                         Text(arrival.statusText)
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.custom("Helvetica-Bold", size: 11))
                             .foregroundColor(AppTheme.Colors.textOnColor)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
@@ -127,11 +120,11 @@ struct BusArrivalRow: View {
 
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("Distance")
-                                    .font(.system(size: 11, weight: .semibold))
+                                    .font(.custom("Helvetica-Bold", size: 11))
                                     .foregroundColor(AppTheme.Colors.textSecondary)
                                     .textCase(.uppercase)
                                 Text(formattedDistance(meters))
-                                    .font(.system(size: 14, weight: .medium))
+                                    .font(.custom("Helvetica", size: 14))
                                     .foregroundColor(AppTheme.Colors.textPrimary)
                             }
                         }
@@ -145,7 +138,7 @@ struct BusArrivalRow: View {
                             Image(systemName: isTracking ? "antenna.radiowaves.left.and.right" : "bell.fill")
                                 .font(.system(size: 12, weight: .bold))
                             Text(isTracking ? "Tracking" : "Track This Bus")
-                                .font(.system(size: 13, weight: .bold))
+                                .font(.custom("Helvetica-Bold", size: 13))
                         }
                         .foregroundColor(AppTheme.Colors.textOnColor)
                         .frame(maxWidth: .infinity)

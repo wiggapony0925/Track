@@ -75,9 +75,9 @@ func formatDistance(_ meters: Double, suffix: String = "away") -> String {
 /// - Returns: Display name (e.g. "B63").
 func stripMTAPrefix(_ routeId: String) -> String {
     if routeId.hasPrefix("MTA NYCT_") {
-        return String(routeId.dropFirst(9))
+        return String(routeId.dropFirst(9)).replacingOccurrences(of: "+", with: "")
     }
-    return routeId
+    return routeId.replacingOccurrences(of: "+", with: "")
 }
 
 // MARK: - Transit Status Color

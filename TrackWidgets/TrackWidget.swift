@@ -91,7 +91,11 @@ struct TrackWidgetProvider: TimelineProvider {
                 let decoder = JSONDecoder()
                 decoder.dateDecodingStrategy = .iso8601
                 let responses = try decoder.decode([WidgetNearbyResponse].self, from: data)
-                let arrivals = responses.prefix(5).map { item in
+
+                // Load interaction stats for sorting
+                let stats = defaults.dictionary(forKey: "route_interaction_stats") as? [String: Int] ?? [:]
+
+                let arrivals = responses.map { item in
                     NearbyArrival(
                         routeId: item.routeId,
                         stopName: item.stopName,
@@ -101,6 +105,19 @@ struct TrackWidgetProvider: TimelineProvider {
                         mode: item.mode
                     )
                 }
+                .sorted { a, b in
+                    // Prioritize routes with more user interactions
+                    let countA = stats[a.routeId] ?? 0
+                    let countB = stats[b.routeId] ?? 0
+                    
+                    if countA != countB {
+                        return countA > countB
+                    }
+                    // Fallback to soonest arrival
+                    return a.minutesAway < b.minutesAway
+                }
+                .prefix(5)
+
                 completion(TrackWidgetEntry(date: Date(), arrivals: Array(arrivals)))
             } catch {
                 completion(nil)
@@ -213,29 +230,29 @@ struct TrackWidgetEntryView: View {
         Group {
             if let arrival = entry.arrivals.first {
                 VStack(spacing: 3) {
-                    // Mode badge
+                    // Route badge
                     transitBadge(arrival, size: AppTheme.Layout.badgeSizeLarge)
 
                     // Big countdown
                     HStack(alignment: .firstTextBaseline, spacing: 2) {
                         Text("\(arrival.minutesAway)")
-                            .font(.system(size: 34, weight: .bold, design: .rounded))
+                            .font(.custom("Helvetica-Bold", size: 34))
                             .foregroundColor(AppTheme.Colors.countdown(arrival.minutesAway))
                         Text("min")
-                            .font(.system(size: 13, weight: .medium))
+                            .font(.custom("Helvetica", size: 13))
                             .foregroundColor(AppTheme.Colors.textSecondary)
                     }
 
                     // Stop name
                     Text(arrival.stopName)
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.custom("Helvetica", size: 11))
                         .foregroundColor(AppTheme.Colors.textSecondary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
 
                     // Direction
                     Text("→ \(arrival.direction)")
-                        .font(.system(size: 10, weight: .regular))
+                        .font(.custom("Helvetica", size: 10))
                         .foregroundColor(AppTheme.Colors.textSecondary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
@@ -248,7 +265,7 @@ struct TrackWidgetEntryView: View {
                         HStack(spacing: 4) {
                             transitBadge(nextArrival, size: 16)
                             Text("\(nextArrival.minutesAway) min")
-                                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                                .font(.custom("Helvetica-Bold", size: 10))
                                 .foregroundColor(AppTheme.Colors.countdown(nextArrival.minutesAway))
                         }
                     }
@@ -260,7 +277,7 @@ struct TrackWidgetEntryView: View {
                         .font(.system(size: 28, weight: .light))
                         .foregroundColor(AppTheme.Colors.textSecondary)
                     Text("No arrivals")
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.custom("Helvetica", size: 13))
                         .foregroundColor(AppTheme.Colors.textSecondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -281,11 +298,11 @@ struct TrackWidgetEntryView: View {
                     .font(.system(size: 12, weight: .bold))
                     .foregroundColor(AppTheme.Colors.mtaBlue)
                 Text("Nearby Transit")
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .font(.custom("Helvetica-Bold", size: 14))
                     .foregroundColor(AppTheme.Colors.textPrimary)
                 Spacer()
                 Text(entry.date, style: .time)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.custom("Helvetica", size: 11))
                     .foregroundColor(AppTheme.Colors.textSecondary)
             }
             .padding(.bottom, 8)
@@ -299,7 +316,7 @@ struct TrackWidgetEntryView: View {
                             .font(.system(size: 20, weight: .light))
                             .foregroundColor(AppTheme.Colors.textSecondary)
                         Text("No nearby arrivals")
-                            .font(.system(size: 13, weight: .medium))
+                            .font(.custom("Helvetica", size: 13))
                             .foregroundColor(AppTheme.Colors.textSecondary)
                     }
                     Spacer()
@@ -334,11 +351,11 @@ struct TrackWidgetEntryView: View {
                     .font(.system(size: 13, weight: .bold))
                     .foregroundColor(AppTheme.Colors.mtaBlue)
                 Text("Nearby Transit")
-                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .font(.custom("Helvetica-Bold", size: 16))
                     .foregroundColor(AppTheme.Colors.textPrimary)
                 Spacer()
                 Text(entry.date, style: .time)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.custom("Helvetica", size: 12))
                     .foregroundColor(AppTheme.Colors.textSecondary)
             }
             .padding(.bottom, 10)
@@ -352,10 +369,10 @@ struct TrackWidgetEntryView: View {
                             .font(.system(size: 28, weight: .light))
                             .foregroundColor(AppTheme.Colors.textSecondary)
                         Text("No nearby arrivals")
-                            .font(.system(size: 14, weight: .medium))
+                            .font(.custom("Helvetica", size: 14))
                             .foregroundColor(AppTheme.Colors.textSecondary)
                         Text("Open Track to refresh")
-                            .font(.system(size: 12, weight: .regular))
+                            .font(.custom("Helvetica", size: 12))
                             .foregroundColor(AppTheme.Colors.textSecondary)
                     }
                     Spacer()
@@ -378,7 +395,7 @@ struct TrackWidgetEntryView: View {
                 HStack {
                     Spacer()
                     Text("Updated \(entry.date, style: .relative)")
-                        .font(.system(size: 10, weight: .medium))
+                        .font(.custom("Helvetica", size: 10))
                         .foregroundColor(AppTheme.Colors.textSecondary)
                 }
             }
@@ -397,15 +414,15 @@ struct TrackWidgetEntryView: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(arrival.displayName)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.custom("Helvetica-Bold", size: 15))
                     .foregroundColor(AppTheme.Colors.textPrimary)
                     .lineLimit(1)
                 Text(arrival.stopName)
-                    .font(.system(size: 12, weight: .regular))
+                    .font(.custom("Helvetica", size: 12))
                     .foregroundColor(AppTheme.Colors.textSecondary)
                     .lineLimit(1)
                 Text("→ \(arrival.direction)")
-                    .font(.system(size: 11, weight: .regular))
+                    .font(.custom("Helvetica", size: 11))
                     .foregroundColor(AppTheme.Colors.textSecondary)
                     .lineLimit(1)
             }
@@ -415,14 +432,14 @@ struct TrackWidgetEntryView: View {
             VStack(alignment: .trailing, spacing: 3) {
                 HStack(alignment: .firstTextBaseline, spacing: 2) {
                     Text("\(arrival.minutesAway)")
-                        .font(.system(size: 22, weight: .bold, design: .rounded))
+                        .font(.custom("Helvetica-Bold", size: 22))
                         .foregroundColor(AppTheme.Colors.countdown(arrival.minutesAway))
                     Text("min")
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.custom("Helvetica", size: 11))
                         .foregroundColor(AppTheme.Colors.textSecondary)
                 }
                 Text(arrival.status)
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.custom("Helvetica-Bold", size: 10))
                     .foregroundColor(statusTextColor(arrival.status))
                     .lineLimit(1)
             }
@@ -447,16 +464,16 @@ struct TrackWidgetEntryView: View {
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(arrival.displayName)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.custom("Helvetica-Bold", size: 14))
                     .foregroundColor(AppTheme.Colors.textPrimary)
                     .lineLimit(1)
                 HStack(spacing: 4) {
                     Text(arrival.stopName)
-                        .font(.system(size: 11, weight: .regular))
+                        .font(.custom("Helvetica", size: 11))
                         .foregroundColor(AppTheme.Colors.textSecondary)
                         .lineLimit(1)
                     Text("→ \(arrival.direction)")
-                        .font(.system(size: 10, weight: .regular))
+                        .font(.custom("Helvetica", size: 10))
                         .foregroundColor(AppTheme.Colors.textSecondary)
                         .lineLimit(1)
                 }
@@ -468,37 +485,33 @@ struct TrackWidgetEntryView: View {
             VStack(alignment: .trailing, spacing: 2) {
                 HStack(alignment: .firstTextBaseline, spacing: 2) {
                     Text("\(arrival.minutesAway)")
-                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                        .font(.custom("Helvetica-Bold", size: 20))
                         .foregroundColor(AppTheme.Colors.countdown(arrival.minutesAway))
                     Text("min")
-                        .font(.system(size: 10, weight: .medium))
+                        .font(.custom("Helvetica", size: 10))
                         .foregroundColor(AppTheme.Colors.textSecondary)
                 }
                 Text(arrival.status)
-                    .font(.system(size: 9, weight: .semibold))
+                    .font(.custom("Helvetica-Bold", size: 9))
                     .foregroundColor(AppTheme.Colors.textSecondary)
                     .lineLimit(1)
             }
         }
     }
 
+    /// Unified transit badge — shows route name in a colored circle
+    /// for both bus and train routes.
     @ViewBuilder
     private func transitBadge(_ arrival: NearbyArrival, size: CGFloat) -> some View {
         ZStack {
             Circle()
                 .fill(arrival.isBus ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: arrival.displayName))
                 .frame(width: size, height: size)
-            if arrival.isBus {
-                Image(systemName: "bus.fill")
-                    .font(.system(size: size * 0.45, weight: .bold))
-                    .foregroundColor(AppTheme.Colors.textOnColor)
-            } else {
-                Text(arrival.displayName)
-                    .font(.system(size: size * 0.45, weight: .heavy, design: .monospaced))
-                    .foregroundColor(AppTheme.SubwayColors.textColor(for: arrival.displayName))
-                    .minimumScaleFactor(0.5)
-                    .lineLimit(1)
-            }
+            Text(arrival.displayName)
+                .font(.custom("Helvetica-Bold", size: size * 0.45))
+                .foregroundColor(arrival.isBus ? .white : AppTheme.SubwayColors.textColor(for: arrival.displayName))
+                .minimumScaleFactor(0.4)
+                .lineLimit(1)
         }
     }
 
