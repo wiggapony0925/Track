@@ -239,15 +239,7 @@ struct HomeView: View {
 
                     // Recenter / Location Button
                     Button {
-                        let target = locationManager.currentLocation?.coordinate ?? AppTheme.MapConfig.nycCenter
-                        withAnimation(.spring(duration: 0.8)) {
-                            cameraPosition = .camera(MapCamera(
-                                centerCoordinate: target,
-                                distance: AppTheme.MapConfig.userZoomDistance,
-                                heading: 0,
-                                pitch: is3DMode ? 45 : 0
-                            ))
-                        }
+                        centerMap()
                     } label: {
                         Image(systemName: "location.fill")
                             .font(.system(size: 20, weight: .semibold))
@@ -304,14 +296,7 @@ struct HomeView: View {
         // When nearest stop is identified (after route selection), pan camera to it.
         .onChange(of: viewModel.nearestStopCoordinate) {
             if let coordinate = viewModel.nearestStopCoordinate {
-                withAnimation(.spring(duration: 0.8)) {
-                    cameraPosition = .camera(MapCamera(
-                        centerCoordinate: coordinate,
-                        distance: 1500, // Close zoom to see walking route
-                        heading: 0,
-                        pitch: 0
-                    ))
-                }
+                centerMap(on: coordinate)
             }
         }
     }
@@ -400,6 +385,51 @@ struct HomeView: View {
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius))
         .padding(.horizontal, AppTheme.Layout.margin)
         .padding(.top, 4)
+    }
+
+    // MARK: - Map Control Helper
+    
+    /// Smartly centers the map on a target coordinate or the user's location.
+    /// Ensures the bottom sheet is collapsed to reveal the map.
+    private func centerMap(on target: CLLocationCoordinate2D? = nil) {
+        // 1. Always collapse the sheet to half-height to reveal the map
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+            sheetDetent = .fraction(0.4)
+        }
+        
+        let userLocation = locationManager.currentLocation?.coordinate
+        let finalTarget = target ?? userLocation ?? AppTheme.MapConfig.nycCenter
+        
+        var center = finalTarget
+        var zoomDistance = AppTheme.MapConfig.userZoomDistance
+        
+        // 2. Determine Smart Zoom settings
+        if let destination = target, let user = userLocation {
+            // Calculate midpoint
+            let midLat = (user.latitude + destination.latitude) / 2
+            let midLon = (user.longitude + destination.longitude) / 2
+            center = CLLocationCoordinate2D(latitude: midLat, longitude: midLon)
+            
+            // Calculate distance span
+            let userLoc = CLLocation(latitude: user.latitude, longitude: user.longitude)
+            let destLoc = CLLocation(latitude: destination.latitude, longitude: destination.longitude)
+            let distanceMeters = userLoc.distance(from: destLoc)
+            
+            // Dynamic altitude: configurable
+            zoomDistance = max(AppSettings.shared.smartZoomMinAltitude,
+                               min(distanceMeters * AppSettings.shared.smartZoomPaddingMultiplier,
+                                   AppSettings.shared.smartZoomMaxAltitude))
+        }
+        
+        // 3. Animate camera
+        withAnimation(.spring(response: 0.8, dampingFraction: 0.8)) {
+            cameraPosition = .camera(MapCamera(
+                centerCoordinate: center,
+                distance: zoomDistance,
+                heading: 0,
+                pitch: (target == nil && is3DMode) ? 45 : 0 // Only pitch if centering on user in 3D mode
+            ))
+        }
     }
 
     // MARK: - Dashboard Content
