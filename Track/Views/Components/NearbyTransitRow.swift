@@ -8,76 +8,120 @@
 //
 
 import SwiftUI
+import CoreLocation
 
 struct NearbyTransitRow: View {
     let arrival: NearbyTransitResponse
     var isTracking: Bool = false
     var onTrack: (() -> Void)?
     var onSelectRoute: (() -> Void)?
-
+    var userLocation: CLLocation?
+    
     @State private var isExpanded = false
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 12) {
-                // MARK: Route Badge
+            HStack(spacing: 14) {
+                // MARK: Route Badge (Larger & More Prominent)
                 ZStack {
                     Circle()
                         .fill(arrival.isBus ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: arrival.displayName))
-                        .frame(width: 42, height: 42)
+                        .frame(width: 54, height: 54)
+                        .shadow(color: .black.opacity(0.15), radius: 3, x: 0, y: 2)
                     if arrival.isBus {
                         Image(systemName: "bus.fill")
-                            .font(.system(size: 18, weight: .bold))
+                            .font(.system(size: 22, weight: .bold))
                             .foregroundColor(.white)
                     } else {
                         Text(arrival.displayName)
-                            .font(.system(size: 20, weight: .bold, design: .rounded))
+                            .font(.system(size: 24, weight: .heavy, design: .rounded))
                             .foregroundColor(AppTheme.SubwayColors.textColor(for: arrival.displayName))
                     }
                 }
                 .accessibilityHidden(true)
 
-                // MARK: Station & Destination
-                VStack(alignment: .leading, spacing: 2) {
+                // MARK: Station & Destination Info
+                VStack(alignment: .leading, spacing: 4) {
+                    // Station name
                     Text(arrival.stopName)
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.system(size: 17, weight: .bold))
                         .foregroundColor(AppTheme.Colors.textPrimary)
                         .lineLimit(1)
-                        .minimumScaleFactor(0.9)
+                        .minimumScaleFactor(0.85)
                     
-                    Text(shortDirectionLabel(arrival.destination ?? arrival.direction))
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(AppTheme.Colors.textSecondary)
-                        .lineLimit(1)
+                    // Direction with arrow
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
+                        
+                        Text(shortDirectionLabel(arrival.destination ?? arrival.direction))
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
+                            .lineLimit(1)
+                    }
+                    
+                    // Distance (if available) or mode type
+                    if let stopLat = arrival.stopLat, let stopLon = arrival.stopLon {
+                        if let userLocation = userLocation {
+                            let distance = userLocation.distance(
+                                from: CLLocation(latitude: stopLat, longitude: stopLon)
+                            )
+                            HStack(spacing: 4) {
+                                Image(systemName: "figure.walk")
+                                    .font(.system(size: 10, weight: .medium))
+                                Text(formatDistance(distance))
+                                    .font(.system(size: 12, weight: .medium))
+                            }
+                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.8))
+                        }
+                    } else {
+                        Text(arrival.isBus ? "Bus" : "Subway")
+                            .font(.system(size: 11, weight: .semibold))
+                            .textCase(.uppercase)
+                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
+                    }
                 }
                 
                 Spacer(minLength: 8)
                 
                 // MARK: Right Side (Time + Status)
-                VStack(alignment: .trailing, spacing: 2) {
-                    HStack(alignment: .firstTextBaseline, spacing: 2) {
+                VStack(alignment: .trailing, spacing: 6) {
+                    // Minutes countdown
+                    HStack(alignment: .firstTextBaseline, spacing: 3) {
                         Text("\(arrival.minutesAway)")
-                            .font(.system(size: 24, weight: .bold, design: .rounded))
+                            .font(.system(size: 32, weight: .heavy, design: .rounded))
                             .foregroundColor(AppTheme.Colors.countdown(arrival.minutesAway))
                         Text("min")
-                            .font(.system(size: 12, weight: .medium))
+                            .font(.system(size: 13, weight: .semibold))
                             .foregroundColor(AppTheme.Colors.textSecondary)
+                            .offset(y: -2)
                     }
                     
-                    Text(arrival.status)
-                        .font(.system(size: 10, weight: .bold))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(transitStatusColor(for: arrival.status).opacity(0.15))
-                        .foregroundColor(transitStatusColor(for: arrival.status))
-                        .clipShape(Capsule())
+                    // Status pill
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(transitStatusColor(for: arrival.status))
+                            .frame(width: 6, height: 6)
+                        
+                        Text(arrival.status)
+                            .font(.system(size: 11, weight: .bold))
+                            .textCase(.uppercase)
+                    }
+                    .foregroundColor(transitStatusColor(for: arrival.status))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(transitStatusColor(for: arrival.status).opacity(0.12))
+                    .clipShape(Capsule())
                 }
             }
-            .padding(.vertical, 12)
+            .padding(.vertical, 16)
             .padding(.horizontal, AppTheme.Layout.margin)
+            .background(AppTheme.Colors.cardBackground)
+            .cornerRadius(AppTheme.Layout.cornerRadius)
             .contentShape(Rectangle())
             .onTapGesture {
-                withAnimation(.easeInOut(duration: 0.2)) {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
                     isExpanded.toggle()
                 }
             }
@@ -160,5 +204,19 @@ struct NearbyTransitRow: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(arrival.isBus ? "Bus" : "Train") \(arrival.displayName), \(arrival.stopName), \(arrival.minutesAway) minutes away")
         .accessibilityHint(isExpanded ? "Expanded. Shows arrival details." : "Tap to see arrival details")
+    }
+    
+    // MARK: - Helper Functions
+    
+    /// Formats walking distance to the stop.
+    private func formatDistance(_ meters: Double) -> String {
+        if meters < 100 {
+            return "\(Int(meters))m away"
+        } else if meters < 1000 {
+            return "\(Int(meters / 10) * 10)m away"
+        } else {
+            let km = meters / 1000.0
+            return String(format: "%.1fkm away", km)
+        }
     }
 }

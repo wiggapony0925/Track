@@ -611,7 +611,8 @@ struct HomeView: View {
                             },
                             onSelectRoute: arrival.isBus ? {
                                 Task { await viewModel.selectBusRoute(arrival.routeId) }
-                            } : nil
+                            } : nil,
+                            userLocation: locationManager.currentLocation
                         )
                         if index < viewModel.nearbyTransit.count - 1 {
                             Divider()

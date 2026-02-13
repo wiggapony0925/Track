@@ -335,7 +335,8 @@ struct RouteDetailSheet: View {
                             isTracking: false, // Tracking feedback handled by HomeView/Toast for now
                             onTrack: {
                                 onTrack?(arrival)
-                            }
+                            },
+                            userLocation: currentLocation.map { CLLocation(latitude: $0.latitude, longitude: $0.longitude) }
                         )
                         .padding(.horizontal, 0) // NearbyTransitRow has internal padding
                         .accessibilityElement(children: .combine)
