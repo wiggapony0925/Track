@@ -1,6 +1,6 @@
 //
 //  AppTheme.swift
-//  Track
+//  Shared
 //
 //  Central design system for the Track NYC Transit App.
 //  All styling, colors, and typography must reference this file.

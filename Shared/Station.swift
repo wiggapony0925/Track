@@ -1,10 +1,9 @@
 //
 //  Station.swift
-//  Track
+//  Shared
 //
 //  SwiftData model representing an NYC transit station.
 //
-//  NOTE: Shared copy — must stay in sync with Track/Models/Station.swift
 
 import Foundation
 import SwiftData

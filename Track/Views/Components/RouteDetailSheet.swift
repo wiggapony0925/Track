@@ -16,6 +16,7 @@ struct RouteDetailSheet: View {
     @Binding var busVehicles: [BusVehicleResponse]
     @Binding var routeShape: RouteShapeResponse?
     var onTrack: ((NearbyTransitResponse) -> Void)?
+    var isTracking: ((NearbyTransitResponse) -> Bool)?
     var onDismiss: (() -> Void)?
     
     // Map controls (shown in header when sheet is expanded)
@@ -37,11 +38,13 @@ struct RouteDetailSheet: View {
          currentLocation: CLLocationCoordinate2D? = nil,
          searchPinCoordinate: CLLocationCoordinate2D? = nil,
          onTrack: ((NearbyTransitResponse) -> Void)? = nil,
+         isTracking: ((NearbyTransitResponse) -> Bool)? = nil,
          onDismiss: (() -> Void)? = nil) {
         self.group = group
         self._busVehicles = busVehicles
         self._routeShape = routeShape
         self.onTrack = onTrack
+        self.isTracking = isTracking
         self.onDismiss = onDismiss
         self.isSheetExpanded = isSheetExpanded
         self._is3DMode = is3DMode
@@ -320,7 +323,7 @@ struct RouteDetailSheet: View {
                         // Use the shared NearbyTransitRow which implements the requested "Transit" style
                         NearbyTransitRow(
                             arrival: arrival,
-                            isTracking: false, // Tracking feedback handled by HomeView/Toast for now
+                            isTracking: isTracking?(arrival) ?? false,
                             onTrack: {
                                 onTrack?(arrival)
                             },

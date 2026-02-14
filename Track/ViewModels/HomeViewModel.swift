@@ -13,6 +13,7 @@ import SwiftUI
 import SwiftData
 import CoreLocation
 import MapKit
+import WidgetKit
 
 @Observable
 @MainActor
@@ -21,6 +22,10 @@ final class HomeViewModel {
     var upcomingArrivals: [TrainArrival] = []
     var isLoading = false
     var errorMessage: String?
+    
+    /// The currently tracked route for the widget, loaded from UserDefaults.
+    var currentTrackedRoute: TrackedRoute? = nil
+
 
     // MARK: - Search
 
@@ -119,6 +124,7 @@ final class HomeViewModel {
     var cachedStations: [CachedSubwayStation] = []
 
     init() {
+        syncTrackedRoute()
         Task {
             await loadSystemMap()
             await loadStations()
@@ -163,12 +169,41 @@ final class HomeViewModel {
                 self.cachedStations = stations
             }
         } catch {
-            AppLogger.shared.logError("loadStations", error: error)
         }
     }
 
-    // Live Activity tracking
-    var trackingArrivalId: String?
+    /// Syncs the local tracking state with the persisted TrackedRoute in UserDefaults.
+    func syncTrackedRoute() {
+        currentTrackedRoute = TrackedRoute.load()
+    }
+
+    // MARK: - Tracking Helpers
+
+    /// Checks if a nearby arrival matches the currently tracked route.
+    func isTracking(_ arrival: NearbyTransitResponse) -> Bool {
+        guard let tracked = currentTrackedRoute else { return false }
+        return tracked.routeId == arrival.routeId &&
+               tracked.stopName == arrival.stopName &&
+               tracked.direction == arrival.direction
+    }
+
+    /// Checks if a subway arrival matches the currently tracked route.
+    func isTracking(_ arrival: TrainArrival) -> Bool {
+        guard let tracked = currentTrackedRoute else { return false }
+        return tracked.routeId == arrival.routeID &&
+               tracked.stopName == arrival.stationID &&
+               tracked.direction == arrival.direction
+    }
+
+    /// Checks if a bus arrival matches the currently tracked route.
+    func isTracking(_ arrival: BusArrival) -> Bool {
+        guard let tracked = currentTrackedRoute else { return false }
+        // For bus arrivals, we strip the prefix for display/matching
+        let cleanRouteId = stripMTAPrefix(arrival.routeId)
+        let trackedCleanId = stripMTAPrefix(tracked.routeId)
+        return cleanRouteId == trackedCleanId && tracked.stopName == arrival.stopId
+    }
+
 
     // MARK: - GO Mode (Live Transit Tracking)
 
@@ -188,7 +223,6 @@ final class HomeViewModel {
     var transitEtaMinutes: Int?
 
     private let repository = TransitRepository()
-    private let liveActivityManager = LiveActivityManager.shared
 
     /// The effective location for data fetching — either the search pin or user location.
     /// If the GPS fix is outside the NYC service area, falls back to Midtown Manhattan
@@ -225,6 +259,7 @@ final class HomeViewModel {
             await refreshLIRR()
         }
 
+        syncTrackedRoute()
         isLoading = false
     }
 
@@ -556,63 +591,121 @@ final class HomeViewModel {
         do { elevatorOutages = try await TrackAPI.fetchAccessibility() } catch {}
     }
 
-    // MARK: - Live Activity
+    /// Starts tracking a nearby transit arrival via Widget.
+    func trackNearbyArrival(_ arrival: NearbyTransitResponse, location: CLLocation?) {
+        // Save to TrackedRoute for Single Route Widget
+        let trackedRoute = TrackedRoute(
+            routeId: arrival.routeId,
+            displayName: arrival.displayName,
+            stopName: arrival.stopName,
+            direction: arrival.direction,
+            destination: arrival.destination,
+            mode: arrival.isBus ? "bus" : "subway",
+            trackedAt: Date()
+        )
+        trackedRoute.save()
+        
+        // Update local state and reload widgets
+        currentTrackedRoute = trackedRoute
+        WidgetCenter.shared.reloadAllTimelines()
+        
+        // Start Live Activity
+        let eta = Date().addingTimeInterval(Double(arrival.minutesAway) * 60)
+        LiveActivityManager.shared.startActivity(
+            lineId: arrival.routeId,
+            destination: arrival.destination ?? arrival.direction,
+            arrivalTime: eta,
+            isBus: arrival.isBus
+        )
+    }
 
-    /// Starts tracking a subway arrival via Live Activity.
+    /// Starts tracking a subway arrival.
     func trackSubwayArrival(_ arrival: TrainArrival, location: CLLocation?) {
-        trackingArrivalId = arrival.id.uuidString
-        liveActivityManager.startActivity(
+        let trackedRoute = TrackedRoute(
+            routeId: arrival.routeID,
+            displayName: arrival.routeID,
+            stopName: arrival.stationID,
+            direction: arrival.direction,
+            destination: nil,
+            mode: "subway",
+            trackedAt: Date()
+        )
+        trackedRoute.save()
+        
+        currentTrackedRoute = trackedRoute
+        WidgetCenter.shared.reloadAllTimelines()
+
+        // Start Live Activity
+        let eta = Date().addingTimeInterval(Double(arrival.minutesAway) * 60)
+        LiveActivityManager.shared.startActivity(
             lineId: arrival.routeID,
             destination: arrival.direction,
-            arrivalTime: arrival.estimatedTime,
-            isBus: false,
-            stationId: arrival.stationID
+            arrivalTime: eta,
+            isBus: false
         )
     }
 
-    /// Starts tracking a LIRR arrival via Live Activity.
-    func trackLIRRArrival(_ arrival: TrainArrival, location: CLLocation?) {
-        trackingArrivalId = arrival.id.uuidString
-        liveActivityManager.startActivity(
-            lineId: "LIRR",
-            destination: arrival.direction,
-            arrivalTime: arrival.estimatedTime,
-            isBus: false,
-            stationId: arrival.stationID
-        )
-    }
-
-    /// Starts tracking a bus arrival via Live Activity.
+    /// Starts tracking a bus arrival.
     func trackBusArrival(_ arrival: BusArrival, location: CLLocation?) {
-        trackingArrivalId = arrival.id
-        let arrivalTime = arrival.expectedArrival ?? Date().addingTimeInterval(AppSettings.shared.defaultArrivalFallbackSeconds)
-        let routeName = stripMTAPrefix(arrival.routeId)
-        liveActivityManager.startActivity(
-            lineId: routeName,
-            destination: arrival.statusText,
+        let trackedRoute = TrackedRoute(
+            routeId: arrival.routeId,
+            displayName: stripMTAPrefix(arrival.routeId),
+            stopName: arrival.stopId,
+            direction: "",
+            destination: nil,
+            mode: "bus",
+            trackedAt: Date()
+        )
+        trackedRoute.save()
+        
+        currentTrackedRoute = trackedRoute
+        WidgetCenter.shared.reloadAllTimelines()
+
+        // Start Live Activity
+        let arrivalTime = arrival.expectedArrival ?? Date().addingTimeInterval(300) // Fallback to 5 mins if no expected_arrival
+        LiveActivityManager.shared.startActivity(
+            lineId: stripMTAPrefix(arrival.routeId),
+            destination: "Bus Tracking", // BusArrival model lacks destinationName
             arrivalTime: arrivalTime,
-            isBus: true,
-            stationId: arrival.stopId
+            isBus: true
         )
     }
 
-    /// Starts tracking a nearby transit arrival via Live Activity.
-    func trackNearbyArrival(_ arrival: NearbyTransitResponse, location: CLLocation?) {
-        trackingArrivalId = arrival.id
-        let arrivalTime = Date().addingTimeInterval(Double(arrival.minutesAway) * 60)
-        liveActivityManager.startActivity(
-            lineId: arrival.displayName,
+    /// Starts tracking an LIRR arrival.
+    func trackLIRRArrival(_ arrival: TrainArrival, location: CLLocation?) {
+        let trackedRoute = TrackedRoute(
+            routeId: arrival.routeID,
+            displayName: arrival.routeID,
+            stopName: arrival.stationID,
+            direction: arrival.direction,
+            destination: nil,
+            mode: "lirr",
+            trackedAt: Date()
+        )
+        trackedRoute.save()
+        
+        currentTrackedRoute = trackedRoute
+        WidgetCenter.shared.reloadAllTimelines()
+
+        // Start Live Activity
+        let eta = Date().addingTimeInterval(Double(arrival.minutesAway) * 60)
+        LiveActivityManager.shared.startActivity(
+            lineId: arrival.routeID,
             destination: arrival.direction,
-            arrivalTime: arrivalTime,
-            isBus: arrival.isBus,
-            stationId: arrival.stopName
+            arrivalTime: eta,
+            isBus: false
         )
     }
 
-    /// Stops tracking the current Live Activity.
+    /// Stops tracking and clears widget tracking.
     func stopTracking() {
-        trackingArrivalId = nil
-        liveActivityManager.endActivity()
+        currentTrackedRoute = nil
+        // Clear tracked route from widget
+        TrackedRoute.clear()
+        WidgetCenter.shared.reloadAllTimelines()
+        
+        // End Live Activity
+        LiveActivityManager.shared.endActivity()
     }
 
     // MARK: - GO Mode (Live Transit Tracking)
@@ -629,16 +722,6 @@ final class HomeViewModel {
         goModeRouteName = routeName
         goModeRouteColor = routeColor
         passedStopIds = []
-
-        // Start Live Activity for the route
-        let arrivalTime = Date().addingTimeInterval(Double(transitEtaMinutes ?? 10) * 60)
-        liveActivityManager.startActivity(
-            lineId: routeName,
-            destination: "In Transit",
-            arrivalTime: arrivalTime,
-            isBus: selectedRouteId?.contains("MTA") == true,
-            stationId: routeName
-        )
     }
 
     /// Deactivates "GO" mode and returns to the normal map view.
@@ -648,7 +731,6 @@ final class HomeViewModel {
         goModeRouteColor = nil
         passedStopIds = []
         transitEtaMinutes = nil
-        liveActivityManager.endActivity()
     }
 
     /// Marks a stop as passed (dimmed in the checklist). Called when

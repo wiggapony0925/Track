@@ -94,6 +94,11 @@
 			path = TrackWidgets;
 			sourceTree = "<group>";
 		};
+		25647AAA2F3C387B00762B65 /* Shared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Shared;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -138,6 +143,7 @@
 				256475552F3C387C00762B65 /* TrackTests */,
 				2564755F2F3C387C00762B65 /* TrackUITests */,
 				256476562F3C5AB300762B65 /* TrackWidgets */,
+				25647AAA2F3C387B00762B65 /* Shared */,
 				256476512F3C5AB300762B65 /* Frameworks */,
 				256475442F3C387B00762B65 /* Products */,
 			);
@@ -182,6 +188,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				256475452F3C387B00762B65 /* Track */,
+				25647AAA2F3C387B00762B65 /* Shared */,
 			);
 			name = Track;
 			packageProductDependencies = (
@@ -250,6 +257,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				256476562F3C5AB300762B65 /* TrackWidgets */,
+				25647AAA2F3C387B00762B65 /* Shared */,
 			);
 			name = TrackWidgetsExtension;
 			packageProductDependencies = (

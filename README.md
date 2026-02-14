@@ -24,7 +24,6 @@ Track is an iOS transit app for New York City that shows real-time subway, bus, 
 - [Project Structure](#project-structure)
   - [iOS App](#ios-app-structure)
   - [Backend](#backend-structure)
-  - [Widgets](#widget-extension)
 - [Map and UI](#map-and-ui)
 - [Privacy](#privacy)
 - [Accessibility](#accessibility)
@@ -33,14 +32,14 @@ Track is an iOS transit app for New York City that shows real-time subway, bus, 
 
 ## Architecture
 
-```
+```text
                          iOS App (Track)
     +---------------------------------------------------------+
     |                                                         |
-    |   HomeView       Widgets        Live Activity           |
-    |   (Map + Feed)   (Lock Screen)  (Dynamic Island)        |
-    |       |              |               |                  |
-    |       +--------------+---------------+                  |
+    |   HomeView       Widgets                    |
+    |   (Map + Feed)   (Lock Screen)              |
+    |       |              |                       |
+    |       +--------------+                       |
     |                      |                                  |
     |              HomeViewModel                              |
     |                      |                                  |
@@ -75,7 +74,7 @@ Track is an iOS transit app for New York City that shows real-time subway, bus, 
     +-------------------------------------------------------------+
 ```
 
-**iOS App** — SwiftUI, SwiftData, MapKit, ActivityKit, WidgetKit. Talks only to the backend. All user data stays on-device.
+**iOS App** — SwiftUI, SwiftData, MapKit, WidgetKit. Talks only to the backend. All user data stays on-device.
 
 **TrackBackend** — Python FastAPI proxy that ingests raw MTA Protobuf, SIRI XML, and JSON feeds, then returns normalized JSON.
 
@@ -86,13 +85,12 @@ Track is an iOS transit app for New York City that shows real-time subway, bus, 
 ## Features
 
 | Feature | How It Works |
-|---------|-------------|
+| :--- | :--- |
 | Nearby Transit | Unified feed showing nearest buses and trains sorted by arrival time |
 | Route Detail Sheet | Tap a route to see arrivals grouped by direction (swipeable tabs) with a mini route map |
 | Live Bus Tracking | Tap a bus route to see active buses on the map with GPS positions and bearing arrows |
 | Route Visualization | Full polyline path drawn on the map with stop annotations for any selected bus route |
 | GO Mode | Hands-free tracking mode that follows your vehicle, dims passed stops, and shows transit ETA |
-| Live Activities | Track an arrival on your Dynamic Island and Lock Screen with a live countdown |
 | LIRR Support | Long Island Rail Road departures in a dedicated tab |
 | Service Alerts | Critical MTA alerts shown in the dashboard alongside nearby arrivals |
 | Elevator/Escalator Outages | Real-time accessibility info for stations with broken equipment |
@@ -111,9 +109,8 @@ Track is an iOS transit app for New York City that shows real-time subway, bus, 
 
 1. Clone the repo and open `Track.xcodeproj` in Xcode 16+.
 2. Enable **App Groups** (`group.com.yourname.track`) on both `Track` and `TrackWidgets` targets.
-3. Enable **Live Activities** (`NSSupportsLiveActivities = YES`) in the main app's Info.plist.
-4. In Developer Settings (within the app's Settings view), toggle between localhost and a custom IP for local development.
-5. Build and run on an iPhone simulator or device running iOS 18+.
+3. In Developer Settings (within the app's Settings view), toggle between localhost and a custom IP for local development.
+4. Build and run on an iPhone simulator or device running iOS 18+.
 
 ### Backend (Local)
 
@@ -163,13 +160,13 @@ All endpoints return JSON. The iOS app communicates exclusively through `TrackAP
 ### Config
 
 | Method | Path | Description |
-|--------|------|-------------|
+| :--- | :--- | :--- |
 | GET | `/config` | Returns app settings from `settings.json` |
 
 ### Nearby Transit
 
 | Method | Path | Query Params | Description |
-|--------|------|-------------|-------------|
+| :--- | :--- | :--- | :--- |
 | GET | `/nearby` | `lat`, `lon`, `radius` (default 500m) | Flat list of nearest buses and trains sorted by arrival time |
 | GET | `/nearby/grouped` | `lat`, `lon`, `radius` (default 500m) | Routes grouped by ID with swipeable direction sub-groups |
 
@@ -178,13 +175,13 @@ The grouped endpoint is used for the main dashboard cards. The flat endpoint is 
 ### Subway
 
 | Method | Path | Description |
-|--------|------|-------------|
+| :--- | :--- | :--- |
 | GET | `/subway/{line_id}` | Real-time arrivals for a subway line (e.g. `/subway/L`) |
 
 ### Bus
 
 | Method | Path | Description |
-|--------|------|-------------|
+| :--- | :--- | :--- |
 | GET | `/bus/routes` | All MTA bus routes with short name, long name, and color |
 | GET | `/bus/stops/{route_id}` | Ordered stops for a specific route |
 | GET | `/bus/nearby?lat=&lon=` | Nearby bus stops by coordinates |
@@ -197,13 +194,13 @@ Route IDs use the fully qualified MTA format: `MTA NYCT_B63`, `MTA NYCT_Q10`, et
 ### LIRR
 
 | Method | Path | Description |
-|--------|------|-------------|
+| :--- | :--- | :--- |
 | GET | `/lirr` | Upcoming LIRR departures from the GTFS-Realtime feed |
 
 ### Service Status
 
 | Method | Path | Description |
-|--------|------|-------------|
+| :--- | :--- | :--- |
 | GET | `/alerts` | Critical MTA service alerts with route, title, description, severity |
 | GET | `/accessibility` | Currently out-of-service elevators and escalators |
 
@@ -213,7 +210,7 @@ Route IDs use the fully qualified MTA format: `MTA NYCT_B63`, `MTA NYCT_Q10`, et
 
 ### iOS App Structure
 
-```
+```text
 Track/
 |-- Models/
 |   |-- Station.swift               SwiftData model for subway stations
@@ -224,7 +221,6 @@ Track/
 |   |-- TripLog.swift                SwiftData model for trip history
 |   |-- CommutePattern.swift         SwiftData model for learned commute habits
 |   |-- WeatherCondition.swift       Weather state enum
-|   |-- TrackActivityAttributes.swift  ActivityKit attributes for Live Activities
 |
 |-- Network/
 |   |-- TrackAPI.swift               API client: all backend calls, response models,
@@ -235,9 +231,8 @@ Track/
 |                                     bridges TrackAPI to ViewModels
 |
 |-- ViewModels/
-|   |-- HomeViewModel.swift          State for all modes (nearby, subway, bus, LIRR),
 |                                     search pin, bus route selection, GO mode,
-|                                     Live Activity tracking, transit ETA
+|                                     transit ETA
 |
 |-- Views/
 |   |-- HomeView.swift               Main view: map, bottom sheet, dashboard sections,
@@ -265,12 +260,10 @@ Track/
 |       |-- MapAnnotations.swift        SearchPinAnnotation, BusVehicleAnnotation
 |       |-- BusStopAnnotation.swift     Bus stop map marker
 |       |-- GoModeAnnotations.swift     GO mode user icon, passed-stop dimming
-|       |-- LiveTrackingOverlay.swift   Live activity card during GO mode
 |       |-- NetworkErrorBanner.swift    Error message banner
 |
 |-- Services/
 |   |-- LocationManager.swift        CoreLocation wrapper, permission handling
-|   |-- LiveActivityManager.swift    ActivityKit live activity lifecycle
 |   |-- AppLogger.swift              File-based request/response logger
 |   |-- SmartSuggester.swift         On-device commute pattern ML
 |   |-- TripLogger.swift             SwiftData trip history writer
@@ -296,7 +289,7 @@ Track/
 
 ### Backend Structure
 
-```
+```text
 TrackBackend/
 |-- app/
 |   |-- main.py                     FastAPI entry point, CORS, router registration
@@ -329,19 +322,6 @@ TrackBackend/
 |-- Dockerfile                      Container build for deployment
 ```
 
-### Widget Extension
-
-```
-TrackWidgets/
-|-- TrackWidget.swift               Widget timeline provider + UI
-|-- TrackWidgetBundle.swift          @WidgetBundle entry point
-|-- TrackWidgetLiveActivity.swift    Dynamic Island + Lock Screen live activity UI
-|-- Shared/                         Models and theme shared via App Group
-|   |-- AppTheme.swift, Station.swift, Route.swift, CommutePattern.swift,
-|   |-- TripLog.swift, WeatherCondition.swift, TrackActivityAttributes.swift,
-|   |-- SmartSuggester.swift, DataController.swift
-```
-
 ---
 
 ## Map and UI
@@ -355,12 +335,11 @@ The map uses Apple MapKit with bounded camera constraints covering the NYC five 
 - **Live bus vehicles** appear as blue markers with bearing rotation when a route is selected
 - **Route polylines** draw the full path on the map when viewing a bus route detail
 - **GO mode** replaces the blue dot with a pulsing vehicle icon that follows the route, dims passed stops, and shows transit ETA
-- **Transport mode toggle** floats above the bottom sheet for switching between Nearby, Subway, Bus, and LIRR views
 
 The bottom sheet dashboard shows mode-specific content:
 
 | Mode | Content |
-|------|---------|
+| :--- | :--- |
 | Nearby | Grouped route cards, nearest metro fallback, service alerts, elevator outages |
 | Subway | Nearby station arrivals with expandable detail rows |
 | Bus | Selected stop arrivals, nearby bus stop list |

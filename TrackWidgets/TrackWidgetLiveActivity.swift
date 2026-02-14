@@ -69,79 +69,116 @@ struct TrackWidgetLiveActivity: Widget {
 
     @ViewBuilder
     private func lockScreenView(context: ActivityViewContext<TrackActivityAttributes>) -> some View {
-        VStack(spacing: 12) {
-            // Top row: Badge + Destination + Countdown
-            HStack(spacing: 14) {
-                // Physical badge — slightly bigger, more shadow
-                lineBadge(context: context, size: 50)
+        VStack(spacing: 0) {
+            // Top Section: Stickman + Hurry Up / Route Info
+            HStack(spacing: 12) {
+                if let walk = context.state.walkMinutes {
+                    // Stickman Indicator
+                    ZStack {
+                        Circle()
+                            .fill(context.state.isHurryUp ? AppTheme.Colors.alertRed.opacity(0.15) : Color.white.opacity(0.1))
+                            .frame(width: 44, height: 44)
+                        
+                        Image(systemName: walk <= 2 ? "figure.run" : "figure.walk")
+                            .font(.system(size: 24, weight: .bold))
+                            .foregroundColor(context.state.isHurryUp ? AppTheme.Colors.alertRed : .white)
+                    }
+                } else {
+                    lineBadge(context: context, size: 44)
+                }
 
-                // Destination and proximity
-                VStack(alignment: .leading, spacing: 2) {
-                    // Destination name — primary, no "Next train" prefix
-                    Text(context.attributes.destination)
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(AppTheme.Colors.textPrimary)
-                        .lineLimit(1)
-
-                    // Dynamic proximity text
-                    Text(context.state.proximityText)
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(AppTheme.Colors.textSecondary)
+                VStack(alignment: .leading, spacing: 1) {
+                    if context.state.isHurryUp {
+                        Text("Hurry up!")
+                            .font(.system(size: 18, weight: .black, design: .rounded))
+                            .foregroundColor(AppTheme.Colors.alertRed)
+                    } else if context.state.walkMinutes != nil {
+                        Text("Time to walk")
+                            .font(.system(size: 18, weight: .bold, design: .rounded))
+                            .foregroundColor(.white)
+                    } else {
+                        Text(context.attributes.destination)
+                            .font(.system(size: 20, weight: .bold, design: .rounded))
+                            .foregroundColor(AppTheme.Colors.textPrimary)
+                    }
+                    
+                    HStack(spacing: 6) {
+                        if context.state.walkMinutes != nil {
+                            lineBadge(context: context, size: 20)
+                            Text("in \(Int(context.state.arrivalTime.timeIntervalSince(Date()) / 60)) minutes")
+                                .font(.system(size: 13, weight: .bold, design: .rounded))
+                                .foregroundColor(AppTheme.Colors.textSecondary)
+                        } else {
+                            Text(context.state.proximityText)
+                                .font(.system(size: 13, weight: .medium, design: .rounded))
+                                .foregroundColor(context.state.stopsAway == 1 ? AppTheme.Colors.alertRed : AppTheme.Colors.textSecondary)
+                        }
+                    }
                 }
 
                 Spacer()
 
-                // Hero countdown — dominant, animates up or down
-                countdownText(context: context, size: 36)
+                // Hero Timer
+                VStack(alignment: .trailing, spacing: -2) {
+                    countdownText(context: context, size: 36)
+                        .foregroundStyle(.white)
+                    Text("MIN")
+                        .font(.system(size: 10, weight: .black))
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+                }
             }
+            .padding(.horizontal, 20)
+            .padding(.top, 20)
+            .padding(.bottom, 16)
 
-            // Progress slider with moving dot
-            progressSlider(progress: context.state.progress, context: context)
-
-            // Upcoming arrivals row
-            if !context.state.nextArrivals.isEmpty {
-                HStack(spacing: 4) {
-                    Text("Next:")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
-
-                    ForEach(Array(context.state.nextArrivals.prefix(3).enumerated()), id: \.offset) { index, mins in
-                        if index > 0 {
-                            Text("•")
-                                .font(.system(size: 11))
-                                .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.4))
-                        }
-                        Text("\(mins) min")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
+            // Progress Slider
+            VStack(spacing: 8) {
+                progressSlider(progress: context.state.progress, context: context)
+                
+                HStack {
+                    if let walkMins = context.state.walkMinutes {
+                        Label("\(walkMins) min walk", systemImage: "figure.walk")
+                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
+                    } else {
+                        Text(context.attributes.lineId + " to " + context.attributes.destination)
+                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
                     }
-
+                    
                     Spacer()
+                    
+                    upcomingArrivalsText(context: context)
+                }
+                .padding(.horizontal, 4)
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 20)
+        }
+        .background {
+            ZStack {
+                RoundedRectangle(cornerRadius: 32)
+                    .fill(.ultraThinMaterial)
+                
+                if context.state.isHurryUp {
+                    AppTheme.Colors.alertRed.opacity(0.08)
+                        .clipShape(RoundedRectangle(cornerRadius: 32))
                 }
             }
         }
-        .padding(.horizontal, 24)
-        .padding(.vertical, 20)
-        .background(.ultraThinMaterial)
-        .activityBackgroundTint(.clear)
+        .activityBackgroundTint(Color.black.opacity(0.4))
     }
 
     // MARK: - Reusable Components
 
-    /// Animated countdown that smoothly transitions when the arrival time changes
-    /// (whether sooner or later). Uses the absolute `arrivalTime` Date so
-    /// SwiftUI's `.timer` style always reflects the latest ETA.
     @ViewBuilder
     private func countdownText(context: ActivityViewContext<TrackActivityAttributes>, size: CGFloat) -> some View {
         Text(context.state.arrivalTime, style: .timer)
             .font(.system(size: size, weight: .bold, design: .rounded))
-            .foregroundColor(AppTheme.Colors.textPrimary)
             .monospacedDigit()
-            .multilineTextAlignment(.trailing)
             .contentTransition(.numericText(countsDown: true))
     }
 
-    /// Live progress slider showing train position between previous stop and user's stop.
     @ViewBuilder
     private func progressSlider(progress: Double, context: ActivityViewContext<TrackActivityAttributes>) -> some View {
         let accentColor = context.attributes.isBus
@@ -153,45 +190,57 @@ struct TrackWidgetLiveActivity: Widget {
             let dotX = geo.size.width * clampedProgress
 
             ZStack(alignment: .leading) {
-                // Track background
+                // Background Track
                 Capsule()
-                    .fill(AppTheme.Colors.textSecondary.opacity(0.2))
-                    .frame(height: 4)
-
-                // Filled track
+                    .fill(Color.white.opacity(0.1))
+                    .frame(height: 6)
+                
+                // Active Track Gradient
                 Capsule()
-                    .fill(accentColor)
-                    .frame(width: dotX, height: 4)
+                    .fill(
+                        LinearGradient(
+                            colors: [accentColor.opacity(0.3), accentColor],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(width: dotX, height: 6)
 
-                // Moving dot indicator
-                Circle()
-                    .fill(accentColor)
-                    .frame(width: 10, height: 10)
-                    .shadow(color: accentColor.opacity(0.4), radius: 3, x: 0, y: 1)
-                    .offset(x: dotX - 5)
+                // The "Vehicule" Indicator
+                ZStack {
+                    Circle()
+                        .fill(.white)
+                        .frame(width: 14, height: 14)
+                        .shadow(color: accentColor.opacity(0.6), radius: 6, x: 0, y: 0)
+                    
+                    Circle()
+                        .fill(accentColor)
+                        .frame(width: 8, height: 8)
+                }
+                .offset(x: dotX - 7)
             }
         }
-        .frame(height: 10)
+        .frame(height: 14)
     }
 
-    /// Small faded text showing the next 2–3 arrival times.
     @ViewBuilder
     private func upcomingArrivalsText(context: ActivityViewContext<TrackActivityAttributes>) -> some View {
         if !context.state.nextArrivals.isEmpty {
-            HStack(spacing: 3) {
-                Text("Next:")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
-
-                ForEach(Array(context.state.nextArrivals.prefix(2).enumerated()), id: \.offset) { index, mins in
-                    if index > 0 {
-                        Text("•")
-                            .font(.system(size: 10))
-                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.4))
+            HStack(spacing: 6) {
+                Text("NEXT")
+                    .font(.system(size: 8, weight: .black))
+                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.5))
+                
+                HStack(spacing: 4) {
+                    ForEach(Array(context.state.nextArrivals.prefix(2).enumerated()), id: \.offset) { index, mins in
+                        Text("\(mins)m")
+                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.8))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.white.opacity(0.05))
+                            .clipShape(Capsule())
                     }
-                    Text("\(mins)m")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
                 }
             }
         }
@@ -201,33 +250,33 @@ struct TrackWidgetLiveActivity: Widget {
 
     @ViewBuilder
     private func lineBadge(context: ActivityViewContext<TrackActivityAttributes>, size: CGFloat = 36) -> some View {
+        let color = context.attributes.isBus ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: context.attributes.lineId)
+        let textColor = context.attributes.isBus ? .white : AppTheme.SubwayColors.textColor(for: context.attributes.lineId)
+        
         ZStack {
-            // Physical token background with shadow for depth
             Circle()
-                .fill(context.attributes.isBus ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: context.attributes.lineId))
-                .shadow(color: .black.opacity(0.25), radius: 4, x: 0, y: 2)
+                .fill(
+                    LinearGradient(
+                        colors: [color.opacity(1.0), color.opacity(0.85)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
                 .overlay(
-                    // Subtle inner rim/lighting for physical feel
                     Circle()
-                        .stroke(LinearGradient(
-                            colors: [.white.opacity(0.3), .black.opacity(0.1)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ), lineWidth: 1)
+                        .strokeBorder(Color.white.opacity(0.2), lineWidth: 1)
                 )
 
             if context.attributes.isBus {
                 Image(systemName: "bus.fill")
                     .font(.system(size: size * 0.4, weight: .bold))
                     .foregroundColor(.white)
-                    .shadow(color: .black.opacity(0.1), radius: 1, x: 0, y: 1)
             } else {
                 Text(context.attributes.lineId)
                     .font(.system(size: size * 0.45, weight: .heavy, design: .rounded))
-                    .foregroundColor(.white)
+                    .foregroundColor(textColor)
                     .minimumScaleFactor(0.6)
                     .lineLimit(1)
-                    .shadow(color: .black.opacity(0.1), radius: 1, x: 0, y: 1)
             }
         }
         .frame(width: size, height: size)
@@ -235,9 +284,12 @@ struct TrackWidgetLiveActivity: Widget {
 
     @ViewBuilder
     private func compactLineBadge(context: ActivityViewContext<TrackActivityAttributes>) -> some View {
+        let color = context.attributes.isBus ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: context.attributes.lineId)
+        let textColor = context.attributes.isBus ? .white : AppTheme.SubwayColors.textColor(for: context.attributes.lineId)
+        
         ZStack {
             Circle()
-                .fill(context.attributes.isBus ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: context.attributes.lineId))
+                .fill(color)
                 .frame(width: 24, height: 24)
             if context.attributes.isBus {
                 Image(systemName: "bus.fill")
@@ -246,7 +298,7 @@ struct TrackWidgetLiveActivity: Widget {
             } else {
                 Text(context.attributes.lineId)
                     .font(.system(size: 11, weight: .heavy, design: .rounded))
-                    .foregroundColor(.white)
+                    .foregroundColor(textColor)
                     .minimumScaleFactor(0.5)
                     .lineLimit(1)
             }

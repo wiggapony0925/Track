@@ -1,6 +1,6 @@
 //
 //  AppSettings.swift
-//  Track
+//  Shared
 //
 //  Loads settings.json from the app bundle and exposes typed,
 //  centralized configuration values. Change a single value in
@@ -30,12 +30,9 @@ struct AppSettings {
     let maxLirrArrivals: Int
     let maxRouteDetailArrivals: Int
     let stationVisibilityZoomMeters: Double
-
-    // MARK: - Live Activity Settings
-
     let liveActivityStaleDateSeconds: Double
     let liveActivityDismissalSeconds: Double
-    let defaultArrivalFallbackSeconds: Double
+
 
     // MARK: - Location Settings
 
@@ -82,9 +79,8 @@ struct AppSettings {
             self.maxLirrArrivals = 15
             self.maxRouteDetailArrivals = 4
             self.stationVisibilityZoomMeters = 3500
-            self.liveActivityStaleDateSeconds = 60
-            self.liveActivityDismissalSeconds = 30
-            self.defaultArrivalFallbackSeconds = 300
+            self.liveActivityStaleDateSeconds = 3600
+            self.liveActivityDismissalSeconds = 120
             self.distanceFilterMeters = 50
             self.commutePatternMatchRadiusMeters = 200
             self.stopPassedThresholdMeters = 100
@@ -109,7 +105,6 @@ struct AppSettings {
 
         let api = json["api"] as? [String: Any] ?? [:]
         let display = json["display"] as? [String: Any] ?? [:]
-        let liveActivity = json["live_activity"] as? [String: Any] ?? [:]
         let location = json["location"] as? [String: Any] ?? [:]
         let map = json["map"] as? [String: Any] ?? [:]
 
@@ -126,10 +121,9 @@ struct AppSettings {
         self.maxLirrArrivals = display["max_lirr_arrivals"] as? Int ?? 15
         self.maxRouteDetailArrivals = display["max_route_detail_arrivals"] as? Int ?? 4
         self.stationVisibilityZoomMeters = display["station_visibility_zoom_meters"] as? Double ?? 3500
+        self.liveActivityStaleDateSeconds = display["live_activity_stale_date_seconds"] as? Double ?? 3600
+        self.liveActivityDismissalSeconds = display["live_activity_dismissal_seconds"] as? Double ?? 120
 
-        self.liveActivityStaleDateSeconds = liveActivity["stale_date_seconds"] as? Double ?? 60
-        self.liveActivityDismissalSeconds = liveActivity["dismissal_seconds"] as? Double ?? 30
-        self.defaultArrivalFallbackSeconds = liveActivity["default_arrival_fallback_seconds"] as? Double ?? 300
 
         self.distanceFilterMeters = location["distance_filter_meters"] as? Double ?? 50
         self.commutePatternMatchRadiusMeters = location["commute_pattern_match_radius_meters"] as? Double ?? 200

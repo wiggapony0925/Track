@@ -42,7 +42,9 @@ final class LiveActivityManager {
         isBus: Bool,
         stationId: String = "",
         stopsAway: Int? = nil,
-        nextArrivals: [Int] = []
+        nextArrivals: [Int] = [],
+        walkMinutes: Int? = nil,
+        isHurryUp: Bool = false
     ) {
         // End any existing activity first
         endActivity()
@@ -63,7 +65,9 @@ final class LiveActivityManager {
             arrivalTime: arrivalTime,
             progress: 0.0,
             stopsAway: stopsAway,
-            nextArrivals: nextArrivals
+            nextArrivals: nextArrivals,
+            walkMinutes: walkMinutes,
+            isHurryUp: isHurryUp
         )
 
         do {
@@ -99,7 +103,9 @@ final class LiveActivityManager {
         arrivalTime: Date,
         progress: Double,
         stopsAway: Int? = nil,
-        nextArrivals: [Int] = []
+        nextArrivals: [Int] = [],
+        walkMinutes: Int? = nil,
+        isHurryUp: Bool = false
     ) {
         guard let activityID = currentActivityID else { return }
 
@@ -108,7 +114,9 @@ final class LiveActivityManager {
             arrivalTime: arrivalTime,
             progress: min(1.0, max(0.0, progress)),
             stopsAway: stopsAway,
-            nextArrivals: nextArrivals
+            nextArrivals: nextArrivals,
+            walkMinutes: walkMinutes,
+            isHurryUp: isHurryUp
         )
 
         Task {
@@ -133,7 +141,9 @@ final class LiveActivityManager {
                     arrivalTime: Date(),
                     progress: 1.0,
                     stopsAway: 0,
-                    nextArrivals: []
+                    nextArrivals: [],
+                    walkMinutes: nil,
+                    isHurryUp: false
                 )
                 await activity.end(
                     ActivityContent(state: finalState, staleDate: nil),

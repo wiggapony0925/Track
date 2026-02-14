@@ -5,7 +5,6 @@
 //  ActivityKit model defining the data for Live Activities.
 //  Used by both the main app (to start/update activities) and
 //  the widget extension (to render the Dynamic Island & Lock Screen).
-//
 
 import Foundation
 import ActivityKit
@@ -29,9 +28,18 @@ struct TrackActivityAttributes: ActivityAttributes {
         /// Minutes until the next 2–3 arrivals after the tracked one.
         var nextArrivals: [Int]
 
+        /// Minutes remaining to walk to the station.
+        var walkMinutes: Int?
+
+        /// Whether the user needs to "Hurry up" to catch the trip.
+        var isHurryUp: Bool
+
         /// Dynamic proximity label derived from stopsAway.
         /// e.g. "3 stops away", "1 stop away", "Arriving", "At station".
         var proximityText: String {
+            if let walk = walkMinutes {
+                return walk <= 2 ? "Run now!" : "Walk to station"
+            }
             guard let stops = stopsAway else { return statusText }
             switch stops {
             case 0:  return "At station"

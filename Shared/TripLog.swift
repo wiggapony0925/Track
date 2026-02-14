@@ -1,6 +1,6 @@
 //
 //  TripLog.swift
-//  Track
+//  Shared
 //
 //  SwiftData model for logging trip data used by the Delay Predictor.
 //  Captures the delta between MTA-predicted and actual arrival times.

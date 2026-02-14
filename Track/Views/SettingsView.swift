@@ -20,6 +20,7 @@ struct SettingsView: View {
         NavigationStack {
             List {
                 appearanceSection
+                widgetSection
                 accountSection
                 developerSettingsSection
             }
@@ -45,6 +46,26 @@ struct SettingsView: View {
             }
         } header: {
             Text("Appearance")
+        }
+    }
+
+    // MARK: - Widgets
+
+    private var widgetSection: some View {
+        Section {
+            NavigationLink {
+                WidgetSchedulesView()
+            } label: {
+                HStack {
+                    Image(systemName: "calendar.badge.clock")
+                        .foregroundColor(AppTheme.Colors.mtaBlue)
+                    Text("Widget Schedules")
+                }
+            }
+        } header: {
+            Text("Live Near Me Widget")
+        } footer: {
+            Text("Configure when the nearby transit widget should activate throughout the day.")
         }
     }
 

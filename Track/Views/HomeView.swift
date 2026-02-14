@@ -237,6 +237,7 @@ struct HomeView: View {
                         onTrack: { arrival in
                             viewModel.trackNearbyArrival(arrival, location: locationManager.currentLocation)
                         },
+                        isTracking: { viewModel.isTracking($0) },
                         onDismiss: {
                             withAnimation(.easeInOut(duration: 0.25)) {
                                 viewModel.isRouteDetailPresented = false
@@ -755,7 +756,7 @@ struct HomeView: View {
              ForEach(Array(arrivals.enumerated()), id: \.element.id) { index, arrival in
                 NearbyTransitRow(
                     arrival: arrival,
-                    isTracking: viewModel.trackingArrivalId == arrival.id,
+                    isTracking: viewModel.isTracking(arrival),
                     onTrack: {
                         viewModel.trackNearbyArrival(arrival, location: locationManager.currentLocation)
                     },
@@ -789,7 +790,7 @@ struct HomeView: View {
                         ArrivalRow(
                             arrival: arrival,
                             prediction: nil,
-                            isTracking: viewModel.trackingArrivalId == arrival.id.uuidString,
+                            isTracking: viewModel.isTracking(arrival),
                             reliabilityWarning: nil,
                             onTrack: {
                                 viewModel.trackSubwayArrival(arrival, location: locationManager.currentLocation)
@@ -859,7 +860,7 @@ struct HomeView: View {
                     ForEach(Array(viewModel.busArrivals.enumerated()), id: \.element.id) { index, arrival in
                         BusArrivalRow(
                             arrival: arrival,
-                            isTracking: viewModel.trackingArrivalId == arrival.id,
+                            isTracking: viewModel.isTracking(arrival),
                             reliabilityWarning: nil,
                             onTrack: {
                                 viewModel.trackBusArrival(arrival, location: locationManager.currentLocation)
@@ -919,7 +920,7 @@ struct HomeView: View {
                         ArrivalRow(
                             arrival: arrival,
                             prediction: nil,
-                            isTracking: viewModel.trackingArrivalId == arrival.id.uuidString,
+                            isTracking: viewModel.isTracking(arrival),
                             reliabilityWarning: nil,
                             onTrack: {
                                 viewModel.trackLIRRArrival(arrival, location: locationManager.currentLocation)

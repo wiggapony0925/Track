@@ -1,6 +1,6 @@
 //
 //  SmartSuggester.swift
-//  Track
+//  Shared
 //
 //  Predicts the user's likely destination using a Frequency-Recency Heuristic.
 //  Aggregates current context (location, time) to produce route suggestions.

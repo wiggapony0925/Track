@@ -1,10 +1,9 @@
 //
 //  WeatherCondition.swift
-//  Track
+//  Shared
 //
 //  Weather condition enum used as a feature for delay prediction.
 //
-//  NOTE: Shared copy — must stay in sync with Track/Models/WeatherCondition.swift
 
 import Foundation
 
