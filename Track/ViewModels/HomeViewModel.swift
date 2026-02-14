@@ -260,7 +260,59 @@ final class HomeViewModel {
         }
 
         syncTrackedRoute()
+        updateLiveActivityFromRefresh()
         isLoading = false
+    }
+
+    /// Updates the running Live Activity with fresh data from the latest refresh.
+    /// This ensures the 'Other upcoming arrivals' and progress stay accurate.
+    private func updateLiveActivityFromRefresh() {
+        guard let tracked = currentTrackedRoute else { return }
+        
+        // Find matching arrival and its siblings across all possible data sources
+        var foundArrival: (minutesAway: Int, destination: String, isBus: Bool)?
+        var siblings: [Int] = []
+        
+        // 1. Check Nearby Transit (Unified)
+        if let match = nearbyTransit.first(where: { isTracking($0) }) {
+            foundArrival = (match.minutesAway, match.destination ?? match.direction, match.isBus)
+            siblings = nearbyTransit
+                .filter { $0.routeId == match.routeId && $0.direction == match.direction && $0.minutesAway > match.minutesAway }
+                .map { $0.minutesAway }
+                .sorted()
+        } 
+        // 2. Check Subway Dedicated
+        else if let match = upcomingArrivals.first(where: { isTracking($0) }) {
+            foundArrival = (match.minutesAway, match.direction, false)
+            siblings = upcomingArrivals
+                .filter { $0.direction == match.direction && $0.stationID == match.stationID && $0.minutesAway > match.minutesAway }
+                .map { $0.minutesAway }
+                .sorted()
+        }
+        // 3. Check Bus Dedicated
+        else if let match = busArrivals.first(where: { isTracking($0) }) {
+            let mins = match.expectedArrival.map { Int($0.timeIntervalSinceNow / 60) } ?? 0
+            foundArrival = (mins, "Bus", true)
+            siblings = busArrivals
+                .filter { $0.routeId == match.routeId && $0.stopId == match.stopId }
+                .compactMap { $0.expectedArrival }
+                .map { Int($0.timeIntervalSinceNow / 60) }
+                .filter { $0 > mins }
+                .sorted()
+        }
+
+        guard let current = foundArrival else { return }
+        
+        let eta = Date().addingTimeInterval(Double(current.minutesAway) * 60)
+        let progress = 1.0 - (Double(current.minutesAway) / 15.0) // Simple 15-min scale progress
+        
+        LiveActivityManager.shared.updateActivity(
+            statusText: current.minutesAway <= 1 ? "Arriving" : "\(current.minutesAway) stops away",
+            arrivalTime: eta,
+            progress: max(0, min(1.0, progress)),
+            stopsAway: current.minutesAway,
+            nextArrivals: Array(siblings.prefix(2))
+        )
     }
 
     // MARK: - Search Pin
@@ -611,11 +663,21 @@ final class HomeViewModel {
         
         // Start Live Activity
         let eta = Date().addingTimeInterval(Double(arrival.minutesAway) * 60)
+        
+        // Find sibling arrivals for the "Other upcoming trains" section
+        let nextArrivals = (groupedTransit.first(where: { $0.routeId == arrival.routeId })?
+            .directions.first(where: { $0.direction == arrival.direction })?
+            .arrivals.filter { $0.minutesAway > arrival.minutesAway }
+            .map { $0.minutesAway }
+            .sorted() ?? [])
+            .prefix(2)
+
         LiveActivityManager.shared.startActivity(
             lineId: arrival.routeId,
             destination: arrival.destination ?? arrival.direction,
             arrivalTime: eta,
-            isBus: arrival.isBus
+            isBus: arrival.isBus,
+            nextArrivals: Array(nextArrivals)
         )
     }
 
@@ -637,11 +699,20 @@ final class HomeViewModel {
 
         // Start Live Activity
         let eta = Date().addingTimeInterval(Double(arrival.minutesAway) * 60)
+        
+        // Find sibling arrivals for the "Other upcoming trains" section
+        let nextArrivals = upcomingArrivals
+            .filter { $0.direction == arrival.direction && $0.stationID == arrival.stationID && $0.minutesAway > arrival.minutesAway }
+            .map { $0.minutesAway }
+            .sorted()
+            .prefix(2)
+
         LiveActivityManager.shared.startActivity(
             lineId: arrival.routeID,
             destination: arrival.direction,
             arrivalTime: eta,
-            isBus: false
+            isBus: false,
+            nextArrivals: Array(nextArrivals)
         )
     }
 
@@ -662,12 +733,23 @@ final class HomeViewModel {
         WidgetCenter.shared.reloadAllTimelines()
 
         // Start Live Activity
-        let arrivalTime = arrival.expectedArrival ?? Date().addingTimeInterval(300) // Fallback to 5 mins if no expected_arrival
+        let arrivalTime = arrival.expectedArrival ?? Date().addingTimeInterval(300)
+        
+        // Find sibling arrivals for the "Other upcoming trains" section
+        let nextArrivals = busArrivals
+            .filter { $0.routeId == arrival.routeId && $0.stopId == arrival.stopId }
+            .compactMap { $0.expectedArrival }
+            .filter { $0 > arrivalTime }
+            .map { Int($0.timeIntervalSinceNow / 60) }
+            .sorted()
+            .prefix(2)
+
         LiveActivityManager.shared.startActivity(
             lineId: stripMTAPrefix(arrival.routeId),
-            destination: "Bus Tracking", // BusArrival model lacks destinationName
+            destination: "Bus Tracking",
             arrivalTime: arrivalTime,
-            isBus: true
+            isBus: true,
+            nextArrivals: Array(nextArrivals)
         )
     }
 
@@ -689,11 +771,20 @@ final class HomeViewModel {
 
         // Start Live Activity
         let eta = Date().addingTimeInterval(Double(arrival.minutesAway) * 60)
+        
+        // Find sibling arrivals for the "Other upcoming trains" section
+        let nextArrivals = lirrArrivals
+            .filter { $0.direction == arrival.direction && $0.stationID == arrival.stationID && $0.minutesAway > arrival.minutesAway }
+            .map { $0.minutesAway }
+            .sorted()
+            .prefix(2)
+
         LiveActivityManager.shared.startActivity(
             lineId: arrival.routeID,
             destination: arrival.direction,
             arrivalTime: eta,
-            isBus: false
+            isBus: false,
+            nextArrivals: Array(nextArrivals)
         )
     }
 

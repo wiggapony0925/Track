@@ -71,7 +71,7 @@ struct TrackWidgetLiveActivity: Widget {
     private func lockScreenView(context: ActivityViewContext<TrackActivityAttributes>) -> some View {
         VStack(spacing: 0) {
             // Top Section: Stickman + Hurry Up / Route Info
-            HStack(spacing: 12) {
+            HStack(alignment: .center, spacing: 14) {
                 if let walk = context.state.walkMinutes {
                     // Stickman Indicator
                     ZStack {
@@ -87,7 +87,7 @@ struct TrackWidgetLiveActivity: Widget {
                     lineBadge(context: context, size: 44)
                 }
 
-                VStack(alignment: .leading, spacing: 1) {
+                VStack(alignment: .leading, spacing: 2) {
                     if context.state.isHurryUp {
                         Text("Hurry up!")
                             .font(.system(size: 18, weight: .black, design: .rounded))
@@ -100,6 +100,8 @@ struct TrackWidgetLiveActivity: Widget {
                         Text(context.attributes.destination)
                             .font(.system(size: 20, weight: .bold, design: .rounded))
                             .foregroundColor(AppTheme.Colors.textPrimary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.6)
                     }
                     
                     HStack(spacing: 6) {
@@ -118,14 +120,17 @@ struct TrackWidgetLiveActivity: Widget {
 
                 Spacer()
 
-                // Hero Timer
-                VStack(alignment: .trailing, spacing: -2) {
+                // Hero Timer - Balanced Layout
+                VStack(alignment: .center, spacing: -4) {
                     countdownText(context: context, size: 36)
                         .foregroundStyle(.white)
+                        .frame(minWidth: 70, alignment: .center)
+                    
                     Text("MIN")
-                        .font(.system(size: 10, weight: .black))
-                        .foregroundColor(AppTheme.Colors.textSecondary)
+                        .font(.system(size: 10, weight: .black, design: .rounded))
+                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.8))
                 }
+                .padding(.trailing, 4)
             }
             .padding(.horizontal, 20)
             .padding(.top, 20)
@@ -147,13 +152,61 @@ struct TrackWidgetLiveActivity: Widget {
                     }
                     
                     Spacer()
-                    
-                    upcomingArrivalsText(context: context)
                 }
                 .padding(.horizontal, 4)
             }
             .padding(.horizontal, 20)
-            .padding(.bottom, 20)
+            .padding(.bottom, 12)
+
+            // Other Upcoming Trains Section
+            if !context.state.nextArrivals.isEmpty {
+                VStack(spacing: 0) {
+                    Divider()
+                        .background(Color.white.opacity(0.05))
+                        .padding(.bottom, 12)
+                    
+                    HStack(spacing: 12) {
+                        Text("FOLLOWING")
+                            .font(.system(size: 9, weight: .black, design: .rounded))
+                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
+                        
+                        HStack(spacing: 8) {
+                            ForEach(Array(context.state.nextArrivals.prefix(2).enumerated()), id: \.offset) { index, mins in
+                                HStack(spacing: 6) {
+                                    // Ultra-mini badge for upcoming trains
+                                    Circle()
+                                        .fill(context.attributes.isBus ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: context.attributes.lineId))
+                                        .frame(width: 14, height: 14)
+                                        .overlay(
+                                            Text(context.attributes.lineId)
+                                                .font(.system(size: 8, weight: .heavy, design: .rounded))
+                                                .foregroundColor(.white)
+                                        )
+                                    
+                                    Text("\(mins) MIN")
+                                        .font(.system(size: 11, weight: .black, design: .rounded))
+                                        .foregroundColor(AppTheme.Colors.textPrimary.opacity(0.9))
+                                }
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(Color.white.opacity(0.06))
+                                .clipShape(Capsule())
+                                .overlay(
+                                    Capsule()
+                                        .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5)
+                                )
+                            }
+                        }
+                        
+                        Spacer()
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 20)
+                }
+            } else {
+                Spacer()
+                    .frame(height: 8)
+            }
         }
         .background {
             ZStack {
