@@ -363,6 +363,7 @@ final class HomeViewModel {
             
             do {
                 routeShape = try await shapeTask
+                AppLogger.shared.log("BUS_SHAPE", message: "Loaded shape for \(group.routeId): \(routeShape?.polylines.count ?? 0) polylines, \(routeShape?.stops.count ?? 0) stops")
             } catch {
                 AppLogger.shared.logError("fetchRouteShape(\(group.routeId))", error: error)
             }

@@ -43,7 +43,7 @@ struct HomeView: View {
 
     /// Dashed stroke style for bus route polylines — visually distinct from subway solid lines.
     private var busRouteStrokeStyle: StrokeStyle {
-        StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round, dash: [12, 6])
+        StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round)
     }
 
     var body: some View {

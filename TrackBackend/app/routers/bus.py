@@ -46,7 +46,14 @@ async def bus_routes() -> list[BusRoute]:
 async def bus_stops(route_id: str) -> list[BusStop]:
     """Return stops for a bus route (e.g. ``/bus/stops/MTA NYCT_B63``)."""
     try:
-        return await get_stops(route_id)
+        stops = await get_stops(route_id)
+        if not stops and not route_id.startswith("MTA"):
+            for prefix in ["MTA NYCT_", "MTA BUS_"]:
+                full_id = f"{prefix}{route_id}"
+                stops = await get_stops(full_id)
+                if stops:
+                    return stops
+        return stops
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code in (401, 403):
             raise HTTPException(
@@ -130,7 +137,17 @@ async def bus_route_shape(route_id: str) -> RouteShape:
     along with all stops on the route for annotation.
     """
     try:
-        return await get_route_shape(route_id)
+        data = await get_route_shape(route_id)
+        if not data.polylines and not data.stops and not route_id.startswith("MTA"):
+            # If "M11" returns nothing, try "MTA NYCT_M11"
+            # We can try a few common prefixes
+            for prefix in ["MTA NYCT_", "MTA BUS_"]:
+                full_id = f"{prefix}{route_id}"
+                data = await get_route_shape(full_id)
+                if data.polylines or data.stops:
+                    return data
+        return data
+
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code in (401, 403):
             raise HTTPException(
