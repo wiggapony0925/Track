@@ -50,7 +50,7 @@ struct SubwayRoutesData {
     
     /// Update bundle from API (call when online)
     static func updateBundleFromAPI() async {
-        guard let url = URL(string: "\(AppSettings.baseURL)/static/bundle") else { return }
+        guard let url = URL(string: "\(AppSettings.shared.prodBaseURL)/static/bundle") else { return }
         
         do {
             let (data, _) = try await URLSession.shared.data(from: url)
