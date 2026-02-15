@@ -19,12 +19,13 @@ struct DataController {
     let container: ModelContainer
 
     init() {
+        // SwiftData models for local persistence
+        // Note: WidgetSchedule uses UserDefaults for widget access
         let schema = Schema([
             CommutePattern.self,
             TripLog.self,
             Station.self,
             Route.self,
-            WidgetSchedule.self,
         ])
 
         // Point to the Shared App Group container

@@ -2,24 +2,32 @@
 //  WidgetSchedule.swift
 //  Shared
 //
-//  SwiftData model for configurable widget activation schedules.
-//  Users can set specific days/times when the LiveNearMeWidget should be active.
+//  Codable struct for widget activation schedules.
+//  Persisted to UserDefaults in App Group for widget access.
+//  Also syncs to Supabase for cross-device sync.
 //
 
 import Foundation
-import SwiftData
 
-@Model
-final class WidgetSchedule: Identifiable {
-    @Attribute(.unique) var id: UUID
-    var days: [Int] // 0=Sunday, 1=Monday, ..., 6=Saturday
+/// Widget activation schedule - stored in UserDefaults for widget access
+struct WidgetSchedule: Codable, Identifiable, Equatable {
+    var id: UUID
+    var days: Set<Int> // 0=Sunday, 1=Monday, ..., 6=Saturday
     var startTime: String // "HH:mm" format (e.g., "08:30")
     var duration: Int // minutes
     var enabled: Bool
     var routeId: String?
     var direction: String?
-
-    init(id: UUID = UUID(), days: [Int], startTime: String, duration: Int = 15, enabled: Bool = true, routeId: String? = nil, direction: String? = nil) {
+    
+    init(
+        id: UUID = UUID(),
+        days: Set<Int> = [],
+        startTime: String = "08:00",
+        duration: Int = 15,
+        enabled: Bool = true,
+        routeId: String? = nil,
+        direction: String? = nil
+    ) {
         self.id = id
         self.days = days
         self.startTime = startTime
@@ -27,6 +35,42 @@ final class WidgetSchedule: Identifiable {
         self.enabled = enabled
         self.routeId = routeId
         self.direction = direction
+    }
+    
+    // MARK: - Persistence
+    
+    private static let defaults = UserDefaults(suiteName: "group.com.track.shared") ?? .standard
+    private static let storageKey = "widget_schedules"
+    
+    /// Load all schedules from UserDefaults
+    static func loadAll() -> [WidgetSchedule] {
+        guard let data = defaults.data(forKey: storageKey) else {
+            return []
+        }
+        
+        do {
+            return try JSONDecoder().decode([WidgetSchedule].self, from: data)
+        } catch {
+            print("[WidgetSchedule] Failed to decode schedules: \(error)")
+            return []
+        }
+    }
+    
+    /// Save all schedules to UserDefaults
+    static func saveAll(_ schedules: [WidgetSchedule]) {
+        do {
+            let data = try JSONEncoder().encode(schedules)
+            defaults.set(data, forKey: storageKey)
+        } catch {
+            print("[WidgetSchedule] Failed to encode schedules: \(error)")
+        }
+    }
+    
+    /// Delete a specific schedule
+    static func delete(id: UUID) {
+        var schedules = loadAll()
+        schedules.removeAll { $0.id == id }
+        saveAll(schedules)
     }
 
     // MARK: - Schedule Logic

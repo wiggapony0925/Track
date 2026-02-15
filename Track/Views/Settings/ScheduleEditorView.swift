@@ -24,7 +24,7 @@ struct ScheduleEditorView: View {
 
         // Initialize state from existing schedule or defaults
         if let schedule = schedule {
-            _selectedDays = State(initialValue: Set(schedule.days))
+            _selectedDays = State(initialValue: schedule.days)
             _duration = State(initialValue: schedule.duration)
             _enabled = State(initialValue: schedule.enabled)
 
@@ -229,7 +229,7 @@ struct ScheduleEditorView: View {
 
         let newSchedule = WidgetSchedule(
             id: schedule?.id ?? UUID(),
-            days: Array(selectedDays).sorted(),
+            days: selectedDays,
             startTime: timeString,
             duration: duration,
             enabled: enabled

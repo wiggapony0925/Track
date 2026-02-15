@@ -149,12 +149,27 @@ struct WidgetSchedulesView: View {
 
         WidgetSchedule.saveAll(schedules)
         WidgetCenter.shared.reloadAllTimelines()
+        
+        // Sync to cloud
+        Task {
+            await SyncManager.shared.uploadSchedule(schedule)
+        }
     }
 
     private func deleteSchedules(at offsets: IndexSet) {
+        // Get IDs before removing
+        let idsToDelete = offsets.map { schedules[$0].id }
+        
         schedules.remove(atOffsets: offsets)
         WidgetSchedule.saveAll(schedules)
         WidgetCenter.shared.reloadAllTimelines()
+        
+        // Sync deletions to cloud
+        Task {
+            for id in idsToDelete {
+                await SyncManager.shared.deleteSchedule(id)
+            }
+        }
     }
 
     private func moveSchedules(from source: IndexSet, to destination: Int) {
@@ -167,6 +182,11 @@ struct WidgetSchedulesView: View {
         schedules[index].enabled = enabled
         WidgetSchedule.saveAll(schedules)
         WidgetCenter.shared.reloadAllTimelines()
+        
+        // Sync to cloud
+        Task {
+            await SyncManager.shared.uploadSchedule(schedules[index])
+        }
     }
 }
 
