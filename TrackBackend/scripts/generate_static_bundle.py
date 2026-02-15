@@ -44,7 +44,7 @@ def main():
     
     print(f"✅ Bundle generated!")
     print(f"   Routes: {len(routes)}")
-    print(f"   Branches: {total_branches} (e.g., A train has Lefferts, Far Rockaway, main)")
+    print(f"   Branches: {total_branches} (multi-terminus routes like A train include all variants)")
     print(f"   Stops: {len(bundle.get('stops', []))}")
     print(f"   Colors: {len(bundle.get('colors', {}))}")
     print(f"   Version: {bundle.get('version', '?')}")

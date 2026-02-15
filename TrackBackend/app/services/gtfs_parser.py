@@ -205,7 +205,8 @@ def get_routes_with_shapes() -> Dict[str, List[List[Dict[str, float]]]]:
         if len(coordinates) < 10:
             continue
         
-        # Create endpoint key for deduplication (first and last stop rounded to ~100m)
+        # Create endpoint key for deduplication
+        # 3 decimal places ≈ 111m at equator, sufficient for terminal deduplication
         start = coordinates[0]
         end = coordinates[-1]
         endpoint_key = (
@@ -235,10 +236,10 @@ def get_routes_with_shapes() -> Dict[str, List[List[Dict[str, float]]]]:
         final_branches: Dict[frozenset, List[Dict[str, float]]] = {}
         
         for endpoint_key, coordinates in endpoint_groups.items():
-            # Create a direction-agnostic key (sorted endpoints)
-            start_end = (endpoint_key[0], endpoint_key[1])
-            end_start = (endpoint_key[2], endpoint_key[3])
-            direction_key = frozenset([start_end, end_start])
+            # Create a direction-agnostic key using frozenset of start/end coords
+            start_coords = (endpoint_key[0], endpoint_key[1])
+            end_coords = (endpoint_key[2], endpoint_key[3])
+            direction_key = frozenset([start_coords, end_coords])
             
             # Keep the longest version of this branch
             if direction_key not in final_branches or len(coordinates) > len(final_branches[direction_key]):

@@ -367,8 +367,8 @@ struct GeoJSONGeometry: Codable {
 // MARK: - Static Bundle Models (From Backend API)
 
 /// Static data bundle from backend /static/bundle endpoint
-/// Version 2.0+: routes is a dict mapping route_id to list of branches (each branch is a list of coordinates)
-/// Version 1.0: routes is a dict mapping route_id to a single list of coordinates
+/// Version 2.x: routes is a dict mapping route_id to list of branches (each branch is a list of coordinates)
+/// Version 1.x: routes is a dict mapping route_id to a single list of coordinates
 struct StaticBundle: Codable {
     let version: String
     let routes: RouteData
