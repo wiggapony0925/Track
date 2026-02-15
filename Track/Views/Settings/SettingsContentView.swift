@@ -20,136 +20,197 @@ struct SettingsContentView: View {
     let sheetNavigator: SheetNavigator
     
     var body: some View {
-        ScrollView {
-            VStack(spacing: 16) {
-                // Appearance Section
-                settingsSection(title: "Appearance") {
-                    VStack(spacing: 0) {
-                        HStack {
-                            Text("Theme")
-                                .font(.custom("Helvetica", size: 16))
-                                .foregroundColor(AppTheme.Colors.textPrimary)
-                            Spacer()
-                            Picker("", selection: $appTheme) {
-                                Text("System").tag("system")
-                                Text("Dark").tag("dark")
-                                Text("Light").tag("light")
-                            }
-                            .pickerStyle(.menu)
-                            .tint(AppTheme.Colors.mtaBlue)
-                        }
-                        .padding(.horizontal, AppTheme.Layout.cardPadding)
-                        .padding(.vertical, 12)
-                    }
-                }
-                
-                // Widget Section
-                settingsSection(title: "Live Near Me Widget") {
-                    VStack(spacing: 0) {
-                        Button {
-                            sheetNavigator.navigate(to: .widgetSchedules)
-                        } label: {
+        VStack(spacing: 0) {
+            // MARK: - Header with Back Button
+            sheetHeader
+            
+            // MARK: - Scrollable Content
+            ScrollView {
+                VStack(spacing: 20) {
+                    // Appearance Section
+                    settingsSection(title: "Appearance") {
+                        VStack(spacing: 0) {
                             HStack {
-                                Image(systemName: "calendar.badge.clock")
+                                Image(systemName: "paintbrush.fill")
+                                    .font(.system(size: 18))
                                     .foregroundColor(AppTheme.Colors.mtaBlue)
-                                Text("Widget Schedules")
+                                    .frame(width: 28)
+                                Text("Theme")
                                     .font(.custom("Helvetica", size: 16))
                                     .foregroundColor(AppTheme.Colors.textPrimary)
                                 Spacer()
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 14, weight: .medium))
-                                    .foregroundColor(AppTheme.Colors.textSecondary)
-                            }
-                            .padding(.horizontal, AppTheme.Layout.cardPadding)
-                            .padding(.vertical, 12)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                
-                // Account Section
-                settingsSection(title: "Account") {
-                    VStack(spacing: 0) {
-                        Button {
-                            isLoggedIn = false
-                            sheetNavigator.popToRoot()
-                        } label: {
-                            HStack {
-                                Image(systemName: "rectangle.portrait.and.arrow.right")
-                                Text("Sign Out")
-                                    .font(.custom("Helvetica", size: 16))
-                            }
-                            .foregroundColor(AppTheme.Colors.alertRed)
-                            .padding(.horizontal, AppTheme.Layout.cardPadding)
-                            .padding(.vertical, 12)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                
-                // Developer Section
-                settingsSection(title: "Developer Settings") {
-                    VStack(spacing: 0) {
-                        HStack {
-                            Text("Use Simulator (Localhost)")
-                                .font(.custom("Helvetica", size: 16))
-                                .foregroundColor(AppTheme.Colors.textPrimary)
-                            Spacer()
-                            Toggle("", isOn: $useLocalhost)
+                                Picker("", selection: $appTheme) {
+                                    Text("System").tag("system")
+                                    Text("Dark").tag("dark")
+                                    Text("Light").tag("light")
+                                }
+                                .pickerStyle(.menu)
                                 .tint(AppTheme.Colors.mtaBlue)
+                            }
+                            .padding(.horizontal, AppTheme.Layout.cardPadding)
+                            .padding(.vertical, 14)
                         }
-                        .padding(.horizontal, AppTheme.Layout.cardPadding)
-                        .padding(.vertical, 12)
-                        
-                        if !useLocalhost {
+                    }
+                    
+                    // Widget Section
+                    settingsSection(title: "Widgets") {
+                        VStack(spacing: 0) {
+                            Button {
+                                sheetNavigator.navigate(to: .widgetSchedules)
+                            } label: {
+                                HStack {
+                                    Image(systemName: "calendar.badge.clock")
+                                        .font(.system(size: 18))
+                                        .foregroundColor(AppTheme.Colors.mtaBlue)
+                                        .frame(width: 28)
+                                    Text("Widget Schedules")
+                                        .font(.custom("Helvetica", size: 16))
+                                        .foregroundColor(AppTheme.Colors.textPrimary)
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 14, weight: .semibold))
+                                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
+                                }
+                                .padding(.horizontal, AppTheme.Layout.cardPadding)
+                                .padding(.vertical, 14)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    
+                    // Account Section
+                    settingsSection(title: "Account") {
+                        VStack(spacing: 0) {
+                            Button {
+                                isLoggedIn = false
+                                sheetNavigator.popToRoot()
+                            } label: {
+                                HStack {
+                                    Image(systemName: "rectangle.portrait.and.arrow.right")
+                                        .font(.system(size: 18))
+                                        .foregroundColor(AppTheme.Colors.alertRed)
+                                        .frame(width: 28)
+                                    Text("Sign Out")
+                                        .font(.custom("Helvetica", size: 16))
+                                        .foregroundColor(AppTheme.Colors.alertRed)
+                                    Spacer()
+                                }
+                                .padding(.horizontal, AppTheme.Layout.cardPadding)
+                                .padding(.vertical, 14)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    
+                    // Developer Section
+                    settingsSection(title: "Developer") {
+                        VStack(spacing: 0) {
+                            HStack {
+                                Image(systemName: "hammer.fill")
+                                    .font(.system(size: 18))
+                                    .foregroundColor(AppTheme.Colors.mtaBlue)
+                                    .frame(width: 28)
+                                Text("Use Localhost")
+                                    .font(.custom("Helvetica", size: 16))
+                                    .foregroundColor(AppTheme.Colors.textPrimary)
+                                Spacer()
+                                Toggle("", isOn: $useLocalhost)
+                                    .tint(AppTheme.Colors.mtaBlue)
+                            }
+                            .padding(.horizontal, AppTheme.Layout.cardPadding)
+                            .padding(.vertical, 12)
+                            
+                            if !useLocalhost {
+                                Divider()
+                                    .padding(.leading, AppTheme.Layout.cardPadding + 28 + 8)
+                                
+                                HStack {
+                                    Text("http://")
+                                        .font(.custom("Helvetica", size: 14))
+                                        .foregroundColor(AppTheme.Colors.textSecondary)
+                                    TextField("192.168.1.X", text: $customIP)
+                                        .font(.custom("Helvetica", size: 14))
+                                        .foregroundColor(AppTheme.Colors.textPrimary)
+                                        .keyboardType(.numbersAndPunctuation)
+                                    Text(":8000")
+                                        .font(.custom("Helvetica", size: 14))
+                                        .foregroundColor(AppTheme.Colors.textSecondary)
+                                }
+                                .padding(.horizontal, AppTheme.Layout.cardPadding)
+                                .padding(.vertical, 12)
+                            }
+                            
                             Divider()
-                                .padding(.leading, AppTheme.Layout.cardPadding)
+                                .padding(.leading, AppTheme.Layout.cardPadding + 28 + 8)
                             
                             HStack {
-                                Text("http://")
-                                    .font(.custom("Helvetica", size: 14))
-                                    .foregroundColor(AppTheme.Colors.textSecondary)
-                                TextField("192.168.1.X", text: $customIP)
-                                    .font(.custom("Helvetica", size: 14))
-                                    .foregroundColor(AppTheme.Colors.textPrimary)
-                                    .keyboardType(.numbersAndPunctuation)
-                                Text(":8000")
-                                    .font(.custom("Helvetica", size: 14))
-                                    .foregroundColor(AppTheme.Colors.textSecondary)
+                                Text("Active: \(TrackAPI.baseURL)")
+                                    .font(.system(size: 11, weight: .regular, design: .monospaced))
+                                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
+                                Spacer()
                             }
                             .padding(.horizontal, AppTheme.Layout.cardPadding)
-                            .padding(.vertical, 12)
+                            .padding(.vertical, 10)
                         }
-                        
-                        Divider()
-                            .padding(.leading, AppTheme.Layout.cardPadding)
-                        
-                        HStack {
-                            Text("Active: \(TrackAPI.baseURL)")
-                                .font(.system(size: 12, weight: .regular, design: .monospaced))
-                                .foregroundColor(AppTheme.Colors.textSecondary)
-                            Spacer()
-                        }
-                        .padding(.horizontal, AppTheme.Layout.cardPadding)
-                        .padding(.vertical, 8)
                     }
+                    
+                    Spacer()
+                        .frame(height: 40)
                 }
-                
-                Spacer()
-                    .frame(height: 40)
+                .padding(.top, 12)
             }
-            .padding(.top, 8)
         }
+        .background(AppTheme.Colors.background)
+    }
+    
+    // MARK: - Sheet Header
+    
+    private var sheetHeader: some View {
+        HStack(spacing: 12) {
+            // Back button
+            Button {
+                sheetNavigator.goBack()
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 16, weight: .semibold))
+                    Text("Home")
+                        .font(.custom("Helvetica", size: 16))
+                }
+                .foregroundColor(AppTheme.Colors.mtaBlue)
+            }
+            
+            Spacer()
+            
+            // Title
+            Text("Settings")
+                .font(.custom("Helvetica-Bold", size: 18))
+                .foregroundColor(AppTheme.Colors.textPrimary)
+            
+            Spacer()
+            
+            // Close button
+            Button {
+                sheetNavigator.popToRoot()
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 24))
+                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
+            }
+        }
+        .padding(.horizontal, AppTheme.Layout.margin)
+        .padding(.vertical, 16)
         .background(AppTheme.Colors.background)
     }
     
     // MARK: - Section Builder
     
     private func settingsSection<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             Text(title.uppercased())
-                .font(.custom("Helvetica-Bold", size: 12))
-                .foregroundColor(AppTheme.Colors.textSecondary)
+                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
+                .tracking(0.5)
                 .padding(.horizontal, AppTheme.Layout.margin)
             
             content()
