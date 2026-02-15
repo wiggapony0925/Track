@@ -54,16 +54,27 @@ final class AppLogger {
 
         // Append to log file asynchronously to avoid blocking main thread
         writeQueue.async { [fileURL] in
-            if let data = entry.data(using: .utf8) {
+            guard let data = entry.data(using: .utf8) else { return }
+            
+            do {
                 if FileManager.default.fileExists(atPath: fileURL.path) {
-                    if let handle = try? FileHandle(forWritingTo: fileURL) {
-                        handle.seekToEndOfFile()
-                        handle.write(data)
-                        try? handle.close()
+                    let handle = try FileHandle(forWritingTo: fileURL)
+                    defer {
+                        do {
+                            try handle.close()
+                        } catch {
+                            // Log close failure to console only (avoid recursive logging)
+                            print("[AppLogger] Failed to close file handle: \(error.localizedDescription)")
+                        }
                     }
+                    handle.seekToEndOfFile()
+                    handle.write(data)
                 } else {
-                    try? data.write(to: fileURL)
+                    try data.write(to: fileURL)
                 }
+            } catch {
+                // Log write failure to console only (avoid recursive logging)
+                print("[AppLogger] Failed to write log: \(error.localizedDescription)")
             }
         }
     }
