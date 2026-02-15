@@ -4,15 +4,16 @@
 //
 //  Authentication screen shown before onboarding.
 //  Uses Sign in with Apple as the primary login method.
-//  Currently a visual placeholder — backend auth integration
-//  will be connected when the database layer is added.
+//  Integrates with Supabase for cloud sync and user management.
 //
 
 import SwiftUI
+import AuthenticationServices
 
 struct LoginView: View {
     @AppStorage("isLoggedIn") private var isLoggedIn = false
     @State private var isLoading = false
+    @State private var errorMessage: String?
 
     var body: some View {
         ZStack {
@@ -29,6 +30,16 @@ struct LoginView: View {
 
                 // Login Actions
                 loginActions
+                
+                // Error message
+                if let error = errorMessage {
+                    Text(error)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(AppTheme.Colors.alertRed)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 32)
+                        .padding(.bottom, 16)
+                }
 
                 // Footer
                 footerText
@@ -70,28 +81,19 @@ struct LoginView: View {
     private var loginActions: some View {
         VStack(spacing: 12) {
             // Sign in with Apple button
-            Button {
-                handleSignIn()
-            } label: {
-                HStack(spacing: 10) {
-                    Image(systemName: "apple.logo")
-                        .font(.system(size: 18, weight: .semibold))
-                    Text("Sign in with Apple")
-                        .font(.system(size: 17, weight: .semibold))
-                }
-                .foregroundColor(AppTheme.Colors.textOnColor)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
-                .background(AppTheme.Colors.subwayBlack)
-                .cornerRadius(AppTheme.Layout.cornerRadius)
+            SignInWithAppleButton(.signIn) { request in
+                request.requestedScopes = [.fullName, .email]
+            } onCompletion: { result in
+                handleAppleSignIn(result: result)
             }
+            .signInWithAppleButtonStyle(.black)
+            .frame(height: 52)
+            .cornerRadius(AppTheme.Layout.cornerRadius)
             .disabled(isLoading)
-            .accessibilityLabel("Sign in with Apple")
-            .accessibilityHint("Uses your Apple ID to sign in securely")
 
             // Continue without account
             Button {
-                isLoggedIn = true
+                continueWithoutAccount()
             } label: {
                 Text("Continue without account")
                     .font(.system(size: 15, weight: .medium))
@@ -113,7 +115,7 @@ struct LoginView: View {
     // MARK: - Footer
 
     private var footerText: some View {
-        Text("Your data stays on your device.\nSign in to sync across devices later.")
+        Text("Your data stays on your device.\nSign in to sync across devices.")
             .font(.system(size: 12, weight: .regular))
             .foregroundColor(AppTheme.Colors.textSecondary)
             .multilineTextAlignment(.center)
@@ -121,12 +123,62 @@ struct LoginView: View {
     }
 
     // MARK: - Actions
-
-    private func handleSignIn() {
+    
+    private func handleAppleSignIn(result: Result<ASAuthorization, Error>) {
         isLoading = true
-        // Placeholder: Apple Sign-In will be integrated here
-        // when the database backend is connected.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+        errorMessage = nil
+        
+        switch result {
+        case .success(let authorization):
+            if let appleIDCredential = authorization.credential as? ASAuthorizationAppleIDCredential {
+                // Extract credentials
+                let credentials = AppleSignInCredentials(
+                    userId: appleIDCredential.user,
+                    email: appleIDCredential.email,
+                    fullName: appleIDCredential.fullName,
+                    identityToken: appleIDCredential.identityToken,
+                    authorizationCode: appleIDCredential.authorizationCode
+                )
+                
+                // Sign in with Supabase
+                Task { @MainActor in
+                    do {
+                        try await SupabaseManager.shared.signInWithApple(credentials: credentials)
+                        isLoading = false
+                        isLoggedIn = true
+                    } catch {
+                        isLoading = false
+                        errorMessage = error.localizedDescription
+                        
+                        // Fallback: still allow login even if cloud sync fails
+                        // User data will be stored locally
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                            isLoggedIn = true
+                        }
+                    }
+                }
+            }
+            
+        case .failure(let error):
+            isLoading = false
+            // User cancelled or error occurred
+            if (error as NSError).code != ASAuthorizationError.canceled.rawValue {
+                errorMessage = "Sign in failed. Please try again."
+            }
+        }
+    }
+    
+    private func continueWithoutAccount() {
+        isLoading = true
+        
+        // Optionally create anonymous Supabase session for basic features
+        Task { @MainActor in
+            do {
+                try await SupabaseManager.shared.signInAnonymously()
+            } catch {
+                // Continue anyway - local-only mode
+                print("Anonymous sign-in failed: \(error)")
+            }
             isLoading = false
             isLoggedIn = true
         }
