@@ -39,6 +39,7 @@ struct BusArrival: Identifiable, Codable {
         case vehicleId = "vehicle_id"
         case stopId = "stop_id"
         case statusText = "status_text"
+        case status
         case expectedArrival = "expected_arrival"
         case distanceMeters = "distance_meters"
     }
