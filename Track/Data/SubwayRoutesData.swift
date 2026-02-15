@@ -45,7 +45,7 @@ struct SubwayRoutesData {
         }
         
         // Return empty bundle as fallback
-        return StaticBundle(version: "0", routes: [:], stops: [], colors: [:])
+        return StaticBundle(version: "0", routes: .v2([:]), stops: [], colors: [:])
     }
     
     /// Update bundle from API (call when online)
@@ -217,14 +217,22 @@ struct SubwayRoutesData {
     
     // MARK: - Route Paths (From Bundle or GeoJSON)
     
-    private static var offlinePaths: [String: [CLLocationCoordinate2D]] = loadRoutePaths()
+    /// Cached route paths - now supports multiple branches per route
+    private static var offlinePaths: [String: [[CLLocationCoordinate2D]]] = loadRoutePaths()
     
-    /// Get coordinates for a route line (loaded from bundle or fallback)
+    /// Get ALL branch coordinates for a route line (for routes like A train with Lefferts/Far Rockaway branches)
+    static func routeBranches(for routeId: String) -> [[CLLocationCoordinate2D]] {
+        let key = routeId.uppercased()
+        return offlinePaths[key] ?? []
+    }
+    
+    /// Get the primary (longest) route path for a route - for backwards compatibility
     static func routePath(for routeId: String) -> [CLLocationCoordinate2D] {
         let key = routeId.uppercased()
         
-        if let path = offlinePaths[key] {
-            return path
+        if let branches = offlinePaths[key], !branches.isEmpty {
+            // Return the longest branch (typically the main line)
+            return branches.max(by: { $0.count < $1.count }) ?? []
         }
         
         // Fallback for missing data
@@ -236,21 +244,30 @@ struct SubwayRoutesData {
     }
     
     /// Load route paths from bundle (priority) or legacy GeoJSON
-    private static func loadRoutePaths() -> [String: [CLLocationCoordinate2D]] {
+    private static func loadRoutePaths() -> [String: [[CLLocationCoordinate2D]]] {
         // First try the new bundle format
         let bundle = loadBundle()
         if !bundle.routes.isEmpty {
-            var paths: [String: [CLLocationCoordinate2D]] = [:]
-            for (routeId, coordinates) in bundle.routes {
-                paths[routeId.uppercased()] = coordinates.map {
-                    CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lon)
+            var paths: [String: [[CLLocationCoordinate2D]]] = [:]
+            
+            for routeId in bundle.routes.routeIds {
+                let branches = bundle.routes.branches(for: routeId)
+                paths[routeId.uppercased()] = branches.map { branch in
+                    branch.map { coord in
+                        CLLocationCoordinate2D(latitude: coord.lat, longitude: coord.lon)
+                    }
                 }
             }
             return paths
         }
         
-        // Fallback to legacy GeoJSON file
-        return loadGeoJSONPaths()
+        // Fallback to legacy GeoJSON file (single polyline per route)
+        let legacyPaths = loadGeoJSONPaths()
+        var converted: [String: [[CLLocationCoordinate2D]]] = [:]
+        for (routeId, coords) in legacyPaths {
+            converted[routeId] = [coords]  // Wrap in array for branch compatibility
+        }
+        return converted
     }
     
     /// Legacy: Load from GeoJSON file
@@ -350,11 +367,85 @@ struct GeoJSONGeometry: Codable {
 // MARK: - Static Bundle Models (From Backend API)
 
 /// Static data bundle from backend /static/bundle endpoint
+/// Version 2.0+: routes is a dict mapping route_id to list of branches (each branch is a list of coordinates)
+/// Version 1.0: routes is a dict mapping route_id to a single list of coordinates
 struct StaticBundle: Codable {
     let version: String
-    let routes: [String: [BundleCoordinate]]
+    let routes: RouteData
     let stops: [BundleStop]
     let colors: [String: String]
+    
+    /// Supports both v1 (single polyline) and v2 (multi-branch) formats
+    enum RouteData: Codable {
+        case v1([String: [BundleCoordinate]])          // Single polyline per route
+        case v2([String: [[BundleCoordinate]]])        // Multiple branches per route
+        
+        init(from decoder: Decoder) throws {
+            let container = try decoder.singleValueContainer()
+            
+            // Try v2 format first (multi-branch)
+            if let v2 = try? container.decode([String: [[BundleCoordinate]]].self) {
+                self = .v2(v2)
+                return
+            }
+            
+            // Fall back to v1 format (single polyline)
+            if let v1 = try? container.decode([String: [BundleCoordinate]].self) {
+                self = .v1(v1)
+                return
+            }
+            
+            // Empty fallback
+            self = .v2([:])
+        }
+        
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.singleValueContainer()
+            switch self {
+            case .v1(let data):
+                try container.encode(data)
+            case .v2(let data):
+                try container.encode(data)
+            }
+        }
+        
+        /// Check if empty
+        var isEmpty: Bool {
+            switch self {
+            case .v1(let data): return data.isEmpty
+            case .v2(let data): return data.isEmpty
+            }
+        }
+        
+        /// Get all route IDs
+        var routeIds: [String] {
+            switch self {
+            case .v1(let data): return Array(data.keys)
+            case .v2(let data): return Array(data.keys)
+            }
+        }
+        
+        /// Get count
+        var count: Int {
+            switch self {
+            case .v1(let data): return data.count
+            case .v2(let data): return data.count
+            }
+        }
+        
+        /// Get all branches for a route (returns single-element array for v1)
+        func branches(for routeId: String) -> [[BundleCoordinate]] {
+            switch self {
+            case .v1(let data):
+                if let coords = data[routeId] {
+                    return [coords]
+                }
+                return []
+            case .v2(let data):
+                return data[routeId] ?? []
+            }
+        }
+    }
 }
 
 /// Coordinate in bundle format

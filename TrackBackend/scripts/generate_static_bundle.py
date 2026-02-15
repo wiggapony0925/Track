@@ -26,8 +26,8 @@ def main():
     # Generate the bundle
     bundle = generate_bundle()
     
-    # Output paths
-    output_dir = Path(__file__).parent.parent.parent / "Track"
+    # Output paths - changed to Track/Data folder
+    output_dir = Path(__file__).parent.parent.parent / "Track" / "Data"
     output_file = output_dir / "subway_bundle.json"
     
     # Ensure output directory exists
@@ -37,16 +37,17 @@ def main():
     with open(output_file, 'w', encoding='utf-8') as f:
         json.dump(bundle, f, separators=(',', ':'))
     
-    # Also write a pretty version for debugging
-    debug_file = output_dir / "subway_bundle_debug.json"
-    with open(debug_file, 'w', encoding='utf-8') as f:
-        json.dump(bundle, f, indent=2)
+    # Print stats with branch count for multi-branch routes
+    routes = bundle.get('routes', {})
+    total_branches = sum(len(branches) for branches in routes.values())
+    stats = bundle.get('stats', {})
     
-    # Print stats
     print(f"✅ Bundle generated!")
-    print(f"   Routes: {len(bundle.get('routes', {}))}")
+    print(f"   Routes: {len(routes)}")
+    print(f"   Branches: {total_branches} (e.g., A train has Lefferts, Far Rockaway, main)")
     print(f"   Stops: {len(bundle.get('stops', []))}")
     print(f"   Colors: {len(bundle.get('colors', {}))}")
+    print(f"   Version: {bundle.get('version', '?')}")
     print(f"   Output: {output_file}")
     print(f"   Size: {output_file.stat().st_size / 1024:.1f} KB")
 

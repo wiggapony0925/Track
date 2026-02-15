@@ -197,16 +197,20 @@ final class HomeViewModel {
     /// Loads subway routes from bundled offline data.
     private func loadOfflineSystemMap() {
         let offlineLines = SubwayRoutesData.allRouteIds.compactMap { routeId -> CachedSubwayLine? in
-            let path = SubwayRoutesData.routePath(for: routeId)
-            guard !path.isEmpty else { return nil }
+            // Get ALL branches for routes like A train (Lefferts, Far Rockaway, main)
+            let branches = SubwayRoutesData.routeBranches(for: routeId)
+            guard !branches.isEmpty else { return nil }
             return CachedSubwayLine(
                 id: routeId,
                 color: SubwayRoutesData.color(for: routeId),
-                coordinates: [path]
+                coordinates: branches
             )
         }
         self.cachedSystemMap = offlineLines
-        AppLogger.shared.log("OFFLINE", message: "Loaded \(offlineLines.count) offline subway routes")
+        
+        // Count total branches for logging
+        let totalBranches = offlineLines.reduce(0) { $0 + $1.coordinates.count }
+        AppLogger.shared.log("OFFLINE", message: "Loaded \(offlineLines.count) offline subway routes (\(totalBranches) total branches)")
     }
     
     /// Fetches all subway stations and their served lines.

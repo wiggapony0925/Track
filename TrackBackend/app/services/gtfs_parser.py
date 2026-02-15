@@ -184,25 +184,67 @@ def extract_route_id_from_shape(shape_id: str) -> str:
     return shape_id
 
 
-def get_routes_with_shapes() -> Dict[str, List[Dict[str, float]]]:
+def get_routes_with_shapes() -> Dict[str, List[List[Dict[str, float]]]]:
     """
-    Group shapes by route ID for simplified route polylines.
+    Group shapes by route ID for route polylines.
     
     Returns:
-        Dict mapping route_id to list of coordinates
+        Dict mapping route_id to list of polylines (each polyline is a list of coordinates).
+        This supports multi-branch routes like the A train (Lefferts, Far Rockaway, main).
     """
     shapes = parse_shapes()
     colors = get_route_colors()
     
-    # Group shapes by route
-    routes: Dict[str, List[Dict[str, float]]] = {}
+    # Group ALL shapes by route (to support branches like A train's 3 branches)
+    route_shapes: Dict[str, List[tuple]] = {}  # route_id -> [(shape_id, coordinates, endpoint_key), ...]
     
     for shape_id, coordinates in shapes.items():
         route_id = extract_route_id_from_shape(shape_id)
         
-        # Use the longest shape for each route (most complete path)
-        if route_id not in routes or len(coordinates) > len(routes[route_id]):
-            routes[route_id] = coordinates
+        # Skip very short shapes (likely partial/error data)
+        if len(coordinates) < 10:
+            continue
+        
+        # Create endpoint key for deduplication (first and last stop rounded to ~100m)
+        start = coordinates[0]
+        end = coordinates[-1]
+        endpoint_key = (
+            round(start['lat'], 3), round(start['lon'], 3),
+            round(end['lat'], 3), round(end['lon'], 3)
+        )
+        
+        if route_id not in route_shapes:
+            route_shapes[route_id] = []
+        
+        route_shapes[route_id].append((shape_id, coordinates, endpoint_key))
+    
+    # Deduplicate: keep only unique branches based on endpoints
+    # For routes with multiple variants of the same branch, keep the longest one
+    routes: Dict[str, List[List[Dict[str, float]]]] = {}
+    
+    for route_id, shape_list in route_shapes.items():
+        # Group by endpoint key and keep the longest shape for each endpoint pair
+        endpoint_groups: Dict[tuple, List[Dict[str, float]]] = {}
+        
+        for shape_id, coordinates, endpoint_key in shape_list:
+            if endpoint_key not in endpoint_groups or len(coordinates) > len(endpoint_groups[endpoint_key]):
+                endpoint_groups[endpoint_key] = coordinates
+        
+        # Also group by reversed endpoints (same route, opposite direction)
+        # We only want one direction per branch
+        final_branches: Dict[frozenset, List[Dict[str, float]]] = {}
+        
+        for endpoint_key, coordinates in endpoint_groups.items():
+            # Create a direction-agnostic key (sorted endpoints)
+            start_end = (endpoint_key[0], endpoint_key[1])
+            end_start = (endpoint_key[2], endpoint_key[3])
+            direction_key = frozenset([start_end, end_start])
+            
+            # Keep the longest version of this branch
+            if direction_key not in final_branches or len(coordinates) > len(final_branches[direction_key]):
+                final_branches[direction_key] = coordinates
+        
+        routes[route_id] = list(final_branches.values())
     
     return routes
 
@@ -212,11 +254,20 @@ def generate_bundle() -> Dict[str, Any]:
     Generate complete static data bundle for iOS app.
     
     Returns:
-        Dict with routes, stops, and colors
+        Dict with routes (multi-branch), stops, and colors
     """
+    routes_with_branches = get_routes_with_shapes()
+    
+    # Count total branches
+    total_branches = sum(len(branches) for branches in routes_with_branches.values())
+    
     return {
-        "version": "1.0",
-        "routes": get_routes_with_shapes(),
+        "version": "2.0",  # Updated version to indicate multi-branch support
+        "routes": routes_with_branches,  # Now Dict[route_id, List[List[coord]]]
         "stops": parse_stops(),
-        "colors": get_route_colors()
+        "colors": get_route_colors(),
+        "stats": {
+            "route_count": len(routes_with_branches),
+            "branch_count": total_branches
+        }
     }
