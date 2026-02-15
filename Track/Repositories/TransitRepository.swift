@@ -9,40 +9,6 @@
 import Foundation
 import CoreLocation
 
-/// Represents a single upcoming train arrival at a station.
-struct TrainArrival: Identifiable {
-    let id = UUID()
-    let routeID: String
-    let stationID: String
-    let direction: String
-    let scheduledTime: Date
-    let estimatedTime: Date
-    let minutesAway: Int
-    let destination: String?
-    let tripId: String?
-}
-
-/// Error types for transit data fetching.
-enum TransitError: Error, CustomStringConvertible {
-    case networkUnavailable
-    case feedParsingFailed
-    case signalLost
-    case unknown(Error)
-
-    var description: String {
-        switch self {
-        case .networkUnavailable:
-            return "No network connection available"
-        case .feedParsingFailed:
-            return "Unable to read transit data"
-        case .signalLost:
-            return "Signal Lost in Tunnel"
-        case .unknown(let error):
-            return error.localizedDescription
-        }
-    }
-}
-
 /// Repository for fetching NYC transit data via the TrackAPI backend.
 final class TransitRepository {
 

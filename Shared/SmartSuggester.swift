@@ -10,13 +10,6 @@ import Foundation
 import SwiftData
 import CoreLocation
 
-struct RouteSuggestion {
-    let routeID: String
-    let direction: String
-    let destinationName: String
-    let score: Double
-}
-
 struct SmartSuggester {
     /// Predicts the most likely route for the user based on commute patterns.
     ///
