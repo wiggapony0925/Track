@@ -13,6 +13,7 @@ import CoreLocation
 struct NearbyTransitRow: View {
     let arrival: NearbyTransitResponse
     var isTracking: Bool = false
+    var isSelected: Bool = false // Added for stop selection
     var onTrack: (() -> Void)?
     var onSelectRoute: (() -> Void)?
     var userLocation: CLLocation?
@@ -22,7 +23,6 @@ struct NearbyTransitRow: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 14) {
-                // MARK: Route Badge (Larger & More Prominent)
                 // MARK: Route Badge (Larger & More Prominent)
                 RouteBadge(routeID: arrival.displayName, size: .custom(54, 22))
                     .shadow(color: .black.opacity(0.15), radius: 3, x: 0, y: 2)
@@ -128,8 +128,12 @@ struct NearbyTransitRow: View {
             }
             .padding(.vertical, 16)
             .padding(.horizontal, AppTheme.Layout.margin)
-            .background(AppTheme.Colors.cardBackground)
+            .background(isSelected ? AppTheme.Colors.mtaBlue.opacity(0.1) : AppTheme.Colors.cardBackground) // Highlight background
             .cornerRadius(AppTheme.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius)
+                    .stroke(isSelected ? AppTheme.Colors.mtaBlue : Color.clear, lineWidth: 2) // Highlight border
+            )
             .contentShape(Rectangle())
             .onTapGesture {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {

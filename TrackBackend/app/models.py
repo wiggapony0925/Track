@@ -88,6 +88,9 @@ class NearbyTransitArrival(BaseModel):
     mode: str  # "subway" or "bus"
     stop_lat: float | None = None
     stop_lon: float | None = None
+    stop_id: str | None = None
+    vehicle_id: str | None = None
+    trip_id: str | None = None
 
 
 class DirectionArrivals(BaseModel):

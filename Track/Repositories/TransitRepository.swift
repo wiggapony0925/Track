@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import CoreLocation
 
 /// Represents a single upcoming train arrival at a station.
 struct TrainArrival: Identifiable {
@@ -78,22 +79,29 @@ final class TransitRepository {
         longitude: Double,
         radius: Double? = nil
     ) async throws -> [(stationID: String, name: String, distance: Double, routeIDs: [String])] {
-        if let radius = radius {
-            _ = radius // kept if needed for logic later, or just verify not nil
-        } else {
-            // Access MainActor-isolated AppSettings safely
-            _ = await MainActor.run { Double(AppSettings.shared.defaultSearchRadiusMeters) }
-        }
-        // Station data loaded from local storage
-        // TODO: Load from CSV or backend endpoint when available
+        let effectiveRadius = radius ?? 1000.0 // Default 1km
+        
         AppLogger.shared.log("TRANSIT", message: "Fetching nearby stations for (\(latitude), \(longitude))")
 
-        // Return common NYC stations as defaults until station API is implemented
-        return [
-            (stationID: "L01", name: "1st Avenue", distance: 120, routeIDs: ["L"]),
-            (stationID: "L03", name: "Bedford Avenue", distance: 250, routeIDs: ["L"]),
-            (stationID: "G29", name: "Metropolitan Av", distance: 400, routeIDs: ["G"]),
-        ]
+        do {
+            let response = try await TrackAPI.fetchAllSubwayStations()
+            let userLoc = CLLocation(latitude: latitude, longitude: longitude)
+            
+            let nearby = response.stations.compactMap { station -> (stationID: String, name: String, distance: Double, routeIDs: [String])? in
+                let stopLoc = CLLocation(latitude: station.lat, longitude: station.lon)
+                let distance = userLoc.distance(from: stopLoc)
+                
+                if distance <= effectiveRadius {
+                    return (stationID: station.id, name: station.name, distance: distance, routeIDs: station.routes)
+                }
+                return nil
+            }.sorted { $0.distance < $1.distance }
+            
+            return nearby
+        } catch {
+            AppLogger.shared.logError("fetchNearbyStations", error: error)
+            return []
+        }
     }
 
     /// Extracts a line ID from a station ID.

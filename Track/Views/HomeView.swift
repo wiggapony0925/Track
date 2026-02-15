@@ -81,51 +81,64 @@ struct HomeView: View {
                 if let shape = viewModel.routeShape {
                     let isBusRoute = viewModel.selectedGroupedRoute?.isBus == true
                     ForEach(shape.stops) { stop in
+                        let isSelected = stop.id == viewModel.selectedStopId
                         Annotation(stop.name, coordinate: CLLocationCoordinate2D(latitude: stop.lat, longitude: stop.lon)) {
                             ZStack {
                                 if isBusRoute {
                                     // Bus stops: rounded square marker
                                     RoundedRectangle(cornerRadius: 3)
                                         .fill(Color.white)
-                                        .frame(width: 12, height: 12)
+                                        .frame(width: isSelected ? 18 : 12, height: isSelected ? 18 : 12)
                                         .shadow(color: .black.opacity(0.4), radius: 2, x: 0, y: 1)
                                     RoundedRectangle(cornerRadius: 3)
-                                        .stroke(selectedRouteColor, lineWidth: 3)
-                                        .frame(width: 12, height: 12)
+                                        .stroke(selectedRouteColor, lineWidth: isSelected ? 4 : 3)
+                                        .frame(width: isSelected ? 18 : 12, height: isSelected ? 18 : 12)
                                 } else {
                                     // Subway stops: circle marker
                                     Circle()
                                         .fill(Color.white)
-                                        .frame(width: 12, height: 12)
+                                        .frame(width: isSelected ? 18 : 12, height: isSelected ? 18 : 12)
                                         .shadow(color: .black.opacity(0.4), radius: 2, x: 0, y: 1)
                                     Circle()
-                                        .stroke(selectedRouteColor, lineWidth: 3)
-                                        .frame(width: 12, height: 12)
+                                        .stroke(selectedRouteColor, lineWidth: isSelected ? 4 : 3)
+                                        .frame(width: isSelected ? 18 : 12, height: isSelected ? 18 : 12)
                                 }
                             }
+                            .scaleEffect(isSelected ? 1.3 : 1.0)
+                            .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isSelected)
                             .accessibilityLabel(stop.name)
+                            .onTapGesture {
+                                withAnimation {
+                                    viewModel.selectedStopId = stop.id
+                                }
+                            }
                         }
                     }
                 }
 
                 // Live bus vehicle positions on map
                 ForEach(viewModel.busVehicles) { vehicle in
+                    let isHighlighted = vehicle.vehicleId == viewModel.highlightedVehicleId
                     Annotation(
                         vehicle.nextStop ?? vehicle.displayRouteName,
                         coordinate: CLLocationCoordinate2D(latitude: vehicle.lat, longitude: vehicle.lon)
                     ) {
                         BusVehicleAnnotation(
                             routeName: vehicle.displayRouteName,
-                            bearing: vehicle.bearing
+                            bearing: vehicle.bearing,
+                            isHighlighted: isHighlighted
                         )
+                        .zIndex(isHighlighted ? 100 : 1)
                     }
                 }
                 
                 // Live train positions (Simulated)
                 ForEach(viewModel.trainVehicles) { train in
+                    let isHighlighted = train.tripId == viewModel.highlightedVehicleId
                     Annotation(train.nextStationName ?? train.routeId, coordinate: CLLocationCoordinate2D(latitude: train.lat, longitude: train.lon)) {
-                         TrainAnnotation(routeId: train.routeId, direction: train.direction)
+                         TrainAnnotation(routeId: train.routeId, direction: train.direction, isHighlighted: isHighlighted)
                              .rotationEffect(.degrees(train.bearing ?? 0))
+                             .zIndex(isHighlighted ? 100 : 1)
                     }
                 }
 
@@ -243,6 +256,7 @@ struct HomeView: View {
                         cameraPosition: $cameraPosition,
                         currentLocation: locationManager.currentLocation?.coordinate,
                         searchPinCoordinate: viewModel.searchPinCoordinate,
+                        selectedStopId: viewModel.selectedStopId,
                         onTrack: { arrival in
                             viewModel.trackNearbyArrival(arrival, location: locationManager.currentLocation)
                         },

@@ -272,6 +272,8 @@ async def _fetch_nearby_subway(
                     mode="subway",
                     stop_lat=stop_lat,
                     stop_lon=stop_lon,
+                    stop_id=arrival.station,
+                    trip_id=arrival.trip_id,
                 )
             )
 
@@ -345,6 +347,8 @@ async def _fetch_nearby_buses(
                     mode="bus",
                     stop_lat=stop_lat,
                     stop_lon=stop_lon,
+                    stop_id=stop.id if stop else None,
+                    vehicle_id=arrival.vehicle_id,
                 )
             )
 

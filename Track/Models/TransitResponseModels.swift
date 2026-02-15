@@ -16,6 +16,10 @@ struct NearbyTransitResponse: Codable, Identifiable {
     let stopLon: Double?
     let arrivalTs: Int?
 
+    let vehicleId: String?
+    let tripId: String?
+    let stopId: String?
+
     var isBus: Bool { mode == "bus" }
 
     /// Strips "MTA NYCT_" prefix for display.
@@ -34,6 +38,9 @@ struct NearbyTransitResponse: Codable, Identifiable {
         case stopLat = "stop_lat"
         case stopLon = "stop_lon"
         case arrivalTs = "arrival_ts"
+        case vehicleId = "vehicle_id"
+        case tripId = "trip_id"
+        case stopId = "stop_id"
     }
 }
 

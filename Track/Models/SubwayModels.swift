@@ -3,6 +3,7 @@ import CoreLocation
 
 /// Matches the backend's `TrackArrival` JSON schema (snake_case).
 struct SubwayArrivalResponse: Codable {
+    let routeId: String
     let station: String
     let direction: String
     let destination: String?
@@ -12,6 +13,7 @@ struct SubwayArrivalResponse: Codable {
     let arrivalTs: Int? // Optional timestamp in seconds
 
     enum CodingKeys: String, CodingKey {
+        case routeId = "route_id"
         case station
         case direction
         case destination
@@ -33,7 +35,7 @@ struct SubwayArrivalResponse: Codable {
         }
         
         return TrainArrival(
-            routeID: station,
+            routeID: routeId,
             stationID: station,
             direction: direction,
             scheduledTime: arrivalDate,

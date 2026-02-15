@@ -100,9 +100,11 @@ final class HomeViewModel {
     // Walking route to the nearest station
     var walkingRoute: MKRoute?
     var nearestStopCoordinate: CLLocationCoordinate2D?
+    var selectedStopId: String?
 
     // Live bus/train tracking on map
     var selectedRouteId: String?
+    var highlightedVehicleId: String?
     var busVehicles: [BusVehicleResponse] = []
     
     struct TrainVehicle: Identifiable {
@@ -454,8 +456,17 @@ final class HomeViewModel {
             let dirIndex = existingGroup.directions.firstIndex(where: { $0.direction == arrival.direction }) ?? 0
             await selectGroupedRoute(existingGroup, directionIndex: dirIndex, userLocation: userLocation)
         } else {
+            // Attempt to fetch fresh data for this route to get the full context (colors, directions, other arrivals)
+            // If that fails or isn't implemented, we fall back to a minimal group.
+            
+            // Note: Currently we don't have a direct "fetch single route group" endpoint that aligns perfectly
+            // with GroupedNearbyTransitResponse structure without fetching *all* nearby routes.
+            // However, we can construct a better "mock" group if we had more info, or we could trigger a refresh.
+            // For now, we use the minimal group to immediately show the user what they tapped, 
+            // but we ensure the route logic (shape, vehicles) is triggered by selectGroupedRoute.
+            
             // Create a minimal group to satisfy the unified logic
-            let mockGroup = GroupedNearbyTransitResponse(
+            let minimalGroup = GroupedNearbyTransitResponse(
                 routeId: arrival.routeId,
                 displayName: arrival.displayName,
                 mode: arrival.isBus ? "bus" : "subway",
@@ -467,7 +478,7 @@ final class HomeViewModel {
                     )
                 ]
             )
-            await selectGroupedRoute(mockGroup, directionIndex: 0, userLocation: userLocation)
+            await selectGroupedRoute(minimalGroup, directionIndex: 0, userLocation: userLocation)
         }
     }
 
@@ -503,6 +514,9 @@ final class HomeViewModel {
         routeShape = nil
         errorMessage = nil
         nearestStopCoordinate = nil
+        highlightedVehicleId = nil
+        selectedStopId = nil
+        walkingRoute = nil
     }
 
     // Cache latest arrivals to allow client-side simulation between network fetches
@@ -799,10 +813,22 @@ final class HomeViewModel {
             mode: arrival.isBus ? "bus" : "subway",
             trackedAt: Date()
         )
+        currentTrackedRoute = trackedRoute
         trackedRoute.save()
         
+        // Update visual highlighting on the map
+        if arrival.isBus {
+            self.highlightedVehicleId = arrival.vehicleId
+            AppLogger.shared.log("TRACKING", message: "Highlighting bus vehicle: \(arrival.vehicleId ?? "none")")
+        } else {
+            self.highlightedVehicleId = arrival.tripId
+            AppLogger.shared.log("TRACKING", message: "Highlighting train trip: \(arrival.tripId ?? "none")")
+        }
+        
+        // Immediately refresh the Live Activity
+        updateLiveActivityFromRefresh()
+        
         // Update local state and reload widgets
-        currentTrackedRoute = trackedRoute
         WidgetCenter.shared.reloadAllTimelines()
         
         // Start Live Activity

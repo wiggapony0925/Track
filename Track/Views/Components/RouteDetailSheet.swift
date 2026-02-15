@@ -25,6 +25,7 @@ struct RouteDetailSheet: View {
     @Binding var cameraPosition: MapCameraPosition
     var currentLocation: CLLocationCoordinate2D?
     var searchPinCoordinate: CLLocationCoordinate2D?
+    var selectedStopId: String? // Added property
     
     @State private var selectedDirectionIndex: Int
 
@@ -37,6 +38,7 @@ struct RouteDetailSheet: View {
          cameraPosition: Binding<MapCameraPosition> = .constant(.automatic),
          currentLocation: CLLocationCoordinate2D? = nil,
          searchPinCoordinate: CLLocationCoordinate2D? = nil,
+         selectedStopId: String? = nil,
          onTrack: ((NearbyTransitResponse) -> Void)? = nil,
          isTracking: ((NearbyTransitResponse) -> Bool)? = nil,
          onDismiss: (() -> Void)? = nil) {
@@ -51,6 +53,7 @@ struct RouteDetailSheet: View {
         self._cameraPosition = cameraPosition
         self.currentLocation = currentLocation
         self.searchPinCoordinate = searchPinCoordinate
+        self.selectedStopId = selectedStopId
         self._selectedDirectionIndex = State(initialValue: initialDirectionIndex)
     }
 
@@ -324,6 +327,7 @@ struct RouteDetailSheet: View {
                         NearbyTransitRow(
                             arrival: arrival,
                             isTracking: isTracking?(arrival) ?? false,
+                            isSelected: selectedStopId != nil && arrival.stopId == selectedStopId,
                             onTrack: {
                                 onTrack?(arrival)
                             },
@@ -409,13 +413,15 @@ struct RouteDetailSheet: View {
                             routeId: "A", stopName: "Canal St", direction: "N",
                             destination: "Inwood-207 St",
                             minutesAway: 3, status: "On Time", mode: "subway",
-                            stopLat: 40.72, stopLon: -74.0, arrivalTs: nil
+                            stopLat: 40.72, stopLon: -74.0, arrivalTs: Int(Date().timeIntervalSince1970 + 180),
+                            vehicleId: "V123", tripId: "T456", stopId: "A32"
                         ),
                         NearbyTransitResponse(
                             routeId: "A", stopName: "14 St", direction: "N",
                             destination: "Inwood-207 St",
                             minutesAway: 8, status: "On Time", mode: "subway",
-                            stopLat: 40.74, stopLon: -74.0, arrivalTs: nil
+                            stopLat: 40.74, stopLon: -74.0, arrivalTs: Int(Date().timeIntervalSince1970 + 480),
+                            vehicleId: "V124", tripId: "T457", stopId: "A28"
                         ),
                     ]
                 ),
@@ -426,7 +432,8 @@ struct RouteDetailSheet: View {
                             routeId: "A", stopName: "Fulton St", direction: "S",
                             destination: "Far Rockaway",
                             minutesAway: 5, status: "Delayed", mode: "subway",
-                            stopLat: 40.71, stopLon: -74.01, arrivalTs: nil
+                            stopLat: 40.71, stopLon: -74.01, arrivalTs: Int(Date().timeIntervalSince1970 + 300),
+                            vehicleId: "V125", tripId: "T458", stopId: "A34"
                         ),
                     ]
                 ),
