@@ -13,7 +13,7 @@ from typing import Any
 from fastapi import FastAPI, Request
 
 from app.config import get_settings
-from app.routers import bus, lirr, nearby, status, subway
+from app.routers import analytics, bus, lirr, nearby, status, subway
 from app.utils.logger import TrackLogger
 
 app = FastAPI(
@@ -28,6 +28,7 @@ app.include_router(lirr.router)
 app.include_router(status.router)
 app.include_router(bus.router)
 app.include_router(nearby.router)
+app.include_router(analytics.router)
 
 
 @app.on_event("startup")
