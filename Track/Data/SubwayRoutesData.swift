@@ -6,6 +6,10 @@
 //  This data is used when the app has no network connectivity
 //  to still display subway routes on the map.
 //
+//  Data sources:
+//  - Bundled subway_bundle.json (generated from MTA GTFS)
+//  - Backend /static/bundle endpoint for updates
+//
 
 import Foundation
 import CoreLocation
@@ -14,9 +18,71 @@ import SwiftUI
 /// Static subway route data bundled with the app for offline use
 struct SubwayRoutesData {
     
+    // MARK: - Cached Bundle Data
+    
+    private static var cachedBundle: StaticBundle?
+    
+    /// Load the static bundle (from cache, then bundle, then API)
+    static func loadBundle() -> StaticBundle {
+        // Return cached if available
+        if let cached = cachedBundle {
+            return cached
+        }
+        
+        // Try loading from UserDefaults (updated bundle)
+        if let data = UserDefaults(suiteName: kAppGroupIdentifier)?.data(forKey: "subway_bundle"),
+           let bundle = try? JSONDecoder().decode(StaticBundle.self, from: data) {
+            cachedBundle = bundle
+            return bundle
+        }
+        
+        // Try loading from app bundle
+        if let url = Bundle.main.url(forResource: "subway_bundle", withExtension: "json"),
+           let data = try? Data(contentsOf: url),
+           let bundle = try? JSONDecoder().decode(StaticBundle.self, from: data) {
+            cachedBundle = bundle
+            return bundle
+        }
+        
+        // Return empty bundle as fallback
+        return StaticBundle(version: "0", routes: [:], stops: [], colors: [:])
+    }
+    
+    /// Update bundle from API (call when online)
+    static func updateBundleFromAPI() async {
+        guard let url = URL(string: "\(AppSettings.baseURL)/static/bundle") else { return }
+        
+        do {
+            let (data, _) = try await URLSession.shared.data(from: url)
+            let bundle = try JSONDecoder().decode(StaticBundle.self, from: data)
+            
+            // Save to UserDefaults for offline use
+            UserDefaults(suiteName: kAppGroupIdentifier)?.set(data, forKey: "subway_bundle")
+            cachedBundle = bundle
+            
+            print("[SubwayRoutesData] Updated bundle: \(bundle.routes.count) routes, \(bundle.stops.count) stops")
+        } catch {
+            print("[SubwayRoutesData] Failed to update bundle: \(error)")
+        }
+    }
+    
     // MARK: - Route Colors (Official MTA Colors)
     
-    static let routeColors: [String: Color] = [
+    /// Dynamic route colors from bundle
+    static var routeColors: [String: Color] {
+        let bundle = loadBundle()
+        var colors: [String: Color] = [:]
+        
+        for (routeId, hexColor) in bundle.colors {
+            colors[routeId] = Color(hex: hexColor)
+        }
+        
+        // Merge with hardcoded fallbacks
+        return colors.merging(hardcodedColors) { bundled, _ in bundled }
+    }
+    
+    /// Hardcoded fallback colors
+    private static let hardcodedColors: [String: Color] = [
         // IRT Lines
         "1": Color(hex: "EE352E"),  // Red
         "2": Color(hex: "EE352E"),
@@ -58,9 +124,32 @@ struct SubwayRoutesData {
         routeColors[routeId.uppercased()] ?? .gray
     }
     
-    // MARK: - Major Stations (Simplified for Offline)
+    // MARK: - Major Stations (From Bundle or Fallback)
     
-    /// Key subway stations with coordinates for offline map display
+    /// All stations from bundle or fallback to hardcoded
+    static var allStations: [OfflineStation] {
+        let bundle = loadBundle()
+        
+        // If bundle has stops, convert them
+        if !bundle.stops.isEmpty {
+            return bundle.stops.map { stop in
+                OfflineStation(
+                    id: stop.id,
+                    name: stop.name,
+                    lat: stop.lat,
+                    lng: stop.lon,
+                    routes: stop.routes ?? [],
+                    borough: "",  // Not in bundle
+                    isAccessible: false  // Not in bundle
+                )
+            }
+        }
+        
+        // Fallback to hardcoded stations
+        return majorStations
+    }
+    
+    /// Key subway stations with coordinates for offline map display (hardcoded fallback)
     static let majorStations: [OfflineStation] = [
         // Manhattan - Midtown
         OfflineStation(id: "127", name: "Times Sq-42 St", lat: 40.7559, lng: -73.9871, routes: ["1","2","3","7","N","Q","R","W","S"], borough: "Manhattan", isAccessible: true),
@@ -126,25 +215,45 @@ struct SubwayRoutesData {
         OfflineStation(id: "D11", name: "161 St-Yankee Stadium", lat: 40.8279, lng: -73.9257, routes: ["4","B","D"], borough: "Bronx", isAccessible: true),
     ]
     
-    // MARK: - Route Paths (GeoJSON Based)
+    // MARK: - Route Paths (From Bundle or GeoJSON)
     
-    private static var offlinePaths: [String: [CLLocationCoordinate2D]] = loadGeoJSONPaths()
+    private static var offlinePaths: [String: [CLLocationCoordinate2D]] = loadRoutePaths()
     
-    /// Get coordinates for a route line (loaded from GeoJSON or fallback)
+    /// Get coordinates for a route line (loaded from bundle or fallback)
     static func routePath(for routeId: String) -> [CLLocationCoordinate2D] {
-        if let path = offlinePaths[routeId.uppercased()] {
+        let key = routeId.uppercased()
+        
+        if let path = offlinePaths[key] {
             return path
         }
         
-        // Fallback for missing GeoJSON data
-        switch routeId.uppercased() {
+        // Fallback for missing data
+        switch key {
         case "1", "2", "3": return redLinePath
         case "4", "5", "6": return greenLinePath
         default: return []
         }
     }
     
-    /// Helper to load simplified paths from the bundled GeoJSON file
+    /// Load route paths from bundle (priority) or legacy GeoJSON
+    private static func loadRoutePaths() -> [String: [CLLocationCoordinate2D]] {
+        // First try the new bundle format
+        let bundle = loadBundle()
+        if !bundle.routes.isEmpty {
+            var paths: [String: [CLLocationCoordinate2D]] = [:]
+            for (routeId, coordinates) in bundle.routes {
+                paths[routeId.uppercased()] = coordinates.map {
+                    CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lon)
+                }
+            }
+            return paths
+        }
+        
+        // Fallback to legacy GeoJSON file
+        return loadGeoJSONPaths()
+    }
+    
+    /// Legacy: Load from GeoJSON file
     private static func loadGeoJSONPaths() -> [String: [CLLocationCoordinate2D]] {
         guard let url = Bundle.main.url(forResource: "subway_routes", withExtension: "json"),
               let data = try? Data(contentsOf: url) else {
@@ -236,4 +345,29 @@ struct GeoJSONFeature: Codable {
 struct GeoJSONGeometry: Codable {
     let type: String
     let coordinates: [[Double]]
+}
+
+// MARK: - Static Bundle Models (From Backend API)
+
+/// Static data bundle from backend /static/bundle endpoint
+struct StaticBundle: Codable {
+    let version: String
+    let routes: [String: [BundleCoordinate]]
+    let stops: [BundleStop]
+    let colors: [String: String]
+}
+
+/// Coordinate in bundle format
+struct BundleCoordinate: Codable {
+    let lat: Double
+    let lon: Double
+}
+
+/// Stop in bundle format
+struct BundleStop: Codable {
+    let id: String
+    let name: String
+    let lat: Double
+    let lon: Double
+    let routes: [String]?  // Optional, may not be in all bundles
 }
