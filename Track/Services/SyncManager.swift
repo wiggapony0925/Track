@@ -122,8 +122,8 @@ class SyncManager: ObservableObject {
         let localSchedules: [WidgetSchedule] = cloudSchedules.compactMap { cloud in
             guard let id = cloud.id else { return nil }
             
-            // Convert time string "HH:mm:ss" to "HH:mm"
-            let startTime = String(cloud.startTime.prefix(5))
+            // Convert time string "HH:mm:ss" to "HH:mm" using DateFormatter
+            let startTime = parseTimeString(cloud.startTime)
             
             return WidgetSchedule(
                 id: id,
@@ -136,6 +136,41 @@ class SyncManager: ObservableObject {
         
         // Save to local storage
         WidgetSchedule.saveAll(localSchedules)
+    }
+    
+    /// Parses a time string from various formats to "HH:mm"
+    /// Supports: "HH:mm:ss", "HH:mm", "H:mm", etc.
+    private func parseTimeString(_ timeString: String) -> String {
+        // Try parsing with DateFormatter for robust handling
+        let inputFormatters: [DateFormatter] = [
+            createTimeFormatter("HH:mm:ss"),
+            createTimeFormatter("HH:mm"),
+            createTimeFormatter("H:mm:ss"),
+            createTimeFormatter("H:mm")
+        ]
+        
+        let outputFormatter = createTimeFormatter("HH:mm")
+        
+        for formatter in inputFormatters {
+            if let date = formatter.date(from: timeString) {
+                return outputFormatter.string(from: date)
+            }
+        }
+        
+        // Fallback: return first 5 characters if parsing fails
+        // but log a warning
+        print("[SyncManager] Warning: Could not parse time string '\(timeString)', using fallback")
+        if timeString.count >= 5 {
+            return String(timeString.prefix(5))
+        }
+        return timeString
+    }
+    
+    private func createTimeFormatter(_ format: String) -> DateFormatter {
+        let formatter = DateFormatter()
+        formatter.dateFormat = format
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        return formatter
     }
     
     /// Uploads a schedule to Supabase

@@ -14,6 +14,9 @@ struct LoginView: View {
     @AppStorage("isLoggedIn") private var isLoggedIn = false
     @State private var isLoading = false
     @State private var errorMessage: String?
+    
+    /// Delay before allowing offline fallback login after cloud sync failure
+    private let cloudSyncFallbackDelay: TimeInterval = 2.0
 
     var body: some View {
         ZStack {
@@ -152,7 +155,7 @@ struct LoginView: View {
                         
                         // Fallback: still allow login even if cloud sync fails
                         // User data will be stored locally
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + cloudSyncFallbackDelay) {
                             isLoggedIn = true
                         }
                     }

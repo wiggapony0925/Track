@@ -20,6 +20,11 @@ class RouteAnalyticsManager {
     // In-memory cache
     private var stats: [String: Int] = [:]
     
+    // Debounce queue for cloud sync to avoid excessive network requests
+    private var pendingCloudSync: [(routeId: String, displayName: String?, mode: String, type: String, latitude: Double?, longitude: Double?)] = []
+    private var syncTask: Task<Void, Never>?
+    private let syncDebounceInterval: TimeInterval = 2.0
+    
     private init() {
         self.stats = defaults.dictionary(forKey: key) as? [String: Int] ?? [:]
     }
@@ -39,21 +44,42 @@ class RouteAnalyticsManager {
         type: String = "click",
         location: CLLocation? = nil
     ) {
-        // Update local stats
+        // Update local stats immediately
         let currentCount = stats[routeId] ?? 0
         stats[routeId] = currentCount + 1
         save()
         
-        // Sync to Supabase asynchronously
-        Task { @MainActor in
-            await SupabaseManager.shared.logRouteInteraction(
-                routeId: routeId,
-                displayName: displayName,
-                mode: mode,
-                type: type,
-                latitude: location?.coordinate.latitude,
-                longitude: location?.coordinate.longitude
-            )
+        // Queue for debounced cloud sync
+        pendingCloudSync.append((
+            routeId: routeId,
+            displayName: displayName,
+            mode: mode,
+            type: type,
+            latitude: location?.coordinate.latitude,
+            longitude: location?.coordinate.longitude
+        ))
+        
+        // Cancel existing sync task and schedule new one
+        syncTask?.cancel()
+        syncTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: UInt64(syncDebounceInterval * 1_000_000_000))
+            
+            guard !Task.isCancelled else { return }
+            
+            // Batch upload all pending interactions
+            let itemsToSync = pendingCloudSync
+            pendingCloudSync.removeAll()
+            
+            for item in itemsToSync {
+                await SupabaseManager.shared.logRouteInteraction(
+                    routeId: item.routeId,
+                    displayName: item.displayName,
+                    mode: item.mode,
+                    type: item.type,
+                    latitude: item.latitude,
+                    longitude: item.longitude
+                )
+            }
         }
     }
     

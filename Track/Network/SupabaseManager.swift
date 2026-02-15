@@ -16,10 +16,31 @@ import AuthenticationServices
 // MARK: - Supabase Configuration
 
 /// Supabase project configuration
-/// In production, load these from a secure configuration file or environment
+/// WARNING: In production, these should be loaded from:
+/// - Info.plist with build configuration variables
+/// - A Secrets.plist file excluded from version control
+/// - Environment variables set in Xcode scheme
+///
+/// The anon key is publishable and safe for client-side use,
+/// but should still not be committed to public repositories.
 enum SupabaseConfig {
-    static let url = "https://octpebjxadbufiplgjqg.supabase.co"
-    static let anonKey = "sb_publishable_lAEZ_x8O4vjdGaw-I-QUMg_oS5iWKIn"
+    static var url: String {
+        // Try to load from Info.plist first
+        if let url = Bundle.main.object(forInfoDictionaryKey: "SUPABASE_URL") as? String, !url.isEmpty {
+            return url
+        }
+        // Fallback to hardcoded (development only)
+        return "https://octpebjxadbufiplgjqg.supabase.co"
+    }
+    
+    static var anonKey: String {
+        // Try to load from Info.plist first
+        if let key = Bundle.main.object(forInfoDictionaryKey: "SUPABASE_ANON_KEY") as? String, !key.isEmpty {
+            return key
+        }
+        // Fallback to hardcoded (development only)
+        return "sb_publishable_lAEZ_x8O4vjdGaw-I-QUMg_oS5iWKIn"
+    }
 }
 
 // MARK: - Supabase Models
@@ -285,7 +306,8 @@ class SupabaseManager: ObservableObject {
         request.setValue(apiKey, forHTTPHeaderField: "apikey")
         
         // Generate a unique email if Apple hides it
-        let email = credentials.email ?? "\(credentials.userId)@privaterelay.appleid.com"
+        // Use full UUID to guarantee uniqueness
+        let email = credentials.email ?? "apple_\(UUID().uuidString.lowercased())@track.privaterelay"
         
         let body: [String: Any] = [
             "email": email,
@@ -333,8 +355,8 @@ class SupabaseManager: ObservableObject {
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue(apiKey, forHTTPHeaderField: "apikey")
         
-        // Generate anonymous user
-        let anonymousEmail = "anon_\(UUID().uuidString.prefix(8))@track.app"
+        // Generate anonymous user with full UUID for uniqueness
+        let anonymousEmail = "anon_\(UUID().uuidString.lowercased())@track.app"
         let body: [String: Any] = [
             "email": anonymousEmail,
             "password": UUID().uuidString
