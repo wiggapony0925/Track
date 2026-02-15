@@ -212,7 +212,7 @@ class SupabaseManager: ObservableObject {
     private let userIdKey = "supabase_user_id"
     
     private var defaults: UserDefaults {
-        UserDefaults(suiteName: "group.com.track.shared") ?? .standard
+        UserDefaults(suiteName: kAppGroupIdentifier) ?? .standard
     }
     
     // MARK: - Initialization

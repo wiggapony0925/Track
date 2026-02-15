@@ -14,7 +14,7 @@ import CoreLocation
 class RouteAnalyticsManager {
     static let shared = RouteAnalyticsManager()
     
-    private let defaults = UserDefaults(suiteName: "group.com.track.shared") ?? UserDefaults.standard
+    private let defaults = UserDefaults(suiteName: kAppGroupIdentifier) ?? UserDefaults.standard
     private let key = "route_interaction_stats"
     
     // In-memory cache

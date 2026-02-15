@@ -25,7 +25,7 @@ class SyncManager: ObservableObject {
     @Published var lastSyncDate: Date?
     @Published var syncError: String?
     
-    private let defaults = UserDefaults(suiteName: "group.com.track.shared") ?? .standard
+    private let defaults = UserDefaults(suiteName: kAppGroupIdentifier) ?? .standard
     private let lastSyncKey = "last_sync_date"
     
     private init() {

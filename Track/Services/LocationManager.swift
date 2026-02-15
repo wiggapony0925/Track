@@ -42,7 +42,7 @@ final class LocationManager: NSObject, CLLocationManagerDelegate {
             currentLocation = locations.last
             // Cache location for widget access via App Group
             if let location = locations.last {
-                let defaults = UserDefaults(suiteName: "group.com.track.shared") ?? UserDefaults.standard
+                let defaults = UserDefaults(suiteName: kAppGroupIdentifier) ?? UserDefaults.standard
                 defaults.set(location.coordinate.latitude, forKey: "lastLatitude")
                 defaults.set(location.coordinate.longitude, forKey: "lastLongitude")
                 defaults.set(true, forKey: "hasLastLocation")

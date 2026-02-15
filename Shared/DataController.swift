@@ -30,7 +30,7 @@ struct DataController {
 
         // Point to the Shared App Group container
         let groupURL = FileManager.default.containerURL(
-            forSecurityApplicationGroupIdentifier: "group.JFMCAPITALGROUP.Track"
+            forSecurityApplicationGroupIdentifier: kAppGroupIdentifier
         )
 
         let config: ModelConfiguration

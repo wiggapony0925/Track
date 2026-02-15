@@ -45,7 +45,7 @@ struct TrackWidgetProvider: TimelineProvider {
     /// Uses the user's last known location from shared UserDefaults.
     private func fetchLiveEntry(completion: @escaping (TrackWidgetEntry?) -> Void) {
         // Read cached location from App Group UserDefaults
-        let defaults = UserDefaults(suiteName: "group.com.track.shared") ?? UserDefaults.standard
+        let defaults = UserDefaults(suiteName: kAppGroupIdentifier) ?? UserDefaults.standard
         let lat = defaults.double(forKey: "lastLatitude")
         let lon = defaults.double(forKey: "lastLongitude")
         let hasLocation = defaults.bool(forKey: "hasLastLocation")

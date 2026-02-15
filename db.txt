@@ -2,8 +2,22 @@
 -- Track App - Supabase Database Schema
 -- ============================================================
 -- Run this SQL in your Supabase Dashboard > SQL Editor
--- This sets up all tables needed for the current app functionality.
+-- This script is IDEMPOTENT - safe to run multiple times!
 -- ============================================================
+
+-- ============================================================
+-- 0. HELPER FUNCTIONS (Must be created first)
+-- ============================================================
+
+-- Auto-update the updated_at timestamp on any table
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = timezone('utc'::text, now());
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
 
 -- ============================================================
 -- 1. USER PROFILES (Syncs with Supabase Auth)
@@ -31,15 +45,8 @@ CREATE TABLE IF NOT EXISTS profiles (
   last_login_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 
--- Auto-update the updated_at timestamp
-CREATE OR REPLACE FUNCTION update_updated_at_column()
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW.updated_at = timezone('utc'::text, now());
-    RETURN NEW;
-END;
-$$ language 'plpgsql';
-
+-- Trigger for auto-updating updated_at (idempotent)
+DROP TRIGGER IF EXISTS update_profiles_updated_at ON profiles;
 CREATE TRIGGER update_profiles_updated_at
     BEFORE UPDATE ON profiles
     FOR EACH ROW
@@ -76,7 +83,7 @@ CREATE TABLE IF NOT EXISTS route_interactions (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 
--- Indexes for fast analytics queries
+-- Indexes for fast analytics queries (idempotent with IF NOT EXISTS)
 CREATE INDEX IF NOT EXISTS idx_route_interactions_route_id ON route_interactions(route_id);
 CREATE INDEX IF NOT EXISTS idx_route_interactions_created_at ON route_interactions(created_at);
 CREATE INDEX IF NOT EXISTS idx_route_interactions_mode ON route_interactions(mode);
@@ -87,14 +94,18 @@ CREATE INDEX IF NOT EXISTS idx_route_interactions_mode ON route_interactions(mod
 -- ============================================================
 -- Stores when users want their widgets to automatically show transit.
 -- Syncs across devices so schedules work on iPad, iPhone, etc.
+--
+-- IMPORTANT: days_of_week uses 0-based indexing to match Swift code:
+--   Swift: calendar.component(.weekday) returns 1-7
+--   WidgetSchedule.swift converts to 0-based: weekday - 1
+--   So: 0=Sunday, 1=Monday, 2=Tuesday, ..., 6=Saturday
 
 CREATE TABLE IF NOT EXISTS schedules (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id UUID REFERENCES auth.users ON DELETE CASCADE NOT NULL,
   
   -- Schedule config
-  -- Note: days_of_week uses 0-based indexing (Swift Calendar.component(.weekday) - 1)
-  days_of_week INT[] NOT NULL,         -- 0=Sunday, 1=Monday, ..., 6=Saturday (e.g., {1,2,3,4,5} for weekdays)
+  days_of_week INT[] NOT NULL,         -- 0=Sunday, 1=Monday, ..., 6=Saturday
   start_time TIME NOT NULL,            -- e.g., '08:30:00'
   duration_minutes INT DEFAULT 15,     -- How long the widget stays active
   
@@ -110,6 +121,8 @@ CREATE TABLE IF NOT EXISTS schedules (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 
+-- Trigger for auto-updating updated_at (idempotent)
+DROP TRIGGER IF EXISTS update_schedules_updated_at ON schedules;
 CREATE TRIGGER update_schedules_updated_at
     BEFORE UPDATE ON schedules
     FOR EACH ROW
@@ -125,6 +138,10 @@ CREATE TRIGGER update_schedules_updated_at
 -- - Routes they typically take
 --
 -- Used by SmartSuggester to predict what route you probably want.
+--
+-- IMPORTANT: day_of_week uses Swift's Calendar.component(.weekday) DIRECTLY:
+--   1=Sunday, 2=Monday, 3=Tuesday, ..., 7=Saturday
+--   (Different from schedules table which uses 0-based!)
 
 CREATE TABLE IF NOT EXISTS commute_patterns (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -139,9 +156,8 @@ CREATE TABLE IF NOT EXISTS commute_patterns (
   destination_name TEXT NOT NULL,
   
   -- Time context
-  -- Note: day_of_week uses Swift's Calendar.component(.weekday) values directly
   time_of_day INT NOT NULL CHECK (time_of_day >= 0 AND time_of_day <= 23),  -- Hour 0-23
-  day_of_week INT NOT NULL CHECK (day_of_week >= 1 AND day_of_week <= 7),   -- 1=Sunday, 7=Saturday (Calendar.component)
+  day_of_week INT NOT NULL CHECK (day_of_week >= 1 AND day_of_week <= 7),   -- 1=Sunday, 7=Saturday
   
   -- Frequency tracking
   frequency INT DEFAULT 1,             -- How often this pattern occurs
@@ -155,6 +171,8 @@ CREATE TABLE IF NOT EXISTS commute_patterns (
   UNIQUE(user_id, route_id, direction, destination_station_id, time_of_day, day_of_week)
 );
 
+-- Trigger for auto-updating updated_at (idempotent)
+DROP TRIGGER IF EXISTS update_commute_patterns_updated_at ON commute_patterns;
 CREATE TRIGGER update_commute_patterns_updated_at
     BEFORE UPDATE ON commute_patterns
     FOR EACH ROW
@@ -170,6 +188,14 @@ ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE schedules ENABLE ROW LEVEL SECURITY;
 ALTER TABLE commute_patterns ENABLE ROW LEVEL SECURITY;
 ALTER TABLE route_interactions ENABLE ROW LEVEL SECURITY;
+
+-- Drop existing policies first (idempotent)
+DROP POLICY IF EXISTS "Users can view own profile" ON profiles;
+DROP POLICY IF EXISTS "Users can update own profile" ON profiles;
+DROP POLICY IF EXISTS "Users can manage own schedules" ON schedules;
+DROP POLICY IF EXISTS "Users can manage own commute patterns" ON commute_patterns;
+DROP POLICY IF EXISTS "Anyone can insert route interactions" ON route_interactions;
+DROP POLICY IF EXISTS "Users can view own interactions" ON route_interactions;
 
 -- PROFILES: Users can only see/edit their own profile
 CREATE POLICY "Users can view own profile" 
@@ -244,8 +270,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Trigger to auto-create profile on signup
--- Using DROP IF EXISTS + CREATE because PostgreSQL doesn't support CREATE OR REPLACE for triggers
+-- Trigger to auto-create profile on signup (idempotent)
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
@@ -266,10 +291,14 @@ CREATE INDEX IF NOT EXISTS idx_profiles_apple_user_id ON profiles(apple_user_id)
 -- ============================================================
 -- 
 -- Tables created:
--- 1. profiles         - User accounts synced with Apple Sign-In
+-- 1. profiles           - User accounts synced with Apple Sign-In
 -- 2. route_interactions - Analytics (what routes are popular)
--- 3. schedules        - Widget activation schedules
--- 4. commute_patterns - Smart suggestions based on habits
+-- 3. schedules          - Widget activation schedules (0-based days)
+-- 4. commute_patterns   - Smart suggestions (1-based days)
+--
+-- Key differences in day format:
+-- - schedules.days_of_week: [0,1,2,3,4,5,6] where 0=Sunday
+-- - commute_patterns.day_of_week: 1-7 where 1=Sunday
 --
 -- Next steps:
 -- 1. Go to Authentication > Providers > Apple

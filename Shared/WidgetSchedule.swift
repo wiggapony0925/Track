@@ -39,7 +39,7 @@ struct WidgetSchedule: Codable, Identifiable, Equatable {
     
     // MARK: - Persistence
     
-    private static let defaults = UserDefaults(suiteName: "group.com.track.shared") ?? .standard
+    private static let defaults = UserDefaults(suiteName: kAppGroupIdentifier) ?? .standard
     private static let storageKey = "widget_schedules"
     
     /// Load all schedules from UserDefaults

@@ -84,7 +84,7 @@ struct LiveNearMeProvider: TimelineProvider {
 
     /// Fetches live nearby transit data from the backend API.
     private func fetchLiveEntry(maxRoutes: Int, completion: @escaping (LiveNearMeEntry?) -> Void) {
-        let defaults = UserDefaults(suiteName: "group.com.track.shared") ?? UserDefaults.standard
+        let defaults = UserDefaults(suiteName: kAppGroupIdentifier) ?? UserDefaults.standard
         let lat = defaults.double(forKey: "lastLatitude")
         let lon = defaults.double(forKey: "lastLongitude")
         let hasLocation = defaults.bool(forKey: "hasLastLocation")
