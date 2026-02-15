@@ -18,7 +18,7 @@ struct DashboardView: View {
     let viewModel: HomeViewModel
     let locationManager: LocationManager
     let sheetNavigator: SheetNavigator
-    let lastUpdated: Date?
+    @Binding var lastUpdated: Date?
     @Binding var cameraPosition: MapCameraPosition
     @Binding var is3DMode: Bool
     
@@ -74,6 +74,7 @@ struct DashboardView: View {
                         case .bus:
                             BusDashboard(
                                 viewModel: viewModel,
+                                locationManager: locationManager,
                                 lastUpdated: lastUpdated
                             )
                             .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -124,17 +125,22 @@ struct DashboardView: View {
         .background(AppTheme.Colors.background)
         .refreshable {
             await viewModel.refresh(location: locationManager.currentLocation)
+            lastUpdated = Date()
         }
     }
 }
 
 #Preview {
+    @Previewable @State var lastUpdated: Date? = Date()
+    @Previewable @State var cameraPosition: MapCameraPosition = .automatic
+    @Previewable @State var is3DMode: Bool = false
+    
     DashboardView(
         viewModel: HomeViewModel(),
         locationManager: LocationManager(),
         sheetNavigator: SheetNavigator(),
-        lastUpdated: Date(),
-        cameraPosition: .constant(.automatic),
-        is3DMode: .constant(false)
+        lastUpdated: $lastUpdated,
+        cameraPosition: $cameraPosition,
+        is3DMode: $is3DMode
     )
 }

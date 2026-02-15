@@ -13,6 +13,7 @@ struct BusDashboard: View {
     // MARK: - Dependencies
     
     let viewModel: HomeViewModel
+    let locationManager: LocationManager
     let lastUpdated: Date?
     
     var body: some View {
@@ -41,7 +42,7 @@ struct BusDashboard: View {
                             isTracking: viewModel.isTracking(arrival),
                             reliabilityWarning: nil,
                             onTrack: {
-                                viewModel.trackBusArrival(arrival, location: nil)
+                                viewModel.trackBusArrival(arrival, location: locationManager.currentLocation)
                             }
                         )
                         if index < viewModel.busArrivals.count - 1 {
@@ -93,6 +94,7 @@ struct BusDashboard: View {
 #Preview {
     BusDashboard(
         viewModel: HomeViewModel(),
+        locationManager: LocationManager(),
         lastUpdated: Date()
     )
 }

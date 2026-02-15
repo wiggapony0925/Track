@@ -128,7 +128,11 @@ struct GroupedRouteList: View {
                     RouteAnalyticsManager.shared.logInteraction(routeId: group.routeId)
                     Task {
                         await viewModel.selectGroupedRoute(group, directionIndex: directionIndex, userLocation: locationManager.currentLocation)
-                        sheetNavigator.navigate(to: .routeDetail(group: group, directionIndex: directionIndex))
+                        // Navigate only after route selection completes successfully
+                        // The viewModel sets isRouteDetailPresented = true on success
+                        if viewModel.isRouteDetailPresented {
+                            sheetNavigator.navigate(to: .routeDetail(group: group, directionIndex: directionIndex))
+                        }
                     }
                 }
                 if index < groups.count - 1 {

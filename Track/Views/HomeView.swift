@@ -117,7 +117,7 @@ struct HomeView: View {
                 viewModel: viewModel,
                 locationManager: locationManager,
                 sheetNavigator: sheetNavigator,
-                lastUpdated: lastUpdated,
+                lastUpdated: $lastUpdated,
                 cameraPosition: $cameraPosition,
                 is3DMode: $is3DMode
             )
