@@ -93,7 +93,8 @@ CREATE TABLE IF NOT EXISTS schedules (
   user_id UUID REFERENCES auth.users ON DELETE CASCADE NOT NULL,
   
   -- Schedule config
-  days_of_week INT[] NOT NULL,         -- 0=Sun, 1=Mon, ..., 6=Sat (e.g., {1,2,3,4,5} for weekdays)
+  -- Note: days_of_week uses 0-based indexing (Swift Calendar.component(.weekday) - 1)
+  days_of_week INT[] NOT NULL,         -- 0=Sunday, 1=Monday, ..., 6=Saturday (e.g., {1,2,3,4,5} for weekdays)
   start_time TIME NOT NULL,            -- e.g., '08:30:00'
   duration_minutes INT DEFAULT 15,     -- How long the widget stays active
   
@@ -138,8 +139,9 @@ CREATE TABLE IF NOT EXISTS commute_patterns (
   destination_name TEXT NOT NULL,
   
   -- Time context
+  -- Note: day_of_week uses Swift's Calendar.component(.weekday) values directly
   time_of_day INT NOT NULL CHECK (time_of_day >= 0 AND time_of_day <= 23),  -- Hour 0-23
-  day_of_week INT NOT NULL CHECK (day_of_week >= 1 AND day_of_week <= 7),   -- 1=Sun, 7=Sat (matches Calendar.component)
+  day_of_week INT NOT NULL CHECK (day_of_week >= 1 AND day_of_week <= 7),   -- 1=Sunday, 7=Saturday (Calendar.component)
   
   -- Frequency tracking
   frequency INT DEFAULT 1,             -- How often this pattern occurs
@@ -243,6 +245,7 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Trigger to auto-create profile on signup
+-- Using DROP IF EXISTS + CREATE because PostgreSQL doesn't support CREATE OR REPLACE for triggers
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
