@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
 
-from app.config import LINE_TO_URL_KEY
 from app.models import (
     AllSubwayLinesResponse,
     AllSubwayStationsResponse,
@@ -22,30 +21,14 @@ from app.models import (
 from app.services.data_cleaner import get_arrivals_for_line
 from app.services.subway_shapes import get_all_subway_stations, get_subway_route_shape
 from app.utils.logger import TrackLogger
+from app.utils.transit_utils import (
+    clean_route_id,
+    get_all_subway_lines,
+    get_subway_color,
+    resolve_subway_feed_key,
+)
 
 router = APIRouter(tags=["subway"])
-
-# Official MTA subway line colors
-_SUBWAY_COLORS: dict[str, str] = {
-    "1": "#EE352E", "2": "#EE352E", "3": "#EE352E",
-    "4": "#00933C", "5": "#00933C", "6": "#00933C",
-    "7": "#B933AD",
-    "A": "#0039A6", "C": "#0039A6", "E": "#0039A6",
-    "B": "#FF6319", "D": "#FF6319", "F": "#FF6319", "M": "#FF6319",
-    "G": "#6CBE45",
-    "J": "#996633", "Z": "#996633",
-    "L": "#A7A9AC",
-    "N": "#FCCC0A", "Q": "#FCCC0A", "R": "#FCCC0A", "W": "#FCCC0A",
-    "S": "#808183", "SI": "#808183",
-}
-
-# All subway lines to include in the full system map
-_ALL_LINES = [
-    "1", "2", "3", "4", "5", "6", "7",
-    "A", "C", "E", "B", "D", "F", "M",
-    "G", "J", "Z", "L", "N", "Q", "R", "W",
-]
-
 
 # NOTE: Static path endpoints MUST be declared before the wildcard /{line_id}
 # endpoint, otherwise FastAPI would match literal segments as a line_id.
@@ -60,14 +43,15 @@ async def subway_shapes_all() -> AllSubwayLinesResponse:
     (polylines + color only, no stop lists) to keep it fast.
     """
     overlays: list[SubwayLineOverlay] = []
+    lines = get_all_subway_lines()
 
-    for line in _ALL_LINES:
+    for line in lines:
         result = get_subway_route_shape(line)
         if result is None:
             continue
         polylines_raw, _stops = result
         encoded = [_encode_polyline(coords) for coords in polylines_raw]
-        color = _SUBWAY_COLORS.get(line, "#808183")
+        color = get_subway_color(line)
         overlays.append(SubwayLineOverlay(
             route_id=line,
             color_hex=color,
@@ -104,8 +88,8 @@ async def subway_shape(route_id: str) -> RouteShape:
     - polylines: Google-encoded polyline strings for the route geometry
     - stops: ordered list of all stations along the line
     """
-    upper = route_id.upper()
-    result = get_subway_route_shape(upper)
+    clean_id = clean_route_id(route_id)
+    result = get_subway_route_shape(clean_id)
     if result is None:
         raise HTTPException(
             status_code=404,
@@ -130,12 +114,12 @@ async def subway_shape(route_id: str) -> RouteShape:
     ]
 
     TrackLogger.info(
-        f"Subway shape '{upper}': {len(encoded_polylines)} polyline(s), "
+        f"Subway shape '{clean_id}': {len(encoded_polylines)} polyline(s), "
         f"{len(stops)} stops"
     )
 
     return RouteShape(
-        route_id=upper,
+        route_id=clean_id,
         polylines=encoded_polylines,
         stops=stops,
     )
@@ -144,14 +128,14 @@ async def subway_shape(route_id: str) -> RouteShape:
 @router.get("/subway/{line_id}", response_model=list[TrackArrival])
 async def subway_arrivals(line_id: str) -> list[TrackArrival]:
     """Return upcoming arrivals for a subway line (e.g. ``/subway/L``)."""
-    upper = line_id.upper()
-    if upper not in LINE_TO_URL_KEY:
+    clean_id = clean_route_id(line_id)
+    if resolve_subway_feed_key(clean_id) is None:
         raise HTTPException(
             status_code=404,
             detail=f"Unknown subway line: {line_id}",
         )
     try:
-        return await get_arrivals_for_line(upper)
+        return await get_arrivals_for_line(clean_id)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
@@ -180,5 +164,3 @@ def _encode_value(value: int, result: list[str]) -> None:
         result.append(chr(((v & 0x1F) | 0x20) + 63))
         v >>= 5
     result.append(chr(v + 63))
-
-

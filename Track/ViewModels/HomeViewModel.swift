@@ -440,7 +440,7 @@ final class HomeViewModel {
             await SupabaseManager.shared.logRouteInteraction(
                 routeId: group.routeId,
                 mode: group.isBus ? "bus" : "subway",
-                interactionType: "click"
+                type: "click"
             )
         }
         
@@ -895,7 +895,7 @@ final class HomeViewModel {
             await SupabaseManager.shared.logRouteInteraction(
                 routeId: arrival.routeId,
                 mode: arrival.isBus ? "bus" : "subway",
-                interactionType: "track"
+                type: "track"
             )
         }
         
@@ -954,7 +954,7 @@ final class HomeViewModel {
             await SupabaseManager.shared.logRouteInteraction(
                 routeId: arrival.routeID,
                 mode: "subway",
-                interactionType: "track"
+                type: "track"
             )
         }
         
@@ -998,7 +998,7 @@ final class HomeViewModel {
             await SupabaseManager.shared.logRouteInteraction(
                 routeId: arrival.routeId,
                 mode: "bus",
-                interactionType: "track"
+                type: "track"
             )
         }
         
@@ -1044,7 +1044,7 @@ final class HomeViewModel {
             await SupabaseManager.shared.logRouteInteraction(
                 routeId: arrival.routeID,
                 mode: "lirr",
-                interactionType: "track"
+                type: "track"
             )
         }
         
