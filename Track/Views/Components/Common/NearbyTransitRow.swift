@@ -76,14 +76,37 @@ struct NearbyTransitRow: View {
                 // MARK: Right Side (Time + Status)
                 VStack(alignment: .trailing, spacing: 6) {
                     // Minutes countdown
-                    HStack(alignment: .firstTextBaseline, spacing: 3) {
-                        Text("\(arrival.minutesAway)")
-                            .font(.custom("Helvetica-Bold", size: 32))
-                            .foregroundColor(AppTheme.Colors.countdown(arrival.minutesAway))
-                        Text("min")
-                            .font(.custom("Helvetica-Bold", size: 13))
-                            .foregroundColor(AppTheme.Colors.textSecondary)
-                            .offset(y: -2)
+                    if let ts = arrival.arrivalTs {
+                        // Live countdown using local system time vs arrival timestamp
+                        TimelineView(.periodic(from: .now, by: 1.0)) { context in
+                            let secondsUntil = Double(ts) - context.date.timeIntervalSince1970
+                            let mins = max(0, Int(secondsUntil / 60))
+                            let isNow = secondsUntil <= 30
+                            
+                            HStack(alignment: .firstTextBaseline, spacing: 3) {
+                                Text(isNow ? "Now" : "\(mins)")
+                                    .font(.custom("Helvetica-Bold", size: isNow ? 22 : 32))
+                                    .foregroundColor(AppTheme.Colors.countdown(mins))
+                                
+                                if !isNow {
+                                    Text("min")
+                                        .font(.custom("Helvetica-Bold", size: 13))
+                                        .foregroundColor(AppTheme.Colors.textSecondary)
+                                        .offset(y: -2)
+                                }
+                            }
+                        }
+                    } else {
+                        // Fallback to static minutesAway
+                        HStack(alignment: .firstTextBaseline, spacing: 3) {
+                            Text("\(arrival.minutesAway)")
+                                .font(.custom("Helvetica-Bold", size: 32))
+                                .foregroundColor(AppTheme.Colors.countdown(arrival.minutesAway))
+                            Text("min")
+                                .font(.custom("Helvetica-Bold", size: 13))
+                                .foregroundColor(AppTheme.Colors.textSecondary)
+                                .offset(y: -2)
+                        }
                     }
                     
                     // Status pill

@@ -20,7 +20,9 @@ class TrackArrival(BaseModel):
     direction: str
     destination: str | None = None  # e.g. "Wakefield-241 St"
     minutes_away: int
+    arrival_ts: int = 0
     status: str = "On Time"
+    trip_id: str | None = None
 
 
 class TransitAlert(BaseModel):
@@ -81,6 +83,7 @@ class NearbyTransitArrival(BaseModel):
     direction: str
     destination: str | None = None  # e.g. "Wakefield-241 St"
     minutes_away: int
+    arrival_ts: int | None = None
     status: str = "On Time"
     mode: str  # "subway" or "bus"
     stop_lat: float | None = None

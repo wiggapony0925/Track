@@ -14,6 +14,7 @@ struct NearbyTransitResponse: Codable, Identifiable {
     let mode: String
     let stopLat: Double?
     let stopLon: Double?
+    let arrivalTs: Int?
 
     var isBus: Bool { mode == "bus" }
 
@@ -32,6 +33,7 @@ struct NearbyTransitResponse: Codable, Identifiable {
         case mode
         case stopLat = "stop_lat"
         case stopLon = "stop_lon"
+        case arrivalTs = "arrival_ts"
     }
 }
 

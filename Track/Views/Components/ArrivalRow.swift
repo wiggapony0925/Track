@@ -205,7 +205,9 @@ struct ArrivalRow: View {
                 direction: "Manhattan",
                 scheduledTime: Date().addingTimeInterval(300),
                 estimatedTime: Date().addingTimeInterval(360),
-                minutesAway: 5
+                minutesAway: 5,
+                destination: "8 Av",
+                tripId: "L123"
             ),
             prediction: DelayPrediction(
                 adjustedMinutes: 6,
@@ -222,7 +224,9 @@ struct ArrivalRow: View {
                 direction: "Church Av",
                 scheduledTime: Date().addingTimeInterval(480),
                 estimatedTime: Date().addingTimeInterval(480),
-                minutesAway: 8
+                minutesAway: 8,
+                destination: "Court Sq",
+                tripId: nil
             ),
             prediction: nil
         )

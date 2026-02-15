@@ -41,6 +41,7 @@
     "service_area_min_lat": 40.40,
     "service_area_max_lat": 41.10,
     "service_area_min_lon": -74.35,
-    "service_area_max_lon": -72.40
+    "service_area_max_lon": -72.40,
+    "simulation_easing_enabled": true
   }
 }

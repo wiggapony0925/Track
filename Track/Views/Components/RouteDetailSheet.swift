@@ -409,13 +409,13 @@ struct RouteDetailSheet: View {
                             routeId: "A", stopName: "Canal St", direction: "N",
                             destination: "Inwood-207 St",
                             minutesAway: 3, status: "On Time", mode: "subway",
-                            stopLat: 40.72, stopLon: -74.0
+                            stopLat: 40.72, stopLon: -74.0, arrivalTs: nil
                         ),
                         NearbyTransitResponse(
                             routeId: "A", stopName: "14 St", direction: "N",
                             destination: "Inwood-207 St",
                             minutesAway: 8, status: "On Time", mode: "subway",
-                            stopLat: 40.74, stopLon: -74.0
+                            stopLat: 40.74, stopLon: -74.0, arrivalTs: nil
                         ),
                     ]
                 ),
@@ -426,7 +426,7 @@ struct RouteDetailSheet: View {
                             routeId: "A", stopName: "Fulton St", direction: "S",
                             destination: "Far Rockaway",
                             minutesAway: 5, status: "Delayed", mode: "subway",
-                            stopLat: 40.71, stopLon: -74.01
+                            stopLat: 40.71, stopLon: -74.01, arrivalTs: nil
                         ),
                     ]
                 ),

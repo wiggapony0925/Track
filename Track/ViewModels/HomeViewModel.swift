@@ -104,6 +104,19 @@ final class HomeViewModel {
     // Live bus/train tracking on map
     var selectedRouteId: String?
     var busVehicles: [BusVehicleResponse] = []
+    
+    struct TrainVehicle: Identifiable {
+        let id: String
+        let tripId: String?
+        let routeId: String
+        let direction: String
+        var lat: Double
+        var lon: Double
+        var bearing: Double?
+        var nextStationName: String?
+    }
+    var trainVehicles: [TrainVehicle] = []
+    
     var routeShape: RouteShapeResponse?
 
     // Full subway system map (pre-decoded for performance)
@@ -267,7 +280,7 @@ final class HomeViewModel {
     /// Updates the running Live Activity with fresh data from the latest refresh.
     /// This ensures the 'Other upcoming arrivals' and progress stay accurate.
     private func updateLiveActivityFromRefresh() {
-        guard let tracked = currentTrackedRoute else { return }
+        if currentTrackedRoute == nil { return }
         
         // Find matching arrival and its siblings across all possible data sources
         var foundArrival: (minutesAway: Int, destination: String, isBus: Bool)?
@@ -360,7 +373,8 @@ final class HomeViewModel {
             } catch {
                 AppLogger.shared.logError("fetchBusVehicles(\(group.routeId))", error: error)
             }
-            
+            // Polling handled by HomeView.onChange(of: selectedRouteId)
+
             do {
                 routeShape = try await shapeTask
                 AppLogger.shared.log("BUS_SHAPE", message: "Loaded shape for \(group.routeId): \(routeShape?.polylines.count ?? 0) polylines, \(routeShape?.stops.count ?? 0) stops")
@@ -368,12 +382,17 @@ final class HomeViewModel {
                 AppLogger.shared.logError("fetchRouteShape(\(group.routeId))", error: error)
             }
         } else {
-            // For subway: fetch the full line geometry from the backend
+            // For subway: fetch the full line geometry AND live arrivals from the backend
             do {
-                let shape = try await TrackAPI.fetchSubwayShape(routeID: group.displayName)
-                routeShape = shape
+                async let shapeTask = TrackAPI.fetchSubwayShape(routeID: group.displayName)
+                async let arrivalsTask = TrackAPI.fetchSubwayArrivals(lineID: group.displayName)
+                
+                routeShape = try await shapeTask
+                let arrivals = try await arrivalsTask
+                updateTrainPositions(arrivals: arrivals)
+                
             } catch {
-                AppLogger.shared.logError("fetchSubwayShape(\(group.displayName))", error: error)
+                AppLogger.shared.logError("fetchSubwayData(\(group.displayName))", error: error)
             }
         }
         
@@ -453,9 +472,9 @@ final class HomeViewModel {
     }
 
 
-    /// Refreshes only the vehicle positions for the currently selected route.
+    /// Refreshes only the vehicle positions for the currently selected bus route.
     func refreshBusVehicles() async {
-        guard let routeId = selectedRouteId else { return }
+        guard let routeId = selectedRouteId, selectedMode == .bus else { return }
         do {
             busVehicles = try await TrackAPI.fetchBusVehicles(routeID: routeId)
         } catch {
@@ -463,13 +482,137 @@ final class HomeViewModel {
         }
     }
 
-    /// Clears the selected route and removes bus/train markers from the map.
+    /// Refreshes only the vehicle positions for the currently selected subway route.
+    func refreshTrainVehicles() async {
+        guard let routeId = selectedRouteId else { return }
+        do {
+            async let arrivalsTask = TrackAPI.fetchSubwayArrivals(lineID: routeId)
+            let arrivals = try await arrivalsTask
+            updateTrainPositions(arrivals: arrivals)
+        } catch {
+             // Silently ignore failures on fast poll, or log debug
+        }
+    }
+
+    /// Clears the selected route and remove bus/train markers from the map.
     func clearRoute() {
         selectedRouteId = nil
         busVehicles = []
+        trainVehicles = []
+        cachedTrainArrivals = []
         routeShape = nil
         errorMessage = nil
         nearestStopCoordinate = nil
+    }
+
+    // Cache latest arrivals to allow client-side simulation between network fetches
+    private var cachedTrainArrivals: [TrainArrival] = []
+
+    /// Re-calculates train positions based on the current time and cached arrivals.
+    /// Call this frequently (e.g. every 1s) to animate trains smoothly.
+    func updateSimulation() {
+        guard !cachedTrainArrivals.isEmpty else { return }
+        updateTrainPositions(arrivals: cachedTrainArrivals)
+    }
+
+    /// Solves for "Ghost Trains" by interpolating position between stations.
+    private func updateTrainPositions(arrivals: [TrainArrival]) {
+        guard let shape = routeShape else { return }
+        self.cachedTrainArrivals = arrivals
+        
+        // 1. Group arrivals by UNIQUE trip.
+        // If tripId is missing, fallback to crude grouping by (Direction + roughly same times)
+        // But for now, let's rely on tripId or make a synthetic one.
+        var trips: [String: [TrainArrival]] = [:]
+        
+        for arrival in arrivals {
+            let key = arrival.tripId ?? "\(arrival.direction)-\(arrival.destination ?? "unk")-\(arrival.scheduledTime.timeIntervalSince1970)"
+            trips[key, default: []].append(arrival)
+        }
+        
+        var newVehicles: [TrainVehicle] = []
+        
+        // 2. Process each trip to find its "current location"
+        for (tripId, tripArrivals) in trips {
+            // Sort by time (using estimatedTime for sub-minute precision)
+            let sorted = tripArrivals.sorted { $0.estimatedTime < $1.estimatedTime }
+            
+            // The train is approaching the stop with the smallest POSITIVE time until arrival.
+            // Since we animate, `timeIntervalSinceNow` might become slightly negative just as it arrives.
+            // Allow a small buffer (e.g. -30s) to keep displaying it arriving at the station before switching to next stop.
+            guard let nextStop = sorted.first(where: { $0.estimatedTime.timeIntervalSinceNow > -30 }) else { continue }
+            
+            // Find this stop in the route shape
+            // Note: stop IDs in shape might differ (N vs S suffix).
+            // We strip direction suffix for matching.
+            let nextStopIdBase = nextStop.stationID.prefix(3)
+            
+            guard let nextStopIndex = shape.stops.firstIndex(where: { $0.id.hasPrefix(nextStopIdBase) }) else {
+               continue
+            }
+            
+            // Determine position
+            var lat = shape.stops[nextStopIndex].lat
+            var lon = shape.stops[nextStopIndex].lon
+            var bearing: Double = 0
+            
+            // If we can find the previous stop, interpolate!
+            // Approaching means it's 'minutesAway' minutes from 'nextStop'.
+            // Assume 3 minutes avg travel time between stations.
+            let previousIndex = nextStopIndex > 0 ? nextStopIndex - 1 : nextStopIndex
+            let nextIndex = nextStopIndex
+            
+            // Only interpolate if we have a valid previous stop
+            if previousIndex != nextIndex {
+                let prevStop = shape.stops[previousIndex]
+                let targetStop = shape.stops[nextIndex]
+                
+                // Heuristic: If it's > 4 mins away, assume it's at the previous station (or further back)
+                // If it's 0 mins, it's at the target.
+                // Interpolation factor t: 0 (at target) to 1 (at previous)
+                // Use refined calculation: nextStop.estimatedTime - now
+                let timeUntilArrival = nextStop.estimatedTime.timeIntervalSinceNow
+                let minutes = timeUntilArrival / 60.0
+                
+                let travelTime = 3.0 // Assume 3 mins between stops
+                let t = min(max(minutes / travelTime, 0.0), 1.0)
+                
+                // Interpolation
+                // t goes from 1 (previous stop) to 0 (target stop).
+                
+                if AppSettings.shared.simulationEasingEnabled {
+                    // Easing: Accelerate out, Decelerate in
+                    // normalized progress p = 1.0 - t (0.0 at start, 1.0 at end)
+                    let p = 1.0 - t
+                    let easedP = p < 0.5 ? 2 * p * p : 1 - pow(-2 * p + 2, 2) / 2
+                    let effectiveT = 1.0 - easedP
+                    
+                    lat = targetStop.lat * (1.0 - effectiveT) + prevStop.lat * effectiveT
+                    lon = targetStop.lon * (1.0 - effectiveT) + prevStop.lon * effectiveT
+                } else {
+                    // Linear: Constant speed
+                    lat = targetStop.lat * (1.0 - t) + prevStop.lat * t
+                    lon = targetStop.lon * (1.0 - t) + prevStop.lon * t
+                }
+                
+                // Calculate bearing from prev to target
+                bearing = atan2(targetStop.lon - prevStop.lon, targetStop.lat - prevStop.lat) * 180 / .pi
+                if bearing < 0 { bearing += 360 }
+            }
+            
+            newVehicles.append(TrainVehicle(
+                id: tripId,
+                tripId: tripId, // Use the dictionary key as the tripId
+                routeId: nextStop.routeID,
+                direction: nextStop.direction,
+                lat: lat,
+                lon: lon,
+                bearing: bearing,
+                nextStationName: shape.stops[nextStopIndex].name
+            ))
+        }
+        
+        self.trainVehicles = newVehicles
     }
 
     // MARK: - Nearby Transit (Unified)

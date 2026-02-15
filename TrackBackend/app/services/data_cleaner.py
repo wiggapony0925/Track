@@ -74,7 +74,9 @@ async def get_arrivals_for_line(line_id: str) -> list[TrackArrival]:
                     direction=direction,
                     destination=destination,
                     minutes_away=minutes,
+                    arrival_ts=arrival_time,
                     status="On Time",
+                    trip_id=trip.trip.trip_id,
                 )
             )
 

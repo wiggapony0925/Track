@@ -20,6 +20,7 @@ struct HomeView: View {
     @State private var showSettings = false
     @State private var lastUpdated: Date?
     @State private var refreshTimer: Timer?
+    @State private var vehiclePollTimer: Timer? // Separate timer for high-frequency vehicle updates
     @State private var hasLoadedInitialData = false
     @State private var is3DMode = false
     
@@ -117,6 +118,14 @@ struct HomeView: View {
                             routeName: vehicle.displayRouteName,
                             bearing: vehicle.bearing
                         )
+                    }
+                }
+                
+                // Live train positions (Simulated)
+                ForEach(viewModel.trainVehicles) { train in
+                    Annotation(train.nextStationName ?? train.routeId, coordinate: CLLocationCoordinate2D(latitude: train.lat, longitude: train.lon)) {
+                         TrainAnnotation(routeId: train.routeId, direction: train.direction)
+                             .rotationEffect(.degrees(train.bearing ?? 0))
                     }
                 }
 
@@ -321,9 +330,40 @@ struct HomeView: View {
                 }
             }
         }
+        .onChange(of: viewModel.selectedRouteId) {
+            // Stop existing timer
+            vehiclePollTimer?.invalidate()
+            vehiclePollTimer = nil
+            
+            // Start new timer if needed for both BUS and SUBWAY
+            if viewModel.selectedRouteId != nil {
+                 let isBus = viewModel.selectedGroupedRoute?.isBus ?? true
+                 // Run timer every 1 second for smooth animation
+                 let startTime = Date()
+                 let timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+                    let tick = Int(Date().timeIntervalSince(startTime))
+                    
+                    Task { @MainActor in
+                        if isBus {
+                            if tick % 3 == 0 {
+                                await viewModel.refreshBusVehicles()
+                            }
+                        } else {
+                            viewModel.updateSimulation()
+                            if tick % 3 == 0 {
+                                await viewModel.refreshTrainVehicles() 
+                            }
+                        }
+                    }
+                }
+                vehiclePollTimer = timer
+            }
+        }
         .onDisappear {
             refreshTimer?.invalidate()
-            refreshTimer = nil
+            vehiclePollTimer?.invalidate()
+            refreshTimer = nil // State mutation
+            vehiclePollTimer = nil
         }
         .onChange(of: viewModel.selectedMode) {
             viewModel.clearRoute()

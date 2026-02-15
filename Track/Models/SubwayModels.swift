@@ -5,26 +5,42 @@ import CoreLocation
 struct SubwayArrivalResponse: Codable {
     let station: String
     let direction: String
+    let destination: String?
     let minutesAway: Int
     let status: String
+    let tripId: String? // Optional since backend might not send it for older cached data
+    let arrivalTs: Int? // Optional timestamp in seconds
 
     enum CodingKeys: String, CodingKey {
         case station
         case direction
+        case destination
         case minutesAway = "minutes_away"
         case status
+        case tripId = "trip_id"
+        case arrivalTs = "arrival_ts"
     }
     
     // Helper to map to domain model (TrainArrival defined in TransitRepository.swift)
     func toTrainArrival() -> TrainArrival {
         let now = Date()
+        // If we have precise arrival timestamp, use it. Otherwise approximate from "minutes away".
+        let arrivalDate: Date
+        if let ts = arrivalTs, ts > 0 {
+            arrivalDate = Date(timeIntervalSince1970: TimeInterval(ts))
+        } else {
+            arrivalDate = now.addingTimeInterval(Double(minutesAway) * 60)
+        }
+        
         return TrainArrival(
             routeID: station,
             stationID: station,
             direction: direction,
-            scheduledTime: now.addingTimeInterval(Double(minutesAway) * 60),
-            estimatedTime: now.addingTimeInterval(Double(minutesAway) * 60),
-            minutesAway: minutesAway
+            scheduledTime: arrivalDate,
+            estimatedTime: arrivalDate,
+            minutesAway: minutesAway,
+            destination: destination,
+            tripId: tripId
         )
     }
 }

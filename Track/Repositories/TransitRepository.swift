@@ -17,6 +17,8 @@ struct TrainArrival: Identifiable {
     let scheduledTime: Date
     let estimatedTime: Date
     let minutesAway: Int
+    let destination: String?
+    let tripId: String?
 }
 
 /// Error types for transit data fetching.

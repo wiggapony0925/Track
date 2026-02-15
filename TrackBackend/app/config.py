@@ -18,17 +18,18 @@ _SETTINGS_PATH = Path(__file__).resolve().parent.parent / "settings.json"
 
 
 class AppSettings(BaseModel):
-    search_radius_meters: int = 800
-    refresh_interval_seconds: int = 30
-    nearest_metro_fallback_radius_meters: int = 5000
-    max_nearby_results: int = 20
-    max_arrivals_per_feed: int = 10
-    nearby_bus_stops_limit: int = 3
-    http_timeout_seconds: float = 15.0
-    http_connect_timeout_seconds: float = 10.0
-    http_max_retries: int = 2
-    http_retry_delay_seconds: float = 1.0
-    show_ghost_trains: bool = False
+    search_radius_meters: int = 800  # Radius (meters) to search for nearby stops
+    refresh_interval_seconds: int = 30  # How often to fetch fresh data from MTA
+    nearest_metro_fallback_radius_meters: int = 5000  # Fallback radius if nothing found nearby
+    max_nearby_results: int = 20  # Max results to return in /nearby endpoint
+    max_arrivals_per_feed: int = 10  # Limit arrivals processed per GTFS feed
+    nearby_bus_stops_limit: int = 3  # Limit bus stops in nearby results
+    http_timeout_seconds: float = 15.0  # Timeout for MTA HTTP requests
+    http_connect_timeout_seconds: float = 10.0  # Connect timeout for MTA HTTP requests
+    http_max_retries: int = 2  # Max retries for failed MTA requests
+    http_retry_delay_seconds: float = 1.0  # Delay between retries
+    show_ghost_trains: bool = False  # If True, show trains with projected positions even if data is missing
+    simulation_easing_enabled: bool = True  # If True, clients should use physics-based interpolation
 
 
 class ApiKeys(BaseModel):
@@ -84,6 +85,7 @@ LINE_TO_URL_KEY: dict[str, str] = {
     "4": "subway_123456",
     "5": "subway_123456",
     "6": "subway_123456",
+    "7": "subway_123456",
     "B": "subway_bdfm",
     "D": "subway_bdfm",
     "F": "subway_bdfm",

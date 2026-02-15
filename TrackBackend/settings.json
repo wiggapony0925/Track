@@ -10,7 +10,8 @@
     "http_connect_timeout_seconds": 10.0,
     "http_max_retries": 2,
     "http_retry_delay_seconds": 1.0,
-    "show_ghost_trains": false
+    "show_ghost_trains": false,
+    "simulation_easing_enabled": true
   },
   "api_keys": {
     "mta_api_key": "",
