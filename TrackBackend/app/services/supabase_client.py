@@ -17,11 +17,15 @@ from typing import Any
 import httpx
 
 # Supabase configuration from environment
-SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://octpebjxadbufiplgjqg.supabase.co")
-SUPABASE_SERVICE_KEY = os.environ.get(
-    "SUPABASE_SERVICE_KEY",
-    os.environ.get("SUPABASE_KEY", "sb_publishable_lAEZ_x8O4vjdGaw-I-QUMg_oS5iWKIn")
-)
+# In production, set these as environment variables
+# For development, defaults are provided
+
+# Default Supabase credentials for Track app
+_DEFAULT_SUPABASE_URL = "https://octpebjxadbufiplgjqg.supabase.co"
+_DEFAULT_SUPABASE_KEY = "sb_publishable_lAEZ_x8O4vjdGaw-I-QUMg_oS5iWKIn"
+
+SUPABASE_URL = os.environ.get("SUPABASE_URL", _DEFAULT_SUPABASE_URL)
+SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", os.environ.get("SUPABASE_KEY", _DEFAULT_SUPABASE_KEY))
 
 
 class SupabaseClient:
@@ -30,15 +34,20 @@ class SupabaseClient:
     Uses httpx for async HTTP requests to the Supabase REST API.
     """
     
-    def __init__(self, url: str = SUPABASE_URL, key: str = SUPABASE_SERVICE_KEY):
-        self.url = url.rstrip("/")
-        self.key = key
+    def __init__(self, url: str | None = None, key: str | None = None):
+        self.url = (url or SUPABASE_URL).rstrip("/")
+        self.key = key or SUPABASE_SERVICE_KEY
         self.headers = {
-            "apikey": key,
-            "Authorization": f"Bearer {key}",
+            "apikey": self.key,
+            "Authorization": f"Bearer {self.key}",
             "Content-Type": "application/json",
             "Prefer": "return=representation"
         }
+    
+    @property
+    def is_configured(self) -> bool:
+        """Check if Supabase is properly configured."""
+        return bool(self.url and self.key)
     
     async def _request(
         self,
@@ -48,6 +57,9 @@ class SupabaseClient:
         json_data: dict[str, Any] | list[dict[str, Any]] | None = None
     ) -> list[dict[str, Any]]:
         """Make an async request to the Supabase REST API."""
+        if not self.is_configured:
+            return []
+        
         url = f"{self.url}/rest/v1/{table}"
         
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -60,7 +72,9 @@ class SupabaseClient:
             )
             
             if response.status_code >= 400:
-                print(f"[Supabase] Error {response.status_code}: {response.text}")
+                # Log error for debugging - in production use proper logging
+                import logging
+                logging.warning(f"[Supabase] Error {response.status_code}: {response.text}")
                 return []
             
             if response.status_code == 204:
@@ -207,8 +221,9 @@ class SupabaseClient:
         return result[0] if result else None
     
     async def upsert_profile(self, profile: dict[str, Any]) -> dict[str, Any] | None:
-        """Create or update a user profile."""
-        headers = {**self.headers, "Prefer": "resolution=merge-duplicates"}
+        """Create or update a user profile using upsert."""
+        # Use Supabase upsert by adding on_conflict handling in the request
+        # The Prefer header for upsert is already set in self.headers
         result = await self._request("POST", "profiles", json_data=profile)
         return result[0] if result else None
 

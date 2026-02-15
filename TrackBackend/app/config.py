@@ -30,8 +30,8 @@ class AppSettings(BaseModel):
     http_retry_delay_seconds: float = 1.0  # Delay between retries
     show_ghost_trains: bool = False  # If True, show trains with projected positions even if data is missing
     simulation_easing_enabled: bool = True  # If True, clients should use physics-based interpolation
-    supabase_url: str = ""  # Supabase project URL
-    supabase_anon_key: str = ""  # Supabase anon/public key
+    # Note: Supabase credentials should be set via environment variables:
+    # SUPABASE_URL, SUPABASE_SERVICE_KEY
 
 
 class ApiKeys(BaseModel):

@@ -293,33 +293,27 @@ class SupabaseManager: ObservableObject {
         }
     }
     
-    /// Sign up with Apple (creates new account)
+    /// Sign up with Apple (creates new account using native Apple ID token)
+    /// Uses Supabase's native OAuth flow with Apple identity token
     private func signUpWithApple(credentials: AppleSignInCredentials) async throws {
         guard let idToken = credentials.identityTokenString else {
             throw SupabaseError.invalidCredentials
         }
         
-        let url = baseURL.appendingPathComponent("auth/v1/signup")
+        // Use Supabase's token-based sign in for Apple
+        // This will create a new account if one doesn't exist
+        let url = baseURL.appendingPathComponent("auth/v1/token", isDirectory: false)
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue(apiKey, forHTTPHeaderField: "apikey")
         
-        // Generate a unique email if Apple hides it
-        // Use full UUID to guarantee uniqueness
-        let email = credentials.email ?? "apple_\(UUID().uuidString.lowercased())@track.privaterelay"
-        
-        // Include id_token for Apple Sign-In verification
+        // Use id_token grant type for native Apple Sign-In
         let body: [String: Any] = [
-            "email": email,
-            "password": UUID().uuidString, // Random password (user will use Apple Sign-In)
-            "id_token": idToken, // Apple identity token for verification
+            "grant_type": "id_token",
             "provider": "apple",
-            "data": [
-                "apple_user_id": credentials.userId,
-                "full_name": credentials.fullName?.formatted() ?? ""
-            ]
+            "id_token": idToken
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         
@@ -671,6 +665,121 @@ class SupabaseManager: ObservableObject {
               (200...299).contains(httpResponse.statusCode) else {
             throw SupabaseError.deleteFailed
         }
+    }
+    
+    // MARK: - Commute Patterns
+    
+    /// Cloud commute pattern model
+    struct CloudCommutePattern: Codable {
+        let id: UUID?
+        let userId: UUID
+        let routeId: String
+        let direction: String
+        let startLatitude: Double
+        let startLongitude: Double
+        let destinationStationId: String
+        let destinationName: String
+        let timeOfDay: Int
+        let dayOfWeek: Int
+        let frequency: Int
+        let lastUsed: Date
+        
+        enum CodingKeys: String, CodingKey {
+            case id
+            case userId = "user_id"
+            case routeId = "route_id"
+            case direction
+            case startLatitude = "start_latitude"
+            case startLongitude = "start_longitude"
+            case destinationStationId = "destination_station_id"
+            case destinationName = "destination_name"
+            case timeOfDay = "time_of_day"
+            case dayOfWeek = "day_of_week"
+            case frequency
+            case lastUsed = "last_used"
+        }
+    }
+    
+    /// Sync a commute pattern to cloud (upsert)
+    func syncCommutePattern(
+        routeId: String,
+        direction: String,
+        startLatitude: Double,
+        startLongitude: Double,
+        destinationStationId: String,
+        destinationName: String,
+        timeOfDay: Int,
+        dayOfWeek: Int,
+        frequency: Int
+    ) async throws {
+        guard let userId = currentUser?.id else {
+            throw SupabaseError.unauthorized
+        }
+        
+        let url = baseURL.appendingPathComponent("rest/v1/commute_patterns", isDirectory: false)
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(apiKey, forHTTPHeaderField: "apikey")
+        request.setValue("return=representation,resolution=merge-duplicates", forHTTPHeaderField: "Prefer")
+        if let token = accessToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        
+        let pattern = CloudCommutePattern(
+            id: nil,
+            userId: userId,
+            routeId: routeId,
+            direction: direction,
+            startLatitude: startLatitude,
+            startLongitude: startLongitude,
+            destinationStationId: destinationStationId,
+            destinationName: destinationName,
+            timeOfDay: timeOfDay,
+            dayOfWeek: dayOfWeek,
+            frequency: frequency,
+            lastUsed: Date()
+        )
+        
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        request.httpBody = try encoder.encode(pattern)
+        
+        let (_, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...299).contains(httpResponse.statusCode) else {
+            throw SupabaseError.upsertFailed
+        }
+    }
+    
+    /// Fetch commute patterns from cloud
+    func fetchCommutePatterns() async throws -> [CloudCommutePattern] {
+        guard let userId = currentUser?.id else {
+            return []
+        }
+        
+        let url = baseURL.appendingPathComponent("rest/v1/commute_patterns", isDirectory: false)
+        var urlComponents = URLComponents(url: url, resolvingAgainstBaseURL: false)!
+        urlComponents.queryItems = [
+            URLQueryItem(name: "user_id", value: "eq.\(userId.uuidString)"),
+            URLQueryItem(name: "select", value: "*"),
+            URLQueryItem(name: "order", value: "frequency.desc")
+        ]
+        
+        var request = URLRequest(url: urlComponents.url!)
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(apiKey, forHTTPHeaderField: "apikey")
+        if let token = accessToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        
+        let (data, _) = try await URLSession.shared.data(for: request)
+        
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode([CloudCommutePattern].self, from: data)
     }
 }
 

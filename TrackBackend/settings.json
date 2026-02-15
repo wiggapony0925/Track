@@ -11,9 +11,7 @@
     "http_max_retries": 2,
     "http_retry_delay_seconds": 1.0,
     "show_ghost_trains": false,
-    "simulation_easing_enabled": true,
-    "supabase_url": "https://octpebjxadbufiplgjqg.supabase.co",
-    "supabase_anon_key": "sb_publishable_lAEZ_x8O4vjdGaw-I-QUMg_oS5iWKIn"
+    "simulation_easing_enabled": true
   },
   "api_keys": {
     "mta_api_key": "",
