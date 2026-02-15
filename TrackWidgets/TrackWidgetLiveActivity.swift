@@ -185,11 +185,11 @@ struct TrackWidgetLiveActivity: Widget {
                 .frame(minWidth: 80)
             
             // "MIN" label with accent bar
-            HStack(spacing: 0) {
+            HStack(spacing: 4) {
                 RoundedRectangle(cornerRadius: 2)
                     .fill(accentColor)
                     .frame(width: 24, height: 3)
-                Text(" MIN")
+                Text("MIN")
                     .font(.system(size: 11, weight: .black, design: .rounded))
                     .foregroundColor(AppTheme.Colors.textSecondary)
                 RoundedRectangle(cornerRadius: 2)

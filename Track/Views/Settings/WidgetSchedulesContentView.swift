@@ -208,12 +208,14 @@ struct WidgetSchedulesContentView: View {
                     ForEach([0, 1, 2, 3, 4, 5, 6], id: \.self) { day in
                         let dayAbbr = ["S", "M", "T", "W", "T", "F", "S"][day]
                         let isActive = schedule.days.contains(day)
+                        let textColor = dayBadgeTextColor(isActive: isActive, enabled: schedule.enabled)
+                        let bgColor = dayBadgeBackgroundColor(isActive: isActive, enabled: schedule.enabled)
                         
                         Text(dayAbbr)
                             .font(.system(size: 10, weight: .bold, design: .rounded))
-                            .foregroundColor(isActive ? (schedule.enabled ? AppTheme.Colors.mtaBlue : AppTheme.Colors.textSecondary) : AppTheme.Colors.textSecondary.opacity(0.3))
+                            .foregroundColor(textColor)
                             .frame(width: 20, height: 20)
-                            .background(isActive ? (schedule.enabled ? AppTheme.Colors.mtaBlue.opacity(0.15) : AppTheme.Colors.textSecondary.opacity(0.1)) : Color.clear)
+                            .background(bgColor)
                             .cornerRadius(4)
                     }
                 }
@@ -246,6 +248,24 @@ struct WidgetSchedulesContentView: View {
         schedules[index].enabled = enabled
         WidgetSchedule.saveAll(schedules)
         WidgetCenter.shared.reloadAllTimelines()
+    }
+    
+    // MARK: - Day Badge Colors
+    
+    /// Returns the text color for a day badge based on active/enabled state
+    private func dayBadgeTextColor(isActive: Bool, enabled: Bool) -> Color {
+        if !isActive {
+            return AppTheme.Colors.textSecondary.opacity(0.3)
+        }
+        return enabled ? AppTheme.Colors.mtaBlue : AppTheme.Colors.textSecondary
+    }
+    
+    /// Returns the background color for a day badge based on active/enabled state
+    private func dayBadgeBackgroundColor(isActive: Bool, enabled: Bool) -> Color {
+        if !isActive {
+            return Color.clear
+        }
+        return enabled ? AppTheme.Colors.mtaBlue.opacity(0.15) : AppTheme.Colors.textSecondary.opacity(0.1)
     }
 }
 
