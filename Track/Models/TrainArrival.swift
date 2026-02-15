@@ -18,5 +18,6 @@ struct TrainArrival: Identifiable {
     let estimatedTime: Date
     let minutesAway: Int
     let destination: String?
+    let status: String
     let tripId: String?
 }

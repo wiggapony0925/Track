@@ -167,7 +167,7 @@ struct HomeView: View {
                 WidgetSchedule.saveAll(schedules)
                 
                 Task {
-                    try? await SyncManager.shared.uploadSchedule(newSchedule)
+                    await SyncManager.shared.uploadSchedule(newSchedule)
                 }
                 
                 WidgetCenter.shared.reloadAllTimelines()

@@ -61,6 +61,12 @@ struct BusArrivalRow: View {
                     .foregroundColor(statusColor)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
+                
+                if arrival.status == "Scheduled" {
+                    Image(systemName: "clock")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+                }
 
                 // Expand chevron
                 Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
@@ -106,7 +112,7 @@ struct BusArrivalRow: View {
                             .foregroundColor(AppTheme.Colors.textOnColor)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
-                            .background(statusColor)
+                            .background(arrival.status == "Scheduled" ? Color.gray.opacity(0.6) : statusColor)
                             .clipShape(Capsule())
                     }
 
@@ -183,6 +189,7 @@ struct BusArrivalRow: View {
                 vehicleId: "MTA NYCT_7582",
                 stopId: "MTA_308214",
                 statusText: "Approaching",
+                status: "Live",
                 expectedArrival: nil,
                 distanceMeters: 50
             ),
@@ -193,8 +200,18 @@ struct BusArrivalRow: View {
             vehicleId: "MTA NYCT_7590",
             stopId: "MTA_308214",
             statusText: "3 stops away",
+            status: "Live",
             expectedArrival: nil,
             distanceMeters: 1200
+        ))
+        BusArrivalRow(arrival: BusArrival(
+            routeId: "MTA NYCT_B63",
+            vehicleId: "BUS_1234",
+            stopId: "MTA_308214",
+            statusText: "Scheduled",
+            status: "Scheduled",
+            expectedArrival: Date().addingTimeInterval(600),
+            distanceMeters: nil
         ))
     }
     .background(AppTheme.Colors.background)

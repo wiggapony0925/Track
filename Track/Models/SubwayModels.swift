@@ -42,6 +42,7 @@ struct SubwayArrivalResponse: Codable {
             estimatedTime: arrivalDate,
             minutesAway: minutesAway,
             destination: destination,
+            status: status,
             tripId: tripId
         )
     }

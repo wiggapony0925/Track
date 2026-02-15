@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import httpx
+from datetime import datetime
 from fastapi import APIRouter, HTTPException, Query
 
 from app.config import get_settings
@@ -92,7 +93,25 @@ async def bus_nearby(
 async def bus_live(stop_id: str) -> list[BusArrival]:
     """Return real-time bus arrivals at a stop (e.g. ``/bus/live/MTA_308214``)."""
     try:
-        return await get_realtime_arrivals(stop_id)
+        live_arrivals = await get_realtime_arrivals(stop_id)
+        if not live_arrivals:
+            from app.services.schedule_service import schedule_service
+            # Fallback to schedule
+            scheduled = schedule_service.get_scheduled_arrivals(stop_id, limit=5)
+            return [
+                BusArrival(
+                    route_id=s.route_id,
+                    vehicle_id="",
+                    stop_id=s.station,
+                    status_text=f"{s.destination} ({s.status})",
+                    status="Scheduled",
+                    expected_arrival=datetime.fromtimestamp(s.arrival_ts) if s.arrival_ts else None,
+                    distance_meters=None,
+                    bearing=None
+                )
+                for s in scheduled
+            ]
+        return live_arrivals
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code in (401, 403):
             raise HTTPException(

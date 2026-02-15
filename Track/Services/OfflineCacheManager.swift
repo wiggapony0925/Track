@@ -68,12 +68,14 @@ final class OfflineCacheManager: ObservableObject {
     
     private func startNetworkMonitoring() {
         monitor.pathUpdateHandler = { [weak self] path in
-            Task { @MainActor in
-                self?.isOnline = path.status == .satisfied
+            let isSatisfied = path.status == .satisfied
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                self.isOnline = isSatisfied
                 
                 // If we just came online, clear the cached data flag
-                if path.status == .satisfied {
-                    self?.isUsingCachedData = false
+                if isSatisfied {
+                    self.isUsingCachedData = false
                 }
             }
         }

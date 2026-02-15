@@ -65,6 +65,13 @@ struct ArrivalRow: View {
                         Text("min")
                             .font(.system(size: 12, weight: .medium))
                             .foregroundColor(AppTheme.Colors.textSecondary)
+                        
+                        if arrival.status == "Scheduled" {
+                            Image(systemName: "clock")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(AppTheme.Colors.textSecondary)
+                                .offset(y: -4)
+                        }
                     }
                 }
 
@@ -112,7 +119,7 @@ struct ArrivalRow: View {
                             .foregroundColor(AppTheme.Colors.textOnColor)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
-                            .background(arrival.minutesAway <= 2 ? AppTheme.Colors.alertRed : AppTheme.Colors.successGreen)
+                            .background(arrival.status == "Scheduled" ? Color.gray.opacity(0.6) : (arrival.minutesAway <= 2 ? AppTheme.Colors.alertRed : AppTheme.Colors.successGreen))
                             .clipShape(Capsule())
                     }
 
@@ -207,6 +214,7 @@ struct ArrivalRow: View {
                 estimatedTime: Date().addingTimeInterval(360),
                 minutesAway: 5,
                 destination: "8 Av",
+                status: "Live",
                 tripId: "L123"
             ),
             prediction: DelayPrediction(
@@ -226,6 +234,7 @@ struct ArrivalRow: View {
                 estimatedTime: Date().addingTimeInterval(480),
                 minutesAway: 8,
                 destination: "Court Sq",
+                status: "Scheduled",
                 tripId: nil
             ),
             prediction: nil
