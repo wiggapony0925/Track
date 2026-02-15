@@ -24,6 +24,7 @@ struct DataController {
             TripLog.self,
             Station.self,
             Route.self,
+            WidgetSchedule.self,
         ])
 
         // Point to the Shared App Group container

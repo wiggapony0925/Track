@@ -12,7 +12,8 @@ import WidgetKit
 /// Widget schedules content for display within the universal bottom sheet.
 struct WidgetSchedulesContentView: View {
     let sheetNavigator: SheetNavigator
-    @State private var schedules: [WidgetSchedule] = []
+    @Environment(\.modelContext) private var modelContext
+    @Query(sort: \WidgetSchedule.startTime) private var schedules: [WidgetSchedule]
     
     var body: some View {
         VStack(spacing: 0) {
@@ -56,9 +57,6 @@ struct WidgetSchedulesContentView: View {
             }
         }
         .background(AppTheme.Colors.background)
-        .onAppear {
-            loadSchedules()
-        }
     }
     
     // MARK: - Sheet Header
@@ -239,14 +237,15 @@ struct WidgetSchedulesContentView: View {
     
     // MARK: - Actions
     
-    private func loadSchedules() {
-        schedules = WidgetSchedule.loadAll()
-    }
-    
     private func toggleSchedule(_ schedule: WidgetSchedule, enabled: Bool) {
-        guard let index = schedules.firstIndex(where: { $0.id == schedule.id }) else { return }
-        schedules[index].enabled = enabled
-        WidgetSchedule.saveAll(schedules)
+        schedule.enabled = enabled
+        // Changes are auto-persisted by SwiftData
+        
+        // Also trigger a background sync to cloud
+        Task {
+            try? await SyncManager.shared.uploadSchedule(schedule)
+        }
+        
         WidgetCenter.shared.reloadAllTimelines()
     }
     

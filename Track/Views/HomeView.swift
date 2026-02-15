@@ -21,6 +21,7 @@ import MapKit
 struct HomeView: View {
     // MARK: - State
     
+    @Environment(\.modelContext) private var modelContext
     @State private var viewModel = HomeViewModel()
     @State private var locationManager = LocationManager()
     @State private var sheetNavigator = SheetNavigator()
@@ -156,13 +157,28 @@ struct HomeView: View {
             
         case .scheduleEditor(let schedule):
             ScheduleEditorView(schedule: schedule) { newSchedule in
-                var schedules = WidgetSchedule.loadAll()
-                if let index = schedules.firstIndex(where: { $0.id == newSchedule.id }) {
-                    schedules[index] = newSchedule
+                if let existing = schedule {
+                    // Update existing
+                    existing.days = newSchedule.days
+                    existing.startTime = newSchedule.startTime
+                    existing.duration = newSchedule.duration
+                    existing.enabled = newSchedule.enabled
+                    existing.routeId = newSchedule.routeId
+                    existing.direction = newSchedule.direction
+                    
+                    Task {
+                        try? await SyncManager.shared.uploadSchedule(existing)
+                    }
                 } else {
-                    schedules.append(newSchedule)
+                    // Insert new
+                    modelContext.insert(newSchedule)
+                    
+                    Task {
+                        try? await SyncManager.shared.uploadSchedule(newSchedule)
+                    }
                 }
-                WidgetSchedule.saveAll(schedules)
+                
+                WidgetCenter.shared.reloadAllTimelines()
                 sheetNavigator.goBack()
             }
         }
