@@ -11,6 +11,7 @@
 //
 
 import Foundation
+import Combine
 import AuthenticationServices
 
 // MARK: - Supabase Configuration
@@ -309,9 +310,12 @@ class SupabaseManager: ObservableObject {
         // Use full UUID to guarantee uniqueness
         let email = credentials.email ?? "apple_\(UUID().uuidString.lowercased())@track.privaterelay"
         
+        // Include id_token for Apple Sign-In verification
         let body: [String: Any] = [
             "email": email,
             "password": UUID().uuidString, // Random password (user will use Apple Sign-In)
+            "id_token": idToken, // Apple identity token for verification
+            "provider": "apple",
             "data": [
                 "apple_user_id": credentials.userId,
                 "full_name": credentials.fullName?.formatted() ?? ""
@@ -460,7 +464,7 @@ class SupabaseManager: ObservableObject {
     
     /// Update profile with Apple Sign-In data
     private func updateProfileWithAppleData(credentials: AppleSignInCredentials, userId: UUID) async {
-        var profile = UserProfile(
+        let profile = UserProfile(
             id: userId,
             appleUserId: credentials.userId,
             email: credentials.email,

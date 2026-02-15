@@ -15,6 +15,7 @@
 //
 
 import Foundation
+import Combine
 
 /// Manages sync between local storage and Supabase cloud
 @MainActor
