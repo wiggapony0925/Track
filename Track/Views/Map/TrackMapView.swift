@@ -255,26 +255,22 @@ struct TrackMapView: View {
     
     // MARK: - System Map Polylines
     
+    /// Dashed stroke style for commuter rail routes - created once to avoid repeated allocations.
+    private static let commuterRailStrokeStyle = StrokeStyle(lineWidth: 2.5, lineCap: .round, dash: [6, 4])
+    
     @MapContentBuilder
     private var systemMapPolylines: some MapContent {
         if viewModel.routeShape == nil {
-            // Subway lines with perpendicular offset for shared corridors
-            ForEach(viewModel.cachedOffsetSubwayLines) { line in
-                ForEach(Array(line.coordinates.enumerated()), id: \.offset) { polyIdx, coords in
-                    MapPolyline(coordinates: coords)
-                        .stroke(line.color, lineWidth: 3)
-                }
+            // Subway lines - single flat ForEach with stable IDs for optimal performance
+            ForEach(viewModel.flattenedSubwayPolylines) { polyline in
+                MapPolyline(coordinates: polyline.coordinates)
+                    .stroke(polyline.color, lineWidth: polyline.lineWidth)
             }
             
-            // LIRR and MNR lines (no offset needed)
-            ForEach(viewModel.cachedSystemMap.filter { $0.mode != .subway }) { line in
-                ForEach(Array(line.coordinates.enumerated()), id: \.offset) { polyIdx, coords in
-                    MapPolyline(coordinates: coords)
-                        .stroke(
-                            line.color,
-                            style: StrokeStyle(lineWidth: 2.5, lineCap: .round, dash: [6, 4])
-                        )
-                }
+            // Commuter rail lines (LIRR and MNR) - single flat ForEach with stable IDs
+            ForEach(viewModel.flattenedCommuterRailPolylines) { polyline in
+                MapPolyline(coordinates: polyline.coordinates)
+                    .stroke(polyline.color, style: Self.commuterRailStrokeStyle)
             }
             
             // Stations layer (only when zoomed in)

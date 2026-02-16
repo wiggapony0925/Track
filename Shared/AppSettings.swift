@@ -124,6 +124,11 @@ struct AppSettings {
     var subwayLineOffsetMeters: Double {
         UserDefaults.standard.object(forKey: "subway_line_offset_meters") as? Double ?? _subwayLineOffsetMeters
     }
+    
+    /// Tolerance in degrees for polyline simplification (Ramer-Douglas-Peucker algorithm).
+    /// Higher values = fewer points = better performance but less detail.
+    /// ~0.0001° = ~11m, ~0.00015° = ~17m at NYC latitude.
+    let polylineSimplificationTolerance: Double
 
     // MARK: - Init
 
@@ -172,6 +177,7 @@ struct AppSettings {
             self.showLIRRByDefault = true
             self.showMNRByDefault = true
             self._subwayLineOffsetMeters = 12.0
+            self.polylineSimplificationTolerance = 0.00015
             return
         }
 
@@ -223,5 +229,6 @@ struct AppSettings {
         self.showLIRRByDefault = map["show_lirr_by_default"] as? Bool ?? true
         self.showMNRByDefault = map["show_mnr_by_default"] as? Bool ?? true
         self._subwayLineOffsetMeters = map["subway_line_offset_meters"] as? Double ?? 12.0
+        self.polylineSimplificationTolerance = map["polyline_simplification_tolerance"] as? Double ?? 0.00015
     }
 }

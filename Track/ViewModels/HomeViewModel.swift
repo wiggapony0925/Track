@@ -348,6 +348,26 @@ final class HomeViewModel {
         let coordinates: [[CLLocationCoordinate2D]]
     }
     var cachedOffsetSubwayLines: [OffsetSubwayLine] = []
+    
+    // MARK: - Flattened Map Polylines (Performance Optimized)
+    
+    /// A single polyline segment ready for rendering with a stable ID.
+    /// This flattens nested structures to avoid nested ForEach loops in SwiftUI Map,
+    /// which dramatically improves rendering performance.
+    struct FlattenedMapPolyline: Identifiable {
+        let id: String           // Stable unique ID: "routeId_branchIndex"
+        let coordinates: [CLLocationCoordinate2D]
+        let color: Color
+        let lineWidth: CGFloat
+        let isDashed: Bool
+    }
+    
+    /// Pre-computed flattened subway polylines for the system map view.
+    /// Uses stable IDs and avoids nested ForEach for optimal MapKit rendering.
+    var flattenedSubwayPolylines: [FlattenedMapPolyline] = []
+    
+    /// Pre-computed flattened commuter rail (LIRR/MNR) polylines for the system map view.
+    var flattenedCommuterRailPolylines: [FlattenedMapPolyline] = []
 
     // Full subway station list with served lines
     struct CachedSubwayStation: Identifiable {
@@ -545,8 +565,10 @@ final class HomeViewModel {
     
     /// Simplifies a polyline using the Ramer-Douglas-Peucker algorithm.
     /// Removes intermediate points within `tolerance` degrees of the straight
-    /// line between their neighbours — ~11 m at 0.0001° tolerance.
-    private func simplifyPolyline(_ coords: [CLLocationCoordinate2D], tolerance: Double = 0.0001) -> [CLLocationCoordinate2D] {
+    /// line between their neighbours — ~11 m at 0.0001° tolerance, ~17m at 0.00015°.
+    /// Uses the configurable tolerance from AppSettings for optimal performance/quality balance.
+    private func simplifyPolyline(_ coords: [CLLocationCoordinate2D], tolerance: Double? = nil) -> [CLLocationCoordinate2D] {
+        let effectiveTolerance = tolerance ?? AppSettings.shared.polylineSimplificationTolerance
         guard coords.count > 2 else { return coords }
         
         let first = coords[0]
@@ -579,9 +601,9 @@ final class HomeViewModel {
             }
         }
         
-        if maxDist > tolerance {
-            let left = simplifyPolyline(Array(coords[...maxIdx]), tolerance: tolerance)
-            let right = simplifyPolyline(Array(coords[maxIdx...]), tolerance: tolerance)
+        if maxDist > effectiveTolerance {
+            let left = simplifyPolyline(Array(coords[...maxIdx]), tolerance: effectiveTolerance)
+            let right = simplifyPolyline(Array(coords[maxIdx...]), tolerance: effectiveTolerance)
             return left.dropLast() + right
         } else {
             return [first, last]
@@ -808,6 +830,52 @@ final class HomeViewModel {
         
         cachedOffsetSubwayLines = result
         AppLogger.shared.log("SYSTEM_MAP", message: "Computed subway offsets for \(result.count) lines (\(cellOrdering.count) shared corridor cells)")
+        
+        // Pre-compute flattened polylines for efficient rendering
+        computeFlattenedPolylines()
+    }
+    
+    /// Pre-computes flattened polyline arrays with stable IDs for efficient MapKit rendering.
+    /// This eliminates nested ForEach loops in the View, dramatically improving performance.
+    /// Called once after `cachedOffsetSubwayLines` is populated.
+    private func computeFlattenedPolylines() {
+        // Flatten subway polylines from offset lines
+        var subwayFlat: [FlattenedMapPolyline] = []
+        for line in cachedOffsetSubwayLines {
+            for (branchIndex, coords) in line.coordinates.enumerated() {
+                // Skip empty or single-point polylines
+                guard coords.count >= 2 else { continue }
+                subwayFlat.append(FlattenedMapPolyline(
+                    id: "\(line.id)_\(branchIndex)",
+                    coordinates: coords,
+                    color: line.color,
+                    lineWidth: 3,
+                    isDashed: false
+                ))
+            }
+        }
+        flattenedSubwayPolylines = subwayFlat
+        
+        // Flatten commuter rail polylines (LIRR and MNR)
+        var commuterFlat: [FlattenedMapPolyline] = []
+        for line in cachedSystemMap where line.mode != .subway {
+            for (branchIndex, coords) in line.coordinates.enumerated() {
+                // Skip empty or single-point polylines
+                guard coords.count >= 2 else { continue }
+                commuterFlat.append(FlattenedMapPolyline(
+                    id: "\(line.id)_\(branchIndex)",
+                    coordinates: coords,
+                    color: line.color,
+                    lineWidth: 2.5,
+                    isDashed: true
+                ))
+            }
+        }
+        flattenedCommuterRailPolylines = commuterFlat
+        
+        let totalPolylines = subwayFlat.count + commuterFlat.count
+        let totalPoints = subwayFlat.reduce(0) { $0 + $1.coordinates.count } + commuterFlat.reduce(0) { $0 + $1.coordinates.count }
+        AppLogger.shared.log("SYSTEM_MAP", message: "Flattened \(totalPolylines) polylines (\(subwayFlat.count) subway, \(commuterFlat.count) commuter rail) with \(totalPoints) total points")
     }
     
     /// Fetches all subway stations and their served lines.
