@@ -21,16 +21,6 @@ struct SettingsContentView: View {
     
     let sheetNavigator: SheetNavigator
     
-    /// Convert meters to miles for display
-    private func metersToMiles(_ meters: Double) -> Double {
-        meters / 1609.344
-    }
-    
-    /// Convert miles to meters
-    private func milesToMeters(_ miles: Double) -> Double {
-        miles * 1609.344
-    }
-    
     var body: some View {
         VStack(spacing: 0) {
             // MARK: - Header with Back Button
