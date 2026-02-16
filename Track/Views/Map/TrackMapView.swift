@@ -172,9 +172,17 @@ struct TrackMapView: View {
         ForEach(viewModel.trainVehicles) { train in
             let isHighlighted = train.tripId == viewModel.highlightedVehicleId
             Annotation(train.nextStationName ?? train.routeId, coordinate: CLLocationCoordinate2D(latitude: train.lat, longitude: train.lon)) {
-                TrainAnnotation(routeId: train.routeId, direction: train.direction, isHighlighted: isHighlighted)
-                    .rotationEffect(.degrees(train.bearing ?? 0))
-                    .zIndex(isHighlighted ? 100 : 1)
+                Group {
+                    if train.routeId.contains("LIRR") || train.routeId.lowercased().contains("lir") {
+                        LIRRAnnotationView(routeId: train.routeId, isHighlighted: isHighlighted)
+                    } else if train.routeId.lowercased().contains("amtrak") || train.routeId.lowercased().contains("amt") {
+                        AmtrakAnnotationView(routeId: train.routeId, isHighlighted: isHighlighted)
+                    } else {
+                        TrainAnnotation(routeId: train.routeId, direction: train.direction, isHighlighted: isHighlighted)
+                    }
+                }
+                .rotationEffect(.degrees(train.bearing ?? 0))
+                .zIndex(isHighlighted ? 100 : 1)
             }
         }
     }
@@ -242,42 +250,6 @@ struct TrackMapView: View {
     }
 }
 
-// MARK: - Route Stop Marker
-
-/// Visual marker for route stops (circles for subway, rounded rectangles for bus)
-private struct RouteStopMarker: View {
-    let isBusRoute: Bool
-    let isSelected: Bool
-    let routeColor: Color
-    let stopName: String
-    
-    var body: some View {
-        ZStack {
-            if isBusRoute {
-                // Bus stops: rounded square marker
-                RoundedRectangle(cornerRadius: 3)
-                    .fill(Color.white)
-                    .frame(width: isSelected ? 18 : 12, height: isSelected ? 18 : 12)
-                    .shadow(color: .black.opacity(0.4), radius: 2, x: 0, y: 1)
-                RoundedRectangle(cornerRadius: 3)
-                    .stroke(routeColor, lineWidth: isSelected ? 4 : 3)
-                    .frame(width: isSelected ? 18 : 12, height: isSelected ? 18 : 12)
-            } else {
-                // Subway stops: circle marker
-                Circle()
-                    .fill(Color.white)
-                    .frame(width: isSelected ? 18 : 12, height: isSelected ? 18 : 12)
-                    .shadow(color: .black.opacity(0.4), radius: 2, x: 0, y: 1)
-                Circle()
-                    .stroke(routeColor, lineWidth: isSelected ? 4 : 3)
-                    .frame(width: isSelected ? 18 : 12, height: isSelected ? 18 : 12)
-            }
-        }
-        .scaleEffect(isSelected ? 1.3 : 1.0)
-        .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isSelected)
-        .accessibilityLabel(stopName)
-    }
-}
 
 #Preview {
     TrackMapView(

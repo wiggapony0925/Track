@@ -583,7 +583,12 @@ final class HomeViewModel {
     func refreshBusVehicles() async {
         guard let routeId = selectedRouteId, selectedMode == .bus else { return }
         do {
-            busVehicles = try await TrackAPI.fetchBusVehicles(routeID: routeId)
+            let vehicles = try await TrackAPI.fetchBusVehicles(routeID: routeId)
+            await MainActor.run {
+                withAnimation(.linear(duration: 2.0)) {
+                    self.busVehicles = vehicles
+                }
+            }
         } catch {
             AppLogger.shared.logError("refreshBusVehicles(\(routeId))", error: error)
         }
@@ -595,7 +600,11 @@ final class HomeViewModel {
         do {
             async let arrivalsTask = TrackAPI.fetchSubwayArrivals(lineID: routeId)
             let arrivals = try await arrivalsTask
-            updateTrainPositions(arrivals: arrivals)
+            await MainActor.run {
+                withAnimation(.linear(duration: 2.0)) {
+                    updateTrainPositions(arrivals: arrivals)
+                }
+            }
         } catch {
              // Silently ignore failures on fast poll, or log debug
         }
@@ -722,7 +731,9 @@ final class HomeViewModel {
             ))
         }
         
-        self.trainVehicles = newVehicles
+        withAnimation(.linear(duration: 1.1)) {
+            self.trainVehicles = newVehicles
+        }
     }
 
     // MARK: - Nearby Transit (Unified)

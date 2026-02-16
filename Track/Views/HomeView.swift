@@ -213,7 +213,7 @@ struct HomeView: View {
                 
                 Task { @MainActor in
                     if isBus {
-                        if tick % 3 == 0 {
+                        if tick % 2 == 0 {
                             await viewModel.refreshBusVehicles()
                         }
                     } else {
