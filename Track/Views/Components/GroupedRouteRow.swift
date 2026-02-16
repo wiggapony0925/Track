@@ -18,12 +18,13 @@ struct GroupedRouteRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            // Unified route badge — shows route name for both bus and train
+            // Unified route badge — shows route name with mode-specific styling
             RouteBadge(
                 routeID: group.displayName,
                 size: .medium,
                 isBus: group.isBus,
-                hexColor: group.colorHex
+                hexColor: group.colorHex,
+                mode: group.mode
             )
             .accessibilityHidden(true)
 
@@ -120,7 +121,7 @@ struct GroupedRouteRow: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
-            "\(group.isBus ? "Bus" : "Train") \(group.displayName), swipe for directions"
+            "\(group.isLIRR ? "LIRR" : group.isMNR ? "Metro-North" : group.isBus ? "Bus" : "Train") \(group.displayName), swipe for directions"
         )
         .accessibilityHint("Double tap to see details for current direction")
     }

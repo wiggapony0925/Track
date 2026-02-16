@@ -128,12 +128,27 @@ class BusVehicle(BaseModel):
     status_text: str | None = None
 
 
+class DirectionShape(BaseModel):
+    """Polylines and stops for one direction of a route."""
+
+    direction_id: int  # 0 or 1 (matches GTFS direction_id)
+    headsign: str = ""  # e.g. "Manhattan", "Far Rockaway"
+    polylines: list[str]
+    stops: list[BusStop]
+
+
 class RouteShape(BaseModel):
-    """Encoded polyline and stop list for a bus route."""
+    """Encoded polyline and stop list for a route.
+
+    ``polylines`` and ``stops`` hold the combined data (all directions merged)
+    for backwards compatibility.  ``directions`` (when present) splits them
+    by GTFS direction_id so the iOS app can show only the selected direction.
+    """
 
     route_id: str
     polylines: list[str]
     stops: list[BusStop]
+    directions: list[DirectionShape] = []
 
 
 class SubwayLineOverlay(BaseModel):

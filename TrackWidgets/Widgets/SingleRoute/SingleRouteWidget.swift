@@ -574,21 +574,41 @@ struct SingleRouteWidgetView: View {
 
     @ViewBuilder
     private func transitBadge(route: TrackedRoute, size: CGFloat) -> some View {
-        ZStack {
-            Circle()
-                .fill(route.isBus ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: route.cleanDisplayName))
-                .frame(width: size, height: size)
-
-            if route.isBus {
-                Image(systemName: "bus.fill")
-                    .font(.system(size: size * 0.4, weight: .bold))
+        if route.isCommuterRail {
+            // Commuter Rail: Rounded rect with train icon
+            HStack(spacing: 2) {
+                Image(systemName: "train.side.front.car")
+                    .font(.system(size: size * 0.35, weight: .bold))
                     .foregroundColor(.white)
-            } else {
                 Text(route.cleanDisplayName)
-                    .font(.system(size: size * 0.45, weight: .heavy, design: .rounded))
-                    .foregroundColor(AppTheme.SubwayColors.textColor(for: route.cleanDisplayName))
-                    .minimumScaleFactor(0.4)
+                    .font(.system(size: size * 0.3, weight: .heavy, design: .rounded))
+                    .foregroundColor(.white)
+                    .minimumScaleFactor(0.3)
                     .lineLimit(1)
+            }
+            .padding(.horizontal, 4)
+            .frame(minWidth: size, minHeight: size)
+            .background(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(route.isLIRR ? AppTheme.CommuterRailColors.lirrBlue : AppTheme.CommuterRailColors.mnrBlue)
+            )
+        } else {
+            ZStack {
+                Circle()
+                    .fill(route.isBus ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: route.cleanDisplayName))
+                    .frame(width: size, height: size)
+
+                if route.isBus {
+                    Image(systemName: "bus.fill")
+                        .font(.system(size: size * 0.4, weight: .bold))
+                        .foregroundColor(.white)
+                } else {
+                    Text(route.cleanDisplayName)
+                        .font(.system(size: size * 0.45, weight: .heavy, design: .rounded))
+                        .foregroundColor(AppTheme.SubwayColors.textColor(for: route.cleanDisplayName))
+                        .minimumScaleFactor(0.4)
+                        .lineLimit(1)
+                }
             }
         }
     }

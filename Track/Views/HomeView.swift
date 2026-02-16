@@ -102,8 +102,37 @@ struct HomeView: View {
         .onChange(of: locationManager.currentLocation) {
             handleLocationUpdate()
         }
+        .onChange(of: viewModel.routeShape?.polylines.count) {
+            // Route shape loaded (possibly after nearestStopCoordinate was set) —
+            // re-fit the map to show the full route.
+            if viewModel.selectedRouteId != nil,
+               let fitCamera = viewModel.cameraPositionFittingRoute(
+                   userLocation: locationManager.currentLocation,
+                   is3D: is3DMode
+               ) {
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                    sheetDetent = .fraction(0.4)
+                }
+                withAnimation(.spring(response: 0.8, dampingFraction: 0.8)) {
+                    cameraPosition = fitCamera
+                }
+            }
+        }
         .onChange(of: viewModel.nearestStopCoordinate?.latitude) {
-            if let coordinate = viewModel.nearestStopCoordinate {
+            // When a route is selected and shape data is loaded, fit the
+            // entire route on the map. Falls back to centering on the
+            // nearest stop if shape data isn't available yet.
+            if let fitCamera = viewModel.cameraPositionFittingRoute(
+                userLocation: locationManager.currentLocation,
+                is3D: is3DMode
+            ) {
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                    sheetDetent = .fraction(0.4)
+                }
+                withAnimation(.spring(response: 0.8, dampingFraction: 0.8)) {
+                    cameraPosition = fitCamera
+                }
+            } else if let coordinate = viewModel.nearestStopCoordinate {
                 centerMap(on: coordinate)
             }
         }
@@ -206,7 +235,8 @@ struct HomeView: View {
         vehiclePollTimer = nil
         
         if viewModel.selectedRouteId != nil {
-            let isBus = viewModel.selectedGroupedRoute?.isBus ?? true
+            let isBus = viewModel.selectedGroupedRoute?.isBus ?? false
+            let isCommuterRail = viewModel.selectedGroupedRoute?.isCommuterRail ?? false
             let startTime = Date()
             let timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
                 let tick = Int(Date().timeIntervalSince(startTime))
@@ -216,6 +246,9 @@ struct HomeView: View {
                         if tick % 2 == 0 {
                             await viewModel.refreshBusVehicles()
                         }
+                    } else if isCommuterRail {
+                        // No real-time vehicle tracking for commuter rail yet —
+                        // skip frequent polling to save battery & network.
                     } else {
                         viewModel.updateSimulation()
                         if tick % 3 == 0 {

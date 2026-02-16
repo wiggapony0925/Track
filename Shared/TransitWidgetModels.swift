@@ -14,12 +14,15 @@ struct NearbyArrival: Hashable {
     let direction: String
     let minutesAway: Int
     let status: String
-    let mode: String // "subway" or "bus"
+    let mode: String // "subway", "bus", "lirr", or "mnr"
     
     /// The absolute time of arrival, used for live countdown text in widgets.
     let arrivalTime: Date
 
     var isBus: Bool { mode == "bus" }
+    var isLIRR: Bool { mode == "lirr" }
+    var isMNR: Bool { mode == "mnr" }
+    var isCommuterRail: Bool { isLIRR || isMNR }
 
     /// Strips "MTA NYCT_" prefix for display.
     var displayName: String {

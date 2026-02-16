@@ -19,7 +19,7 @@ from urllib.parse import quote
 import httpx
 
 from app.config import get_settings
-from app.models import BusArrival, BusRoute, BusStop, BusVehicle, RouteShape
+from app.models import BusArrival, BusRoute, BusStop, BusVehicle, DirectionShape, RouteShape
 
 
 
@@ -658,5 +658,48 @@ async def _get_route_shape_impl(route_id: str) -> RouteShape:
             )
         )
 
-    print(f"[BUS_SHAPE] Returning {len(polylines)} polylines, {len(stops)} stops for {route_id}")
-    return RouteShape(route_id=route_id, polylines=polylines, stops=stops)
+    # Build per-direction shapes from OBA stopGroupings
+    directions: list[DirectionShape] = []
+    stop_groupings = entry.get("stopGroupings", [])
+    for grouping in stop_groupings:
+        if grouping.get("type") != "direction":
+            continue
+        for sg in grouping.get("stopGroups", []):
+            sg_id = sg.get("id", "0")
+            try:
+                dir_id = int(sg_id)
+            except ValueError:
+                dir_id = 0
+            headsign = sg.get("name", {}).get("name", "") if isinstance(sg.get("name"), dict) else str(sg.get("name", ""))
+            dir_poly_ids = set(sg.get("polylines", []))
+            dir_stop_ids = set(sg.get("stopIds", []))
+
+            # Match polylines for this direction by index
+            dir_polylines = [polylines[i] for i in range(len(polylines))
+                             if i < len(raw_polylines) and raw_polylines[i].get("id", str(i)) in dir_poly_ids]
+            # If no explicit polyline IDs matched, fall back to index-based split
+            if not dir_polylines and polylines:
+                mid = len(polylines) // 2
+                dir_polylines = polylines[:mid] if dir_id == 0 else polylines[mid:]
+
+            dir_stops = [s for s in stops if s.id in dir_stop_ids]
+
+            directions.append(DirectionShape(
+                direction_id=dir_id,
+                headsign=headsign,
+                polylines=dir_polylines,
+                stops=dir_stops,
+            ))
+
+    # Fallback: if no stopGroupings, split polylines in half as a heuristic
+    if not directions and len(polylines) >= 2:
+        mid = len(polylines) // 2
+        directions.append(DirectionShape(
+            direction_id=0, headsign="", polylines=polylines[:mid], stops=[],
+        ))
+        directions.append(DirectionShape(
+            direction_id=1, headsign="", polylines=polylines[mid:], stops=[],
+        ))
+
+    print(f"[BUS_SHAPE] Returning {len(polylines)} polylines, {len(stops)} stops, {len(directions)} directions for {route_id}")
+    return RouteShape(route_id=route_id, polylines=polylines, stops=stops, directions=directions)

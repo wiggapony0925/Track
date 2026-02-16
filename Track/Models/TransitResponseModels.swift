@@ -21,10 +21,14 @@ struct NearbyTransitResponse: Codable, Identifiable {
     let stopId: String?
 
     var isBus: Bool { mode == "bus" }
+    var isLIRR: Bool { mode == "lirr" }
+    var isMNR: Bool { mode == "mnr" }
+    var isCommuterRail: Bool { isLIRR || isMNR }
 
-    /// Strips "MTA NYCT_" prefix for display.
+    /// Human-readable display name for the route.
+    /// Uses branch name lookup for LIRR/MNR, strips MTA prefix for subway/bus.
     var displayName: String {
-        stripMTAPrefix(routeId)
+        HomeViewModel.resolveDisplayName(routeId: routeId, mode: mode)
     }
 
     enum CodingKeys: String, CodingKey {
@@ -64,6 +68,9 @@ struct GroupedNearbyTransitResponse: Codable, Identifiable {
     let directions: [DirectionArrivalsResponse]
 
     var isBus: Bool { mode == "bus" }
+    var isLIRR: Bool { mode == "lirr" }
+    var isMNR: Bool { mode == "mnr" }
+    var isCommuterRail: Bool { isLIRR || isMNR }
 
     /// The soonest arrival across all directions.
     var soonestMinutes: Int {

@@ -240,10 +240,19 @@ final class HomeViewModel {
         // Filter out stale arrivals (minutesAway == 0 with past timestamps)
         let liveArrivals = arrivals.filter { $0.minutesAway > 0 || $0.estimatedTime > Date() }
         
-        // Group by route_id
+        // Group by route_id — for LIRR/MNR prefix the raw numeric ID
         var byRoute: [String: [TrainArrival]] = [:]
         for arrival in liveArrivals {
-            byRoute[arrival.routeID, default: []].append(arrival)
+            let key: String
+            switch mode {
+            case "lirr":
+                key = arrival.routeID.hasPrefix("LIRR_") ? arrival.routeID : "LIRR_\(arrival.routeID)"
+            case "mnr":
+                key = arrival.routeID.hasPrefix("MNR_") ? arrival.routeID : "MNR_\(arrival.routeID)"
+            default:
+                key = arrival.routeID
+            }
+            byRoute[key, default: []].append(arrival)
         }
         
         return byRoute.map { routeId, routeArrivals in
@@ -279,14 +288,56 @@ final class HomeViewModel {
             
             let colorHex: String? = mode == "subway" ? nil : nil
             
+            // Resolve display name: use branch name lookup for commuter rail
+            let displayName = Self.resolveDisplayName(routeId: routeId, mode: mode)
+            
             return GroupedNearbyTransitResponse(
                 routeId: routeId,
-                displayName: routeId,
+                displayName: displayName,
                 mode: mode,
                 colorHex: colorHex,
                 directions: directions
             )
         }.sorted { $0.soonestMinutes < $1.soonestMinutes }
+    }
+    
+    /// Maps a LIRR/MNR route_id (e.g. "LIRR_9") to a human-readable branch name
+    /// (e.g. "Port Washington Branch"). Falls back to stripMTAPrefix for subway/bus.
+    private static let lirrBranchNames: [String: String] = [
+        "1": "Babylon Branch",
+        "2": "Hempstead Branch",
+        "3": "Oyster Bay Branch",
+        "4": "Ronkonkoma Branch",
+        "5": "Montauk Branch",
+        "6": "Long Beach Branch",
+        "7": "Far Rockaway Branch",
+        "8": "West Hempstead Branch",
+        "9": "Port Washington Branch",
+        "10": "Port Jefferson Branch",
+        "11": "Belmont Park",
+        "12": "City Terminal Zone",
+        "13": "Greenport Service",
+    ]
+    
+    private static let mnrLineNames: [String: String] = [
+        "1": "Hudson Line",
+        "2": "Harlem Line",
+        "3": "New Haven Line",
+        "4": "New Canaan Line",
+        "5": "Danbury Line",
+        "6": "Waterbury Line",
+    ]
+    
+    static func resolveDisplayName(routeId: String, mode: String) -> String {
+        if mode == "lirr" {
+            let numeric = routeId.hasPrefix("LIRR_") ? String(routeId.dropFirst(5)) : routeId
+            return lirrBranchNames[numeric] ?? stripMTAPrefix(routeId)
+        }
+        if mode == "mnr" {
+            let numeric = routeId.hasPrefix("MNR_") ? String(routeId.dropFirst(4)) : routeId
+            return mnrLineNames[numeric] ?? stripMTAPrefix(routeId)
+        }
+        return stripMTAPrefix(routeId)
     }
 
     // Bus mode
@@ -300,6 +351,12 @@ final class HomeViewModel {
     
     // Grouped subway arrivals fetched from the nearby/grouped API (subway-only)
     var nearbyGroupedSubwayArrivals: [GroupedNearbyTransitResponse] = []
+    
+    // Grouped LIRR arrivals fetched from the nearby/grouped API (lirr-only)
+    var nearbyGroupedLIRRArrivals: [GroupedNearbyTransitResponse] = []
+    
+    // Grouped MNR arrivals fetched from the nearby/grouped API (mnr-only)
+    var nearbyGroupedMNRArrivals: [GroupedNearbyTransitResponse] = []
 
     // Bus routes (browse all routes)
     var allBusRoutes: [BusRoute] = []
@@ -449,19 +506,14 @@ final class HomeViewModel {
             // Fetch subway shapes from API
             let response = try await TrackAPI.fetchAllSubwayShapes()
             
-            // Pre-decode subway coordinates, deduplicate overlapping branches,
-            // and simplify geometry for the system-map overview.
+            // Pre-decode subway coordinates for the system-map overview.
+            // Deduplication and simplification are handled by the backend.
             var decoded: [CachedTransitLine] = response.lines.map { line in
-                let rawBranches = line.decodedPolylines
-                let uniqueBranches = self.deduplicateBranches(rawBranches)
-                if rawBranches.count != uniqueBranches.count {
-                    AppLogger.shared.log("DEDUP", message: "\(line.routeId): \(rawBranches.count) branches → \(uniqueBranches.count) after dedup")
-                }
-                let simplified = uniqueBranches.map { self.simplifyPolyline($0) }
+                let branches = line.decodedPolylines
                 return CachedTransitLine(
                     id: line.routeId,
                     color: Color(hex: line.colorHex),
-                    coordinates: simplified,
+                    coordinates: branches,
                     mode: .subway
                 )
             }
@@ -533,115 +585,7 @@ final class HomeViewModel {
         transitMode(for: routeId) != nil
     }
     
-    // MARK: - Polyline Deduplication & Simplification
-    
-    /// Removes near-duplicate polylines whose physical tracks overlap heavily.
-    /// GTFS often produces multiple shape_ids that trace the same physical track
-    /// with minor coordinate differences, causing 2-3 overlapping lines per route.
-    /// Uses sample-point proximity: if ≥70% of evenly-spaced sample points on the
-    /// candidate lie within ~55m of the existing polyline, they're the same track.
-    private func deduplicateBranches(_ branches: [[CLLocationCoordinate2D]]) -> [[CLLocationCoordinate2D]] {
-        guard branches.count > 1 else { return branches }
-        
-        // Sort longest first so we keep the most complete polyline
-        let sorted = branches.sorted { $0.count > $1.count }
-        var deduped: [[CLLocationCoordinate2D]] = []
-        
-        let proximity = 0.0005 // ~55 m at NYC latitude
-        
-        for branch in sorted {
-            guard branch.count >= 2 else { continue }
-            
-            let isDuplicate = deduped.contains { existing in
-                guard existing.count >= 2 else { return false }
-                // Sample up to 20 evenly-spaced points along the candidate
-                let nSamples = min(20, branch.count)
-                let sampleStep = max(1, branch.count / nSamples)
-                var closeCount = 0
-                var totalSamples = 0
-                
-                var si = 0
-                while si < branch.count {
-                    let pt = branch[si]
-                    totalSamples += 1
-                    
-                    // Search a window around the proportional position in the existing line
-                    let proportion = Double(si) / Double(max(branch.count - 1, 1))
-                    let center = Int(proportion * Double(existing.count - 1))
-                    let window = max(existing.count / 5, 10)
-                    let lo = max(0, center - window)
-                    let hi = min(existing.count, center + window)
-                    
-                    var found = false
-                    for ei in lo..<hi {
-                        if abs(pt.latitude - existing[ei].latitude) < proximity
-                            && abs(pt.longitude - existing[ei].longitude) < proximity {
-                            found = true
-                            break
-                        }
-                    }
-                    if found { closeCount += 1 }
-                    
-                    si += sampleStep
-                }
-                
-                return totalSamples > 0 && Double(closeCount) / Double(totalSamples) >= 0.70
-            }
-            
-            if !isDuplicate {
-                deduped.append(branch)
-            }
-        }
-        
-        return deduped
-    }
-    
-    /// Simplifies a polyline using the Ramer-Douglas-Peucker algorithm.
-    /// Removes intermediate points within `tolerance` degrees of the straight
-    /// line between their neighbours — ~11 m at 0.0001° tolerance, ~17m at 0.00015°.
-    /// Uses the configurable tolerance from AppSettings for optimal performance/quality balance.
-    private func simplifyPolyline(_ coords: [CLLocationCoordinate2D], tolerance: Double? = nil) -> [CLLocationCoordinate2D] {
-        let effectiveTolerance = tolerance ?? AppSettings.shared.polylineSimplificationTolerance
-        guard coords.count > 2 else { return coords }
-        
-        let first = coords[0]
-        let last = coords[coords.count - 1]
-        
-        var maxDist = 0.0
-        var maxIdx = 0
-        
-        let dx = last.longitude - first.longitude
-        let dy = last.latitude - first.latitude
-        let lineLenSq = dx * dx + dy * dy
-        
-        for i in 1..<(coords.count - 1) {
-            let dist: Double
-            if lineLenSq == 0 {
-                let dlat = coords[i].latitude - first.latitude
-                let dlon = coords[i].longitude - first.longitude
-                dist = sqrt(dlat * dlat + dlon * dlon)
-            } else {
-                let t = max(0, min(1, ((coords[i].longitude - first.longitude) * dx + (coords[i].latitude - first.latitude) * dy) / lineLenSq))
-                let projLat = first.latitude + t * dy
-                let projLon = first.longitude + t * dx
-                let dlat = coords[i].latitude - projLat
-                let dlon = coords[i].longitude - projLon
-                dist = sqrt(dlat * dlat + dlon * dlon)
-            }
-            if dist > maxDist {
-                maxDist = dist
-                maxIdx = i
-            }
-        }
-        
-        if maxDist > effectiveTolerance {
-            let left = simplifyPolyline(Array(coords[...maxIdx]), tolerance: effectiveTolerance)
-            let right = simplifyPolyline(Array(coords[maxIdx...]), tolerance: effectiveTolerance)
-            return left.dropLast() + right
-        } else {
-            return [first, last]
-        }
-    }
+    // MARK: - Commuter Rail Bundle Loading
     
     /// Loads LIRR and MNR routes from the static bundle
     private func loadCommuterRailFromBundle(_ bundle: StaticBundle) -> [CachedTransitLine] {
@@ -690,16 +634,14 @@ final class HomeViewModel {
     
     /// Loads all transit routes from bundled offline data.
     private func loadOfflineSystemMap() async {
-        // Load subway routes from hardcoded offline paths, deduplicating and simplifying
+        // Load subway routes from bundled offline data
         var offlineLines: [CachedTransitLine] = SubwayRoutesData.allRouteIds.compactMap { routeId -> CachedTransitLine? in
             let rawBranches = SubwayRoutesData.routeBranches(for: routeId)
             guard !rawBranches.isEmpty else { return nil }
-            let uniqueBranches = deduplicateBranches(rawBranches)
-            let simplified = uniqueBranches.map { simplifyPolyline($0) }
             return CachedTransitLine(
                 id: routeId,
                 color: SubwayRoutesData.color(for: routeId),
-                coordinates: simplified,
+                coordinates: rawBranches,
                 mode: .subway
             )
         }
@@ -1141,7 +1083,7 @@ final class HomeViewModel {
         Task {
             await SupabaseManager.shared.logRouteInteraction(
                 routeId: group.routeId,
-                mode: group.isBus ? "bus" : "subway",
+                mode: group.mode,
                 type: "click"
             )
         }
@@ -1178,6 +1120,22 @@ final class HomeViewModel {
                 }
             } catch {
                 AppLogger.shared.logError("fetchRouteShape(\(group.routeId))", error: error)
+            }
+        } else if group.isLIRR {
+            // LIRR: fetch the branch-specific polyline
+            do {
+                routeShape = try await TrackAPI.fetchLIRRShape(routeID: group.routeId)
+                AppLogger.shared.log("LIRR_SHAPE", message: "Loaded shape for \(group.routeId) (\(group.displayName))")
+            } catch {
+                AppLogger.shared.logError("fetchLIRRShape(\(group.routeId))", error: error)
+            }
+        } else if group.isMNR {
+            // Metro-North: fetch the line-specific polyline
+            do {
+                routeShape = try await TrackAPI.fetchMNRShape(routeID: group.routeId)
+                AppLogger.shared.log("MNR_SHAPE", message: "Loaded shape for \(group.routeId) (\(group.displayName))")
+            } catch {
+                AppLogger.shared.logError("fetchMNRShape(\(group.routeId))", error: error)
             }
         } else {
             // For subway: fetch the full line geometry AND live arrivals from the backend
@@ -1245,6 +1203,131 @@ final class HomeViewModel {
         return .automatic
     }
 
+    /// Computes a camera position that fits the entire route shape on screen,
+    /// including the user's location when available. Works for all modes:
+    /// subway, bus, LIRR, and Metro-North.
+    func cameraPositionFittingRoute(userLocation: CLLocation?, is3D: Bool) -> MapCameraPosition? {
+        guard let shape = routeShape else { return nil }
+
+        // Collect all coordinates: polyline points + stop locations
+        var allCoords: [CLLocationCoordinate2D] = []
+        
+        // Use direction-specific polylines when a direction is selected
+        let group = selectedGroupedRoute
+        let hasDirections = (group?.directions.count ?? 0) > 1
+        let polylines: [[CLLocationCoordinate2D]]
+        if hasDirections, !shape.directions.isEmpty {
+            polylines = shape.polylinesForDirection(selectedDirectionIndex)
+        } else {
+            polylines = shape.decodedPolylines
+        }
+        
+        for coords in polylines {
+            allCoords.append(contentsOf: coords)
+        }
+        
+        // Also include stop coordinates as a fallback anchor
+        let stops = hasDirections ? shape.stopsForDirection(selectedDirectionIndex) : shape.stops
+        for stop in stops {
+            allCoords.append(CLLocationCoordinate2D(latitude: stop.lat, longitude: stop.lon))
+        }
+        
+        guard !allCoords.isEmpty else { return nil }
+        
+        // Compute bounding box of route geometry ONLY (without user location)
+        var minLat = allCoords[0].latitude
+        var maxLat = allCoords[0].latitude
+        var minLon = allCoords[0].longitude
+        var maxLon = allCoords[0].longitude
+        
+        for coord in allCoords {
+            minLat = min(minLat, coord.latitude)
+            maxLat = max(maxLat, coord.latitude)
+            minLon = min(minLon, coord.longitude)
+            maxLon = max(maxLon, coord.longitude)
+        }
+        
+        // Include user location so the map shows both you and the route
+        if let loc = userLocation?.coordinate {
+            allCoords.append(loc)
+        }
+        
+        // Recompute bounding box WITH user location
+        var fullMinLat = allCoords[0].latitude
+        var fullMaxLat = allCoords[0].latitude
+        var fullMinLon = allCoords[0].longitude
+        var fullMaxLon = allCoords[0].longitude
+        
+        for coord in allCoords {
+            fullMinLat = min(fullMinLat, coord.latitude)
+            fullMaxLat = max(fullMaxLat, coord.latitude)
+            fullMinLon = min(fullMinLon, coord.longitude)
+            fullMaxLon = max(fullMaxLon, coord.longitude)
+        }
+        
+        // Check if including the user location pushes the span beyond max zoom.
+        // If the full span (route + user) exceeds max altitude but the route-only
+        // span is within limits, center on the nearest stop instead of trying
+        // to fit both user and route endpoints across the city.
+        let fullLatSpan = (fullMaxLat - fullMinLat) * 111_000
+        let fullCenterLat = (fullMinLat + fullMaxLat) / 2
+        let fullLonSpan = (fullMaxLon - fullMinLon) * 111_000 * cos(fullCenterLat * .pi / 180)
+        let fullSpanMeters = max(fullLatSpan, fullLonSpan)
+        let fullPadded = fullSpanMeters * AppSettings.shared.smartZoomPaddingMultiplier
+        
+        let routeLatSpan = (maxLat - minLat) * 111_000
+        let routeCenterLat = (minLat + maxLat) / 2
+        let routeLonSpan = (maxLon - minLon) * 111_000 * cos(routeCenterLat * .pi / 180)
+        let routeSpanMeters = max(routeLatSpan, routeLonSpan)
+        let routePadded = routeSpanMeters * AppSettings.shared.smartZoomPaddingMultiplier
+        
+        // If the route+user span exceeds max zoom, just fit the route itself.
+        // If even the route alone exceeds max zoom (very long route like LIRR),
+        // center on the nearest stop at max zoom.
+        let useRouteOnly = fullPadded > AppSettings.shared.smartZoomMaxAltitude
+        
+        let center: CLLocationCoordinate2D
+        let distance: Double
+        
+        if useRouteOnly && routePadded > AppSettings.shared.smartZoomMaxAltitude {
+            // Route itself is too long (e.g. LIRR spanning Manhattan → Montauk).
+            // Center on the nearest stop to the user at max zoom distance.
+            if let userLoc = userLocation,
+               let nearest = stops.min(by: {
+                   let d1 = CLLocation(latitude: $0.lat, longitude: $0.lon).distance(from: userLoc)
+                   let d2 = CLLocation(latitude: $1.lat, longitude: $1.lon).distance(from: userLoc)
+                   return d1 < d2
+               }) {
+                center = CLLocationCoordinate2D(latitude: nearest.lat, longitude: nearest.lon)
+            } else {
+                center = CLLocationCoordinate2D(latitude: routeCenterLat, longitude: (minLon + maxLon) / 2)
+            }
+            distance = AppSettings.shared.smartZoomMaxAltitude
+        } else if useRouteOnly {
+            // Route fits within max zoom but user location is too far away.
+            // Just fit the route without the user location.
+            center = CLLocationCoordinate2D(latitude: routeCenterLat, longitude: (minLon + maxLon) / 2)
+            distance = max(
+                AppSettings.shared.smartZoomMinAltitude,
+                min(routePadded, AppSettings.shared.smartZoomMaxAltitude)
+            )
+        } else {
+            // Everything fits — use the full bounding box including user location.
+            center = CLLocationCoordinate2D(latitude: fullCenterLat, longitude: (fullMinLon + fullMaxLon) / 2)
+            distance = max(
+                AppSettings.shared.smartZoomMinAltitude,
+                min(fullPadded, AppSettings.shared.smartZoomMaxAltitude)
+            )
+        }
+        
+        return .camera(MapCamera(
+            centerCoordinate: center,
+            distance: distance,
+            heading: 0,
+            pitch: is3D ? 60 : 0
+        ))
+    }
+
     /// Selects a specific arrival (from flat list or search) and treats it as a route selection.
     func selectArrival(_ arrival: NearbyTransitResponse, userLocation: CLLocation?) async {
         // Find if this arrival already exists in our grouped list
@@ -1265,7 +1348,7 @@ final class HomeViewModel {
             let minimalGroup = GroupedNearbyTransitResponse(
                 routeId: arrival.routeId,
                 displayName: arrival.displayName,
-                mode: arrival.isBus ? "bus" : "subway",
+                mode: arrival.mode,
                 colorHex: nil,
                 directions: [
                     DirectionArrivalsResponse(
@@ -1610,6 +1693,7 @@ final class HomeViewModel {
         selectedBusStop = nil
         nearbyGroupedBusArrivals = []
         nearbyGroupedSubwayArrivals = []
+        nearbyGroupedMNRArrivals = []
         mnrArrivals = []
 
         do {
@@ -1617,6 +1701,24 @@ final class HomeViewModel {
         } catch {
             AppLogger.shared.logError("fetchLIRRArrivals", error: error)
             errorMessage = (error as? TrackAPIError)?.description ?? error.localizedDescription
+        }
+        
+        // Fetch grouped LIRR arrivals from backend (with display names and colors)
+        if let loc = LocationManager().currentLocation {
+            do {
+                nearbyGroupedLIRRArrivals = try await TrackAPI.fetchNearbyGrouped(
+                    lat: loc.coordinate.latitude,
+                    lon: loc.coordinate.longitude,
+                    mode: "lirr"
+                )
+            } catch {
+                AppLogger.shared.logError("fetchGroupedLIRR", error: error)
+                // Fall back to client-side grouping
+                nearbyGroupedLIRRArrivals = groupTrainArrivals(lirrArrivals, mode: "lirr")
+            }
+        } else {
+            // No location available — fall back to client-side grouping
+            nearbyGroupedLIRRArrivals = groupTrainArrivals(lirrArrivals, mode: "lirr")
         }
 
         // Fetch alerts and accessibility alongside LIRR
@@ -1634,6 +1736,7 @@ final class HomeViewModel {
         selectedBusStop = nil
         nearbyGroupedBusArrivals = []
         nearbyGroupedSubwayArrivals = []
+        nearbyGroupedLIRRArrivals = []
         lirrArrivals = []
 
         do {
@@ -1641,6 +1744,24 @@ final class HomeViewModel {
         } catch {
             AppLogger.shared.logError("fetchMNRArrivals", error: error)
             errorMessage = (error as? TrackAPIError)?.description ?? error.localizedDescription
+        }
+        
+        // Fetch grouped MNR arrivals from backend (with display names and colors)
+        if let loc = LocationManager().currentLocation {
+            do {
+                nearbyGroupedMNRArrivals = try await TrackAPI.fetchNearbyGrouped(
+                    lat: loc.coordinate.latitude,
+                    lon: loc.coordinate.longitude,
+                    mode: "mnr"
+                )
+            } catch {
+                AppLogger.shared.logError("fetchGroupedMNR", error: error)
+                // Fall back to client-side grouping
+                nearbyGroupedMNRArrivals = groupTrainArrivals(mnrArrivals, mode: "mnr")
+            }
+        } else {
+            // No location available — fall back to client-side grouping
+            nearbyGroupedMNRArrivals = groupTrainArrivals(mnrArrivals, mode: "mnr")
         }
 
         // Fetch alerts and accessibility alongside MNR

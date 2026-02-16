@@ -7,12 +7,13 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 from app.models import (
     AllSubwayLinesResponse,
     AllSubwayStationsResponse,
     BusStop,
+    DirectionShape,
     RouteShape,
     SubwayLineOverlay,
     SubwayStation,
@@ -20,6 +21,7 @@ from app.models import (
 )
 from app.services.data_cleaner import get_arrivals_for_line
 from app.services.subway_shapes import get_all_subway_stations, get_subway_route_shape
+from app.services.station_lookup import get_nearby_stop_ids, get_stop_info
 from app.utils.logger import TrackLogger
 from app.utils.transit_utils import (
     clean_route_id,
@@ -122,52 +124,13 @@ async def subway_shapes_all() -> AllSubwayLinesResponse:
         if not polylines_raw:
             continue
 
-        # Deduplicate geometrically near-identical polylines for the same route.
-        # GTFS often has multiple shape_ids that trace the same physical track
-        # with minor coordinate differences.  The old endpoint-only check missed
-        # shapes with different termini but 90%+ overlap in the middle.
-        # New approach: sample 20 evenly-spaced points along the candidate and
-        # check if ≥70% of them lie within ~55m of the existing polyline.
-        deduped: list[list[tuple[float, float]]] = []
-        _PROX = 0.0005  # ~55 m proximity threshold
+        # No additional dedup needed here — _load_route_shapes() already
+        # performs smart unique-stop dedup that preserves real branches
+        # (e.g. A train's Far Rockaway, Lefferts Blvd, Rockaway Park).
+        # The old geometric 70% overlap dedup was killing branch polylines
+        # because branches share a trunk with the main line.
 
-        def _polylines_overlap(
-            candidate: list[tuple[float, float]],
-            existing: list[tuple[float, float]],
-        ) -> bool:
-            """Return True if most sample points of *candidate* are near *existing*."""
-            n_samples = min(20, len(candidate))
-            if n_samples < 2:
-                return False
-            step = max(1, len(candidate) // n_samples)
-            close_count = 0
-            total = 0
-            for si in range(0, len(candidate), step):
-                clat, clon = candidate[si]
-                total += 1
-                # Check a sliding window around the proportional position
-                prop = si / max(len(candidate) - 1, 1)
-                center = int(prop * (len(existing) - 1))
-                window = max(len(existing) // 5, 10)
-                lo = max(0, center - window)
-                hi = min(len(existing), center + window)
-                for ei in range(lo, hi):
-                    if (abs(clat - existing[ei][0]) < _PROX
-                            and abs(clon - existing[ei][1]) < _PROX):
-                        close_count += 1
-                        break
-            return total > 0 and close_count / total >= 0.70
-
-        for poly in sorted(polylines_raw, key=len, reverse=True):
-            is_dup = False
-            for existing in deduped:
-                if _polylines_overlap(poly, existing):
-                    is_dup = True
-                    break
-            if not is_dup:
-                deduped.append(poly)
-
-        encoded = [_encode_polyline(coords) for coords in deduped]
+        encoded = [_encode_polyline(coords) for coords in polylines_raw]
         color = get_subway_color(line)
         overlays.append(SubwayLineOverlay(
             route_id=line,
@@ -195,6 +158,44 @@ async def subway_stations_all() -> AllSubwayStationsResponse:
     return AllSubwayStationsResponse(stations=stations)
 
 
+@router.get("/subway/stations/nearby", response_model=AllSubwayStationsResponse)
+async def subway_stations_nearby(
+    lat: float = Query(..., description="User latitude"),
+    lon: float = Query(..., description="User longitude"),
+    radius: int = Query(1600, description="Search radius in meters (default ~1 mile)"),
+) -> AllSubwayStationsResponse:
+    """Return subway stations near the user's location.
+
+    Instead of downloading ALL 400+ stations and filtering client-side,
+    this endpoint returns only stations within *radius* meters of the
+    provided coordinates.  Significantly reduces payload and client work.
+    """
+    from math import radians, cos, sqrt
+
+    raw_stations = get_all_subway_stations()
+    
+    # Filter by distance on the server
+    nearby: list[SubwayStation] = []
+    lat_rad = radians(lat)
+    meters_per_deg_lat = 111_000.0
+    meters_per_deg_lon = 111_000.0 * cos(lat_rad)
+    
+    for s in raw_stations:
+        dlat = (s["lat"] - lat) * meters_per_deg_lat
+        dlon = (s["lon"] - lon) * meters_per_deg_lon
+        dist = sqrt(dlat * dlat + dlon * dlon)
+        if dist <= radius:
+            nearby.append(SubwayStation(**s))
+    
+    nearby.sort(key=lambda s: (
+        ((s.lat - lat) * meters_per_deg_lat) ** 2 +
+        ((s.lon - lon) * meters_per_deg_lon) ** 2
+    ))
+    
+    TrackLogger.info(f"Subway stations/nearby: {len(nearby)} stations within {radius}m of ({lat:.4f}, {lon:.4f})")
+    return AllSubwayStationsResponse(stations=nearby)
+
+
 @router.get("/subway/shape/{route_id}", response_model=RouteShape)
 async def subway_shape(route_id: str) -> RouteShape:
     """Return the full route geometry and ordered stops for a subway line.
@@ -214,7 +215,7 @@ async def subway_shape(route_id: str) -> RouteShape:
             detail=f"No shape data for subway line: {route_id}",
         )
 
-    polylines_raw, stop_entries = result
+    polylines_raw, stop_entries, direction_data = result
 
     # Google-encode each polyline for transmission
     encoded_polylines: list[str] = []
@@ -231,15 +232,31 @@ async def subway_shape(route_id: str) -> RouteShape:
         for entry in stop_entries
     ]
 
+    # Build per-direction shapes
+    directions: list[DirectionShape] = []
+    for dd in direction_data:
+        dir_encoded = [_encode_polyline(coords) for coords in dd.polylines]
+        dir_stops = [
+            BusStop(id=s.stop_id, name=s.name, lat=s.lat, lon=s.lon)
+            for s in dd.stops
+        ]
+        directions.append(DirectionShape(
+            direction_id=dd.direction_id,
+            headsign=dd.headsign,
+            polylines=dir_encoded,
+            stops=dir_stops,
+        ))
+
     TrackLogger.info(
         f"Subway shape '{clean_id}': {len(encoded_polylines)} polyline(s), "
-        f"{len(stops)} stops"
+        f"{len(stops)} stops, {len(directions)} directions"
     )
 
     return RouteShape(
         route_id=clean_id,
         polylines=encoded_polylines,
         stops=stops,
+        directions=directions,
     )
 
 

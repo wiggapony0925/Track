@@ -63,6 +63,8 @@ struct RouteDetailSheet: View {
         if let hex = group.colorHex {
             return Color(hex: hex)
         }
+        if group.isLIRR { return AppTheme.CommuterRailColors.lirrBlue }
+        if group.isMNR { return AppTheme.CommuterRailColors.mnrBlue }
         return group.isBus ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: group.displayName)
     }
 
@@ -107,9 +109,9 @@ struct RouteDetailSheet: View {
 
     private var routeHeader: some View {
         HStack(spacing: 12) {
-            // Reuse existing RouteBadge for subway, custom badge for bus
-            // Unified badge for both buses and subways
-            RouteBadge(routeID: group.displayName, size: .large)
+            // Reuse existing RouteBadge for subway, custom badge for bus/rail
+            // Unified badge with mode-specific styling
+            RouteBadge(routeID: group.displayName, size: .large, hexColor: group.colorHex, mode: group.mode)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(group.displayName)
@@ -120,7 +122,14 @@ struct RouteDetailSheet: View {
 
                 if group.directions.indices.contains(selectedDirectionIndex) {
                     let dir = group.directions[selectedDirectionIndex]
-                    Text(directionLabel(dir.direction))
+                    // Show headsign from shape data if available, else compass direction
+                    let headsign = routeShape?.directions
+                        .first(where: { $0.directionId == selectedDirectionIndex })?
+                        .headsign
+                    let subtitle = (headsign != nil && !headsign!.isEmpty)
+                        ? "→ \(headsign!)"
+                        : directionLabel(dir.direction)
+                    Text(subtitle)
                         .font(AppTheme.Typography.body)
                         .foregroundColor(AppTheme.Colors.textSecondary)
                         .lineLimit(1)
@@ -258,7 +267,13 @@ struct RouteDetailSheet: View {
                     }
                 } label: {
                     HStack(spacing: 6) {
-                        Text(shortDirectionLabel(dir.direction))
+                        let headsign = routeShape?.directions
+                            .first(where: { $0.directionId == index })?
+                            .headsign
+                        let label = (headsign != nil && !headsign!.isEmpty)
+                            ? "→ \(headsign!)"
+                            : shortDirectionLabel(dir.direction)
+                        Text(label)
                             .font(.custom("Helvetica", size: 14).weight(selectedDirectionIndex == index ? .bold : .medium))
                             .foregroundColor(
                                 selectedDirectionIndex == index
@@ -311,7 +326,7 @@ struct RouteDetailSheet: View {
             if direction.arrivals.isEmpty {
                 // Empty state — matches HomeView's emptyStateView pattern
                 VStack(spacing: 8) {
-                    Image(systemName: group.isBus ? "bus.fill" : "tram.fill")
+                    Image(systemName: group.isCommuterRail ? "train.side.front.car" : group.isBus ? "bus.fill" : "tram.fill")
                         .font(.system(size: 32, weight: .light))
                         .foregroundColor(AppTheme.Colors.textSecondary)
                     Text("No arrivals in this direction")
@@ -371,13 +386,14 @@ struct RouteDetailSheet: View {
 
     private var routeInfoFooter: some View {
         VStack(alignment: .leading, spacing: 6) {
-            // Route stops count
+            // Route stops count (direction-aware)
             if let shape = routeShape, !shape.stops.isEmpty {
+                let dirStops = shape.stopsForDirection(selectedDirectionIndex)
                 HStack(spacing: 6) {
                     Image(systemName: "mappin.and.ellipse")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundColor(AppTheme.Colors.textSecondary)
-                    Text("\(shape.stops.count) stops on route")
+                    Text("\(dirStops.count) stops on route")
                         .font(.custom("Helvetica", size: 13))
                         .foregroundColor(AppTheme.Colors.textSecondary)
                 }

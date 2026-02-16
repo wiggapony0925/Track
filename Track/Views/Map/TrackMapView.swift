@@ -30,6 +30,8 @@ struct TrackMapView: View {
             return Color(hex: hex)
         }
         if let group = viewModel.selectedGroupedRoute {
+            if group.isLIRR { return AppTheme.CommuterRailColors.lirrBlue }
+            if group.isMNR { return AppTheme.CommuterRailColors.mnrBlue }
             return group.isBus ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: group.displayName)
         }
         return AppTheme.Colors.mtaBlue
@@ -126,7 +128,14 @@ struct TrackMapView: View {
     private var routeStopAnnotations: some MapContent {
         if let shape = viewModel.routeShape {
             let isBusRoute = viewModel.selectedGroupedRoute?.isBus == true
-            ForEach(shape.stops) { stop in
+            let hasDirections = (viewModel.selectedGroupedRoute?.directions.count ?? 0) > 1
+            
+            // Use direction-specific stops when the user has picked a direction
+            let directionStops = hasDirections
+                ? shape.stopsForDirection(viewModel.selectedDirectionIndex)
+                : shape.stops
+            
+            ForEach(directionStops) { stop in
                 let isSelected = stop.id == viewModel.selectedStopId
                 Annotation(stop.name, coordinate: CLLocationCoordinate2D(latitude: stop.lat, longitude: stop.lon)) {
                     RouteStopMarker(
@@ -175,6 +184,8 @@ struct TrackMapView: View {
                 Group {
                     if train.routeId.contains("LIRR") || train.routeId.lowercased().contains("lir") {
                         LIRRAnnotationView(routeId: train.routeId, isHighlighted: isHighlighted)
+                    } else if train.routeId.contains("MNR") || train.routeId.lowercased().contains("mnr") || train.routeId.lowercased().contains("metro") {
+                        MNRAnnotationView(routeId: train.routeId, isHighlighted: isHighlighted)
                     } else if train.routeId.lowercased().contains("amtrak") || train.routeId.lowercased().contains("amt") {
                         AmtrakAnnotationView(routeId: train.routeId, isHighlighted: isHighlighted)
                     } else {
@@ -199,27 +210,29 @@ struct TrackMapView: View {
     
     // MARK: - Route Polylines
     
-    /// Filters polylines to show only the selected direction when applicable.
-    /// Polylines are typically organized: first half = direction 0, second half = direction 1.
+    /// Returns the polylines for the currently selected direction.
+    /// Uses the backend's per-direction data when available; falls back to
+    /// the midpoint-split heuristic for legacy responses without direction data.
     private func filteredPolylines(from polylines: [[CLLocationCoordinate2D]]) -> [[CLLocationCoordinate2D]] {
         guard let group = viewModel.selectedGroupedRoute,
-              group.directions.count > 1,
-              polylines.count >= 2 else {
-            // Single direction or not enough polylines to split - show all
+              group.directions.count > 1 else {
+            // Single direction — show everything
             return polylines
         }
         
         let directionIndex = viewModel.selectedDirectionIndex
         
-        // For bus routes with multiple directions, show only relevant polylines
-        // Heuristic: Split polylines in half - first half = direction 0, second half = direction 1
-        let midpoint = polylines.count / 2
+        // Prefer the backend's per-direction shape data
+        if let shape = viewModel.routeShape, !shape.directions.isEmpty {
+            return shape.polylinesForDirection(directionIndex)
+        }
         
+        // Legacy fallback: split in half (first half = direction 0, second = direction 1)
+        guard polylines.count >= 2 else { return polylines }
+        let midpoint = polylines.count / 2
         if directionIndex == 0 {
-            // First half of polylines for direction 0
             return Array(polylines.prefix(midpoint))
         } else {
-            // Second half of polylines for direction 1
             return Array(polylines.suffix(from: midpoint))
         }
     }
@@ -230,8 +243,9 @@ struct TrackMapView: View {
             let isBusRoute = viewModel.selectedGroupedRoute?.isBus == true
             let allPolylines = shape.decodedPolylines
             
-            // Filter to selected direction if multiple directions exist
-            let polylines = isBusRoute ? filteredPolylines(from: allPolylines) : allPolylines
+            // Filter to selected direction for ALL modes when direction data exists
+            let hasDirections = (viewModel.selectedGroupedRoute?.directions.count ?? 0) > 1
+            let polylines = hasDirections ? filteredPolylines(from: allPolylines) : allPolylines
             
             if !polylines.isEmpty {
                 ForEach(Array(polylines.enumerated()), id: \.offset) { _, coords in

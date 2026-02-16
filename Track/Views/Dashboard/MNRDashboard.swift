@@ -18,9 +18,9 @@ struct MNRDashboard: View {
     let sheetNavigator: SheetNavigator
     let lastUpdated: Date?
     
-    /// Grouped MNR arrivals for tap-to-detail navigation
+    /// Grouped MNR arrivals for tap-to-detail navigation (from backend)
     private var groupedArrivals: [GroupedNearbyTransitResponse] {
-        viewModel.groupedMNRArrivals
+        viewModel.nearbyGroupedMNRArrivals
     }
     
     /// Get filtered arrivals based on search

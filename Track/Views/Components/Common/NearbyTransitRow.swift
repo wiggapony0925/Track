@@ -24,7 +24,12 @@ struct NearbyTransitRow: View {
         VStack(spacing: 0) {
             HStack(spacing: 14) {
                 // MARK: Route Badge (Larger & More Prominent)
-                RouteBadge(routeID: arrival.displayName, size: .custom(54, 22))
+                RouteBadge(
+                    routeID: arrival.displayName,
+                    size: .custom(54, 22),
+                    isBus: arrival.isBus,
+                    mode: arrival.mode
+                )
                     .shadow(color: .black.opacity(0.15), radius: 3, x: 0, y: 2)
                     .accessibilityHidden(true)
 
@@ -64,7 +69,7 @@ struct NearbyTransitRow: View {
                             .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.8))
                         }
                     } else {
-                        Text(arrival.isBus ? "Bus" : "Subway")
+                        Text(arrival.isLIRR ? "LIRR" : arrival.isMNR ? "Metro-North" : arrival.isBus ? "Bus" : "Subway")
                             .font(.system(size: 11, weight: .semibold))
                             .textCase(.uppercase)
                             .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))

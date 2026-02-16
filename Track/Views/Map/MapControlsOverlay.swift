@@ -173,20 +173,33 @@ struct MapControlsOverlay: View {
     
     private var selectedRouteBanner: some View {
         HStack(spacing: 8) {
-            let isSubway = viewModel.selectedGroupedRoute?.isBus == false
+            let group = viewModel.selectedGroupedRoute
+            
+            // Mode-specific icon
+            let iconName: String = {
+                if group?.isBus == true { return "bus.fill" }
+                if group?.isLIRR == true { return "train.side.front.car" }
+                if group?.isMNR == true { return "train.side.rear.car" }
+                return "tram.fill" // subway default
+            }()
             
             ZStack {
                 Circle()
                     .fill(selectedRouteColor)
                     .frame(width: 24, height: 24)
-                Image(systemName: isSubway ? "tram.fill" : "bus.fill")
+                Image(systemName: iconName)
                     .font(.system(size: 11, weight: .bold))
                     .foregroundColor(AppTheme.Colors.textOnColor)
             }
             
             if let routeId = viewModel.selectedRouteId {
-                let name = stripMTAPrefix(routeId)
-                let stopsCount = viewModel.routeShape?.stops.count ?? 0
+                let name: String = {
+                    if let g = group {
+                        if g.isLIRR { return "LIRR \(g.displayName)" }
+                        if g.isMNR { return "MNR \(g.displayName)" }
+                    }
+                    return stripMTAPrefix(routeId)
+                }()
                 
                 if let firstStop = viewModel.routeShape?.stops.first?.name,
                    let lastStop = viewModel.routeShape?.stops.last?.name {
@@ -194,6 +207,7 @@ struct MapControlsOverlay: View {
                         .font(.custom("Helvetica-Bold", size: 13))
                         .foregroundColor(AppTheme.Colors.textPrimary)
                 } else {
+                    let stopsCount = viewModel.routeShape?.stops.count ?? 0
                     Text("\(name) — \(stopsCount) stops")
                         .font(.custom("Helvetica-Bold", size: 13))
                         .foregroundColor(AppTheme.Colors.textPrimary)

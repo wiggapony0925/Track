@@ -16,8 +16,9 @@ struct SettingsContentView: View {
     @AppStorage("isLoggedIn") private var isLoggedIn = false
     @AppStorage("dev_use_localhost") private var useLocalhost = false
     @AppStorage("dev_custom_ip") private var customIP = AppSettings.shared.defaultDeviceIP
-    @AppStorage("near_you_radius_meters") private var nearYouRadius: Double = 400
-    @AppStorage("farther_away_radius_meters") private var fartherAwayRadius: Double = 1200
+    @AppStorage("near_you_radius_meters") private var nearYouRadius: Double = 2414
+    @AppStorage("farther_away_radius_meters") private var fartherAwayRadius: Double = 4023
+    @AppStorage("much_farther_away_radius_meters") private var muchFartherAwayRadius: Double = 8047
     
     let sheetNavigator: SheetNavigator
     
@@ -70,13 +71,13 @@ struct SettingsContentView: View {
                                     Spacer()
                                     Text(String(format: "%.1f mi", metersToMiles(nearYouRadius)))
                                         .font(.custom("Helvetica-Bold", size: 14))
-                                        .foregroundColor(AppTheme.Colors.mtaBlue)
+                                        .foregroundColor(AppTheme.Colors.successGreen)
                                 }
                                 
                                 Slider(
                                     value: $nearYouRadius,
-                                    in: 100...800,
-                                    step: 50
+                                    in: 400...4023,
+                                    step: 100
                                 )
                                 .tint(AppTheme.Colors.successGreen)
                             }
@@ -104,10 +105,39 @@ struct SettingsContentView: View {
                                 
                                 Slider(
                                     value: $fartherAwayRadius,
-                                    in: 400...2400,
-                                    step: 100
+                                    in: 1600...8047,
+                                    step: 200
                                 )
                                 .tint(AppTheme.Colors.mtaBlue)
+                            }
+                            .padding(.horizontal, AppTheme.Layout.cardPadding)
+                            .padding(.vertical, 14)
+                            
+                            Divider()
+                                .padding(.leading, AppTheme.Layout.cardPadding + 28 + 8)
+                            
+                            // "Much Farther Away" radius slider
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack {
+                                    Image(systemName: "car.fill")
+                                        .font(.system(size: 18))
+                                        .foregroundColor(AppTheme.Colors.warningYellow)
+                                        .frame(width: 28)
+                                    Text("Much Farther Away Radius")
+                                        .font(.custom("Helvetica", size: 16))
+                                        .foregroundColor(AppTheme.Colors.textPrimary)
+                                    Spacer()
+                                    Text(String(format: "%.1f mi", metersToMiles(muchFartherAwayRadius)))
+                                        .font(.custom("Helvetica-Bold", size: 14))
+                                        .foregroundColor(AppTheme.Colors.warningYellow)
+                                }
+                                
+                                Slider(
+                                    value: $muchFartherAwayRadius,
+                                    in: 4000...16093,
+                                    step: 500
+                                )
+                                .tint(AppTheme.Colors.warningYellow)
                             }
                             .padding(.horizontal, AppTheme.Layout.cardPadding)
                             .padding(.vertical, 14)
@@ -120,7 +150,7 @@ struct SettingsContentView: View {
                                 Image(systemName: "info.circle")
                                     .font(.system(size: 14))
                                     .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
-                                Text("Controls how arrivals are grouped in the 'Near You' and 'A Little Farther Away' sections")
+                                Text("Controls how arrivals are grouped into the 'Near You', 'Farther Away', and 'Much Farther Away' sections")
                                     .font(.system(size: 12))
                                     .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
                             }

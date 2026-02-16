@@ -212,20 +212,40 @@ struct TrackWidgetEntryView: View {
                     Spacer(minLength: 0)
 
                     // Hero Badge
-                    ZStack {
-                        Circle()
-                            .fill(arrival.isBus ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: arrival.displayName))
-                            .frame(width: 50, height: 50)
-                            .shadow(color: (arrival.isBus ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: arrival.displayName)).opacity(0.3), radius: 6, x: 0, y: 3)
-                        
-                        if arrival.isBus {
-                            Image(systemName: "bus.fill")
-                                .font(.system(size: 22, weight: .bold))
+                    if arrival.isCommuterRail {
+                        HStack(spacing: 3) {
+                            Image(systemName: "train.side.front.car")
+                                .font(.system(size: 16, weight: .bold))
                                 .foregroundColor(.white)
-                        } else {
                             Text(arrival.displayName)
-                                .font(.system(size: 24, weight: .heavy, design: .rounded))
-                                .foregroundColor(AppTheme.SubwayColors.textColor(for: arrival.displayName))
+                                .font(.system(size: 14, weight: .heavy, design: .rounded))
+                                .foregroundColor(.white)
+                                .minimumScaleFactor(0.3)
+                                .lineLimit(1)
+                        }
+                        .padding(.horizontal, 6)
+                        .frame(minWidth: 50, minHeight: 50)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(arrival.isLIRR ? AppTheme.CommuterRailColors.lirrBlue : AppTheme.CommuterRailColors.mnrBlue)
+                                .shadow(color: (arrival.isLIRR ? AppTheme.CommuterRailColors.lirrBlue : AppTheme.CommuterRailColors.mnrBlue).opacity(0.3), radius: 6, x: 0, y: 3)
+                        )
+                    } else {
+                        ZStack {
+                            Circle()
+                                .fill(arrival.isBus ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: arrival.displayName))
+                                .frame(width: 50, height: 50)
+                                .shadow(color: (arrival.isBus ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: arrival.displayName)).opacity(0.3), radius: 6, x: 0, y: 3)
+                            
+                            if arrival.isBus {
+                                Image(systemName: "bus.fill")
+                                    .font(.system(size: 22, weight: .bold))
+                                    .foregroundColor(.white)
+                            } else {
+                                Text(arrival.displayName)
+                                    .font(.system(size: 24, weight: .heavy, design: .rounded))
+                                    .foregroundColor(AppTheme.SubwayColors.textColor(for: arrival.displayName))
+                            }
                         }
                     }
 
@@ -326,23 +346,42 @@ struct TrackWidgetEntryView: View {
                     ForEach(Array(entry.arrivals.prefix(3).enumerated()), id: \.offset) { index, arrival in
                         HStack(spacing: 12) {
                             // Badge with ring
-                            ZStack {
-                                Circle()
-                                    .strokeBorder(arrival.isBus ? AppTheme.Colors.mtaBlue.opacity(0.2) : AppTheme.SubwayColors.color(for: arrival.displayName).opacity(0.2), lineWidth: 1)
-                                    .frame(width: 34, height: 34)
-                                
-                                Circle()
-                                    .fill(arrival.isBus ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: arrival.displayName))
-                                    .frame(width: 28, height: 28)
-                                
-                                if arrival.isBus {
-                                    Image(systemName: "bus.fill")
-                                        .font(.system(size: 14, weight: .bold))
+                            if arrival.isCommuterRail {
+                                HStack(spacing: 2) {
+                                    Image(systemName: "train.side.front.car")
+                                        .font(.system(size: 10, weight: .bold))
                                         .foregroundColor(.white)
-                                } else {
                                     Text(arrival.displayName)
-                                        .font(.system(size: 14, weight: .heavy, design: .rounded))
-                                        .foregroundColor(AppTheme.SubwayColors.textColor(for: arrival.displayName))
+                                        .font(.system(size: 9, weight: .heavy, design: .rounded))
+                                        .foregroundColor(.white)
+                                        .minimumScaleFactor(0.3)
+                                        .lineLimit(1)
+                                }
+                                .padding(.horizontal, 4)
+                                .frame(minWidth: 34, minHeight: 28)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                        .fill(arrival.isLIRR ? AppTheme.CommuterRailColors.lirrBlue : AppTheme.CommuterRailColors.mnrBlue)
+                                )
+                            } else {
+                                ZStack {
+                                    Circle()
+                                        .strokeBorder(arrival.isBus ? AppTheme.Colors.mtaBlue.opacity(0.2) : AppTheme.SubwayColors.color(for: arrival.displayName).opacity(0.2), lineWidth: 1)
+                                        .frame(width: 34, height: 34)
+                                    
+                                    Circle()
+                                        .fill(arrival.isBus ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: arrival.displayName))
+                                        .frame(width: 28, height: 28)
+                                    
+                                    if arrival.isBus {
+                                        Image(systemName: "bus.fill")
+                                            .font(.system(size: 14, weight: .bold))
+                                            .foregroundColor(.white)
+                                    } else {
+                                        Text(arrival.displayName)
+                                            .font(.system(size: 14, weight: .heavy, design: .rounded))
+                                            .foregroundColor(AppTheme.SubwayColors.textColor(for: arrival.displayName))
+                                    }
                                 }
                             }
                             
@@ -415,20 +454,40 @@ struct TrackWidgetEntryView: View {
                     ForEach(Array(entry.arrivals.prefix(5).enumerated()), id: \.offset) { index, arrival in
                         HStack(spacing: 14) {
                             // Badge with subtle depth
-                            ZStack {
-                                Circle()
-                                    .fill(arrival.isBus ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: arrival.displayName))
-                                    .frame(width: 38, height: 38)
-                                    .shadow(color: .black.opacity(0.1), radius: 2, x: 0, y: 1)
-                                
-                                if arrival.isBus {
-                                    Image(systemName: "bus.fill")
-                                        .font(.system(size: 16, weight: .bold))
+                            if arrival.isCommuterRail {
+                                HStack(spacing: 3) {
+                                    Image(systemName: "train.side.front.car")
+                                        .font(.system(size: 12, weight: .bold))
                                         .foregroundColor(.white)
-                                } else {
                                     Text(arrival.displayName)
-                                        .font(.system(size: 16, weight: .heavy, design: .rounded))
-                                        .foregroundColor(AppTheme.SubwayColors.textColor(for: arrival.displayName))
+                                        .font(.system(size: 11, weight: .heavy, design: .rounded))
+                                        .foregroundColor(.white)
+                                        .minimumScaleFactor(0.3)
+                                        .lineLimit(1)
+                                }
+                                .padding(.horizontal, 5)
+                                .frame(minWidth: 38, minHeight: 38)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                        .fill(arrival.isLIRR ? AppTheme.CommuterRailColors.lirrBlue : AppTheme.CommuterRailColors.mnrBlue)
+                                        .shadow(color: .black.opacity(0.1), radius: 2, x: 0, y: 1)
+                                )
+                            } else {
+                                ZStack {
+                                    Circle()
+                                        .fill(arrival.isBus ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: arrival.displayName))
+                                        .frame(width: 38, height: 38)
+                                        .shadow(color: .black.opacity(0.1), radius: 2, x: 0, y: 1)
+                                    
+                                    if arrival.isBus {
+                                        Image(systemName: "bus.fill")
+                                            .font(.system(size: 16, weight: .bold))
+                                            .foregroundColor(.white)
+                                    } else {
+                                        Text(arrival.displayName)
+                                            .font(.system(size: 16, weight: .heavy, design: .rounded))
+                                            .foregroundColor(AppTheme.SubwayColors.textColor(for: arrival.displayName))
+                                    }
                                 }
                             }
                             

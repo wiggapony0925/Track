@@ -97,10 +97,19 @@ struct BusDashboard: View {
                 }
                 
             } else if !viewModel.isLoading {
-                EmptyStateView(
-                    icon: "bus.fill",
-                    message: "No bus arrivals nearby"
-                )
+                if !viewModel.searchText.isEmpty {
+                    EmptyStateView(
+                        icon: "magnifyingglass",
+                        message: "No bus results for \"\(viewModel.searchText)\""
+                    )
+                } else {
+                    NoServiceEmptyState(
+                        icon: "bus.fill",
+                        title: "No Buses Nearby",
+                        message: "We couldn't find any bus arrivals within your search radius. Try expanding your radius in Settings.",
+                        brandColor: AppTheme.Colors.mtaBlue
+                    )
+                }
             }
         }
     }

@@ -96,10 +96,20 @@ struct SubwayDashboard: View {
                 }
                 
             } else if !viewModel.isLoading {
-                EmptyStateView(
-                    icon: "tram.fill",
-                    message: "No subway arrivals nearby"
-                )
+                // Only show empty state if data has actually loaded
+                if !viewModel.searchText.isEmpty {
+                    EmptyStateView(
+                        icon: "magnifyingglass",
+                        message: "No subway results for \"\(viewModel.searchText)\""
+                    )
+                } else {
+                    NoServiceEmptyState(
+                        icon: "tram.fill",
+                        title: "No Subway Nearby",
+                        message: "We couldn't find any subway arrivals within your search radius. Try expanding your radius in Settings.",
+                        brandColor: AppTheme.Colors.mtaBlue
+                    )
+                }
             }
         }
     }

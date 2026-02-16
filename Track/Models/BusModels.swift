@@ -77,19 +77,57 @@ struct BusVehicleResponse: Codable, Identifiable {
     }
 }
 
+/// Polylines and stops for one direction of a route.
+struct DirectionShapeResponse: Codable, Identifiable {
+    var id: Int { directionId }
+
+    let directionId: Int
+    let headsign: String
+    let polylines: [String]
+    let stops: [BusStop]
+
+    enum CodingKeys: String, CodingKey {
+        case directionId = "direction_id"
+        case headsign, polylines, stops
+    }
+
+    /// Decodes all Google-encoded polylines for this direction.
+    var decodedPolylines: [[CLLocationCoordinate2D]] {
+        polylines.map { decodePolyline($0) }
+    }
+}
+
 /// Matches the backend's `RouteShape` JSON schema.
 struct RouteShapeResponse: Codable {
     let routeId: String
     let polylines: [String]
     let stops: [BusStop]
+    let directions: [DirectionShapeResponse]
 
     enum CodingKeys: String, CodingKey {
         case routeId = "route_id"
-        case polylines, stops
+        case polylines, stops, directions
     }
 
-    /// Decodes all Google-encoded polylines into coordinate arrays.
+    /// Decodes all Google-encoded polylines into coordinate arrays (combined).
     var decodedPolylines: [[CLLocationCoordinate2D]] {
         polylines.map { decodePolyline($0) }
+    }
+
+    /// Returns decoded polylines for a specific direction index.
+    /// Falls back to the combined polylines if no direction data exists.
+    func polylinesForDirection(_ directionIndex: Int) -> [[CLLocationCoordinate2D]] {
+        guard !directions.isEmpty else { return decodedPolylines }
+        let safeIdx = min(directionIndex, directions.count - 1)
+        return directions[safeIdx].decodedPolylines
+    }
+
+    /// Returns stops for a specific direction index.
+    /// Falls back to the combined stops if no direction data exists.
+    func stopsForDirection(_ directionIndex: Int) -> [BusStop] {
+        guard !directions.isEmpty else { return stops }
+        let safeIdx = min(directionIndex, directions.count - 1)
+        let dirStops = directions[safeIdx].stops
+        return dirStops.isEmpty ? stops : dirStops
     }
 }
