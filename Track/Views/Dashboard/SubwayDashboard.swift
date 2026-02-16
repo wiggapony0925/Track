@@ -44,19 +44,22 @@ struct SubwayDashboard: View {
                 // Separate into 3 tiers
                 let (nearYou, fartherAway, muchFarther) = separateByDistance(groups: sorted, from: refLocation)
                 
-                // If nothing is "near you", show friendly hero
-                if nearYou.isEmpty && (!fartherAway.isEmpty || !muchFarther.isEmpty) {
-                    FarFromTransitView(
-                        icon: "tram.fill",
-                        title: "You're far from the subway",
-                        subtitle: "No trains are super close, but here's what's around you.",
-                        accentColor: AppTheme.Colors.mtaBlue
-                    )
-                }
+                // Check if "Near You" was populated by adaptive promotion
+                let wasPromoted: Bool = {
+                    guard let loc = refLocation, !nearYou.isEmpty else { return false }
+                    return minDistance(for: nearYou[0], from: loc) > nearYouRadius
+                }()
                 
                 // "Near You" section (~1.5 mi)
                 if !nearYou.isEmpty {
-                    NearYouSectionHeader(radiusMeters: nearYouRadius, updated: lastUpdated)
+                    if wasPromoted {
+                        ClosestToYouSectionHeader(
+                            closestMeters: refLocation.map { minDistance(for: nearYou[0], from: $0) },
+                            updated: lastUpdated
+                        )
+                    } else {
+                        NearYouSectionHeader(radiusMeters: nearYouRadius, updated: lastUpdated)
+                    }
                     GroupedRouteList(
                         groups: nearYou,
                         viewModel: viewModel,
@@ -146,6 +149,18 @@ struct SubwayDashboard: View {
             } else if dist <= muchFartherAwayRadius {
                 muchFarther.append(group)
             }
+        }
+        
+        // Adaptive promotion: if "Near You" is empty, promote closest routes
+        if nearYou.isEmpty && (!fartherAway.isEmpty || !muchFarther.isEmpty) {
+            var outer = fartherAway + muchFarther
+            outer.sort { minDistance(for: $0, from: location) < minDistance(for: $1, from: location) }
+            let promoteCount = min(4, outer.count)
+            let promoted = Array(outer.prefix(promoteCount))
+            let promotedIds = Set(promoted.map(\.routeId))
+            nearYou = promoted
+            fartherAway = fartherAway.filter { !promotedIds.contains($0.routeId) }
+            muchFarther = muchFarther.filter { !promotedIds.contains($0.routeId) }
         }
         
         return (nearYou, fartherAway, muchFarther)
