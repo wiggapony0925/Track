@@ -38,18 +38,7 @@ struct DashboardView: View {
                     get: { viewModel.selectedMode },
                     set: { viewModel.selectedMode = $0 }
                 ),
-                lastUpdated: lastUpdated,
-                onDropPin: {
-                    let center = locationManager.currentLocation?.coordinate
-                        ?? AppTheme.MapConfig.nycCenter
-                    let offset = CLLocationCoordinate2D(
-                        latitude: center.latitude + 0.002,
-                        longitude: center.longitude + 0.002
-                    )
-                    Task {
-                        await viewModel.setSearchPin(offset, userLocation: locationManager.currentLocation)
-                    }
-                }
+                lastUpdated: lastUpdated
             )
             
             // MARK: - Scrollable Content
@@ -86,6 +75,7 @@ struct DashboardView: View {
                             LIRRDashboard(
                                 viewModel: viewModel,
                                 locationManager: locationManager,
+                                sheetNavigator: sheetNavigator,
                                 lastUpdated: lastUpdated
                             )
                             .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -93,6 +83,7 @@ struct DashboardView: View {
                             MNRDashboard(
                                 viewModel: viewModel,
                                 locationManager: locationManager,
+                                sheetNavigator: sheetNavigator,
                                 lastUpdated: lastUpdated
                             )
                             .transition(.move(edge: .bottom).combined(with: .opacity))

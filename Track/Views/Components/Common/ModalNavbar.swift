@@ -3,7 +3,7 @@
 //  Track
 //
 //  Modal navbar component displayed at the top of the dashboard sheet.
-//  Contains search bar, transport mode filter icons, settings, and drop pin buttons.
+//  Contains search bar, transport mode filter icons, and settings button.
 //  Styled to match Apple Maps modal design.
 //
 
@@ -17,7 +17,6 @@ struct ModalNavbar: View {
     @Binding var showSettings: Bool
     @Binding var selectedMode: TransportMode
     var lastUpdated: Date?
-    var onDropPin: () -> Void
     
     // Speech recognition state
     @State private var isRecording = false
@@ -70,17 +69,6 @@ struct ModalNavbar: View {
                 .padding(.vertical, 10)
                 .background(AppTheme.Colors.cardBackground)
                 .cornerRadius(12)
-                
-                // Drop pin button
-                Button(action: onDropPin) {
-                    Image(systemName: "mappin.and.ellipse")
-                        .font(.system(size: 17, weight: .medium))
-                        .foregroundColor(AppTheme.Colors.mtaBlue)
-                        .frame(width: 36, height: 36)
-                        .background(AppTheme.Colors.cardBackground)
-                        .clipShape(Circle())
-                }
-                .accessibilityLabel("Drop search pin")
                 
                 // Settings button
                 Button {
@@ -227,8 +215,7 @@ struct ModeFilterStrip: View {
         searchText: .constant(""),
         showSettings: .constant(false),
         selectedMode: .constant(.nearby),
-        lastUpdated: Date(),
-        onDropPin: {}
+        lastUpdated: Date()
     )
     .background(AppTheme.Colors.background)
 }
