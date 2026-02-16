@@ -17,6 +17,8 @@ struct TransitAlert: Identifiable, Codable {
     let description: String
     let severity: String
     let mode: String
+    let updatedAt: Int?           // epoch seconds – active_period start
+    let affectedRoutes: [String]  // all route_ids this alert touches
 
     enum CodingKeys: String, CodingKey {
         case routeId = "route_id"
@@ -24,6 +26,29 @@ struct TransitAlert: Identifiable, Codable {
         case description
         case severity
         case mode
+        case updatedAt = "updated_at"
+        case affectedRoutes = "affected_routes"
+    }
+    
+    init(routeId: String? = nil, title: String, description: String, severity: String, mode: String, updatedAt: Int? = nil, affectedRoutes: [String]? = nil) {
+        self.routeId = routeId
+        self.title = title
+        self.description = description
+        self.severity = severity
+        self.mode = mode
+        self.updatedAt = updatedAt
+        self.affectedRoutes = affectedRoutes ?? (routeId.map { [$0] } ?? [])
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        routeId = try container.decodeIfPresent(String.self, forKey: .routeId)
+        title = try container.decode(String.self, forKey: .title)
+        description = try container.decode(String.self, forKey: .description)
+        severity = try container.decode(String.self, forKey: .severity)
+        mode = try container.decodeIfPresent(String.self, forKey: .mode) ?? "subway"
+        updatedAt = try container.decodeIfPresent(Int.self, forKey: .updatedAt)
+        affectedRoutes = try container.decodeIfPresent([String].self, forKey: .affectedRoutes) ?? (routeId.map { [$0] } ?? [])
     }
 
     /// SF Symbol icon matching the app's tab icons.
@@ -47,7 +72,7 @@ struct TransitAlert: Identifiable, Codable {
     }
 }
 
-// MARK: - Filtering
+// MARK: - Filtering & Sorting
 
 extension Array where Element == TransitAlert {
     /// Filter alerts by the selected transport mode.
@@ -59,6 +84,24 @@ extension Array where Element == TransitAlert {
         case .bus:     return filter { $0.mode == "bus" }
         case .lirr:    return filter { $0.mode == "lirr" }
         case .mnr:     return filter { $0.mode == "mnr" }
+        }
+    }
+    
+    /// Alerts matching a specific route ID (checks both `routeId` and `affectedRoutes`).
+    func matching(routeId: String) -> [TransitAlert] {
+        filter { alert in
+            alert.affectedRoutes.contains(routeId) ||
+            alert.routeId == routeId
+        }
+    }
+    
+    /// Sort alerts: severe first, then by recency (newest first).
+    func sortedBySeverityAndTime() -> [TransitAlert] {
+        sorted { a, b in
+            let aSev = a.severity == "severe" ? 0 : 1
+            let bSev = b.severity == "severe" ? 0 : 1
+            if aSev != bSev { return aSev < bSev }
+            return (a.updatedAt ?? 0) > (b.updatedAt ?? 0)
         }
     }
 }

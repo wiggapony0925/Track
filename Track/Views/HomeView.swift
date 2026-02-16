@@ -242,6 +242,8 @@ struct HomeView: View {
                 busVehicles: $viewModel.busVehicles,
                 routeShape: $viewModel.routeShape,
                 selectedDirectionIndex: $viewModel.selectedDirectionIndex,
+                serviceAlerts: viewModel.serviceAlerts,
+                cachedStations: viewModel.cachedStations,
                 isSheetExpanded: sheetDetent == .large,
                 is3DMode: $is3DMode,
                 cameraPosition: $cameraPosition,
@@ -286,7 +288,8 @@ struct HomeView: View {
         case .serviceAlerts:
             ServiceAlertsPage(
                 alerts: viewModel.serviceAlerts,
-                sheetNavigator: sheetNavigator
+                sheetNavigator: sheetNavigator,
+                lastUpdated: viewModel.alertsLastUpdated
             )
             
         case .widgetSchedules:

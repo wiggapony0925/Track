@@ -380,12 +380,14 @@ final class HomeViewModel {
 
     // Service alerts & accessibility
     var serviceAlerts: [TransitAlert] = []
+    var alertsLastUpdated: Date?
     var elevatorOutages: [ElevatorStatus] = []
 
     /// Fetch alerts from the API and deliver local notifications for new ones.
     func refreshAlerts() async {
         do {
             serviceAlerts = try await TrackAPI.fetchAlerts()
+            alertsLastUpdated = Date()
             AlertNotificationManager.shared.processAlerts(serviceAlerts)
         } catch {}
     }

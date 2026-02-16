@@ -65,13 +65,13 @@ struct MapControlsOverlay: View {
     
     private var mapControlButtons: some View {
         VStack(spacing: 12) {
-            // Service Alerts Bell
+            // Service Alerts Button
             Button {
                 onAlertsTapped?()
                 HapticManager.impact(.medium)
             } label: {
                 ZStack(alignment: .topTrailing) {
-                    Image(systemName: "bell.fill")
+                    Image(systemName: "exclamationmark.triangle.fill")
                         .font(.system(size: 16, weight: .medium))
                         .foregroundColor(
                             viewModel.serviceAlerts.isEmpty

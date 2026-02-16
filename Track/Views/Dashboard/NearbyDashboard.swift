@@ -454,7 +454,11 @@ struct GroupedRouteList: View {
     var body: some View {
         VStack(spacing: 0) {
             ForEach(Array(groups.enumerated()), id: \.element.id) { index, group in
-                GroupedRouteRow(group: group) { directionIndex in
+                GroupedRouteRow(
+                    group: group,
+                    hasAlert: !viewModel.serviceAlerts.matching(routeId: group.routeId).isEmpty
+                        || !viewModel.serviceAlerts.matching(routeId: group.displayName).isEmpty
+                ) { directionIndex in
                     RouteAnalyticsManager.shared.logInteraction(routeId: group.routeId)
                     Task {
                         await viewModel.selectGroupedRoute(group, directionIndex: directionIndex, userLocation: locationManager.currentLocation)

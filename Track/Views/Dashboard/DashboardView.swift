@@ -68,13 +68,7 @@ struct DashboardView: View {
                         }
                     )
                     
-                    // Service alerts — shown above arrivals so users see them immediately.
-                    // Filter to the selected mode when viewing a specific mode tab.
-                    ServiceAlertsSection(
-                        alerts: viewModel.serviceAlerts.filtered(for: viewModel.selectedMode)
-                    )
-                    
-                    // Mode-specific content
+                    // Mode-specific content (trains/buses first — the primary content)
                     Group {
                         switch viewModel.selectedMode {
                         case .nearby:
@@ -122,6 +116,13 @@ struct DashboardView: View {
                         }
                     }
                     .animation(.spring(response: 0.4, dampingFraction: 0.7), value: viewModel.selectedMode)
+                    
+                    // Service alerts — below arrivals so trains/buses show first.
+                    // Filter to the selected mode when viewing a specific mode tab.
+                    ServiceAlertsSection(
+                        alerts: viewModel.serviceAlerts.filtered(for: viewModel.selectedMode),
+                        lastUpdated: viewModel.alertsLastUpdated
+                    )
                     
                     // Network error banner
                     if let error = viewModel.errorMessage {

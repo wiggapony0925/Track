@@ -15,8 +15,10 @@ import SwiftUI
 /// Top-level alerts section that groups alerts by mode and shows a summary banner.
 struct ServiceAlertsSection: View {
     let alerts: [TransitAlert]
+    var lastUpdated: Date? = nil
     
     /// Group alerts by mode, maintaining a consistent display order.
+    /// Within each mode, alerts are sorted by severity (severe first) then recency.
     private var groupedAlerts: [(mode: String, label: String, icon: String, alerts: [TransitAlert])] {
         let modeOrder = ["subway", "bus", "lirr", "mnr"]
         let grouped = Dictionary(grouping: alerts, by: \.mode)
@@ -24,7 +26,8 @@ struct ServiceAlertsSection: View {
         return modeOrder.compactMap { mode in
             guard let modeAlerts = grouped[mode], !modeAlerts.isEmpty else { return nil }
             let first = modeAlerts[0]
-            return (mode: mode, label: first.modeLabel, icon: first.modeIcon, alerts: modeAlerts)
+            let sorted = modeAlerts.sortedBySeverityAndTime()
+            return (mode: mode, label: first.modeLabel, icon: first.modeIcon, alerts: sorted)
         }
     }
     
@@ -44,6 +47,13 @@ struct ServiceAlertsSection: View {
                     }
                     
                     Spacer()
+                    
+                    // Last updated timestamp
+                    if let lastUpdated {
+                        Text(lastUpdated, style: .time)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
+                    }
                     
                     // Total count badge
                     Text("\(alerts.count)")
@@ -83,6 +93,8 @@ struct ServiceAlertsSection: View {
 // MARK: - Mode Group
 
 /// An expandable card for one transit mode's alerts.
+/// For subway and bus modes, alerts are further grouped by NYC borough
+/// with collapsible sub-sections so you don't have to scroll through everything.
 struct ServiceAlertModeGroup: View {
     let mode: String
     let label: String
@@ -90,6 +102,11 @@ struct ServiceAlertModeGroup: View {
     let alerts: [TransitAlert]
     
     @State private var isExpanded = false
+    
+    /// Whether this mode should show borough sub-groups.
+    private var showBoroughGroups: Bool {
+        (mode == "subway" || mode == "bus") && alerts.count > 3
+    }
     
     /// Show first 2 by default, expand to reveal the rest.
     private let previewCount = 2
@@ -108,6 +125,16 @@ struct ServiceAlertModeGroup: View {
         case "lirr":  return AppTheme.CommuterRailColors.lirrBlue
         case "mnr":   return AppTheme.CommuterRailColors.mnrBlue
         default:      return AppTheme.Colors.subwayBlack
+        }
+    }
+    
+    /// Group alerts by borough, in a consistent order.
+    private var boroughGroups: [(borough: String, alerts: [TransitAlert])] {
+        let boroughOrder = ["Manhattan", "Brooklyn", "Queens", "Bronx", "Staten Island", "System-Wide"]
+        let grouped = Dictionary(grouping: alerts) { BoroughMapper.borough(for: $0) }
+        return boroughOrder.compactMap { borough in
+            guard let boroughAlerts = grouped[borough], !boroughAlerts.isEmpty else { return nil }
+            return (borough: borough, alerts: boroughAlerts)
         }
     }
     
@@ -131,7 +158,7 @@ struct ServiceAlertModeGroup: View {
                 
                 Spacer()
                 
-                if hasMore {
+                if !showBoroughGroups && hasMore {
                     Button {
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                             isExpanded.toggle()
@@ -153,14 +180,28 @@ struct ServiceAlertModeGroup: View {
             Divider()
                 .padding(.leading, AppTheme.Layout.cardPadding)
             
-            // Alert rows
-            VStack(spacing: 0) {
-                ForEach(Array(visibleAlerts.enumerated()), id: \.element.id) { index, alert in
-                    ServiceAlertRow(alert: alert, mode: mode)
-                    
-                    if index < visibleAlerts.count - 1 {
-                        Divider()
-                            .padding(.leading, AppTheme.Layout.cardPadding + 34)
+            // Content: borough sub-groups or flat list
+            if showBoroughGroups {
+                VStack(spacing: 0) {
+                    ForEach(boroughGroups, id: \.borough) { group in
+                        BoroughAlertSubGroup(
+                            borough: group.borough,
+                            alerts: group.alerts,
+                            mode: mode,
+                            modeColor: modeColor
+                        )
+                    }
+                }
+            } else {
+                // Flat alert rows (for LIRR, MNR, or small subway/bus lists)
+                VStack(spacing: 0) {
+                    ForEach(Array(visibleAlerts.enumerated()), id: \.element.id) { index, alert in
+                        ServiceAlertRow(alert: alert, mode: mode)
+                        
+                        if index < visibleAlerts.count - 1 {
+                            Divider()
+                                .padding(.leading, AppTheme.Layout.cardPadding + 34)
+                        }
                     }
                 }
             }
@@ -169,6 +210,183 @@ struct ServiceAlertModeGroup: View {
         .cornerRadius(AppTheme.Layout.cornerRadius)
         .shadow(color: .black.opacity(0.06), radius: 4, y: 2)
         .padding(.horizontal, AppTheme.Layout.margin)
+    }
+}
+
+// MARK: - Borough Sub-Group
+
+/// A collapsible sub-section within a mode group, grouping alerts by NYC borough.
+struct BoroughAlertSubGroup: View {
+    let borough: String
+    let alerts: [TransitAlert]
+    let mode: String
+    let modeColor: Color
+    
+    @State private var isExpanded = false
+    
+    private var boroughIcon: String {
+        switch borough {
+        case "Manhattan":     return "building.2.fill"
+        case "Brooklyn":      return "tram.fill"
+        case "Queens":        return "airplane"     // JFK/LGA
+        case "Bronx":         return "leaf.fill"
+        case "Staten Island": return "ferry.fill"
+        default:              return "map.fill"
+        }
+    }
+    
+    /// Whether any alert in this borough is severe.
+    private var hasSevere: Bool {
+        alerts.contains(where: { $0.severity == "severe" })
+    }
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Borough header — tap to expand/collapse
+            Button {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    isExpanded.toggle()
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: boroughIcon)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(modeColor)
+                        .frame(width: 22, height: 22)
+                    
+                    Text(borough)
+                        .font(.custom("Helvetica-Bold", size: 13))
+                        .foregroundColor(AppTheme.Colors.textPrimary)
+                    
+                    // Alert count with severity color
+                    Text("\(alerts.count)")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 1)
+                        .background(
+                            Capsule().fill(
+                                hasSevere ? AppTheme.Colors.alertRed : AppTheme.Colors.warningYellow
+                            )
+                        )
+                    
+                    Spacer()
+                    
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+                }
+                .padding(.horizontal, AppTheme.Layout.cardPadding)
+                .padding(.vertical, 8)
+                .background(modeColor.opacity(0.04))
+            }
+            .buttonStyle(.plain)
+            
+            // Expanded alert rows
+            if isExpanded {
+                Divider()
+                    .padding(.leading, AppTheme.Layout.cardPadding + 30)
+                
+                VStack(spacing: 0) {
+                    ForEach(Array(alerts.enumerated()), id: \.element.id) { index, alert in
+                        ServiceAlertRow(alert: alert, mode: mode)
+                        
+                        if index < alerts.count - 1 {
+                            Divider()
+                                .padding(.leading, AppTheme.Layout.cardPadding + 34)
+                        }
+                    }
+                }
+            }
+            
+            Divider()
+                .padding(.leading, AppTheme.Layout.cardPadding)
+        }
+    }
+}
+
+// MARK: - Borough Mapper
+
+/// Maps MTA route IDs to NYC boroughs.
+/// Subway lines are mapped by their primary service area.
+/// Bus routes use their MTA prefix (Bx, B, M, Q, S).
+/// Many subway lines span multiple boroughs — we use the borough
+/// where the line is most associated or starts.
+enum BoroughMapper {
+    
+    /// Determine the primary borough for a transit alert.
+    static func borough(for alert: TransitAlert) -> String {
+        guard let routeId = alert.routeId, !routeId.isEmpty else {
+            return "System-Wide"
+        }
+        
+        if alert.mode == "bus" {
+            return boroughForBusRoute(routeId)
+        }
+        
+        if alert.mode == "subway" {
+            return boroughForSubwayLine(routeId)
+        }
+        
+        return "System-Wide"
+    }
+    
+    /// Bus routes use MTA borough prefixes:
+    /// Bx = Bronx, B = Brooklyn, M = Manhattan, Q = Queens, S/SIM = Staten Island
+    private static func boroughForBusRoute(_ routeId: String) -> String {
+        let upper = routeId.uppercased()
+        if upper.hasPrefix("BX") { return "Bronx" }
+        if upper.hasPrefix("SIM") || (upper.hasPrefix("S") && !upper.hasPrefix("SI") && upper.dropFirst().first?.isNumber == true && upper.count <= 4) {
+            // S + number with short length could be Staten Island or shuttle
+            // SIM is definitely Staten Island
+            return "Staten Island"
+        }
+        if upper.hasPrefix("S") && upper.count >= 3 && upper.dropFirst().first?.isLetter == true {
+            // SI prefixed → Staten Island
+            if upper.hasPrefix("SI") { return "Staten Island" }
+        }
+        if upper.hasPrefix("B") && !upper.hasPrefix("BX") && !upper.hasPrefix("BM") {
+            return "Brooklyn"
+        }
+        if upper.hasPrefix("BM") { return "Brooklyn" } // Brooklyn-Manhattan express
+        if upper.hasPrefix("M") { return "Manhattan" }
+        if upper.hasPrefix("Q") { return "Queens" }
+        if upper.hasPrefix("X") { return "Manhattan" } // Express buses
+        return "System-Wide"
+    }
+    
+    /// Subway lines mapped to primary borough association.
+    /// Lines that span many boroughs use the borough most associated.
+    private static func boroughForSubwayLine(_ routeId: String) -> String {
+        let line = routeId.uppercased()
+        
+        // Manhattan-centric lines
+        let manhattan: Set<String> = ["1", "2", "3", "C", "E", "S", "SI"]
+        // Brooklyn-centric lines
+        let brooklyn: Set<String> = ["B", "D", "F", "G", "N", "R", "W"]
+        // Queens-centric lines
+        let queens: Set<String> = ["7", "E", "M"]
+        // Bronx-centric lines
+        let bronx: Set<String> = ["4", "5", "6"]
+        // Lines heavily serving both (we pick one)
+        let crossBorough: [String: String] = [
+            "A": "Manhattan",   // A runs Manhattan ↔ Queens/Brooklyn — most iconic in Manhattan
+            "J": "Brooklyn",
+            "Z": "Brooklyn",
+            "L": "Brooklyn",
+            "Q": "Brooklyn",    // Q train, not bus
+        ]
+        
+        if let mapped = crossBorough[line] { return mapped }
+        if bronx.contains(line) { return "Bronx" }
+        if queens.contains(line) { return "Queens" }
+        if brooklyn.contains(line) { return "Brooklyn" }
+        if manhattan.contains(line) { return "Manhattan" }
+        
+        // SIR (Staten Island Railway)
+        if line == "SIR" || line == "SI" { return "Staten Island" }
+        
+        return "System-Wide"
     }
 }
 
@@ -218,15 +436,26 @@ struct ServiceAlertRow: View {
                             .lineLimit(showFullDescription ? nil : 2)
                     }
                     
-                    // Severity badge
-                    HStack(spacing: 4) {
-                        Circle()
-                            .fill(severityColor)
-                            .frame(width: 6, height: 6)
+                    // Severity badge + timestamp
+                    HStack(spacing: 8) {
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(severityColor)
+                                .frame(width: 6, height: 6)
+                            
+                            Text(alert.severity == "severe" ? "Severe" : "Warning")
+                                .font(.custom("Helvetica", size: 11))
+                                .foregroundColor(severityColor)
+                        }
                         
-                        Text(alert.severity == "severe" ? "Severe" : "Warning")
-                            .font(.custom("Helvetica", size: 11))
-                            .foregroundColor(severityColor)
+                        if let ts = alert.updatedAt {
+                            HStack(spacing: 0) {
+                                Text(Date(timeIntervalSince1970: TimeInterval(ts)), style: .relative)
+                                Text(" ago")
+                            }
+                            .font(.custom("Helvetica", size: 10))
+                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
+                        }
                     }
                     .padding(.top, 2)
                 }

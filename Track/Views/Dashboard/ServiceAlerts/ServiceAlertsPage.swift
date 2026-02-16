@@ -13,8 +13,10 @@ import SwiftUI
 struct ServiceAlertsPage: View {
     let alerts: [TransitAlert]
     let sheetNavigator: SheetNavigator
+    var lastUpdated: Date? = nil
     
     /// Group alerts by mode, maintaining a consistent display order.
+    /// Within each mode, sorted by severity (severe first) then recency.
     private var groupedAlerts: [(mode: String, label: String, icon: String, alerts: [TransitAlert])] {
         let modeOrder = ["subway", "bus", "lirr", "mnr"]
         let grouped = Dictionary(grouping: alerts, by: \.mode)
@@ -22,7 +24,8 @@ struct ServiceAlertsPage: View {
         return modeOrder.compactMap { mode in
             guard let modeAlerts = grouped[mode], !modeAlerts.isEmpty else { return nil }
             let first = modeAlerts[0]
-            return (mode: mode, label: first.modeLabel, icon: first.modeIcon, alerts: modeAlerts)
+            let sorted = modeAlerts.sortedBySeverityAndTime()
+            return (mode: mode, label: first.modeLabel, icon: first.modeIcon, alerts: sorted)
         }
     }
     
@@ -117,6 +120,16 @@ struct ServiceAlertsPage: View {
                 .foregroundColor(AppTheme.Colors.textSecondary)
             
             Spacer()
+            
+            if let lastUpdated {
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 10, weight: .semibold))
+                    Text(lastUpdated, style: .time)
+                        .font(.custom("Helvetica", size: 11))
+                }
+                .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
+            }
         }
         .padding(.horizontal, AppTheme.Layout.margin)
     }

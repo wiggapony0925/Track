@@ -8,7 +8,7 @@
 //
 
 import Foundation
-import UserNotifications
+@preconcurrency import UserNotifications
 
 /// Handles local notification delivery for new service alerts.
 @MainActor
@@ -27,10 +27,11 @@ final class AlertNotificationManager {
 
     /// Request notification authorization. Call once at app launch.
     func requestPermissionIfNeeded() {
-        let center = UNUserNotificationCenter.current()
-        center.getNotificationSettings { settings in
+        Task {
+            let center = UNUserNotificationCenter.current()
+            let settings = await center.notificationSettings()
             if settings.authorizationStatus == .notDetermined {
-                center.requestAuthorization(options: [.alert, .badge, .sound]) { _, _ in }
+                _ = try? await center.requestAuthorization(options: [.alert, .badge, .sound])
             }
         }
     }

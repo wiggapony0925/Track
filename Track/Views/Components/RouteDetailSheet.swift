@@ -15,6 +15,8 @@ struct RouteDetailSheet: View {
     let group: GroupedNearbyTransitResponse
     @Binding var busVehicles: [BusVehicleResponse]
     @Binding var routeShape: RouteShapeResponse?
+    var serviceAlerts: [TransitAlert] = []
+    var cachedStations: [HomeViewModel.CachedSubwayStation] = []
     var onTrack: ((NearbyTransitResponse) -> Void)?
     var isTracking: ((NearbyTransitResponse) -> Bool)?
     var onDismiss: (() -> Void)?
@@ -29,13 +31,25 @@ struct RouteDetailSheet: View {
     /// Selected direction index - bound to viewModel so map can filter polylines
     @Binding var selectedDirectionIndex: Int
     
+    /// Which content tab is active: arrivals, stops, or alerts.
+    @State private var selectedTab: RouteDetailTab = .arrivals
+    
     /// Favorites manager for heart button
     @State private var isFavorited = false
+    
+    /// Available tabs for this route.
+    enum RouteDetailTab: String, CaseIterable {
+        case arrivals = "Arrivals"
+        case stops = "Stops"
+        case alerts = "Alerts"
+    }
 
     init(group: GroupedNearbyTransitResponse,
          busVehicles: Binding<[BusVehicleResponse]>,
          routeShape: Binding<RouteShapeResponse?>,
          selectedDirectionIndex: Binding<Int>,
+         serviceAlerts: [TransitAlert] = [],
+         cachedStations: [HomeViewModel.CachedSubwayStation] = [],
          isSheetExpanded: Bool = false,
          is3DMode: Binding<Bool> = .constant(false),
          cameraPosition: Binding<MapCameraPosition> = .constant(.automatic),
@@ -48,6 +62,8 @@ struct RouteDetailSheet: View {
         self._busVehicles = busVehicles
         self._routeShape = routeShape
         self._selectedDirectionIndex = selectedDirectionIndex
+        self.serviceAlerts = serviceAlerts
+        self.cachedStations = cachedStations
         self.onTrack = onTrack
         self.isTracking = isTracking
         self.onDismiss = onDismiss
@@ -76,6 +92,21 @@ struct RouteDetailSheet: View {
         let idx = min(selectedDirectionIndex, group.directions.count - 1)
         return group.directions[idx]
     }
+    
+    /// Alerts that match this route (by routeId or displayName).
+    private var routeAlerts: [TransitAlert] {
+        let byId = serviceAlerts.matching(routeId: group.routeId)
+        let byName = serviceAlerts.matching(routeId: group.displayName)
+        // Merge without duplicates
+        var seen = Set<String>()
+        var result: [TransitAlert] = []
+        for alert in byId + byName {
+            if seen.insert(alert.id).inserted {
+                result.append(alert)
+            }
+        }
+        return result.sortedBySeverityAndTime()
+    }
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -83,16 +114,37 @@ struct RouteDetailSheet: View {
                 // MARK: - Header Row
                 routeHeader
 
+                // MARK: - Alert Banner (most recent alert, if any)
+                if let topAlert = routeAlerts.first {
+                    routeAlertBanner(topAlert)
+                }
+
                 // MARK: - Direction Picker (above countdown so user picks direction first)
                 if group.directions.count > 1 {
                     directionPicker
                 }
-
-                // MARK: - Countdown Chips
-                countdownSection
-
-                // MARK: - Arrivals List
-                arrivalsList
+                
+                // MARK: - Content Tab Picker
+                contentTabPicker
+                
+                // MARK: - Tab Content
+                switch selectedTab {
+                case .arrivals:
+                    // Countdown Chips
+                    countdownSection
+                    // Arrivals List
+                    arrivalsList
+                    
+                case .stops:
+                    stopsListSection
+                    
+                case .alerts:
+                    if !routeAlerts.isEmpty {
+                        routeAlertsSection
+                    } else {
+                        noAlertsEmptyState
+                    }
+                }
 
                 // MARK: - Route Info Footer
                 routeInfoFooter
@@ -480,6 +532,395 @@ struct RouteDetailSheet: View {
         .accessibilityHint(group.directions.count > 1 ? "Swipe left or right to switch direction" : "")
     }
 
+    // MARK: - Content Tab Picker
+
+    /// Horizontal pill-style picker for Arrivals / Stops / Alerts tabs.
+    private var contentTabPicker: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(RouteDetailTab.allCases, id: \.self) { tab in
+                    let isActive = selectedTab == tab
+                    Button {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            selectedTab = tab
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: tabIcon(for: tab))
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(isActive ? .white : routeColor)
+
+                            Text(tab.rawValue)
+                                .font(.custom("Helvetica-Bold", size: 13))
+                                .foregroundColor(isActive ? .white : AppTheme.Colors.textPrimary)
+                                .lineLimit(1)
+
+                            // Badge: show alert count on Alerts tab
+                            if tab == .alerts && !routeAlerts.isEmpty {
+                                Text("\(routeAlerts.count)")
+                                    .font(.custom("Helvetica-Bold", size: 11))
+                                    .foregroundColor(isActive ? routeColor : .white)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(isActive ? Color.white.opacity(0.9) : AppTheme.Colors.warningYellow)
+                                    .clipShape(Capsule())
+                            }
+                            
+                            // Badge: show stop count on Stops tab
+                            if tab == .stops, let shape = routeShape {
+                                let stopCount = shape.stopsForDirection(selectedDirectionIndex).count
+                                if stopCount > 0 {
+                                    Text("\(stopCount)")
+                                        .font(.custom("Helvetica-Bold", size: 11))
+                                        .foregroundColor(isActive ? routeColor : .white)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(isActive ? Color.white.opacity(0.9) : routeColor)
+                                        .clipShape(Capsule())
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(isActive ? routeColor : AppTheme.Colors.cardBackground)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(isActive ? Color.clear : routeColor.opacity(0.2), lineWidth: 1)
+                        )
+                        .shadow(color: isActive ? routeColor.opacity(0.3) : .clear, radius: 4, x: 0, y: 2)
+                    }
+                    .accessibilityLabel("\(tab.rawValue) tab")
+                }
+            }
+            .padding(.horizontal, AppTheme.Layout.margin)
+        }
+    }
+
+    /// SF Symbol icon for each content tab.
+    private func tabIcon(for tab: RouteDetailTab) -> String {
+        switch tab {
+        case .arrivals: return "clock.fill"
+        case .stops: return "mappin.and.ellipse"
+        case .alerts: return "exclamationmark.triangle.fill"
+        }
+    }
+
+    // MARK: - Stops List
+
+    /// List of all stops for the current direction, with transfer indicators.
+    private var stopsListSection: some View {
+        let dirStops: [BusStop] = routeShape?.stopsForDirection(selectedDirectionIndex) ?? []
+
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Stops")
+                    .font(.custom("Helvetica-Bold", size: 13))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+                    .textCase(.uppercase)
+                    .tracking(0.6)
+
+                Spacer()
+
+                if !dirStops.isEmpty {
+                    Text("\(dirStops.count) stop\(dirStops.count == 1 ? "" : "s")")
+                        .font(.custom("Helvetica", size: 12))
+                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
+                }
+            }
+            .padding(.horizontal, AppTheme.Layout.margin)
+
+            if dirStops.isEmpty {
+                VStack(spacing: 10) {
+                    Image(systemName: "mappin.slash")
+                        .font(.system(size: 32, weight: .light))
+                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.5))
+                    Text("Stop information unavailable")
+                        .font(.custom("Helvetica", size: 15))
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+                    Text("Route shape data hasn't loaded yet.")
+                        .font(.custom("Helvetica", size: 12))
+                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 40)
+                .background(AppTheme.Colors.cardBackground)
+                .cornerRadius(AppTheme.Layout.cornerRadius)
+                .padding(.horizontal, AppTheme.Layout.margin)
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(Array(dirStops.enumerated()), id: \.element.id) { index, stop in
+                        stopRow(stop, index: index, total: dirStops.count)
+
+                        if index < dirStops.count - 1 {
+                            // Connecting line between stops
+                            HStack(spacing: 0) {
+                                Spacer().frame(width: 27)
+                                Rectangle()
+                                    .fill(routeColor.opacity(0.25))
+                                    .frame(width: 2, height: 12)
+                                Spacer()
+                            }
+                            .padding(.leading, AppTheme.Layout.cardPadding)
+                        }
+                    }
+                }
+                .background(AppTheme.Colors.cardBackground)
+                .cornerRadius(AppTheme.Layout.cornerRadius)
+                .shadow(color: .black.opacity(0.06), radius: 4, y: 2)
+                .padding(.horizontal, AppTheme.Layout.margin)
+            }
+        }
+    }
+
+    /// A single stop row with transfer line badges.
+    private func stopRow(_ stop: BusStop, index: Int, total: Int) -> some View {
+        let transfers = transferRoutes(for: stop)
+        let isFirst = index == 0
+        let isLast = index == total - 1
+
+        return HStack(alignment: .center, spacing: 12) {
+            // Stop dot on the line
+            ZStack {
+                Circle()
+                    .fill(routeColor)
+                    .frame(width: (isFirst || isLast) ? 14 : 10,
+                           height: (isFirst || isLast) ? 14 : 10)
+                if isFirst || isLast {
+                    Circle()
+                        .fill(Color.white)
+                        .frame(width: 6, height: 6)
+                }
+            }
+            .frame(width: 18)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(stop.name)
+                    .font(.custom("Helvetica-Bold", size: 14))
+                    .foregroundColor(AppTheme.Colors.textPrimary)
+                    .lineLimit(1)
+
+                // Transfer badges
+                if !transfers.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.triangle.swap")
+                                .font(.system(size: 9, weight: .semibold))
+                                .foregroundColor(AppTheme.Colors.textSecondary)
+
+                            ForEach(transfers, id: \.self) { route in
+                                RouteBadge(routeID: route,
+                                           size: .custom(20, 10))
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer()
+
+            // Stop sequence number
+            Text("\(index + 1)")
+                .font(.custom("Helvetica", size: 11))
+                .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.5))
+        }
+        .padding(.horizontal, AppTheme.Layout.cardPadding)
+        .padding(.vertical, 8)
+    }
+
+    /// Finds subway transfer routes at a given stop by matching against cached stations.
+    /// Uses name-based matching (case-insensitive, trimmed) to connect bus/subway stops
+    /// to known subway stations and their served routes.
+    private func transferRoutes(for stop: BusStop) -> [String] {
+        // Skip transfer detection for non-subway if no station data available
+        guard !cachedStations.isEmpty else { return [] }
+
+        let stopName = stop.name.lowercased().trimmingCharacters(in: .whitespaces)
+        let currentRoute = group.displayName
+
+        // 1) Try exact name match first
+        if let match = cachedStations.first(where: {
+            $0.name.lowercased().trimmingCharacters(in: .whitespaces) == stopName
+        }) {
+            return match.routes.filter { $0 != currentRoute }.sorted()
+        }
+
+        // 2) Try proximity-based match (~100m) for nearby subway stations
+        let stopCoord = CLLocation(latitude: stop.lat, longitude: stop.lon)
+        let nearbyThreshold: CLLocationDistance = 100 // meters
+
+        let nearbyStations = cachedStations.filter { station in
+            let stationLoc = CLLocation(latitude: station.coordinate.latitude,
+                                        longitude: station.coordinate.longitude)
+            return stopCoord.distance(from: stationLoc) <= nearbyThreshold
+        }
+
+        // Collect all routes from nearby stations, excluding the current route
+        var routes = Set<String>()
+        for station in nearbyStations {
+            for route in station.routes where route != currentRoute {
+                routes.insert(route)
+            }
+        }
+
+        return routes.sorted()
+    }
+
+    // MARK: - No Alerts Empty State
+
+    /// Shown on the Alerts tab when there are no active alerts for this route.
+    private var noAlertsEmptyState: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "checkmark.shield.fill")
+                .font(.system(size: 36, weight: .light))
+                .foregroundColor(AppTheme.Colors.successGreen)
+
+            Text("All Clear")
+                .font(.custom("Helvetica-Bold", size: 17))
+                .foregroundColor(AppTheme.Colors.textPrimary)
+
+            Text("No active service alerts for the \(group.displayName)")
+                .font(.custom("Helvetica", size: 14))
+                .foregroundColor(AppTheme.Colors.textSecondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 40)
+        .background(AppTheme.Colors.cardBackground)
+        .cornerRadius(AppTheme.Layout.cornerRadius)
+        .padding(.horizontal, AppTheme.Layout.margin)
+    }
+
+    // MARK: - Alert Banner (top of sheet)
+    
+    /// Compact alert banner shown at the top of the route detail,
+    /// right below the header and above the direction picker.
+    /// Shows a "Latest alert • X ago" timestamp above the main banner strip.
+    private func routeAlertBanner(_ alert: TransitAlert) -> some View {
+        let isSevere = alert.severity == "severe"
+        let bannerColor = isSevere ? AppTheme.Colors.alertRed : AppTheme.Colors.warningYellow
+        
+        return VStack(alignment: .leading, spacing: 4) {
+            // "Latest alert • X ago" label
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(bannerColor)
+                    .frame(width: 6, height: 6)
+                
+                Text("Latest alert")
+                    .font(.custom("Helvetica-Bold", size: 10))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+                    .textCase(.uppercase)
+                    .tracking(0.4)
+                
+                if let ts = alert.updatedAt {
+                    Text("•")
+                        .font(.system(size: 8))
+                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.5))
+                    HStack(spacing: 0) {
+                        Text(Date(timeIntervalSince1970: TimeInterval(ts)), style: .relative)
+                        Text(" ago")
+                    }
+                    .font(.custom("Helvetica", size: 10))
+                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
+                }
+                
+                Spacer()
+                
+                if routeAlerts.count > 1 {
+                    Text("\(routeAlerts.count) alerts")
+                        .font(.custom("Helvetica", size: 10))
+                        .foregroundColor(bannerColor)
+                }
+            }
+            .padding(.horizontal, AppTheme.Layout.margin)
+            
+            // Main banner strip
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(.white)
+                
+                Text(alert.title)
+                    .font(.custom("Helvetica-Bold", size: 12))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+                
+                Spacer(minLength: 0)
+                
+                if routeAlerts.count > 1 {
+                    Text("+\(routeAlerts.count - 1)")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(bannerColor)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(
+                            Capsule().fill(Color.white.opacity(0.9))
+                        )
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(bannerColor)
+                    .shadow(color: bannerColor.opacity(0.3), radius: 6, x: 0, y: 3)
+            )
+            .padding(.horizontal, AppTheme.Layout.margin)
+        }
+    }
+
+    // MARK: - Route Alerts Section
+    
+    private var routeAlertsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(AppTheme.Colors.warningYellow)
+                
+                Text("Active Alerts")
+                    .font(.custom("Helvetica-Bold", size: 13))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+                    .textCase(.uppercase)
+                    .tracking(0.6)
+                
+                Spacer()
+                
+                Text("\(routeAlerts.count)")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 2)
+                    .background(
+                        Capsule().fill(
+                            routeAlerts.contains(where: { $0.severity == "severe" })
+                                ? AppTheme.Colors.alertRed
+                                : AppTheme.Colors.warningYellow
+                        )
+                    )
+            }
+            .padding(.horizontal, AppTheme.Layout.margin)
+            
+            VStack(spacing: 0) {
+                ForEach(Array(routeAlerts.enumerated()), id: \.element.id) { index, alert in
+                    RouteDetailAlertRow(alert: alert)
+                    
+                    if index < routeAlerts.count - 1 {
+                        Divider()
+                            .padding(.leading, AppTheme.Layout.cardPadding + 34)
+                    }
+                }
+            }
+            .background(AppTheme.Colors.cardBackground)
+            .cornerRadius(AppTheme.Layout.cornerRadius)
+            .shadow(color: .black.opacity(0.06), radius: 4, y: 2)
+            .padding(.horizontal, AppTheme.Layout.margin)
+        }
+    }
+
     // MARK: - Route Info Footer
 
     private var routeInfoFooter: some View {
@@ -532,6 +973,76 @@ struct RouteDetailSheet: View {
             )
         } else {
             return AnyView(EmptyView())
+        }
+    }
+}
+
+// MARK: - Route Detail Alert Row
+
+/// A compact alert row shown inside the RouteDetailSheet for matching alerts.
+struct RouteDetailAlertRow: View {
+    let alert: TransitAlert
+    @State private var isExpanded = false
+    
+    private var severityColor: Color {
+        alert.severity == "severe" ? AppTheme.Colors.alertRed : AppTheme.Colors.warningYellow
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .top, spacing: 10) {
+                // Severity icon
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(severityColor)
+                    .frame(width: 26, height: 26)
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(alert.title)
+                        .font(.custom("Helvetica-Bold", size: 13))
+                        .foregroundColor(AppTheme.Colors.textPrimary)
+                        .lineLimit(isExpanded ? nil : 2)
+                    
+                    if isExpanded && !alert.description.isEmpty {
+                        Text(alert.description)
+                            .font(.custom("Helvetica", size: 12))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
+                    }
+                    
+                    HStack(spacing: 8) {
+                        // Severity pill
+                        Text(alert.severity == "severe" ? "⚠️ Severe" : "Warning")
+                            .font(.custom("Helvetica-Bold", size: 10))
+                            .foregroundColor(severityColor)
+                        
+                        // Timestamp
+                        if let ts = alert.updatedAt {
+                            HStack(spacing: 0) {
+                                Text(Date(timeIntervalSince1970: TimeInterval(ts)), style: .relative)
+                                Text(" ago")
+                            }
+                            .font(.custom("Helvetica", size: 10))
+                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
+                        }
+                    }
+                    .padding(.top, 2)
+                }
+                
+                Spacer(minLength: 0)
+                
+                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+                    .padding(.top, 4)
+            }
+            .padding(.horizontal, AppTheme.Layout.cardPadding)
+            .padding(.vertical, 10)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    isExpanded.toggle()
+                }
+            }
         }
     }
 }

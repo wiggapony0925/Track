@@ -107,6 +107,13 @@ async def _parse_alert_feed(url: str, mode: str) -> list[TransitAlert]:
         informed = alert_data.get("informed_entity", [])
         route_id = informed[0].get("route_id") if informed else None
 
+        # Collect ALL affected route_ids for this alert
+        affected_routes: list[str] = []
+        for ie in informed:
+            rid = ie.get("route_id")
+            if rid and rid not in affected_routes:
+                affected_routes.append(rid)
+
         header_text = alert_data.get("header_text", {})
         translations = header_text.get("translation", [])
         title = translations[0].get("text", "Service Alert") if translations else "Service Alert"
@@ -114,6 +121,14 @@ async def _parse_alert_feed(url: str, mode: str) -> list[TransitAlert]:
         desc_text = alert_data.get("description_text", {})
         desc_translations = desc_text.get("translation", [])
         description = desc_translations[0].get("text", "") if desc_translations else ""
+
+        # Extract the most recent active_period start as updated_at (epoch seconds)
+        active_periods = alert_data.get("active_period", [])
+        updated_at: int | None = None
+        if active_periods:
+            starts = [int(ap["start"]) for ap in active_periods if ap.get("start")]
+            if starts:
+                updated_at = max(starts)
 
         # Normalize severity for the frontend
         normalized_severity = severity_level.lower() if severity_level else "warning"
@@ -127,6 +142,8 @@ async def _parse_alert_feed(url: str, mode: str) -> list[TransitAlert]:
                 description=description,
                 severity=normalized_severity,
                 mode=mode,
+                updated_at=updated_at,
+                affected_routes=affected_routes,
             )
         )
 

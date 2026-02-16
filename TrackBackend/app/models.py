@@ -34,6 +34,8 @@ class TransitAlert(BaseModel):
     description: str
     severity: str
     mode: str = "subway"
+    updated_at: int | None = None  # epoch seconds – active_period start or transit_realtime timestamp
+    affected_routes: list[str] = []  # all route_ids touched by this alert
 
 
 class ElevatorStatus(BaseModel):

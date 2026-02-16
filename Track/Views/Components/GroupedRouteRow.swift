@@ -12,6 +12,7 @@ import SwiftUI
 
 struct GroupedRouteRow: View {
     let group: GroupedNearbyTransitResponse
+    var hasAlert: Bool = false
     var onSelect: ((Int) -> Void)? = nil
 
     @State private var currentDirectionIndex = 0
@@ -27,6 +28,19 @@ struct GroupedRouteRow: View {
                 mode: group.mode
             )
             .accessibilityHidden(true)
+            .overlay(alignment: .topTrailing) {
+                if hasAlert {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(AppTheme.Colors.warningYellow)
+                        .background(
+                            Circle()
+                                .fill(AppTheme.Colors.cardBackground)
+                                .frame(width: 16, height: 16)
+                        )
+                        .offset(x: 6, y: -6)
+                }
+            }
 
             // Swipeable content area
             if group.directions.isEmpty {
