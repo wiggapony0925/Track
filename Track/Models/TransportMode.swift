@@ -14,6 +14,7 @@ enum TransportMode: String, CaseIterable {
     case subway
     case bus
     case lirr
+    case mnr
 
     var label: String {
         switch self {
@@ -21,6 +22,7 @@ enum TransportMode: String, CaseIterable {
         case .subway: return "Subway"
         case .bus: return "Bus"
         case .lirr: return "LIRR"
+        case .mnr: return "Metro-North"
         }
     }
 
@@ -30,6 +32,7 @@ enum TransportMode: String, CaseIterable {
         case .subway: return "tram.fill"
         case .bus: return "bus.fill"
         case .lirr: return "train.side.front.car"
+        case .mnr: return "train.side.rear.car"
         }
     }
 }

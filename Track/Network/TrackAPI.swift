@@ -219,13 +219,21 @@ struct TrackAPI {
         return try decoder.decode([ElevatorStatus].self, from: data)
     }
 
-    // MARK: - LIRR
-
     /// Fetches upcoming LIRR arrivals from the GTFS-Realtime feed.
     ///
     /// - Returns: Array of decoded `TrainArrival` objects.
     static func fetchLIRRArrivals() async throws -> [TrainArrival] {
         let data = try await get(path: "/lirr")
+        return try decoder.decode([SubwayArrivalResponse].self, from: data).map { $0.toTrainArrival() }
+    }
+
+    // MARK: - Metro-North
+
+    /// Fetches upcoming Metro-North arrivals from the GTFS-Realtime feed.
+    ///
+    /// - Returns: Array of decoded `TrainArrival` objects.
+    static func fetchMNRArrivals() async throws -> [TrainArrival] {
+        let data = try await get(path: "/mnr")
         return try decoder.decode([SubwayArrivalResponse].self, from: data).map { $0.toTrainArrival() }
     }
 

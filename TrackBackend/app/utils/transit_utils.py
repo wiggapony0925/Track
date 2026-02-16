@@ -114,7 +114,13 @@ def get_subway_color(line_id: str) -> str:
         "6": "#EE0034", # Waterbury (Branch of NH)
     }
 
-    # Branch Name Mapping removed (handled at start of function)
+    # Handle Prefixed IDs (LIRR_1, MNR_1...)
+    if line_id.startswith("LIRR_"):
+        base_id = line_id.replace("LIRR_", "")
+        return lirr_id_map.get(base_id, "#0039A6")
+    if line_id.startswith("MNR_"):
+        base_id = line_id.replace("MNR_", "")
+        return mnr_id_map.get(base_id, "#0039A6")
         
     # Check numeric IDs ONLY if we know the context is Rail,
     # OR if the ID is > typical subway numbers (e.g. 10, 11, 12, 13)
@@ -128,7 +134,7 @@ def get_subway_color(line_id: str) -> str:
             return lirr_id_map[str(lid)]
             
     # Generic LIRR/MNR fallback if the branch isn't known but the ID implies rail
-    if line_id in {"LIRR", "MNR", "METRO-NORTH", "PATH", "AIRTRAIN"}:
+    if any(k in line_id for k in {"LIRR", "MNR", "METRO-NORTH", "PATH", "AIRTRAIN"}):
         return "#0039A6" # Generic MTA Blue
     
     if line_id in {"S", "GS", "FS", "SR", "SI", "H"}: 

@@ -2,8 +2,8 @@
 # station_lookup.py
 # TrackBackend
 #
-# Loads MTA GTFS stops.txt and provides a fast lookup from stop_id → (lat, lon, name).
-# Used to filter subway arrivals by proximity to the user's location.
+# Loads MTA GTFS stops.txt (Subway, LIRR, Metro-North) and provides a fast 
+# lookup from stop_id → (lat, lon, name).
 #
 
 from __future__ import annotations
@@ -14,46 +14,60 @@ from functools import lru_cache
 from pathlib import Path
 from typing import NamedTuple
 
-_STOPS_PATH = Path(__file__).resolve().parent.parent / "data" / "stops.txt"
-
+_DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
 class StopInfo(NamedTuple):
     stop_id: str
     name: str
     lat: float
     lon: float
-
+    agency: str = "subway"
 
 @lru_cache(maxsize=1)
 def _load_stops() -> dict[str, StopInfo]:
-    """Parse stops.txt into a dict keyed by stop_id."""
+    """Parse all available stops.txt into a dict keyed by stop_id."""
     stops: dict[str, StopInfo] = {}
-    if not _STOPS_PATH.exists():
-        return stops
+    
+    # Files to look for: (Path, Agency Name)
+    stop_files = [
+        (_DATA_DIR / "stops.txt", "subway"),
+        (_DATA_DIR / "lirr/gtfslirr/stops.txt", "lirr"),
+        (_DATA_DIR / "metro_north/gtfsmnr/stops.txt", "mnr")
+    ]
 
-    with open(_STOPS_PATH, encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            stop_id = row.get("stop_id", "").strip()
-            if not stop_id:
-                continue
-            try:
-                lat = float(row.get("stop_lat", "0"))
-                lon = float(row.get("stop_lon", "0"))
-            except ValueError:
-                continue
-            stops[stop_id] = StopInfo(
-                stop_id=stop_id,
-                name=row.get("stop_name", "Unknown"),
-                lat=lat,
-                lon=lon,
-            )
+    for path, agency in stop_files:
+        if not path.exists():
+            continue
+
+        with open(path, encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                stop_id = row.get("stop_id", "").strip()
+                if not stop_id:
+                    continue
+                
+                # Check for location_type to prefer parent stations in Subway
+                # but for Rail we often want everything as they are usually flat.
+                
+                try:
+                    lat = float(row.get("stop_lat", "0"))
+                    lon = float(row.get("stop_lon", "0"))
+                except ValueError:
+                    continue
+                    
+                stops[stop_id] = StopInfo(
+                    stop_id=stop_id,
+                    name=row.get("stop_name", "Unknown"),
+                    lat=lat,
+                    lon=lon,
+                    agency=agency
+                )
 
     return stops
 
 
 def get_stop_info(stop_id: str) -> StopInfo | None:
-    """Look up a single stop by its GTFS stop_id (e.g. 'L12N')."""
+    """Look up a single stop by its GTFS stop_id (e.g. 'L12N' or '231')."""
     return _load_stops().get(stop_id)
 
 
@@ -81,14 +95,12 @@ def is_stop_nearby(stop_id: str, lat: float, lon: float, radius_m: float) -> boo
     return _haversine_m(lat, lon, info.lat, info.lon) <= radius_m
 
 
-def get_nearby_stop_ids(lat: float, lon: float, radius_m: float) -> set[str]:
-    """Return the set of stop_ids within radius_m meters of (lat, lon).
-
-    Only returns parent stops and directional stops (N/S suffixed)
-    that are within the radius.
-    """
+def get_nearby_stop_ids(lat: float, lon: float, radius_m: float, agency: str | None = None) -> set[str]:
+    """Return the set of stop_ids within radius_m meters of (lat, lon)."""
     nearby: set[str] = set()
     for stop_id, info in _load_stops().items():
+        if agency and info.agency != agency:
+            continue
         if _haversine_m(lat, lon, info.lat, info.lon) <= radius_m:
             nearby.add(stop_id)
     return nearby

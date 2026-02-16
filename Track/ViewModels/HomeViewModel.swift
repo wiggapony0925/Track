@@ -84,6 +84,9 @@ final class HomeViewModel {
     // LIRR mode
     var lirrArrivals: [TrainArrival] = []
 
+    // Metro-North mode
+    var mnrArrivals: [TrainArrival] = []
+
     // Service alerts & accessibility
     var serviceAlerts: [TransitAlert] = []
     var elevatorOutages: [ElevatorStatus] = []
@@ -354,6 +357,8 @@ final class HomeViewModel {
             await refreshBus(location: loc)
         case .lirr:
             await refreshLIRR()
+        case .mnr:
+            await refreshMNR()
         }
 
         syncTrackedRoute()
@@ -879,6 +884,7 @@ final class HomeViewModel {
         nearbyBusStops = []
         busArrivals = []
         selectedBusStop = nil
+        mnrArrivals = []
 
         do {
             lirrArrivals = try await TrackAPI.fetchLIRRArrivals()
@@ -888,6 +894,28 @@ final class HomeViewModel {
         }
 
         // Fetch alerts and accessibility alongside LIRR
+        do { serviceAlerts = try await TrackAPI.fetchAlerts() } catch {}
+        do { elevatorOutages = try await TrackAPI.fetchAccessibility() } catch {}
+    }
+
+    // MARK: - Metro-North
+
+    private func refreshMNR() async {
+        nearbyStations = []
+        upcomingArrivals = []
+        nearbyBusStops = []
+        busArrivals = []
+        selectedBusStop = nil
+        lirrArrivals = []
+
+        do {
+            mnrArrivals = try await TrackAPI.fetchMNRArrivals()
+        } catch {
+            AppLogger.shared.logError("fetchMNRArrivals", error: error)
+            errorMessage = (error as? TrackAPIError)?.description ?? error.localizedDescription
+        }
+
+        // Fetch alerts and accessibility alongside MNR
         do { serviceAlerts = try await TrackAPI.fetchAlerts() } catch {}
         do { elevatorOutages = try await TrackAPI.fetchAccessibility() } catch {}
     }
@@ -1043,11 +1071,21 @@ final class HomeViewModel {
 
     /// Starts tracking an LIRR arrival.
     func trackLIRRArrival(_ arrival: TrainArrival, location: CLLocation?) {
+        trackRailArrival(arrival, location: location, agency: "lirr")
+    }
+
+    /// Starts tracking a Metro-North arrival.
+    func trackMNRArrival(_ arrival: TrainArrival, location: CLLocation?) {
+        trackRailArrival(arrival, location: location, agency: "mnr")
+    }
+
+    /// Generic rail arrival tracking (LIRR & MNR).
+    private func trackRailArrival(_ arrival: TrainArrival, location: CLLocation?, agency: String) {
         // Log track interaction to Supabase for analytics
         Task {
             await SupabaseManager.shared.logRouteInteraction(
                 routeId: arrival.routeID,
-                mode: "lirr",
+                mode: agency,
                 type: "track"
             )
         }
@@ -1058,7 +1096,7 @@ final class HomeViewModel {
             stopName: arrival.stationID,
             direction: arrival.direction,
             destination: nil,
-            mode: "lirr",
+            mode: agency,
             trackedAt: Date()
         )
         trackedRoute.save()
@@ -1070,7 +1108,8 @@ final class HomeViewModel {
         let eta = Date().addingTimeInterval(Double(arrival.minutesAway) * 60)
         
         // Find sibling arrivals for the "Other upcoming trains" section
-        let nextArrivals = lirrArrivals
+        let agencyArrivals = agency == "lirr" ? lirrArrivals : mnrArrivals
+        let nextArrivals = agencyArrivals
             .filter { $0.direction == arrival.direction && $0.stationID == arrival.stationID && $0.minutesAway > arrival.minutesAway }
             .map { $0.minutesAway }
             .sorted()

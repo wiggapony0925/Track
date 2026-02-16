@@ -90,9 +90,11 @@ async def _collect_all(
 
     subway_task = _fetch_nearby_subway(lat, lon, effective_radius)
     bus_task = _fetch_nearby_buses(lat, lon, effective_radius)
+    lirr_task = _fetch_nearby_rail(lat, lon, effective_radius, "lirr")
+    mnr_task = _fetch_nearby_rail(lat, lon, effective_radius, "mnr")
 
-    subway_results, bus_results = await asyncio.gather(
-        subway_task, bus_task, return_exceptions=True,
+    subway_results, bus_results, lirr_results, mnr_results = await asyncio.gather(
+        subway_task, bus_task, lirr_task, mnr_task, return_exceptions=True,
     )
 
     if isinstance(subway_results, list):
@@ -104,6 +106,16 @@ async def _collect_all(
         results.extend(bus_results)
     elif isinstance(bus_results, Exception):
         TrackLogger.error(f"Bus feed failed: {bus_results}")
+
+    if isinstance(lirr_results, list):
+        results.extend(lirr_results)
+    elif isinstance(lirr_results, Exception):
+        TrackLogger.error(f"LIRR feed failed: {lirr_results}")
+
+    if isinstance(mnr_results, list):
+        results.extend(mnr_results)
+    elif isinstance(mnr_results, Exception):
+        TrackLogger.error(f"MNR feed failed: {mnr_results}")
 
     return results
 
@@ -142,7 +154,7 @@ def _group_arrivals(flat: list[NearbyTransitArrival]) -> list[GroupedNearbyTrans
         mode, display = route_meta[route_id]
         # Assign color: subway lines use the official palette,
         # bus routes get the default MTA blue
-        if mode == "subway":
+        if mode in {"subway", "lirr", "mnr"}:
             color = get_subway_color(display)
         else:
             color = _BUS_DEFAULT_COLOR
@@ -327,45 +339,86 @@ async def _fetch_nearby_buses(
         TrackLogger.info("No bus stops found within search radius")
         return results
 
-    # Fetch arrivals for the nearest stops (limit from settings)
-    bus_stops_limit = settings.app_settings.nearby_bus_stops_limit
-    tasks = [get_realtime_arrivals(stop.id) for stop in stops[:bus_stops_limit]]
+    tasks = [get_realtime_arrivals(stop.id) for stop in stops[: settings.app_settings.max_nearby_results]]
     stop_results = await asyncio.gather(*tasks, return_exceptions=True)
 
-    for i, arrivals in enumerate(stop_results):
-        if isinstance(arrivals, Exception):
-            stop_name = stops[i].name if i < len(stops) else "unknown"
-            TrackLogger.error(f"Bus arrivals for stop '{stop_name}' failed: {arrivals}")
+    for i, result in enumerate(stop_results):
+        stop = stops[i]
+        if isinstance(result, Exception):
+            TrackLogger.error(f"Bus arrivals for {stop.name} failed: {result}")
             continue
-        if not isinstance(arrivals, list):
-            continue
-        stop = stops[i] if i < len(stops) else None
-        stop_name = stop.name if stop else "Bus Stop"
-        stop_lat = stop.lat if stop else None
-        stop_lon = stop.lon if stop else None
-        for arrival in arrivals:
+        
+        # result is a list[BusArrival]
+        for arrival in result:
             minutes = _bus_minutes_away(arrival.expected_arrival)
-            # Use the bus stop's compass direction (e.g. "SW") for grouping,
-            # falling back to the stop name when direction is unavailable.
-            # status_text stays in the `status` field for display purposes.
-            bus_direction = stop.direction if (stop and stop.direction) else stop_name
             results.append(
                 NearbyTransitArrival(
                     route_id=arrival.route_id,
-                    stop_name=stop_name,
-                    direction=bus_direction,
-                    destination=stop_name,
-                    minutes_away=minutes,
+                    stop_name=stop.name,
                     arrival_ts=int(arrival.expected_arrival.timestamp()) if arrival.expected_arrival else None,
+                    direction=stop.direction or "Loop",
+                    minutes_away=minutes,
                     status=arrival.status_text,
                     mode="bus",
-                    stop_lat=stop_lat,
-                    stop_lon=stop_lon,
-                    stop_id=stop.id if stop else None,
+                    stop_lat=stop.lat,
+                    stop_lon=stop.lon,
+                    stop_id=stop.id,
                     vehicle_id=arrival.vehicle_id,
+                    destination=arrival.status_text # Use status as destination for now
                 )
             )
 
+    return results
+
+
+
+# ---------------------------------------------------------------------------
+# Rail helpers
+# ---------------------------------------------------------------------------
+
+
+async def _fetch_nearby_rail(
+    lat: float, lon: float, radius: int, agency: str
+) -> list[NearbyTransitArrival]:
+    """Fetch arrivals for LIRR or Metro-North, filtered to nearby stations."""
+    from app.services.rail_client import fetch_rail_arrivals
+    
+    results: list[NearbyTransitArrival] = []
+    
+    # Pre-compute which stop_ids are within range of the user for this agency
+    nearby_stops = get_nearby_stop_ids(lat, lon, float(radius), agency=agency)
+    if not nearby_stops:
+        return results
+
+    try:
+        arrivals = await fetch_rail_arrivals(agency)
+    except Exception as exc:
+        TrackLogger.error(f"{agency.upper()} feed failed: {exc}")
+        return results
+
+    for arrival in arrivals:
+        if arrival.station not in nearby_stops:
+            continue
+            
+        stop_info = get_stop_info(arrival.station)
+        
+        results.append(
+            NearbyTransitArrival(
+                route_id=arrival.route_id,
+                stop_name=stop_info.name if stop_info else arrival.station,
+                direction=arrival.destination or arrival.direction,
+                destination=arrival.destination,
+                minutes_away=arrival.minutes_away,
+                arrival_ts=arrival.arrival_ts,
+                status=arrival.status,
+                mode=agency,
+                stop_lat=stop_info.lat if stop_info else None,
+                stop_lon=stop_info.lon if stop_info else None,
+                stop_id=arrival.station,
+                trip_id=arrival.trip_id,
+            )
+        )
+        
     return results
 
 
