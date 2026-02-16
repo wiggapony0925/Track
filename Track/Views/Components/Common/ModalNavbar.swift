@@ -216,8 +216,8 @@ struct ModeFilterStrip: View {
         case .nearby: return AppTheme.Colors.successGreen
         case .subway: return AppTheme.Colors.subwayBlack
         case .bus: return AppTheme.Colors.mtaBlue
-        case .lirr: return Color(red: 0.0, green: 0.45, blue: 0.75) // LIRR blue
-        case .mnr: return Color(red: 0.0, green: 0.35, blue: 0.55) // MNR darker blue
+        case .lirr: return AppTheme.CommuterRailColors.lirrBlue
+        case .mnr: return AppTheme.CommuterRailColors.mnrBlue
         }
     }
 }

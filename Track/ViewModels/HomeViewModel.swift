@@ -100,11 +100,12 @@ final class HomeViewModel {
     }
     
     /// Bus arrivals filtered by search text.
+    /// Searches both the full routeId and the stripped display name for flexibility.
     var filteredBusArrivals: [BusArrival] {
         guard !searchText.isEmpty else { return busArrivals }
         let query = searchText.lowercased()
         return busArrivals.filter { arrival in
-            stripMTAPrefix(arrival.routeId).lowercased().contains(query) ||
+            arrival.routeId.lowercased().contains(query) ||
             arrival.stopId.lowercased().contains(query) ||
             arrival.statusText.lowercased().contains(query)
         }
