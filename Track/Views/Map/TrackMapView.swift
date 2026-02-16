@@ -199,11 +199,36 @@ struct TrackMapView: View {
     
     // MARK: - Route Polylines
     
+    /// Filters polylines to show only the selected direction when applicable.
+    /// Polylines are typically organized: first half = direction 0, second half = direction 1.
+    private func filteredPolylines(from polylines: [[CLLocationCoordinate2D]]) -> [[CLLocationCoordinate2D]] {
+        guard let group = viewModel.selectedGroupedRoute,
+              let directionIndex = viewModel.selectedDirectionIndex,
+              group.directions.count > 1,
+              polylines.count >= 2 else {
+            // Single direction or not enough polylines to split - show all
+            return polylines
+        }
+        
+        // For bus routes with multiple directions, try to show only relevant polylines
+        // Heuristic: If we have 2+ polylines and 2 directions, split them
+        let midpoint = polylines.count / 2
+        
+        if directionIndex == 0 {
+            return Array(polylines.prefix(max(1, midpoint)))
+        } else {
+            return Array(polylines.suffix(from: min(midpoint, polylines.count - 1)))
+        }
+    }
+    
     @MapContentBuilder
     private var routePolylines: some MapContent {
         if let shape = viewModel.routeShape {
             let isBusRoute = viewModel.selectedGroupedRoute?.isBus == true
-            let polylines = shape.decodedPolylines
+            let allPolylines = shape.decodedPolylines
+            
+            // Filter to selected direction if multiple directions exist
+            let polylines = isBusRoute ? filteredPolylines(from: allPolylines) : allPolylines
             
             if !polylines.isEmpty {
                 ForEach(Array(polylines.enumerated()), id: \.offset) { _, coords in
@@ -231,10 +256,16 @@ struct TrackMapView: View {
     private var systemMapPolylines: some MapContent {
         if viewModel.routeShape == nil {
             // Full system map (all lines) shown by default
+            // Lines are rendered with a white border for better visual separation
             ForEach(viewModel.cachedSystemMap) { line in
-                ForEach(Array(line.coordinates.enumerated()), id: \.offset) { _, coords in
+                ForEach(Array(line.coordinates.enumerated()), id: \.offset) { polyIdx, coords in
+                    // White outline for depth/separation
                     MapPolyline(coordinates: coords)
-                        .stroke(line.color, lineWidth: 2)
+                        .stroke(.white.opacity(0.8), lineWidth: 4)
+                    
+                    // Main colored line
+                    MapPolyline(coordinates: coords)
+                        .stroke(line.color, lineWidth: 3)
                 }
             }
             
