@@ -283,15 +283,26 @@ final class HomeViewModel {
         }
     }
     
+    /// Determines the transit mode for a route ID based on prefix
+    private func transitMode(for routeId: String) -> CachedTransitLine.TransitLineMode? {
+        let upper = routeId.uppercased()
+        if upper.hasPrefix("LIRR") { return .lirr }
+        if upper.hasPrefix("MNR") { return .mnr }
+        return nil
+    }
+    
+    /// Checks if a route ID is a commuter rail route (LIRR or MNR)
+    private func isCommuterRailRoute(_ routeId: String) -> Bool {
+        transitMode(for: routeId) != nil
+    }
+    
     /// Loads LIRR and MNR routes from the static bundle
     private func loadCommuterRailFromBundle(_ bundle: StaticBundle) -> [CachedTransitLine] {
         var lines: [CachedTransitLine] = []
         
         for routeId in bundle.routes.routeIds {
-            let upper = routeId.uppercased()
-            
             // Only process LIRR and MNR routes
-            guard upper.hasPrefix("LIRR") || upper.hasPrefix("MNR") else { continue }
+            guard let mode = transitMode(for: routeId) else { continue }
             
             let branches = bundle.routes.branches(for: routeId)
             guard !branches.isEmpty else { continue }
@@ -303,7 +314,6 @@ final class HomeViewModel {
                 }
             }
             
-            let mode: CachedTransitLine.TransitLineMode = upper.hasPrefix("LIRR") ? .lirr : .mnr
             let color = SubwayRoutesData.color(for: routeId)
             
             lines.append(CachedTransitLine(

@@ -117,12 +117,6 @@ struct SubwayRoutesData {
         // Shuttles
         "S": Color(hex: "808183"),  // Shuttle Gray
         "SI": Color(hex: "0039A6"), // Staten Island Railway
-        
-        // LIRR (Long Island Rail Road) - Official MTA Blue
-        "LIRR": Color(hex: "0039A6"),
-        
-        // Metro-North Railroad - Official MTA Blue
-        "MNR": Color(hex: "0039A6"),
     ]
     
     /// Get color for a route ID (supports LIRR_*, MNR_* prefixes)
@@ -134,14 +128,14 @@ struct SubwayRoutesData {
             return color
         }
         
-        // Check LIRR prefix
+        // Check LIRR prefix - use AppTheme for consistency
         if upper.hasPrefix("LIRR") {
-            return routeColors["LIRR"] ?? AppTheme.CommuterRailColors.lirrBlue
+            return AppTheme.CommuterRailColors.lirrBlue
         }
         
-        // Check MNR prefix
+        // Check MNR prefix - use AppTheme for consistency
         if upper.hasPrefix("MNR") {
-            return routeColors["MNR"] ?? AppTheme.CommuterRailColors.mnrBlue
+            return AppTheme.CommuterRailColors.mnrBlue
         }
         
         return .gray
