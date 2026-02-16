@@ -27,12 +27,13 @@ struct RouteDetailSheet: View {
     var searchPinCoordinate: CLLocationCoordinate2D?
     var selectedStopId: String? // Added property
     
-    @State private var selectedDirectionIndex: Int
+    /// Selected direction index - bound to viewModel so map can filter polylines
+    @Binding var selectedDirectionIndex: Int
 
     init(group: GroupedNearbyTransitResponse,
          busVehicles: Binding<[BusVehicleResponse]>,
          routeShape: Binding<RouteShapeResponse?>,
-         initialDirectionIndex: Int = 0,
+         selectedDirectionIndex: Binding<Int>,
          isSheetExpanded: Bool = false,
          is3DMode: Binding<Bool> = .constant(false),
          cameraPosition: Binding<MapCameraPosition> = .constant(.automatic),
@@ -45,6 +46,7 @@ struct RouteDetailSheet: View {
         self.group = group
         self._busVehicles = busVehicles
         self._routeShape = routeShape
+        self._selectedDirectionIndex = selectedDirectionIndex
         self.onTrack = onTrack
         self.isTracking = isTracking
         self.onDismiss = onDismiss
@@ -54,7 +56,6 @@ struct RouteDetailSheet: View {
         self.currentLocation = currentLocation
         self.searchPinCoordinate = searchPinCoordinate
         self.selectedStopId = selectedStopId
-        self._selectedDirectionIndex = State(initialValue: initialDirectionIndex)
     }
 
     /// Route color from the group data or the theme palette.
@@ -440,6 +441,7 @@ struct RouteDetailSheet: View {
             ]
         ),
         busVehicles: .constant([]),
-        routeShape: .constant(nil)
+        routeShape: .constant(nil),
+        selectedDirectionIndex: .constant(0)
     )
 }

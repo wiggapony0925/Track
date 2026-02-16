@@ -3,7 +3,8 @@
 //  Track
 //
 //  Dashboard content for the "Nearby" transport mode.
-//  Shows unified transit arrivals (buses and trains) sorted by distance.
+//  Shows unified transit arrivals (buses and trains) sorted by distance,
+//  grouped into "Near You" and "A Little Farther Away" sections.
 //
 
 import SwiftUI
@@ -21,6 +22,12 @@ struct NearbyDashboard: View {
     @Binding var cameraPosition: MapCameraPosition
     @Binding var is3DMode: Bool
     
+    // MARK: - Computed Properties
+    
+    /// Radius thresholds from settings
+    private var nearYouRadius: Double { AppSettings.shared.nearYouRadiusMeters }
+    private var fartherAwayRadius: Double { AppSettings.shared.fartherAwayRadiusMeters }
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             // Use active search pin OR user location for distance calculation
@@ -35,18 +42,33 @@ struct NearbyDashboard: View {
                     return minDistance(for: group1, from: loc) < minDistance(for: group2, from: loc)
                 }
                 
-                // Display ALL nearby transit sorted by distance
-                if !sorted.isEmpty {
-                    DashboardSectionHeader(title: "Buses & Trains Arriving", updated: lastUpdated)
+                // Separate into "Near You" and "Farther Away" based on distance
+                let (nearYou, fartherAway) = separateByDistance(groups: sorted, from: refLocation)
+                
+                // Display "Near You" section
+                if !nearYou.isEmpty {
+                    NearYouSectionHeader(radiusMeters: nearYouRadius, updated: lastUpdated)
                     GroupedRouteList(
-                        groups: sorted,
+                        groups: nearYou,
                         viewModel: viewModel,
                         locationManager: locationManager,
                         sheetNavigator: sheetNavigator
                     )
                 }
                 
-                if filtered.isEmpty {
+                // Display "A Little Farther Away" section
+                if !fartherAway.isEmpty {
+                    FartherAwaySectionHeader(radiusMeters: fartherAwayRadius)
+                    GroupedRouteList(
+                        groups: fartherAway,
+                        viewModel: viewModel,
+                        locationManager: locationManager,
+                        sheetNavigator: sheetNavigator
+                    )
+                }
+                
+                // Show empty state only when both sections are empty after filtering
+                if nearYou.isEmpty && fartherAway.isEmpty && !viewModel.searchText.isEmpty {
                     EmptyStateView(
                         icon: "magnifyingglass",
                         message: "No results for \"\(viewModel.searchText)\""
@@ -60,10 +82,22 @@ struct NearbyDashboard: View {
                     return distance(for: arrival1, from: loc) < distance(for: arrival2, from: loc)
                 }
                 
-                if !sorted.isEmpty {
-                    DashboardSectionHeader(title: "Buses & Trains Arriving", updated: lastUpdated)
+                // Separate flat arrivals by distance
+                let (nearYouArrivals, fartherAwayArrivals) = separateArrivalsByDistance(arrivals: sorted, from: refLocation)
+                
+                if !nearYouArrivals.isEmpty {
+                    NearYouSectionHeader(radiusMeters: nearYouRadius, updated: lastUpdated)
                     FlatTransitList(
-                        arrivals: sorted,
+                        arrivals: nearYouArrivals,
+                        viewModel: viewModel,
+                        locationManager: locationManager
+                    )
+                }
+                
+                if !fartherAwayArrivals.isEmpty {
+                    FartherAwaySectionHeader(radiusMeters: fartherAwayRadius)
+                    FlatTransitList(
+                        arrivals: fartherAwayArrivals,
                         viewModel: viewModel,
                         locationManager: locationManager
                     )
@@ -110,6 +144,140 @@ struct NearbyDashboard: View {
     private func distance(for arrival: NearbyTransitResponse, from location: CLLocation) -> CLLocationDistance {
         guard let lat = arrival.stopLat, let lon = arrival.stopLon else { return Double.greatestFiniteMagnitude }
         return location.distance(from: CLLocation(latitude: lat, longitude: lon))
+    }
+    
+    /// Separates grouped transit into "Near You" and "Farther Away" based on distance thresholds
+    private func separateByDistance(
+        groups: [GroupedNearbyTransitResponse],
+        from location: CLLocation?
+    ) -> (nearYou: [GroupedNearbyTransitResponse], fartherAway: [GroupedNearbyTransitResponse]) {
+        guard let location = location else {
+            // No location available, put all in nearYou
+            return (groups, [])
+        }
+        
+        var nearYou: [GroupedNearbyTransitResponse] = []
+        var fartherAway: [GroupedNearbyTransitResponse] = []
+        
+        for group in groups {
+            let dist = minDistance(for: group, from: location)
+            if dist <= nearYouRadius {
+                nearYou.append(group)
+            } else if dist <= fartherAwayRadius {
+                fartherAway.append(group)
+            }
+            // Skip groups beyond fartherAwayRadius
+        }
+        
+        return (nearYou, fartherAway)
+    }
+    
+    /// Separates flat arrivals into "Near You" and "Farther Away" based on distance thresholds
+    private func separateArrivalsByDistance(
+        arrivals: [NearbyTransitResponse],
+        from location: CLLocation?
+    ) -> (nearYou: [NearbyTransitResponse], fartherAway: [NearbyTransitResponse]) {
+        guard let location = location else {
+            return (arrivals, [])
+        }
+        
+        var nearYou: [NearbyTransitResponse] = []
+        var fartherAway: [NearbyTransitResponse] = []
+        
+        for arrival in arrivals {
+            let dist = distance(for: arrival, from: location)
+            if dist <= nearYouRadius {
+                nearYou.append(arrival)
+            } else if dist <= fartherAwayRadius {
+                fartherAway.append(arrival)
+            }
+        }
+        
+        return (nearYou, fartherAway)
+    }
+}
+
+// MARK: - Section Headers
+
+/// "Near You" section header - compact icon-based indicator
+struct NearYouSectionHeader: View {
+    let radiusMeters: Double
+    let updated: Date?
+    
+    private var radiusDisplay: String {
+        let miles = metersToMiles(radiusMeters)
+        if miles < 0.1 {
+            return String(format: "%.0f ft", metersToFeet(radiusMeters))
+        }
+        return String(format: "%.1f mi", miles)
+    }
+    
+    var body: some View {
+        HStack(spacing: 6) {
+            // Location indicator with distance badge
+            HStack(spacing: 4) {
+                Image(systemName: "location.fill")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(.white)
+                
+                Text(radiusDisplay)
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(.white)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+                Capsule()
+                    .fill(AppTheme.Colors.successGreen)
+            )
+            
+            Spacer()
+            
+            if let updated = updated {
+                Text(updated, style: .time)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+            }
+        }
+        .padding(.horizontal, AppTheme.Layout.margin)
+        .padding(.top, 6)
+        .padding(.bottom, 4)
+    }
+}
+
+/// "A Little Farther Away" section header - compact icon-based indicator
+struct FartherAwaySectionHeader: View {
+    let radiusMeters: Double
+    
+    private var radiusDisplay: String {
+        let miles = metersToMiles(radiusMeters)
+        return String(format: "%.1f mi", miles)
+    }
+    
+    var body: some View {
+        HStack(spacing: 6) {
+            // Walking indicator with distance badge
+            HStack(spacing: 4) {
+                Image(systemName: "figure.walk")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(.white)
+                
+                Text(radiusDisplay)
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(.white)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+                Capsule()
+                    .fill(AppTheme.Colors.mtaBlue)
+            )
+            
+            Spacer()
+        }
+        .padding(.horizontal, AppTheme.Layout.margin)
+        .padding(.top, 10)
+        .padding(.bottom, 4)
     }
 }
 

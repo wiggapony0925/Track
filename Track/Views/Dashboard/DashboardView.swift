@@ -34,18 +34,11 @@ struct DashboardView: View {
                     get: { false },
                     set: { _ in sheetNavigator.navigate(to: .settings) }
                 ),
-                lastUpdated: lastUpdated,
-                onDropPin: {
-                    let center = locationManager.currentLocation?.coordinate
-                        ?? AppTheme.MapConfig.nycCenter
-                    let offset = CLLocationCoordinate2D(
-                        latitude: center.latitude + 0.002,
-                        longitude: center.longitude + 0.002
-                    )
-                    Task {
-                        await viewModel.setSearchPin(offset, userLocation: locationManager.currentLocation)
-                    }
-                }
+                selectedMode: Binding(
+                    get: { viewModel.selectedMode },
+                    set: { viewModel.selectedMode = $0 }
+                ),
+                lastUpdated: lastUpdated
             )
             
             // MARK: - Scrollable Content

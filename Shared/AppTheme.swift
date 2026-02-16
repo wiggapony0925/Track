@@ -118,6 +118,28 @@ struct AppTheme {
             }
         }
     }
+    
+    // MARK: - Bus Colors
+    
+    /// Bus route colors for visual distinction from subway routes.
+    struct BusColors {
+        /// Standard local bus color (MTA Blue)
+        static let localBlue = Color(red: 0/255, green: 57/255, blue: 166/255)
+        
+        /// Select Bus Service (SBS) purple color
+        static let sbsPurple = Color(red: 128/255, green: 0/255, blue: 128/255)
+    }
+    
+    // MARK: - Commuter Rail Colors
+    
+    /// Commuter rail colors for LIRR and Metro-North.
+    struct CommuterRailColors {
+        /// Long Island Rail Road brand blue
+        static let lirrBlue = Color(red: 0/255, green: 115/255, blue: 191/255)
+        
+        /// Metro-North Railroad brand blue (darker)
+        static let mnrBlue = Color(red: 0/255, green: 90/255, blue: 140/255)
+    }
 
     // MARK: - Layout
 

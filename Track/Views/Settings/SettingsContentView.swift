@@ -16,6 +16,8 @@ struct SettingsContentView: View {
     @AppStorage("isLoggedIn") private var isLoggedIn = false
     @AppStorage("dev_use_localhost") private var useLocalhost = false
     @AppStorage("dev_custom_ip") private var customIP = AppSettings.shared.defaultDeviceIP
+    @AppStorage("near_you_radius_meters") private var nearYouRadius: Double = 400
+    @AppStorage("farther_away_radius_meters") private var fartherAwayRadius: Double = 1200
     
     let sheetNavigator: SheetNavigator
     
@@ -49,6 +51,81 @@ struct SettingsContentView: View {
                             }
                             .padding(.horizontal, AppTheme.Layout.cardPadding)
                             .padding(.vertical, 14)
+                        }
+                    }
+                    
+                    // Nearby Search Section
+                    settingsSection(title: "Nearby Search") {
+                        VStack(spacing: 0) {
+                            // "Near You" radius slider
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack {
+                                    Image(systemName: "location.fill")
+                                        .font(.system(size: 18))
+                                        .foregroundColor(AppTheme.Colors.successGreen)
+                                        .frame(width: 28)
+                                    Text("Near You Radius")
+                                        .font(.custom("Helvetica", size: 16))
+                                        .foregroundColor(AppTheme.Colors.textPrimary)
+                                    Spacer()
+                                    Text(String(format: "%.1f mi", metersToMiles(nearYouRadius)))
+                                        .font(.custom("Helvetica-Bold", size: 14))
+                                        .foregroundColor(AppTheme.Colors.mtaBlue)
+                                }
+                                
+                                Slider(
+                                    value: $nearYouRadius,
+                                    in: 100...800,
+                                    step: 50
+                                )
+                                .tint(AppTheme.Colors.successGreen)
+                            }
+                            .padding(.horizontal, AppTheme.Layout.cardPadding)
+                            .padding(.vertical, 14)
+                            
+                            Divider()
+                                .padding(.leading, AppTheme.Layout.cardPadding + 28 + 8)
+                            
+                            // "Farther Away" radius slider
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack {
+                                    Image(systemName: "figure.walk")
+                                        .font(.system(size: 18))
+                                        .foregroundColor(AppTheme.Colors.mtaBlue)
+                                        .frame(width: 28)
+                                    Text("Farther Away Radius")
+                                        .font(.custom("Helvetica", size: 16))
+                                        .foregroundColor(AppTheme.Colors.textPrimary)
+                                    Spacer()
+                                    Text(String(format: "%.1f mi", metersToMiles(fartherAwayRadius)))
+                                        .font(.custom("Helvetica-Bold", size: 14))
+                                        .foregroundColor(AppTheme.Colors.mtaBlue)
+                                }
+                                
+                                Slider(
+                                    value: $fartherAwayRadius,
+                                    in: 400...2400,
+                                    step: 100
+                                )
+                                .tint(AppTheme.Colors.mtaBlue)
+                            }
+                            .padding(.horizontal, AppTheme.Layout.cardPadding)
+                            .padding(.vertical, 14)
+                            
+                            Divider()
+                                .padding(.leading, AppTheme.Layout.cardPadding + 28 + 8)
+                            
+                            // Info text
+                            HStack {
+                                Image(systemName: "info.circle")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
+                                Text("Controls how arrivals are grouped in the 'Near You' and 'A Little Farther Away' sections")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
+                            }
+                            .padding(.horizontal, AppTheme.Layout.cardPadding)
+                            .padding(.vertical, 10)
                         }
                     }
                     

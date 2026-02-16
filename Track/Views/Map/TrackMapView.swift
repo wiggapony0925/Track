@@ -199,11 +199,39 @@ struct TrackMapView: View {
     
     // MARK: - Route Polylines
     
+    /// Filters polylines to show only the selected direction when applicable.
+    /// Polylines are typically organized: first half = direction 0, second half = direction 1.
+    private func filteredPolylines(from polylines: [[CLLocationCoordinate2D]]) -> [[CLLocationCoordinate2D]] {
+        guard let group = viewModel.selectedGroupedRoute,
+              group.directions.count > 1,
+              polylines.count >= 2 else {
+            // Single direction or not enough polylines to split - show all
+            return polylines
+        }
+        
+        let directionIndex = viewModel.selectedDirectionIndex
+        
+        // For bus routes with multiple directions, show only relevant polylines
+        // Heuristic: Split polylines in half - first half = direction 0, second half = direction 1
+        let midpoint = polylines.count / 2
+        
+        if directionIndex == 0 {
+            // First half of polylines for direction 0
+            return Array(polylines.prefix(midpoint))
+        } else {
+            // Second half of polylines for direction 1
+            return Array(polylines.suffix(from: midpoint))
+        }
+    }
+    
     @MapContentBuilder
     private var routePolylines: some MapContent {
         if let shape = viewModel.routeShape {
             let isBusRoute = viewModel.selectedGroupedRoute?.isBus == true
-            let polylines = shape.decodedPolylines
+            let allPolylines = shape.decodedPolylines
+            
+            // Filter to selected direction if multiple directions exist
+            let polylines = isBusRoute ? filteredPolylines(from: allPolylines) : allPolylines
             
             if !polylines.isEmpty {
                 ForEach(Array(polylines.enumerated()), id: \.offset) { _, coords in
@@ -231,10 +259,33 @@ struct TrackMapView: View {
     private var systemMapPolylines: some MapContent {
         if viewModel.routeShape == nil {
             // Full system map (all lines) shown by default
+            // Lines are rendered with a white border for better visual separation
             ForEach(viewModel.cachedSystemMap) { line in
-                ForEach(Array(line.coordinates.enumerated()), id: \.offset) { _, coords in
-                    MapPolyline(coordinates: coords)
-                        .stroke(line.color, lineWidth: 2)
+                ForEach(Array(line.coordinates.enumerated()), id: \.offset) { polyIdx, coords in
+                    switch line.mode {
+                    case .subway:
+                        // Subway: solid white outline + colored line
+                        MapPolyline(coordinates: coords)
+                            .stroke(.white.opacity(0.8), lineWidth: 4)
+                        MapPolyline(coordinates: coords)
+                            .stroke(line.color, lineWidth: 3)
+                        
+                    case .lirr:
+                        // LIRR: thinner dashed line
+                        MapPolyline(coordinates: coords)
+                            .stroke(
+                                AppTheme.CommuterRailColors.lirrBlue,
+                                style: StrokeStyle(lineWidth: 2.5, lineCap: .round, dash: [6, 4])
+                            )
+                        
+                    case .mnr:
+                        // Metro-North: thinner dashed line
+                        MapPolyline(coordinates: coords)
+                            .stroke(
+                                AppTheme.CommuterRailColors.mnrBlue,
+                                style: StrokeStyle(lineWidth: 2.5, lineCap: .round, dash: [6, 4])
+                            )
+                    }
                 }
             }
             

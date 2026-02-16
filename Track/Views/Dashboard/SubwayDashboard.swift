@@ -17,13 +17,23 @@ struct SubwayDashboard: View {
     let locationManager: LocationManager
     let lastUpdated: Date?
     
+    /// Get filtered arrivals based on search
+    private var displayArrivals: [TrainArrival] {
+        viewModel.filteredSubwayArrivals
+    }
+    
+    /// Get filtered stations based on search
+    private var displayStations: [(stationID: String, name: String, distance: Double, routeIDs: [String])] {
+        viewModel.filteredNearbyStations
+    }
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            if !viewModel.upcomingArrivals.isEmpty {
+            if !displayArrivals.isEmpty {
                 DashboardSectionHeader(title: "Nearby Arrivals", updated: lastUpdated)
                 
                 VStack(spacing: 0) {
-                    ForEach(Array(viewModel.upcomingArrivals.enumerated()), id: \.element.id) { index, arrival in
+                    ForEach(Array(displayArrivals.enumerated()), id: \.element.id) { index, arrival in
                         ArrivalRow(
                             arrival: arrival,
                             prediction: nil,
@@ -33,7 +43,7 @@ struct SubwayDashboard: View {
                                 viewModel.trackSubwayArrival(arrival, location: locationManager.currentLocation)
                             }
                         )
-                        if index < viewModel.upcomingArrivals.count - 1 {
+                        if index < displayArrivals.count - 1 {
                             Divider()
                                 .padding(.leading, AppTheme.Layout.margin + AppTheme.Layout.badgeSizeMedium + 12)
                         }
@@ -43,26 +53,33 @@ struct SubwayDashboard: View {
                 .cornerRadius(AppTheme.Layout.cornerRadius)
                 .padding(.horizontal, AppTheme.Layout.margin)
             } else if !viewModel.isLoading {
-                EmptyStateView(
-                    icon: "tram.fill",
-                    message: "No subway arrivals nearby"
-                )
+                if !viewModel.searchText.isEmpty && !viewModel.upcomingArrivals.isEmpty {
+                    EmptyStateView(
+                        icon: "magnifyingglass",
+                        message: "No subway results for \"\(viewModel.searchText)\""
+                    )
+                } else {
+                    EmptyStateView(
+                        icon: "tram.fill",
+                        message: "No subway arrivals nearby"
+                    )
+                }
             }
             
-            if !viewModel.nearbyStations.isEmpty {
+            if !displayStations.isEmpty {
                 DashboardSectionHeader(
                     title: "Nearby Stations",
-                    updated: viewModel.upcomingArrivals.isEmpty ? lastUpdated : nil
+                    updated: displayArrivals.isEmpty ? lastUpdated : nil
                 )
                 
                 VStack(spacing: 0) {
-                    ForEach(Array(viewModel.nearbyStations.enumerated()), id: \.element.stationID) { index, station in
+                    ForEach(Array(displayStations.enumerated()), id: \.element.stationID) { index, station in
                         NearbyStationRow(
                             name: station.name,
                             distance: station.distance,
                             routeIDs: station.routeIDs
                         )
-                        if index < viewModel.nearbyStations.count - 1 {
+                        if index < displayStations.count - 1 {
                             Divider()
                                 .padding(.leading, AppTheme.Layout.margin + AppTheme.Layout.badgeSizeMedium + 12)
                         }

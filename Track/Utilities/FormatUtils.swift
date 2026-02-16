@@ -9,6 +9,29 @@
 
 import SwiftUI
 
+// MARK: - Distance Conversion Constants
+
+/// Conversion factor: meters to miles (1 mile = 1609.344 meters)
+let metersPerMile: Double = 1609.344
+
+/// Conversion factor: meters to feet (1 meter = 3.28084 feet)
+let feetPerMeter: Double = 3.28084
+
+/// Converts meters to miles
+func metersToMiles(_ meters: Double) -> Double {
+    meters / metersPerMile
+}
+
+/// Converts miles to meters
+func milesToMeters(_ miles: Double) -> Double {
+    miles * metersPerMile
+}
+
+/// Converts meters to feet
+func metersToFeet(_ meters: Double) -> Double {
+    meters * feetPerMeter
+}
+
 // MARK: - Arrival Time Formatting
 
 /// Shared DateFormatter for arrival time display (e.g. "3:45 PM").

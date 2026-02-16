@@ -178,3 +178,189 @@ struct ElevatorOutagesSection: View {
     EmptyStateView(icon: "tram.fill", message: "No subway arrivals nearby")
         .background(AppTheme.Colors.background)
 }
+
+// MARK: - Commuter Rail Section Header
+
+/// Compact section header for commuter rail dashboards (LIRR, MNR).
+struct CommuterRailSectionHeader: View {
+    let title: String
+    let iconName: String
+    let color: Color
+    let updated: Date?
+    
+    var body: some View {
+        HStack(spacing: 6) {
+            HStack(spacing: 4) {
+                Image(systemName: iconName)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(.white)
+                
+                Text(title)
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(.white)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+                Capsule()
+                    .fill(color)
+            )
+            
+            Spacer()
+            
+            if let updated = updated {
+                Text(updated, style: .time)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+            }
+        }
+        .padding(.horizontal, AppTheme.Layout.margin)
+        .padding(.top, 6)
+        .padding(.bottom, 4)
+    }
+}
+
+// MARK: - Commuter Rail Arrival Row
+
+/// Shared arrival row for commuter rail (LIRR, MNR).
+struct CommuterRailArrivalRow: View {
+    let arrival: TrainArrival
+    let brandColor: Color
+    let isTracking: Bool
+    let onTrack: () -> Void
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            // Route badge
+            Text(arrival.routeID)
+                .font(.system(size: 14, weight: .bold))
+                .foregroundColor(.white)
+                .frame(width: 50, height: 28)
+                .background(brandColor)
+                .cornerRadius(6)
+            
+            // Station and destination info
+            VStack(alignment: .leading, spacing: 2) {
+                Text(arrival.destination ?? arrival.direction)
+                    .font(.custom("Helvetica-Bold", size: 15))
+                    .foregroundColor(AppTheme.Colors.textPrimary)
+                    .lineLimit(1)
+                
+                Text(arrival.stationID)
+                    .font(.custom("Helvetica", size: 13))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+                    .lineLimit(1)
+            }
+            
+            Spacer()
+            
+            // Time info
+            VStack(alignment: .trailing, spacing: 2) {
+                HStack(alignment: .firstTextBaseline, spacing: 2) {
+                    Text("\(arrival.minutesAway)")
+                        .font(.custom("Helvetica-Bold", size: 24))
+                        .foregroundColor(AppTheme.Colors.countdown(arrival.minutesAway))
+                    Text("min")
+                        .font(.custom("Helvetica-Bold", size: 12))
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+                }
+                
+                Text(arrival.status)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(arrival.status.lowercased().contains("on time") ? AppTheme.Colors.successGreen : AppTheme.Colors.textSecondary)
+            }
+        }
+        .padding(.vertical, 12)
+        .padding(.horizontal, AppTheme.Layout.margin)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            onTrack()
+        }
+    }
+}
+
+// MARK: - Out of Area Notice View
+
+/// Friendly notice shown when user is out of service area but we still show closest departures.
+struct OutOfAreaNoticeView: View {
+    let message: String
+    let subtitle: String
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "location.slash")
+                .font(.system(size: 20, weight: .medium))
+                .foregroundColor(AppTheme.Colors.warningYellow)
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text(message)
+                    .font(.custom("Helvetica-Bold", size: 14))
+                    .foregroundColor(AppTheme.Colors.textPrimary)
+                
+                Text(subtitle)
+                    .font(.custom("Helvetica", size: 12))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+            }
+            
+            Spacer()
+        }
+        .padding(.horizontal, AppTheme.Layout.cardPadding)
+        .padding(.vertical, 12)
+        .background(AppTheme.Colors.warningYellow.opacity(0.1))
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius)
+                .stroke(AppTheme.Colors.warningYellow.opacity(0.3), lineWidth: 1)
+        )
+        .cornerRadius(AppTheme.Layout.cornerRadius)
+        .padding(.horizontal, AppTheme.Layout.margin)
+    }
+}
+
+// MARK: - No Service Empty State
+
+/// Full empty state when no service is available at all.
+struct NoServiceEmptyState: View {
+    let icon: String
+    let title: String
+    let message: String
+    let brandColor: Color
+    
+    var body: some View {
+        VStack(spacing: 16) {
+            // Icon in circle
+            ZStack {
+                Circle()
+                    .fill(brandColor.opacity(0.1))
+                    .frame(width: 64, height: 64)
+                
+                Image(systemName: icon)
+                    .font(.system(size: 28, weight: .medium))
+                    .foregroundColor(brandColor)
+            }
+            
+            // Title
+            Text(title)
+                .font(.custom("Helvetica-Bold", size: 18))
+                .foregroundColor(AppTheme.Colors.textPrimary)
+            
+            // Message
+            Text(message)
+                .font(.custom("Helvetica", size: 14))
+                .foregroundColor(AppTheme.Colors.textSecondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 24)
+            
+            // Search hint
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 12, weight: .medium))
+                Text("Try searching for a station")
+                    .font(.system(size: 13, weight: .medium))
+            }
+            .foregroundColor(brandColor)
+            .padding(.top, 4)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 32)
+    }
+}

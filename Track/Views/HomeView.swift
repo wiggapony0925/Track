@@ -124,12 +124,12 @@ struct HomeView: View {
                 is3DMode: $is3DMode
             )
             
-        case .routeDetail(let group, let directionIndex):
+        case .routeDetail(let group, _):
             RouteDetailSheet(
                 group: group,
                 busVehicles: $viewModel.busVehicles,
                 routeShape: $viewModel.routeShape,
-                initialDirectionIndex: directionIndex,
+                selectedDirectionIndex: $viewModel.selectedDirectionIndex,
                 isSheetExpanded: sheetDetent == .large,
                 is3DMode: $is3DMode,
                 cameraPosition: $cameraPosition,

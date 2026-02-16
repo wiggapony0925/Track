@@ -119,9 +119,26 @@ struct SubwayRoutesData {
         "SI": Color(hex: "0039A6"), // Staten Island Railway
     ]
     
-    /// Get color for a route ID
+    /// Get color for a route ID (supports LIRR_*, MNR_* prefixes)
     static func color(for routeId: String) -> Color {
-        routeColors[routeId.uppercased()] ?? .gray
+        let upper = routeId.uppercased()
+        
+        // Check exact match first
+        if let color = routeColors[upper] {
+            return color
+        }
+        
+        // Check LIRR prefix - use AppTheme for consistency
+        if upper.hasPrefix("LIRR") {
+            return AppTheme.CommuterRailColors.lirrBlue
+        }
+        
+        // Check MNR prefix - use AppTheme for consistency
+        if upper.hasPrefix("MNR") {
+            return AppTheme.CommuterRailColors.mnrBlue
+        }
+        
+        return .gray
     }
     
     // MARK: - Major Stations (From Bundle or Fallback)

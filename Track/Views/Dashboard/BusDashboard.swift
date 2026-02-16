@@ -16,6 +16,16 @@ struct BusDashboard: View {
     let locationManager: LocationManager
     let lastUpdated: Date?
     
+    /// Get filtered arrivals based on search
+    private var displayArrivals: [BusArrival] {
+        viewModel.filteredBusArrivals
+    }
+    
+    /// Get filtered bus stops based on search
+    private var displayStops: [BusStop] {
+        viewModel.filteredBusStops
+    }
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             if let stop = viewModel.selectedBusStop {
@@ -32,11 +42,11 @@ struct BusDashboard: View {
                 .padding(.horizontal, AppTheme.Layout.margin)
             }
             
-            if !viewModel.busArrivals.isEmpty {
+            if !displayArrivals.isEmpty {
                 DashboardSectionHeader(title: "Arriving", updated: lastUpdated)
                 
                 VStack(spacing: 0) {
-                    ForEach(Array(viewModel.busArrivals.enumerated()), id: \.element.id) { index, arrival in
+                    ForEach(Array(displayArrivals.enumerated()), id: \.element.id) { index, arrival in
                         BusArrivalRow(
                             arrival: arrival,
                             isTracking: viewModel.isTracking(arrival),
@@ -45,7 +55,7 @@ struct BusDashboard: View {
                                 viewModel.trackBusArrival(arrival, location: locationManager.currentLocation)
                             }
                         )
-                        if index < viewModel.busArrivals.count - 1 {
+                        if index < displayArrivals.count - 1 {
                             Divider()
                                 .padding(.leading, AppTheme.Layout.margin + AppTheme.Layout.badgeSizeMedium + 12)
                         }
@@ -56,14 +66,14 @@ struct BusDashboard: View {
                 .padding(.horizontal, AppTheme.Layout.margin)
             }
             
-            if !viewModel.nearbyBusStops.isEmpty {
+            if !displayStops.isEmpty {
                 DashboardSectionHeader(
                     title: "Nearby Bus Stops",
-                    updated: viewModel.busArrivals.isEmpty ? lastUpdated : nil
+                    updated: displayArrivals.isEmpty ? lastUpdated : nil
                 )
                 
                 VStack(spacing: 0) {
-                    ForEach(Array(viewModel.nearbyBusStops.enumerated()), id: \.element.id) { index, stop in
+                    ForEach(Array(displayStops.enumerated()), id: \.element.id) { index, stop in
                         Button {
                             Task {
                                 await viewModel.fetchBusArrivals(for: stop)
@@ -72,7 +82,7 @@ struct BusDashboard: View {
                             NearbyBusStopRow(stop: stop)
                         }
                         .buttonStyle(.plain)
-                        if index < viewModel.nearbyBusStops.count - 1 {
+                        if index < displayStops.count - 1 {
                             Divider()
                                 .padding(.leading, AppTheme.Layout.margin + AppTheme.Layout.badgeSizeMedium + 12)
                         }
@@ -82,10 +92,17 @@ struct BusDashboard: View {
                 .cornerRadius(AppTheme.Layout.cornerRadius)
                 .padding(.horizontal, AppTheme.Layout.margin)
             } else if !viewModel.isLoading {
-                EmptyStateView(
-                    icon: "bus.fill",
-                    message: "No bus stops nearby"
-                )
+                if !viewModel.searchText.isEmpty && !viewModel.nearbyBusStops.isEmpty {
+                    EmptyStateView(
+                        icon: "magnifyingglass",
+                        message: "No bus results for \"\(viewModel.searchText)\""
+                    )
+                } else {
+                    EmptyStateView(
+                        icon: "bus.fill",
+                        message: "No bus stops nearby"
+                    )
+                }
             }
         }
     }

@@ -13,7 +13,9 @@
     "max_elevator_outages": 5,
     "max_lirr_arrivals": 15,
     "max_route_detail_arrivals": 4,
-    "station_visibility_zoom_meters": 3500
+    "station_visibility_zoom_meters": 3500,
+    "near_you_radius_meters": 400,
+    "farther_away_radius_meters": 1200
   },
   "live_activity": {
     "stale_date_seconds": 60,
@@ -42,6 +44,8 @@
     "service_area_max_lat": 41.10,
     "service_area_min_lon": -74.35,
     "service_area_max_lon": -72.40,
-    "simulation_easing_enabled": true
+    "simulation_easing_enabled": true,
+    "show_lirr_by_default": true,
+    "show_mnr_by_default": true
   }
 }
