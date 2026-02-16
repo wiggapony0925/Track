@@ -944,9 +944,13 @@ final class HomeViewModel {
     // MARK: - Search Pin
 
     /// Activates the search pin and refreshes data for that location.
+    /// The `userLocation` parameter is only used as a fallback — once
+    /// `isSearchPinActive` is set, `effectiveLocation` will always
+    /// return the pin coordinate for all subsequent operations.
     func setSearchPin(_ coordinate: CLLocationCoordinate2D, userLocation: CLLocation?) async {
         searchPinCoordinate = coordinate
         isSearchPinActive = true
+        // refresh() calls effectiveLocation() which now returns the pin
         await refresh(location: userLocation)
     }
 
@@ -1049,8 +1053,11 @@ final class HomeViewModel {
             }
         }
         
-        // Find nearest stop and calculate walking route
-        if let shape = routeShape, !shape.stops.isEmpty, let userLoc = userLocation {
+        // Find nearest stop and calculate walking route.
+        // Use effectiveLocation so drag-to-search computes distances
+        // from the explored center, not the user's real GPS position.
+        let refLocation = effectiveLocation(userLocation: userLocation)
+        if let shape = routeShape, !shape.stops.isEmpty, let userLoc = refLocation {
             var closestStop: BusStop?
             var minDistance: CLLocationDistance = .greatestFiniteMagnitude
             
@@ -1079,7 +1086,7 @@ final class HomeViewModel {
                let lat = first.stopLat, let lon = first.stopLon {
                 nearestStopCoordinate = CLLocationCoordinate2D(latitude: lat, longitude: lon)
                 
-                if let userLoc = userLocation {
+                if let userLoc = refLocation {
                     Task {
                         await fetchWalkingRoute(from: userLoc.coordinate, to: nearestStopCoordinate!)
                     }
@@ -1169,6 +1176,10 @@ final class HomeViewModel {
     /// subway, bus, LIRR, and Metro-North.
     func cameraPositionFittingRoute(userLocation: CLLocation?, is3D: Bool) -> MapCameraPosition? {
         guard let shape = routeShape else { return nil }
+        
+        // Use the effective location (search pin when drag-to-search is active)
+        // so the map fits the route relative to where the user is exploring.
+        let refLocation = effectiveLocation(userLocation: userLocation)
 
         // Collect all coordinates: polyline points + stop locations
         var allCoords: [CLLocationCoordinate2D] = []
@@ -1208,8 +1219,8 @@ final class HomeViewModel {
             maxLon = max(maxLon, coord.longitude)
         }
         
-        // Include user location so the map shows both you and the route
-        if let loc = userLocation?.coordinate {
+        // Include effective location so the map shows both you (or your search center) and the route
+        if let loc = refLocation?.coordinate {
             allCoords.append(loc)
         }
         
@@ -1252,11 +1263,12 @@ final class HomeViewModel {
         
         if useRouteOnly && routePadded > AppSettings.shared.smartZoomMaxAltitude {
             // Route itself is too long (e.g. LIRR spanning Manhattan → Montauk).
-            // Center on the nearest stop to the user at max zoom distance.
-            if let userLoc = userLocation,
+            // Center on the nearest stop to the effective location (search pin
+            // when drag-to-search is active, otherwise the user's GPS).
+            if let refLoc = refLocation,
                let nearest = stops.min(by: {
-                   let d1 = CLLocation(latitude: $0.lat, longitude: $0.lon).distance(from: userLoc)
-                   let d2 = CLLocation(latitude: $1.lat, longitude: $1.lon).distance(from: userLoc)
+                   let d1 = CLLocation(latitude: $0.lat, longitude: $0.lon).distance(from: refLoc)
+                   let d2 = CLLocation(latitude: $1.lat, longitude: $1.lon).distance(from: refLoc)
                    return d1 < d2
                }) {
                 center = CLLocationCoordinate2D(latitude: nearest.lat, longitude: nearest.lon)

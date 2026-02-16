@@ -23,6 +23,7 @@ struct HomeView: View {
     // MARK: - State
     
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var scenePhase
     @State private var viewModel = HomeViewModel()
     @State private var locationManager = LocationManager()
     @State private var sheetNavigator = SheetNavigator()
@@ -41,6 +42,33 @@ struct HomeView: View {
     @State private var currentMapCenter: CLLocationCoordinate2D?
     @State private var currentMapDistance: Double?
     
+    // Drag-to-search state
+    @AppStorage("drag_to_search") private var dragToSearchEnabled = true
+    @AppStorage("auto_refresh_enabled") private var autoRefreshEnabled = true
+    @State private var isDragSearchActive = false
+    @State private var isDragSearching = false
+    @State private var isDragSearchPanning = false
+    @State private var hasFiredDragHaptic = false
+    @State private var dragSearchDebounce: Task<Void, Never>?
+    /// The settled center after a drag-search debounce fires. `nil` while
+    /// the user is still panning — the radius circles hide until this is set.
+    @State private var dragSearchSettledCenter: CLLocationCoordinate2D?
+    
+    // MARK: - Effective Location
+    
+    /// The location used for all distance/centering calculations.
+    /// Returns the drag-search center when active, otherwise the real GPS.
+    /// Ensures tapping a route during drag-search uses the explored area,
+    /// not the user's physical position.
+    private var effectiveLocation: CLLocation? {
+        viewModel.effectiveLocation(userLocation: locationManager.currentLocation)
+    }
+    
+    /// Convenience coordinate from effectiveLocation.
+    private var effectiveCoordinate: CLLocationCoordinate2D? {
+        effectiveLocation?.coordinate
+    }
+    
     var body: some View {
         GeometryReader { geometry in
             ZStack {
@@ -51,7 +79,9 @@ struct HomeView: View {
                     locationManager: locationManager,
                     showStations: $showStations,
                     currentMapCenter: $currentMapCenter,
-                    currentMapDistance: $currentMapDistance
+                    currentMapDistance: $currentMapDistance,
+                    isDragSearchActive: isDragSearchActive,
+                    dragSearchSettledCenter: dragSearchSettledCenter
                 )
                 
                 // MARK: - Floating Controls
@@ -63,8 +93,24 @@ struct HomeView: View {
                     sheetDetent: $sheetDetent,
                     currentMapCenter: currentMapCenter,
                     currentMapDistance: currentMapDistance,
-                    sheetHeightFraction: 0.42
+                    sheetHeightFraction: 0.42,
+                    onRecenter: {
+                        // Dismiss drag-to-search and restore real location
+                        if isDragSearchActive {
+                            dismissDragSearch()
+                        }
+                    }
                 )
+                
+                // MARK: - Drag-to-Search Overlay
+                if dragToSearchEnabled && viewModel.selectedRouteId == nil {
+                    DragSearchOverlay(
+                        isActive: isDragSearchActive,
+                        isSearching: isDragSearching,
+                        isPanning: isDragSearchPanning,
+                        onDismiss: { dismissDragSearch() }
+                    )
+                }
             }
             // MARK: - Universal Bottom Sheet
             .sheet(isPresented: .constant(true)) {
@@ -83,7 +129,32 @@ struct HomeView: View {
         .onDisappear {
             cleanupTimers()
         }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active {
+                // Clear any drag search when returning to the app
+                if isDragSearchActive {
+                    dismissDragSearch()
+                } else {
+                    recenterOnUser()
+                }
+            }
+        }
         // MARK: - State Change Handlers
+        .onChange(of: dragToSearchEnabled) { _, enabled in
+            // Immediately clean up when the user toggles the setting off
+            if !enabled && isDragSearchActive {
+                dismissDragSearch()
+            }
+        }
+        .onChange(of: autoRefreshEnabled) { _, enabled in
+            // Start or stop the auto-refresh timer live
+            if enabled {
+                startRefreshTimer()
+            } else {
+                refreshTimer?.invalidate()
+                refreshTimer = nil
+            }
+        }
         .onChange(of: viewModel.selectedRouteId) {
             handleRouteSelection()
         }
@@ -92,6 +163,12 @@ struct HomeView: View {
         }
         .onChange(of: locationManager.currentLocation) {
             handleLocationUpdate()
+        }
+        .onChange(of: currentMapCenter?.latitude) {
+            // Debounced drag-to-search: fires when the map center changes
+            if let center = currentMapCenter {
+                handleMapCameraIdle(center: center)
+            }
         }
         .onChange(of: viewModel.routeShape?.polylines.count) {
             // Route shape loaded (possibly after nearestStopCoordinate was set) —
@@ -141,10 +218,18 @@ struct HomeView: View {
                 sheetNavigator: sheetNavigator,
                 lastUpdated: $lastUpdated,
                 cameraPosition: $cameraPosition,
-                is3DMode: $is3DMode
+                is3DMode: $is3DMode,
+                isDragSearching: isDragSearching
             )
             
         case .routeDetail(let group, _):
+            // Pass the effective location (search pin center when drag-to-search
+            // is active, otherwise the real GPS location) so that distance display,
+            // walking directions, and map centering all work from the explored area.
+            let effectiveCoord = viewModel.effectiveLocation(
+                userLocation: locationManager.currentLocation
+            )?.coordinate
+            
             RouteDetailSheet(
                 group: group,
                 busVehicles: $viewModel.busVehicles,
@@ -153,8 +238,7 @@ struct HomeView: View {
                 isSheetExpanded: sheetDetent == .large,
                 is3DMode: $is3DMode,
                 cameraPosition: $cameraPosition,
-                currentLocation: locationManager.currentLocation?.coordinate,
-                searchPinCoordinate: viewModel.searchPinCoordinate,
+                currentLocation: effectiveCoord,
                 selectedStopId: viewModel.selectedStopId,
                 onTrack: { arrival in
                     viewModel.trackNearbyArrival(arrival, location: locationManager.currentLocation)
@@ -166,6 +250,25 @@ struct HomeView: View {
                         viewModel.selectedGroupedRoute = nil
                         viewModel.clearRoute()
                         sheetNavigator.popToRoot()
+                    }
+                    
+                    // Restore drag-search overlay if the user had an active
+                    // search center before opening the route detail.
+                    if viewModel.isSearchPinActive, let settled = dragSearchSettledCenter {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                            isDragSearchActive = true
+                        }
+                        // Fly back to the drag search center
+                        withAnimation(.spring(response: 0.6, dampingFraction: 0.85)) {
+                            cameraPosition = .camera(MapCamera(
+                                centerCoordinate: settled,
+                                distance: AppTheme.MapConfig.userZoomDistance,
+                                heading: 0,
+                                pitch: is3DMode ? 60 : 0
+                            ))
+                        }
+                    } else {
+                        recenterOnUser()
                     }
                 }
             )
@@ -202,15 +305,24 @@ struct HomeView: View {
         locationManager.requestPermission()
         locationManager.startUpdating()
         
-        // Auto-refresh at the interval defined in settings
-        // Respects user's "Auto-Refresh" toggle in Settings
-        let autoRefreshEnabled = UserDefaults.standard.object(forKey: "auto_refresh_enabled") as? Bool ?? true
-        guard autoRefreshEnabled else { return }
-        
+        if autoRefreshEnabled {
+            startRefreshTimer()
+        }
+    }
+    
+    /// Creates the auto-refresh timer. Safe to call multiple times.
+    private func startRefreshTimer() {
+        refreshTimer?.invalidate()
         let interval = TimeInterval(AppSettings.shared.refreshIntervalSeconds)
         refreshTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { _ in
             Task { @MainActor in
-                await viewModel.refresh(location: locationManager.currentLocation)
+                // Skip auto-refresh while a drag-search API call is in-flight
+                // to avoid duplicate requests and overwriting fresh results.
+                guard !isDragSearching else { return }
+                
+                // Use effective location so auto-refresh during drag-to-search
+                // keeps fetching from the explored area, not the user's GPS.
+                await viewModel.refresh(location: effectiveLocation)
                 lastUpdated = Date()
             }
         }
@@ -228,6 +340,16 @@ struct HomeView: View {
     private func handleRouteSelection() {
         vehiclePollTimer?.invalidate()
         vehiclePollTimer = nil
+        
+        // Hide drag-search overlay when viewing a route — the search pin
+        // stays active in the ViewModel so nearestStop / centering still
+        // uses the explored area. We'll restore the overlay on dismiss.
+        if viewModel.selectedRouteId != nil && isDragSearchActive {
+            isDragSearchActive = false
+            isDragSearching = false
+            isDragSearchPanning = false
+            // NOTE: keep dragSearchSettledCenter so we can restore on dismiss
+        }
         
         if viewModel.selectedRouteId != nil {
             let isBus = viewModel.selectedGroupedRoute?.isBus ?? false
@@ -259,7 +381,9 @@ struct HomeView: View {
     private func handleModeChange() {
         viewModel.clearRoute()
         Task {
-            await viewModel.refresh(location: locationManager.currentLocation)
+            // Use effective location so mode changes during drag-to-search
+            // keep showing transit at the explored area, not GPS.
+            await viewModel.refresh(location: effectiveLocation)
             lastUpdated = Date()
         }
     }
@@ -269,6 +393,10 @@ struct HomeView: View {
         
         if !hasLoadedInitialData {
             hasLoadedInitialData = true
+            
+            // Center the map on the user as soon as we get the first fix
+            recenterOnUser()
+            
             Task {
                 await viewModel.refresh(location: loc)
                 lastUpdated = Date()
@@ -276,27 +404,173 @@ struct HomeView: View {
         }
     }
     
+    // MARK: - Drag to Search
+    
+    /// Called on every camera change. Debounces, then:
+    ///  1. Activates the drag-search dot if user panned 300m+ from their location
+    ///  2. Automatically fires the API to search at the new map center
+    ///  3. Sets the settled center so radius circles snap into place
+    ///  4. The sheet shows a live loading spinner via viewModel.isLoading
+    private func handleMapCameraIdle(center: CLLocationCoordinate2D) {
+        guard dragToSearchEnabled,
+              viewModel.selectedRouteId == nil else { return }
+        
+        // Cancel any pending debounce
+        dragSearchDebounce?.cancel()
+        
+        // Mark as actively panning — dims the map and shows "Release to search".
+        // Only clear the settled center if the camera moved significantly from it
+        // (prevents tiny drift/animation from flickering the radius circles).
+        if isDragSearchActive {
+            if !isDragSearchPanning {
+                isDragSearchPanning = true
+                // Give a quick vibration each time the user starts a new pan gesture
+                HapticManager.impact(.light)
+            }
+            
+            if let settled = dragSearchSettledCenter {
+                let settledLoc = CLLocation(latitude: settled.latitude, longitude: settled.longitude)
+                let newLoc = CLLocation(latitude: center.latitude, longitude: center.longitude)
+                if settledLoc.distance(from: newLoc) > 50 {
+                    // User actually panned away — hide radius until re-settled
+                    dragSearchSettledCenter = nil
+                }
+            }
+        } else {
+            // Not yet active — fire a single haptic hint when the user pans
+            // far enough that drag-to-search is about to activate.
+            if !hasFiredDragHaptic,
+               let userCoord = locationManager.currentLocation?.coordinate {
+                let userLoc = CLLocation(latitude: userCoord.latitude, longitude: userCoord.longitude)
+                let panLoc = CLLocation(latitude: center.latitude, longitude: center.longitude)
+                if userLoc.distance(from: panLoc) > 200 {
+                    hasFiredDragHaptic = true
+                    HapticManager.impact(.light)
+                }
+            }
+        }
+        
+        dragSearchDebounce = Task { @MainActor in
+            // Wait for the user to stop panning (800ms of stillness)
+            try? await Task.sleep(for: .milliseconds(800))
+            guard !Task.isCancelled else { return }
+            
+            guard let userCoord = locationManager.currentLocation?.coordinate else { return }
+            
+            let userLoc = CLLocation(latitude: userCoord.latitude, longitude: userCoord.longitude)
+            let panLoc = CLLocation(latitude: center.latitude, longitude: center.longitude)
+            let distanceMoved = userLoc.distance(from: panLoc)
+            
+            // Threshold: only activate when panned 300m+ from real location
+            let threshold: Double = 300
+            
+            if distanceMoved > threshold {
+                // Show the center dot
+                if !isDragSearchActive {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        isDragSearchActive = true
+                    }
+                    HapticManager.selection()
+                }
+                
+                // Mark as searching (panning stopped, API is firing)
+                withAnimation(.easeOut(duration: 0.15)) {
+                    isDragSearchPanning = false
+                    isDragSearching = true
+                }
+                
+                await viewModel.setSearchPin(center, userLocation: locationManager.currentLocation)
+                lastUpdated = Date()
+                
+                // Snap the radius circles into place at the settled location
+                dragSearchSettledCenter = center
+                
+                withAnimation(.easeOut(duration: 0.2)) {
+                    isDragSearching = false
+                }
+                
+                // Satisfying "lock-in" vibration so the user feels the new center
+                HapticManager.impact(.medium)
+            } else {
+                // Panned back near the user — auto-dismiss
+                if isDragSearchActive {
+                    dismissDragSearch()
+                }
+            }
+        }
+    }
+    
+    /// Dismisses the drag-search overlay, clears the search pin,
+    /// refreshes data for the user's real location, and recenters.
+    private func dismissDragSearch() {
+        dragSearchDebounce?.cancel()
+        
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+            isDragSearchActive = false
+            isDragSearching = false
+            isDragSearchPanning = false
+            hasFiredDragHaptic = false
+            dragSearchSettledCenter = nil
+        }
+        
+        HapticManager.selection()
+        
+        Task {
+            await viewModel.clearSearchPin(userLocation: locationManager.currentLocation)
+            await viewModel.refresh(location: locationManager.currentLocation)
+            lastUpdated = Date()
+        }
+        
+        // Snap back to user location
+        recenterOnUser()
+    }
+    
     // MARK: - Map Centering
+    
+    /// Centers the map on the user's current location (no route selected)
+    /// or does nothing if a route detail is already being shown.
+    private func recenterOnUser() {
+        // Don't override the camera when viewing a specific route
+        guard viewModel.selectedRouteId == nil else { return }
+        
+        guard let coordinate = locationManager.currentLocation?.coordinate else {
+            // No location yet — reset to the .userLocation position so MapKit
+            // will auto-center once CoreLocation delivers a fix.
+            cameraPosition = AppTheme.MapConfig.initialPosition
+            return
+        }
+        
+        withAnimation(.spring(response: 0.6, dampingFraction: 0.85)) {
+            cameraPosition = .camera(MapCamera(
+                centerCoordinate: coordinate,
+                distance: AppTheme.MapConfig.userZoomDistance,
+                heading: 0,
+                pitch: is3DMode ? 60 : 0
+            ))
+        }
+    }
     
     private func centerMap(on target: CLLocationCoordinate2D? = nil) {
         withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
             sheetDetent = .fraction(0.4)
         }
         
-        let userLocation = locationManager.currentLocation?.coordinate
-        let finalTarget = target ?? userLocation ?? AppTheme.MapConfig.nycCenter
+        // Use effective location (search pin center during drag-to-search,
+        // otherwise real GPS) so the map centers relative to the explored area.
+        let refCoord = effectiveCoordinate
+        let finalTarget = target ?? refCoord ?? AppTheme.MapConfig.nycCenter
         
         var center = finalTarget
         var zoomDistance = AppTheme.MapConfig.userZoomDistance
         
-        if let destination = target, let user = userLocation {
-            let midLat = (user.latitude + destination.latitude) / 2
-            let midLon = (user.longitude + destination.longitude) / 2
+        if let destination = target, let ref = refCoord {
+            let midLat = (ref.latitude + destination.latitude) / 2
+            let midLon = (ref.longitude + destination.longitude) / 2
             center = CLLocationCoordinate2D(latitude: midLat, longitude: midLon)
             
-            let userLoc = CLLocation(latitude: user.latitude, longitude: user.longitude)
+            let refLoc = CLLocation(latitude: ref.latitude, longitude: ref.longitude)
             let destLoc = CLLocation(latitude: destination.latitude, longitude: destination.longitude)
-            let distanceMeters = userLoc.distance(from: destLoc)
+            let distanceMeters = refLoc.distance(from: destLoc)
             
             zoomDistance = max(AppSettings.shared.smartZoomMinAltitude,
                                min(distanceMeters * AppSettings.shared.smartZoomPaddingMultiplier,

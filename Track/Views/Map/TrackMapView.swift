@@ -22,6 +22,14 @@ struct TrackMapView: View {
     @Binding var currentMapCenter: CLLocationCoordinate2D?
     @Binding var currentMapDistance: Double?
     
+    /// Whether drag-to-search is currently active.
+    var isDragSearchActive: Bool = false
+    
+    /// The settled drag-search coordinate (set only after debounce completes).
+    /// `nil` while the user is still panning — radius hides during the drag
+    /// and reappears instantly once the search fires.
+    var dragSearchSettledCenter: CLLocationCoordinate2D?
+    
     // MARK: - AppStorage for radius overlay
     @AppStorage("show_search_radius") private var showSearchRadius = false
     @AppStorage("near_you_radius_meters") private var nearYouRadius: Double = 2414
@@ -55,18 +63,31 @@ struct TrackMapView: View {
             // User location
             UserAnnotation()
             
-            // Search radius circles (color-coded to Settings)
-            if showSearchRadius, let location = locationManager.currentLocation {
-                SearchRadiusOverlay(
-                    center: location.coordinate,
-                    nearRadius: nearYouRadius,
-                    fartherRadius: fartherAwayRadius,
-                    muchFartherRadius: muchFartherAwayRadius
-                )
+            // Search radius circles
+            // During drag-to-search the circles HIDE while panning (to avoid
+            // expensive per-frame redraws) and SNAP into place the instant the
+            // debounce fires and `dragSearchSettledCenter` is set.
+            if showSearchRadius {
+                if isDragSearchActive, let settled = dragSearchSettledCenter {
+                    // Settled: show circles at the final search location
+                    SearchRadiusOverlay(
+                        center: settled,
+                        nearRadius: nearYouRadius,
+                        fartherRadius: fartherAwayRadius,
+                        muchFartherRadius: muchFartherAwayRadius
+                    )
+                } else if !isDragSearchActive, let location = locationManager.currentLocation {
+                    // Default: radius around user's real location
+                    SearchRadiusOverlay(
+                        center: location.coordinate,
+                        nearRadius: nearYouRadius,
+                        fartherRadius: fartherAwayRadius,
+                        muchFartherRadius: muchFartherAwayRadius
+                    )
+                }
+                // While isDragSearchActive && dragSearchSettledCenter == nil
+                // (user is still panning) → nothing renders → no lag
             }
-            
-            // Draggable search pin
-            searchPinAnnotation
             
             // Bus stop annotations when in bus mode
             busStopAnnotations
@@ -113,17 +134,6 @@ struct TrackMapView: View {
         // Push the Apple Maps "Legal" link behind the bottom sheet
         .safeAreaPadding(.bottom, 350)
         .ignoresSafeArea()
-    }
-    
-    // MARK: - Search Pin
-    
-    @MapContentBuilder
-    private var searchPinAnnotation: some MapContent {
-        if viewModel.isSearchPinActive, let pin = viewModel.searchPinCoordinate {
-            Annotation("Search here", coordinate: pin) {
-                SearchPinAnnotation()
-            }
-        }
     }
     
     // MARK: - Bus Stop Annotations

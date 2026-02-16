@@ -24,8 +24,7 @@ struct RouteDetailSheet: View {
     @Binding var is3DMode: Bool
     @Binding var cameraPosition: MapCameraPosition
     var currentLocation: CLLocationCoordinate2D?
-    var searchPinCoordinate: CLLocationCoordinate2D?
-    var selectedStopId: String? // Added property
+    var selectedStopId: String?
     
     /// Selected direction index - bound to viewModel so map can filter polylines
     @Binding var selectedDirectionIndex: Int
@@ -41,7 +40,6 @@ struct RouteDetailSheet: View {
          is3DMode: Binding<Bool> = .constant(false),
          cameraPosition: Binding<MapCameraPosition> = .constant(.automatic),
          currentLocation: CLLocationCoordinate2D? = nil,
-         searchPinCoordinate: CLLocationCoordinate2D? = nil,
          selectedStopId: String? = nil,
          onTrack: ((NearbyTransitResponse) -> Void)? = nil,
          isTracking: ((NearbyTransitResponse) -> Bool)? = nil,
@@ -57,7 +55,6 @@ struct RouteDetailSheet: View {
         self._is3DMode = is3DMode
         self._cameraPosition = cameraPosition
         self.currentLocation = currentLocation
-        self.searchPinCoordinate = searchPinCoordinate
         self.selectedStopId = selectedStopId
     }
 
@@ -166,7 +163,7 @@ struct RouteDetailSheet: View {
                     Button {
                         withAnimation(.easeInOut(duration: 0.5)) {
                             is3DMode.toggle()
-                            if let loc = currentLocation ?? searchPinCoordinate {
+                            if let loc = currentLocation {
                                 cameraPosition = .camera(MapCamera(
                                     centerCoordinate: loc,
                                     distance: AppTheme.MapConfig.userZoomDistance,

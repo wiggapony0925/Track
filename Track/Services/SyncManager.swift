@@ -174,6 +174,9 @@ class SyncManager: ObservableObject {
         if let v = settings.autoRefreshEnabled {
             store.set(v, forKey: "auto_refresh_enabled")
         }
+        if let v = settings.dragToSearch {
+            store.set(v, forKey: "drag_to_search")
+        }
         if let v = settings.devUseLocalhost {
             store.set(v, forKey: "dev_use_localhost")
         }
@@ -204,6 +207,7 @@ class SyncManager: ObservableObject {
             hapticsEnabled: store.object(forKey: "haptics_enabled") as? Bool ?? true,
             autoRefreshEnabled: store.object(forKey: "auto_refresh_enabled") as? Bool ?? true,
             notificationsEnabled: true,
+            dragToSearch: store.object(forKey: "drag_to_search") as? Bool ?? true,
             devUseLocalhost: store.bool(forKey: "dev_use_localhost"),
             devCustomIp: store.string(forKey: "dev_custom_ip") ?? ""
         )

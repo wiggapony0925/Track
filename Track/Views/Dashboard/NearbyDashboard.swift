@@ -402,7 +402,7 @@ struct FlatTransitList: View {
                         RouteAnalyticsManager.shared.logInteraction(routeId: arrival.routeId)
                         Task { await viewModel.selectArrival(arrival, userLocation: locationManager.currentLocation) }
                     } : nil,
-                    userLocation: locationManager.currentLocation
+                    userLocation: viewModel.effectiveLocation(userLocation: locationManager.currentLocation)
                 )
                 if index < arrivals.count - 1 {
                     Divider()

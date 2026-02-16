@@ -22,6 +22,9 @@ struct DashboardView: View {
     @Binding var cameraPosition: MapCameraPosition
     @Binding var is3DMode: Bool
     
+    /// Whether the drag-to-search is actively loading new results.
+    var isDragSearching: Bool = false
+    
     var body: some View {
         VStack(spacing: 0) {
             // MARK: - Navbar (Fixed Header)
@@ -40,6 +43,15 @@ struct DashboardView: View {
                 ),
                 lastUpdated: lastUpdated
             )
+            
+            // MARK: - Drag-Search Loading Banner
+            Group {
+                if isDragSearching {
+                    DragSearchLoadingBanner()
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
+            }
+            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isDragSearching)
             
             // MARK: - Scrollable Content
             ScrollView {
@@ -140,7 +152,10 @@ struct DashboardView: View {
         }
         .background(AppTheme.Colors.background)
         .refreshable {
-            await viewModel.refresh(location: locationManager.currentLocation)
+            // Use effectiveLocation so pull-to-refresh during drag-to-search
+            // fetches from the explored area, not the user's GPS.
+            let loc = viewModel.effectiveLocation(userLocation: locationManager.currentLocation)
+            await viewModel.refresh(location: loc)
             lastUpdated = Date()
         }
     }

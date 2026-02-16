@@ -22,6 +22,7 @@ struct SettingsContentView: View {
     @AppStorage("haptics_enabled") private var hapticsEnabled = true
     @AppStorage("auto_refresh_enabled") private var autoRefreshEnabled = true
     @AppStorage("show_search_radius") private var showSearchRadius = false
+    @AppStorage("drag_to_search") private var dragToSearch = true
     @AppStorage("subway_line_offset_meters") private var subwayLineOffset: Double = AppSettings.shared.subwayLineOffsetMeters
     
     let sheetNavigator: SheetNavigator
@@ -133,6 +134,27 @@ struct SettingsContentView: View {
                                 .padding(.horizontal, AppTheme.Layout.cardPadding)
                                 .padding(.bottom, 10)
                                 .transition(.opacity.combined(with: .move(edge: .top)))
+                            }
+                            
+                            settingsDivider
+                            
+                            // Drag-to-search — pan the map to explore transit elsewhere
+                            settingsRow(
+                                icon: "hand.draw.fill",
+                                iconColor: AppTheme.Colors.mtaBlue,
+                                title: "Drag to Search"
+                            ) {
+                                Toggle("", isOn: $dragToSearch)
+                                    .tint(AppTheme.Colors.mtaBlue)
+                            }
+                            
+                            if dragToSearch {
+                                Text("Pan the map to explore transit at a different location")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
+                                    .padding(.horizontal, AppTheme.Layout.cardPadding)
+                                    .padding(.bottom, 10)
+                                    .transition(.opacity.combined(with: .move(edge: .top)))
                             }
                             
                             settingsDivider
@@ -306,7 +328,7 @@ struct SettingsContentView: View {
     
     /// A combined hash of all synced settings so we can detect any change
     private var settingsHash: String {
-        "\(appTheme)-\(nearYouRadius)-\(fartherAwayRadius)-\(muchFartherAwayRadius)-\(hapticsEnabled)-\(autoRefreshEnabled)-\(showSearchRadius)-\(subwayLineOffset)-\(useLocalhost)-\(customIP)"
+        "\(appTheme)-\(nearYouRadius)-\(fartherAwayRadius)-\(muchFartherAwayRadius)-\(hapticsEnabled)-\(autoRefreshEnabled)-\(showSearchRadius)-\(dragToSearch)-\(subwayLineOffset)-\(useLocalhost)-\(customIP)"
     }
     
     // MARK: - Sheet Header

@@ -180,6 +180,7 @@ struct CloudUserSettings: Codable {
     var hapticsEnabled: Bool?
     var autoRefreshEnabled: Bool?
     var notificationsEnabled: Bool?
+    var dragToSearch: Bool?
     var devUseLocalhost: Bool?
     var devCustomIp: String?
 }

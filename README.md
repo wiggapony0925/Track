@@ -257,7 +257,7 @@ Track/
 |       |-- SmartSuggestionCard.swift   ML-based commute suggestion
 |       |-- DelayBadgeView.swift        Service delay indicator
 |       |-- TransportModeToggle.swift   Floating mode selector (Nearby/Subway/Bus/LIRR)
-|       |-- MapAnnotations.swift        SearchPinAnnotation, BusVehicleAnnotation
+|       |-- MapAnnotations.swift        BusVehicleAnnotation, DragSearchOverlay
 |       |-- BusStopAnnotation.swift     Bus stop map marker
 |       |-- GoModeAnnotations.swift     GO mode user icon, passed-stop dimming
 |       |-- NetworkErrorBanner.swift    Error message banner

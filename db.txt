@@ -170,6 +170,7 @@ CREATE TABLE IF NOT EXISTS user_settings (
   -- Map & display
   show_system_map BOOLEAN DEFAULT true,                       -- Show full transit system map overlay
   subway_line_offset_meters DOUBLE PRECISION DEFAULT 12,      -- How far apart co-located subway lines spread
+  drag_to_search BOOLEAN DEFAULT true,                        -- Pan map to explore transit at another location
   
   -- General behavior
   haptics_enabled BOOLEAN DEFAULT true,                       -- Haptic feedback on interactions

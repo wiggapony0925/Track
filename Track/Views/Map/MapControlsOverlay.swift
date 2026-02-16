@@ -23,6 +23,10 @@ struct MapControlsOverlay: View {
     let currentMapDistance: Double?
     let sheetHeightFraction: CGFloat
     
+    /// Called when the user taps the recenter button — HomeView uses this
+    /// to dismiss drag-to-search and snap back to the real GPS location.
+    var onRecenter: (() -> Void)?
+    
     var body: some View {
         GeometryReader { geometry in
             ZStack {
@@ -31,11 +35,6 @@ struct MapControlsOverlay: View {
                     HStack(alignment: .top) {
                         // Left: Banners
                         VStack(alignment: .leading, spacing: 8) {
-                            // Search pin indicator
-                            if viewModel.isSearchPinActive {
-                                searchPinBanner
-                            }
-                            
                             // Selected route indicator
                             if viewModel.selectedRouteId != nil {
                                 selectedRouteBanner
@@ -112,7 +111,7 @@ struct MapControlsOverlay: View {
         withAnimation(.easeInOut(duration: 0.8)) {
             is3DMode.toggle()
             
-            let center = currentMapCenter ?? locationManager.currentLocation?.coordinate ?? viewModel.searchPinCoordinate ?? AppTheme.MapConfig.nycCenter
+            let center = currentMapCenter ?? locationManager.currentLocation?.coordinate ?? AppTheme.MapConfig.nycCenter
             let distance = currentMapDistance ?? AppTheme.MapConfig.userZoomDistance
             
             cameraPosition = .camera(MapCamera(
@@ -125,6 +124,9 @@ struct MapControlsOverlay: View {
     }
     
     private func centerMap() {
+        // Dismiss drag-to-search and restore real location data
+        onRecenter?()
+        
         // Collapse the sheet to half-height to reveal the map
         withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
             sheetDetent = .fraction(0.4)
@@ -141,32 +143,6 @@ struct MapControlsOverlay: View {
                 pitch: is3DMode ? 60 : 0
             ))
         }
-    }
-    
-    // MARK: - Search Pin Banner
-    
-    private var searchPinBanner: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "mappin.circle.fill")
-                .foregroundColor(AppTheme.Colors.mtaBlue)
-            Text("Searching from pin location")
-                .font(.custom("Helvetica", size: 13))
-                .foregroundColor(AppTheme.Colors.textPrimary)
-            Spacer()
-            Button {
-                Task {
-                    await viewModel.clearSearchPin(userLocation: locationManager.currentLocation)
-                }
-            } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .foregroundColor(AppTheme.Colors.textSecondary)
-            }
-            .accessibilityLabel("Clear search pin")
-        }
-        .padding(.horizontal, AppTheme.Layout.cardPadding)
-        .padding(.vertical, 8)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius))
     }
     
     // MARK: - Selected Route Banner
