@@ -47,14 +47,7 @@ async def bus_routes() -> list[BusRoute]:
 async def bus_stops(route_id: str) -> list[BusStop]:
     """Return stops for a bus route (e.g. ``/bus/stops/MTA NYCT_B63``)."""
     try:
-        stops = await get_stops(route_id)
-        if not stops and not route_id.startswith("MTA"):
-            for prefix in ["MTA NYCT_", "MTA BUS_"]:
-                full_id = f"{prefix}{route_id}"
-                stops = await get_stops(full_id)
-                if stops:
-                    return stops
-        return stops
+        return await get_stops(route_id)
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code in (401, 403):
             raise HTTPException(
@@ -134,14 +127,7 @@ async def bus_vehicles(route_id: str) -> list[BusVehicle]:
     on a map.
     """
     try:
-        vehicles = await get_vehicle_positions(route_id)
-        if not vehicles and not route_id.startswith("MTA"):
-            for prefix in ["MTA NYCT_", "MTA BUS_"]:
-                full_id = f"{prefix}{route_id}"
-                vehicles = await get_vehicle_positions(full_id)
-                if vehicles:
-                    return vehicles
-        return vehicles
+        return await get_vehicle_positions(route_id)
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code in (401, 403):
             raise HTTPException(
@@ -163,35 +149,14 @@ async def bus_route_shape(route_id: str) -> RouteShape:
     along with all stops on the route for annotation.
     """
     try:
-        # 1. Try raw ID
-        try:
-            data = await get_route_shape(route_id)
-        except httpx.HTTPStatusError as exc:
-            # If 404 and it's a short ID, ignore error and fall through to prefixes
-            if exc.response.status_code == 404 and not route_id.startswith("MTA"):
-                data = RouteShape(route_id=route_id, polylines=[], stops=[])
-            else:
-                raise exc
-
-        # 2. If empty or failed (due to 404 for short ID), try prefixes
-        if (not data.polylines and not data.stops) and not route_id.startswith("MTA"):
-            for prefix in ["MTA NYCT_", "MTA BUS_"]:
-                full_id = f"{prefix}{route_id}"
-                try:
-                    data = await get_route_shape(full_id)
-                    if data.polylines or data.stops:
-                        return data
-                except httpx.HTTPStatusError:
-                    continue  # Try next prefix if this one 404s
-
-        return data
-
+        return await get_route_shape(route_id)
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code in (401, 403):
             raise HTTPException(
                 status_code=503,
                 detail="Bus API authentication failed or quota exceeded",
             ) from exc
+        # 404 is now handled inside get_route_shape (returns empty shape) but we might want to catch it if it bubbles up
         if exc.response.status_code == 404:
              raise HTTPException(status_code=404, detail="Route not found")
         raise HTTPException(status_code=502, detail=str(exc)) from exc

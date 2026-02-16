@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS route_interactions (
   -- Route info
   route_id TEXT NOT NULL,              -- Full route ID (e.g., "MTA NYCT_L")
   route_display_name TEXT,             -- Display name (e.g., "L")
-  mode TEXT NOT NULL CHECK (mode IN ('bus', 'subway', 'lirr')),
+  mode TEXT NOT NULL CHECK (mode IN ('bus', 'subway', 'lirr', 'mnr')),
   
   -- Interaction type: what did the user do?
   interaction_type TEXT DEFAULT 'click' CHECK (interaction_type IN ('click', 'track')),

@@ -22,6 +22,135 @@ from app.config import get_settings
 from app.models import BusArrival, BusRoute, BusStop, BusVehicle, RouteShape
 
 
+
+import re
+import json
+import os
+from pathlib import Path
+
+# ---------------------------------------------------------------------------
+# Load Route Map (Canonical Source of Truth)
+# ---------------------------------------------------------------------------
+ROUTE_LOOKUP = {}
+try:
+    # Path relative to this file: ../data/early_2026_buses_tag.json
+    base_dir = Path(__file__).parent.parent
+    map_path = base_dir / "data" / "early_2026_buses_tag.json"
+    if map_path.exists():
+        with open(map_path, "r") as f:
+            data = json.load(f)
+            # Flatten the categorized structure into a single lookup dict
+            # Data is { "Brooklyn": { "B1": "ID" }, ... }
+            for category, routes in data.items():
+                if isinstance(routes, dict):
+                    for short_name, official_id in routes.items():
+                        # Store exact match
+                        ROUTE_LOOKUP[short_name] = official_id
+                        # Store lowercase match
+                        ROUTE_LOOKUP[short_name.lower()] = official_id
+                        # Store no-space match (e.g. "Q 9" -> "Q9")
+                        ROUTE_LOOKUP[short_name.replace(" ", "")] = official_id
+                        ROUTE_LOOKUP[short_name.lower().replace(" ", "")] = official_id
+
+except Exception as e:
+    # Log error or silently fail to empty dict (fallback logic will take over)
+    print(f"Warning: Could not load early_2026_buses_tag.json: {e}")
+
+# ---------------------------------------------------------------------------
+# Agency Map for Bus Route Resolution (Fallback)
+# ---------------------------------------------------------------------------
+AGENCY_MAP = {
+    "B": "MTA NYCT",  # Brooklyn
+    "M": "MTA NYCT",  # Manhattan
+    "Q": "MTABC",     # Queens (Default to MTABC, but fallback to NYCT handles exceptions)
+    "Bx": "MTA NYCT", # Bronx
+    "S": "MTA NYCT",  # Staten Island
+    "X": "MTABC",     # Express buses are largely MTABC
+}
+
+async def _discover_and_cache_bus_id(short_name: str) -> str | None:
+    """Attempt to discover a new route ID from the live MTA API and cache it.
+    
+    This handles cases like a brand new 'Q80' that isn't in our 2026 JSON yet.
+    """
+    settings = get_settings()
+    api_key = settings.api_keys.mta_bus_key
+    base_url = settings.urls.bus_oba_base + "/routes-for-agency"
+    
+    clean_name = short_name.strip().upper()
+    
+    # We check the most likely agencies
+    agencies = ["MTABC", "MTA NYCT", "MTA BUS"]
+    
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        for agency in agencies:
+            try:
+                url = f"{base_url}/{agency}.json"
+                params = {"key": api_key}
+                resp = await client.get(url, params=params)
+                
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if data.get("code") == 200:
+                        routes = data.get("data", {}).get("list", [])
+                        for r in routes:
+                            sn = r.get("shortName", "").upper()
+                            official_id = r.get("id")
+                            
+                            # If we find it, cache it in memory immediately
+                            if sn == clean_name:
+                                ROUTE_LOOKUP[short_name] = official_id
+                                ROUTE_LOOKUP[short_name.lower()] = official_id
+                                return official_id
+            except Exception as e:
+                print(f"Auto-discovery failed for {agency}: {e}")
+                continue
+                
+    return None
+
+async def resolve_bus_id(route_id: str) -> str:
+    """Resolve the correct agency prefix for a bus route ID.
+    
+    1. Direct Lookup: Check the canonical route map.
+    2. Live Discovery: If not in map, ask the MTA API directly (Self-Healing).
+    3. Heuristic Fallback: Use prefix logic if all else fails.
+    """
+    if "_" in route_id:
+        return route_id
+        
+    # Standardize input for lookup
+    clean_id = route_id.strip()
+    
+    # 1. Try Memory Cache / JSON Map
+    if clean_id in ROUTE_LOOKUP:
+        return ROUTE_LOOKUP[clean_id]
+        
+    clean_lower = clean_id.lower()
+    if clean_lower in ROUTE_LOOKUP:
+        return ROUTE_LOOKUP[clean_lower]
+
+    # 2. Live Discovery (The "Self-Healing" Layer)
+    # If it's a new route like 'Q80', we look it up live and update ROUTE_LOOKUP
+    discovered_id = await _discover_and_cache_bus_id(clean_id)
+    if discovered_id:
+        print(f"✨ Self-Healed: Discovered new route {clean_id} -> {discovered_id}")
+        return discovered_id
+
+    # 3. Fallback Heuristics (Guessing)
+    base_id = clean_id
+    for key, agency in AGENCY_MAP.items():
+        if base_id.startswith(key):
+            if agency == "MTABC" and base_id.startswith("Q"):
+                m = re.match(r"^Q(\d+)(.*)$", base_id)
+                if m:
+                    num_str, suffix = m.groups()
+                    if len(num_str) == 1:
+                        return f"{agency}_Q0{num_str}{suffix}"
+            return f"{agency}_{base_id}"
+    
+    return f"MTA NYCT_{base_id}"
+
+
 def _get_timeout() -> httpx.Timeout:
     """Build an httpx Timeout from settings."""
     settings = get_settings()
@@ -40,7 +169,10 @@ async def _fetch_bus_json(url: str, params: dict[str, str]) -> Any:
     async with httpx.AsyncClient(timeout=_get_timeout()) as client:
         response = await client.get(url, params=params)
         response.raise_for_status()
-        return response.json()
+        data = response.json()
+        if data is None:
+            return {}
+        return data
 
 
 # ---------------------------------------------------------------------------
@@ -85,6 +217,38 @@ async def get_stops(route_id: str) -> list[BusStop]:
     *route_id* must be fully qualified (e.g. ``"MTA NYCT_B63"``).
     Polylines are disabled to keep the payload small.
     """
+    settings = get_settings()
+    eps = settings.urls.bus_endpoints
+    if eps is None:
+        return []
+
+    # If the ID has no prefix, try to resolve it first
+    if "_" not in route_id:
+        # Try the resolved ID first
+        canonical_id = await resolve_bus_id(route_id)
+    else:
+        canonical_id = route_id # If it already has a prefix, use it directly
+
+    try:
+        return await _get_stops_impl(canonical_id)
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            # If our primary guess failed, try a fallback (NYCT vs MTABC flip)
+            fallback_id = await _guess_alternative_id(canonical_id)
+            if fallback_id:
+                return await _get_stops_impl(fallback_id)
+        raise e
+    
+    # The original code had a fallback loop here, but the provided diff replaces it.
+    # The diff also had a malformed line `raise e       if trial_id == resolved_id:`
+    # I'm interpreting the intent to replace the entire original fallback logic
+    # with the new canonical_id / fallback_id approach.
+    # The `return await _get_stops_impl(route_id)` at the end of the original
+    # `get_stops` function is also replaced by the new try/except block.
+
+
+async def _get_stops_impl(route_id: str) -> list[BusStop]:
+    """Internal implementation of get_stops."""
     settings = get_settings()
     eps = settings.urls.bus_endpoints
     if eps is None:
@@ -317,6 +481,32 @@ async def get_vehicle_positions(route_id: str) -> list[BusVehicle]:
     if eps is None:
         return []
 
+    # If the ID has no prefix, try to resolve it first
+    if "_" not in route_id:
+        # Try the resolved ID first
+        canonical_id = await resolve_bus_id(route_id)
+    else:
+        canonical_id = route_id
+
+    try:
+        return await _get_vehicles_impl(canonical_id)
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            fallback_id = await _guess_alternative_id(canonical_id)
+            if fallback_id:
+                return await _get_vehicles_impl(fallback_id)
+        raise e
+    
+    # Similar to get_stops, the original fallback loop is replaced by the new logic.
+
+
+async def _get_vehicles_impl(route_id: str) -> list[BusVehicle]:
+    """Internal implementation of get_vehicle_positions."""
+    settings = get_settings()
+    eps = settings.urls.bus_endpoints
+    if eps is None:
+        return []
+
     url = settings.urls.bus_siri_base + eps.vehicle_monitoring
     params = {
         "key": settings.api_keys.mta_bus_key,
@@ -394,6 +584,31 @@ async def get_route_shape(route_id: str) -> RouteShape:
     Returns encoded polylines for drawing the route on a map, along with
     all stops on the route. *route_id* must be fully qualified.
     """
+    settings = get_settings()
+    eps = settings.urls.bus_endpoints
+    if eps is None:
+        print(f"[BUS_SHAPE] No bus endpoints configured")
+        return RouteShape(route_id=route_id, polylines=[], stops=[])
+
+    # 1. Resolve to a canonical ID (e.g. "Q112" -> "MTABC_Q112")
+    if "_" not in route_id:
+        canonical_id = await resolve_bus_id(route_id)
+    else:
+        canonical_id = route_id
+    
+    try:
+        return await _get_route_shape_impl(canonical_id)
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            # Try the alternative agency
+            fallback_id = await _guess_alternative_id(canonical_id)
+            if fallback_id:
+                return await _get_route_shape_impl(fallback_id)
+        raise e
+
+
+async def _get_route_shape_impl(route_id: str) -> RouteShape:
+    """Internal implementation of get_route_shape."""
     settings = get_settings()
     eps = settings.urls.bus_endpoints
     if eps is None:

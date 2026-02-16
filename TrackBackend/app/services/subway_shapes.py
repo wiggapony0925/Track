@@ -81,14 +81,13 @@ def _load_shapes() -> dict[str, list[ShapePoint]]:
 # ---------------------------------------------------------------------------
 
 @lru_cache(maxsize=1)
-def _load_route_shapes() -> dict[str, dict[int, str]]:
-    """Parse trips.txt to map route_id → {direction_id: shape_id}.
+def _load_route_shapes() -> dict[str, dict[int, list[str]]]:
+    """Parse trips.txt to map route_id → {direction_id: [shape_ids]}.
 
-    For branched lines (e.g. the A train has Lefferts, Far Rockaway,
-    and Rockaway Park branches), we pick the shape with the MOST stops
-    per direction — this gives us the longest/main service pattern.
+    Collects unique shape_ids per route/direction to support branching lines
+    (e.g., the A train's Far Rockaway and Lefferts branches).
     """
-    # Collect ALL shape_ids per route/direction
+    # Collect ALL unique shape_ids per route/direction
     all_shapes: dict[str, dict[int, set[str]]] = defaultdict(lambda: defaultdict(set))
     if not _TRIPS_PATH.exists():
         return {}
@@ -106,18 +105,39 @@ def _load_route_shapes() -> dict[str, dict[int, str]]:
                 direction = 0
             all_shapes[route_id][direction].add(shape_id)
 
-    # Pick the shape with the most stops per direction
-    shape_stops = _load_shape_stops()
-    result: dict[str, dict[int, str]] = {}
+    # Filter to unique branches (ignore sub-sequences of longer trips)
+    shape_stops_map = _load_shape_stops()
+    result: dict[str, dict[int, list[str]]] = {}
+    
     for route_id, dir_map in all_shapes.items():
         result[route_id] = {}
         for direction, shape_ids in dir_map.items():
-            # Pick the shape_id with the most stops
-            best_shape = max(
-                shape_ids,
-                key=lambda sid: len(shape_stops.get(sid, [])),
+            # Sort by stop count descending
+            sorted_sids = sorted(
+                list(shape_ids),
+                key=lambda sid: len(shape_stops_map.get(sid, [])),
+                reverse=True
             )
-            result[route_id][direction] = best_shape
+            
+            final_sids = []
+            seen_stop_sets = []
+            
+            for sid in sorted_sids:
+                stops = set(shape_stops_map.get(sid, []))
+                if not stops: continue
+                
+                # Check if this shape is essentially a subset of a shape we already picked
+                is_subset = False
+                for existing_set in seen_stop_sets:
+                    if stops.issubset(existing_set):
+                        is_subset = True
+                        break
+                
+                if not is_subset:
+                    final_sids.append(sid)
+                    seen_stop_sets.append(stops)
+            
+            result[route_id][direction] = final_sids
 
     return result
 
@@ -173,11 +193,7 @@ def get_subway_route_shape(
 ) -> tuple[list[list[tuple[float, float]]], list[RouteStopEntry]] | None:
     """Return the full route geometry and ordered stops for a subway line.
 
-    Returns a tuple of:
-    - polylines: list of coordinate lists (each is [(lat, lon), ...])
-    - stops: ordered list of RouteStopEntry with name, lat, lon
-
-    Returns None if the route/shape data is not available.
+    Supports branched lines (returns all branch polylines and a combined stop list).
     """
     route_shapes = _load_route_shapes()
     direction_shapes = route_shapes.get(route_id)
@@ -187,19 +203,26 @@ def get_subway_route_shape(
     shapes_data = _load_shapes()
     polylines: list[list[tuple[float, float]]] = []
     all_stops: list[RouteStopEntry] = []
+    seen_stop_ids: set[str] = set()
 
-    for direction_id, shape_id in sorted(direction_shapes.items()):
-        shape_points = shapes_data.get(shape_id)
-        if shape_points:
-            polylines.append([(p.lat, p.lon) for p in shape_points])
+    for direction_id, shape_ids in sorted(direction_shapes.items()):
+        for shape_id in shape_ids:
+            shape_points = shapes_data.get(shape_id)
+            if shape_points:
+                polylines.append([(p.lat, p.lon) for p in shape_points])
 
-        # Only collect stops from one direction to avoid duplicate station names
-        if not all_stops:
-            all_stops = _get_stops_for_shape(shape_id)
+            # Collect unique stops from all shapes to ensure branches (Lefferts, Far Rockaway) are covered
+            current_shape_stops = _get_stops_for_shape(shape_id)
+            for stop in current_shape_stops:
+                if stop.stop_id not in seen_stop_ids:
+                    all_stops.append(stop)
+                    seen_stop_ids.add(stop.stop_id)
 
     if not polylines:
         return None
 
+    # Final sort of stops by sequence is not perfectly valid across branches, 
+    # but the client usually just needs the collection of stops served.
     return polylines, all_stops
 
 

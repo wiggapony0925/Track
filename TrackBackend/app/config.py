@@ -57,6 +57,7 @@ class Urls(BaseModel):
     subway_l: str
     subway_si: str
     lirr: str
+    metro_north: str
     alerts_json: str
     elevators_json: str
     bus_siri_base: str = ""

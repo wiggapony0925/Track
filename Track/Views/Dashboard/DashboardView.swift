@@ -85,6 +85,13 @@ struct DashboardView: View {
                                 lastUpdated: lastUpdated
                             )
                             .transition(.move(edge: .bottom).combined(with: .opacity))
+                        case .mnr:
+                            MNRDashboard(
+                                viewModel: viewModel,
+                                locationManager: locationManager,
+                                lastUpdated: lastUpdated
+                            )
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
                         }
                     }
                     .animation(.spring(response: 0.4, dampingFraction: 0.7), value: viewModel.selectedMode)

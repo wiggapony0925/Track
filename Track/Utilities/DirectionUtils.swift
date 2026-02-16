@@ -23,6 +23,8 @@ func directionLabel(_ direction: String) -> String {
     case "NW": return "Northwest"
     case "SE": return "Southeast"
     case "SW": return "Southwest"
+    case "INBOUND": return "Inbound"
+    case "OUTBOUND": return "Outbound"
     default: return direction
     }
 }
@@ -41,6 +43,8 @@ func shortDirectionLabel(_ direction: String) -> String {
     case "NW": return "↖ NW"
     case "SE": return "↘ SE"
     case "SW": return "↙ SW"
+    case "INBOUND": return "↑ Inbound"
+    case "OUTBOUND": return "↓ Outbound"
     default: return direction
     }
 }

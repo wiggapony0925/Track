@@ -86,7 +86,7 @@ class NearbyTransitArrival(BaseModel):
     minutes_away: int
     arrival_ts: int | None = None
     status: str = "On Time"
-    mode: str  # "subway", "bus", or "lirr"
+    mode: str  # "subway", "bus", "lirr", or "mnr"
     stop_lat: float | None = None
     stop_lon: float | None = None
     stop_id: str | None = None

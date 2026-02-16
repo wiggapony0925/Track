@@ -69,13 +69,15 @@ func formatDistance(_ meters: Double, suffix: String = "away") -> String {
 
 // MARK: - MTA Route Name
 
-/// Strips the "MTA NYCT_" prefix from MTA route IDs for display.
-///
-/// - Parameter routeId: Full route identifier (e.g. "MTA NYCT_B63").
-/// - Returns: Display name (e.g. "B63").
 func stripMTAPrefix(_ routeId: String) -> String {
     if routeId.hasPrefix("MTA NYCT_") {
         return String(routeId.dropFirst(9)).replacingOccurrences(of: "+", with: "")
+    }
+    if routeId.hasPrefix("LIRR_") {
+        return String(routeId.dropFirst(5))
+    }
+    if routeId.hasPrefix("MNR_") {
+        return String(routeId.dropFirst(4))
     }
     return routeId.replacingOccurrences(of: "+", with: "")
 }
