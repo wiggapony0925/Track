@@ -1099,21 +1099,33 @@ final class HomeViewModel {
     ///
     /// Works for all transit modes (bus, subway, LIRR, MNR).
     private func enrichGroupWithShapeDirections(_ shape: RouteShapeResponse) {
-        guard var group = selectedGroupedRoute, !shape.directions.isEmpty else { return }
+        guard let group = selectedGroupedRoute, !shape.directions.isEmpty else { return }
 
         let existingCount = group.directions.count
-        let shapeCount = shape.directions.count
 
-        // If shape has more directions than the group, add the missing ones
-        guard shapeCount > existingCount else { return }
+        // Build a set of existing direction strings (lowercased) for matching.
+        // Also track which direction IDs are already represented.
+        let existingDirStrings = Set(group.directions.map { $0.direction.lowercased() })
+        let existingDirIndices = Set(0..<existingCount)
 
         var enrichedDirections = group.directions
 
         for shapeDir in shape.directions {
+            let headsign = shapeDir.headsign.lowercased()
+            
             // Check if this shape direction already has a matching group direction.
-            // Match by index (directionId) since direction strings may differ.
-            let alreadyExists = enrichedDirections.indices.contains(shapeDir.directionId)
-            if !alreadyExists {
+            // Match by BOTH index and headsign to avoid missing directions that
+            // exist in the shape but aren't in the nearby response.
+            let matchesByIndex = existingDirIndices.contains(shapeDir.directionId)
+            let matchesByHeadsign = !headsign.isEmpty && existingDirStrings.contains(headsign)
+            
+            // Also check partial match — the nearby API might use "to XYZ"
+            // while the shape uses just "XYZ" or vice versa
+            let matchesByPartial = !headsign.isEmpty && existingDirStrings.contains(where: { existing in
+                existing.contains(headsign) || headsign.contains(existing)
+            })
+            
+            if !matchesByIndex && !matchesByHeadsign && !matchesByPartial {
                 // Create an empty direction entry using the headsign from the shape
                 let directionString = shapeDir.headsign.isEmpty
                     ? "Direction \(shapeDir.directionId)"

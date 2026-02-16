@@ -55,25 +55,16 @@ struct HomeView: View {
                 )
                 
                 // MARK: - Floating Controls
-                VStack {
-                    // Top banners section
-                    MapControlsOverlay(
-                        viewModel: viewModel,
-                        locationManager: locationManager,
-                        cameraPosition: $cameraPosition,
-                        is3DMode: $is3DMode,
-                        sheetDetent: $sheetDetent,
-                        currentMapCenter: currentMapCenter,
-                        currentMapDistance: currentMapDistance,
-                        sheetHeightFraction: 0.42
-                    )
-                    
-                    Spacer()
-                    
-                    // MARK: - Transport Mode Toggle
-                    TransportModeToggle(selectedMode: $viewModel.selectedMode)
-                        .padding(.bottom, 8)
-                }
+                MapControlsOverlay(
+                    viewModel: viewModel,
+                    locationManager: locationManager,
+                    cameraPosition: $cameraPosition,
+                    is3DMode: $is3DMode,
+                    sheetDetent: $sheetDetent,
+                    currentMapCenter: currentMapCenter,
+                    currentMapDistance: currentMapDistance,
+                    sheetHeightFraction: 0.42
+                )
             }
             // MARK: - Universal Bottom Sheet
             .sheet(isPresented: .constant(true)) {
@@ -212,6 +203,10 @@ struct HomeView: View {
         locationManager.startUpdating()
         
         // Auto-refresh at the interval defined in settings
+        // Respects user's "Auto-Refresh" toggle in Settings
+        let autoRefreshEnabled = UserDefaults.standard.object(forKey: "auto_refresh_enabled") as? Bool ?? true
+        guard autoRefreshEnabled else { return }
+        
         let interval = TimeInterval(AppSettings.shared.refreshIntervalSeconds)
         refreshTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { _ in
             Task { @MainActor in

@@ -78,6 +78,10 @@ struct TrackMapView: View {
             pointsOfInterest: .including([.publicTransport]),
             showsTraffic: false
         ))
+        .mapControls {
+            // Only show compass when rotated, hide everything else
+            MapCompass()
+        }
         .onMapCameraChange(frequency: .continuous) { context in
             // Track camera state for smooth mode switching
             currentMapCenter = context.camera.centerCoordinate
@@ -90,6 +94,8 @@ struct TrackMapView: View {
                 showStations = d < zoomThreshold
             }
         }
+        // Push the Apple Maps "Legal" link behind the bottom sheet
+        .safeAreaPadding(.bottom, 350)
         .ignoresSafeArea()
     }
     

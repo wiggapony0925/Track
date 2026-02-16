@@ -47,7 +47,7 @@ struct MapControlsOverlay: View {
                         // Right: Map controls (under compass area)
                         if sheetDetent != .large {
                             mapControlButtons
-                                .padding(.top, 50) // Position below compass
+                                .padding(.top, 60) // Position below compass
                         }
                     }
                     .padding(.horizontal, AppTheme.Layout.margin)
@@ -62,35 +62,35 @@ struct MapControlsOverlay: View {
     // MARK: - Map Control Buttons
     
     private var mapControlButtons: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: 12) {
             // 3D / 2D Toggle
             Button {
                 toggle3DMode()
             } label: {
-                Text(is3DMode ? "2D" : "3D")
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
-                    .foregroundColor(AppTheme.Colors.textPrimary)
-                    .frame(width: 40, height: 40)
+                Image(systemName: is3DMode ? "square.stack.3d.up.slash" : "square.stack.3d.up")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(is3DMode ? AppTheme.Colors.mtaBlue : AppTheme.Colors.textPrimary)
+                    .frame(width: 44, height: 44)
+                    .background(.ultraThinMaterial)
+                    .clipShape(Circle())
+                    .shadow(color: .black.opacity(0.10), radius: 4, x: 0, y: 2)
             }
             .accessibilityLabel(is3DMode ? "Switch to 2D" : "Switch to 3D")
-            
-            Divider()
-                .frame(width: 24)
             
             // Recenter / Location Button
             Button {
                 centerMap()
             } label: {
                 Image(systemName: "location.fill")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.system(size: 16, weight: .medium))
                     .foregroundColor(AppTheme.Colors.mtaBlue)
-                    .frame(width: 40, height: 40)
+                    .frame(width: 44, height: 44)
+                    .background(.ultraThinMaterial)
+                    .clipShape(Circle())
+                    .shadow(color: .black.opacity(0.10), radius: 4, x: 0, y: 2)
             }
             .accessibilityLabel("Recenter on my location")
         }
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .shadow(color: .black.opacity(0.12), radius: 4, x: 0, y: 2)
     }
     
     // MARK: - Computed Properties
