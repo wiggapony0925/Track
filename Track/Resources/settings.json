@@ -31,7 +31,7 @@
   "map": {
     "user_zoom_distance": 3000,
     "min_camera_distance": 300,
-    "max_camera_distance": 350000,
+    "max_camera_distance": 600000,
     "smart_zoom_min_altitude": 2400,
     "smart_zoom_max_altitude": 20000,
     "smart_zoom_padding_multiplier": 4.5,

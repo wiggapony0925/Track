@@ -167,7 +167,7 @@ struct AppSettings {
             self.stopPassedThresholdMeters = 100
             self.userZoomDistance = 3000
             self.minCameraDistance = 300
-            self.maxCameraDistance = 350_000
+            self.maxCameraDistance = 600_000
             self.smartZoomMinAltitude = 2400
             self.smartZoomMaxAltitude = 20000
             self.smartZoomPaddingMultiplier = 4.5
