@@ -123,6 +123,34 @@ final class HomeViewModel {
         }
     }
     
+    /// Grouped bus arrivals filtered by search text (from the nearby/grouped API).
+    var filteredNearbyGroupedBusArrivals: [GroupedNearbyTransitResponse] {
+        guard !searchText.isEmpty else { return nearbyGroupedBusArrivals }
+        let query = searchText.lowercased()
+        return nearbyGroupedBusArrivals.filter { group in
+            group.displayName.lowercased().contains(query) ||
+            group.routeId.lowercased().contains(query) ||
+            group.directions.contains { direction in
+                direction.direction.lowercased().contains(query) ||
+                direction.arrivals.contains { $0.stopName.lowercased().contains(query) }
+            }
+        }
+    }
+    
+    /// Grouped subway arrivals filtered by search text (from the nearby/grouped API).
+    var filteredNearbyGroupedSubwayArrivals: [GroupedNearbyTransitResponse] {
+        guard !searchText.isEmpty else { return nearbyGroupedSubwayArrivals }
+        let query = searchText.lowercased()
+        return nearbyGroupedSubwayArrivals.filter { group in
+            group.displayName.lowercased().contains(query) ||
+            group.routeId.lowercased().contains(query) ||
+            group.directions.contains { direction in
+                direction.direction.lowercased().contains(query) ||
+                direction.arrivals.contains { $0.stopName.lowercased().contains(query) }
+            }
+        }
+    }
+    
     /// Nearby stations filtered by search text.
     var filteredNearbyStations: [(stationID: String, name: String, distance: Double, routeIDs: [String])] {
         guard !searchText.isEmpty else { return nearbyStations }
@@ -212,10 +240,19 @@ final class HomeViewModel {
         // Filter out stale arrivals (minutesAway == 0 with past timestamps)
         let liveArrivals = arrivals.filter { $0.minutesAway > 0 || $0.estimatedTime > Date() }
         
-        // Group by route_id
+        // Group by route_id — for LIRR/MNR prefix the raw numeric ID
         var byRoute: [String: [TrainArrival]] = [:]
         for arrival in liveArrivals {
-            byRoute[arrival.routeID, default: []].append(arrival)
+            let key: String
+            switch mode {
+            case "lirr":
+                key = arrival.routeID.hasPrefix("LIRR_") ? arrival.routeID : "LIRR_\(arrival.routeID)"
+            case "mnr":
+                key = arrival.routeID.hasPrefix("MNR_") ? arrival.routeID : "MNR_\(arrival.routeID)"
+            default:
+                key = arrival.routeID
+            }
+            byRoute[key, default: []].append(arrival)
         }
         
         return byRoute.map { routeId, routeArrivals in
@@ -251,14 +288,56 @@ final class HomeViewModel {
             
             let colorHex: String? = mode == "subway" ? nil : nil
             
+            // Resolve display name: use branch name lookup for commuter rail
+            let displayName = Self.resolveDisplayName(routeId: routeId, mode: mode)
+            
             return GroupedNearbyTransitResponse(
                 routeId: routeId,
-                displayName: routeId,
+                displayName: displayName,
                 mode: mode,
                 colorHex: colorHex,
                 directions: directions
             )
         }.sorted { $0.soonestMinutes < $1.soonestMinutes }
+    }
+    
+    /// Maps a LIRR/MNR route_id (e.g. "LIRR_9") to a human-readable branch name
+    /// (e.g. "Port Washington Branch"). Falls back to stripMTAPrefix for subway/bus.
+    private static let lirrBranchNames: [String: String] = [
+        "1": "Babylon Branch",
+        "2": "Hempstead Branch",
+        "3": "Oyster Bay Branch",
+        "4": "Ronkonkoma Branch",
+        "5": "Montauk Branch",
+        "6": "Long Beach Branch",
+        "7": "Far Rockaway Branch",
+        "8": "West Hempstead Branch",
+        "9": "Port Washington Branch",
+        "10": "Port Jefferson Branch",
+        "11": "Belmont Park",
+        "12": "City Terminal Zone",
+        "13": "Greenport Service",
+    ]
+    
+    private static let mnrLineNames: [String: String] = [
+        "1": "Hudson Line",
+        "2": "Harlem Line",
+        "3": "New Haven Line",
+        "4": "New Canaan Line",
+        "5": "Danbury Line",
+        "6": "Waterbury Line",
+    ]
+    
+    static func resolveDisplayName(routeId: String, mode: String) -> String {
+        if mode == "lirr" {
+            let numeric = routeId.hasPrefix("LIRR_") ? String(routeId.dropFirst(5)) : routeId
+            return lirrBranchNames[numeric] ?? stripMTAPrefix(routeId)
+        }
+        if mode == "mnr" {
+            let numeric = routeId.hasPrefix("MNR_") ? String(routeId.dropFirst(4)) : routeId
+            return mnrLineNames[numeric] ?? stripMTAPrefix(routeId)
+        }
+        return stripMTAPrefix(routeId)
     }
 
     // Bus mode
@@ -266,6 +345,18 @@ final class HomeViewModel {
     var nearbyBusStops: [BusStop] = []
     var busArrivals: [BusArrival] = []
     var selectedBusStop: BusStop?
+    
+    // Grouped bus arrivals fetched from the nearby/grouped API (bus-only)
+    var nearbyGroupedBusArrivals: [GroupedNearbyTransitResponse] = []
+    
+    // Grouped subway arrivals fetched from the nearby/grouped API (subway-only)
+    var nearbyGroupedSubwayArrivals: [GroupedNearbyTransitResponse] = []
+    
+    // Grouped LIRR arrivals fetched from the nearby/grouped API (lirr-only)
+    var nearbyGroupedLIRRArrivals: [GroupedNearbyTransitResponse] = []
+    
+    // Grouped MNR arrivals fetched from the nearby/grouped API (mnr-only)
+    var nearbyGroupedMNRArrivals: [GroupedNearbyTransitResponse] = []
 
     // Bus routes (browse all routes)
     var allBusRoutes: [BusRoute] = []
@@ -289,7 +380,17 @@ final class HomeViewModel {
 
     // Service alerts & accessibility
     var serviceAlerts: [TransitAlert] = []
+    var alertsLastUpdated: Date?
     var elevatorOutages: [ElevatorStatus] = []
+
+    /// Fetch alerts from the API and deliver local notifications for new ones.
+    func refreshAlerts() async {
+        do {
+            serviceAlerts = try await TrackAPI.fetchAlerts()
+            alertsLastUpdated = Date()
+            AlertNotificationManager.shared.processAlerts(serviceAlerts)
+        } catch {}
+    }
 
     // Route detail sheet
     var selectedGroupedRoute: GroupedNearbyTransitResponse?
@@ -348,6 +449,25 @@ final class HomeViewModel {
         let coordinates: [[CLLocationCoordinate2D]]
     }
     var cachedOffsetSubwayLines: [OffsetSubwayLine] = []
+    
+    // MARK: - Flattened Map Polylines (Performance Optimized)
+    
+    /// A single polyline segment ready for rendering with a stable ID.
+    /// This flattens nested structures to avoid nested ForEach loops in SwiftUI Map,
+    /// which dramatically improves rendering performance.
+    struct FlattenedMapPolyline: Identifiable {
+        let id: String           // Stable unique ID: "routeId_branchIndex"
+        let coordinates: [CLLocationCoordinate2D]
+        let color: Color
+        let lineWidth: CGFloat
+    }
+    
+    /// Pre-computed flattened subway polylines for the system map view.
+    /// Uses stable IDs and avoids nested ForEach for optimal MapKit rendering.
+    var flattenedSubwayPolylines: [FlattenedMapPolyline] = []
+    
+    /// Pre-computed flattened commuter rail (LIRR/MNR) polylines for the system map view.
+    var flattenedCommuterRailPolylines: [FlattenedMapPolyline] = []
 
     // Full subway station list with served lines
     struct CachedSubwayStation: Identifiable {
@@ -396,19 +516,14 @@ final class HomeViewModel {
             // Fetch subway shapes from API
             let response = try await TrackAPI.fetchAllSubwayShapes()
             
-            // Pre-decode subway coordinates, deduplicate overlapping branches,
-            // and simplify geometry for the system-map overview.
+            // Pre-decode subway coordinates for the system-map overview.
+            // Deduplication and simplification are handled by the backend.
             var decoded: [CachedTransitLine] = response.lines.map { line in
-                let rawBranches = line.decodedPolylines
-                let uniqueBranches = self.deduplicateBranches(rawBranches)
-                if rawBranches.count != uniqueBranches.count {
-                    AppLogger.shared.log("DEDUP", message: "\(line.routeId): \(rawBranches.count) branches → \(uniqueBranches.count) after dedup")
-                }
-                let simplified = uniqueBranches.map { self.simplifyPolyline($0) }
+                let branches = line.decodedPolylines
                 return CachedTransitLine(
                     id: line.routeId,
                     color: Color(hex: line.colorHex),
-                    coordinates: simplified,
+                    coordinates: branches,
                     mode: .subway
                 )
             }
@@ -480,113 +595,7 @@ final class HomeViewModel {
         transitMode(for: routeId) != nil
     }
     
-    // MARK: - Polyline Deduplication & Simplification
-    
-    /// Removes near-duplicate polylines whose physical tracks overlap heavily.
-    /// GTFS often produces multiple shape_ids that trace the same physical track
-    /// with minor coordinate differences, causing 2-3 overlapping lines per route.
-    /// Uses sample-point proximity: if ≥70% of evenly-spaced sample points on the
-    /// candidate lie within ~55m of the existing polyline, they're the same track.
-    private func deduplicateBranches(_ branches: [[CLLocationCoordinate2D]]) -> [[CLLocationCoordinate2D]] {
-        guard branches.count > 1 else { return branches }
-        
-        // Sort longest first so we keep the most complete polyline
-        let sorted = branches.sorted { $0.count > $1.count }
-        var deduped: [[CLLocationCoordinate2D]] = []
-        
-        let proximity = 0.0005 // ~55 m at NYC latitude
-        
-        for branch in sorted {
-            guard branch.count >= 2 else { continue }
-            
-            let isDuplicate = deduped.contains { existing in
-                guard existing.count >= 2 else { return false }
-                // Sample up to 20 evenly-spaced points along the candidate
-                let nSamples = min(20, branch.count)
-                let sampleStep = max(1, branch.count / nSamples)
-                var closeCount = 0
-                var totalSamples = 0
-                
-                var si = 0
-                while si < branch.count {
-                    let pt = branch[si]
-                    totalSamples += 1
-                    
-                    // Search a window around the proportional position in the existing line
-                    let proportion = Double(si) / Double(max(branch.count - 1, 1))
-                    let center = Int(proportion * Double(existing.count - 1))
-                    let window = max(existing.count / 5, 10)
-                    let lo = max(0, center - window)
-                    let hi = min(existing.count, center + window)
-                    
-                    var found = false
-                    for ei in lo..<hi {
-                        if abs(pt.latitude - existing[ei].latitude) < proximity
-                            && abs(pt.longitude - existing[ei].longitude) < proximity {
-                            found = true
-                            break
-                        }
-                    }
-                    if found { closeCount += 1 }
-                    
-                    si += sampleStep
-                }
-                
-                return totalSamples > 0 && Double(closeCount) / Double(totalSamples) >= 0.70
-            }
-            
-            if !isDuplicate {
-                deduped.append(branch)
-            }
-        }
-        
-        return deduped
-    }
-    
-    /// Simplifies a polyline using the Ramer-Douglas-Peucker algorithm.
-    /// Removes intermediate points within `tolerance` degrees of the straight
-    /// line between their neighbours — ~11 m at 0.0001° tolerance.
-    private func simplifyPolyline(_ coords: [CLLocationCoordinate2D], tolerance: Double = 0.0001) -> [CLLocationCoordinate2D] {
-        guard coords.count > 2 else { return coords }
-        
-        let first = coords[0]
-        let last = coords[coords.count - 1]
-        
-        var maxDist = 0.0
-        var maxIdx = 0
-        
-        let dx = last.longitude - first.longitude
-        let dy = last.latitude - first.latitude
-        let lineLenSq = dx * dx + dy * dy
-        
-        for i in 1..<(coords.count - 1) {
-            let dist: Double
-            if lineLenSq == 0 {
-                let dlat = coords[i].latitude - first.latitude
-                let dlon = coords[i].longitude - first.longitude
-                dist = sqrt(dlat * dlat + dlon * dlon)
-            } else {
-                let t = max(0, min(1, ((coords[i].longitude - first.longitude) * dx + (coords[i].latitude - first.latitude) * dy) / lineLenSq))
-                let projLat = first.latitude + t * dy
-                let projLon = first.longitude + t * dx
-                let dlat = coords[i].latitude - projLat
-                let dlon = coords[i].longitude - projLon
-                dist = sqrt(dlat * dlat + dlon * dlon)
-            }
-            if dist > maxDist {
-                maxDist = dist
-                maxIdx = i
-            }
-        }
-        
-        if maxDist > tolerance {
-            let left = simplifyPolyline(Array(coords[...maxIdx]), tolerance: tolerance)
-            let right = simplifyPolyline(Array(coords[maxIdx...]), tolerance: tolerance)
-            return left.dropLast() + right
-        } else {
-            return [first, last]
-        }
-    }
+    // MARK: - Commuter Rail Bundle Loading
     
     /// Loads LIRR and MNR routes from the static bundle
     private func loadCommuterRailFromBundle(_ bundle: StaticBundle) -> [CachedTransitLine] {
@@ -635,16 +644,14 @@ final class HomeViewModel {
     
     /// Loads all transit routes from bundled offline data.
     private func loadOfflineSystemMap() async {
-        // Load subway routes from hardcoded offline paths, deduplicating and simplifying
+        // Load subway routes from bundled offline data
         var offlineLines: [CachedTransitLine] = SubwayRoutesData.allRouteIds.compactMap { routeId -> CachedTransitLine? in
             let rawBranches = SubwayRoutesData.routeBranches(for: routeId)
             guard !rawBranches.isEmpty else { return nil }
-            let uniqueBranches = deduplicateBranches(rawBranches)
-            let simplified = uniqueBranches.map { simplifyPolyline($0) }
             return CachedTransitLine(
                 id: routeId,
                 color: SubwayRoutesData.color(for: routeId),
-                coordinates: simplified,
+                coordinates: rawBranches,
                 mode: .subway
             )
         }
@@ -686,128 +693,61 @@ final class HomeViewModel {
         AppLogger.shared.log("OFFLINE", message: "Loaded \(offlineLines.count) offline transit routes (\(subwayCount) subway, \(lirrCount) LIRR, \(mnrCount) MNR, \(totalBranches) total branches)")
     }
     
-    /// Computes perpendicular offsets for subway lines that share the same tunnel/corridor.
-    /// Called once after `cachedSystemMap` is populated so the View never recalculates this.
+    /// Populates `cachedOffsetSubwayLines` from the system map.
     ///
-    /// The backend already filters express/shuttle variants and deduplicates directions,
-    /// so each line arrives with only its unique physical-track branches.
+    /// Corridor offsets (fanning out co-located lines like 4/5/6 on Lex Ave)
+    /// are now computed server-side by `/subway/shapes/all`, so the client
+    /// simply converts `CachedTransitLine` → `OffsetSubwayLine` 1:1.
     private func computeSubwayOffsets() {
         let subwayLines = cachedSystemMap.filter { $0.mode == .subway }
-        guard !subwayLines.isEmpty else {
-            cachedOffsetSubwayLines = []
-            return
+        cachedOffsetSubwayLines = subwayLines.map {
+            OffsetSubwayLine(id: $0.id, color: $0.color, coordinates: $0.coordinates)
         }
+        AppLogger.shared.log("SYSTEM_MAP", message: "Mapped \(subwayLines.count) subway lines (offsets applied server-side)")
         
-        // 1. Build a grid → set-of-route-IDs lookup.
-        //    Snap every coordinate to a ~33m cell so only truly co-located tracks register
-        //    as "shared corridor" (avoids false positives from parallel streets).
-        //    Use a packed Int64 key instead of String for much faster hashing.
-        let gridSize = 0.0003  // ~33m at NYC latitude
-        var gridToRoutes: [Int64: Set<String>] = [:]
-        
-        for line in subwayLines {
-            for coords in line.coordinates {
-                // Sample every 3rd point for the grid lookup — the offset only matters
-                // visually in shared corridors which span many cells, so skipping
-                // intermediate points has no visible effect but cuts work by ~67%.
-                let step = max(1, min(3, coords.count / 10))
-                for i in Swift.stride(from: 0, to: coords.count, by: step) {
-                    let coord = coords[i]
-                    let gx = Int32(round(coord.latitude / gridSize))
-                    let gy = Int32(round(coord.longitude / gridSize))
-                    let key = (Int64(gx) << 32) | (Int64(gy) & 0xFFFFFFFF)
-                    gridToRoutes[key, default: []].insert(line.id)
-                }
+        // Pre-compute flattened polylines for efficient rendering
+        computeFlattenedPolylines()
+    }
+    
+    /// Pre-computes flattened polyline arrays with stable IDs for efficient MapKit rendering.
+    /// This eliminates nested ForEach loops in the View, dramatically improving performance.
+    /// Called once after `cachedOffsetSubwayLines` is populated.
+    private func computeFlattenedPolylines() {
+        // Flatten subway polylines from offset lines
+        var subwayFlat: [FlattenedMapPolyline] = []
+        for line in cachedOffsetSubwayLines {
+            for (branchIndex, coords) in line.coordinates.enumerated() {
+                // Skip empty or single-point polylines
+                guard coords.count >= 2 else { continue }
+                subwayFlat.append(FlattenedMapPolyline(
+                    id: "\(line.id)_\(branchIndex)",
+                    coordinates: coords,
+                    color: line.color,
+                    lineWidth: 3
+                ))
             }
         }
+        flattenedSubwayPolylines = subwayFlat
         
-        // 2. For cells with multiple routes, determine a stable alphabetical ordering.
-        var cellOrdering: [Int64: [String]] = [:]
-        for (key, routes) in gridToRoutes where routes.count > 1 {
-            cellOrdering[key] = routes.sorted()
-        }
-        
-        // If no corridors are shared, skip the per-point offset work entirely.
-        if cellOrdering.isEmpty {
-            cachedOffsetSubwayLines = subwayLines.map {
-                OffsetSubwayLine(id: $0.id, color: $0.color, coordinates: $0.coordinates)
+        // Flatten commuter rail polylines (LIRR and MNR)
+        var commuterFlat: [FlattenedMapPolyline] = []
+        for line in cachedSystemMap where line.mode != .subway {
+            for (branchIndex, coords) in line.coordinates.enumerated() {
+                // Skip empty or single-point polylines
+                guard coords.count >= 2 else { continue }
+                commuterFlat.append(FlattenedMapPolyline(
+                    id: "\(line.id)_\(branchIndex)",
+                    coordinates: coords,
+                    color: line.color,
+                    lineWidth: 2.5
+                ))
             }
-            AppLogger.shared.log("SYSTEM_MAP", message: "No shared corridors — skipped offset computation for \(subwayLines.count) lines")
-            return
         }
+        flattenedCommuterRailPolylines = commuterFlat
         
-        // 3. Offset each coordinate perpendicular to the direction of travel
-        //    based on its slot in shared cells.
-        let offsetMeters = AppSettings.shared.subwayLineOffsetMeters
-        let metersPerDegLat = 111_000.0
-        let metersPerDegLon = 84_300.0  // at ~40.7°N
-        
-        var result: [OffsetSubwayLine] = []
-        
-        for line in subwayLines {
-            var offsetBranches: [[CLLocationCoordinate2D]] = []
-            
-            for coords in line.coordinates {
-                guard coords.count >= 2 else {
-                    offsetBranches.append(coords)
-                    continue
-                }
-                
-                var offsetCoords: [CLLocationCoordinate2D] = []
-                
-                for i in 0..<coords.count {
-                    let coord = coords[i]
-                    let gx = Int32(round(coord.latitude / gridSize))
-                    let gy = Int32(round(coord.longitude / gridSize))
-                    let key = (Int64(gx) << 32) | (Int64(gy) & 0xFFFFFFFF)
-                    
-                    guard let ordering = cellOrdering[key],
-                          let slot = ordering.firstIndex(of: line.id) else {
-                        offsetCoords.append(coord)
-                        continue
-                    }
-                    
-                    let totalLines = ordering.count
-                    let centerOffset = Double(slot) - Double(totalLines - 1) / 2.0
-                    
-                    // Direction of travel from neighboring points
-                    let prev = i > 0 ? coords[i - 1] : coords[i]
-                    let next = i < coords.count - 1 ? coords[i + 1] : coords[i]
-                    
-                    let dx = next.longitude - prev.longitude
-                    let dy = next.latitude - prev.latitude
-                    let length = sqrt(dx * dx + dy * dy)
-                    
-                    if length < 1e-10 {
-                        offsetCoords.append(coord)
-                        continue
-                    }
-                    
-                    // Perpendicular (90° CW): (dy, -dx) normalized
-                    let perpLat = dx / length
-                    let perpLon = -dy / length
-                    
-                    let offsetLat = centerOffset * offsetMeters / metersPerDegLat * perpLat
-                    let offsetLon = centerOffset * offsetMeters / metersPerDegLon * perpLon
-                    
-                    offsetCoords.append(CLLocationCoordinate2D(
-                        latitude: coord.latitude + offsetLat,
-                        longitude: coord.longitude + offsetLon
-                    ))
-                }
-                
-                offsetBranches.append(offsetCoords)
-            }
-            
-            result.append(OffsetSubwayLine(
-                id: line.id,
-                color: line.color,
-                coordinates: offsetBranches
-            ))
-        }
-        
-        cachedOffsetSubwayLines = result
-        AppLogger.shared.log("SYSTEM_MAP", message: "Computed subway offsets for \(result.count) lines (\(cellOrdering.count) shared corridor cells)")
+        let totalPolylines = subwayFlat.count + commuterFlat.count
+        let totalPoints = subwayFlat.reduce(0) { $0 + $1.coordinates.count } + commuterFlat.reduce(0) { $0 + $1.coordinates.count }
+        AppLogger.shared.log("SYSTEM_MAP", message: "Flattened \(totalPolylines) polylines (\(subwayFlat.count) subway, \(commuterFlat.count) commuter rail) with \(totalPoints) total points")
     }
     
     /// Fetches all subway stations and their served lines.
@@ -1014,9 +954,13 @@ final class HomeViewModel {
     // MARK: - Search Pin
 
     /// Activates the search pin and refreshes data for that location.
+    /// The `userLocation` parameter is only used as a fallback — once
+    /// `isSearchPinActive` is set, `effectiveLocation` will always
+    /// return the pin coordinate for all subsequent operations.
     func setSearchPin(_ coordinate: CLLocationCoordinate2D, userLocation: CLLocation?) async {
         searchPinCoordinate = coordinate
         isSearchPinActive = true
+        // refresh() calls effectiveLocation() which now returns the pin
         await refresh(location: userLocation)
     }
 
@@ -1042,7 +986,7 @@ final class HomeViewModel {
         Task {
             await SupabaseManager.shared.logRouteInteraction(
                 routeId: group.routeId,
-                mode: group.isBus ? "bus" : "subway",
+                mode: group.mode,
                 type: "click"
             )
         }
@@ -1074,11 +1018,34 @@ final class HomeViewModel {
                     let decoded = shape.decodedPolylines
                     let totalPoints = decoded.reduce(0) { $0 + $1.count }
                     AppLogger.shared.log("BUS_SHAPE", message: "Loaded shape for \(group.routeId): \(shape.polylines.count) polylines (\(totalPoints) total points), \(shape.stops.count) stops")
+                    
+                    // Enrich the grouped route with any missing directions from the shape.
+                    // The nearby API only returns directions for stops near the user,
+                    // but the route shape knows ALL directions (e.g. both inbound & outbound).
+                    enrichGroupWithShapeDirections(shape)
                 } else {
                     AppLogger.shared.log("BUS_SHAPE", message: "No shape returned for \(group.routeId)")
                 }
             } catch {
                 AppLogger.shared.logError("fetchRouteShape(\(group.routeId))", error: error)
+            }
+        } else if group.isLIRR {
+            // LIRR: fetch the branch-specific polyline
+            do {
+                routeShape = try await TrackAPI.fetchLIRRShape(routeID: group.routeId)
+                AppLogger.shared.log("LIRR_SHAPE", message: "Loaded shape for \(group.routeId) (\(group.displayName))")
+                if let shape = routeShape { enrichGroupWithShapeDirections(shape) }
+            } catch {
+                AppLogger.shared.logError("fetchLIRRShape(\(group.routeId))", error: error)
+            }
+        } else if group.isMNR {
+            // Metro-North: fetch the line-specific polyline
+            do {
+                routeShape = try await TrackAPI.fetchMNRShape(routeID: group.routeId)
+                AppLogger.shared.log("MNR_SHAPE", message: "Loaded shape for \(group.routeId) (\(group.displayName))")
+                if let shape = routeShape { enrichGroupWithShapeDirections(shape) }
+            } catch {
+                AppLogger.shared.logError("fetchMNRShape(\(group.routeId))", error: error)
             }
         } else {
             // For subway: fetch the full line geometry AND live arrivals from the backend
@@ -1089,14 +1056,18 @@ final class HomeViewModel {
                 routeShape = try await shapeTask
                 let arrivals = try await arrivalsTask
                 updateTrainPositions(arrivals: arrivals)
+                if let shape = routeShape { enrichGroupWithShapeDirections(shape) }
                 
             } catch {
                 AppLogger.shared.logError("fetchSubwayData(\(group.displayName))", error: error)
             }
         }
         
-        // Find nearest stop and calculate walking route
-        if let shape = routeShape, !shape.stops.isEmpty, let userLoc = userLocation {
+        // Find nearest stop and calculate walking route.
+        // Use effectiveLocation so drag-to-search computes distances
+        // from the explored center, not the user's real GPS position.
+        let refLocation = effectiveLocation(userLocation: userLocation)
+        if let shape = routeShape, !shape.stops.isEmpty, let userLoc = refLocation {
             var closestStop: BusStop?
             var minDistance: CLLocationDistance = .greatestFiniteMagnitude
             
@@ -1125,12 +1096,76 @@ final class HomeViewModel {
                let lat = first.stopLat, let lon = first.stopLon {
                 nearestStopCoordinate = CLLocationCoordinate2D(latitude: lat, longitude: lon)
                 
-                if let userLoc = userLocation {
+                if let userLoc = refLocation {
                     Task {
                         await fetchWalkingRoute(from: userLoc.coordinate, to: nearestStopCoordinate!)
                     }
                 }
             }
+        }
+    }
+
+    /// Enriches the currently selected grouped route with any directions
+    /// present in the route shape data but missing from the nearby API response.
+    ///
+    /// The `/nearby/grouped` endpoint only includes directions that have live
+    /// arrivals at stops near the user. However, the route shape knows about
+    /// ALL directions (e.g. both inbound and outbound). This method adds
+    /// placeholder direction entries so the direction picker shows every
+    /// direction the route serves — even if no arrivals are nearby right now.
+    ///
+    /// Works for all transit modes (bus, subway, LIRR, MNR).
+    private func enrichGroupWithShapeDirections(_ shape: RouteShapeResponse) {
+        guard let group = selectedGroupedRoute, !shape.directions.isEmpty else { return }
+
+        let existingCount = group.directions.count
+
+        // Build a set of existing direction strings (lowercased) for matching.
+        // Also track which direction IDs are already represented.
+        let existingDirStrings = Set(group.directions.map { $0.direction.lowercased() })
+        let existingDirIndices = Set(0..<existingCount)
+
+        var enrichedDirections = group.directions
+
+        for shapeDir in shape.directions {
+            let headsign = shapeDir.headsign.lowercased()
+            
+            // Check if this shape direction already has a matching group direction.
+            // Match by BOTH index and headsign to avoid missing directions that
+            // exist in the shape but aren't in the nearby response.
+            let matchesByIndex = existingDirIndices.contains(shapeDir.directionId)
+            let matchesByHeadsign = !headsign.isEmpty && existingDirStrings.contains(headsign)
+            
+            // Also check partial match — the nearby API might use "to XYZ"
+            // while the shape uses just "XYZ" or vice versa
+            let matchesByPartial = !headsign.isEmpty && existingDirStrings.contains(where: { existing in
+                existing.contains(headsign) || headsign.contains(existing)
+            })
+            
+            if !matchesByIndex && !matchesByHeadsign && !matchesByPartial {
+                // Create an empty direction entry using the headsign from the shape
+                let directionString = shapeDir.headsign.isEmpty
+                    ? "Direction \(shapeDir.directionId)"
+                    : shapeDir.headsign
+                let newDir = DirectionArrivalsResponse(
+                    direction: directionString,
+                    directionLabel: shapeDir.headsign.isEmpty ? nil : "→ \(shapeDir.headsign)",
+                    arrivals: []
+                )
+                enrichedDirections.append(newDir)
+            }
+        }
+
+        // Only update if we actually added directions
+        if enrichedDirections.count > existingCount {
+            selectedGroupedRoute = GroupedNearbyTransitResponse(
+                routeId: group.routeId,
+                displayName: group.displayName,
+                mode: group.mode,
+                colorHex: group.colorHex,
+                directions: enrichedDirections
+            )
+            AppLogger.shared.log("ROUTE_DETAIL", message: "Enriched \(group.displayName) from \(existingCount) → \(enrichedDirections.count) directions using shape data")
         }
     }
 
@@ -1146,6 +1181,137 @@ final class HomeViewModel {
         return .automatic
     }
 
+    /// Computes a camera position that fits the entire route shape on screen,
+    /// including the user's location when available. Works for all modes:
+    /// subway, bus, LIRR, and Metro-North.
+    func cameraPositionFittingRoute(userLocation: CLLocation?, is3D: Bool) -> MapCameraPosition? {
+        guard let shape = routeShape else { return nil }
+        
+        // Use the effective location (search pin when drag-to-search is active)
+        // so the map fits the route relative to where the user is exploring.
+        let refLocation = effectiveLocation(userLocation: userLocation)
+
+        // Collect all coordinates: polyline points + stop locations
+        var allCoords: [CLLocationCoordinate2D] = []
+        
+        // Use direction-specific polylines when a direction is selected
+        let group = selectedGroupedRoute
+        let hasDirections = (group?.directions.count ?? 0) > 1
+        let polylines: [[CLLocationCoordinate2D]]
+        if hasDirections, !shape.directions.isEmpty {
+            polylines = shape.polylinesForDirection(selectedDirectionIndex)
+        } else {
+            polylines = shape.decodedPolylines
+        }
+        
+        for coords in polylines {
+            allCoords.append(contentsOf: coords)
+        }
+        
+        // Also include stop coordinates as a fallback anchor
+        let stops = hasDirections ? shape.stopsForDirection(selectedDirectionIndex) : shape.stops
+        for stop in stops {
+            allCoords.append(CLLocationCoordinate2D(latitude: stop.lat, longitude: stop.lon))
+        }
+        
+        guard !allCoords.isEmpty else { return nil }
+        
+        // Compute bounding box of route geometry ONLY (without user location)
+        var minLat = allCoords[0].latitude
+        var maxLat = allCoords[0].latitude
+        var minLon = allCoords[0].longitude
+        var maxLon = allCoords[0].longitude
+        
+        for coord in allCoords {
+            minLat = min(minLat, coord.latitude)
+            maxLat = max(maxLat, coord.latitude)
+            minLon = min(minLon, coord.longitude)
+            maxLon = max(maxLon, coord.longitude)
+        }
+        
+        // Include effective location so the map shows both you (or your search center) and the route
+        if let loc = refLocation?.coordinate {
+            allCoords.append(loc)
+        }
+        
+        // Recompute bounding box WITH user location
+        var fullMinLat = allCoords[0].latitude
+        var fullMaxLat = allCoords[0].latitude
+        var fullMinLon = allCoords[0].longitude
+        var fullMaxLon = allCoords[0].longitude
+        
+        for coord in allCoords {
+            fullMinLat = min(fullMinLat, coord.latitude)
+            fullMaxLat = max(fullMaxLat, coord.latitude)
+            fullMinLon = min(fullMinLon, coord.longitude)
+            fullMaxLon = max(fullMaxLon, coord.longitude)
+        }
+        
+        // Check if including the user location pushes the span beyond max zoom.
+        // If the full span (route + user) exceeds max altitude but the route-only
+        // span is within limits, center on the nearest stop instead of trying
+        // to fit both user and route endpoints across the city.
+        let fullLatSpan = (fullMaxLat - fullMinLat) * 111_000
+        let fullCenterLat = (fullMinLat + fullMaxLat) / 2
+        let fullLonSpan = (fullMaxLon - fullMinLon) * 111_000 * cos(fullCenterLat * .pi / 180)
+        let fullSpanMeters = max(fullLatSpan, fullLonSpan)
+        let fullPadded = fullSpanMeters * AppSettings.shared.smartZoomPaddingMultiplier
+        
+        let routeLatSpan = (maxLat - minLat) * 111_000
+        let routeCenterLat = (minLat + maxLat) / 2
+        let routeLonSpan = (maxLon - minLon) * 111_000 * cos(routeCenterLat * .pi / 180)
+        let routeSpanMeters = max(routeLatSpan, routeLonSpan)
+        let routePadded = routeSpanMeters * AppSettings.shared.smartZoomPaddingMultiplier
+        
+        // If the route+user span exceeds max zoom, just fit the route itself.
+        // If even the route alone exceeds max zoom (very long route like LIRR),
+        // center on the nearest stop at max zoom.
+        let useRouteOnly = fullPadded > AppSettings.shared.smartZoomMaxAltitude
+        
+        let center: CLLocationCoordinate2D
+        let distance: Double
+        
+        if useRouteOnly && routePadded > AppSettings.shared.smartZoomMaxAltitude {
+            // Route itself is too long (e.g. LIRR spanning Manhattan → Montauk).
+            // Center on the nearest stop to the effective location (search pin
+            // when drag-to-search is active, otherwise the user's GPS).
+            if let refLoc = refLocation,
+               let nearest = stops.min(by: {
+                   let d1 = CLLocation(latitude: $0.lat, longitude: $0.lon).distance(from: refLoc)
+                   let d2 = CLLocation(latitude: $1.lat, longitude: $1.lon).distance(from: refLoc)
+                   return d1 < d2
+               }) {
+                center = CLLocationCoordinate2D(latitude: nearest.lat, longitude: nearest.lon)
+            } else {
+                center = CLLocationCoordinate2D(latitude: routeCenterLat, longitude: (minLon + maxLon) / 2)
+            }
+            distance = AppSettings.shared.smartZoomMaxAltitude
+        } else if useRouteOnly {
+            // Route fits within max zoom but user location is too far away.
+            // Just fit the route without the user location.
+            center = CLLocationCoordinate2D(latitude: routeCenterLat, longitude: (minLon + maxLon) / 2)
+            distance = max(
+                AppSettings.shared.smartZoomMinAltitude,
+                min(routePadded, AppSettings.shared.smartZoomMaxAltitude)
+            )
+        } else {
+            // Everything fits — use the full bounding box including user location.
+            center = CLLocationCoordinate2D(latitude: fullCenterLat, longitude: (fullMinLon + fullMaxLon) / 2)
+            distance = max(
+                AppSettings.shared.smartZoomMinAltitude,
+                min(fullPadded, AppSettings.shared.smartZoomMaxAltitude)
+            )
+        }
+        
+        return .camera(MapCamera(
+            centerCoordinate: center,
+            distance: distance,
+            heading: 0,
+            pitch: is3D ? 60 : 0
+        ))
+    }
+
+    // MARK: - Route Selection and Refresh
     /// Selects a specific arrival (from flat list or search) and treats it as a route selection.
     func selectArrival(_ arrival: NearbyTransitResponse, userLocation: CLLocation?) async {
         // Find if this arrival already exists in our grouped list
@@ -1166,7 +1332,7 @@ final class HomeViewModel {
             let minimalGroup = GroupedNearbyTransitResponse(
                 routeId: arrival.routeId,
                 displayName: arrival.displayName,
-                mode: arrival.isBus ? "bus" : "subway",
+                mode: arrival.mode,
                 colorHex: nil,
                 directions: [
                     DirectionArrivalsResponse(
@@ -1371,7 +1537,10 @@ final class HomeViewModel {
             groupedTransit = try await groupedTask
 
             // Fetch alerts and accessibility silently — don't fail the whole refresh
-            do { serviceAlerts = try await alertsTask } catch {}
+            do {
+                serviceAlerts = try await alertsTask
+                AlertNotificationManager.shared.processAlerts(serviceAlerts)
+            } catch {}
             do { elevatorOutages = try await accessTask } catch {}
             
 
@@ -1418,27 +1587,37 @@ final class HomeViewModel {
         nearbyBusStops = []
         busArrivals = []
         selectedBusStop = nil
+        nearbyGroupedBusArrivals = []
+        nearbyGroupedSubwayArrivals = []
 
-        if let location = location {
-            do {
-                nearbyStations = try await repository.fetchNearbyStations(
-                    latitude: location.coordinate.latitude,
-                    longitude: location.coordinate.longitude
-                )
-            } catch {
-                AppLogger.shared.logError("fetchNearbyStations", error: error)
-                errorMessage = (error as? TransitError)?.description ?? error.localizedDescription
-            }
+        guard let location = location else {
+            errorMessage = "Location required for subway arrivals"
+            return
         }
 
-        let lineID = nearbyStations.first?.routeIDs.first ?? "L"
+        let lat = location.coordinate.latitude
+        let lon = location.coordinate.longitude
+
         do {
-            upcomingArrivals = try await repository.fetchArrivals(for: lineID)
-            
+            // Fetch grouped nearby transit and filter to subway — shows ALL
+            // subway lines near the user, not just a single hardcoded line.
+            async let groupedTask = TrackAPI.fetchNearbyGrouped(lat: lat, lon: lon)
+            async let stationsTask = repository.fetchNearbyStations(
+                latitude: lat, longitude: lon
+            )
+
+            let allGrouped = try await groupedTask
+            nearbyGroupedSubwayArrivals = allGrouped.filter { $0.mode == "subway" }
+
+            nearbyStations = try await stationsTask
         } catch {
-            AppLogger.shared.logError("fetchArrivals(\(lineID))", error: error)
+            AppLogger.shared.logError("refreshSubway", error: error)
             errorMessage = (error as? TransitError)?.description ?? error.localizedDescription
         }
+
+        // Fetch alerts and accessibility alongside subway
+        await refreshAlerts()
+        do { elevatorOutages = try await TrackAPI.fetchAccessibility() } catch {}
     }
 
 
@@ -1448,30 +1627,32 @@ final class HomeViewModel {
         nearbyStations = []
         upcomingArrivals = []
         lirrArrivals = []
+        nearbyGroupedBusArrivals = []
+        nearbyGroupedSubwayArrivals = []
 
         guard let location = location else {
-            errorMessage = "Location required for bus stops"
+            errorMessage = "Location required for bus arrivals"
             return
         }
 
+        let lat = location.coordinate.latitude
+        let lon = location.coordinate.longitude
+
         do {
-            async let stopsTask = TrackAPI.fetchNearbyBusStops(
-                lat: location.coordinate.latitude,
-                lon: location.coordinate.longitude
-            )
-            async let routesTask = TrackAPI.fetchBusRoutes()
-
-            nearbyBusStops = try await stopsTask
-
-            // Bus routes fetched silently — don't fail the whole refresh
-            do { allBusRoutes = try await routesTask } catch {}
+            // Fetch grouped nearby transit and filter to bus only.
+            // This gives us the same card-style arrivals the Nearby tab uses.
+            let allGrouped = try await TrackAPI.fetchNearbyGrouped(lat: lat, lon: lon)
+            nearbyGroupedBusArrivals = allGrouped.filter { $0.mode == "bus" }
+            
+            do { allBusRoutes = try await TrackAPI.fetchBusRoutes() } catch {}
         } catch {
-            AppLogger.shared.logError("fetchNearbyBusStops", error: error)
+            AppLogger.shared.logError("refreshBus", error: error)
+            errorMessage = (error as? TransitError)?.description ?? error.localizedDescription
         }
 
-        if let firstStop = nearbyBusStops.first {
-            await fetchBusArrivals(for: firstStop)
-        }
+        // Fetch alerts and accessibility alongside bus
+        await refreshAlerts()
+        do { elevatorOutages = try await TrackAPI.fetchAccessibility() } catch {}
     }
     
 
@@ -1497,6 +1678,9 @@ final class HomeViewModel {
         nearbyBusStops = []
         busArrivals = []
         selectedBusStop = nil
+        nearbyGroupedBusArrivals = []
+        nearbyGroupedSubwayArrivals = []
+        nearbyGroupedMNRArrivals = []
         mnrArrivals = []
 
         do {
@@ -1505,9 +1689,27 @@ final class HomeViewModel {
             AppLogger.shared.logError("fetchLIRRArrivals", error: error)
             errorMessage = (error as? TrackAPIError)?.description ?? error.localizedDescription
         }
+        
+        // Fetch grouped LIRR arrivals from backend (with display names and colors)
+        if let loc = LocationManager().currentLocation {
+            do {
+                nearbyGroupedLIRRArrivals = try await TrackAPI.fetchNearbyGrouped(
+                    lat: loc.coordinate.latitude,
+                    lon: loc.coordinate.longitude,
+                    mode: "lirr"
+                )
+            } catch {
+                AppLogger.shared.logError("fetchGroupedLIRR", error: error)
+                // Fall back to client-side grouping
+                nearbyGroupedLIRRArrivals = groupTrainArrivals(lirrArrivals, mode: "lirr")
+            }
+        } else {
+            // No location available — fall back to client-side grouping
+            nearbyGroupedLIRRArrivals = groupTrainArrivals(lirrArrivals, mode: "lirr")
+        }
 
         // Fetch alerts and accessibility alongside LIRR
-        do { serviceAlerts = try await TrackAPI.fetchAlerts() } catch {}
+        await refreshAlerts()
         do { elevatorOutages = try await TrackAPI.fetchAccessibility() } catch {}
     }
 
@@ -1519,6 +1721,9 @@ final class HomeViewModel {
         nearbyBusStops = []
         busArrivals = []
         selectedBusStop = nil
+        nearbyGroupedBusArrivals = []
+        nearbyGroupedSubwayArrivals = []
+        nearbyGroupedLIRRArrivals = []
         lirrArrivals = []
 
         do {
@@ -1527,9 +1732,27 @@ final class HomeViewModel {
             AppLogger.shared.logError("fetchMNRArrivals", error: error)
             errorMessage = (error as? TrackAPIError)?.description ?? error.localizedDescription
         }
+        
+        // Fetch grouped MNR arrivals from backend (with display names and colors)
+        if let loc = LocationManager().currentLocation {
+            do {
+                nearbyGroupedMNRArrivals = try await TrackAPI.fetchNearbyGrouped(
+                    lat: loc.coordinate.latitude,
+                    lon: loc.coordinate.longitude,
+                    mode: "mnr"
+                )
+            } catch {
+                AppLogger.shared.logError("fetchGroupedMNR", error: error)
+                // Fall back to client-side grouping
+                nearbyGroupedMNRArrivals = groupTrainArrivals(mnrArrivals, mode: "mnr")
+            }
+        } else {
+            // No location available — fall back to client-side grouping
+            nearbyGroupedMNRArrivals = groupTrainArrivals(mnrArrivals, mode: "mnr")
+        }
 
         // Fetch alerts and accessibility alongside MNR
-        do { serviceAlerts = try await TrackAPI.fetchAlerts() } catch {}
+        await refreshAlerts()
         do { elevatorOutages = try await TrackAPI.fetchAccessibility() } catch {}
     }
 
@@ -1543,6 +1766,29 @@ final class HomeViewModel {
                 type: "track"
             )
         }
+        
+        // Record commute pattern for smart suggestions
+        SmartSuggester.recordPattern(
+            context: DataController.shared.container.mainContext,
+            routeID: arrival.routeId,
+            direction: arrival.direction,
+            startLocation: location ?? CLLocation(latitude: 0, longitude: 0),
+            destinationStationID: arrival.stopId ?? arrival.stopName,
+            destinationName: arrival.destination ?? arrival.direction,
+            cloudSyncHandler: { routeId, direction, lat, lon, destId, destName, hour, weekday, freq in
+                await SyncManager.shared.syncCommutePattern(
+                    routeId: routeId,
+                    direction: direction,
+                    startLatitude: lat,
+                    startLongitude: lon,
+                    destinationStationId: destId,
+                    destinationName: destName,
+                    timeOfDay: hour,
+                    dayOfWeek: weekday,
+                    frequency: freq
+                )
+            }
+        )
         
         // Save to TrackedRoute for Single Route Widget
         let trackedRoute = TrackedRoute(

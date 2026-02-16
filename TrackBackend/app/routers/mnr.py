@@ -12,9 +12,11 @@ from fastapi import APIRouter, HTTPException
 from app.models import (
     AllCommuterRailLinesResponse,
     CommuterRailLineOverlay,
+    DirectionShape,
+    RouteShape,
     TrackArrival,
 )
-from app.services.commuter_rail_shapes import get_all_mnr_lines
+from app.services.commuter_rail_shapes import get_all_mnr_lines, get_single_mnr_line
 from app.services.rail_client import fetch_rail_arrivals
 
 router = APIRouter(tags=["mnr"])
@@ -38,6 +40,40 @@ async def mnr_shapes_all() -> AllCommuterRailLinesResponse:
             mode="mnr",
         ))
     return AllCommuterRailLinesResponse(lines=overlays)
+
+
+@router.get("/mnr/shape/{route_id}", response_model=RouteShape)
+async def mnr_shape(route_id: str) -> RouteShape:
+    """Return the polyline for a single Metro-North line.
+
+    Accepts the numeric GTFS route_id (e.g. "1" for Hudson)
+    or the prefixed form "MNR_1".
+    """
+    numeric_id = route_id.removeprefix("MNR_")
+
+    line_data = get_single_mnr_line(numeric_id)
+    if line_data is None:
+        raise HTTPException(status_code=404, detail=f"MNR line '{route_id}' not found")
+
+    encoded = [_encode_polyline(coords) for coords in line_data["polylines"]]
+
+    # Build per-direction shapes
+    directions: list[DirectionShape] = []
+    for dd in line_data.get("directions", []):
+        dir_encoded = [_encode_polyline(coords) for coords in dd["polylines"]]
+        directions.append(DirectionShape(
+            direction_id=dd["direction_id"],
+            headsign=dd.get("headsign", ""),
+            polylines=dir_encoded,
+            stops=[],
+        ))
+
+    return RouteShape(
+        route_id=line_data["route_id"],
+        polylines=encoded,
+        stops=[],
+        directions=directions,
+    )
 
 
 @router.get("/mnr", response_model=list[TrackArrival])

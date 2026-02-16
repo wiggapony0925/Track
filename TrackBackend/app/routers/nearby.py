@@ -27,6 +27,12 @@ from app.services.station_lookup import get_nearby_stop_ids, get_stop_info
 from app.utils.logger import TrackLogger
 from app.utils.transit_utils import get_subway_color
 from app.services.schedule_service import schedule_service
+from app.services.commuter_rail_shapes import (
+    get_lirr_route_name,
+    get_mnr_route_name,
+    get_lirr_route_color,
+    get_mnr_route_color,
+)
 
 # Default bus color (MTA blue) — used when bus routes don't provide one
 _BUS_DEFAULT_COLOR = "#0039A6"
@@ -59,6 +65,7 @@ async def nearby_transit_grouped(
     lat: float = Query(..., description="User latitude"),
     lon: float = Query(..., description="User longitude"),
     radius: int | None = Query(None, description="Search radius in meters"),
+    mode: str | None = Query(None, description="Filter by transit mode: subway, bus, lirr, mnr"),
 ) -> list[GroupedNearbyTransit]:
     """Return nearby arrivals grouped by route with direction sub-groups.
 
@@ -67,11 +74,14 @@ async def nearby_transit_grouped(
     list the iOS app can render as swipeable tabs (e.g. Northbound /
     Southbound).  The first arrival's ``minutes_away`` is used to sort
     the groups so the soonest route appears first.
+    
+    The optional ``mode`` filter restricts results to a single transit mode
+    (e.g. ``?mode=subway`` returns only subway groups, ``?mode=lirr`` for LIRR).
     """
     settings = get_settings()
     effective_radius = radius if radius is not None else settings.app_settings.search_radius_meters
     TrackLogger.location(lat, lon, "nearby/grouped")
-    flat = await _collect_all(lat, lon, effective_radius)
+    flat = await _collect_all(lat, lon, effective_radius, mode_filter=mode)
     return _group_arrivals(flat)
 
 
@@ -82,40 +92,36 @@ async def nearby_transit_grouped(
 
 async def _collect_all(
     lat: float, lon: float, radius: int | None = None,
+    *, mode_filter: str | None = None,
 ) -> list[NearbyTransitArrival]:
-    """Gather subway + bus arrivals in parallel."""
+    """Gather subway + bus arrivals in parallel.
+    
+    When *mode_filter* is provided (e.g. ``"subway"``, ``"bus"``, ``"lirr"``,
+    ``"mnr"``), only that mode is fetched — skipping unnecessary network
+    calls for the other feeds.
+    """
     settings = get_settings()
     effective_radius = radius if radius is not None else settings.app_settings.search_radius_meters
     results: list[NearbyTransitArrival] = []
 
-    subway_task = _fetch_nearby_subway(lat, lon, effective_radius)
-    bus_task = _fetch_nearby_buses(lat, lon, effective_radius)
-    lirr_task = _fetch_nearby_rail(lat, lon, effective_radius, "lirr")
-    mnr_task = _fetch_nearby_rail(lat, lon, effective_radius, "mnr")
+    # Build task list based on mode filter
+    tasks: dict[str, asyncio.Task] = {}
+    if mode_filter is None or mode_filter == "subway":
+        tasks["subway"] = asyncio.ensure_future(_fetch_nearby_subway(lat, lon, effective_radius))
+    if mode_filter is None or mode_filter == "bus":
+        tasks["bus"] = asyncio.ensure_future(_fetch_nearby_buses(lat, lon, effective_radius))
+    if mode_filter is None or mode_filter == "lirr":
+        tasks["lirr"] = asyncio.ensure_future(_fetch_nearby_rail(lat, lon, effective_radius, "lirr"))
+    if mode_filter is None or mode_filter == "mnr":
+        tasks["mnr"] = asyncio.ensure_future(_fetch_nearby_rail(lat, lon, effective_radius, "mnr"))
 
-    subway_results, bus_results, lirr_results, mnr_results = await asyncio.gather(
-        subway_task, bus_task, lirr_task, mnr_task, return_exceptions=True,
-    )
-
-    if isinstance(subway_results, list):
-        results.extend(subway_results)
-    elif isinstance(subway_results, Exception):
-        TrackLogger.error(f"Subway feed failed: {subway_results}")
-
-    if isinstance(bus_results, list):
-        results.extend(bus_results)
-    elif isinstance(bus_results, Exception):
-        TrackLogger.error(f"Bus feed failed: {bus_results}")
-
-    if isinstance(lirr_results, list):
-        results.extend(lirr_results)
-    elif isinstance(lirr_results, Exception):
-        TrackLogger.error(f"LIRR feed failed: {lirr_results}")
-
-    if isinstance(mnr_results, list):
-        results.extend(mnr_results)
-    elif isinstance(mnr_results, Exception):
-        TrackLogger.error(f"MNR feed failed: {mnr_results}")
+    task_results = await asyncio.gather(*tasks.values(), return_exceptions=True)
+    
+    for label, result in zip(tasks.keys(), task_results):
+        if isinstance(result, list):
+            results.extend(result)
+        elif isinstance(result, Exception):
+            TrackLogger.error(f"{label.upper()} feed failed: {result}")
 
     return results
 
@@ -126,10 +132,44 @@ async def _collect_all(
 
 
 def _display_name(route_id: str) -> str:
-    """Strip ``MTA NYCT_`` prefix for display."""
+    """Build a user-facing display name for a route_id.
+    
+    Strips ``MTA NYCT_`` prefix for subway/bus and resolves LIRR/MNR
+    numeric IDs to human-readable branch names.
+    """
     if route_id.startswith("MTA NYCT_"):
         return route_id[9:]
+    if route_id.startswith("LIRR_"):
+        numeric = route_id[5:]
+        return get_lirr_route_name(numeric)
+    if route_id.startswith("MNR_"):
+        numeric = route_id[4:]
+        return get_mnr_route_name(numeric)
     return route_id
+
+
+# Compass code → human-readable direction label
+_DIRECTION_LABELS: dict[str, str] = {
+    "N": "Northbound",
+    "S": "Southbound",
+    "E": "Eastbound",
+    "W": "Westbound",
+    "NE": "Northeast",
+    "NW": "Northwest",
+    "SE": "Southeast",
+    "SW": "Southwest",
+    "INBOUND": "Inbound",
+    "OUTBOUND": "Outbound",
+}
+
+
+def _direction_label(direction: str) -> str:
+    """Convert a raw direction code to a human-readable label.
+
+    Returns the long-form label for known compass codes (e.g. "N" → "Northbound"),
+    or the original string for destination names like "Far Rockaway".
+    """
+    return _DIRECTION_LABELS.get(direction.upper(), direction)
 
 
 def _group_arrivals(flat: list[NearbyTransitArrival]) -> list[GroupedNearbyTransit]:
@@ -153,16 +193,28 @@ def _group_arrivals(flat: list[NearbyTransitArrival]) -> list[GroupedNearbyTrans
     for route_id, dir_map in by_route.items():
         mode, display = route_meta[route_id]
         # Assign color: subway lines use the official palette,
+        # LIRR/MNR use per-branch colors from routes.txt,
         # bus routes get the default MTA blue
-        if mode in {"subway", "lirr", "mnr"}:
+        if mode == "subway":
             color = get_subway_color(display)
+        elif mode == "lirr":
+            # Extract numeric part from "LIRR_9" → "9"
+            numeric_id = route_id[5:] if route_id.startswith("LIRR_") else route_id
+            color = get_lirr_route_color(numeric_id)
+        elif mode == "mnr":
+            numeric_id = route_id[4:] if route_id.startswith("MNR_") else route_id
+            color = get_mnr_route_color(numeric_id)
         else:
             color = _BUS_DEFAULT_COLOR
 
         directions: list[DirectionArrivals] = []
         for direction, arrivals in dir_map.items():
             arrivals.sort(key=lambda a: a.minutes_away)
-            directions.append(DirectionArrivals(direction=direction, arrivals=arrivals))
+            directions.append(DirectionArrivals(
+                direction=direction,
+                direction_label=_direction_label(direction),
+                arrivals=arrivals,
+            ))
 
         # Sort directions alphabetically for consistency
         directions.sort(key=lambda d: d.direction)
@@ -342,10 +394,14 @@ async def _fetch_nearby_buses(
     tasks = [get_realtime_arrivals(stop.id) for stop in stops[: settings.app_settings.max_nearby_results]]
     stop_results = await asyncio.gather(*tasks, return_exceptions=True)
 
+    fail_count = 0
+    first_error: Exception | None = None
     for i, result in enumerate(stop_results):
         stop = stops[i]
         if isinstance(result, Exception):
-            TrackLogger.error(f"Bus arrivals for {stop.name} failed: {result}")
+            fail_count += 1
+            if first_error is None:
+                first_error = result
             continue
         
         # result is a list[BusArrival]
@@ -368,6 +424,11 @@ async def _fetch_nearby_buses(
                 )
             )
 
+    if fail_count > 0:
+        TrackLogger.error(
+            f"Bus arrivals failed for {fail_count}/{len(stop_results)} stops: {first_error}"
+        )
+
     return results
 
 
@@ -385,13 +446,21 @@ async def _fetch_nearby_rail(
     
     results: list[NearbyTransitArrival] = []
     
+    # Map agency parameter to the feed name used by rail_client
+    feed_agency = agency
+    if agency == "mnr":
+        feed_agency = "metro_north"
+    
+    # Determine prefix for route_id namespacing (e.g. "LIRR_9", "MNR_1")
+    prefix = "LIRR_" if agency == "lirr" else "MNR_"
+    
     # Pre-compute which stop_ids are within range of the user for this agency
     nearby_stops = get_nearby_stop_ids(lat, lon, float(radius), agency=agency)
     if not nearby_stops:
         return results
 
     try:
-        arrivals = await fetch_rail_arrivals(agency)
+        arrivals = await fetch_rail_arrivals(feed_agency)
     except Exception as exc:
         TrackLogger.error(f"{agency.upper()} feed failed: {exc}")
         return results
@@ -402,9 +471,12 @@ async def _fetch_nearby_rail(
             
         stop_info = get_stop_info(arrival.station)
         
+        # Prefix route_id so client can distinguish LIRR "9" from subway "9"
+        prefixed_route_id = f"{prefix}{arrival.route_id}"
+        
         results.append(
             NearbyTransitArrival(
-                route_id=arrival.route_id,
+                route_id=prefixed_route_id,
                 stop_name=stop_info.name if stop_info else arrival.station,
                 direction=arrival.destination or arrival.direction,
                 destination=arrival.destination,

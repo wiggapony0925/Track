@@ -2,8 +2,10 @@
 //  DelayCalculator.swift
 //  Track
 //
-//  Calculates "Real Feel" delay adjustments based on historical trip data.
-//  Uses a simple multiplier heuristic as a placeholder for a Core ML model.
+//  Calculates "Real Feel" delay adjustments.
+//  Prefers the server-side /predict/delay endpoint (which can be upgraded
+//  to ML without an app update), falling back to a local heuristic when
+//  the network is unavailable.
 //
 
 import Foundation
@@ -16,23 +18,50 @@ struct DelayPrediction {
 }
 
 struct DelayCalculator {
-    /// Calculates an adjusted arrival time based on historical delay patterns.
-    ///
-    /// - Parameters:
-    ///   - mtaMinutes: MTA-predicted minutes until arrival
-    ///   - routeID: The transit route identifier
-    ///   - timeOfDay: Current hour (0-23)
-    ///   - dayOfWeek: Day of week (1-7, Sunday=1)
-    ///   - weather: Current weather condition
-    ///   - historicDelays: Array of past delay values in seconds for matching conditions
-    /// - Returns: A DelayPrediction with the adjusted time
+
+    /// Fetches a delay prediction from the backend, falling back to the
+    /// local heuristic on network failure.
     static func predict(
         mtaMinutes: Int,
         routeID: String,
         timeOfDay: Int,
         dayOfWeek: Int,
-        weather: WeatherCondition,
-        historicDelays: [Int]
+        weather: WeatherCondition
+    ) async -> DelayPrediction {
+        // Try backend first
+        do {
+            let response = try await TrackAPI.fetchDelayPrediction(
+                minutesAway: mtaMinutes,
+                routeId: routeID,
+                hour: timeOfDay,
+                dayOfWeek: dayOfWeek,
+                weather: weather.rawValue
+            )
+            return DelayPrediction(
+                adjustedMinutes: response.adjustedMinutes,
+                originalMinutes: response.originalMinutes,
+                adjustmentReason: response.adjustmentReason,
+                delayFactor: response.delayFactor
+            )
+        } catch {
+            // Fall back to local heuristic
+            return predictLocally(
+                mtaMinutes: mtaMinutes,
+                routeID: routeID,
+                timeOfDay: timeOfDay,
+                dayOfWeek: dayOfWeek,
+                weather: weather
+            )
+        }
+    }
+
+    /// Local heuristic fallback (same logic that was originally the only path).
+    static func predictLocally(
+        mtaMinutes: Int,
+        routeID: String,
+        timeOfDay: Int,
+        dayOfWeek: Int,
+        weather: WeatherCondition
     ) -> DelayPrediction {
         var factor = 1.0
         var reasons: [String] = []
@@ -56,17 +85,6 @@ struct DelayCalculator {
             reasons.append("snow")
         case .clear:
             break
-        }
-
-        // Historic delay factor from logged data
-        if !historicDelays.isEmpty {
-            let averageDelay = Double(historicDelays.reduce(0, +)) / Double(historicDelays.count)
-            let mtaSeconds = Double(mtaMinutes * 60)
-            if mtaSeconds > 0 {
-                let historicFactor = (mtaSeconds + averageDelay) / mtaSeconds
-                // Blend historic factor with heuristic
-                factor = (factor + historicFactor) / 2.0
-            }
         }
 
         let adjustedMinutes = Int(ceil(Double(mtaMinutes) * factor))

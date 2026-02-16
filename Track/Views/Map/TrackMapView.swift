@@ -22,6 +22,20 @@ struct TrackMapView: View {
     @Binding var currentMapCenter: CLLocationCoordinate2D?
     @Binding var currentMapDistance: Double?
     
+    /// Whether drag-to-search is currently active.
+    var isDragSearchActive: Bool = false
+    
+    /// The settled drag-search coordinate (set only after debounce completes).
+    /// `nil` while the user is still panning — radius hides during the drag
+    /// and reappears instantly once the search fires.
+    var dragSearchSettledCenter: CLLocationCoordinate2D?
+    
+    // MARK: - AppStorage for radius overlay
+    @AppStorage("show_search_radius") private var showSearchRadius = false
+    @AppStorage("near_you_radius_meters") private var nearYouRadius: Double = 2414
+    @AppStorage("farther_away_radius_meters") private var fartherAwayRadius: Double = 4023
+    @AppStorage("much_farther_away_radius_meters") private var muchFartherAwayRadius: Double = 8047
+    
     // MARK: - Computed Properties
     
     /// Color of the currently selected route, used for polylines and annotations.
@@ -30,6 +44,8 @@ struct TrackMapView: View {
             return Color(hex: hex)
         }
         if let group = viewModel.selectedGroupedRoute {
+            if group.isLIRR { return AppTheme.CommuterRailColors.lirrBlue }
+            if group.isMNR { return AppTheme.CommuterRailColors.mnrBlue }
             return group.isBus ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: group.displayName)
         }
         return AppTheme.Colors.mtaBlue
@@ -47,8 +63,31 @@ struct TrackMapView: View {
             // User location
             UserAnnotation()
             
-            // Draggable search pin
-            searchPinAnnotation
+            // Search radius circles
+            // During drag-to-search the circles HIDE while panning (to avoid
+            // expensive per-frame redraws) and SNAP into place the instant the
+            // debounce fires and `dragSearchSettledCenter` is set.
+            if showSearchRadius {
+                if isDragSearchActive, let settled = dragSearchSettledCenter {
+                    // Settled: show circles at the final search location
+                    SearchRadiusOverlay(
+                        center: settled,
+                        nearRadius: nearYouRadius,
+                        fartherRadius: fartherAwayRadius,
+                        muchFartherRadius: muchFartherAwayRadius
+                    )
+                } else if !isDragSearchActive, let location = locationManager.currentLocation {
+                    // Default: radius around user's real location
+                    SearchRadiusOverlay(
+                        center: location.coordinate,
+                        nearRadius: nearYouRadius,
+                        fartherRadius: fartherAwayRadius,
+                        muchFartherRadius: muchFartherAwayRadius
+                    )
+                }
+                // While isDragSearchActive && dragSearchSettledCenter == nil
+                // (user is still panning) → nothing renders → no lag
+            }
             
             // Bus stop annotations when in bus mode
             busStopAnnotations
@@ -76,6 +115,10 @@ struct TrackMapView: View {
             pointsOfInterest: .including([.publicTransport]),
             showsTraffic: false
         ))
+        .mapControls {
+            // Only show compass when rotated, hide everything else
+            MapCompass()
+        }
         .onMapCameraChange(frequency: .continuous) { context in
             // Track camera state for smooth mode switching
             currentMapCenter = context.camera.centerCoordinate
@@ -88,18 +131,9 @@ struct TrackMapView: View {
                 showStations = d < zoomThreshold
             }
         }
+        // Push the Apple Maps "Legal" link behind the bottom sheet
+        .safeAreaPadding(.bottom, 350)
         .ignoresSafeArea()
-    }
-    
-    // MARK: - Search Pin
-    
-    @MapContentBuilder
-    private var searchPinAnnotation: some MapContent {
-        if viewModel.isSearchPinActive, let pin = viewModel.searchPinCoordinate {
-            Annotation("Search here", coordinate: pin) {
-                SearchPinAnnotation()
-            }
-        }
     }
     
     // MARK: - Bus Stop Annotations
@@ -126,7 +160,14 @@ struct TrackMapView: View {
     private var routeStopAnnotations: some MapContent {
         if let shape = viewModel.routeShape {
             let isBusRoute = viewModel.selectedGroupedRoute?.isBus == true
-            ForEach(shape.stops) { stop in
+            let hasDirections = (viewModel.selectedGroupedRoute?.directions.count ?? 0) > 1
+            
+            // Use direction-specific stops when the user has picked a direction
+            let directionStops = hasDirections
+                ? shape.stopsForDirection(viewModel.selectedDirectionIndex)
+                : shape.stops
+            
+            ForEach(directionStops) { stop in
                 let isSelected = stop.id == viewModel.selectedStopId
                 Annotation(stop.name, coordinate: CLLocationCoordinate2D(latitude: stop.lat, longitude: stop.lon)) {
                     RouteStopMarker(
@@ -145,44 +186,28 @@ struct TrackMapView: View {
         }
     }
     
-    // MARK: - Bus Vehicle Annotations
+    // MARK: - Bus Vehicle Markers
     
     @MapContentBuilder
     private var busVehicleAnnotations: some MapContent {
         ForEach(viewModel.busVehicles) { vehicle in
-            let isHighlighted = vehicle.vehicleId == viewModel.highlightedVehicleId
-            Annotation(
-                vehicle.nextStop ?? vehicle.displayRouteName,
-                coordinate: CLLocationCoordinate2D(latitude: vehicle.lat, longitude: vehicle.lon)
-            ) {
-                BusVehicleAnnotation(
-                    routeName: vehicle.displayRouteName,
-                    bearing: vehicle.bearing,
-                    isHighlighted: isHighlighted
-                )
-                .zIndex(isHighlighted ? 100 : 1)
-            }
+            BusVehicleMarker(vehicle: vehicle)
         }
     }
     
-    // MARK: - Train Vehicle Annotations
+    // MARK: - Train Vehicle Markers
     
     @MapContentBuilder
     private var trainVehicleAnnotations: some MapContent {
         ForEach(viewModel.trainVehicles) { train in
-            let isHighlighted = train.tripId == viewModel.highlightedVehicleId
-            Annotation(train.nextStationName ?? train.routeId, coordinate: CLLocationCoordinate2D(latitude: train.lat, longitude: train.lon)) {
-                Group {
-                    if train.routeId.contains("LIRR") || train.routeId.lowercased().contains("lir") {
-                        LIRRAnnotationView(routeId: train.routeId, isHighlighted: isHighlighted)
-                    } else if train.routeId.lowercased().contains("amtrak") || train.routeId.lowercased().contains("amt") {
-                        AmtrakAnnotationView(routeId: train.routeId, isHighlighted: isHighlighted)
-                    } else {
-                        TrainAnnotation(routeId: train.routeId, direction: train.direction, isHighlighted: isHighlighted)
-                    }
-                }
-                .rotationEffect(.degrees(train.bearing ?? 0))
-                .zIndex(isHighlighted ? 100 : 1)
+            if train.routeId.contains("LIRR") || train.routeId.lowercased().contains("lir") {
+                LIRRMarker(train: train)
+            } else if train.routeId.contains("MNR") || train.routeId.lowercased().contains("mnr") || train.routeId.lowercased().contains("metro") {
+                MNRMarker(train: train)
+            } else if train.routeId.lowercased().contains("amtrak") || train.routeId.lowercased().contains("amt") {
+                AmtrakMarker(train: train)
+            } else {
+                SubwayTrainMarker(train: train)
             }
         }
     }
@@ -199,27 +224,29 @@ struct TrackMapView: View {
     
     // MARK: - Route Polylines
     
-    /// Filters polylines to show only the selected direction when applicable.
-    /// Polylines are typically organized: first half = direction 0, second half = direction 1.
+    /// Returns the polylines for the currently selected direction.
+    /// Uses the backend's per-direction data when available; falls back to
+    /// the midpoint-split heuristic for legacy responses without direction data.
     private func filteredPolylines(from polylines: [[CLLocationCoordinate2D]]) -> [[CLLocationCoordinate2D]] {
         guard let group = viewModel.selectedGroupedRoute,
-              group.directions.count > 1,
-              polylines.count >= 2 else {
-            // Single direction or not enough polylines to split - show all
+              group.directions.count > 1 else {
+            // Single direction — show everything
             return polylines
         }
         
         let directionIndex = viewModel.selectedDirectionIndex
         
-        // For bus routes with multiple directions, show only relevant polylines
-        // Heuristic: Split polylines in half - first half = direction 0, second half = direction 1
-        let midpoint = polylines.count / 2
+        // Prefer the backend's per-direction shape data
+        if let shape = viewModel.routeShape, !shape.directions.isEmpty {
+            return shape.polylinesForDirection(directionIndex)
+        }
         
+        // Legacy fallback: split in half (first half = direction 0, second = direction 1)
+        guard polylines.count >= 2 else { return polylines }
+        let midpoint = polylines.count / 2
         if directionIndex == 0 {
-            // First half of polylines for direction 0
             return Array(polylines.prefix(midpoint))
         } else {
-            // Second half of polylines for direction 1
             return Array(polylines.suffix(from: midpoint))
         }
     }
@@ -230,8 +257,9 @@ struct TrackMapView: View {
             let isBusRoute = viewModel.selectedGroupedRoute?.isBus == true
             let allPolylines = shape.decodedPolylines
             
-            // Filter to selected direction if multiple directions exist
-            let polylines = isBusRoute ? filteredPolylines(from: allPolylines) : allPolylines
+            // Filter to selected direction for ALL modes when direction data exists
+            let hasDirections = (viewModel.selectedGroupedRoute?.directions.count ?? 0) > 1
+            let polylines = hasDirections ? filteredPolylines(from: allPolylines) : allPolylines
             
             if !polylines.isEmpty {
                 ForEach(Array(polylines.enumerated()), id: \.offset) { _, coords in
@@ -255,26 +283,22 @@ struct TrackMapView: View {
     
     // MARK: - System Map Polylines
     
+    /// Dashed stroke style for commuter rail routes - created once to avoid repeated allocations.
+    private static let commuterRailStrokeStyle = StrokeStyle(lineWidth: 2.5, lineCap: .round, dash: [6, 4])
+    
     @MapContentBuilder
     private var systemMapPolylines: some MapContent {
         if viewModel.routeShape == nil {
-            // Subway lines with perpendicular offset for shared corridors
-            ForEach(viewModel.cachedOffsetSubwayLines) { line in
-                ForEach(Array(line.coordinates.enumerated()), id: \.offset) { polyIdx, coords in
-                    MapPolyline(coordinates: coords)
-                        .stroke(line.color, lineWidth: 3)
-                }
+            // Subway lines - single flat ForEach with stable IDs for optimal performance
+            ForEach(viewModel.flattenedSubwayPolylines) { polyline in
+                MapPolyline(coordinates: polyline.coordinates)
+                    .stroke(polyline.color, lineWidth: polyline.lineWidth)
             }
             
-            // LIRR and MNR lines (no offset needed)
-            ForEach(viewModel.cachedSystemMap.filter { $0.mode != .subway }) { line in
-                ForEach(Array(line.coordinates.enumerated()), id: \.offset) { polyIdx, coords in
-                    MapPolyline(coordinates: coords)
-                        .stroke(
-                            line.color,
-                            style: StrokeStyle(lineWidth: 2.5, lineCap: .round, dash: [6, 4])
-                        )
-                }
+            // Commuter rail lines (LIRR and MNR) - single flat ForEach with stable IDs
+            ForEach(viewModel.flattenedCommuterRailPolylines) { polyline in
+                MapPolyline(coordinates: polyline.coordinates)
+                    .stroke(polyline.color, style: Self.commuterRailStrokeStyle)
             }
             
             // Stations layer (only when zoomed in)

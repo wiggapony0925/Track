@@ -161,4 +161,6 @@ async def bus_route_shape(route_id: str) -> RouteShape:
              raise HTTPException(status_code=404, detail="Route not found")
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except Exception as exc:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=502, detail=str(exc)) from exc

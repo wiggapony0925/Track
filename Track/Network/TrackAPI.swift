@@ -135,17 +135,22 @@ struct TrackAPI {
     ///   - lat: User's latitude.
     ///   - lon: User's longitude.
     ///   - radius: Search radius in meters (from settings.json by default).
+    ///   - mode: Optional transit mode filter ("subway", "bus", "lirr", "mnr").
     /// - Returns: Array of `GroupedNearbyTransitResponse`.
-    static func fetchNearbyGrouped(lat: Double, lon: Double, radius: Int? = nil) async throws -> [GroupedNearbyTransitResponse] {
+    static func fetchNearbyGrouped(lat: Double, lon: Double, radius: Int? = nil, mode: String? = nil) async throws -> [GroupedNearbyTransitResponse] {
         let effectiveRadius = radius ?? AppSettings.shared.defaultSearchRadiusMeters
         guard var components = URLComponents(string: baseURL + "/nearby/grouped") else {
             throw TrackAPIError.invalidURL
         }
-        components.queryItems = [
+        var queryItems = [
             URLQueryItem(name: "lat", value: String(lat)),
             URLQueryItem(name: "lon", value: String(lon)),
             URLQueryItem(name: "radius", value: String(effectiveRadius)),
         ]
+        if let mode = mode {
+            queryItems.append(URLQueryItem(name: "mode", value: mode))
+        }
+        components.queryItems = queryItems
         guard let url = components.url else {
             throw TrackAPIError.invalidURL
         }
@@ -185,6 +190,26 @@ struct TrackAPI {
         return try decoder.decode(RouteShapeResponse.self, from: data)
     }
 
+    /// Fetches the full route geometry for a single LIRR branch.
+    ///
+    /// - Parameter routeID: LIRR branch ID (e.g. "LIRR_9" or "9").
+    /// - Returns: A `RouteShapeResponse` with the branch polyline.
+    static func fetchLIRRShape(routeID: String) async throws -> RouteShapeResponse {
+        let encoded = routeID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? routeID
+        let data = try await get(path: "/lirr/shape/\(encoded)")
+        return try decoder.decode(RouteShapeResponse.self, from: data)
+    }
+
+    /// Fetches the full route geometry for a single Metro-North line.
+    ///
+    /// - Parameter routeID: MNR line ID (e.g. "MNR_1" or "1").
+    /// - Returns: A `RouteShapeResponse` with the line polyline.
+    static func fetchMNRShape(routeID: String) async throws -> RouteShapeResponse {
+        let encoded = routeID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? routeID
+        let data = try await get(path: "/mnr/shape/\(encoded)")
+        return try decoder.decode(RouteShapeResponse.self, from: data)
+    }
+
     /// Fetches polylines + colors for ALL subway lines (the full system map).
     ///
     /// Called once on app launch to draw every line on the map.
@@ -213,6 +238,68 @@ struct TrackAPI {
     static func fetchAllSubwayStations() async throws -> AllSubwayStationsResponse {
         let data = try await get(path: "/subway/stations/all")
         return try decoder.decode(AllSubwayStationsResponse.self, from: data)
+    }
+
+    /// Fetches subway stations near the user's location.
+    /// Uses server-side proximity filtering instead of downloading all stations.
+    ///
+    /// - Parameters:
+    ///   - lat: User's latitude.
+    ///   - lon: User's longitude.
+    ///   - radius: Search radius in meters (defaults to ~1 mile).
+    /// - Returns: An `AllSubwayStationsResponse` with nearby stations.
+    static func fetchNearbySubwayStations(lat: Double, lon: Double, radius: Int = 1600) async throws -> AllSubwayStationsResponse {
+        guard var components = URLComponents(string: baseURL + "/subway/stations/nearby") else {
+            throw TrackAPIError.invalidURL
+        }
+        components.queryItems = [
+            URLQueryItem(name: "lat", value: String(lat)),
+            URLQueryItem(name: "lon", value: String(lon)),
+            URLQueryItem(name: "radius", value: String(radius)),
+        ]
+        guard let url = components.url else {
+            throw TrackAPIError.invalidURL
+        }
+        let data = try await get(url: url)
+        return try decoder.decode(AllSubwayStationsResponse.self, from: data)
+    }
+
+    // MARK: - Delay Prediction
+
+    /// Fetches a delay-adjusted arrival time from the backend prediction service.
+    ///
+    /// Replaces the client-side `DelayCalculator` heuristic with a server-side model
+    /// that can be upgraded (e.g. to ML) without an app update.
+    ///
+    /// - Parameters:
+    ///   - minutesAway: MTA-predicted minutes until arrival
+    ///   - routeId: The transit route identifier
+    ///   - hour: Current hour (0-23)
+    ///   - dayOfWeek: Day of week (1=Sun, 7=Sat)
+    ///   - weather: Current weather: "clear", "rain", or "snow"
+    /// - Returns: A `DelayPredictionResponse` with adjusted time.
+    static func fetchDelayPrediction(
+        minutesAway: Int,
+        routeId: String,
+        hour: Int,
+        dayOfWeek: Int,
+        weather: String = "clear"
+    ) async throws -> DelayPredictionResponse {
+        guard var components = URLComponents(string: baseURL + "/predict/delay") else {
+            throw TrackAPIError.invalidURL
+        }
+        components.queryItems = [
+            URLQueryItem(name: "minutes_away", value: String(minutesAway)),
+            URLQueryItem(name: "route_id", value: routeId),
+            URLQueryItem(name: "hour", value: String(hour)),
+            URLQueryItem(name: "day_of_week", value: String(dayOfWeek)),
+            URLQueryItem(name: "weather", value: weather),
+        ]
+        guard let url = components.url else {
+            throw TrackAPIError.invalidURL
+        }
+        let data = try await get(url: url)
+        return try decoder.decode(DelayPredictionResponse.self, from: data)
     }
 
     // MARK: - Service Status

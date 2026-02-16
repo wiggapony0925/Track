@@ -33,7 +33,7 @@ final class TransitRepository {
         }
     }
 
-    /// Fetches nearby stations from the local CSV data.
+    /// Fetches nearby stations using server-side proximity filtering.
     ///
     /// - Parameters:
     ///   - latitude: User's latitude
@@ -45,22 +45,23 @@ final class TransitRepository {
         longitude: Double,
         radius: Double? = nil
     ) async throws -> [(stationID: String, name: String, distance: Double, routeIDs: [String])] {
-        let effectiveRadius = radius ?? 1000.0 // Default 1km
+        let effectiveRadius = radius ?? Double(AppSettings.shared.defaultSearchRadiusMeters)
         
         AppLogger.shared.log("TRANSIT", message: "Fetching nearby stations for (\(latitude), \(longitude))")
 
         do {
-            let response = try await TrackAPI.fetchAllSubwayStations()
+            // Use server-side proximity filtering instead of downloading all stations
+            let response = try await TrackAPI.fetchNearbySubwayStations(
+                lat: latitude,
+                lon: longitude,
+                radius: Int(effectiveRadius)
+            )
             let userLoc = CLLocation(latitude: latitude, longitude: longitude)
             
-            let nearby = response.stations.compactMap { station -> (stationID: String, name: String, distance: Double, routeIDs: [String])? in
+            let nearby = response.stations.map { station -> (stationID: String, name: String, distance: Double, routeIDs: [String]) in
                 let stopLoc = CLLocation(latitude: station.lat, longitude: station.lon)
                 let distance = userLoc.distance(from: stopLoc)
-                
-                if distance <= effectiveRadius {
-                    return (stationID: station.id, name: station.name, distance: distance, routeIDs: station.routes)
-                }
-                return nil
+                return (stationID: station.id, name: station.name, distance: distance, routeIDs: station.routes)
             }.sorted { $0.distance < $1.distance }
             
             return nearby

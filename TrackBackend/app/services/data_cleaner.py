@@ -85,26 +85,34 @@ async def get_arrivals_for_line(line_id: str) -> list[TrackArrival]:
     return arrivals
 
 
-async def get_alerts() -> list[TransitAlert]:
-    """Fetch the JSON service alerts feed and return critical alerts only."""
-    from app.config import get_settings
-
-    settings = get_settings()
-    url = settings.urls.alerts_json
-    data: Any = await fetch_json(url)
+async def _parse_alert_feed(url: str, mode: str) -> list[TransitAlert]:
+    """Parse a single MTA JSON alerts feed and return critical alerts."""
+    try:
+        data: Any = await fetch_json(url)
+    except Exception:
+        return []
 
     alerts: list[TransitAlert] = []
     entities = data.get("entity", []) if isinstance(data, dict) else []
     for entity in entities:
         alert_data = entity.get("alert", {})
 
-        # Only include alerts with a severity of WARNING or SEVERE
+        # Include alerts with meaningful severity.
+        # MTA feeds use: UNKNOWN_SEVERITY, INFO, WARNING, SEVERE
+        # We exclude only INFO (informational, non-disruptive).
         severity_level = alert_data.get("severity_level", "")
-        if severity_level not in ("WARNING", "SEVERE"):
+        if severity_level == "INFO":
             continue
 
         informed = alert_data.get("informed_entity", [])
         route_id = informed[0].get("route_id") if informed else None
+
+        # Collect ALL affected route_ids for this alert
+        affected_routes: list[str] = []
+        for ie in informed:
+            rid = ie.get("route_id")
+            if rid and rid not in affected_routes:
+                affected_routes.append(rid)
 
         header_text = alert_data.get("header_text", {})
         translations = header_text.get("translation", [])
@@ -114,16 +122,65 @@ async def get_alerts() -> list[TransitAlert]:
         desc_translations = desc_text.get("translation", [])
         description = desc_translations[0].get("text", "") if desc_translations else ""
 
+        # Extract the most recent active_period start as updated_at (epoch seconds)
+        active_periods = alert_data.get("active_period", [])
+        updated_at: int | None = None
+        if active_periods:
+            starts = [int(ap["start"]) for ap in active_periods if ap.get("start")]
+            if starts:
+                updated_at = max(starts)
+
+        # Normalize severity for the frontend
+        normalized_severity = severity_level.lower() if severity_level else "warning"
+        if normalized_severity in ("unknown_severity", ""):
+            normalized_severity = "warning"
+
         alerts.append(
             TransitAlert(
                 route_id=route_id,
                 title=title,
                 description=description,
-                severity=severity_level.lower(),
+                severity=normalized_severity,
+                mode=mode,
+                updated_at=updated_at,
+                affected_routes=affected_routes,
             )
         )
 
     return alerts
+
+
+async def get_alerts(mode: str | None = None) -> list[TransitAlert]:
+    """Fetch MTA service alerts. Optionally filter by mode (subway/bus/lirr/mnr).
+
+    When *mode* is ``None`` all feeds are fetched concurrently.
+    """
+    import asyncio
+    from app.config import get_settings
+
+    settings = get_settings()
+
+    feed_map: dict[str, str] = {
+        "subway": settings.urls.alerts_json,
+        "bus": settings.urls.bus_alerts_json,
+        "lirr": settings.urls.lirr_alerts_json,
+        "mnr": settings.urls.mnr_alerts_json,
+    }
+
+    # Filter out modes without a configured URL
+    feed_map = {k: v for k, v in feed_map.items() if v}
+
+    if mode and mode in feed_map:
+        return await _parse_alert_feed(feed_map[mode], mode)
+
+    # Fetch all feeds concurrently
+    tasks = [_parse_alert_feed(url, m) for m, url in feed_map.items()]
+    results = await asyncio.gather(*tasks)
+    all_alerts: list[TransitAlert] = []
+    for result in results:
+        all_alerts.extend(result)
+
+    return all_alerts
 
 
 async def get_broken_elevators() -> list[ElevatorStatus]:

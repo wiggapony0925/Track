@@ -27,6 +27,7 @@ struct NearbyDashboard: View {
     /// Radius thresholds from settings
     private var nearYouRadius: Double { AppSettings.shared.nearYouRadiusMeters }
     private var fartherAwayRadius: Double { AppSettings.shared.fartherAwayRadiusMeters }
+    private var muchFartherAwayRadius: Double { AppSettings.shared.muchFartherAwayRadiusMeters }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -42,22 +43,29 @@ struct NearbyDashboard: View {
                     return minDistance(for: group1, from: loc) < minDistance(for: group2, from: loc)
                 }
                 
-                // Separate into "Near You" and "Farther Away" based on distance
-                let (nearYou, fartherAway) = separateByDistance(groups: sorted, from: refLocation)
+                // Separate into "Near You", "Farther Away", and "Much Farther Away" based on distance
+                let (nearYou, fartherAway, muchFarther) = separateByDistance(groups: sorted, from: refLocation)
                 
-                // If nothing is "near you", show the friendly far-from-transit hero
-                if nearYou.isEmpty && !fartherAway.isEmpty {
-                    FarFromTransitView(
-                        icon: "location.slash.circle",
-                        title: "Nothing super close",
-                        subtitle: "You're a bit far from the nearest stops, but here's what's around you.",
-                        accentColor: AppTheme.Colors.mtaBlue
-                    )
-                }
+                // Check if the "Near You" section was populated via adaptive promotion
+                // (i.e. no routes were truly within nearYouRadius, but closest were promoted)
+                let wasPromoted: Bool = {
+                    guard let loc = refLocation, !nearYou.isEmpty else { return false }
+                    // If the closest route in "Near You" is beyond the radius, it was promoted
+                    return minDistance(for: nearYou[0], from: loc) > nearYouRadius
+                }()
                 
-                // Display "Near You" section
+                // Display "Near You" section (includes promoted closest routes when applicable)
                 if !nearYou.isEmpty {
-                    NearYouSectionHeader(radiusMeters: nearYouRadius, updated: lastUpdated)
+                    if wasPromoted {
+                        // Adaptive header — the results were promoted from a farther bucket
+                        ClosestToYouSectionHeader(
+                            closestMeters: refLocation.map { minDistance(for: nearYou[0], from: $0) },
+                            updated: lastUpdated,
+                            isPromoted: viewModel.isSearchPinActive
+                        )
+                    } else {
+                        NearYouSectionHeader(radiusMeters: nearYouRadius, updated: lastUpdated)
+                    }
                     GroupedRouteList(
                         groups: nearYou,
                         viewModel: viewModel,
@@ -77,8 +85,19 @@ struct NearbyDashboard: View {
                     )
                 }
                 
-                // Show empty state only when both sections are empty after filtering
-                if nearYou.isEmpty && fartherAway.isEmpty && !viewModel.searchText.isEmpty {
+                // Display "Much Farther Away" section
+                if !muchFarther.isEmpty {
+                    MuchFartherAwaySectionHeader(radiusMeters: muchFartherAwayRadius)
+                    GroupedRouteList(
+                        groups: muchFarther,
+                        viewModel: viewModel,
+                        locationManager: locationManager,
+                        sheetNavigator: sheetNavigator
+                    )
+                }
+                
+                // Show empty state only when all sections are empty after filtering
+                if nearYou.isEmpty && fartherAway.isEmpty && muchFarther.isEmpty && !viewModel.searchText.isEmpty {
                     EmptyStateView(
                         icon: "magnifyingglass",
                         message: "No results for \"\(viewModel.searchText)\""
@@ -163,18 +182,24 @@ struct NearbyDashboard: View {
         return location.distance(from: CLLocation(latitude: lat, longitude: lon))
     }
     
-    /// Separates grouped transit into "Near You" and "Farther Away" based on distance thresholds
+    /// Separates grouped transit into "Near You", "Farther Away", and "Much Farther Away" based on distance thresholds.
+    ///
+    /// **Adaptive promotion:** When nothing falls within the "Near You" radius
+    /// (common in transit-sparse areas like outer-borough Queens or the Bronx),
+    /// the closest routes are automatically promoted into "Near You" so the
+    /// user always sees actionable results at the top of the dashboard.
     private func separateByDistance(
         groups: [GroupedNearbyTransitResponse],
         from location: CLLocation?
-    ) -> (nearYou: [GroupedNearbyTransitResponse], fartherAway: [GroupedNearbyTransitResponse]) {
+    ) -> (nearYou: [GroupedNearbyTransitResponse], fartherAway: [GroupedNearbyTransitResponse], muchFarther: [GroupedNearbyTransitResponse]) {
         guard let location = location else {
             // No location available, put all in nearYou
-            return (groups, [])
+            return (groups, [], [])
         }
         
         var nearYou: [GroupedNearbyTransitResponse] = []
         var fartherAway: [GroupedNearbyTransitResponse] = []
+        var muchFarther: [GroupedNearbyTransitResponse] = []
         
         for group in groups {
             let dist = minDistance(for: group, from: location)
@@ -182,14 +207,35 @@ struct NearbyDashboard: View {
                 nearYou.append(group)
             } else if dist <= fartherAwayRadius {
                 fartherAway.append(group)
+            } else if dist <= muchFartherAwayRadius {
+                muchFarther.append(group)
             }
-            // Skip groups beyond fartherAwayRadius
         }
         
-        return (nearYou, fartherAway)
+        // Adaptive promotion: if "Near You" is empty but there ARE results
+        // in the outer buckets, promote the closest routes so the user
+        // always sees something actionable without scrolling past the
+        // "Nothing super close" card.
+        if nearYou.isEmpty && (!fartherAway.isEmpty || !muchFarther.isEmpty) {
+            // Combine all outer results and sort by distance
+            var outer = fartherAway + muchFarther
+            outer.sort { minDistance(for: $0, from: location) < minDistance(for: $1, from: location) }
+            
+            // Promote the closest routes (up to 4) into "Near You"
+            let promoteCount = min(4, outer.count)
+            let promoted = Array(outer.prefix(promoteCount))
+            let promotedIds = Set(promoted.map(\.routeId))
+            
+            nearYou = promoted
+            fartherAway = fartherAway.filter { !promotedIds.contains($0.routeId) }
+            muchFarther = muchFarther.filter { !promotedIds.contains($0.routeId) }
+        }
+        
+        return (nearYou, fartherAway, muchFarther)
     }
     
-    /// Separates flat arrivals into "Near You" and "Farther Away" based on distance thresholds
+    /// Separates flat arrivals into "Near You" and "Farther Away" based on distance thresholds.
+    /// Also applies adaptive promotion when nothing is within the "Near You" radius.
     private func separateArrivalsByDistance(
         arrivals: [NearbyTransitResponse],
         from location: CLLocation?
@@ -210,11 +256,75 @@ struct NearbyDashboard: View {
             }
         }
         
+        // Adaptive promotion: if "Near You" is empty, promote the closest arrivals
+        if nearYou.isEmpty && !fartherAway.isEmpty {
+            var sorted = fartherAway
+            sorted.sort { distance(for: $0, from: location) < distance(for: $1, from: location) }
+            let promoteCount = min(6, sorted.count)
+            nearYou = Array(sorted.prefix(promoteCount))
+            fartherAway = Array(sorted.dropFirst(promoteCount))
+        }
+        
         return (nearYou, fartherAway)
     }
 }
 
 // MARK: - Section Headers
+
+/// Adaptive header shown when no stops fall within the "Near You" radius.
+/// Displays the actual distance to the closest promoted result so the user
+/// understands why the results are farther than usual.
+struct ClosestToYouSectionHeader: View {
+    let closestMeters: Double?
+    let updated: Date?
+    var isPromoted: Bool = true
+    
+    private var distanceDisplay: String {
+        guard let meters = closestMeters else { return "Nearby" }
+        let miles = metersToMiles(meters)
+        if miles < 0.1 {
+            return String(format: "%.0f ft away", metersToFeet(meters))
+        }
+        return String(format: "%.1f mi away", miles)
+    }
+    
+    /// Green when showing normal nearby results, yellow when promoted from farther away.
+    private var badgeColor: Color {
+        isPromoted ? AppTheme.Colors.warningYellow : AppTheme.Colors.successGreen
+    }
+    
+    var body: some View {
+        HStack(spacing: 6) {
+            // Closest-to-you badge with walking icon
+            HStack(spacing: 4) {
+                Image(systemName: "figure.walk")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(.white)
+                
+                Text("Closest · \(distanceDisplay)")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(.white)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+                Capsule()
+                    .fill(badgeColor)
+            )
+            
+            Spacer()
+            
+            if let updated = updated {
+                Text(updated, style: .time)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+            }
+        }
+        .padding(.horizontal, AppTheme.Layout.margin)
+        .padding(.top, 6)
+        .padding(.bottom, 4)
+    }
+}
 
 /// "Near You" section header - compact icon-based indicator
 struct NearYouSectionHeader: View {
@@ -298,6 +408,41 @@ struct FartherAwaySectionHeader: View {
     }
 }
 
+/// "Much Farther Away" section header - compact icon-based indicator with car icon
+struct MuchFartherAwaySectionHeader: View {
+    let radiusMeters: Double
+    
+    private var radiusDisplay: String {
+        let miles = metersToMiles(radiusMeters)
+        return String(format: "%.1f mi", miles)
+    }
+    
+    var body: some View {
+        HStack(spacing: 6) {
+            HStack(spacing: 4) {
+                Image(systemName: "car.fill")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(.white)
+                
+                Text(radiusDisplay)
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(.white)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+                Capsule()
+                    .fill(Color.orange)
+            )
+            
+            Spacer()
+        }
+        .padding(.horizontal, AppTheme.Layout.margin)
+        .padding(.top, 10)
+        .padding(.bottom, 4)
+    }
+}
+
 // MARK: - Grouped Route List
 
 struct GroupedRouteList: View {
@@ -309,7 +454,11 @@ struct GroupedRouteList: View {
     var body: some View {
         VStack(spacing: 0) {
             ForEach(Array(groups.enumerated()), id: \.element.id) { index, group in
-                GroupedRouteRow(group: group) { directionIndex in
+                GroupedRouteRow(
+                    group: group,
+                    hasAlert: !viewModel.serviceAlerts.matching(routeId: group.routeId).isEmpty
+                        || !viewModel.serviceAlerts.matching(routeId: group.displayName).isEmpty
+                ) { directionIndex in
                     RouteAnalyticsManager.shared.logInteraction(routeId: group.routeId)
                     Task {
                         await viewModel.selectGroupedRoute(group, directionIndex: directionIndex, userLocation: locationManager.currentLocation)
@@ -353,7 +502,7 @@ struct FlatTransitList: View {
                         RouteAnalyticsManager.shared.logInteraction(routeId: arrival.routeId)
                         Task { await viewModel.selectArrival(arrival, userLocation: locationManager.currentLocation) }
                     } : nil,
-                    userLocation: locationManager.currentLocation
+                    userLocation: viewModel.effectiveLocation(userLocation: locationManager.currentLocation)
                 )
                 if index < arrivals.count - 1 {
                     Divider()

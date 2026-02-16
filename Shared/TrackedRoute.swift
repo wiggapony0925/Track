@@ -14,10 +14,13 @@ struct TrackedRoute: Codable {
     let stopName: String
     let direction: String
     let destination: String?
-    let mode: String // "bus" or "subway"
+    let mode: String // "bus", "subway", "lirr", or "mnr"
     let trackedAt: Date
 
     var isBus: Bool { mode == "bus" }
+    var isLIRR: Bool { mode == "lirr" }
+    var isMNR: Bool { mode == "mnr" }
+    var isCommuterRail: Bool { isLIRR || isMNR }
 
     /// Strips "MTA NYCT_" prefix for display.
     var cleanDisplayName: String {

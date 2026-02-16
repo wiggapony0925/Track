@@ -21,8 +21,8 @@ struct BusArrivalRow: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
-                // Bus route badge (now matches train style)
-                RouteBadge(routeID: shortRouteName, size: .medium)
+                // Bus route badge (pill shape with bus styling)
+                RouteBadge(routeID: shortRouteName, size: .medium, isBus: true)
                     .accessibilityHidden(true)
 
                 // Route info

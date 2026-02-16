@@ -24,7 +24,7 @@ class TestSettingsLoaded:
 
     def test_search_radius_meters(self):
         settings = get_settings()
-        assert settings.app_settings.search_radius_meters == 800
+        assert settings.app_settings.search_radius_meters == 8047
 
     def test_refresh_interval_seconds(self):
         settings = get_settings()
@@ -36,7 +36,7 @@ class TestSettingsLoaded:
 
     def test_max_nearby_results(self):
         settings = get_settings()
-        assert settings.app_settings.max_nearby_results == 20
+        assert settings.app_settings.max_nearby_results == 40
 
     def test_max_arrivals_per_feed(self):
         settings = get_settings()
@@ -44,7 +44,7 @@ class TestSettingsLoaded:
 
     def test_nearby_bus_stops_limit(self):
         settings = get_settings()
-        assert settings.app_settings.nearby_bus_stops_limit == 3
+        assert settings.app_settings.nearby_bus_stops_limit == 10
 
     def test_http_timeout_seconds(self):
         settings = get_settings()
@@ -74,12 +74,12 @@ class TestConfigEndpoint:
         response = client.get("/config")
         assert response.status_code == 200
         data = response.json()
-        assert data["search_radius_meters"] == 800
+        assert data["search_radius_meters"] == 8047
         assert data["refresh_interval_seconds"] == 30
         assert data["nearest_metro_fallback_radius_meters"] == 5000
-        assert data["max_nearby_results"] == 20
+        assert data["max_nearby_results"] == 40
         assert data["max_arrivals_per_feed"] == 10
-        assert data["nearby_bus_stops_limit"] == 3
+        assert data["nearby_bus_stops_limit"] == 10
         assert data["http_timeout_seconds"] == 15.0
         assert data["http_connect_timeout_seconds"] == 10.0
         assert data["http_max_retries"] == 2

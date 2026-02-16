@@ -21,6 +21,9 @@ enum SheetPage: Equatable, Identifiable {
     /// Settings and preferences
     case settings
     
+    /// Full-page service alerts view
+    case serviceAlerts
+    
     /// Widget schedule management
     case widgetSchedules
     
@@ -37,6 +40,8 @@ enum SheetPage: Equatable, Identifiable {
             return "routeDetail-\(group.routeId)"
         case .settings:
             return "settings"
+        case .serviceAlerts:
+            return "serviceAlerts"
         case .widgetSchedules:
             return "widgetSchedules"
         case .scheduleEditor(let schedule):
@@ -53,6 +58,8 @@ enum SheetPage: Equatable, Identifiable {
         case (.routeDetail(let g1, let d1), .routeDetail(let g2, let d2)):
             return g1.routeId == g2.routeId && d1 == d2
         case (.settings, .settings):
+            return true
+        case (.serviceAlerts, .serviceAlerts):
             return true
         case (.widgetSchedules, .widgetSchedules):
             return true

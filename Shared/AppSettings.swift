@@ -55,6 +55,8 @@ struct AppSettings {
     private let _nearYouRadiusMeters: Double
     /// Default radius in meters for "A Little Farther Away" transit section (from settings.json).
     private let _fartherAwayRadiusMeters: Double
+    /// Default radius in meters for "Much Farther Away" transit section (from settings.json).
+    private let _muchFartherAwayRadiusMeters: Double
     
     /// Radius in meters for "Near You" transit section (user-configurable via Settings).
     var nearYouRadiusMeters: Double {
@@ -64,6 +66,11 @@ struct AppSettings {
     /// Radius in meters for "A Little Farther Away" transit section (user-configurable via Settings).
     var fartherAwayRadiusMeters: Double {
         UserDefaults.standard.object(forKey: "farther_away_radius_meters") as? Double ?? _fartherAwayRadiusMeters
+    }
+    
+    /// Radius in meters for "Much Farther Away" transit section (user-configurable via Settings).
+    var muchFartherAwayRadiusMeters: Double {
+        UserDefaults.standard.object(forKey: "much_farther_away_radius_meters") as? Double ?? _muchFartherAwayRadiusMeters
     }
 
 
@@ -124,6 +131,11 @@ struct AppSettings {
     var subwayLineOffsetMeters: Double {
         UserDefaults.standard.object(forKey: "subway_line_offset_meters") as? Double ?? _subwayLineOffsetMeters
     }
+    
+    /// Tolerance in degrees for polyline simplification (Ramer-Douglas-Peucker algorithm).
+    /// Higher values = fewer points = better performance but less detail.
+    /// ~0.0001° = ~11m, ~0.00015° = ~17m at NYC latitude.
+    let polylineSimplificationTolerance: Double
 
     // MARK: - Init
 
@@ -133,8 +145,8 @@ struct AppSettings {
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             // Fall back to hardcoded defaults if settings.json is missing
             print("[AppSettings] WARNING: settings.json not found in bundle — using hardcoded defaults")
-            self.defaultSearchRadiusMeters = 800
-            self.nearestMetroFallbackRadiusMeters = 5000
+            self.defaultSearchRadiusMeters = 8047
+            self.nearestMetroFallbackRadiusMeters = 8047
             self.refreshIntervalSeconds = 30
             self.prodBaseURL = "https://track-api.onrender.com"
             self.localBaseURL = "http://127.0.0.1:8000"
@@ -147,31 +159,33 @@ struct AppSettings {
             self.stationVisibilityZoomMeters = 3500
             self.liveActivityStaleDateSeconds = 3600
             self.liveActivityDismissalSeconds = 120
-            self._nearYouRadiusMeters = 400
-            self._fartherAwayRadiusMeters = 1200
+            self._nearYouRadiusMeters = 2414
+            self._fartherAwayRadiusMeters = 4023
+            self._muchFartherAwayRadiusMeters = 8047
             self.distanceFilterMeters = 50
             self.commutePatternMatchRadiusMeters = 200
             self.stopPassedThresholdMeters = 100
             self.userZoomDistance = 3000
             self.minCameraDistance = 300
-            self.maxCameraDistance = 80_000
+            self.maxCameraDistance = 600_000
             self.smartZoomMinAltitude = 2400
             self.smartZoomMaxAltitude = 20000
             self.smartZoomPaddingMultiplier = 4.5
             self.nycCenterLat = 40.7580
             self.nycCenterLon = -73.9855
-            self.boundsCenterLat = 40.71
-            self.boundsCenterLon = -73.38
-            self.boundsLatDelta = 0.60
-            self.boundsLonDelta = 2.00
+            self.boundsCenterLat = 41.10
+            self.boundsCenterLon = -73.20
+            self.boundsLatDelta = 2.40
+            self.boundsLonDelta = 4.00
             self.serviceAreaMinLat = 40.40
-            self.serviceAreaMaxLat = 41.10
+            self.serviceAreaMaxLat = 42.20
             self.serviceAreaMinLon = -74.35
-            self.serviceAreaMaxLon = -72.40
+            self.serviceAreaMaxLon = -71.70
             self.simulationEasingEnabled = true
             self.showLIRRByDefault = true
             self.showMNRByDefault = true
             self._subwayLineOffsetMeters = 12.0
+            self.polylineSimplificationTolerance = 0.00015
             return
         }
 
@@ -180,8 +194,8 @@ struct AppSettings {
         let location = json["location"] as? [String: Any] ?? [:]
         let map = json["map"] as? [String: Any] ?? [:]
 
-        self.defaultSearchRadiusMeters = api["default_search_radius_meters"] as? Int ?? 800
-        self.nearestMetroFallbackRadiusMeters = api["nearest_metro_fallback_radius_meters"] as? Int ?? 5000
+        self.defaultSearchRadiusMeters = api["default_search_radius_meters"] as? Int ?? 8047
+        self.nearestMetroFallbackRadiusMeters = api["nearest_metro_fallback_radius_meters"] as? Int ?? 8047
         self.refreshIntervalSeconds = api["refresh_interval_seconds"] as? Int ?? 30
         self.prodBaseURL = api["prod_base_url"] as? String ?? "https://track-api.onrender.com"
         self.localBaseURL = api["local_base_url"] as? String ?? "http://127.0.0.1:8000"
@@ -195,8 +209,9 @@ struct AppSettings {
         self.stationVisibilityZoomMeters = display["station_visibility_zoom_meters"] as? Double ?? 3500
         self.liveActivityStaleDateSeconds = display["live_activity_stale_date_seconds"] as? Double ?? 3600
         self.liveActivityDismissalSeconds = display["live_activity_dismissal_seconds"] as? Double ?? 120
-        self._nearYouRadiusMeters = display["near_you_radius_meters"] as? Double ?? 400
-        self._fartherAwayRadiusMeters = display["farther_away_radius_meters"] as? Double ?? 1200
+        self._nearYouRadiusMeters = display["near_you_radius_meters"] as? Double ?? 2414
+        self._fartherAwayRadiusMeters = display["farther_away_radius_meters"] as? Double ?? 4023
+        self._muchFartherAwayRadiusMeters = display["much_farther_away_radius_meters"] as? Double ?? 8047
 
 
         self.distanceFilterMeters = location["distance_filter_meters"] as? Double ?? 50
@@ -223,5 +238,6 @@ struct AppSettings {
         self.showLIRRByDefault = map["show_lirr_by_default"] as? Bool ?? true
         self.showMNRByDefault = map["show_mnr_by_default"] as? Bool ?? true
         self._subwayLineOffsetMeters = map["subway_line_offset_meters"] as? Double ?? 12.0
+        self.polylineSimplificationTolerance = map["polyline_simplification_tolerance"] as? Double ?? 0.00015
     }
 }

@@ -32,8 +32,20 @@ struct UniversalBottomSheet<Content: View>: View {
     /// Current sheet detent (height)
     @Binding var sheetDetent: PresentationDetent
     
+    /// Theme setting — must be read here so the sheet inherits the correct color scheme.
+    @AppStorage("appTheme") private var appTheme = "system"
+    
     /// Content builder that maps SheetPage to actual views
     let content: (SheetPage) -> Content
+    
+    /// Maps the appTheme string to a ColorScheme for the sheet.
+    private var colorScheme: ColorScheme? {
+        switch appTheme {
+        case "dark": return .dark
+        case "light": return .light
+        default: return nil
+        }
+    }
     
     var body: some View {
         // Page content with transitions
@@ -46,7 +58,9 @@ struct UniversalBottomSheet<Content: View>: View {
             .presentationDetents([.fraction(0.4), .large], selection: $sheetDetent)
             .presentationDragIndicator(.visible)
             .presentationBackgroundInteraction(.enabled)
+            .presentationBackground(AppTheme.Colors.background)
             .interactiveDismissDisabled()
+            .preferredColorScheme(colorScheme)
     }
 }
 

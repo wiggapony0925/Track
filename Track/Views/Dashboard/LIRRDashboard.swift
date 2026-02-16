@@ -18,9 +18,9 @@ struct LIRRDashboard: View {
     let sheetNavigator: SheetNavigator
     let lastUpdated: Date?
     
-    /// Grouped LIRR arrivals for tap-to-detail navigation
+    /// Grouped LIRR arrivals for tap-to-detail navigation (from backend)
     private var groupedArrivals: [GroupedNearbyTransitResponse] {
-        viewModel.groupedLIRRArrivals
+        viewModel.nearbyGroupedLIRRArrivals
     }
     
     /// Get filtered arrivals based on search

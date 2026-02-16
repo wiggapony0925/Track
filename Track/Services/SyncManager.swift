@@ -8,10 +8,9 @@
 //
 //  Currently syncs:
 //  - Widget schedules (cross-device sync)
-//
-//  Future:
+//  - User settings (cross-device sync)
+//  - Favorites (cross-device sync)
 //  - Commute patterns (smart suggestions)
-//  - Favorites (when feature is added)
 //
 
 import Foundation
@@ -48,6 +47,12 @@ class SyncManager: ObservableObject {
         do {
             // Sync schedules (download from cloud)
             try await syncSchedules()
+            
+            // Sync user settings (download from cloud → @AppStorage)
+            try await pullUserSettings()
+            
+            // Sync favorites (download from cloud)
+            await FavoritesManager.shared.refresh()
             
             // Update last sync date
             lastSyncDate = Date()
@@ -131,6 +136,119 @@ class SyncManager: ObservableObject {
             print("[SyncManager] Deleted schedule \(scheduleId)")
         } catch {
             print("[SyncManager] Failed to delete schedule: \(error)")
+        }
+    }
+    
+    // MARK: - User Settings Sync
+    
+    /// Pull settings from Supabase and write into @AppStorage (UserDefaults)
+    func pullUserSettings() async throws {
+        guard let settings = try await SupabaseManager.shared.fetchUserSettings() else {
+            print("[SyncManager] No user settings on server yet")
+            return
+        }
+        
+        let store = UserDefaults.standard
+        
+        if let theme = settings.preferredTheme {
+            store.set(theme, forKey: "appTheme")
+        }
+        if let v = settings.nearYouRadiusMeters {
+            store.set(v, forKey: "near_you_radius_meters")
+        }
+        if let v = settings.fartherAwayRadiusMeters {
+            store.set(v, forKey: "farther_away_radius_meters")
+        }
+        if let v = settings.muchFartherAwayRadiusMeters {
+            store.set(v, forKey: "much_farther_away_radius_meters")
+        }
+        if let v = settings.showSystemMap {
+            store.set(v, forKey: "show_system_map")
+        }
+        if let v = settings.subwayLineOffsetMeters {
+            store.set(v, forKey: "subway_line_offset_meters")
+        }
+        if let v = settings.hapticsEnabled {
+            store.set(v, forKey: "haptics_enabled")
+        }
+        if let v = settings.autoRefreshEnabled {
+            store.set(v, forKey: "auto_refresh_enabled")
+        }
+        if let v = settings.dragToSearch {
+            store.set(v, forKey: "drag_to_search")
+        }
+        if let v = settings.devUseLocalhost {
+            store.set(v, forKey: "dev_use_localhost")
+        }
+        if let v = settings.devCustomIp {
+            store.set(v, forKey: "dev_custom_ip")
+        }
+        
+        print("[SyncManager] Pulled user settings from cloud")
+    }
+    
+    /// Push current @AppStorage values to Supabase
+    func pushUserSettings() async {
+        guard let userIdString = defaults.string(forKey: "supabase_user_id"),
+              let userId = UUID(uuidString: userIdString) else {
+            return
+        }
+        
+        let store = UserDefaults.standard
+        
+        let settings = CloudUserSettings(
+            userId: userId,
+            preferredTheme: store.string(forKey: "appTheme") ?? "system",
+            nearYouRadiusMeters: store.double(forKey: "near_you_radius_meters"),
+            fartherAwayRadiusMeters: store.double(forKey: "farther_away_radius_meters"),
+            muchFartherAwayRadiusMeters: store.double(forKey: "much_farther_away_radius_meters"),
+            showSystemMap: store.object(forKey: "show_system_map") as? Bool ?? true,
+            subwayLineOffsetMeters: store.double(forKey: "subway_line_offset_meters"),
+            hapticsEnabled: store.object(forKey: "haptics_enabled") as? Bool ?? true,
+            autoRefreshEnabled: store.object(forKey: "auto_refresh_enabled") as? Bool ?? true,
+            notificationsEnabled: true,
+            dragToSearch: store.object(forKey: "drag_to_search") as? Bool ?? true,
+            devUseLocalhost: store.bool(forKey: "dev_use_localhost"),
+            devCustomIp: store.string(forKey: "dev_custom_ip") ?? ""
+        )
+        
+        do {
+            try await SupabaseManager.shared.saveUserSettings(settings)
+            print("[SyncManager] Pushed user settings to cloud")
+        } catch {
+            print("[SyncManager] Failed to push settings: \(error)")
+        }
+    }
+    
+    // MARK: - Commute Patterns Sync
+    
+    /// Upload a commute pattern to Supabase for cross-device sync
+    func syncCommutePattern(
+        routeId: String,
+        direction: String,
+        startLatitude: Double,
+        startLongitude: Double,
+        destinationStationId: String,
+        destinationName: String,
+        timeOfDay: Int,
+        dayOfWeek: Int,
+        frequency: Int
+    ) async {
+        do {
+            try await SupabaseManager.shared.syncCommutePattern(
+                routeId: routeId,
+                direction: direction,
+                startLatitude: startLatitude,
+                startLongitude: startLongitude,
+                destinationStationId: destinationStationId,
+                destinationName: destinationName,
+                timeOfDay: timeOfDay,
+                dayOfWeek: dayOfWeek,
+                frequency: frequency
+            )
+            print("[SyncManager] Synced commute pattern for \(routeId)")
+        } catch {
+            print("[SyncManager] Failed to sync commute pattern: \(error)")
         }
     }
     

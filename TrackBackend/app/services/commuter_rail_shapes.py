@@ -110,6 +110,69 @@ def _parse_route_shapes(trips_path: Path) -> dict[str, set[str]]:
     return dict(route_shapes)
 
 
+def _parse_route_shapes_by_direction(
+    trips_path: Path,
+) -> dict[str, dict[int, set[str]]]:
+    """Parse trips.txt to map route_id → {direction_id: set of shape_ids}."""
+    result: dict[str, dict[int, set[str]]] = defaultdict(lambda: defaultdict(set))
+    if not trips_path.exists():
+        TrackLogger.warning(f"trips.txt not found: {trips_path}")
+        return dict(result)
+
+    with open(trips_path, encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            route_id = row.get("route_id", "").strip().strip('"')
+            shape_id = row.get("shape_id", "").strip().strip('"')
+            if not route_id or not shape_id:
+                continue
+            try:
+                direction = int(row.get("direction_id", "0").strip().strip('"'))
+            except ValueError:
+                direction = 0
+            result[route_id][direction].add(shape_id)
+
+    return dict(result)
+
+
+def _parse_direction_headsigns(
+    trips_path: Path,
+) -> dict[str, dict[int, str]]:
+    """Parse trips.txt to get the most common headsign per route/direction.
+
+    Returns: {route_id: {direction_id: headsign}}
+    """
+    from collections import Counter
+
+    if not trips_path.exists():
+        return {}
+
+    counts: dict[str, dict[int, Counter]] = defaultdict(lambda: defaultdict(Counter))
+
+    with open(trips_path, encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            route_id = row.get("route_id", "").strip().strip('"')
+            headsign = row.get("trip_headsign", "").strip().strip('"')
+            if not route_id or not headsign:
+                continue
+            # Skip bus-like headsigns (contain "(Bus)")
+            if "(Bus)" in headsign:
+                continue
+            try:
+                direction = int(row.get("direction_id", "0").strip().strip('"'))
+            except ValueError:
+                direction = 0
+            counts[route_id][direction][headsign] += 1
+
+    result: dict[str, dict[int, str]] = {}
+    for route_id, dir_map in counts.items():
+        result[route_id] = {}
+        for direction, counter in dir_map.items():
+            result[route_id][direction] = counter.most_common(1)[0][0]
+    return result
+
+
 def _deduplicate_shapes(
     shape_ids: set[str],
     shapes_data: dict[str, list[ShapePoint]],
@@ -167,6 +230,16 @@ def _lirr_route_shapes() -> dict[str, set[str]]:
     return _parse_route_shapes(_LIRR_DIR / "trips.txt")
 
 
+@lru_cache(maxsize=1)
+def _lirr_route_shapes_by_dir() -> dict[str, dict[int, set[str]]]:
+    return _parse_route_shapes_by_direction(_LIRR_DIR / "trips.txt")
+
+
+@lru_cache(maxsize=1)
+def _lirr_headsigns() -> dict[str, dict[int, str]]:
+    return _parse_direction_headsigns(_LIRR_DIR / "trips.txt")
+
+
 def get_all_lirr_lines() -> list[dict]:
     """Return polylines for all LIRR branches.
 
@@ -221,6 +294,16 @@ def _mnr_route_shapes() -> dict[str, set[str]]:
     return _parse_route_shapes(_MNR_DIR / "trips.txt")
 
 
+@lru_cache(maxsize=1)
+def _mnr_route_shapes_by_dir() -> dict[str, dict[int, set[str]]]:
+    return _parse_route_shapes_by_direction(_MNR_DIR / "trips.txt")
+
+
+@lru_cache(maxsize=1)
+def _mnr_headsigns() -> dict[str, dict[int, str]]:
+    return _parse_direction_headsigns(_MNR_DIR / "trips.txt")
+
+
 def get_all_mnr_lines() -> list[dict]:
     """Return polylines for all Metro-North branches.
 
@@ -254,3 +337,154 @@ def get_all_mnr_lines() -> list[dict]:
 
     TrackLogger.info(f"MNR shapes: {len(results)} branches loaded")
     return results
+
+
+# ---------------------------------------------------------------------------
+# Route name lookups (for nearby endpoint display names)
+# ---------------------------------------------------------------------------
+
+def get_lirr_route_name(route_id: str) -> str:
+    """Return the human-readable LIRR branch name for a numeric route_id.
+
+    Falls back to the raw route_id if not found.
+    """
+    routes = _lirr_routes()
+    route = routes.get(route_id)
+    return route.name if route else route_id
+
+
+def get_mnr_route_name(route_id: str) -> str:
+    """Return the human-readable Metro-North line name for a numeric route_id.
+
+    Falls back to the raw route_id if not found.
+    """
+    routes = _mnr_routes()
+    route = routes.get(route_id)
+    return route.name if route else route_id
+
+
+def get_lirr_route_color(route_id: str) -> str:
+    """Return the hex color for a LIRR route_id. Falls back to grey."""
+    routes = _lirr_routes()
+    route = routes.get(route_id)
+    return f"#{route.color_hex}" if route else "#4D5357"
+
+
+def get_mnr_route_color(route_id: str) -> str:
+    """Return the hex color for a Metro-North route_id. Falls back to grey."""
+    routes = _mnr_routes()
+    route = routes.get(route_id)
+    return f"#{route.color_hex}" if route else "#4D5357"
+
+
+# ---------------------------------------------------------------------------
+# Single-branch shape lookup (for route detail view)
+# ---------------------------------------------------------------------------
+
+def get_single_lirr_line(route_id: str) -> dict | None:
+    """Return shape data for a single LIRR branch by numeric route_id.
+
+    Returns: {route_id, name, color_hex, polylines, directions}
+    """
+    routes = _lirr_routes()
+    route = routes.get(route_id)
+    if not route:
+        return None
+
+    dir_shapes = _lirr_route_shapes_by_dir().get(route_id, {})
+    shapes_data = _lirr_shapes()
+    headsigns = _lirr_headsigns().get(route_id, {})
+
+    # Also fall back to the flat map for overall polylines
+    route_shapes = _lirr_route_shapes()
+    raw_shape_ids = route_shapes.get(route_id, set())
+    if not raw_shape_ids:
+        return None
+
+    unique_sids = _deduplicate_shapes(raw_shape_ids, shapes_data)
+    polylines: list[list[tuple[float, float]]] = []
+    for sid in unique_sids:
+        pts = shapes_data.get(sid, [])
+        if pts:
+            polylines.append([(p.lat, p.lon) for p in pts])
+
+    if not polylines:
+        return None
+
+    # Build per-direction data
+    directions: list[dict] = []
+    for direction_id in sorted(dir_shapes.keys()):
+        dir_sids = _deduplicate_shapes(dir_shapes[direction_id], shapes_data)
+        dir_polys: list[list[tuple[float, float]]] = []
+        for sid in dir_sids:
+            pts = shapes_data.get(sid, [])
+            if pts:
+                dir_polys.append([(p.lat, p.lon) for p in pts])
+        if dir_polys:
+            directions.append({
+                "direction_id": direction_id,
+                "headsign": headsigns.get(direction_id, ""),
+                "polylines": dir_polys,
+            })
+
+    return {
+        "route_id": f"LIRR_{route_id}",
+        "name": route.name,
+        "color_hex": route.color_hex,
+        "polylines": polylines,
+        "directions": directions,
+    }
+
+
+def get_single_mnr_line(route_id: str) -> dict | None:
+    """Return shape data for a single Metro-North line by numeric route_id.
+
+    Returns: {route_id, name, color_hex, polylines, directions}
+    """
+    routes = _mnr_routes()
+    route = routes.get(route_id)
+    if not route:
+        return None
+
+    dir_shapes = _mnr_route_shapes_by_dir().get(route_id, {})
+    shapes_data = _mnr_shapes()
+    headsigns = _mnr_headsigns().get(route_id, {})
+
+    route_shapes = _mnr_route_shapes()
+    raw_shape_ids = route_shapes.get(route_id, set())
+    if not raw_shape_ids:
+        return None
+
+    unique_sids = _deduplicate_shapes(raw_shape_ids, shapes_data)
+    polylines: list[list[tuple[float, float]]] = []
+    for sid in unique_sids:
+        pts = shapes_data.get(sid, [])
+        if pts:
+            polylines.append([(p.lat, p.lon) for p in pts])
+
+    if not polylines:
+        return None
+
+    # Build per-direction data
+    directions: list[dict] = []
+    for direction_id in sorted(dir_shapes.keys()):
+        dir_sids = _deduplicate_shapes(dir_shapes[direction_id], shapes_data)
+        dir_polys: list[list[tuple[float, float]]] = []
+        for sid in dir_sids:
+            pts = shapes_data.get(sid, [])
+            if pts:
+                dir_polys.append([(p.lat, p.lon) for p in pts])
+        if dir_polys:
+            directions.append({
+                "direction_id": direction_id,
+                "headsign": headsigns.get(direction_id, ""),
+                "polylines": dir_polys,
+            })
+
+    return {
+        "route_id": f"MNR_{route_id}",
+        "name": route.name,
+        "color_hex": route.color_hex,
+        "polylines": polylines,
+        "directions": directions,
+    }

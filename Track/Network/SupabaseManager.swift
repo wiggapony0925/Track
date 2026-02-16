@@ -168,6 +168,23 @@ struct CloudSchedule: Codable, Identifiable {
 
 // MARK: - Apple Sign-In Credentials
 
+/// Synced user settings stored in Supabase
+struct CloudUserSettings: Codable {
+    let userId: UUID
+    var preferredTheme: String?
+    var nearYouRadiusMeters: Double?
+    var fartherAwayRadiusMeters: Double?
+    var muchFartherAwayRadiusMeters: Double?
+    var showSystemMap: Bool?
+    var subwayLineOffsetMeters: Double?
+    var hapticsEnabled: Bool?
+    var autoRefreshEnabled: Bool?
+    var notificationsEnabled: Bool?
+    var dragToSearch: Bool?
+    var devUseLocalhost: Bool?
+    var devCustomIp: String?
+}
+
 /// Stores Apple Sign-In credentials for Supabase auth
 struct AppleSignInCredentials {
     let userId: String
@@ -664,6 +681,60 @@ class SupabaseManager: ObservableObject {
         guard let httpResponse = response as? HTTPURLResponse,
               (200...299).contains(httpResponse.statusCode) else {
             throw SupabaseError.deleteFailed
+        }
+    }
+    
+    // MARK: - User Settings
+    
+    /// Fetch user settings from Supabase
+    func fetchUserSettings() async throws -> CloudUserSettings? {
+        guard let userId = currentUser?.id else { return nil }
+        
+        let url = baseURL.appendingPathComponent("rest/v1/user_settings")
+        var urlComponents = URLComponents(url: url, resolvingAgainstBaseURL: false)!
+        urlComponents.queryItems = [
+            URLQueryItem(name: "user_id", value: "eq.\(userId.uuidString)"),
+            URLQueryItem(name: "select", value: "*")
+        ]
+        
+        var request = URLRequest(url: url)
+        request.url = urlComponents.url
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(apiKey, forHTTPHeaderField: "apikey")
+        if let token = accessToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        
+        let (data, _) = try await URLSession.shared.data(for: request)
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let results = try decoder.decode([CloudUserSettings].self, from: data)
+        return results.first
+    }
+    
+    /// Save user settings to Supabase (upsert)
+    func saveUserSettings(_ settings: CloudUserSettings) async throws {
+        guard currentUser != nil else { throw SupabaseError.unauthorized }
+        
+        let url = baseURL.appendingPathComponent("rest/v1/user_settings")
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(apiKey, forHTTPHeaderField: "apikey")
+        request.setValue("return=representation,resolution=merge-duplicates", forHTTPHeaderField: "Prefer")
+        if let token = accessToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        
+        let encoder = JSONEncoder()
+        encoder.keyEncodingStrategy = .convertToSnakeCase
+        request.httpBody = try encoder.encode(settings)
+        
+        let (_, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...299).contains(httpResponse.statusCode) else {
+            throw SupabaseError.upsertFailed
         }
     }
     

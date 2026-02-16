@@ -44,6 +44,15 @@ class RouteStopEntry(NamedTuple):
     sequence: int
 
 
+class DirectionData(NamedTuple):
+    """Polylines and stops for one GTFS direction of a route."""
+
+    direction_id: int
+    headsign: str
+    polylines: list[list[tuple[float, float]]]
+    stops: list[RouteStopEntry]
+
+
 # ---------------------------------------------------------------------------
 # Shapes: shape_id → list of (lat, lon) in order
 # ---------------------------------------------------------------------------
@@ -105,45 +114,44 @@ def _load_route_shapes() -> dict[str, dict[int, list[str]]]:
                 direction = 0
             all_shapes[route_id][direction].add(shape_id)
 
-    # Filter to unique branches (ignore sub-sequences and near-duplicates
-    # of longer trips).  Two shapes whose stop sets overlap ≥ 60% (of the
-    # smaller set) are considered the same physical track — keep the longer.
+    # Two-pass dedup: keep the longest shape for each corridor, then add
+    # any shape that contributes at least one unique stop (i.e. a branch).
+    # This preserves Lefferts Blvd, Rockaway Park, and similar branches
+    # that share a trunk with the main line but diverge at a junction.
     shape_stops_map = _load_shape_stops()
     result: dict[str, dict[int, list[str]]] = {}
-    
-    _OVERLAP_THRESHOLD = 0.60  # 60 % shared stops → same corridor
 
     for route_id, dir_map in all_shapes.items():
         result[route_id] = {}
         for direction, shape_ids in dir_map.items():
-            # Sort by stop count descending so we keep the longest variant
+            # Sort by stop count descending so the longest variant wins
             sorted_sids = sorted(
                 list(shape_ids),
                 key=lambda sid: len(shape_stops_map.get(sid, [])),
-                reverse=True
+                reverse=True,
             )
-            
+
             final_sids: list[str] = []
-            seen_stop_sets: list[set[str]] = []
-            
+            covered_stops: set[str] = set()
+
             for sid in sorted_sids:
                 stops = set(shape_stops_map.get(sid, []))
                 if not stops:
                     continue
-                
-                # Check if this shape overlaps heavily with one we already kept
-                is_redundant = False
-                for existing_set in seen_stop_sets:
-                    overlap = len(stops & existing_set)
-                    smaller = min(len(stops), len(existing_set))
-                    if smaller > 0 and overlap / smaller >= _OVERLAP_THRESHOLD:
-                        is_redundant = True
-                        break
-                
-                if not is_redundant:
+
+                unique_stops = stops - covered_stops
+
+                if not final_sids:
+                    # Always keep the longest shape as the baseline
                     final_sids.append(sid)
-                    seen_stop_sets.append(stops)
-            
+                    covered_stops.update(stops)
+                elif unique_stops:
+                    # This shape serves at least one stop not yet covered
+                    # → it's a real branch (e.g. Lefferts Blvd, Rockaway Park)
+                    final_sids.append(sid)
+                    covered_stops.update(stops)
+                # else: pure subset of already-kept shapes → skip
+
             result[route_id][direction] = final_sids
 
     return result
@@ -160,6 +168,39 @@ def _load_shape_stops() -> dict[str, list[str]]:
         return {}
     with open(_SHAPE_STOPS_PATH, encoding="utf-8") as f:
         return json.load(f)
+
+
+@lru_cache(maxsize=1)
+def _load_direction_headsigns() -> dict[str, dict[int, str]]:
+    """Parse trips.txt to find the most common headsign per route/direction.
+
+    Returns: {route_id: {direction_id: headsign_str}}
+    """
+    if not _TRIPS_PATH.exists():
+        return {}
+
+    from collections import Counter
+    counts: dict[str, dict[int, Counter]] = defaultdict(lambda: defaultdict(Counter))
+
+    with open(_TRIPS_PATH, encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            route_id = row.get("route_id", "").strip()
+            headsign = row.get("trip_headsign", "").strip()
+            if not route_id or not headsign:
+                continue
+            try:
+                direction = int(row.get("direction_id", "0"))
+            except ValueError:
+                direction = 0
+            counts[route_id][direction][headsign] += 1
+
+    result: dict[str, dict[int, str]] = {}
+    for route_id, dir_map in counts.items():
+        result[route_id] = {}
+        for direction, counter in dir_map.items():
+            result[route_id][direction] = counter.most_common(1)[0][0]
+    return result
 
 
 def _get_stops_for_shape(shape_id: str) -> list[RouteStopEntry]:
@@ -197,10 +238,13 @@ def _get_stops_for_shape(shape_id: str) -> list[RouteStopEntry]:
 
 def get_subway_route_shape(
     route_id: str,
-) -> tuple[list[list[tuple[float, float]]], list[RouteStopEntry]] | None:
+) -> tuple[list[list[tuple[float, float]]], list[RouteStopEntry], list[DirectionData]] | None:
     """Return the full route geometry and ordered stops for a subway line.
 
-    Supports branched lines (returns all branch polylines and a combined stop list).
+    Returns:
+        (all_polylines, all_stops, direction_data_list)
+        - all_polylines / all_stops: merged across both directions (backwards compat)
+        - direction_data_list: per-direction split with polylines, stops, headsign
     """
     route_shapes = _load_route_shapes()
     direction_shapes = route_shapes.get(route_id)
@@ -208,29 +252,49 @@ def get_subway_route_shape(
         return None
 
     shapes_data = _load_shapes()
+    headsigns = _load_direction_headsigns().get(route_id, {})
+
     polylines: list[list[tuple[float, float]]] = []
     all_stops: list[RouteStopEntry] = []
     seen_stop_ids: set[str] = set()
+    direction_data: list[DirectionData] = []
 
     for direction_id, shape_ids in sorted(direction_shapes.items()):
+        dir_polylines: list[list[tuple[float, float]]] = []
+        dir_stops: list[RouteStopEntry] = []
+        dir_seen: set[str] = set()
+
         for shape_id in shape_ids:
             shape_points = shapes_data.get(shape_id)
             if shape_points:
-                polylines.append([(p.lat, p.lon) for p in shape_points])
+                coords = [(p.lat, p.lon) for p in shape_points]
+                polylines.append(coords)
+                dir_polylines.append(coords)
 
-            # Collect unique stops from all shapes to ensure branches (Lefferts, Far Rockaway) are covered
+            # Collect unique stops from all shapes to ensure branches are covered
             current_shape_stops = _get_stops_for_shape(shape_id)
             for stop in current_shape_stops:
                 if stop.stop_id not in seen_stop_ids:
                     all_stops.append(stop)
                     seen_stop_ids.add(stop.stop_id)
+                if stop.stop_id not in dir_seen:
+                    dir_stops.append(stop)
+                    dir_seen.add(stop.stop_id)
+
+        if dir_polylines:
+            direction_data.append(DirectionData(
+                direction_id=direction_id,
+                headsign=headsigns.get(direction_id, ""),
+                polylines=dir_polylines,
+                stops=dir_stops,
+            ))
 
     if not polylines:
         return None
 
     # Final sort of stops by sequence is not perfectly valid across branches, 
     # but the client usually just needs the collection of stops served.
-    return polylines, all_stops
+    return polylines, all_stops, direction_data
 
 
 def get_all_subway_stations() -> list[dict]:

@@ -23,6 +23,13 @@ struct MapControlsOverlay: View {
     let currentMapDistance: Double?
     let sheetHeightFraction: CGFloat
     
+    /// Called when the user taps the recenter button — HomeView uses this
+    /// to dismiss drag-to-search and snap back to the real GPS location.
+    var onRecenter: (() -> Void)?
+    
+    /// Called when the user taps the alert bell — HomeView navigates to alerts page.
+    var onAlertsTapped: (() -> Void)?
+    
     var body: some View {
         GeometryReader { geometry in
             ZStack {
@@ -31,11 +38,6 @@ struct MapControlsOverlay: View {
                     HStack(alignment: .top) {
                         // Left: Banners
                         VStack(alignment: .leading, spacing: 8) {
-                            // Search pin indicator
-                            if viewModel.isSearchPinActive {
-                                searchPinBanner
-                            }
-                            
                             // Selected route indicator
                             if viewModel.selectedRouteId != nil {
                                 selectedRouteBanner
@@ -47,7 +49,7 @@ struct MapControlsOverlay: View {
                         // Right: Map controls (under compass area)
                         if sheetDetent != .large {
                             mapControlButtons
-                                .padding(.top, 50) // Position below compass
+                                .padding(.top, 60) // Position below compass
                         }
                     }
                     .padding(.horizontal, AppTheme.Layout.margin)
@@ -62,35 +64,72 @@ struct MapControlsOverlay: View {
     // MARK: - Map Control Buttons
     
     private var mapControlButtons: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: 12) {
+            // Service Alerts Button
+            Button {
+                onAlertsTapped?()
+                HapticManager.impact(.medium)
+            } label: {
+                ZStack(alignment: .topTrailing) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(
+                            viewModel.serviceAlerts.isEmpty
+                                ? AppTheme.Colors.textPrimary
+                                : AppTheme.Colors.warningYellow
+                        )
+                        .frame(width: 44, height: 44)
+                        .background(.ultraThinMaterial)
+                        .clipShape(Circle())
+                        .shadow(color: .black.opacity(0.10), radius: 4, x: 0, y: 2)
+                    
+                    // Badge count
+                    if !viewModel.serviceAlerts.isEmpty {
+                        Text("\(min(viewModel.serviceAlerts.count, 99))")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(.white)
+                            .frame(minWidth: 18, minHeight: 18)
+                            .background(
+                                Circle().fill(
+                                    viewModel.serviceAlerts.contains(where: { $0.severity == "severe" })
+                                        ? AppTheme.Colors.alertRed
+                                        : AppTheme.Colors.warningYellow
+                                )
+                            )
+                            .offset(x: 4, y: -4)
+                    }
+                }
+            }
+            .accessibilityLabel("Service alerts, \(viewModel.serviceAlerts.count) active")
+            
             // 3D / 2D Toggle
             Button {
                 toggle3DMode()
             } label: {
-                Text(is3DMode ? "2D" : "3D")
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
-                    .foregroundColor(AppTheme.Colors.textPrimary)
-                    .frame(width: 40, height: 40)
+                Image(systemName: is3DMode ? "square.stack.3d.up.slash" : "square.stack.3d.up")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(is3DMode ? AppTheme.Colors.mtaBlue : AppTheme.Colors.textPrimary)
+                    .frame(width: 44, height: 44)
+                    .background(.ultraThinMaterial)
+                    .clipShape(Circle())
+                    .shadow(color: .black.opacity(0.10), radius: 4, x: 0, y: 2)
             }
             .accessibilityLabel(is3DMode ? "Switch to 2D" : "Switch to 3D")
-            
-            Divider()
-                .frame(width: 24)
             
             // Recenter / Location Button
             Button {
                 centerMap()
             } label: {
                 Image(systemName: "location.fill")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.system(size: 16, weight: .medium))
                     .foregroundColor(AppTheme.Colors.mtaBlue)
-                    .frame(width: 40, height: 40)
+                    .frame(width: 44, height: 44)
+                    .background(.ultraThinMaterial)
+                    .clipShape(Circle())
+                    .shadow(color: .black.opacity(0.10), radius: 4, x: 0, y: 2)
             }
             .accessibilityLabel("Recenter on my location")
         }
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .shadow(color: .black.opacity(0.12), radius: 4, x: 0, y: 2)
     }
     
     // MARK: - Computed Properties
@@ -112,7 +151,7 @@ struct MapControlsOverlay: View {
         withAnimation(.easeInOut(duration: 0.8)) {
             is3DMode.toggle()
             
-            let center = currentMapCenter ?? locationManager.currentLocation?.coordinate ?? viewModel.searchPinCoordinate ?? AppTheme.MapConfig.nycCenter
+            let center = currentMapCenter ?? locationManager.currentLocation?.coordinate ?? AppTheme.MapConfig.nycCenter
             let distance = currentMapDistance ?? AppTheme.MapConfig.userZoomDistance
             
             cameraPosition = .camera(MapCamera(
@@ -125,6 +164,9 @@ struct MapControlsOverlay: View {
     }
     
     private func centerMap() {
+        // Dismiss drag-to-search and restore real location data
+        onRecenter?()
+        
         // Collapse the sheet to half-height to reveal the map
         withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
             sheetDetent = .fraction(0.4)
@@ -143,50 +185,37 @@ struct MapControlsOverlay: View {
         }
     }
     
-    // MARK: - Search Pin Banner
-    
-    private var searchPinBanner: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "mappin.circle.fill")
-                .foregroundColor(AppTheme.Colors.mtaBlue)
-            Text("Searching from pin location")
-                .font(.custom("Helvetica", size: 13))
-                .foregroundColor(AppTheme.Colors.textPrimary)
-            Spacer()
-            Button {
-                Task {
-                    await viewModel.clearSearchPin(userLocation: locationManager.currentLocation)
-                }
-            } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .foregroundColor(AppTheme.Colors.textSecondary)
-            }
-            .accessibilityLabel("Clear search pin")
-        }
-        .padding(.horizontal, AppTheme.Layout.cardPadding)
-        .padding(.vertical, 8)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius))
-    }
-    
     // MARK: - Selected Route Banner
     
     private var selectedRouteBanner: some View {
         HStack(spacing: 8) {
-            let isSubway = viewModel.selectedGroupedRoute?.isBus == false
+            let group = viewModel.selectedGroupedRoute
+            
+            // Mode-specific icon
+            let iconName: String = {
+                if group?.isBus == true { return "bus.fill" }
+                if group?.isLIRR == true { return "train.side.front.car" }
+                if group?.isMNR == true { return "train.side.rear.car" }
+                return "tram.fill" // subway default
+            }()
             
             ZStack {
                 Circle()
                     .fill(selectedRouteColor)
                     .frame(width: 24, height: 24)
-                Image(systemName: isSubway ? "tram.fill" : "bus.fill")
+                Image(systemName: iconName)
                     .font(.system(size: 11, weight: .bold))
                     .foregroundColor(AppTheme.Colors.textOnColor)
             }
             
             if let routeId = viewModel.selectedRouteId {
-                let name = stripMTAPrefix(routeId)
-                let stopsCount = viewModel.routeShape?.stops.count ?? 0
+                let name: String = {
+                    if let g = group {
+                        if g.isLIRR { return "LIRR \(g.displayName)" }
+                        if g.isMNR { return "MNR \(g.displayName)" }
+                    }
+                    return stripMTAPrefix(routeId)
+                }()
                 
                 if let firstStop = viewModel.routeShape?.stops.first?.name,
                    let lastStop = viewModel.routeShape?.stops.last?.name {
@@ -194,6 +223,7 @@ struct MapControlsOverlay: View {
                         .font(.custom("Helvetica-Bold", size: 13))
                         .foregroundColor(AppTheme.Colors.textPrimary)
                 } else {
+                    let stopsCount = viewModel.routeShape?.stops.count ?? 0
                     Text("\(name) — \(stopsCount) stops")
                         .font(.custom("Helvetica-Bold", size: 13))
                         .foregroundColor(AppTheme.Colors.textPrimary)
@@ -239,7 +269,8 @@ struct MapControlsOverlay: View {
             sheetDetent: .constant(.fraction(0.4)),
             currentMapCenter: nil,
             currentMapDistance: nil,
-            sheetHeightFraction: 0.42
+            sheetHeightFraction: 0.42,
+            onAlertsTapped: {}
         )
     }
 }

@@ -24,6 +24,7 @@ from app.models import (
     TrackArrival,
 )
 from app.routers.nearby import _group_arrivals
+from app.routers.nearby import _direction_label
 
 client = TestClient(app)
 
@@ -131,9 +132,11 @@ class TestNearbyEndpoint:
         response = client.get("/nearby?lat=40.7")
         assert response.status_code == 422
 
+    @patch("app.routers.nearby._fetch_nearby_rail", new_callable=AsyncMock)
     @patch("app.routers.nearby._fetch_nearby_subway", new_callable=AsyncMock)
     @patch("app.routers.nearby._fetch_nearby_buses", new_callable=AsyncMock)
-    def test_nearby_returns_sorted_results(self, mock_buses, mock_subway):
+    def test_nearby_returns_sorted_results(self, mock_buses, mock_subway, mock_rail):
+        mock_rail.return_value = []
         mock_subway.return_value = [
             NearbyTransitArrival(
                 route_id="L",
@@ -164,9 +167,11 @@ class TestNearbyEndpoint:
         assert data[0]["mode"] == "bus"
         assert data[1]["mode"] == "subway"
 
+    @patch("app.routers.nearby._fetch_nearby_rail", new_callable=AsyncMock)
     @patch("app.routers.nearby._fetch_nearby_subway", new_callable=AsyncMock)
     @patch("app.routers.nearby._fetch_nearby_buses", new_callable=AsyncMock)
-    def test_nearby_handles_empty_results(self, mock_buses, mock_subway):
+    def test_nearby_handles_empty_results(self, mock_buses, mock_subway, mock_rail):
+        mock_rail.return_value = []
         mock_subway.return_value = []
         mock_buses.return_value = []
 
@@ -174,9 +179,11 @@ class TestNearbyEndpoint:
         assert response.status_code == 200
         assert response.json() == []
 
+    @patch("app.routers.nearby._fetch_nearby_rail", new_callable=AsyncMock)
     @patch("app.routers.nearby._fetch_nearby_subway", new_callable=AsyncMock)
     @patch("app.routers.nearby._fetch_nearby_buses", new_callable=AsyncMock)
-    def test_nearby_limits_to_20_results(self, mock_buses, mock_subway):
+    def test_nearby_limits_to_20_results(self, mock_buses, mock_subway, mock_rail):
+        mock_rail.return_value = []
         mock_subway.return_value = [
             NearbyTransitArrival(
                 route_id=f"L{i}",
@@ -201,11 +208,13 @@ class TestNearbyEndpoint:
         response = client.get("/nearby?lat=40.7&lon=-73.9")
         assert response.status_code == 200
         data = response.json()
-        assert len(data) == 20
+        assert len(data) == 30  # 15+15 = 30, capped at max_nearby_results (40)
 
+    @patch("app.routers.nearby._fetch_nearby_rail", new_callable=AsyncMock)
     @patch("app.routers.nearby._fetch_nearby_subway", new_callable=AsyncMock)
     @patch("app.routers.nearby._fetch_nearby_buses", new_callable=AsyncMock)
-    def test_nearby_handles_subway_error_gracefully(self, mock_buses, mock_subway):
+    def test_nearby_handles_subway_error_gracefully(self, mock_buses, mock_subway, mock_rail):
+        mock_rail.return_value = []
         mock_subway.side_effect = Exception("Feed unavailable")
         mock_buses.return_value = [
             NearbyTransitArrival(
@@ -403,7 +412,7 @@ class TestGroupingLogic:
         groups = _group_arrivals(flat)
         assert groups[0].color_hex == "#A7A9AC"
 
-    def test_bus_no_color(self):
+    def test_bus_default_color(self):
         flat = [
             NearbyTransitArrival(
                 route_id="MTA NYCT_B63", stop_name="5 Av", direction="E",
@@ -411,16 +420,18 @@ class TestGroupingLogic:
             ),
         ]
         groups = _group_arrivals(flat)
-        assert groups[0].color_hex is None
+        assert groups[0].color_hex == "#0039A6"
         assert groups[0].display_name == "B63"
 
 
 class TestNearbyGroupedEndpoint:
     """Tests for the GET /nearby/grouped endpoint."""
 
+    @patch("app.routers.nearby._fetch_nearby_rail", new_callable=AsyncMock)
     @patch("app.routers.nearby._fetch_nearby_subway", new_callable=AsyncMock)
     @patch("app.routers.nearby._fetch_nearby_buses", new_callable=AsyncMock)
-    def test_grouped_returns_grouped_results(self, mock_buses, mock_subway):
+    def test_grouped_returns_grouped_results(self, mock_buses, mock_subway, mock_rail):
+        mock_rail.return_value = []
         mock_subway.return_value = [
             NearbyTransitArrival(
                 route_id="A", stop_name="S1", direction="N",
@@ -441,9 +452,11 @@ class TestNearbyGroupedEndpoint:
         assert data[0]["display_name"] == "A"
         assert len(data[0]["directions"]) == 2
 
+    @patch("app.routers.nearby._fetch_nearby_rail", new_callable=AsyncMock)
     @patch("app.routers.nearby._fetch_nearby_subway", new_callable=AsyncMock)
     @patch("app.routers.nearby._fetch_nearby_buses", new_callable=AsyncMock)
-    def test_grouped_empty(self, mock_buses, mock_subway):
+    def test_grouped_empty(self, mock_buses, mock_subway, mock_rail):
+        mock_rail.return_value = []
         mock_subway.return_value = []
         mock_buses.return_value = []
 
@@ -451,9 +464,11 @@ class TestNearbyGroupedEndpoint:
         assert response.status_code == 200
         assert response.json() == []
 
+    @patch("app.routers.nearby._fetch_nearby_rail", new_callable=AsyncMock)
     @patch("app.routers.nearby._fetch_nearby_subway", new_callable=AsyncMock)
     @patch("app.routers.nearby._fetch_nearby_buses", new_callable=AsyncMock)
-    def test_grouped_mixed_modes(self, mock_buses, mock_subway):
+    def test_grouped_mixed_modes(self, mock_buses, mock_subway, mock_rail):
+        mock_rail.return_value = []
         mock_subway.return_value = [
             NearbyTransitArrival(
                 route_id="L", stop_name="1st Av", direction="N",
@@ -474,3 +489,74 @@ class TestNearbyGroupedEndpoint:
         # Bus should be first (soonest arrival)
         assert data[0]["mode"] == "bus"
         assert data[1]["mode"] == "subway"
+
+
+# ===================================================================
+# Direction Label Mapping (Audit Item 9)
+# ===================================================================
+
+
+class TestDirectionLabel:
+    """Tests for _direction_label compass-code mapping."""
+
+    def test_compass_north(self):
+        assert _direction_label("N") == "Northbound"
+
+    def test_compass_south(self):
+        assert _direction_label("S") == "Southbound"
+
+    def test_compass_east(self):
+        assert _direction_label("E") == "Eastbound"
+
+    def test_compass_west(self):
+        assert _direction_label("W") == "Westbound"
+
+    def test_compass_northeast(self):
+        assert _direction_label("NE") == "Northeast"
+
+    def test_compass_southwest(self):
+        assert _direction_label("SW") == "Southwest"
+
+    def test_inbound(self):
+        assert _direction_label("INBOUND") == "Inbound"
+
+    def test_outbound(self):
+        assert _direction_label("OUTBOUND") == "Outbound"
+
+    def test_case_insensitive(self):
+        assert _direction_label("n") == "Northbound"
+        assert _direction_label("se") == "Southeast"
+
+    def test_destination_name_passthrough(self):
+        """Non-compass strings (like destination names) pass through unchanged."""
+        assert _direction_label("Far Rockaway") == "Far Rockaway"
+        assert _direction_label("Manhattan") == "Manhattan"
+
+
+class TestDirectionLabelInGrouped:
+    """direction_label should appear in grouped endpoint results."""
+
+    @patch("app.routers.nearby._fetch_nearby_rail", new_callable=AsyncMock)
+    @patch("app.routers.nearby._fetch_nearby_subway", new_callable=AsyncMock)
+    @patch("app.routers.nearby._fetch_nearby_buses", new_callable=AsyncMock)
+    def test_direction_label_populated(self, mock_buses, mock_subway, mock_rail):
+        mock_rail.return_value = []
+        mock_buses.return_value = []
+        mock_subway.return_value = [
+            NearbyTransitArrival(
+                route_id="L", stop_name="1st Av", direction="N",
+                minutes_away=3, mode="subway",
+            ),
+            NearbyTransitArrival(
+                route_id="L", stop_name="1st Av", direction="S",
+                minutes_away=5, mode="subway",
+            ),
+        ]
+
+        response = client.get("/nearby/grouped?lat=40.7&lon=-73.9")
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 1
+        directions = data[0]["directions"]
+        labels = {d["direction_label"] for d in directions}
+        assert labels == {"Northbound", "Southbound"}

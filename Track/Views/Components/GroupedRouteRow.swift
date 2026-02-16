@@ -12,20 +12,35 @@ import SwiftUI
 
 struct GroupedRouteRow: View {
     let group: GroupedNearbyTransitResponse
+    var hasAlert: Bool = false
     var onSelect: ((Int) -> Void)? = nil
 
     @State private var currentDirectionIndex = 0
 
     var body: some View {
         HStack(spacing: 12) {
-            // Unified route badge — shows route name for both bus and train
+            // Unified route badge — shows route name with mode-specific styling
             RouteBadge(
                 routeID: group.displayName,
                 size: .medium,
                 isBus: group.isBus,
-                hexColor: group.colorHex
+                hexColor: group.colorHex,
+                mode: group.mode
             )
             .accessibilityHidden(true)
+            .overlay(alignment: .topTrailing) {
+                if hasAlert {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(AppTheme.Colors.warningYellow)
+                        .background(
+                            Circle()
+                                .fill(AppTheme.Colors.cardBackground)
+                                .frame(width: 16, height: 16)
+                        )
+                        .offset(x: 6, y: -6)
+                }
+            }
 
             // Swipeable content area
             if group.directions.isEmpty {
@@ -38,7 +53,9 @@ struct GroupedRouteRow: View {
                     TabView(selection: $currentDirectionIndex) {
                         ForEach(Array(group.directions.enumerated()), id: \.element.id) { index, direction in
                             // Destination Label + Station subtitle
-                            let label = direction.arrivals.first?.destination ?? directionLabel(direction.direction)
+                            let label = direction.arrivals.first?.destination
+                                ?? direction.directionLabel
+                                ?? directionLabel(direction.direction)
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(label)
                                     .font(.custom("Helvetica-Bold", size: 15))
@@ -120,7 +137,7 @@ struct GroupedRouteRow: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
-            "\(group.isBus ? "Bus" : "Train") \(group.displayName), swipe for directions"
+            "\(group.isLIRR ? "LIRR" : group.isMNR ? "Metro-North" : group.isBus ? "Bus" : "Train") \(group.displayName), swipe for directions"
         )
         .accessibilityHint("Double tap to see details for current direction")
     }

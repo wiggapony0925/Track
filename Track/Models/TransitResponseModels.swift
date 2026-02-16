@@ -3,7 +3,15 @@ import CoreLocation
 
 /// Matches the backend's `NearbyTransitArrival` JSON schema.
 struct NearbyTransitResponse: Codable, Identifiable {
-    var id: String { "\(routeId)-\(stopName)-\(minutesAway)" }
+    /// Unique identity combining route, stop, ETA, and trip/timestamp
+    /// to avoid collisions when two trains share the same minutesAway.
+    var id: String {
+        let base = "\(routeId)-\(stopName)-\(minutesAway)"
+        if let tripId, !tripId.isEmpty { return "\(base)-\(tripId)" }
+        if let ts = arrivalTs { return "\(base)-\(ts)" }
+        if let vid = vehicleId, !vid.isEmpty { return "\(base)-\(vid)" }
+        return base
+    }
 
     let routeId: String
     let stopName: String
@@ -21,10 +29,14 @@ struct NearbyTransitResponse: Codable, Identifiable {
     let stopId: String?
 
     var isBus: Bool { mode == "bus" }
+    var isLIRR: Bool { mode == "lirr" }
+    var isMNR: Bool { mode == "mnr" }
+    var isCommuterRail: Bool { isLIRR || isMNR }
 
-    /// Strips "MTA NYCT_" prefix for display.
+    /// Human-readable display name for the route.
+    /// Uses branch name lookup for LIRR/MNR, strips MTA prefix for subway/bus.
     var displayName: String {
-        stripMTAPrefix(routeId)
+        HomeViewModel.resolveDisplayName(routeId: routeId, mode: mode)
     }
 
     enum CodingKeys: String, CodingKey {
@@ -49,7 +61,20 @@ struct DirectionArrivalsResponse: Codable, Identifiable {
     var id: String { direction }
 
     let direction: String
+    let directionLabel: String?
     let arrivals: [NearbyTransitResponse]
+
+    init(direction: String, directionLabel: String? = nil, arrivals: [NearbyTransitResponse]) {
+        self.direction = direction
+        self.directionLabel = directionLabel
+        self.arrivals = arrivals
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case direction
+        case directionLabel = "direction_label"
+        case arrivals
+    }
 }
 
 /// Matches the backend's `GroupedNearbyTransit` JSON schema.
@@ -64,6 +89,9 @@ struct GroupedNearbyTransitResponse: Codable, Identifiable {
     let directions: [DirectionArrivalsResponse]
 
     var isBus: Bool { mode == "bus" }
+    var isLIRR: Bool { mode == "lirr" }
+    var isMNR: Bool { mode == "mnr" }
+    var isCommuterRail: Bool { isLIRR || isMNR }
 
     /// The soonest arrival across all directions.
     var soonestMinutes: Int {
@@ -84,5 +112,20 @@ struct GroupedNearbyTransitResponse: Codable, Identifiable {
         case mode
         case colorHex = "color_hex"
         case directions
+    }
+}
+
+/// Matches the backend's `DelayPrediction` JSON schema from `/predict/delay`.
+struct DelayPredictionResponse: Codable {
+    let adjustedMinutes: Int
+    let originalMinutes: Int
+    let delayFactor: Double
+    let adjustmentReason: String?
+
+    enum CodingKeys: String, CodingKey {
+        case adjustedMinutes = "adjusted_minutes"
+        case originalMinutes = "original_minutes"
+        case delayFactor = "delay_factor"
+        case adjustmentReason = "adjustment_reason"
     }
 }
