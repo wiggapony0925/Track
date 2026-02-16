@@ -178,3 +178,103 @@ struct ElevatorOutagesSection: View {
     EmptyStateView(icon: "tram.fill", message: "No subway arrivals nearby")
         .background(AppTheme.Colors.background)
 }
+
+// MARK: - Commuter Rail Section Header
+
+/// Compact section header for commuter rail dashboards (LIRR, MNR).
+struct CommuterRailSectionHeader: View {
+    let title: String
+    let iconName: String
+    let color: Color
+    let updated: Date?
+    
+    var body: some View {
+        HStack(spacing: 6) {
+            HStack(spacing: 4) {
+                Image(systemName: iconName)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(.white)
+                
+                Text(title)
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(.white)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+                Capsule()
+                    .fill(color)
+            )
+            
+            Spacer()
+            
+            if let updated = updated {
+                Text(updated, style: .time)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+            }
+        }
+        .padding(.horizontal, AppTheme.Layout.margin)
+        .padding(.top, 6)
+        .padding(.bottom, 4)
+    }
+}
+
+// MARK: - Commuter Rail Arrival Row
+
+/// Shared arrival row for commuter rail (LIRR, MNR).
+struct CommuterRailArrivalRow: View {
+    let arrival: TrainArrival
+    let brandColor: Color
+    let isTracking: Bool
+    let onTrack: () -> Void
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            // Route badge
+            Text(arrival.routeID)
+                .font(.system(size: 14, weight: .bold))
+                .foregroundColor(.white)
+                .frame(width: 50, height: 28)
+                .background(brandColor)
+                .cornerRadius(6)
+            
+            // Station and destination info
+            VStack(alignment: .leading, spacing: 2) {
+                Text(arrival.destination ?? arrival.direction)
+                    .font(.custom("Helvetica-Bold", size: 15))
+                    .foregroundColor(AppTheme.Colors.textPrimary)
+                    .lineLimit(1)
+                
+                Text(arrival.stationID)
+                    .font(.custom("Helvetica", size: 13))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+                    .lineLimit(1)
+            }
+            
+            Spacer()
+            
+            // Time info
+            VStack(alignment: .trailing, spacing: 2) {
+                HStack(alignment: .firstTextBaseline, spacing: 2) {
+                    Text("\(arrival.minutesAway)")
+                        .font(.custom("Helvetica-Bold", size: 24))
+                        .foregroundColor(AppTheme.Colors.countdown(arrival.minutesAway))
+                    Text("min")
+                        .font(.custom("Helvetica-Bold", size: 12))
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+                }
+                
+                Text(arrival.status)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(arrival.status.lowercased().contains("on time") ? AppTheme.Colors.successGreen : AppTheme.Colors.textSecondary)
+            }
+        }
+        .padding(.vertical, 12)
+        .padding(.horizontal, AppTheme.Layout.margin)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            onTrack()
+        }
+    }
+}
