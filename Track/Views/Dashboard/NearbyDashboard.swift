@@ -28,20 +28,6 @@ struct NearbyDashboard: View {
     private var nearYouRadius: Double { AppSettings.shared.nearYouRadiusMeters }
     private var fartherAwayRadius: Double { AppSettings.shared.fartherAwayRadiusMeters }
     
-    /// Convert meters to miles for display
-    private func metersToMiles(_ meters: Double) -> Double {
-        meters / 1609.344
-    }
-    
-    /// Format distance as "X.X mi"
-    private func formatDistanceMiles(_ meters: Double) -> String {
-        let miles = metersToMiles(meters)
-        if miles < 0.1 {
-            return String(format: "%.0f ft", meters * 3.28084)
-        }
-        return String(format: "%.1f mi", miles)
-    }
-    
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             // Use active search pin OR user location for distance calculation
@@ -218,10 +204,10 @@ struct NearYouSectionHeader: View {
     let radiusMeters: Double
     let updated: Date?
     
-    private var radiusMiles: String {
-        let miles = radiusMeters / 1609.344
+    private var radiusDisplay: String {
+        let miles = metersToMiles(radiusMeters)
         if miles < 0.1 {
-            return String(format: "%.0f ft", radiusMeters * 3.28084)
+            return String(format: "%.0f ft", metersToFeet(radiusMeters))
         }
         return String(format: "%.1f mi", miles)
     }
@@ -236,7 +222,7 @@ struct NearYouSectionHeader: View {
                 .font(AppTheme.Typography.sectionHeader)
                 .foregroundColor(AppTheme.Colors.textPrimary)
             
-            Text("• within \(radiusMiles)")
+            Text("• within \(radiusDisplay)")
                 .font(.system(size: 12, weight: .medium))
                 .foregroundColor(AppTheme.Colors.textSecondary)
             
@@ -257,8 +243,8 @@ struct NearYouSectionHeader: View {
 struct FartherAwaySectionHeader: View {
     let radiusMeters: Double
     
-    private var radiusMiles: String {
-        let miles = radiusMeters / 1609.344
+    private var radiusDisplay: String {
+        let miles = metersToMiles(radiusMeters)
         return String(format: "%.1f mi", miles)
     }
     
@@ -272,7 +258,7 @@ struct FartherAwaySectionHeader: View {
                 .font(AppTheme.Typography.sectionHeader)
                 .foregroundColor(AppTheme.Colors.textPrimary)
             
-            Text("• up to \(radiusMiles)")
+            Text("• up to \(radiusDisplay)")
                 .font(.system(size: 12, weight: .medium))
                 .foregroundColor(AppTheme.Colors.textSecondary)
             

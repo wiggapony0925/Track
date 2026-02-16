@@ -42,10 +42,10 @@ struct RouteBadge: View {
     var isBus: Bool = false
     var hexColor: String? = nil
     
-    /// Detects SBS (Select Bus Service) routes for distinct purple styling
+    /// Detects SBS (Select Bus Service) routes for distinct purple styling.
+    /// SBS routes typically have "SBS" in their name (e.g., "M15-SBS", "Bx12-SBS")
     private var isSBS: Bool {
-        let upper = routeID.uppercased()
-        return upper.contains("SBS") || upper.contains("+") || upper.hasSuffix("-SBS")
+        routeID.uppercased().contains("SBS")
     }
     
     /// Bus background color: Purple for SBS, Blue for local buses
@@ -111,7 +111,7 @@ struct RouteBadge: View {
         HStack(spacing: 16) {
             RouteBadge(routeID: "B63", size: .medium, isBus: true)
             RouteBadge(routeID: "M15-SBS", size: .medium, isBus: true)
-            RouteBadge(routeID: "Bx12+", size: .medium, isBus: true)
+            RouteBadge(routeID: "Bx12-SBS", size: .medium, isBus: true)
         }
     }
     .padding()
