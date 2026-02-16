@@ -13,6 +13,8 @@ struct TrackApp: App {
     init() {
         // Initialize the file logger — clears log.app on every launch
         _ = AppLogger.shared
+        // Request notification permissions for service alerts
+        AlertNotificationManager.shared.requestPermissionIfNeeded()
     }
 
     var body: some Scene {

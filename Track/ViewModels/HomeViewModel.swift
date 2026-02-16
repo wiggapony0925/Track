@@ -382,6 +382,14 @@ final class HomeViewModel {
     var serviceAlerts: [TransitAlert] = []
     var elevatorOutages: [ElevatorStatus] = []
 
+    /// Fetch alerts from the API and deliver local notifications for new ones.
+    func refreshAlerts() async {
+        do {
+            serviceAlerts = try await TrackAPI.fetchAlerts()
+            AlertNotificationManager.shared.processAlerts(serviceAlerts)
+        } catch {}
+    }
+
     // Route detail sheet
     var selectedGroupedRoute: GroupedNearbyTransitResponse?
     var selectedDirectionIndex: Int = 0
@@ -1527,7 +1535,10 @@ final class HomeViewModel {
             groupedTransit = try await groupedTask
 
             // Fetch alerts and accessibility silently — don't fail the whole refresh
-            do { serviceAlerts = try await alertsTask } catch {}
+            do {
+                serviceAlerts = try await alertsTask
+                AlertNotificationManager.shared.processAlerts(serviceAlerts)
+            } catch {}
             do { elevatorOutages = try await accessTask } catch {}
             
 
@@ -1603,7 +1614,7 @@ final class HomeViewModel {
         }
 
         // Fetch alerts and accessibility alongside subway
-        do { serviceAlerts = try await TrackAPI.fetchAlerts() } catch {}
+        await refreshAlerts()
         do { elevatorOutages = try await TrackAPI.fetchAccessibility() } catch {}
     }
 
@@ -1638,7 +1649,7 @@ final class HomeViewModel {
         }
 
         // Fetch alerts and accessibility alongside bus
-        do { serviceAlerts = try await TrackAPI.fetchAlerts() } catch {}
+        await refreshAlerts()
         do { elevatorOutages = try await TrackAPI.fetchAccessibility() } catch {}
     }
     
@@ -1696,7 +1707,7 @@ final class HomeViewModel {
         }
 
         // Fetch alerts and accessibility alongside LIRR
-        do { serviceAlerts = try await TrackAPI.fetchAlerts() } catch {}
+        await refreshAlerts()
         do { elevatorOutages = try await TrackAPI.fetchAccessibility() } catch {}
     }
 
@@ -1739,7 +1750,7 @@ final class HomeViewModel {
         }
 
         // Fetch alerts and accessibility alongside MNR
-        do { serviceAlerts = try await TrackAPI.fetchAlerts() } catch {}
+        await refreshAlerts()
         do { elevatorOutages = try await TrackAPI.fetchAccessibility() } catch {}
     }
 

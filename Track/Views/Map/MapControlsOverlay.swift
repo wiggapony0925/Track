@@ -27,6 +27,9 @@ struct MapControlsOverlay: View {
     /// to dismiss drag-to-search and snap back to the real GPS location.
     var onRecenter: (() -> Void)?
     
+    /// Called when the user taps the alert bell — HomeView navigates to alerts page.
+    var onAlertsTapped: (() -> Void)?
+    
     var body: some View {
         GeometryReader { geometry in
             ZStack {
@@ -62,6 +65,43 @@ struct MapControlsOverlay: View {
     
     private var mapControlButtons: some View {
         VStack(spacing: 12) {
+            // Service Alerts Bell
+            Button {
+                onAlertsTapped?()
+                HapticManager.impact(.medium)
+            } label: {
+                ZStack(alignment: .topTrailing) {
+                    Image(systemName: "bell.fill")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(
+                            viewModel.serviceAlerts.isEmpty
+                                ? AppTheme.Colors.textPrimary
+                                : AppTheme.Colors.warningYellow
+                        )
+                        .frame(width: 44, height: 44)
+                        .background(.ultraThinMaterial)
+                        .clipShape(Circle())
+                        .shadow(color: .black.opacity(0.10), radius: 4, x: 0, y: 2)
+                    
+                    // Badge count
+                    if !viewModel.serviceAlerts.isEmpty {
+                        Text("\(min(viewModel.serviceAlerts.count, 99))")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(.white)
+                            .frame(minWidth: 18, minHeight: 18)
+                            .background(
+                                Circle().fill(
+                                    viewModel.serviceAlerts.contains(where: { $0.severity == "severe" })
+                                        ? AppTheme.Colors.alertRed
+                                        : AppTheme.Colors.warningYellow
+                                )
+                            )
+                            .offset(x: 4, y: -4)
+                    }
+                }
+            }
+            .accessibilityLabel("Service alerts, \(viewModel.serviceAlerts.count) active")
+            
             // 3D / 2D Toggle
             Button {
                 toggle3DMode()
@@ -229,7 +269,8 @@ struct MapControlsOverlay: View {
             sheetDetent: .constant(.fraction(0.4)),
             currentMapCenter: nil,
             currentMapDistance: nil,
-            sheetHeightFraction: 0.42
+            sheetHeightFraction: 0.42,
+            onAlertsTapped: {}
         )
     }
 }

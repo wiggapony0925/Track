@@ -297,14 +297,58 @@ def _merge_polyline_segments(encoded_segments: list[str], gap_threshold_m: float
     return [_encode_polyline(chain) for chain in chains]
 
 
+# ---------------------------------------------------------------------------
+# SIRI circuit breaker – after a 401/403 the API key is invalid for the whole
+# process lifetime.  Rather than flood the MTA server with requests that will
+# all fail, we flip a flag and immediately raise on subsequent calls.
+# ---------------------------------------------------------------------------
+import time as _time
+
+_siri_circuit_open: bool = False
+_siri_circuit_opened_at: float = 0.0
+_SIRI_CIRCUIT_COOLDOWN = 300  # retry after 5 minutes
+
+
+def _siri_circuit_is_open() -> bool:
+    """Return True when calls should be short-circuited."""
+    global _siri_circuit_open, _siri_circuit_opened_at
+    if not _siri_circuit_open:
+        return False
+    # Auto-reset after cooldown so the app can self-heal
+    if _time.time() - _siri_circuit_opened_at > _SIRI_CIRCUIT_COOLDOWN:
+        _siri_circuit_open = False
+        return False
+    return True
+
+
+def _trip_siri_circuit() -> None:
+    global _siri_circuit_open, _siri_circuit_opened_at
+    if not _siri_circuit_open:
+        _siri_circuit_open = True
+        _siri_circuit_opened_at = _time.time()
+
+
 async def _fetch_bus_json(url: str, params: dict[str, str]) -> Any:
     """Fetch JSON from an MTA Bus Time endpoint.
 
     Raises :class:`httpx.HTTPStatusError` on 4xx/5xx responses so callers
     can translate 401/403 into a clean 503 for the iOS client.
+
+    Includes a **circuit breaker**: after a 401/403 response the breaker
+    opens for 5 minutes to avoid flooding MTA with requests that will all
+    fail, and to stop spamming the server logs.
     """
+    if _siri_circuit_is_open():
+        raise httpx.HTTPStatusError(
+            "SIRI circuit breaker open – skipping request",
+            request=httpx.Request("GET", url),
+            response=httpx.Response(403),
+        )
+
     async with httpx.AsyncClient(timeout=_get_timeout()) as client:
         response = await client.get(url, params=params)
+        if response.status_code in (401, 403):
+            _trip_siri_circuit()
         response.raise_for_status()
         data = response.json()
         if data is None:

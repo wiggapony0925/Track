@@ -10,18 +10,56 @@ import Foundation
 
 /// A critical MTA service alert returned by /alerts.
 struct TransitAlert: Identifiable, Codable {
-    var id: String { (routeId ?? "system") + "-" + title }
+    var id: String { (routeId ?? "system") + "-" + mode + "-" + title }
 
     let routeId: String?
     let title: String
     let description: String
     let severity: String
+    let mode: String
 
     enum CodingKeys: String, CodingKey {
         case routeId = "route_id"
         case title
         case description
         case severity
+        case mode
+    }
+
+    /// SF Symbol icon matching the app's tab icons.
+    var modeIcon: String {
+        switch mode {
+        case "bus":   return "bus.fill"
+        case "lirr":  return "train.side.front.car"
+        case "mnr":   return "train.side.rear.car"
+        default:      return "tram.fill"
+        }
+    }
+
+    /// Human-readable mode label.
+    var modeLabel: String {
+        switch mode {
+        case "bus":   return "Bus"
+        case "lirr":  return "LIRR"
+        case "mnr":   return "Metro-North"
+        default:      return "Subway"
+        }
+    }
+}
+
+// MARK: - Filtering
+
+extension Array where Element == TransitAlert {
+    /// Filter alerts by the selected transport mode.
+    /// The `.nearby` mode returns all alerts; specific modes return only matching alerts.
+    func filtered(for mode: TransportMode) -> [TransitAlert] {
+        switch mode {
+        case .nearby:  return self
+        case .subway:  return filter { $0.mode == "subway" }
+        case .bus:     return filter { $0.mode == "bus" }
+        case .lirr:    return filter { $0.mode == "lirr" }
+        case .mnr:     return filter { $0.mode == "mnr" }
+        }
     }
 }
 

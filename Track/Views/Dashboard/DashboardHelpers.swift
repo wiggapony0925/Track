@@ -63,58 +63,6 @@ struct EmptyStateView: View {
     }
 }
 
-// MARK: - Service Alerts Section
-
-/// Section displaying transit service alerts.
-struct ServiceAlertsSection: View {
-    let alerts: [TransitAlert]
-    
-    var body: some View {
-        if !alerts.isEmpty {
-            VStack(alignment: .leading, spacing: 0) {
-                DashboardSectionHeader(title: "Service Alerts")
-                
-                VStack(spacing: 0) {
-                    ForEach(Array(alerts.prefix(AppSettings.shared.maxServiceAlerts).enumerated()), id: \.element.id) { index, alert in
-                        HStack(spacing: 10) {
-                            if let routeId = alert.routeId {
-                                RouteBadge(routeID: routeId, size: .small)
-                            } else {
-                                Image(systemName: "exclamationmark.triangle.fill")
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .foregroundColor(AppTheme.Colors.warningYellow)
-                            }
-                            
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(alert.title)
-                                    .font(.custom("Helvetica-Bold", size: 13))
-                                    .foregroundColor(AppTheme.Colors.textPrimary)
-                                    .lineLimit(1)
-                                Text(alert.description)
-                                    .font(.custom("Helvetica", size: 12))
-                                    .foregroundColor(AppTheme.Colors.textSecondary)
-                                    .lineLimit(2)
-                            }
-                            
-                            Spacer(minLength: 0)
-                        }
-                        .padding(.horizontal, AppTheme.Layout.cardPadding)
-                        .padding(.vertical, 8)
-                        
-                        if index < min(alerts.count, AppSettings.shared.maxServiceAlerts) - 1 {
-                            Divider()
-                                .padding(.leading, AppTheme.Layout.cardPadding + 34)
-                        }
-                    }
-                }
-                .background(AppTheme.Colors.cardBackground)
-                .cornerRadius(AppTheme.Layout.cornerRadius)
-                .padding(.horizontal, AppTheme.Layout.margin)
-            }
-        }
-    }
-}
-
 // MARK: - Elevator Outages Section
 
 /// Section displaying elevator and escalator outages.

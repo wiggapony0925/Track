@@ -60,7 +60,8 @@ struct NearbyDashboard: View {
                         // Adaptive header — the results were promoted from a farther bucket
                         ClosestToYouSectionHeader(
                             closestMeters: refLocation.map { minDistance(for: nearYou[0], from: $0) },
-                            updated: lastUpdated
+                            updated: lastUpdated,
+                            isPromoted: viewModel.isSearchPinActive
                         )
                     } else {
                         NearYouSectionHeader(radiusMeters: nearYouRadius, updated: lastUpdated)
@@ -276,6 +277,7 @@ struct NearbyDashboard: View {
 struct ClosestToYouSectionHeader: View {
     let closestMeters: Double?
     let updated: Date?
+    var isPromoted: Bool = true
     
     private var distanceDisplay: String {
         guard let meters = closestMeters else { return "Nearby" }
@@ -284,6 +286,11 @@ struct ClosestToYouSectionHeader: View {
             return String(format: "%.0f ft away", metersToFeet(meters))
         }
         return String(format: "%.1f mi away", miles)
+    }
+    
+    /// Green when showing normal nearby results, yellow when promoted from farther away.
+    private var badgeColor: Color {
+        isPromoted ? AppTheme.Colors.warningYellow : AppTheme.Colors.successGreen
     }
     
     var body: some View {
@@ -302,7 +309,7 @@ struct ClosestToYouSectionHeader: View {
             .padding(.vertical, 4)
             .background(
                 Capsule()
-                    .fill(AppTheme.Colors.warningYellow)
+                    .fill(badgeColor)
             )
             
             Spacer()

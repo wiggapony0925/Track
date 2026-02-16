@@ -33,6 +33,7 @@ class TransitAlert(BaseModel):
     title: str
     description: str
     severity: str
+    mode: str = "subway"
 
 
 class ElevatorStatus(BaseModel):

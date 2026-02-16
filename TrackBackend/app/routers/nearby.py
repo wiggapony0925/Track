@@ -394,10 +394,14 @@ async def _fetch_nearby_buses(
     tasks = [get_realtime_arrivals(stop.id) for stop in stops[: settings.app_settings.max_nearby_results]]
     stop_results = await asyncio.gather(*tasks, return_exceptions=True)
 
+    fail_count = 0
+    first_error: Exception | None = None
     for i, result in enumerate(stop_results):
         stop = stops[i]
         if isinstance(result, Exception):
-            TrackLogger.error(f"Bus arrivals for {stop.name} failed: {result}")
+            fail_count += 1
+            if first_error is None:
+                first_error = result
             continue
         
         # result is a list[BusArrival]
@@ -419,6 +423,11 @@ async def _fetch_nearby_buses(
                     destination=arrival.status_text # Use status as destination for now
                 )
             )
+
+    if fail_count > 0:
+        TrackLogger.error(
+            f"Bus arrivals failed for {fail_count}/{len(stop_results)} stops: {first_error}"
+        )
 
     return results
 

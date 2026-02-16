@@ -99,6 +99,13 @@ struct HomeView: View {
                         if isDragSearchActive {
                             dismissDragSearch()
                         }
+                    },
+                    onAlertsTapped: {
+                        // Navigate to the full alerts page and expand the sheet
+                        sheetNavigator.navigate(to: .serviceAlerts)
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                            sheetDetent = .large
+                        }
                     }
                 )
                 
@@ -275,6 +282,12 @@ struct HomeView: View {
             
         case .settings:
             SettingsContentView(sheetNavigator: sheetNavigator)
+            
+        case .serviceAlerts:
+            ServiceAlertsPage(
+                alerts: viewModel.serviceAlerts,
+                sheetNavigator: sheetNavigator
+            )
             
         case .widgetSchedules:
             WidgetSchedulesContentView(sheetNavigator: sheetNavigator)

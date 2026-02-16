@@ -68,6 +68,12 @@ struct DashboardView: View {
                         }
                     )
                     
+                    // Service alerts — shown above arrivals so users see them immediately.
+                    // Filter to the selected mode when viewing a specific mode tab.
+                    ServiceAlertsSection(
+                        alerts: viewModel.serviceAlerts.filtered(for: viewModel.selectedMode)
+                    )
+                    
                     // Mode-specific content
                     Group {
                         switch viewModel.selectedMode {
@@ -126,9 +132,6 @@ struct DashboardView: View {
                             }
                         )
                     }
-                    
-                    // Service alerts section
-                    ServiceAlertsSection(alerts: viewModel.serviceAlerts)
                     
                     // Elevator outages section
                     ElevatorOutagesSection(outages: viewModel.elevatorOutages)

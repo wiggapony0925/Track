@@ -59,6 +59,9 @@ class Urls(BaseModel):
     lirr: str
     metro_north: str
     alerts_json: str
+    bus_alerts_json: str = ""
+    lirr_alerts_json: str = ""
+    mnr_alerts_json: str = ""
     elevators_json: str
     bus_siri_base: str = ""
     bus_oba_base: str = ""

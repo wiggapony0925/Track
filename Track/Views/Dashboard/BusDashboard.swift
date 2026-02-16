@@ -56,7 +56,8 @@ struct BusDashboard: View {
                     if wasPromoted {
                         ClosestToYouSectionHeader(
                             closestMeters: refLocation.map { minDistance(for: nearYou[0], from: $0) },
-                            updated: lastUpdated
+                            updated: lastUpdated,
+                            isPromoted: viewModel.isSearchPinActive
                         )
                     } else {
                         NearYouSectionHeader(radiusMeters: nearYouRadius, updated: lastUpdated)
