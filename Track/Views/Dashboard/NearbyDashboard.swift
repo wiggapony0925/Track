@@ -27,6 +27,7 @@ struct NearbyDashboard: View {
     /// Radius thresholds from settings
     private var nearYouRadius: Double { AppSettings.shared.nearYouRadiusMeters }
     private var fartherAwayRadius: Double { AppSettings.shared.fartherAwayRadiusMeters }
+    private var muchFartherAwayRadius: Double { AppSettings.shared.muchFartherAwayRadiusMeters }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -42,11 +43,11 @@ struct NearbyDashboard: View {
                     return minDistance(for: group1, from: loc) < minDistance(for: group2, from: loc)
                 }
                 
-                // Separate into "Near You" and "Farther Away" based on distance
-                let (nearYou, fartherAway) = separateByDistance(groups: sorted, from: refLocation)
+                // Separate into "Near You", "Farther Away", and "Much Farther Away" based on distance
+                let (nearYou, fartherAway, muchFarther) = separateByDistance(groups: sorted, from: refLocation)
                 
                 // If nothing is "near you", show the friendly far-from-transit hero
-                if nearYou.isEmpty && !fartherAway.isEmpty {
+                if nearYou.isEmpty && (!fartherAway.isEmpty || !muchFarther.isEmpty) {
                     FarFromTransitView(
                         icon: "location.slash.circle",
                         title: "Nothing super close",
@@ -77,8 +78,19 @@ struct NearbyDashboard: View {
                     )
                 }
                 
-                // Show empty state only when both sections are empty after filtering
-                if nearYou.isEmpty && fartherAway.isEmpty && !viewModel.searchText.isEmpty {
+                // Display "Much Farther Away" section
+                if !muchFarther.isEmpty {
+                    MuchFartherAwaySectionHeader(radiusMeters: muchFartherAwayRadius)
+                    GroupedRouteList(
+                        groups: muchFarther,
+                        viewModel: viewModel,
+                        locationManager: locationManager,
+                        sheetNavigator: sheetNavigator
+                    )
+                }
+                
+                // Show empty state only when all sections are empty after filtering
+                if nearYou.isEmpty && fartherAway.isEmpty && muchFarther.isEmpty && !viewModel.searchText.isEmpty {
                     EmptyStateView(
                         icon: "magnifyingglass",
                         message: "No results for \"\(viewModel.searchText)\""
@@ -163,18 +175,19 @@ struct NearbyDashboard: View {
         return location.distance(from: CLLocation(latitude: lat, longitude: lon))
     }
     
-    /// Separates grouped transit into "Near You" and "Farther Away" based on distance thresholds
+    /// Separates grouped transit into "Near You", "Farther Away", and "Much Farther Away" based on distance thresholds
     private func separateByDistance(
         groups: [GroupedNearbyTransitResponse],
         from location: CLLocation?
-    ) -> (nearYou: [GroupedNearbyTransitResponse], fartherAway: [GroupedNearbyTransitResponse]) {
+    ) -> (nearYou: [GroupedNearbyTransitResponse], fartherAway: [GroupedNearbyTransitResponse], muchFarther: [GroupedNearbyTransitResponse]) {
         guard let location = location else {
             // No location available, put all in nearYou
-            return (groups, [])
+            return (groups, [], [])
         }
         
         var nearYou: [GroupedNearbyTransitResponse] = []
         var fartherAway: [GroupedNearbyTransitResponse] = []
+        var muchFarther: [GroupedNearbyTransitResponse] = []
         
         for group in groups {
             let dist = minDistance(for: group, from: location)
@@ -182,11 +195,12 @@ struct NearbyDashboard: View {
                 nearYou.append(group)
             } else if dist <= fartherAwayRadius {
                 fartherAway.append(group)
+            } else if dist <= muchFartherAwayRadius {
+                muchFarther.append(group)
             }
-            // Skip groups beyond fartherAwayRadius
         }
         
-        return (nearYou, fartherAway)
+        return (nearYou, fartherAway, muchFarther)
     }
     
     /// Separates flat arrivals into "Near You" and "Farther Away" based on distance thresholds
@@ -288,6 +302,41 @@ struct FartherAwaySectionHeader: View {
             .background(
                 Capsule()
                     .fill(AppTheme.Colors.mtaBlue)
+            )
+            
+            Spacer()
+        }
+        .padding(.horizontal, AppTheme.Layout.margin)
+        .padding(.top, 10)
+        .padding(.bottom, 4)
+    }
+}
+
+/// "Much Farther Away" section header - compact icon-based indicator with car icon
+struct MuchFartherAwaySectionHeader: View {
+    let radiusMeters: Double
+    
+    private var radiusDisplay: String {
+        let miles = metersToMiles(radiusMeters)
+        return String(format: "%.1f mi", miles)
+    }
+    
+    var body: some View {
+        HStack(spacing: 6) {
+            HStack(spacing: 4) {
+                Image(systemName: "car.fill")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(.white)
+                
+                Text(radiusDisplay)
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(.white)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+                Capsule()
+                    .fill(Color.orange)
             )
             
             Spacer()

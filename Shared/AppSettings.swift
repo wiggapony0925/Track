@@ -55,6 +55,8 @@ struct AppSettings {
     private let _nearYouRadiusMeters: Double
     /// Default radius in meters for "A Little Farther Away" transit section (from settings.json).
     private let _fartherAwayRadiusMeters: Double
+    /// Default radius in meters for "Much Farther Away" transit section (from settings.json).
+    private let _muchFartherAwayRadiusMeters: Double
     
     /// Radius in meters for "Near You" transit section (user-configurable via Settings).
     var nearYouRadiusMeters: Double {
@@ -64,6 +66,11 @@ struct AppSettings {
     /// Radius in meters for "A Little Farther Away" transit section (user-configurable via Settings).
     var fartherAwayRadiusMeters: Double {
         UserDefaults.standard.object(forKey: "farther_away_radius_meters") as? Double ?? _fartherAwayRadiusMeters
+    }
+    
+    /// Radius in meters for "Much Farther Away" transit section (user-configurable via Settings).
+    var muchFartherAwayRadiusMeters: Double {
+        UserDefaults.standard.object(forKey: "much_farther_away_radius_meters") as? Double ?? _muchFartherAwayRadiusMeters
     }
 
 
@@ -138,8 +145,8 @@ struct AppSettings {
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             // Fall back to hardcoded defaults if settings.json is missing
             print("[AppSettings] WARNING: settings.json not found in bundle — using hardcoded defaults")
-            self.defaultSearchRadiusMeters = 800
-            self.nearestMetroFallbackRadiusMeters = 5000
+            self.defaultSearchRadiusMeters = 8047
+            self.nearestMetroFallbackRadiusMeters = 8047
             self.refreshIntervalSeconds = 30
             self.prodBaseURL = "https://track-api.onrender.com"
             self.localBaseURL = "http://127.0.0.1:8000"
@@ -152,8 +159,9 @@ struct AppSettings {
             self.stationVisibilityZoomMeters = 3500
             self.liveActivityStaleDateSeconds = 3600
             self.liveActivityDismissalSeconds = 120
-            self._nearYouRadiusMeters = 400
-            self._fartherAwayRadiusMeters = 1200
+            self._nearYouRadiusMeters = 2414
+            self._fartherAwayRadiusMeters = 4023
+            self._muchFartherAwayRadiusMeters = 8047
             self.distanceFilterMeters = 50
             self.commutePatternMatchRadiusMeters = 200
             self.stopPassedThresholdMeters = 100
@@ -186,8 +194,8 @@ struct AppSettings {
         let location = json["location"] as? [String: Any] ?? [:]
         let map = json["map"] as? [String: Any] ?? [:]
 
-        self.defaultSearchRadiusMeters = api["default_search_radius_meters"] as? Int ?? 800
-        self.nearestMetroFallbackRadiusMeters = api["nearest_metro_fallback_radius_meters"] as? Int ?? 5000
+        self.defaultSearchRadiusMeters = api["default_search_radius_meters"] as? Int ?? 8047
+        self.nearestMetroFallbackRadiusMeters = api["nearest_metro_fallback_radius_meters"] as? Int ?? 8047
         self.refreshIntervalSeconds = api["refresh_interval_seconds"] as? Int ?? 30
         self.prodBaseURL = api["prod_base_url"] as? String ?? "https://track-api.onrender.com"
         self.localBaseURL = api["local_base_url"] as? String ?? "http://127.0.0.1:8000"
@@ -201,8 +209,9 @@ struct AppSettings {
         self.stationVisibilityZoomMeters = display["station_visibility_zoom_meters"] as? Double ?? 3500
         self.liveActivityStaleDateSeconds = display["live_activity_stale_date_seconds"] as? Double ?? 3600
         self.liveActivityDismissalSeconds = display["live_activity_dismissal_seconds"] as? Double ?? 120
-        self._nearYouRadiusMeters = display["near_you_radius_meters"] as? Double ?? 400
-        self._fartherAwayRadiusMeters = display["farther_away_radius_meters"] as? Double ?? 1200
+        self._nearYouRadiusMeters = display["near_you_radius_meters"] as? Double ?? 2414
+        self._fartherAwayRadiusMeters = display["farther_away_radius_meters"] as? Double ?? 4023
+        self._muchFartherAwayRadiusMeters = display["much_farther_away_radius_meters"] as? Double ?? 8047
 
 
         self.distanceFilterMeters = location["distance_filter_meters"] as? Double ?? 50

@@ -3,7 +3,8 @@
 //  Track
 //
 //  Dashboard content for the "Subway" transport mode.
-//  Shows nearby subway arrivals and stations.
+//  Shows nearby subway arrivals split into "Near You" and "A Little
+//  Farther Away" sections — same distance-based pattern as the Nearby tab.
 //
 
 import SwiftUI
@@ -18,82 +19,126 @@ struct SubwayDashboard: View {
     let sheetNavigator: SheetNavigator
     let lastUpdated: Date?
     
+    // MARK: - Distance Settings
+    
+    private var nearYouRadius: Double { AppSettings.shared.nearYouRadiusMeters }
+    private var fartherAwayRadius: Double { AppSettings.shared.fartherAwayRadiusMeters }
+    private var muchFartherAwayRadius: Double { AppSettings.shared.muchFartherAwayRadiusMeters }
+    
     /// Grouped subway arrivals for tap-to-detail navigation
     private var groupedArrivals: [GroupedNearbyTransitResponse] {
-        viewModel.groupedSubwayArrivals
-    }
-    
-    /// Get filtered stations based on search
-    private var displayStations: [(stationID: String, name: String, distance: Double, routeIDs: [String])] {
-        viewModel.filteredNearbyStations
-    }
-    
-    /// Whether the user appears to be far from subway service
-    private var isFarFromService: Bool {
-        guard !groupedArrivals.isEmpty else { return false }
-        let soonest = groupedArrivals.map(\.soonestMinutes).min() ?? 0
-        return soonest > 30
+        viewModel.filteredNearbyGroupedSubwayArrivals
     }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
+            let refLocation = viewModel.effectiveLocation(userLocation: locationManager.currentLocation)
+            
             if !groupedArrivals.isEmpty {
-                // Show friendly "far away" hero when user is distant
-                if isFarFromService {
+                // Sort by distance from user
+                let sorted = groupedArrivals.sorted { g1, g2 in
+                    guard let loc = refLocation else { return g1.soonestMinutes < g2.soonestMinutes }
+                    return minDistance(for: g1, from: loc) < minDistance(for: g2, from: loc)
+                }
+                
+                // Separate into 3 tiers
+                let (nearYou, fartherAway, muchFarther) = separateByDistance(groups: sorted, from: refLocation)
+                
+                // If nothing is "near you", show friendly hero
+                if nearYou.isEmpty && (!fartherAway.isEmpty || !muchFarther.isEmpty) {
                     FarFromTransitView(
                         icon: "tram.fill",
                         title: "You're far from the subway",
-                        subtitle: "Looks like there aren't any trains close by right now. Here are the nearest departures we found.",
+                        subtitle: "No trains are super close, but here's what's around you.",
                         accentColor: AppTheme.Colors.mtaBlue
                     )
                 }
                 
-                DashboardSectionHeader(title: isFarFromService ? "Nearest Departures" : "Nearby Arrivals", updated: lastUpdated)
+                // "Near You" section (~1.5 mi)
+                if !nearYou.isEmpty {
+                    NearYouSectionHeader(radiusMeters: nearYouRadius, updated: lastUpdated)
+                    GroupedRouteList(
+                        groups: nearYou,
+                        viewModel: viewModel,
+                        locationManager: locationManager,
+                        sheetNavigator: sheetNavigator
+                    )
+                }
                 
-                GroupedRouteList(
-                    groups: groupedArrivals,
-                    viewModel: viewModel,
-                    locationManager: locationManager,
-                    sheetNavigator: sheetNavigator
-                )
-            } else if !viewModel.isLoading {
-                if !viewModel.searchText.isEmpty && !viewModel.upcomingArrivals.isEmpty {
+                // "A Little Farther Away" section (~2.5 mi)
+                if !fartherAway.isEmpty {
+                    FartherAwaySectionHeader(radiusMeters: fartherAwayRadius)
+                    GroupedRouteList(
+                        groups: fartherAway,
+                        viewModel: viewModel,
+                        locationManager: locationManager,
+                        sheetNavigator: sheetNavigator
+                    )
+                }
+                
+                // "Much Farther Away" section (~5 mi)
+                if !muchFarther.isEmpty {
+                    MuchFartherAwaySectionHeader(radiusMeters: muchFartherAwayRadius)
+                    GroupedRouteList(
+                        groups: muchFarther,
+                        viewModel: viewModel,
+                        locationManager: locationManager,
+                        sheetNavigator: sheetNavigator
+                    )
+                }
+                
+                // Empty after search filter
+                if nearYou.isEmpty && fartherAway.isEmpty && muchFarther.isEmpty && !viewModel.searchText.isEmpty {
                     EmptyStateView(
                         icon: "magnifyingglass",
                         message: "No subway results for \"\(viewModel.searchText)\""
                     )
-                } else {
-                    EmptyStateView(
-                        icon: "tram.fill",
-                        message: "No subway arrivals nearby"
-                    )
                 }
-            }
-            
-            if !displayStations.isEmpty {
-                DashboardSectionHeader(
-                    title: "Nearby Stations",
-                    updated: groupedArrivals.isEmpty ? lastUpdated : nil
-                )
                 
-                VStack(spacing: 0) {
-                    ForEach(Array(displayStations.enumerated()), id: \.element.stationID) { index, station in
-                        NearbyStationRow(
-                            name: station.name,
-                            distance: station.distance,
-                            routeIDs: station.routeIDs
-                        )
-                        if index < displayStations.count - 1 {
-                            Divider()
-                                .padding(.leading, AppTheme.Layout.margin + AppTheme.Layout.badgeSizeMedium + 12)
-                        }
-                    }
-                }
-                .background(AppTheme.Colors.cardBackground)
-                .cornerRadius(AppTheme.Layout.cornerRadius)
-                .padding(.horizontal, AppTheme.Layout.margin)
+            } else if !viewModel.isLoading {
+                EmptyStateView(
+                    icon: "tram.fill",
+                    message: "No subway arrivals nearby"
+                )
             }
         }
+    }
+    
+    // MARK: - Distance Helpers
+    
+    private func minDistance(for group: GroupedNearbyTransitResponse, from location: CLLocation) -> CLLocationDistance {
+        let allArrivals = group.directions.flatMap { $0.arrivals }
+        let distances = allArrivals.compactMap { arrival -> CLLocationDistance? in
+            guard let lat = arrival.stopLat, let lon = arrival.stopLon else { return nil }
+            return location.distance(from: CLLocation(latitude: lat, longitude: lon))
+        }
+        return distances.min() ?? Double.greatestFiniteMagnitude
+    }
+    
+    private func separateByDistance(
+        groups: [GroupedNearbyTransitResponse],
+        from location: CLLocation?
+    ) -> (nearYou: [GroupedNearbyTransitResponse], fartherAway: [GroupedNearbyTransitResponse], muchFarther: [GroupedNearbyTransitResponse]) {
+        guard let location = location else {
+            return (groups, [], [])
+        }
+        
+        var nearYou: [GroupedNearbyTransitResponse] = []
+        var fartherAway: [GroupedNearbyTransitResponse] = []
+        var muchFarther: [GroupedNearbyTransitResponse] = []
+        
+        for group in groups {
+            let dist = minDistance(for: group, from: location)
+            if dist <= nearYouRadius {
+                nearYou.append(group)
+            } else if dist <= fartherAwayRadius {
+                fartherAway.append(group)
+            } else if dist <= muchFartherAwayRadius {
+                muchFarther.append(group)
+            }
+        }
+        
+        return (nearYou, fartherAway, muchFarther)
     }
 }
 

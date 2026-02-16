@@ -45,7 +45,7 @@ final class TransitRepository {
         longitude: Double,
         radius: Double? = nil
     ) async throws -> [(stationID: String, name: String, distance: Double, routeIDs: [String])] {
-        let effectiveRadius = radius ?? 1000.0 // Default 1km
+        let effectiveRadius = radius ?? Double(AppSettings.shared.defaultSearchRadiusMeters) // Match API search radius
         
         AppLogger.shared.log("TRANSIT", message: "Fetching nearby stations for (\(latitude), \(longitude))")
 

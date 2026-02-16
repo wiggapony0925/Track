@@ -123,6 +123,34 @@ final class HomeViewModel {
         }
     }
     
+    /// Grouped bus arrivals filtered by search text (from the nearby/grouped API).
+    var filteredNearbyGroupedBusArrivals: [GroupedNearbyTransitResponse] {
+        guard !searchText.isEmpty else { return nearbyGroupedBusArrivals }
+        let query = searchText.lowercased()
+        return nearbyGroupedBusArrivals.filter { group in
+            group.displayName.lowercased().contains(query) ||
+            group.routeId.lowercased().contains(query) ||
+            group.directions.contains { direction in
+                direction.direction.lowercased().contains(query) ||
+                direction.arrivals.contains { $0.stopName.lowercased().contains(query) }
+            }
+        }
+    }
+    
+    /// Grouped subway arrivals filtered by search text (from the nearby/grouped API).
+    var filteredNearbyGroupedSubwayArrivals: [GroupedNearbyTransitResponse] {
+        guard !searchText.isEmpty else { return nearbyGroupedSubwayArrivals }
+        let query = searchText.lowercased()
+        return nearbyGroupedSubwayArrivals.filter { group in
+            group.displayName.lowercased().contains(query) ||
+            group.routeId.lowercased().contains(query) ||
+            group.directions.contains { direction in
+                direction.direction.lowercased().contains(query) ||
+                direction.arrivals.contains { $0.stopName.lowercased().contains(query) }
+            }
+        }
+    }
+    
     /// Nearby stations filtered by search text.
     var filteredNearbyStations: [(stationID: String, name: String, distance: Double, routeIDs: [String])] {
         guard !searchText.isEmpty else { return nearbyStations }
@@ -266,6 +294,12 @@ final class HomeViewModel {
     var nearbyBusStops: [BusStop] = []
     var busArrivals: [BusArrival] = []
     var selectedBusStop: BusStop?
+    
+    // Grouped bus arrivals fetched from the nearby/grouped API (bus-only)
+    var nearbyGroupedBusArrivals: [GroupedNearbyTransitResponse] = []
+    
+    // Grouped subway arrivals fetched from the nearby/grouped API (subway-only)
+    var nearbyGroupedSubwayArrivals: [GroupedNearbyTransitResponse] = []
 
     // Bus routes (browse all routes)
     var allBusRoutes: [BusRoute] = []
@@ -1483,27 +1517,37 @@ final class HomeViewModel {
         nearbyBusStops = []
         busArrivals = []
         selectedBusStop = nil
+        nearbyGroupedBusArrivals = []
+        nearbyGroupedSubwayArrivals = []
 
-        if let location = location {
-            do {
-                nearbyStations = try await repository.fetchNearbyStations(
-                    latitude: location.coordinate.latitude,
-                    longitude: location.coordinate.longitude
-                )
-            } catch {
-                AppLogger.shared.logError("fetchNearbyStations", error: error)
-                errorMessage = (error as? TransitError)?.description ?? error.localizedDescription
-            }
+        guard let location = location else {
+            errorMessage = "Location required for subway arrivals"
+            return
         }
 
-        let lineID = nearbyStations.first?.routeIDs.first ?? "L"
+        let lat = location.coordinate.latitude
+        let lon = location.coordinate.longitude
+
         do {
-            upcomingArrivals = try await repository.fetchArrivals(for: lineID)
-            
+            // Fetch grouped nearby transit and filter to subway — shows ALL
+            // subway lines near the user, not just a single hardcoded line.
+            async let groupedTask = TrackAPI.fetchNearbyGrouped(lat: lat, lon: lon)
+            async let stationsTask = repository.fetchNearbyStations(
+                latitude: lat, longitude: lon
+            )
+
+            let allGrouped = try await groupedTask
+            nearbyGroupedSubwayArrivals = allGrouped.filter { $0.mode == "subway" }
+
+            nearbyStations = try await stationsTask
         } catch {
-            AppLogger.shared.logError("fetchArrivals(\(lineID))", error: error)
+            AppLogger.shared.logError("refreshSubway", error: error)
             errorMessage = (error as? TransitError)?.description ?? error.localizedDescription
         }
+
+        // Fetch alerts and accessibility alongside subway
+        do { serviceAlerts = try await TrackAPI.fetchAlerts() } catch {}
+        do { elevatorOutages = try await TrackAPI.fetchAccessibility() } catch {}
     }
 
 
@@ -1513,30 +1557,32 @@ final class HomeViewModel {
         nearbyStations = []
         upcomingArrivals = []
         lirrArrivals = []
+        nearbyGroupedBusArrivals = []
+        nearbyGroupedSubwayArrivals = []
 
         guard let location = location else {
-            errorMessage = "Location required for bus stops"
+            errorMessage = "Location required for bus arrivals"
             return
         }
 
+        let lat = location.coordinate.latitude
+        let lon = location.coordinate.longitude
+
         do {
-            async let stopsTask = TrackAPI.fetchNearbyBusStops(
-                lat: location.coordinate.latitude,
-                lon: location.coordinate.longitude
-            )
-            async let routesTask = TrackAPI.fetchBusRoutes()
-
-            nearbyBusStops = try await stopsTask
-
-            // Bus routes fetched silently — don't fail the whole refresh
-            do { allBusRoutes = try await routesTask } catch {}
+            // Fetch grouped nearby transit and filter to bus only.
+            // This gives us the same card-style arrivals the Nearby tab uses.
+            let allGrouped = try await TrackAPI.fetchNearbyGrouped(lat: lat, lon: lon)
+            nearbyGroupedBusArrivals = allGrouped.filter { $0.mode == "bus" }
+            
+            do { allBusRoutes = try await TrackAPI.fetchBusRoutes() } catch {}
         } catch {
-            AppLogger.shared.logError("fetchNearbyBusStops", error: error)
+            AppLogger.shared.logError("refreshBus", error: error)
+            errorMessage = (error as? TransitError)?.description ?? error.localizedDescription
         }
 
-        if let firstStop = nearbyBusStops.first {
-            await fetchBusArrivals(for: firstStop)
-        }
+        // Fetch alerts and accessibility alongside bus
+        do { serviceAlerts = try await TrackAPI.fetchAlerts() } catch {}
+        do { elevatorOutages = try await TrackAPI.fetchAccessibility() } catch {}
     }
     
 
@@ -1562,6 +1608,8 @@ final class HomeViewModel {
         nearbyBusStops = []
         busArrivals = []
         selectedBusStop = nil
+        nearbyGroupedBusArrivals = []
+        nearbyGroupedSubwayArrivals = []
         mnrArrivals = []
 
         do {
@@ -1584,6 +1632,8 @@ final class HomeViewModel {
         nearbyBusStops = []
         busArrivals = []
         selectedBusStop = nil
+        nearbyGroupedBusArrivals = []
+        nearbyGroupedSubwayArrivals = []
         lirrArrivals = []
 
         do {
