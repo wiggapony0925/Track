@@ -29,6 +29,7 @@ struct BusArrival: Identifiable, Codable {
 
     /// Human-readable status, e.g. "Approaching", "3 stops away".
     let statusText: String
+    let status: String
 
     let expectedArrival: Date?
     let distanceMeters: Double?
@@ -38,6 +39,7 @@ struct BusArrival: Identifiable, Codable {
         case vehicleId = "vehicle_id"
         case stopId = "stop_id"
         case statusText = "status_text"
+        case status
         case expectedArrival = "expected_arrival"
         case distanceMeters = "distance_meters"
     }

@@ -10,13 +10,6 @@ import Foundation
 import SwiftData
 import CoreLocation
 
-struct RouteSuggestion {
-    let routeID: String
-    let direction: String
-    let destinationName: String
-    let score: Double
-}
-
 struct SmartSuggester {
     /// Predicts the most likely route for the user based on commute patterns.
     ///
@@ -82,13 +75,15 @@ struct SmartSuggester {
     }
 
     /// Records a commute pattern when the user starts a trip.
+    /// Also syncs to cloud if authenticated.
     static func recordPattern(
         context: ModelContext,
         routeID: String,
         direction: String,
         startLocation: CLLocation,
         destinationStationID: String,
-        destinationName: String
+        destinationName: String,
+        cloudSyncHandler: ((String, String, Double, Double, String, String, Int, Int, Int) async -> Void)? = nil
     ) {
         let calendar = Calendar.current
         let now = Date()
@@ -107,6 +102,8 @@ struct SmartSuggester {
 
         let descriptor = FetchDescriptor<CommutePattern>(predicate: predicate)
 
+        var frequency = 1
+        
         do {
             let existing = try context.fetch(descriptor)
 
@@ -123,6 +120,7 @@ struct SmartSuggester {
             if let match = match {
                 match.frequency += 1
                 match.lastUsed = now
+                frequency = match.frequency
             } else {
                 let newPattern = CommutePattern(
                     routeID: routeID,
@@ -149,6 +147,13 @@ struct SmartSuggester {
                 dayOfWeek: weekday
             )
             context.insert(newPattern)
+        }
+        
+        // Sync to cloud asynchronously
+        if let handler = cloudSyncHandler {
+            Task {
+                await handler(routeID, direction, lat, lon, destinationStationID, destinationName, hour, weekday, frequency)
+            }
         }
     }
 

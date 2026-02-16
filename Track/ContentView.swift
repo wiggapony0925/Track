@@ -10,10 +10,16 @@ import SwiftUI
 import CoreLocation
 
 struct ContentView: View {
-    @AppStorage("isLoggedIn") private var isLoggedIn = false
+    @ObservedObject private var supabase = SupabaseManager.shared
+    @AppStorage("isLoggedIn") private var isLoggedIn = false // Legacy fallback
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @AppStorage("appTheme") private var appTheme = "system"
     @State private var locationManager = LocationManager()
+
+    /// Unified authentication state
+    private var isAuth: Bool {
+        supabase.isAuthenticated || isLoggedIn
+    }
 
     /// True when the user has granted location access.
     private var locationGranted: Bool {
@@ -32,7 +38,7 @@ struct ContentView: View {
 
     var body: some View {
         Group {
-            if !isLoggedIn {
+            if !isAuth {
                 LoginView()
             } else if !hasCompletedOnboarding {
                 OnboardingView()
@@ -49,8 +55,15 @@ struct ContentView: View {
         }
         .preferredColorScheme(colorScheme)
         .onAppear {
-            if isLoggedIn && hasCompletedOnboarding && locationManager.authorizationStatus == .notDetermined {
-                locationManager.requestPermission()
+            if isAuth && hasCompletedOnboarding {
+                // Perform background sync on launch
+                Task {
+                    await SyncManager.shared.performFullSync()
+                }
+                
+                if locationManager.authorizationStatus == .notDetermined {
+                    locationManager.requestPermission()
+                }
             }
         }
     }

@@ -80,6 +80,13 @@ struct GroupedRouteRow: View {
                         Text("min")
                             .font(.custom("Helvetica", size: 12))
                             .foregroundColor(AppTheme.Colors.textSecondary)
+
+                        if first.status == "Scheduled" {
+                            Image(systemName: "clock")
+                                .font(.system(size: 8, weight: .bold))
+                                .foregroundColor(AppTheme.Colors.textSecondary)
+                                .offset(y: -5)
+                        }
                     }
                 } else {
                     Text("--")

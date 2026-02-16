@@ -154,3 +154,50 @@ TrackBackend/
 | MTA SIRI | JSON | Bus arrivals, vehicle positions |
 | MTA OBA | JSON | Bus routes, stops, route shapes |
 | MTA Alerts | JSON | Service alerts, elevator status |
+| Supabase | REST | User data, analytics, schedules |
+
+## Supabase Integration
+
+The backend connects to Supabase for user analytics and data sync.
+
+### Configuration
+
+Set these environment variables (or use defaults for development):
+
+```bash
+export SUPABASE_URL=https://octpebjxadbufiplgjqg.supabase.co
+export SUPABASE_KEY=sb_publishable_lAEZ_x8O4vjdGaw-I-QUMg_oS5iWKIn
+```
+
+### Database Tables
+
+| Table | Purpose | Used By |
+|-------|---------|---------|
+| `profiles` | User accounts from Apple Sign-In | iOS SupabaseManager |
+| `route_interactions` | Analytics - what routes are popular | iOS HomeViewModel, Backend analytics router |
+| `schedules` | Widget activation schedules | iOS WidgetSchedules, SyncManager |
+| `commute_patterns` | Smart suggestions based on habits | iOS SmartSuggester |
+
+### Analytics Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/analytics/popular` | Get most popular routes |
+| POST | `/analytics/log` | Log a route interaction |
+
+### Example: Get Popular Routes
+
+```bash
+curl "http://localhost:8000/analytics/popular?mode=subway&limit=5"
+```
+
+Response:
+```json
+{
+  "popular_routes": [
+    {"route_id": "L", "mode": "subway", "clicks": 42, "tracks": 15, "total": 57},
+    {"route_id": "7", "mode": "subway", "clicks": 38, "tracks": 12, "total": 50}
+  ],
+  "count": 2
+}
+```

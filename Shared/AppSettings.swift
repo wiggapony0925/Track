@@ -10,10 +10,13 @@
 
 import Foundation
 
+// MARK: - App Group Constant
+
+/// Shared App Group identifier used across main app and widgets
+let kAppGroupIdentifier = "group.JFMCAPITALGROUP.Track"
+
 struct AppSettings {
     static let shared = AppSettings()
-
-    // MARK: - API Settings
 
     // MARK: - API Settings
 

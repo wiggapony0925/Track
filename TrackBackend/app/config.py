@@ -30,6 +30,8 @@ class AppSettings(BaseModel):
     http_retry_delay_seconds: float = 1.0  # Delay between retries
     show_ghost_trains: bool = False  # If True, show trains with projected positions even if data is missing
     simulation_easing_enabled: bool = True  # If True, clients should use physics-based interpolation
+    # Note: Supabase credentials should be set via environment variables:
+    # SUPABASE_URL, SUPABASE_SERVICE_KEY
 
 
 class ApiKeys(BaseModel):
@@ -68,34 +70,7 @@ class Settings(BaseModel):
     urls: Urls
 
 
-# Mapping from a single-letter (or multi-letter) line ID to the settings.json
-# URL key so we can look up the correct GTFS-Realtime feed.
-LINE_TO_URL_KEY: dict[str, str] = {
-    "A": "subway_ace",
-    "C": "subway_ace",
-    "E": "subway_ace",
-    "G": "subway_g",
-    "N": "subway_nqrw",
-    "Q": "subway_nqrw",
-    "R": "subway_nqrw",
-    "W": "subway_nqrw",
-    "1": "subway_123456",
-    "2": "subway_123456",
-    "3": "subway_123456",
-    "4": "subway_123456",
-    "5": "subway_123456",
-    "6": "subway_123456",
-    "7": "subway_123456",
-    "B": "subway_bdfm",
-    "D": "subway_bdfm",
-    "F": "subway_bdfm",
-    "M": "subway_bdfm",
-    "J": "subway_jz",
-    "Z": "subway_jz",
-    "L": "subway_l",
-    "SI": "subway_si",
-}
-
+from app.utils.transit_utils import resolve_subway_feed_key
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
@@ -107,7 +82,7 @@ def get_settings() -> Settings:
 def get_feed_url(line_id: str) -> str | None:
     """Return the MTA feed URL for the given subway line, or *None*."""
     settings = get_settings()
-    key = LINE_TO_URL_KEY.get(line_id.upper())
+    key = resolve_subway_feed_key(line_id)
     if key is None:
         return None
     urls_dict = settings.urls.model_dump()

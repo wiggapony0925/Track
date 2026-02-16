@@ -397,6 +397,7 @@ async def get_route_shape(route_id: str) -> RouteShape:
     settings = get_settings()
     eps = settings.urls.bus_endpoints
     if eps is None:
+        print(f"[BUS_SHAPE] No bus endpoints configured")
         return RouteShape(route_id=route_id, polylines=[], stops=[])
 
     # URL-encode the route_id for the path (e.g. "MTA NYCT_B63" → "MTA%20NYCT_B63")
@@ -409,12 +410,16 @@ async def get_route_shape(route_id: str) -> RouteShape:
         "version": "2",
     }
 
+    print(f"[BUS_SHAPE] Fetching shape for {route_id} from {url}")
     data = await _fetch_bus_json(url, params)
 
     # Extract polylines
     polylines: list[str] = []
     entry = data.get("data", {}).get("entry", {}) if isinstance(data, dict) else {}
-    for poly in entry.get("polylines", []):
+    raw_polylines = entry.get("polylines", [])
+    print(f"[BUS_SHAPE] Got {len(raw_polylines)} raw polylines from API")
+    
+    for poly in raw_polylines:
         encoded = poly.get("points", "")
         if encoded:
             polylines.append(encoded)
@@ -438,4 +443,5 @@ async def get_route_shape(route_id: str) -> RouteShape:
             )
         )
 
+    print(f"[BUS_SHAPE] Returning {len(polylines)} polylines, {len(stops)} stops for {route_id}")
     return RouteShape(route_id=route_id, polylines=polylines, stops=stops)

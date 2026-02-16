@@ -29,7 +29,7 @@ struct TrackedRoute: Codable {
 
     // MARK: - Persistence
 
-    private static let defaults = UserDefaults(suiteName: "group.com.track.shared") ?? UserDefaults.standard
+    private static let defaults = UserDefaults(suiteName: kAppGroupIdentifier) ?? UserDefaults.standard
 
     private enum Keys {
         static let routeId = "tracked_route_id"

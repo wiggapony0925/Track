@@ -29,3 +29,15 @@ DerivedData/
 *.ipa
 *.dSYM.zip
 *.dSYM
+
+# Large Data Files
+*.db
+TrackBackend/app/data/subway/supplemented_GTFS/
+TrackBackend/app/data/bus/
+TrackBackend/app/data/MTA Bus Company/
+
+# More Data Ignores
+TrackBackend/app/data/subway/
+TrackBackend/app/data/lirr/
+TrackBackend/app/data/metro_north/
+TrackBackend/app/data/*.txt

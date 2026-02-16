@@ -25,20 +25,8 @@ from app.services.bus_client import get_nearby_stops, get_realtime_arrivals
 from app.services.data_cleaner import get_arrivals_for_line
 from app.services.station_lookup import get_nearby_stop_ids, get_stop_info
 from app.utils.logger import TrackLogger
-
-# Subway line → hex color mapping (official MTA colors).
-_SUBWAY_COLORS: dict[str, str] = {
-    "1": "#EE352E", "2": "#EE352E", "3": "#EE352E",
-    "4": "#00933C", "5": "#00933C", "6": "#00933C",
-    "7": "#B933AD",
-    "A": "#0039A6", "C": "#0039A6", "E": "#0039A6",
-    "B": "#FF6319", "D": "#FF6319", "F": "#FF6319", "M": "#FF6319",
-    "G": "#6CBE45",
-    "J": "#996633", "Z": "#996633",
-    "L": "#A7A9AC",
-    "N": "#FCCC0A", "Q": "#FCCC0A", "R": "#FCCC0A", "W": "#FCCC0A",
-    "S": "#808183", "SI": "#808183",
-}
+from app.utils.transit_utils import get_subway_color
+from app.services.schedule_service import schedule_service
 
 # Default bus color (MTA blue) — used when bus routes don't provide one
 _BUS_DEFAULT_COLOR = "#0039A6"
@@ -155,7 +143,7 @@ def _group_arrivals(flat: list[NearbyTransitArrival]) -> list[GroupedNearbyTrans
         # Assign color: subway lines use the official palette,
         # bus routes get the default MTA blue
         if mode == "subway":
-            color = _SUBWAY_COLORS.get(display.upper())
+            color = get_subway_color(display)
         else:
             color = _BUS_DEFAULT_COLOR
 
@@ -286,6 +274,32 @@ async def _fetch_nearby_subway(
             f"Subway: {success_count}/{len(feed_lines)} feeds OK, "
             f"{total_raw} raw → {total_kept} kept (nearby)"
         )
+
+    # --- NEW: Fallback for stops with no live arrivals ---
+    stops_with_live = {a.stop_id for a in results}
+    missing_stops = nearby_stops - stops_with_live
+    
+    if missing_stops:
+        TrackLogger.info(f"Filling in schedules for {len(missing_stops)} stops with no live data")
+        for stop_id in missing_stops:
+            scheduled = schedule_service.get_scheduled_arrivals(stop_id, limit=4)
+            for s in scheduled:
+                # Get stop coordinates for the model
+                stop_info = get_stop_info(s.station)
+                results.append(NearbyTransitArrival(
+                    route_id=s.route_id,
+                    stop_name=stop_info.name if stop_info else s.station,
+                    direction=s.destination or s.direction,
+                    destination=s.destination,
+                    minutes_away=s.minutes_away,
+                    arrival_ts=s.arrival_ts,
+                    status="Scheduled",
+                    mode="subway",
+                    stop_lat=stop_info.lat if stop_info else None,
+                    stop_lon=stop_info.lon if stop_info else None,
+                    stop_id=s.station,
+                    trip_id=s.trip_id
+                ))
 
     return results
 

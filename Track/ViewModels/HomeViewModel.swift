@@ -138,6 +138,23 @@ final class HomeViewModel {
     }
     var cachedStations: [CachedSubwayStation] = []
 
+    // MARK: - Offline Support
+    
+    /// Whether we're currently using cached data due to network issues
+    var isUsingCachedData: Bool {
+        OfflineCacheManager.shared.isUsingCachedData
+    }
+    
+    /// Whether the device is currently online
+    var isOnline: Bool {
+        OfflineCacheManager.shared.isOnline
+    }
+    
+    /// Age of cached data (e.g., "5 min ago")
+    var cacheAge: String? {
+        OfflineCacheManager.shared.getCacheAge()
+    }
+
     init() {
         syncTrackedRoute()
         Task {
@@ -147,7 +164,14 @@ final class HomeViewModel {
     }
 
     /// Fetches the full subway system map (polylines for all 22 lines).
+    /// Falls back to bundled offline data when network is unavailable.
     func loadSystemMap() async {
+        // If offline, use bundled static data
+        if !OfflineCacheManager.shared.isOnline {
+            loadOfflineSystemMap()
+            return
+        }
+        
         do {
             let response = try await TrackAPI.fetchAllSubwayShapes()
             
@@ -165,11 +189,39 @@ final class HomeViewModel {
             }
         } catch {
             AppLogger.shared.logError("loadSystemMap", error: error)
+            // Fall back to offline data on error
+            loadOfflineSystemMap()
         }
     }
     
+    /// Loads subway routes from bundled offline data.
+    private func loadOfflineSystemMap() {
+        let offlineLines = SubwayRoutesData.allRouteIds.compactMap { routeId -> CachedSubwayLine? in
+            // Get ALL branches for routes like A train (Lefferts, Far Rockaway, main)
+            let branches = SubwayRoutesData.routeBranches(for: routeId)
+            guard !branches.isEmpty else { return nil }
+            return CachedSubwayLine(
+                id: routeId,
+                color: SubwayRoutesData.color(for: routeId),
+                coordinates: branches
+            )
+        }
+        self.cachedSystemMap = offlineLines
+        
+        // Count total branches for logging
+        let totalBranches = offlineLines.reduce(0) { $0 + $1.coordinates.count }
+        AppLogger.shared.log("OFFLINE", message: "Loaded \(offlineLines.count) offline subway routes (\(totalBranches) total branches)")
+    }
+    
     /// Fetches all subway stations and their served lines.
+    /// Falls back to bundled offline data when network is unavailable.
     func loadStations() async {
+        // If offline, use bundled static data
+        if !OfflineCacheManager.shared.isOnline {
+            loadOfflineStations()
+            return
+        }
+        
         do {
             let response = try await TrackAPI.fetchAllSubwayStations()
             let stations = response.stations.map { s in
@@ -183,8 +235,38 @@ final class HomeViewModel {
             await MainActor.run {
                 self.cachedStations = stations
             }
+            
+            // Cache stations for offline use
+            let cachedStations = response.stations.map { s in
+                CachedStation(
+                    id: s.id,
+                    name: s.name,
+                    latitude: s.lat,
+                    longitude: s.lon,
+                    routes: s.routes
+                )
+            }
+            OfflineCacheManager.shared.cacheStations(cachedStations)
+            
         } catch {
+            AppLogger.shared.logError("loadStations", error: error)
+            // Fall back to offline data on error
+            loadOfflineStations()
         }
+    }
+    
+    /// Loads stations from bundled offline data.
+    private func loadOfflineStations() {
+        let offlineStations = SubwayRoutesData.majorStations.map { station in
+            CachedSubwayStation(
+                id: station.id,
+                name: station.name,
+                coordinate: station.coordinate,
+                routes: station.routes
+            )
+        }
+        self.cachedStations = offlineStations
+        AppLogger.shared.log("OFFLINE", message: "Loaded \(offlineStations.count) offline stations")
     }
 
     /// Syncs the local tracking state with the persisted TrackedRoute in UserDefaults.
@@ -356,6 +438,15 @@ final class HomeViewModel {
         selectedGroupedRoute = group
         selectedDirectionIndex = directionIndex
         isRouteDetailPresented = true
+        
+        // Log route interaction to Supabase for analytics
+        Task {
+            await SupabaseManager.shared.logRouteInteraction(
+                routeId: group.routeId,
+                mode: group.isBus ? "bus" : "subway",
+                type: "click"
+            )
+        }
         
         // Reset previous route data
         walkingRoute = nil
@@ -803,6 +894,15 @@ final class HomeViewModel {
 
     /// Starts tracking a nearby transit arrival via Widget.
     func trackNearbyArrival(_ arrival: NearbyTransitResponse, location: CLLocation?) {
+        // Log track interaction to Supabase for analytics
+        Task {
+            await SupabaseManager.shared.logRouteInteraction(
+                routeId: arrival.routeId,
+                mode: arrival.isBus ? "bus" : "subway",
+                type: "track"
+            )
+        }
+        
         // Save to TrackedRoute for Single Route Widget
         let trackedRoute = TrackedRoute(
             routeId: arrival.routeId,
@@ -853,6 +953,15 @@ final class HomeViewModel {
 
     /// Starts tracking a subway arrival.
     func trackSubwayArrival(_ arrival: TrainArrival, location: CLLocation?) {
+        // Log track interaction to Supabase for analytics
+        Task {
+            await SupabaseManager.shared.logRouteInteraction(
+                routeId: arrival.routeID,
+                mode: "subway",
+                type: "track"
+            )
+        }
+        
         let trackedRoute = TrackedRoute(
             routeId: arrival.routeID,
             displayName: arrival.routeID,
@@ -888,6 +997,15 @@ final class HomeViewModel {
 
     /// Starts tracking a bus arrival.
     func trackBusArrival(_ arrival: BusArrival, location: CLLocation?) {
+        // Log track interaction to Supabase for analytics
+        Task {
+            await SupabaseManager.shared.logRouteInteraction(
+                routeId: arrival.routeId,
+                mode: "bus",
+                type: "track"
+            )
+        }
+        
         let trackedRoute = TrackedRoute(
             routeId: arrival.routeId,
             displayName: stripMTAPrefix(arrival.routeId),
@@ -925,6 +1043,15 @@ final class HomeViewModel {
 
     /// Starts tracking an LIRR arrival.
     func trackLIRRArrival(_ arrival: TrainArrival, location: CLLocation?) {
+        // Log track interaction to Supabase for analytics
+        Task {
+            await SupabaseManager.shared.logRouteInteraction(
+                routeId: arrival.routeID,
+                mode: "lirr",
+                type: "track"
+            )
+        }
+        
         let trackedRoute = TrackedRoute(
             routeId: arrival.routeID,
             displayName: arrival.routeID,

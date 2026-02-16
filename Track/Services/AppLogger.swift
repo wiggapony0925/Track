@@ -6,6 +6,10 @@
 //  and app event to a log.app text file in the Documents directory.
 //  The log file is cleared on every app launch.
 //
+//  Best Practices:
+//  - Uses isDirectory: false for file URLs to avoid blocking I/O
+//  - Performs file writes asynchronously on a background queue
+//
 
 import Foundation
 
@@ -20,13 +24,19 @@ final class AppLogger {
         df.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
         return df
     }()
+    
+    /// Background queue for asynchronous file I/O operations
+    private let writeQueue = DispatchQueue(label: "com.track.logger", qos: .utility)
 
     private init() {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        fileURL = docs.appendingPathComponent("log.app")
+        // Use isDirectory: false to avoid blocking file system check
+        fileURL = docs.appendingPathComponent("log.app", isDirectory: false)
 
-        // Clear the log file on every app launch
-        try? "".write(to: fileURL, atomically: true, encoding: .utf8)
+        // Clear the log file on every app launch (async to avoid blocking)
+        writeQueue.async { [fileURL] in
+            try? "".write(to: fileURL, atomically: true, encoding: .utf8)
+        }
         log("APP_LAUNCH", message: "Track app started — log file cleared")
     }
 
@@ -39,19 +49,32 @@ final class AppLogger {
         let timestamp = dateFormatter.string(from: Date())
         let entry = "[\(timestamp)] [\(tag)] \(message)\n"
 
-        // Print to Xcode console
+        // Print to Xcode console (synchronous, safe on main thread)
         print(entry, terminator: "")
 
-        // Append to log file
-        if let data = entry.data(using: .utf8) {
-            if FileManager.default.fileExists(atPath: fileURL.path) {
-                if let handle = try? FileHandle(forWritingTo: fileURL) {
+        // Append to log file asynchronously to avoid blocking main thread
+        writeQueue.async { [fileURL] in
+            guard let data = entry.data(using: .utf8) else { return }
+            
+            do {
+                if FileManager.default.fileExists(atPath: fileURL.path) {
+                    let handle = try FileHandle(forWritingTo: fileURL)
+                    defer {
+                        do {
+                            try handle.close()
+                        } catch {
+                            // Log close failure to console only (avoid recursive logging)
+                            print("[AppLogger] Failed to close file handle: \(error.localizedDescription)")
+                        }
+                    }
                     handle.seekToEndOfFile()
                     handle.write(data)
-                    handle.closeFile()
+                } else {
+                    try data.write(to: fileURL)
                 }
-            } else {
-                try? data.write(to: fileURL)
+            } catch {
+                // Log write failure to console only (avoid recursive logging)
+                print("[AppLogger] Failed to write log: \(error.localizedDescription)")
             }
         }
     }

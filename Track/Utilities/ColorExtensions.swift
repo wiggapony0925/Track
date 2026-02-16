@@ -14,15 +14,26 @@ extension Color {
         let cleaned = hex.trimmingCharacters(in: .alphanumerics.inverted)
         var int: UInt64 = 0
         Scanner(string: cleaned).scanHexInt64(&int)
-        let r, g, b: Double
+        let a, r, g, b: Double
         switch cleaned.count {
-        case 6:
+        case 3: // RGB (12-bit)
+            r = Double((int >> 8) * 17) / 255
+            g = Double((int >> 4 & 0xF) * 17) / 255
+            b = Double((int & 0xF) * 17) / 255
+            a = 1.0
+        case 6: // RGB (24-bit)
+            r = Double((int >> 16) & 0xFF) / 255
+            g = Double((int >> 8) & 0xFF) / 255
+            b = Double(int & 0xFF) / 255
+            a = 1.0
+        case 8: // ARGB (32-bit)
+            a = Double((int >> 24) & 0xFF) / 255
             r = Double((int >> 16) & 0xFF) / 255
             g = Double((int >> 8) & 0xFF) / 255
             b = Double(int & 0xFF) / 255
         default:
-            r = 0; g = 0; b = 0
+            (r, g, b, a) = (0, 0, 0, 1)
         }
-        self.init(red: r, green: g, blue: b)
+        self.init(.sRGB, red: r, green: g, blue: b, opacity: a)
     }
 }

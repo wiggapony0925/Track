@@ -70,6 +70,7 @@ class BusArrival(BaseModel):
     vehicle_id: str
     stop_id: str
     status_text: str
+    status: str = "Live"
     expected_arrival: datetime | None = None
     distance_meters: float | None = None
     bearing: float | None = None
@@ -85,7 +86,7 @@ class NearbyTransitArrival(BaseModel):
     minutes_away: int
     arrival_ts: int | None = None
     status: str = "On Time"
-    mode: str  # "subway" or "bus"
+    mode: str  # "subway", "bus", or "lirr"
     stop_lat: float | None = None
     stop_lon: float | None = None
     stop_id: str | None = None
@@ -109,7 +110,7 @@ class GroupedNearbyTransit(BaseModel):
 
     route_id: str
     display_name: str
-    mode: str  # "subway" or "bus"
+    mode: str  # "subway", "bus", or "lirr"
     color_hex: str | None = None
     directions: list[DirectionArrivals]
 
