@@ -3,7 +3,15 @@ import CoreLocation
 
 /// Matches the backend's `NearbyTransitArrival` JSON schema.
 struct NearbyTransitResponse: Codable, Identifiable {
-    var id: String { "\(routeId)-\(stopName)-\(minutesAway)" }
+    /// Unique identity combining route, stop, ETA, and trip/timestamp
+    /// to avoid collisions when two trains share the same minutesAway.
+    var id: String {
+        let base = "\(routeId)-\(stopName)-\(minutesAway)"
+        if let tripId, !tripId.isEmpty { return "\(base)-\(tripId)" }
+        if let ts = arrivalTs { return "\(base)-\(ts)" }
+        if let vid = vehicleId, !vid.isEmpty { return "\(base)-\(vid)" }
+        return base
+    }
 
     let routeId: String
     let stopName: String
