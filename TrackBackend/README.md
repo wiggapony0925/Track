@@ -146,11 +146,43 @@ TrackBackend/
 └── README.md
 ```
 
+## GTFS Static Data for Map Lines
+
+The iOS app displays subway, LIRR, and Metro-North route lines on the map. This data comes from the `/static/bundle` endpoint which parses GTFS static files.
+
+### Subway Data
+Subway GTFS data is included in the repo at `app/data/subway/` (shapes, stops, etc.).
+
+### LIRR and Metro-North Data
+To enable LIRR and Metro-North route lines on the map, download GTFS static data from MTA and place it in these directories:
+
+```
+app/data/lirr/gtfslirr/
+├── shapes.txt     # Route polyline coordinates
+├── trips.txt      # Trip definitions (links routes to shapes)
+├── stops.txt      # Station locations
+└── routes.txt     # Route definitions
+
+app/data/metro_north/gtfsmnr/
+├── shapes.txt
+├── trips.txt
+├── stops.txt
+└── routes.txt
+```
+
+**Download GTFS feeds from:** https://new.mta.info/developers
+
+Once the data is in place:
+1. Restart the backend server
+2. The `/static/bundle` endpoint will include LIRR routes (prefixed `LIRR_*`) and MNR routes (prefixed `MNR_*`)
+3. The iOS app will display these routes as dashed lines on the system map
+
 ## Data Sources
 
 | Source | Protocol | Usage |
 |--------|----------|-------|
 | MTA GTFS-Realtime | Protobuf | Subway & LIRR real-time arrivals |
+| MTA GTFS Static | CSV | Route shapes for map display |
 | MTA SIRI | JSON | Bus arrivals, vehicle positions |
 | MTA OBA | JSON | Bus routes, stops, route shapes |
 | MTA Alerts | JSON | Service alerts, elevator status |
