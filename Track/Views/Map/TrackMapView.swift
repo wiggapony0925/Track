@@ -186,46 +186,28 @@ struct TrackMapView: View {
         }
     }
     
-    // MARK: - Bus Vehicle Annotations
+    // MARK: - Bus Vehicle Markers
     
     @MapContentBuilder
     private var busVehicleAnnotations: some MapContent {
         ForEach(viewModel.busVehicles) { vehicle in
-            let isHighlighted = vehicle.vehicleId == viewModel.highlightedVehicleId
-            Annotation(
-                vehicle.nextStop ?? vehicle.displayRouteName,
-                coordinate: CLLocationCoordinate2D(latitude: vehicle.lat, longitude: vehicle.lon)
-            ) {
-                BusVehicleAnnotation(
-                    routeName: vehicle.displayRouteName,
-                    bearing: vehicle.bearing,
-                    isHighlighted: isHighlighted
-                )
-                .zIndex(isHighlighted ? 100 : 1)
-            }
+            BusVehicleMarker(vehicle: vehicle)
         }
     }
     
-    // MARK: - Train Vehicle Annotations
+    // MARK: - Train Vehicle Markers
     
     @MapContentBuilder
     private var trainVehicleAnnotations: some MapContent {
         ForEach(viewModel.trainVehicles) { train in
-            let isHighlighted = train.tripId == viewModel.highlightedVehicleId
-            Annotation(train.nextStationName ?? train.routeId, coordinate: CLLocationCoordinate2D(latitude: train.lat, longitude: train.lon)) {
-                Group {
-                    if train.routeId.contains("LIRR") || train.routeId.lowercased().contains("lir") {
-                        LIRRAnnotationView(routeId: train.routeId, isHighlighted: isHighlighted)
-                    } else if train.routeId.contains("MNR") || train.routeId.lowercased().contains("mnr") || train.routeId.lowercased().contains("metro") {
-                        MNRAnnotationView(routeId: train.routeId, isHighlighted: isHighlighted)
-                    } else if train.routeId.lowercased().contains("amtrak") || train.routeId.lowercased().contains("amt") {
-                        AmtrakAnnotationView(routeId: train.routeId, isHighlighted: isHighlighted)
-                    } else {
-                        TrainAnnotation(routeId: train.routeId, direction: train.direction, isHighlighted: isHighlighted)
-                    }
-                }
-                .rotationEffect(.degrees(train.bearing ?? 0))
-                .zIndex(isHighlighted ? 100 : 1)
+            if train.routeId.contains("LIRR") || train.routeId.lowercased().contains("lir") {
+                LIRRMarker(train: train)
+            } else if train.routeId.contains("MNR") || train.routeId.lowercased().contains("mnr") || train.routeId.lowercased().contains("metro") {
+                MNRMarker(train: train)
+            } else if train.routeId.lowercased().contains("amtrak") || train.routeId.lowercased().contains("amt") {
+                AmtrakMarker(train: train)
+            } else {
+                SubwayTrainMarker(train: train)
             }
         }
     }
