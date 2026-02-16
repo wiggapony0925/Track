@@ -86,6 +86,48 @@ final class HomeViewModel {
             arrival.destination.lowercased().contains(query)
         }
     }
+    
+    /// Subway arrivals filtered by search text.
+    var filteredSubwayArrivals: [TrainArrival] {
+        guard !searchText.isEmpty else { return upcomingArrivals }
+        let query = searchText.lowercased()
+        return upcomingArrivals.filter { arrival in
+            arrival.routeID.lowercased().contains(query) ||
+            arrival.stationID.lowercased().contains(query) ||
+            arrival.direction.lowercased().contains(query) ||
+            arrival.destination.lowercased().contains(query)
+        }
+    }
+    
+    /// Bus arrivals filtered by search text.
+    var filteredBusArrivals: [BusArrival] {
+        guard !searchText.isEmpty else { return busArrivals }
+        let query = searchText.lowercased()
+        return busArrivals.filter { arrival in
+            stripMTAPrefix(arrival.routeId).lowercased().contains(query) ||
+            arrival.stopId.lowercased().contains(query) ||
+            arrival.statusText.lowercased().contains(query)
+        }
+    }
+    
+    /// Bus stops filtered by search text.
+    var filteredBusStops: [BusStop] {
+        guard !searchText.isEmpty else { return nearbyBusStops }
+        let query = searchText.lowercased()
+        return nearbyBusStops.filter { stop in
+            stop.name.lowercased().contains(query)
+        }
+    }
+    
+    /// Nearby stations filtered by search text.
+    var filteredNearbyStations: [(stationID: String, name: String, distance: Double, routeIDs: [String])] {
+        guard !searchText.isEmpty else { return nearbyStations }
+        let query = searchText.lowercased()
+        return nearbyStations.filter { station in
+            station.name.lowercased().contains(query) ||
+            station.routeIDs.contains { $0.lowercased().contains(query) }
+        }
+    }
 
     // Bus mode
     var selectedMode: TransportMode = .nearby
