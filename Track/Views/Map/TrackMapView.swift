@@ -262,13 +262,30 @@ struct TrackMapView: View {
             // Lines are rendered with a white border for better visual separation
             ForEach(viewModel.cachedSystemMap) { line in
                 ForEach(Array(line.coordinates.enumerated()), id: \.offset) { polyIdx, coords in
-                    // White outline for depth/separation
-                    MapPolyline(coordinates: coords)
-                        .stroke(.white.opacity(0.8), lineWidth: 4)
-                    
-                    // Main colored line
-                    MapPolyline(coordinates: coords)
-                        .stroke(line.color, lineWidth: 3)
+                    switch line.mode {
+                    case .subway:
+                        // Subway: solid white outline + colored line
+                        MapPolyline(coordinates: coords)
+                            .stroke(.white.opacity(0.8), lineWidth: 4)
+                        MapPolyline(coordinates: coords)
+                            .stroke(line.color, lineWidth: 3)
+                        
+                    case .lirr:
+                        // LIRR: thinner dashed line
+                        MapPolyline(coordinates: coords)
+                            .stroke(
+                                AppTheme.CommuterRailColors.lirrBlue,
+                                style: StrokeStyle(lineWidth: 2.5, lineCap: .round, dash: [6, 4])
+                            )
+                        
+                    case .mnr:
+                        // Metro-North: thinner dashed line
+                        MapPolyline(coordinates: coords)
+                            .stroke(
+                                AppTheme.CommuterRailColors.mnrBlue,
+                                style: StrokeStyle(lineWidth: 2.5, lineCap: .round, dash: [6, 4])
+                            )
+                    }
                 }
             }
             

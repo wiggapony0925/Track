@@ -193,13 +193,21 @@ final class HomeViewModel {
     
     var routeShape: RouteShapeResponse?
 
-    // Full subway system map (pre-decoded for performance)
-    struct CachedSubwayLine: Identifiable {
+    // Full transit system map (pre-decoded for performance)
+    // Includes Subway, LIRR, and Metro-North lines
+    struct CachedTransitLine: Identifiable {
         let id: String
         let color: Color
         let coordinates: [[CLLocationCoordinate2D]]
+        let mode: TransitLineMode
+        
+        enum TransitLineMode {
+            case subway
+            case lirr
+            case mnr
+        }
     }
-    var cachedSystemMap: [CachedSubwayLine] = []
+    var cachedSystemMap: [CachedTransitLine] = []
 
     // Full subway station list with served lines
     struct CachedSubwayStation: Identifiable {
@@ -235,54 +243,104 @@ final class HomeViewModel {
         }
     }
 
-    /// Fetches the full subway system map (polylines for all 22 lines).
+    /// Fetches the full transit system map (subway, LIRR, MNR polylines).
     /// Falls back to bundled offline data when network is unavailable.
     func loadSystemMap() async {
         // If offline, use bundled static data
         if !OfflineCacheManager.shared.isOnline {
-            loadOfflineSystemMap()
+            await loadOfflineSystemMap()
             return
         }
         
         do {
+            // Fetch subway shapes from API
             let response = try await TrackAPI.fetchAllSubwayShapes()
             
-            // Pre-decode coordinates on a background thread to avoid UI hitch
-            let decoded = response.lines.map { line in
-                CachedSubwayLine(
+            // Pre-decode subway coordinates
+            var decoded: [CachedTransitLine] = response.lines.map { line in
+                CachedTransitLine(
                     id: line.routeId,
                     color: Color(hex: line.colorHex),
-                    coordinates: line.decodedPolylines
+                    coordinates: line.decodedPolylines,
+                    mode: .subway
                 )
             }
+            
+            // Also load LIRR and MNR from bundle (they're not in the subway shapes API)
+            let bundle = SubwayRoutesData.loadBundle()
+            let lirrMnrLines = loadCommuterRailFromBundle(bundle)
+            decoded.append(contentsOf: lirrMnrLines)
             
             await MainActor.run {
                 self.cachedSystemMap = decoded
             }
+            
+            AppLogger.shared.log("SYSTEM_MAP", message: "Loaded \(decoded.count) transit lines (subway + LIRR + MNR)")
         } catch {
             AppLogger.shared.logError("loadSystemMap", error: error)
             // Fall back to offline data on error
-            loadOfflineSystemMap()
+            await loadOfflineSystemMap()
         }
     }
     
-    /// Loads subway routes from bundled offline data.
-    private func loadOfflineSystemMap() {
-        let offlineLines = SubwayRoutesData.allRouteIds.compactMap { routeId -> CachedSubwayLine? in
-            // Get ALL branches for routes like A train (Lefferts, Far Rockaway, main)
+    /// Loads LIRR and MNR routes from the static bundle
+    private func loadCommuterRailFromBundle(_ bundle: StaticBundle) -> [CachedTransitLine] {
+        var lines: [CachedTransitLine] = []
+        
+        for routeId in bundle.routes.routeIds {
+            let upper = routeId.uppercased()
+            
+            // Only process LIRR and MNR routes
+            guard upper.hasPrefix("LIRR") || upper.hasPrefix("MNR") else { continue }
+            
+            let branches = bundle.routes.branches(for: routeId)
+            guard !branches.isEmpty else { continue }
+            
+            // Convert BundleCoordinate to CLLocationCoordinate2D
+            let coordinates: [[CLLocationCoordinate2D]] = branches.map { branch in
+                branch.map { coord in
+                    CLLocationCoordinate2D(latitude: coord.lat, longitude: coord.lon)
+                }
+            }
+            
+            let mode: CachedTransitLine.TransitLineMode = upper.hasPrefix("LIRR") ? .lirr : .mnr
+            let color = SubwayRoutesData.color(for: routeId)
+            
+            lines.append(CachedTransitLine(
+                id: routeId,
+                color: color,
+                coordinates: coordinates,
+                mode: mode
+            ))
+        }
+        
+        return lines
+    }
+    
+    /// Loads all transit routes from bundled offline data.
+    private func loadOfflineSystemMap() async {
+        // Load subway routes from hardcoded offline paths
+        var offlineLines: [CachedTransitLine] = SubwayRoutesData.allRouteIds.compactMap { routeId -> CachedTransitLine? in
             let branches = SubwayRoutesData.routeBranches(for: routeId)
             guard !branches.isEmpty else { return nil }
-            return CachedSubwayLine(
+            return CachedTransitLine(
                 id: routeId,
                 color: SubwayRoutesData.color(for: routeId),
-                coordinates: branches
+                coordinates: branches,
+                mode: .subway
             )
         }
+        
+        // Also try to load LIRR/MNR from bundle
+        let bundle = SubwayRoutesData.loadBundle()
+        let commuterRail = loadCommuterRailFromBundle(bundle)
+        offlineLines.append(contentsOf: commuterRail)
+        
         self.cachedSystemMap = offlineLines
         
         // Count total branches for logging
         let totalBranches = offlineLines.reduce(0) { $0 + $1.coordinates.count }
-        AppLogger.shared.log("OFFLINE", message: "Loaded \(offlineLines.count) offline subway routes (\(totalBranches) total branches)")
+        AppLogger.shared.log("OFFLINE", message: "Loaded \(offlineLines.count) offline transit routes (\(totalBranches) total branches)")
     }
     
     /// Fetches all subway stations and their served lines.
