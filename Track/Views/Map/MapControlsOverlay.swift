@@ -25,64 +25,72 @@ struct MapControlsOverlay: View {
     
     var body: some View {
         GeometryReader { geometry in
-            VStack {
-                // MARK: Top Section (Banners)
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 12) {
-                        // Search pin indicator
-                        if viewModel.isSearchPinActive {
-                            searchPinBanner
+            ZStack {
+                // MARK: Top Section (Banners on left, controls on right)
+                VStack {
+                    HStack(alignment: .top) {
+                        // Left: Banners
+                        VStack(alignment: .leading, spacing: 8) {
+                            // Search pin indicator
+                            if viewModel.isSearchPinActive {
+                                searchPinBanner
+                            }
+                            
+                            // Selected route indicator
+                            if viewModel.selectedRouteId != nil {
+                                selectedRouteBanner
+                            }
                         }
                         
-                        // Selected route indicator
-                        if viewModel.selectedRouteId != nil {
-                            selectedRouteBanner
+                        Spacer()
+                        
+                        // Right: Map controls (under compass area)
+                        if sheetDetent != .large {
+                            mapControlButtons
+                                .padding(.top, 50) // Position below compass
                         }
                     }
+                    .padding(.horizontal, AppTheme.Layout.margin)
+                    .padding(.top, 8)
                     
                     Spacer()
                 }
-                
-                Spacer()
-            }
-            
-            // MARK: Map Control Buttons (Right Side)
-            if sheetDetent != .large {
-                VStack(spacing: 12) {
-                    // 3D / 2D Toggle
-                    Button {
-                        toggle3DMode()
-                    } label: {
-                        Text(is3DMode ? "2D" : "3D")
-                            .font(.custom("Helvetica-Bold", size: 15))
-                            .foregroundColor(AppTheme.Colors.textPrimary)
-                            .frame(width: 44, height: 44)
-                            .background(.thinMaterial)
-                            .clipShape(Circle())
-                            .shadow(color: .black.opacity(0.15), radius: 6, x: 0, y: 3)
-                    }
-                    .accessibilityLabel(is3DMode ? "Switch to 2D" : "Switch to 3D")
-                    
-                    // Recenter / Location Button
-                    Button {
-                        centerMap()
-                    } label: {
-                        Image(systemName: "location.fill")
-                            .font(.system(size: 20, weight: .semibold))
-                            .foregroundColor(AppTheme.Colors.mtaBlue)
-                            .frame(width: 44, height: 44)
-                            .background(.thinMaterial)
-                            .clipShape(Circle())
-                            .shadow(color: .black.opacity(0.15), radius: 6, x: 0, y: 3)
-                    }
-                    .accessibilityLabel("Recenter on my location")
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
-                .padding(.trailing, AppTheme.Layout.margin)
-                .padding(.bottom, geometry.size.height * sheetHeightFraction + 8)
-                .transition(.opacity)
             }
         }
+    }
+    
+    // MARK: - Map Control Buttons
+    
+    private var mapControlButtons: some View {
+        VStack(spacing: 0) {
+            // 3D / 2D Toggle
+            Button {
+                toggle3DMode()
+            } label: {
+                Text(is3DMode ? "2D" : "3D")
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .foregroundColor(AppTheme.Colors.textPrimary)
+                    .frame(width: 40, height: 40)
+            }
+            .accessibilityLabel(is3DMode ? "Switch to 2D" : "Switch to 3D")
+            
+            Divider()
+                .frame(width: 24)
+            
+            // Recenter / Location Button
+            Button {
+                centerMap()
+            } label: {
+                Image(systemName: "location.fill")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(AppTheme.Colors.mtaBlue)
+                    .frame(width: 40, height: 40)
+            }
+            .accessibilityLabel("Recenter on my location")
+        }
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .shadow(color: .black.opacity(0.12), radius: 4, x: 0, y: 2)
     }
     
     // MARK: - Computed Properties
@@ -159,8 +167,6 @@ struct MapControlsOverlay: View {
         .padding(.vertical, 8)
         .background(.ultraThinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius))
-        .padding(.horizontal, AppTheme.Layout.margin)
-        .padding(.top, 8)
     }
     
     // MARK: - Selected Route Banner
@@ -219,8 +225,6 @@ struct MapControlsOverlay: View {
         .padding(.vertical, 8)
         .background(.ultraThinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius))
-        .padding(.horizontal, AppTheme.Layout.margin)
-        .padding(.top, 4)
     }
 }
 

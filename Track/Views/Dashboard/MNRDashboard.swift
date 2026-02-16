@@ -32,9 +32,23 @@ struct MNRDashboard: View {
         displayArrivals.filter { $0.minutesAway > 15 }
     }
     
+    /// Check if user is likely far from Metro-North service area
+    private var isOutOfServiceArea: Bool {
+        soonArrivals.isEmpty && !displayArrivals.isEmpty
+    }
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             if !displayArrivals.isEmpty {
+                // MARK: - Out of Service Area Notice
+                if isOutOfServiceArea {
+                    OutOfAreaNoticeView(
+                        icon: "train.side.rear.car",
+                        message: "No Metro-North trains nearby",
+                        subtitle: "Showing closest available departures"
+                    )
+                }
+                
                 // MARK: - Arriving Soon Section
                 if !soonArrivals.isEmpty {
                     CommuterRailSectionHeader(title: "Arriving Soon", iconName: "train.side.rear.car", color: AppTheme.CommuterRailColors.mnrBlue, updated: lastUpdated)
@@ -60,9 +74,10 @@ struct MNRDashboard: View {
                     .padding(.horizontal, AppTheme.Layout.margin)
                 }
                 
-                // MARK: - Later Section
+                // MARK: - Later / Closest Section
                 if !laterArrivals.isEmpty {
-                    CommuterRailSectionHeader(title: "Later", iconName: "clock", color: AppTheme.Colors.textSecondary, updated: soonArrivals.isEmpty ? lastUpdated : nil)
+                    let sectionTitle = soonArrivals.isEmpty ? "Closest Departures" : "Later"
+                    CommuterRailSectionHeader(title: sectionTitle, iconName: soonArrivals.isEmpty ? "mappin.circle" : "clock", color: soonArrivals.isEmpty ? AppTheme.CommuterRailColors.mnrBlue : AppTheme.Colors.textSecondary, updated: soonArrivals.isEmpty ? lastUpdated : nil)
                     
                     VStack(spacing: 0) {
                         ForEach(Array(laterArrivals.prefix(AppSettings.shared.maxLirrArrivals).enumerated()), id: \.element.id) { index, arrival in
@@ -91,9 +106,12 @@ struct MNRDashboard: View {
                         message: "No Metro-North results for \"\(viewModel.searchText)\""
                     )
                 } else {
-                    EmptyStateView(
+                    // Complete empty state - no data at all
+                    NoServiceEmptyState(
                         icon: "train.side.rear.car",
-                        message: "No Metro-North departures available"
+                        title: "No Metro-North Service",
+                        message: "We couldn't find any Metro-North departures right now. Try searching for a specific station or check back later.",
+                        brandColor: AppTheme.CommuterRailColors.mnrBlue
                     )
                 }
             }

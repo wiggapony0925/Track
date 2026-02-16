@@ -278,3 +278,90 @@ struct CommuterRailArrivalRow: View {
         }
     }
 }
+
+// MARK: - Out of Area Notice View
+
+/// Friendly notice shown when user is out of service area but we still show closest departures.
+struct OutOfAreaNoticeView: View {
+    let icon: String
+    let message: String
+    let subtitle: String
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "location.slash")
+                .font(.system(size: 20, weight: .medium))
+                .foregroundColor(AppTheme.Colors.warningYellow)
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text(message)
+                    .font(.custom("Helvetica-Bold", size: 14))
+                    .foregroundColor(AppTheme.Colors.textPrimary)
+                
+                Text(subtitle)
+                    .font(.custom("Helvetica", size: 12))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+            }
+            
+            Spacer()
+        }
+        .padding(.horizontal, AppTheme.Layout.cardPadding)
+        .padding(.vertical, 12)
+        .background(AppTheme.Colors.warningYellow.opacity(0.1))
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius)
+                .stroke(AppTheme.Colors.warningYellow.opacity(0.3), lineWidth: 1)
+        )
+        .cornerRadius(AppTheme.Layout.cornerRadius)
+        .padding(.horizontal, AppTheme.Layout.margin)
+    }
+}
+
+// MARK: - No Service Empty State
+
+/// Full empty state when no service is available at all.
+struct NoServiceEmptyState: View {
+    let icon: String
+    let title: String
+    let message: String
+    let brandColor: Color
+    
+    var body: some View {
+        VStack(spacing: 16) {
+            // Icon in circle
+            ZStack {
+                Circle()
+                    .fill(brandColor.opacity(0.1))
+                    .frame(width: 64, height: 64)
+                
+                Image(systemName: icon)
+                    .font(.system(size: 28, weight: .medium))
+                    .foregroundColor(brandColor)
+            }
+            
+            // Title
+            Text(title)
+                .font(.custom("Helvetica-Bold", size: 18))
+                .foregroundColor(AppTheme.Colors.textPrimary)
+            
+            // Message
+            Text(message)
+                .font(.custom("Helvetica", size: 14))
+                .foregroundColor(AppTheme.Colors.textSecondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 24)
+            
+            // Search hint
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 12, weight: .medium))
+                Text("Try searching for a station")
+                    .font(.system(size: 13, weight: .medium))
+            }
+            .foregroundColor(brandColor)
+            .padding(.top, 4)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 32)
+    }
+}

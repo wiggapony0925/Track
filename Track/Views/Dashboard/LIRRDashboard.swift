@@ -32,9 +32,23 @@ struct LIRRDashboard: View {
         displayArrivals.filter { $0.minutesAway > 15 }
     }
     
+    /// Check if user is likely far from LIRR service area
+    private var isOutOfServiceArea: Bool {
+        soonArrivals.isEmpty && !displayArrivals.isEmpty
+    }
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             if !displayArrivals.isEmpty {
+                // MARK: - Out of Service Area Notice
+                if isOutOfServiceArea {
+                    OutOfAreaNoticeView(
+                        icon: "train.side.front.car",
+                        message: "No LIRR trains nearby",
+                        subtitle: "Showing closest available departures"
+                    )
+                }
+                
                 // MARK: - Arriving Soon Section
                 if !soonArrivals.isEmpty {
                     CommuterRailSectionHeader(title: "Arriving Soon", iconName: "train.side.front.car", color: AppTheme.CommuterRailColors.lirrBlue, updated: lastUpdated)
@@ -60,9 +74,10 @@ struct LIRRDashboard: View {
                     .padding(.horizontal, AppTheme.Layout.margin)
                 }
                 
-                // MARK: - Later Section
+                // MARK: - Later / Closest Section
                 if !laterArrivals.isEmpty {
-                    CommuterRailSectionHeader(title: "Later", iconName: "clock", color: AppTheme.Colors.textSecondary, updated: soonArrivals.isEmpty ? lastUpdated : nil)
+                    let sectionTitle = soonArrivals.isEmpty ? "Closest Departures" : "Later"
+                    CommuterRailSectionHeader(title: sectionTitle, iconName: soonArrivals.isEmpty ? "mappin.circle" : "clock", color: soonArrivals.isEmpty ? AppTheme.CommuterRailColors.lirrBlue : AppTheme.Colors.textSecondary, updated: soonArrivals.isEmpty ? lastUpdated : nil)
                     
                     VStack(spacing: 0) {
                         ForEach(Array(laterArrivals.prefix(AppSettings.shared.maxLirrArrivals).enumerated()), id: \.element.id) { index, arrival in
@@ -91,9 +106,12 @@ struct LIRRDashboard: View {
                         message: "No LIRR results for \"\(viewModel.searchText)\""
                     )
                 } else {
-                    EmptyStateView(
+                    // Complete empty state - no data at all
+                    NoServiceEmptyState(
                         icon: "train.side.front.car",
-                        message: "No LIRR departures available"
+                        title: "No LIRR Service",
+                        message: "We couldn't find any LIRR departures right now. Try searching for a specific station or check back later.",
+                        brandColor: AppTheme.CommuterRailColors.lirrBlue
                     )
                 }
             }
