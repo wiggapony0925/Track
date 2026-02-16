@@ -46,6 +46,7 @@
     "service_area_max_lon": -72.40,
     "simulation_easing_enabled": true,
     "show_lirr_by_default": true,
-    "show_mnr_by_default": true
+    "show_mnr_by_default": true,
+    "subway_line_offset_meters": 12.0
   }
 }

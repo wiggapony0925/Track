@@ -15,7 +15,13 @@ struct MNRDashboard: View {
     
     let viewModel: HomeViewModel
     let locationManager: LocationManager
+    let sheetNavigator: SheetNavigator
     let lastUpdated: Date?
+    
+    /// Grouped MNR arrivals for tap-to-detail navigation
+    private var groupedArrivals: [GroupedNearbyTransitResponse] {
+        viewModel.groupedMNRArrivals
+    }
     
     /// Get filtered arrivals based on search
     private var displayArrivals: [TrainArrival] {
@@ -24,12 +30,7 @@ struct MNRDashboard: View {
     
     /// Arrivals within 15 minutes (soon)
     private var soonArrivals: [TrainArrival] {
-        displayArrivals.filter { $0.minutesAway <= 15 }
-    }
-    
-    /// Arrivals more than 15 minutes away
-    private var laterArrivals: [TrainArrival] {
-        displayArrivals.filter { $0.minutesAway > 15 }
+        displayArrivals.filter { $0.minutesAway <= 15 && ($0.minutesAway > 0 || $0.estimatedTime > Date()) }
     }
     
     /// Check if user is likely far from Metro-North service area
@@ -37,67 +38,40 @@ struct MNRDashboard: View {
         soonArrivals.isEmpty && !displayArrivals.isEmpty
     }
     
+    /// Whether the soonest departure is far away (30+ min)
+    private var isFarFromService: Bool {
+        guard !groupedArrivals.isEmpty else { return false }
+        let soonest = groupedArrivals.map(\.soonestMinutes).min() ?? 0
+        return soonest > 30 || isOutOfServiceArea
+    }
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            if !displayArrivals.isEmpty {
-                // MARK: - Out of Service Area Notice
-                if isOutOfServiceArea {
-                    OutOfAreaNoticeView(
-                        message: "No Metro-North trains nearby",
-                        subtitle: "Showing closest available departures"
+            if !groupedArrivals.isEmpty {
+                // MARK: - Far From Service Hero
+                if isFarFromService {
+                    FarFromTransitView(
+                        icon: "train.side.rear.car",
+                        title: "You're far from Metro-North",
+                        subtitle: "No Metro-North stations close by, but here are the nearest departures we found for you.",
+                        accentColor: AppTheme.CommuterRailColors.mnrBlue
                     )
                 }
                 
-                // MARK: - Arriving Soon Section
-                if !soonArrivals.isEmpty {
-                    CommuterRailSectionHeader(title: "Arriving Soon", iconName: "train.side.rear.car", color: AppTheme.CommuterRailColors.mnrBlue, updated: lastUpdated)
-                    
-                    VStack(spacing: 0) {
-                        ForEach(Array(soonArrivals.prefix(AppSettings.shared.maxLirrArrivals).enumerated()), id: \.element.id) { index, arrival in
-                            CommuterRailArrivalRow(
-                                arrival: arrival,
-                                brandColor: AppTheme.CommuterRailColors.mnrBlue,
-                                isTracking: viewModel.isTracking(arrival),
-                                onTrack: {
-                                    viewModel.trackMNRArrival(arrival, location: locationManager.currentLocation)
-                                }
-                            )
-                            if index < min(soonArrivals.count, AppSettings.shared.maxLirrArrivals) - 1 {
-                                Divider()
-                                    .padding(.leading, AppTheme.Layout.margin + AppTheme.Layout.badgeSizeMedium + 12)
-                            }
-                        }
-                    }
-                    .background(AppTheme.Colors.cardBackground)
-                    .cornerRadius(AppTheme.Layout.cornerRadius)
-                    .padding(.horizontal, AppTheme.Layout.margin)
-                }
+                // MARK: - Tappable Route Cards
+                CommuterRailSectionHeader(
+                    title: isFarFromService ? "Nearest Departures" : (soonArrivals.isEmpty ? "Upcoming Departures" : "Arriving Soon"),
+                    iconName: "train.side.rear.car",
+                    color: AppTheme.CommuterRailColors.mnrBlue,
+                    updated: lastUpdated
+                )
                 
-                // MARK: - Later / Closest Section
-                if !laterArrivals.isEmpty {
-                    let sectionTitle = soonArrivals.isEmpty ? "Closest Departures" : "Later"
-                    CommuterRailSectionHeader(title: sectionTitle, iconName: soonArrivals.isEmpty ? "mappin.circle" : "clock", color: soonArrivals.isEmpty ? AppTheme.CommuterRailColors.mnrBlue : AppTheme.Colors.textSecondary, updated: soonArrivals.isEmpty ? lastUpdated : nil)
-                    
-                    VStack(spacing: 0) {
-                        ForEach(Array(laterArrivals.prefix(AppSettings.shared.maxLirrArrivals).enumerated()), id: \.element.id) { index, arrival in
-                            CommuterRailArrivalRow(
-                                arrival: arrival,
-                                brandColor: AppTheme.CommuterRailColors.mnrBlue,
-                                isTracking: viewModel.isTracking(arrival),
-                                onTrack: {
-                                    viewModel.trackMNRArrival(arrival, location: locationManager.currentLocation)
-                                }
-                            )
-                            if index < min(laterArrivals.count, AppSettings.shared.maxLirrArrivals) - 1 {
-                                Divider()
-                                    .padding(.leading, AppTheme.Layout.margin + AppTheme.Layout.badgeSizeMedium + 12)
-                            }
-                        }
-                    }
-                    .background(AppTheme.Colors.cardBackground)
-                    .cornerRadius(AppTheme.Layout.cornerRadius)
-                    .padding(.horizontal, AppTheme.Layout.margin)
-                }
+                GroupedRouteList(
+                    groups: groupedArrivals,
+                    viewModel: viewModel,
+                    locationManager: locationManager,
+                    sheetNavigator: sheetNavigator
+                )
             } else if !viewModel.isLoading {
                 if !viewModel.searchText.isEmpty && !viewModel.mnrArrivals.isEmpty {
                     EmptyStateView(
@@ -122,6 +96,7 @@ struct MNRDashboard: View {
     MNRDashboard(
         viewModel: HomeViewModel(),
         locationManager: LocationManager(),
+        sheetNavigator: SheetNavigator(),
         lastUpdated: Date()
     )
 }

@@ -17,6 +17,7 @@ class TrackArrival(BaseModel):
 
     route_id: str = ""
     station: str
+    station_name: str = ""
     direction: str
     destination: str | None = None  # e.g. "Wakefield-241 St"
     minutes_away: int
@@ -166,4 +167,20 @@ class AllSubwayStationsResponse(BaseModel):
     """All subway stations for the system map."""
 
     stations: list[SubwayStation]
+
+
+class CommuterRailLineOverlay(BaseModel):
+    """Lightweight shape for drawing a single commuter rail line on the map."""
+
+    route_id: str
+    name: str
+    color_hex: str
+    polylines: list[str]
+    mode: str  # "lirr" or "mnr"
+
+
+class AllCommuterRailLinesResponse(BaseModel):
+    """All LIRR and MNR line overlays for the full system map."""
+
+    lines: list[CommuterRailLineOverlay]
 

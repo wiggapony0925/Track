@@ -40,6 +40,8 @@ final class OfflineCacheManager: ObservableObject {
         static let lirrArrivals = "cached_lirr_arrivals"
         static let lastFetchTime = "cached_last_fetch_time"
         static let cachedStations = "cached_stations"
+        static let lirrShapes = "cached_lirr_shapes"
+        static let mnrShapes = "cached_mnr_shapes"
     }
     
     // MARK: - Initialization
@@ -148,6 +150,32 @@ final class OfflineCacheManager: ObservableObject {
         return try? JSONDecoder().decode([CachedStation].self, from: data)
     }
     
+    // MARK: - Cache Commuter Rail Shapes
+    
+    /// Cache LIRR line shapes for offline map display
+    func cacheLIRRShapes(_ response: AllCommuterRailLinesResponse) {
+        guard let data = try? JSONEncoder().encode(response) else { return }
+        userDefaults.set(data, forKey: CacheKey.lirrShapes)
+    }
+    
+    /// Cache Metro-North line shapes for offline map display
+    func cacheMNRShapes(_ response: AllCommuterRailLinesResponse) {
+        guard let data = try? JSONEncoder().encode(response) else { return }
+        userDefaults.set(data, forKey: CacheKey.mnrShapes)
+    }
+    
+    /// Get cached LIRR shapes
+    func getCachedLIRRShapes() -> AllCommuterRailLinesResponse? {
+        guard let data = userDefaults.data(forKey: CacheKey.lirrShapes) else { return nil }
+        return try? JSONDecoder().decode(AllCommuterRailLinesResponse.self, from: data)
+    }
+    
+    /// Get cached Metro-North shapes
+    func getCachedMNRShapes() -> AllCommuterRailLinesResponse? {
+        guard let data = userDefaults.data(forKey: CacheKey.mnrShapes) else { return nil }
+        return try? JSONDecoder().decode(AllCommuterRailLinesResponse.self, from: data)
+    }
+    
     // MARK: - Helpers
     
     private func cacheKey(forMode mode: String) -> String {
@@ -173,6 +201,8 @@ final class OfflineCacheManager: ObservableObject {
         userDefaults.removeObject(forKey: CacheKey.lirrArrivals)
         userDefaults.removeObject(forKey: CacheKey.lastFetchTime)
         userDefaults.removeObject(forKey: CacheKey.cachedStations)
+        userDefaults.removeObject(forKey: CacheKey.lirrShapes)
+        userDefaults.removeObject(forKey: CacheKey.mnrShapes)
         lastFetchTime = nil
     }
 }

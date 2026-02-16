@@ -194,6 +194,20 @@ struct TrackAPI {
         return try decoder.decode(AllSubwayLinesResponse.self, from: data)
     }
 
+    /// Fetches polylines + colors for ALL LIRR branches.
+    /// - Returns: An `AllCommuterRailLinesResponse` with overlay data per branch.
+    static func fetchAllLIRRShapes() async throws -> AllCommuterRailLinesResponse {
+        let data = try await get(path: "/lirr/shapes/all")
+        return try decoder.decode(AllCommuterRailLinesResponse.self, from: data)
+    }
+
+    /// Fetches polylines + colors for ALL Metro-North branches.
+    /// - Returns: An `AllCommuterRailLinesResponse` with overlay data per branch.
+    static func fetchAllMNRShapes() async throws -> AllCommuterRailLinesResponse {
+        let data = try await get(path: "/mnr/shapes/all")
+        return try decoder.decode(AllCommuterRailLinesResponse.self, from: data)
+    }
+
     /// Fetches all subway stations for map markers.
     /// - Returns: An `AllSubwayStationsResponse` with all stations and their routes.
     static func fetchAllSubwayStations() async throws -> AllSubwayStationsResponse {

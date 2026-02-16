@@ -37,19 +37,31 @@ struct GroupedRouteRow: View {
                 VStack(alignment: .leading, spacing: 4) {
                     TabView(selection: $currentDirectionIndex) {
                         ForEach(Array(group.directions.enumerated()), id: \.element.id) { index, direction in
-                            // Destination Label
+                            // Destination Label + Station subtitle
                             let label = direction.arrivals.first?.destination ?? directionLabel(direction.direction)
-                            Text(label)
-                                .font(.custom("Helvetica-Bold", size: 15))
-                                .foregroundColor(AppTheme.Colors.textPrimary)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.9)
-                                .tag(index)
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(label)
+                                    .font(.custom("Helvetica-Bold", size: 15))
+                                    .foregroundColor(AppTheme.Colors.textPrimary)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.9)
+                                
+                                // Show station name for commuter rail & subway
+                                if let stopName = direction.arrivals.first?.stopName,
+                                   !stopName.isEmpty,
+                                   stopName != direction.arrivals.first?.destination {
+                                    Text("at \(stopName)")
+                                        .font(.custom("Helvetica", size: 12))
+                                        .foregroundColor(AppTheme.Colors.textSecondary)
+                                        .lineLimit(1)
+                                }
+                            }
+                            .tag(index)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
                     .tabViewStyle(.page(indexDisplayMode: .never))
-                    .frame(height: 20) // Just enough for text
+                    .frame(height: 36) // Taller to fit subtitle
                     
                     // Custom Pagination Dots
                     if group.directions.count > 1 {
@@ -64,7 +76,7 @@ struct GroupedRouteRow: View {
                         }
                     }
                 }
-                .frame(height: 32)
+                .frame(height: 48)
             }
 
             Spacer(minLength: 8)

@@ -61,6 +61,7 @@ struct DashboardView: View {
                             SubwayDashboard(
                                 viewModel: viewModel,
                                 locationManager: locationManager,
+                                sheetNavigator: sheetNavigator,
                                 lastUpdated: lastUpdated
                             )
                             .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -68,6 +69,7 @@ struct DashboardView: View {
                             BusDashboard(
                                 viewModel: viewModel,
                                 locationManager: locationManager,
+                                sheetNavigator: sheetNavigator,
                                 lastUpdated: lastUpdated
                             )
                             .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -75,6 +77,7 @@ struct DashboardView: View {
                             LIRRDashboard(
                                 viewModel: viewModel,
                                 locationManager: locationManager,
+                                sheetNavigator: sheetNavigator,
                                 lastUpdated: lastUpdated
                             )
                             .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -82,6 +85,7 @@ struct DashboardView: View {
                             MNRDashboard(
                                 viewModel: viewModel,
                                 locationManager: locationManager,
+                                sheetNavigator: sheetNavigator,
                                 lastUpdated: lastUpdated
                             )
                             .transition(.move(edge: .bottom).combined(with: .opacity))

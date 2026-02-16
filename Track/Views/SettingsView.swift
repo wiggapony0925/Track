@@ -15,12 +15,14 @@ struct SettingsView: View {
 
     @AppStorage("dev_use_localhost") private var useLocalhost = false
     @AppStorage("dev_custom_ip") private var customIP = AppSettings.shared.defaultDeviceIP
+    @AppStorage("subway_line_offset_meters") private var subwayLineOffset: Double = AppSettings.shared.subwayLineOffsetMeters
 
     var body: some View {
         NavigationStack {
             List {
                 appearanceSection
                 widgetSection
+                mapSection
                 accountSection
                 developerSettingsSection
             }
@@ -66,6 +68,30 @@ struct SettingsView: View {
             Text("Live Near Me Widget")
         } footer: {
             Text("Configure when the nearby transit widget should activate throughout the day.")
+        }
+    }
+
+    // MARK: - Map
+
+    private var mapSection: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Image(systemName: "arrow.left.and.right")
+                        .foregroundColor(AppTheme.Colors.mtaBlue)
+                    Text("Line Offset")
+                    Spacer()
+                    Text("\(Int(subwayLineOffset))m")
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+                        .monospacedDigit()
+                }
+                Slider(value: $subwayLineOffset, in: 4...30, step: 1)
+                    .tint(AppTheme.Colors.mtaBlue)
+            }
+        } header: {
+            Text("Map")
+        } footer: {
+            Text("Controls how far apart subway lines are spread when sharing the same tunnel. Increase if lines overlap; decrease for a tighter look.")
         }
     }
 

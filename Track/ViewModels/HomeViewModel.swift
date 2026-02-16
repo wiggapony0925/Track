@@ -69,6 +69,7 @@ final class HomeViewModel {
         return lirrArrivals.filter { arrival in
             arrival.routeID.lowercased().contains(query) ||
             arrival.stationID.lowercased().contains(query) ||
+            arrival.stationName.lowercased().contains(query) ||
             arrival.direction.lowercased().contains(query) ||
             (arrival.destination?.lowercased().contains(query) ?? false)
         }
@@ -82,6 +83,7 @@ final class HomeViewModel {
         return mnrArrivals.filter { arrival in
             arrival.routeID.lowercased().contains(query) ||
             arrival.stationID.lowercased().contains(query) ||
+            arrival.stationName.lowercased().contains(query) ||
             arrival.direction.lowercased().contains(query) ||
             (arrival.destination?.lowercased().contains(query) ?? false)
         }
@@ -94,6 +96,7 @@ final class HomeViewModel {
         return upcomingArrivals.filter { arrival in
             arrival.routeID.lowercased().contains(query) ||
             arrival.stationID.lowercased().contains(query) ||
+            arrival.stationName.lowercased().contains(query) ||
             arrival.direction.lowercased().contains(query) ||
             (arrival.destination?.lowercased().contains(query) ?? false)
         }
@@ -128,6 +131,134 @@ final class HomeViewModel {
             station.name.lowercased().contains(query) ||
             station.routeIDs.contains { $0.lowercased().contains(query) }
         }
+    }
+
+    // MARK: - Grouped Arrivals for Unified Navigation
+    
+    /// Groups subway arrivals into `GroupedNearbyTransitResponse` for the unified
+    /// tap-to-detail navigation flow (same as Nearby tab).
+    var groupedSubwayArrivals: [GroupedNearbyTransitResponse] {
+        groupTrainArrivals(filteredSubwayArrivals, mode: "subway")
+    }
+    
+    /// Groups LIRR arrivals into `GroupedNearbyTransitResponse` for the unified
+    /// tap-to-detail navigation flow.
+    var groupedLIRRArrivals: [GroupedNearbyTransitResponse] {
+        groupTrainArrivals(filteredLIRRArrivals, mode: "lirr")
+    }
+    
+    /// Groups Metro-North arrivals into `GroupedNearbyTransitResponse` for the unified
+    /// tap-to-detail navigation flow.
+    var groupedMNRArrivals: [GroupedNearbyTransitResponse] {
+        groupTrainArrivals(filteredMNRArrivals, mode: "mnr")
+    }
+    
+    /// Groups bus arrivals into `GroupedNearbyTransitResponse` for the unified
+    /// tap-to-detail navigation flow.
+    var groupedBusArrivals: [GroupedNearbyTransitResponse] {
+        guard let stop = selectedBusStop else { return [] }
+        
+        // Group by route_id
+        var byRoute: [String: [BusArrival]] = [:]
+        for arrival in filteredBusArrivals {
+            byRoute[arrival.routeId, default: []].append(arrival)
+        }
+        
+        return byRoute.map { routeId, arrivals in
+            let displayName = stripMTAPrefix(routeId)
+            // Convert BusArrival → NearbyTransitResponse for the grouped model
+            let nearbyArrivals = arrivals.map { bus -> NearbyTransitResponse in
+                let minutesAway: Int
+                if let expected = bus.expectedArrival {
+                    minutesAway = max(0, Int(expected.timeIntervalSinceNow / 60))
+                } else {
+                    minutesAway = 0
+                }
+                return NearbyTransitResponse(
+                    routeId: bus.routeId,
+                    stopName: stop.name,
+                    direction: stop.direction ?? "Loop",
+                    destination: bus.statusText,
+                    minutesAway: minutesAway,
+                    status: bus.status,
+                    mode: "bus",
+                    stopLat: stop.lat,
+                    stopLon: stop.lon,
+                    arrivalTs: bus.expectedArrival.map { Int($0.timeIntervalSince1970) },
+                    vehicleId: bus.vehicleId,
+                    tripId: nil,
+                    stopId: bus.stopId
+                )
+            }
+            
+            return GroupedNearbyTransitResponse(
+                routeId: routeId,
+                displayName: displayName,
+                mode: "bus",
+                colorHex: nil,
+                directions: [
+                    DirectionArrivalsResponse(
+                        direction: stop.direction ?? "Loop",
+                        arrivals: nearbyArrivals.sorted { $0.minutesAway < $1.minutesAway }
+                    )
+                ]
+            )
+        }.sorted { $0.soonestMinutes < $1.soonestMinutes }
+    }
+    
+    /// Helper: Groups `TrainArrival` arrays into `GroupedNearbyTransitResponse`.
+    /// Works for subway, LIRR, and Metro-North.
+    private func groupTrainArrivals(_ arrivals: [TrainArrival], mode: String) -> [GroupedNearbyTransitResponse] {
+        // Filter out stale arrivals (minutesAway == 0 with past timestamps)
+        let liveArrivals = arrivals.filter { $0.minutesAway > 0 || $0.estimatedTime > Date() }
+        
+        // Group by route_id
+        var byRoute: [String: [TrainArrival]] = [:]
+        for arrival in liveArrivals {
+            byRoute[arrival.routeID, default: []].append(arrival)
+        }
+        
+        return byRoute.map { routeId, routeArrivals in
+            // Sub-group by direction
+            var byDirection: [String: [TrainArrival]] = [:]
+            for arrival in routeArrivals {
+                let dirLabel = arrival.destination ?? arrival.direction
+                byDirection[dirLabel, default: []].append(arrival)
+            }
+            
+            let directions = byDirection.map { direction, dirArrivals -> DirectionArrivalsResponse in
+                let nearbyArrivals = dirArrivals
+                    .sorted { $0.minutesAway < $1.minutesAway }
+                    .map { train -> NearbyTransitResponse in
+                        NearbyTransitResponse(
+                            routeId: train.routeID,
+                            stopName: train.stationName,
+                            direction: train.direction,
+                            destination: train.destination,
+                            minutesAway: train.minutesAway,
+                            status: train.status,
+                            mode: mode,
+                            stopLat: nil,
+                            stopLon: nil,
+                            arrivalTs: Int(train.estimatedTime.timeIntervalSince1970),
+                            vehicleId: nil,
+                            tripId: train.tripId,
+                            stopId: train.stationID
+                        )
+                    }
+                return DirectionArrivalsResponse(direction: direction, arrivals: nearbyArrivals)
+            }.sorted { $0.direction < $1.direction }
+            
+            let colorHex: String? = mode == "subway" ? nil : nil
+            
+            return GroupedNearbyTransitResponse(
+                routeId: routeId,
+                displayName: routeId,
+                mode: mode,
+                colorHex: colorHex,
+                directions: directions
+            )
+        }.sorted { $0.soonestMinutes < $1.soonestMinutes }
     }
 
     // Bus mode
@@ -209,6 +340,15 @@ final class HomeViewModel {
     }
     var cachedSystemMap: [CachedTransitLine] = []
 
+    /// Pre-computed subway lines with perpendicular offsets applied to shared corridors.
+    /// Computed once when cachedSystemMap is set, so the View never recalculates it.
+    struct OffsetSubwayLine: Identifiable {
+        let id: String
+        let color: Color
+        let coordinates: [[CLLocationCoordinate2D]]
+    }
+    var cachedOffsetSubwayLines: [OffsetSubwayLine] = []
+
     // Full subway station list with served lines
     struct CachedSubwayStation: Identifiable {
         let id: String
@@ -256,31 +396,70 @@ final class HomeViewModel {
             // Fetch subway shapes from API
             let response = try await TrackAPI.fetchAllSubwayShapes()
             
-            // Pre-decode subway coordinates
+            // Pre-decode subway coordinates, deduplicate overlapping branches,
+            // and simplify geometry for the system-map overview.
             var decoded: [CachedTransitLine] = response.lines.map { line in
-                CachedTransitLine(
+                let rawBranches = line.decodedPolylines
+                let uniqueBranches = self.deduplicateBranches(rawBranches)
+                if rawBranches.count != uniqueBranches.count {
+                    AppLogger.shared.log("DEDUP", message: "\(line.routeId): \(rawBranches.count) branches → \(uniqueBranches.count) after dedup")
+                }
+                let simplified = uniqueBranches.map { self.simplifyPolyline($0) }
+                return CachedTransitLine(
                     id: line.routeId,
                     color: Color(hex: line.colorHex),
-                    coordinates: line.decodedPolylines,
+                    coordinates: simplified,
                     mode: .subway
                 )
             }
             
-            // Also load LIRR and MNR from bundle (they're not in the subway shapes API)
-            let bundle = SubwayRoutesData.loadBundle()
-            let lirrMnrLines = loadCommuterRailFromBundle(bundle)
-            decoded.append(contentsOf: lirrMnrLines)
+            // Fetch LIRR shapes from API
+            if let lirrResponse = try? await TrackAPI.fetchAllLIRRShapes() {
+                let lirrLines: [CachedTransitLine] = lirrResponse.lines.map { line in
+                    CachedTransitLine(
+                        id: line.routeId,
+                        color: Color(hex: line.colorHex),
+                        coordinates: line.decodedPolylines,
+                        mode: .lirr
+                    )
+                }
+                decoded.append(contentsOf: lirrLines)
+                // Cache for offline use
+                await MainActor.run {
+                    OfflineCacheManager.shared.cacheLIRRShapes(lirrResponse)
+                }
+            }
+            
+            // Fetch MNR shapes from API
+            if let mnrResponse = try? await TrackAPI.fetchAllMNRShapes() {
+                let mnrLines: [CachedTransitLine] = mnrResponse.lines.map { line in
+                    CachedTransitLine(
+                        id: line.routeId,
+                        color: Color(hex: line.colorHex),
+                        coordinates: line.decodedPolylines,
+                        mode: .mnr
+                    )
+                }
+                decoded.append(contentsOf: mnrLines)
+                // Cache for offline use
+                await MainActor.run {
+                    OfflineCacheManager.shared.cacheMNRShapes(mnrResponse)
+                }
+            }
             
             // Log details about what we loaded
             let subwayCount = decoded.filter { $0.mode == .subway }.count
             let lirrCount = decoded.filter { $0.mode == .lirr }.count
             let mnrCount = decoded.filter { $0.mode == .mnr }.count
+            let totalBranches = decoded.reduce(0) { $0 + $1.coordinates.count }
+            let totalPoints = decoded.reduce(0) { $0 + $1.coordinates.reduce(0) { $0 + $1.count } }
             
             await MainActor.run {
                 self.cachedSystemMap = decoded
+                self.computeSubwayOffsets()
             }
             
-            AppLogger.shared.log("SYSTEM_MAP", message: "Loaded \(decoded.count) transit lines: \(subwayCount) subway, \(lirrCount) LIRR, \(mnrCount) MNR")
+            AppLogger.shared.log("SYSTEM_MAP", message: "Loaded \(decoded.count) transit lines (\(subwayCount) subway, \(lirrCount) LIRR, \(mnrCount) MNR) — \(totalBranches) branches, \(totalPoints) total points")
         } catch {
             AppLogger.shared.logError("loadSystemMap", error: error)
             // Fall back to offline data on error
@@ -299,6 +478,114 @@ final class HomeViewModel {
     /// Checks if a route ID is a commuter rail route (LIRR or MNR)
     private func isCommuterRailRoute(_ routeId: String) -> Bool {
         transitMode(for: routeId) != nil
+    }
+    
+    // MARK: - Polyline Deduplication & Simplification
+    
+    /// Removes near-duplicate polylines whose physical tracks overlap heavily.
+    /// GTFS often produces multiple shape_ids that trace the same physical track
+    /// with minor coordinate differences, causing 2-3 overlapping lines per route.
+    /// Uses sample-point proximity: if ≥70% of evenly-spaced sample points on the
+    /// candidate lie within ~55m of the existing polyline, they're the same track.
+    private func deduplicateBranches(_ branches: [[CLLocationCoordinate2D]]) -> [[CLLocationCoordinate2D]] {
+        guard branches.count > 1 else { return branches }
+        
+        // Sort longest first so we keep the most complete polyline
+        let sorted = branches.sorted { $0.count > $1.count }
+        var deduped: [[CLLocationCoordinate2D]] = []
+        
+        let proximity = 0.0005 // ~55 m at NYC latitude
+        
+        for branch in sorted {
+            guard branch.count >= 2 else { continue }
+            
+            let isDuplicate = deduped.contains { existing in
+                guard existing.count >= 2 else { return false }
+                // Sample up to 20 evenly-spaced points along the candidate
+                let nSamples = min(20, branch.count)
+                let sampleStep = max(1, branch.count / nSamples)
+                var closeCount = 0
+                var totalSamples = 0
+                
+                var si = 0
+                while si < branch.count {
+                    let pt = branch[si]
+                    totalSamples += 1
+                    
+                    // Search a window around the proportional position in the existing line
+                    let proportion = Double(si) / Double(max(branch.count - 1, 1))
+                    let center = Int(proportion * Double(existing.count - 1))
+                    let window = max(existing.count / 5, 10)
+                    let lo = max(0, center - window)
+                    let hi = min(existing.count, center + window)
+                    
+                    var found = false
+                    for ei in lo..<hi {
+                        if abs(pt.latitude - existing[ei].latitude) < proximity
+                            && abs(pt.longitude - existing[ei].longitude) < proximity {
+                            found = true
+                            break
+                        }
+                    }
+                    if found { closeCount += 1 }
+                    
+                    si += sampleStep
+                }
+                
+                return totalSamples > 0 && Double(closeCount) / Double(totalSamples) >= 0.70
+            }
+            
+            if !isDuplicate {
+                deduped.append(branch)
+            }
+        }
+        
+        return deduped
+    }
+    
+    /// Simplifies a polyline using the Ramer-Douglas-Peucker algorithm.
+    /// Removes intermediate points within `tolerance` degrees of the straight
+    /// line between their neighbours — ~11 m at 0.0001° tolerance.
+    private func simplifyPolyline(_ coords: [CLLocationCoordinate2D], tolerance: Double = 0.0001) -> [CLLocationCoordinate2D] {
+        guard coords.count > 2 else { return coords }
+        
+        let first = coords[0]
+        let last = coords[coords.count - 1]
+        
+        var maxDist = 0.0
+        var maxIdx = 0
+        
+        let dx = last.longitude - first.longitude
+        let dy = last.latitude - first.latitude
+        let lineLenSq = dx * dx + dy * dy
+        
+        for i in 1..<(coords.count - 1) {
+            let dist: Double
+            if lineLenSq == 0 {
+                let dlat = coords[i].latitude - first.latitude
+                let dlon = coords[i].longitude - first.longitude
+                dist = sqrt(dlat * dlat + dlon * dlon)
+            } else {
+                let t = max(0, min(1, ((coords[i].longitude - first.longitude) * dx + (coords[i].latitude - first.latitude) * dy) / lineLenSq))
+                let projLat = first.latitude + t * dy
+                let projLon = first.longitude + t * dx
+                let dlat = coords[i].latitude - projLat
+                let dlon = coords[i].longitude - projLon
+                dist = sqrt(dlat * dlat + dlon * dlon)
+            }
+            if dist > maxDist {
+                maxDist = dist
+                maxIdx = i
+            }
+        }
+        
+        if maxDist > tolerance {
+            let left = simplifyPolyline(Array(coords[...maxIdx]), tolerance: tolerance)
+            let right = simplifyPolyline(Array(coords[maxIdx...]), tolerance: tolerance)
+            return left.dropLast() + right
+        } else {
+            return [first, last]
+        }
     }
     
     /// Loads LIRR and MNR routes from the static bundle
@@ -348,28 +635,179 @@ final class HomeViewModel {
     
     /// Loads all transit routes from bundled offline data.
     private func loadOfflineSystemMap() async {
-        // Load subway routes from hardcoded offline paths
+        // Load subway routes from hardcoded offline paths, deduplicating and simplifying
         var offlineLines: [CachedTransitLine] = SubwayRoutesData.allRouteIds.compactMap { routeId -> CachedTransitLine? in
-            let branches = SubwayRoutesData.routeBranches(for: routeId)
-            guard !branches.isEmpty else { return nil }
+            let rawBranches = SubwayRoutesData.routeBranches(for: routeId)
+            guard !rawBranches.isEmpty else { return nil }
+            let uniqueBranches = deduplicateBranches(rawBranches)
+            let simplified = uniqueBranches.map { simplifyPolyline($0) }
             return CachedTransitLine(
                 id: routeId,
                 color: SubwayRoutesData.color(for: routeId),
-                coordinates: branches,
+                coordinates: simplified,
                 mode: .subway
             )
         }
         
-        // Also try to load LIRR/MNR from bundle
-        let bundle = SubwayRoutesData.loadBundle()
-        let commuterRail = loadCommuterRailFromBundle(bundle)
-        offlineLines.append(contentsOf: commuterRail)
+        // Load LIRR shapes from disk cache (saved when last online)
+        if let lirrResponse = OfflineCacheManager.shared.getCachedLIRRShapes() {
+            let lirrLines: [CachedTransitLine] = lirrResponse.lines.map { line in
+                CachedTransitLine(
+                    id: line.routeId,
+                    color: Color(hex: line.colorHex),
+                    coordinates: line.decodedPolylines,
+                    mode: .lirr
+                )
+            }
+            offlineLines.append(contentsOf: lirrLines)
+        }
+        
+        // Load MNR shapes from disk cache (saved when last online)
+        if let mnrResponse = OfflineCacheManager.shared.getCachedMNRShapes() {
+            let mnrLines: [CachedTransitLine] = mnrResponse.lines.map { line in
+                CachedTransitLine(
+                    id: line.routeId,
+                    color: Color(hex: line.colorHex),
+                    coordinates: line.decodedPolylines,
+                    mode: .mnr
+                )
+            }
+            offlineLines.append(contentsOf: mnrLines)
+        }
         
         self.cachedSystemMap = offlineLines
+        self.computeSubwayOffsets()
         
-        // Count total branches for logging
+        // Count per mode for logging
+        let subwayCount = offlineLines.filter { $0.mode == .subway }.count
+        let lirrCount = offlineLines.filter { $0.mode == .lirr }.count
+        let mnrCount = offlineLines.filter { $0.mode == .mnr }.count
         let totalBranches = offlineLines.reduce(0) { $0 + $1.coordinates.count }
-        AppLogger.shared.log("OFFLINE", message: "Loaded \(offlineLines.count) offline transit routes (\(totalBranches) total branches)")
+        AppLogger.shared.log("OFFLINE", message: "Loaded \(offlineLines.count) offline transit routes (\(subwayCount) subway, \(lirrCount) LIRR, \(mnrCount) MNR, \(totalBranches) total branches)")
+    }
+    
+    /// Computes perpendicular offsets for subway lines that share the same tunnel/corridor.
+    /// Called once after `cachedSystemMap` is populated so the View never recalculates this.
+    ///
+    /// The backend already filters express/shuttle variants and deduplicates directions,
+    /// so each line arrives with only its unique physical-track branches.
+    private func computeSubwayOffsets() {
+        let subwayLines = cachedSystemMap.filter { $0.mode == .subway }
+        guard !subwayLines.isEmpty else {
+            cachedOffsetSubwayLines = []
+            return
+        }
+        
+        // 1. Build a grid → set-of-route-IDs lookup.
+        //    Snap every coordinate to a ~33m cell so only truly co-located tracks register
+        //    as "shared corridor" (avoids false positives from parallel streets).
+        //    Use a packed Int64 key instead of String for much faster hashing.
+        let gridSize = 0.0003  // ~33m at NYC latitude
+        var gridToRoutes: [Int64: Set<String>] = [:]
+        
+        for line in subwayLines {
+            for coords in line.coordinates {
+                // Sample every 3rd point for the grid lookup — the offset only matters
+                // visually in shared corridors which span many cells, so skipping
+                // intermediate points has no visible effect but cuts work by ~67%.
+                let step = max(1, min(3, coords.count / 10))
+                for i in Swift.stride(from: 0, to: coords.count, by: step) {
+                    let coord = coords[i]
+                    let gx = Int32(round(coord.latitude / gridSize))
+                    let gy = Int32(round(coord.longitude / gridSize))
+                    let key = (Int64(gx) << 32) | (Int64(gy) & 0xFFFFFFFF)
+                    gridToRoutes[key, default: []].insert(line.id)
+                }
+            }
+        }
+        
+        // 2. For cells with multiple routes, determine a stable alphabetical ordering.
+        var cellOrdering: [Int64: [String]] = [:]
+        for (key, routes) in gridToRoutes where routes.count > 1 {
+            cellOrdering[key] = routes.sorted()
+        }
+        
+        // If no corridors are shared, skip the per-point offset work entirely.
+        if cellOrdering.isEmpty {
+            cachedOffsetSubwayLines = subwayLines.map {
+                OffsetSubwayLine(id: $0.id, color: $0.color, coordinates: $0.coordinates)
+            }
+            AppLogger.shared.log("SYSTEM_MAP", message: "No shared corridors — skipped offset computation for \(subwayLines.count) lines")
+            return
+        }
+        
+        // 3. Offset each coordinate perpendicular to the direction of travel
+        //    based on its slot in shared cells.
+        let offsetMeters = AppSettings.shared.subwayLineOffsetMeters
+        let metersPerDegLat = 111_000.0
+        let metersPerDegLon = 84_300.0  // at ~40.7°N
+        
+        var result: [OffsetSubwayLine] = []
+        
+        for line in subwayLines {
+            var offsetBranches: [[CLLocationCoordinate2D]] = []
+            
+            for coords in line.coordinates {
+                guard coords.count >= 2 else {
+                    offsetBranches.append(coords)
+                    continue
+                }
+                
+                var offsetCoords: [CLLocationCoordinate2D] = []
+                
+                for i in 0..<coords.count {
+                    let coord = coords[i]
+                    let gx = Int32(round(coord.latitude / gridSize))
+                    let gy = Int32(round(coord.longitude / gridSize))
+                    let key = (Int64(gx) << 32) | (Int64(gy) & 0xFFFFFFFF)
+                    
+                    guard let ordering = cellOrdering[key],
+                          let slot = ordering.firstIndex(of: line.id) else {
+                        offsetCoords.append(coord)
+                        continue
+                    }
+                    
+                    let totalLines = ordering.count
+                    let centerOffset = Double(slot) - Double(totalLines - 1) / 2.0
+                    
+                    // Direction of travel from neighboring points
+                    let prev = i > 0 ? coords[i - 1] : coords[i]
+                    let next = i < coords.count - 1 ? coords[i + 1] : coords[i]
+                    
+                    let dx = next.longitude - prev.longitude
+                    let dy = next.latitude - prev.latitude
+                    let length = sqrt(dx * dx + dy * dy)
+                    
+                    if length < 1e-10 {
+                        offsetCoords.append(coord)
+                        continue
+                    }
+                    
+                    // Perpendicular (90° CW): (dy, -dx) normalized
+                    let perpLat = dx / length
+                    let perpLon = -dy / length
+                    
+                    let offsetLat = centerOffset * offsetMeters / metersPerDegLat * perpLat
+                    let offsetLon = centerOffset * offsetMeters / metersPerDegLon * perpLon
+                    
+                    offsetCoords.append(CLLocationCoordinate2D(
+                        latitude: coord.latitude + offsetLat,
+                        longitude: coord.longitude + offsetLon
+                    ))
+                }
+                
+                offsetBranches.append(offsetCoords)
+            }
+            
+            result.append(OffsetSubwayLine(
+                id: line.id,
+                color: line.color,
+                coordinates: offsetBranches
+            ))
+        }
+        
+        cachedOffsetSubwayLines = result
+        AppLogger.shared.log("SYSTEM_MAP", message: "Computed subway offsets for \(result.count) lines (\(cellOrdering.count) shared corridor cells)")
     }
     
     /// Fetches all subway stations and their served lines.

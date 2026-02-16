@@ -79,6 +79,7 @@ async def fetch_rail_arrivals(agency: str) -> list[TrackArrival]:
                 TrackArrival(
                     route_id=route_id,
                     station=stu.stop_id,
+                    station_name=get_stop_name(stu.stop_id),
                     direction=direction,
                     destination=destination,
                     minutes_away=minutes,

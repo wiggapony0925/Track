@@ -258,34 +258,22 @@ struct TrackMapView: View {
     @MapContentBuilder
     private var systemMapPolylines: some MapContent {
         if viewModel.routeShape == nil {
-            // Full system map (all lines) shown by default
-            // Lines are rendered with a white border for better visual separation
-            ForEach(viewModel.cachedSystemMap) { line in
+            // Subway lines with perpendicular offset for shared corridors
+            ForEach(viewModel.cachedOffsetSubwayLines) { line in
                 ForEach(Array(line.coordinates.enumerated()), id: \.offset) { polyIdx, coords in
-                    switch line.mode {
-                    case .subway:
-                        // Subway: solid white outline + colored line
-                        MapPolyline(coordinates: coords)
-                            .stroke(.white.opacity(0.8), lineWidth: 4)
-                        MapPolyline(coordinates: coords)
-                            .stroke(line.color, lineWidth: 3)
-                        
-                    case .lirr:
-                        // LIRR: thinner dashed line
-                        MapPolyline(coordinates: coords)
-                            .stroke(
-                                AppTheme.CommuterRailColors.lirrBlue,
-                                style: StrokeStyle(lineWidth: 2.5, lineCap: .round, dash: [6, 4])
-                            )
-                        
-                    case .mnr:
-                        // Metro-North: thinner dashed line
-                        MapPolyline(coordinates: coords)
-                            .stroke(
-                                AppTheme.CommuterRailColors.mnrBlue,
-                                style: StrokeStyle(lineWidth: 2.5, lineCap: .round, dash: [6, 4])
-                            )
-                    }
+                    MapPolyline(coordinates: coords)
+                        .stroke(line.color, lineWidth: 3)
+                }
+            }
+            
+            // LIRR and MNR lines (no offset needed)
+            ForEach(viewModel.cachedSystemMap.filter { $0.mode != .subway }) { line in
+                ForEach(Array(line.coordinates.enumerated()), id: \.offset) { polyIdx, coords in
+                    MapPolyline(coordinates: coords)
+                        .stroke(
+                            line.color,
+                            style: StrokeStyle(lineWidth: 2.5, lineCap: .round, dash: [6, 4])
+                        )
                 }
             }
             

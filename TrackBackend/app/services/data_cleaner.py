@@ -71,6 +71,7 @@ async def get_arrivals_for_line(line_id: str) -> list[TrackArrival]:
                 TrackArrival(
                     route_id=route,
                     station=stu.stop_id,
+                    station_name=get_stop_name(stu.stop_id) if get_stop_name(stu.stop_id) != stu.stop_id else get_stop_name(stu.stop_id[:-1]) if len(stu.stop_id) > 1 and stu.stop_id[-1] in "NS" else stu.stop_id,
                     direction=direction,
                     destination=destination,
                     minutes_away=minutes,

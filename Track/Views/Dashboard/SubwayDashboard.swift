@@ -15,11 +15,12 @@ struct SubwayDashboard: View {
     
     let viewModel: HomeViewModel
     let locationManager: LocationManager
+    let sheetNavigator: SheetNavigator
     let lastUpdated: Date?
     
-    /// Get filtered arrivals based on search
-    private var displayArrivals: [TrainArrival] {
-        viewModel.filteredSubwayArrivals
+    /// Grouped subway arrivals for tap-to-detail navigation
+    private var groupedArrivals: [GroupedNearbyTransitResponse] {
+        viewModel.groupedSubwayArrivals
     }
     
     /// Get filtered stations based on search
@@ -27,31 +28,34 @@ struct SubwayDashboard: View {
         viewModel.filteredNearbyStations
     }
     
+    /// Whether the user appears to be far from subway service
+    private var isFarFromService: Bool {
+        guard !groupedArrivals.isEmpty else { return false }
+        let soonest = groupedArrivals.map(\.soonestMinutes).min() ?? 0
+        return soonest > 30
+    }
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            if !displayArrivals.isEmpty {
-                DashboardSectionHeader(title: "Nearby Arrivals", updated: lastUpdated)
-                
-                VStack(spacing: 0) {
-                    ForEach(Array(displayArrivals.enumerated()), id: \.element.id) { index, arrival in
-                        ArrivalRow(
-                            arrival: arrival,
-                            prediction: nil,
-                            isTracking: viewModel.isTracking(arrival),
-                            reliabilityWarning: nil,
-                            onTrack: {
-                                viewModel.trackSubwayArrival(arrival, location: locationManager.currentLocation)
-                            }
-                        )
-                        if index < displayArrivals.count - 1 {
-                            Divider()
-                                .padding(.leading, AppTheme.Layout.margin + AppTheme.Layout.badgeSizeMedium + 12)
-                        }
-                    }
+            if !groupedArrivals.isEmpty {
+                // Show friendly "far away" hero when user is distant
+                if isFarFromService {
+                    FarFromTransitView(
+                        icon: "tram.fill",
+                        title: "You're far from the subway",
+                        subtitle: "Looks like there aren't any trains close by right now. Here are the nearest departures we found.",
+                        accentColor: AppTheme.Colors.mtaBlue
+                    )
                 }
-                .background(AppTheme.Colors.cardBackground)
-                .cornerRadius(AppTheme.Layout.cornerRadius)
-                .padding(.horizontal, AppTheme.Layout.margin)
+                
+                DashboardSectionHeader(title: isFarFromService ? "Nearest Departures" : "Nearby Arrivals", updated: lastUpdated)
+                
+                GroupedRouteList(
+                    groups: groupedArrivals,
+                    viewModel: viewModel,
+                    locationManager: locationManager,
+                    sheetNavigator: sheetNavigator
+                )
             } else if !viewModel.isLoading {
                 if !viewModel.searchText.isEmpty && !viewModel.upcomingArrivals.isEmpty {
                     EmptyStateView(
@@ -69,7 +73,7 @@ struct SubwayDashboard: View {
             if !displayStations.isEmpty {
                 DashboardSectionHeader(
                     title: "Nearby Stations",
-                    updated: displayArrivals.isEmpty ? lastUpdated : nil
+                    updated: groupedArrivals.isEmpty ? lastUpdated : nil
                 )
                 
                 VStack(spacing: 0) {
@@ -97,6 +101,7 @@ struct SubwayDashboard: View {
     SubwayDashboard(
         viewModel: HomeViewModel(),
         locationManager: LocationManager(),
+        sheetNavigator: SheetNavigator(),
         lastUpdated: Date()
     )
 }

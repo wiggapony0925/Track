@@ -246,7 +246,7 @@ struct CommuterRailArrivalRow: View {
                     .foregroundColor(AppTheme.Colors.textPrimary)
                     .lineLimit(1)
                 
-                Text(arrival.stationID)
+                Text(arrival.stationName)
                     .font(.custom("Helvetica", size: 13))
                     .foregroundColor(AppTheme.Colors.textSecondary)
                     .lineLimit(1)
@@ -312,6 +312,73 @@ struct OutOfAreaNoticeView: View {
                 .stroke(AppTheme.Colors.warningYellow.opacity(0.3), lineWidth: 1)
         )
         .cornerRadius(AppTheme.Layout.cornerRadius)
+        .padding(.horizontal, AppTheme.Layout.margin)
+    }
+}
+
+// MARK: - Far From Transit View
+
+/// Cute "oh no, you're far away" hero banner shown when the user is far from
+/// a transit mode but we still have departures to show below it.
+/// Shows a friendly icon, empathetic message, and a subtle hint that results follow.
+struct FarFromTransitView: View {
+    let icon: String
+    let title: String
+    let subtitle: String
+    let accentColor: Color
+    
+    var body: some View {
+        VStack(spacing: 12) {
+            // Animated circle with icon
+            ZStack {
+                // Outer pulse ring
+                Circle()
+                    .fill(accentColor.opacity(0.06))
+                    .frame(width: 88, height: 88)
+                
+                // Inner circle
+                Circle()
+                    .fill(accentColor.opacity(0.12))
+                    .frame(width: 64, height: 64)
+                
+                // Icon
+                Image(systemName: icon)
+                    .font(.system(size: 28, weight: .medium))
+                    .foregroundColor(accentColor)
+            }
+            
+            // Title
+            Text(title)
+                .font(.custom("Helvetica-Bold", size: 17))
+                .foregroundColor(AppTheme.Colors.textPrimary)
+            
+            // Subtitle
+            Text(subtitle)
+                .font(.custom("Helvetica", size: 13))
+                .foregroundColor(AppTheme.Colors.textSecondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+            
+            // Divider hint that content follows
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.down")
+                    .font(.system(size: 10, weight: .semibold))
+                Text("Nearest departures below")
+                    .font(.system(size: 12, weight: .medium))
+            }
+            .foregroundColor(accentColor.opacity(0.7))
+            .padding(.top, 4)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 24)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius)
+                .fill(accentColor.opacity(0.04))
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius)
+                        .strokeBorder(accentColor.opacity(0.12), lineWidth: 1)
+                )
+        )
         .padding(.horizontal, AppTheme.Layout.margin)
     }
 }

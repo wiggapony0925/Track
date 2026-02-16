@@ -5,6 +5,7 @@ import CoreLocation
 struct SubwayArrivalResponse: Codable {
     let routeId: String
     let station: String
+    let stationName: String?
     let direction: String
     let destination: String?
     let minutesAway: Int
@@ -15,6 +16,7 @@ struct SubwayArrivalResponse: Codable {
     enum CodingKeys: String, CodingKey {
         case routeId = "route_id"
         case station
+        case stationName = "station_name"
         case direction
         case destination
         case minutesAway = "minutes_away"
@@ -37,6 +39,7 @@ struct SubwayArrivalResponse: Codable {
         return TrainArrival(
             routeID: routeId,
             stationID: station,
+            stationName: stationName ?? station,
             direction: direction,
             scheduledTime: arrivalDate,
             estimatedTime: arrivalDate,
@@ -70,6 +73,34 @@ struct SubwayLineOverlay: Codable, Identifiable {
 /// Response containing all subway lines for the system map.
 struct AllSubwayLinesResponse: Codable {
     let lines: [SubwayLineOverlay]
+}
+
+/// Lightweight overlay for drawing a single commuter rail line on the map.
+struct CommuterRailLineOverlay: Codable, Identifiable {
+    var id: String { routeId }
+    let routeId: String
+    let name: String
+    let colorHex: String
+    let polylines: [String]
+    let mode: String  // "lirr" or "mnr"
+
+    enum CodingKeys: String, CodingKey {
+        case routeId = "route_id"
+        case name
+        case colorHex = "color_hex"
+        case polylines
+        case mode
+    }
+
+    /// Decodes polylines on demand.
+    var decodedPolylines: [[CLLocationCoordinate2D]] {
+        polylines.map { decodePolyline($0) }
+    }
+}
+
+/// Response containing all LIRR and MNR lines for the system map.
+struct AllCommuterRailLinesResponse: Codable {
+    let lines: [CommuterRailLineOverlay]
 }
 
 struct SubwayStation: Codable, Identifiable {

@@ -45,6 +45,16 @@ struct NearbyDashboard: View {
                 // Separate into "Near You" and "Farther Away" based on distance
                 let (nearYou, fartherAway) = separateByDistance(groups: sorted, from: refLocation)
                 
+                // If nothing is "near you", show the friendly far-from-transit hero
+                if nearYou.isEmpty && !fartherAway.isEmpty {
+                    FarFromTransitView(
+                        icon: "location.slash.circle",
+                        title: "Nothing super close",
+                        subtitle: "You're a bit far from the nearest stops, but here's what's around you.",
+                        accentColor: AppTheme.Colors.mtaBlue
+                    )
+                }
+                
                 // Display "Near You" section
                 if !nearYou.isEmpty {
                     NearYouSectionHeader(radiusMeters: nearYouRadius, updated: lastUpdated)
@@ -105,6 +115,13 @@ struct NearbyDashboard: View {
                 
             } else if !viewModel.isLoading {
                 if let nearest = viewModel.nearestTransit {
+                    FarFromTransitView(
+                        icon: "figure.walk",
+                        title: "Oh no, you're far from transit!",
+                        subtitle: "We couldn't find anything nearby, but we found a station a bit further out.",
+                        accentColor: AppTheme.Colors.mtaBlue
+                    )
+                    
                     DashboardSectionHeader(title: "Nearest Metro", updated: nil)
                     NearestMetroCard(
                         arrival: nearest,

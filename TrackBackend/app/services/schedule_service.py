@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from app.models import TrackArrival
+from app.services.station_lookup import get_stop_name
 
 DB_PATH = Path("app/data/transit_schedule.db")
 
@@ -78,6 +79,7 @@ class ScheduleService:
                 arrivals.append(TrackArrival(
                     route_id=r_id,
                     station=s_id,
+                    station_name=get_stop_name(s_id),
                     direction=direction,
                     destination=headsign,
                     minutes_away=minutes,

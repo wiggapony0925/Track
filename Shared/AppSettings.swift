@@ -116,6 +116,14 @@ struct AppSettings {
     let showLIRRByDefault: Bool
     /// Whether to show Metro-North routes on the system map by default.
     let showMNRByDefault: Bool
+    /// Perpendicular offset in meters between subway lines sharing the same tunnel.
+    /// Higher values spread overlapping lines further apart; lower values keep them tighter.
+    private let _subwayLineOffsetMeters: Double
+    
+    /// Subway line offset (user-configurable via Settings, falls back to settings.json value).
+    var subwayLineOffsetMeters: Double {
+        UserDefaults.standard.object(forKey: "subway_line_offset_meters") as? Double ?? _subwayLineOffsetMeters
+    }
 
     // MARK: - Init
 
@@ -163,6 +171,7 @@ struct AppSettings {
             self.simulationEasingEnabled = true
             self.showLIRRByDefault = true
             self.showMNRByDefault = true
+            self._subwayLineOffsetMeters = 12.0
             return
         }
 
@@ -213,5 +222,6 @@ struct AppSettings {
         self.simulationEasingEnabled = map["simulation_easing_enabled"] as? Bool ?? true
         self.showLIRRByDefault = map["show_lirr_by_default"] as? Bool ?? true
         self.showMNRByDefault = map["show_mnr_by_default"] as? Bool ?? true
+        self._subwayLineOffsetMeters = map["subway_line_offset_meters"] as? Double ?? 12.0
     }
 }

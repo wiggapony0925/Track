@@ -37,7 +37,7 @@ struct ArrivalRow: View {
                         }
                     }
                     HStack(spacing: 4) {
-                        Text(arrival.stationID)
+                        Text(arrival.stationName)
                             .font(.system(size: 12, weight: .regular))
                             .foregroundColor(AppTheme.Colors.textSecondary)
                             .lineLimit(1)
@@ -209,6 +209,7 @@ struct ArrivalRow: View {
             arrival: TrainArrival(
                 routeID: "L",
                 stationID: "L01",
+                stationName: "1 Av",
                 direction: "Manhattan",
                 scheduledTime: Date().addingTimeInterval(300),
                 estimatedTime: Date().addingTimeInterval(360),
@@ -229,6 +230,7 @@ struct ArrivalRow: View {
             arrival: TrainArrival(
                 routeID: "G",
                 stationID: "G29",
+                stationName: "Church Av",
                 direction: "Church Av",
                 scheduledTime: Date().addingTimeInterval(480),
                 estimatedTime: Date().addingTimeInterval(480),

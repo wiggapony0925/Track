@@ -13,6 +13,7 @@ struct TrainArrival: Identifiable {
     let id = UUID()
     let routeID: String
     let stationID: String
+    let stationName: String
     let direction: String
     let scheduledTime: Date
     let estimatedTime: Date

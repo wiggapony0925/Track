@@ -14,16 +14,28 @@ struct BusDashboard: View {
     
     let viewModel: HomeViewModel
     let locationManager: LocationManager
+    let sheetNavigator: SheetNavigator
     let lastUpdated: Date?
     
-    /// Get filtered arrivals based on search
-    private var displayArrivals: [BusArrival] {
-        viewModel.filteredBusArrivals
+    /// Grouped bus arrivals for tap-to-detail navigation
+    private var groupedArrivals: [GroupedNearbyTransitResponse] {
+        viewModel.groupedBusArrivals
     }
     
     /// Get filtered bus stops based on search
     private var displayStops: [BusStop] {
         viewModel.filteredBusStops
+    }
+    
+    /// Whether the user appears to be far from bus service
+    private var isFarFromService: Bool {
+        // If there are stops but no arrivals, or soonest is 30+ min away
+        if groupedArrivals.isEmpty && viewModel.selectedBusStop != nil && !viewModel.isLoading {
+            return true
+        }
+        guard !groupedArrivals.isEmpty else { return false }
+        let soonest = groupedArrivals.map(\.soonestMinutes).min() ?? 0
+        return soonest > 30
     }
     
     var body: some View {
@@ -42,34 +54,31 @@ struct BusDashboard: View {
                 .padding(.horizontal, AppTheme.Layout.margin)
             }
             
-            if !displayArrivals.isEmpty {
-                DashboardSectionHeader(title: "Arriving", updated: lastUpdated)
+            // Show friendly "far away" hero when user is distant
+            if isFarFromService {
+                FarFromTransitView(
+                    icon: "bus.fill",
+                    title: "You're far from bus stops",
+                    subtitle: "No buses are arriving soon near you, but here's what we found nearby.",
+                    accentColor: AppTheme.Colors.mtaBlue
+                )
+            }
+            
+            if !groupedArrivals.isEmpty {
+                DashboardSectionHeader(title: isFarFromService ? "Nearest Arrivals" : "Arriving", updated: lastUpdated)
                 
-                VStack(spacing: 0) {
-                    ForEach(Array(displayArrivals.enumerated()), id: \.element.id) { index, arrival in
-                        BusArrivalRow(
-                            arrival: arrival,
-                            isTracking: viewModel.isTracking(arrival),
-                            reliabilityWarning: nil,
-                            onTrack: {
-                                viewModel.trackBusArrival(arrival, location: locationManager.currentLocation)
-                            }
-                        )
-                        if index < displayArrivals.count - 1 {
-                            Divider()
-                                .padding(.leading, AppTheme.Layout.margin + AppTheme.Layout.badgeSizeMedium + 12)
-                        }
-                    }
-                }
-                .background(AppTheme.Colors.cardBackground)
-                .cornerRadius(AppTheme.Layout.cornerRadius)
-                .padding(.horizontal, AppTheme.Layout.margin)
+                GroupedRouteList(
+                    groups: groupedArrivals,
+                    viewModel: viewModel,
+                    locationManager: locationManager,
+                    sheetNavigator: sheetNavigator
+                )
             }
             
             if !displayStops.isEmpty {
                 DashboardSectionHeader(
                     title: "Nearby Bus Stops",
-                    updated: displayArrivals.isEmpty ? lastUpdated : nil
+                    updated: groupedArrivals.isEmpty ? lastUpdated : nil
                 )
                 
                 VStack(spacing: 0) {
@@ -97,7 +106,7 @@ struct BusDashboard: View {
                         icon: "magnifyingglass",
                         message: "No bus results for \"\(viewModel.searchText)\""
                     )
-                } else {
+                } else if groupedArrivals.isEmpty {
                     EmptyStateView(
                         icon: "bus.fill",
                         message: "No bus stops nearby"
@@ -112,6 +121,7 @@ struct BusDashboard: View {
     BusDashboard(
         viewModel: HomeViewModel(),
         locationManager: LocationManager(),
+        sheetNavigator: SheetNavigator(),
         lastUpdated: Date()
     )
 }

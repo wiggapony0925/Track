@@ -105,35 +105,42 @@ def _load_route_shapes() -> dict[str, dict[int, list[str]]]:
                 direction = 0
             all_shapes[route_id][direction].add(shape_id)
 
-    # Filter to unique branches (ignore sub-sequences of longer trips)
+    # Filter to unique branches (ignore sub-sequences and near-duplicates
+    # of longer trips).  Two shapes whose stop sets overlap ≥ 60% (of the
+    # smaller set) are considered the same physical track — keep the longer.
     shape_stops_map = _load_shape_stops()
     result: dict[str, dict[int, list[str]]] = {}
     
+    _OVERLAP_THRESHOLD = 0.60  # 60 % shared stops → same corridor
+
     for route_id, dir_map in all_shapes.items():
         result[route_id] = {}
         for direction, shape_ids in dir_map.items():
-            # Sort by stop count descending
+            # Sort by stop count descending so we keep the longest variant
             sorted_sids = sorted(
                 list(shape_ids),
                 key=lambda sid: len(shape_stops_map.get(sid, [])),
                 reverse=True
             )
             
-            final_sids = []
-            seen_stop_sets = []
+            final_sids: list[str] = []
+            seen_stop_sets: list[set[str]] = []
             
             for sid in sorted_sids:
                 stops = set(shape_stops_map.get(sid, []))
-                if not stops: continue
+                if not stops:
+                    continue
                 
-                # Check if this shape is essentially a subset of a shape we already picked
-                is_subset = False
+                # Check if this shape overlaps heavily with one we already kept
+                is_redundant = False
                 for existing_set in seen_stop_sets:
-                    if stops.issubset(existing_set):
-                        is_subset = True
+                    overlap = len(stops & existing_set)
+                    smaller = min(len(stops), len(existing_set))
+                    if smaller > 0 and overlap / smaller >= _OVERLAP_THRESHOLD:
+                        is_redundant = True
                         break
                 
-                if not is_subset:
+                if not is_redundant:
                     final_sids.append(sid)
                     seen_stop_sets.append(stops)
             
