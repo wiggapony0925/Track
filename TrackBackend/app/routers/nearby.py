@@ -148,6 +148,30 @@ def _display_name(route_id: str) -> str:
     return route_id
 
 
+# Compass code → human-readable direction label
+_DIRECTION_LABELS: dict[str, str] = {
+    "N": "Northbound",
+    "S": "Southbound",
+    "E": "Eastbound",
+    "W": "Westbound",
+    "NE": "Northeast",
+    "NW": "Northwest",
+    "SE": "Southeast",
+    "SW": "Southwest",
+    "INBOUND": "Inbound",
+    "OUTBOUND": "Outbound",
+}
+
+
+def _direction_label(direction: str) -> str:
+    """Convert a raw direction code to a human-readable label.
+
+    Returns the long-form label for known compass codes (e.g. "N" → "Northbound"),
+    or the original string for destination names like "Far Rockaway".
+    """
+    return _DIRECTION_LABELS.get(direction.upper(), direction)
+
+
 def _group_arrivals(flat: list[NearbyTransitArrival]) -> list[GroupedNearbyTransit]:
     """Collapse a flat arrival list into one entry per route.
 
@@ -186,7 +210,11 @@ def _group_arrivals(flat: list[NearbyTransitArrival]) -> list[GroupedNearbyTrans
         directions: list[DirectionArrivals] = []
         for direction, arrivals in dir_map.items():
             arrivals.sort(key=lambda a: a.minutes_away)
-            directions.append(DirectionArrivals(direction=direction, arrivals=arrivals))
+            directions.append(DirectionArrivals(
+                direction=direction,
+                direction_label=_direction_label(direction),
+                arrivals=arrivals,
+            ))
 
         # Sort directions alphabetically for consistency
         directions.sort(key=lambda d: d.direction)

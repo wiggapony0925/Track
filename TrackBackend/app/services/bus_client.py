@@ -151,6 +151,54 @@ async def resolve_bus_id(route_id: str) -> str:
     return f"MTA NYCT_{base_id}"
 
 
+async def _guess_alternative_id(canonical_id: str) -> str | None:
+    """Swap agency prefix to try the other common operator.
+
+    MTA has two bus operators: ``MTA NYCT`` and ``MTABC``.  Some routes
+    (especially Queens) exist under one but not the other.  When a 404 is
+    returned for the first guess, this helper builds the alternative ID.
+
+    If the alternative also fails a live OBA lookup, returns ``None``.
+    """
+    if "_" not in canonical_id:
+        return None
+
+    agency, route_part = canonical_id.split("_", 1)
+
+    if agency == "MTA NYCT":
+        alt = f"MTABC_{route_part}"
+    elif agency == "MTABC":
+        alt = f"MTA NYCT_{route_part}"
+    else:
+        return None
+
+    # Quick validation: hit the OBA API to confirm the alternative exists
+    settings = get_settings()
+    eps = settings.urls.bus_endpoints
+    if eps is None:
+        return alt  # Can't validate, just return the guess
+
+    encoded_id = quote(alt, safe="")
+    path = eps.stops_for_route.replace("{route_id}", encoded_id)
+    url = settings.urls.bus_oba_base + path
+    params = {"key": settings.api_keys.mta_bus_key, "version": "2"}
+
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            resp = await client.get(url, params=params)
+            if resp.status_code == 200:
+                # Cache the correct mapping so we don't guess again
+                # Extract the short name from the route_part
+                ROUTE_LOOKUP[route_part] = alt
+                ROUTE_LOOKUP[route_part.lower()] = alt
+                print(f"[BUS] Agency fallback: {canonical_id} -> {alt} (cached)")
+                return alt
+    except Exception:
+        pass
+
+    return None
+
+
 def _get_timeout() -> httpx.Timeout:
     """Build an httpx Timeout from settings."""
     settings = get_settings()
@@ -158,6 +206,95 @@ def _get_timeout() -> httpx.Timeout:
         settings.app_settings.http_timeout_seconds,
         connect=settings.app_settings.http_connect_timeout_seconds,
     )
+
+
+# ---------------------------------------------------------------------------
+# Polyline merging — join adjacent small segments into continuous polylines
+# ---------------------------------------------------------------------------
+import math
+
+
+def _decode_polyline(encoded: str) -> list[tuple[float, float]]:
+    """Decode a Google-encoded polyline into [(lat, lon), ...]."""
+    coords: list[tuple[float, float]] = []
+    i, lat, lng = 0, 0, 0
+    while i < len(encoded):
+        for field in range(2):
+            shift, result = 0, 0
+            while True:
+                b = ord(encoded[i]) - 63
+                i += 1
+                result |= (b & 0x1F) << shift
+                shift += 5
+                if b < 0x20:
+                    break
+            dlat_or_lng = (~(result >> 1) if (result & 1) else (result >> 1))
+            if field == 0:
+                lat += dlat_or_lng
+            else:
+                lng += dlat_or_lng
+        coords.append((lat / 1e5, lng / 1e5))
+    return coords
+
+
+def _encode_polyline(coords: list[tuple[float, float]]) -> str:
+    """Encode [(lat, lon), ...] into a Google-encoded polyline string."""
+    result: list[str] = []
+    prev_lat, prev_lng = 0, 0
+    for lat, lng in coords:
+        lat_e5 = round(lat * 1e5)
+        lng_e5 = round(lng * 1e5)
+        for val in (lat_e5 - prev_lat, lng_e5 - prev_lng):
+            val = ~(val << 1) if val < 0 else (val << 1)
+            while val >= 0x20:
+                result.append(chr((0x20 | (val & 0x1F)) + 63))
+                val >>= 5
+            result.append(chr(val + 63))
+        prev_lat, prev_lng = lat_e5, lng_e5
+    return "".join(result)
+
+
+def _haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Quick haversine distance in meters between two lat/lon points."""
+    R = 6_371_000
+    rlat1, rlat2 = math.radians(lat1), math.radians(lat2)
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = math.sin(dlat / 2) ** 2 + math.cos(rlat1) * math.cos(rlat2) * math.sin(dlon / 2) ** 2
+    return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+
+def _merge_polyline_segments(encoded_segments: list[str], gap_threshold_m: float = 50.0) -> list[str]:
+    """Merge adjacent encoded polyline segments into fewer continuous polylines.
+
+    Segments whose endpoints are within *gap_threshold_m* meters are joined.
+    Returns a new list of encoded polyline strings (typically much shorter).
+    """
+    if len(encoded_segments) <= 1:
+        return encoded_segments
+
+    decoded: list[list[tuple[float, float]]] = []
+    for seg in encoded_segments:
+        pts = _decode_polyline(seg)
+        if pts:
+            decoded.append(pts)
+
+    if not decoded:
+        return encoded_segments
+
+    # Greedily merge: append each segment to the current chain if its start
+    # is close to the current chain's end; otherwise start a new chain.
+    chains: list[list[tuple[float, float]]] = [decoded[0]]
+    for seg in decoded[1:]:
+        last_pt = chains[-1][-1]
+        first_pt = seg[0]
+        dist = _haversine_m(last_pt[0], last_pt[1], first_pt[0], first_pt[1])
+        if dist <= gap_threshold_m:
+            chains[-1].extend(seg[1:] if dist < 5.0 else seg)
+        else:
+            chains.append(seg)
+
+    return [_encode_polyline(chain) for chain in chains]
 
 
 async def _fetch_bus_json(url: str, params: dict[str, str]) -> Any:
@@ -214,37 +351,50 @@ async def get_routes() -> list[BusRoute]:
 async def get_stops(route_id: str) -> list[BusStop]:
     """Fetch stops for a specific route from OBA ``stops-for-route``.
 
-    *route_id* must be fully qualified (e.g. ``"MTA NYCT_B63"``).
-    Polylines are disabled to keep the payload small.
+    Includes retry logic for transient MTA API failures and an
+    agency-prefix fallback on 404.
     """
+    import asyncio
+
     settings = get_settings()
     eps = settings.urls.bus_endpoints
     if eps is None:
         return []
 
-    # If the ID has no prefix, try to resolve it first
     if "_" not in route_id:
-        # Try the resolved ID first
         canonical_id = await resolve_bus_id(route_id)
     else:
-        canonical_id = route_id # If it already has a prefix, use it directly
+        canonical_id = route_id
 
-    try:
-        return await _get_stops_impl(canonical_id)
-    except httpx.HTTPStatusError as e:
-        if e.response.status_code == 404:
-            # If our primary guess failed, try a fallback (NYCT vs MTABC flip)
-            fallback_id = await _guess_alternative_id(canonical_id)
-            if fallback_id:
-                return await _get_stops_impl(fallback_id)
-        raise e
-    
-    # The original code had a fallback loop here, but the provided diff replaces it.
-    # The diff also had a malformed line `raise e       if trial_id == resolved_id:`
-    # I'm interpreting the intent to replace the entire original fallback logic
-    # with the new canonical_id / fallback_id approach.
-    # The `return await _get_stops_impl(route_id)` at the end of the original
-    # `get_stops` function is also replaced by the new try/except block.
+    max_retries = settings.app_settings.http_max_retries
+    retry_delay = settings.app_settings.http_retry_delay_seconds
+    last_error: Exception | None = None
+
+    for attempt in range(max_retries + 1):
+        try:
+            return await _get_stops_impl(canonical_id)
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                fallback_id = await _guess_alternative_id(canonical_id)
+                if fallback_id:
+                    try:
+                        return await _get_stops_impl(fallback_id)
+                    except Exception:
+                        pass
+                raise e
+            last_error = e
+            if attempt < max_retries:
+                print(f"[BUS_STOPS] Retry {attempt + 1}/{max_retries} for {canonical_id} (HTTP {e.response.status_code})")
+                await asyncio.sleep(retry_delay)
+        except httpx.TimeoutException as e:
+            last_error = e
+            if attempt < max_retries:
+                print(f"[BUS_STOPS] Retry {attempt + 1}/{max_retries} for {canonical_id} (timeout)")
+                await asyncio.sleep(retry_delay)
+
+    if last_error:
+        raise last_error
+    return []
 
 
 async def _get_stops_impl(route_id: str) -> list[BusStop]:
@@ -287,6 +437,14 @@ async def _get_stops_impl(route_id: str) -> list[BusStop]:
     return results
 
 
+# Simple TTL cache for nearby stops to avoid hammering the MTA API
+# Key: rounded (lat, lon, radius) tuple → (timestamp, result)
+import time as _time
+
+_nearby_stops_cache: dict[tuple[float, float, int], tuple[float, list[BusStop]]] = {}
+_NEARBY_CACHE_TTL = 60.0  # seconds
+
+
 async def get_nearby_stops(
     lat: float, lon: float, radius_m: int | None = None,
 ) -> list[BusStop]:
@@ -297,12 +455,21 @@ async def get_nearby_stops(
     API.  One degree of latitude ≈ 111 km; one degree of longitude ≈
     85 km at NYC's latitude.
 
-    Includes retry logic because the MTA OBA API frequently returns 504.
+    Includes retry logic and a 60-second TTL cache to avoid rate limiting.
     """
     import asyncio
 
     settings = get_settings()
     effective_radius = radius_m if radius_m is not None else settings.app_settings.search_radius_meters
+
+    # Round coords to ~111m grid to improve cache hits from small GPS drift
+    cache_key = (round(lat, 3), round(lon, 3), effective_radius)
+    cached = _nearby_stops_cache.get(cache_key)
+    if cached is not None:
+        ts, result = cached
+        if _time.monotonic() - ts < _NEARBY_CACHE_TTL:
+            return result
+
     eps = settings.urls.bus_endpoints
     if eps is None:
         return []
@@ -347,6 +514,8 @@ async def get_nearby_stops(
                         direction=s.get("direction"),
                     )
                 )
+            # Cache successful result
+            _nearby_stops_cache[cache_key] = (_time.monotonic(), results)
             return results
         except (httpx.HTTPStatusError, httpx.TimeoutException) as exc:
             last_error = exc
@@ -471,11 +640,11 @@ async def get_realtime_arrivals(stop_id: str) -> list[BusArrival]:
 async def get_vehicle_positions(route_id: str) -> list[BusVehicle]:
     """Fetch live vehicle positions for a bus route via SIRI ``vehicle-monitoring``.
 
-    Navigates ``Siri.ServiceDelivery.VehicleMonitoringDelivery[0]
-    .VehicleActivity`` and extracts GPS position, bearing, and status.
-
-    *route_id* must be fully qualified (e.g. ``"MTA NYCT_B63"``).
+    Includes retry logic for transient MTA API failures and an
+    agency-prefix fallback on 404.
     """
+    import asyncio
+
     settings = get_settings()
     eps = settings.urls.bus_endpoints
     if eps is None:
@@ -483,21 +652,39 @@ async def get_vehicle_positions(route_id: str) -> list[BusVehicle]:
 
     # If the ID has no prefix, try to resolve it first
     if "_" not in route_id:
-        # Try the resolved ID first
         canonical_id = await resolve_bus_id(route_id)
     else:
         canonical_id = route_id
 
-    try:
-        return await _get_vehicles_impl(canonical_id)
-    except httpx.HTTPStatusError as e:
-        if e.response.status_code == 404:
-            fallback_id = await _guess_alternative_id(canonical_id)
-            if fallback_id:
-                return await _get_vehicles_impl(fallback_id)
-        raise e
-    
-    # Similar to get_stops, the original fallback loop is replaced by the new logic.
+    max_retries = settings.app_settings.http_max_retries
+    retry_delay = settings.app_settings.http_retry_delay_seconds
+    last_error: Exception | None = None
+
+    for attempt in range(max_retries + 1):
+        try:
+            return await _get_vehicles_impl(canonical_id)
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                fallback_id = await _guess_alternative_id(canonical_id)
+                if fallback_id:
+                    try:
+                        return await _get_vehicles_impl(fallback_id)
+                    except Exception:
+                        pass
+                raise e
+            last_error = e
+            if attempt < max_retries:
+                print(f"[BUS_VEHICLES] Retry {attempt + 1}/{max_retries} for {canonical_id} (HTTP {e.response.status_code})")
+                await asyncio.sleep(retry_delay)
+        except httpx.TimeoutException as e:
+            last_error = e
+            if attempt < max_retries:
+                print(f"[BUS_VEHICLES] Retry {attempt + 1}/{max_retries} for {canonical_id} (timeout)")
+                await asyncio.sleep(retry_delay)
+
+    if last_error:
+        raise last_error
+    return []
 
 
 async def _get_vehicles_impl(route_id: str) -> list[BusVehicle]:
@@ -582,8 +769,11 @@ async def get_route_shape(route_id: str) -> RouteShape:
     """Fetch the route shape (polylines + stops) from OBA ``stops-for-route``.
 
     Returns encoded polylines for drawing the route on a map, along with
-    all stops on the route. *route_id* must be fully qualified.
+    all stops on the route.  Includes retry logic for transient MTA API
+    failures (403 / 503 / timeouts) and an agency-prefix fallback on 404.
     """
+    import asyncio
+
     settings = get_settings()
     eps = settings.urls.bus_endpoints
     if eps is None:
@@ -595,16 +785,39 @@ async def get_route_shape(route_id: str) -> RouteShape:
         canonical_id = await resolve_bus_id(route_id)
     else:
         canonical_id = route_id
-    
-    try:
-        return await _get_route_shape_impl(canonical_id)
-    except httpx.HTTPStatusError as e:
-        if e.response.status_code == 404:
-            # Try the alternative agency
-            fallback_id = await _guess_alternative_id(canonical_id)
-            if fallback_id:
-                return await _get_route_shape_impl(fallback_id)
-        raise e
+
+    max_retries = settings.app_settings.http_max_retries
+    retry_delay = settings.app_settings.http_retry_delay_seconds
+    last_error: Exception | None = None
+
+    for attempt in range(max_retries + 1):
+        try:
+            return await _get_route_shape_impl(canonical_id)
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                # Try the alternative agency (MTA NYCT <-> MTABC)
+                fallback_id = await _guess_alternative_id(canonical_id)
+                if fallback_id:
+                    try:
+                        return await _get_route_shape_impl(fallback_id)
+                    except Exception:
+                        pass
+                # 404 is not retryable — route genuinely doesn't exist
+                raise e
+            # Transient errors (403 rate-limit, 503, etc.) — retry
+            last_error = e
+            if attempt < max_retries:
+                print(f"[BUS_SHAPE] Retry {attempt + 1}/{max_retries} for {canonical_id} (HTTP {e.response.status_code})")
+                await asyncio.sleep(retry_delay)
+        except httpx.TimeoutException as e:
+            last_error = e
+            if attempt < max_retries:
+                print(f"[BUS_SHAPE] Retry {attempt + 1}/{max_retries} for {canonical_id} (timeout)")
+                await asyncio.sleep(retry_delay)
+
+    if last_error:
+        raise last_error
+    return RouteShape(route_id=route_id, polylines=[], stops=[])
 
 
 async def _get_route_shape_impl(route_id: str) -> RouteShape:
@@ -658,38 +871,46 @@ async def _get_route_shape_impl(route_id: str) -> RouteShape:
             )
         )
 
-    # Build per-direction shapes from OBA stopGroupings
+    # Build per-direction shapes from OBA stopGroupings.
+    # Bus routes run back and forth on the same streets, so polylines represent
+    # the physical road rather than a single direction.  We give ALL entry
+    # polylines to EACH direction — the directions differ in their stops and
+    # headsign, not in the road geometry.  The iOS app uses the direction's
+    # stops for annotations and the shared polylines for the route path.
     directions: list[DirectionShape] = []
     stop_groupings = entry.get("stopGroupings", [])
-    for grouping in stop_groupings:
-        if grouping.get("type") != "direction":
-            continue
-        for sg in grouping.get("stopGroups", []):
-            sg_id = sg.get("id", "0")
-            try:
-                dir_id = int(sg_id)
-            except ValueError:
-                dir_id = 0
-            headsign = sg.get("name", {}).get("name", "") if isinstance(sg.get("name"), dict) else str(sg.get("name", ""))
-            dir_poly_ids = set(sg.get("polylines", []))
-            dir_stop_ids = set(sg.get("stopIds", []))
+    try:
+        for grouping in stop_groupings:
+            if grouping.get("type") != "direction":
+                continue
+            for sg in grouping.get("stopGroups", []):
+                sg_id = sg.get("id", "0")
+                try:
+                    dir_id = int(sg_id)
+                except ValueError:
+                    dir_id = 0
+                headsign = sg.get("name", {}).get("name", "") if isinstance(sg.get("name"), dict) else str(sg.get("name", ""))
 
-            # Match polylines for this direction by index
-            dir_polylines = [polylines[i] for i in range(len(polylines))
-                             if i < len(raw_polylines) and raw_polylines[i].get("id", str(i)) in dir_poly_ids]
-            # If no explicit polyline IDs matched, fall back to index-based split
-            if not dir_polylines and polylines:
-                mid = len(polylines) // 2
-                dir_polylines = polylines[:mid] if dir_id == 0 else polylines[mid:]
+                # Extract stop IDs for this direction
+                dir_stop_ids: set[str] = set()
+                for ref in sg.get("stopIds", []):
+                    if isinstance(ref, dict):
+                        dir_stop_ids.add(ref.get("id", ""))
+                    elif isinstance(ref, str):
+                        dir_stop_ids.add(ref)
 
-            dir_stops = [s for s in stops if s.id in dir_stop_ids]
+                dir_stops = [s for s in stops if s.id in dir_stop_ids]
 
-            directions.append(DirectionShape(
-                direction_id=dir_id,
-                headsign=headsign,
-                polylines=dir_polylines,
-                stops=dir_stops,
-            ))
+                # Give ALL entry polylines to each direction — they share the same road
+                directions.append(DirectionShape(
+                    direction_id=dir_id,
+                    headsign=headsign,
+                    polylines=list(polylines),  # copy all entry polylines
+                    stops=dir_stops,
+                ))
+    except Exception as exc:
+        print(f"[BUS_SHAPE] Warning: failed to parse stopGroupings for {route_id}: {exc}")
+        # Continue without direction data — polylines + stops are still valid
 
     # Fallback: if no stopGroupings, split polylines in half as a heuristic
     if not directions and len(polylines) >= 2:
@@ -701,5 +922,12 @@ async def _get_route_shape_impl(route_id: str) -> RouteShape:
             direction_id=1, headsign="", polylines=polylines[mid:], stops=[],
         ))
 
-    print(f"[BUS_SHAPE] Returning {len(polylines)} polylines, {len(stops)} stops, {len(directions)} directions for {route_id}")
-    return RouteShape(route_id=route_id, polylines=polylines, stops=stops, directions=directions)
+    # Merge adjacent polyline segments to eliminate gaps between short segments.
+    # OBA returns many tiny fragments; merging produces continuous lines.
+    merged_polylines = _merge_polyline_segments(polylines)
+    for d in directions:
+        d.polylines = _merge_polyline_segments(d.polylines)
+
+    print(f"[BUS_SHAPE] Returning {len(merged_polylines)} merged polylines (from {len(polylines)} raw), "
+          f"{len(stops)} stops, {len(directions)} directions for {route_id}")
+    return RouteShape(route_id=route_id, polylines=merged_polylines, stops=stops, directions=directions)

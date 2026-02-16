@@ -99,6 +99,7 @@ class DirectionArrivals(BaseModel):
     """Arrivals for a single direction of a route."""
 
     direction: str
+    direction_label: str = ""  # e.g. "Northbound", "Eastbound", or raw destination
     arrivals: list[NearbyTransitArrival]
 
 

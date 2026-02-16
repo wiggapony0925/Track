@@ -53,7 +53,20 @@ struct DirectionArrivalsResponse: Codable, Identifiable {
     var id: String { direction }
 
     let direction: String
+    let directionLabel: String?
     let arrivals: [NearbyTransitResponse]
+
+    init(direction: String, directionLabel: String? = nil, arrivals: [NearbyTransitResponse]) {
+        self.direction = direction
+        self.directionLabel = directionLabel
+        self.arrivals = arrivals
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case direction
+        case directionLabel = "direction_label"
+        case arrivals
+    }
 }
 
 /// Matches the backend's `GroupedNearbyTransit` JSON schema.
@@ -91,5 +104,20 @@ struct GroupedNearbyTransitResponse: Codable, Identifiable {
         case mode
         case colorHex = "color_hex"
         case directions
+    }
+}
+
+/// Matches the backend's `DelayPrediction` JSON schema from `/predict/delay`.
+struct DelayPredictionResponse: Codable {
+    let adjustedMinutes: Int
+    let originalMinutes: Int
+    let delayFactor: Double
+    let adjustmentReason: String?
+
+    enum CodingKeys: String, CodingKey {
+        case adjustedMinutes = "adjusted_minutes"
+        case originalMinutes = "original_minutes"
+        case delayFactor = "delay_factor"
+        case adjustmentReason = "adjustment_reason"
     }
 }

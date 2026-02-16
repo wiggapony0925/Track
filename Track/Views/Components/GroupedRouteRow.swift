@@ -39,7 +39,9 @@ struct GroupedRouteRow: View {
                     TabView(selection: $currentDirectionIndex) {
                         ForEach(Array(group.directions.enumerated()), id: \.element.id) { index, direction in
                             // Destination Label + Station subtitle
-                            let label = direction.arrivals.first?.destination ?? directionLabel(direction.direction)
+                            let label = direction.arrivals.first?.destination
+                                ?? direction.directionLabel
+                                ?? directionLabel(direction.direction)
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(label)
                                     .font(.custom("Helvetica-Bold", size: 15))

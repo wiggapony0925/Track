@@ -683,128 +683,17 @@ final class HomeViewModel {
         AppLogger.shared.log("OFFLINE", message: "Loaded \(offlineLines.count) offline transit routes (\(subwayCount) subway, \(lirrCount) LIRR, \(mnrCount) MNR, \(totalBranches) total branches)")
     }
     
-    /// Computes perpendicular offsets for subway lines that share the same tunnel/corridor.
-    /// Called once after `cachedSystemMap` is populated so the View never recalculates this.
+    /// Populates `cachedOffsetSubwayLines` from the system map.
     ///
-    /// The backend already filters express/shuttle variants and deduplicates directions,
-    /// so each line arrives with only its unique physical-track branches.
+    /// Corridor offsets (fanning out co-located lines like 4/5/6 on Lex Ave)
+    /// are now computed server-side by `/subway/shapes/all`, so the client
+    /// simply converts `CachedTransitLine` → `OffsetSubwayLine` 1:1.
     private func computeSubwayOffsets() {
         let subwayLines = cachedSystemMap.filter { $0.mode == .subway }
-        guard !subwayLines.isEmpty else {
-            cachedOffsetSubwayLines = []
-            return
+        cachedOffsetSubwayLines = subwayLines.map {
+            OffsetSubwayLine(id: $0.id, color: $0.color, coordinates: $0.coordinates)
         }
-        
-        // 1. Build a grid → set-of-route-IDs lookup.
-        //    Snap every coordinate to a ~33m cell so only truly co-located tracks register
-        //    as "shared corridor" (avoids false positives from parallel streets).
-        //    Use a packed Int64 key instead of String for much faster hashing.
-        let gridSize = 0.0003  // ~33m at NYC latitude
-        var gridToRoutes: [Int64: Set<String>] = [:]
-        
-        for line in subwayLines {
-            for coords in line.coordinates {
-                // Sample every 3rd point for the grid lookup — the offset only matters
-                // visually in shared corridors which span many cells, so skipping
-                // intermediate points has no visible effect but cuts work by ~67%.
-                let step = max(1, min(3, coords.count / 10))
-                for i in Swift.stride(from: 0, to: coords.count, by: step) {
-                    let coord = coords[i]
-                    let gx = Int32(round(coord.latitude / gridSize))
-                    let gy = Int32(round(coord.longitude / gridSize))
-                    let key = (Int64(gx) << 32) | (Int64(gy) & 0xFFFFFFFF)
-                    gridToRoutes[key, default: []].insert(line.id)
-                }
-            }
-        }
-        
-        // 2. For cells with multiple routes, determine a stable alphabetical ordering.
-        var cellOrdering: [Int64: [String]] = [:]
-        for (key, routes) in gridToRoutes where routes.count > 1 {
-            cellOrdering[key] = routes.sorted()
-        }
-        
-        // If no corridors are shared, skip the per-point offset work entirely.
-        if cellOrdering.isEmpty {
-            cachedOffsetSubwayLines = subwayLines.map {
-                OffsetSubwayLine(id: $0.id, color: $0.color, coordinates: $0.coordinates)
-            }
-            AppLogger.shared.log("SYSTEM_MAP", message: "No shared corridors — skipped offset computation for \(subwayLines.count) lines")
-            return
-        }
-        
-        // 3. Offset each coordinate perpendicular to the direction of travel
-        //    based on its slot in shared cells.
-        let offsetMeters = AppSettings.shared.subwayLineOffsetMeters
-        let metersPerDegLat = 111_000.0
-        let metersPerDegLon = 84_300.0  // at ~40.7°N
-        
-        var result: [OffsetSubwayLine] = []
-        
-        for line in subwayLines {
-            var offsetBranches: [[CLLocationCoordinate2D]] = []
-            
-            for coords in line.coordinates {
-                guard coords.count >= 2 else {
-                    offsetBranches.append(coords)
-                    continue
-                }
-                
-                var offsetCoords: [CLLocationCoordinate2D] = []
-                
-                for i in 0..<coords.count {
-                    let coord = coords[i]
-                    let gx = Int32(round(coord.latitude / gridSize))
-                    let gy = Int32(round(coord.longitude / gridSize))
-                    let key = (Int64(gx) << 32) | (Int64(gy) & 0xFFFFFFFF)
-                    
-                    guard let ordering = cellOrdering[key],
-                          let slot = ordering.firstIndex(of: line.id) else {
-                        offsetCoords.append(coord)
-                        continue
-                    }
-                    
-                    let totalLines = ordering.count
-                    let centerOffset = Double(slot) - Double(totalLines - 1) / 2.0
-                    
-                    // Direction of travel from neighboring points
-                    let prev = i > 0 ? coords[i - 1] : coords[i]
-                    let next = i < coords.count - 1 ? coords[i + 1] : coords[i]
-                    
-                    let dx = next.longitude - prev.longitude
-                    let dy = next.latitude - prev.latitude
-                    let length = sqrt(dx * dx + dy * dy)
-                    
-                    if length < 1e-10 {
-                        offsetCoords.append(coord)
-                        continue
-                    }
-                    
-                    // Perpendicular (90° CW): (dy, -dx) normalized
-                    let perpLat = dx / length
-                    let perpLon = -dy / length
-                    
-                    let offsetLat = centerOffset * offsetMeters / metersPerDegLat * perpLat
-                    let offsetLon = centerOffset * offsetMeters / metersPerDegLon * perpLon
-                    
-                    offsetCoords.append(CLLocationCoordinate2D(
-                        latitude: coord.latitude + offsetLat,
-                        longitude: coord.longitude + offsetLon
-                    ))
-                }
-                
-                offsetBranches.append(offsetCoords)
-            }
-            
-            result.append(OffsetSubwayLine(
-                id: line.id,
-                color: line.color,
-                coordinates: offsetBranches
-            ))
-        }
-        
-        cachedOffsetSubwayLines = result
-        AppLogger.shared.log("SYSTEM_MAP", message: "Computed subway offsets for \(result.count) lines (\(cellOrdering.count) shared corridor cells)")
+        AppLogger.shared.log("SYSTEM_MAP", message: "Mapped \(subwayLines.count) subway lines (offsets applied server-side)")
         
         // Pre-compute flattened polylines for efficient rendering
         computeFlattenedPolylines()
@@ -1115,6 +1004,11 @@ final class HomeViewModel {
                     let decoded = shape.decodedPolylines
                     let totalPoints = decoded.reduce(0) { $0 + $1.count }
                     AppLogger.shared.log("BUS_SHAPE", message: "Loaded shape for \(group.routeId): \(shape.polylines.count) polylines (\(totalPoints) total points), \(shape.stops.count) stops")
+                    
+                    // Enrich the grouped route with any missing directions from the shape.
+                    // The nearby API only returns directions for stops near the user,
+                    // but the route shape knows ALL directions (e.g. both inbound & outbound).
+                    enrichGroupWithShapeDirections(shape)
                 } else {
                     AppLogger.shared.log("BUS_SHAPE", message: "No shape returned for \(group.routeId)")
                 }
@@ -1126,6 +1020,7 @@ final class HomeViewModel {
             do {
                 routeShape = try await TrackAPI.fetchLIRRShape(routeID: group.routeId)
                 AppLogger.shared.log("LIRR_SHAPE", message: "Loaded shape for \(group.routeId) (\(group.displayName))")
+                if let shape = routeShape { enrichGroupWithShapeDirections(shape) }
             } catch {
                 AppLogger.shared.logError("fetchLIRRShape(\(group.routeId))", error: error)
             }
@@ -1134,6 +1029,7 @@ final class HomeViewModel {
             do {
                 routeShape = try await TrackAPI.fetchMNRShape(routeID: group.routeId)
                 AppLogger.shared.log("MNR_SHAPE", message: "Loaded shape for \(group.routeId) (\(group.displayName))")
+                if let shape = routeShape { enrichGroupWithShapeDirections(shape) }
             } catch {
                 AppLogger.shared.logError("fetchMNRShape(\(group.routeId))", error: error)
             }
@@ -1146,6 +1042,7 @@ final class HomeViewModel {
                 routeShape = try await shapeTask
                 let arrivals = try await arrivalsTask
                 updateTrainPositions(arrivals: arrivals)
+                if let shape = routeShape { enrichGroupWithShapeDirections(shape) }
                 
             } catch {
                 AppLogger.shared.logError("fetchSubwayData(\(group.displayName))", error: error)
@@ -1188,6 +1085,58 @@ final class HomeViewModel {
                     }
                 }
             }
+        }
+    }
+
+    /// Enriches the currently selected grouped route with any directions
+    /// present in the route shape data but missing from the nearby API response.
+    ///
+    /// The `/nearby/grouped` endpoint only includes directions that have live
+    /// arrivals at stops near the user. However, the route shape knows about
+    /// ALL directions (e.g. both inbound and outbound). This method adds
+    /// placeholder direction entries so the direction picker shows every
+    /// direction the route serves — even if no arrivals are nearby right now.
+    ///
+    /// Works for all transit modes (bus, subway, LIRR, MNR).
+    private func enrichGroupWithShapeDirections(_ shape: RouteShapeResponse) {
+        guard var group = selectedGroupedRoute, !shape.directions.isEmpty else { return }
+
+        let existingCount = group.directions.count
+        let shapeCount = shape.directions.count
+
+        // If shape has more directions than the group, add the missing ones
+        guard shapeCount > existingCount else { return }
+
+        var enrichedDirections = group.directions
+
+        for shapeDir in shape.directions {
+            // Check if this shape direction already has a matching group direction.
+            // Match by index (directionId) since direction strings may differ.
+            let alreadyExists = enrichedDirections.indices.contains(shapeDir.directionId)
+            if !alreadyExists {
+                // Create an empty direction entry using the headsign from the shape
+                let directionString = shapeDir.headsign.isEmpty
+                    ? "Direction \(shapeDir.directionId)"
+                    : shapeDir.headsign
+                let newDir = DirectionArrivalsResponse(
+                    direction: directionString,
+                    directionLabel: shapeDir.headsign.isEmpty ? nil : "→ \(shapeDir.headsign)",
+                    arrivals: []
+                )
+                enrichedDirections.append(newDir)
+            }
+        }
+
+        // Only update if we actually added directions
+        if enrichedDirections.count > existingCount {
+            selectedGroupedRoute = GroupedNearbyTransitResponse(
+                routeId: group.routeId,
+                displayName: group.displayName,
+                mode: group.mode,
+                colorHex: group.colorHex,
+                directions: enrichedDirections
+            )
+            AppLogger.shared.log("ROUTE_DETAIL", message: "Enriched \(group.displayName) from \(existingCount) → \(enrichedDirections.count) directions using shape data")
         }
     }
 
@@ -1328,6 +1277,7 @@ final class HomeViewModel {
         ))
     }
 
+    // MARK: - Route Selection and Refresh
     /// Selects a specific arrival (from flat list or search) and treats it as a route selection.
     func selectArrival(_ arrival: NearbyTransitResponse, userLocation: CLLocation?) async {
         // Find if this arrival already exists in our grouped list

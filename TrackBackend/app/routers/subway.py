@@ -138,6 +138,10 @@ async def subway_shapes_all() -> AllSubwayLinesResponse:
             polylines=encoded,
         ))
 
+    # Apply corridor offsets so co-located lines (e.g. 4/5/6 on Lex Ave)
+    # fan out visually instead of stacking on top of each other.
+    overlays = _apply_corridor_offsets(overlays)
+
     total_polys = sum(len(o.polylines) for o in overlays)
     TrackLogger.info(f"Subway shapes/all: {len(overlays)} lines, {total_polys} polylines returned")
     return AllSubwayLinesResponse(lines=overlays)
@@ -281,6 +285,146 @@ async def subway_arrivals(line_id: str) -> list[TrackArrival]:
         return fresh
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+# ---------------------------------------------------------------------------
+# Corridor offset computation for system map
+# ---------------------------------------------------------------------------
+
+def _decode_polyline(encoded: str) -> list[tuple[float, float]]:
+    """Decode a Google-encoded polyline back to (lat, lon) tuples."""
+    coords: list[tuple[float, float]] = []
+    index = 0
+    lat = 0
+    lng = 0
+    while index < len(encoded):
+        for is_lng in (False, True):
+            shift = 0
+            result = 0
+            while True:
+                b = ord(encoded[index]) - 63
+                index += 1
+                result |= (b & 0x1F) << shift
+                shift += 5
+                if b < 0x20:
+                    break
+            delta = ~(result >> 1) if (result & 1) else (result >> 1)
+            if is_lng:
+                lng += delta
+            else:
+                lat += delta
+        coords.append((lat / 1e5, lng / 1e5))
+    return coords
+
+
+def _apply_corridor_offsets(
+    overlays: list[SubwayLineOverlay],
+    offset_meters: float = 22.0,
+    grid_size: float = 0.0003,
+) -> list[SubwayLineOverlay]:
+    """Apply perpendicular offsets to subway lines that share a corridor.
+
+    Co-located lines (e.g. 4/5/6 on Lexington Ave) are fanned out so each
+    line is visible instead of stacking on the same pixel.  This is the
+    server-side equivalent of the old ``computeSubwayOffsets()`` in
+    HomeViewModel.swift.
+
+    Parameters
+    ----------
+    overlays : list of SubwayLineOverlay with already-encoded polylines.
+    offset_meters : perpendicular distance between neighbouring lines.
+    grid_size : snapping grid in degrees (~33 m at NYC latitude).
+    """
+    import math
+
+    METERS_PER_DEG_LAT = 111_000.0
+    METERS_PER_DEG_LON = 84_300.0  # at ~40.7°N
+
+    # 1. Decode all polylines and build the grid → route-IDs lookup
+    decoded: dict[str, list[list[tuple[float, float]]]] = {}
+    grid_to_routes: dict[int, set[str]] = {}
+
+    for overlay in overlays:
+        polys = [_decode_polyline(p) for p in overlay.polylines]
+        decoded[overlay.route_id] = polys
+        for coords in polys:
+            step = max(1, min(3, len(coords) // 10))
+            for i in range(0, len(coords), step):
+                lat, lon = coords[i]
+                gx = round(lat / grid_size)
+                gy = round(lon / grid_size)
+                key = (int(gx) << 32) | (int(gy) & 0xFFFFFFFF)
+                if key not in grid_to_routes:
+                    grid_to_routes[key] = set()
+                grid_to_routes[key].add(overlay.route_id)
+
+    # 2. For cells with multiple routes, compute a stable sort order
+    cell_ordering: dict[int, list[str]] = {}
+    for key, routes in grid_to_routes.items():
+        if len(routes) > 1:
+            cell_ordering[key] = sorted(routes)
+
+    if not cell_ordering:
+        # No shared corridors — return as-is
+        return overlays
+
+    # 3. Offset each coordinate perpendicular to the track direction
+    result: list[SubwayLineOverlay] = []
+    for overlay in overlays:
+        route_id = overlay.route_id
+        all_polys = decoded[route_id]
+        offset_polys: list[list[tuple[float, float]]] = []
+
+        for coords in all_polys:
+            if len(coords) < 2:
+                offset_polys.append(coords)
+                continue
+
+            offset_coords: list[tuple[float, float]] = []
+            for i, (clat, clon) in enumerate(coords):
+                gx = round(clat / grid_size)
+                gy = round(clon / grid_size)
+                key = (int(gx) << 32) | (int(gy) & 0xFFFFFFFF)
+
+                ordering = cell_ordering.get(key)
+                if ordering is None or route_id not in ordering:
+                    offset_coords.append((clat, clon))
+                    continue
+
+                slot = ordering.index(route_id)
+                total = len(ordering)
+                center_offset = slot - (total - 1) / 2.0
+
+                # Direction of travel from neighbors
+                prev = coords[i - 1] if i > 0 else coords[i]
+                nxt = coords[i + 1] if i < len(coords) - 1 else coords[i]
+                dx = nxt[1] - prev[1]
+                dy = nxt[0] - prev[0]
+                length = math.sqrt(dx * dx + dy * dy)
+
+                if length < 1e-10:
+                    offset_coords.append((clat, clon))
+                    continue
+
+                # Perpendicular (90° CW): (dx, -dy) normalized → (perpLat, perpLon)
+                perp_lat = dx / length
+                perp_lon = -dy / length
+
+                off_lat = center_offset * offset_meters / METERS_PER_DEG_LAT * perp_lat
+                off_lon = center_offset * offset_meters / METERS_PER_DEG_LON * perp_lon
+                offset_coords.append((clat + off_lat, clon + off_lon))
+
+            offset_polys.append(offset_coords)
+
+        # Re-encode the offset polylines
+        encoded = [_encode_polyline(p) for p in offset_polys]
+        result.append(SubwayLineOverlay(
+            route_id=overlay.route_id,
+            color_hex=overlay.color_hex,
+            polylines=encoded,
+        ))
+
+    return result
 
 
 def _encode_polyline(coords: list[tuple[float, float]]) -> str:

@@ -13,26 +13,24 @@ struct TrackTests {
     // MARK: - DelayCalculator Tests
 
     @Test func delayCalculatorReturnsOriginalTimeInClearWeatherOffPeak() async throws {
-        let prediction = DelayCalculator.predict(
+        let prediction = DelayCalculator.predictLocally(
             mtaMinutes: 5,
             routeID: "L",
             timeOfDay: 14, // 2 PM, off-peak
             dayOfWeek: 4,  // Wednesday
-            weather: .clear,
-            historicDelays: []
+            weather: .clear
         )
         #expect(prediction.adjustedMinutes == 5)
         #expect(prediction.adjustmentReason == nil)
     }
 
     @Test func delayCalculatorAppliesRushHourAdjustment() async throws {
-        let prediction = DelayCalculator.predict(
+        let prediction = DelayCalculator.predictLocally(
             mtaMinutes: 10,
             routeID: "4",
             timeOfDay: 8,  // 8 AM morning rush
             dayOfWeek: 3,  // Tuesday (weekday)
-            weather: .clear,
-            historicDelays: []
+            weather: .clear
         )
         // Rush hour adds 10%, so 10 * 1.1 = 11
         #expect(prediction.adjustedMinutes == 11)
@@ -41,13 +39,12 @@ struct TrackTests {
     }
 
     @Test func delayCalculatorAppliesRainAdjustment() async throws {
-        let prediction = DelayCalculator.predict(
+        let prediction = DelayCalculator.predictLocally(
             mtaMinutes: 10,
             routeID: "L",
             timeOfDay: 14,
             dayOfWeek: 1,  // Sunday (not a weekday)
-            weather: .rain,
-            historicDelays: []
+            weather: .rain
         )
         // Rain adds 10%, so 10 * 1.1 = 11
         #expect(prediction.adjustedMinutes == 11)
@@ -55,13 +52,12 @@ struct TrackTests {
     }
 
     @Test func delayCalculatorAppliesSnowAdjustment() async throws {
-        let prediction = DelayCalculator.predict(
+        let prediction = DelayCalculator.predictLocally(
             mtaMinutes: 10,
             routeID: "L",
             timeOfDay: 14,
             dayOfWeek: 1,
-            weather: .snow,
-            historicDelays: []
+            weather: .snow
         )
         // Snow adds 20%, so 10 * 1.2 = 12
         #expect(prediction.adjustedMinutes == 12)
@@ -69,13 +65,12 @@ struct TrackTests {
     }
 
     @Test func delayCalculatorCombinesRushHourAndWeather() async throws {
-        let prediction = DelayCalculator.predict(
+        let prediction = DelayCalculator.predictLocally(
             mtaMinutes: 10,
             routeID: "A",
             timeOfDay: 17, // 5 PM evening rush
             dayOfWeek: 2,  // Monday (weekday)
-            weather: .rain,
-            historicDelays: []
+            weather: .rain
         )
         // Rush hour 10% + Rain 10% = 1.2, so 10 * 1.2 = 12
         #expect(prediction.adjustedMinutes == 12)
@@ -84,31 +79,15 @@ struct TrackTests {
     }
 
     @Test func delayCalculatorNoRushOnWeekend() async throws {
-        let prediction = DelayCalculator.predict(
+        let prediction = DelayCalculator.predictLocally(
             mtaMinutes: 10,
             routeID: "L",
             timeOfDay: 8,  // 8 AM but Saturday
             dayOfWeek: 7,  // Saturday
-            weather: .clear,
-            historicDelays: []
+            weather: .clear
         )
         #expect(prediction.adjustedMinutes == 10)
         #expect(prediction.adjustmentReason == nil)
-    }
-
-    @Test func delayCalculatorUsesHistoricData() async throws {
-        let prediction = DelayCalculator.predict(
-            mtaMinutes: 10,
-            routeID: "L",
-            timeOfDay: 14,
-            dayOfWeek: 1,
-            weather: .clear,
-            historicDelays: [120, 60, 180] // Average 120 seconds = 2 minutes
-        )
-        // Historic factor: (600 + 120) / 600 = 1.2
-        // Blended: (1.0 + 1.2) / 2 = 1.1
-        // 10 * 1.1 = 11
-        #expect(prediction.adjustedMinutes == 11)
     }
 
     // MARK: - WeatherCondition Tests
