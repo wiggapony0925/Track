@@ -271,11 +271,16 @@ final class HomeViewModel {
             let lirrMnrLines = loadCommuterRailFromBundle(bundle)
             decoded.append(contentsOf: lirrMnrLines)
             
+            // Log details about what we loaded
+            let subwayCount = decoded.filter { $0.mode == .subway }.count
+            let lirrCount = decoded.filter { $0.mode == .lirr }.count
+            let mnrCount = decoded.filter { $0.mode == .mnr }.count
+            
             await MainActor.run {
                 self.cachedSystemMap = decoded
             }
             
-            AppLogger.shared.log("SYSTEM_MAP", message: "Loaded \(decoded.count) transit lines (subway + LIRR + MNR)")
+            AppLogger.shared.log("SYSTEM_MAP", message: "Loaded \(decoded.count) transit lines: \(subwayCount) subway, \(lirrCount) LIRR, \(mnrCount) MNR")
         } catch {
             AppLogger.shared.logError("loadSystemMap", error: error)
             // Fall back to offline data on error
@@ -300,7 +305,14 @@ final class HomeViewModel {
     private func loadCommuterRailFromBundle(_ bundle: StaticBundle) -> [CachedTransitLine] {
         var lines: [CachedTransitLine] = []
         
-        for routeId in bundle.routes.routeIds {
+        // Log all route IDs in the bundle for debugging
+        let allRouteIds = bundle.routes.routeIds
+        let lirrRoutes = allRouteIds.filter { $0.uppercased().hasPrefix("LIRR") }
+        let mnrRoutes = allRouteIds.filter { $0.uppercased().hasPrefix("MNR") }
+        
+        AppLogger.shared.log("BUNDLE", message: "Bundle has \(allRouteIds.count) routes: \(lirrRoutes.count) LIRR, \(mnrRoutes.count) MNR")
+        
+        for routeId in allRouteIds {
             // Only process LIRR and MNR routes
             guard let mode = transitMode(for: routeId) else { continue }
             
@@ -612,7 +624,14 @@ final class HomeViewModel {
 
             do {
                 routeShape = try await shapeTask
-                AppLogger.shared.log("BUS_SHAPE", message: "Loaded shape for \(group.routeId): \(routeShape?.polylines.count ?? 0) polylines, \(routeShape?.stops.count ?? 0) stops")
+                if let shape = routeShape {
+                    // Log decoded polyline details for debugging
+                    let decoded = shape.decodedPolylines
+                    let totalPoints = decoded.reduce(0) { $0 + $1.count }
+                    AppLogger.shared.log("BUS_SHAPE", message: "Loaded shape for \(group.routeId): \(shape.polylines.count) polylines (\(totalPoints) total points), \(shape.stops.count) stops")
+                } else {
+                    AppLogger.shared.log("BUS_SHAPE", message: "No shape returned for \(group.routeId)")
+                }
             } catch {
                 AppLogger.shared.logError("fetchRouteShape(\(group.routeId))", error: error)
             }
