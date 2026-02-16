@@ -17,13 +17,18 @@ struct MNRDashboard: View {
     let locationManager: LocationManager
     let lastUpdated: Date?
     
+    /// Get filtered arrivals based on search
+    private var displayArrivals: [TrainArrival] {
+        viewModel.filteredMNRArrivals
+    }
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            if !viewModel.mnrArrivals.isEmpty {
+            if !displayArrivals.isEmpty {
                 DashboardSectionHeader(title: "Metro-North Departures", updated: lastUpdated)
                 
                 VStack(spacing: 0) {
-                    ForEach(Array(viewModel.mnrArrivals.prefix(AppSettings.shared.maxLirrArrivals).enumerated()), id: \.element.id) { index, arrival in
+                    ForEach(Array(displayArrivals.prefix(AppSettings.shared.maxLirrArrivals).enumerated()), id: \.element.id) { index, arrival in
                         ArrivalRow(
                             arrival: arrival,
                             prediction: nil,
@@ -33,7 +38,7 @@ struct MNRDashboard: View {
                                 viewModel.trackMNRArrival(arrival, location: locationManager.currentLocation)
                             }
                         )
-                        if index < min(viewModel.mnrArrivals.count, AppSettings.shared.maxLirrArrivals) - 1 {
+                        if index < min(displayArrivals.count, AppSettings.shared.maxLirrArrivals) - 1 {
                             Divider()
                                 .padding(.leading, AppTheme.Layout.margin + AppTheme.Layout.badgeSizeMedium + 12)
                         }
@@ -43,10 +48,18 @@ struct MNRDashboard: View {
                 .cornerRadius(AppTheme.Layout.cornerRadius)
                 .padding(.horizontal, AppTheme.Layout.margin)
             } else if !viewModel.isLoading {
-                EmptyStateView(
-                    icon: "train.side.rear.car",
-                    message: "No Metro-North departures available"
-                )
+                if !viewModel.searchText.isEmpty && !viewModel.mnrArrivals.isEmpty {
+                    // Search returned no results but there are arrivals available
+                    EmptyStateView(
+                        icon: "magnifyingglass",
+                        message: "No Metro-North results for \"\(viewModel.searchText)\""
+                    )
+                } else {
+                    EmptyStateView(
+                        icon: "train.side.rear.car",
+                        message: "No Metro-North departures available"
+                    )
+                }
             }
         }
     }

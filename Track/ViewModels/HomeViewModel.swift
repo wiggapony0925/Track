@@ -60,6 +60,32 @@ final class HomeViewModel {
             matchingStationRoutes.contains(group.routeId)
         }
     }
+    
+    /// LIRR arrivals filtered by search text.
+    /// Searches route ID, station ID, direction, and destination.
+    var filteredLIRRArrivals: [TrainArrival] {
+        guard !searchText.isEmpty else { return lirrArrivals }
+        let query = searchText.lowercased()
+        return lirrArrivals.filter { arrival in
+            arrival.routeID.lowercased().contains(query) ||
+            arrival.stationID.lowercased().contains(query) ||
+            arrival.direction.lowercased().contains(query) ||
+            arrival.destination.lowercased().contains(query)
+        }
+    }
+    
+    /// Metro-North arrivals filtered by search text.
+    /// Searches route ID, station ID, direction, and destination.
+    var filteredMNRArrivals: [TrainArrival] {
+        guard !searchText.isEmpty else { return mnrArrivals }
+        let query = searchText.lowercased()
+        return mnrArrivals.filter { arrival in
+            arrival.routeID.lowercased().contains(query) ||
+            arrival.stationID.lowercased().contains(query) ||
+            arrival.direction.lowercased().contains(query) ||
+            arrival.destination.lowercased().contains(query)
+        }
+    }
 
     // Bus mode
     var selectedMode: TransportMode = .nearby

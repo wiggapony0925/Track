@@ -17,13 +17,18 @@ struct LIRRDashboard: View {
     let locationManager: LocationManager
     let lastUpdated: Date?
     
+    /// Get filtered arrivals based on search
+    private var displayArrivals: [TrainArrival] {
+        viewModel.filteredLIRRArrivals
+    }
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            if !viewModel.lirrArrivals.isEmpty {
+            if !displayArrivals.isEmpty {
                 DashboardSectionHeader(title: "LIRR Departures", updated: lastUpdated)
                 
                 VStack(spacing: 0) {
-                    ForEach(Array(viewModel.lirrArrivals.prefix(AppSettings.shared.maxLirrArrivals).enumerated()), id: \.element.id) { index, arrival in
+                    ForEach(Array(displayArrivals.prefix(AppSettings.shared.maxLirrArrivals).enumerated()), id: \.element.id) { index, arrival in
                         ArrivalRow(
                             arrival: arrival,
                             prediction: nil,
@@ -33,7 +38,7 @@ struct LIRRDashboard: View {
                                 viewModel.trackLIRRArrival(arrival, location: locationManager.currentLocation)
                             }
                         )
-                        if index < min(viewModel.lirrArrivals.count, AppSettings.shared.maxLirrArrivals) - 1 {
+                        if index < min(displayArrivals.count, AppSettings.shared.maxLirrArrivals) - 1 {
                             Divider()
                                 .padding(.leading, AppTheme.Layout.margin + AppTheme.Layout.badgeSizeMedium + 12)
                         }
@@ -43,10 +48,18 @@ struct LIRRDashboard: View {
                 .cornerRadius(AppTheme.Layout.cornerRadius)
                 .padding(.horizontal, AppTheme.Layout.margin)
             } else if !viewModel.isLoading {
-                EmptyStateView(
-                    icon: "train.side.front.car",
-                    message: "No LIRR departures available"
-                )
+                if !viewModel.searchText.isEmpty && !viewModel.lirrArrivals.isEmpty {
+                    // Search returned no results but there are arrivals available
+                    EmptyStateView(
+                        icon: "magnifyingglass",
+                        message: "No LIRR results for \"\(viewModel.searchText)\""
+                    )
+                } else {
+                    EmptyStateView(
+                        icon: "train.side.front.car",
+                        message: "No LIRR departures available"
+                    )
+                }
             }
         }
     }

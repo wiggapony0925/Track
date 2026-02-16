@@ -3,7 +3,7 @@
 //  Track
 //
 //  Modal navbar component displayed at the top of the dashboard sheet.
-//  Contains search bar, settings, and drop pin buttons.
+//  Contains search bar, transport mode filter icons, settings, and drop pin buttons.
 //  Styled to match Apple Maps modal design.
 //
 
@@ -15,6 +15,7 @@ import AVFoundation
 struct ModalNavbar: View {
     @Binding var searchText: String
     @Binding var showSettings: Bool
+    @Binding var selectedMode: TransportMode
     var lastUpdated: Date?
     var onDropPin: () -> Void
     
@@ -41,6 +42,17 @@ struct ModalNavbar: View {
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
                     
+                    // Clear button when text is present
+                    if !searchText.isEmpty {
+                        Button {
+                            searchText = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 15, weight: .medium))
+                                .foregroundColor(AppTheme.Colors.textSecondary)
+                        }
+                    }
+                    
                     // Mic button (inside search bar)
                     Button {
                         if isRecording {
@@ -57,7 +69,7 @@ struct ModalNavbar: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 10)
                 .background(AppTheme.Colors.cardBackground)
-                .cornerRadius(10)
+                .cornerRadius(12)
                 
                 // Drop pin button
                 Button(action: onDropPin) {
@@ -85,8 +97,12 @@ struct ModalNavbar: View {
             }
             .padding(.horizontal, 16)
             .padding(.top, 16)
-            .padding(.bottom, 16)
+            .padding(.bottom, 10)
             
+            // MARK: - Transport Mode Filter Icons
+            ModeFilterStrip(selectedMode: $selectedMode)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 12)
         }
         .background(AppTheme.Colors.background)
     }
@@ -159,10 +175,58 @@ struct ModalNavbar: View {
     }
 }
 
+// MARK: - Mode Filter Strip
+
+/// Compact icon-only transport mode filter strip
+struct ModeFilterStrip: View {
+    @Binding var selectedMode: TransportMode
+    
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(TransportMode.allCases, id: \.self) { mode in
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        selectedMode = mode
+                    }
+                    HapticManager.impact(.light)
+                } label: {
+                    Image(systemName: mode.icon)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(selectedMode == mode ? .white : AppTheme.Colors.textSecondary)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 34)
+                        .background(
+                            selectedMode == mode
+                                ? modeColor(for: mode)
+                                : Color.clear
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+                .accessibilityLabel(mode.label)
+                .accessibilityAddTraits(selectedMode == mode ? .isSelected : [])
+            }
+        }
+        .padding(4)
+        .background(AppTheme.Colors.cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+    
+    private func modeColor(for mode: TransportMode) -> Color {
+        switch mode {
+        case .nearby: return AppTheme.Colors.successGreen
+        case .subway: return AppTheme.Colors.subwayBlack
+        case .bus: return AppTheme.Colors.mtaBlue
+        case .lirr: return Color(red: 0.0, green: 0.45, blue: 0.75) // LIRR blue
+        case .mnr: return Color(red: 0.0, green: 0.35, blue: 0.55) // MNR darker blue
+        }
+    }
+}
+
 #Preview {
     ModalNavbar(
         searchText: .constant(""),
         showSettings: .constant(false),
+        selectedMode: .constant(.nearby),
         lastUpdated: Date(),
         onDropPin: {}
     )

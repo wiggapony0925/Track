@@ -199,7 +199,7 @@ struct NearbyDashboard: View {
 
 // MARK: - Section Headers
 
-/// "Near You" section header with distance indicator
+/// "Near You" section header - compact icon-based indicator
 struct NearYouSectionHeader: View {
     let radiusMeters: Double
     let updated: Date?
@@ -213,33 +213,39 @@ struct NearYouSectionHeader: View {
     }
     
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "location.fill")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(AppTheme.Colors.successGreen)
-            
-            Text("Near You")
-                .font(AppTheme.Typography.sectionHeader)
-                .foregroundColor(AppTheme.Colors.textPrimary)
-            
-            Text("• within \(radiusDisplay)")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundColor(AppTheme.Colors.textSecondary)
+        HStack(spacing: 6) {
+            // Location indicator with distance badge
+            HStack(spacing: 4) {
+                Image(systemName: "location.fill")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(.white)
+                
+                Text(radiusDisplay)
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(.white)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+                Capsule()
+                    .fill(AppTheme.Colors.successGreen)
+            )
             
             Spacer()
             
             if let updated = updated {
-                Text("Updated \(updated, style: .time)")
-                    .font(.custom("Helvetica", size: 12))
+                Text(updated, style: .time)
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundColor(AppTheme.Colors.textSecondary)
             }
         }
         .padding(.horizontal, AppTheme.Layout.margin)
-        .padding(.top, 8)
+        .padding(.top, 6)
+        .padding(.bottom, 4)
     }
 }
 
-/// "A Little Farther Away" section header with distance indicator
+/// "A Little Farther Away" section header - compact icon-based indicator
 struct FartherAwaySectionHeader: View {
     let radiusMeters: Double
     
@@ -249,23 +255,29 @@ struct FartherAwaySectionHeader: View {
     }
     
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "figure.walk")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(AppTheme.Colors.mtaBlue)
-            
-            Text("A Little Farther Away")
-                .font(AppTheme.Typography.sectionHeader)
-                .foregroundColor(AppTheme.Colors.textPrimary)
-            
-            Text("• up to \(radiusDisplay)")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundColor(AppTheme.Colors.textSecondary)
+        HStack(spacing: 6) {
+            // Walking indicator with distance badge
+            HStack(spacing: 4) {
+                Image(systemName: "figure.walk")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(.white)
+                
+                Text(radiusDisplay)
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(.white)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+                Capsule()
+                    .fill(AppTheme.Colors.mtaBlue)
+            )
             
             Spacer()
         }
         .padding(.horizontal, AppTheme.Layout.margin)
-        .padding(.top, 12)
+        .padding(.top, 10)
+        .padding(.bottom, 4)
     }
 }
 

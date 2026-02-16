@@ -34,6 +34,10 @@ struct DashboardView: View {
                     get: { false },
                     set: { _ in sheetNavigator.navigate(to: .settings) }
                 ),
+                selectedMode: Binding(
+                    get: { viewModel.selectedMode },
+                    set: { viewModel.selectedMode = $0 }
+                ),
                 lastUpdated: lastUpdated,
                 onDropPin: {
                     let center = locationManager.currentLocation?.coordinate
