@@ -70,7 +70,7 @@ final class HomeViewModel {
             arrival.routeID.lowercased().contains(query) ||
             arrival.stationID.lowercased().contains(query) ||
             arrival.direction.lowercased().contains(query) ||
-            arrival.destination.lowercased().contains(query)
+            (arrival.destination?.lowercased().contains(query) ?? false)
         }
     }
     
@@ -83,7 +83,7 @@ final class HomeViewModel {
             arrival.routeID.lowercased().contains(query) ||
             arrival.stationID.lowercased().contains(query) ||
             arrival.direction.lowercased().contains(query) ||
-            arrival.destination.lowercased().contains(query)
+            (arrival.destination?.lowercased().contains(query) ?? false)
         }
     }
     
@@ -95,7 +95,7 @@ final class HomeViewModel {
             arrival.routeID.lowercased().contains(query) ||
             arrival.stationID.lowercased().contains(query) ||
             arrival.direction.lowercased().contains(query) ||
-            arrival.destination.lowercased().contains(query)
+            (arrival.destination?.lowercased().contains(query) ?? false)
         }
     }
     
