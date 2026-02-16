@@ -210,14 +210,16 @@ struct TrackMapView: View {
             return polylines
         }
         
-        // For bus routes with multiple directions, try to show only relevant polylines
-        // Heuristic: If we have 2+ polylines and 2 directions, split them
+        // For bus routes with multiple directions, show only relevant polylines
+        // Heuristic: Split polylines in half - first half = direction 0, second half = direction 1
         let midpoint = polylines.count / 2
         
         if directionIndex == 0 {
-            return Array(polylines.prefix(max(1, midpoint)))
+            // First half of polylines for direction 0
+            return Array(polylines.prefix(midpoint))
         } else {
-            return Array(polylines.suffix(from: min(midpoint, polylines.count - 1)))
+            // Second half of polylines for direction 1
+            return Array(polylines.suffix(from: midpoint))
         }
     }
     
