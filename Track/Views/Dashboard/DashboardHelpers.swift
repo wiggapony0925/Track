@@ -283,7 +283,6 @@ struct CommuterRailArrivalRow: View {
 
 /// Friendly notice shown when user is out of service area but we still show closest departures.
 struct OutOfAreaNoticeView: View {
-    let icon: String
     let message: String
     let subtitle: String
     

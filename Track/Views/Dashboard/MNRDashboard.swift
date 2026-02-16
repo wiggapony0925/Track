@@ -43,7 +43,6 @@ struct MNRDashboard: View {
                 // MARK: - Out of Service Area Notice
                 if isOutOfServiceArea {
                     OutOfAreaNoticeView(
-                        icon: "train.side.rear.car",
                         message: "No Metro-North trains nearby",
                         subtitle: "Showing closest available departures"
                     )

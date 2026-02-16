@@ -43,7 +43,6 @@ struct LIRRDashboard: View {
                 // MARK: - Out of Service Area Notice
                 if isOutOfServiceArea {
                     OutOfAreaNoticeView(
-                        icon: "train.side.front.car",
                         message: "No LIRR trains nearby",
                         subtitle: "Showing closest available departures"
                     )
