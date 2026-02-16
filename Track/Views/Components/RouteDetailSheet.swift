@@ -29,6 +29,9 @@ struct RouteDetailSheet: View {
     
     /// Selected direction index - bound to viewModel so map can filter polylines
     @Binding var selectedDirectionIndex: Int
+    
+    /// Favorites manager for heart button
+    @State private var isFavorited = false
 
     init(group: GroupedNearbyTransitResponse,
          busVehicles: Binding<[BusVehicleResponse]>,
@@ -103,6 +106,14 @@ struct RouteDetailSheet: View {
             .padding(.top, AppTheme.Layout.margin)
         }
         .background(AppTheme.Colors.background)
+        .onAppear {
+            let dir = safeDirection
+            isFavorited = FavoritesManager.shared.isFavorite(
+                routeId: group.routeId,
+                stopId: dir.arrivals.first?.stopId ?? "",
+                direction: dir.direction
+            )
+        }
     }
 
     // MARK: - Header
@@ -189,6 +200,37 @@ struct RouteDetailSheet: View {
                     }
                     .accessibilityLabel("Recenter on my location")
                 }
+            }
+            
+            // Favorite button
+            if SupabaseManager.shared.isAuthenticated {
+                Button {
+                    let dir = safeDirection
+                    let firstArrival = dir.arrivals.first
+                    Task {
+                        let nowFav = await FavoritesManager.shared.toggleFavorite(
+                            routeId: group.routeId,
+                            routeDisplayName: group.displayName,
+                            stopId: firstArrival?.stopId ?? "",
+                            stopName: firstArrival?.stopName ?? dir.direction,
+                            direction: dir.direction,
+                            destination: firstArrival?.destination,
+                            mode: group.mode,
+                            stopLat: firstArrival?.stopLat,
+                            stopLon: firstArrival?.stopLon
+                        )
+                        withAnimation(.spring(response: 0.3)) {
+                            isFavorited = nowFav
+                        }
+                        HapticManager.notification(isFavorited ? .success : .warning)
+                    }
+                } label: {
+                    Image(systemName: isFavorited ? "heart.fill" : "heart")
+                        .font(.custom("Helvetica", size: 22))
+                        .foregroundColor(isFavorited ? .red : AppTheme.Colors.textSecondary)
+                        .symbolEffect(.bounce, value: isFavorited)
+                }
+                .accessibilityLabel(isFavorited ? "Remove from favorites" : "Add to favorites")
             }
 
             // Close button

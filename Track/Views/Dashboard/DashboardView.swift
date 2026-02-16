@@ -44,6 +44,18 @@ struct DashboardView: View {
             // MARK: - Scrollable Content
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
+                    // Favorites section (shows only when user has favorites)
+                    FavoritesSection(
+                        groupedTransit: viewModel.groupedTransit,
+                        onSelect: { group, directionIndex in
+                            viewModel.selectedDirectionIndex = directionIndex
+                            Task {
+                                await viewModel.selectGroupedRoute(group, userLocation: locationManager.currentLocation)
+                            }
+                            sheetNavigator.navigate(to: .routeDetail(group: group, directionIndex: directionIndex))
+                        }
+                    )
+                    
                     // Mode-specific content
                     Group {
                         switch viewModel.selectedMode {

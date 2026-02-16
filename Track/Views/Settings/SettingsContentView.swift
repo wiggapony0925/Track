@@ -21,7 +21,7 @@ struct SettingsContentView: View {
     @AppStorage("much_farther_away_radius_meters") private var muchFartherAwayRadius: Double = 8047
     @AppStorage("haptics_enabled") private var hapticsEnabled = true
     @AppStorage("auto_refresh_enabled") private var autoRefreshEnabled = true
-    @AppStorage("show_system_map") private var showSystemMap = true
+    @AppStorage("show_search_radius") private var showSearchRadius = false
     @AppStorage("subway_line_offset_meters") private var subwayLineOffset: Double = AppSettings.shared.subwayLineOffsetMeters
     
     let sheetNavigator: SheetNavigator
@@ -113,14 +113,26 @@ struct SettingsContentView: View {
                     // Map & Display Section
                     settingsSection(title: "Map & Display", icon: "map.fill", iconColor: .green) {
                         VStack(spacing: 0) {
-                            // Show system map toggle
+                            // Show search radius circles on map
                             settingsRow(
-                                icon: "map",
-                                iconColor: .teal,
-                                title: "Show Transit Map"
+                                icon: "circle.dashed",
+                                iconColor: .orange,
+                                title: "Search Radius"
                             ) {
-                                Toggle("", isOn: $showSystemMap)
+                                Toggle("", isOn: $showSearchRadius)
                                     .tint(AppTheme.Colors.mtaBlue)
+                            }
+                            
+                            if showSearchRadius {
+                                // Color legend for the 3 radius tiers
+                                HStack(spacing: 16) {
+                                    radiusLegendDot(color: AppTheme.Colors.successGreen, label: "Near")
+                                    radiusLegendDot(color: AppTheme.Colors.mtaBlue, label: "Farther")
+                                    radiusLegendDot(color: AppTheme.Colors.warningYellow, label: "Much Farther")
+                                }
+                                .padding(.horizontal, AppTheme.Layout.cardPadding)
+                                .padding(.bottom, 10)
+                                .transition(.opacity.combined(with: .move(edge: .top)))
                             }
                             
                             settingsDivider
@@ -208,6 +220,7 @@ struct SettingsContentView: View {
                     settingsSection(title: "Account", icon: "person.crop.circle.fill", iconColor: AppTheme.Colors.mtaBlue) {
                         VStack(spacing: 0) {
                             Button {
+                                SupabaseManager.shared.signOut()
                                 isLoggedIn = false
                                 sheetNavigator.popToRoot()
                             } label: {
@@ -283,6 +296,17 @@ struct SettingsContentView: View {
             }
         }
         .background(AppTheme.Colors.background)
+        .onChange(of: settingsHash) { _, _ in
+            // Push settings to cloud whenever any setting changes
+            Task {
+                await SyncManager.shared.pushUserSettings()
+            }
+        }
+    }
+    
+    /// A combined hash of all synced settings so we can detect any change
+    private var settingsHash: String {
+        "\(appTheme)-\(nearYouRadius)-\(fartherAwayRadius)-\(muchFartherAwayRadius)-\(hapticsEnabled)-\(autoRefreshEnabled)-\(showSearchRadius)-\(subwayLineOffset)-\(useLocalhost)-\(customIP)"
     }
     
     // MARK: - Sheet Header
@@ -398,6 +422,19 @@ struct SettingsContentView: View {
     
     // MARK: - About Section
     
+    /// Color dot + label for the radius legend
+    private func radiusLegendDot(color: Color, label: String) -> some View {
+        HStack(spacing: 5) {
+            Circle()
+                .fill(color.opacity(0.25))
+                .overlay(Circle().stroke(color, lineWidth: 1.5))
+                .frame(width: 12, height: 12)
+            Text(label)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(AppTheme.Colors.textSecondary)
+        }
+    }
+    
     private var aboutSection: some View {
         settingsSection(title: "About", icon: "info.circle.fill", iconColor: .blue) {
             VStack(spacing: 0) {
@@ -478,12 +515,6 @@ struct SettingsContentView: View {
                 .padding(.horizontal, AppTheme.Layout.margin)
         }
     }
-}
-
-// MARK: - Helpers
-
-private func metersToMiles(_ meters: Double) -> Double {
-    meters / 1609.34
 }
 
 #Preview {

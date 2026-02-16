@@ -1742,6 +1742,29 @@ final class HomeViewModel {
             )
         }
         
+        // Record commute pattern for smart suggestions
+        SmartSuggester.recordPattern(
+            context: DataController.shared.container.mainContext,
+            routeID: arrival.routeId,
+            direction: arrival.direction,
+            startLocation: location ?? CLLocation(latitude: 0, longitude: 0),
+            destinationStationID: arrival.stopId ?? arrival.stopName,
+            destinationName: arrival.destination ?? arrival.direction,
+            cloudSyncHandler: { routeId, direction, lat, lon, destId, destName, hour, weekday, freq in
+                await SyncManager.shared.syncCommutePattern(
+                    routeId: routeId,
+                    direction: direction,
+                    startLatitude: lat,
+                    startLongitude: lon,
+                    destinationStationId: destId,
+                    destinationName: destName,
+                    timeOfDay: hour,
+                    dayOfWeek: weekday,
+                    frequency: freq
+                )
+            }
+        )
+        
         // Save to TrackedRoute for Single Route Widget
         let trackedRoute = TrackedRoute(
             routeId: arrival.routeId,

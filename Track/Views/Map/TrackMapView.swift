@@ -22,6 +22,12 @@ struct TrackMapView: View {
     @Binding var currentMapCenter: CLLocationCoordinate2D?
     @Binding var currentMapDistance: Double?
     
+    // MARK: - AppStorage for radius overlay
+    @AppStorage("show_search_radius") private var showSearchRadius = false
+    @AppStorage("near_you_radius_meters") private var nearYouRadius: Double = 2414
+    @AppStorage("farther_away_radius_meters") private var fartherAwayRadius: Double = 4023
+    @AppStorage("much_farther_away_radius_meters") private var muchFartherAwayRadius: Double = 8047
+    
     // MARK: - Computed Properties
     
     /// Color of the currently selected route, used for polylines and annotations.
@@ -48,6 +54,16 @@ struct TrackMapView: View {
             
             // User location
             UserAnnotation()
+            
+            // Search radius circles (color-coded to Settings)
+            if showSearchRadius, let location = locationManager.currentLocation {
+                SearchRadiusOverlay(
+                    center: location.coordinate,
+                    nearRadius: nearYouRadius,
+                    fartherRadius: fartherAwayRadius,
+                    muchFartherRadius: muchFartherAwayRadius
+                )
+            }
             
             // Draggable search pin
             searchPinAnnotation
