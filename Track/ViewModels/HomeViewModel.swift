@@ -307,10 +307,17 @@ final class HomeViewModel {
         
         // Log all route IDs in the bundle for debugging
         let allRouteIds = bundle.routes.routeIds
-        let lirrRoutes = allRouteIds.filter { $0.uppercased().hasPrefix("LIRR") }
-        let mnrRoutes = allRouteIds.filter { $0.uppercased().hasPrefix("MNR") }
         
-        AppLogger.shared.log("BUNDLE", message: "Bundle has \(allRouteIds.count) routes: \(lirrRoutes.count) LIRR, \(mnrRoutes.count) MNR")
+        // Count LIRR and MNR routes (uppercase once for efficiency)
+        var lirrCount = 0
+        var mnrCount = 0
+        for routeId in allRouteIds {
+            let upper = routeId.uppercased()
+            if upper.hasPrefix("LIRR") { lirrCount += 1 }
+            else if upper.hasPrefix("MNR") { mnrCount += 1 }
+        }
+        
+        AppLogger.shared.log("BUNDLE", message: "Bundle has \(allRouteIds.count) routes: \(lirrCount) LIRR, \(mnrCount) MNR")
         
         for routeId in allRouteIds {
             // Only process LIRR and MNR routes
