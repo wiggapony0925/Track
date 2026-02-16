@@ -203,12 +203,13 @@ struct TrackMapView: View {
     /// Polylines are typically organized: first half = direction 0, second half = direction 1.
     private func filteredPolylines(from polylines: [[CLLocationCoordinate2D]]) -> [[CLLocationCoordinate2D]] {
         guard let group = viewModel.selectedGroupedRoute,
-              let directionIndex = viewModel.selectedDirectionIndex,
               group.directions.count > 1,
               polylines.count >= 2 else {
             // Single direction or not enough polylines to split - show all
             return polylines
         }
+        
+        let directionIndex = viewModel.selectedDirectionIndex
         
         // For bus routes with multiple directions, show only relevant polylines
         // Heuristic: Split polylines in half - first half = direction 0, second half = direction 1

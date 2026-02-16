@@ -162,7 +162,7 @@ final class HomeViewModel {
 
     // Route detail sheet
     var selectedGroupedRoute: GroupedNearbyTransitResponse?
-    var selectedDirectionIndex: Int?
+    var selectedDirectionIndex: Int = 0
     var isRouteDetailPresented = false
 
     // Draggable search pin
@@ -682,6 +682,7 @@ final class HomeViewModel {
     /// Clears the selected route and remove bus/train markers from the map.
     func clearRoute() {
         selectedRouteId = nil
+        selectedDirectionIndex = 0
         busVehicles = []
         trainVehicles = []
         cachedTrainArrivals = []
