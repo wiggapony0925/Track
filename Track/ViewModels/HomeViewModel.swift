@@ -359,7 +359,6 @@ final class HomeViewModel {
         let coordinates: [CLLocationCoordinate2D]
         let color: Color
         let lineWidth: CGFloat
-        let isDashed: Bool
     }
     
     /// Pre-computed flattened subway polylines for the system map view.
@@ -849,8 +848,7 @@ final class HomeViewModel {
                     id: "\(line.id)_\(branchIndex)",
                     coordinates: coords,
                     color: line.color,
-                    lineWidth: 3,
-                    isDashed: false
+                    lineWidth: 3
                 ))
             }
         }
@@ -866,8 +864,7 @@ final class HomeViewModel {
                     id: "\(line.id)_\(branchIndex)",
                     coordinates: coords,
                     color: line.color,
-                    lineWidth: 2.5,
-                    isDashed: true
+                    lineWidth: 2.5
                 ))
             }
         }
