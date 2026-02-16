@@ -51,6 +51,20 @@ struct AppSettings {
     let liveActivityStaleDateSeconds: Double
     /// How long a completed Live Activity remains on the lock screen (seconds).
     let liveActivityDismissalSeconds: Double
+    /// Default radius in meters for "Near You" transit section (from settings.json).
+    private let _nearYouRadiusMeters: Double
+    /// Default radius in meters for "A Little Farther Away" transit section (from settings.json).
+    private let _fartherAwayRadiusMeters: Double
+    
+    /// Radius in meters for "Near You" transit section (user-configurable via Settings).
+    var nearYouRadiusMeters: Double {
+        UserDefaults.standard.object(forKey: "near_you_radius_meters") as? Double ?? _nearYouRadiusMeters
+    }
+    
+    /// Radius in meters for "A Little Farther Away" transit section (user-configurable via Settings).
+    var fartherAwayRadiusMeters: Double {
+        UserDefaults.standard.object(forKey: "farther_away_radius_meters") as? Double ?? _fartherAwayRadiusMeters
+    }
 
 
     // MARK: - Location Settings
@@ -98,6 +112,10 @@ struct AppSettings {
     let serviceAreaMaxLon: Double
     /// Toggles the "Ease-In-Out" physics for train animation (vs Linear).
     let simulationEasingEnabled: Bool
+    /// Whether to show LIRR routes on the system map by default.
+    let showLIRRByDefault: Bool
+    /// Whether to show Metro-North routes on the system map by default.
+    let showMNRByDefault: Bool
 
     // MARK: - Init
 
@@ -121,6 +139,8 @@ struct AppSettings {
             self.stationVisibilityZoomMeters = 3500
             self.liveActivityStaleDateSeconds = 3600
             self.liveActivityDismissalSeconds = 120
+            self._nearYouRadiusMeters = 400
+            self._fartherAwayRadiusMeters = 1200
             self.distanceFilterMeters = 50
             self.commutePatternMatchRadiusMeters = 200
             self.stopPassedThresholdMeters = 100
@@ -141,6 +161,8 @@ struct AppSettings {
             self.serviceAreaMinLon = -74.35
             self.serviceAreaMaxLon = -72.40
             self.simulationEasingEnabled = true
+            self.showLIRRByDefault = true
+            self.showMNRByDefault = true
             return
         }
 
@@ -164,6 +186,8 @@ struct AppSettings {
         self.stationVisibilityZoomMeters = display["station_visibility_zoom_meters"] as? Double ?? 3500
         self.liveActivityStaleDateSeconds = display["live_activity_stale_date_seconds"] as? Double ?? 3600
         self.liveActivityDismissalSeconds = display["live_activity_dismissal_seconds"] as? Double ?? 120
+        self._nearYouRadiusMeters = display["near_you_radius_meters"] as? Double ?? 400
+        self._fartherAwayRadiusMeters = display["farther_away_radius_meters"] as? Double ?? 1200
 
 
         self.distanceFilterMeters = location["distance_filter_meters"] as? Double ?? 50
@@ -187,5 +211,7 @@ struct AppSettings {
         self.serviceAreaMinLon = map["service_area_min_lon"] as? Double ?? -74.35
         self.serviceAreaMaxLon = map["service_area_max_lon"] as? Double ?? -72.40
         self.simulationEasingEnabled = map["simulation_easing_enabled"] as? Bool ?? true
+        self.showLIRRByDefault = map["show_lirr_by_default"] as? Bool ?? true
+        self.showMNRByDefault = map["show_mnr_by_default"] as? Bool ?? true
     }
 }

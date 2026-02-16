@@ -118,6 +118,17 @@ struct AppTheme {
             }
         }
     }
+    
+    // MARK: - Bus Colors
+    
+    /// Bus route colors for visual distinction from subway routes.
+    struct BusColors {
+        /// Standard local bus color (MTA Blue)
+        static let localBlue = Color(red: 0/255, green: 57/255, blue: 166/255)
+        
+        /// Select Bus Service (SBS) purple color
+        static let sbsPurple = Color(red: 128/255, green: 0/255, blue: 128/255)
+    }
 
     // MARK: - Layout
 
