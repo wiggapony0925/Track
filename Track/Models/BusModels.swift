@@ -77,6 +77,8 @@ struct BusVehicleResponse: Codable, Identifiable {
     let bearing: Double?
     let nextStop: String?
     let statusText: String?
+    /// SIRI DirectionRef: 0 or 1, used to filter vehicles by selected direction.
+    let directionRef: Int?
 
     /// Strips "MTA NYCT_" prefix for display.
     var displayRouteName: String {
@@ -89,6 +91,7 @@ struct BusVehicleResponse: Codable, Identifiable {
         case lat, lon, bearing
         case nextStop = "next_stop"
         case statusText = "status_text"
+        case directionRef = "direction_ref"
     }
 }
 
@@ -130,17 +133,27 @@ struct RouteShapeResponse: Codable {
     }
 
     /// Returns decoded polylines for a specific direction index.
+    /// Matches by `directionId` first; falls back to array position.
     /// Falls back to the combined polylines if no direction data exists.
     func polylinesForDirection(_ directionIndex: Int) -> [[CLLocationCoordinate2D]] {
         guard !directions.isEmpty else { return decodedPolylines }
+        // Prefer matching by directionId (GTFS direction_id: 0 or 1)
+        if let match = directions.first(where: { $0.directionId == directionIndex }) {
+            return match.decodedPolylines
+        }
         let safeIdx = min(directionIndex, directions.count - 1)
         return directions[safeIdx].decodedPolylines
     }
 
     /// Returns stops for a specific direction index.
+    /// Matches by `directionId` first; falls back to array position.
     /// Falls back to the combined stops if no direction data exists.
     func stopsForDirection(_ directionIndex: Int) -> [BusStop] {
         guard !directions.isEmpty else { return stops }
+        // Prefer matching by directionId (GTFS direction_id: 0 or 1)
+        if let match = directions.first(where: { $0.directionId == directionIndex }) {
+            return match.stops.isEmpty ? stops : match.stops
+        }
         let safeIdx = min(directionIndex, directions.count - 1)
         let dirStops = directions[safeIdx].stops
         return dirStops.isEmpty ? stops : dirStops

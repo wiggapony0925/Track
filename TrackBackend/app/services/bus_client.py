@@ -828,6 +828,15 @@ async def _get_vehicles_impl(route_id: str) -> list[BusVehicle]:
         distances = extensions.get("Distances", {})
         status_text = distances.get("PresentableDistance")
 
+        # Direction reference (0 or 1) from SIRI
+        direction_ref: int | None = None
+        raw_dir = journey.get("DirectionRef")
+        if raw_dir is not None:
+            try:
+                direction_ref = int(raw_dir)
+            except (ValueError, TypeError):
+                pass
+
         vehicles.append(
             BusVehicle(
                 vehicle_id=journey.get("VehicleRef", ""),
@@ -837,6 +846,7 @@ async def _get_vehicles_impl(route_id: str) -> list[BusVehicle]:
                 bearing=bearing,
                 next_stop=next_stop,
                 status_text=status_text,
+                direction_ref=direction_ref,
             )
         )
 
@@ -917,8 +927,10 @@ async def _get_route_shape_impl(route_id: str) -> RouteShape:
     TrackLogger.debug(f"Fetching shape for {route_id} from {url}", tag="BUS")
     data = await _fetch_bus_json(url, params)
 
-    # Extract polylines
+    # Extract polylines and build an id→encoded lookup so we can assign
+    # per-direction polylines later using OBA's polylineIds references.
     polylines: list[str] = []
+    polyline_by_id: dict[str, str] = {}
     entry = data.get("data", {}).get("entry", {}) if isinstance(data, dict) else {}
     raw_polylines = entry.get("polylines", [])
     TrackLogger.debug(f"Got {len(raw_polylines)} raw polylines from API", tag="BUS")
@@ -927,6 +939,9 @@ async def _get_route_shape_impl(route_id: str) -> RouteShape:
         encoded = poly.get("points", "")
         if encoded:
             polylines.append(encoded)
+            poly_id = poly.get("id", "")
+            if poly_id:
+                polyline_by_id[poly_id] = encoded
 
     # Extract stops from references
     stops_data: list[dict[str, Any]] = (
@@ -948,11 +963,11 @@ async def _get_route_shape_impl(route_id: str) -> RouteShape:
         )
 
     # Build per-direction shapes from OBA stopGroupings.
-    # Bus routes run back and forth on the same streets, so polylines represent
-    # the physical road rather than a single direction.  We give ALL entry
-    # polylines to EACH direction — the directions differ in their stops and
-    # headsign, not in the road geometry.  The iOS app uses the direction's
-    # stops for annotations and the shared polylines for the route path.
+    # OBA includes per-direction polylineIds that reference specific polyline
+    # segments, allowing us to show only the relevant geometry when the user
+    # selects a direction.  When polylineIds are available, each direction
+    # gets only its own polylines.  Falls back to ALL entry polylines only
+    # when the reference data is missing.
     directions: list[DirectionShape] = []
     stop_groupings = entry.get("stopGroupings", [])
     try:
@@ -977,11 +992,26 @@ async def _get_route_shape_impl(route_id: str) -> RouteShape:
 
                 dir_stops = [s for s in stops if s.id in dir_stop_ids]
 
-                # Give ALL entry polylines to each direction — they share the same road
+                # Use OBA's polylineIds to assign direction-specific polylines.
+                # polylineIds references the "id" field of entry.polylines[].
+                dir_polyline_ids = sg.get("polylineIds", [])
+                if dir_polyline_ids and polyline_by_id:
+                    dir_polylines = [
+                        polyline_by_id[pid]
+                        for pid in dir_polyline_ids
+                        if pid in polyline_by_id
+                    ]
+                    # Fall back to all polylines if lookup yielded nothing
+                    if not dir_polylines:
+                        dir_polylines = list(polylines)
+                else:
+                    # No polylineIds available — fall back to all entry polylines
+                    dir_polylines = list(polylines)
+
                 directions.append(DirectionShape(
                     direction_id=dir_id,
                     headsign=headsign,
-                    polylines=list(polylines),  # copy all entry polylines
+                    polylines=dir_polylines,
                     stops=dir_stops,
                 ))
     except Exception as exc:
@@ -1005,5 +1035,6 @@ async def _get_route_shape_impl(route_id: str) -> RouteShape:
         d.polylines = _merge_polyline_segments(d.polylines)
 
     TrackLogger.bus(f"Shape for {route_id}: {len(merged_polylines)} merged polylines (from {len(polylines)} raw), "
-          f"{len(stops)} stops, {len(directions)} directions")
+          f"{len(stops)} stops, {len(directions)} directions"
+          + (f" ({', '.join(f'dir{d.direction_id}:{len(d.polylines)}pl' for d in directions)})" if directions else ""))
     return RouteShape(route_id=route_id, polylines=merged_polylines, stops=stops, directions=directions)

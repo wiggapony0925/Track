@@ -160,10 +160,11 @@ struct TrackMapView: View {
     private var routeStopAnnotations: some MapContent {
         if let shape = viewModel.routeShape {
             let isBusRoute = viewModel.selectedGroupedRoute?.isBus == true
-            let hasDirections = (viewModel.selectedGroupedRoute?.directions.count ?? 0) > 1
+            let groupDirCount = viewModel.selectedGroupedRoute?.directions.count ?? 0
+            let shouldFilter = !shape.directions.isEmpty && groupDirCount > 1
             
-            // Use direction-specific stops when the user has picked a direction
-            let directionStops = hasDirections
+            // Use direction-specific stops when the user can switch directions
+            let directionStops = shouldFilter
                 ? shape.stopsForDirection(viewModel.selectedDirectionIndex)
                 : shape.stops
             
@@ -190,7 +191,7 @@ struct TrackMapView: View {
     
     @MapContentBuilder
     private var busVehicleAnnotations: some MapContent {
-        ForEach(viewModel.busVehicles) { vehicle in
+        ForEach(viewModel.filteredBusVehicles) { vehicle in
             BusVehicleMarker(vehicle: vehicle)
         }
     }
@@ -199,7 +200,7 @@ struct TrackMapView: View {
     
     @MapContentBuilder
     private var trainVehicleAnnotations: some MapContent {
-        ForEach(viewModel.trainVehicles) { train in
+        ForEach(viewModel.filteredTrainVehicles) { train in
             if train.routeId.contains("LIRR") || train.routeId.lowercased().contains("lir") {
                 LIRRMarker(train: train)
             } else if train.routeId.contains("MNR") || train.routeId.lowercased().contains("mnr") || train.routeId.lowercased().contains("metro") {
@@ -255,11 +256,18 @@ struct TrackMapView: View {
     private var routePolylines: some MapContent {
         if let shape = viewModel.routeShape {
             let isBusRoute = viewModel.selectedGroupedRoute?.isBus == true
-            let allPolylines = shape.decodedPolylines
+            let groupDirCount = viewModel.selectedGroupedRoute?.directions.count ?? 0
+            let shapeHasDirections = !shape.directions.isEmpty
             
-            // Filter to selected direction for ALL modes when direction data exists
-            let hasDirections = (viewModel.selectedGroupedRoute?.directions.count ?? 0) > 1
-            let polylines = hasDirections ? filteredPolylines(from: allPolylines) : allPolylines
+            // Always use direction-specific polylines when:
+            // 1. The shape has per-direction data, AND
+            // 2. The group has multiple direction tabs (so the user can switch)
+            // This ensures switching directions only shows that direction's line.
+            let shouldFilter = shapeHasDirections && groupDirCount > 1
+            
+            let polylines: [[CLLocationCoordinate2D]] = shouldFilter
+                ? shape.polylinesForDirection(viewModel.selectedDirectionIndex)
+                : shape.decodedPolylines
             
             if !polylines.isEmpty {
                 ForEach(Array(polylines.enumerated()), id: \.offset) { _, coords in
@@ -272,7 +280,11 @@ struct TrackMapView: View {
                     }
                 }
             } else if !shape.stops.isEmpty {
-                let stopCoords = shape.stops.map {
+                // Fallback: connect direction-specific stops (not all stops)
+                let fallbackStops = shouldFilter
+                    ? shape.stopsForDirection(viewModel.selectedDirectionIndex)
+                    : shape.stops
+                let stopCoords = fallbackStops.map {
                     CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lon)
                 }
                 MapPolyline(coordinates: stopCoords)

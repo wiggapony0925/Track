@@ -133,6 +133,7 @@ class BusVehicle(BaseModel):
     bearing: float | None = None
     next_stop: str | None = None
     status_text: str | None = None
+    direction_ref: int | None = None
 
 
 class DirectionShape(BaseModel):

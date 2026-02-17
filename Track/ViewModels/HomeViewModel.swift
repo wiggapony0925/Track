@@ -442,6 +442,50 @@ final class HomeViewModel {
     
     var routeShape: RouteShapeResponse?
 
+    // MARK: - Direction-Filtered Vehicles
+    
+    /// Bus vehicles filtered to the currently selected direction.
+    /// Uses the SIRI `directionRef` (0/1) to match `selectedDirectionIndex`.
+    /// Falls back to showing all vehicles if direction data is unavailable.
+    var filteredBusVehicles: [BusVehicleResponse] {
+        guard let group = selectedGroupedRoute,
+              group.directions.count > 1 else {
+            return busVehicles // single direction → show all
+        }
+        let filtered = busVehicles.filter { $0.directionRef == selectedDirectionIndex }
+        // If no vehicles matched (directionRef missing from backend), show all
+        return filtered.isEmpty && !busVehicles.isEmpty ? busVehicles : filtered
+    }
+    
+    /// Train vehicles filtered to the currently selected direction.
+    /// Subway directions use "N"/"S" (or destination names); we match by
+    /// checking the direction string of the arrivals in the selected group.
+    var filteredTrainVehicles: [TrainVehicle] {
+        guard let group = selectedGroupedRoute,
+              group.directions.count > 1 else {
+            return trainVehicles // single direction → show all
+        }
+        let safeIdx = min(selectedDirectionIndex, group.directions.count - 1)
+        let selectedDir = group.directions[safeIdx]
+        
+        // Collect all direction strings that belong to this direction tab
+        // (the direction field, plus any arrival directions/destinations)
+        var validDirs = Set<String>()
+        validDirs.insert(selectedDir.direction.uppercased())
+        for arrival in selectedDir.arrivals {
+            validDirs.insert(arrival.direction.uppercased())
+            if let dest = arrival.destination {
+                validDirs.insert(dest.uppercased())
+            }
+        }
+        
+        let filtered = trainVehicles.filter { vehicle in
+            validDirs.contains(vehicle.direction.uppercased())
+        }
+        // If no vehicles matched, show all (safety fallback)
+        return filtered.isEmpty && !trainVehicles.isEmpty ? trainVehicles : filtered
+    }
+
     // Full transit system map (pre-decoded for performance)
     // Includes Subway, LIRR, and Metro-North lines
     struct CachedTransitLine: Identifiable {
@@ -1140,51 +1184,83 @@ final class HomeViewModel {
         let existingCount = group.directions.count
 
         // Build a set of existing direction strings (lowercased) for matching.
-        // Also track which direction IDs are already represented.
         let existingDirStrings = Set(group.directions.map { $0.direction.lowercased() })
-        let existingDirIndices = Set(0..<existingCount)
-
-        var enrichedDirections = group.directions
-
-        for shapeDir in shape.directions {
-            let headsign = shapeDir.headsign.lowercased()
-            
-            // Check if this shape direction already has a matching group direction.
-            // Match by BOTH index and headsign to avoid missing directions that
-            // exist in the shape but aren't in the nearby response.
-            let matchesByIndex = existingDirIndices.contains(shapeDir.directionId)
-            let matchesByHeadsign = !headsign.isEmpty && existingDirStrings.contains(headsign)
-            
-            // Also check partial match — the nearby API might use "to XYZ"
-            // while the shape uses just "XYZ" or vice versa
-            let matchesByPartial = !headsign.isEmpty && existingDirStrings.contains(where: { existing in
-                existing.contains(headsign) || headsign.contains(existing)
-            })
-            
-            if !matchesByIndex && !matchesByHeadsign && !matchesByPartial {
-                // Create an empty direction entry using the headsign from the shape
-                let directionString = shapeDir.headsign.isEmpty
-                    ? "Direction \(shapeDir.directionId)"
-                    : shapeDir.headsign
-                let newDir = DirectionArrivalsResponse(
-                    direction: directionString,
-                    directionLabel: shapeDir.headsign.isEmpty ? nil : "→ \(shapeDir.headsign)",
-                    arrivals: []
-                )
-                enrichedDirections.append(newDir)
+        
+        // Also collect all destination names from arrivals for partial matching
+        var existingDestinations = Set<String>()
+        for dir in group.directions {
+            for arrival in dir.arrivals {
+                if let dest = arrival.destination {
+                    existingDestinations.insert(dest.lowercased())
+                }
             }
         }
 
-        // Only update if we actually added directions
-        if enrichedDirections.count > existingCount {
+        // Build a new directions array ordered by shape direction_id.
+        // For each shape direction, either find the matching existing group
+        // direction or create a placeholder. This guarantees group index N
+        // maps to shape direction_id N.
+        var orderedDirections: [DirectionArrivalsResponse] = []
+        var usedExistingIndices = Set<Int>()
+
+        for shapeDir in shape.directions.sorted(by: { $0.directionId < $1.directionId }) {
+            let headsign = shapeDir.headsign.lowercased()
+            
+            // Try to find a matching existing group direction
+            var matchedIndex: Int? = nil
+            for (idx, existingDir) in group.directions.enumerated() where !usedExistingIndices.contains(idx) {
+                let existingLower = existingDir.direction.lowercased()
+                
+                let exactMatch = !headsign.isEmpty && existingLower == headsign
+                let partialMatch = !headsign.isEmpty && (
+                    existingLower.contains(headsign) || headsign.contains(existingLower)
+                )
+                let destMatch = !headsign.isEmpty && existingDir.arrivals.contains(where: { arrival in
+                    guard let dest = arrival.destination?.lowercased() else { return false }
+                    return dest.contains(headsign) || headsign.contains(dest)
+                })
+                
+                if exactMatch || partialMatch || destMatch {
+                    matchedIndex = idx
+                    break
+                }
+            }
+            
+            if let idx = matchedIndex {
+                orderedDirections.append(group.directions[idx])
+                usedExistingIndices.insert(idx)
+            } else {
+                // Create a placeholder for this missing direction
+                let directionString = shapeDir.headsign.isEmpty
+                    ? "Direction \(shapeDir.directionId)"
+                    : shapeDir.headsign
+                orderedDirections.append(DirectionArrivalsResponse(
+                    direction: directionString,
+                    directionLabel: shapeDir.headsign.isEmpty ? nil : "→ \(shapeDir.headsign)",
+                    arrivals: []
+                ))
+            }
+        }
+        
+        // Append any existing directions that didn't match any shape direction
+        // (e.g. backfilled compass directions from the nearby API)
+        for (idx, dir) in group.directions.enumerated() where !usedExistingIndices.contains(idx) {
+            orderedDirections.append(dir)
+        }
+
+        // Only update if we added directions or reordered them
+        let changed = orderedDirections.count != existingCount ||
+            zip(orderedDirections, group.directions).contains(where: { $0.direction != $1.direction })
+        
+        if changed {
             selectedGroupedRoute = GroupedNearbyTransitResponse(
                 routeId: group.routeId,
                 displayName: group.displayName,
                 mode: group.mode,
                 colorHex: group.colorHex,
-                directions: enrichedDirections
+                directions: orderedDirections
             )
-            AppLogger.shared.log("ROUTE_DETAIL", message: "Enriched \(group.displayName) from \(existingCount) → \(enrichedDirections.count) directions using shape data")
+            AppLogger.shared.log("ROUTE_DETAIL", message: "Enriched \(group.displayName) from \(existingCount) → \(orderedDirections.count) directions (ordered by shape direction_id)")
         }
     }
 

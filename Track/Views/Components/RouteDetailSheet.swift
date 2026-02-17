@@ -925,7 +925,13 @@ struct RouteDetailSheet: View {
 
     private var routeInfoFooter: some View {
         let hasStops = routeShape != nil && !routeShape!.stops.isEmpty
-        let hasVehicles = !busVehicles.isEmpty
+        // Filter bus vehicles by direction when multiple directions exist
+        let directionVehicles: [BusVehicleResponse] = {
+            guard group.directions.count > 1 else { return busVehicles }
+            let filtered = busVehicles.filter { $0.directionRef == selectedDirectionIndex }
+            return filtered.isEmpty && !busVehicles.isEmpty ? busVehicles : filtered
+        }()
+        let hasVehicles = !directionVehicles.isEmpty
         
         // Only show if there's info to display
         if hasStops || hasVehicles {
@@ -957,7 +963,7 @@ struct RouteDetailSheet: View {
                                         .fill(AppTheme.Colors.successGreen.opacity(0.3))
                                         .frame(width: 14, height: 14)
                                 )
-                            Text("\(busVehicles.count) live \(group.isBus ? "buses" : "trains")")
+                            Text("\(directionVehicles.count) live \(group.isBus ? "buses" : "trains")")
                                 .font(.custom("Helvetica-Bold", size: 13))
                                 .foregroundColor(AppTheme.Colors.successGreen)
                         }
