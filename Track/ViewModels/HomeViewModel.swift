@@ -1169,7 +1169,7 @@ final class HomeViewModel {
     /// BusStop objects so the map can show stop markers and the camera zoom logic
     /// can find the nearest stop.
     private func populateStopsFromArrivals(group: GroupedNearbyTransit) {
-        guard routeShape != nil, routeShape!.stops.isEmpty else { return }
+        guard var shape = routeShape, shape.stops.isEmpty else { return }
 
         var seenIds = Set<String>()
         var synthesized: [BusStop] = []
@@ -1177,7 +1177,10 @@ final class HomeViewModel {
         for direction in group.directions {
             for arrival in direction.arrivals {
                 guard let lat = arrival.stopLat, let lon = arrival.stopLon else { continue }
-                let stopId = arrival.stopId ?? arrival.stopName
+                // Use stopId when available; fall back to a composite key
+                // of name + coordinates to avoid dedup collisions when
+                // different physical stops share the same name.
+                let stopId = arrival.stopId ?? "\(arrival.stopName)_\(lat)_\(lon)"
                 guard !seenIds.contains(stopId) else { continue }
                 seenIds.insert(stopId)
                 synthesized.append(BusStop(
@@ -1191,7 +1194,8 @@ final class HomeViewModel {
         }
 
         if !synthesized.isEmpty {
-            routeShape!.stops = synthesized
+            shape.stops = synthesized
+            routeShape = shape
         }
     }
 
