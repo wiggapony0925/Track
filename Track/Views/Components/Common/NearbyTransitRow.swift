@@ -230,13 +230,6 @@ struct NearbyTransitRow: View {
     
     /// Formats walking distance to the stop.
     private func formatDistance(_ meters: Double) -> String {
-        if meters < 100 {
-            return "\(Int(meters))m away"
-        } else if meters < 1000 {
-            return "\(Int(meters / 10) * 10)m away"
-        } else {
-            let km = meters / 1000.0
-            return String(format: "%.1fkm away", km)
-        }
+        formatWalkingDistance(meters)
     }
 }

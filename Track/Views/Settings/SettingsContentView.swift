@@ -97,17 +97,78 @@ struct SettingsContentView: View {
                             
                             settingsDivider
                             
+                            // Quick preset buttons
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text("PRESETS")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.5))
+                                    .tracking(0.6)
+                                
+                                HStack(spacing: 8) {
+                                    radiusPresetButton(
+                                        label: "Walking",
+                                        icon: "figure.walk",
+                                        near: 800, farther: 1600, much: 3200,
+                                        color: AppTheme.Colors.successGreen
+                                    )
+                                    radiusPresetButton(
+                                        label: "Default",
+                                        icon: "target",
+                                        near: AppSettings.shared.defaultNearYouRadiusMeters,
+                                        farther: AppSettings.shared.defaultFartherAwayRadiusMeters,
+                                        much: AppSettings.shared.defaultMuchFartherAwayRadiusMeters,
+                                        color: AppTheme.Colors.mtaBlue
+                                    )
+                                    radiusPresetButton(
+                                        label: "Wide",
+                                        icon: "car.fill",
+                                        near: 3200, farther: 6400, much: 16093,
+                                        color: AppTheme.Colors.warningYellow
+                                    )
+                                }
+                            }
+                            .padding(.horizontal, AppTheme.Layout.cardPadding)
+                            .padding(.vertical, 12)
+                            
+                            settingsDivider
+                            
                             // Info text
                             HStack(spacing: 8) {
                                 Image(systemName: "info.circle")
                                     .font(.system(size: 13))
                                     .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
-                                Text("Controls how arrivals are grouped by distance in the Nearby tab.")
+                                Text("Controls how arrivals are grouped by distance in the Nearby tab. Each ring is strictly outside the previous one. The API search radius automatically scales to match.")
                                     .font(.system(size: 12))
                                     .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
                             }
                             .padding(.horizontal, AppTheme.Layout.cardPadding)
                             .padding(.vertical, 10)
+                        }
+                        // Enforce strict ring ordering: Near < Farther < Much Farther
+                        // Minimum gap of 200m between rings so they're meaningfully distinct
+                        .onChange(of: nearYouRadius) { _, newValue in
+                            let minGap: Double = 200
+                            if fartherAwayRadius < newValue + minGap {
+                                fartherAwayRadius = min(newValue + minGap, 8047)
+                            }
+                            if muchFartherAwayRadius < fartherAwayRadius + minGap {
+                                muchFartherAwayRadius = min(fartherAwayRadius + minGap, 16093)
+                            }
+                        }
+                        .onChange(of: fartherAwayRadius) { _, newValue in
+                            let minGap: Double = 200
+                            if newValue < nearYouRadius + minGap {
+                                fartherAwayRadius = nearYouRadius + minGap
+                            }
+                            if muchFartherAwayRadius < fartherAwayRadius + minGap {
+                                muchFartherAwayRadius = min(fartherAwayRadius + minGap, 16093)
+                            }
+                        }
+                        .onChange(of: muchFartherAwayRadius) { _, newValue in
+                            let minGap: Double = 200
+                            if newValue < fartherAwayRadius + minGap {
+                                muchFartherAwayRadius = fartherAwayRadius + minGap
+                            }
                         }
                     }
                     
@@ -440,6 +501,53 @@ struct SettingsContentView: View {
         }
         .padding(.horizontal, AppTheme.Layout.cardPadding)
         .padding(.vertical, 14)
+    }
+    
+    /// Whether the current radius values match a given preset.
+    private func isPresetActive(near: Double, farther: Double, much: Double) -> Bool {
+        nearYouRadius == near && fartherAwayRadius == farther && muchFartherAwayRadius == much
+    }
+    
+    /// A compact pill button that applies a radius preset.
+    private func radiusPresetButton(
+        label: String,
+        icon: String,
+        near: Double,
+        farther: Double,
+        much: Double,
+        color: Color
+    ) -> some View {
+        let active = isPresetActive(near: near, farther: farther, much: much)
+        return Button {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                nearYouRadius = near
+                fartherAwayRadius = farther
+                muchFartherAwayRadius = much
+            }
+            if hapticsEnabled {
+                HapticManager.impact(.medium)
+            }
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: icon)
+                    .font(.system(size: 11, weight: .semibold))
+                Text(label)
+                    .font(.custom("Helvetica-Bold", size: 11))
+            }
+            .foregroundColor(active ? .white : color)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity)
+            .background(
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(active ? color : color.opacity(0.1))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(active ? Color.clear : color.opacity(0.2), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
     }
     
     // MARK: - About Section

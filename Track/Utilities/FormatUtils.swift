@@ -74,7 +74,7 @@ func formatArrivalTime(date: Date?, fallback: String = "—") -> String {
 
 // MARK: - Distance Formatting
 
-/// Formats a distance in meters into a human-readable string.
+/// Formats a distance in meters into a human-readable metric string.
 ///
 /// - Parameters:
 ///   - meters: Distance in meters.
@@ -88,6 +88,43 @@ func formatDistance(_ meters: Double, suffix: String = "away") -> String {
         value = String(format: "%.1fkm", meters / 1000)
     }
     return suffix.isEmpty ? value : "\(value) \(suffix)"
+}
+
+/// Formats a walking distance in meters with rounded precision.
+/// Under 100 m shows exact metres; 100–999 m rounds to nearest 10;
+/// ≥ 1 km shows one decimal place.
+///
+/// - Parameters:
+///   - meters: Distance in meters.
+///   - suffix: Optional suffix (e.g. "away"). Defaults to "away".
+/// - Returns: e.g. "82m away", "250m away", "1.2km away"
+func formatWalkingDistance(_ meters: Double, suffix: String = "away") -> String {
+    let value: String
+    if meters < 100 {
+        value = "\(Int(meters))m"
+    } else if meters < 1000 {
+        value = "\(Int(meters / 10) * 10)m"
+    } else {
+        value = String(format: "%.1fkm", meters / 1000.0)
+    }
+    return suffix.isEmpty ? value : "\(value) \(suffix)"
+}
+
+/// Formats a distance in meters as miles for display on map radius labels
+/// and settings UI.
+///
+/// - Parameter meters: Distance in meters.
+/// - Returns: e.g. "0.5 mi", "1 mi", "2.5 mi"
+func formatDistanceMiles(_ meters: Double) -> String {
+    let miles = metersToMiles(meters)
+    if miles < 1.0 {
+        return String(format: "%.1f mi", miles)
+    }
+    // Drop decimal for clean whole-number miles (e.g. 1.0 → "1 mi")
+    if miles.truncatingRemainder(dividingBy: 1.0) < 0.1 {
+        return String(format: "%.0f mi", miles)
+    }
+    return String(format: "%.1f mi", miles)
 }
 
 // MARK: - MTA Route Name

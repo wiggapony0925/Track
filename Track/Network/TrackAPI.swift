@@ -57,7 +57,7 @@ struct TrackAPI {
     ///   - lon: User's longitude.
     /// - Returns: Array of `BusStop`.
     static func fetchNearbyBusStops(lat: Double, lon: Double, radius: Int? = nil) async throws -> [BusStop] {
-        let effectiveRadius = radius ?? AppSettings.shared.defaultSearchRadiusMeters
+        let effectiveRadius = radius ?? AppSettings.shared.effectiveAPISearchRadius
         guard var components = URLComponents(string: baseURL + "/bus/nearby") else {
             throw TrackAPIError.invalidURL
         }
@@ -112,7 +112,7 @@ struct TrackAPI {
     ///   - radius: Search radius in meters (from settings.json by default).
     /// - Returns: Array of `NearbyTransitResponse`.
     static func fetchNearbyTransit(lat: Double, lon: Double, radius: Int? = nil) async throws -> [NearbyTransitResponse] {
-        let effectiveRadius = radius ?? AppSettings.shared.defaultSearchRadiusMeters
+        let effectiveRadius = radius ?? AppSettings.shared.effectiveAPISearchRadius
         guard var components = URLComponents(string: baseURL + "/nearby") else {
             throw TrackAPIError.invalidURL
         }
@@ -138,7 +138,7 @@ struct TrackAPI {
     ///   - mode: Optional transit mode filter ("subway", "bus", "lirr", "mnr").
     /// - Returns: Array of `GroupedNearbyTransitResponse`.
     static func fetchNearbyGrouped(lat: Double, lon: Double, radius: Int? = nil, mode: String? = nil) async throws -> [GroupedNearbyTransitResponse] {
-        let effectiveRadius = radius ?? AppSettings.shared.defaultSearchRadiusMeters
+        let effectiveRadius = radius ?? AppSettings.shared.effectiveAPISearchRadius
         guard var components = URLComponents(string: baseURL + "/nearby/grouped") else {
             throw TrackAPIError.invalidURL
         }

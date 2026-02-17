@@ -129,17 +129,9 @@ struct SearchRadiusOverlay: MapContent {
         )
     }
     
-    /// Formats meters into a human-readable distance string.
+    /// Formats meters into a human-readable distance string (miles).
     private func formatDistance(_ meters: Double) -> String {
-        let miles = meters / 1609.34
-        if miles < 1.0 {
-            return String(format: "%.1f mi", miles)
-        }
-        // Drop decimal for clean whole numbers
-        if miles.truncatingRemainder(dividingBy: 1.0) < 0.1 {
-            return String(format: "%.0f mi", miles)
-        }
-        return String(format: "%.1f mi", miles)
+        formatDistanceMiles(meters)
     }
 }
 

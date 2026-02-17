@@ -118,53 +118,17 @@ struct SubwayDashboard: View {
         }
     }
     
-    // MARK: - Distance Helpers
+    // MARK: - Distance Helpers (delegated to DistanceBucketUtils)
     
     private func minDistance(for group: GroupedNearbyTransitResponse, from location: CLLocation) -> CLLocationDistance {
-        let allArrivals = group.directions.flatMap { $0.arrivals }
-        let distances = allArrivals.compactMap { arrival -> CLLocationDistance? in
-            guard let lat = arrival.stopLat, let lon = arrival.stopLon else { return nil }
-            return location.distance(from: CLLocation(latitude: lat, longitude: lon))
-        }
-        return distances.min() ?? Double.greatestFiniteMagnitude
+        groupMinDistance(for: group, from: location)
     }
     
     private func separateByDistance(
         groups: [GroupedNearbyTransitResponse],
         from location: CLLocation?
     ) -> (nearYou: [GroupedNearbyTransitResponse], fartherAway: [GroupedNearbyTransitResponse], muchFarther: [GroupedNearbyTransitResponse]) {
-        guard let location = location else {
-            return (groups, [], [])
-        }
-        
-        var nearYou: [GroupedNearbyTransitResponse] = []
-        var fartherAway: [GroupedNearbyTransitResponse] = []
-        var muchFarther: [GroupedNearbyTransitResponse] = []
-        
-        for group in groups {
-            let dist = minDistance(for: group, from: location)
-            if dist <= nearYouRadius {
-                nearYou.append(group)
-            } else if dist <= fartherAwayRadius {
-                fartherAway.append(group)
-            } else if dist <= muchFartherAwayRadius {
-                muchFarther.append(group)
-            }
-        }
-        
-        // Adaptive promotion: if "Near You" is empty, promote closest routes
-        if nearYou.isEmpty && (!fartherAway.isEmpty || !muchFarther.isEmpty) {
-            var outer = fartherAway + muchFarther
-            outer.sort { minDistance(for: $0, from: location) < minDistance(for: $1, from: location) }
-            let promoteCount = min(4, outer.count)
-            let promoted = Array(outer.prefix(promoteCount))
-            let promotedIds = Set(promoted.map(\.routeId))
-            nearYou = promoted
-            fartherAway = fartherAway.filter { !promotedIds.contains($0.routeId) }
-            muchFarther = muchFarther.filter { !promotedIds.contains($0.routeId) }
-        }
-        
-        return (nearYou, fartherAway, muchFarther)
+        separateGroupsByDistance(groups: groups, from: location)
     }
 }
 

@@ -166,106 +166,30 @@ struct NearbyDashboard: View {
         }
     }
     
-    // MARK: - Distance Helpers
+    // MARK: - Distance Helpers (delegated to DistanceBucketUtils)
     
+    /// Convenience wrapper so call sites within this file stay concise.
     private func minDistance(for group: GroupedNearbyTransitResponse, from location: CLLocation) -> CLLocationDistance {
-        let allArrivals = group.directions.flatMap { $0.arrivals }
-        let distances = allArrivals.compactMap { arrival -> CLLocationDistance? in
-            guard let lat = arrival.stopLat, let lon = arrival.stopLon else { return nil }
-            return location.distance(from: CLLocation(latitude: lat, longitude: lon))
-        }
-        return distances.min() ?? Double.greatestFiniteMagnitude
+        groupMinDistance(for: group, from: location)
     }
     
+    /// Convenience wrapper for flat arrival distance.
     private func distance(for arrival: NearbyTransitResponse, from location: CLLocation) -> CLLocationDistance {
-        guard let lat = arrival.stopLat, let lon = arrival.stopLon else { return Double.greatestFiniteMagnitude }
-        return location.distance(from: CLLocation(latitude: lat, longitude: lon))
+        arrivalDistance(for: arrival, from: location)
     }
     
-    /// Separates grouped transit into "Near You", "Farther Away", and "Much Farther Away" based on distance thresholds.
-    ///
-    /// **Adaptive promotion:** When nothing falls within the "Near You" radius
-    /// (common in transit-sparse areas like outer-borough Queens or the Bronx),
-    /// the closest routes are automatically promoted into "Near You" so the
-    /// user always sees actionable results at the top of the dashboard.
     private func separateByDistance(
         groups: [GroupedNearbyTransitResponse],
         from location: CLLocation?
     ) -> (nearYou: [GroupedNearbyTransitResponse], fartherAway: [GroupedNearbyTransitResponse], muchFarther: [GroupedNearbyTransitResponse]) {
-        guard let location = location else {
-            // No location available, put all in nearYou
-            return (groups, [], [])
-        }
-        
-        var nearYou: [GroupedNearbyTransitResponse] = []
-        var fartherAway: [GroupedNearbyTransitResponse] = []
-        var muchFarther: [GroupedNearbyTransitResponse] = []
-        
-        for group in groups {
-            let dist = minDistance(for: group, from: location)
-            if dist <= nearYouRadius {
-                nearYou.append(group)
-            } else if dist <= fartherAwayRadius {
-                fartherAway.append(group)
-            } else if dist <= muchFartherAwayRadius {
-                muchFarther.append(group)
-            }
-        }
-        
-        // Adaptive promotion: if "Near You" is empty but there ARE results
-        // in the outer buckets, promote the closest routes so the user
-        // always sees something actionable without scrolling past the
-        // "Nothing super close" card.
-        if nearYou.isEmpty && (!fartherAway.isEmpty || !muchFarther.isEmpty) {
-            // Combine all outer results and sort by distance
-            var outer = fartherAway + muchFarther
-            outer.sort { minDistance(for: $0, from: location) < minDistance(for: $1, from: location) }
-            
-            // Promote the closest routes (up to 4) into "Near You"
-            let promoteCount = min(4, outer.count)
-            let promoted = Array(outer.prefix(promoteCount))
-            let promotedIds = Set(promoted.map(\.routeId))
-            
-            nearYou = promoted
-            fartherAway = fartherAway.filter { !promotedIds.contains($0.routeId) }
-            muchFarther = muchFarther.filter { !promotedIds.contains($0.routeId) }
-        }
-        
-        return (nearYou, fartherAway, muchFarther)
+        separateGroupsByDistance(groups: groups, from: location)
     }
     
-    /// Separates flat arrivals into "Near You" and "Farther Away" based on distance thresholds.
-    /// Also applies adaptive promotion when nothing is within the "Near You" radius.
     private func separateArrivalsByDistance(
         arrivals: [NearbyTransitResponse],
         from location: CLLocation?
     ) -> (nearYou: [NearbyTransitResponse], fartherAway: [NearbyTransitResponse]) {
-        guard let location = location else {
-            return (arrivals, [])
-        }
-        
-        var nearYou: [NearbyTransitResponse] = []
-        var fartherAway: [NearbyTransitResponse] = []
-        
-        for arrival in arrivals {
-            let dist = distance(for: arrival, from: location)
-            if dist <= nearYouRadius {
-                nearYou.append(arrival)
-            } else if dist <= fartherAwayRadius {
-                fartherAway.append(arrival)
-            }
-        }
-        
-        // Adaptive promotion: if "Near You" is empty, promote the closest arrivals
-        if nearYou.isEmpty && !fartherAway.isEmpty {
-            var sorted = fartherAway
-            sorted.sort { distance(for: $0, from: location) < distance(for: $1, from: location) }
-            let promoteCount = min(6, sorted.count)
-            nearYou = Array(sorted.prefix(promoteCount))
-            fartherAway = Array(sorted.dropFirst(promoteCount))
-        }
-        
-        return (nearYou, fartherAway)
+        separateFlatArrivalsByDistance(arrivals: arrivals, from: location)
     }
 }
 

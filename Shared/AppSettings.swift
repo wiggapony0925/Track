@@ -73,6 +73,17 @@ struct AppSettings {
         UserDefaults.standard.object(forKey: "much_farther_away_radius_meters") as? Double ?? _muchFartherAwayRadiusMeters
     }
 
+    /// The effective API search radius — always at least as large as the user's
+    /// widest display tier so the backend returns enough data for all distance buckets.
+    var effectiveAPISearchRadius: Int {
+        max(defaultSearchRadiusMeters, Int(muchFartherAwayRadiusMeters))
+    }
+    
+    /// Default values from settings.json (used for "Reset to Defaults").
+    var defaultNearYouRadiusMeters: Double { _nearYouRadiusMeters }
+    var defaultFartherAwayRadiusMeters: Double { _fartherAwayRadiusMeters }
+    var defaultMuchFartherAwayRadiusMeters: Double { _muchFartherAwayRadiusMeters }
+
 
     // MARK: - Location Settings
 
