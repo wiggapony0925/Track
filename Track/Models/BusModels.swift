@@ -119,7 +119,7 @@ struct DirectionShapeResponse: Codable, Identifiable {
 struct RouteShapeResponse: Codable {
     let routeId: String
     let polylines: [String]
-    let stops: [BusStop]
+    var stops: [BusStop]
     let directions: [DirectionShapeResponse]
 
     enum CodingKeys: String, CodingKey {

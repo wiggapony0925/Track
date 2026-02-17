@@ -1082,6 +1082,7 @@ final class HomeViewModel {
             // LIRR: fetch the branch-specific polyline
             do {
                 routeShape = try await TrackAPI.fetchLIRRShape(routeID: group.routeId)
+                populateStopsFromArrivals(group: group)
                 AppLogger.shared.log(
                     "LIRR_SHAPE",
                     message: "Loaded shape for \(group.routeId) (\(group.displayName))")
@@ -1093,6 +1094,7 @@ final class HomeViewModel {
             // Metro-North: fetch the line-specific polyline
             do {
                 routeShape = try await TrackAPI.fetchMNRShape(routeID: group.routeId)
+                populateStopsFromArrivals(group: group)
                 AppLogger.shared.log(
                     "MNR_SHAPE", message: "Loaded shape for \(group.routeId) (\(group.displayName))"
                 )
@@ -1158,6 +1160,38 @@ final class HomeViewModel {
                     }
                 }
             }
+        }
+    }
+
+    /// Populates the route shape's empty `stops` array from the group's arrival
+    /// data. Commuter rail (LIRR/MNR) backends don't include stops in the shape
+    /// response, but each arrival carries its stop coordinates. This synthesizes
+    /// BusStop objects so the map can show stop markers and the camera zoom logic
+    /// can find the nearest stop.
+    private func populateStopsFromArrivals(group: GroupedNearbyTransit) {
+        guard routeShape != nil, routeShape!.stops.isEmpty else { return }
+
+        var seenIds = Set<String>()
+        var synthesized: [BusStop] = []
+
+        for direction in group.directions {
+            for arrival in direction.arrivals {
+                guard let lat = arrival.stopLat, let lon = arrival.stopLon else { continue }
+                let stopId = arrival.stopId ?? arrival.stopName
+                guard !seenIds.contains(stopId) else { continue }
+                seenIds.insert(stopId)
+                synthesized.append(BusStop(
+                    id: stopId,
+                    name: arrival.stopName,
+                    lat: lat,
+                    lon: lon,
+                    direction: nil
+                ))
+            }
+        }
+
+        if !synthesized.isEmpty {
+            routeShape!.stops = synthesized
         }
     }
 
@@ -1372,9 +1406,14 @@ final class HomeViewModel {
                 })
             {
                 center = CLLocationCoordinate2D(latitude: nearest.lat, longitude: nearest.lon)
+            } else if let refLoc = refLocation {
+                // No stops available (e.g. commuter rail) — stay near the
+                // user's current location instead of zooming to the geometric
+                // center of a 100-mile route, which would be confusing.
+                center = refLoc.coordinate
             } else {
-                center = CLLocationCoordinate2D(
-                    latitude: routeCenterLat, longitude: (minLon + maxLon) / 2)
+                // No stops AND no user location — don't zoom at all.
+                return nil
             }
             distance = AppSettings.shared.smartZoomMaxAltitude
         } else if useRouteOnly {
