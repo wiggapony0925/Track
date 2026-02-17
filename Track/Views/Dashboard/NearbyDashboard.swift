@@ -215,11 +215,7 @@ struct ClosestToYouSectionHeader: View {
     
     private var distanceDisplay: String {
         guard let meters = closestMeters else { return "Nearby" }
-        let miles = metersToMiles(meters)
-        if miles < 0.1 {
-            return String(format: "%.0f ft away", metersToFeet(meters))
-        }
-        return String(format: "%.1f mi away", miles)
+        return formatDistanceImperial(meters, suffix: "away")
     }
     
     /// Green when showing normal nearby results, yellow when promoted from farther away.
@@ -266,11 +262,7 @@ struct NearYouSectionHeader: View {
     let updated: Date?
     
     private var radiusDisplay: String {
-        let miles = metersToMiles(radiusMeters)
-        if miles < 0.1 {
-            return String(format: "%.0f ft", metersToFeet(radiusMeters))
-        }
-        return String(format: "%.1f mi", miles)
+        formatDistanceMiles(radiusMeters)
     }
     
     var body: some View {
@@ -311,8 +303,7 @@ struct FartherAwaySectionHeader: View {
     let radiusMeters: Double
     
     private var radiusDisplay: String {
-        let miles = metersToMiles(radiusMeters)
-        return String(format: "%.1f mi", miles)
+        formatDistanceMiles(radiusMeters)
     }
     
     var body: some View {
@@ -347,8 +338,7 @@ struct MuchFartherAwaySectionHeader: View {
     let radiusMeters: Double
     
     private var radiusDisplay: String {
-        let miles = metersToMiles(radiusMeters)
-        return String(format: "%.1f mi", miles)
+        formatDistanceMiles(radiusMeters)
     }
     
     var body: some View {

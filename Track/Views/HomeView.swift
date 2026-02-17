@@ -211,6 +211,20 @@ struct HomeView: View {
                 centerMap(on: coordinate)
             }
         }
+        .onChange(of: viewModel.selectedDirectionIndex) {
+            // When the user switches direction tabs in the route detail sheet,
+            // re-fit the camera to show the direction-specific polyline & stops.
+            guard viewModel.selectedRouteId != nil,
+                  viewModel.routeShape != nil else { return }
+            if let fitCamera = viewModel.cameraPositionFittingRoute(
+                userLocation: locationManager.currentLocation,
+                is3D: is3DMode
+            ) {
+                withAnimation(.spring(response: 0.6, dampingFraction: 0.85)) {
+                    cameraPosition = fitCamera
+                }
+            }
+        }
     }
     
     // MARK: - Sheet Content Builder

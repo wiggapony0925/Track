@@ -301,6 +301,9 @@ async def _fetch_bus_json(url: str, params: dict[str, str]) -> Any:
     Includes a **circuit breaker**: after a 401/403 response the breaker
     opens for 5 minutes to avoid flooding MTA with requests that will all
     fail, and to stop spamming the server logs.
+
+    **Retries** once on 5xx server errors with a short backoff, since the
+    MTA SIRI endpoint occasionally returns transient 500s for specific stops.
     """
     if _siri_circuit_is_open():
         raise httpx.HTTPStatusError(
@@ -309,15 +312,38 @@ async def _fetch_bus_json(url: str, params: dict[str, str]) -> Any:
             response=httpx.Response(403),
         )
 
+    _MAX_RETRIES = 2  # 1 initial + 1 retry
+    last_exc: Exception | None = None
+
     async with httpx.AsyncClient(timeout=_get_timeout()) as client:
-        response = await client.get(url, params=params)
-        if response.status_code in (401, 403):
-            _trip_siri_circuit()
-        response.raise_for_status()
-        data = response.json()
-        if data is None:
-            return {}
-        return data
+        for attempt in range(_MAX_RETRIES):
+            try:
+                response = await client.get(url, params=params)
+                if response.status_code in (401, 403):
+                    _trip_siri_circuit()
+                    response.raise_for_status()
+                if response.status_code >= 500 and attempt < _MAX_RETRIES - 1:
+                    # Transient server error — wait briefly and retry
+                    await asyncio.sleep(0.3)
+                    continue
+                response.raise_for_status()
+                data = response.json()
+                if data is None:
+                    return {}
+                return data
+            except httpx.HTTPStatusError:
+                raise
+            except Exception as exc:
+                last_exc = exc
+                if attempt < _MAX_RETRIES - 1:
+                    await asyncio.sleep(0.3)
+                    continue
+                raise
+
+    # Should never reach here, but satisfy the type checker
+    if last_exc:
+        raise last_exc
+    return {}
 
 
 # ---------------------------------------------------------------------------

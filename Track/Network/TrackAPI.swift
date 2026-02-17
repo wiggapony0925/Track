@@ -19,10 +19,18 @@ struct TrackAPI {
         let settings = AppSettings.shared
         let useLocalhost = UserDefaults.standard.bool(forKey: "dev_use_localhost")
         if useLocalhost {
-            return settings.localBaseURL
+            let url = settings.localBaseURL
+            #if DEBUG
+            print("🌐 TrackAPI baseURL (localhost): \(url)")
+            #endif
+            return url
         } else {
             let storedIP = UserDefaults.standard.string(forKey: "dev_custom_ip") ?? settings.defaultDeviceIP
-            return "http://\(storedIP):\(settings.localPort)"
+            let url = "http://\(storedIP):\(settings.localPort)"
+            #if DEBUG
+            print("🌐 TrackAPI baseURL (device): \(url)")
+            #endif
+            return url
         }
     }
 

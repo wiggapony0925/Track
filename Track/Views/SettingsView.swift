@@ -16,6 +16,7 @@ struct SettingsView: View {
     @AppStorage("dev_use_localhost") private var useLocalhost = false
     @AppStorage("dev_custom_ip") private var customIP = AppSettings.shared.defaultDeviceIP
     @AppStorage("subway_line_offset_meters") private var subwayLineOffset: Double = AppSettings.shared.subwayLineOffsetMeters
+    @AppStorage("distance_unit") private var distanceUnit = "mi"
 
     var body: some View {
         NavigationStack {
@@ -45,6 +46,11 @@ struct SettingsView: View {
                 Text("System").tag("system")
                 Text("Dark").tag("dark")
                 Text("Light").tag("light")
+            }
+            
+            Picker("Distance", selection: $distanceUnit) {
+                Text("Miles").tag("mi")
+                Text("Kilometers").tag("km")
             }
         } header: {
             Text("Appearance")

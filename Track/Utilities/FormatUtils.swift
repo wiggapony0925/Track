@@ -9,6 +9,19 @@
 
 import SwiftUI
 
+// MARK: - Distance Unit Preference
+
+/// Reads the user's chosen distance unit from UserDefaults.
+/// Returns `"mi"` (imperial) or `"km"` (metric).
+var preferredDistanceUnit: String {
+    UserDefaults.standard.string(forKey: "distance_unit") ?? "mi"
+}
+
+/// Whether the user prefers metric (km) distances.
+var isMetricDistance: Bool {
+    preferredDistanceUnit == "km"
+}
+
 // MARK: - Distance Conversion Constants
 
 /// Conversion factor: meters to miles (1 mile = 1609.344 meters)
@@ -74,82 +87,124 @@ func formatArrivalTime(date: Date?, fallback: String = "—") -> String {
 
 // MARK: - Distance Formatting
 
-/// Formats a distance in meters into a human-readable metric string.
+/// Formats a distance in meters into a human-readable string,
+/// respecting the user's preferred unit (miles or kilometers).
 ///
 /// - Parameters:
 ///   - meters: Distance in meters.
 ///   - suffix: Optional suffix appended after the value (e.g. "away"). Defaults to "away".
-/// - Returns: e.g. "250m away", "1.2km away", "250m", "1.2km"
+/// - Returns: e.g. "250m away", "1.2km away" (metric) or "820 ft away", "0.3 mi away" (imperial)
 func formatDistance(_ meters: Double, suffix: String = "away") -> String {
-    let value: String
-    if meters < 1000 {
-        value = "\(Int(meters))m"
+    if isMetricDistance {
+        let value: String
+        if meters < 1000 {
+            value = "\(Int(meters))m"
+        } else {
+            value = String(format: "%.1fkm", meters / 1000)
+        }
+        return suffix.isEmpty ? value : "\(value) \(suffix)"
     } else {
-        value = String(format: "%.1fkm", meters / 1000)
+        return formatDistanceImperial(meters, suffix: suffix)
     }
-    return suffix.isEmpty ? value : "\(value) \(suffix)"
 }
 
-/// Formats a walking distance in meters with rounded precision.
-/// Under 100 m shows exact metres; 100–999 m rounds to nearest 10;
+/// Formats a walking distance in meters with rounded precision,
+/// respecting the user's preferred unit.
+///
+/// **Metric:** Under 100 m shows exact metres; 100–999 m rounds to nearest 10;
 /// ≥ 1 km shows one decimal place.
+///
+/// **Imperial:** Under 528 ft (0.1 mi) shows feet rounded to nearest 10;
+/// otherwise shows miles with one decimal.
 ///
 /// - Parameters:
 ///   - meters: Distance in meters.
 ///   - suffix: Optional suffix (e.g. "away"). Defaults to "away".
-/// - Returns: e.g. "82m away", "250m away", "1.2km away"
+/// - Returns: e.g. "82m away", "250m away", "1.2km away" or "270 ft away", "0.3 mi away"
 func formatWalkingDistance(_ meters: Double, suffix: String = "away") -> String {
-    let value: String
-    if meters < 100 {
-        value = "\(Int(meters))m"
-    } else if meters < 1000 {
-        value = "\(Int(meters / 10) * 10)m"
+    if isMetricDistance {
+        let value: String
+        if meters < 100 {
+            value = "\(Int(meters))m"
+        } else if meters < 1000 {
+            value = "\(Int(meters / 10) * 10)m"
+        } else {
+            value = String(format: "%.1fkm", meters / 1000.0)
+        }
+        return suffix.isEmpty ? value : "\(value) \(suffix)"
     } else {
-        value = String(format: "%.1fkm", meters / 1000.0)
+        return formatDistanceImperial(meters, suffix: suffix)
     }
-    return suffix.isEmpty ? value : "\(value) \(suffix)"
 }
 
-/// Formats a distance in meters as miles for display on map radius labels
-/// and settings UI.
+/// Formats a distance in meters for display on map radius labels
+/// and settings UI, respecting the user's preferred unit.
 ///
 /// - Parameter meters: Distance in meters.
-/// - Returns: e.g. "0.5 mi", "1 mi", "2.5 mi"
+/// - Returns: e.g. "0.5 mi", "1 mi", "2.5 mi" or "0.8 km", "2 km", "4.0 km"
 func formatDistanceMiles(_ meters: Double) -> String {
-    let miles = metersToMiles(meters)
-    if miles < 1.0 {
+    if isMetricDistance {
+        let km = meters / 1000.0
+        if km < 1.0 {
+            return String(format: "%.1f km", km)
+        }
+        if km.truncatingRemainder(dividingBy: 1.0) < 0.1 {
+            return String(format: "%.0f km", km)
+        }
+        return String(format: "%.1f km", km)
+    } else {
+        let miles = metersToMiles(meters)
+        if miles < 1.0 {
+            return String(format: "%.1f mi", miles)
+        }
+        // Drop decimal for clean whole-number miles (e.g. 1.0 → "1 mi")
+        if miles.truncatingRemainder(dividingBy: 1.0) < 0.1 {
+            return String(format: "%.0f mi", miles)
+        }
         return String(format: "%.1f mi", miles)
     }
-    // Drop decimal for clean whole-number miles (e.g. 1.0 → "1 mi")
-    if miles.truncatingRemainder(dividingBy: 1.0) < 0.1 {
-        return String(format: "%.0f mi", miles)
-    }
-    return String(format: "%.1f mi", miles)
 }
 
-/// Formats a distance in meters using imperial units (feet / miles)
+/// Formats a distance in meters using the user's preferred unit system
 /// for display on route cards.
 ///
-/// Under 528 feet (0.1 mi) shows feet rounded to nearest 10.
+/// **Imperial:** Under 528 feet (0.1 mi) shows feet rounded to nearest 10.
 /// Otherwise shows miles with one decimal.
+///
+/// **Metric:** Under 100 m shows exact metres. Otherwise shows km with one decimal.
 ///
 /// - Parameters:
 ///   - meters: Distance in meters.
 ///   - suffix: Optional suffix (e.g. "away"). Defaults to empty.
-/// - Returns: e.g. "320 ft", "0.3 mi", "1.2 mi"
+/// - Returns: e.g. "320 ft", "0.3 mi" or "95m", "0.3 km"
 func formatDistanceImperial(_ meters: Double, suffix: String = "") -> String {
-    let feet = metersToFeet(meters)
     let value: String
-    if feet < 528 {  // 528 ft ≈ 0.1 mi
-        // Round to nearest 10 ft for a clean display
-        let rounded = Int((feet / 10).rounded()) * 10
-        value = "\(max(rounded, 10)) ft"
-    } else {
-        let miles = metersToMiles(meters)
-        if miles < 10 {
-            value = String(format: "%.1f mi", miles)
+    if isMetricDistance {
+        if meters < 100 {
+            value = "\(Int(meters))m"
+        } else if meters < 1000 {
+            value = "\(Int(meters / 10) * 10)m"
         } else {
-            value = String(format: "%.0f mi", miles)
+            let km = meters / 1000.0
+            if km < 10 {
+                value = String(format: "%.1f km", km)
+            } else {
+                value = String(format: "%.0f km", km)
+            }
+        }
+    } else {
+        let feet = metersToFeet(meters)
+        if feet < 528 {  // 528 ft ≈ 0.1 mi
+            // Round to nearest 10 ft for a clean display
+            let rounded = Int((feet / 10).rounded()) * 10
+            value = "\(max(rounded, 10)) ft"
+        } else {
+            let miles = metersToMiles(meters)
+            if miles < 10 {
+                value = String(format: "%.1f mi", miles)
+            } else {
+                value = String(format: "%.0f mi", miles)
+            }
         }
     }
     return suffix.isEmpty ? value : "\(value) \(suffix)"

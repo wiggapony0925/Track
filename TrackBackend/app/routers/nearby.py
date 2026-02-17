@@ -543,8 +543,8 @@ async def _fetch_nearby_buses(
             )
 
     if fail_count > 0:
-        TrackLogger.error(
-            f"Bus arrivals failed for {fail_count}/{len(stop_results)} stops: {first_error}"
+        TrackLogger.warning(
+            f"Bus arrivals failed for {fail_count}/{len(stop_results)} stops (MTA 5xx): {first_error}"
         )
 
     # Log direction distribution per route for debugging

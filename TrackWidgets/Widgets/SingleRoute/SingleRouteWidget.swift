@@ -71,7 +71,7 @@ struct SingleRouteProvider: TimelineProvider {
         if useLocalhost {
             baseURL = "http://127.0.0.1:8000"
         } else {
-            let storedIP = defaults.string(forKey: "dev_custom_ip") ?? "192.168.12.101"
+            let storedIP = defaults.string(forKey: "dev_custom_ip") ?? "169.254.175.168"
             baseURL = "http://\(storedIP):8000"
         }
 

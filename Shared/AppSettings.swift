@@ -161,7 +161,7 @@ struct AppSettings {
             self.refreshIntervalSeconds = 30
             self.prodBaseURL = "https://track-api.onrender.com"
             self.localBaseURL = "http://127.0.0.1:8000"
-            self.defaultDeviceIP = "192.168.12.101"
+            self.defaultDeviceIP = "169.254.175.168"
             self.localPort = 8000
             self.maxServiceAlerts = 3
             self.maxElevatorOutages = 5
@@ -210,7 +210,7 @@ struct AppSettings {
         self.refreshIntervalSeconds = api["refresh_interval_seconds"] as? Int ?? 30
         self.prodBaseURL = api["prod_base_url"] as? String ?? "https://track-api.onrender.com"
         self.localBaseURL = api["local_base_url"] as? String ?? "http://127.0.0.1:8000"
-        self.defaultDeviceIP = api["default_device_ip"] as? String ?? "192.168.12.101"
+        self.defaultDeviceIP = api["default_device_ip"] as? String ?? "169.254.175.168"
         self.localPort = api["local_port"] as? Int ?? 8000
 
         self.maxServiceAlerts = display["max_service_alerts"] as? Int ?? 3

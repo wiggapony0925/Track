@@ -11,19 +11,42 @@
 import SwiftUI
 
 /// Settings content for display within the universal bottom sheet.
+///
+/// Settings that affect the API or transit data (radius, toggles) use
+/// local `@State` drafts.  Changes are only committed to `@AppStorage`
+/// (and synced to the cloud) when the user taps the **Apply** button.
+/// Purely visual settings (theme, distance unit) take effect immediately.
 struct SettingsContentView: View {
+    // MARK: - Instant-apply settings (visual only, no API impact)
     @AppStorage("appTheme") private var appTheme = "system"
     @AppStorage("isLoggedIn") private var isLoggedIn = false
+    @AppStorage("distance_unit") private var distanceUnit = "mi"
+    @AppStorage("haptics_enabled") private var hapticsEnabled = true
+    
+    // MARK: - Persisted values (source of truth, written on Apply)
     @AppStorage("dev_use_localhost") private var useLocalhost = false
     @AppStorage("dev_custom_ip") private var customIP = AppSettings.shared.defaultDeviceIP
     @AppStorage("near_you_radius_meters") private var nearYouRadius: Double = 2414
     @AppStorage("farther_away_radius_meters") private var fartherAwayRadius: Double = 4023
     @AppStorage("much_farther_away_radius_meters") private var muchFartherAwayRadius: Double = 8047
-    @AppStorage("haptics_enabled") private var hapticsEnabled = true
     @AppStorage("auto_refresh_enabled") private var autoRefreshEnabled = true
     @AppStorage("show_search_radius") private var showSearchRadius = false
     @AppStorage("drag_to_search") private var dragToSearch = true
     @AppStorage("subway_line_offset_meters") private var subwayLineOffset: Double = AppSettings.shared.subwayLineOffsetMeters
+    
+    // MARK: - Draft state (edited in the UI, committed on Apply)
+    @State private var draftRadius: Double = 8047
+    @State private var draftShowSearchRadius = false
+    @State private var draftDragToSearch = true
+    @State private var draftAutoRefresh = true
+    @State private var draftSubwayLineOffset: Double = 10
+    @State private var draftUseLocalhost = false
+    @State private var draftCustomIP = ""
+    
+    /// Tracks whether any draft value differs from the persisted value.
+    @State private var hasUnappliedChanges = false
+    /// Brief confirmation after applying.
+    @State private var showAppliedConfirmation = false
     
     let sheetNavigator: SheetNavigator
     
@@ -52,68 +75,107 @@ struct SettingsContentView: View {
                                 .pickerStyle(.menu)
                                 .tint(AppTheme.Colors.mtaBlue)
                             }
+                            
+                            settingsDivider
+                            
+                            // Distance unit picker
+                            settingsRow(
+                                icon: "ruler",
+                                iconColor: .orange,
+                                title: "Distance"
+                            ) {
+                                Picker("", selection: $distanceUnit) {
+                                    Text("Miles").tag("mi")
+                                    Text("Kilometers").tag("km")
+                                }
+                                .pickerStyle(.segmented)
+                                .frame(width: 160)
+                            }
                         }
                     }
                     
-                    // Transit Preferences Section
-                    settingsSection(title: "Transit Preferences", icon: "slider.horizontal.3", iconColor: AppTheme.Colors.mtaBlue) {
+                    // Transit Preferences Section — single search radius
+                    settingsSection(title: "Search Radius", icon: "scope", iconColor: AppTheme.Colors.mtaBlue) {
                         VStack(spacing: 0) {
-                            // Minimum gap between adjacent rings so they stay meaningfully distinct.
-                            let minGap: Double = 400
-                            
-                            // Absolute floor / ceiling for the outermost ring limits.
-                            let nearFloor: Double = 400
-                            let muchCeiling: Double = 16093
-                            
-                            // Dynamic slider ranges — each slider is bounded by its neighbors
-                            // so it's physically impossible to drag Near above Farther, etc.
-                            // IMPORTANT: Every range must satisfy lower < upper to avoid
-                            // "Fatal error: max stride must be positive" in Slider.
-                            let nearLo: Double = nearFloor
-                            let nearHi: Double = max(nearFloor + 100, fartherAwayRadius - minGap)
-                            
-                            let farLo: Double  = max(nearFloor + minGap, nearYouRadius + minGap)
-                            let farHi: Double  = max(farLo + 200, muchFartherAwayRadius - minGap)
-                            
-                            let muchLo: Double = max(nearFloor + 2 * minGap, fartherAwayRadius + minGap)
-                            let muchHi: Double = max(muchLo + 500, muchCeiling)
-                            
-                            // "Near You" radius slider — always the smallest
-                            radiusRow(
-                                icon: "location.fill",
-                                iconColor: AppTheme.Colors.successGreen,
-                                title: "Near You",
-                                value: $nearYouRadius,
-                                range: nearLo...nearHi,
-                                step: 100,
-                                color: AppTheme.Colors.successGreen
-                            )
+                            // Main radius slider
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack {
+                                    settingsIcon("scope", color: AppTheme.Colors.mtaBlue)
+                                    Text("Search Radius")
+                                        .font(.custom("Helvetica", size: 15))
+                                        .foregroundColor(AppTheme.Colors.textPrimary)
+                                    Spacer()
+                                    Text(formatDistanceMiles(draftRadius))
+                                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                                        .foregroundColor(AppTheme.Colors.mtaBlue)
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 3)
+                                        .background(AppTheme.Colors.mtaBlue.opacity(0.12))
+                                        .clipShape(Capsule())
+                                }
+                                
+                                Slider(value: $draftRadius, in: 1600...16093, step: 200)
+                                    .tint(AppTheme.Colors.mtaBlue)
+                            }
+                            .padding(.horizontal, AppTheme.Layout.cardPadding)
+                            .padding(.vertical, 14)
                             
                             settingsDivider
                             
-                            // "Farther Away" radius slider — always between Near and Much
-                            radiusRow(
-                                icon: "figure.walk",
-                                iconColor: AppTheme.Colors.mtaBlue,
-                                title: "A Bit Farther",
-                                value: $fartherAwayRadius,
-                                range: farLo...farHi,
-                                step: 200,
-                                color: AppTheme.Colors.mtaBlue
-                            )
-                            
-                            settingsDivider
-                            
-                            // "Much Farther Away" radius slider — always the largest
-                            radiusRow(
-                                icon: "car.fill",
-                                iconColor: AppTheme.Colors.warningYellow,
-                                title: "Much Farther",
-                                value: $muchFartherAwayRadius,
-                                range: muchLo...muchHi,
-                                step: 500,
-                                color: AppTheme.Colors.warningYellow
-                            )
+                            // Distance tier breakdown (read-only, auto-derived)
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text("DISTANCE TIERS")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.5))
+                                    .tracking(0.6)
+                                
+                                tierIndicator(
+                                    icon: "location.fill",
+                                    label: "Near You",
+                                    meters: draftDerivedNearRadius,
+                                    color: AppTheme.Colors.successGreen
+                                )
+                                tierIndicator(
+                                    icon: "figure.walk",
+                                    label: "A Bit Farther",
+                                    meters: draftDerivedFartherRadius,
+                                    color: AppTheme.Colors.mtaBlue
+                                )
+                                tierIndicator(
+                                    icon: "car.fill",
+                                    label: "Much Farther",
+                                    meters: draftRadius,
+                                    color: AppTheme.Colors.warningYellow
+                                )
+                                
+                                // Tier bar visualization
+                                GeometryReader { geo in
+                                    let total = geo.size.width
+                                    let nearFrac = CGFloat(draftDerivedNearRadius / draftRadius)
+                                    let farFrac = CGFloat(draftDerivedFartherRadius / draftRadius)
+                                    
+                                    ZStack(alignment: .leading) {
+                                        // Much Farther (full width)
+                                        RoundedRectangle(cornerRadius: 4)
+                                            .fill(AppTheme.Colors.warningYellow.opacity(0.25))
+                                            .frame(width: total, height: 8)
+                                        
+                                        // Farther
+                                        RoundedRectangle(cornerRadius: 4)
+                                            .fill(AppTheme.Colors.mtaBlue.opacity(0.35))
+                                            .frame(width: total * farFrac, height: 8)
+                                        
+                                        // Near
+                                        RoundedRectangle(cornerRadius: 4)
+                                            .fill(AppTheme.Colors.successGreen.opacity(0.5))
+                                            .frame(width: total * nearFrac, height: 8)
+                                    }
+                                }
+                                .frame(height: 8)
+                                .padding(.top, 4)
+                            }
+                            .padding(.horizontal, AppTheme.Layout.cardPadding)
+                            .padding(.vertical, 12)
                             
                             settingsDivider
                             
@@ -157,7 +219,7 @@ struct SettingsContentView: View {
                                 Image(systemName: "info.circle")
                                     .font(.system(size: 13))
                                     .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
-                                Text("Controls how arrivals are grouped by distance in the Nearby tab. Each ring is strictly outside the previous one. The API search radius automatically scales to match.")
+                                Text("Drag the slider to set how far out to search. Arrivals are automatically grouped into three distance tiers in the Nearby tab.")
                                     .font(.system(size: 12))
                                     .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
                             }
@@ -175,11 +237,11 @@ struct SettingsContentView: View {
                                 iconColor: .orange,
                                 title: "Search Radius"
                             ) {
-                                Toggle("", isOn: $showSearchRadius)
+                                Toggle("", isOn: $draftShowSearchRadius)
                                     .tint(AppTheme.Colors.mtaBlue)
                             }
                             
-                            if showSearchRadius {
+                            if draftShowSearchRadius {
                                 // Color legend for the 3 radius tiers
                                 HStack(spacing: 16) {
                                     radiusLegendDot(color: AppTheme.Colors.successGreen, label: "Near")
@@ -199,11 +261,11 @@ struct SettingsContentView: View {
                                 iconColor: AppTheme.Colors.mtaBlue,
                                 title: "Drag to Search"
                             ) {
-                                Toggle("", isOn: $dragToSearch)
+                                Toggle("", isOn: $draftDragToSearch)
                                     .tint(AppTheme.Colors.mtaBlue)
                             }
                             
-                            if dragToSearch {
+                            if draftDragToSearch {
                                 Text("Pan the map to explore transit at a different location")
                                     .font(.system(size: 11))
                                     .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
@@ -222,7 +284,7 @@ struct SettingsContentView: View {
                                         .font(.custom("Helvetica", size: 15))
                                         .foregroundColor(AppTheme.Colors.textPrimary)
                                     Spacer()
-                                    Text("\(Int(subwayLineOffset))m")
+                                    Text("\(Int(draftSubwayLineOffset))m")
                                         .font(.system(size: 13, weight: .semibold, design: .rounded))
                                         .foregroundColor(AppTheme.Colors.mtaBlue)
                                         .padding(.horizontal, 8)
@@ -231,7 +293,7 @@ struct SettingsContentView: View {
                                         .clipShape(Capsule())
                                 }
                                 
-                                Slider(value: $subwayLineOffset, in: 4...30, step: 1)
+                                Slider(value: $draftSubwayLineOffset, in: 4...30, step: 1)
                                     .tint(AppTheme.Colors.mtaBlue)
                                 
                                 Text("How far apart subway lines spread in shared tunnels")
@@ -252,7 +314,7 @@ struct SettingsContentView: View {
                                 iconColor: AppTheme.Colors.successGreen,
                                 title: "Auto-Refresh"
                             ) {
-                                Toggle("", isOn: $autoRefreshEnabled)
+                                Toggle("", isOn: $draftAutoRefresh)
                                     .tint(AppTheme.Colors.mtaBlue)
                             }
                             
@@ -323,18 +385,18 @@ struct SettingsContentView: View {
                                 iconColor: .mint,
                                 title: "Use Localhost"
                             ) {
-                                Toggle("", isOn: $useLocalhost)
+                                Toggle("", isOn: $draftUseLocalhost)
                                     .tint(AppTheme.Colors.mtaBlue)
                             }
                             
-                            if !useLocalhost {
+                            if !draftUseLocalhost {
                                 settingsDivider
                                 
                                 HStack {
                                     Text("http://")
                                         .font(.system(size: 13, design: .monospaced))
                                         .foregroundColor(AppTheme.Colors.textSecondary)
-                                    TextField("192.168.1.X", text: $customIP)
+                                    TextField("192.168.1.X", text: $draftCustomIP)
                                         .font(.system(size: 13, design: .monospaced))
                                         .foregroundColor(AppTheme.Colors.textPrimary)
                                         .keyboardType(.numbersAndPunctuation)
@@ -373,45 +435,145 @@ struct SettingsContentView: View {
             }
         }
         .background(AppTheme.Colors.background)
-        .onChange(of: settingsHash) { _, _ in
-            // Push settings to cloud whenever any setting changes
-            Task {
-                await SyncManager.shared.pushUserSettings()
+        // Initialize drafts from persisted values on appear
+        .onAppear {
+            loadDrafts()
+        }
+        // Track whether any draft differs from the persisted value
+        .onChange(of: draftRadius) { _, _ in checkForChanges() }
+        .onChange(of: draftShowSearchRadius) { _, _ in checkForChanges() }
+        .onChange(of: draftDragToSearch) { _, _ in checkForChanges() }
+        .onChange(of: draftAutoRefresh) { _, _ in checkForChanges() }
+        .onChange(of: draftSubwayLineOffset) { _, _ in checkForChanges() }
+        .onChange(of: draftUseLocalhost) { _, _ in checkForChanges() }
+        .onChange(of: draftCustomIP) { _, _ in checkForChanges() }
+        // Floating Apply button
+        .overlay(alignment: .bottom) {
+            if hasUnappliedChanges {
+                applyButton
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+            if showAppliedConfirmation {
+                appliedConfirmation
+                    .transition(.scale.combined(with: .opacity))
             }
         }
-        // MARK: - Auto-clamp: Near < Farther < Much (always, with 400m gap)
-        .onChange(of: nearYouRadius) { _, newValue in
-            let gap: Double = 400
-            if fartherAwayRadius < newValue + gap {
-                fartherAwayRadius = newValue + gap
-            }
-            if muchFartherAwayRadius < fartherAwayRadius + gap {
-                muchFartherAwayRadius = fartherAwayRadius + gap
-            }
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: hasUnappliedChanges)
+        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: showAppliedConfirmation)
+    }
+    
+    // MARK: - Draft Helpers
+    
+    /// Derived tier thresholds from the draft radius (live preview)
+    private var draftDerivedNearRadius: Double {
+        let derived = (draftRadius * 0.30 / 100).rounded() * 100
+        return max(400, derived)
+    }
+    
+    private var draftDerivedFartherRadius: Double {
+        let derived = (draftRadius * 0.50 / 100).rounded() * 100
+        return max(draftDerivedNearRadius + 400, derived)
+    }
+    
+    /// Load persisted @AppStorage values into draft state.
+    private func loadDrafts() {
+        draftRadius = muchFartherAwayRadius
+        draftShowSearchRadius = showSearchRadius
+        draftDragToSearch = dragToSearch
+        draftAutoRefresh = autoRefreshEnabled
+        draftSubwayLineOffset = subwayLineOffset
+        draftUseLocalhost = useLocalhost
+        draftCustomIP = customIP
+    }
+    
+    /// Check if any draft value differs from the persisted value.
+    private func checkForChanges() {
+        hasUnappliedChanges =
+            draftRadius != muchFartherAwayRadius ||
+            draftShowSearchRadius != showSearchRadius ||
+            draftDragToSearch != dragToSearch ||
+            draftAutoRefresh != autoRefreshEnabled ||
+            draftSubwayLineOffset != subwayLineOffset ||
+            draftUseLocalhost != useLocalhost ||
+            draftCustomIP != customIP
+    }
+    
+    /// Commit all drafts to @AppStorage in one shot and sync once.
+    private func applyChanges() {
+        // Radius + derived tiers
+        muchFartherAwayRadius = draftRadius
+        nearYouRadius = draftDerivedNearRadius
+        fartherAwayRadius = draftDerivedFartherRadius
+        
+        // Map & Display
+        showSearchRadius = draftShowSearchRadius
+        dragToSearch = draftDragToSearch
+        subwayLineOffset = draftSubwayLineOffset
+        
+        // General
+        autoRefreshEnabled = draftAutoRefresh
+        
+        // Developer
+        useLocalhost = draftUseLocalhost
+        customIP = draftCustomIP
+        
+        hasUnappliedChanges = false
+        
+        // Haptic confirmation
+        if hapticsEnabled {
+            HapticManager.notification(.success)
         }
-        .onChange(of: fartherAwayRadius) { _, newValue in
-            let gap: Double = 400
-            if nearYouRadius > newValue - gap {
-                nearYouRadius = newValue - gap
-            }
-            if muchFartherAwayRadius < newValue + gap {
-                muchFartherAwayRadius = newValue + gap
-            }
+        
+        // Show brief confirmation badge
+        showAppliedConfirmation = true
+        Task {
+            try? await Task.sleep(for: .seconds(1.5))
+            showAppliedConfirmation = false
         }
-        .onChange(of: muchFartherAwayRadius) { _, newValue in
-            let gap: Double = 400
-            if fartherAwayRadius > newValue - gap {
-                fartherAwayRadius = newValue - gap
-            }
-            if nearYouRadius > fartherAwayRadius - gap {
-                nearYouRadius = fartherAwayRadius - gap
-            }
+        
+        // Single cloud sync
+        Task {
+            await SyncManager.shared.pushUserSettings()
         }
     }
     
-    /// A combined hash of all synced settings so we can detect any change
-    private var settingsHash: String {
-        "\(appTheme)-\(nearYouRadius)-\(fartherAwayRadius)-\(muchFartherAwayRadius)-\(hapticsEnabled)-\(autoRefreshEnabled)-\(showSearchRadius)-\(dragToSearch)-\(subwayLineOffset)-\(useLocalhost)-\(customIP)"
+    // MARK: - Apply Button
+    
+    private var applyButton: some View {
+        Button {
+            applyChanges()
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 16, weight: .semibold))
+                Text("Apply Changes")
+                    .font(.system(size: 15, weight: .bold))
+            }
+            .foregroundColor(.white)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .background(AppTheme.Colors.mtaBlue)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .shadow(color: AppTheme.Colors.mtaBlue.opacity(0.4), radius: 8, y: 4)
+        }
+        .padding(.horizontal, AppTheme.Layout.margin)
+        .padding(.bottom, 24)
+    }
+    
+    private var appliedConfirmation: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 14, weight: .bold))
+            Text("Settings Applied")
+                .font(.system(size: 13, weight: .bold))
+        }
+        .foregroundColor(.white)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(AppTheme.Colors.successGreen)
+        .clipShape(Capsule())
+        .shadow(radius: 6, y: 2)
+        .padding(.bottom, 24)
     }
     
     // MARK: - Sheet Header
@@ -517,7 +679,7 @@ struct SettingsContentView: View {
                     .font(.custom("Helvetica", size: 15))
                     .foregroundColor(AppTheme.Colors.textPrimary)
                 Spacer()
-                Text(String(format: "%.1f mi", metersToMiles(value.wrappedValue)))
+                Text(formatDistanceMiles(value.wrappedValue))
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .foregroundColor(color)
                     .padding(.horizontal, 8)
@@ -534,9 +696,26 @@ struct SettingsContentView: View {
         .padding(.vertical, 14)
     }
     
-    /// Whether the current radius values match a given preset.
+    /// Whether the current draft radius matches a given preset.
     private func isPresetActive(near: Double, farther: Double, much: Double) -> Bool {
-        nearYouRadius == near && fartherAwayRadius == farther && muchFartherAwayRadius == much
+        draftRadius == much
+    }
+    
+    /// Read-only tier indicator row showing icon, label, and distance
+    private func tierIndicator(icon: String, label: String, meters: Double, color: Color) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(color)
+                .frame(width: 20)
+            Text(label)
+                .font(.system(size: 13))
+                .foregroundColor(AppTheme.Colors.textPrimary)
+            Spacer()
+            Text(formatDistanceMiles(meters))
+                .font(.system(size: 12, weight: .medium, design: .rounded))
+                .foregroundColor(color.opacity(0.8))
+        }
     }
     
     /// A compact pill button that applies a radius preset.
@@ -551,9 +730,7 @@ struct SettingsContentView: View {
         let active = isPresetActive(near: near, farther: farther, much: much)
         return Button {
             withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                nearYouRadius = near
-                fartherAwayRadius = farther
-                muchFartherAwayRadius = much
+                draftRadius = much
             }
             if hapticsEnabled {
                 HapticManager.impact(.medium)
