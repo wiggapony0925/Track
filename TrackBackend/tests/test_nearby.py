@@ -1315,3 +1315,76 @@ class TestDestinationBasedDirectionKeys:
         dir_labels = {d["direction_label"] for d in directions}
         assert "Kings Plaza" in dir_labels
         assert "Av H" in dir_labels
+
+
+# ------------------------------------------------------------------ #
+# 14. SIRI circuit breaker scoping                                     #
+# ------------------------------------------------------------------ #
+
+
+class TestSiriCircuitBreakerScope:
+    """The SIRI circuit breaker should only block SIRI (real-time) calls,
+    not OBA (static/discovery) calls like get_nearby_stops."""
+
+    def test_oba_calls_bypass_circuit_breaker(self):
+        """get_nearby_stops (OBA) should succeed even when the SIRI
+        circuit breaker is open."""
+        import app.services.bus_client as bc
+
+        # Trip the SIRI circuit breaker
+        bc._trip_siri_circuit()
+        assert bc._siri_circuit_is_open(), "Breaker should be open after trip"
+
+        try:
+            # OBA call via the grouped endpoint — should NOT be blocked
+            # because get_nearby_stops uses _fetch_bus_json without is_siri
+            with patch("app.routers.nearby.get_nearby_stops", new_callable=AsyncMock) as mock_stops, \
+                 patch("app.routers.nearby.get_realtime_arrivals", new_callable=AsyncMock) as mock_arrivals, \
+                 patch("app.routers.nearby._fetch_nearby_subway", new_callable=AsyncMock) as mock_subway, \
+                 patch("app.routers.nearby._fetch_nearby_rail", new_callable=AsyncMock) as mock_rail:
+                mock_subway.return_value = []
+                mock_rail.return_value = []
+                mock_stops.return_value = [
+                    BusStop(
+                        id="S1", name="Test Stop", lat=40.7, lon=-73.9,
+                        direction="N", route_ids=["MTA NYCT_B63"],
+                    ),
+                ]
+                mock_arrivals.return_value = []
+
+                response = client.get("/nearby/grouped?lat=40.70&lon=-73.90")
+                assert response.status_code == 200
+                data = response.json()
+                # B63 should appear (from backfill) even with SIRI breaker open
+                route_names = {g["display_name"] for g in data}
+                assert "B63" in route_names, (
+                    f"OBA-discovered route B63 should appear even when SIRI "
+                    f"breaker is open. Got: {route_names}"
+                )
+        finally:
+            # Clean up — reset the breaker
+            bc._siri_circuit_open = False
+            bc._siri_circuit_opened_at = 0.0
+
+    def test_fetch_bus_json_is_siri_flag(self):
+        """_fetch_bus_json with is_siri=False should NOT check the circuit
+        breaker, while is_siri=True should."""
+        import app.services.bus_client as bc
+
+        bc._trip_siri_circuit()
+        assert bc._siri_circuit_is_open()
+
+        try:
+            # is_siri=True → should raise (breaker is open)
+            import asyncio
+            with pytest.raises(Exception, match="circuit breaker"):
+                asyncio.get_event_loop().run_until_complete(
+                    bc._fetch_bus_json(
+                        "https://example.com/fake",
+                        {"key": "test"},
+                        is_siri=True,
+                    )
+                )
+        finally:
+            bc._siri_circuit_open = False
+            bc._siri_circuit_opened_at = 0.0
