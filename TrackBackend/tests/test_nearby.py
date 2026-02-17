@@ -706,6 +706,140 @@ class TestBusRouteBackfill:
         assert arrival["stop_name"] == "Merrick Blvd"
 
 
+class TestPhaseCOppositeDirection:
+    """Phase C: routes with only 1 direction after Phases A+B get an
+    opposite-direction placeholder so grouped cards always have 2 tabs."""
+
+    @patch("app.routers.nearby.get_realtime_arrivals", new_callable=AsyncMock)
+    @patch("app.routers.nearby.get_nearby_stops", new_callable=AsyncMock)
+    @patch("app.routers.nearby._fetch_nearby_subway", new_callable=AsyncMock)
+    @patch("app.routers.nearby._fetch_nearby_rail", new_callable=AsyncMock)
+    def test_express_bus_gets_opposite_direction(
+        self, mock_rail, mock_subway, mock_stops, mock_arrivals,
+    ):
+        """BxM3 with only MIDTOWN arrivals should still get 2 direction tabs."""
+        mock_subway.return_value = []
+        mock_rail.return_value = []
+        # Only one stop, facing SW — no opposite-direction stop nearby
+        mock_stops.return_value = [
+            BusStop(
+                id="S1", name="Bx Stop", lat=40.86, lon=-73.90,
+                direction="SW", route_ids=["MTABC_BXM3"],
+            ),
+        ]
+        from datetime import datetime, timezone
+        mock_arrivals.return_value = [
+            __import__("app.models", fromlist=["BusArrival"]).BusArrival(
+                route_id="BXM3",
+                vehicle_id="V1",
+                stop_id="S1",
+                status_text="2 stops away",
+                expected_arrival=datetime.now(timezone.utc),
+                direction_ref=0,
+                destination_name="MIDTOWN",
+            ),
+        ]
+
+        response = client.get("/nearby/grouped?lat=40.86&lon=-73.90")
+        assert response.status_code == 200
+        data = response.json()
+
+        bxm3 = [g for g in data if "BXM3" in g["display_name"].upper()
+                 or "BxM3" in g["display_name"]]
+        assert len(bxm3) == 1, f"Expected 1 BxM3 group, got {len(bxm3)}: {data}"
+        group = bxm3[0]
+        assert len(group["directions"]) == 2, (
+            f"Expected 2 directions, got {len(group['directions'])}: "
+            f"{[d['direction'] for d in group['directions']]}"
+        )
+
+    @patch("app.routers.nearby.get_realtime_arrivals", new_callable=AsyncMock)
+    @patch("app.routers.nearby.get_nearby_stops", new_callable=AsyncMock)
+    @patch("app.routers.nearby._fetch_nearby_subway", new_callable=AsyncMock)
+    @patch("app.routers.nearby._fetch_nearby_rail", new_callable=AsyncMock)
+    def test_phase_c_does_not_add_to_two_direction_route(
+        self, mock_rail, mock_subway, mock_stops, mock_arrivals,
+    ):
+        """A route that already has 2 directions should NOT get a 3rd from Phase C."""
+        mock_subway.return_value = []
+        mock_rail.return_value = []
+        mock_stops.return_value = [
+            BusStop(
+                id="S1", name="Stop A", lat=40.7, lon=-73.9,
+                direction="N", route_ids=["MTA NYCT_B63"],
+            ),
+            BusStop(
+                id="S2", name="Stop B", lat=40.7, lon=-73.9,
+                direction="S", route_ids=["MTA NYCT_B63"],
+            ),
+        ]
+        from datetime import datetime, timezone
+        mock_arrivals.side_effect = [
+            [  # Stop S1
+                __import__("app.models", fromlist=["BusArrival"]).BusArrival(
+                    route_id="B63", vehicle_id="V1", stop_id="S1",
+                    status_text="Approaching",
+                    expected_arrival=datetime.now(timezone.utc),
+                    direction_ref=0, destination_name="COBBLE HILL",
+                ),
+            ],
+            [  # Stop S2
+                __import__("app.models", fromlist=["BusArrival"]).BusArrival(
+                    route_id="B63", vehicle_id="V2", stop_id="S2",
+                    status_text="Approaching",
+                    expected_arrival=datetime.now(timezone.utc),
+                    direction_ref=1, destination_name="PROSPECT PARK",
+                ),
+            ],
+        ]
+
+        response = client.get("/nearby/grouped?lat=40.70&lon=-73.90")
+        assert response.status_code == 200
+        data = response.json()
+
+        b63 = [g for g in data if g["display_name"] == "B63"]
+        assert len(b63) == 1
+        # Should stay at 2 directions, not 3
+        assert len(b63[0]["directions"]) == 2, (
+            f"Expected 2 dirs, got {len(b63[0]['directions'])}"
+        )
+
+    @patch("app.routers.nearby.get_realtime_arrivals", new_callable=AsyncMock)
+    @patch("app.routers.nearby.get_nearby_stops", new_callable=AsyncMock)
+    @patch("app.routers.nearby._fetch_nearby_subway", new_callable=AsyncMock)
+    @patch("app.routers.nearby._fetch_nearby_rail", new_callable=AsyncMock)
+    def test_compass_direction_gets_opposite(
+        self, mock_rail, mock_subway, mock_stops, mock_arrivals,
+    ):
+        """A route with only compass direction 'N' should get 'S' placeholder."""
+        mock_subway.return_value = []
+        mock_rail.return_value = []
+        mock_stops.return_value = [
+            BusStop(
+                id="S1", name="Stop N", lat=40.7, lon=-73.9,
+                direction="N", route_ids=["MTA NYCT_B43"],
+            ),
+        ]
+        from datetime import datetime, timezone
+        mock_arrivals.return_value = [
+            __import__("app.models", fromlist=["BusArrival"]).BusArrival(
+                route_id="B43", vehicle_id="V1", stop_id="S1",
+                status_text="Approaching",
+                expected_arrival=datetime.now(timezone.utc),
+                direction_ref=None, destination_name=None,
+            ),
+        ]
+
+        response = client.get("/nearby/grouped?lat=40.70&lon=-73.90")
+        assert response.status_code == 200
+        data = response.json()
+
+        b43 = [g for g in data if g["display_name"] == "B43"]
+        assert len(b43) == 1
+        dirs = {d["direction"] for d in b43[0]["directions"]}
+        assert len(dirs) == 2, f"Expected 2 directions, got: {dirs}"
+
+
 # ------------------------------------------------------------------ #
 # 10. Bus route_id normalisation and both-direction grouping          #
 # ------------------------------------------------------------------ #
