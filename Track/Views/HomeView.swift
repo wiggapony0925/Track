@@ -251,13 +251,26 @@ struct HomeView: View {
                 userLocation: locationManager.currentLocation
             )?.coordinate
             
+            // Use the enriched group from the viewModel (which may have
+            // additional directions added by enrichGroupWithShapeDirections)
+            // instead of the stale group captured at navigation time.
+            let enrichedGroup = viewModel.selectedGroupedRoute ?? group
+            
+            // Compute direction-filtered vehicle count (bus + train) from the
+            // ViewModel's already-filtered collections so we don't duplicate
+            // direction-filtering logic inside the sheet.
+            let vehicleCount = enrichedGroup.isBus
+                ? viewModel.filteredBusVehicles.count
+                : viewModel.filteredTrainVehicles.count
+            
             RouteDetailSheet(
-                group: group,
+                group: enrichedGroup,
                 busVehicles: $viewModel.busVehicles,
                 routeShape: $viewModel.routeShape,
                 selectedDirectionIndex: $viewModel.selectedDirectionIndex,
                 serviceAlerts: viewModel.serviceAlerts,
                 cachedStations: viewModel.cachedStations,
+                liveVehicleCount: vehicleCount,
                 isSheetExpanded: sheetDetent == .large,
                 is3DMode: $is3DMode,
                 cameraPosition: $cameraPosition,
