@@ -12,6 +12,7 @@ import SwiftUI
 
 /// A fixed-position blue dot at screen center + a status pill at the top,
 /// with a subtle map dim while the user is actively panning.
+/// The dot "emerges" from the user's GPS circle with a grow animation.
 struct DragSearchOverlay: View {
     
     let isActive: Bool
@@ -22,6 +23,9 @@ struct DragSearchOverlay: View {
     /// The bottom safe-area padding applied to the map (e.g. 350pt for the bottom sheet).
     /// The map camera center is shifted up by half this value, so we offset the dot to match.
     var mapBottomPadding: CGFloat = 350
+    
+    /// Tracks whether the dot has fully appeared (drives the grow-from-center animation).
+    @State private var hasAppeared = false
     
     var body: some View {
         if isActive {
@@ -40,6 +44,8 @@ struct DragSearchOverlay: View {
                 // We offset the dot by the same amount so it sits exactly
                 // where the map reports its center coordinate.
                 appleLocationDot
+                    .scaleEffect(hasAppeared ? 1.0 : 0.01)
+                    .opacity(hasAppeared ? 1.0 : 0.0)
                     .offset(y: -(mapBottomPadding / 2))
                     .allowsHitTesting(false)
                 
@@ -52,6 +58,15 @@ struct DragSearchOverlay: View {
             }
             .transition(.opacity)
             .animation(.easeInOut(duration: 0.25), value: isPanning)
+            .onAppear {
+                // Grow from center — feels like the dot "came out of" the GPS circle
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                    hasAppeared = true
+                }
+            }
+            .onDisappear {
+                hasAppeared = false
+            }
         }
     }
     
@@ -59,6 +74,19 @@ struct DragSearchOverlay: View {
     
     private var appleLocationDot: some View {
         ZStack {
+            // Outer ripple ring — pulses outward while searching
+            if isSearching {
+                Circle()
+                    .stroke(Color(red: 0.0, green: 0.48, blue: 1.0).opacity(0.3), lineWidth: 2)
+                    .frame(width: 44, height: 44)
+                    .scaleEffect(isSearching ? 1.6 : 1.0)
+                    .opacity(isSearching ? 0.0 : 0.5)
+                    .animation(
+                        .easeOut(duration: 1.2).repeatForever(autoreverses: false),
+                        value: isSearching
+                    )
+            }
+            
             // Soft accuracy halo
             Circle()
                 .fill(Color(red: 0.0, green: 0.48, blue: 1.0).opacity(isPanning ? 0.15 : 0.10))
@@ -118,7 +146,7 @@ struct DragSearchOverlay: View {
     }
     
     private var statusText: String {
-        if isSearching { return "Checking area…" }
+        if isSearching { return "Searching here…" }
         if isPanning { return "Release to search" }
         return "Exploring area"
     }

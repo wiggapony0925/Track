@@ -22,9 +22,6 @@ struct DashboardView: View {
     @Binding var cameraPosition: MapCameraPosition
     @Binding var is3DMode: Bool
     
-    /// Whether the drag-to-search is actively loading new results.
-    var isDragSearching: Bool = false
-    
     var body: some View {
         VStack(spacing: 0) {
             // MARK: - Navbar (Fixed Header)
@@ -44,15 +41,6 @@ struct DashboardView: View {
                 lastUpdated: lastUpdated
             )
             
-            // MARK: - Drag-Search Loading Banner
-            Group {
-                if isDragSearching {
-                    DragSearchLoadingBanner()
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                }
-            }
-            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isDragSearching)
-            
             // MARK: - Scrollable Content
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
@@ -70,8 +58,8 @@ struct DashboardView: View {
                     )
                     
                     // Loading skeleton — shown while transit data is being
-                    // fetched so the user sees a placeholder instead of just
-                    // service alerts appearing first.
+                    // fetched (including drag-to-search) so the user sees a
+                    // placeholder instead of stale content or just alerts.
                     if viewModel.isLoading && !hasTransitData {
                         TransitLoadingSkeleton()
                             .transition(.opacity)

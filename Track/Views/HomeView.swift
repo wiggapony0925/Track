@@ -245,8 +245,7 @@ struct HomeView: View {
                 sheetNavigator: sheetNavigator,
                 lastUpdated: $lastUpdated,
                 cameraPosition: $cameraPosition,
-                is3DMode: $is3DMode,
-                isDragSearching: isDragSearching
+                is3DMode: $is3DMode
             )
             
         case .routeDetail(let group, _):
@@ -491,7 +490,7 @@ struct HomeView: View {
                let userCoord = locationManager.currentLocation?.coordinate {
                 let userLoc = CLLocation(latitude: userCoord.latitude, longitude: userCoord.longitude)
                 let panLoc = CLLocation(latitude: center.latitude, longitude: center.longitude)
-                if userLoc.distance(from: panLoc) > 200 {
+                if userLoc.distance(from: panLoc) > 60 {
                     hasFiredDragHaptic = true
                     HapticManager.impact(.light)
                 }
@@ -509,8 +508,10 @@ struct HomeView: View {
             let panLoc = CLLocation(latitude: center.latitude, longitude: center.longitude)
             let distanceMoved = userLoc.distance(from: panLoc)
             
-            // Threshold: only activate when panned 300m+ from real location
-            let threshold: Double = 300
+            // Threshold: activate when panned 100m+ from real location so
+            // the drag-search dot appears almost immediately when the user
+            // moves the map — it "emerges" from the GPS circle.
+            let threshold: Double = 100
             
             if distanceMoved > threshold {
                 // Show the center dot
