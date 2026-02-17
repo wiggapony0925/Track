@@ -38,6 +38,9 @@ from app.services.commuter_rail_shapes import (
 # Default bus color (MTA blue) — used when bus routes don't provide one
 _BUS_DEFAULT_COLOR = "#0039A6"
 
+# Placeholder minutes_away value — sorts to the bottom within its distance tier
+_PLACEHOLDER_MINUTES = 99
+
 router = APIRouter(tags=["nearby"])
 
 
@@ -181,6 +184,9 @@ _DIRECTION_LABELS: dict[str, str] = {
 
 # SIRI numeric direction keys (DirectionRef: 0/1 live, 2/3 backfill branches)
 _NUMERIC_DIR_KEYS = {"0", "1", "2", "3"}
+
+# Fallback direction key for Phase C when no compass direction can be inferred
+_OPPOSITE_DIRECTION = "Opposite"
 
 
 def _direction_label(direction: str, arrivals: list[NearbyTransitArrival] | None = None) -> str:
@@ -593,7 +599,7 @@ async def _fetch_nearby_buses(
                 stop_name=stop.name,
                 arrival_ts=None,
                 direction=direction,
-                minutes_away=99,  # sorts to the bottom within its tier
+                minutes_away=_PLACEHOLDER_MINUTES,
                 status="Scheduled",
                 mode="bus",
                 stop_lat=stop.lat,
@@ -670,7 +676,7 @@ async def _fetch_nearby_buses(
                     stop_name=stop.name,
                     arrival_ts=None,
                     direction=new_dir,
-                    minutes_away=99,
+                    minutes_away=_PLACEHOLDER_MINUTES,
                     status="Scheduled",
                     mode="bus",
                     stop_lat=stop.lat,
@@ -759,7 +765,7 @@ async def _fetch_nearby_buses(
             else:
                 # Default: if direction is a destination name going one way,
                 # use a generic opposite label
-                new_dir = "Opposite"
+                new_dir = _OPPOSITE_DIRECTION
 
         results.append(
             NearbyTransitArrival(
@@ -767,7 +773,7 @@ async def _fetch_nearby_buses(
                 stop_name=rep_stop.name,
                 arrival_ts=None,
                 direction=new_dir,
-                minutes_away=99,
+                minutes_away=_PLACEHOLDER_MINUTES,
                 status="Scheduled",
                 mode="bus",
                 stop_lat=rep_stop.lat,
