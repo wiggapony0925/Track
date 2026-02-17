@@ -949,11 +949,16 @@ final class HomeViewModel {
     /// The `userLocation` parameter is only used as a fallback — once
     /// `isSearchPinActive` is set, `effectiveLocation` will always
     /// return the pin coordinate for all subsequent operations.
+    ///
+    /// Uses a fast-path refresh that skips global feeds (alerts,
+    /// accessibility) since those don't change by location.
     func setSearchPin(_ coordinate: CLLocationCoordinate2D, userLocation: CLLocation?) async {
         searchPinCoordinate = coordinate
         isSearchPinActive = true
-        // refresh() calls effectiveLocation() which now returns the pin
-        await refresh(location: userLocation)
+        // Fast-path: only fetch location-dependent transit data
+        let loc = effectiveLocation(userLocation: userLocation)
+        await refreshNearbyTransit(location: loc, skipGlobalFeeds: true)
+        syncTrackedRoute()
     }
 
     /// Deactivates the search pin and returns to user location.
@@ -1539,7 +1544,11 @@ final class HomeViewModel {
     /// Uses the grouped endpoint to deduplicate routes.
     /// When no results are found within the default radius, fetches
     /// with a wider radius and exposes the closest stop as ``nearestTransit``.
-    func refreshNearbyTransit(location: CLLocation?) async {
+    ///
+    /// - Parameter skipGlobalFeeds: When `true` (e.g. during drag-to-search),
+    ///   skips alerts and accessibility fetches since those are location-independent
+    ///   and were already loaded. This makes area scanning noticeably faster.
+    func refreshNearbyTransit(location: CLLocation?, skipGlobalFeeds: Bool = false) async {
         guard let location = location else {
             errorMessage = "Location required"
             return
@@ -1556,19 +1565,22 @@ final class HomeViewModel {
         do {
             async let flatTask = TrackAPI.fetchNearbyTransit(lat: lat, lon: lon)
             async let groupedTask = TrackAPI.fetchNearbyGrouped(lat: lat, lon: lon)
-            async let alertsTask = TrackAPI.fetchAlerts()
-            async let accessTask = TrackAPI.fetchAccessibility()
 
             nearbyTransit = try await flatTask
             groupedTransit = try await groupedTask
 
-            // Fetch alerts and accessibility silently — don't fail the whole refresh
-            do {
-                serviceAlerts = try await alertsTask
-                AlertNotificationManager.shared.processAlerts(serviceAlerts)
-            } catch {}
-            do { elevatorOutages = try await accessTask } catch {}
-            
+            // Fetch alerts and accessibility only on full refreshes — these are
+            // global feeds that don't change by location. Skipping them during
+            // drag-to-search avoids ~2 extra network calls per pan gesture.
+            if !skipGlobalFeeds {
+                async let alertsTask = TrackAPI.fetchAlerts()
+                async let accessTask = TrackAPI.fetchAccessibility()
+                do {
+                    serviceAlerts = try await alertsTask
+                    AlertNotificationManager.shared.processAlerts(serviceAlerts)
+                } catch {}
+                do { elevatorOutages = try await accessTask } catch {}
+            }
 
         } catch {
             AppLogger.shared.logError("fetchNearbyTransit", error: error)

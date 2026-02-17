@@ -46,13 +46,19 @@ struct HomeView: View {
     @AppStorage("drag_to_search") private var dragToSearchEnabled = true
     @AppStorage("auto_refresh_enabled") private var autoRefreshEnabled = true
     @State private var isDragSearchActive = false
-    @State private var isDragSearching = false
     @State private var isDragSearchPanning = false
     @State private var hasFiredDragHaptic = false
     @State private var dragSearchDebounce: Task<Void, Never>?
     /// The settled center after a drag-search debounce fires. `nil` while
     /// the user is still panning — the radius circles hide until this is set.
     @State private var dragSearchSettledCenter: CLLocationCoordinate2D?
+    
+    /// Whether a drag-search API call is in-flight.
+    /// Derived from the ViewModel's loading state instead of maintaining
+    /// a separate flag — reuses the existing loading infrastructure.
+    private var isDragSearching: Bool {
+        viewModel.isLoading && viewModel.isSearchPinActive
+    }
     
     // MARK: - Effective Location
     
@@ -389,7 +395,6 @@ struct HomeView: View {
         // uses the explored area. We'll restore the overlay on dismiss.
         if viewModel.selectedRouteId != nil && isDragSearchActive {
             isDragSearchActive = false
-            isDragSearching = false
             isDragSearchPanning = false
             // NOTE: keep dragSearchSettledCenter so we can restore on dismiss
         }
@@ -494,8 +499,8 @@ struct HomeView: View {
         }
         
         dragSearchDebounce = Task { @MainActor in
-            // Wait for the user to stop panning (800ms of stillness)
-            try? await Task.sleep(for: .milliseconds(800))
+            // Wait for the user to stop panning (500ms of stillness)
+            try? await Task.sleep(for: .milliseconds(500))
             guard !Task.isCancelled else { return }
             
             guard let userCoord = locationManager.currentLocation?.coordinate else { return }
@@ -516,10 +521,11 @@ struct HomeView: View {
                     HapticManager.selection()
                 }
                 
-                // Mark as searching (panning stopped, API is firing)
+                // Panning stopped — isDragSearching is now derived from
+                // viewModel.isLoading && viewModel.isSearchPinActive,
+                // so it activates automatically when setSearchPin fires.
                 withAnimation(.easeOut(duration: 0.15)) {
                     isDragSearchPanning = false
-                    isDragSearching = true
                 }
                 
                 await viewModel.setSearchPin(center, userLocation: locationManager.currentLocation)
@@ -527,10 +533,6 @@ struct HomeView: View {
                 
                 // Snap the radius circles into place at the settled location
                 dragSearchSettledCenter = center
-                
-                withAnimation(.easeOut(duration: 0.2)) {
-                    isDragSearching = false
-                }
                 
                 // Satisfying "lock-in" vibration so the user feels the new center
                 HapticManager.impact(.medium)
@@ -550,7 +552,6 @@ struct HomeView: View {
         
         withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
             isDragSearchActive = false
-            isDragSearching = false
             isDragSearchPanning = false
             hasFiredDragHaptic = false
             dragSearchSettledCenter = nil
