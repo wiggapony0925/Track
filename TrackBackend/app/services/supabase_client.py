@@ -16,6 +16,8 @@ from typing import Any
 
 import httpx
 
+from app.utils.logger import TrackLogger
+
 # Supabase configuration from environment
 # In production, set these as environment variables
 # For development, defaults are provided
@@ -72,9 +74,7 @@ class SupabaseClient:
             )
             
             if response.status_code >= 400:
-                # Log error for debugging - in production use proper logging
-                import logging
-                logging.warning(f"[Supabase] Error {response.status_code}: {response.text}")
+                TrackLogger.warning(f"Supabase error {response.status_code}: {response.text}", tag="ANALYTICS")
                 return []
             
             if response.status_code == 204:

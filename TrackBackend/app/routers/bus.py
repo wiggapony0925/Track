@@ -8,8 +8,10 @@
 
 from __future__ import annotations
 
-import httpx
+import traceback
 from datetime import datetime
+
+import httpx
 from fastapi import APIRouter, HTTPException, Query
 
 from app.config import get_settings
@@ -22,6 +24,7 @@ from app.services.bus_client import (
     get_stops,
     get_vehicle_positions,
 )
+from app.services.schedule_service import schedule_service
 from app.utils.logger import TrackLogger
 
 router = APIRouter(prefix="/bus", tags=["bus"])
@@ -88,7 +91,6 @@ async def bus_live(stop_id: str) -> list[BusArrival]:
     try:
         live_arrivals = await get_realtime_arrivals(stop_id)
         if not live_arrivals:
-            from app.services.schedule_service import schedule_service
             # Fallback to schedule
             scheduled = schedule_service.get_scheduled_arrivals(stop_id, limit=5)
             return [
@@ -161,6 +163,5 @@ async def bus_route_shape(route_id: str) -> RouteShape:
              raise HTTPException(status_code=404, detail="Route not found")
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except Exception as exc:
-        import traceback
         traceback.print_exc()
         raise HTTPException(status_code=502, detail=str(exc)) from exc

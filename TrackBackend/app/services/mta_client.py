@@ -5,14 +5,19 @@
 # Async HTTP client that fetches raw data from MTA endpoints.
 # Returns bytes (Protobuf) or parsed JSON depending on the feed.
 #
+# Uses a shared httpx.AsyncClient for connection pooling and a
+# bounded TTL cache with automatic eviction.
+#
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 import httpx
 
 from app.config import get_settings
+from app.utils.logger import TrackLogger
 
 
 def _get_timeout() -> httpx.Timeout:
@@ -24,32 +29,105 @@ def _get_timeout() -> httpx.Timeout:
     )
 
 
-import time
+# ---------------------------------------------------------------------------
+# TTL Cache with bounded size
+# ---------------------------------------------------------------------------
+
+_CACHE_MAX_SIZE = 256  # Max entries before forced eviction
+
 
 class AsyncTTLCache:
-    def __init__(self, ttl: float = 15.0):
+    """Simple bounded TTL cache.
+
+    - get(): O(1)
+    - set(): O(1) amortized, O(n) worst-case during eviction sweep.
+    - Eviction: When cache exceeds *max_size*, removes all expired entries.
+      If still over limit, drops the oldest 25%.
+    """
+
+    def __init__(self, ttl: float = 15.0, max_size: int = _CACHE_MAX_SIZE):
         self.ttl = ttl
+        self.max_size = max_size
         self._cache: dict[str, tuple[float, Any]] = {}
 
     def get(self, key: str) -> Any | None:
-        if key in self._cache:
-            original_ts, value = self._cache[key]
-            if time.time() - original_ts < self.ttl:
-                return value
-            else:
-                del self._cache[key]
+        entry = self._cache.get(key)
+        if entry is None:
+            return None
+        ts, value = entry
+        if time.time() - ts < self.ttl:
+            TrackLogger.cache(f"HIT  {key[:80]}")
+            return value
+        del self._cache[key]
+        TrackLogger.cache(f"EXPIRED  {key[:80]}")
         return None
 
-    def set(self, key: str, value: Any):
+    def set(self, key: str, value: Any) -> None:
+        if len(self._cache) >= self.max_size:
+            TrackLogger.cache(f"Evicting — cache at {len(self._cache)}/{self.max_size}")
+            self._evict()
         self._cache[key] = (time.time(), value)
+
+    def _evict(self) -> None:
+        """Remove expired entries; if still over limit, drop oldest 25%."""
+        now = time.time()
+        # Remove all expired
+        self._cache = {
+            k: (ts, v) for k, (ts, v) in self._cache.items()
+            if now - ts < self.ttl
+        }
+        # If still at capacity, drop oldest quarter
+        if len(self._cache) >= self.max_size:
+            sorted_keys = sorted(self._cache, key=lambda k: self._cache[k][0])
+            drop_count = max(1, len(sorted_keys) // 4)
+            for k in sorted_keys[:drop_count]:
+                del self._cache[k]
+
 
 # Shared cache instance
 _HTTP_CACHE = AsyncTTLCache(ttl=15.0)
 
 
+# ---------------------------------------------------------------------------
+# Shared HTTP client (connection pooling)
+# ---------------------------------------------------------------------------
+
+_shared_client: httpx.AsyncClient | None = None
+_shared_client_loop_id: int | None = None
+
+
+def _get_client() -> httpx.AsyncClient:
+    """Return a module-level shared AsyncClient for connection pooling.
+
+    Lazy-initialised so it's created inside the event loop.  Recreated
+    if the event loop changes (e.g. between test runs).
+    """
+    import asyncio
+
+    global _shared_client, _shared_client_loop_id
+    try:
+        current_loop_id = id(asyncio.get_running_loop())
+    except RuntimeError:
+        current_loop_id = None
+
+    if (
+        _shared_client is None
+        or _shared_client.is_closed
+        or _shared_client_loop_id != current_loop_id
+    ):
+        _shared_client = httpx.AsyncClient(timeout=_get_timeout())
+        _shared_client_loop_id = current_loop_id
+        TrackLogger.debug("Created new shared httpx.AsyncClient", tag="HTTP")
+    return _shared_client
+
+
+# ---------------------------------------------------------------------------
+# Public fetch helpers
+# ---------------------------------------------------------------------------
+
+
 async def fetch_protobuf(url: str) -> bytes:
     """Fetch a GTFS-Realtime Protobuf feed and return raw bytes."""
-    # Check cache
     cached = _HTTP_CACHE.get(url)
     if cached is not None:
         return cached
@@ -58,18 +136,19 @@ async def fetch_protobuf(url: str) -> bytes:
     headers = {}
     if settings.api_keys.mta_api_key:
         headers["x-api-key"] = settings.api_keys.mta_api_key
-    
-    async with httpx.AsyncClient(timeout=_get_timeout()) as client:
-        response = await client.get(url, headers=headers)
-        response.raise_for_status()
-        data = response.content
-        _HTTP_CACHE.set(url, data)
-        return data
+
+    TrackLogger.feed(f"Fetching protobuf: {url[:100]}")
+    client = _get_client()
+    response = await client.get(url, headers=headers)
+    response.raise_for_status()
+    data = response.content
+    TrackLogger.feed(f"Protobuf OK ({len(data)} bytes): {url[:100]}")
+    _HTTP_CACHE.set(url, data)
+    return data
 
 
 async def fetch_json(url: str) -> Any:
     """Fetch a JSON feed and return the parsed object."""
-    # Check cache
     cached = _HTTP_CACHE.get(url)
     if cached is not None:
         return cached
@@ -78,10 +157,12 @@ async def fetch_json(url: str) -> Any:
     headers = {}
     if settings.api_keys.mta_api_key:
         headers["x-api-key"] = settings.api_keys.mta_api_key
-    
-    async with httpx.AsyncClient(timeout=_get_timeout()) as client:
-        response = await client.get(url, headers=headers)
-        response.raise_for_status()
-        data = response.json()
-        _HTTP_CACHE.set(url, data)
-        return data
+
+    TrackLogger.feed(f"Fetching JSON: {url[:100]}")
+    client = _get_client()
+    response = await client.get(url, headers=headers)
+    response.raise_for_status()
+    data = response.json()
+    TrackLogger.feed(f"JSON OK: {url[:100]}")
+    _HTTP_CACHE.set(url, data)
+    return data

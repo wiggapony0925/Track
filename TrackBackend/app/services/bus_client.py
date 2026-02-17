@@ -12,7 +12,14 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
+import math
+import os
+import re
+import time as _time
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
@@ -20,13 +27,9 @@ import httpx
 
 from app.config import get_settings
 from app.models import BusArrival, BusRoute, BusStop, BusVehicle, DirectionShape, RouteShape
-
-
-
-import re
-import json
-import os
-from pathlib import Path
+from app.utils.geo_utils import haversine_m
+from app.utils.logger import TrackLogger
+from app.utils.polyline_utils import decode_polyline, encode_polyline
 
 # ---------------------------------------------------------------------------
 # Load Route Map (Canonical Source of Truth)
@@ -54,7 +57,7 @@ try:
 
 except Exception as e:
     # Log error or silently fail to empty dict (fallback logic will take over)
-    print(f"Warning: Could not load early_2026_buses_tag.json: {e}")
+    TrackLogger.warning(f"Could not load early_2026_buses_tag.json: {e}", tag="BUS")
 
 # ---------------------------------------------------------------------------
 # Agency Map for Bus Route Resolution (Fallback)
@@ -103,7 +106,7 @@ async def _discover_and_cache_bus_id(short_name: str) -> str | None:
                                 ROUTE_LOOKUP[short_name.lower()] = official_id
                                 return official_id
             except Exception as e:
-                print(f"Auto-discovery failed for {agency}: {e}")
+                TrackLogger.warning(f"Auto-discovery failed for {agency}: {e}", tag="BUS")
                 continue
                 
     return None
@@ -133,7 +136,7 @@ async def resolve_bus_id(route_id: str) -> str:
     # If it's a new route like 'Q80', we look it up live and update ROUTE_LOOKUP
     discovered_id = await _discover_and_cache_bus_id(clean_id)
     if discovered_id:
-        print(f"✨ Self-Healed: Discovered new route {clean_id} -> {discovered_id}")
+        TrackLogger.resolve(f"Self-healed: Discovered new route {clean_id} -> {discovered_id}")
         return discovered_id
 
     # 3. Fallback Heuristics (Guessing)
@@ -191,7 +194,7 @@ async def _guess_alternative_id(canonical_id: str) -> str | None:
                 # Extract the short name from the route_part
                 ROUTE_LOOKUP[route_part] = alt
                 ROUTE_LOOKUP[route_part.lower()] = alt
-                print(f"[BUS] Agency fallback: {canonical_id} -> {alt} (cached)")
+                TrackLogger.resolve(f"Agency fallback: {canonical_id} -> {alt} (cached)")
                 return alt
     except Exception:
         pass
@@ -211,57 +214,6 @@ def _get_timeout() -> httpx.Timeout:
 # ---------------------------------------------------------------------------
 # Polyline merging — join adjacent small segments into continuous polylines
 # ---------------------------------------------------------------------------
-import math
-
-
-def _decode_polyline(encoded: str) -> list[tuple[float, float]]:
-    """Decode a Google-encoded polyline into [(lat, lon), ...]."""
-    coords: list[tuple[float, float]] = []
-    i, lat, lng = 0, 0, 0
-    while i < len(encoded):
-        for field in range(2):
-            shift, result = 0, 0
-            while True:
-                b = ord(encoded[i]) - 63
-                i += 1
-                result |= (b & 0x1F) << shift
-                shift += 5
-                if b < 0x20:
-                    break
-            dlat_or_lng = (~(result >> 1) if (result & 1) else (result >> 1))
-            if field == 0:
-                lat += dlat_or_lng
-            else:
-                lng += dlat_or_lng
-        coords.append((lat / 1e5, lng / 1e5))
-    return coords
-
-
-def _encode_polyline(coords: list[tuple[float, float]]) -> str:
-    """Encode [(lat, lon), ...] into a Google-encoded polyline string."""
-    result: list[str] = []
-    prev_lat, prev_lng = 0, 0
-    for lat, lng in coords:
-        lat_e5 = round(lat * 1e5)
-        lng_e5 = round(lng * 1e5)
-        for val in (lat_e5 - prev_lat, lng_e5 - prev_lng):
-            val = ~(val << 1) if val < 0 else (val << 1)
-            while val >= 0x20:
-                result.append(chr((0x20 | (val & 0x1F)) + 63))
-                val >>= 5
-            result.append(chr(val + 63))
-        prev_lat, prev_lng = lat_e5, lng_e5
-    return "".join(result)
-
-
-def _haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """Quick haversine distance in meters between two lat/lon points."""
-    R = 6_371_000
-    rlat1, rlat2 = math.radians(lat1), math.radians(lat2)
-    dlat = math.radians(lat2 - lat1)
-    dlon = math.radians(lon2 - lon1)
-    a = math.sin(dlat / 2) ** 2 + math.cos(rlat1) * math.cos(rlat2) * math.sin(dlon / 2) ** 2
-    return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
 def _merge_polyline_segments(encoded_segments: list[str], gap_threshold_m: float = 50.0) -> list[str]:
@@ -275,7 +227,7 @@ def _merge_polyline_segments(encoded_segments: list[str], gap_threshold_m: float
 
     decoded: list[list[tuple[float, float]]] = []
     for seg in encoded_segments:
-        pts = _decode_polyline(seg)
+        pts = decode_polyline(seg)
         if pts:
             decoded.append(pts)
 
@@ -288,13 +240,13 @@ def _merge_polyline_segments(encoded_segments: list[str], gap_threshold_m: float
     for seg in decoded[1:]:
         last_pt = chains[-1][-1]
         first_pt = seg[0]
-        dist = _haversine_m(last_pt[0], last_pt[1], first_pt[0], first_pt[1])
+        dist = haversine_m(last_pt[0], last_pt[1], first_pt[0], first_pt[1])
         if dist <= gap_threshold_m:
             chains[-1].extend(seg[1:] if dist < 5.0 else seg)
         else:
             chains.append(seg)
 
-    return [_encode_polyline(chain) for chain in chains]
+    return [encode_polyline(chain) for chain in chains]
 
 
 # ---------------------------------------------------------------------------
@@ -302,7 +254,6 @@ def _merge_polyline_segments(encoded_segments: list[str], gap_threshold_m: float
 # process lifetime.  Rather than flood the MTA server with requests that will
 # all fail, we flip a flag and immediately raise on subsequent calls.
 # ---------------------------------------------------------------------------
-import time as _time
 
 _siri_circuit_open: bool = False
 _siri_circuit_opened_at: float = 0.0
@@ -317,6 +268,7 @@ def _siri_circuit_is_open() -> bool:
     # Auto-reset after cooldown so the app can self-heal
     if _time.time() - _siri_circuit_opened_at > _SIRI_CIRCUIT_COOLDOWN:
         _siri_circuit_open = False
+        TrackLogger.circuit("SIRI circuit breaker CLOSED (cooldown expired)")
         return False
     return True
 
@@ -326,6 +278,7 @@ def _trip_siri_circuit() -> None:
     if not _siri_circuit_open:
         _siri_circuit_open = True
         _siri_circuit_opened_at = _time.time()
+        TrackLogger.circuit("SIRI circuit breaker OPENED (401/403 from MTA)")
 
 
 async def _fetch_bus_json(url: str, params: dict[str, str]) -> Any:
@@ -398,8 +351,6 @@ async def get_stops(route_id: str) -> list[BusStop]:
     Includes retry logic for transient MTA API failures and an
     agency-prefix fallback on 404.
     """
-    import asyncio
-
     settings = get_settings()
     eps = settings.urls.bus_endpoints
     if eps is None:
@@ -428,12 +379,12 @@ async def get_stops(route_id: str) -> list[BusStop]:
                 raise e
             last_error = e
             if attempt < max_retries:
-                print(f"[BUS_STOPS] Retry {attempt + 1}/{max_retries} for {canonical_id} (HTTP {e.response.status_code})")
+                TrackLogger.retry(f"[BUS_STOPS] Retry {attempt + 1}/{max_retries} for {canonical_id} (HTTP {e.response.status_code})")
                 await asyncio.sleep(retry_delay)
         except httpx.TimeoutException as e:
             last_error = e
             if attempt < max_retries:
-                print(f"[BUS_STOPS] Retry {attempt + 1}/{max_retries} for {canonical_id} (timeout)")
+                TrackLogger.retry(f"[BUS_STOPS] Retry {attempt + 1}/{max_retries} for {canonical_id} (timeout)")
                 await asyncio.sleep(retry_delay)
 
     if last_error:
@@ -483,7 +434,6 @@ async def _get_stops_impl(route_id: str) -> list[BusStop]:
 
 # Simple TTL cache for nearby stops to avoid hammering the MTA API
 # Key: rounded (lat, lon, radius) tuple → (timestamp, result)
-import time as _time
 
 _nearby_stops_cache: dict[tuple[float, float, int], tuple[float, list[BusStop]]] = {}
 _NEARBY_CACHE_TTL = 60.0  # seconds
@@ -501,8 +451,6 @@ async def get_nearby_stops(
 
     Includes retry logic and a 60-second TTL cache to avoid rate limiting.
     """
-    import asyncio
-
     settings = get_settings()
     effective_radius = radius_m if radius_m is not None else settings.app_settings.search_radius_meters
 
@@ -596,7 +544,8 @@ async def get_realtime_arrivals(stop_id: str) -> list[BusArrival]:
         "key": settings.api_keys.mta_bus_key,
         "version": "2",
         "MonitoringRef": stop_id,
-        "StopMonitoringDetailLevel": "minimum",
+        # Use default ("normal") detail level — "minimum" omits DirectionRef
+        # and LineRef which are needed for proper direction grouping.
     }
 
     data = await _fetch_bus_json(url, params)
@@ -655,11 +604,34 @@ async def get_realtime_arrivals(stop_id: str) -> list[BusArrival]:
             except (ValueError, TypeError):
                 pass
 
-        # Route identifier - prefer LineRef, fallback to PublishedLineName
-        raw_route = journey.get("LineRef")
-        if not raw_route:
-            names = journey.get("PublishedLineName", [])
-            raw_route = names[0] if names else ""
+        # Route identifier - prefer PublishedLineName for a clean route name
+        # (e.g. "Q43"), fallback to LineRef which has agency prefix (e.g. "MTA NYCT_Q43").
+        # Using PublishedLineName avoids duplicate route cards when the same
+        # route appears with different agency prefixes (MTA NYCT_ vs MTABC_).
+        names = journey.get("PublishedLineName")
+        if isinstance(names, list) and names:
+            raw_route = names[0]
+        elif isinstance(names, str) and names:
+            raw_route = names
+        else:
+            raw_route = journey.get("LineRef", "")
+
+        # Direction from SIRI — DirectionRef (0 or 1) and DestinationName
+        direction_ref: int | None = None
+        raw_dir = journey.get("DirectionRef")
+        if raw_dir is not None:
+            try:
+                direction_ref = int(raw_dir)
+            except (ValueError, TypeError):
+                pass
+
+        # DestinationName can be a string or a list
+        raw_dest = journey.get("DestinationName")
+        destination_name: str | None = None
+        if isinstance(raw_dest, list):
+            destination_name = raw_dest[0] if raw_dest else None
+        elif isinstance(raw_dest, str):
+            destination_name = raw_dest or None
 
         arrivals.append(
             BusArrival(
@@ -670,6 +642,8 @@ async def get_realtime_arrivals(stop_id: str) -> list[BusArrival]:
                 expected_arrival=expected_arrival,
                 distance_meters=distance_meters,
                 bearing=bearing,
+                direction_ref=direction_ref,
+                destination_name=destination_name,
             )
         )
 
@@ -687,8 +661,6 @@ async def get_vehicle_positions(route_id: str) -> list[BusVehicle]:
     Includes retry logic for transient MTA API failures and an
     agency-prefix fallback on 404.
     """
-    import asyncio
-
     settings = get_settings()
     eps = settings.urls.bus_endpoints
     if eps is None:
@@ -718,12 +690,12 @@ async def get_vehicle_positions(route_id: str) -> list[BusVehicle]:
                 raise e
             last_error = e
             if attempt < max_retries:
-                print(f"[BUS_VEHICLES] Retry {attempt + 1}/{max_retries} for {canonical_id} (HTTP {e.response.status_code})")
+                TrackLogger.retry(f"[BUS_VEHICLES] Retry {attempt + 1}/{max_retries} for {canonical_id} (HTTP {e.response.status_code})")
                 await asyncio.sleep(retry_delay)
         except httpx.TimeoutException as e:
             last_error = e
             if attempt < max_retries:
-                print(f"[BUS_VEHICLES] Retry {attempt + 1}/{max_retries} for {canonical_id} (timeout)")
+                TrackLogger.retry(f"[BUS_VEHICLES] Retry {attempt + 1}/{max_retries} for {canonical_id} (timeout)")
                 await asyncio.sleep(retry_delay)
 
     if last_error:
@@ -816,12 +788,10 @@ async def get_route_shape(route_id: str) -> RouteShape:
     all stops on the route.  Includes retry logic for transient MTA API
     failures (403 / 503 / timeouts) and an agency-prefix fallback on 404.
     """
-    import asyncio
-
     settings = get_settings()
     eps = settings.urls.bus_endpoints
     if eps is None:
-        print(f"[BUS_SHAPE] No bus endpoints configured")
+        TrackLogger.warning("No bus endpoints configured", tag="BUS")
         return RouteShape(route_id=route_id, polylines=[], stops=[])
 
     # 1. Resolve to a canonical ID (e.g. "Q112" -> "MTABC_Q112")
@@ -851,12 +821,12 @@ async def get_route_shape(route_id: str) -> RouteShape:
             # Transient errors (403 rate-limit, 503, etc.) — retry
             last_error = e
             if attempt < max_retries:
-                print(f"[BUS_SHAPE] Retry {attempt + 1}/{max_retries} for {canonical_id} (HTTP {e.response.status_code})")
+                TrackLogger.retry(f"[BUS_SHAPE] Retry {attempt + 1}/{max_retries} for {canonical_id} (HTTP {e.response.status_code})")
                 await asyncio.sleep(retry_delay)
         except httpx.TimeoutException as e:
             last_error = e
             if attempt < max_retries:
-                print(f"[BUS_SHAPE] Retry {attempt + 1}/{max_retries} for {canonical_id} (timeout)")
+                TrackLogger.retry(f"[BUS_SHAPE] Retry {attempt + 1}/{max_retries} for {canonical_id} (timeout)")
                 await asyncio.sleep(retry_delay)
 
     if last_error:
@@ -869,7 +839,7 @@ async def _get_route_shape_impl(route_id: str) -> RouteShape:
     settings = get_settings()
     eps = settings.urls.bus_endpoints
     if eps is None:
-        print(f"[BUS_SHAPE] No bus endpoints configured")
+        TrackLogger.warning("No bus endpoints configured", tag="BUS")
         return RouteShape(route_id=route_id, polylines=[], stops=[])
 
     # URL-encode the route_id for the path (e.g. "MTA NYCT_B63" → "MTA%20NYCT_B63")
@@ -882,14 +852,14 @@ async def _get_route_shape_impl(route_id: str) -> RouteShape:
         "version": "2",
     }
 
-    print(f"[BUS_SHAPE] Fetching shape for {route_id} from {url}")
+    TrackLogger.debug(f"Fetching shape for {route_id} from {url}", tag="BUS")
     data = await _fetch_bus_json(url, params)
 
     # Extract polylines
     polylines: list[str] = []
     entry = data.get("data", {}).get("entry", {}) if isinstance(data, dict) else {}
     raw_polylines = entry.get("polylines", [])
-    print(f"[BUS_SHAPE] Got {len(raw_polylines)} raw polylines from API")
+    TrackLogger.debug(f"Got {len(raw_polylines)} raw polylines from API", tag="BUS")
     
     for poly in raw_polylines:
         encoded = poly.get("points", "")
@@ -953,7 +923,7 @@ async def _get_route_shape_impl(route_id: str) -> RouteShape:
                     stops=dir_stops,
                 ))
     except Exception as exc:
-        print(f"[BUS_SHAPE] Warning: failed to parse stopGroupings for {route_id}: {exc}")
+        TrackLogger.warning(f"Failed to parse stopGroupings for {route_id}: {exc}", tag="BUS")
         # Continue without direction data — polylines + stops are still valid
 
     # Fallback: if no stopGroupings, split polylines in half as a heuristic
@@ -972,6 +942,6 @@ async def _get_route_shape_impl(route_id: str) -> RouteShape:
     for d in directions:
         d.polylines = _merge_polyline_segments(d.polylines)
 
-    print(f"[BUS_SHAPE] Returning {len(merged_polylines)} merged polylines (from {len(polylines)} raw), "
-          f"{len(stops)} stops, {len(directions)} directions for {route_id}")
+    TrackLogger.bus(f"Shape for {route_id}: {len(merged_polylines)} merged polylines (from {len(polylines)} raw), "
+          f"{len(stops)} stops, {len(directions)} directions")
     return RouteShape(route_id=route_id, polylines=merged_polylines, stops=stops, directions=directions)

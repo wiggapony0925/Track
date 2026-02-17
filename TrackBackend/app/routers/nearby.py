@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import asyncio
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Query
 
@@ -27,6 +27,7 @@ from app.services.station_lookup import get_nearby_stop_ids, get_stop_info
 from app.utils.logger import TrackLogger
 from app.utils.transit_utils import get_subway_color
 from app.services.schedule_service import schedule_service
+from app.services.rail_client import fetch_rail_arrivals
 from app.services.commuter_rail_shapes import (
     get_lirr_route_name,
     get_mnr_route_name,
@@ -160,15 +161,32 @@ _DIRECTION_LABELS: dict[str, str] = {
     "SW": "Southwest",
     "INBOUND": "Inbound",
     "OUTBOUND": "Outbound",
+    "0": "Direction A",
+    "1": "Direction B",
+    "N/A": "All Directions",
+    "LOOP": "Loop",
 }
 
 
-def _direction_label(direction: str) -> str:
+def _direction_label(direction: str, arrivals: list[NearbyTransitArrival] | None = None) -> str:
     """Convert a raw direction code to a human-readable label.
 
     Returns the long-form label for known compass codes (e.g. "N" → "Northbound"),
     or the original string for destination names like "Far Rockaway".
+    
+    For bus DirectionRef values ("0" or "1"), uses the DestinationName from
+    the first arrival in the group as the label.
     """
+    # For bus directions (SIRI DirectionRef: "0" or "1"), use the
+    # destination_name from the first arrival as the human-readable label.
+    if direction in ("0", "1") and arrivals:
+        # Find the first arrival that has a destination set
+        for a in arrivals:
+            if a.destination:
+                return a.destination
+        # Fallback if no destination found
+        return "Direction A" if direction == "0" else "Direction B"
+    
     return _DIRECTION_LABELS.get(direction.upper(), direction)
 
 
@@ -212,7 +230,7 @@ def _group_arrivals(flat: list[NearbyTransitArrival]) -> list[GroupedNearbyTrans
             arrivals.sort(key=lambda a: a.minutes_away)
             directions.append(DirectionArrivals(
                 direction=direction,
-                direction_label=_direction_label(direction),
+                direction_label=_direction_label(direction, arrivals),
                 arrivals=arrivals,
             ))
 
@@ -407,12 +425,24 @@ async def _fetch_nearby_buses(
         # result is a list[BusArrival]
         for arrival in result:
             minutes = _bus_minutes_away(arrival.expected_arrival)
+
+            # Use SIRI DirectionRef for stable direction grouping (0 or 1).
+            # DestinationName is the headsign shown on the bus — used as the
+            # direction_label via destination field.
+            # Fallback chain: DirectionRef → stop compass dir → "Loop"
+            if arrival.direction_ref is not None:
+                direction = str(arrival.direction_ref)  # "0" or "1"
+            elif stop.direction:
+                direction = stop.direction
+            else:
+                direction = "Loop"
+
             results.append(
                 NearbyTransitArrival(
                     route_id=arrival.route_id,
                     stop_name=stop.name,
                     arrival_ts=int(arrival.expected_arrival.timestamp()) if arrival.expected_arrival else None,
-                    direction=stop.direction or "Loop",
+                    direction=direction,
                     minutes_away=minutes,
                     status=arrival.status_text,
                     mode="bus",
@@ -420,7 +450,7 @@ async def _fetch_nearby_buses(
                     stop_lon=stop.lon,
                     stop_id=stop.id,
                     vehicle_id=arrival.vehicle_id,
-                    destination=arrival.status_text # Use status as destination for now
+                    destination=arrival.destination_name or arrival.status_text,
                 )
             )
 
@@ -442,8 +472,6 @@ async def _fetch_nearby_rail(
     lat: float, lon: float, radius: int, agency: str
 ) -> list[NearbyTransitArrival]:
     """Fetch arrivals for LIRR or Metro-North, filtered to nearby stations."""
-    from app.services.rail_client import fetch_rail_arrivals
-    
     results: list[NearbyTransitArrival] = []
     
     # Map agency parameter to the feed name used by rail_client
@@ -469,7 +497,7 @@ async def _fetch_nearby_rail(
         if arrival.station not in nearby_stops:
             continue
             
-        stop_info = get_stop_info(arrival.station)
+        stop_info = get_stop_info(arrival.station, agency=agency)
         
         # Prefix route_id so client can distinguish LIRR "9" from subway "9"
         prefixed_route_id = f"{prefix}{arrival.route_id}"
@@ -498,8 +526,6 @@ def _bus_minutes_away(expected: datetime | None) -> int:
     """Calculate minutes until a bus arrival."""
     if expected is None:
         return 99
-    from datetime import timezone
-
     now = datetime.now(timezone.utc)
     if expected.tzinfo is None:
         expected = expected.replace(tzinfo=timezone.utc)

@@ -9,6 +9,8 @@
 
 from __future__ import annotations
 
+import math
+
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
 
@@ -62,7 +64,6 @@ async def predict_delay(
         factor += 0.2
         reasons.append("snow")
 
-    import math
     adjusted = math.ceil(minutes_away * factor)
     reason = f"Adjusted for {', '.join(reasons)}" if reasons else None
 

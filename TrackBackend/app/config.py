@@ -14,6 +14,8 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from app.utils.transit_utils import resolve_subway_feed_key
+
 _SETTINGS_PATH = Path(__file__).resolve().parent.parent / "settings.json"
 
 
@@ -73,8 +75,6 @@ class Settings(BaseModel):
     api_keys: ApiKeys
     urls: Urls
 
-
-from app.utils.transit_utils import resolve_subway_feed_key
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

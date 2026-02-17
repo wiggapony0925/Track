@@ -7,6 +7,9 @@
 
 from __future__ import annotations
 
+import math
+import time
+
 from fastapi import APIRouter, HTTPException, Query
 
 from app.models import (
@@ -23,6 +26,7 @@ from app.services.data_cleaner import get_arrivals_for_line
 from app.services.subway_shapes import get_all_subway_stations, get_subway_route_shape
 from app.services.station_lookup import get_nearby_stop_ids, get_stop_info
 from app.utils.logger import TrackLogger
+from app.utils.polyline_utils import decode_polyline as _decode_polyline, encode_polyline as _encode_polyline
 from app.utils.transit_utils import (
     clean_route_id,
     get_all_subway_lines,
@@ -174,20 +178,18 @@ async def subway_stations_nearby(
     this endpoint returns only stations within *radius* meters of the
     provided coordinates.  Significantly reduces payload and client work.
     """
-    from math import radians, cos, sqrt
-
     raw_stations = get_all_subway_stations()
-    
+
     # Filter by distance on the server
     nearby: list[SubwayStation] = []
-    lat_rad = radians(lat)
+    lat_rad = math.radians(lat)
     meters_per_deg_lat = 111_000.0
-    meters_per_deg_lon = 111_000.0 * cos(lat_rad)
-    
+    meters_per_deg_lon = 111_000.0 * math.cos(lat_rad)
+
     for s in raw_stations:
         dlat = (s["lat"] - lat) * meters_per_deg_lat
         dlon = (s["lon"] - lon) * meters_per_deg_lon
-        dist = sqrt(dlat * dlat + dlon * dlon)
+        dist = math.sqrt(dlat * dlat + dlon * dlon)
         if dist <= radius:
             nearby.append(SubwayStation(**s))
     
@@ -276,7 +278,6 @@ async def subway_arrivals(line_id: str) -> list[TrackArrival]:
     try:
         arrivals = await get_arrivals_for_line(clean_id)
         # Filter out stale arrivals (already at station or in the past)
-        import time
         now = int(time.time())
         fresh = [a for a in arrivals if a.arrival_ts and a.arrival_ts > now]
         # Recalculate minutes_away from the current time
@@ -290,31 +291,6 @@ async def subway_arrivals(line_id: str) -> list[TrackArrival]:
 # ---------------------------------------------------------------------------
 # Corridor offset computation for system map
 # ---------------------------------------------------------------------------
-
-def _decode_polyline(encoded: str) -> list[tuple[float, float]]:
-    """Decode a Google-encoded polyline back to (lat, lon) tuples."""
-    coords: list[tuple[float, float]] = []
-    index = 0
-    lat = 0
-    lng = 0
-    while index < len(encoded):
-        for is_lng in (False, True):
-            shift = 0
-            result = 0
-            while True:
-                b = ord(encoded[index]) - 63
-                index += 1
-                result |= (b & 0x1F) << shift
-                shift += 5
-                if b < 0x20:
-                    break
-            delta = ~(result >> 1) if (result & 1) else (result >> 1)
-            if is_lng:
-                lng += delta
-            else:
-                lat += delta
-        coords.append((lat / 1e5, lng / 1e5))
-    return coords
 
 
 def _apply_corridor_offsets(
@@ -335,8 +311,6 @@ def _apply_corridor_offsets(
     offset_meters : perpendicular distance between neighbouring lines.
     grid_size : snapping grid in degrees (~33 m at NYC latitude).
     """
-    import math
-
     METERS_PER_DEG_LAT = 111_000.0
     METERS_PER_DEG_LON = 84_300.0  # at ~40.7°N
 
@@ -425,29 +399,3 @@ def _apply_corridor_offsets(
         ))
 
     return result
-
-
-def _encode_polyline(coords: list[tuple[float, float]]) -> str:
-    """Encode a list of (lat, lon) tuples into a Google-encoded polyline string."""
-    encoded: list[str] = []
-    prev_lat = 0
-    prev_lon = 0
-
-    for lat, lon in coords:
-        lat_e5 = round(lat * 1e5)
-        lon_e5 = round(lon * 1e5)
-        _encode_value(lat_e5 - prev_lat, encoded)
-        _encode_value(lon_e5 - prev_lon, encoded)
-        prev_lat = lat_e5
-        prev_lon = lon_e5
-
-    return "".join(encoded)
-
-
-def _encode_value(value: int, result: list[str]) -> None:
-    """Encode a single signed value into Google polyline encoding."""
-    v = ~(value << 1) if value < 0 else (value << 1)
-    while v >= 0x20:
-        result.append(chr(((v & 0x1F) | 0x20) + 63))
-        v >>= 5
-    result.append(chr(v + 63))

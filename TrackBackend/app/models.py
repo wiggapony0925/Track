@@ -78,6 +78,8 @@ class BusArrival(BaseModel):
     expected_arrival: datetime | None = None
     distance_meters: float | None = None
     bearing: float | None = None
+    direction_ref: int | None = None  # SIRI DirectionRef: 0 or 1
+    destination_name: str | None = None  # SIRI DestinationName: e.g. "JAMAICA via BREWER BL"
 
 
 class NearbyTransitArrival(BaseModel):

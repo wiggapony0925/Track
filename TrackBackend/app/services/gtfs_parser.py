@@ -13,6 +13,7 @@ from collections import defaultdict
 from functools import lru_cache
 
 from app.utils.transit_utils import get_subway_color
+from app.utils.logger import TrackLogger
 
 # Path to GTFS data directory
 DEFAULT_DATA_DIR = Path(__file__).parent.parent / "data"
@@ -153,7 +154,12 @@ def generate_bundle() -> Dict[str, Any]:
         all_colors[rid] = color.lstrip('#')
     
     total_branches = sum(len(b) for b in all_routes.values())
-    
+
+    TrackLogger.data(
+        f"GTFS bundle: {len(all_routes)} routes, "
+        f"{total_branches} branches, {len(all_stops)} stops"
+    )
+
     return {
         "version": "3.1",
         "routes": all_routes,

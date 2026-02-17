@@ -8,15 +8,17 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
 from typing import Any
 
 from google.transit import gtfs_realtime_pb2  # type: ignore[import-untyped]
 
-from app.config import get_feed_url
+from app.config import get_feed_url, get_settings
 from app.models import ElevatorStatus, TrackArrival, TransitAlert
 from app.services.mta_client import fetch_json, fetch_protobuf
 from app.services.station_lookup import get_stop_name
+from app.utils.logger import TrackLogger
 
 
 def _minutes_until(epoch: int) -> int:
@@ -34,6 +36,7 @@ async def get_arrivals_for_line(line_id: str) -> list[TrackArrival]:
     """
     url = get_feed_url(line_id)
     if url is None:
+        TrackLogger.warning(f"No feed URL for line_id={line_id}", tag="SUBWAY")
         return []
 
     raw = await fetch_protobuf(url)
@@ -67,11 +70,17 @@ async def get_arrivals_for_line(line_id: str) -> list[TrackArrival]:
                 continue
             minutes = _minutes_until(arrival_time)
             direction = "N" if stu.stop_id.endswith("N") else "S"
+
+            # Resolve station name: try full ID first, then strip N/S suffix
+            resolved_name = get_stop_name(stu.stop_id)
+            if resolved_name == stu.stop_id and len(stu.stop_id) > 1 and stu.stop_id[-1] in "NS":
+                resolved_name = get_stop_name(stu.stop_id[:-1])
+
             arrivals.append(
                 TrackArrival(
                     route_id=route,
                     station=stu.stop_id,
-                    station_name=get_stop_name(stu.stop_id) if get_stop_name(stu.stop_id) != stu.stop_id else get_stop_name(stu.stop_id[:-1]) if len(stu.stop_id) > 1 and stu.stop_id[-1] in "NS" else stu.stop_id,
+                    station_name=resolved_name,
                     direction=direction,
                     destination=destination,
                     minutes_away=minutes,
@@ -82,6 +91,7 @@ async def get_arrivals_for_line(line_id: str) -> list[TrackArrival]:
             )
 
     arrivals.sort(key=lambda a: a.minutes_away)
+    TrackLogger.subway(f"Feed {line_id}: {len(arrivals)} arrivals from {len(feed.entity)} entities")
     return arrivals
 
 
@@ -89,7 +99,8 @@ async def _parse_alert_feed(url: str, mode: str) -> list[TransitAlert]:
     """Parse a single MTA JSON alerts feed and return critical alerts."""
     try:
         data: Any = await fetch_json(url)
-    except Exception:
+    except Exception as exc:
+        TrackLogger.error(f"Failed to fetch {mode} alerts: {exc}", tag="ALERTS")
         return []
 
     alerts: list[TransitAlert] = []
@@ -155,9 +166,6 @@ async def get_alerts(mode: str | None = None) -> list[TransitAlert]:
 
     When *mode* is ``None`` all feeds are fetched concurrently.
     """
-    import asyncio
-    from app.config import get_settings
-
     settings = get_settings()
 
     feed_map: dict[str, str] = {
@@ -180,13 +188,12 @@ async def get_alerts(mode: str | None = None) -> list[TransitAlert]:
     for result in results:
         all_alerts.extend(result)
 
+    TrackLogger.alerts(f"Fetched {len(all_alerts)} alerts across {len(feed_map)} feeds")
     return all_alerts
 
 
 async def get_broken_elevators() -> list[ElevatorStatus]:
     """Fetch the elevator/escalator JSON feed and return out-of-service units."""
-    from app.config import get_settings
-
     settings = get_settings()
     url = settings.urls.elevators_json
     data: Any = await fetch_json(url)
@@ -209,4 +216,5 @@ async def get_broken_elevators() -> list[ElevatorStatus]:
             )
         )
 
+    TrackLogger.data(f"Elevator/escalator outages: {len(results)} out of service")
     return results

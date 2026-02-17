@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from fastapi import FastAPI, Request
@@ -39,12 +40,19 @@ async def startup_event():
     TrackLogger.startup()
 
 
-# Middleware to log every request with color and query params
+# Middleware to log every request with color, query params, and timing
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
+    start = time.perf_counter()
     response = await call_next(request)
+    elapsed_ms = (time.perf_counter() - start) * 1000
     query = f"?{request.url.query}" if request.url.query else ""
-    TrackLogger.request(request.method, f"{request.url.path}{query}", response.status_code)
+    TrackLogger.request(
+        request.method,
+        f"{request.url.path}{query}",
+        response.status_code,
+        elapsed_ms=elapsed_ms,
+    )
     return response
 
 

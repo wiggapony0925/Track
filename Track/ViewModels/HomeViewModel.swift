@@ -995,6 +995,8 @@ final class HomeViewModel {
         walkingRoute = nil
         nearestStopCoordinate = nil
         busVehicles = []
+        trainVehicles = []
+        cachedTrainArrivals = []
         routeShape = nil
         
         selectedRouteId = group.routeId

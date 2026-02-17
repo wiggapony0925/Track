@@ -8,40 +8,47 @@
 from __future__ import annotations
 
 import time
-from typing import Any
+
 from google.transit import gtfs_realtime_pb2  # type: ignore[import-untyped]
 
 from app.config import get_settings
 from app.models import TrackArrival
 from app.services.mta_client import fetch_protobuf
 from app.services.station_lookup import get_stop_name
+from app.utils.logger import TrackLogger
+
+# Known terminal stop_ids for direction inference when direction_id is absent.
+# MNR: Grand Central = "1"; LIRR: Penn Station = "237", Atlantic Terminal = "12"
+_TERMINAL_IDS: frozenset[str] = frozenset({"1", "237", "12"})
+
 
 def _minutes_until(epoch: int) -> int:
     """Return the number of whole minutes from *now* until *epoch*."""
     diff = epoch - int(time.time())
     return max(0, diff // 60)
 
+
 async def fetch_rail_arrivals(agency: str) -> list[TrackArrival]:
     """Fetch & clean arrivals for a rail agency ('lirr' or 'metro_north')."""
     settings = get_settings()
-    
+
     if agency == "lirr":
         url = settings.urls.lirr
     elif agency == "metro_north":
         url = settings.urls.metro_north
     else:
+        TrackLogger.warning(f"Unknown rail agency: {agency}", tag="RAIL")
         return []
 
-    try:
-        raw = await fetch_protobuf(url)
-    except Exception as e:
-        # Re-raise to be caught by the router
-        raise e
+    raw = await fetch_protobuf(url)
 
     feed = gtfs_realtime_pb2.FeedMessage()
     feed.ParseFromString(raw)
 
     arrivals: list[TrackArrival] = []
+
+    # Map feed agency name to station_lookup agency key
+    lookup_agency = "mnr" if agency == "metro_north" else agency
     
     for entity in feed.entity:
         if not entity.HasField("trip_update"):
@@ -54,7 +61,20 @@ async def fetch_rail_arrivals(agency: str) -> list[TrackArrival]:
         destination = "Unknown"
         if trip_update.stop_time_update:
             last_stop_id = trip_update.stop_time_update[-1].stop_id
-            destination = get_stop_name(last_stop_id)
+            destination = get_stop_name(last_stop_id, agency=lookup_agency)
+
+        # Determine direction — prefer GTFS direction_id, infer from
+        # terminal stop_ids when it's absent (e.g. Metro-North feeds).
+        direction = "N/A"
+        if trip_update.trip.HasField("direction_id"):
+            direction = "Outbound" if trip_update.trip.direction_id == 1 else "Inbound"
+        elif trip_update.stop_time_update:
+            first_stop_id = trip_update.stop_time_update[0].stop_id
+            last_stop_id_check = trip_update.stop_time_update[-1].stop_id
+            if first_stop_id in _TERMINAL_IDS:
+                direction = "Outbound"
+            elif last_stop_id_check in _TERMINAL_IDS:
+                direction = "Inbound"
 
         for stu in trip_update.stop_time_update:
             # We want future arrivals
@@ -69,17 +89,11 @@ async def fetch_rail_arrivals(agency: str) -> list[TrackArrival]:
                 
             minutes = _minutes_until(arrival_time)
             
-            # For Rail, usually direction is encoded in trip or stop_id.
-            # GTFS-RT direction_id is often used.
-            direction = "N/A"
-            if trip_update.trip.HasField("direction_id"):
-                direction = "Outbound" if trip_update.trip.direction_id == 1 else "Inbound"
-            
             arrivals.append(
                 TrackArrival(
                     route_id=route_id,
                     station=stu.stop_id,
-                    station_name=get_stop_name(stu.stop_id),
+                    station_name=get_stop_name(stu.stop_id, agency=lookup_agency),
                     direction=direction,
                     destination=destination,
                     minutes_away=minutes,
@@ -91,4 +105,5 @@ async def fetch_rail_arrivals(agency: str) -> list[TrackArrival]:
 
     # Sort by arrival time
     arrivals.sort(key=lambda a: a.arrival_ts)
+    TrackLogger.rail(f"{agency}: {len(arrivals)} arrivals from {len(feed.entity)} entities")
     return arrivals
