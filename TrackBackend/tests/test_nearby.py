@@ -1339,7 +1339,6 @@ class TestSiriCircuitBreakerScope:
             # OBA call via the grouped endpoint — should NOT be blocked
             # because get_nearby_stops uses _fetch_bus_json without is_siri
             with patch("app.routers.nearby.get_nearby_stops", new_callable=AsyncMock) as mock_stops, \
-                 patch("app.routers.nearby.get_realtime_arrivals", new_callable=AsyncMock) as mock_arrivals, \
                  patch("app.routers.nearby._fetch_nearby_subway", new_callable=AsyncMock) as mock_subway, \
                  patch("app.routers.nearby._fetch_nearby_rail", new_callable=AsyncMock) as mock_rail:
                 mock_subway.return_value = []
@@ -1350,7 +1349,6 @@ class TestSiriCircuitBreakerScope:
                         direction="N", route_ids=["MTA NYCT_B63"],
                     ),
                 ]
-                mock_arrivals.return_value = []
 
                 response = client.get("/nearby/grouped?lat=40.70&lon=-73.90")
                 assert response.status_code == 200
@@ -1369,6 +1367,10 @@ class TestSiriCircuitBreakerScope:
     def test_fetch_bus_json_is_siri_flag(self):
         """_fetch_bus_json with is_siri=False should NOT check the circuit
         breaker, while is_siri=True should."""
+        import asyncio
+
+        import httpx
+
         import app.services.bus_client as bc
 
         bc._trip_siri_circuit()
@@ -1376,8 +1378,7 @@ class TestSiriCircuitBreakerScope:
 
         try:
             # is_siri=True → should raise (breaker is open)
-            import asyncio
-            with pytest.raises(Exception, match="circuit breaker"):
+            with pytest.raises(httpx.HTTPStatusError, match="circuit breaker"):
                 asyncio.get_event_loop().run_until_complete(
                     bc._fetch_bus_json(
                         "https://example.com/fake",
