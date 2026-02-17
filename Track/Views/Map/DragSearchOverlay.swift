@@ -27,6 +27,9 @@ struct DragSearchOverlay: View {
     /// Tracks whether the dot has fully appeared (drives the grow-from-center animation).
     @State private var hasAppeared = false
     
+    /// Drives the repeating ripple animation when searching.
+    @State private var rippleActive = false
+    
     var body: some View {
         if isActive {
             ZStack {
@@ -79,12 +82,14 @@ struct DragSearchOverlay: View {
                 Circle()
                     .stroke(Color(red: 0.0, green: 0.48, blue: 1.0).opacity(0.3), lineWidth: 2)
                     .frame(width: 44, height: 44)
-                    .scaleEffect(isSearching ? 1.6 : 1.0)
-                    .opacity(isSearching ? 0.0 : 0.5)
-                    .animation(
-                        .easeOut(duration: 1.2).repeatForever(autoreverses: false),
-                        value: isSearching
-                    )
+                    .scaleEffect(rippleActive ? 1.6 : 1.0)
+                    .opacity(rippleActive ? 0.0 : 0.5)
+                    .onAppear {
+                        withAnimation(.easeOut(duration: 1.2).repeatForever(autoreverses: false)) {
+                            rippleActive = true
+                        }
+                    }
+                    .onDisappear { rippleActive = false }
             }
             
             // Soft accuracy halo
