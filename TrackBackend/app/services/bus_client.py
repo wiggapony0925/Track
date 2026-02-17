@@ -35,6 +35,9 @@ from app.utils.polyline_utils import decode_polyline, encode_polyline
 # Load Route Map (Canonical Source of Truth)
 # ---------------------------------------------------------------------------
 ROUTE_LOOKUP = {}
+# All agency prefixes found in official route IDs (e.g. "MTA NYCT_", "MTABC_").
+# Built dynamically from the JSON so new agencies are automatically supported.
+BUS_AGENCY_PREFIXES: set[str] = set()
 try:
     # Path relative to this file: ../data/early_2026_buses_tag.json
     base_dir = Path(__file__).parent.parent
@@ -54,6 +57,14 @@ try:
                         # Store no-space match (e.g. "Q 9" -> "Q9")
                         ROUTE_LOOKUP[short_name.replace(" ", "")] = official_id
                         ROUTE_LOOKUP[short_name.lower().replace(" ", "")] = official_id
+                        # Collect agency prefix (everything up to and including "_")
+                        if "_" in official_id:
+                            prefix = official_id[: official_id.index("_") + 1]
+                            BUS_AGENCY_PREFIXES.add(prefix)
+
+    # Always include "MTA BUS_" — used by some SIRI/OBA edge cases
+    # even if it doesn't appear in the JSON.
+    BUS_AGENCY_PREFIXES.add("MTA BUS_")
 
 except Exception as e:
     # Log error or silently fail to empty dict (fallback logic will take over)

@@ -21,7 +21,7 @@ from fastapi import APIRouter, Query
 
 from app.config import get_settings
 from app.models import BusStop, DirectionArrivals, GroupedNearbyTransit, NearbyTransitArrival
-from app.services.bus_client import get_nearby_stops, get_realtime_arrivals
+from app.services.bus_client import get_nearby_stops, get_realtime_arrivals, BUS_AGENCY_PREFIXES
 from app.services.data_cleaner import get_arrivals_for_line
 from app.services.station_lookup import get_nearby_stop_ids, get_stop_info
 from app.utils.logger import TrackLogger
@@ -135,16 +135,20 @@ async def _collect_all(
 def _display_name(route_id: str) -> str:
     """Build a user-facing display name for a route_id.
     
-    Strips agency prefixes (``MTA NYCT_``, ``MTABC_``, ``MTA BUS_``)
-    for subway/bus and resolves LIRR/MNR numeric IDs to human-readable
-    branch names.
+    Strips agency prefixes for subway/bus using the data-driven
+    ``BUS_AGENCY_PREFIXES`` set (built from early_2026_buses_tag.json
+    at import time).  This automatically supports any new agency
+    prefix the MTA introduces without code changes.
+    
+    Currently known bus prefixes: ``MTA NYCT_``, ``MTABC_``, ``MTA BUS_``.
+    LIRR/MNR numeric IDs are resolved to human-readable branch names.
     """
-    if route_id.startswith("MTA NYCT_"):
-        return route_id[9:]
-    if route_id.startswith("MTABC_"):
-        return route_id[6:]
-    if route_id.startswith("MTA BUS_"):
-        return route_id[8:]
+    # Bus / subway: strip any known agency prefix
+    for prefix in BUS_AGENCY_PREFIXES:
+        if route_id.startswith(prefix):
+            return route_id[len(prefix):]
+
+    # LIRR / MNR: resolve numeric branch IDs
     if route_id.startswith("LIRR_"):
         numeric = route_id[5:]
         return get_lirr_route_name(numeric)

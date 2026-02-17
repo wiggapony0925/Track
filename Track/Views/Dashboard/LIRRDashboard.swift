@@ -75,7 +75,8 @@ struct LIRRDashboard: View {
                     groups: groupedArrivals,
                     viewModel: viewModel,
                     locationManager: locationManager,
-                    sheetNavigator: sheetNavigator
+                    sheetNavigator: sheetNavigator,
+                    referenceLocation: viewModel.effectiveLocation(userLocation: locationManager.currentLocation)
                 )
             } else if !viewModel.isLoading {
                 if !viewModel.searchText.isEmpty && !viewModel.lirrArrivals.isEmpty {

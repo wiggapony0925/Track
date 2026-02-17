@@ -70,7 +70,8 @@ struct NearbyDashboard: View {
                         groups: nearYou,
                         viewModel: viewModel,
                         locationManager: locationManager,
-                        sheetNavigator: sheetNavigator
+                        sheetNavigator: sheetNavigator,
+                        referenceLocation: refLocation
                     )
                 } else {
                     NearYouSectionHeader(radiusMeters: nearYouRadius, updated: lastUpdated)
@@ -84,7 +85,8 @@ struct NearbyDashboard: View {
                         groups: fartherAway,
                         viewModel: viewModel,
                         locationManager: locationManager,
-                        sheetNavigator: sheetNavigator
+                        sheetNavigator: sheetNavigator,
+                        referenceLocation: refLocation
                     )
                 } else {
                     EmptyTierHint()
@@ -97,7 +99,8 @@ struct NearbyDashboard: View {
                         groups: muchFarther,
                         viewModel: viewModel,
                         locationManager: locationManager,
-                        sheetNavigator: sheetNavigator
+                        sheetNavigator: sheetNavigator,
+                        referenceLocation: refLocation
                     )
                 } else {
                     EmptyTierHint()
@@ -399,6 +402,7 @@ struct GroupedRouteList: View {
     let viewModel: HomeViewModel
     let locationManager: LocationManager
     let sheetNavigator: SheetNavigator
+    var referenceLocation: CLLocation? = nil
     
     var body: some View {
         VStack(spacing: 0) {
@@ -406,7 +410,8 @@ struct GroupedRouteList: View {
                 GroupedRouteRow(
                     group: group,
                     hasAlert: !viewModel.serviceAlerts.matching(routeId: group.routeId).isEmpty
-                        || !viewModel.serviceAlerts.matching(routeId: group.displayName).isEmpty
+                        || !viewModel.serviceAlerts.matching(routeId: group.displayName).isEmpty,
+                    userLocation: referenceLocation
                 ) { directionIndex in
                     RouteAnalyticsManager.shared.logInteraction(routeId: group.routeId)
                     Task {

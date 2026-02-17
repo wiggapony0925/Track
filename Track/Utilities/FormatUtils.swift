@@ -127,6 +127,34 @@ func formatDistanceMiles(_ meters: Double) -> String {
     return String(format: "%.1f mi", miles)
 }
 
+/// Formats a distance in meters using imperial units (feet / miles)
+/// for display on route cards.
+///
+/// Under 528 feet (0.1 mi) shows feet rounded to nearest 10.
+/// Otherwise shows miles with one decimal.
+///
+/// - Parameters:
+///   - meters: Distance in meters.
+///   - suffix: Optional suffix (e.g. "away"). Defaults to empty.
+/// - Returns: e.g. "320 ft", "0.3 mi", "1.2 mi"
+func formatDistanceImperial(_ meters: Double, suffix: String = "") -> String {
+    let feet = metersToFeet(meters)
+    let value: String
+    if feet < 528 {  // 528 ft ≈ 0.1 mi
+        // Round to nearest 10 ft for a clean display
+        let rounded = Int((feet / 10).rounded()) * 10
+        value = "\(max(rounded, 10)) ft"
+    } else {
+        let miles = metersToMiles(meters)
+        if miles < 10 {
+            value = String(format: "%.1f mi", miles)
+        } else {
+            value = String(format: "%.0f mi", miles)
+        }
+    }
+    return suffix.isEmpty ? value : "\(value) \(suffix)"
+}
+
 // MARK: - MTA Route Name
 
 func stripMTAPrefix(_ routeId: String) -> String {

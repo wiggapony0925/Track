@@ -66,7 +66,8 @@ struct BusDashboard: View {
                         groups: nearYou,
                         viewModel: viewModel,
                         locationManager: locationManager,
-                        sheetNavigator: sheetNavigator
+                        sheetNavigator: sheetNavigator,
+                        referenceLocation: refLocation
                     )
                 } else {
                     NearYouSectionHeader(radiusMeters: nearYouRadius, updated: lastUpdated)
@@ -80,7 +81,8 @@ struct BusDashboard: View {
                         groups: fartherAway,
                         viewModel: viewModel,
                         locationManager: locationManager,
-                        sheetNavigator: sheetNavigator
+                        sheetNavigator: sheetNavigator,
+                        referenceLocation: refLocation
                     )
                 } else {
                     EmptyTierHint()
@@ -93,7 +95,8 @@ struct BusDashboard: View {
                         groups: muchFarther,
                         viewModel: viewModel,
                         locationManager: locationManager,
-                        sheetNavigator: sheetNavigator
+                        sheetNavigator: sheetNavigator,
+                        referenceLocation: refLocation
                     )
                 } else {
                     EmptyTierHint()

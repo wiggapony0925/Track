@@ -9,13 +9,21 @@
 //
 
 import SwiftUI
+import CoreLocation
 
 struct GroupedRouteRow: View {
     let group: GroupedNearbyTransitResponse
     var hasAlert: Bool = false
+    var userLocation: CLLocation? = nil
     var onSelect: ((Int) -> Void)? = nil
 
     @State private var currentDirectionIndex = 0
+
+    /// Distance from user to the closest stop in this group (meters).
+    private var closestStopDistance: Double? {
+        guard let loc = userLocation else { return nil }
+        return groupMinDistance(for: group, from: loc)
+    }
 
     var body: some View {
         HStack(spacing: 12) {
@@ -63,14 +71,28 @@ struct GroupedRouteRow: View {
                                     .lineLimit(1)
                                     .minimumScaleFactor(0.9)
                                 
-                                // Show station name for commuter rail & subway
-                                if let stopName = direction.arrivals.first?.stopName,
-                                   !stopName.isEmpty,
-                                   stopName != direction.arrivals.first?.destination {
-                                    Text("at \(stopName)")
-                                        .font(.custom("Helvetica", size: 12))
-                                        .foregroundColor(AppTheme.Colors.textSecondary)
-                                        .lineLimit(1)
+                                // Station name + walking distance
+                                HStack(spacing: 4) {
+                                    if let stopName = direction.arrivals.first?.stopName,
+                                       !stopName.isEmpty,
+                                       stopName != direction.arrivals.first?.destination {
+                                        Text("at \(stopName)")
+                                            .font(.custom("Helvetica", size: 12))
+                                            .foregroundColor(AppTheme.Colors.textSecondary)
+                                            .lineLimit(1)
+                                    }
+                                    
+                                    // Walking distance to closest stop
+                                    if let dist = closestStopDistance,
+                                       dist < Double.greatestFiniteMagnitude {
+                                        HStack(spacing: 2) {
+                                            Image(systemName: "figure.walk")
+                                                .font(.system(size: 9, weight: .medium))
+                                            Text(formatDistanceImperial(dist))
+                                                .font(.custom("Helvetica", size: 11))
+                                        }
+                                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
+                                    }
                                 }
                             }
                             .tag(index)
