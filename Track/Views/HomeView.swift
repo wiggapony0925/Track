@@ -466,22 +466,13 @@ struct HomeView: View {
         dragSearchDebounce?.cancel()
         
         // Mark as actively panning — dims the map and shows "Release to search".
-        // Only clear the settled center if the camera moved significantly from it
-        // (prevents tiny drift/animation from flickering the radius circles).
+        // The radius circles now track currentMapCenter live, so we don't need
+        // to clear dragSearchSettledCenter during panning.
         if isDragSearchActive {
             if !isDragSearchPanning {
                 isDragSearchPanning = true
                 // Give a quick vibration each time the user starts a new pan gesture
                 HapticManager.impact(.light)
-            }
-            
-            if let settled = dragSearchSettledCenter {
-                let settledLoc = CLLocation(latitude: settled.latitude, longitude: settled.longitude)
-                let newLoc = CLLocation(latitude: center.latitude, longitude: center.longitude)
-                if settledLoc.distance(from: newLoc) > 50 {
-                    // User actually panned away — hide radius until re-settled
-                    dragSearchSettledCenter = nil
-                }
             }
         } else {
             // Not yet active — fire a single haptic hint when the user pans

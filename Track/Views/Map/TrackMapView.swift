@@ -70,14 +70,17 @@ struct TrackMapView: View {
             UserAnnotation()
 
             // Search radius circles
-            // During drag-to-search the circles HIDE while panning (to avoid
-            // expensive per-frame redraws) and SNAP into place the instant the
-            // debounce fires and `dragSearchSettledCenter` is set.
+            // During drag-to-search the circles track the live map center
+            // so they move in real-time with the user's pan gesture.
+            // When not drag-searching, they stay at the user's GPS.
             if showSearchRadius {
-                if isDragSearchActive, let settled = dragSearchSettledCenter {
-                    // Settled: show circles at the final search location
+                if isDragSearchActive, let center = currentMapCenter {
+                    // Live-tracking: use the settled center if available,
+                    // otherwise fall back to the current map center so the
+                    // circles follow the pan in real-time with no delay.
+                    let radiusCenter = dragSearchSettledCenter ?? center
                     SearchRadiusOverlay(
-                        center: settled,
+                        center: radiusCenter,
                         nearRadius: nearYouRadius,
                         fartherRadius: fartherAwayRadius,
                         muchFartherRadius: muchFartherAwayRadius
@@ -91,8 +94,6 @@ struct TrackMapView: View {
                         muchFartherRadius: muchFartherAwayRadius
                     )
                 }
-                // While isDragSearchActive && dragSearchSettledCenter == nil
-                // (user is still panning) → nothing renders → no lag
             }
 
             // Bus stop annotations when in bus mode

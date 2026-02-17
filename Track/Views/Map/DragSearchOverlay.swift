@@ -33,13 +33,13 @@ struct DragSearchOverlay: View {
     var body: some View {
         if isActive {
             ZStack {
-                // ── Subtle dim while actively panning ──
-                if isPanning {
-                    Color.black.opacity(0.12)
-                        .ignoresSafeArea()
-                        .allowsHitTesting(false)
-                        .transition(.opacity)
-                }
+                // ── Persistent dim outside the search area ──
+                // Shows a subtle overlay while drag search is active:
+                // slightly stronger while panning, lighter when settled.
+                Color.black.opacity(isPanning ? 0.12 : 0.06)
+                    .ignoresSafeArea()
+                    .allowsHitTesting(false)
+                    .animation(.easeInOut(duration: 0.2), value: isPanning)
                 
                 // ── Blue dot pinned to map's effective center ──
                 // The map has safeAreaPadding(.bottom, 350), which shifts
@@ -60,7 +60,6 @@ struct DragSearchOverlay: View {
                 }
             }
             .transition(.opacity)
-            .animation(.easeInOut(duration: 0.25), value: isPanning)
             .onAppear {
                 // Grow from center — feels like the dot "came out of" the GPS circle
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
