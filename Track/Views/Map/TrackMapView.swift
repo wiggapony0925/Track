@@ -51,10 +51,13 @@ struct TrackMapView: View {
         return AppTheme.Colors.mtaBlue
     }
     
-    /// Dashed stroke style for bus route polylines — visually distinct from subway solid lines.
+    /// Stroke style for bus route polylines — rounded caps for smooth joins.
     private var busRouteStrokeStyle: StrokeStyle {
         StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round)
     }
+    
+    /// Stroke style for subway/rail route polylines — solid with rounded ends.
+    private static let subwayRouteStrokeStyle = StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round)
     
     var body: some View {
         Map(position: $cameraPosition,
@@ -310,8 +313,11 @@ struct TrackMapView: View {
                         MapPolyline(coordinates: coords)
                             .stroke(selectedRouteColor, style: busRouteStrokeStyle)
                     } else {
+                        // White casing behind the colored line for contrast
                         MapPolyline(coordinates: coords)
-                            .stroke(selectedRouteColor, lineWidth: 4)
+                            .stroke(.white.opacity(0.8), style: StrokeStyle(lineWidth: 7, lineCap: .round, lineJoin: .round))
+                        MapPolyline(coordinates: coords)
+                            .stroke(selectedRouteColor, style: Self.subwayRouteStrokeStyle)
                     }
                 }
             } else if !shape.stops.isEmpty {

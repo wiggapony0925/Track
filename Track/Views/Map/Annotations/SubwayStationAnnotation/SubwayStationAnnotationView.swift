@@ -24,15 +24,11 @@ struct SubwayStationMarker: View {
                         .offset(y: -0.5)
                 }
             
-            // Colorful route indicator ring (Subtle)
+            // Subtle route indicator ring — uses a solid stroke
+            // instead of AngularGradient to reduce GPU cost when
+            // rendering hundreds of station markers simultaneously.
             Circle()
-                .stroke(
-                    AngularGradient(
-                        colors: [.red, .blue, .green, .orange, .purple],
-                        center: .center
-                    ),
-                    lineWidth: 1.5
-                )
+                .stroke(Color.gray.opacity(0.4), lineWidth: 1.5)
                 .frame(width: 16, height: 16)
         }
         .accessibilityLabel("Station: \(station.name)")
