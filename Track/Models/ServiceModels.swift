@@ -88,10 +88,67 @@ extension Array where Element == TransitAlert {
     }
     
     /// Alerts matching a specific route ID (checks both `routeId` and `affectedRoutes`).
+    /// Performs case-insensitive **exact** matching only.
+    /// Does NOT do substring/containment matching to prevent cross-mode leaks
+    /// (e.g. an "L" subway alert incorrectly matching "LIRR_9").
     func matching(routeId: String) -> [TransitAlert] {
-        filter { alert in
-            alert.affectedRoutes.contains(routeId) ||
-            alert.routeId == routeId
+        let query = routeId.lowercased()
+        
+        return filter { alert in
+            let alertRoute = (alert.routeId ?? "").lowercased()
+            let affected = alert.affectedRoutes.map { $0.lowercased() }
+            
+            // Exact match (case-insensitive)
+            return alertRoute == query || affected.contains(query)
+        }
+    }
+    
+    /// Alerts matching a specific route within a given transit mode.
+    /// This is the **preferred** method — it first filters to the correct mode,
+    /// then checks route IDs including LIRR_/MNR_ prefix variants so
+    /// "LIRR_9" matches an alert with routeId "9" in mode "lirr" (and vice versa).
+    ///
+    /// This prevents cross-mode leaks:
+    /// - Subway "L" alert will NOT appear on LIRR routes
+    /// - Subway "1" alert will NOT appear on LIRR route "LIRR_1"
+    /// - Bus "B63" alert will NOT appear on subway "B" route
+    func matching(routeId: String, mode: String) -> [TransitAlert] {
+        let query = routeId.lowercased()
+        let queryMode = mode.lowercased()
+        
+        // For LIRR/MNR, also prepare the bare numeric and prefixed forms
+        let bareId: String? = {
+            if query.hasPrefix("lirr_") { return String(query.dropFirst(5)) }
+            if query.hasPrefix("mnr_") { return String(query.dropFirst(4)) }
+            return nil
+        }()
+        let prefixedId: String? = {
+            if queryMode == "lirr" && !query.hasPrefix("lirr_") { return "lirr_\(query)" }
+            if queryMode == "mnr" && !query.hasPrefix("mnr_") { return "mnr_\(query)" }
+            return nil
+        }()
+        
+        return filter { alert in
+            // MUST be the same transit mode — this is the key guard
+            guard alert.mode.lowercased() == queryMode else { return false }
+            
+            let alertRoute = (alert.routeId ?? "").lowercased()
+            let affected = alert.affectedRoutes.map { $0.lowercased() }
+            
+            // Exact match
+            if alertRoute == query || affected.contains(query) { return true }
+            
+            // Stripped prefix: "LIRR_9" query matches alert routeId "9" in lirr mode
+            if let bare = bareId {
+                if alertRoute == bare || affected.contains(bare) { return true }
+            }
+            
+            // Added prefix: "9" query matches alert routeId "LIRR_9" in lirr mode
+            if let pf = prefixedId {
+                if alertRoute == pf || affected.contains(pf) { return true }
+            }
+            
+            return false
         }
     }
     

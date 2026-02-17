@@ -100,10 +100,10 @@ struct RouteDetailSheet: View {
         return group.directions[idx]
     }
     
-    /// Alerts that match this route (by routeId or displayName).
+    /// Alerts that match this route (by routeId or displayName), filtered to the same mode.
     private var routeAlerts: [TransitAlert] {
-        let byId = serviceAlerts.matching(routeId: group.routeId)
-        let byName = serviceAlerts.matching(routeId: group.displayName)
+        let byId = serviceAlerts.matching(routeId: group.routeId, mode: group.mode)
+        let byName = serviceAlerts.matching(routeId: group.displayName, mode: group.mode)
         // Merge without duplicates
         var seen = Set<String>()
         var result: [TransitAlert] = []
