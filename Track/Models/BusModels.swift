@@ -16,6 +16,13 @@ struct BusStop: Identifiable, Codable {
     let lat: Double
     let lon: Double
     let direction: String?
+    /// Fully-qualified route IDs served by this stop (e.g. ["MTA NYCT_B63", "MTABC_Q35"]).
+    var routeIds: [String]? = nil
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, lat, lon, direction
+        case routeIds = "route_ids"
+    }
 }
 
 /// A real-time bus arrival returned by the backend (from the SIRI API).
@@ -33,6 +40,11 @@ struct BusArrival: Identifiable, Codable {
 
     let expectedArrival: Date?
     let distanceMeters: Double?
+    var bearing: Double? = nil
+    /// SIRI DirectionRef: 0 or 1
+    var directionRef: Int? = nil
+    /// SIRI DestinationName: e.g. "JAMAICA via BREWER BL"
+    var destinationName: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case routeId = "route_id"
@@ -42,6 +54,9 @@ struct BusArrival: Identifiable, Codable {
         case status
         case expectedArrival = "expected_arrival"
         case distanceMeters = "distance_meters"
+        case bearing
+        case directionRef = "direction_ref"
+        case destinationName = "destination_name"
     }
 }
 

@@ -22904,3 +22904,554 @@ For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/St
 2026-02-17 07:34:49 [INFO] [HTTP] GET /nearby?lat=40.67495953910619&lon=-73.81262479328213&radius=8047 → 200 (1929.6ms)
 2026-02-17 07:34:49 [INFO] [BUS] Bus routes with only 1 direction (17/30): ['Q2', 'Q111', 'Q115', 'Q4', 'Q76', 'Q77', 'Q5', 'QM63', 'Q60', 'Q85']
 2026-02-17 07:34:49 [INFO] [HTTP] GET /nearby/grouped?lat=40.67495953910619&lon=-73.81262479328213&radius=8047 → 200 (1977.6ms)
+2026-02-17 07:35:17 [INFO] [LOCATION] lat=40.67496, lon=-73.81262 (nearby)
+2026-02-17 07:35:17 [INFO] [TRACK] Found 174 subway stop_ids within 8047m
+2026-02-17 07:35:17 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/lirr%2Fgtfs-lirr
+2026-02-17 07:35:17 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/lirr%2Fgtfs-lirr
+2026-02-17 07:35:17 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-ace
+2026-02-17 07:35:17 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-ace
+2026-02-17 07:35:17 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-g
+2026-02-17 07:35:17 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-g
+2026-02-17 07:35:17 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-nqrw
+2026-02-17 07:35:17 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-nqrw
+2026-02-17 07:35:17 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs
+2026-02-17 07:35:17 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs
+2026-02-17 07:35:17 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-bdfm
+2026-02-17 07:35:17 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-bdfm
+2026-02-17 07:35:17 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-jz
+2026-02-17 07:35:17 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-jz
+2026-02-17 07:35:17 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-l
+2026-02-17 07:35:17 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-l
+2026-02-17 07:35:17 [INFO] [LOCATION] lat=40.67496, lon=-73.81262 (nearby/grouped)
+2026-02-17 07:35:17 [INFO] [TRACK] Found 174 subway stop_ids within 8047m
+2026-02-17 07:35:17 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/lirr%2Fgtfs-lirr
+2026-02-17 07:35:17 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-ace
+2026-02-17 07:35:17 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-g
+2026-02-17 07:35:17 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-nqrw
+2026-02-17 07:35:17 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs
+2026-02-17 07:35:17 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-bdfm
+2026-02-17 07:35:17 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-jz
+2026-02-17 07:35:17 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-l
+2026-02-17 07:35:18 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fsubway-alerts.js
+2026-02-17 07:35:18 [DEBUG] [FEED] Fetching JSON: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fsubway-alerts.json
+2026-02-17 07:35:18 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fbus-alerts.json
+2026-02-17 07:35:18 [DEBUG] [FEED] Fetching JSON: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fbus-alerts.json
+2026-02-17 07:35:18 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Flirr-alerts.json
+2026-02-17 07:35:18 [DEBUG] [FEED] Fetching JSON: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Flirr-alerts.json
+2026-02-17 07:35:18 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fmnr-alerts.json
+2026-02-17 07:35:18 [DEBUG] [FEED] Fetching JSON: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fmnr-alerts.json
+2026-02-17 07:35:18 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fnyct_ene.json
+2026-02-17 07:35:18 [DEBUG] [FEED] Fetching JSON: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fnyct_ene.json
+2026-02-17 07:35:18 [DEBUG] [FEED] Protobuf OK (19842 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-g
+2026-02-17 07:35:18 [INFO] [SUBWAY] Feed G: 422 arrivals from 50 entities
+2026-02-17 07:35:18 [DEBUG] [FEED] Protobuf OK (19842 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-g
+2026-02-17 07:35:18 [INFO] [SUBWAY] Feed G: 422 arrivals from 50 entities
+2026-02-17 07:35:18 [DEBUG] [FEED] Protobuf OK (128486 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-ace
+2026-02-17 07:35:18 [INFO] [SUBWAY] Feed A: 2825 arrivals from 284 entities
+2026-02-17 07:35:18 [DEBUG] [FEED] Protobuf OK (203522 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-bdfm
+2026-02-17 07:35:18 [INFO] [SUBWAY] Feed B: 4673 arrivals from 360 entities
+2026-02-17 07:35:18 [DEBUG] [FEED] Protobuf OK (30756 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-l
+2026-02-17 07:35:18 [INFO] [SUBWAY] Feed L: 560 arrivals from 54 entities
+2026-02-17 07:35:18 [DEBUG] [FEED] Protobuf OK (29425 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-jz
+2026-02-17 07:35:18 [INFO] [SUBWAY] Feed J: 644 arrivals from 66 entities
+2026-02-17 07:35:18 [DEBUG] [FEED] Protobuf OK (144698 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-nqrw
+2026-02-17 07:35:18 [INFO] [SUBWAY] Feed N: 3315 arrivals from 260 entities
+2026-02-17 07:35:18 [DEBUG] [FEED] Protobuf OK (70625 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/lirr%2Fgtfs-lirr
+2026-02-17 07:35:18 [INFO] [RAIL] lirr: 1263 arrivals from 240 entities
+2026-02-17 07:35:18 [DEBUG] [FEED] Protobuf OK (29425 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-jz
+2026-02-17 07:35:18 [INFO] [SUBWAY] Feed J: 644 arrivals from 66 entities
+2026-02-17 07:35:18 [DEBUG] [FEED] JSON OK: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fnyct_ene.json
+2026-02-17 07:35:18 [INFO] [DATA] Elevator/escalator outages: 0 out of service
+2026-02-17 07:35:18 [DEBUG] [FEED] Protobuf OK (30756 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-l
+2026-02-17 07:35:18 [INFO] [SUBWAY] Feed L: 560 arrivals from 54 entities
+2026-02-17 07:35:18 [DEBUG] [FEED] Protobuf OK (70625 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/lirr%2Fgtfs-lirr
+2026-02-17 07:35:18 [INFO] [RAIL] lirr: 1263 arrivals from 240 entities
+2026-02-17 07:35:18 [DEBUG] [FEED] JSON OK: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fbus-alerts.json
+2026-02-17 07:35:18 [DEBUG] [FEED] Protobuf OK (128486 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-ace
+2026-02-17 07:35:18 [INFO] [SUBWAY] Feed A: 2825 arrivals from 284 entities
+2026-02-17 07:35:18 [DEBUG] [FEED] JSON OK: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Flirr-alerts.json
+2026-02-17 07:35:18 [DEBUG] [FEED] JSON OK: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fmnr-alerts.json
+2026-02-17 07:35:18 [INFO] [HTTP] GET /accessibility → 200 (593.1ms)
+2026-02-17 07:35:18 [DEBUG] [FEED] Protobuf OK (225507 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs
+2026-02-17 07:35:18 [INFO] [SUBWAY] Feed 1: 6292 arrivals from 479 entities
+2026-02-17 07:35:18 [INFO] [TRACK] Subway: 7/7 feeds OK, 18731 raw → 1742 kept (nearby)
+2026-02-17 07:35:18 [INFO] [TRACK] Backfilled 4 subway schedule entries for 60 stops
+2026-02-17 07:35:18 [DEBUG] [FEED] Protobuf OK (225507 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs
+2026-02-17 07:35:18 [INFO] [SUBWAY] Feed 1: 6292 arrivals from 479 entities
+2026-02-17 07:35:18 [DEBUG] [FEED] Protobuf OK (203522 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-bdfm
+2026-02-17 07:35:18 [INFO] [SUBWAY] Feed B: 4673 arrivals from 360 entities
+2026-02-17 07:35:18 [DEBUG] [FEED] Protobuf OK (144698 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-nqrw
+2026-02-17 07:35:18 [INFO] [SUBWAY] Feed N: 3315 arrivals from 260 entities
+2026-02-17 07:35:18 [DEBUG] [FEED] JSON OK: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fsubway-alerts.json
+2026-02-17 07:35:18 [INFO] [TRACK] Subway: 7/7 feeds OK, 18731 raw → 1742 kept (nearby)
+2026-02-17 07:35:18 [INFO] [TRACK] Backfilled 4 subway schedule entries for 60 stops
+2026-02-17 07:35:18 [INFO] [ALERTS] Fetched 265 alerts across 4 feeds
+2026-02-17 07:35:18 [INFO] [HTTP] GET /alerts → 200 (1055.0ms)
+2026-02-17 07:35:18 [INFO] [BUS] Bus routes with only 1 direction (15/32): ['B15', 'Q2', 'Q4', 'Q44-SBS', 'Q43', 'Q40', 'Q54', 'Q110', 'Q112', 'Q111']
+2026-02-17 07:35:18 [INFO] [BUS] Bus routes with only 1 direction (15/32): ['B15', 'Q2', 'Q4', 'Q44-SBS', 'Q43', 'Q40', 'Q54', 'Q110', 'Q112', 'Q111']
+2026-02-17 07:35:18 [INFO] [HTTP] GET /nearby/grouped?lat=40.67495953910619&lon=-73.81262479328213&radius=8047 → 200 (1066.0ms)
+2026-02-17 07:35:18 [INFO] [HTTP] GET /nearby?lat=40.67495953910619&lon=-73.81262479328213&radius=8047 → 200 (1454.3ms)
+2026-02-17 07:35:47 [INFO] [LOCATION] lat=40.67496, lon=-73.81262 (nearby/grouped)
+2026-02-17 07:35:47 [INFO] [TRACK] Found 174 subway stop_ids within 8047m
+2026-02-17 07:35:47 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/lirr%2Fgtfs-lirr
+2026-02-17 07:35:47 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/lirr%2Fgtfs-lirr
+2026-02-17 07:35:47 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-ace
+2026-02-17 07:35:47 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-ace
+2026-02-17 07:35:47 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-g
+2026-02-17 07:35:47 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-g
+2026-02-17 07:35:47 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-nqrw
+2026-02-17 07:35:47 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-nqrw
+2026-02-17 07:35:47 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs
+2026-02-17 07:35:47 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs
+2026-02-17 07:35:47 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-bdfm
+2026-02-17 07:35:47 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-bdfm
+2026-02-17 07:35:47 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-jz
+2026-02-17 07:35:47 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-jz
+2026-02-17 07:35:47 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-l
+2026-02-17 07:35:47 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-l
+2026-02-17 07:35:47 [INFO] [LOCATION] lat=40.67496, lon=-73.81262 (nearby)
+2026-02-17 07:35:47 [INFO] [TRACK] Found 174 subway stop_ids within 8047m
+2026-02-17 07:35:47 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/lirr%2Fgtfs-lirr
+2026-02-17 07:35:47 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-ace
+2026-02-17 07:35:47 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-g
+2026-02-17 07:35:47 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-nqrw
+2026-02-17 07:35:47 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs
+2026-02-17 07:35:47 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-bdfm
+2026-02-17 07:35:47 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-jz
+2026-02-17 07:35:47 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-l
+2026-02-17 07:35:48 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fnyct_ene.json
+2026-02-17 07:35:48 [DEBUG] [FEED] Fetching JSON: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fnyct_ene.json
+2026-02-17 07:35:48 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fsubway-alerts.js
+2026-02-17 07:35:48 [DEBUG] [FEED] Fetching JSON: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fsubway-alerts.json
+2026-02-17 07:35:48 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fbus-alerts.json
+2026-02-17 07:35:48 [DEBUG] [FEED] Fetching JSON: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fbus-alerts.json
+2026-02-17 07:35:48 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Flirr-alerts.json
+2026-02-17 07:35:48 [DEBUG] [FEED] Fetching JSON: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Flirr-alerts.json
+2026-02-17 07:35:48 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fmnr-alerts.json
+2026-02-17 07:35:48 [DEBUG] [FEED] Fetching JSON: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fmnr-alerts.json
+2026-02-17 07:35:48 [DEBUG] [FEED] Protobuf OK (29275 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-jz
+2026-02-17 07:35:48 [INFO] [SUBWAY] Feed J: 640 arrivals from 66 entities
+2026-02-17 07:35:48 [DEBUG] [FEED] JSON OK: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fnyct_ene.json
+2026-02-17 07:35:48 [INFO] [DATA] Elevator/escalator outages: 0 out of service
+2026-02-17 07:35:48 [INFO] [HTTP] GET /accessibility → 200 (527.2ms)
+2026-02-17 07:35:48 [DEBUG] [FEED] Protobuf OK (128085 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-ace
+2026-02-17 07:35:48 [INFO] [SUBWAY] Feed A: 2814 arrivals from 284 entities
+2026-02-17 07:35:48 [DEBUG] [FEED] Protobuf OK (145943 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-nqrw
+2026-02-17 07:35:48 [INFO] [SUBWAY] Feed N: 3344 arrivals from 262 entities
+2026-02-17 07:35:48 [DEBUG] [FEED] JSON OK: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fbus-alerts.json
+2026-02-17 07:35:48 [DEBUG] [FEED] JSON OK: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Flirr-alerts.json
+2026-02-17 07:35:48 [DEBUG] [FEED] JSON OK: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fmnr-alerts.json
+2026-02-17 07:35:48 [DEBUG] [FEED] Protobuf OK (30543 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-l
+2026-02-17 07:35:48 [INFO] [SUBWAY] Feed L: 556 arrivals from 54 entities
+2026-02-17 07:35:48 [DEBUG] [FEED] Protobuf OK (21617 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-g
+2026-02-17 07:35:48 [INFO] [SUBWAY] Feed G: 461 arrivals from 54 entities
+2026-02-17 07:35:48 [DEBUG] [FEED] Protobuf OK (29275 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-jz
+2026-02-17 07:35:48 [INFO] [SUBWAY] Feed J: 640 arrivals from 66 entities
+2026-02-17 07:35:48 [DEBUG] [FEED] Protobuf OK (30543 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-l
+2026-02-17 07:35:48 [INFO] [SUBWAY] Feed L: 556 arrivals from 54 entities
+2026-02-17 07:35:48 [DEBUG] [FEED] Protobuf OK (204247 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-bdfm
+2026-02-17 07:35:48 [INFO] [SUBWAY] Feed B: 4688 arrivals from 362 entities
+2026-02-17 07:35:48 [DEBUG] [FEED] Protobuf OK (128085 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-ace
+2026-02-17 07:35:48 [INFO] [SUBWAY] Feed A: 2814 arrivals from 284 entities
+2026-02-17 07:35:48 [DEBUG] [FEED] Protobuf OK (71078 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/lirr%2Fgtfs-lirr
+2026-02-17 07:35:48 [INFO] [RAIL] lirr: 1267 arrivals from 243 entities
+2026-02-17 07:35:48 [DEBUG] [FEED] Protobuf OK (21617 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-g
+2026-02-17 07:35:48 [INFO] [SUBWAY] Feed G: 461 arrivals from 54 entities
+2026-02-17 07:35:48 [DEBUG] [FEED] Protobuf OK (145943 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-nqrw
+2026-02-17 07:35:48 [INFO] [SUBWAY] Feed N: 3344 arrivals from 262 entities
+2026-02-17 07:35:48 [DEBUG] [FEED] Protobuf OK (204247 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-bdfm
+2026-02-17 07:35:48 [INFO] [SUBWAY] Feed B: 4688 arrivals from 362 entities
+2026-02-17 07:35:48 [DEBUG] [FEED] Protobuf OK (224248 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs
+2026-02-17 07:35:48 [INFO] [SUBWAY] Feed 1: 6256 arrivals from 477 entities
+2026-02-17 07:35:48 [DEBUG] [FEED] Protobuf OK (224248 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs
+2026-02-17 07:35:48 [INFO] [SUBWAY] Feed 1: 6256 arrivals from 477 entities
+2026-02-17 07:35:48 [INFO] [TRACK] Subway: 7/7 feeds OK, 18759 raw → 1737 kept (nearby)
+2026-02-17 07:35:48 [INFO] [TRACK] Backfilled 4 subway schedule entries for 60 stops
+2026-02-17 07:35:48 [DEBUG] [FEED] Protobuf OK (71078 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/lirr%2Fgtfs-lirr
+2026-02-17 07:35:48 [INFO] [RAIL] lirr: 1267 arrivals from 243 entities
+2026-02-17 07:35:48 [INFO] [TRACK] Subway: 7/7 feeds OK, 18759 raw → 1737 kept (nearby)
+2026-02-17 07:35:48 [INFO] [TRACK] Backfilled 4 subway schedule entries for 60 stops
+2026-02-17 07:35:48 [DEBUG] [FEED] JSON OK: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fsubway-alerts.json
+2026-02-17 07:35:48 [INFO] [ALERTS] Fetched 265 alerts across 4 feeds
+2026-02-17 07:35:48 [INFO] [HTTP] GET /alerts → 200 (638.5ms)
+2026-02-17 07:35:49 [INFO] [BUS] Bus routes with only 1 direction (15/32): ['B15', 'Q2', 'Q4', 'Q44-SBS', 'Q43', 'Q40', 'Q54', 'Q110', 'Q112', 'Q114']
+2026-02-17 07:35:49 [INFO] [HTTP] GET /nearby/grouped?lat=40.67495953910619&lon=-73.81262479328213&radius=8047 → 200 (1640.2ms)
+2026-02-17 07:35:49 [INFO] [BUS] Bus routes with only 1 direction (15/32): ['B15', 'Q2', 'Q4', 'Q44-SBS', 'Q43', 'Q40', 'Q54', 'Q110', 'Q112', 'Q114']
+2026-02-17 07:35:49 [INFO] [HTTP] GET /nearby?lat=40.67495953910619&lon=-73.81262479328213&radius=8047 → 200 (1807.0ms)
+2026-02-17 07:36:18 [INFO] [LOCATION] lat=40.67496, lon=-73.81257 (nearby)
+2026-02-17 07:36:18 [INFO] [TRACK] Found 687 subway stop_ids within 16093m
+2026-02-17 07:36:18 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/lirr%2Fgtfs-lirr
+2026-02-17 07:36:18 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/lirr%2Fgtfs-lirr
+2026-02-17 07:36:18 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-ace
+2026-02-17 07:36:18 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-ace
+2026-02-17 07:36:18 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-g
+2026-02-17 07:36:18 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-g
+2026-02-17 07:36:18 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-nqrw
+2026-02-17 07:36:18 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-nqrw
+2026-02-17 07:36:18 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs
+2026-02-17 07:36:18 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs
+2026-02-17 07:36:18 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-bdfm
+2026-02-17 07:36:18 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-bdfm
+2026-02-17 07:36:18 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-jz
+2026-02-17 07:36:18 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-jz
+2026-02-17 07:36:18 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-l
+2026-02-17 07:36:18 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-l
+2026-02-17 07:36:18 [INFO] [LOCATION] lat=40.67496, lon=-73.81257 (nearby/grouped)
+2026-02-17 07:36:18 [INFO] [TRACK] Found 687 subway stop_ids within 16093m
+2026-02-17 07:36:18 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/lirr%2Fgtfs-lirr
+2026-02-17 07:36:18 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-ace
+2026-02-17 07:36:18 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-g
+2026-02-17 07:36:18 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-nqrw
+2026-02-17 07:36:18 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs
+2026-02-17 07:36:18 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-bdfm
+2026-02-17 07:36:18 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-jz
+2026-02-17 07:36:18 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-l
+2026-02-17 07:36:18 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fsubway-alerts.js
+2026-02-17 07:36:18 [DEBUG] [FEED] Fetching JSON: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fsubway-alerts.json
+2026-02-17 07:36:18 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fbus-alerts.json
+2026-02-17 07:36:18 [DEBUG] [FEED] Fetching JSON: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fbus-alerts.json
+2026-02-17 07:36:18 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Flirr-alerts.json
+2026-02-17 07:36:18 [DEBUG] [FEED] Fetching JSON: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Flirr-alerts.json
+2026-02-17 07:36:18 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fmnr-alerts.json
+2026-02-17 07:36:18 [DEBUG] [FEED] Fetching JSON: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fmnr-alerts.json
+2026-02-17 07:36:18 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fnyct_ene.json
+2026-02-17 07:36:18 [DEBUG] [FEED] Fetching JSON: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fnyct_ene.json
+2026-02-17 07:36:18 [DEBUG] [FEED] Protobuf OK (30174 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-l
+2026-02-17 07:36:18 [INFO] [SUBWAY] Feed L: 549 arrivals from 54 entities
+2026-02-17 07:36:18 [DEBUG] [FEED] Protobuf OK (127727 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-ace
+2026-02-17 07:36:18 [INFO] [SUBWAY] Feed A: 2804 arrivals from 284 entities
+2026-02-17 07:36:19 [DEBUG] [FEED] Protobuf OK (21508 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-g
+2026-02-17 07:36:19 [INFO] [SUBWAY] Feed G: 458 arrivals from 54 entities
+2026-02-17 07:36:19 [DEBUG] [FEED] Protobuf OK (148643 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-nqrw
+2026-02-17 07:36:19 [INFO] [SUBWAY] Feed N: 3408 arrivals from 266 entities
+2026-02-17 07:36:19 [DEBUG] [FEED] Protobuf OK (71642 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/lirr%2Fgtfs-lirr
+2026-02-17 07:36:19 [INFO] [RAIL] lirr: 1280 arrivals from 245 entities
+2026-02-17 07:36:19 [DEBUG] [FEED] Protobuf OK (203509 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-bdfm
+2026-02-17 07:36:19 [INFO] [SUBWAY] Feed B: 4668 arrivals from 362 entities
+2026-02-17 07:36:19 [DEBUG] [FEED] Protobuf OK (227816 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs
+2026-02-17 07:36:19 [INFO] [SUBWAY] Feed 1: 6399 arrivals from 476 entities
+2026-02-17 07:36:19 [DEBUG] [FEED] JSON OK: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fmnr-alerts.json
+2026-02-17 07:36:19 [DEBUG] [FEED] Protobuf OK (29203 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-jz
+2026-02-17 07:36:19 [INFO] [SUBWAY] Feed J: 638 arrivals from 66 entities
+2026-02-17 07:36:19 [DEBUG] [FEED] JSON OK: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fnyct_ene.json
+2026-02-17 07:36:19 [INFO] [DATA] Elevator/escalator outages: 0 out of service
+2026-02-17 07:36:19 [DEBUG] [FEED] Protobuf OK (71642 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/lirr%2Fgtfs-lirr
+2026-02-17 07:36:19 [INFO] [RAIL] lirr: 1280 arrivals from 245 entities
+2026-02-17 07:36:19 [DEBUG] [FEED] JSON OK: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fbus-alerts.json
+2026-02-17 07:36:19 [DEBUG] [FEED] Protobuf OK (203509 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-bdfm
+2026-02-17 07:36:19 [INFO] [SUBWAY] Feed B: 4668 arrivals from 362 entities
+2026-02-17 07:36:19 [DEBUG] [FEED] Protobuf OK (29203 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-jz
+2026-02-17 07:36:19 [INFO] [SUBWAY] Feed J: 638 arrivals from 66 entities
+2026-02-17 07:36:19 [DEBUG] [FEED] Protobuf OK (227816 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs
+2026-02-17 07:36:19 [INFO] [SUBWAY] Feed 1: 6399 arrivals from 476 entities
+2026-02-17 07:36:19 [DEBUG] [FEED] Protobuf OK (148643 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-nqrw
+2026-02-17 07:36:19 [INFO] [SUBWAY] Feed N: 3408 arrivals from 266 entities
+2026-02-17 07:36:19 [DEBUG] [FEED] JSON OK: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Flirr-alerts.json
+2026-02-17 07:36:19 [DEBUG] [FEED] Protobuf OK (30174 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-l
+2026-02-17 07:36:19 [INFO] [SUBWAY] Feed L: 549 arrivals from 54 entities
+2026-02-17 07:36:19 [DEBUG] [FEED] Protobuf OK (21508 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-g
+2026-02-17 07:36:19 [INFO] [SUBWAY] Feed G: 458 arrivals from 54 entities
+2026-02-17 07:36:19 [DEBUG] [FEED] JSON OK: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fsubway-alerts.json
+2026-02-17 07:36:19 [DEBUG] [FEED] Protobuf OK (127727 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-ace
+2026-02-17 07:36:19 [INFO] [SUBWAY] Feed A: 2804 arrivals from 284 entities
+2026-02-17 07:36:19 [INFO] [TRACK] Subway: 7/7 feeds OK, 18924 raw → 8334 kept (nearby)
+2026-02-17 07:36:20 [INFO] [TRACK] Backfilled 16 subway schedule entries for 234 stops
+2026-02-17 07:36:20 [INFO] [HTTP] GET /accessibility → 200 (2238.9ms)
+2026-02-17 07:36:20 [INFO] [ALERTS] Fetched 265 alerts across 4 feeds
+2026-02-17 07:36:20 [INFO] [TRACK] Subway: 7/7 feeds OK, 18924 raw → 8334 kept (nearby)
+2026-02-17 07:36:20 [INFO] [TRACK] Backfilled 16 subway schedule entries for 234 stops
+2026-02-17 07:36:20 [INFO] [HTTP] GET /alerts → 200 (2318.2ms)
+2026-02-17 07:36:21 [INFO] [BUS] Bus routes with only 1 direction (26/35): ['B6', 'B14', 'B83', 'B82', 'BM2', 'B82-SBS', 'Q112', 'Q2', 'Q83', 'Q4']
+2026-02-17 07:36:21 [INFO] [HTTP] GET /nearby/grouped?lat=40.67496443852312&lon=-73.81257174377635&radius=16093 → 200 (2792.3ms)
+2026-02-17 07:36:21 [INFO] [BUS] Bus routes with only 1 direction (28/37): ['B82', 'B6', 'B15', 'Q56', 'B83', 'B13', 'B17', 'B42', 'B25', 'B103']
+2026-02-17 07:36:21 [INFO] [HTTP] GET /nearby?lat=40.67496443852312&lon=-73.81257174377635&radius=16093 → 200 (3016.8ms)
+2026-02-17 07:36:39 [INFO] [TRACK] Subway shape 'A': 6 polyline(s), 131 stops, 2 directions
+2026-02-17 07:36:39 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-ace
+2026-02-17 07:36:39 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-ace
+2026-02-17 07:36:39 [INFO] [HTTP] GET /subway/shape/A → 200 (43.2ms)
+2026-02-17 07:36:39 [DEBUG] [FEED] Protobuf OK (129007 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-ace
+2026-02-17 07:36:39 [INFO] [SUBWAY] Feed A: 2834 arrivals from 286 entities
+2026-02-17 07:36:39 [INFO] [HTTP] GET /subway/A → 200 (201.6ms)
+2026-02-17 07:36:42 [DEBUG] [CACHE] HIT  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-ace
+2026-02-17 07:36:42 [INFO] [SUBWAY] Feed A: 2834 arrivals from 286 entities
+2026-02-17 07:36:42 [INFO] [HTTP] GET /subway/A → 200 (33.9ms)
+2026-02-17 07:36:45 [DEBUG] [CACHE] HIT  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-ace
+2026-02-17 07:36:45 [INFO] [SUBWAY] Feed A: 2834 arrivals from 286 entities
+2026-02-17 07:36:45 [INFO] [HTTP] GET /subway/A → 200 (31.2ms)
+2026-02-17 07:36:47 [INFO] [LOCATION] lat=40.67496, lon=-73.81257 (nearby)
+2026-02-17 07:36:47 [INFO] [TRACK] Found 687 subway stop_ids within 16093m
+2026-02-17 07:36:47 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/lirr%2Fgtfs-lirr
+2026-02-17 07:36:47 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/lirr%2Fgtfs-lirr
+2026-02-17 07:36:47 [DEBUG] [CACHE] HIT  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-ace
+2026-02-17 07:36:47 [INFO] [SUBWAY] Feed A: 2834 arrivals from 286 entities
+2026-02-17 07:36:47 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-g
+2026-02-17 07:36:47 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-g
+2026-02-17 07:36:47 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-nqrw
+2026-02-17 07:36:47 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-nqrw
+2026-02-17 07:36:47 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs
+2026-02-17 07:36:47 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs
+2026-02-17 07:36:47 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-bdfm
+2026-02-17 07:36:47 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-bdfm
+2026-02-17 07:36:47 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-jz
+2026-02-17 07:36:47 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-jz
+2026-02-17 07:36:47 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-l
+2026-02-17 07:36:47 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-l
+2026-02-17 07:36:48 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fsubway-alerts.js
+2026-02-17 07:36:48 [DEBUG] [FEED] Fetching JSON: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fsubway-alerts.json
+2026-02-17 07:36:48 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fbus-alerts.json
+2026-02-17 07:36:48 [DEBUG] [FEED] Fetching JSON: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fbus-alerts.json
+2026-02-17 07:36:48 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Flirr-alerts.json
+2026-02-17 07:36:48 [DEBUG] [FEED] Fetching JSON: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Flirr-alerts.json
+2026-02-17 07:36:48 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fmnr-alerts.json
+2026-02-17 07:36:48 [DEBUG] [FEED] Fetching JSON: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fmnr-alerts.json
+2026-02-17 07:36:48 [INFO] [LOCATION] lat=40.67496, lon=-73.81257 (nearby/grouped)
+2026-02-17 07:36:48 [INFO] [TRACK] Found 687 subway stop_ids within 16093m
+2026-02-17 07:36:48 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/lirr%2Fgtfs-lirr
+2026-02-17 07:36:48 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fnyct_ene.json
+2026-02-17 07:36:48 [DEBUG] [FEED] Fetching JSON: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fnyct_ene.json
+2026-02-17 07:36:48 [DEBUG] [CACHE] HIT  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-ace
+2026-02-17 07:36:48 [INFO] [SUBWAY] Feed A: 2834 arrivals from 286 entities
+2026-02-17 07:36:48 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-g
+2026-02-17 07:36:48 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-nqrw
+2026-02-17 07:36:48 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs
+2026-02-17 07:36:48 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-bdfm
+2026-02-17 07:36:48 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-jz
+2026-02-17 07:36:48 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-l
+2026-02-17 07:36:48 [DEBUG] [CACHE] HIT  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-ace
+2026-02-17 07:36:48 [INFO] [SUBWAY] Feed A: 2834 arrivals from 286 entities
+2026-02-17 07:36:48 [INFO] [HTTP] GET /subway/A → 200 (81.1ms)
+2026-02-17 07:36:48 [DEBUG] [FEED] JSON OK: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fmnr-alerts.json
+2026-02-17 07:36:48 [DEBUG] [FEED] Protobuf OK (147764 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-nqrw
+2026-02-17 07:36:48 [INFO] [SUBWAY] Feed N: 3389 arrivals from 264 entities
+2026-02-17 07:36:48 [DEBUG] [FEED] JSON OK: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Flirr-alerts.json
+2026-02-17 07:36:48 [DEBUG] [FEED] JSON OK: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fnyct_ene.json
+2026-02-17 07:36:48 [INFO] [DATA] Elevator/escalator outages: 0 out of service
+2026-02-17 07:36:48 [DEBUG] [FEED] Protobuf OK (31272 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-l
+2026-02-17 07:36:48 [INFO] [SUBWAY] Feed L: 569 arrivals from 55 entities
+2026-02-17 07:36:48 [INFO] [HTTP] GET /accessibility → 200 (613.6ms)
+2026-02-17 07:36:48 [DEBUG] [FEED] Protobuf OK (71615 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/lirr%2Fgtfs-lirr
+2026-02-17 07:36:48 [INFO] [RAIL] lirr: 1280 arrivals from 245 entities
+2026-02-17 07:36:48 [DEBUG] [FEED] JSON OK: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fbus-alerts.json
+2026-02-17 07:36:48 [DEBUG] [FEED] Protobuf OK (21434 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-g
+2026-02-17 07:36:48 [INFO] [SUBWAY] Feed G: 456 arrivals from 54 entities
+2026-02-17 07:36:48 [DEBUG] [FEED] Protobuf OK (21434 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-g
+2026-02-17 07:36:48 [INFO] [SUBWAY] Feed G: 456 arrivals from 54 entities
+2026-02-17 07:36:48 [DEBUG] [FEED] Protobuf OK (30333 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-jz
+2026-02-17 07:36:48 [INFO] [SUBWAY] Feed J: 664 arrivals from 68 entities
+2026-02-17 07:36:48 [DEBUG] [FEED] Protobuf OK (31272 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-l
+2026-02-17 07:36:48 [INFO] [SUBWAY] Feed L: 569 arrivals from 55 entities
+2026-02-17 07:36:48 [DEBUG] [FEED] Protobuf OK (202215 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-bdfm
+2026-02-17 07:36:48 [INFO] [SUBWAY] Feed B: 4642 arrivals from 358 entities
+2026-02-17 07:36:48 [DEBUG] [FEED] Protobuf OK (71615 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/lirr%2Fgtfs-lirr
+2026-02-17 07:36:48 [INFO] [RAIL] lirr: 1280 arrivals from 245 entities
+2026-02-17 07:36:48 [DEBUG] [FEED] Protobuf OK (30333 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-jz
+2026-02-17 07:36:48 [INFO] [SUBWAY] Feed J: 664 arrivals from 68 entities
+2026-02-17 07:36:48 [DEBUG] [FEED] JSON OK: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fsubway-alerts.json
+2026-02-17 07:36:48 [DEBUG] [FEED] Protobuf OK (225222 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs
+2026-02-17 07:36:48 [INFO] [SUBWAY] Feed 1: 6280 arrivals from 480 entities
+2026-02-17 07:36:48 [INFO] [ALERTS] Fetched 265 alerts across 4 feeds
+2026-02-17 07:36:48 [INFO] [TRACK] Subway: 7/7 feeds OK, 18834 raw → 8289 kept (nearby)
+2026-02-17 07:36:49 [INFO] [TRACK] Backfilled 16 subway schedule entries for 234 stops
+2026-02-17 07:36:49 [DEBUG] [FEED] Protobuf OK (202215 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-bdfm
+2026-02-17 07:36:49 [INFO] [SUBWAY] Feed B: 4642 arrivals from 358 entities
+2026-02-17 07:36:49 [INFO] [HTTP] GET /alerts → 200 (1841.6ms)
+2026-02-17 07:36:49 [DEBUG] [FEED] Protobuf OK (225222 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs
+2026-02-17 07:36:49 [INFO] [SUBWAY] Feed 1: 6280 arrivals from 480 entities
+2026-02-17 07:36:49 [DEBUG] [FEED] Protobuf OK (147764 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-nqrw
+2026-02-17 07:36:49 [INFO] [SUBWAY] Feed N: 3389 arrivals from 264 entities
+2026-02-17 07:36:49 [INFO] [TRACK] Subway: 7/7 feeds OK, 18834 raw → 8289 kept (nearby)
+2026-02-17 07:36:49 [INFO] [TRACK] Backfilled 16 subway schedule entries for 234 stops
+2026-02-17 07:36:49 [INFO] [BUS] Bus routes with only 1 direction (26/35): ['B6', 'B14', 'B83', 'B82', 'BM2', 'B82-SBS', 'Q112', 'Q2', 'Q83', 'Q4']
+2026-02-17 07:36:49 [INFO] [BUS] Bus routes with only 1 direction (26/35): ['B6', 'B14', 'B83', 'B82', 'BM2', 'B82-SBS', 'Q112', 'Q2', 'Q83', 'Q4']
+2026-02-17 07:36:49 [INFO] [HTTP] GET /nearby?lat=40.67496443852312&lon=-73.81257174377635&radius=16093 → 200 (2363.5ms)
+2026-02-17 07:36:49 [INFO] [HTTP] GET /nearby/grouped?lat=40.67496443852312&lon=-73.81257174377635&radius=16093 → 200 (1957.9ms)
+2026-02-17 07:36:51 [DEBUG] [CACHE] HIT  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-ace
+2026-02-17 07:36:51 [INFO] [SUBWAY] Feed A: 2834 arrivals from 286 entities
+2026-02-17 07:36:51 [INFO] [HTTP] GET /subway/A → 200 (31.4ms)
+2026-02-17 07:39:13 [INFO] [STARTUP] Track backend starting up
+2026-02-17 07:39:13 [INFO] [STARTUP] Log file: /Users/jeffreyfernandez/code/Track/TrackBackend/logs/track.log
+2026-02-17 07:40:08 [INFO] [STARTUP] Track backend starting up
+2026-02-17 07:40:08 [INFO] [STARTUP] Log file: /Users/jeffreyfernandez/code/Track/TrackBackend/logs/track.log
+2026-02-17 07:40:15 [INFO] [STARTUP] Track backend starting up
+2026-02-17 07:40:15 [INFO] [STARTUP] Log file: /Users/jeffreyfernandez/code/Track/TrackBackend/logs/track.log
+2026-02-17 07:42:04 [INFO] [STARTUP] Track backend starting up
+2026-02-17 07:42:04 [INFO] [STARTUP] Log file: /Users/jeffreyfernandez/code/Track/TrackBackend/logs/track.log
+2026-02-17 07:42:16 [INFO] [STARTUP] Track backend starting up
+2026-02-17 07:42:16 [INFO] [STARTUP] Log file: /Users/jeffreyfernandez/code/Track/TrackBackend/logs/track.log
+2026-02-17 07:45:43 [INFO] [STARTUP] Track backend starting up
+2026-02-17 07:45:43 [INFO] [STARTUP] Log file: /Users/jeffreyfernandez/code/Track/TrackBackend/logs/track.log
+2026-02-17 07:46:15 [INFO] [STARTUP] Track backend starting up
+2026-02-17 07:46:15 [INFO] [STARTUP] Log file: /Users/jeffreyfernandez/code/Track/TrackBackend/logs/track.log
+2026-02-17 07:46:31 [INFO] [TRACK] Subway shapes/all: 23 lines, 33 polylines returned
+2026-02-17 07:46:31 [INFO] [HTTP] GET /subway/shapes/all → 200 (210.1ms)
+2026-02-17 07:46:31 [DEBUG] [FEED] Fetching JSON: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fsubway-alerts.json
+2026-02-17 07:46:31 [DEBUG] [HTTP] Created new shared httpx.AsyncClient
+2026-02-17 07:46:31 [DEBUG] [FEED] Fetching JSON: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fbus-alerts.json
+2026-02-17 07:46:31 [DEBUG] [FEED] Fetching JSON: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Flirr-alerts.json
+2026-02-17 07:46:31 [DEBUG] [FEED] Fetching JSON: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fmnr-alerts.json
+2026-02-17 07:46:31 [INFO] [LOCATION] lat=40.67496, lon=-73.81257 (nearby/grouped)
+2026-02-17 07:46:31 [INFO] [DATA] Loaded 1488 stops from subway (stops.txt)
+2026-02-17 07:46:31 [INFO] [DATA] Loaded 217 stops from lirr (stops.txt)
+2026-02-17 07:46:31 [INFO] [DATA] Loaded 151 stops from mnr (stops.txt)
+2026-02-17 07:46:31 [INFO] [DATA] Station lookup ready: 1856 total stop entries
+2026-02-17 07:46:31 [INFO] [TRACK] Found 687 subway stop_ids within 16093m
+2026-02-17 07:46:31 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/lirr%2Fgtfs-lirr
+2026-02-17 07:46:31 [INFO] [LOCATION] lat=40.67496, lon=-73.81257 (nearby)
+2026-02-17 07:46:31 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-ace
+2026-02-17 07:46:31 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-g
+2026-02-17 07:46:31 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-nqrw
+2026-02-17 07:46:31 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs
+2026-02-17 07:46:31 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-bdfm
+2026-02-17 07:46:31 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-jz
+2026-02-17 07:46:31 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-l
+2026-02-17 07:46:31 [INFO] [TRACK] Found 687 subway stop_ids within 16093m
+2026-02-17 07:46:31 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/lirr%2Fgtfs-lirr
+2026-02-17 07:46:31 [DEBUG] [FEED] Fetching JSON: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fnyct_ene.json
+2026-02-17 07:46:31 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-ace
+2026-02-17 07:46:31 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-g
+2026-02-17 07:46:31 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-nqrw
+2026-02-17 07:46:31 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs
+2026-02-17 07:46:31 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-bdfm
+2026-02-17 07:46:31 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-jz
+2026-02-17 07:46:31 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-l
+2026-02-17 07:46:31 [INFO] [TRACK] LIRR shapes: 12 branches loaded
+2026-02-17 07:46:31 [INFO] [HTTP] GET /lirr/shapes/all → 200 (204.8ms)
+2026-02-17 07:46:31 [INFO] [TRACK] MNR shapes: 6 branches loaded
+2026-02-17 07:46:31 [INFO] [HTTP] GET /mnr/shapes/all → 200 (119.8ms)
+2026-02-17 07:46:31 [INFO] [HTTP] GET /subway/stations/all → 200 (3.7ms)
+2026-02-17 07:46:32 [DEBUG] [FEED] JSON OK: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fmnr-alerts.json
+2026-02-17 07:46:32 [DEBUG] [FEED] Protobuf OK (31130 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-jz
+2026-02-17 07:46:32 [INFO] [SUBWAY] Feed J: 681 arrivals from 70 entities
+2026-02-17 07:46:32 [DEBUG] [FEED] Protobuf OK (130610 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-ace
+2026-02-17 07:46:32 [INFO] [SUBWAY] Feed A: 2873 arrivals from 288 entities
+2026-02-17 07:46:32 [DEBUG] [FEED] Protobuf OK (130610 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-ace
+2026-02-17 07:46:32 [INFO] [SUBWAY] Feed A: 2873 arrivals from 288 entities
+2026-02-17 07:46:32 [DEBUG] [FEED] Protobuf OK (32340 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-l
+2026-02-17 07:46:32 [INFO] [SUBWAY] Feed L: 599 arrivals from 57 entities
+2026-02-17 07:46:32 [DEBUG] [FEED] Protobuf OK (68896 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/lirr%2Fgtfs-lirr
+2026-02-17 07:46:32 [INFO] [RAIL] lirr: 1232 arrivals from 237 entities
+2026-02-17 07:46:32 [DEBUG] [FEED] JSON OK: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fbus-alerts.json
+2026-02-17 07:46:32 [DEBUG] [FEED] JSON OK: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Flirr-alerts.json
+2026-02-17 07:46:32 [DEBUG] [FEED] Protobuf OK (32340 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-l
+2026-02-17 07:46:32 [INFO] [SUBWAY] Feed L: 599 arrivals from 57 entities
+2026-02-17 07:46:32 [DEBUG] [FEED] Protobuf OK (68896 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/lirr%2Fgtfs-lirr
+2026-02-17 07:46:32 [INFO] [RAIL] lirr: 1232 arrivals from 237 entities
+2026-02-17 07:46:32 [DEBUG] [FEED] Protobuf OK (21013 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-g
+2026-02-17 07:46:32 [INFO] [SUBWAY] Feed G: 449 arrivals from 52 entities
+2026-02-17 07:46:32 [DEBUG] [FEED] Protobuf OK (240261 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs
+2026-02-17 07:46:32 [INFO] [SUBWAY] Feed 1: 6729 arrivals from 511 entities
+2026-02-17 07:46:32 [DEBUG] [FEED] JSON OK: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fsubway-alerts.json
+2026-02-17 07:46:32 [DEBUG] [FEED] JSON OK: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fnyct_ene.json
+2026-02-17 07:46:32 [INFO] [DATA] Elevator/escalator outages: 0 out of service
+2026-02-17 07:46:32 [DEBUG] [FEED] Protobuf OK (21013 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-g
+2026-02-17 07:46:32 [INFO] [SUBWAY] Feed G: 449 arrivals from 52 entities
+2026-02-17 07:46:32 [INFO] [ALERTS] Fetched 266 alerts across 4 feeds
+2026-02-17 07:46:32 [INFO] [HTTP] GET /accessibility → 200 (509.9ms)
+2026-02-17 07:46:32 [DEBUG] [FEED] Protobuf OK (31130 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-jz
+2026-02-17 07:46:32 [INFO] [SUBWAY] Feed J: 681 arrivals from 70 entities
+2026-02-17 07:46:32 [INFO] [HTTP] GET /alerts → 200 (572.4ms)
+2026-02-17 07:46:32 [DEBUG] [FEED] Protobuf OK (147631 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-nqrw
+2026-02-17 07:46:32 [INFO] [SUBWAY] Feed N: 3376 arrivals from 268 entities
+2026-02-17 07:46:32 [DEBUG] [FEED] Protobuf OK (202300 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-bdfm
+2026-02-17 07:46:32 [INFO] [SUBWAY] Feed B: 4649 arrivals from 356 entities
+2026-02-17 07:46:32 [DEBUG] [FEED] Protobuf OK (147631 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-nqrw
+2026-02-17 07:46:32 [INFO] [SUBWAY] Feed N: 3376 arrivals from 268 entities
+2026-02-17 07:46:32 [DEBUG] [FEED] Protobuf OK (202300 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-bdfm
+2026-02-17 07:46:32 [INFO] [SUBWAY] Feed B: 4649 arrivals from 356 entities
+2026-02-17 07:46:32 [DEBUG] [FEED] Protobuf OK (240261 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs
+2026-02-17 07:46:32 [INFO] [SUBWAY] Feed 1: 6729 arrivals from 511 entities
+2026-02-17 07:46:32 [INFO] [TRACK] Subway: 7/7 feeds OK, 19356 raw → 8474 kept (nearby)
+2026-02-17 07:46:33 [INFO] [TRACK] Backfilled 16 subway schedule entries for 234 stops
+2026-02-17 07:46:33 [INFO] [TRACK] Subway: 7/7 feeds OK, 19356 raw → 8474 kept (nearby)
+2026-02-17 07:46:33 [INFO] [TRACK] Backfilled 16 subway schedule entries for 234 stops
+2026-02-17 07:46:35 [INFO] [BUS] Bus routes with only 1 direction (42/67): ['B14', 'B6', 'B84', 'B60', 'B83', 'Q56', 'B82-SBS', 'B103', 'Q27', 'Q42']
+2026-02-17 07:46:35 [INFO] [HTTP] GET /nearby/grouped?lat=40.67496443852312&lon=-73.81257174377635&radius=16093 → 200 (4229.8ms)
+2026-02-17 07:46:35 [INFO] [BUS] Bus routes with only 1 direction (52/76): ['B6', 'B84', 'B20', 'B13', 'B83', 'B14', 'Q24', 'B60', 'Q36', 'Q2']
+2026-02-17 07:46:35 [INFO] [HTTP] GET /nearby?lat=40.67496443852312&lon=-73.81257174377635&radius=16093 → 200 (4199.8ms)
+2026-02-17 07:47:00 [INFO] [LOCATION] lat=40.67496, lon=-73.81257 (nearby)
+2026-02-17 07:47:00 [INFO] [TRACK] Found 687 subway stop_ids within 16093m
+2026-02-17 07:47:00 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/lirr%2Fgtfs-lirr
+2026-02-17 07:47:00 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/lirr%2Fgtfs-lirr
+2026-02-17 07:47:00 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-ace
+2026-02-17 07:47:00 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-ace
+2026-02-17 07:47:00 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-g
+2026-02-17 07:47:00 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-g
+2026-02-17 07:47:00 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-nqrw
+2026-02-17 07:47:00 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-nqrw
+2026-02-17 07:47:00 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs
+2026-02-17 07:47:00 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs
+2026-02-17 07:47:00 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-bdfm
+2026-02-17 07:47:00 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-bdfm
+2026-02-17 07:47:00 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-jz
+2026-02-17 07:47:00 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-jz
+2026-02-17 07:47:00 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-l
+2026-02-17 07:47:00 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-l
+2026-02-17 07:47:01 [INFO] [LOCATION] lat=40.67496, lon=-73.81257 (nearby/grouped)
+2026-02-17 07:47:01 [INFO] [TRACK] Found 687 subway stop_ids within 16093m
+2026-02-17 07:47:01 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/lirr%2Fgtfs-lirr
+2026-02-17 07:47:01 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fnyct_ene.json
+2026-02-17 07:47:01 [DEBUG] [FEED] Fetching JSON: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fnyct_ene.json
+2026-02-17 07:47:01 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-ace
+2026-02-17 07:47:01 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-g
+2026-02-17 07:47:01 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-nqrw
+2026-02-17 07:47:01 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs
+2026-02-17 07:47:01 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-bdfm
+2026-02-17 07:47:01 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-jz
+2026-02-17 07:47:01 [DEBUG] [FEED] Fetching protobuf: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-l
+2026-02-17 07:47:02 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fsubway-alerts.js
+2026-02-17 07:47:02 [DEBUG] [FEED] Fetching JSON: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fsubway-alerts.json
+2026-02-17 07:47:02 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fbus-alerts.json
+2026-02-17 07:47:02 [DEBUG] [FEED] Fetching JSON: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fbus-alerts.json
+2026-02-17 07:47:02 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Flirr-alerts.json
+2026-02-17 07:47:02 [DEBUG] [FEED] Fetching JSON: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Flirr-alerts.json
+2026-02-17 07:47:02 [DEBUG] [CACHE] EXPIRED  https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fmnr-alerts.json
+2026-02-17 07:47:02 [DEBUG] [FEED] Fetching JSON: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fmnr-alerts.json
+2026-02-17 07:47:02 [DEBUG] [FEED] Protobuf OK (130024 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-ace
+2026-02-17 07:47:02 [INFO] [SUBWAY] Feed A: 2857 arrivals from 288 entities
+2026-02-17 07:47:02 [DEBUG] [FEED] Protobuf OK (30912 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-jz
+2026-02-17 07:47:02 [INFO] [SUBWAY] Feed J: 675 arrivals from 70 entities
+2026-02-17 07:47:02 [DEBUG] [FEED] Protobuf OK (149215 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-nqrw
+2026-02-17 07:47:02 [INFO] [SUBWAY] Feed N: 3414 arrivals from 270 entities
+2026-02-17 07:47:02 [DEBUG] [FEED] Protobuf OK (32032 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-l
+2026-02-17 07:47:02 [INFO] [SUBWAY] Feed L: 593 arrivals from 57 entities
+2026-02-17 07:47:02 [DEBUG] [FEED] Protobuf OK (32032 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-l
+2026-02-17 07:47:02 [INFO] [SUBWAY] Feed L: 593 arrivals from 57 entities
+2026-02-17 07:47:02 [DEBUG] [FEED] JSON OK: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fnyct_ene.json
+2026-02-17 07:47:02 [INFO] [DATA] Elevator/escalator outages: 0 out of service
+2026-02-17 07:47:02 [DEBUG] [FEED] Protobuf OK (30912 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-jz
+2026-02-17 07:47:02 [INFO] [SUBWAY] Feed J: 675 arrivals from 70 entities
+2026-02-17 07:47:02 [INFO] [HTTP] GET /accessibility → 200 (951.3ms)
+2026-02-17 07:47:02 [DEBUG] [FEED] Protobuf OK (68295 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/lirr%2Fgtfs-lirr
+2026-02-17 07:47:02 [INFO] [RAIL] lirr: 1218 arrivals from 236 entities
+2026-02-17 07:47:02 [DEBUG] [FEED] Protobuf OK (130024 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-ace
+2026-02-17 07:47:02 [INFO] [SUBWAY] Feed A: 2857 arrivals from 288 entities
+2026-02-17 07:47:02 [DEBUG] [FEED] Protobuf OK (201153 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-bdfm
+2026-02-17 07:47:02 [INFO] [SUBWAY] Feed B: 4618 arrivals from 356 entities
+2026-02-17 07:47:02 [DEBUG] [FEED] Protobuf OK (20865 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-g
+2026-02-17 07:47:02 [INFO] [SUBWAY] Feed G: 445 arrivals from 52 entities
+2026-02-17 07:47:02 [DEBUG] [FEED] Protobuf OK (149215 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-nqrw
+2026-02-17 07:47:02 [INFO] [SUBWAY] Feed N: 3414 arrivals from 270 entities
+2026-02-17 07:47:02 [DEBUG] [FEED] Protobuf OK (201153 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-bdfm
+2026-02-17 07:47:02 [INFO] [SUBWAY] Feed B: 4618 arrivals from 356 entities
+2026-02-17 07:47:02 [DEBUG] [FEED] Protobuf OK (238941 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs
+2026-02-17 07:47:02 [INFO] [SUBWAY] Feed 1: 6691 arrivals from 509 entities
+2026-02-17 07:47:02 [DEBUG] [FEED] Protobuf OK (238941 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs
+2026-02-17 07:47:02 [INFO] [SUBWAY] Feed 1: 6691 arrivals from 509 entities
+2026-02-17 07:47:02 [DEBUG] [FEED] Protobuf OK (20865 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-g
+2026-02-17 07:47:02 [INFO] [SUBWAY] Feed G: 445 arrivals from 52 entities
+2026-02-17 07:47:02 [DEBUG] [FEED] JSON OK: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fmnr-alerts.json
+2026-02-17 07:47:02 [INFO] [TRACK] Subway: 7/7 feeds OK, 19293 raw → 8440 kept (nearby)
+2026-02-17 07:47:03 [INFO] [TRACK] Backfilled 16 subway schedule entries for 234 stops
+2026-02-17 07:47:03 [INFO] [TRACK] Subway: 7/7 feeds OK, 19293 raw → 8440 kept (nearby)
+2026-02-17 07:47:03 [INFO] [TRACK] Backfilled 16 subway schedule entries for 234 stops
+2026-02-17 07:47:03 [DEBUG] [FEED] JSON OK: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fsubway-alerts.json
+2026-02-17 07:47:03 [DEBUG] [FEED] JSON OK: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fbus-alerts.json
+2026-02-17 07:47:03 [DEBUG] [FEED] JSON OK: https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Flirr-alerts.json
+2026-02-17 07:47:03 [DEBUG] [FEED] Protobuf OK (68295 bytes): https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/lirr%2Fgtfs-lirr
+2026-02-17 07:47:03 [INFO] [RAIL] lirr: 1218 arrivals from 236 entities
+2026-02-17 07:47:03 [INFO] [ALERTS] Fetched 266 alerts across 4 feeds
+2026-02-17 07:47:03 [INFO] [HTTP] GET /alerts → 200 (2350.6ms)
+2026-02-17 07:47:03 [INFO] [BUS] Bus routes with only 1 direction (41/66): ['B14', 'B6', 'B84', 'B60', 'B83', 'Q56', 'B82-SBS', 'B103', 'Q27', 'Q42']
+2026-02-17 07:47:03 [INFO] [BUS] Bus routes with only 1 direction (41/66): ['B14', 'B6', 'B84', 'B60', 'B83', 'Q56', 'B82-SBS', 'B103', 'Q27', 'Q42']
+2026-02-17 07:47:03 [INFO] [HTTP] GET /nearby?lat=40.67496443852312&lon=-73.81257174377635&radius=16093 → 200 (3133.7ms)
+2026-02-17 07:47:03 [INFO] [HTTP] GET /nearby/grouped?lat=40.67496443852312&lon=-73.81257174377635&radius=16093 → 200 (2385.2ms)

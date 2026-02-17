@@ -464,7 +464,15 @@ async def _fetch_nearby_buses(
     # -----------------------------------------------------------------
     # 1. Fetch live SIRI arrivals for every nearby stop
     # -----------------------------------------------------------------
-    tasks = [get_realtime_arrivals(stop.id) for stop in stops[: settings.app_settings.max_nearby_results]]
+    # Query ALL nearby stops (not truncated by max_nearby_results) so that
+    # both directions of a route are captured even when the opposite-direction
+    # stop is farther away in the sorted list.
+    # Safety cap at 80 stops to avoid hammering the MTA API in extremely
+    # dense areas; 80 is generous enough to cover both sides of a street
+    # for all routes in the search radius.
+    _MAX_SIRI_STOPS = 80
+    stops_to_query = stops[:_MAX_SIRI_STOPS]
+    tasks = [get_realtime_arrivals(stop.id) for stop in stops_to_query]
     stop_results = await asyncio.gather(*tasks, return_exceptions=True)
 
     # Track which route IDs already have live data
@@ -473,7 +481,7 @@ async def _fetch_nearby_buses(
     fail_count = 0
     first_error: Exception | None = None
     for i, result in enumerate(stop_results):
-        stop = stops[i]
+        stop = stops_to_query[i]
         if isinstance(result, Exception):
             fail_count += 1
             if first_error is None:
@@ -566,7 +574,7 @@ async def _fetch_nearby_buses(
 
     # Phase A: routes with zero live data — create one placeholder per route
     missing_routes: dict[str, tuple[BusStop, str]] = {}
-    for stop in stops[: settings.app_settings.max_nearby_results]:
+    for stop in stops:
         for rid in stop.route_ids:
             short = _display_name(rid)
             # Skip if we already have live data for this route
@@ -625,7 +633,7 @@ async def _fetch_nearby_buses(
         live_stop_ids_per_route[r.route_id].add(r.stop_id)
 
     opposite_backfill = 0
-    for stop in stops[: settings.app_settings.max_nearby_results]:
+    for stop in stops:
         for rid in stop.route_ids:
             short = _display_name(rid)
             # Only consider routes that DO have some live data already

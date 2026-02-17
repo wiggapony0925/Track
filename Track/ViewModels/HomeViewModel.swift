@@ -194,42 +194,59 @@ final class HomeViewModel {
         
         return byRoute.map { routeId, arrivals in
             let displayName = stripMTAPrefix(routeId)
-            // Convert BusArrival → NearbyTransitResponse for the grouped model
-            let nearbyArrivals = arrivals.map { bus -> NearbyTransitResponse in
-                let minutesAway: Int
-                if let expected = bus.expectedArrival {
-                    minutesAway = max(0, Int(expected.timeIntervalSinceNow / 60))
+            
+            // Sub-group by direction using the SIRI destination name (mirrors backend logic).
+            // Fallback chain: destinationName → directionRef → stop compass → "Loop"
+            var byDirection: [String: [BusArrival]] = [:]
+            for bus in arrivals {
+                let dirKey: String
+                if let dest = bus.destinationName, !dest.isEmpty {
+                    dirKey = dest
+                } else if let dirRef = bus.directionRef {
+                    dirKey = String(dirRef)
                 } else {
-                    minutesAway = 0
+                    dirKey = stop.direction ?? "Loop"
                 }
-                return NearbyTransitResponse(
-                    routeId: bus.routeId,
-                    stopName: stop.name,
-                    direction: stop.direction ?? "Loop",
-                    destination: bus.statusText,
-                    minutesAway: minutesAway,
-                    status: bus.status,
-                    mode: "bus",
-                    stopLat: stop.lat,
-                    stopLon: stop.lon,
-                    arrivalTs: bus.expectedArrival.map { Int($0.timeIntervalSince1970) },
-                    vehicleId: bus.vehicleId,
-                    tripId: nil,
-                    stopId: bus.stopId
-                )
+                byDirection[dirKey, default: []].append(bus)
             }
+            
+            let directions = byDirection.map { dirKey, dirArrivals -> DirectionArrivalsResponse in
+                let nearbyArrivals = dirArrivals.map { bus -> NearbyTransitResponse in
+                    let minutesAway: Int
+                    if let expected = bus.expectedArrival {
+                        minutesAway = max(0, Int(expected.timeIntervalSinceNow / 60))
+                    } else {
+                        minutesAway = 0
+                    }
+                    return NearbyTransitResponse(
+                        routeId: bus.routeId,
+                        stopName: stop.name,
+                        direction: dirKey,
+                        destination: bus.destinationName ?? bus.statusText,
+                        minutesAway: minutesAway,
+                        status: bus.status,
+                        mode: "bus",
+                        stopLat: stop.lat,
+                        stopLon: stop.lon,
+                        arrivalTs: bus.expectedArrival.map { Int($0.timeIntervalSince1970) },
+                        vehicleId: bus.vehicleId,
+                        tripId: nil,
+                        stopId: bus.stopId
+                    )
+                }.sorted { $0.minutesAway < $1.minutesAway }
+                
+                return DirectionArrivalsResponse(
+                    direction: dirKey,
+                    arrivals: nearbyArrivals
+                )
+            }.sorted { $0.direction < $1.direction }
             
             return GroupedNearbyTransitResponse(
                 routeId: routeId,
                 displayName: displayName,
                 mode: "bus",
                 colorHex: nil,
-                directions: [
-                    DirectionArrivalsResponse(
-                        direction: stop.direction ?? "Loop",
-                        arrivals: nearbyArrivals.sorted { $0.minutesAway < $1.minutesAway }
-                    )
-                ]
+                directions: directions
             )
         }.sorted { $0.soonestMinutes < $1.soonestMinutes }
     }
