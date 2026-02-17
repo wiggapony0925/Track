@@ -58,39 +58,59 @@ struct SettingsContentView: View {
                     // Transit Preferences Section
                     settingsSection(title: "Transit Preferences", icon: "slider.horizontal.3", iconColor: AppTheme.Colors.mtaBlue) {
                         VStack(spacing: 0) {
-                            // "Near You" radius slider
+                            // Minimum gap between adjacent rings so they stay meaningfully distinct.
+                            let minGap: Double = 400
+                            
+                            // Absolute floor / ceiling for the outermost ring limits.
+                            let nearFloor: Double = 400
+                            let muchCeiling: Double = 16093
+                            
+                            // Dynamic slider ranges — each slider is bounded by its neighbors
+                            // so it's physically impossible to drag Near above Farther, etc.
+                            // IMPORTANT: Every range must satisfy lower < upper to avoid
+                            // "Fatal error: max stride must be positive" in Slider.
+                            let nearLo: Double = nearFloor
+                            let nearHi: Double = max(nearFloor + 100, fartherAwayRadius - minGap)
+                            
+                            let farLo: Double  = max(nearFloor + minGap, nearYouRadius + minGap)
+                            let farHi: Double  = max(farLo + 200, muchFartherAwayRadius - minGap)
+                            
+                            let muchLo: Double = max(nearFloor + 2 * minGap, fartherAwayRadius + minGap)
+                            let muchHi: Double = max(muchLo + 500, muchCeiling)
+                            
+                            // "Near You" radius slider — always the smallest
                             radiusRow(
                                 icon: "location.fill",
                                 iconColor: AppTheme.Colors.successGreen,
                                 title: "Near You",
                                 value: $nearYouRadius,
-                                range: 400...4023,
+                                range: nearLo...nearHi,
                                 step: 100,
                                 color: AppTheme.Colors.successGreen
                             )
                             
                             settingsDivider
                             
-                            // "Farther Away" radius slider
+                            // "Farther Away" radius slider — always between Near and Much
                             radiusRow(
                                 icon: "figure.walk",
                                 iconColor: AppTheme.Colors.mtaBlue,
                                 title: "A Bit Farther",
                                 value: $fartherAwayRadius,
-                                range: 1600...8047,
+                                range: farLo...farHi,
                                 step: 200,
                                 color: AppTheme.Colors.mtaBlue
                             )
                             
                             settingsDivider
                             
-                            // "Much Farther Away" radius slider
+                            // "Much Farther Away" radius slider — always the largest
                             radiusRow(
                                 icon: "car.fill",
                                 iconColor: AppTheme.Colors.warningYellow,
                                 title: "Much Farther",
                                 value: $muchFartherAwayRadius,
-                                range: 4000...16093,
+                                range: muchLo...muchHi,
                                 step: 500,
                                 color: AppTheme.Colors.warningYellow
                             )
@@ -143,32 +163,6 @@ struct SettingsContentView: View {
                             }
                             .padding(.horizontal, AppTheme.Layout.cardPadding)
                             .padding(.vertical, 10)
-                        }
-                        // Enforce strict ring ordering: Near < Farther < Much Farther
-                        // Minimum gap of 200m between rings so they're meaningfully distinct
-                        .onChange(of: nearYouRadius) { _, newValue in
-                            let minGap: Double = 200
-                            if fartherAwayRadius < newValue + minGap {
-                                fartherAwayRadius = min(newValue + minGap, 8047)
-                            }
-                            if muchFartherAwayRadius < fartherAwayRadius + minGap {
-                                muchFartherAwayRadius = min(fartherAwayRadius + minGap, 16093)
-                            }
-                        }
-                        .onChange(of: fartherAwayRadius) { _, newValue in
-                            let minGap: Double = 200
-                            if newValue < nearYouRadius + minGap {
-                                fartherAwayRadius = nearYouRadius + minGap
-                            }
-                            if muchFartherAwayRadius < fartherAwayRadius + minGap {
-                                muchFartherAwayRadius = min(fartherAwayRadius + minGap, 16093)
-                            }
-                        }
-                        .onChange(of: muchFartherAwayRadius) { _, newValue in
-                            let minGap: Double = 200
-                            if newValue < fartherAwayRadius + minGap {
-                                muchFartherAwayRadius = fartherAwayRadius + minGap
-                            }
                         }
                     }
                     
@@ -385,6 +379,34 @@ struct SettingsContentView: View {
                 await SyncManager.shared.pushUserSettings()
             }
         }
+        // MARK: - Auto-clamp: Near < Farther < Much (always, with 400m gap)
+        .onChange(of: nearYouRadius) { _, newValue in
+            let gap: Double = 400
+            if fartherAwayRadius < newValue + gap {
+                fartherAwayRadius = newValue + gap
+            }
+            if muchFartherAwayRadius < fartherAwayRadius + gap {
+                muchFartherAwayRadius = fartherAwayRadius + gap
+            }
+        }
+        .onChange(of: fartherAwayRadius) { _, newValue in
+            let gap: Double = 400
+            if nearYouRadius > newValue - gap {
+                nearYouRadius = newValue - gap
+            }
+            if muchFartherAwayRadius < newValue + gap {
+                muchFartherAwayRadius = newValue + gap
+            }
+        }
+        .onChange(of: muchFartherAwayRadius) { _, newValue in
+            let gap: Double = 400
+            if fartherAwayRadius > newValue - gap {
+                fartherAwayRadius = newValue - gap
+            }
+            if nearYouRadius > fartherAwayRadius - gap {
+                nearYouRadius = fartherAwayRadius - gap
+            }
+        }
     }
     
     /// A combined hash of all synced settings so we can detect any change
@@ -470,6 +492,9 @@ struct SettingsContentView: View {
     }
     
     /// Radius slider row
+    ///
+    /// Contains a safety clamp so Slider never receives a range where
+    /// `lowerBound >= upperBound` (which causes "max stride must be positive" crash).
     private func radiusRow(
         icon: String,
         iconColor: Color,
@@ -479,7 +504,13 @@ struct SettingsContentView: View {
         step: Double,
         color: Color
     ) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        // Safety: guarantee lowerBound < upperBound and step fits within span
+        let lo = range.lowerBound
+        let hi = max(range.upperBound, lo + step)
+        let safeRange = lo...hi
+        let safeStep  = min(step, hi - lo)
+
+        return VStack(alignment: .leading, spacing: 8) {
             HStack {
                 settingsIcon(icon, color: iconColor)
                 Text(title)
@@ -495,7 +526,7 @@ struct SettingsContentView: View {
                     .clipShape(Capsule())
             }
             
-            Slider(value: value, in: range, step: step)
+            Slider(value: value, in: safeRange, step: safeStep)
                 .tint(color)
                 .padding(.leading, 36)
         }

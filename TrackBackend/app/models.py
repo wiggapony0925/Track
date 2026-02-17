@@ -65,6 +65,7 @@ class BusStop(BaseModel):
     lat: float
     lon: float
     direction: str | None = None
+    route_ids: list[str] = []  # Fully-qualified route IDs served by this stop
 
 
 class BusArrival(BaseModel):

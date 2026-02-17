@@ -102,19 +102,32 @@ struct GroupedRouteRow: View {
             if !group.directions.isEmpty {
                 let currentDir = group.directions[min(currentDirectionIndex, group.directions.count - 1)]
                 if let first = currentDir.arrivals.first {
-                    HStack(alignment: .firstTextBaseline, spacing: 2) {
-                        Text("\(first.minutesAway)")
-                            .font(.custom("Helvetica-Bold", size: 24))
-                            .foregroundColor(AppTheme.Colors.countdown(first.minutesAway))
-                        Text("min")
-                            .font(.custom("Helvetica", size: 12))
-                            .foregroundColor(AppTheme.Colors.textSecondary)
-
-                        if first.status == "Scheduled" {
+                    // Routes with no live data show "--" instead of a fake countdown
+                    let isPlaceholder = first.minutesAway >= 99 && first.arrivalTs == nil
+                    if isPlaceholder {
+                        VStack(spacing: 1) {
                             Image(systemName: "clock")
-                                .font(.system(size: 8, weight: .bold))
+                                .font(.system(size: 14, weight: .semibold))
                                 .foregroundColor(AppTheme.Colors.textSecondary)
-                                .offset(y: -5)
+                            Text("No live")
+                                .font(.custom("Helvetica", size: 9))
+                                .foregroundColor(AppTheme.Colors.textSecondary)
+                        }
+                    } else {
+                        HStack(alignment: .firstTextBaseline, spacing: 2) {
+                            Text("\(first.minutesAway)")
+                                .font(.custom("Helvetica-Bold", size: 24))
+                                .foregroundColor(AppTheme.Colors.countdown(first.minutesAway))
+                            Text("min")
+                                .font(.custom("Helvetica", size: 12))
+                                .foregroundColor(AppTheme.Colors.textSecondary)
+
+                            if first.status == "Scheduled" {
+                                Image(systemName: "clock")
+                                    .font(.system(size: 8, weight: .bold))
+                                    .foregroundColor(AppTheme.Colors.textSecondary)
+                                    .offset(y: -5)
+                            }
                         }
                     }
                 } else {

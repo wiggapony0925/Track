@@ -560,3 +560,624 @@ class TestDirectionLabelInGrouped:
         directions = data[0]["directions"]
         labels = {d["direction_label"] for d in directions}
         assert labels == {"Northbound", "Southbound"}
+
+
+# ===================================================================
+# BUS ROUTE BACKFILL
+# ===================================================================
+
+
+class TestBusRouteBackfill:
+    """Verify that bus routes with stops in the radius appear even
+    when no live SIRI data is available (the backfill logic)."""
+
+    @patch("app.routers.nearby.get_realtime_arrivals", new_callable=AsyncMock)
+    @patch("app.routers.nearby.get_nearby_stops", new_callable=AsyncMock)
+    @patch("app.routers.nearby._fetch_nearby_subway", new_callable=AsyncMock)
+    @patch("app.routers.nearby._fetch_nearby_rail", new_callable=AsyncMock)
+    def test_backfill_creates_placeholder_for_no_live_routes(
+        self, mock_rail, mock_subway, mock_stops, mock_arrivals,
+    ):
+        """A stop serves Q10 but SIRI returns no arrivals — Q10 should still appear."""
+        mock_subway.return_value = []
+        mock_rail.return_value = []
+        mock_stops.return_value = [
+            BusStop(
+                id="S1", name="Linden Blvd / 227 St", lat=40.66, lon=-73.74,
+                direction="SW", route_ids=["MTABC_Q10", "MTA NYCT_B83"],
+            ),
+        ]
+        # SIRI returns arrivals only for B83, none for Q10
+        from datetime import datetime, timezone
+        mock_arrivals.return_value = [
+            __import__("app.models", fromlist=["BusArrival"]).BusArrival(
+                route_id="B83",
+                vehicle_id="V1",
+                stop_id="S1",
+                status_text="2 stops away",
+                expected_arrival=datetime.now(timezone.utc),
+                direction_ref=0,
+                destination_name="Flatbush Av",
+            ),
+        ]
+
+        response = client.get("/nearby/grouped?lat=40.66&lon=-73.74")
+        assert response.status_code == 200
+        data = response.json()
+
+        route_names = {g["display_name"] for g in data}
+        assert "B83" in route_names, f"Live route B83 missing: {route_names}"
+        assert "Q10" in route_names, f"Backfilled route Q10 missing: {route_names}"
+
+    @patch("app.routers.nearby.get_realtime_arrivals", new_callable=AsyncMock)
+    @patch("app.routers.nearby.get_nearby_stops", new_callable=AsyncMock)
+    @patch("app.routers.nearby._fetch_nearby_subway", new_callable=AsyncMock)
+    @patch("app.routers.nearby._fetch_nearby_rail", new_callable=AsyncMock)
+    def test_backfill_placeholder_has_scheduled_status(
+        self, mock_rail, mock_subway, mock_stops, mock_arrivals,
+    ):
+        """Placeholder entries should have status='Scheduled' and minutes_away=99."""
+        mock_subway.return_value = []
+        mock_rail.return_value = []
+        mock_stops.return_value = [
+            BusStop(
+                id="S1", name="Jamaica Av", lat=40.70, lon=-73.80,
+                direction="E", route_ids=["MTABC_Q56"],
+            ),
+        ]
+        mock_arrivals.return_value = []  # No live data at all
+
+        response = client.get("/nearby/grouped?lat=40.70&lon=-73.80")
+        assert response.status_code == 200
+        data = response.json()
+
+        assert len(data) == 1
+        group = data[0]
+        assert group["display_name"] == "Q56"
+        assert group["mode"] == "bus"
+        # The placeholder arrival in the direction
+        arrival = group["directions"][0]["arrivals"][0]
+        assert arrival["status"] == "Scheduled"
+        assert arrival["minutes_away"] == 99
+        assert arrival["arrival_ts"] is None
+
+    @patch("app.routers.nearby.get_realtime_arrivals", new_callable=AsyncMock)
+    @patch("app.routers.nearby.get_nearby_stops", new_callable=AsyncMock)
+    @patch("app.routers.nearby._fetch_nearby_subway", new_callable=AsyncMock)
+    @patch("app.routers.nearby._fetch_nearby_rail", new_callable=AsyncMock)
+    def test_no_backfill_when_route_has_live_data(
+        self, mock_rail, mock_subway, mock_stops, mock_arrivals,
+    ):
+        """Routes with live SIRI data should NOT get a duplicate backfill entry."""
+        mock_subway.return_value = []
+        mock_rail.return_value = []
+        mock_stops.return_value = [
+            BusStop(
+                id="S1", name="Atlantic Av", lat=40.68, lon=-73.97,
+                direction="NE", route_ids=["MTA NYCT_B63"],
+            ),
+        ]
+        from datetime import datetime, timezone
+        mock_arrivals.return_value = [
+            __import__("app.models", fromlist=["BusArrival"]).BusArrival(
+                route_id="B63",
+                vehicle_id="V1",
+                stop_id="S1",
+                status_text="Approaching",
+                expected_arrival=datetime.now(timezone.utc),
+                direction_ref=0,
+                destination_name="Cobble Hill",
+            ),
+        ]
+
+        response = client.get("/nearby/grouped?lat=40.68&lon=-73.97")
+        assert response.status_code == 200
+        data = response.json()
+
+        # B63 should appear exactly once (live data), not duplicated by backfill
+        b63_groups = [g for g in data if g["display_name"] == "B63"]
+        assert len(b63_groups) == 1, f"B63 appears {len(b63_groups)} times (should be 1)"
+
+    @patch("app.routers.nearby.get_realtime_arrivals", new_callable=AsyncMock)
+    @patch("app.routers.nearby.get_nearby_stops", new_callable=AsyncMock)
+    @patch("app.routers.nearby._fetch_nearby_subway", new_callable=AsyncMock)
+    @patch("app.routers.nearby._fetch_nearby_rail", new_callable=AsyncMock)
+    def test_backfill_uses_stop_coordinates(
+        self, mock_rail, mock_subway, mock_stops, mock_arrivals,
+    ):
+        """Backfilled placeholders should have the stop's lat/lon for distance bucketing."""
+        mock_subway.return_value = []
+        mock_rail.return_value = []
+        mock_stops.return_value = [
+            BusStop(
+                id="S1", name="Merrick Blvd", lat=40.655, lon=-73.755,
+                direction="N", route_ids=["MTABC_Q5"],
+            ),
+        ]
+        mock_arrivals.return_value = []
+
+        response = client.get("/nearby/grouped?lat=40.655&lon=-73.755")
+        assert response.status_code == 200
+        data = response.json()
+
+        arrival = data[0]["directions"][0]["arrivals"][0]
+        assert arrival["stop_lat"] == 40.655
+        assert arrival["stop_lon"] == -73.755
+        assert arrival["stop_name"] == "Merrick Blvd"
+
+
+# ------------------------------------------------------------------ #
+# 10. Bus route_id normalisation and both-direction grouping          #
+# ------------------------------------------------------------------ #
+
+
+class TestBusRouteIdNormalization:
+    """Verify that _group_arrivals merges bus arrivals regardless of
+    whether route_id has an agency prefix or not."""
+
+    def test_same_route_different_prefix_merged(self):
+        """'B63' and 'MTA NYCT_B63' should become one group with display_name='B63'."""
+        flat = [
+            NearbyTransitArrival(
+                route_id="B63", stop_name="5 AV/9 ST",
+                direction="0", destination="BAY RIDGE",
+                minutes_away=4, mode="bus",
+            ),
+            NearbyTransitArrival(
+                route_id="B63", stop_name="5 AV/10 ST",
+                direction="1", destination="PROSPECT PARK",
+                minutes_away=6, mode="bus",
+            ),
+        ]
+        groups = _group_arrivals(flat)
+        assert len(groups) == 1
+        assert groups[0].display_name == "B63"
+        assert len(groups[0].directions) == 2
+
+    def test_both_directions_have_labels(self):
+        """Direction tabs should use destination names, not '0'/'1'."""
+        flat = [
+            NearbyTransitArrival(
+                route_id="B63", stop_name="5 AV/9 ST",
+                direction="0", destination="BAY RIDGE",
+                minutes_away=4, mode="bus",
+            ),
+            NearbyTransitArrival(
+                route_id="B63", stop_name="5 AV/10 ST",
+                direction="1", destination="PROSPECT PARK",
+                minutes_away=6, mode="bus",
+            ),
+        ]
+        groups = _group_arrivals(flat)
+        labels = {d.direction_label for d in groups[0].directions}
+        assert "BAY RIDGE" in labels
+        assert "PROSPECT PARK" in labels
+
+    def test_single_direction_still_works(self):
+        """A route with only one direction should still produce a valid group."""
+        flat = [
+            NearbyTransitArrival(
+                route_id="B63", stop_name="5 AV/9 ST",
+                direction="0", destination="BAY RIDGE",
+                minutes_away=4, mode="bus",
+            ),
+        ]
+        groups = _group_arrivals(flat)
+        assert len(groups) == 1
+        assert len(groups[0].directions) == 1
+        assert groups[0].directions[0].direction_label == "BAY RIDGE"
+
+    def test_direction_label_fallback_no_destination(self):
+        """When destination is None, direction label falls back to 'Direction A/B'."""
+        flat = [
+            NearbyTransitArrival(
+                route_id="B63", stop_name="5 AV/9 ST",
+                direction="0", destination=None,
+                minutes_away=99, mode="bus",
+            ),
+            NearbyTransitArrival(
+                route_id="B63", stop_name="5 AV/10 ST",
+                direction="1", destination=None,
+                minutes_away=99, mode="bus",
+            ),
+        ]
+        groups = _group_arrivals(flat)
+        labels = {d.direction_label for d in groups[0].directions}
+        assert labels == {"Direction A", "Direction B"}
+
+    def test_three_direction_branching_route(self):
+        """A branching route (e.g. Q58) with 3 terminals gets 3 direction tabs."""
+        flat = [
+            NearbyTransitArrival(
+                route_id="Q58", stop_name="MYRTLE AV/FRESH POND RD",
+                direction="0", destination="JUNIPER VALLEY",
+                minutes_away=3, mode="bus",
+            ),
+            NearbyTransitArrival(
+                route_id="Q58", stop_name="MYRTLE AV/SENECA AV",
+                direction="1", destination="RIDGEWOOD",
+                minutes_away=5, mode="bus",
+            ),
+            NearbyTransitArrival(
+                route_id="Q58", stop_name="METROPOLITAN AV/DRY HARBOR",
+                direction="2", destination="MIDDLE VILLAGE",
+                minutes_away=8, mode="bus",
+            ),
+        ]
+        groups = _group_arrivals(flat)
+        assert len(groups) == 1
+        assert len(groups[0].directions) == 3
+        labels = {d.direction_label for d in groups[0].directions}
+        assert labels == {"JUNIPER VALLEY", "RIDGEWOOD", "MIDDLE VILLAGE"}
+
+    def test_three_direction_fallback_labels(self):
+        """Direction keys '0', '1', '2' without destinations fall back to A/B/C."""
+        flat = [
+            NearbyTransitArrival(
+                route_id="Q58", stop_name="S1",
+                direction="0", destination=None,
+                minutes_away=99, mode="bus",
+            ),
+            NearbyTransitArrival(
+                route_id="Q58", stop_name="S2",
+                direction="1", destination=None,
+                minutes_away=99, mode="bus",
+            ),
+            NearbyTransitArrival(
+                route_id="Q58", stop_name="S3",
+                direction="2", destination=None,
+                minutes_away=99, mode="bus",
+            ),
+        ]
+        groups = _group_arrivals(flat)
+        labels = {d.direction_label for d in groups[0].directions}
+        assert labels == {"Direction A", "Direction B", "Direction C"}
+
+    def test_compass_direction_keys(self):
+        """Routes using compass direction keys (N, S, SW…) also group correctly."""
+        flat = [
+            NearbyTransitArrival(
+                route_id="B63", stop_name="5 AV/9 ST",
+                direction="N", destination="PROSPECT PARK",
+                minutes_away=4, mode="bus",
+            ),
+            NearbyTransitArrival(
+                route_id="B63", stop_name="5 AV/10 ST",
+                direction="S", destination="BAY RIDGE",
+                minutes_away=6, mode="bus",
+            ),
+        ]
+        groups = _group_arrivals(flat)
+        assert len(groups) == 1
+        assert len(groups[0].directions) == 2
+        labels = {d.direction_label for d in groups[0].directions}
+        assert "Northbound" in labels
+        assert "Southbound" in labels
+    """Integration tests: verify /nearby/grouped returns both bus directions
+    when nearby stops serve both sides of a route."""
+
+    @patch("app.routers.nearby._fetch_nearby_rail", new_callable=AsyncMock)
+    @patch("app.routers.nearby._fetch_nearby_subway", new_callable=AsyncMock)
+    @patch("app.routers.nearby.get_realtime_arrivals", new_callable=AsyncMock)
+    @patch("app.routers.nearby.get_nearby_stops", new_callable=AsyncMock)
+    def test_both_directions_live(self, mock_stops, mock_arrivals, mock_subway, mock_rail):
+        """When SIRI returns arrivals from both direction stops, both tabs appear."""
+        from app.models import BusArrival
+        from datetime import datetime, timezone, timedelta
+
+        mock_subway.return_value = []
+        mock_rail.return_value = []
+
+        # Two physical stops — one per direction
+        stop_nb = BusStop(id="NB_001", name="5 AV/9 ST (NB)", lat=40.67, lon=-73.98,
+                          direction="N", route_ids=["MTA NYCT_B63"])
+        stop_sb = BusStop(id="SB_001", name="5 AV/9 ST (SB)", lat=40.6699, lon=-73.98,
+                          direction="S", route_ids=["MTA NYCT_B63"])
+        mock_stops.return_value = [stop_nb, stop_sb]
+
+        now = datetime.now(timezone.utc)
+        # Northbound stop → direction_ref=0
+        mock_arrivals.side_effect = [
+            [BusArrival(
+                route_id="B63", vehicle_id="V1", stop_id="NB_001",
+                status_text="approaching", direction_ref=0,
+                expected_arrival=now + timedelta(minutes=3),
+                destination_name="BAY RIDGE",
+            )],
+            [BusArrival(
+                route_id="B63", vehicle_id="V2", stop_id="SB_001",
+                status_text="1 stop away", direction_ref=1,
+                expected_arrival=now + timedelta(minutes=5),
+                destination_name="PROSPECT PARK",
+            )],
+        ]
+
+        response = client.get("/nearby/grouped?lat=40.67&lon=-73.98&mode=bus")
+        assert response.status_code == 200
+        data = response.json()
+
+        # Should be exactly 1 grouped route: B63
+        b63_groups = [g for g in data if g["display_name"] == "B63"]
+        assert len(b63_groups) == 1
+
+        # Should have 2 direction tabs
+        directions = b63_groups[0]["directions"]
+        assert len(directions) == 2
+        dir_labels = {d["direction_label"] for d in directions}
+        assert "Bay Ridge" in dir_labels
+        assert "Prospect Park" in dir_labels
+
+    @patch("app.routers.nearby._fetch_nearby_rail", new_callable=AsyncMock)
+    @patch("app.routers.nearby._fetch_nearby_subway", new_callable=AsyncMock)
+    @patch("app.routers.nearby.get_realtime_arrivals", new_callable=AsyncMock)
+    @patch("app.routers.nearby.get_nearby_stops", new_callable=AsyncMock)
+    def test_single_direction_gets_backfill(self, mock_stops, mock_arrivals, mock_subway, mock_rail):
+        """When SIRI only returns one direction, the opposite direction
+        is backfilled so the card still has two tabs."""
+        from app.models import BusArrival
+        from datetime import datetime, timezone, timedelta
+
+        mock_subway.return_value = []
+        mock_rail.return_value = []
+
+        # Two physical stops — one per direction
+        stop_nb = BusStop(id="NB_001", name="5 AV/9 ST (NB)", lat=40.67, lon=-73.98,
+                          direction="N", route_ids=["MTA NYCT_B63"])
+        stop_sb = BusStop(id="SB_001", name="5 AV/9 ST (SB)", lat=40.6699, lon=-73.98,
+                          direction="S", route_ids=["MTA NYCT_B63"])
+        mock_stops.return_value = [stop_nb, stop_sb]
+
+        now = datetime.now(timezone.utc)
+        # Only northbound stop has live data
+        mock_arrivals.side_effect = [
+            [BusArrival(
+                route_id="B63", vehicle_id="V1", stop_id="NB_001",
+                status_text="approaching", direction_ref=0,
+                expected_arrival=now + timedelta(minutes=3),
+                destination_name="BAY RIDGE",
+            )],
+            [],  # Southbound stop: no buses approaching
+        ]
+
+        response = client.get("/nearby/grouped?lat=40.67&lon=-73.98&mode=bus")
+        assert response.status_code == 200
+        data = response.json()
+
+        b63_groups = [g for g in data if g["display_name"] == "B63"]
+        assert len(b63_groups) == 1
+
+        # Should have 2 direction tabs (1 live + 1 backfilled)
+        directions = b63_groups[0]["directions"]
+        assert len(directions) == 2
+
+    @patch("app.routers.nearby._fetch_nearby_rail", new_callable=AsyncMock)
+    @patch("app.routers.nearby._fetch_nearby_subway", new_callable=AsyncMock)
+    @patch("app.routers.nearby.get_realtime_arrivals", new_callable=AsyncMock)
+    @patch("app.routers.nearby.get_nearby_stops", new_callable=AsyncMock)
+    def test_prefix_mismatch_still_groups(self, mock_stops, mock_arrivals, mock_subway, mock_rail):
+        """Even if SIRI returns 'MTA NYCT_B63' as route_id (LineRef fallback),
+        grouping should still produce one card named 'B63'."""
+        from app.models import BusArrival
+        from datetime import datetime, timezone, timedelta
+
+        mock_subway.return_value = []
+        mock_rail.return_value = []
+
+        stop_nb = BusStop(id="NB_001", name="5 AV/9 ST", lat=40.67, lon=-73.98,
+                          direction="N", route_ids=["MTA NYCT_B63"])
+        mock_stops.return_value = [stop_nb]
+
+        now = datetime.now(timezone.utc)
+        # SIRI returns the full LineRef with prefix
+        mock_arrivals.return_value = [
+            BusArrival(
+                route_id="MTA NYCT_B63", vehicle_id="V1", stop_id="NB_001",
+                status_text="approaching", direction_ref=0,
+                expected_arrival=now + timedelta(minutes=3),
+                destination_name="BAY RIDGE",
+            ),
+        ]
+
+        response = client.get("/nearby/grouped?lat=40.67&lon=-73.98&mode=bus")
+        assert response.status_code == 200
+        data = response.json()
+
+        # Even with "MTA NYCT_" prefix, display_name should be "B63"
+        b63_groups = [g for g in data if g["display_name"] == "B63"]
+        assert len(b63_groups) == 1
+
+    @patch("app.routers.nearby._fetch_nearby_rail", new_callable=AsyncMock)
+    @patch("app.routers.nearby._fetch_nearby_subway", new_callable=AsyncMock)
+    @patch("app.routers.nearby.get_realtime_arrivals", new_callable=AsyncMock)
+    @patch("app.routers.nearby.get_nearby_stops", new_callable=AsyncMock)
+    def test_branching_route_three_stops_one_live(self, mock_stops, mock_arrivals, mock_subway, mock_rail):
+        """A branching route with 3 nearby stops but only 1 with live data
+        should produce 3 direction tabs (1 live + 2 backfilled)."""
+        from app.models import BusArrival
+        from datetime import datetime, timezone, timedelta
+
+        mock_subway.return_value = []
+        mock_rail.return_value = []
+
+        # Three physical stops for the same route — different branches
+        stop_a = BusStop(id="A_001", name="MYRTLE/FRESH POND", lat=40.70, lon=-73.90,
+                         direction="SW", route_ids=["MTA NYCT_Q58"])
+        stop_b = BusStop(id="B_001", name="METROPOLITAN/DRY HARBOR", lat=40.71, lon=-73.89,
+                         direction="NE", route_ids=["MTA NYCT_Q58"])
+        stop_c = BusStop(id="C_001", name="JUNIPER VALLEY RD", lat=40.715, lon=-73.88,
+                         direction="E", route_ids=["MTA NYCT_Q58"])
+        mock_stops.return_value = [stop_a, stop_b, stop_c]
+
+        now = datetime.now(timezone.utc)
+        # Only the first stop has live data
+        mock_arrivals.side_effect = [
+            [BusArrival(
+                route_id="Q58", vehicle_id="V1", stop_id="A_001",
+                status_text="approaching", direction_ref=0,
+                expected_arrival=now + timedelta(minutes=4),
+                destination_name="RIDGEWOOD",
+            )],
+            [],  # No live data at stop B
+            [],  # No live data at stop C
+        ]
+
+        response = client.get("/nearby/grouped?lat=40.70&lon=-73.90&mode=bus")
+        assert response.status_code == 200
+        data = response.json()
+
+        q58_groups = [g for g in data if g["display_name"] == "Q58"]
+        assert len(q58_groups) == 1
+
+        # Should have 3 direction tabs (1 live + 2 backfilled)
+        directions = q58_groups[0]["directions"]
+        assert len(directions) == 3
+
+
+# ===================================================================
+# 12. DESTINATION-BASED DIRECTION KEYS (BRANCHING ROUTES)
+# ===================================================================
+
+
+class TestDestinationBasedDirectionKeys:
+    """Verify that bus direction keys use SIRI DestinationName so branching
+    routes like B46, B41, M15 get separate swipeable tabs per terminal."""
+
+    def test_branching_route_separate_tabs(self):
+        """B46 with 3 different destinations should produce 3 direction tabs."""
+        flat = [
+            NearbyTransitArrival(
+                route_id="B46", stop_name="UTICA AV/CHURCH AV",
+                direction="KINGS PLAZA", destination="KINGS PLAZA",
+                minutes_away=4, mode="bus",
+            ),
+            NearbyTransitArrival(
+                route_id="B46", stop_name="UTICA AV/EASTERN PKWY",
+                direction="AV H", destination="AV H",
+                minutes_away=6, mode="bus",
+            ),
+            NearbyTransitArrival(
+                route_id="B46", stop_name="UTICA AV/ATLANTIC AV",
+                direction="WILLIAMSBURG", destination="WILLIAMSBURG",
+                minutes_away=8, mode="bus",
+            ),
+        ]
+        groups = _group_arrivals(flat)
+        assert len(groups) == 1, "All B46 arrivals should be one route group"
+        assert len(groups[0].directions) == 3, "B46 should have 3 destination tabs"
+
+    def test_destination_keys_produce_title_case_labels(self):
+        """Destination-name direction keys should produce title-case labels."""
+        flat = [
+            NearbyTransitArrival(
+                route_id="B46", stop_name="UTICA AV/CHURCH AV",
+                direction="KINGS PLAZA", destination="KINGS PLAZA",
+                minutes_away=4, mode="bus",
+            ),
+            NearbyTransitArrival(
+                route_id="B46", stop_name="UTICA AV/EASTERN PKWY",
+                direction="WILLIAMSBURG", destination="WILLIAMSBURG",
+                minutes_away=8, mode="bus",
+            ),
+        ]
+        groups = _group_arrivals(flat)
+        labels = {d.direction_label for d in groups[0].directions}
+        assert "Kings Plaza" in labels
+        assert "Williamsburg" in labels
+
+    def test_same_destination_merges_into_one_tab(self):
+        """Multiple buses heading to the same terminal share one direction tab."""
+        flat = [
+            NearbyTransitArrival(
+                route_id="B46", stop_name="UTICA AV/CHURCH AV",
+                direction="KINGS PLAZA", destination="KINGS PLAZA",
+                minutes_away=3, mode="bus",
+            ),
+            NearbyTransitArrival(
+                route_id="B46", stop_name="UTICA AV/LINDEN BLVD",
+                direction="KINGS PLAZA", destination="KINGS PLAZA",
+                minutes_away=7, mode="bus",
+            ),
+        ]
+        groups = _group_arrivals(flat)
+        assert len(groups[0].directions) == 1, "Same destination → one tab"
+        assert len(groups[0].directions[0].arrivals) == 2
+
+    def test_direction_label_title_case_all_caps(self):
+        """ALL CAPS destination names should be title-cased for display."""
+        assert _direction_label("KINGS PLAZA") == "Kings Plaza"
+        assert _direction_label("BAY RIDGE") == "Bay Ridge"
+        assert _direction_label("PROSPECT PARK") == "Prospect Park"
+        assert _direction_label("WILLIAMSBURG") == "Williamsburg"
+
+    def test_direction_label_mixed_case_preserved(self):
+        """Already-mixed-case destinations should be title-cased consistently."""
+        assert _direction_label("Far Rockaway") == "Far Rockaway"
+        assert _direction_label("Lefferts Blvd") == "Lefferts Blvd"
+
+    def test_direction_label_sbs_via_route(self):
+        """SBS 'via' destinations should title-case properly."""
+        label = _direction_label("KINGS PLAZA VIA UTICA AV SBS")
+        assert label == "Kings Plaza Via Utica Av Sbs"
+
+    def test_numeric_fallback_still_uses_destination(self):
+        """When direction key IS numeric (legacy path), label still pulls destination."""
+        flat = [
+            NearbyTransitArrival(
+                route_id="B63", stop_name="5 AV/9 ST",
+                direction="0", destination="BAY RIDGE",
+                minutes_away=4, mode="bus",
+            ),
+        ]
+        groups = _group_arrivals(flat)
+        assert groups[0].directions[0].direction_label == "BAY RIDGE"
+
+    @patch("app.routers.nearby._fetch_nearby_rail", new_callable=AsyncMock)
+    @patch("app.routers.nearby._fetch_nearby_subway", new_callable=AsyncMock)
+    @patch("app.routers.nearby.get_realtime_arrivals", new_callable=AsyncMock)
+    @patch("app.routers.nearby.get_nearby_stops", new_callable=AsyncMock)
+    def test_integration_branching_b46(self, mock_stops, mock_arrivals, mock_subway, mock_rail):
+        """Integration: B46 with two different SIRI DestinationNames
+        should produce two separate direction tabs via the endpoint."""
+        from app.models import BusArrival
+        from datetime import datetime, timezone, timedelta
+
+        mock_subway.return_value = []
+        mock_rail.return_value = []
+
+        stop = BusStop(id="S_001", name="UTICA AV/CHURCH AV", lat=40.65, lon=-73.93,
+                       direction="S", route_ids=["MTA NYCT_B46"])
+        mock_stops.return_value = [stop]
+
+        now = datetime.now(timezone.utc)
+        mock_arrivals.return_value = [
+            BusArrival(
+                route_id="B46", vehicle_id="V1", stop_id="S_001",
+                status_text="approaching", direction_ref=0,
+                expected_arrival=now + timedelta(minutes=3),
+                destination_name="KINGS PLAZA",
+            ),
+            BusArrival(
+                route_id="B46", vehicle_id="V2", stop_id="S_001",
+                status_text="2 stops away", direction_ref=0,
+                expected_arrival=now + timedelta(minutes=8),
+                destination_name="AV H",
+            ),
+        ]
+
+        response = client.get("/nearby/grouped?lat=40.65&lon=-73.93&mode=bus")
+        assert response.status_code == 200
+        data = response.json()
+
+        b46_groups = [g for g in data if g["display_name"] == "B46"]
+        assert len(b46_groups) == 1
+
+        # Two different destinations → two direction tabs,
+        # even though SIRI DirectionRef is 0 for both
+        directions = b46_groups[0]["directions"]
+        assert len(directions) == 2, (
+            "B46 to KINGS PLAZA and AV H should be separate tabs "
+            f"even though both have direction_ref=0. Got: {[d['direction'] for d in directions]}"
+        )
+        dir_labels = {d["direction_label"] for d in directions}
+        assert "Kings Plaza" in dir_labels
+        assert "Av H" in dir_labels

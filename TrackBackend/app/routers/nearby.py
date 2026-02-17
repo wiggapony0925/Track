@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Query
 
 from app.config import get_settings
-from app.models import DirectionArrivals, GroupedNearbyTransit, NearbyTransitArrival
+from app.models import BusStop, DirectionArrivals, GroupedNearbyTransit, NearbyTransitArrival
 from app.services.bus_client import get_nearby_stops, get_realtime_arrivals
 from app.services.data_cleaner import get_arrivals_for_line
 from app.services.station_lookup import get_nearby_stop_ids, get_stop_info
@@ -135,11 +135,16 @@ async def _collect_all(
 def _display_name(route_id: str) -> str:
     """Build a user-facing display name for a route_id.
     
-    Strips ``MTA NYCT_`` prefix for subway/bus and resolves LIRR/MNR
-    numeric IDs to human-readable branch names.
+    Strips agency prefixes (``MTA NYCT_``, ``MTABC_``, ``MTA BUS_``)
+    for subway/bus and resolves LIRR/MNR numeric IDs to human-readable
+    branch names.
     """
     if route_id.startswith("MTA NYCT_"):
         return route_id[9:]
+    if route_id.startswith("MTABC_"):
+        return route_id[6:]
+    if route_id.startswith("MTA BUS_"):
+        return route_id[8:]
     if route_id.startswith("LIRR_"):
         numeric = route_id[5:]
         return get_lirr_route_name(numeric)
@@ -163,9 +168,14 @@ _DIRECTION_LABELS: dict[str, str] = {
     "OUTBOUND": "Outbound",
     "0": "Direction A",
     "1": "Direction B",
+    "2": "Direction C",
+    "3": "Direction D",
     "N/A": "All Directions",
     "LOOP": "Loop",
 }
+
+# SIRI numeric direction keys (DirectionRef: 0/1 live, 2/3 backfill branches)
+_NUMERIC_DIR_KEYS = {"0", "1", "2", "3"}
 
 
 def _direction_label(direction: str, arrivals: list[NearbyTransitArrival] | None = None) -> str:
@@ -174,20 +184,30 @@ def _direction_label(direction: str, arrivals: list[NearbyTransitArrival] | None
     Returns the long-form label for known compass codes (e.g. "N" → "Northbound"),
     or the original string for destination names like "Far Rockaway".
     
-    For bus DirectionRef values ("0" or "1"), uses the DestinationName from
-    the first arrival in the group as the label.
+    For bus routes the direction key is now the SIRI DestinationName
+    (e.g. "KINGS PLAZA", "AV H"), so it already carries meaning.
+    We title-case it for a clean display label.
+
+    Legacy numeric keys ("0"/"1" from DirectionRef) are still handled
+    when DestinationName was unavailable; in that case we try to pull
+    the destination from the first arrival in the group.
     """
-    # For bus directions (SIRI DirectionRef: "0" or "1"), use the
-    # destination_name from the first arrival as the human-readable label.
-    if direction in ("0", "1") and arrivals:
-        # Find the first arrival that has a destination set
+    # For legacy numeric direction keys (DirectionRef fallback),
+    # try to get the destination from the first arrival.
+    if direction in _NUMERIC_DIR_KEYS and arrivals:
         for a in arrivals:
             if a.destination:
                 return a.destination
-        # Fallback if no destination found
-        return "Direction A" if direction == "0" else "Direction B"
-    
-    return _DIRECTION_LABELS.get(direction.upper(), direction)
+        return _DIRECTION_LABELS.get(direction, f"Direction {direction}")
+
+    upper = direction.upper()
+
+    # Known compass / special codes → canonical label
+    if upper in _DIRECTION_LABELS:
+        return _DIRECTION_LABELS[upper]
+
+    # Destination-name keys (e.g. "KINGS PLAZA") → title-case for display
+    return direction.title()
 
 
 def _group_arrivals(flat: list[NearbyTransitArrival]) -> list[GroupedNearbyTransit]:
@@ -281,7 +301,8 @@ async def _fetch_nearby_subway(
     results: list[NearbyTransitArrival] = []
 
     # Pre-compute which stop_ids are within range of the user
-    nearby_stops = get_nearby_stop_ids(lat, lon, float(radius))
+    # agency="subway" ensures LIRR/MNR stops are excluded at the source
+    nearby_stops = get_nearby_stop_ids(lat, lon, float(radius), agency="subway")
     if not nearby_stops:
         TrackLogger.info(
             f"No subway stations within {radius}m of ({lat:.5f}, {lon:.5f})"
@@ -357,31 +378,50 @@ async def _fetch_nearby_subway(
             f"{total_raw} raw → {total_kept} kept (nearby)"
         )
 
-    # --- NEW: Fallback for stops with no live arrivals ---
+    # --- Fallback for stops with no live arrivals ---
+    # IMPORTANT: only backfill subway stops — skip LIRR/MNR stops that
+    # may share numeric stop_ids (e.g. "183" is both subway and LIRR).
+    # LIRR/MNR have their own dedicated _fetch_nearby_rail() path.
     stops_with_live = {a.stop_id for a in results}
     missing_stops = nearby_stops - stops_with_live
     
     if missing_stops:
-        TrackLogger.info(f"Filling in schedules for {len(missing_stops)} stops with no live data")
+        backfill_count = 0
         for stop_id in missing_stops:
+            # Check if this is actually a subway stop (not LIRR/MNR)
+            stop_info = get_stop_info(stop_id)
+            if stop_info and stop_info.agency in ("lirr", "mnr"):
+                continue  # Skip — handled by _fetch_nearby_rail
+
             scheduled = schedule_service.get_scheduled_arrivals(stop_id, limit=4)
             for s in scheduled:
-                # Get stop coordinates for the model
-                stop_info = get_stop_info(s.station)
+                # Extra guard: skip if trip_id hints at commuter rail
+                if s.trip_id and ("GO103" in s.trip_id or "METS" in s.trip_id):
+                    continue
+                # Skip numeric-only route_ids — subway routes are letters/letter-combos
+                # (A, 1, 7, GS, SI, FS) not multi-digit branch numbers like "8", "9"
+                if s.route_id.isdigit() and int(s.route_id) > 7:
+                    continue
+
+                sinfo = get_stop_info(s.station)
                 results.append(NearbyTransitArrival(
                     route_id=s.route_id,
-                    stop_name=stop_info.name if stop_info else s.station,
+                    stop_name=sinfo.name if sinfo else s.station,
                     direction=s.destination or s.direction,
                     destination=s.destination,
                     minutes_away=s.minutes_away,
                     arrival_ts=s.arrival_ts,
                     status="Scheduled",
                     mode="subway",
-                    stop_lat=stop_info.lat if stop_info else None,
-                    stop_lon=stop_info.lon if stop_info else None,
+                    stop_lat=sinfo.lat if sinfo else None,
+                    stop_lon=sinfo.lon if sinfo else None,
                     stop_id=s.station,
                     trip_id=s.trip_id
                 ))
+                backfill_count += 1
+
+        if backfill_count:
+            TrackLogger.info(f"Backfilled {backfill_count} subway schedule entries for {len(missing_stops)} stops")
 
     return results
 
@@ -394,7 +434,15 @@ async def _fetch_nearby_subway(
 async def _fetch_nearby_buses(
     lat: float, lon: float, radius: int | None = None,
 ) -> list[NearbyTransitArrival]:
-    """Fetch live bus arrivals from nearby stops."""
+    """Fetch bus arrivals from nearby stops.
+
+    First collects live SIRI arrivals for every nearby stop.  Then,
+    for any route that serves a nearby stop but has **no** live data,
+    creates a placeholder entry so the route still appears in the
+    dashboard (categorised by distance tier).  This ensures the user
+    sees *all* bus service in their area, not just buses that happen to
+    be approaching right now.
+    """
     settings = get_settings()
     effective_radius = radius if radius is not None else settings.app_settings.search_radius_meters
     results: list[NearbyTransitArrival] = []
@@ -409,8 +457,14 @@ async def _fetch_nearby_buses(
         TrackLogger.info("No bus stops found within search radius")
         return results
 
+    # -----------------------------------------------------------------
+    # 1. Fetch live SIRI arrivals for every nearby stop
+    # -----------------------------------------------------------------
     tasks = [get_realtime_arrivals(stop.id) for stop in stops[: settings.app_settings.max_nearby_results]]
     stop_results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    # Track which route IDs already have live data
+    routes_with_live: set[str] = set()
 
     fail_count = 0
     first_error: Exception | None = None
@@ -426,20 +480,42 @@ async def _fetch_nearby_buses(
         for arrival in result:
             minutes = _bus_minutes_away(arrival.expected_arrival)
 
-            # Use SIRI DirectionRef for stable direction grouping (0 or 1).
-            # DestinationName is the headsign shown on the bus — used as the
-            # direction_label via destination field.
-            # Fallback chain: DirectionRef → stop compass dir → "Loop"
-            if arrival.direction_ref is not None:
-                direction = str(arrival.direction_ref)  # "0" or "1"
+            # Normalise route_id — SIRI sometimes gives "B63" (PublishedLineName)
+            # and sometimes "MTA NYCT_B63" (LineRef fallback).  Stripping the
+            # agency prefix guarantees both directions of the same route land in
+            # the same grouped card.
+            normalised_route = _display_name(arrival.route_id)
+
+            # Direction grouping — use the same strategy as subway:
+            # prefer the destination name as the direction key so that
+            # BRANCHING routes get separate swipeable tabs per terminal.
+            #
+            # Examples (B46 Utica Ave):
+            #   dest="KINGS PLAZA"    → direction key "KINGS PLAZA"
+            #   dest="AV H"          → direction key "AV H"
+            #   dest="WILLIAMSBURG"   → direction key "WILLIAMSBURG"
+            #
+            # This mirrors how subway uses destination ("Far Rockaway",
+            # "Lefferts Blvd") so the A train gets one tab per branch.
+            #
+            # Fallback chain: DestinationName → DirectionRef → stop compass → "Loop"
+            dest = arrival.destination_name
+            if dest:
+                direction = dest
+            elif arrival.direction_ref is not None:
+                direction = str(arrival.direction_ref)
             elif stop.direction:
                 direction = stop.direction
             else:
                 direction = "Loop"
 
+            routes_with_live.add(normalised_route)
+            # Also track the raw form for the backfill check
+            routes_with_live.add(arrival.route_id)
+
             results.append(
                 NearbyTransitArrival(
-                    route_id=arrival.route_id,
+                    route_id=normalised_route,
                     stop_name=stop.name,
                     arrival_ts=int(arrival.expected_arrival.timestamp()) if arrival.expected_arrival else None,
                     direction=direction,
@@ -457,6 +533,148 @@ async def _fetch_nearby_buses(
     if fail_count > 0:
         TrackLogger.error(
             f"Bus arrivals failed for {fail_count}/{len(stop_results)} stops: {first_error}"
+        )
+
+    # Log direction distribution per route for debugging
+    _route_dirs: dict[str, set[str]] = defaultdict(set)
+    for r in results:
+        _route_dirs[r.route_id].add(r.direction)
+    single_dir = [rid for rid, dirs in _route_dirs.items() if len(dirs) == 1]
+    if single_dir:
+        TrackLogger.bus(
+            f"Bus routes with only 1 direction ({len(single_dir)}/{len(_route_dirs)}): "
+            f"{single_dir[:10]}"
+        )
+
+    # -----------------------------------------------------------------
+    # 2. Backfill: ensure every nearby bus route has BOTH directions.
+    #
+    #    Phase A — routes with NO live data at all get a placeholder.
+    #    Phase B — routes with only ONE direction of live data get a
+    #              placeholder for the missing direction so the grouped
+    #              card shows two swipeable direction tabs (like subway).
+    # -----------------------------------------------------------------
+
+    # Track which (route, direction) pairs we already have from live data
+    live_route_dirs: dict[str, set[str]] = defaultdict(set)
+    for r in results:
+        live_route_dirs[r.route_id].add(r.direction)
+
+    # Phase A: routes with zero live data — create one placeholder per route
+    missing_routes: dict[str, tuple[BusStop, str]] = {}
+    for stop in stops[: settings.app_settings.max_nearby_results]:
+        for rid in stop.route_ids:
+            short = _display_name(rid)
+            # Skip if we already have live data for this route
+            if rid in routes_with_live or short in routes_with_live:
+                continue
+            # Keep the first (closest) stop per route
+            if rid not in missing_routes:
+                direction = stop.direction or "N/A"
+                missing_routes[rid] = (stop, direction)
+
+    for rid, (stop, direction) in missing_routes.items():
+        results.append(
+            NearbyTransitArrival(
+                route_id=_display_name(rid),
+                stop_name=stop.name,
+                arrival_ts=None,
+                direction=direction,
+                minutes_away=99,  # sorts to the bottom within its tier
+                status="Scheduled",
+                mode="bus",
+                stop_lat=stop.lat,
+                stop_lon=stop.lon,
+                stop_id=stop.id,
+                vehicle_id=None,
+                destination=None,
+            )
+        )
+
+    if missing_routes:
+        TrackLogger.bus(
+            f"Backfilled {len(missing_routes)} bus routes with no live data "
+            f"(total {len(results)} bus arrivals from {len(stops)} stops)"
+        )
+
+    # Phase B: routes with fewer live directions than nearby stops
+    # suggest.  For each route, find stops that didn't contribute any
+    # live arrivals and add a placeholder for the direction they
+    # represent.  This handles:
+    #   • Simple A→B / B→A routes (2 directions)
+    #   • Branching routes (e.g. B46 splits to Kings Plaza / Av H / Williamsburg)
+    #   • Loop routes with a single direction
+    #
+    # Direction key strategy:
+    #   - Direction keys are now destination names from SIRI
+    #     (e.g. "KINGS PLAZA", "AV H").  Backfill placeholders use
+    #     the OBA compass direction from the stop (e.g. "N", "SW")
+    #     as a fallback key — since it won't collide with destination
+    #     names, it always creates a new tab.
+    #   - If all existing keys are SIRI numeric ("0"/"1" — only when
+    #     DestinationName was unavailable), assign the next unused
+    #     numeric key for consistency.
+
+    # Build a set of stop_ids that already contributed live results per route
+    live_stop_ids_per_route: dict[str, set[str]] = defaultdict(set)
+    for r in results:
+        live_stop_ids_per_route[r.route_id].add(r.stop_id)
+
+    opposite_backfill = 0
+    for stop in stops[: settings.app_settings.max_nearby_results]:
+        for rid in stop.route_ids:
+            short = _display_name(rid)
+            # Only consider routes that DO have some live data already
+            if short not in live_route_dirs:
+                continue
+            # Skip if this specific stop already contributed arrivals
+            if stop.id in live_stop_ids_per_route.get(short, set()):
+                continue
+
+            # Determine a direction key for this stop's placeholder.
+            existing_dirs = live_route_dirs[short]
+
+            # If ALL existing keys are SIRI numeric (rare: DestinationName
+            # was unavailable), assign next unused numeric key.
+            if existing_dirs and existing_dirs <= _NUMERIC_DIR_KEYS:
+                for candidate in ("0", "1", "2", "3"):
+                    if candidate not in existing_dirs:
+                        new_dir = candidate
+                        break
+                else:
+                    continue  # All 4 slots taken — unlikely
+            else:
+                # Route uses destination-name keys (normal path) —
+                # use the stop's OBA compass direction as the backfill key.
+                compass = stop.direction or "N/A"
+                if compass in existing_dirs:
+                    continue  # Already have this direction
+                new_dir = compass
+
+            results.append(
+                NearbyTransitArrival(
+                    route_id=short,
+                    stop_name=stop.name,
+                    arrival_ts=None,
+                    direction=new_dir,
+                    minutes_away=99,
+                    status="Scheduled",
+                    mode="bus",
+                    stop_lat=stop.lat,
+                    stop_lon=stop.lon,
+                    stop_id=stop.id,
+                    vehicle_id=None,
+                    destination=None,
+                )
+            )
+            live_route_dirs[short].add(new_dir)
+            live_stop_ids_per_route[short].add(stop.id)
+            opposite_backfill += 1
+
+    if opposite_backfill:
+        TrackLogger.bus(
+            f"Backfilled {opposite_backfill} missing-direction placeholders "
+            f"for routes with incomplete live directions"
         )
 
     return results

@@ -1601,9 +1601,9 @@ final class HomeViewModel {
         let lon = location.coordinate.longitude
 
         do {
-            // Fetch grouped nearby transit and filter to subway — shows ALL
-            // subway lines near the user, not just a single hardcoded line.
-            async let groupedTask = TrackAPI.fetchNearbyGrouped(lat: lat, lon: lon)
+            // Fetch grouped nearby transit filtered to subway mode only.
+            // This avoids fetching bus/LIRR/MNR data we don't need.
+            async let groupedTask = TrackAPI.fetchNearbyGrouped(lat: lat, lon: lon, mode: "subway")
             async let stationsTask = repository.fetchNearbyStations(
                 latitude: lat, longitude: lon
             )
@@ -1641,9 +1641,9 @@ final class HomeViewModel {
         let lon = location.coordinate.longitude
 
         do {
-            // Fetch grouped nearby transit and filter to bus only.
-            // This gives us the same card-style arrivals the Nearby tab uses.
-            let allGrouped = try await TrackAPI.fetchNearbyGrouped(lat: lat, lon: lon)
+            // Fetch grouped nearby transit filtered to bus mode only.
+            // This avoids fetching subway/LIRR/MNR data we don't need.
+            let allGrouped = try await TrackAPI.fetchNearbyGrouped(lat: lat, lon: lon, mode: "bus")
             nearbyGroupedBusArrivals = allGrouped.filter { $0.mode == "bus" }
             
             do { allBusRoutes = try await TrackAPI.fetchBusRoutes() } catch {}

@@ -38,7 +38,10 @@
     "bus_endpoints": {
       "vehicle_monitoring": "/vehicle-monitoring.json",
       "stop_monitoring": "/stop-monitoring.json",
-      "routes_for_agency": "/routes-for-agency/MTA%20NYCT.json",
+      "routes_for_agency": [
+        "/routes-for-agency/MTA%20NYCT.json",
+        "/routes-for-agency/MTABC.json"
+      ],
       "stops_for_route": "/stops-for-route/{route_id}.json",
       "stops_near_location": "/stops-for-location.json"
     }

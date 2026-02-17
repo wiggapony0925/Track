@@ -72,28 +72,35 @@ struct NearbyDashboard: View {
                         locationManager: locationManager,
                         sheetNavigator: sheetNavigator
                     )
+                } else {
+                    NearYouSectionHeader(radiusMeters: nearYouRadius, updated: lastUpdated)
+                    EmptyTierHint()
                 }
                 
                 // Display "A Little Farther Away" section
+                FartherAwaySectionHeader(radiusMeters: fartherAwayRadius)
                 if !fartherAway.isEmpty {
-                    FartherAwaySectionHeader(radiusMeters: fartherAwayRadius)
                     GroupedRouteList(
                         groups: fartherAway,
                         viewModel: viewModel,
                         locationManager: locationManager,
                         sheetNavigator: sheetNavigator
                     )
+                } else {
+                    EmptyTierHint()
                 }
                 
                 // Display "Much Farther Away" section
+                MuchFartherAwaySectionHeader(radiusMeters: muchFartherAwayRadius)
                 if !muchFarther.isEmpty {
-                    MuchFartherAwaySectionHeader(radiusMeters: muchFartherAwayRadius)
                     GroupedRouteList(
                         groups: muchFarther,
                         viewModel: viewModel,
                         locationManager: locationManager,
                         sheetNavigator: sheetNavigator
                     )
+                } else {
+                    EmptyTierHint()
                 }
                 
                 // Show empty state only when all sections are empty after filtering
@@ -364,6 +371,24 @@ struct MuchFartherAwaySectionHeader: View {
         .padding(.horizontal, AppTheme.Layout.margin)
         .padding(.top, 10)
         .padding(.bottom, 4)
+    }
+}
+
+/// Subtle empty-state shown under a distance tier header when no arrivals
+/// fall within that ring.  Always visible so all 3 tiers are present.
+struct EmptyTierHint: View {
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "minus.circle")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.4))
+            Text("Nothing in this range")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.4))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, AppTheme.Layout.margin)
+        .padding(.vertical, 6)
     }
 }
 

@@ -843,6 +843,14 @@ class TestDisplayName:
         assert _display_name("MTA NYCT_B63") == "B63"
         assert _display_name("MTA NYCT_M15+") == "M15+"
 
+    def test_strips_mtabc_prefix(self):
+        assert _display_name("MTABC_Q112") == "Q112"
+        assert _display_name("MTABC_QM1") == "QM1"
+        assert _display_name("MTABC_Q58") == "Q58"
+
+    def test_strips_mta_bus_prefix(self):
+        assert _display_name("MTA BUS_Q10") == "Q10"
+
     def test_resolves_lirr_prefix(self):
         name = _display_name("LIRR_5")
         assert name != "5"  # Should be a real branch name

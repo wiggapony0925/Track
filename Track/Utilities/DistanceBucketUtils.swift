@@ -63,10 +63,10 @@ func separateGroupsByDistance(
     let rawR2 = AppSettings.shared.fartherAwayRadiusMeters
     let rawR3 = AppSettings.shared.muchFartherAwayRadiusMeters
 
-    // Enforce strict ring ordering with a 100m minimum gap
+    // Enforce strict ring ordering with a 400m minimum gap
     let r1 = rawR1
-    let r2 = max(rawR2, r1 + 100)
-    let r3 = max(rawR3, r2 + 100)
+    let r2 = max(rawR2, r1 + 400)
+    let r3 = max(rawR3, r2 + 400)
 
     var nearYou:     [GroupedNearbyTransitResponse] = []
     var fartherAway: [GroupedNearbyTransitResponse] = []
@@ -97,6 +97,11 @@ func separateGroupsByDistance(
         muchFarther = muchFarther.filter  { !promotedIds.contains($0.routeId) }
     }
 
+    // Sort within each tier: closest stop first (top → bottom = nearest → farthest)
+    nearYou.sort     { groupMinDistance(for: $0, from: location) < groupMinDistance(for: $1, from: location) }
+    fartherAway.sort { groupMinDistance(for: $0, from: location) < groupMinDistance(for: $1, from: location) }
+    muchFarther.sort { groupMinDistance(for: $0, from: location) < groupMinDistance(for: $1, from: location) }
+
     return (nearYou, fartherAway, muchFarther)
 }
 
@@ -118,7 +123,7 @@ func separateFlatArrivalsByDistance(
     let rawR1 = AppSettings.shared.nearYouRadiusMeters
     let rawR2 = AppSettings.shared.fartherAwayRadiusMeters
     let r1 = rawR1
-    let r2 = max(rawR2, r1 + 100)
+    let r2 = max(rawR2, r1 + 400)
 
     var nearYou:     [NearbyTransitResponse] = []
     var fartherAway: [NearbyTransitResponse] = []
@@ -140,6 +145,10 @@ func separateFlatArrivalsByDistance(
         nearYou     = Array(sorted.prefix(promoteCount))
         fartherAway = Array(sorted.dropFirst(promoteCount))
     }
+
+    // Sort within each tier: closest stop first
+    nearYou.sort     { arrivalDistance(for: $0, from: location) < arrivalDistance(for: $1, from: location) }
+    fartherAway.sort { arrivalDistance(for: $0, from: location) < arrivalDistance(for: $1, from: location) }
 
     return (nearYou, fartherAway)
 }

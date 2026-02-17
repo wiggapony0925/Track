@@ -315,33 +315,57 @@ async def _fetch_bus_json(url: str, params: dict[str, str]) -> Any:
 
 
 async def get_routes() -> list[BusRoute]:
-    """Fetch all bus routes from the OBA ``routes-for-agency`` endpoint."""
+    """Fetch all bus routes from the OBA ``routes-for-agency`` endpoint.
+
+    Queries every agency listed in ``settings.json`` (MTA NYCT *and* MTABC)
+    and merges the results, de-duplicating by route id.
+    """
     settings = get_settings()
     eps = settings.urls.bus_endpoints
     if eps is None:
         return []
 
-    url = settings.urls.bus_oba_base + eps.routes_for_agency
-    params = {"key": settings.api_keys.mta_bus_key}
-
-    data = await _fetch_bus_json(url, params)
-    routes_data: list[dict[str, Any]] = (
-        data.get("data", {}).get("list", [])
-        if isinstance(data, dict)
-        else []
+    # Normalise to a list so the old single-string format still works
+    agency_paths: list[str] = (
+        eps.routes_for_agency
+        if isinstance(eps.routes_for_agency, list)
+        else [eps.routes_for_agency]
     )
 
+    params = {"key": settings.api_keys.mta_bus_key}
+    seen_ids: set[str] = set()
     results: list[BusRoute] = []
-    for r in routes_data:
-        results.append(
-            BusRoute(
-                id=r.get("id", ""),
-                short_name=r.get("shortName", ""),
-                long_name=r.get("longName", ""),
-                color=r.get("color", "0039A6"),
-                description=r.get("description", ""),
-            )
+
+    for path in agency_paths:
+        url = settings.urls.bus_oba_base + path
+        try:
+            data = await _fetch_bus_json(url, params)
+        except Exception as exc:
+            TrackLogger.warning(f"Failed to fetch routes from {path}: {exc}", tag="BUS")
+            continue
+
+        routes_data: list[dict[str, Any]] = (
+            data.get("data", {}).get("list", [])
+            if isinstance(data, dict)
+            else []
         )
+
+        for r in routes_data:
+            rid = r.get("id", "")
+            if rid in seen_ids:
+                continue
+            seen_ids.add(rid)
+            results.append(
+                BusRoute(
+                    id=rid,
+                    short_name=r.get("shortName", ""),
+                    long_name=r.get("longName", ""),
+                    color=r.get("color", "0039A6"),
+                    description=r.get("description", ""),
+                )
+            )
+
+    TrackLogger.bus(f"Fetched {len(results)} bus routes from {len(agency_paths)} agencies")
     return results
 
 
@@ -504,6 +528,7 @@ async def get_nearby_stops(
                         lat=s.get("lat", 0.0),
                         lon=s.get("lon", 0.0),
                         direction=s.get("direction"),
+                        route_ids=s.get("routeIds", []),
                     )
                 )
             # Cache successful result

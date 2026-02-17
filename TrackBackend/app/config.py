@@ -44,7 +44,7 @@ class ApiKeys(BaseModel):
 class BusEndpoints(BaseModel):
     vehicle_monitoring: str
     stop_monitoring: str
-    routes_for_agency: str
+    routes_for_agency: str | list[str]
     stops_for_route: str
     stops_near_location: str
 

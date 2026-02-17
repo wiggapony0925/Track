@@ -391,6 +391,13 @@ class TestDisplayName:
     def test_bus_plain_id(self):
         assert _display_name("Q43") == "Q43"
 
+    def test_mtabc_strip_prefix(self):
+        assert _display_name("MTABC_Q112") == "Q112"
+        assert _display_name("MTABC_QM1") == "QM1"
+
+    def test_mta_bus_strip_prefix(self):
+        assert _display_name("MTA BUS_Q10") == "Q10"
+
     def test_lirr_prefix(self):
         name = _display_name("LIRR_10")
         assert name != "LIRR_10", "Should resolve to branch name"
