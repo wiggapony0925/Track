@@ -1168,7 +1168,7 @@ final class HomeViewModel {
     /// response, but each arrival carries its stop coordinates. This synthesizes
     /// BusStop objects so the map can show stop markers and the camera zoom logic
     /// can find the nearest stop.
-    private func populateStopsFromArrivals(group: GroupedNearbyTransit) {
+    private func populateStopsFromArrivals(group: GroupedNearbyTransitResponse) {
         guard var shape = routeShape, shape.stops.isEmpty else { return }
 
         var seenIds = Set<String>()
