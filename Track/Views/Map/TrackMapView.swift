@@ -104,6 +104,12 @@ struct TrackMapView: View {
             // Walking route indicator
             walkingRoutePolyline
             
+            // Search pin — shows the drag-search center on the map
+            // when a route detail is open. The SwiftUI DragSearchOverlay
+            // hides when a route is selected, so this annotation provides
+            // a persistent map-level marker at the explored location.
+            searchPinAnnotation
+            
             // Route polylines
             routePolylines
             
@@ -220,6 +226,35 @@ struct TrackMapView: View {
         if let walkingRoute = viewModel.walkingRoute {
             MapPolyline(walkingRoute.polyline)
                 .stroke(Color.gray, style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round, dash: [8, 8]))
+        }
+    }
+    
+    // MARK: - Search Pin Annotation
+    
+    /// Shows an Apple-style blue dot at the drag-search center when the
+    /// search pin is active. Visible during route detail views so the user
+    /// can see where they placed the search — the SwiftUI overlay hides
+    /// but this map annotation persists.
+    @MapContentBuilder
+    private var searchPinAnnotation: some MapContent {
+        if viewModel.isSearchPinActive, let coord = viewModel.searchPinCoordinate {
+            Annotation("Search area", coordinate: coord) {
+                ZStack {
+                    // Accuracy halo
+                    Circle()
+                        .fill(Color(red: 0.0, green: 0.48, blue: 1.0).opacity(0.12))
+                        .frame(width: 36, height: 36)
+                    // White border
+                    Circle()
+                        .fill(.white)
+                        .frame(width: 18, height: 18)
+                        .shadow(color: .black.opacity(0.15), radius: 2, y: 1)
+                    // Blue fill
+                    Circle()
+                        .fill(Color(red: 0.0, green: 0.48, blue: 1.0))
+                        .frame(width: 12, height: 12)
+                }
+            }
         }
     }
     
