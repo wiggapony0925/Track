@@ -1547,7 +1547,8 @@ final class HomeViewModel {
     ///
     /// - Parameter skipGlobalFeeds: When `true` (e.g. during drag-to-search),
     ///   skips alerts and accessibility fetches since those are location-independent
-    ///   and were already loaded. This makes area scanning noticeably faster.
+    ///   and are loaded during the initial app refresh. This makes area scanning
+    ///   noticeably faster.
     func refreshNearbyTransit(location: CLLocation?, skipGlobalFeeds: Bool = false) async {
         guard let location = location else {
             errorMessage = "Location required"
@@ -1571,7 +1572,7 @@ final class HomeViewModel {
 
             // Fetch alerts and accessibility only on full refreshes — these are
             // global feeds that don't change by location. Skipping them during
-            // drag-to-search avoids ~2 extra network calls per pan gesture.
+            // drag-to-search avoids 2 extra network calls per pan gesture.
             if !skipGlobalFeeds {
                 async let alertsTask = TrackAPI.fetchAlerts()
                 async let accessTask = TrackAPI.fetchAccessibility()
