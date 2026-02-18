@@ -261,11 +261,17 @@ def _merge_polyline_segments(encoded_segments: list[str], gap_threshold_m: float
 
 
 # ---------------------------------------------------------------------------
-# SIRI circuit breaker – after a 401/403 the API key is invalid for the whole
-# process lifetime.  Rather than flood the MTA server with requests that will
+# SIRI circuit breaker – after *consecutive* 401/403 responses the API key is
+# likely invalid.  Rather than flood the MTA server with requests that will
 # all fail, we flip a flag and immediately raise on subsequent calls.
+#
+# Changed from original: require _SIRI_FAIL_THRESHOLD consecutive auth
+# failures before opening the circuit, so a single transient 403 (rate-limit)
+# doesn't block all bus routes for 5 minutes.
 # ---------------------------------------------------------------------------
 
+_siri_consecutive_auth_failures: int = 0
+_SIRI_FAIL_THRESHOLD: int = 3   # open after 3 consecutive 401/403
 _siri_circuit_open: bool = False
 _siri_circuit_opened_at: float = 0.0
 _SIRI_CIRCUIT_COOLDOWN = 300  # retry after 5 minutes
@@ -279,17 +285,28 @@ def _siri_circuit_is_open() -> bool:
     # Auto-reset after cooldown so the app can self-heal
     if _time.time() - _siri_circuit_opened_at > _SIRI_CIRCUIT_COOLDOWN:
         _siri_circuit_open = False
+        _siri_consecutive_auth_failures = 0
         TrackLogger.circuit("SIRI circuit breaker CLOSED (cooldown expired)")
         return False
     return True
 
 
-def _trip_siri_circuit() -> None:
-    global _siri_circuit_open, _siri_circuit_opened_at
-    if not _siri_circuit_open:
+def _record_siri_auth_failure() -> None:
+    """Record a SIRI 401/403 failure; trip the breaker after threshold."""
+    global _siri_consecutive_auth_failures, _siri_circuit_open, _siri_circuit_opened_at
+    _siri_consecutive_auth_failures += 1
+    if _siri_consecutive_auth_failures >= _SIRI_FAIL_THRESHOLD and not _siri_circuit_open:
         _siri_circuit_open = True
         _siri_circuit_opened_at = _time.time()
-        TrackLogger.circuit("SIRI circuit breaker OPENED (401/403 from MTA)")
+        TrackLogger.circuit(
+            f"SIRI circuit breaker OPENED ({_siri_consecutive_auth_failures} consecutive 401/403)"
+        )
+
+
+def _reset_siri_auth_failures() -> None:
+    """Reset the consecutive failure counter on a successful SIRI call."""
+    global _siri_consecutive_auth_failures
+    _siri_consecutive_auth_failures = 0
 
 
 async def _fetch_bus_json(
@@ -326,13 +343,16 @@ async def _fetch_bus_json(
                 response = await client.get(url, params=params)
                 if response.status_code in (401, 403):
                     if is_siri:
-                        _trip_siri_circuit()
+                        _record_siri_auth_failure()
                     response.raise_for_status()
                 if response.status_code >= 500 and attempt < _MAX_RETRIES - 1:
                     # Transient server error — wait briefly and retry
                     await asyncio.sleep(0.3)
                     continue
                 response.raise_for_status()
+                # Successful response — reset consecutive failure counter
+                if is_siri:
+                    _reset_siri_auth_failures()
                 data = response.json()
                 if data is None:
                     return {}
@@ -755,6 +775,9 @@ async def get_vehicle_positions(route_id: str) -> list[BusVehicle]:
                         return await _get_vehicles_impl(fallback_id)
                     except Exception:
                         pass
+                raise e
+            # Don't retry if the circuit breaker has opened
+            if e.response.status_code in (401, 403) and _siri_circuit_is_open():
                 raise e
             last_error = e
             if attempt < max_retries:
