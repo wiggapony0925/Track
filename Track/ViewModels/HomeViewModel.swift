@@ -357,8 +357,7 @@ final class HomeViewModel {
     var searchPinCoordinate: CLLocationCoordinate2D?
     var isSearchPinActive = false
 
-    // Walking route to the nearest station
-    var walkingRoute: MKRoute?
+    // Walking route to the nearest station (forwarded from goMode)
     var nearestStopCoordinate: CLLocationCoordinate2D?
     var selectedStopId: String?
 
@@ -478,58 +477,33 @@ final class HomeViewModel {
         return filtered.isEmpty && !trainVehicles.isEmpty ? trainVehicles : filtered
     }
 
-    // Full transit system map (pre-decoded for performance)
-    // Includes Subway, LIRR, and Metro-North lines
-    struct CachedTransitLine: Identifiable {
-        let id: String
-        let color: Color
-        let coordinates: [[CLLocationCoordinate2D]]
-        let mode: TransitLineMode
+    // MARK: - Sub-ViewModels
 
-        enum TransitLineMode {
-            case subway
-            case lirr
-            case mnr
-        }
+    /// System map data (subway/LIRR/MNR polylines and stations).
+    /// Loaded once at startup; the View reads directly from this sub-ViewModel.
+    let mapSystem = MapSystemViewModel()
+
+    /// GO Mode (live transit tracking) state and logic.
+    let goMode = GoModeViewModel()
+
+    // MARK: - Type Aliases (backward compatibility)
+
+    typealias CachedSubwayStation = MapSystemViewModel.CachedSubwayStation
+    typealias FlattenedMapPolyline = MapSystemViewModel.FlattenedMapPolyline
+    typealias CachedTransitLine = MapSystemViewModel.CachedTransitLine
+
+    // MARK: - System Map Forwarding (backward compatibility)
+
+    /// Forwarding properties so existing views can still use `viewModel.flattenedSubwayPolylines`, etc.
+    var flattenedSubwayPolylines: [MapSystemViewModel.FlattenedMapPolyline] {
+        mapSystem.flattenedSubwayPolylines
     }
-    var cachedSystemMap: [CachedTransitLine] = []
-
-    /// Pre-computed subway lines with perpendicular offsets applied to shared corridors.
-    /// Computed once when cachedSystemMap is set, so the View never recalculates it.
-    struct OffsetSubwayLine: Identifiable {
-        let id: String
-        let color: Color
-        let coordinates: [[CLLocationCoordinate2D]]
+    var flattenedCommuterRailPolylines: [MapSystemViewModel.FlattenedMapPolyline] {
+        mapSystem.flattenedCommuterRailPolylines
     }
-    var cachedOffsetSubwayLines: [OffsetSubwayLine] = []
-
-    // MARK: - Flattened Map Polylines (Performance Optimized)
-
-    /// A single polyline segment ready for rendering with a stable ID.
-    /// This flattens nested structures to avoid nested ForEach loops in SwiftUI Map,
-    /// which dramatically improves rendering performance.
-    struct FlattenedMapPolyline: Identifiable {
-        let id: String  // Stable unique ID: "routeId_branchIndex"
-        let coordinates: [CLLocationCoordinate2D]
-        let color: Color
-        let lineWidth: CGFloat
+    var cachedStations: [MapSystemViewModel.CachedSubwayStation] {
+        mapSystem.cachedStations
     }
-
-    /// Pre-computed flattened subway polylines for the system map view.
-    /// Uses stable IDs and avoids nested ForEach for optimal MapKit rendering.
-    var flattenedSubwayPolylines: [FlattenedMapPolyline] = []
-
-    /// Pre-computed flattened commuter rail (LIRR/MNR) polylines for the system map view.
-    var flattenedCommuterRailPolylines: [FlattenedMapPolyline] = []
-
-    // Full subway station list with served lines
-    struct CachedSubwayStation: Identifiable {
-        let id: String
-        let name: String
-        let coordinate: CLLocationCoordinate2D
-        let routes: [String]
-    }
-    var cachedStations: [CachedSubwayStation] = []
 
     // MARK: - Offline Support
 
@@ -550,338 +524,7 @@ final class HomeViewModel {
 
     init() {
         syncTrackedRoute()
-        Task {
-            await loadSystemMap()
-            await loadStations()
-        }
-    }
-
-    /// Fetches the full transit system map (subway, LIRR, MNR polylines).
-    /// Falls back to bundled offline data when network is unavailable.
-    func loadSystemMap() async {
-        // If offline, use bundled static data
-        if !OfflineCacheManager.shared.isOnline {
-            await loadOfflineSystemMap()
-            return
-        }
-
-        do {
-            // Fetch subway shapes from API
-            let response = try await TrackAPI.fetchAllSubwayShapes()
-
-            // Pre-decode subway coordinates for the system-map overview.
-            // Deduplication and simplification are handled by the backend.
-            var decoded: [CachedTransitLine] = response.lines.map { line in
-                let branches = line.decodedPolylines
-                return CachedTransitLine(
-                    id: line.routeId,
-                    color: Color(hex: line.colorHex),
-                    coordinates: branches,
-                    mode: .subway
-                )
-            }
-
-            // Fetch LIRR shapes from API
-            if let lirrResponse = try? await TrackAPI.fetchAllLIRRShapes() {
-                let lirrLines: [CachedTransitLine] = lirrResponse.lines.map { line in
-                    CachedTransitLine(
-                        id: line.routeId,
-                        color: Color(hex: line.colorHex),
-                        coordinates: line.decodedPolylines,
-                        mode: .lirr
-                    )
-                }
-                decoded.append(contentsOf: lirrLines)
-                // Cache for offline use
-                await MainActor.run {
-                    OfflineCacheManager.shared.cacheLIRRShapes(lirrResponse)
-                }
-            }
-
-            // Fetch MNR shapes from API
-            if let mnrResponse = try? await TrackAPI.fetchAllMNRShapes() {
-                let mnrLines: [CachedTransitLine] = mnrResponse.lines.map { line in
-                    CachedTransitLine(
-                        id: line.routeId,
-                        color: Color(hex: line.colorHex),
-                        coordinates: line.decodedPolylines,
-                        mode: .mnr
-                    )
-                }
-                decoded.append(contentsOf: mnrLines)
-                // Cache for offline use
-                await MainActor.run {
-                    OfflineCacheManager.shared.cacheMNRShapes(mnrResponse)
-                }
-            }
-
-            // Log details about what we loaded
-            let subwayCount = decoded.filter { $0.mode == .subway }.count
-            let lirrCount = decoded.filter { $0.mode == .lirr }.count
-            let mnrCount = decoded.filter { $0.mode == .mnr }.count
-            let totalBranches = decoded.reduce(0) { $0 + $1.coordinates.count }
-            let totalPoints = decoded.reduce(0) { $0 + $1.coordinates.reduce(0) { $0 + $1.count } }
-
-            await MainActor.run {
-                self.cachedSystemMap = decoded
-                self.computeSubwayOffsets()
-            }
-
-            AppLogger.shared.log(
-                "SYSTEM_MAP",
-                message:
-                    "Loaded \(decoded.count) transit lines (\(subwayCount) subway, \(lirrCount) LIRR, \(mnrCount) MNR) — \(totalBranches) branches, \(totalPoints) total points"
-            )
-        } catch {
-            AppLogger.shared.logError("loadSystemMap", error: error)
-            // Fall back to offline data on error
-            await loadOfflineSystemMap()
-        }
-    }
-
-    /// Determines the transit mode for a route ID based on prefix
-    private func transitMode(for routeId: String) -> CachedTransitLine.TransitLineMode? {
-        let upper = routeId.uppercased()
-        if upper.hasPrefix("LIRR") { return .lirr }
-        if upper.hasPrefix("MNR") { return .mnr }
-        return nil
-    }
-
-    /// Checks if a route ID is a commuter rail route (LIRR or MNR)
-    private func isCommuterRailRoute(_ routeId: String) -> Bool {
-        transitMode(for: routeId) != nil
-    }
-
-    // MARK: - Commuter Rail Bundle Loading
-
-    /// Loads LIRR and MNR routes from the static bundle
-    private func loadCommuterRailFromBundle(_ bundle: StaticBundle) -> [CachedTransitLine] {
-        var lines: [CachedTransitLine] = []
-
-        // Log all route IDs in the bundle for debugging
-        let allRouteIds = bundle.routes.routeIds
-
-        // Count LIRR and MNR routes (uppercase once for efficiency)
-        var lirrCount = 0
-        var mnrCount = 0
-        for routeId in allRouteIds {
-            let upper = routeId.uppercased()
-            if upper.hasPrefix("LIRR") {
-                lirrCount += 1
-            } else if upper.hasPrefix("MNR") {
-                mnrCount += 1
-            }
-        }
-
-        AppLogger.shared.log(
-            "BUNDLE",
-            message: "Bundle has \(allRouteIds.count) routes: \(lirrCount) LIRR, \(mnrCount) MNR")
-
-        for routeId in allRouteIds {
-            // Only process LIRR and MNR routes
-            guard let mode = transitMode(for: routeId) else { continue }
-
-            let branches = bundle.routes.branches(for: routeId)
-            guard !branches.isEmpty else { continue }
-
-            // Convert BundleCoordinate to CLLocationCoordinate2D
-            let coordinates: [[CLLocationCoordinate2D]] = branches.map { branch in
-                branch.map { coord in
-                    CLLocationCoordinate2D(latitude: coord.lat, longitude: coord.lon)
-                }
-            }
-
-            let color = SubwayRoutesData.color(for: routeId)
-
-            lines.append(
-                CachedTransitLine(
-                    id: routeId,
-                    color: color,
-                    coordinates: coordinates,
-                    mode: mode
-                ))
-        }
-
-        return lines
-    }
-
-    /// Loads all transit routes from bundled offline data.
-    private func loadOfflineSystemMap() async {
-        // Load subway routes from bundled offline data
-        var offlineLines: [CachedTransitLine] = SubwayRoutesData.allRouteIds.compactMap {
-            routeId -> CachedTransitLine? in
-            let rawBranches = SubwayRoutesData.routeBranches(for: routeId)
-            guard !rawBranches.isEmpty else { return nil }
-            return CachedTransitLine(
-                id: routeId,
-                color: SubwayRoutesData.color(for: routeId),
-                coordinates: rawBranches,
-                mode: .subway
-            )
-        }
-
-        // Load LIRR shapes from disk cache (saved when last online)
-        if let lirrResponse = OfflineCacheManager.shared.getCachedLIRRShapes() {
-            let lirrLines: [CachedTransitLine] = lirrResponse.lines.map { line in
-                CachedTransitLine(
-                    id: line.routeId,
-                    color: Color(hex: line.colorHex),
-                    coordinates: line.decodedPolylines,
-                    mode: .lirr
-                )
-            }
-            offlineLines.append(contentsOf: lirrLines)
-        }
-
-        // Load MNR shapes from disk cache (saved when last online)
-        if let mnrResponse = OfflineCacheManager.shared.getCachedMNRShapes() {
-            let mnrLines: [CachedTransitLine] = mnrResponse.lines.map { line in
-                CachedTransitLine(
-                    id: line.routeId,
-                    color: Color(hex: line.colorHex),
-                    coordinates: line.decodedPolylines,
-                    mode: .mnr
-                )
-            }
-            offlineLines.append(contentsOf: mnrLines)
-        }
-
-        self.cachedSystemMap = offlineLines
-        self.computeSubwayOffsets()
-
-        // Count per mode for logging
-        let subwayCount = offlineLines.filter { $0.mode == .subway }.count
-        let lirrCount = offlineLines.filter { $0.mode == .lirr }.count
-        let mnrCount = offlineLines.filter { $0.mode == .mnr }.count
-        let totalBranches = offlineLines.reduce(0) { $0 + $1.coordinates.count }
-        AppLogger.shared.log(
-            "OFFLINE",
-            message:
-                "Loaded \(offlineLines.count) offline transit routes (\(subwayCount) subway, \(lirrCount) LIRR, \(mnrCount) MNR, \(totalBranches) total branches)"
-        )
-    }
-
-    /// Populates `cachedOffsetSubwayLines` from the system map.
-    ///
-    /// Corridor offsets (fanning out co-located lines like 4/5/6 on Lex Ave)
-    /// are now computed server-side by `/subway/shapes/all`, so the client
-    /// simply converts `CachedTransitLine` → `OffsetSubwayLine` 1:1.
-    private func computeSubwayOffsets() {
-        let subwayLines = cachedSystemMap.filter { $0.mode == .subway }
-        cachedOffsetSubwayLines = subwayLines.map {
-            OffsetSubwayLine(id: $0.id, color: $0.color, coordinates: $0.coordinates)
-        }
-        AppLogger.shared.log(
-            "SYSTEM_MAP",
-            message: "Mapped \(subwayLines.count) subway lines (offsets applied server-side)")
-
-        // Pre-compute flattened polylines for efficient rendering
-        computeFlattenedPolylines()
-    }
-
-    /// Pre-computes flattened polyline arrays with stable IDs for efficient MapKit rendering.
-    /// This eliminates nested ForEach loops in the View, dramatically improving performance.
-    /// Called once after `cachedOffsetSubwayLines` is populated.
-    private func computeFlattenedPolylines() {
-        // Flatten subway polylines from offset lines
-        var subwayFlat: [FlattenedMapPolyline] = []
-        for line in cachedOffsetSubwayLines {
-            for (branchIndex, coords) in line.coordinates.enumerated() {
-                // Skip empty or single-point polylines
-                guard coords.count >= 2 else { continue }
-                subwayFlat.append(
-                    FlattenedMapPolyline(
-                        id: "\(line.id)_\(branchIndex)",
-                        coordinates: coords,
-                        color: line.color,
-                        lineWidth: 3
-                    ))
-            }
-        }
-        flattenedSubwayPolylines = subwayFlat
-
-        // Flatten commuter rail polylines (LIRR and MNR)
-        var commuterFlat: [FlattenedMapPolyline] = []
-        for line in cachedSystemMap where line.mode != .subway {
-            for (branchIndex, coords) in line.coordinates.enumerated() {
-                // Skip empty or single-point polylines
-                guard coords.count >= 2 else { continue }
-                commuterFlat.append(
-                    FlattenedMapPolyline(
-                        id: "\(line.id)_\(branchIndex)",
-                        coordinates: coords,
-                        color: line.color,
-                        lineWidth: 2.5
-                    ))
-            }
-        }
-        flattenedCommuterRailPolylines = commuterFlat
-
-        let totalPolylines = subwayFlat.count + commuterFlat.count
-        let totalPoints =
-            subwayFlat.reduce(0) { $0 + $1.coordinates.count }
-            + commuterFlat.reduce(0) { $0 + $1.coordinates.count }
-        AppLogger.shared.log(
-            "SYSTEM_MAP",
-            message:
-                "Flattened \(totalPolylines) polylines (\(subwayFlat.count) subway, \(commuterFlat.count) commuter rail) with \(totalPoints) total points"
-        )
-    }
-
-    /// Fetches all subway stations and their served lines.
-    /// Falls back to bundled offline data when network is unavailable.
-    func loadStations() async {
-        // If offline, use bundled static data
-        if !OfflineCacheManager.shared.isOnline {
-            loadOfflineStations()
-            return
-        }
-
-        do {
-            let response = try await TrackAPI.fetchAllSubwayStations()
-            let stations = response.stations.map { s in
-                CachedSubwayStation(
-                    id: s.id,
-                    name: s.name,
-                    coordinate: CLLocationCoordinate2D(latitude: s.lat, longitude: s.lon),
-                    routes: s.routes
-                )
-            }
-            await MainActor.run {
-                self.cachedStations = stations
-            }
-
-            // Cache stations for offline use
-            let cachedStations = response.stations.map { s in
-                CachedStation(
-                    id: s.id,
-                    name: s.name,
-                    latitude: s.lat,
-                    longitude: s.lon,
-                    routes: s.routes
-                )
-            }
-            OfflineCacheManager.shared.cacheStations(cachedStations)
-
-        } catch {
-            AppLogger.shared.logError("loadStations", error: error)
-            // Fall back to offline data on error
-            loadOfflineStations()
-        }
-    }
-
-    /// Loads stations from bundled offline data.
-    private func loadOfflineStations() {
-        let offlineStations = SubwayRoutesData.majorStations.map { station in
-            CachedSubwayStation(
-                id: station.id,
-                name: station.name,
-                coordinate: station.coordinate,
-                routes: station.routes
-            )
-        }
-        self.cachedStations = offlineStations
-        AppLogger.shared.log("OFFLINE", message: "Loaded \(offlineStations.count) offline stations")
+        // System map and stations are now loaded by MapSystemViewModel
     }
 
     /// Syncs the local tracking state with the persisted TrackedRoute in UserDefaults.
@@ -914,22 +557,14 @@ final class HomeViewModel {
         return cleanRouteId == trackedCleanId && tracked.stopName == arrival.stopId
     }
 
-    // MARK: - GO Mode (Live Transit Tracking)
+    // MARK: - GO Mode Forwarding (backward compatibility)
 
-    /// Whether the user is in "GO" mode — passively tracking a vehicle.
-    var isGoModeActive = false
-
-    /// The route being tracked in GO mode (e.g. "L", "B63").
-    var goModeRouteName: String?
-
-    /// Route color for the tracked line in GO mode.
-    var goModeRouteColor: Color?
-
-    /// Stops the user has already passed in GO mode (for checklist dimming).
-    var passedStopIds: Set<String> = []
-
-    /// Transit ETA computed via MKDirections (minutes remaining).
-    var transitEtaMinutes: Int?
+    var isGoModeActive: Bool { goMode.isGoModeActive }
+    var goModeRouteName: String? { goMode.goModeRouteName }
+    var goModeRouteColor: Color? { goMode.goModeRouteColor }
+    var passedStopIds: Set<String> { goMode.passedStopIds }
+    var transitEtaMinutes: Int? { goMode.transitEtaMinutes }
+    var walkingRoute: MKRoute? { goMode.walkingRoute }
 
     private let repository = TransitRepository()
 
@@ -1061,7 +696,7 @@ final class HomeViewModel {
     func clearSearchPin(userLocation: CLLocation?) async {
         isSearchPinActive = false
         searchPinCoordinate = nil
-        walkingRoute = nil
+        goMode.walkingRoute = nil
         nearestStopCoordinate = nil
     }
 
@@ -1087,7 +722,7 @@ final class HomeViewModel {
         }
 
         // Reset previous route data
-        walkingRoute = nil
+        goMode.walkingRoute = nil
         nearestStopCoordinate = nil
         busVehicles = []
         trainVehicles = []
@@ -1653,7 +1288,7 @@ final class HomeViewModel {
         nearestStopCoordinate = nil
         highlightedVehicleId = nil
         selectedStopId = nil
-        walkingRoute = nil
+        goMode.walkingRoute = nil
     }
 
     // Cache latest arrivals to allow client-side simulation between network fetches
@@ -2323,152 +1958,37 @@ final class HomeViewModel {
         LiveActivityManager.shared.endActivity()
     }
 
-    // MARK: - GO Mode (Live Transit Tracking)
+    // MARK: - GO Mode Forwarding (methods)
 
-    /// Activates "GO" mode for the currently selected route.
-    ///
-    /// GO mode replaces the standard blue dot with a pulsing vehicle icon
-    /// that snaps to the route polyline. The map auto-pans to follow the
-    /// user's position and dims already-passed stops.
-    ///
-    /// Inspired by the Transit app's hands-free tracking experience.
     func activateGoMode(routeName: String, routeColor: Color) {
-        isGoModeActive = true
-        goModeRouteName = routeName
-        goModeRouteColor = routeColor
-        passedStopIds = []
+        goMode.activateGoMode(routeName: routeName, routeColor: routeColor)
     }
 
-    /// Deactivates "GO" mode and returns to the normal map view.
     func deactivateGoMode() {
-        isGoModeActive = false
-        goModeRouteName = nil
-        goModeRouteColor = nil
-        passedStopIds = []
-        transitEtaMinutes = nil
+        goMode.deactivateGoMode()
     }
 
-    /// Marks a stop as passed (dimmed in the checklist). Called when
-    /// the user's GPS position moves beyond a stop along the route.
     func markStopPassed(_ stopId: String) {
-        passedStopIds.insert(stopId)
+        goMode.markStopPassed(stopId)
     }
 
-    /// Returns whether a stop has been passed in GO mode.
     func isStopPassed(_ stop: BusStop) -> Bool {
-        passedStopIds.contains(stop.id)
+        goMode.isStopPassed(stop)
     }
 
-    /// Distance threshold (meters) for marking a stop as passed.
-    /// When the user is within this radius of a stop, it is dimmed.
-    private static let stopPassedThreshold: CLLocationDistance = AppSettings.shared
-        .stopPassedThresholdMeters
-
-    /// Updates the list of passed stops based on the user's current
-    /// position and bearing relative to the route shape stops.
-    ///
-    /// A stop is marked as passed if the user is within
-    /// ``stopPassedThreshold`` meters **and** the user's heading
-    /// indicates they are moving away from the stop (or they have
-    /// already been marked once).
     func updatePassedStops(userLocation: CLLocation?) {
-        guard isGoModeActive, let loc = userLocation, let shape = routeShape else { return }
-        let userBearing = loc.course  // -1 if unavailable
-        for stop in shape.stops {
-            // Already passed — skip
-            if passedStopIds.contains(stop.id) { continue }
-
-            let stopLoc = CLLocation(latitude: stop.lat, longitude: stop.lon)
-            let distance = loc.distance(from: stopLoc)
-
-            guard distance < Self.stopPassedThreshold else { continue }
-
-            if userBearing >= 0 {
-                // Use bearing to confirm the stop is behind the user
-                let bearingToStop = loc.bearing(to: stopLoc)
-                let angleDiff = abs(userBearing - bearingToStop)
-                let normalized = angleDiff > 180 ? 360 - angleDiff : angleDiff
-                // If the stop is more than 90° behind, mark as passed
-                if normalized > 90 {
-                    passedStopIds.insert(stop.id)
-                }
-            } else {
-                // No bearing data — fall back to proximity only
-                passedStopIds.insert(stop.id)
-            }
-        }
+        goMode.updatePassedStops(userLocation: userLocation, routeShape: routeShape)
     }
 
-    // MARK: - Transit ETA via MKDirections
-
-    /// Uses ``MKDirections`` with ``MKDirectionsTransportType.transit`` to
-    /// estimate the time of arrival from the user's current position to
-    /// a destination coordinate.
-    ///
-    /// Reference: https://developer.apple.com/documentation/mapkit/mkdirections
-    ///
-    /// - Parameters:
-    ///   - from: User's current location.
-    ///   - to: Destination coordinate (e.g. a bus stop or station).
     func fetchTransitETA(
         from source: CLLocationCoordinate2D, to destination: CLLocationCoordinate2D
     ) async {
-        // MKPlacemark is deprecated in iOS 26.0
-        let sourceItem = MKMapItem(
-            location: CLLocation(latitude: source.latitude, longitude: source.longitude),
-            address: nil)
-        let destItem = MKMapItem(
-            location: CLLocation(latitude: destination.latitude, longitude: destination.longitude),
-            address: nil)
-
-        let request = MKDirections.Request()
-        request.source = sourceItem
-        request.destination = destItem
-        request.transportType = .transit
-
-        let directions = MKDirections(request: request)
-        do {
-            let eta = try await directions.calculateETA()
-            let minutes = Int(eta.expectedTravelTime / 60)
-            transitEtaMinutes = minutes
-        } catch {
-            AppLogger.shared.logError("Transit ETA calculation", error: error)
-            // Transit directions may not be available in all areas — fail silently
-            transitEtaMinutes = nil
-        }
+        await goMode.fetchTransitETA(from: source, to: destination)
     }
 
-    // MARK: - Walking Route
-
-    /// Fetches walking directions from user to a destination and stores the route polyline.
     func fetchWalkingRoute(
         from source: CLLocationCoordinate2D, to destination: CLLocationCoordinate2D
     ) async {
-        let sourceItem = MKMapItem(
-            location: CLLocation(latitude: source.latitude, longitude: source.longitude),
-            address: nil)
-        let destItem = MKMapItem(
-            location: CLLocation(latitude: destination.latitude, longitude: destination.longitude),
-            address: nil)
-
-        let request = MKDirections.Request()
-        request.source = sourceItem
-        request.destination = destItem
-        request.transportType = .walking
-
-        let directions = MKDirections(request: request)
-        do {
-            let response = try await directions.calculate()
-            if let route = response.routes.first {
-                await MainActor.run {
-                    self.walkingRoute = route
-                }
-            }
-        } catch {
-            AppLogger.shared.logError("Walking route calculation", error: error)
-            await MainActor.run {
-                self.walkingRoute = nil
-            }
-        }
+        await goMode.fetchWalkingRoute(from: source, to: destination)
     }
 }
