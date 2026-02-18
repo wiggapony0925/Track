@@ -125,6 +125,7 @@ final class GoModeViewModel {
     func fetchTransitETA(
         from source: CLLocationCoordinate2D, to destination: CLLocationCoordinate2D
     ) async {
+        // MKPlacemark is deprecated in iOS 26.0
         let sourceItem = MKMapItem(
             location: CLLocation(latitude: source.latitude, longitude: source.longitude),
             address: nil)
@@ -158,6 +159,7 @@ final class GoModeViewModel {
     func fetchWalkingRoute(
         from source: CLLocationCoordinate2D, to destination: CLLocationCoordinate2D
     ) async {
+        // MKPlacemark is deprecated in iOS 26.0
         let sourceItem = MKMapItem(
             location: CLLocation(latitude: source.latitude, longitude: source.longitude),
             address: nil)
