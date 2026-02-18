@@ -58,12 +58,17 @@ struct TrackWidgetProvider: TimelineProvider {
 
         let useLocalhost = defaults.bool(forKey: "dev_use_localhost")
         let baseURL: String
+        #if targetEnvironment(simulator)
         if useLocalhost {
             baseURL = "http://127.0.0.1:8000"
         } else {
-            let storedIP = defaults.string(forKey: "dev_custom_ip") ?? "169.254.175.168"
+            let storedIP = defaults.string(forKey: "dev_custom_ip") ?? "192.168.12.101"
             baseURL = "http://\(storedIP):8000"
         }
+        #else
+        let storedIP = defaults.string(forKey: "dev_custom_ip") ?? "192.168.12.101"
+        baseURL = "http://\(storedIP):8000"
+        #endif
 
         guard var components = URLComponents(string: baseURL + "/nearby") else {
             completion(nil)

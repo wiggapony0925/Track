@@ -33,103 +33,109 @@ struct MapControlsOverlay: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                // MARK: Top Section (Banners on left, controls on right)
-                VStack {
-                    HStack(alignment: .top) {
-                        // Left: Banners
-                        VStack(alignment: .leading, spacing: 8) {
-                            // Selected route indicator
-                            if viewModel.selectedRouteId != nil {
-                                selectedRouteBanner
-                            }
-                        }
-                        
+                // MARK: - Route Banner (top-left, below safe area)
+                if viewModel.selectedRouteId != nil {
+                    VStack {
+                        selectedRouteBanner
+                            .padding(.trailing, 60) // Leave room for control cluster
+                            .padding(.leading, AppTheme.Layout.margin)
+                            .padding(.top, 8)
                         Spacer()
-                        
-                        // Right: Map controls (under compass area)
-                        if sheetDetent != .large {
-                            mapControlButtons
-                                .padding(.top, 60) // Position below compass
-                        }
                     }
-                    .padding(.horizontal, AppTheme.Layout.margin)
-                    .padding(.top, 8)
-                    
-                    Spacer()
+                }
+                
+                // MARK: - Map Control Cluster (top-right, below compass)
+                if sheetDetent != .large {
+                    VStack {
+                        HStack {
+                            Spacer()
+                            mapControlCluster
+                        }
+                        .padding(.trailing, 12)
+                        .padding(.top, 52) // Clear the MapKit compass
+                        Spacer()
+                    }
                 }
             }
         }
     }
     
-    // MARK: - Map Control Buttons
+    // MARK: - Map Control Cluster
     
-    private var mapControlButtons: some View {
-        VStack(spacing: 12) {
+    /// Unified control pill: alert indicator, 3D toggle, and recenter
+    /// grouped inside a single frosted-glass capsule for a clean look.
+    private var mapControlCluster: some View {
+        VStack(spacing: 0) {
             // Service Alerts Button
             Button {
                 onAlertsTapped?()
                 HapticManager.impact(.medium)
             } label: {
-                ZStack(alignment: .topTrailing) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(
-                            viewModel.serviceAlerts.isEmpty
-                                ? AppTheme.Colors.textPrimary
-                                : AppTheme.Colors.warningYellow
-                        )
-                        .frame(width: 44, height: 44)
-                        .background(.ultraThinMaterial)
-                        .clipShape(Circle())
-                        .shadow(color: .black.opacity(0.10), radius: 4, x: 0, y: 2)
-                    
-                    // Badge count
-                    if !viewModel.serviceAlerts.isEmpty {
-                        Text("\(min(viewModel.serviceAlerts.count, 99))")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(.white)
-                            .frame(minWidth: 18, minHeight: 18)
-                            .background(
-                                Circle().fill(
-                                    viewModel.serviceAlerts.contains(where: { $0.severity == "severe" })
-                                        ? AppTheme.Colors.alertRed
-                                        : AppTheme.Colors.warningYellow
-                                )
-                            )
-                            .offset(x: 4, y: -4)
-                    }
-                }
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundColor(
+                        viewModel.serviceAlerts.isEmpty
+                            ? AppTheme.Colors.textPrimary
+                            : AppTheme.Colors.warningYellow
+                    )
+                    .frame(width: 48, height: 48)
             }
             .accessibilityLabel("Service alerts, \(viewModel.serviceAlerts.count) active")
+            
+            controlDivider
             
             // 3D / 2D Toggle
             Button {
                 toggle3DMode()
             } label: {
-                Image(systemName: is3DMode ? "square.stack.3d.up.slash" : "square.stack.3d.up")
-                    .font(.system(size: 16, weight: .medium))
+                Image(systemName: is3DMode ? "view.2d" : "view.3d")
+                    .font(.system(size: 17, weight: .semibold))
                     .foregroundColor(is3DMode ? AppTheme.Colors.mtaBlue : AppTheme.Colors.textPrimary)
-                    .frame(width: 44, height: 44)
-                    .background(.ultraThinMaterial)
-                    .clipShape(Circle())
-                    .shadow(color: .black.opacity(0.10), radius: 4, x: 0, y: 2)
+                    .frame(width: 48, height: 48)
             }
             .accessibilityLabel(is3DMode ? "Switch to 2D" : "Switch to 3D")
+            
+            controlDivider
             
             // Recenter / Location Button
             Button {
                 centerMap()
             } label: {
                 Image(systemName: "location.fill")
-                    .font(.system(size: 16, weight: .medium))
+                    .font(.system(size: 17, weight: .semibold))
                     .foregroundColor(AppTheme.Colors.mtaBlue)
-                    .frame(width: 44, height: 44)
-                    .background(.ultraThinMaterial)
-                    .clipShape(Circle())
-                    .shadow(color: .black.opacity(0.10), radius: 4, x: 0, y: 2)
+                    .frame(width: 48, height: 48)
             }
             .accessibilityLabel("Recenter on my location")
         }
+        .padding(.top, 4)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .shadow(color: .black.opacity(0.12), radius: 6, x: 0, y: 3)
+        // Badge rendered OUTSIDE the clip shape so it's fully visible
+        .overlay(alignment: .topTrailing) {
+            if !viewModel.serviceAlerts.isEmpty {
+                Text("\(min(viewModel.serviceAlerts.count, 99))")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(.white)
+                    .frame(minWidth: 20, minHeight: 20)
+                    .background(
+                        Circle().fill(
+                            viewModel.serviceAlerts.contains(where: { $0.severity == "severe" })
+                                ? AppTheme.Colors.alertRed
+                                : AppTheme.Colors.warningYellow
+                        )
+                    )
+                    .offset(x: 6, y: -6)
+            }
+        }
+    }
+    
+    /// Thin divider between buttons inside the control cluster.
+    private var controlDivider: some View {
+        Rectangle()
+            .fill(AppTheme.Colors.textSecondary.opacity(0.2))
+            .frame(width: 30, height: 0.5)
     }
     
     // MARK: - Computed Properties

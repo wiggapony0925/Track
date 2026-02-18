@@ -28,6 +28,11 @@ struct RouteDetailSheet: View {
     var currentLocation: CLLocationCoordinate2D?
     var selectedStopId: String?
     
+    /// Number of live vehicles (buses or trains) filtered by the current direction.
+    /// Provided by the ViewModel's `filteredBusVehicles` / `filteredTrainVehicles`
+    /// to avoid duplicating direction-filtering logic here.
+    var liveVehicleCount: Int = 0
+    
     /// Selected direction index - bound to viewModel so map can filter polylines
     @Binding var selectedDirectionIndex: Int
     
@@ -50,6 +55,7 @@ struct RouteDetailSheet: View {
          selectedDirectionIndex: Binding<Int>,
          serviceAlerts: [TransitAlert] = [],
          cachedStations: [HomeViewModel.CachedSubwayStation] = [],
+         liveVehicleCount: Int = 0,
          isSheetExpanded: Bool = false,
          is3DMode: Binding<Bool> = .constant(false),
          cameraPosition: Binding<MapCameraPosition> = .constant(.automatic),
@@ -64,6 +70,7 @@ struct RouteDetailSheet: View {
         self._selectedDirectionIndex = selectedDirectionIndex
         self.serviceAlerts = serviceAlerts
         self.cachedStations = cachedStations
+        self.liveVehicleCount = liveVehicleCount
         self.onTrack = onTrack
         self.isTracking = isTracking
         self.onDismiss = onDismiss
@@ -93,10 +100,10 @@ struct RouteDetailSheet: View {
         return group.directions[idx]
     }
     
-    /// Alerts that match this route (by routeId or displayName).
+    /// Alerts that match this route (by routeId or displayName), filtered to the same mode.
     private var routeAlerts: [TransitAlert] {
-        let byId = serviceAlerts.matching(routeId: group.routeId)
-        let byName = serviceAlerts.matching(routeId: group.displayName)
+        let byId = serviceAlerts.matching(routeId: group.routeId, mode: group.mode)
+        let byName = serviceAlerts.matching(routeId: group.displayName, mode: group.mode)
         // Merge without duplicates
         var seen = Set<String>()
         var result: [TransitAlert] = []
@@ -925,13 +932,7 @@ struct RouteDetailSheet: View {
 
     private var routeInfoFooter: some View {
         let hasStops = routeShape != nil && !routeShape!.stops.isEmpty
-        // Filter bus vehicles by direction when multiple directions exist
-        let directionVehicles: [BusVehicleResponse] = {
-            guard group.directions.count > 1 else { return busVehicles }
-            let filtered = busVehicles.filter { $0.directionRef == selectedDirectionIndex }
-            return filtered.isEmpty && !busVehicles.isEmpty ? busVehicles : filtered
-        }()
-        let hasVehicles = !directionVehicles.isEmpty
+        let hasVehicles = liveVehicleCount > 0
         
         // Only show if there's info to display
         if hasStops || hasVehicles {
@@ -963,7 +964,7 @@ struct RouteDetailSheet: View {
                                         .fill(AppTheme.Colors.successGreen.opacity(0.3))
                                         .frame(width: 14, height: 14)
                                 )
-                            Text("\(directionVehicles.count) live \(group.isBus ? "buses" : "trains")")
+                            Text("\(liveVehicleCount) live \(group.isBus ? "buses" : "trains")")
                                 .font(.custom("Helvetica-Bold", size: 13))
                                 .foregroundColor(AppTheme.Colors.successGreen)
                         }

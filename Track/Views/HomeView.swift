@@ -46,13 +46,19 @@ struct HomeView: View {
     @AppStorage("drag_to_search") private var dragToSearchEnabled = true
     @AppStorage("auto_refresh_enabled") private var autoRefreshEnabled = true
     @State private var isDragSearchActive = false
-    @State private var isDragSearching = false
     @State private var isDragSearchPanning = false
     @State private var hasFiredDragHaptic = false
     @State private var dragSearchDebounce: Task<Void, Never>?
     /// The settled center after a drag-search debounce fires. `nil` while
     /// the user is still panning — the radius circles hide until this is set.
     @State private var dragSearchSettledCenter: CLLocationCoordinate2D?
+    
+    /// Whether a drag-search API call is in-flight.
+    /// Derived from the ViewModel's loading state instead of maintaining
+    /// a separate flag — reuses the existing loading infrastructure.
+    private var isDragSearching: Bool {
+        viewModel.isLoading && viewModel.isSearchPinActive
+    }
     
     // MARK: - Effective Location
     
@@ -216,6 +222,15 @@ struct HomeView: View {
             // re-fit the camera to show the direction-specific polyline & stops.
             guard viewModel.selectedRouteId != nil,
                   viewModel.routeShape != nil else { return }
+            
+            // Immediately re-simulate vehicles against the new direction's polyline
+            // so markers reposition smoothly without waiting for the next timer tick.
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.85)) {
+                viewModel.updateSimulation()
+                // Clear stale bus snapshots so interpolation starts fresh
+                viewModel.previousBusPositions.removeAll()
+            }
+            
             if let fitCamera = viewModel.cameraPositionFittingRoute(
                 userLocation: locationManager.currentLocation,
                 is3D: is3DMode
@@ -239,8 +254,7 @@ struct HomeView: View {
                 sheetNavigator: sheetNavigator,
                 lastUpdated: $lastUpdated,
                 cameraPosition: $cameraPosition,
-                is3DMode: $is3DMode,
-                isDragSearching: isDragSearching
+                is3DMode: $is3DMode
             )
             
         case .routeDetail(let group, _):
@@ -251,13 +265,26 @@ struct HomeView: View {
                 userLocation: locationManager.currentLocation
             )?.coordinate
             
+            // Use the enriched group from the viewModel (which may have
+            // additional directions added by enrichGroupWithShapeDirections)
+            // instead of the stale group captured at navigation time.
+            let enrichedGroup = viewModel.selectedGroupedRoute ?? group
+            
+            // Compute direction-filtered vehicle count (bus + train) from the
+            // ViewModel's already-filtered collections so we don't duplicate
+            // direction-filtering logic inside the sheet.
+            let vehicleCount = enrichedGroup.isBus
+                ? viewModel.filteredBusVehicles.count
+                : viewModel.filteredTrainVehicles.count
+            
             RouteDetailSheet(
-                group: group,
+                group: enrichedGroup,
                 busVehicles: $viewModel.busVehicles,
                 routeShape: $viewModel.routeShape,
                 selectedDirectionIndex: $viewModel.selectedDirectionIndex,
                 serviceAlerts: viewModel.serviceAlerts,
                 cachedStations: viewModel.cachedStations,
+                liveVehicleCount: vehicleCount,
                 isSheetExpanded: sheetDetent == .large,
                 is3DMode: $is3DMode,
                 cameraPosition: $cameraPosition,
@@ -376,7 +403,6 @@ struct HomeView: View {
         // uses the explored area. We'll restore the overlay on dismiss.
         if viewModel.selectedRouteId != nil && isDragSearchActive {
             isDragSearchActive = false
-            isDragSearching = false
             isDragSearchPanning = false
             // NOTE: keep dragSearchSettledCenter so we can restore on dismiss
         }
@@ -390,13 +416,21 @@ struct HomeView: View {
                 
                 Task { @MainActor in
                     if isBus {
+                        // Buses: Fetch fresh GPS every 2s, interpolate on off-ticks
                         if tick % 2 == 0 {
                             await viewModel.refreshBusVehicles()
+                        } else {
+                            viewModel.updateBusSimulation()
                         }
                     } else if isCommuterRail {
-                        // No real-time vehicle tracking for commuter rail yet —
-                        // skip frequent polling to save battery & network.
+                        // LIRR / MNR: Same interpolation engine as subway —
+                        // simulate every tick, network refresh every 5s.
+                        viewModel.updateSimulation()
+                        if tick % 5 == 0 {
+                            await viewModel.refreshCommuterRailVehicles()
+                        }
                     } else {
+                        // Subway: Simulate every tick, network refresh every 3s
                         viewModel.updateSimulation()
                         if tick % 3 == 0 {
                             await viewModel.refreshTrainVehicles()
@@ -449,22 +483,13 @@ struct HomeView: View {
         dragSearchDebounce?.cancel()
         
         // Mark as actively panning — dims the map and shows "Release to search".
-        // Only clear the settled center if the camera moved significantly from it
-        // (prevents tiny drift/animation from flickering the radius circles).
+        // The radius circles now track currentMapCenter live, so we don't need
+        // to clear dragSearchSettledCenter during panning.
         if isDragSearchActive {
             if !isDragSearchPanning {
                 isDragSearchPanning = true
                 // Give a quick vibration each time the user starts a new pan gesture
                 HapticManager.impact(.light)
-            }
-            
-            if let settled = dragSearchSettledCenter {
-                let settledLoc = CLLocation(latitude: settled.latitude, longitude: settled.longitude)
-                let newLoc = CLLocation(latitude: center.latitude, longitude: center.longitude)
-                if settledLoc.distance(from: newLoc) > 50 {
-                    // User actually panned away — hide radius until re-settled
-                    dragSearchSettledCenter = nil
-                }
             }
         } else {
             // Not yet active — fire a single haptic hint when the user pans
@@ -473,7 +498,7 @@ struct HomeView: View {
                let userCoord = locationManager.currentLocation?.coordinate {
                 let userLoc = CLLocation(latitude: userCoord.latitude, longitude: userCoord.longitude)
                 let panLoc = CLLocation(latitude: center.latitude, longitude: center.longitude)
-                if userLoc.distance(from: panLoc) > 200 {
+                if userLoc.distance(from: panLoc) > 60 {
                     hasFiredDragHaptic = true
                     HapticManager.impact(.light)
                 }
@@ -481,8 +506,8 @@ struct HomeView: View {
         }
         
         dragSearchDebounce = Task { @MainActor in
-            // Wait for the user to stop panning (800ms of stillness)
-            try? await Task.sleep(for: .milliseconds(800))
+            // Wait for the user to stop panning (500ms of stillness)
+            try? await Task.sleep(for: .milliseconds(500))
             guard !Task.isCancelled else { return }
             
             guard let userCoord = locationManager.currentLocation?.coordinate else { return }
@@ -491,8 +516,10 @@ struct HomeView: View {
             let panLoc = CLLocation(latitude: center.latitude, longitude: center.longitude)
             let distanceMoved = userLoc.distance(from: panLoc)
             
-            // Threshold: only activate when panned 300m+ from real location
-            let threshold: Double = 300
+            // Threshold: activate when panned 100m+ from real location so
+            // the drag-search dot appears almost immediately when the user
+            // moves the map — it "emerges" from the GPS circle.
+            let threshold: Double = 100
             
             if distanceMoved > threshold {
                 // Show the center dot
@@ -503,10 +530,11 @@ struct HomeView: View {
                     HapticManager.selection()
                 }
                 
-                // Mark as searching (panning stopped, API is firing)
+                // Panning stopped — isDragSearching is now derived from
+                // viewModel.isLoading && viewModel.isSearchPinActive,
+                // so it activates automatically when setSearchPin fires.
                 withAnimation(.easeOut(duration: 0.15)) {
                     isDragSearchPanning = false
-                    isDragSearching = true
                 }
                 
                 await viewModel.setSearchPin(center, userLocation: locationManager.currentLocation)
@@ -514,10 +542,6 @@ struct HomeView: View {
                 
                 // Snap the radius circles into place at the settled location
                 dragSearchSettledCenter = center
-                
-                withAnimation(.easeOut(duration: 0.2)) {
-                    isDragSearching = false
-                }
                 
                 // Satisfying "lock-in" vibration so the user feels the new center
                 HapticManager.impact(.medium)
@@ -537,7 +561,6 @@ struct HomeView: View {
         
         withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
             isDragSearchActive = false
-            isDragSearching = false
             isDragSearchPanning = false
             hasFiredDragHaptic = false
             dragSearchSettledCenter = nil

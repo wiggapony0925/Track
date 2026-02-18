@@ -292,20 +292,25 @@ def _trip_siri_circuit() -> None:
         TrackLogger.circuit("SIRI circuit breaker OPENED (401/403 from MTA)")
 
 
-async def _fetch_bus_json(url: str, params: dict[str, str]) -> Any:
+async def _fetch_bus_json(
+    url: str,
+    params: dict[str, str],
+    *,
+    is_siri: bool = False,
+) -> Any:
     """Fetch JSON from an MTA Bus Time endpoint.
 
     Raises :class:`httpx.HTTPStatusError` on 4xx/5xx responses so callers
     can translate 401/403 into a clean 503 for the iOS client.
 
-    Includes a **circuit breaker**: after a 401/403 response the breaker
-    opens for 5 minutes to avoid flooding MTA with requests that will all
-    fail, and to stop spamming the server logs.
+    The **circuit breaker** only applies to SIRI (real-time) requests
+    (``is_siri=True``).  OBA (static/discovery) calls use a different
+    API and should never be blocked by a SIRI auth failure.
 
     **Retries** once on 5xx server errors with a short backoff, since the
     MTA SIRI endpoint occasionally returns transient 500s for specific stops.
     """
-    if _siri_circuit_is_open():
+    if is_siri and _siri_circuit_is_open():
         raise httpx.HTTPStatusError(
             "SIRI circuit breaker open – skipping request",
             request=httpx.Request("GET", url),
@@ -320,7 +325,8 @@ async def _fetch_bus_json(url: str, params: dict[str, str]) -> Any:
             try:
                 response = await client.get(url, params=params)
                 if response.status_code in (401, 403):
-                    _trip_siri_circuit()
+                    if is_siri:
+                        _trip_siri_circuit()
                     response.raise_for_status()
                 if response.status_code >= 500 and attempt < _MAX_RETRIES - 1:
                     # Transient server error — wait briefly and retry
@@ -610,7 +616,7 @@ async def get_realtime_arrivals(stop_id: str) -> list[BusArrival]:
         # and LineRef which are needed for proper direction grouping.
     }
 
-    data = await _fetch_bus_json(url, params)
+    data = await _fetch_bus_json(url, params, is_siri=True)
 
     # Navigate the SIRI envelope
     deliveries: list[dict[str, Any]] = (
@@ -779,7 +785,7 @@ async def _get_vehicles_impl(route_id: str) -> list[BusVehicle]:
         "LineRef": route_id,
     }
 
-    data = await _fetch_bus_json(url, params)
+    data = await _fetch_bus_json(url, params, is_siri=True)
 
     deliveries: list[dict[str, Any]] = (
         data.get("Siri", {})

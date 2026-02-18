@@ -38,6 +38,9 @@ from app.services.commuter_rail_shapes import (
 # Default bus color (MTA blue) — used when bus routes don't provide one
 _BUS_DEFAULT_COLOR = "#0039A6"
 
+# Placeholder minutes_away value — sorts to the bottom within its distance tier
+_PLACEHOLDER_MINUTES = 99
+
 router = APIRouter(tags=["nearby"])
 
 
@@ -176,10 +179,14 @@ _DIRECTION_LABELS: dict[str, str] = {
     "3": "Direction D",
     "N/A": "All Directions",
     "LOOP": "Loop",
+    "OPPOSITE": "Opposite Direction",
 }
 
 # SIRI numeric direction keys (DirectionRef: 0/1 live, 2/3 backfill branches)
 _NUMERIC_DIR_KEYS = {"0", "1", "2", "3"}
+
+# Fallback direction key for Phase C when no compass direction can be inferred
+_OPPOSITE_DIRECTION = "Opposite"
 
 
 def _direction_label(direction: str, arrivals: list[NearbyTransitArrival] | None = None) -> str:
@@ -592,7 +599,7 @@ async def _fetch_nearby_buses(
                 stop_name=stop.name,
                 arrival_ts=None,
                 direction=direction,
-                minutes_away=99,  # sorts to the bottom within its tier
+                minutes_away=_PLACEHOLDER_MINUTES,
                 status="Scheduled",
                 mode="bus",
                 stop_lat=stop.lat,
@@ -669,7 +676,7 @@ async def _fetch_nearby_buses(
                     stop_name=stop.name,
                     arrival_ts=None,
                     direction=new_dir,
-                    minutes_away=99,
+                    minutes_away=_PLACEHOLDER_MINUTES,
                     status="Scheduled",
                     mode="bus",
                     stop_lat=stop.lat,
@@ -687,6 +694,101 @@ async def _fetch_nearby_buses(
         TrackLogger.bus(
             f"Backfilled {opposite_backfill} missing-direction placeholders "
             f"for routes with incomplete live directions"
+        )
+
+    # -----------------------------------------------------------------
+    # Phase C: Routes that STILL have only 1 direction after Phases A+B.
+    #
+    # This typically happens for express buses (BxM3, BM1, …) and
+    # SBS routes (M79-SBS) where all nearby stops face the same way.
+    # We infer an opposite direction so the grouped card always shows
+    # two swipeable tabs — matching user expectations and subway parity.
+    #
+    # Strategy:
+    #   - If existing key is a destination name ("MIDTOWN"), create a
+    #     placeholder with the opposite compass direction label.
+    #   - If existing key is a compass direction ("N"), use the
+    #     opposite compass ("S").
+    #   - If existing key is numeric ("0"), create "1" and vice versa.
+    # -----------------------------------------------------------------
+    _OPPOSITE_COMPASS: dict[str, str] = {
+        "N": "S", "S": "N", "E": "W", "W": "E",
+        "NE": "SW", "SW": "NE", "NW": "SE", "SE": "NW",
+    }
+
+    # Rebuild direction counts after Phase B additions
+    final_route_dirs: dict[str, set[str]] = defaultdict(set)
+    for r in results:
+        if r.mode == "bus":
+            final_route_dirs[r.route_id].add(r.direction)
+
+    phase_c_count = 0
+    for route_id, dirs in final_route_dirs.items():
+        if len(dirs) != 1:
+            continue  # Already has 2+ directions
+
+        existing_dir = next(iter(dirs))
+
+        # Find a representative stop for this route to anchor the placeholder
+        rep_stop: BusStop | None = None
+        for r in results:
+            if r.route_id == route_id and r.stop_lat and r.stop_lon:
+                rep_stop = BusStop(
+                    id=r.stop_id or "",
+                    name=r.stop_name,
+                    lat=r.stop_lat,
+                    lon=r.stop_lon,
+                    direction=None,
+                    route_ids=[],
+                )
+                break
+        if rep_stop is None:
+            continue
+
+        # Determine the opposite direction key
+        upper = existing_dir.upper()
+        if upper in _OPPOSITE_COMPASS:
+            new_dir = _OPPOSITE_COMPASS[upper]
+        elif upper in _NUMERIC_DIR_KEYS:
+            new_dir = "1" if existing_dir == "0" else "0"
+        else:
+            # Destination name — pick compass from the stop or default to "S"/"N"
+            # Try to find the compass direction from nearby stops
+            stop_compass = None
+            for s in stops:
+                if route_id in [_display_name(rid) for rid in s.route_ids]:
+                    if s.direction:
+                        stop_compass = s.direction.upper()
+                        break
+            if stop_compass and stop_compass in _OPPOSITE_COMPASS:
+                new_dir = _OPPOSITE_COMPASS[stop_compass]
+            else:
+                # Default: if direction is a destination name going one way,
+                # use a generic opposite label
+                new_dir = _OPPOSITE_DIRECTION
+
+        results.append(
+            NearbyTransitArrival(
+                route_id=route_id,
+                stop_name=rep_stop.name,
+                arrival_ts=None,
+                direction=new_dir,
+                minutes_away=_PLACEHOLDER_MINUTES,
+                status="Scheduled",
+                mode="bus",
+                stop_lat=rep_stop.lat,
+                stop_lon=rep_stop.lon,
+                stop_id=rep_stop.id,
+                vehicle_id=None,
+                destination=None,
+            )
+        )
+        phase_c_count += 1
+
+    if phase_c_count:
+        TrackLogger.bus(
+            f"Phase C: Created {phase_c_count} opposite-direction placeholders "
+            f"for single-direction routes"
         )
 
     return results

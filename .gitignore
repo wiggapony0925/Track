@@ -41,3 +41,6 @@ TrackBackend/app/data/subway/
 TrackBackend/app/data/lirr/
 TrackBackend/app/data/metro_north/
 TrackBackend/app/data/*.txt
+
+# Logs
+TrackBackend/logs/

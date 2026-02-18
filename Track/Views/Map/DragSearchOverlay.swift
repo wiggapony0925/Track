@@ -12,6 +12,7 @@ import SwiftUI
 
 /// A fixed-position blue dot at screen center + a status pill at the top,
 /// with a subtle map dim while the user is actively panning.
+/// The dot "emerges" from the user's GPS circle with a grow animation.
 struct DragSearchOverlay: View {
     
     let isActive: Bool
@@ -23,16 +24,22 @@ struct DragSearchOverlay: View {
     /// The map camera center is shifted up by half this value, so we offset the dot to match.
     var mapBottomPadding: CGFloat = 350
     
+    /// Tracks whether the dot has fully appeared (drives the grow-from-center animation).
+    @State private var hasAppeared = false
+    
+    /// Drives the repeating ripple animation when searching.
+    @State private var rippleActive = false
+    
     var body: some View {
         if isActive {
             ZStack {
-                // ── Subtle dim while actively panning ──
-                if isPanning {
-                    Color.black.opacity(0.12)
-                        .ignoresSafeArea()
-                        .allowsHitTesting(false)
-                        .transition(.opacity)
-                }
+                // ── Persistent dim outside the search area ──
+                // Shows a subtle overlay while drag search is active:
+                // slightly stronger while panning, lighter when settled.
+                Color.black.opacity(isPanning ? 0.12 : 0.06)
+                    .ignoresSafeArea()
+                    .allowsHitTesting(false)
+                    .animation(.easeInOut(duration: 0.2), value: isPanning)
                 
                 // ── Blue dot pinned to map's effective center ──
                 // The map has safeAreaPadding(.bottom, 350), which shifts
@@ -40,6 +47,8 @@ struct DragSearchOverlay: View {
                 // We offset the dot by the same amount so it sits exactly
                 // where the map reports its center coordinate.
                 appleLocationDot
+                    .scaleEffect(hasAppeared ? 1.0 : 0.01)
+                    .opacity(hasAppeared ? 1.0 : 0.0)
                     .offset(y: -(mapBottomPadding / 2))
                     .allowsHitTesting(false)
                 
@@ -51,7 +60,15 @@ struct DragSearchOverlay: View {
                 }
             }
             .transition(.opacity)
-            .animation(.easeInOut(duration: 0.25), value: isPanning)
+            .onAppear {
+                // Grow from center — feels like the dot "came out of" the GPS circle
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                    hasAppeared = true
+                }
+            }
+            .onDisappear {
+                hasAppeared = false
+            }
         }
     }
     
@@ -59,6 +76,21 @@ struct DragSearchOverlay: View {
     
     private var appleLocationDot: some View {
         ZStack {
+            // Outer ripple ring — pulses outward while searching
+            if isSearching {
+                Circle()
+                    .stroke(Color(red: 0.0, green: 0.48, blue: 1.0).opacity(0.3), lineWidth: 2)
+                    .frame(width: 44, height: 44)
+                    .scaleEffect(rippleActive ? 1.6 : 1.0)
+                    .opacity(rippleActive ? 0.0 : 0.5)
+                    .onAppear {
+                        withAnimation(.easeOut(duration: 1.2).repeatForever(autoreverses: false)) {
+                            rippleActive = true
+                        }
+                    }
+                    .onDisappear { rippleActive = false }
+            }
+            
             // Soft accuracy halo
             Circle()
                 .fill(Color(red: 0.0, green: 0.48, blue: 1.0).opacity(isPanning ? 0.15 : 0.10))
@@ -118,7 +150,7 @@ struct DragSearchOverlay: View {
     }
     
     private var statusText: String {
-        if isSearching { return "Checking area…" }
+        if isSearching { return "Searching here…" }
         if isPanning { return "Release to search" }
         return "Exploring area"
     }

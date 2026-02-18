@@ -22,9 +22,6 @@ struct DashboardView: View {
     @Binding var cameraPosition: MapCameraPosition
     @Binding var is3DMode: Bool
     
-    /// Whether the drag-to-search is actively loading new results.
-    var isDragSearching: Bool = false
-    
     var body: some View {
         VStack(spacing: 0) {
             // MARK: - Navbar (Fixed Header)
@@ -44,15 +41,6 @@ struct DashboardView: View {
                 lastUpdated: lastUpdated
             )
             
-            // MARK: - Drag-Search Loading Banner
-            Group {
-                if isDragSearching {
-                    DragSearchLoadingBanner()
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                }
-            }
-            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isDragSearching)
-            
             // MARK: - Scrollable Content
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
@@ -60,13 +48,22 @@ struct DashboardView: View {
                     FavoritesSection(
                         groupedTransit: viewModel.groupedTransit,
                         onSelect: { group, directionIndex in
-                            viewModel.selectedDirectionIndex = directionIndex
                             Task {
-                                await viewModel.selectGroupedRoute(group, userLocation: locationManager.currentLocation)
+                                await viewModel.selectGroupedRoute(group, directionIndex: directionIndex, userLocation: locationManager.currentLocation)
+                                if viewModel.isRouteDetailPresented {
+                                    sheetNavigator.navigate(to: .routeDetail(group: group, directionIndex: directionIndex))
+                                }
                             }
-                            sheetNavigator.navigate(to: .routeDetail(group: group, directionIndex: directionIndex))
                         }
                     )
+                    
+                    // Loading skeleton — shown while transit data is being
+                    // fetched (including drag-to-search) so the user sees a
+                    // placeholder instead of stale content or just alerts.
+                    if viewModel.isLoading && !hasTransitData {
+                        TransitLoadingSkeleton()
+                            .transition(.opacity)
+                    }
                     
                     // Mode-specific content (trains/buses first — the primary content)
                     Group {
@@ -118,11 +115,14 @@ struct DashboardView: View {
                     .animation(.spring(response: 0.4, dampingFraction: 0.7), value: viewModel.selectedMode)
                     
                     // Service alerts — below arrivals so trains/buses show first.
-                    // Filter to the selected mode when viewing a specific mode tab.
-                    ServiceAlertsSection(
-                        alerts: viewModel.serviceAlerts.filtered(for: viewModel.selectedMode),
-                        lastUpdated: viewModel.alertsLastUpdated
-                    )
+                    // Only show when transit data has loaded to prevent alerts
+                    // from appearing before the primary content.
+                    if !viewModel.isLoading || hasTransitData {
+                        ServiceAlertsSection(
+                            alerts: viewModel.serviceAlerts.filtered(for: viewModel.selectedMode),
+                            lastUpdated: viewModel.alertsLastUpdated
+                        )
+                    }
                     
                     // Network error banner
                     if let error = viewModel.errorMessage {
@@ -136,17 +136,6 @@ struct DashboardView: View {
                     
                     // Elevator outages section
                     ElevatorOutagesSection(outages: viewModel.elevatorOutages)
-                    
-                    // Loading indicator
-                    if viewModel.isLoading {
-                        HStack {
-                            Spacer()
-                            ProgressView()
-                                .tint(AppTheme.Colors.mtaBlue)
-                            Spacer()
-                        }
-                        .padding()
-                    }
                     
                     Spacer()
                         .frame(height: 20)
@@ -162,6 +151,72 @@ struct DashboardView: View {
             await viewModel.refresh(location: loc)
             lastUpdated = Date()
         }
+    }
+    
+    // MARK: - Helpers
+    
+    /// Whether any transit data is currently available for the selected mode.
+    /// Used to decide whether to show the loading skeleton vs service alerts.
+    private var hasTransitData: Bool {
+        switch viewModel.selectedMode {
+        case .nearby:
+            return !viewModel.groupedTransit.isEmpty || !viewModel.nearbyTransit.isEmpty
+        case .subway:
+            return !viewModel.nearbyGroupedSubwayArrivals.isEmpty
+        case .bus:
+            return !viewModel.nearbyGroupedBusArrivals.isEmpty
+        case .lirr:
+            return !viewModel.nearbyGroupedLIRRArrivals.isEmpty
+        case .mnr:
+            return !viewModel.nearbyGroupedMNRArrivals.isEmpty
+        }
+    }
+}
+
+// MARK: - Transit Loading Skeleton
+
+/// Shimmer placeholder shown while transit data is being fetched.
+/// Prevents service alerts from appearing as the first visible content.
+struct TransitLoadingSkeleton: View {
+    @State private var isAnimating = false
+    
+    var body: some View {
+        VStack(spacing: 12) {
+            ForEach(0..<3, id: \.self) { _ in
+                HStack(spacing: 12) {
+                    // Route badge placeholder
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(AppTheme.Colors.textSecondary.opacity(0.1))
+                        .frame(width: 44, height: 44)
+                    
+                    // Text lines placeholder
+                    VStack(alignment: .leading, spacing: 6) {
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(AppTheme.Colors.textSecondary.opacity(0.1))
+                            .frame(width: 120, height: 14)
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(AppTheme.Colors.textSecondary.opacity(0.07))
+                            .frame(width: 80, height: 12)
+                    }
+                    
+                    Spacer()
+                    
+                    // Time placeholder
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(AppTheme.Colors.textSecondary.opacity(0.1))
+                        .frame(width: 40, height: 20)
+                }
+                .padding(.horizontal, AppTheme.Layout.margin)
+                .padding(.vertical, 10)
+            }
+        }
+        .padding(.vertical, 8)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius, style: .continuous))
+        .padding(.horizontal, AppTheme.Layout.margin)
+        .opacity(isAnimating ? 0.6 : 1.0)
+        .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: isAnimating)
+        .onAppear { isAnimating = true }
     }
 }
 

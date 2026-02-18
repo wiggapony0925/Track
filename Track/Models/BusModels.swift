@@ -72,9 +72,9 @@ struct BusVehicleResponse: Codable, Identifiable {
 
     let vehicleId: String
     let routeId: String
-    let lat: Double
-    let lon: Double
-    let bearing: Double?
+    var lat: Double
+    var lon: Double
+    var bearing: Double?
     let nextStop: String?
     let statusText: String?
     /// SIRI DirectionRef: 0 or 1, used to filter vehicles by selected direction.
@@ -92,6 +92,15 @@ struct BusVehicleResponse: Codable, Identifiable {
         case nextStop = "next_stop"
         case statusText = "status_text"
         case directionRef = "direction_ref"
+    }
+
+    /// Returns a copy with an interpolated position for smooth map animation.
+    func withInterpolatedPosition(lat: Double, lon: Double, bearing: Double) -> BusVehicleResponse {
+        var copy = self
+        copy.lat = lat
+        copy.lon = lon
+        copy.bearing = bearing
+        return copy
     }
 }
 
@@ -119,7 +128,7 @@ struct DirectionShapeResponse: Codable, Identifiable {
 struct RouteShapeResponse: Codable {
     let routeId: String
     let polylines: [String]
-    let stops: [BusStop]
+    var stops: [BusStop]
     let directions: [DirectionShapeResponse]
 
     enum CodingKeys: String, CodingKey {
