@@ -5,7 +5,7 @@
     "refresh_interval_seconds": 30,
     "prod_base_url": "https://track-api.onrender.com",
     "local_base_url": "http://127.0.0.1:8000",
-    "default_device_ip": "169.254.175.168",
+    "default_device_ip": "192.168.12.101",
     "local_port": 8000
   },
   "display": {

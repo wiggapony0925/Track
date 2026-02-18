@@ -222,6 +222,15 @@ struct HomeView: View {
             // re-fit the camera to show the direction-specific polyline & stops.
             guard viewModel.selectedRouteId != nil,
                   viewModel.routeShape != nil else { return }
+            
+            // Immediately re-simulate vehicles against the new direction's polyline
+            // so markers reposition smoothly without waiting for the next timer tick.
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.85)) {
+                viewModel.updateSimulation()
+                // Clear stale bus snapshots so interpolation starts fresh
+                viewModel.previousBusPositions.removeAll()
+            }
+            
             if let fitCamera = viewModel.cameraPositionFittingRoute(
                 userLocation: locationManager.currentLocation,
                 is3D: is3DMode
@@ -407,13 +416,21 @@ struct HomeView: View {
                 
                 Task { @MainActor in
                     if isBus {
+                        // Buses: Fetch fresh GPS every 2s, interpolate on off-ticks
                         if tick % 2 == 0 {
                             await viewModel.refreshBusVehicles()
+                        } else {
+                            viewModel.updateBusSimulation()
                         }
                     } else if isCommuterRail {
-                        // No real-time vehicle tracking for commuter rail yet —
-                        // skip frequent polling to save battery & network.
+                        // LIRR / MNR: Same interpolation engine as subway —
+                        // simulate every tick, network refresh every 5s.
+                        viewModel.updateSimulation()
+                        if tick % 5 == 0 {
+                            await viewModel.refreshCommuterRailVehicles()
+                        }
                     } else {
+                        // Subway: Simulate every tick, network refresh every 3s
                         viewModel.updateSimulation()
                         if tick % 3 == 0 {
                             await viewModel.refreshTrainVehicles()

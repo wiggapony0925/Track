@@ -20,7 +20,7 @@ struct TrackApp: App {
         // If the user's stored IP matches an old hardcoded value, replace it
         // so they automatically pick up the new USB/WiFi address.
         let store = UserDefaults.standard
-        let staleIPs: Set<String> = ["192.168.12.101", "100.66.48.85"]
+        let staleIPs: Set<String> = ["100.66.48.85", "169.254.175.168"]
         if let storedIP = store.string(forKey: "dev_custom_ip"),
            staleIPs.contains(storedIP) {
             store.set(AppSettings.shared.defaultDeviceIP, forKey: "dev_custom_ip")

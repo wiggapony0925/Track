@@ -377,6 +377,18 @@ final class HomeViewModel {
     }
     var trainVehicles: [TrainVehicle] = []
 
+    // Smooth bus interpolation state — stores the previous GPS snapshot
+    // so we can glide between updates along the route polyline.
+    struct BusSnapshot {
+        let lat: Double
+        let lon: Double
+        let timestamp: Date
+    }
+    /// Previous GPS positions keyed by vehicle ID for smooth interpolation.
+    var previousBusPositions: [String: BusSnapshot] = [:]
+    /// When the last bus GPS batch arrived (for elapsed-time calculation).
+    var lastBusUpdateTime: Date = .distantPast
+
     var routeShape: RouteShapeResponse?
 
     // MARK: - Direction-Filtered Vehicles
@@ -1079,28 +1091,56 @@ final class HomeViewModel {
                 AppLogger.shared.logError("fetchRouteShape(\(group.routeId))", error: error)
             }
         } else if group.isLIRR {
-            // LIRR: fetch the branch-specific polyline
+            // LIRR: fetch the branch-specific polyline + live arrivals
             do {
-                routeShape = try await TrackAPI.fetchLIRRShape(routeID: group.routeId)
+                async let shapeTask = TrackAPI.fetchLIRRShape(routeID: group.routeId)
+                async let arrivalsTask = TrackAPI.fetchLIRRArrivals()
+
+                routeShape = try await shapeTask
                 populateStopsFromArrivals(group: group)
                 AppLogger.shared.log(
                     "LIRR_SHAPE",
                     message: "Loaded shape for \(group.routeId) (\(group.displayName))")
                 if let shape = routeShape { enrichGroupWithShapeDirections(shape) }
+
+                // Filter arrivals to this specific branch and interpolate
+                let allArrivals = try await arrivalsTask
+                let routeArrivals = allArrivals.filter { arrival in
+                    let id = arrival.routeID.lowercased()
+                    let target = group.routeId.lowercased()
+                    return id == target
+                        || id == target.replacingOccurrences(of: "lirr_", with: "")
+                        || "lirr_\(id)" == target
+                }
+                updateTrainPositions(arrivals: routeArrivals)
             } catch {
-                AppLogger.shared.logError("fetchLIRRShape(\(group.routeId))", error: error)
+                AppLogger.shared.logError("fetchLIRRData(\(group.routeId))", error: error)
             }
         } else if group.isMNR {
-            // Metro-North: fetch the line-specific polyline
+            // Metro-North: fetch the line-specific polyline + live arrivals
             do {
-                routeShape = try await TrackAPI.fetchMNRShape(routeID: group.routeId)
+                async let shapeTask = TrackAPI.fetchMNRShape(routeID: group.routeId)
+                async let arrivalsTask = TrackAPI.fetchMNRArrivals()
+
+                routeShape = try await shapeTask
                 populateStopsFromArrivals(group: group)
                 AppLogger.shared.log(
                     "MNR_SHAPE", message: "Loaded shape for \(group.routeId) (\(group.displayName))"
                 )
                 if let shape = routeShape { enrichGroupWithShapeDirections(shape) }
+
+                // Filter arrivals to this specific line and interpolate
+                let allArrivals = try await arrivalsTask
+                let routeArrivals = allArrivals.filter { arrival in
+                    let id = arrival.routeID.lowercased()
+                    let target = group.routeId.lowercased()
+                    return id == target
+                        || id == target.replacingOccurrences(of: "mnr_", with: "")
+                        || "mnr_\(id)" == target
+                }
+                updateTrainPositions(arrivals: routeArrivals)
             } catch {
-                AppLogger.shared.logError("fetchMNRShape(\(group.routeId))", error: error)
+                AppLogger.shared.logError("fetchMNRData(\(group.routeId))", error: error)
             }
         } else {
             // For subway: fetch the full line geometry AND live arrivals from the backend
@@ -1486,11 +1526,19 @@ final class HomeViewModel {
     }
 
     /// Refreshes only the vehicle positions for the currently selected bus route.
+    /// Stores the previous positions for smooth polyline-based interpolation.
     func refreshBusVehicles() async {
         guard let routeId = selectedRouteId, selectedMode == .bus else { return }
         do {
             let vehicles = try await TrackAPI.fetchBusVehicles(routeID: routeId)
             await MainActor.run {
+                // Snapshot current positions before overwriting
+                for v in self.busVehicles {
+                    previousBusPositions[v.vehicleId] = BusSnapshot(
+                        lat: v.lat, lon: v.lon, timestamp: self.lastBusUpdateTime
+                    )
+                }
+                self.lastBusUpdateTime = Date()
                 withAnimation(.linear(duration: 2.0)) {
                     self.busVehicles = vehicles
                 }
@@ -1516,6 +1564,39 @@ final class HomeViewModel {
         }
     }
 
+    /// Refreshes vehicle positions for the currently selected LIRR or MNR route.
+    /// Uses the same GTFS-RT arrivals → interpolation pipeline as subway.
+    func refreshCommuterRailVehicles() async {
+        guard let group = selectedGroupedRoute,
+              group.isCommuterRail else { return }
+        do {
+            let arrivals: [TrainArrival]
+            if group.isLIRR {
+                arrivals = try await TrackAPI.fetchLIRRArrivals()
+            } else {
+                arrivals = try await TrackAPI.fetchMNRArrivals()
+            }
+            // Filter to only this route's arrivals
+            let routeArrivals = arrivals.filter { arrival in
+                let id = arrival.routeID.lowercased()
+                let target = group.routeId.lowercased()
+                // Match both "LIRR_9" and bare "9" forms
+                return id == target
+                    || id == target.replacingOccurrences(of: "lirr_", with: "")
+                    || id == target.replacingOccurrences(of: "mnr_", with: "")
+                    || "lirr_\(id)" == target
+                    || "mnr_\(id)" == target
+            }
+            await MainActor.run {
+                withAnimation(.linear(duration: 2.0)) {
+                    updateTrainPositions(arrivals: routeArrivals)
+                }
+            }
+        } catch {
+            AppLogger.shared.logError("refreshCommuterRailVehicles", error: error)
+        }
+    }
+
     /// Clears the selected route and remove bus/train markers from the map.
     func clearRoute() {
         selectedRouteId = nil
@@ -1523,6 +1604,8 @@ final class HomeViewModel {
         busVehicles = []
         trainVehicles = []
         cachedTrainArrivals = []
+        previousBusPositions = [:]
+        lastBusUpdateTime = .distantPast
         routeShape = nil
         errorMessage = nil
         nearestStopCoordinate = nil
@@ -1541,14 +1624,70 @@ final class HomeViewModel {
         updateTrainPositions(arrivals: cachedTrainArrivals)
     }
 
-    /// Solves for "Ghost Trains" by interpolating position between stations.
+    /// Interpolates bus positions along the route polyline between GPS fetches.
+    /// Called on off-ticks (1s between the 2s GPS fetch) for glassy-smooth movement.
+    func updateBusSimulation() {
+        guard !busVehicles.isEmpty, let shape = routeShape else { return }
+        let elapsed = Date().timeIntervalSince(lastBusUpdateTime)
+        let duration: TimeInterval = 2.0 // seconds between GPS fetches
+
+        // Decode direction-specific polyline
+        let polyline: [CLLocationCoordinate2D] = {
+            let dirPolys = shape.polylinesForDirection(selectedDirectionIndex)
+            let combined = dirPolys.flatMap { $0 }
+            if combined.count >= 2 { return combined }
+            let allCombined = shape.decodedPolylines.flatMap { $0 }
+            return allCombined.count >= 2 ? allCombined : []
+        }()
+        guard polyline.count >= 2 else { return }
+
+        var updated = busVehicles
+        for i in updated.indices {
+            guard let prev = previousBusPositions[updated[i].vehicleId] else { continue }
+            let result = VehicleInterpolator.smoothBusPosition(
+                previous: CLLocationCoordinate2D(latitude: prev.lat, longitude: prev.lon),
+                current: CLLocationCoordinate2D(latitude: updated[i].lat, longitude: updated[i].lon),
+                elapsed: elapsed,
+                duration: duration,
+                along: polyline
+            )
+            // Update the vehicle's display position via a mutable copy
+            // (BusVehicleResponse is a struct, so this is a value-type update)
+            updated[i] = updated[i].withInterpolatedPosition(
+                lat: result.coordinate.latitude,
+                lon: result.coordinate.longitude,
+                bearing: result.bearing
+            )
+        }
+        withAnimation(.linear(duration: 1.0)) {
+            self.busVehicles = updated
+        }
+    }
+
+    /// Solves for "Ghost Trains" by interpolating position between stations
+    /// along the actual route polyline for realistic curved movement.
     private func updateTrainPositions(arrivals: [TrainArrival]) {
         guard let shape = routeShape else { return }
         self.cachedTrainArrivals = arrivals
 
+        // Use direction-specific stops when available for better matching
+        let dirStops: [BusStop] = {
+            let ds = shape.stopsForDirection(selectedDirectionIndex)
+            return ds.isEmpty ? shape.stops : ds
+        }()
+
+        // Decode the polyline once per update for polyline-aware interpolation
+        let polyline: [CLLocationCoordinate2D] = {
+            let dirPolys = shape.polylinesForDirection(selectedDirectionIndex)
+            // Concatenate all direction polyline segments for a continuous path
+            let combined = dirPolys.flatMap { $0 }
+            if combined.count >= 2 { return combined }
+            // Fallback to combined polylines
+            let allCombined = shape.decodedPolylines.flatMap { $0 }
+            return allCombined.count >= 2 ? allCombined : []
+        }()
+
         // 1. Group arrivals by UNIQUE trip.
-        // If tripId is missing, fallback to crude grouping by (Direction + roughly same times)
-        // But for now, let's rely on tripId or make a synthetic one.
         var trips: [String: [TrainArrival]] = [:]
 
         for arrival in arrivals {
@@ -1562,89 +1701,82 @@ final class HomeViewModel {
 
         // 2. Process each trip to find its "current location"
         for (tripId, tripArrivals) in trips {
-            // Sort by time (using estimatedTime for sub-minute precision)
             let sorted = tripArrivals.sorted { $0.estimatedTime < $1.estimatedTime }
 
-            // The train is approaching the stop with the smallest POSITIVE time until arrival.
-            // Since we animate, `timeIntervalSinceNow` might become slightly negative just as it arrives.
-            // Allow a small buffer (e.g. -30s) to keep displaying it arriving at the station before switching to next stop.
             guard
                 let nextStop = sorted.first(where: { $0.estimatedTime.timeIntervalSinceNow > -30 })
             else { continue }
 
-            // Find this stop in the route shape
-            // Note: stop IDs in shape might differ (N vs S suffix).
-            // We strip direction suffix for matching.
             let nextStopIdBase = nextStop.stationID.prefix(3)
 
             guard
-                let nextStopIndex = shape.stops.firstIndex(where: {
+                let nextStopIndex = dirStops.firstIndex(where: {
                     $0.id.hasPrefix(nextStopIdBase)
                 })
-            else {
-                continue
-            }
+            else { continue }
 
-            // Determine position
-            var lat = shape.stops[nextStopIndex].lat
-            var lon = shape.stops[nextStopIndex].lon
+            var lat = dirStops[nextStopIndex].lat
+            var lon = dirStops[nextStopIndex].lon
             var bearing: Double = 0
 
-            // If we can find the previous stop, interpolate!
-            // Approaching means it's 'minutesAway' minutes from 'nextStop'.
-            // Assume 3 minutes avg travel time between stations.
             let previousIndex = nextStopIndex > 0 ? nextStopIndex - 1 : nextStopIndex
             let nextIndex = nextStopIndex
 
-            // Only interpolate if we have a valid previous stop
             if previousIndex != nextIndex {
-                let prevStop = shape.stops[previousIndex]
-                let targetStop = shape.stops[nextIndex]
+                let prevStop = dirStops[previousIndex]
+                let targetStop = dirStops[nextIndex]
 
-                // Heuristic: If it's > 4 mins away, assume it's at the previous station (or further back)
-                // If it's 0 mins, it's at the target.
-                // Interpolation factor t: 0 (at target) to 1 (at previous)
-                // Use refined calculation: nextStop.estimatedTime - now
                 let timeUntilArrival = nextStop.estimatedTime.timeIntervalSinceNow
                 let minutes = timeUntilArrival / 60.0
-
-                let travelTime = 3.0  // Assume 3 mins between stops
+                let travelTime = 3.0
                 let t = min(max(minutes / travelTime, 0.0), 1.0)
 
-                // Interpolation
-                // t goes from 1 (previous stop) to 0 (target stop).
+                // progress: 0.0 at prevStop → 1.0 at targetStop
+                let rawProgress = 1.0 - t
 
+                let progress: Double
                 if AppSettings.shared.simulationEasingEnabled {
-                    // Easing: Accelerate out, Decelerate in
-                    // normalized progress p = 1.0 - t (0.0 at start, 1.0 at end)
-                    let p = 1.0 - t
-                    let easedP = p < 0.5 ? 2 * p * p : 1 - pow(-2 * p + 2, 2) / 2
-                    let effectiveT = 1.0 - easedP
-
-                    lat = targetStop.lat * (1.0 - effectiveT) + prevStop.lat * effectiveT
-                    lon = targetStop.lon * (1.0 - effectiveT) + prevStop.lon * effectiveT
+                    progress = rawProgress < 0.5
+                        ? 2 * rawProgress * rawProgress
+                        : 1 - pow(-2 * rawProgress + 2, 2) / 2
                 } else {
-                    // Linear: Constant speed
-                    lat = targetStop.lat * (1.0 - t) + prevStop.lat * t
-                    lon = targetStop.lon * (1.0 - t) + prevStop.lon * t
+                    progress = rawProgress
                 }
 
-                // Calculate bearing from prev to target
-                bearing =
-                    atan2(targetStop.lon - prevStop.lon, targetStop.lat - prevStop.lat) * 180 / .pi
-                if bearing < 0 { bearing += 360 }
+                // Use polyline-aware interpolation if we have a polyline
+                if polyline.count >= 2 {
+                    let fromCoord = CLLocationCoordinate2D(
+                        latitude: prevStop.lat, longitude: prevStop.lon)
+                    let toCoord = CLLocationCoordinate2D(
+                        latitude: targetStop.lat, longitude: targetStop.lon)
+                    let result = VehicleInterpolator.interpolateBetweenStops(
+                        from: fromCoord, to: toCoord,
+                        progress: progress, along: polyline)
+                    lat = result.coordinate.latitude
+                    lon = result.coordinate.longitude
+                    bearing = result.bearing
+                } else {
+                    // Fallback: straight-line lerp
+                    lat = prevStop.lat + (targetStop.lat - prevStop.lat) * progress
+                    lon = prevStop.lon + (targetStop.lon - prevStop.lon) * progress
+                    bearing = atan2(
+                        targetStop.lon - prevStop.lon,
+                        targetStop.lat - prevStop.lat
+                    ) * 180 / .pi
+                    if bearing < 0 { bearing += 360 }
+                }
             }
 
             newVehicles.append(
                 TrainVehicle(
                     id: tripId,
-                    tripId: tripId,  // Use the dictionary key as the tripId
+                    tripId: tripId,
                     routeId: nextStop.routeID,
                     direction: nextStop.direction,
                     lat: lat,
                     lon: lon,
                     bearing: bearing,
-                    nextStationName: shape.stops[nextStopIndex].name
+                    nextStationName: dirStops[nextStopIndex].name
                 ))
         }
 
