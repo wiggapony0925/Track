@@ -319,19 +319,10 @@ struct TrackMapView: View {
     private var routePolylines: some MapContent {
         if let shape = viewModel.routeShape {
             let isBusRoute = viewModel.selectedGroupedRoute?.isBus == true
-            let groupDirCount = viewModel.selectedGroupedRoute?.directions.count ?? 0
-            let shapeHasDirections = !shape.directions.isEmpty
-
-            // Always use direction-specific polylines when:
-            // 1. The shape has per-direction data, AND
-            // 2. The group has multiple direction tabs (so the user can switch)
-            // This ensures switching directions only shows that direction's line.
-            let shouldFilter = shapeHasDirections && groupDirCount > 1
-
-            let polylines: [[CLLocationCoordinate2D]] =
-                shouldFilter
-                ? shape.polylinesForDirection(viewModel.selectedDirectionIndex)
-                : shape.decodedPolylines
+            // Use pre-decoded cached polylines to avoid re-decoding during
+            // continuous camera changes (zoom/pan), which caused polylines
+            // to flicker or disappear on zoom-out.
+            let polylines = viewModel.cachedRoutePolylines
 
             if !polylines.isEmpty {
                 ForEach(Array(polylines.enumerated()), id: \.offset) { _, coords in
@@ -348,6 +339,8 @@ struct TrackMapView: View {
                 }
             } else if !shape.stops.isEmpty {
                 // Fallback: connect direction-specific stops (not all stops)
+                let groupDirCount = viewModel.selectedGroupedRoute?.directions.count ?? 0
+                let shouldFilter = !shape.directions.isEmpty && groupDirCount > 1
                 let fallbackStops =
                     shouldFilter
                     ? shape.stopsForDirection(viewModel.selectedDirectionIndex)

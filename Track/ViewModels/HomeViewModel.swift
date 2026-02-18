@@ -348,7 +348,9 @@ final class HomeViewModel {
 
     // Route detail sheet
     var selectedGroupedRoute: GroupedNearbyTransitResponse?
-    var selectedDirectionIndex: Int = 0
+    var selectedDirectionIndex: Int = 0 {
+        didSet { rebuildCachedPolylines() }
+    }
     var isRouteDetailPresented = false
 
     // Draggable search pin
@@ -391,7 +393,44 @@ final class HomeViewModel {
     /// When the last bus GPS batch arrived (for elapsed-time calculation).
     var lastBusUpdateTime: Date = .distantPast
 
-    var routeShape: RouteShapeResponse?
+    var routeShape: RouteShapeResponse? {
+        didSet { rebuildCachedPolylines() }
+    }
+
+    /// Pre-decoded polylines for the currently selected route direction.
+    /// Invalidated and rebuilt when `routeShape` or `selectedDirectionIndex` changes
+    /// so the map never decodes encoded strings during render.
+    private(set) var cachedRoutePolylines: [[CLLocationCoordinate2D]] = []
+
+    /// Single combined polyline for vehicle interpolation (bus simulation / train positions).
+    /// Invalidated and rebuilt alongside `cachedRoutePolylines`.
+    private(set) var cachedInterpolationPolyline: [CLLocationCoordinate2D] = []
+
+    /// Rebuilds the cached decoded polylines from the current route shape and direction.
+    private func rebuildCachedPolylines() {
+        guard let shape = routeShape else {
+            cachedRoutePolylines = []
+            cachedInterpolationPolyline = []
+            return
+        }
+        let groupDirCount = selectedGroupedRoute?.directions.count ?? 0
+        let shouldFilter = !shape.directions.isEmpty && groupDirCount > 1
+
+        cachedRoutePolylines = shouldFilter
+            ? shape.polylinesForDirection(selectedDirectionIndex)
+            : shape.decodedPolylines
+
+        // Build a single continuous polyline for interpolation.
+        // Prefer direction-filtered segments; fall back to all polylines
+        // when the filtered set has too few points (e.g. single-direction routes).
+        let combined = cachedRoutePolylines.flatMap { $0 }
+        if combined.count >= 2 {
+            cachedInterpolationPolyline = combined
+        } else {
+            let all = shape.decodedPolylines.flatMap { $0 }
+            cachedInterpolationPolyline = all.count >= 2 ? all : []
+        }
+    }
 
     // MARK: - Direction-Filtered Vehicles
 
@@ -1530,7 +1569,8 @@ final class HomeViewModel {
     /// Refreshes only the vehicle positions for the currently selected bus route.
     /// Stores the previous positions for smooth polyline-based interpolation.
     func refreshBusVehicles() async {
-        guard let routeId = selectedRouteId, selectedMode == .bus else { return }
+        guard let routeId = selectedRouteId,
+              selectedGroupedRoute?.isBus == true else { return }
         do {
             let vehicles = try await TrackAPI.fetchBusVehicles(routeID: routeId)
             await MainActor.run {
@@ -1627,20 +1667,13 @@ final class HomeViewModel {
     }
 
     /// Interpolates bus positions along the route polyline between GPS fetches.
-    /// Called on off-ticks (1s between the 2s GPS fetch) for glassy-smooth movement.
+    /// Called every tick (1s) for smooth movement between the 2s GPS refresh.
     func updateBusSimulation() {
-        guard !busVehicles.isEmpty, let shape = routeShape else { return }
+        guard !busVehicles.isEmpty, routeShape != nil else { return }
         let elapsed = Date().timeIntervalSince(lastBusUpdateTime)
         let duration: TimeInterval = 2.0 // seconds between GPS fetches
 
-        // Decode direction-specific polyline
-        let polyline: [CLLocationCoordinate2D] = {
-            let dirPolys = shape.polylinesForDirection(selectedDirectionIndex)
-            let combined = dirPolys.flatMap { $0 }
-            if combined.count >= 2 { return combined }
-            let allCombined = shape.decodedPolylines.flatMap { $0 }
-            return allCombined.count >= 2 ? allCombined : []
-        }()
+        let polyline = cachedInterpolationPolyline
         guard polyline.count >= 2 else { return }
 
         var updated = busVehicles
@@ -1678,16 +1711,8 @@ final class HomeViewModel {
             return ds.isEmpty ? shape.stops : ds
         }()
 
-        // Decode the polyline once per update for polyline-aware interpolation
-        let polyline: [CLLocationCoordinate2D] = {
-            let dirPolys = shape.polylinesForDirection(selectedDirectionIndex)
-            // Concatenate all direction polyline segments for a continuous path
-            let combined = dirPolys.flatMap { $0 }
-            if combined.count >= 2 { return combined }
-            // Fallback to combined polylines
-            let allCombined = shape.decodedPolylines.flatMap { $0 }
-            return allCombined.count >= 2 ? allCombined : []
-        }()
+        // Use cached polyline for polyline-aware interpolation
+        let polyline = cachedInterpolationPolyline
 
         // 1. Group arrivals by UNIQUE trip.
         var trips: [String: [TrainArrival]] = [:]
