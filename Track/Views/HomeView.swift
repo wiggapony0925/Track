@@ -240,6 +240,13 @@ struct HomeView: View {
                 }
             }
         }
+        // Re-fetch transit data when the user applies new radius settings
+        .onReceive(NotificationCenter.default.publisher(for: .radiusSettingsChanged)) { _ in
+            Task {
+                await viewModel.refresh(location: effectiveLocation)
+                lastUpdated = Date()
+            }
+        }
     }
     
     // MARK: - Sheet Content Builder

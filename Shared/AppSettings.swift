@@ -252,3 +252,11 @@ struct AppSettings {
         self.polylineSimplificationTolerance = map["polyline_simplification_tolerance"] as? Double ?? 0.00015
     }
 }
+
+// MARK: - Notification Names
+
+extension Notification.Name {
+    /// Posted by SettingsContentView after applying radius changes so other
+    /// parts of the app can re-fetch transit data with the updated radius.
+    static let radiusSettingsChanged = Notification.Name("radiusSettingsChanged")
+}

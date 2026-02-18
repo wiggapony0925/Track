@@ -535,6 +535,9 @@ struct SettingsContentView: View {
         Task {
             await SyncManager.shared.pushUserSettings()
         }
+        
+        // Notify the rest of the app to re-fetch with the new radius
+        NotificationCenter.default.post(name: .radiusSettingsChanged, object: nil)
     }
     
     // MARK: - Apply Button
