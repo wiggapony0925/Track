@@ -24,6 +24,7 @@ import pytest
 from app.models import (
     BusArrival,
     BusStop,
+    BusVehicle,
     DirectionArrivals,
     GroupedNearbyTransit,
     NearbyTransitArrival,
@@ -374,6 +375,35 @@ class TestGroupedTransitSchema:
         assert "destination_name" in data
         assert data["direction_ref"] == 0
         assert data["destination_name"] == "FLORAL PARK via HILLSIDE AV"
+
+    def test_bus_vehicle_has_expected_arrival(self):
+        """BusVehicle model must include expected_arrival for marker ETA display."""
+        vehicle = BusVehicle(
+            vehicle_id="MTABC_5678",
+            route_id="MTA NYCT_Q10",
+            lat=40.6602,
+            lon=-73.8306,
+            bearing=180.0,
+            next_stop="Lefferts Blvd/Rockaway Blvd",
+            status_text="< 1 stop away",
+            direction_ref=0,
+            expected_arrival=datetime(2026, 2, 18, 1, 0, 0, tzinfo=timezone.utc),
+        )
+        data = vehicle.model_dump()
+        assert "expected_arrival" in data
+        assert data["expected_arrival"] is not None
+
+    def test_bus_vehicle_expected_arrival_optional(self):
+        """BusVehicle expected_arrival should be optional (None when unavailable)."""
+        vehicle = BusVehicle(
+            vehicle_id="MTABC_9999",
+            route_id="MTA NYCT_B63",
+            lat=40.68,
+            lon=-73.97,
+        )
+        data = vehicle.model_dump()
+        assert "expected_arrival" in data
+        assert data["expected_arrival"] is None
 
 
 # ===================================================================

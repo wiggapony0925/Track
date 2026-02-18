@@ -79,10 +79,20 @@ struct BusVehicleResponse: Codable, Identifiable {
     let statusText: String?
     /// SIRI DirectionRef: 0 or 1, used to filter vehicles by selected direction.
     let directionRef: Int?
+    /// Expected arrival time at next stop from SIRI MonitoredCall.
+    var expectedArrival: Date?
 
     /// Strips "MTA NYCT_" prefix for display.
     var displayRouteName: String {
         stripMTAPrefix(routeId)
+    }
+
+    /// Minutes until arrival at next stop, or nil if unavailable.
+    var minutesAway: Int? {
+        guard let eta = expectedArrival else { return nil }
+        let seconds = eta.timeIntervalSinceNow
+        guard seconds > -60 else { return nil }
+        return max(0, Int(seconds / 60))
     }
 
     enum CodingKeys: String, CodingKey {
@@ -92,6 +102,7 @@ struct BusVehicleResponse: Codable, Identifiable {
         case nextStop = "next_stop"
         case statusText = "status_text"
         case directionRef = "direction_ref"
+        case expectedArrival = "expected_arrival"
     }
 
     /// Returns a copy with an interpolated position for smooth map animation.

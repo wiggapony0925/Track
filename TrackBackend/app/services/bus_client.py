@@ -834,6 +834,15 @@ async def _get_vehicles_impl(route_id: str) -> list[BusVehicle]:
         distances = extensions.get("Distances", {})
         status_text = distances.get("PresentableDistance")
 
+        # Expected arrival time at next stop (same field used in stop-monitoring)
+        expected_arrival: datetime | None = None
+        expected_str = monitored_call.get("ExpectedArrivalTime")
+        if expected_str:
+            try:
+                expected_arrival = datetime.fromisoformat(expected_str)
+            except (ValueError, TypeError):
+                expected_arrival = None
+
         # Direction reference (0 or 1) from SIRI
         direction_ref: int | None = None
         raw_dir = journey.get("DirectionRef")
@@ -853,6 +862,7 @@ async def _get_vehicles_impl(route_id: str) -> list[BusVehicle]:
                 next_stop=next_stop,
                 status_text=status_text,
                 direction_ref=direction_ref,
+                expected_arrival=expected_arrival,
             )
         )
 

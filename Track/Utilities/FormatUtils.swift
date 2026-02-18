@@ -227,6 +227,17 @@ func stripMTAPrefix(_ routeId: String) -> String {
 
 // MARK: - Transit Status Color
 
+/// Returns a compact ETA string suitable for map marker titles.
+///
+/// - Parameter minutesAway: Minutes until the vehicle arrives at its next stop, or nil.
+/// - Parameter fallback: Text to show when `minutesAway` is nil.
+/// - Returns: e.g. "3 min", "Now", or the fallback string.
+func markerETALabel(minutesAway: Int?, fallback: String) -> String {
+    guard let mins = minutesAway else { return fallback }
+    if mins <= 0 { return "Now · \(fallback)" }
+    return "\(mins) min · \(fallback)"
+}
+
 /// Returns the appropriate color for a transit status string.
 ///
 /// - Parameter status: Status text (e.g. "On Time", "Approaching", "Delayed").

@@ -18,7 +18,7 @@ struct MNRMarker: MapContent {
 
     var body: some MapContent {
         Marker(
-            train.nextStationName ?? train.routeId,
+            markerETALabel(minutesAway: train.minutesAway, fallback: train.nextStationName ?? train.routeId),
             systemImage: TransportMode.mnr.icon,
             coordinate: CLLocationCoordinate2D(
                 latitude: train.lat,

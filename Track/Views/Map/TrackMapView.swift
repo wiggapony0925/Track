@@ -223,15 +223,12 @@ struct TrackMapView: View {
     @MapContentBuilder
     private var trainVehicleAnnotations: some MapContent {
         ForEach(viewModel.filteredTrainVehicles) { train in
-            if train.routeId.contains("LIRR") || train.routeId.lowercased().contains("lir") {
+            let rid = train.routeId.lowercased()
+            if rid.contains("lirr") || rid.contains("lir") {
                 LIRRMarker(train: train)
-            } else if train.routeId.contains("MNR") || train.routeId.lowercased().contains("mnr")
-                || train.routeId.lowercased().contains("metro")
-            {
+            } else if rid.contains("mnr") || rid.contains("metro") {
                 MNRMarker(train: train)
-            } else if train.routeId.lowercased().contains("amtrak")
-                || train.routeId.lowercased().contains("amt")
-            {
+            } else if rid.contains("amtrak") || rid.contains("amt") {
                 AmtrakMarker(train: train)
             } else {
                 SubwayTrainMarker(train: train)

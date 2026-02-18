@@ -374,6 +374,8 @@ final class HomeViewModel {
         var lon: Double
         var bearing: Double?
         var nextStationName: String?
+        /// Minutes until arrival at the next station, derived from GTFS-RT.
+        var minutesAway: Int?
     }
     var trainVehicles: [TrainVehicle] = []
 
@@ -1767,6 +1769,12 @@ final class HomeViewModel {
                 }
             }
 
+            let etaMinutes: Int? = {
+                let secs = nextStop.estimatedTime.timeIntervalSinceNow
+                guard secs > -60 else { return nil }
+                return max(0, Int(secs / 60))
+            }()
+
             newVehicles.append(
                 TrainVehicle(
                     id: tripId,
@@ -1776,7 +1784,8 @@ final class HomeViewModel {
                     lat: lat,
                     lon: lon,
                     bearing: bearing,
-                    nextStationName: dirStops[nextStopIndex].name
+                    nextStationName: dirStops[nextStopIndex].name,
+                    minutesAway: etaMinutes
                 ))
         }
 

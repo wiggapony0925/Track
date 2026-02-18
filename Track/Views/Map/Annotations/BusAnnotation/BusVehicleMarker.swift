@@ -17,7 +17,7 @@ struct BusVehicleMarker: MapContent {
 
     var body: some MapContent {
         Marker(
-            vehicle.nextStop ?? vehicle.displayRouteName,
+            markerETALabel(minutesAway: vehicle.minutesAway, fallback: vehicle.nextStop ?? vehicle.displayRouteName),
             systemImage: TransportMode.bus.icon,
             coordinate: CLLocationCoordinate2D(
                 latitude: vehicle.lat,
