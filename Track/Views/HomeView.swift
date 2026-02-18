@@ -416,11 +416,11 @@ struct HomeView: View {
                 
                 Task { @MainActor in
                     if isBus {
-                        // Buses: Fetch fresh GPS every 2s, interpolate on off-ticks
+                        // Buses: Interpolate every tick for smooth movement,
+                        // fetch fresh GPS every 2s.
+                        viewModel.updateBusSimulation()
                         if tick % 2 == 0 {
                             await viewModel.refreshBusVehicles()
-                        } else {
-                            viewModel.updateBusSimulation()
                         }
                     } else if isCommuterRail {
                         // LIRR / MNR: Same interpolation engine as subway —
