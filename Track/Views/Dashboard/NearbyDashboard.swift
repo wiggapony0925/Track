@@ -439,6 +439,7 @@ struct FlatTransitList: View {
                 NearbyTransitRow(
                     arrival: arrival,
                     isTracking: viewModel.isTracking(arrival),
+                    isLiveOnMap: viewModel.isVehicleLiveOnMap(arrival),
                     onTrack: {
                         viewModel.trackNearbyArrival(arrival, location: locationManager.currentLocation)
                     },

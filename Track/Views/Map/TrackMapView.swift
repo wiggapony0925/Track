@@ -214,7 +214,15 @@ struct TrackMapView: View {
     @MapContentBuilder
     private var busVehicleAnnotations: some MapContent {
         ForEach(viewModel.filteredBusVehicles) { vehicle in
-            BusVehicleMarker(vehicle: vehicle)
+            BusVehicleMarker(
+                vehicle: vehicle,
+                isHighlighted: viewModel.tappedVehicleId == vehicle.vehicleId,
+                onTap: {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        viewModel.tappedVehicleId = vehicle.vehicleId
+                    }
+                }
+            )
         }
     }
 
@@ -224,14 +232,21 @@ struct TrackMapView: View {
     private var trainVehicleAnnotations: some MapContent {
         ForEach(viewModel.filteredTrainVehicles) { train in
             let rid = train.routeId.lowercased()
+            let vehicleKey = train.tripId ?? train.id
+            let isHighlighted = viewModel.tappedVehicleId == vehicleKey
+            let onTap = {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                    viewModel.tappedVehicleId = vehicleKey
+                }
+            }
             if rid.contains("lirr") || rid.contains("lir") {
-                LIRRMarker(train: train)
+                LIRRMarker(train: train, isHighlighted: isHighlighted, onTap: onTap)
             } else if rid.contains("mnr") || rid.contains("metro") {
-                MNRMarker(train: train)
+                MNRMarker(train: train, isHighlighted: isHighlighted, onTap: onTap)
             } else if rid.contains("amtrak") || rid.contains("amt") {
-                AmtrakMarker(train: train)
+                AmtrakMarker(train: train, isHighlighted: isHighlighted, onTap: onTap)
             } else {
-                SubwayTrainMarker(train: train)
+                SubwayTrainMarker(train: train, isHighlighted: isHighlighted, onTap: onTap)
             }
         }
     }

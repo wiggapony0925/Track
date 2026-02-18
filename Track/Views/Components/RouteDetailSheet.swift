@@ -16,9 +16,18 @@ struct RouteDetailSheet: View {
     @Binding var busVehicles: [BusVehicleResponse]
     @Binding var routeShape: RouteShapeResponse?
     var serviceAlerts: [TransitAlert] = []
+    var busSchedule: BusScheduleResponse?
+    /// Cached train arrivals from the ViewModel — used to show scheduled departures
+    /// for train directions with no live arrivals displayed.
+    var cachedTrainArrivals: [TrainArrival] = []
     var cachedStations: [HomeViewModel.CachedSubwayStation] = []
     var onTrack: ((NearbyTransitResponse) -> Void)?
     var isTracking: ((NearbyTransitResponse) -> Bool)?
+    /// Returns true if the arrival has a live vehicle position on the map.
+    var isLiveOnMap: ((NearbyTransitResponse) -> Bool)?
+    /// Vehicle ID that was tapped on the map marker — used to auto-scroll
+    /// and highlight the matching arrival row.
+    var tappedVehicleId: String? = nil
     var onDismiss: (() -> Void)?
     
     // Map controls (shown in header when sheet is expanded)
@@ -54,6 +63,8 @@ struct RouteDetailSheet: View {
          routeShape: Binding<RouteShapeResponse?>,
          selectedDirectionIndex: Binding<Int>,
          serviceAlerts: [TransitAlert] = [],
+         busSchedule: BusScheduleResponse? = nil,
+         cachedTrainArrivals: [TrainArrival] = [],
          cachedStations: [HomeViewModel.CachedSubwayStation] = [],
          liveVehicleCount: Int = 0,
          isSheetExpanded: Bool = false,
@@ -63,16 +74,22 @@ struct RouteDetailSheet: View {
          selectedStopId: String? = nil,
          onTrack: ((NearbyTransitResponse) -> Void)? = nil,
          isTracking: ((NearbyTransitResponse) -> Bool)? = nil,
+         isLiveOnMap: ((NearbyTransitResponse) -> Bool)? = nil,
+         tappedVehicleId: String? = nil,
          onDismiss: (() -> Void)? = nil) {
         self.group = group
         self._busVehicles = busVehicles
         self._routeShape = routeShape
         self._selectedDirectionIndex = selectedDirectionIndex
         self.serviceAlerts = serviceAlerts
+        self.busSchedule = busSchedule
+        self.cachedTrainArrivals = cachedTrainArrivals
         self.cachedStations = cachedStations
         self.liveVehicleCount = liveVehicleCount
         self.onTrack = onTrack
         self.isTracking = isTracking
+        self.isLiveOnMap = isLiveOnMap
+        self.tappedVehicleId = tappedVehicleId
         self.onDismiss = onDismiss
         self.isSheetExpanded = isSheetExpanded
         self._is3DMode = is3DMode
@@ -317,22 +334,21 @@ struct RouteDetailSheet: View {
                 .padding(.horizontal, AppTheme.Layout.margin)
 
             if nextArrivals.isEmpty {
-                HStack {
-                    Spacer()
+                // When no live arrivals, show scheduled departures or empty state
+                if !scheduledDeparturesForCurrentDirection.isEmpty {
+                    scheduledDeparturesView
+                } else {
                     VStack(spacing: 8) {
                         Image(systemName: "clock")
-                            .font(.system(size: 28, weight: .light))
-                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
+                            .font(.system(size: 28))
+                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.5))
                         Text("No upcoming arrivals")
-                            .font(.custom("Helvetica", size: 14))
+                            .font(.subheadline)
                             .foregroundColor(AppTheme.Colors.textSecondary)
                     }
-                    Spacer()
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 24)
                 }
-                .padding(.vertical, 24)
-                .background(AppTheme.Colors.cardBackground)
-                .cornerRadius(AppTheme.Layout.cornerRadius)
-                .padding(.horizontal, AppTheme.Layout.margin)
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 12) {
@@ -375,6 +391,114 @@ struct RouteDetailSheet: View {
                     .padding(.horizontal, AppTheme.Layout.margin)
                     .padding(.vertical, 2) // Extra space for shadow to render
                 }
+            }
+        }
+    }
+
+    // MARK: - Scheduled Departures (Unified: Bus + Train)
+
+    /// Scheduled departures matching the currently selected direction.
+    /// Combines bus schedule data and train GTFS data into a unified list.
+    /// Filters to future departures only and sorts by time.
+    private var scheduledDeparturesForCurrentDirection: [ScheduledItem] {
+        let direction = safeDirection
+
+        // --- Bus schedule ---
+        if group.isBus, let schedule = busSchedule {
+            let dirLower = direction.direction.lowercased()
+            let matched = schedule.directions.first { schedDir in
+                schedDir.direction.lowercased() == dirLower
+                    || schedDir.headsign.lowercased().contains(dirLower)
+                    || dirLower.contains(schedDir.headsign.lowercased())
+            } ?? schedule.directions.first { schedDir in
+                schedule.directions.firstIndex(where: { $0.direction == schedDir.direction })
+                    == selectedDirectionIndex
+            }
+
+            guard let matched else { return [] }
+            return matched.departures
+                .filter { $0.minutesAway >= 0 }
+                .sorted { $0.departureTime < $1.departureTime }
+                .prefix(6)
+                .map { ScheduledItem.from($0) }
+        }
+
+        // --- Train (subway / LIRR / MNR) schedule from cached GTFS arrivals ---
+        if !group.isBus && !cachedTrainArrivals.isEmpty {
+            let dirLower = direction.direction.lowercased()
+
+            let matching = cachedTrainArrivals.filter { arrival in
+                let arrDir = arrival.direction.lowercased()
+                let arrDest = arrival.destination?.lowercased() ?? ""
+                return arrDir == dirLower
+                    || arrDest == dirLower
+                    || dirLower.contains(arrDir)
+                    || dirLower.contains(arrDest)
+                    || arrDest.contains(dirLower)
+            }
+            .filter { $0.estimatedTime > Date().addingTimeInterval(-30) }
+            .sorted { $0.estimatedTime < $1.estimatedTime }
+
+            return Array(matching.prefix(6)).map { ScheduledItem.from($0) }
+        }
+
+        return []
+    }
+
+    /// View showing upcoming scheduled departures when no live vehicles are running.
+    /// Greyed-out chips with the scheduled departure time underneath.
+    @ViewBuilder
+    private var scheduledDeparturesView: some View {
+        let departures = scheduledDeparturesForCurrentDirection
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: "calendar.badge.clock")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+                Text("Scheduled — not yet on route")
+                    .font(.custom("Helvetica-Bold", size: 11))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+                    .textCase(.uppercase)
+                    .tracking(0.5)
+            }
+            .padding(.horizontal, AppTheme.Layout.margin)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(departures) { departure in
+                        VStack(spacing: 6) {
+                            Text("\(departure.minutesAway)")
+                                .font(.custom("Helvetica-Bold", size: 30))
+                                .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
+
+                            Text("min")
+                                .font(.custom("Helvetica-Bold", size: 12))
+                                .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.4))
+
+                            // Show the actual clock time
+                            Text(departure.formattedTime)
+                                .font(.custom("Helvetica-Bold", size: 10))
+                                .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.5))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background(AppTheme.Colors.textSecondary.opacity(0.08))
+                                .clipShape(Capsule())
+                        }
+                        .frame(width: 80)
+                        .padding(.vertical, 14)
+                        .background(
+                            RoundedRectangle(cornerRadius: 16)
+                                .fill(AppTheme.Colors.cardBackground.opacity(0.6))
+                                .shadow(color: .black.opacity(0.02), radius: 4, x: 0, y: 2)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16)
+                                .strokeBorder(AppTheme.Colors.textSecondary.opacity(0.1), lineWidth: 1)
+                        )
+                    }
+                }
+                .padding(.horizontal, AppTheme.Layout.margin)
+                .padding(.vertical, 2)
             }
         }
     }
@@ -486,38 +610,60 @@ struct RouteDetailSheet: View {
             .padding(.horizontal, AppTheme.Layout.margin)
 
             if direction.arrivals.isEmpty {
-                // Empty state — matches HomeView's emptyStateView pattern
-                VStack(spacing: 10) {
-                    Image(systemName: group.isCommuterRail ? "train.side.front.car" : group.isBus ? "bus.fill" : "tram.fill")
-                        .font(.system(size: 36, weight: .light))
-                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.5))
-                    Text("No arrivals in this direction")
-                        .font(.custom("Helvetica", size: 15))
-                        .foregroundColor(AppTheme.Colors.textSecondary)
+                // Show scheduled departures if available, otherwise empty state
+                let scheduled = scheduledDeparturesForCurrentDirection
+                if !scheduled.isEmpty {
+                    scheduledDeparturesView
+                } else {
+                    // Empty state — matches HomeView's emptyStateView pattern
+                    VStack(spacing: 10) {
+                        Image(systemName: group.isCommuterRail ? "train.side.front.car" : group.isBus ? "bus.fill" : "tram.fill")
+                            .font(.system(size: 36, weight: .light))
+                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.5))
+                        Text("No arrivals in this direction")
+                            .font(.custom("Helvetica", size: 15))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 40)
+                    .background(AppTheme.Colors.cardBackground)
+                    .cornerRadius(AppTheme.Layout.cornerRadius)
+                    .padding(.horizontal, AppTheme.Layout.margin)
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 40)
-                .background(AppTheme.Colors.cardBackground)
-                .cornerRadius(AppTheme.Layout.cornerRadius)
-                .padding(.horizontal, AppTheme.Layout.margin)
             } else {
-                VStack(spacing: 8) {
-                    ForEach(Array(direction.arrivals.enumerated()), id: \.element.id) { index, arrival in
-                        NearbyTransitRow(
-                            arrival: arrival,
-                            isTracking: isTracking?(arrival) ?? false,
-                            isSelected: selectedStopId != nil && arrival.stopId == selectedStopId,
-                            onTrack: {
-                                onTrack?(arrival)
-                            },
-                            userLocation: currentLocation.map { CLLocation(latitude: $0.latitude, longitude: $0.longitude) }
-                        )
-                        .background(AppTheme.Colors.cardBackground)
-                        .cornerRadius(16)
-                        .shadow(color: .black.opacity(0.04), radius: 4, x: 0, y: 2)
-                        .padding(.horizontal, AppTheme.Layout.margin)
-                        .accessibilityElement(children: .combine)
-                        .accessibilityLabel("\(arrival.stopName), \(arrival.minutesAway) minutes, \(arrival.status)")
+                ScrollViewReader { proxy in
+                    VStack(spacing: 8) {
+                        ForEach(Array(direction.arrivals.enumerated()), id: \.element.id) { index, arrival in
+                            NearbyTransitRow(
+                                arrival: arrival,
+                                isTracking: isTracking?(arrival) ?? false,
+                                isSelected: selectedStopId != nil && arrival.stopId == selectedStopId,
+                                isLiveOnMap: isLiveOnMap?(arrival) ?? false,
+                                tappedVehicleId: tappedVehicleId,
+                                onTrack: {
+                                    onTrack?(arrival)
+                                },
+                                userLocation: currentLocation.map { CLLocation(latitude: $0.latitude, longitude: $0.longitude) }
+                            )
+                            .id(arrival.id)
+                            .background(AppTheme.Colors.cardBackground)
+                            .cornerRadius(16)
+                            .shadow(color: .black.opacity(0.04), radius: 4, x: 0, y: 2)
+                            .padding(.horizontal, AppTheme.Layout.margin)
+                            .accessibilityElement(children: .combine)
+                            .accessibilityLabel("\(arrival.stopName), \(arrival.minutesAway) minutes, \(arrival.status)")
+                        }
+                    }
+                    .onChange(of: tappedVehicleId) { _, newValue in
+                        guard let newValue, !newValue.isEmpty else { return }
+                        // Find the matching arrival and scroll to it
+                        if let match = direction.arrivals.first(where: {
+                            $0.vehicleId == newValue || $0.tripId == newValue
+                        }) {
+                            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                                proxy.scrollTo(match.id, anchor: .center)
+                            }
+                        }
                     }
                 }
             }

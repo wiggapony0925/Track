@@ -368,6 +368,12 @@ final class HomeViewModel {
     // Live bus/train tracking on map
     var selectedRouteId: String?
     var highlightedVehicleId: String?
+    /// Coordinate of the tracked vehicle/arrival for map zoom-to-center.
+    /// Set by `trackNearbyArrival` so the View can animate the camera.
+    var trackedVehicleCoordinate: CLLocationCoordinate2D?
+    /// Vehicle/trip ID tapped on the map — used to highlight and expand the
+    /// matching arrival row in the RouteDetailSheet.
+    var tappedVehicleId: String?
     var busVehicles: [BusVehicleResponse] = []
 
     struct TrainVehicle: Identifiable {
@@ -477,7 +483,7 @@ final class HomeViewModel {
         let filtered = trainVehicles.filter { vehicle in
             validDirs.contains(vehicle.direction.uppercased())
         }
-        // If no vehicles matched, show all (safety fallback)
+        // If no vehicles matched direction filtering, show all (safety fallback)
         return filtered.isEmpty && !trainVehicles.isEmpty ? trainVehicles : filtered
     }
 
@@ -559,6 +565,58 @@ final class HomeViewModel {
         let cleanRouteId = stripMTAPrefix(arrival.routeId)
         let trackedCleanId = stripMTAPrefix(tracked.routeId)
         return cleanRouteId == trackedCleanId && tracked.stopName == arrival.stopId
+    }
+
+    /// Finds the map coordinate for a tracked arrival.
+    /// Looks up the live vehicle position first (bus by vehicleId, train by tripId);
+    /// falls back to the arrival's stop lat/lon if no live vehicle is found.
+    /// Works for all modes: subway, bus, LIRR, Metro-North.
+    func coordinateForTrackedArrival(_ arrival: NearbyTransitResponse) -> CLLocationCoordinate2D? {
+        // 1. Try to find a live bus vehicle by vehicleId
+        if arrival.isBus, let vid = arrival.vehicleId, !vid.isEmpty {
+            if let vehicle = busVehicles.first(where: { $0.vehicleId == vid }) {
+                return CLLocationCoordinate2D(latitude: vehicle.lat, longitude: vehicle.lon)
+            }
+        }
+
+        // 2. Try to find a live train vehicle by tripId
+        if !arrival.isBus, let tripId = arrival.tripId, !tripId.isEmpty {
+            if let train = trainVehicles.first(where: { $0.tripId == tripId }) {
+                return CLLocationCoordinate2D(latitude: train.lat, longitude: train.lon)
+            }
+        }
+
+        // 3. Try to find a train vehicle by vehicleId
+        if !arrival.isBus, let vid = arrival.vehicleId, !vid.isEmpty {
+            if let train = trainVehicles.first(where: { $0.id == vid }) {
+                return CLLocationCoordinate2D(latitude: train.lat, longitude: train.lon)
+            }
+        }
+
+        // 4. Fall back to the stop's coordinates
+        if let lat = arrival.stopLat, let lon = arrival.stopLon {
+            return CLLocationCoordinate2D(latitude: lat, longitude: lon)
+        }
+
+        return nil
+    }
+
+    /// Returns true if the arrival has a live vehicle currently on the map.
+    /// Checks bus vehicles by vehicleId and train vehicles by tripId/vehicleId.
+    /// Works for all modes: subway, bus, LIRR, Metro-North.
+    func isVehicleLiveOnMap(_ arrival: NearbyTransitResponse) -> Bool {
+        if arrival.isBus, let vid = arrival.vehicleId, !vid.isEmpty {
+            return busVehicles.contains(where: { $0.vehicleId == vid })
+        }
+        if !arrival.isBus {
+            if let tripId = arrival.tripId, !tripId.isEmpty {
+                if trainVehicles.contains(where: { $0.tripId == tripId }) { return true }
+            }
+            if let vid = arrival.vehicleId, !vid.isEmpty {
+                if trainVehicles.contains(where: { $0.id == vid }) { return true }
+            }
+        }
+        return false
     }
 
     // MARK: - GO Mode Forwarding (backward compatibility)
@@ -889,6 +947,12 @@ final class HomeViewModel {
                     }
                 }
             }
+        }
+
+        // After loading shape and vehicles, check if we need schedule data
+        // for directions with no live buses
+        if group.isBus {
+            await fetchBusScheduleIfNeeded()
         }
     }
 
@@ -1297,6 +1361,23 @@ final class HomeViewModel {
         }
     }
 
+    // MARK: - Bus Schedule
+
+    /// Cached bus schedule for the currently selected bus route.
+    var busSchedule: BusScheduleResponse?
+
+    /// Fetches the schedule for the currently selected bus route.
+    /// Used to show scheduled departures when no live buses are running.
+    func fetchBusScheduleIfNeeded() async {
+        guard let group = selectedGroupedRoute, group.isBus else { return }
+        do {
+            busSchedule = try await TrackAPI.fetchBusSchedule(routeID: group.routeId)
+        } catch {
+            AppLogger.shared.logError("fetchBusSchedule(\(group.routeId))", error: error)
+            busSchedule = nil
+        }
+    }
+
     /// Clears the selected route and remove bus/train markers from the map.
     func clearRoute() {
         selectedRouteId = nil
@@ -1310,12 +1391,15 @@ final class HomeViewModel {
         errorMessage = nil
         nearestStopCoordinate = nil
         highlightedVehicleId = nil
+        trackedVehicleCoordinate = nil
+        tappedVehicleId = nil
         selectedStopId = nil
         goMode.walkingRoute = nil
+        busSchedule = nil
     }
 
     // Cache latest arrivals to allow client-side simulation between network fetches
-    private var cachedTrainArrivals: [TrainArrival] = []
+    private(set) var cachedTrainArrivals: [TrainArrival] = []
 
     /// Re-calculates train positions based on the current time and cached arrivals.
     /// Call this frequently (e.g. every 1s) to animate trains smoothly.
@@ -1788,6 +1872,10 @@ final class HomeViewModel {
             AppLogger.shared.log(
                 "TRACKING", message: "Highlighting train trip: \(arrival.tripId ?? "none")")
         }
+
+        // Set the zoom-to coordinate so the map centers on the tracked vehicle/stop.
+        // Prioritizes live vehicle position; falls back to stop coordinates.
+        self.trackedVehicleCoordinate = coordinateForTrackedArrival(arrival)
 
         // Immediately refresh the Live Activity
         updateLiveActivityFromRefresh()

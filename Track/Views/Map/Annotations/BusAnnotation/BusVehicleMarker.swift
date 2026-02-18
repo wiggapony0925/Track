@@ -17,6 +17,8 @@ import MapKit
 /// smoothly glides the bus icon along the route polyline.
 struct BusVehicleMarker: MapContent {
     let vehicle: BusVehicleResponse
+    var isHighlighted: Bool = false
+    var onTap: (() -> Void)? = nil
 
     var body: some MapContent {
         Annotation(
@@ -32,7 +34,16 @@ struct BusVehicleMarker: MapContent {
                 .frame(width: 28, height: 28)
                 .background(AppTheme.Colors.mtaBlue)
                 .clipShape(Circle())
-                .shadow(color: .black.opacity(0.2), radius: 2, y: 1)
+                .overlay(
+                    Circle()
+                        .stroke(isHighlighted ? Color.white : Color.clear, lineWidth: 3)
+                )
+                .shadow(color: isHighlighted ? AppTheme.Colors.mtaBlue.opacity(0.6) : .black.opacity(0.2), radius: isHighlighted ? 6 : 2, y: isHighlighted ? 0 : 1)
+                .scaleEffect(isHighlighted ? 1.3 : 1.0)
+                .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isHighlighted)
+                .onTapGesture {
+                    onTap?()
+                }
         }
     }
 }

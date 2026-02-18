@@ -14,11 +14,24 @@ struct NearbyTransitRow: View {
     let arrival: NearbyTransitResponse
     var isTracking: Bool = false
     var isSelected: Bool = false // Added for stop selection
+    /// Whether this arrival has a live vehicle on the map (bus GPS or train GTFS-RT).
+    var isLiveOnMap: Bool = false
+    /// Vehicle ID tapped on the map marker. When it matches this arrival's
+    /// `vehicleId` or `tripId`, the row auto-expands and highlights.
+    var tappedVehicleId: String? = nil
     var onTrack: (() -> Void)?
     var onSelectRoute: (() -> Void)?
     var userLocation: CLLocation?
     
     @State private var isExpanded = false
+    
+    /// Whether this row's arrival matches the vehicle tapped on the map.
+    private var isMapHighlighted: Bool {
+        guard let tapped = tappedVehicleId, !tapped.isEmpty else { return false }
+        if let vid = arrival.vehicleId, vid == tapped { return true }
+        if let tid = arrival.tripId, tid == tapped { return true }
+        return false
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -129,15 +142,34 @@ struct NearbyTransitRow: View {
                     .padding(.vertical, 4)
                     .background(transitStatusColor(for: arrival.status).opacity(0.12))
                     .clipShape(Capsule())
+                    
+                    // "In Route" live indicator — shows when this vehicle
+                    // has a live GPS/GTFS-RT position on the map.
+                    if isLiveOnMap {
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(AppTheme.Colors.successGreen)
+                                .frame(width: 5, height: 5)
+                                .shadow(color: AppTheme.Colors.successGreen.opacity(0.6), radius: 3)
+                            Text("In Route")
+                                .font(.custom("Helvetica-Bold", size: 9))
+                                .textCase(.uppercase)
+                        }
+                        .foregroundColor(AppTheme.Colors.successGreen)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(AppTheme.Colors.successGreen.opacity(0.1))
+                        .clipShape(Capsule())
+                    }
                 }
             }
             .padding(.vertical, 16)
             .padding(.horizontal, AppTheme.Layout.margin)
-            .background(isSelected ? AppTheme.Colors.mtaBlue.opacity(0.1) : AppTheme.Colors.cardBackground) // Highlight background
+            .background(isMapHighlighted ? AppTheme.Colors.mtaBlue.opacity(0.15) : isSelected ? AppTheme.Colors.mtaBlue.opacity(0.1) : AppTheme.Colors.cardBackground)
             .cornerRadius(AppTheme.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius)
-                    .stroke(isSelected ? AppTheme.Colors.mtaBlue : Color.clear, lineWidth: 2) // Highlight border
+                    .stroke(isMapHighlighted ? AppTheme.Colors.mtaBlue : isSelected ? AppTheme.Colors.mtaBlue : Color.clear, lineWidth: isMapHighlighted ? 2.5 : 2)
             )
             .contentShape(Rectangle())
             .onTapGesture {
@@ -204,9 +236,13 @@ struct NearbyTransitRow: View {
                         onTrack?()
                     } label: {
                         HStack(spacing: 6) {
-                            Image(systemName: isTracking ? "antenna.radiowaves.left.and.right" : "bell.fill")
+                            Image(systemName: isTracking
+                                  ? "antenna.radiowaves.left.and.right"
+                                  : isLiveOnMap ? "location.fill" : "bell.fill")
                                 .font(.system(size: 12, weight: .bold))
-                            Text(isTracking ? "Tracking" : "Track This Arrival")
+                            Text(isTracking
+                                 ? "Tracking"
+                                 : isLiveOnMap ? "Track & Show on Map" : "Track This Arrival")
                                 .font(.custom("Helvetica-Bold", size: 13))
                         }
                         .foregroundColor(AppTheme.Colors.textOnColor)
@@ -224,6 +260,14 @@ struct NearbyTransitRow: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(arrival.isBus ? "Bus" : "Train") \(arrival.displayName), \(arrival.stopName), \(arrival.minutesAway) minutes away")
         .accessibilityHint(isExpanded ? "Expanded. Shows arrival details." : "Tap to see arrival details")
+        .onChange(of: tappedVehicleId) { _, newValue in
+            guard let newValue, !newValue.isEmpty else { return }
+            if (arrival.vehicleId == newValue) || (arrival.tripId == newValue) {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                    isExpanded = true
+                }
+            }
+        }
     }
     
     // MARK: - Helper Functions

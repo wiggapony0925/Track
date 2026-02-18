@@ -247,6 +247,16 @@ struct HomeView: View {
                 lastUpdated = Date()
             }
         }
+        .onChange(of: viewModel.tappedVehicleId) { _, newValue in
+            // When a vehicle marker is tapped on the map, expand the sheet
+            // so the matching arrival row is visible.
+            guard newValue != nil else { return }
+            if sheetDetent != .large {
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                    sheetDetent = .large
+                }
+            }
+        }
     }
     
     // MARK: - Sheet Content Builder
@@ -290,6 +300,8 @@ struct HomeView: View {
                 routeShape: $viewModel.routeShape,
                 selectedDirectionIndex: $viewModel.selectedDirectionIndex,
                 serviceAlerts: viewModel.serviceAlerts,
+                busSchedule: viewModel.busSchedule,
+                cachedTrainArrivals: viewModel.cachedTrainArrivals,
                 cachedStations: viewModel.cachedStations,
                 liveVehicleCount: vehicleCount,
                 isSheetExpanded: sheetDetent == .large,
@@ -299,8 +311,22 @@ struct HomeView: View {
                 selectedStopId: viewModel.selectedStopId,
                 onTrack: { arrival in
                     viewModel.trackNearbyArrival(arrival, location: locationManager.currentLocation)
+                    
+                    // Zoom the map to center on the tracked vehicle/stop marker
+                    if let coord = viewModel.trackedVehicleCoordinate {
+                        withAnimation(.spring(response: 0.6, dampingFraction: 0.85)) {
+                            cameraPosition = .camera(MapCamera(
+                                centerCoordinate: coord,
+                                distance: 1500,
+                                heading: 0,
+                                pitch: is3DMode ? 60 : 0
+                            ))
+                        }
+                    }
                 },
                 isTracking: { viewModel.isTracking($0) },
+                isLiveOnMap: { viewModel.isVehicleLiveOnMap($0) },
+                tappedVehicleId: viewModel.tappedVehicleId,
                 onDismiss: {
                     withAnimation(.easeInOut(duration: 0.25)) {
                         viewModel.isRouteDetailPresented = false

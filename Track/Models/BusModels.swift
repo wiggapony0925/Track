@@ -179,3 +179,49 @@ struct RouteShapeResponse: Codable {
         return dirStops.isEmpty ? stops : dirStops
     }
 }
+
+// MARK: - Bus Schedule
+
+/// Response from /bus/schedule/{route_id} — today's upcoming scheduled departures.
+struct BusScheduleResponse: Codable {
+    let routeId: String
+    let directions: [BusScheduleDirection]
+    
+    enum CodingKeys: String, CodingKey {
+        case routeId = "route_id"
+        case directions
+    }
+}
+
+struct BusScheduleDirection: Codable {
+    let direction: String
+    let headsign: String
+    let departures: [BusScheduledDeparture]
+}
+
+struct BusScheduledDeparture: Codable, Identifiable {
+    var id: String { tripId + "_\(departureTime)" }
+    let stopName: String
+    let stopId: String
+    let departureTime: Int  // epoch seconds
+    let headsign: String
+    let tripId: String
+    
+    enum CodingKeys: String, CodingKey {
+        case stopName = "stop_name"
+        case stopId = "stop_id"
+        case departureTime = "departure_time"
+        case headsign
+        case tripId = "trip_id"
+    }
+    
+    /// The departure as a Date
+    var departureDate: Date {
+        Date(timeIntervalSince1970: TimeInterval(departureTime))
+    }
+    
+    /// Minutes until departure from now
+    var minutesAway: Int {
+        Int(departureDate.timeIntervalSinceNow / 60)
+    }
+}

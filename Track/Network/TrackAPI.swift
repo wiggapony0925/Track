@@ -114,6 +114,18 @@ struct TrackAPI {
         return try decoder.decode([BusStop].self, from: data)
     }
 
+    // MARK: - Bus Schedule
+
+    /// Fetches today's scheduled departures for a bus route.
+    /// Used when no live buses are running to show upcoming scheduled times.
+    static func fetchBusSchedule(routeID: String) async throws -> BusScheduleResponse {
+        let stripped = routeID
+            .replacingOccurrences(of: "MTA NYCT_", with: "")
+            .replacingOccurrences(of: "MTABC_", with: "")
+        let data = try await get(path: "/bus/schedule/\(stripped)")
+        return try decoder.decode(BusScheduleResponse.self, from: data)
+    }
+
     // MARK: - Nearby Transit
 
     /// Fetches the nearest buses and trains with live countdowns.
