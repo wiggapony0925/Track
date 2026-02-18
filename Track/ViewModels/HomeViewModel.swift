@@ -693,11 +693,20 @@ final class HomeViewModel {
     }
 
     /// Deactivates the search pin and returns to user location.
+    /// Clears stale transit data so the dashboard shows a loading state
+    /// instead of results from the drag-search location (which would
+    /// appear as "nothing in your area" since those stops are far away).
     func clearSearchPin(userLocation: CLLocation?) async {
         isSearchPinActive = false
         searchPinCoordinate = nil
         goMode.walkingRoute = nil
         nearestStopCoordinate = nil
+        // Clear stale data to avoid showing drag-search results
+        // measured against the real GPS (wrong distances)
+        groupedTransit = []
+        nearbyTransit = []
+        nearestTransit = nil
+        nearestTransitDistance = nil
     }
 
     // MARK: - Route Detail
