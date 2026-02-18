@@ -2,28 +2,37 @@
 //  BusVehicleMarker.swift
 //  Track
 //
-//  Native MapKit Marker for live bus vehicle positions.
-//  Uses the same bus icon from the app's tab bar, tinted MTA Blue.
+//  MapKit Annotation for live bus vehicle positions.
+//  Uses Annotation instead of Marker so SwiftUI's withAnimation()
+//  can smoothly interpolate the coordinate changes.
 //
 
 import SwiftUI
 import MapKit
 
-/// A native MapKit `Marker` for a single bus vehicle.
-/// Matches the app's tab-bar icon (`bus.fill`) and tints
-/// the balloon with MTA Blue.
+/// A MapKit `Annotation` for a single bus vehicle.
+/// Uses `Annotation` instead of `Marker` because `Marker` positions
+/// snap instantly — they don't respond to SwiftUI animation. By using
+/// `Annotation`, the `withAnimation(.linear)` in `updateBusSimulation()`
+/// smoothly glides the bus icon along the route polyline.
 struct BusVehicleMarker: MapContent {
     let vehicle: BusVehicleResponse
 
     var body: some MapContent {
-        Marker(
+        Annotation(
             markerETALabel(minutesAway: vehicle.minutesAway, fallback: vehicle.nextStop ?? vehicle.displayRouteName),
-            systemImage: TransportMode.bus.icon,
             coordinate: CLLocationCoordinate2D(
                 latitude: vehicle.lat,
                 longitude: vehicle.lon
             )
-        )
-        .tint(AppTheme.Colors.mtaBlue)
+        ) {
+            Image(systemName: TransportMode.bus.icon)
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 28, height: 28)
+                .background(AppTheme.Colors.mtaBlue)
+                .clipShape(Circle())
+                .shadow(color: .black.opacity(0.2), radius: 2, y: 1)
+        }
     }
 }

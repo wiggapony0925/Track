@@ -285,72 +285,41 @@ struct TrackMapView: View {
 
     // MARK: - Route Polylines
 
-    /// Returns the polylines for the currently selected direction.
-    /// Uses the backend's per-direction data when available; falls back to
-    /// the midpoint-split heuristic for legacy responses without direction data.
-    private func filteredPolylines(from polylines: [[CLLocationCoordinate2D]])
-        -> [[CLLocationCoordinate2D]]
-    {
-        guard let group = viewModel.selectedGroupedRoute,
-            group.directions.count > 1
-        else {
-            // Single direction — show everything
-            return polylines
-        }
-
-        let directionIndex = viewModel.selectedDirectionIndex
-
-        // Prefer the backend's per-direction shape data
-        if let shape = viewModel.routeShape, !shape.directions.isEmpty {
-            return shape.polylinesForDirection(directionIndex)
-        }
-
-        // Legacy fallback: split in half (first half = direction 0, second = direction 1)
-        guard polylines.count >= 2 else { return polylines }
-        let midpoint = polylines.count / 2
-        if directionIndex == 0 {
-            return Array(polylines.prefix(midpoint))
-        } else {
-            return Array(polylines.suffix(from: midpoint))
-        }
-    }
-
     @MapContentBuilder
     private var routePolylines: some MapContent {
-        if let shape = viewModel.routeShape {
-            let isBusRoute = viewModel.selectedGroupedRoute?.isBus == true
-            // Use pre-decoded cached polylines to avoid re-decoding during
-            // continuous camera changes (zoom/pan), which caused polylines
-            // to flicker or disappear on zoom-out.
-            let polylines = viewModel.cachedRoutePolylines
+        // Read from the stable cached arrays directly. These are only rebuilt
+        // when routeShape or selectedDirectionIndex changes (via didSet), so
+        // they stay constant during zoom/pan — preventing the polylines from
+        // flickering or disappearing during continuous camera changes.
+        let polylines = viewModel.cachedRoutePolylines
+        let isBusRoute = viewModel.selectedGroupedRoute?.isBus == true
 
-            if !polylines.isEmpty {
-                ForEach(Array(polylines.enumerated()), id: \.offset) { _, coords in
-                    if isBusRoute {
-                        MapPolyline(coordinates: coords)
-                            .stroke(selectedRouteColor, style: busRouteStrokeStyle)
-                    } else {
-                        // White casing behind the colored line for contrast
-                        MapPolyline(coordinates: coords)
-                            .stroke(.white.opacity(0.8), style: StrokeStyle(lineWidth: 7, lineCap: .round, lineJoin: .round))
-                        MapPolyline(coordinates: coords)
-                            .stroke(selectedRouteColor, style: Self.subwayRouteStrokeStyle)
-                    }
+        if !polylines.isEmpty {
+            ForEach(Array(polylines.enumerated()), id: \.offset) { _, coords in
+                if isBusRoute {
+                    MapPolyline(coordinates: coords)
+                        .stroke(selectedRouteColor, style: busRouteStrokeStyle)
+                } else {
+                    // White casing behind the colored line for contrast
+                    MapPolyline(coordinates: coords)
+                        .stroke(.white.opacity(0.8), style: StrokeStyle(lineWidth: 7, lineCap: .round, lineJoin: .round))
+                    MapPolyline(coordinates: coords)
+                        .stroke(selectedRouteColor, style: Self.subwayRouteStrokeStyle)
                 }
-            } else if !shape.stops.isEmpty {
-                // Fallback: connect direction-specific stops (not all stops)
-                let groupDirCount = viewModel.selectedGroupedRoute?.directions.count ?? 0
-                let shouldFilter = !shape.directions.isEmpty && groupDirCount > 1
-                let fallbackStops =
-                    shouldFilter
-                    ? shape.stopsForDirection(viewModel.selectedDirectionIndex)
-                    : shape.stops
-                let stopCoords = fallbackStops.map {
-                    CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lon)
-                }
-                MapPolyline(coordinates: stopCoords)
-                    .stroke(selectedRouteColor, style: busRouteStrokeStyle)
             }
+        } else if let shape = viewModel.routeShape, !shape.stops.isEmpty {
+            // Fallback: connect direction-specific stops (not all stops)
+            let groupDirCount = viewModel.selectedGroupedRoute?.directions.count ?? 0
+            let shouldFilter = !shape.directions.isEmpty && groupDirCount > 1
+            let fallbackStops =
+                shouldFilter
+                ? shape.stopsForDirection(viewModel.selectedDirectionIndex)
+                : shape.stops
+            let stopCoords = fallbackStops.map {
+                CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lon)
+            }
+            MapPolyline(coordinates: stopCoords)
+                .stroke(selectedRouteColor, style: busRouteStrokeStyle)
         }
     }
 

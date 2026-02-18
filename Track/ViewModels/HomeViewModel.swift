@@ -1222,16 +1222,26 @@ final class HomeViewModel {
         do {
             let vehicles = try await TrackAPI.fetchBusVehicles(routeID: routeId)
             await MainActor.run {
-                // Snapshot current positions before overwriting
-                for v in self.busVehicles {
-                    previousBusPositions[v.vehicleId] = BusSnapshot(
-                        lat: v.lat, lon: v.lon, timestamp: self.lastBusUpdateTime
-                    )
+                // Snapshot current positions before overwriting so that
+                // updateBusSimulation() can interpolate between old → new.
+                if self.busVehicles.isEmpty {
+                    // First fetch: seed snapshots from the new data so
+                    // interpolation can start on the very next GPS cycle
+                    // instead of waiting for a second fetch.
+                    for v in vehicles {
+                        previousBusPositions[v.vehicleId] = BusSnapshot(
+                            lat: v.lat, lon: v.lon, timestamp: Date()
+                        )
+                    }
+                } else {
+                    for v in self.busVehicles {
+                        previousBusPositions[v.vehicleId] = BusSnapshot(
+                            lat: v.lat, lon: v.lon, timestamp: self.lastBusUpdateTime
+                        )
+                    }
                 }
                 self.lastBusUpdateTime = Date()
-                withAnimation(.linear(duration: 2.0)) {
-                    self.busVehicles = vehicles
-                }
+                self.busVehicles = vehicles
             }
         } catch {
             AppLogger.shared.logError("refreshBusVehicles(\(routeId))", error: error)
