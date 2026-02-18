@@ -4,6 +4,8 @@
 //
 //  Widget schedules content for display within the universal bottom sheet.
 //  Manages activation schedules for the LiveNearMeWidget.
+//  Includes a visual preview of the widget so users can see
+//  what their settings produce.
 //
 
 import SwiftUI
@@ -22,6 +24,9 @@ struct WidgetSchedulesContentView: View {
             // MARK: - Scrollable Content
             ScrollView {
                 VStack(spacing: 20) {
+                    // Widget preview
+                    widgetPreviewCard
+
                     // Info card
                     infoCard
                     
@@ -73,7 +78,7 @@ struct WidgetSchedulesContentView: View {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 16, weight: .semibold))
                     Text("Settings")
-                        .font(.custom("Helvetica", size: 16))
+                        .font(AppTheme.Typography.navButton)
                 }
                 .foregroundColor(AppTheme.Colors.mtaBlue)
             }
@@ -82,7 +87,7 @@ struct WidgetSchedulesContentView: View {
             
             // Title
             Text("Schedules")
-                .font(.custom("Helvetica-Bold", size: 18))
+                .font(AppTheme.Typography.headerMedium)
                 .foregroundColor(AppTheme.Colors.textPrimary)
             
             Spacer()
@@ -100,6 +105,78 @@ struct WidgetSchedulesContentView: View {
         .padding(.vertical, 16)
         .background(AppTheme.Colors.background)
     }
+
+    // MARK: - Widget Preview
+
+    /// A mock preview showing users what the LiveNearMe widget looks like.
+    private var widgetPreviewCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Widget Preview")
+                .font(AppTheme.Typography.cardTitle)
+                .foregroundColor(AppTheme.Colors.textPrimary)
+
+            // Mini widget mockup
+            VStack(spacing: 0) {
+                // Widget header
+                HStack(spacing: 6) {
+                    Image(systemName: "tram.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(AppTheme.Colors.mtaBlue)
+                    Text("Live Near Me")
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .foregroundColor(AppTheme.Colors.textPrimary)
+                    Spacer()
+                }
+                .padding(.bottom, 8)
+
+                // Sample transit rows
+                widgetMockRow(line: "A", destination: "Far Rockaway", minutes: 3, color: AppTheme.SubwayColors.color(for: "A"))
+                widgetMockRow(line: "C", destination: "Euclid Av", minutes: 7, color: AppTheme.SubwayColors.color(for: "C"))
+                widgetMockRow(line: "B63", destination: "Bay Ridge", minutes: 5, color: AppTheme.Colors.mtaBlue)
+            }
+            .padding(12)
+            .background(AppTheme.Colors.cardBackground)
+            .cornerRadius(AppTheme.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius)
+                    .stroke(AppTheme.Colors.textSecondary.opacity(0.15), lineWidth: 1)
+            )
+
+            Text("The widget shows the nearest transit departures based on your schedule and location.")
+                .font(AppTheme.Typography.settingsDescription)
+                .foregroundColor(AppTheme.Colors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(AppTheme.Layout.cardPadding)
+        .background(AppTheme.Colors.cardBackground)
+        .cornerRadius(AppTheme.Layout.cornerRadius)
+        .padding(.horizontal, AppTheme.Layout.margin)
+    }
+
+    /// A single row in the widget preview mockup.
+    private func widgetMockRow(line: String, destination: String, minutes: Int, color: Color) -> some View {
+        HStack(spacing: 8) {
+            // Route badge
+            Text(line)
+                .font(.system(size: 11, weight: .heavy, design: .rounded))
+                .foregroundColor(AppTheme.SubwayColors.textColor(for: line))
+                .frame(width: 22, height: 22)
+                .background(color)
+                .clipShape(Circle())
+
+            Text(destination)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(AppTheme.Colors.textPrimary)
+                .lineLimit(1)
+
+            Spacer()
+
+            Text("\(minutes) min")
+                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .foregroundColor(AppTheme.Colors.countdown(minutes))
+        }
+        .padding(.vertical, 3)
+    }
     
     // MARK: - Info Card
     
@@ -108,7 +185,7 @@ struct WidgetSchedulesContentView: View {
             ZStack {
                 Circle()
                     .fill(AppTheme.Colors.mtaBlue.opacity(0.15))
-                    .frame(width: 44, height: 44)
+                    .frame(width: AppTheme.Layout.iconCircleSize, height: AppTheme.Layout.iconCircleSize)
                 Image(systemName: "clock.badge.checkmark.fill")
                     .font(.system(size: 20, weight: .semibold))
                     .foregroundColor(AppTheme.Colors.mtaBlue)
@@ -116,10 +193,10 @@ struct WidgetSchedulesContentView: View {
             
             VStack(alignment: .leading, spacing: 4) {
                 Text("Automatic Activation")
-                    .font(.custom("Helvetica-Bold", size: 15))
+                    .font(AppTheme.Typography.settingsTitle)
                     .foregroundColor(AppTheme.Colors.textPrimary)
                 Text("Schedule when the widget shows nearby transit automatically.")
-                    .font(.custom("Helvetica", size: 13))
+                    .font(AppTheme.Typography.settingsDescription)
                     .foregroundColor(AppTheme.Colors.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -145,10 +222,10 @@ struct WidgetSchedulesContentView: View {
             
             VStack(spacing: 6) {
                 Text("No Schedules Yet")
-                    .font(.custom("Helvetica-Bold", size: 17))
+                    .font(AppTheme.Typography.routeLabel)
                     .foregroundColor(AppTheme.Colors.textPrimary)
                 Text("Add your first schedule to automatically\nshow transit info during your commute.")
-                    .font(.custom("Helvetica", size: 14))
+                    .font(AppTheme.Typography.cardSubtitle)
                     .foregroundColor(AppTheme.Colors.textSecondary)
                     .multilineTextAlignment(.center)
             }
@@ -160,13 +237,13 @@ struct WidgetSchedulesContentView: View {
                     Image(systemName: "plus.circle.fill")
                         .font(.system(size: 16, weight: .semibold))
                     Text("Add Schedule")
-                        .font(.custom("Helvetica-Bold", size: 15))
+                        .font(AppTheme.Typography.settingsTitle)
                 }
                 .foregroundColor(.white)
                 .padding(.horizontal, 24)
                 .padding(.vertical, 14)
                 .background(AppTheme.Colors.mtaBlue)
-                .cornerRadius(12)
+                .cornerRadius(AppTheme.Layout.searchBarCornerRadius)
             }
             .padding(.top, 8)
         }
@@ -182,7 +259,7 @@ struct WidgetSchedulesContentView: View {
             ZStack {
                 Circle()
                     .fill(schedule.enabled ? AppTheme.Colors.mtaBlue.opacity(0.15) : AppTheme.Colors.textSecondary.opacity(0.1))
-                    .frame(width: 44, height: 44)
+                    .frame(width: AppTheme.Layout.iconCircleSize, height: AppTheme.Layout.iconCircleSize)
                 Image(systemName: "clock.fill")
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundColor(schedule.enabled ? AppTheme.Colors.mtaBlue : AppTheme.Colors.textSecondary)
@@ -192,14 +269,14 @@ struct WidgetSchedulesContentView: View {
                 // Time and duration
                 HStack(spacing: 8) {
                     Text(schedule.formattedStartTime)
-                        .font(.custom("Helvetica-Bold", size: 16))
+                        .font(AppTheme.Typography.cardTitle)
                         .foregroundColor(schedule.enabled ? AppTheme.Colors.textPrimary : AppTheme.Colors.textSecondary)
                     
                     Text("•")
                         .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.5))
                     
                     Text("\(schedule.duration) min")
-                        .font(.custom("Helvetica", size: 14))
+                        .font(AppTheme.Typography.cardSubtitle)
                         .foregroundColor(AppTheme.Colors.textSecondary)
                 }
                 

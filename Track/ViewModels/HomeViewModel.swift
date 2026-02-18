@@ -32,37 +32,51 @@ final class HomeViewModel {
     /// User-entered search text for filtering transit results.
     var searchText = ""
 
-    /// Grouped transit results filtered by the current search query.
-    /// Returns all results when the search text is empty.
-    /// Searches route names, directions, current arrival stops, AND all stations served by the route.
-    var filteredGroupedTransit: [GroupedNearbyTransitResponse] {
-        guard !searchText.isEmpty else { return groupedTransit }
-        let query = searchText.lowercased()
+    // MARK: - Search Helpers
 
-        // Find all routes that serve stations matching the search query
-        let matchingStationRoutes = Set(
+    /// Checks whether a `GroupedNearbyTransitResponse` matches the given query.
+    /// Searches display name, route ID, directions, arrival stop names,
+    /// destination names, AND all stations served by the route.
+    private func groupMatchesQuery(_ group: GroupedNearbyTransitResponse, query: String, stationRoutes: Set<String>) -> Bool {
+        // Match by route display name or ID
+        group.displayName.lowercased().contains(query)
+            || group.routeId.lowercased().contains(query)
+            // Match by direction, stop name, or destination name
+            || group.directions.contains { direction in
+                direction.direction.lowercased().contains(query)
+                    || direction.arrivals.contains {
+                        $0.stopName.lowercased().contains(query)
+                            || ($0.destination?.lowercased().contains(query) ?? false)
+                    }
+            }
+            // Match if this route serves any station matching the query
+            || stationRoutes.contains(group.displayName)
+            || stationRoutes.contains(group.routeId)
+    }
+
+    /// Returns the set of route names that serve stations matching the query.
+    /// Computed once per search to avoid O(n²) lookups.
+    private func stationRoutesForQuery(_ query: String) -> Set<String> {
+        Set(
             cachedStations
                 .filter { $0.name.lowercased().contains(query) }
                 .flatMap { $0.routes }
         )
+    }
 
-        return groupedTransit.filter { group in
-            // Match by route display name or ID
-            group.displayName.lowercased().contains(query)
-                || group.routeId.lowercased().contains(query)
-                // Match by direction or current arrival stop names
-                || group.directions.contains { direction in
-                    direction.direction.lowercased().contains(query)
-                        || direction.arrivals.contains { $0.stopName.lowercased().contains(query) }
-                }
-                // Match if this route serves any station matching the query
-                || matchingStationRoutes.contains(group.displayName)
-                || matchingStationRoutes.contains(group.routeId)
-        }
+    /// Grouped transit results filtered by the current search query.
+    /// Returns all results when the search text is empty.
+    /// Searches route names, directions, current arrival stops, destinations,
+    /// AND all stations served by the route.
+    var filteredGroupedTransit: [GroupedNearbyTransitResponse] {
+        guard !searchText.isEmpty else { return groupedTransit }
+        let query = searchText.lowercased()
+        let stationRoutes = stationRoutesForQuery(query)
+        return groupedTransit.filter { groupMatchesQuery($0, query: query, stationRoutes: stationRoutes) }
     }
 
     /// LIRR arrivals filtered by search text.
-    /// Searches route ID, station ID, direction, and destination.
+    /// Searches route ID, station ID, station name, direction, and destination.
     var filteredLIRRArrivals: [TrainArrival] {
         guard !searchText.isEmpty else { return lirrArrivals }
         let query = searchText.lowercased()
@@ -76,7 +90,7 @@ final class HomeViewModel {
     }
 
     /// Metro-North arrivals filtered by search text.
-    /// Searches route ID, station ID, direction, and destination.
+    /// Searches route ID, station ID, station name, direction, and destination.
     var filteredMNRArrivals: [TrainArrival] {
         guard !searchText.isEmpty else { return mnrArrivals }
         let query = searchText.lowercased()
@@ -103,7 +117,7 @@ final class HomeViewModel {
     }
 
     /// Bus arrivals filtered by search text.
-    /// Searches both the full routeId and the stripped display name for flexibility.
+    /// Searches both the full routeId, stopId, destination, and the status text.
     var filteredBusArrivals: [BusArrival] {
         guard !searchText.isEmpty else { return busArrivals }
         let query = searchText.lowercased()
@@ -111,6 +125,7 @@ final class HomeViewModel {
             arrival.routeId.lowercased().contains(query)
                 || arrival.stopId.lowercased().contains(query)
                 || arrival.statusText.lowercased().contains(query)
+                || (arrival.destinationName?.lowercased().contains(query) ?? false)
         }
     }
 
@@ -120,6 +135,7 @@ final class HomeViewModel {
         let query = searchText.lowercased()
         return nearbyBusStops.filter { stop in
             stop.name.lowercased().contains(query)
+                || stop.id.lowercased().contains(query)
         }
     }
 
@@ -127,28 +143,16 @@ final class HomeViewModel {
     var filteredNearbyGroupedBusArrivals: [GroupedNearbyTransitResponse] {
         guard !searchText.isEmpty else { return nearbyGroupedBusArrivals }
         let query = searchText.lowercased()
-        return nearbyGroupedBusArrivals.filter { group in
-            group.displayName.lowercased().contains(query)
-                || group.routeId.lowercased().contains(query)
-                || group.directions.contains { direction in
-                    direction.direction.lowercased().contains(query)
-                        || direction.arrivals.contains { $0.stopName.lowercased().contains(query) }
-                }
-        }
+        let stationRoutes = stationRoutesForQuery(query)
+        return nearbyGroupedBusArrivals.filter { groupMatchesQuery($0, query: query, stationRoutes: stationRoutes) }
     }
 
     /// Grouped subway arrivals filtered by search text (from the nearby/grouped API).
     var filteredNearbyGroupedSubwayArrivals: [GroupedNearbyTransitResponse] {
         guard !searchText.isEmpty else { return nearbyGroupedSubwayArrivals }
         let query = searchText.lowercased()
-        return nearbyGroupedSubwayArrivals.filter { group in
-            group.displayName.lowercased().contains(query)
-                || group.routeId.lowercased().contains(query)
-                || group.directions.contains { direction in
-                    direction.direction.lowercased().contains(query)
-                        || direction.arrivals.contains { $0.stopName.lowercased().contains(query) }
-                }
-        }
+        let stationRoutes = stationRoutesForQuery(query)
+        return nearbyGroupedSubwayArrivals.filter { groupMatchesQuery($0, query: query, stationRoutes: stationRoutes) }
     }
 
     /// Nearby stations filtered by search text.

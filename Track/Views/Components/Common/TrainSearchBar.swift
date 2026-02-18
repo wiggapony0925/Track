@@ -5,12 +5,10 @@
 //  Reusable search bar component for filtering transit results.
 //  Styled to match Apple Maps with glassmorphism navbar design.
 //  Includes magnifying glass icon, text field, and microphone button
-//  for speech-to-text input.
+//  for speech-to-text input via the shared SpeechRecognitionManager.
 //
 
 import SwiftUI
-import Speech
-import AVFoundation
 
 struct TrainSearchBar: View {
     /// Binding to the search query text managed by the parent view.
@@ -18,13 +16,8 @@ struct TrainSearchBar: View {
 
     /// Placeholder string shown when the search field is empty.
     var placeholder: String = "Search trains, buses, stations…"
-    
-    /// Speech recognition state
-    @State private var isRecording = false
-    @State private var speechRecognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
-    @State private var recognitionTask: SFSpeechRecognitionTask?
-    @State private var audioEngine = AVAudioEngine()
-    @State private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
+
+    @State private var speechManager = SpeechRecognitionManager()
 
     var body: some View {
         HStack(spacing: 12) {
@@ -33,7 +26,7 @@ struct TrainSearchBar: View {
                 .foregroundColor(AppTheme.Colors.textSecondary)
 
             TextField(placeholder, text: $text)
-                .font(.system(size: 15, weight: .regular))
+                .font(AppTheme.Typography.searchInput)
                 .foregroundColor(AppTheme.Colors.textPrimary)
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
@@ -50,96 +43,27 @@ struct TrainSearchBar: View {
                 .accessibilityLabel("Clear search")
                 .transition(.opacity)
             }
-            
+
             // Microphone button for speech-to-text
             Button {
-                if isRecording {
-                    stopRecording()
-                } else {
-                    startRecording()
-                }
+                speechManager.toggle()
             } label: {
-                Image(systemName: isRecording ? "mic.fill" : "mic")
+                Image(systemName: speechManager.isRecording ? "mic.fill" : "mic")
                     .font(.system(size: 17, weight: .medium))
-                    .foregroundColor(isRecording ? AppTheme.Colors.alertRed : AppTheme.Colors.textSecondary)
+                    .foregroundColor(speechManager.isRecording ? AppTheme.Colors.alertRed : AppTheme.Colors.textSecondary)
             }
-            .accessibilityLabel(isRecording ? "Stop voice input" : "Start voice input")
+            .accessibilityLabel(speechManager.isRecording ? "Stop voice input" : "Start voice input")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .background(AppTheme.Colors.cardBackground)
         .cornerRadius(AppTheme.Layout.cornerRadius)
         .padding(.horizontal, AppTheme.Layout.margin)
-    }
-    
-    // MARK: - Speech Recognition
-    
-    private func startRecording() {
-        // Request authorization
-        SFSpeechRecognizer.requestAuthorization { authStatus in
-            DispatchQueue.main.async {
-                guard authStatus == .authorized else { return }
-                
-                do {
-                    try startRecognition()
-                } catch {
-                    print("Speech recognition error: \(error.localizedDescription)")
-                }
+        .onAppear {
+            speechManager.onTranscription = { text in
+                self.text = text
             }
         }
-    }
-    
-    private func startRecognition() throws {
-        // Cancel previous task if any
-        recognitionTask?.cancel()
-        recognitionTask = nil
-        
-        // Configure audio session
-        let audioSession = AVAudioSession.sharedInstance()
-        try audioSession.setCategory(.record, mode: .measurement, options: .duckOthers)
-        try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
-        
-        recognitionRequest = SFSpeechAudioBufferRecognitionRequest()
-        
-        let inputNode = audioEngine.inputNode
-        guard let recognitionRequest = recognitionRequest else {
-            throw NSError(domain: "SpeechRecognition", code: -1)
-        }
-        
-        recognitionRequest.shouldReportPartialResults = true
-        
-        recognitionTask = speechRecognizer?.recognitionTask(with: recognitionRequest) { result, error in
-            if let result = result {
-                DispatchQueue.main.async {
-                    self.text = result.bestTranscription.formattedString
-                }
-            }
-            
-            if error != nil || result?.isFinal == true {
-                DispatchQueue.main.async {
-                    self.stopRecording()
-                }
-            }
-        }
-        
-        let recordingFormat = inputNode.outputFormat(forBus: 0)
-        inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { buffer, _ in
-            recognitionRequest.append(buffer)
-        }
-        
-        audioEngine.prepare()
-        try audioEngine.start()
-        isRecording = true
-    }
-    
-    private func stopRecording() {
-        audioEngine.stop()
-        audioEngine.inputNode.removeTap(onBus: 0)
-        recognitionRequest?.endAudio()
-        recognitionTask?.cancel()
-        recognitionRequest = nil
-        recognitionTask = nil
-        isRecording = false
     }
 }
 
