@@ -381,7 +381,39 @@ final class HomeViewModel {
     var trackedVehicleCoordinate: CLLocationCoordinate2D?
     /// Vehicle/trip ID tapped on the map — used to highlight and expand the
     /// matching arrival row in the RouteDetailSheet.
-    var tappedVehicleId: String?
+    /// The ID of the currently expanded arrival row in the flat list.
+    /// Used to enforce single-row expansion.
+    var selectedExpandedArrivalID: String? = nil
+
+    /// Validates the vehicle ID currently selected on the map.
+    var tappedVehicleId: String? {
+        didSet {
+            // When map selection changes, auto-expand the corresponding row
+            guard let id = tappedVehicleId else { return }
+
+            // Find the best matching arrival to expand
+            // prioritize exact vehicle ID match
+            if let match = nearbyTransit.first(where: { $0.vehicleId == id || $0.tripId == id }) {
+                // Only change if not already selected to avoid animation glitches
+                if selectedExpandedArrivalID != match.id {
+                    withAnimation {
+                        selectedExpandedArrivalID = match.id
+                    }
+                }
+            }
+        }
+    }
+
+    /// Toggles the expansion state for a given arrival ID.
+    func toggleArrivalExpansion(_ id: String) {
+        withAnimation {
+            if selectedExpandedArrivalID == id {
+                selectedExpandedArrivalID = nil
+            } else {
+                selectedExpandedArrivalID = id
+            }
+        }
+    }
     var busVehicles: [BusVehicleResponse] = []
 
     struct TrainVehicle: Identifiable, Equatable {
@@ -888,18 +920,30 @@ final class HomeViewModel {
                 .sorted()
         }
 
-        guard let current = foundArrival else { return }
+        if let current = foundArrival {
+            let eta = Date().addingTimeInterval(Double(current.minutesAway) * 60)
+            let progress = 1.0 - (Double(current.minutesAway) / 15.0)  // Simple 15-min scale progress
 
-        let eta = Date().addingTimeInterval(Double(current.minutesAway) * 60)
-        let progress = 1.0 - (Double(current.minutesAway) / 15.0)  // Simple 15-min scale progress
-
-        LiveActivityManager.shared.updateActivity(
-            statusText: current.minutesAway <= 1 ? "Arriving" : "\(current.minutesAway) stops away",
-            arrivalTime: eta,
-            progress: max(0, min(1.0, progress)),
-            stopsAway: current.minutesAway,
-            nextArrivals: Array(siblings.prefix(2))
-        )
+            LiveActivityManager.shared.updateActivity(
+                statusText: current.minutesAway <= 1
+                    ? "Arriving" : "\(current.minutesAway) stops away",
+                arrivalTime: eta,
+                progress: max(0, min(1.0, progress)),
+                stopsAway: current.minutesAway,
+                nextArrivals: Array(siblings.prefix(2))
+            )
+        } else {
+            // Fallback: If no arrival is found (e.g. train just left and next one not yet in feed),
+            // keep the widget alive and indicate we're waiting for the next one.
+            // Do NOT end the activity; let the next refresh pick up the new train.
+            LiveActivityManager.shared.updateActivity(
+                statusText: "Waiting for next train...",
+                arrivalTime: Date().addingTimeInterval(300),  // 5 min buffer to keep widget alive
+                progress: 0.0,
+                stopsAway: nil,
+                nextArrivals: []
+            )
+        }
     }
 
     // MARK: - Search Pin
@@ -1796,8 +1840,14 @@ final class HomeViewModel {
             async let flatTask = TrackAPI.fetchNearbyTransit(lat: lat, lon: lon)
             async let groupedTask = TrackAPI.fetchNearbyGrouped(lat: lat, lon: lon)
 
-            nearbyTransit = try await flatTask
+            let rawTransit = try await flatTask
             groupedTransit = try await groupedTask
+
+            // Deduplicate: Keep the first occurrence of each unique ID
+            // This prevents duplicate rows if the API returns the same arrival
+            // multiple times (e.g. slight timing differences or data glitches).
+            var seenIDs = Set<String>()
+            nearbyTransit = rawTransit.filter { seenIDs.insert($0.id).inserted }
 
             // Fetch alerts and accessibility only on full refreshes — these are
             // global feeds that don't change by location. Skipping them during

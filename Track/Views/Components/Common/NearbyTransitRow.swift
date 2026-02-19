@@ -7,13 +7,13 @@
 //  Extracted from HomeView for reusability and to keep HomeView focused on layout.
 //
 
-import SwiftUI
 import CoreLocation
+import SwiftUI
 
 struct NearbyTransitRow: View {
     let arrival: NearbyTransitResponse
     var isTracking: Bool = false
-    var isSelected: Bool = false // Added for stop selection
+    var isSelected: Bool = false  // Added for stop selection
     /// Whether this arrival has a live vehicle on the map (bus GPS or train GTFS-RT).
     var isLiveOnMap: Bool = false
     /// Vehicle ID tapped on the map marker. When it matches this arrival's
@@ -27,9 +27,11 @@ struct NearbyTransitRow: View {
     /// can highlight the corresponding marker without starting full tracking.
     var onFocusVehicle: ((String?) -> Void)?
     var userLocation: CLLocation?
-    
-    @State private var isExpanded = false
-    
+
+    // Hoisted state
+    var isExpanded: Bool
+    var onExpand: (() -> Void)?
+
     /// Whether this row's arrival matches the vehicle tapped on the map.
     private var isMapHighlighted: Bool {
         guard let tapped = tappedVehicleId, !tapped.isEmpty else { return false }
@@ -48,8 +50,8 @@ struct NearbyTransitRow: View {
                     isBus: arrival.isBus,
                     mode: arrival.mode
                 )
-                    .shadow(color: .black.opacity(0.15), radius: 3, x: 0, y: 2)
-                    .accessibilityHidden(true)
+                .shadow(color: .black.opacity(0.15), radius: 3, x: 0, y: 2)
+                .accessibilityHidden(true)
 
                 // MARK: Station & Destination Info
                 VStack(alignment: .leading, spacing: 4) {
@@ -59,19 +61,19 @@ struct NearbyTransitRow: View {
                         .foregroundColor(AppTheme.Colors.textPrimary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.85)
-                    
+
                     // Direction with arrow
                     HStack(spacing: 4) {
                         Image(systemName: "arrow.right")
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundColor(AppTheme.Colors.textSecondary)
-                        
+
                         Text(shortDirectionLabel(arrival.destination ?? arrival.direction))
                             .font(.custom("Helvetica-Bold", size: 14))
                             .foregroundColor(AppTheme.Colors.textSecondary)
                             .lineLimit(1)
                     }
-                    
+
                     // Distance (if available) or mode type
                     if let stopLat = arrival.stopLat, let stopLon = arrival.stopLon {
                         if let userLocation = userLocation {
@@ -87,15 +89,19 @@ struct NearbyTransitRow: View {
                             .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.8))
                         }
                     } else {
-                        Text(arrival.isLIRR ? "LIRR" : arrival.isMNR ? "Metro-North" : arrival.isBus ? "Bus" : "Subway")
-                            .font(.system(size: 11, weight: .semibold))
-                            .textCase(.uppercase)
-                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
+                        Text(
+                            arrival.isLIRR
+                                ? "LIRR"
+                                : arrival.isMNR ? "Metro-North" : arrival.isBus ? "Bus" : "Subway"
+                        )
+                        .font(.system(size: 11, weight: .semibold))
+                        .textCase(.uppercase)
+                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
                     }
                 }
-                
+
                 Spacer(minLength: 8)
-                
+
                 // MARK: Right Side (Time + Status)
                 VStack(alignment: .trailing, spacing: 6) {
                     // Minutes countdown
@@ -105,12 +111,12 @@ struct NearbyTransitRow: View {
                             let secondsUntil = Double(ts) - context.date.timeIntervalSince1970
                             let mins = max(0, Int(secondsUntil / 60))
                             let isNow = secondsUntil <= 30
-                            
+
                             HStack(alignment: .firstTextBaseline, spacing: 3) {
                                 Text(isNow ? "Now" : "\(mins)")
                                     .font(.custom("Helvetica-Bold", size: isNow ? 22 : 32))
                                     .foregroundColor(AppTheme.Colors.countdown(mins))
-                                
+
                                 if !isNow {
                                     Text("min")
                                         .font(.custom("Helvetica-Bold", size: 13))
@@ -131,13 +137,13 @@ struct NearbyTransitRow: View {
                                 .offset(y: -2)
                         }
                     }
-                    
+
                     // Status pill
                     HStack(spacing: 4) {
                         Circle()
                             .fill(transitStatusColor(for: arrival.status))
                             .frame(width: 6, height: 6)
-                        
+
                         Text(arrival.status)
                             .font(.custom("Helvetica-Bold", size: 11))
                             .textCase(.uppercase)
@@ -147,7 +153,7 @@ struct NearbyTransitRow: View {
                     .padding(.vertical, 4)
                     .background(transitStatusColor(for: arrival.status).opacity(0.12))
                     .clipShape(Capsule())
-                    
+
                     // "In Route" live indicator — shows when this vehicle
                     // has a live GPS/GTFS-RT position on the map.
                     // Tapping it focuses the map on this vehicle's marker.
@@ -205,31 +211,29 @@ struct NearbyTransitRow: View {
             }
             .padding(.vertical, 16)
             .padding(.horizontal, AppTheme.Layout.margin)
-            .background(isMapHighlighted ? AppTheme.Colors.mtaBlue.opacity(0.15) : isSelected ? AppTheme.Colors.mtaBlue.opacity(0.1) : AppTheme.Colors.cardBackground)
+            .background(
+                isMapHighlighted
+                    ? AppTheme.Colors.mtaBlue.opacity(0.15)
+                    : isSelected
+                        ? AppTheme.Colors.mtaBlue.opacity(0.1) : AppTheme.Colors.cardBackground
+            )
             .cornerRadius(AppTheme.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius)
-                    .stroke(isMapHighlighted ? AppTheme.Colors.mtaBlue : isSelected ? AppTheme.Colors.mtaBlue : Color.clear, lineWidth: isMapHighlighted ? 2.5 : 2)
+                    .stroke(
+                        isMapHighlighted
+                            ? AppTheme.Colors.mtaBlue
+                            : isSelected ? AppTheme.Colors.mtaBlue : Color.clear,
+                        lineWidth: isMapHighlighted ? 2.5 : 2)
             )
             .contentShape(Rectangle())
             .onTapGesture {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
-                    // If this row is map-highlighted, tapping it clears the highlight
-                    // and collapses instead of toggling open again.
-                    if isMapHighlighted {
-                        isExpanded = false
-                        onClearHighlight?()
-                    } else {
-                        isExpanded.toggle()
-                        // When expanding, tell the map to highlight the matching marker
-                        if isExpanded, isLiveOnMap {
-                            let key = arrival.vehicleId ?? arrival.tripId
-                            onFocusVehicle?(key)
-                        } else if !isExpanded {
-                            // Collapsing — clear the highlight
-                            onFocusVehicle?(nil)
-                        }
-                    }
+                // If map highlight is active, clear it first
+                if isMapHighlighted {
+                    onClearHighlight?()
+                } else {
+                    // Toggle expansion via parent callback
+                    onExpand?()
                 }
             }
 
@@ -291,19 +295,25 @@ struct NearbyTransitRow: View {
                         onTrack?()
                     } label: {
                         HStack(spacing: 6) {
-                            Image(systemName: isTracking
-                                  ? "antenna.radiowaves.left.and.right"
-                                  : "location.fill")
-                                .font(.system(size: 12, weight: .bold))
-                            Text(isTracking
-                                 ? "Tracking"
-                                 : "Track Live Route")
-                                .font(.custom("Helvetica-Bold", size: 13))
+                            Image(
+                                systemName: isTracking
+                                    ? "antenna.radiowaves.left.and.right"
+                                    : "location.fill"
+                            )
+                            .font(.system(size: 12, weight: .bold))
+                            Text(
+                                isTracking
+                                    ? "Tracking"
+                                    : "Track Live Route"
+                            )
+                            .font(.custom("Helvetica-Bold", size: 13))
                         }
                         .foregroundColor(AppTheme.Colors.textOnColor)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 10)
-                        .background(isTracking ? AppTheme.Colors.successGreen : AppTheme.Colors.mtaBlue)
+                        .background(
+                            isTracking ? AppTheme.Colors.successGreen : AppTheme.Colors.mtaBlue
+                        )
                         .cornerRadius(AppTheme.Layout.cornerRadius)
                     }
                 }
@@ -313,27 +323,15 @@ struct NearbyTransitRow: View {
             }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(arrival.isBus ? "Bus" : "Train") \(arrival.displayName), \(arrival.stopName), \(arrival.minutesAway) minutes away")
-        .accessibilityHint(isExpanded ? "Expanded. Shows arrival details." : "Tap to see arrival details")
-        .onChange(of: tappedVehicleId) { _, newValue in
-            if let newValue, !newValue.isEmpty,
-               (arrival.vehicleId == newValue) || (arrival.tripId == newValue) {
-                // Map marker tapped → expand this matching row
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
-                    isExpanded = true
-                }
-            } else if isExpanded && !isMapHighlighted {
-                // Highlight cleared or moved to another row — collapse this row
-                // so only the newly tapped vehicle's row stays expanded.
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
-                    isExpanded = false
-                }
-            }
-        }
+        .accessibilityLabel(
+            "\(arrival.isBus ? "Bus" : "Train") \(arrival.displayName), \(arrival.stopName), \(arrival.minutesAway) minutes away"
+        )
+        .accessibilityHint(
+            isExpanded ? "Expanded. Shows arrival details." : "Tap to see arrival details")
     }
-    
+
     // MARK: - Helper Functions
-    
+
     /// Formats walking distance to the stop.
     private func formatDistance(_ meters: Double) -> String {
         formatWalkingDistance(meters)

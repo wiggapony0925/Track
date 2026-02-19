@@ -8,8 +8,8 @@
 //  behind this sheet draws the route polylines and live vehicles.
 //
 
-import SwiftUI
 import MapKit
+import SwiftUI
 
 struct RouteDetailSheet: View {
     let group: GroupedNearbyTransitResponse
@@ -34,28 +34,31 @@ struct RouteDetailSheet: View {
     /// and highlight the matching arrival row.
     var tappedVehicleId: String? = nil
     var onDismiss: (() -> Void)?
-    
+
     // Map controls (shown in header when sheet is expanded)
     var isSheetExpanded: Bool = false
     @Binding var is3DMode: Bool
     @Binding var cameraPosition: MapCameraPosition
     var currentLocation: CLLocationCoordinate2D?
     var selectedStopId: String?
-    
+
     /// Number of live vehicles (buses or trains) filtered by the current direction.
     /// Provided by the ViewModel's `filteredBusVehicles` / `filteredTrainVehicles`
     /// to avoid duplicating direction-filtering logic here.
     var liveVehicleCount: Int = 0
-    
+
     /// Selected direction index - bound to viewModel so map can filter polylines
     @Binding var selectedDirectionIndex: Int
-    
+
     /// Which content tab is active: arrivals, stops, or alerts.
     @State private var selectedTab: RouteDetailTab = .arrivals
-    
+
+    /// Track expanded row ID locally in the sheet
+    @State private var expandedArrivalID: String?
+
     /// Favorites manager for heart button
     @State private var isFavorited = false
-    
+
     /// Available tabs for this route.
     enum RouteDetailTab: String, CaseIterable {
         case arrivals = "Arrivals"
@@ -63,27 +66,29 @@ struct RouteDetailSheet: View {
         case alerts = "Alerts"
     }
 
-    init(group: GroupedNearbyTransitResponse,
-         busVehicles: Binding<[BusVehicleResponse]>,
-         routeShape: Binding<RouteShapeResponse?>,
-         selectedDirectionIndex: Binding<Int>,
-         serviceAlerts: [TransitAlert] = [],
-         busSchedule: BusScheduleResponse? = nil,
-         cachedTrainArrivals: [TrainArrival] = [],
-         cachedStations: [HomeViewModel.CachedSubwayStation] = [],
-         liveVehicleCount: Int = 0,
-         isSheetExpanded: Bool = false,
-         is3DMode: Binding<Bool> = .constant(false),
-         cameraPosition: Binding<MapCameraPosition> = .constant(.automatic),
-         currentLocation: CLLocationCoordinate2D? = nil,
-         selectedStopId: String? = nil,
-         onTrack: ((NearbyTransitResponse) -> Void)? = nil,
-         isTracking: ((NearbyTransitResponse) -> Bool)? = nil,
-         isLiveOnMap: ((NearbyTransitResponse) -> Bool)? = nil,
-         onClearHighlight: (() -> Void)? = nil,
-         onFocusVehicle: ((String?) -> Void)? = nil,
-         tappedVehicleId: String? = nil,
-         onDismiss: (() -> Void)? = nil) {
+    init(
+        group: GroupedNearbyTransitResponse,
+        busVehicles: Binding<[BusVehicleResponse]>,
+        routeShape: Binding<RouteShapeResponse?>,
+        selectedDirectionIndex: Binding<Int>,
+        serviceAlerts: [TransitAlert] = [],
+        busSchedule: BusScheduleResponse? = nil,
+        cachedTrainArrivals: [TrainArrival] = [],
+        cachedStations: [HomeViewModel.CachedSubwayStation] = [],
+        liveVehicleCount: Int = 0,
+        isSheetExpanded: Bool = false,
+        is3DMode: Binding<Bool> = .constant(false),
+        cameraPosition: Binding<MapCameraPosition> = .constant(.automatic),
+        currentLocation: CLLocationCoordinate2D? = nil,
+        selectedStopId: String? = nil,
+        onTrack: ((NearbyTransitResponse) -> Void)? = nil,
+        isTracking: ((NearbyTransitResponse) -> Bool)? = nil,
+        isLiveOnMap: ((NearbyTransitResponse) -> Bool)? = nil,
+        onClearHighlight: (() -> Void)? = nil,
+        onFocusVehicle: ((String?) -> Void)? = nil,
+        tappedVehicleId: String? = nil,
+        onDismiss: (() -> Void)? = nil
+    ) {
         self.group = group
         self._busVehicles = busVehicles
         self._routeShape = routeShape
@@ -114,7 +119,8 @@ struct RouteDetailSheet: View {
         }
         if group.isLIRR { return AppTheme.CommuterRailColors.lirrBlue }
         if group.isMNR { return AppTheme.CommuterRailColors.mnrBlue }
-        return group.isBus ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: group.displayName)
+        return group.isBus
+            ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: group.displayName)
     }
 
     /// Current direction bucket, clamped to bounds.
@@ -125,7 +131,7 @@ struct RouteDetailSheet: View {
         let idx = min(selectedDirectionIndex, group.directions.count - 1)
         return group.directions[idx]
     }
-    
+
     /// Alerts that match this route (by routeId or displayName), filtered to the same mode.
     private var routeAlerts: [TransitAlert] {
         let byId = serviceAlerts.matching(routeId: group.routeId, mode: group.mode)
@@ -156,10 +162,10 @@ struct RouteDetailSheet: View {
                 if group.directions.count > 1 {
                     directionPicker
                 }
-                
+
                 // MARK: - Content Tab Picker
                 contentTabPicker
-                
+
                 // MARK: - Tab Content
                 switch selectedTab {
                 case .arrivals:
@@ -167,10 +173,10 @@ struct RouteDetailSheet: View {
                     countdownSection
                     // Arrivals List
                     arrivalsList
-                    
+
                 case .stops:
                     stopsListSection
-                    
+
                 case .alerts:
                     if !routeAlerts.isEmpty {
                         routeAlertsSection
@@ -203,8 +209,10 @@ struct RouteDetailSheet: View {
     private var routeHeader: some View {
         HStack(spacing: 14) {
             // Unified badge with mode-specific styling
-            RouteBadge(routeID: group.displayName, size: .large, hexColor: group.colorHex, mode: group.mode)
-                .shadow(color: routeColor.opacity(0.3), radius: 6, x: 0, y: 3)
+            RouteBadge(
+                routeID: group.displayName, size: .large, hexColor: group.colorHex, mode: group.mode
+            )
+            .shadow(color: routeColor.opacity(0.3), radius: 6, x: 0, y: 3)
 
             VStack(alignment: .leading, spacing: 5) {
                 Text(group.displayName)
@@ -218,7 +226,8 @@ struct RouteDetailSheet: View {
                     let headsign = routeShape?.directions
                         .first(where: { $0.directionId == selectedDirectionIndex })?
                         .headsign
-                    let subtitle = (headsign != nil && !headsign!.isEmpty)
+                    let subtitle =
+                        (headsign != nil && !headsign!.isEmpty)
                         ? "→ \(headsign!)"
                         : dir.directionLabel ?? directionLabel(dir.direction)
                     Text(subtitle)
@@ -226,17 +235,20 @@ struct RouteDetailSheet: View {
                         .foregroundColor(AppTheme.Colors.textSecondary)
                         .lineLimit(1)
                 }
-                
+
                 // Mode badge
-                Text(group.isCommuterRail ? (group.isLIRR ? "LIRR" : "Metro-North") : group.isBus ? "Bus" : "Subway")
-                    .font(.custom("Helvetica-Bold", size: 10))
-                    .foregroundColor(routeColor)
-                    .textCase(.uppercase)
-                    .tracking(0.8)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(routeColor.opacity(0.1))
-                    .clipShape(Capsule())
+                Text(
+                    group.isCommuterRail
+                        ? (group.isLIRR ? "LIRR" : "Metro-North") : group.isBus ? "Bus" : "Subway"
+                )
+                .font(.custom("Helvetica-Bold", size: 10))
+                .foregroundColor(routeColor)
+                .textCase(.uppercase)
+                .tracking(0.8)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(routeColor.opacity(0.1))
+                .clipShape(Capsule())
             }
 
             Spacer()
@@ -249,12 +261,13 @@ struct RouteDetailSheet: View {
                         withAnimation(.easeInOut(duration: 0.5)) {
                             is3DMode.toggle()
                             if let loc = currentLocation {
-                                cameraPosition = .camera(MapCamera(
-                                    centerCoordinate: loc,
-                                    distance: AppTheme.MapConfig.userZoomDistance,
-                                    heading: 0,
-                                    pitch: is3DMode ? 60 : 0
-                                ))
+                                cameraPosition = .camera(
+                                    MapCamera(
+                                        centerCoordinate: loc,
+                                        distance: AppTheme.MapConfig.userZoomDistance,
+                                        heading: 0,
+                                        pitch: is3DMode ? 60 : 0
+                                    ))
                             }
                         }
                     } label: {
@@ -268,12 +281,13 @@ struct RouteDetailSheet: View {
                     Button {
                         let target = currentLocation ?? AppTheme.MapConfig.nycCenter
                         withAnimation(.spring(duration: 0.8)) {
-                            cameraPosition = .camera(MapCamera(
-                                centerCoordinate: target,
-                                distance: AppTheme.MapConfig.userZoomDistance,
-                                heading: 0,
-                                pitch: is3DMode ? 60 : 0
-                            ))
+                            cameraPosition = .camera(
+                                MapCamera(
+                                    centerCoordinate: target,
+                                    distance: AppTheme.MapConfig.userZoomDistance,
+                                    heading: 0,
+                                    pitch: is3DMode ? 60 : 0
+                                ))
                         }
                     } label: {
                         Image(systemName: "location.fill")
@@ -283,7 +297,7 @@ struct RouteDetailSheet: View {
                     .accessibilityLabel("Recenter on my location")
                 }
             }
-            
+
             // Favorite button
             if SupabaseManager.shared.isAuthenticated {
                 Button {
@@ -332,7 +346,8 @@ struct RouteDetailSheet: View {
 
     private var countdownSection: some View {
         let direction = safeDirection
-        let nextArrivals = Array(direction.arrivals.prefix(AppSettings.shared.maxRouteDetailArrivals))
+        let nextArrivals = Array(
+            direction.arrivals.prefix(AppSettings.shared.maxRouteDetailArrivals))
 
         return VStack(alignment: .leading, spacing: 10) {
             Text("Next Arrivals")
@@ -361,7 +376,8 @@ struct RouteDetailSheet: View {
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 12) {
-                        ForEach(Array(nextArrivals.enumerated()), id: \.element.id) { index, arrival in
+                        ForEach(Array(nextArrivals.enumerated()), id: \.element.id) {
+                            index, arrival in
                             VStack(spacing: 6) {
                                 // Big countdown number
                                 Text("\(arrival.minutesAway)")
@@ -394,7 +410,9 @@ struct RouteDetailSheet: View {
                             .background(
                                 RoundedRectangle(cornerRadius: 16)
                                     .fill(AppTheme.Colors.cardBackground)
-                                    .shadow(color: .black.opacity(index == 0 ? 0.08 : 0.04), radius: index == 0 ? 8 : 4, x: 0, y: 2)
+                                    .shadow(
+                                        color: .black.opacity(index == 0 ? 0.08 : 0.04),
+                                        radius: index == 0 ? 8 : 4, x: 0, y: 2)
                             )
                             .overlay(
                                 RoundedRectangle(cornerRadius: 16)
@@ -406,7 +424,7 @@ struct RouteDetailSheet: View {
                         }
                     }
                     .padding(.horizontal, AppTheme.Layout.margin)
-                    .padding(.vertical, 2) // Extra space for shadow to render
+                    .padding(.vertical, 2)  // Extra space for shadow to render
                 }
             }
         }
@@ -423,14 +441,16 @@ struct RouteDetailSheet: View {
         // --- Bus schedule ---
         if group.isBus, let schedule = busSchedule {
             let dirLower = direction.direction.lowercased()
-            let matched = schedule.directions.first { schedDir in
-                schedDir.direction.lowercased() == dirLower
-                    || schedDir.headsign.lowercased().contains(dirLower)
-                    || dirLower.contains(schedDir.headsign.lowercased())
-            } ?? schedule.directions.first { schedDir in
-                schedule.directions.firstIndex(where: { $0.direction == schedDir.direction })
-                    == selectedDirectionIndex
-            }
+            let matched =
+                schedule.directions.first { schedDir in
+                    schedDir.direction.lowercased() == dirLower
+                        || schedDir.headsign.lowercased().contains(dirLower)
+                        || dirLower.contains(schedDir.headsign.lowercased())
+                }
+                ?? schedule.directions.first { schedDir in
+                    schedule.directions.firstIndex(where: { $0.direction == schedDir.direction })
+                        == selectedDirectionIndex
+                }
 
             guard let matched else { return [] }
             return matched.departures
@@ -510,7 +530,8 @@ struct RouteDetailSheet: View {
                         )
                         .overlay(
                             RoundedRectangle(cornerRadius: 16)
-                                .strokeBorder(AppTheme.Colors.textSecondary.opacity(0.1), lineWidth: 1)
+                                .strokeBorder(
+                                    AppTheme.Colors.textSecondary.opacity(0.1), lineWidth: 1)
                         )
                     }
                 }
@@ -542,23 +563,30 @@ struct RouteDetailSheet: View {
                             let headsign = routeShape?.directions
                                 .first(where: { $0.directionId == index })?
                                 .headsign
-                            let rawLabel = (headsign != nil && !headsign!.isEmpty)
+                            let rawLabel =
+                                (headsign != nil && !headsign!.isEmpty)
                                 ? headsign!
                                 : dir.directionLabel ?? shortDirectionLabel(dir.direction)
                             // Truncate long labels to keep pills compact
-                            let label = rawLabel.count > 24 ? String(rawLabel.prefix(22)) + "…" : rawLabel
+                            let label =
+                                rawLabel.count > 24 ? String(rawLabel.prefix(22)) + "…" : rawLabel
                             let isActive = selectedDirectionIndex == index
 
                             HStack(spacing: 6) {
                                 // Direction arrow icon
-                                Image(systemName: directionIcon(for: index, total: group.directions.count))
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .foregroundColor(isActive ? .white : routeColor)
+                                Image(
+                                    systemName: directionIcon(
+                                        for: index, total: group.directions.count)
+                                )
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(isActive ? .white : routeColor)
 
                                 // Direction label
                                 Text(label)
                                     .font(.custom("Helvetica-Bold", size: 13))
-                                    .foregroundColor(isActive ? .white : AppTheme.Colors.textPrimary)
+                                    .foregroundColor(
+                                        isActive ? .white : AppTheme.Colors.textPrimary
+                                    )
                                     .lineLimit(1)
 
                                 // Arrival count
@@ -568,7 +596,9 @@ struct RouteDetailSheet: View {
                                         .foregroundColor(isActive ? routeColor : .white)
                                         .padding(.horizontal, 6)
                                         .padding(.vertical, 2)
-                                        .background(isActive ? Color.white.opacity(0.9) : routeColor)
+                                        .background(
+                                            isActive ? Color.white.opacity(0.9) : routeColor
+                                        )
                                         .clipShape(Capsule())
                                 }
                             }
@@ -580,26 +610,34 @@ struct RouteDetailSheet: View {
                             )
                             .overlay(
                                 RoundedRectangle(cornerRadius: 12)
-                                    .stroke(isActive ? Color.clear : routeColor.opacity(0.2), lineWidth: 1)
+                                    .stroke(
+                                        isActive ? Color.clear : routeColor.opacity(0.2),
+                                        lineWidth: 1)
                             )
-                            .shadow(color: isActive ? routeColor.opacity(0.3) : .clear, radius: 4, x: 0, y: 2)
+                            .shadow(
+                                color: isActive ? routeColor.opacity(0.3) : .clear, radius: 4, x: 0,
+                                y: 2)
                         }
-                        .accessibilityLabel("\(dir.directionLabel ?? directionLabel(dir.direction)), \(dir.arrivals.count) arrivals")
+                        .accessibilityLabel(
+                            "\(dir.directionLabel ?? directionLabel(dir.direction)), \(dir.arrivals.count) arrivals"
+                        )
                     }
                 }
                 .padding(.horizontal, AppTheme.Layout.margin)
             }
         }
     }
-    
+
     /// Returns an appropriate SF Symbol arrow for the direction index.
     private func directionIcon(for index: Int, total: Int) -> String {
         if total <= 2 {
             return index == 0 ? "arrow.up" : "arrow.down"
         }
         // For 3+ directions, use compass-style arrows
-        let icons = ["arrow.up", "arrow.down", "arrow.left", "arrow.right",
-                     "arrow.up.right", "arrow.down.left", "arrow.up.left", "arrow.down.right"]
+        let icons = [
+            "arrow.up", "arrow.down", "arrow.left", "arrow.right",
+            "arrow.up.right", "arrow.down.left", "arrow.up.left", "arrow.down.right",
+        ]
         return icons[index % icons.count]
     }
 
@@ -607,7 +645,7 @@ struct RouteDetailSheet: View {
 
     private var arrivalsList: some View {
         let direction = safeDirection
-        
+
         // Reorder arrivals so the tapped vehicle's row appears first
         let sortedArrivals: [NearbyTransitResponse] = {
             guard let tapped = tappedVehicleId, !tapped.isEmpty else {
@@ -628,9 +666,9 @@ struct RouteDetailSheet: View {
                     .foregroundColor(AppTheme.Colors.textSecondary)
                     .textCase(.uppercase)
                     .tracking(0.6)
-                
+
                 Spacer()
-                
+
                 if !sortedArrivals.isEmpty {
                     Text("\(sortedArrivals.count) stop\(sortedArrivals.count == 1 ? "" : "s")")
                         .font(.custom("Helvetica", size: 12))
@@ -647,9 +685,12 @@ struct RouteDetailSheet: View {
                 } else {
                     // Empty state — matches HomeView's emptyStateView pattern
                     VStack(spacing: 10) {
-                        Image(systemName: group.isCommuterRail ? "train.side.front.car" : group.isBus ? "bus.fill" : "tram.fill")
-                            .font(.system(size: 36, weight: .light))
-                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.5))
+                        Image(
+                            systemName: group.isCommuterRail
+                                ? "train.side.front.car" : group.isBus ? "bus.fill" : "tram.fill"
+                        )
+                        .font(.system(size: 36, weight: .light))
+                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.5))
                         Text("No arrivals in this direction")
                             .font(.custom("Helvetica", size: 15))
                             .foregroundColor(AppTheme.Colors.textSecondary)
@@ -663,23 +704,44 @@ struct RouteDetailSheet: View {
             } else {
                 ScrollViewReader { proxy in
                     VStack(spacing: 8) {
-                        ForEach(Array(sortedArrivals.enumerated()), id: \.element.id) { index, arrival in
+                        ForEach(Array(sortedArrivals.enumerated()), id: \.element.id) {
+                            index, arrival in
                             NearbyTransitRow(
                                 arrival: arrival,
                                 isTracking: isTracking?(arrival) ?? false,
-                                isSelected: selectedStopId != nil && arrival.stopId == selectedStopId,
+                                isSelected: selectedStopId != nil
+                                    && arrival.stopId == selectedStopId,
                                 isLiveOnMap: isLiveOnMap?(arrival) ?? false,
                                 tappedVehicleId: tappedVehicleId,
                                 onTrack: {
                                     onTrack?(arrival)
                                 },
+                                onSelectRoute: nil,
                                 onClearHighlight: {
                                     onClearHighlight?()
                                 },
                                 onFocusVehicle: { key in
                                     onFocusVehicle?(key)
                                 },
-                                userLocation: currentLocation.map { CLLocation(latitude: $0.latitude, longitude: $0.longitude) }
+                                userLocation: currentLocation.map {
+                                    CLLocation(latitude: $0.latitude, longitude: $0.longitude)
+                                },
+                                isExpanded: expandedArrivalID == arrival.id,
+                                onExpand: {
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                                        if expandedArrivalID == arrival.id {
+                                            expandedArrivalID = nil
+                                            // Collapse -> clear map highlight
+                                            onFocusVehicle?(nil)
+                                        } else {
+                                            expandedArrivalID = arrival.id
+                                            // Expand -> focus map if live
+                                            if isLiveOnMap?(arrival) ?? false {
+                                                onFocusVehicle?(arrival.vehicleId ?? arrival.tripId)
+                                            }
+                                        }
+                                    }
+                                }
                             )
                             .id(arrival.id)
                             .background(AppTheme.Colors.cardBackground)
@@ -687,7 +749,9 @@ struct RouteDetailSheet: View {
                             .shadow(color: .black.opacity(0.04), radius: 4, x: 0, y: 2)
                             .padding(.horizontal, AppTheme.Layout.margin)
                             .accessibilityElement(children: .combine)
-                            .accessibilityLabel("\(arrival.stopName), \(arrival.minutesAway) minutes, \(arrival.status)")
+                            .accessibilityLabel(
+                                "\(arrival.stopName), \(arrival.minutesAway) minutes, \(arrival.status)"
+                            )
                         }
                     }
                     .onChange(of: tappedVehicleId) { _, newValue in
@@ -697,6 +761,7 @@ struct RouteDetailSheet: View {
                             $0.vehicleId == newValue || $0.tripId == newValue
                         }) {
                             withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                                expandedArrivalID = match.id
                                 proxy.scrollTo(match.id, anchor: .top)
                             }
                         }
@@ -710,15 +775,17 @@ struct RouteDetailSheet: View {
                     guard group.directions.count > 1 else { return }
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                         if value.translation.width < 0 {
-                            selectedDirectionIndex = min(selectedDirectionIndex + 1,
-                                                        group.directions.count - 1)
+                            selectedDirectionIndex = min(
+                                selectedDirectionIndex + 1,
+                                group.directions.count - 1)
                         } else if value.translation.width > 0 {
                             selectedDirectionIndex = max(selectedDirectionIndex - 1, 0)
                         }
                     }
                 }
         )
-        .accessibilityHint(group.directions.count > 1 ? "Swipe left or right to switch direction" : "")
+        .accessibilityHint(
+            group.directions.count > 1 ? "Swipe left or right to switch direction" : "")
     }
 
     // MARK: - Content Tab Picker
@@ -751,20 +818,27 @@ struct RouteDetailSheet: View {
                                     .foregroundColor(isActive ? routeColor : .white)
                                     .padding(.horizontal, 6)
                                     .padding(.vertical, 2)
-                                    .background(isActive ? Color.white.opacity(0.9) : AppTheme.Colors.warningYellow)
+                                    .background(
+                                        isActive
+                                            ? Color.white.opacity(0.9)
+                                            : AppTheme.Colors.warningYellow
+                                    )
                                     .clipShape(Capsule())
                             }
-                            
+
                             // Badge: show stop count on Stops tab
                             if tab == .stops, let shape = routeShape {
-                                let stopCount = shape.stopsForDirection(selectedDirectionIndex).count
+                                let stopCount = shape.stopsForDirection(selectedDirectionIndex)
+                                    .count
                                 if stopCount > 0 {
                                     Text("\(stopCount)")
                                         .font(.custom("Helvetica-Bold", size: 11))
                                         .foregroundColor(isActive ? routeColor : .white)
                                         .padding(.horizontal, 6)
                                         .padding(.vertical, 2)
-                                        .background(isActive ? Color.white.opacity(0.9) : routeColor)
+                                        .background(
+                                            isActive ? Color.white.opacity(0.9) : routeColor
+                                        )
                                         .clipShape(Capsule())
                                 }
                             }
@@ -777,9 +851,12 @@ struct RouteDetailSheet: View {
                         )
                         .overlay(
                             RoundedRectangle(cornerRadius: 12)
-                                .stroke(isActive ? Color.clear : routeColor.opacity(0.2), lineWidth: 1)
+                                .stroke(
+                                    isActive ? Color.clear : routeColor.opacity(0.2), lineWidth: 1)
                         )
-                        .shadow(color: isActive ? routeColor.opacity(0.3) : .clear, radius: 4, x: 0, y: 2)
+                        .shadow(
+                            color: isActive ? routeColor.opacity(0.3) : .clear, radius: 4, x: 0,
+                            y: 2)
                     }
                     .accessibilityLabel("\(tab.rawValue) tab")
                 }
@@ -875,8 +952,9 @@ struct RouteDetailSheet: View {
             ZStack {
                 Circle()
                     .fill(routeColor)
-                    .frame(width: (isFirst || isLast) ? 14 : 10,
-                           height: (isFirst || isLast) ? 14 : 10)
+                    .frame(
+                        width: (isFirst || isLast) ? 14 : 10,
+                        height: (isFirst || isLast) ? 14 : 10)
                 if isFirst || isLast {
                     Circle()
                         .fill(Color.white)
@@ -900,8 +978,9 @@ struct RouteDetailSheet: View {
                                 .foregroundColor(AppTheme.Colors.textSecondary)
 
                             ForEach(transfers, id: \.self) { route in
-                                RouteBadge(routeID: route,
-                                           size: .custom(20, 10))
+                                RouteBadge(
+                                    routeID: route,
+                                    size: .custom(20, 10))
                             }
                         }
                     }
@@ -938,11 +1017,12 @@ struct RouteDetailSheet: View {
 
         // 2) Try proximity-based match (~100m) for nearby subway stations
         let stopCoord = CLLocation(latitude: stop.lat, longitude: stop.lon)
-        let nearbyThreshold: CLLocationDistance = 100 // meters
+        let nearbyThreshold: CLLocationDistance = 100  // meters
 
         let nearbyStations = cachedStations.filter { station in
-            let stationLoc = CLLocation(latitude: station.coordinate.latitude,
-                                        longitude: station.coordinate.longitude)
+            let stationLoc = CLLocation(
+                latitude: station.coordinate.latitude,
+                longitude: station.coordinate.longitude)
             return stopCoord.distance(from: stationLoc) <= nearbyThreshold
         }
 
@@ -983,27 +1063,27 @@ struct RouteDetailSheet: View {
     }
 
     // MARK: - Alert Banner (top of sheet)
-    
+
     /// Compact alert banner shown at the top of the route detail,
     /// right below the header and above the direction picker.
     /// Shows a "Latest alert • X ago" timestamp above the main banner strip.
     private func routeAlertBanner(_ alert: TransitAlert) -> some View {
         let isSevere = alert.severity == "severe"
         let bannerColor = isSevere ? AppTheme.Colors.alertRed : AppTheme.Colors.warningYellow
-        
+
         return VStack(alignment: .leading, spacing: 4) {
             // "Latest alert • X ago" label
             HStack(spacing: 6) {
                 Circle()
                     .fill(bannerColor)
                     .frame(width: 6, height: 6)
-                
+
                 Text("Latest alert")
                     .font(.custom("Helvetica-Bold", size: 10))
                     .foregroundColor(AppTheme.Colors.textSecondary)
                     .textCase(.uppercase)
                     .tracking(0.4)
-                
+
                 if let ts = alert.updatedAt {
                     Text("•")
                         .font(.system(size: 8))
@@ -1015,9 +1095,9 @@ struct RouteDetailSheet: View {
                     .font(.custom("Helvetica", size: 10))
                     .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
                 }
-                
+
                 Spacer()
-                
+
                 if routeAlerts.count > 1 {
                     Text("\(routeAlerts.count) alerts")
                         .font(.custom("Helvetica", size: 10))
@@ -1025,20 +1105,20 @@ struct RouteDetailSheet: View {
                 }
             }
             .padding(.horizontal, AppTheme.Layout.margin)
-            
+
             // Main banner strip
             HStack(spacing: 8) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 12, weight: .bold))
                     .foregroundColor(.white)
-                
+
                 Text(alert.title)
                     .font(.custom("Helvetica-Bold", size: 12))
                     .foregroundColor(.white)
                     .lineLimit(1)
-                
+
                 Spacer(minLength: 0)
-                
+
                 if routeAlerts.count > 1 {
                     Text("+\(routeAlerts.count - 1)")
                         .font(.system(size: 10, weight: .bold))
@@ -1062,22 +1142,22 @@ struct RouteDetailSheet: View {
     }
 
     // MARK: - Route Alerts Section
-    
+
     private var routeAlertsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 6) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(AppTheme.Colors.warningYellow)
-                
+
                 Text("Active Alerts")
                     .font(.custom("Helvetica-Bold", size: 13))
                     .foregroundColor(AppTheme.Colors.textSecondary)
                     .textCase(.uppercase)
                     .tracking(0.6)
-                
+
                 Spacer()
-                
+
                 Text("\(routeAlerts.count)")
                     .font(.system(size: 11, weight: .bold))
                     .foregroundColor(.white)
@@ -1092,11 +1172,11 @@ struct RouteDetailSheet: View {
                     )
             }
             .padding(.horizontal, AppTheme.Layout.margin)
-            
+
             VStack(spacing: 0) {
                 ForEach(Array(routeAlerts.enumerated()), id: \.element.id) { index, alert in
                     RouteDetailAlertRow(alert: alert)
-                    
+
                     if index < routeAlerts.count - 1 {
                         Divider()
                             .padding(.leading, AppTheme.Layout.cardPadding + 34)
@@ -1115,7 +1195,7 @@ struct RouteDetailSheet: View {
     private var routeInfoFooter: some View {
         let hasStops = routeShape != nil && !routeShape!.stops.isEmpty
         let hasVehicles = liveVehicleCount > 0
-        
+
         // Only show if there's info to display
         if hasStops || hasVehicles {
             return AnyView(
@@ -1135,7 +1215,7 @@ struct RouteDetailSheet: View {
                         .background(routeColor.opacity(0.08))
                         .clipShape(Capsule())
                     }
-                    
+
                     if hasVehicles {
                         HStack(spacing: 6) {
                             Circle()
@@ -1155,7 +1235,7 @@ struct RouteDetailSheet: View {
                         .background(AppTheme.Colors.successGreen.opacity(0.08))
                         .clipShape(Capsule())
                     }
-                    
+
                     Spacer()
                 }
                 .padding(.horizontal, AppTheme.Layout.margin)
@@ -1172,11 +1252,11 @@ struct RouteDetailSheet: View {
 struct RouteDetailAlertRow: View {
     let alert: TransitAlert
     @State private var isExpanded = false
-    
+
     private var severityColor: Color {
         alert.severity == "severe" ? AppTheme.Colors.alertRed : AppTheme.Colors.warningYellow
     }
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .top, spacing: 10) {
@@ -1185,29 +1265,30 @@ struct RouteDetailAlertRow: View {
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(severityColor)
                     .frame(width: 26, height: 26)
-                
+
                 VStack(alignment: .leading, spacing: 4) {
                     Text(alert.title)
                         .font(.custom("Helvetica-Bold", size: 13))
                         .foregroundColor(AppTheme.Colors.textPrimary)
                         .lineLimit(isExpanded ? nil : 2)
-                    
+
                     if isExpanded && !alert.description.isEmpty {
                         Text(alert.description)
                             .font(.custom("Helvetica", size: 12))
                             .foregroundColor(AppTheme.Colors.textSecondary)
                     }
-                    
+
                     HStack(spacing: 8) {
                         // Severity pill
                         Text(alert.severity == "severe" ? "⚠️ Severe" : "Warning")
                             .font(.custom("Helvetica-Bold", size: 10))
                             .foregroundColor(severityColor)
-                        
+
                         // Timestamp
                         if let ts = alert.updatedAt {
                             HStack(spacing: 0) {
-                                Text(Date(timeIntervalSince1970: TimeInterval(ts)), style: .relative)
+                                Text(
+                                    Date(timeIntervalSince1970: TimeInterval(ts)), style: .relative)
                                 Text(" ago")
                             }
                             .font(.custom("Helvetica", size: 10))
@@ -1216,9 +1297,9 @@ struct RouteDetailAlertRow: View {
                     }
                     .padding(.top, 2)
                 }
-                
+
                 Spacer(minLength: 0)
-                
+
                 Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundColor(AppTheme.Colors.textSecondary)
@@ -1251,14 +1332,16 @@ struct RouteDetailAlertRow: View {
                             routeId: "A", stopName: "Canal St", direction: "N",
                             destination: "Inwood-207 St",
                             minutesAway: 3, status: "On Time", mode: "subway",
-                            stopLat: 40.72, stopLon: -74.0, arrivalTs: Int(Date().timeIntervalSince1970 + 180),
+                            stopLat: 40.72, stopLon: -74.0,
+                            arrivalTs: Int(Date().timeIntervalSince1970 + 180),
                             vehicleId: "V123", tripId: "T456", stopId: "A32"
                         ),
                         NearbyTransitResponse(
                             routeId: "A", stopName: "14 St", direction: "N",
                             destination: "Inwood-207 St",
                             minutesAway: 8, status: "On Time", mode: "subway",
-                            stopLat: 40.74, stopLon: -74.0, arrivalTs: Int(Date().timeIntervalSince1970 + 480),
+                            stopLat: 40.74, stopLon: -74.0,
+                            arrivalTs: Int(Date().timeIntervalSince1970 + 480),
                             vehicleId: "V124", tripId: "T457", stopId: "A28"
                         ),
                     ]
@@ -1270,9 +1353,10 @@ struct RouteDetailAlertRow: View {
                             routeId: "A", stopName: "Fulton St", direction: "S",
                             destination: "Far Rockaway",
                             minutesAway: 5, status: "Delayed", mode: "subway",
-                            stopLat: 40.71, stopLon: -74.01, arrivalTs: Int(Date().timeIntervalSince1970 + 300),
+                            stopLat: 40.71, stopLon: -74.01,
+                            arrivalTs: Int(Date().timeIntervalSince1970 + 300),
                             vehicleId: "V125", tripId: "T458", stopId: "A34"
-                        ),
+                        )
                     ]
                 ),
             ]
