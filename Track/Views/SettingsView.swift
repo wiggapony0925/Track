@@ -15,7 +15,8 @@ struct SettingsView: View {
 
     @AppStorage("dev_use_localhost") private var useLocalhost = false
     @AppStorage("dev_custom_ip") private var customIP = AppSettings.shared.defaultDeviceIP
-    @AppStorage("subway_line_offset_meters") private var subwayLineOffset: Double = AppSettings.shared.subwayLineOffsetMeters
+    @AppStorage("subway_line_offset_meters") private var subwayLineOffset: Double = AppSettings
+        .shared.subwayLineOffsetMeters
     @AppStorage("distance_unit") private var distanceUnit = "mi"
 
     var body: some View {
@@ -26,6 +27,7 @@ struct SettingsView: View {
                 mapSection
                 accountSection
                 developerSettingsSection
+                legalSection
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
@@ -47,7 +49,7 @@ struct SettingsView: View {
                 Text("Dark").tag("dark")
                 Text("Light").tag("light")
             }
-            
+
             Picker("Distance", selection: $distanceUnit) {
                 Text("Miles").tag("mi")
                 Text("Kilometers").tag("km")
@@ -97,7 +99,9 @@ struct SettingsView: View {
         } header: {
             Text("Map")
         } footer: {
-            Text("Controls how far apart subway lines are spread when sharing the same tunnel. Increase if lines overlap; decrease for a tighter look.")
+            Text(
+                "Controls how far apart subway lines are spread when sharing the same tunnel. Increase if lines overlap; decrease for a tighter look."
+            )
         }
     }
 
