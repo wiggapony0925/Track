@@ -23,6 +23,9 @@ struct NearbyTransitRow: View {
     var onSelectRoute: (() -> Void)?
     /// Callback to clear the map highlight when the user taps a highlighted row.
     var onClearHighlight: (() -> Void)?
+    /// Callback when the row expands — passes the vehicle key so the map
+    /// can highlight the corresponding marker without starting full tracking.
+    var onFocusVehicle: ((String?) -> Void)?
     var userLocation: CLLocation?
     
     @State private var isExpanded = false
@@ -147,6 +150,7 @@ struct NearbyTransitRow: View {
                     
                     // "In Route" live indicator — shows when this vehicle
                     // has a live GPS/GTFS-RT position on the map.
+                    // Tapping it focuses the map on this vehicle's marker.
                     if isLiveOnMap {
                         HStack(spacing: 4) {
                             Circle()
@@ -162,6 +166,40 @@ struct NearbyTransitRow: View {
                         .padding(.vertical, 3)
                         .background(AppTheme.Colors.successGreen.opacity(0.1))
                         .clipShape(Capsule())
+                        .onTapGesture {
+                            let key = arrival.vehicleId ?? arrival.tripId
+                            onFocusVehicle?(key)
+                        }
+                    } else {
+                        // Show scheduled clock time when vehicle is NOT live on the map
+                        // so users still see when the train/bus is expected.
+                        if let ts = arrival.arrivalTs {
+                            let arrivalDate = Date(timeIntervalSince1970: Double(ts))
+                            HStack(spacing: 4) {
+                                Image(systemName: "calendar.badge.clock")
+                                    .font(.system(size: 8, weight: .semibold))
+                                Text(arrivalDate, style: .time)
+                                    .font(.custom("Helvetica-Bold", size: 9))
+                            }
+                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(AppTheme.Colors.textSecondary.opacity(0.08))
+                            .clipShape(Capsule())
+                        } else {
+                            HStack(spacing: 4) {
+                                Image(systemName: "clock")
+                                    .font(.system(size: 8, weight: .semibold))
+                                Text("Scheduled")
+                                    .font(.custom("Helvetica-Bold", size: 9))
+                                    .textCase(.uppercase)
+                            }
+                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(AppTheme.Colors.textSecondary.opacity(0.06))
+                            .clipShape(Capsule())
+                        }
                     }
                 }
             }
@@ -183,6 +221,14 @@ struct NearbyTransitRow: View {
                         onClearHighlight?()
                     } else {
                         isExpanded.toggle()
+                        // When expanding, tell the map to highlight the matching marker
+                        if isExpanded, isLiveOnMap {
+                            let key = arrival.vehicleId ?? arrival.tripId
+                            onFocusVehicle?(key)
+                        } else if !isExpanded {
+                            // Collapsing — clear the highlight
+                            onFocusVehicle?(nil)
+                        }
                     }
                 }
             }
@@ -276,9 +322,12 @@ struct NearbyTransitRow: View {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
                     isExpanded = true
                 }
-            } else if isMapHighlighted == false && isExpanded {
-                // Highlight cleared or moved to another row — collapse if we
-                // were only open because of the map tap.
+            } else if isExpanded && !isMapHighlighted {
+                // Highlight cleared or moved to another row — collapse this row
+                // so only the newly tapped vehicle's row stays expanded.
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                    isExpanded = false
+                }
             }
         }
     }

@@ -27,6 +27,9 @@ struct RouteDetailSheet: View {
     var isLiveOnMap: ((NearbyTransitResponse) -> Bool)?
     /// Called when the user taps a highlighted row to clear the map highlight.
     var onClearHighlight: (() -> Void)?
+    /// Called when the user expands an arrival row to focus its map marker.
+    /// Passes the vehicle key (vehicleId/tripId) or nil to clear focus.
+    var onFocusVehicle: ((String?) -> Void)?
     /// Vehicle ID that was tapped on the map marker — used to auto-scroll
     /// and highlight the matching arrival row.
     var tappedVehicleId: String? = nil
@@ -78,6 +81,7 @@ struct RouteDetailSheet: View {
          isTracking: ((NearbyTransitResponse) -> Bool)? = nil,
          isLiveOnMap: ((NearbyTransitResponse) -> Bool)? = nil,
          onClearHighlight: (() -> Void)? = nil,
+         onFocusVehicle: ((String?) -> Void)? = nil,
          tappedVehicleId: String? = nil,
          onDismiss: (() -> Void)? = nil) {
         self.group = group
@@ -93,6 +97,7 @@ struct RouteDetailSheet: View {
         self.isTracking = isTracking
         self.isLiveOnMap = isLiveOnMap
         self.onClearHighlight = onClearHighlight
+        self.onFocusVehicle = onFocusVehicle
         self.tappedVehicleId = tappedVehicleId
         self.onDismiss = onDismiss
         self.isSheetExpanded = isSheetExpanded
@@ -366,6 +371,14 @@ struct RouteDetailSheet: View {
                                 Text("min")
                                     .font(.custom("Helvetica-Bold", size: 12))
                                     .foregroundColor(AppTheme.Colors.textSecondary)
+
+                                // Show the actual clock time so users know
+                                // exactly when the train/bus is expected
+                                if let ts = arrival.arrivalTs {
+                                    Text(Date(timeIntervalSince1970: Double(ts)), style: .time)
+                                        .font(.custom("Helvetica-Bold", size: 10))
+                                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
+                                }
 
                                 // Status pill
                                 Text(arrival.status)
@@ -662,6 +675,9 @@ struct RouteDetailSheet: View {
                                 },
                                 onClearHighlight: {
                                     onClearHighlight?()
+                                },
+                                onFocusVehicle: { key in
+                                    onFocusVehicle?(key)
                                 },
                                 userLocation: currentLocation.map { CLLocation(latitude: $0.latitude, longitude: $0.longitude) }
                             )

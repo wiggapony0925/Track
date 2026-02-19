@@ -37,7 +37,9 @@ final class HomeViewModel {
     /// Checks whether a `GroupedNearbyTransitResponse` matches the given query.
     /// Searches display name, route ID, directions, arrival stop names,
     /// destination names, AND all stations served by the route.
-    private func groupMatchesQuery(_ group: GroupedNearbyTransitResponse, query: String, stationRoutes: Set<String>) -> Bool {
+    private func groupMatchesQuery(
+        _ group: GroupedNearbyTransitResponse, query: String, stationRoutes: Set<String>
+    ) -> Bool {
         // Match by route display name or ID
         group.displayName.lowercased().contains(query)
             || group.routeId.lowercased().contains(query)
@@ -72,7 +74,9 @@ final class HomeViewModel {
         guard !searchText.isEmpty else { return groupedTransit }
         let query = searchText.lowercased()
         let stationRoutes = stationRoutesForQuery(query)
-        return groupedTransit.filter { groupMatchesQuery($0, query: query, stationRoutes: stationRoutes) }
+        return groupedTransit.filter {
+            groupMatchesQuery($0, query: query, stationRoutes: stationRoutes)
+        }
     }
 
     /// LIRR arrivals filtered by search text.
@@ -144,7 +148,9 @@ final class HomeViewModel {
         guard !searchText.isEmpty else { return nearbyGroupedBusArrivals }
         let query = searchText.lowercased()
         let stationRoutes = stationRoutesForQuery(query)
-        return nearbyGroupedBusArrivals.filter { groupMatchesQuery($0, query: query, stationRoutes: stationRoutes) }
+        return nearbyGroupedBusArrivals.filter {
+            groupMatchesQuery($0, query: query, stationRoutes: stationRoutes)
+        }
     }
 
     /// Grouped subway arrivals filtered by search text (from the nearby/grouped API).
@@ -152,7 +158,9 @@ final class HomeViewModel {
         guard !searchText.isEmpty else { return nearbyGroupedSubwayArrivals }
         let query = searchText.lowercased()
         let stationRoutes = stationRoutesForQuery(query)
-        return nearbyGroupedSubwayArrivals.filter { groupMatchesQuery($0, query: query, stationRoutes: stationRoutes) }
+        return nearbyGroupedSubwayArrivals.filter {
+            groupMatchesQuery($0, query: query, stationRoutes: stationRoutes)
+        }
     }
 
     /// Nearby stations filtered by search text.
@@ -376,7 +384,7 @@ final class HomeViewModel {
     var tappedVehicleId: String?
     var busVehicles: [BusVehicleResponse] = []
 
-    struct TrainVehicle: Identifiable {
+    struct TrainVehicle: Identifiable, Equatable {
         let id: String
         let tripId: String?
         let routeId: String
@@ -425,7 +433,8 @@ final class HomeViewModel {
         let groupDirCount = selectedGroupedRoute?.directions.count ?? 0
         let shouldFilter = !shape.directions.isEmpty && groupDirCount > 1
 
-        cachedRoutePolylines = shouldFilter
+        cachedRoutePolylines =
+            shouldFilter
             ? shape.polylinesForDirection(selectedDirectionIndex)
             : shape.decodedPolylines
 
@@ -480,7 +489,7 @@ final class HomeViewModel {
                 validDirs.insert(dest.uppercased())
             }
         }
-        
+
         // Map compass codes ↔ directional labels so GTFS-RT "N"/"S" values
         // match grouped API labels like "Northbound", "Uptown", etc.
         let compassExpansions: [String: [String]] = [
@@ -508,9 +517,50 @@ final class HomeViewModel {
             }
         }
 
+        // Bridge grouped API destination names with GTFS compass codes.
+        // The grouped API uses destination names (e.g. "Flushing-Main St")
+        // while GTFS-RT vehicles use compass codes ("N"/"S"). When validDirs
+        // only contains destination names, the compass expansion above has
+        // nothing to work with. Use the route shape's direction data to find
+        // which GTFS direction_id corresponds to the selected tab, then map
+        // direction_id to the standard GTFS compass convention.
+        let hasCompassCode =
+            validDirs.contains("N") || validDirs.contains("S")
+            || validDirs.contains("E") || validDirs.contains("W")
+        if !hasCompassCode, let shape = routeShape, !shape.directions.isEmpty {
+            // Try matching the selected direction's name against shape headsigns
+            let selectedName = selectedDir.direction.uppercased()
+            if let matchedShape = shape.directions.first(where: {
+                $0.headsign.uppercased() == selectedName
+                    || selectedName.contains($0.headsign.uppercased())
+                    || $0.headsign.uppercased().contains(selectedName)
+            }) {
+                // GTFS convention: direction_id 0 = southbound, 1 = northbound
+                let compassCode = matchedShape.directionId == 0 ? "S" : "N"
+                validDirs.insert(compassCode)
+                if let expansions = compassExpansions[compassCode] {
+                    for e in expansions { validDirs.insert(e) }
+                }
+            } else {
+                // No headsign match — fall back to positional mapping.
+                // The selected direction tab index often aligns with
+                // shape direction order.
+                let shapeIdx = min(safeIdx, shape.directions.count - 1)
+                let dirId = shape.directions[shapeIdx].directionId
+                let compassCode = dirId == 0 ? "S" : "N"
+                validDirs.insert(compassCode)
+                if let expansions = compassExpansions[compassCode] {
+                    for e in expansions { validDirs.insert(e) }
+                }
+            }
+        }
+
         let filtered = trainVehicles.filter { vehicle in
             validDirs.contains(vehicle.direction.uppercased())
         }
+        print(
+            "🚂 [TRAIN_FILTER] \(trainVehicles.count) total → \(filtered.count) after filter (validDirs: \(validDirs), vehicleDirs: \(Set(trainVehicles.map { $0.direction.uppercased() })))"
+        )
         return filtered
     }
 
@@ -594,6 +644,31 @@ final class HomeViewModel {
         return cleanRouteId == trackedCleanId && tracked.stopName == arrival.stopId
     }
 
+    /// Returns the map-marker key for an arrival — the same identifier
+    /// the map uses for `tappedVehicleId`. Bus vehicles use `vehicleId`;
+    /// trains use `tripId` (falling back to `vehicleId`).
+    /// Returns nil when the arrival has no live vehicle on the map.
+    func vehicleKeyForArrival(_ arrival: NearbyTransitResponse) -> String? {
+        if arrival.isBus, let vid = arrival.vehicleId, !vid.isEmpty,
+            busVehicles.contains(where: { $0.vehicleId == vid })
+        {
+            return vid
+        }
+        if !arrival.isBus {
+            if let tid = arrival.tripId, !tid.isEmpty,
+                trainVehicles.contains(where: { $0.tripId == tid })
+            {
+                return tid
+            }
+            if let vid = arrival.vehicleId, !vid.isEmpty,
+                trainVehicles.contains(where: { $0.id == vid })
+            {
+                return vid
+            }
+        }
+        return nil
+    }
+
     /// Returns the coordinate of a tapped vehicle marker (bus or train) by its ID.
     /// Used by HomeView to zoom/center the map on the tapped marker.
     func coordinateForTappedVehicle(_ vehicleId: String) -> CLLocationCoordinate2D? {
@@ -602,7 +677,8 @@ final class HomeViewModel {
             return CLLocationCoordinate2D(latitude: bus.lat, longitude: bus.lon)
         }
         // Check train vehicles (by tripId or id)
-        if let train = trainVehicles.first(where: { $0.tripId == vehicleId || $0.id == vehicleId }) {
+        if let train = trainVehicles.first(where: { $0.tripId == vehicleId || $0.id == vehicleId })
+        {
             return CLLocationCoordinate2D(latitude: train.lat, longitude: train.lon)
         }
         return nil
@@ -1017,13 +1093,14 @@ final class HomeViewModel {
                 let stopId = arrival.stopId ?? "\(arrival.stopName)_\(lat)_\(lon)"
                 guard !seenIds.contains(stopId) else { continue }
                 seenIds.insert(stopId)
-                synthesized.append(BusStop(
-                    id: stopId,
-                    name: arrival.stopName,
-                    lat: lat,
-                    lon: lon,
-                    direction: nil
-                ))
+                synthesized.append(
+                    BusStop(
+                        id: stopId,
+                        name: arrival.stopName,
+                        lat: lat,
+                        lon: lon,
+                        direction: nil
+                    ))
             }
         }
 
@@ -1323,7 +1400,8 @@ final class HomeViewModel {
     /// Stores the previous positions for smooth polyline-based interpolation.
     func refreshBusVehicles() async {
         guard let routeId = selectedRouteId,
-              selectedGroupedRoute?.isBus == true else { return }
+            selectedGroupedRoute?.isBus == true
+        else { return }
         do {
             let vehicles = try await TrackAPI.fetchBusVehicles(routeID: routeId)
             await MainActor.run {
@@ -1360,7 +1438,7 @@ final class HomeViewModel {
             async let arrivalsTask = TrackAPI.fetchSubwayArrivals(lineID: routeId)
             let arrivals = try await arrivalsTask
             await MainActor.run {
-                withAnimation(.linear(duration: 2.0)) {
+                withAnimation(.interpolatingSpring(stiffness: 30, damping: 15)) {
                     updateTrainPositions(arrivals: arrivals)
                 }
             }
@@ -1373,7 +1451,8 @@ final class HomeViewModel {
     /// Uses the same GTFS-RT arrivals → interpolation pipeline as subway.
     func refreshCommuterRailVehicles() async {
         guard let group = selectedGroupedRoute,
-              group.isCommuterRail else { return }
+            group.isCommuterRail
+        else { return }
         do {
             let arrivals: [TrainArrival]
             if group.isLIRR {
@@ -1393,7 +1472,7 @@ final class HomeViewModel {
                     || "mnr_\(id)" == target
             }
             await MainActor.run {
-                withAnimation(.linear(duration: 2.0)) {
+                withAnimation(.interpolatingSpring(stiffness: 30, damping: 15)) {
                     updateTrainPositions(arrivals: routeArrivals)
                 }
             }
@@ -1450,11 +1529,11 @@ final class HomeViewModel {
     }
 
     /// Interpolates bus positions along the route polyline between GPS fetches.
-    /// Called every tick (1s) for smooth movement between the 2s GPS refresh.
+    /// Called every tick (1s) for smooth movement between the 10s GPS refresh.
     func updateBusSimulation() {
         guard !busVehicles.isEmpty, routeShape != nil else { return }
         let elapsed = Date().timeIntervalSince(lastBusUpdateTime)
-        let duration: TimeInterval = 2.0 // seconds between GPS fetches
+        let duration: TimeInterval = 10.0  // seconds between GPS poll (matches handleRouteSelection timer)
 
         let polyline = cachedInterpolationPolyline
         guard polyline.count >= 2 else { return }
@@ -1464,7 +1543,8 @@ final class HomeViewModel {
             guard let prev = previousBusPositions[updated[i].vehicleId] else { continue }
             let result = VehicleInterpolator.smoothBusPosition(
                 previous: CLLocationCoordinate2D(latitude: prev.lat, longitude: prev.lon),
-                current: CLLocationCoordinate2D(latitude: updated[i].lat, longitude: updated[i].lon),
+                current: CLLocationCoordinate2D(
+                    latitude: updated[i].lat, longitude: updated[i].lon),
                 elapsed: elapsed,
                 duration: duration,
                 along: polyline
@@ -1477,7 +1557,7 @@ final class HomeViewModel {
                 bearing: result.bearing
             )
         }
-        withAnimation(.linear(duration: 1.0)) {
+        withAnimation(.interpolatingSpring(stiffness: 30, damping: 15)) {
             self.busVehicles = updated
         }
     }
@@ -1496,7 +1576,7 @@ final class HomeViewModel {
             let stops: [BusStop]
             let polyline: [CLLocationCoordinate2D]
         }
-        
+
         // Build direction contexts for all available directions
         var dirContexts: [DirectionContext] = []
         if !shape.directions.isEmpty {
@@ -1504,7 +1584,8 @@ final class HomeViewModel {
                 let ds = shape.stopsForDirection(i)
                 let stops = ds.isEmpty ? shape.stops : ds
                 let pl = shape.polylinesForDirection(i)
-                let polyline: [CLLocationCoordinate2D] = pl.isEmpty
+                let polyline: [CLLocationCoordinate2D] =
+                    pl.isEmpty
                     ? cachedInterpolationPolyline
                     : pl.flatMap { $0 }
                 dirContexts.append(DirectionContext(stops: stops, polyline: polyline))
@@ -1512,10 +1593,11 @@ final class HomeViewModel {
         }
         // If no direction data, use the combined stops
         if dirContexts.isEmpty {
-            dirContexts.append(DirectionContext(
-                stops: shape.stops,
-                polyline: cachedInterpolationPolyline
-            ))
+            dirContexts.append(
+                DirectionContext(
+                    stops: shape.stops,
+                    polyline: cachedInterpolationPolyline
+                ))
         }
 
         // 1. Group arrivals by UNIQUE trip.
@@ -1543,9 +1625,11 @@ final class HomeViewModel {
 
             // Try each direction context to find which one has this stop
             for ctx in dirContexts {
-                guard let nextStopIndex = ctx.stops.firstIndex(where: {
-                    $0.id.hasPrefix(nextStopIdBase)
-                }) else { continue }
+                guard
+                    let nextStopIndex = ctx.stops.firstIndex(where: {
+                        $0.id.hasPrefix(nextStopIdBase)
+                    })
+                else { continue }
 
                 let dirStops = ctx.stops
                 let polyline = ctx.polyline
@@ -1571,7 +1655,8 @@ final class HomeViewModel {
 
                     let progress: Double
                     if AppSettings.shared.simulationEasingEnabled {
-                        progress = rawProgress < 0.5
+                        progress =
+                            rawProgress < 0.5
                             ? 2 * rawProgress * rawProgress
                             : 1 - pow(-2 * rawProgress + 2, 2) / 2
                     } else {
@@ -1594,10 +1679,11 @@ final class HomeViewModel {
                         // Fallback: straight-line lerp
                         lat = prevStop.lat + (targetStop.lat - prevStop.lat) * progress
                         lon = prevStop.lon + (targetStop.lon - prevStop.lon) * progress
-                        bearing = atan2(
-                            targetStop.lon - prevStop.lon,
-                            targetStop.lat - prevStop.lat
-                        ) * 180 / .pi
+                        bearing =
+                            atan2(
+                                targetStop.lon - prevStop.lon,
+                                targetStop.lat - prevStop.lat
+                            ) * 180 / .pi
                         if bearing < 0 { bearing += 360 }
                     }
                 }
@@ -1620,11 +1706,25 @@ final class HomeViewModel {
                         nextStationName: dirStops[nextStopIndex].name,
                         minutesAway: etaMinutes
                     ))
-                break // Found a matching direction, stop searching
+                break  // Found a matching direction, stop searching
             }
         }
 
-        withAnimation(.linear(duration: 1.1)) {
+        print(
+            "🚂 [TRAIN_POS] updateTrainPositions: \(arrivals.count) arrivals → \(trips.count) unique trips → \(newVehicles.count) positioned vehicles"
+        )
+        if newVehicles.isEmpty && !arrivals.isEmpty {
+            print(
+                "🚂 [TRAIN_POS] ⚠️ No vehicles created! shape.stops=\(shape.stops.count), directions=\(shape.directions.count), cachedPolyline=\(cachedInterpolationPolyline.count) pts"
+            )
+            // Print a sample arrival for debugging
+            if let sample = arrivals.first {
+                print(
+                    "🚂 [TRAIN_POS] Sample arrival: station=\(sample.stationID), route=\(sample.routeID), dir=\(sample.direction)"
+                )
+            }
+        }
+        withAnimation(.interpolatingSpring(stiffness: 30, damping: 15)) {
             self.trainVehicles = newVehicles
         }
     }
@@ -1930,12 +2030,15 @@ final class HomeViewModel {
         currentTrackedRoute = trackedRoute
         trackedRoute.save()
 
-        // Update visual highlighting on the map
+        // Update visual highlighting on the map — set tappedVehicleId so
+        // the marker scales up and the matching arrival row highlights.
         if arrival.isBus {
+            self.tappedVehicleId = arrival.vehicleId
             self.highlightedVehicleId = arrival.vehicleId
             AppLogger.shared.log(
                 "TRACKING", message: "Highlighting bus vehicle: \(arrival.vehicleId ?? "none")")
         } else {
+            self.tappedVehicleId = arrival.tripId
             self.highlightedVehicleId = arrival.tripId
             AppLogger.shared.log(
                 "TRACKING", message: "Highlighting train trip: \(arrival.tripId ?? "none")")

@@ -61,11 +61,14 @@ struct BusArrival: Identifiable, Codable {
 }
 
 /// Matches the backend's `BusVehicle` JSON schema.
-struct BusVehicleResponse: Codable, Identifiable {
-    /// Unique ID combining vehicle, route, and position for stable SwiftUI identity.
+struct BusVehicleResponse: Codable, Identifiable, Equatable {
+    /// Stable identity that does NOT include lat/lon.
+    /// Including coordinates in `id` causes SwiftUI to treat every interpolation
+    /// tick as a brand-new annotation, forcing the Map to destroy and recreate
+    /// views — the #1 cause of map slowness during live tracking.
     var id: String {
         if vehicleId.isEmpty {
-            return "\(routeId)-\(lat)-\(lon)"
+            return "\(routeId)-unknown-\(nextStop ?? "none")"
         }
         return vehicleId
     }

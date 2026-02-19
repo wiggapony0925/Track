@@ -51,15 +51,16 @@ struct TrackMapView: View {
         }
         return AppTheme.Colors.mtaBlue
     }
-    
+
     /// Stroke style for bus route polylines — rounded caps for smooth joins.
     private var busRouteStrokeStyle: StrokeStyle {
         StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round)
     }
-    
+
     /// Stroke style for subway/rail route polylines — solid with rounded ends.
-    private static let subwayRouteStrokeStyle = StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round)
-    
+    private static let subwayRouteStrokeStyle = StrokeStyle(
+        lineWidth: 5, lineCap: .round, lineJoin: .round)
+
     var body: some View {
         Map(
             position: $cameraPosition,
@@ -99,9 +100,6 @@ struct TrackMapView: View {
             // Bus stop annotations when in bus mode
             busStopAnnotations
 
-            // Route shape stops when a route is selected
-            routeStopAnnotations
-
             // Live bus vehicle positions on map
             busVehicleAnnotations
 
@@ -119,6 +117,10 @@ struct TrackMapView: View {
 
             // Route polylines
             routePolylines
+
+            // Route shape stops when a route is selected
+            // (rendered after polylines so markers draw on top of the line)
+            routeStopAnnotations
 
             // System map (default view)
             systemMapPolylines
@@ -187,11 +189,16 @@ struct TrackMapView: View {
                 ? shape.stopsForDirection(viewModel.selectedDirectionIndex)
                 : shape.stops
 
+            let _ = print(
+                "🗺️ [ROUTE_STOPS] Rendering \(directionStops.count) stop markers (shape.stops=\(shape.stops.count), directions=\(shape.directions.count), shouldFilter=\(shouldFilter))"
+            )
+
             ForEach(directionStops) { stop in
                 let isSelected = stop.id == viewModel.selectedStopId
                 Annotation(
-                    stop.name,
-                    coordinate: CLLocationCoordinate2D(latitude: stop.lat, longitude: stop.lon)
+                    "",
+                    coordinate: CLLocationCoordinate2D(latitude: stop.lat, longitude: stop.lon),
+                    anchor: .center
                 ) {
                     RouteStopMarker(
                         isBusRoute: isBusRoute,
@@ -205,6 +212,7 @@ struct TrackMapView: View {
                         }
                     }
                 }
+                .annotationTitles(.hidden)
             }
         }
     }
@@ -327,7 +335,9 @@ struct TrackMapView: View {
                 } else {
                     // White casing behind the colored line for contrast
                     MapPolyline(coordinates: coords)
-                        .stroke(.white.opacity(0.8), style: StrokeStyle(lineWidth: 7, lineCap: .round, lineJoin: .round))
+                        .stroke(
+                            .white.opacity(0.8),
+                            style: StrokeStyle(lineWidth: 7, lineCap: .round, lineJoin: .round))
                     MapPolyline(coordinates: coords)
                         .stroke(selectedRouteColor, style: Self.subwayRouteStrokeStyle)
                 }

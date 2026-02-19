@@ -13,7 +13,7 @@ import traceback
 from datetime import datetime
 
 import httpx
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query
 
 from app.config import get_settings
 from app.models import BusArrival, BusRoute, BusStop, BusVehicle, RouteShape
@@ -33,94 +33,94 @@ router = APIRouter(prefix="/bus", tags=["bus"])
 
 
 @router.get("/schedule/{route_id}")
-async def get_bus_schedule(route_id: str, request: Request):
+async def get_bus_schedule(route_id: str):
     """
     Returns today's upcoming scheduled departures for a bus route,
     using the OneBusAway schedule-for-stop API.
     """
     from datetime import datetime, timezone, timedelta
 
-    svc = request.app.state.bus_service
+    import httpx as _httpx
+
+    settings = get_settings()
+    oba_base = settings.urls.bus_oba_base
+    api_key = settings.api_keys.mta_bus_key
+
+    if not oba_base or not api_key:
+        TrackLogger.warning("[SCHEDULE] OBA base URL or API key not configured", tag="BUS")
+        return {"route_id": route_id, "directions": []}
+
     now = datetime.now(timezone(timedelta(hours=-5)))
     now_epoch = int(now.timestamp())
 
-    # Normalize route ID
-    full_route_id = route_id
-    if not full_route_id.startswith("MTA") and not full_route_id.startswith("MTABC"):
-        full_route_id = f"MTABC_{route_id}"
-
-    # Get stops for the route
+    # Fetch stops using the existing bus_client function (handles agency prefix resolution)
     try:
-        stops = await svc.get_stops_for_route(full_route_id)
-    except Exception:
-        try:
-            full_route_id = f"MTA NYCT_{route_id}"
-            stops = await svc.get_stops_for_route(full_route_id)
-        except Exception as e:
-            logger.error(f"[SCHEDULE] Failed to get stops for {route_id}: {e}")
-            return {"route_id": route_id, "directions": []}
+        stop_models = await get_stops(route_id)
+    except Exception as e:
+        logger.error(f"[SCHEDULE] Failed to get stops for {route_id}: {e}")
+        return {"route_id": route_id, "directions": []}
 
-    if not stops:
+    if not stop_models:
         return {"route_id": route_id, "directions": []}
 
     # Group stops by direction
-    dir_stops: dict[str, list] = {}
-    for stop in stops:
-        d = stop.get("direction", "0")
+    dir_stops: dict[str, list[BusStop]] = {}
+    for stop in stop_models:
+        d = stop.direction or "0"
         dir_stops.setdefault(d, []).append(stop)
 
     directions = []
-    for direction, d_stops in dir_stops.items():
-        sample_stops = d_stops[:3]
-        scheduled_departures = []
+    async with _httpx.AsyncClient(timeout=10) as client:
+        for direction, d_stops in dir_stops.items():
+            sample_stops = d_stops[:3]
+            scheduled_departures = []
 
-        for stop in sample_stops:
-            stop_id = stop.get("id", "")
-            if not stop_id:
-                continue
-            try:
-                url = f"{svc.base_url}/api/where/schedule-for-stop/{stop_id}.json"
-                params = {"key": svc.api_key, "date": now.strftime("%Y-%m-%d")}
-                resp = await svc.client.get(url, params=params, timeout=10)
-                if resp.status_code != 200:
+            for stop in sample_stops:
+                if not stop.id:
                     continue
-                data = resp.json()
-            except Exception:
-                continue
-
-            entry = data.get("data", {}).get("entry", {})
-            for srs in entry.get("stopRouteSchedules", []):
-                srs_route = srs.get("routeId", "")
-                if route_id.upper() not in srs_route.upper() and full_route_id not in srs_route:
+                try:
+                    url = f"{oba_base}/api/where/schedule-for-stop/{stop.id}.json"
+                    params = {"key": api_key, "date": now.strftime("%Y-%m-%d")}
+                    resp = await client.get(url, params=params)
+                    if resp.status_code != 200:
+                        continue
+                    data = resp.json()
+                except Exception:
                     continue
-                for dg in srs.get("stopRouteDirectionSchedules", []):
-                    headsign = dg.get("tripHeadsign", "")
-                    for ts in dg.get("scheduleStopTimes", []):
-                        t = ts.get("departureTime", 0) or ts.get("arrivalTime", 0)
-                        if t and t / 1000 > now_epoch:
-                            scheduled_departures.append({
-                                "stop_name": stop.get("name", ""),
-                                "stop_id": stop_id,
-                                "departure_time": t // 1000,
-                                "headsign": headsign,
-                                "trip_id": ts.get("tripId", ""),
-                            })
-            if scheduled_departures:
-                break
 
-        seen = set()
-        unique = []
-        for dep in sorted(scheduled_departures, key=lambda x: x["departure_time"]):
-            if dep["trip_id"] not in seen:
-                seen.add(dep["trip_id"])
-                unique.append(dep)
+                entry = data.get("data", {}).get("entry", {})
+                for srs in entry.get("stopRouteSchedules", []):
+                    srs_route = srs.get("routeId", "")
+                    if route_id.upper() not in srs_route.upper():
+                        continue
+                    for dg in srs.get("stopRouteDirectionSchedules", []):
+                        headsign = dg.get("tripHeadsign", "")
+                        for ts in dg.get("scheduleStopTimes", []):
+                            t = ts.get("departureTime", 0) or ts.get("arrivalTime", 0)
+                            if t and t / 1000 > now_epoch:
+                                scheduled_departures.append({
+                                    "stop_name": stop.name,
+                                    "stop_id": stop.id,
+                                    "departure_time": t // 1000,
+                                    "headsign": headsign,
+                                    "trip_id": ts.get("tripId", ""),
+                                })
+                if scheduled_departures:
+                    break
 
-        directions.append({
-            "route_id": route_id,
-            "direction": direction,
-            "headsign": unique[0]["headsign"] if unique else "",
-            "departures": unique[:10],
-        })
+            seen = set()
+            unique = []
+            for dep in sorted(scheduled_departures, key=lambda x: x["departure_time"]):
+                if dep["trip_id"] not in seen:
+                    seen.add(dep["trip_id"])
+                    unique.append(dep)
+
+            directions.append({
+                "route_id": route_id,
+                "direction": direction,
+                "headsign": unique[0]["headsign"] if unique else "",
+                "departures": unique[:10],
+            })
 
     return {"route_id": route_id, "directions": directions}
 
