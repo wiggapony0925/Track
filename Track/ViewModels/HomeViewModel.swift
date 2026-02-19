@@ -459,7 +459,8 @@ final class HomeViewModel {
 
     /// Train vehicles filtered to the currently selected direction.
     /// Subway directions use "N"/"S" (or destination names); we match by
-    /// checking the direction string of the arrivals in the selected group.
+    /// checking the direction string of the arrivals in the selected group,
+    /// and also map compass codes to ensure GTFS-RT "N"/"S" values match.
     var filteredTrainVehicles: [TrainVehicle] {
         guard let group = selectedGroupedRoute,
             group.directions.count > 1
@@ -479,12 +480,38 @@ final class HomeViewModel {
                 validDirs.insert(dest.uppercased())
             }
         }
+        
+        // Map compass codes ↔ directional labels so GTFS-RT "N"/"S" values
+        // match grouped API labels like "Northbound", "Uptown", etc.
+        let compassExpansions: [String: [String]] = [
+            "N": ["NORTHBOUND", "UPTOWN"],
+            "S": ["SOUTHBOUND", "DOWNTOWN"],
+            "E": ["EASTBOUND"],
+            "W": ["WESTBOUND"],
+            "NE": ["NORTHBOUND", "EASTBOUND"],
+            "NW": ["NORTHBOUND", "WESTBOUND"],
+            "SE": ["SOUTHBOUND", "EASTBOUND"],
+            "SW": ["SOUTHBOUND", "WESTBOUND"],
+        ]
+        let reverseCompass: [String: String] = [
+            "NORTHBOUND": "N", "UPTOWN": "N",
+            "SOUTHBOUND": "S", "DOWNTOWN": "S",
+            "EASTBOUND": "E", "WESTBOUND": "W",
+        ]
+        // Expand existing compass codes and add reverse mappings
+        for dir in Array(validDirs) {
+            if let expansions = compassExpansions[dir] {
+                for e in expansions { validDirs.insert(e) }
+            }
+            if let code = reverseCompass[dir] {
+                validDirs.insert(code)
+            }
+        }
 
         let filtered = trainVehicles.filter { vehicle in
             validDirs.contains(vehicle.direction.uppercased())
         }
-        // If no vehicles matched direction filtering, show all (safety fallback)
-        return filtered.isEmpty && !trainVehicles.isEmpty ? trainVehicles : filtered
+        return filtered
     }
 
     // MARK: - Sub-ViewModels
@@ -565,6 +592,20 @@ final class HomeViewModel {
         let cleanRouteId = stripMTAPrefix(arrival.routeId)
         let trackedCleanId = stripMTAPrefix(tracked.routeId)
         return cleanRouteId == trackedCleanId && tracked.stopName == arrival.stopId
+    }
+
+    /// Returns the coordinate of a tapped vehicle marker (bus or train) by its ID.
+    /// Used by HomeView to zoom/center the map on the tapped marker.
+    func coordinateForTappedVehicle(_ vehicleId: String) -> CLLocationCoordinate2D? {
+        // Check bus vehicles
+        if let bus = busVehicles.first(where: { $0.vehicleId == vehicleId }) {
+            return CLLocationCoordinate2D(latitude: bus.lat, longitude: bus.lon)
+        }
+        // Check train vehicles (by tripId or id)
+        if let train = trainVehicles.first(where: { $0.tripId == vehicleId || $0.id == vehicleId }) {
+            return CLLocationCoordinate2D(latitude: train.lat, longitude: train.lon)
+        }
+        return nil
     }
 
     /// Finds the map coordinate for a tracked arrival.
@@ -1443,18 +1484,39 @@ final class HomeViewModel {
 
     /// Solves for "Ghost Trains" by interpolating position between stations
     /// along the actual route polyline for realistic curved movement.
+    /// Builds vehicles from ALL directions (not just the selected one) so
+    /// `filteredTrainVehicles` can properly filter them.
     private func updateTrainPositions(arrivals: [TrainArrival]) {
         guard let shape = routeShape else { return }
         self.cachedTrainArrivals = arrivals
 
-        // Use direction-specific stops when available for better matching
-        let dirStops: [BusStop] = {
-            let ds = shape.stopsForDirection(selectedDirectionIndex)
-            return ds.isEmpty ? shape.stops : ds
-        }()
-
-        // Use cached polyline for polyline-aware interpolation
-        let polyline = cachedInterpolationPolyline
+        // Build stops and polyline per direction so we can match arrivals
+        // against the correct direction's stops.
+        struct DirectionContext {
+            let stops: [BusStop]
+            let polyline: [CLLocationCoordinate2D]
+        }
+        
+        // Build direction contexts for all available directions
+        var dirContexts: [DirectionContext] = []
+        if !shape.directions.isEmpty {
+            for i in 0..<shape.directions.count {
+                let ds = shape.stopsForDirection(i)
+                let stops = ds.isEmpty ? shape.stops : ds
+                let pl = shape.polylinesForDirection(i)
+                let polyline: [CLLocationCoordinate2D] = pl.isEmpty
+                    ? cachedInterpolationPolyline
+                    : pl.flatMap { $0 }
+                dirContexts.append(DirectionContext(stops: stops, polyline: polyline))
+            }
+        }
+        // If no direction data, use the combined stops
+        if dirContexts.isEmpty {
+            dirContexts.append(DirectionContext(
+                stops: shape.stops,
+                polyline: cachedInterpolationPolyline
+            ))
+        }
 
         // 1. Group arrivals by UNIQUE trip.
         var trips: [String: [TrainArrival]] = [:]
@@ -1469,6 +1531,7 @@ final class HomeViewModel {
         var newVehicles: [TrainVehicle] = []
 
         // 2. Process each trip to find its "current location"
+        // Try matching against each direction's stops until we find a match.
         for (tripId, tripArrivals) in trips {
             let sorted = tripArrivals.sorted { $0.estimatedTime < $1.estimatedTime }
 
@@ -1478,82 +1541,87 @@ final class HomeViewModel {
 
             let nextStopIdBase = nextStop.stationID.prefix(3)
 
-            guard
-                let nextStopIndex = dirStops.firstIndex(where: {
+            // Try each direction context to find which one has this stop
+            for ctx in dirContexts {
+                guard let nextStopIndex = ctx.stops.firstIndex(where: {
                     $0.id.hasPrefix(nextStopIdBase)
-                })
-            else { continue }
+                }) else { continue }
 
-            var lat = dirStops[nextStopIndex].lat
-            var lon = dirStops[nextStopIndex].lon
-            var bearing: Double = 0
+                let dirStops = ctx.stops
+                let polyline = ctx.polyline
 
-            let previousIndex = nextStopIndex > 0 ? nextStopIndex - 1 : nextStopIndex
-            let nextIndex = nextStopIndex
+                var lat = dirStops[nextStopIndex].lat
+                var lon = dirStops[nextStopIndex].lon
+                var bearing: Double = 0
 
-            if previousIndex != nextIndex {
-                let prevStop = dirStops[previousIndex]
-                let targetStop = dirStops[nextIndex]
+                let previousIndex = nextStopIndex > 0 ? nextStopIndex - 1 : nextStopIndex
+                let nextIndex = nextStopIndex
 
-                let timeUntilArrival = nextStop.estimatedTime.timeIntervalSinceNow
-                let minutes = timeUntilArrival / 60.0
-                let travelTime = 3.0
-                let t = min(max(minutes / travelTime, 0.0), 1.0)
+                if previousIndex != nextIndex {
+                    let prevStop = dirStops[previousIndex]
+                    let targetStop = dirStops[nextIndex]
 
-                // progress: 0.0 at prevStop → 1.0 at targetStop
-                let rawProgress = 1.0 - t
+                    let timeUntilArrival = nextStop.estimatedTime.timeIntervalSinceNow
+                    let minutes = timeUntilArrival / 60.0
+                    let travelTime = 3.0
+                    let t = min(max(minutes / travelTime, 0.0), 1.0)
 
-                let progress: Double
-                if AppSettings.shared.simulationEasingEnabled {
-                    progress = rawProgress < 0.5
-                        ? 2 * rawProgress * rawProgress
-                        : 1 - pow(-2 * rawProgress + 2, 2) / 2
-                } else {
-                    progress = rawProgress
+                    // progress: 0.0 at prevStop → 1.0 at targetStop
+                    let rawProgress = 1.0 - t
+
+                    let progress: Double
+                    if AppSettings.shared.simulationEasingEnabled {
+                        progress = rawProgress < 0.5
+                            ? 2 * rawProgress * rawProgress
+                            : 1 - pow(-2 * rawProgress + 2, 2) / 2
+                    } else {
+                        progress = rawProgress
+                    }
+
+                    // Use polyline-aware interpolation if we have a polyline
+                    if polyline.count >= 2 {
+                        let fromCoord = CLLocationCoordinate2D(
+                            latitude: prevStop.lat, longitude: prevStop.lon)
+                        let toCoord = CLLocationCoordinate2D(
+                            latitude: targetStop.lat, longitude: targetStop.lon)
+                        let result = VehicleInterpolator.interpolateBetweenStops(
+                            from: fromCoord, to: toCoord,
+                            progress: progress, along: polyline)
+                        lat = result.coordinate.latitude
+                        lon = result.coordinate.longitude
+                        bearing = result.bearing
+                    } else {
+                        // Fallback: straight-line lerp
+                        lat = prevStop.lat + (targetStop.lat - prevStop.lat) * progress
+                        lon = prevStop.lon + (targetStop.lon - prevStop.lon) * progress
+                        bearing = atan2(
+                            targetStop.lon - prevStop.lon,
+                            targetStop.lat - prevStop.lat
+                        ) * 180 / .pi
+                        if bearing < 0 { bearing += 360 }
+                    }
                 }
 
-                // Use polyline-aware interpolation if we have a polyline
-                if polyline.count >= 2 {
-                    let fromCoord = CLLocationCoordinate2D(
-                        latitude: prevStop.lat, longitude: prevStop.lon)
-                    let toCoord = CLLocationCoordinate2D(
-                        latitude: targetStop.lat, longitude: targetStop.lon)
-                    let result = VehicleInterpolator.interpolateBetweenStops(
-                        from: fromCoord, to: toCoord,
-                        progress: progress, along: polyline)
-                    lat = result.coordinate.latitude
-                    lon = result.coordinate.longitude
-                    bearing = result.bearing
-                } else {
-                    // Fallback: straight-line lerp
-                    lat = prevStop.lat + (targetStop.lat - prevStop.lat) * progress
-                    lon = prevStop.lon + (targetStop.lon - prevStop.lon) * progress
-                    bearing = atan2(
-                        targetStop.lon - prevStop.lon,
-                        targetStop.lat - prevStop.lat
-                    ) * 180 / .pi
-                    if bearing < 0 { bearing += 360 }
-                }
+                let etaMinutes: Int? = {
+                    let secs = nextStop.estimatedTime.timeIntervalSinceNow
+                    guard secs > -60 else { return nil }
+                    return max(0, Int(secs / 60))
+                }()
+
+                newVehicles.append(
+                    TrainVehicle(
+                        id: tripId,
+                        tripId: tripId,
+                        routeId: nextStop.routeID,
+                        direction: nextStop.direction,
+                        lat: lat,
+                        lon: lon,
+                        bearing: bearing,
+                        nextStationName: dirStops[nextStopIndex].name,
+                        minutesAway: etaMinutes
+                    ))
+                break // Found a matching direction, stop searching
             }
-
-            let etaMinutes: Int? = {
-                let secs = nextStop.estimatedTime.timeIntervalSinceNow
-                guard secs > -60 else { return nil }
-                return max(0, Int(secs / 60))
-            }()
-
-            newVehicles.append(
-                TrainVehicle(
-                    id: tripId,
-                    tripId: tripId,
-                    routeId: nextStop.routeID,
-                    direction: nextStop.direction,
-                    lat: lat,
-                    lon: lon,
-                    bearing: bearing,
-                    nextStationName: dirStops[nextStopIndex].name,
-                    minutesAway: etaMinutes
-                ))
         }
 
         withAnimation(.linear(duration: 1.1)) {

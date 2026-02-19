@@ -21,6 +21,8 @@ struct NearbyTransitRow: View {
     var tappedVehicleId: String? = nil
     var onTrack: (() -> Void)?
     var onSelectRoute: (() -> Void)?
+    /// Callback to clear the map highlight when the user taps a highlighted row.
+    var onClearHighlight: (() -> Void)?
     var userLocation: CLLocation?
     
     @State private var isExpanded = false
@@ -174,7 +176,14 @@ struct NearbyTransitRow: View {
             .contentShape(Rectangle())
             .onTapGesture {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
-                    isExpanded.toggle()
+                    // If this row is map-highlighted, tapping it clears the highlight
+                    // and collapses instead of toggling open again.
+                    if isMapHighlighted {
+                        isExpanded = false
+                        onClearHighlight?()
+                    } else {
+                        isExpanded.toggle()
+                    }
                 }
             }
 
@@ -238,11 +247,11 @@ struct NearbyTransitRow: View {
                         HStack(spacing: 6) {
                             Image(systemName: isTracking
                                   ? "antenna.radiowaves.left.and.right"
-                                  : isLiveOnMap ? "location.fill" : "bell.fill")
+                                  : "location.fill")
                                 .font(.system(size: 12, weight: .bold))
                             Text(isTracking
                                  ? "Tracking"
-                                 : isLiveOnMap ? "Track & Show on Map" : "Track This Arrival")
+                                 : "Track Live Route")
                                 .font(.custom("Helvetica-Bold", size: 13))
                         }
                         .foregroundColor(AppTheme.Colors.textOnColor)
@@ -261,11 +270,15 @@ struct NearbyTransitRow: View {
         .accessibilityLabel("\(arrival.isBus ? "Bus" : "Train") \(arrival.displayName), \(arrival.stopName), \(arrival.minutesAway) minutes away")
         .accessibilityHint(isExpanded ? "Expanded. Shows arrival details." : "Tap to see arrival details")
         .onChange(of: tappedVehicleId) { _, newValue in
-            guard let newValue, !newValue.isEmpty else { return }
-            if (arrival.vehicleId == newValue) || (arrival.tripId == newValue) {
+            if let newValue, !newValue.isEmpty,
+               (arrival.vehicleId == newValue) || (arrival.tripId == newValue) {
+                // Map marker tapped → expand this matching row
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
                     isExpanded = true
                 }
+            } else if isMapHighlighted == false && isExpanded {
+                // Highlight cleared or moved to another row — collapse if we
+                // were only open because of the map tap.
             }
         }
     }

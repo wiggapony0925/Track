@@ -249,11 +249,25 @@ struct HomeView: View {
         }
         .onChange(of: viewModel.tappedVehicleId) { _, newValue in
             // When a vehicle marker is tapped on the map, expand the sheet
-            // so the matching arrival row is visible.
-            guard newValue != nil else { return }
+            // so the matching arrival row is visible, and zoom/center on the marker.
+            guard let tappedId = newValue, !tappedId.isEmpty else { return }
+            
+            // Expand the sheet to show the arrivals list
             if sheetDetent != .large {
                 withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
                     sheetDetent = .large
+                }
+            }
+            
+            // Zoom the camera to center on the tapped vehicle marker
+            if let coord = viewModel.coordinateForTappedVehicle(tappedId) {
+                withAnimation(.spring(response: 0.6, dampingFraction: 0.85)) {
+                    cameraPosition = .camera(MapCamera(
+                        centerCoordinate: coord,
+                        distance: 1500,
+                        heading: 0,
+                        pitch: is3DMode ? 60 : 0
+                    ))
                 }
             }
         }
@@ -326,6 +340,12 @@ struct HomeView: View {
                 },
                 isTracking: { viewModel.isTracking($0) },
                 isLiveOnMap: { viewModel.isVehicleLiveOnMap($0) },
+                onClearHighlight: {
+                    // Clear the map highlight when the user taps a highlighted row
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        viewModel.tappedVehicleId = nil
+                    }
+                },
                 tappedVehicleId: viewModel.tappedVehicleId,
                 onDismiss: {
                     withAnimation(.easeInOut(duration: 0.25)) {

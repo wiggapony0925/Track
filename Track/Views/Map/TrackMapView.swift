@@ -219,7 +219,12 @@ struct TrackMapView: View {
                 isHighlighted: viewModel.tappedVehicleId == vehicle.vehicleId,
                 onTap: {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                        viewModel.tappedVehicleId = vehicle.vehicleId
+                        // Toggle: tap again to deselect
+                        if viewModel.tappedVehicleId == vehicle.vehicleId {
+                            viewModel.tappedVehicleId = nil
+                        } else {
+                            viewModel.tappedVehicleId = vehicle.vehicleId
+                        }
                     }
                 }
             )
@@ -236,7 +241,12 @@ struct TrackMapView: View {
             let isHighlighted = viewModel.tappedVehicleId == vehicleKey
             let onTap = {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                    viewModel.tappedVehicleId = vehicleKey
+                    // Toggle: tap again to deselect
+                    if viewModel.tappedVehicleId == vehicleKey {
+                        viewModel.tappedVehicleId = nil
+                    } else {
+                        viewModel.tappedVehicleId = vehicleKey
+                    }
                 }
             }
             if rid.contains("lirr") || rid.contains("lir") {

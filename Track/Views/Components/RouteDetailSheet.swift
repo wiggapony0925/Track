@@ -25,6 +25,8 @@ struct RouteDetailSheet: View {
     var isTracking: ((NearbyTransitResponse) -> Bool)?
     /// Returns true if the arrival has a live vehicle position on the map.
     var isLiveOnMap: ((NearbyTransitResponse) -> Bool)?
+    /// Called when the user taps a highlighted row to clear the map highlight.
+    var onClearHighlight: (() -> Void)?
     /// Vehicle ID that was tapped on the map marker — used to auto-scroll
     /// and highlight the matching arrival row.
     var tappedVehicleId: String? = nil
@@ -75,6 +77,7 @@ struct RouteDetailSheet: View {
          onTrack: ((NearbyTransitResponse) -> Void)? = nil,
          isTracking: ((NearbyTransitResponse) -> Bool)? = nil,
          isLiveOnMap: ((NearbyTransitResponse) -> Bool)? = nil,
+         onClearHighlight: (() -> Void)? = nil,
          tappedVehicleId: String? = nil,
          onDismiss: (() -> Void)? = nil) {
         self.group = group
@@ -89,6 +92,7 @@ struct RouteDetailSheet: View {
         self.onTrack = onTrack
         self.isTracking = isTracking
         self.isLiveOnMap = isLiveOnMap
+        self.onClearHighlight = onClearHighlight
         self.tappedVehicleId = tappedVehicleId
         self.onDismiss = onDismiss
         self.isSheetExpanded = isSheetExpanded
@@ -590,6 +594,19 @@ struct RouteDetailSheet: View {
 
     private var arrivalsList: some View {
         let direction = safeDirection
+        
+        // Reorder arrivals so the tapped vehicle's row appears first
+        let sortedArrivals: [NearbyTransitResponse] = {
+            guard let tapped = tappedVehicleId, !tapped.isEmpty else {
+                return direction.arrivals
+            }
+            var arr = direction.arrivals
+            if let idx = arr.firstIndex(where: { $0.vehicleId == tapped || $0.tripId == tapped }) {
+                let matched = arr.remove(at: idx)
+                arr.insert(matched, at: 0)
+            }
+            return arr
+        }()
 
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
@@ -601,15 +618,15 @@ struct RouteDetailSheet: View {
                 
                 Spacer()
                 
-                if !direction.arrivals.isEmpty {
-                    Text("\(direction.arrivals.count) stop\(direction.arrivals.count == 1 ? "" : "s")")
+                if !sortedArrivals.isEmpty {
+                    Text("\(sortedArrivals.count) stop\(sortedArrivals.count == 1 ? "" : "s")")
                         .font(.custom("Helvetica", size: 12))
                         .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
                 }
             }
             .padding(.horizontal, AppTheme.Layout.margin)
 
-            if direction.arrivals.isEmpty {
+            if sortedArrivals.isEmpty {
                 // Show scheduled departures if available, otherwise empty state
                 let scheduled = scheduledDeparturesForCurrentDirection
                 if !scheduled.isEmpty {
@@ -633,7 +650,7 @@ struct RouteDetailSheet: View {
             } else {
                 ScrollViewReader { proxy in
                     VStack(spacing: 8) {
-                        ForEach(Array(direction.arrivals.enumerated()), id: \.element.id) { index, arrival in
+                        ForEach(Array(sortedArrivals.enumerated()), id: \.element.id) { index, arrival in
                             NearbyTransitRow(
                                 arrival: arrival,
                                 isTracking: isTracking?(arrival) ?? false,
@@ -642,6 +659,9 @@ struct RouteDetailSheet: View {
                                 tappedVehicleId: tappedVehicleId,
                                 onTrack: {
                                     onTrack?(arrival)
+                                },
+                                onClearHighlight: {
+                                    onClearHighlight?()
                                 },
                                 userLocation: currentLocation.map { CLLocation(latitude: $0.latitude, longitude: $0.longitude) }
                             )
@@ -657,11 +677,11 @@ struct RouteDetailSheet: View {
                     .onChange(of: tappedVehicleId) { _, newValue in
                         guard let newValue, !newValue.isEmpty else { return }
                         // Find the matching arrival and scroll to it
-                        if let match = direction.arrivals.first(where: {
+                        if let match = sortedArrivals.first(where: {
                             $0.vehicleId == newValue || $0.tripId == newValue
                         }) {
                             withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                                proxy.scrollTo(match.id, anchor: .center)
+                                proxy.scrollTo(match.id, anchor: .top)
                             }
                         }
                     }
