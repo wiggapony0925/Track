@@ -313,18 +313,24 @@ final class MapSystemViewModel {
 
     /// Pre-computes flattened polyline arrays with stable IDs for efficient MapKit rendering.
     /// This eliminates nested ForEach loops in the View, dramatically improving performance.
+    /// Applies Ramer-Douglas-Peucker simplification to reduce point counts while preserving shape.
     /// Called once after `cachedOffsetSubwayLines` is populated.
     private func computeFlattenedPolylines() {
+        let tolerance = AppSettings.shared.polylineSimplificationTolerance
+
         // Flatten subway polylines from offset lines
         var subwayFlat: [FlattenedMapPolyline] = []
+        var originalSubwayPoints = 0
         for line in cachedOffsetSubwayLines {
             for (branchIndex, coords) in line.coordinates.enumerated() {
                 // Skip empty or single-point polylines
                 guard coords.count >= 2 else { continue }
+                originalSubwayPoints += coords.count
+                let simplified = simplifyPolyline(coords, tolerance: tolerance)
                 subwayFlat.append(
                     FlattenedMapPolyline(
                         id: "\(line.id)_\(branchIndex)",
-                        coordinates: coords,
+                        coordinates: simplified,
                         color: line.color,
                         lineWidth: 3
                     ))
@@ -334,14 +340,17 @@ final class MapSystemViewModel {
 
         // Flatten commuter rail polylines (LIRR and MNR)
         var commuterFlat: [FlattenedMapPolyline] = []
+        var originalCommuterPoints = 0
         for line in cachedSystemMap where line.mode != .subway {
             for (branchIndex, coords) in line.coordinates.enumerated() {
                 // Skip empty or single-point polylines
                 guard coords.count >= 2 else { continue }
+                originalCommuterPoints += coords.count
+                let simplified = simplifyPolyline(coords, tolerance: tolerance)
                 commuterFlat.append(
                     FlattenedMapPolyline(
                         id: "\(line.id)_\(branchIndex)",
-                        coordinates: coords,
+                        coordinates: simplified,
                         color: line.color,
                         lineWidth: 2.5
                     ))
@@ -350,13 +359,14 @@ final class MapSystemViewModel {
         flattenedCommuterRailPolylines = commuterFlat
 
         let totalPolylines = subwayFlat.count + commuterFlat.count
-        let totalPoints =
+        let simplifiedPoints =
             subwayFlat.reduce(0) { $0 + $1.coordinates.count }
             + commuterFlat.reduce(0) { $0 + $1.coordinates.count }
+        let originalPoints = originalSubwayPoints + originalCommuterPoints
         AppLogger.shared.log(
             "SYSTEM_MAP",
             message:
-                "Flattened \(totalPolylines) polylines (\(subwayFlat.count) subway, \(commuterFlat.count) commuter rail) with \(totalPoints) total points"
+                "Flattened \(totalPolylines) polylines (\(subwayFlat.count) subway, \(commuterFlat.count) commuter rail) — \(originalPoints) → \(simplifiedPoints) points (simplified \(originalPoints > 0 ? Int(Double(originalPoints - simplifiedPoints) / Double(originalPoints) * 100) : 0)%)"
         )
     }
 

@@ -138,4 +138,70 @@ struct TrackTests {
         #expect(TransitError.feedParsingFailed.description == "Unable to read transit data")
         #expect(TransitError.signalLost.description == "Signal Lost in Tunnel")
     }
+
+    // MARK: - Polyline Simplification Tests
+
+    @Test func simplifyPolylinePreservesEndpoints() async throws {
+        let coords: [CLLocationCoordinate2D] = [
+            CLLocationCoordinate2D(latitude: 40.7128, longitude: -74.0060),
+            CLLocationCoordinate2D(latitude: 40.7130, longitude: -74.0058),
+            CLLocationCoordinate2D(latitude: 40.7132, longitude: -74.0056),
+            CLLocationCoordinate2D(latitude: 40.7135, longitude: -74.0050),
+        ]
+        let simplified = simplifyPolyline(coords, tolerance: 0.001)
+        #expect(simplified.first!.latitude == coords.first!.latitude)
+        #expect(simplified.first!.longitude == coords.first!.longitude)
+        #expect(simplified.last!.latitude == coords.last!.latitude)
+        #expect(simplified.last!.longitude == coords.last!.longitude)
+    }
+
+    @Test func simplifyPolylineReducesCollinearPoints() async throws {
+        // Three collinear points — the middle one should be removed
+        let coords: [CLLocationCoordinate2D] = [
+            CLLocationCoordinate2D(latitude: 40.7000, longitude: -74.0000),
+            CLLocationCoordinate2D(latitude: 40.7500, longitude: -74.0000),
+            CLLocationCoordinate2D(latitude: 40.8000, longitude: -74.0000),
+        ]
+        let simplified = simplifyPolyline(coords, tolerance: 0.0001)
+        #expect(simplified.count == 2)
+    }
+
+    @Test func simplifyPolylineKeepsSharpTurns() async throws {
+        // L-shaped path — the corner point must be preserved
+        let coords: [CLLocationCoordinate2D] = [
+            CLLocationCoordinate2D(latitude: 40.7000, longitude: -74.0000),
+            CLLocationCoordinate2D(latitude: 40.7000, longitude: -73.9000),
+            CLLocationCoordinate2D(latitude: 40.8000, longitude: -73.9000),
+        ]
+        let simplified = simplifyPolyline(coords, tolerance: 0.0001)
+        #expect(simplified.count == 3)
+    }
+
+    @Test func simplifyPolylineHandlesShortArrays() async throws {
+        // Empty array
+        let empty: [CLLocationCoordinate2D] = []
+        #expect(simplifyPolyline(empty, tolerance: 0.001).isEmpty)
+
+        // Single point
+        let single = [CLLocationCoordinate2D(latitude: 40.7, longitude: -74.0)]
+        #expect(simplifyPolyline(single, tolerance: 0.001).count == 1)
+
+        // Two points — returned as-is
+        let two = [
+            CLLocationCoordinate2D(latitude: 40.7, longitude: -74.0),
+            CLLocationCoordinate2D(latitude: 40.8, longitude: -74.0),
+        ]
+        #expect(simplifyPolyline(two, tolerance: 0.001).count == 2)
+    }
+
+    @Test func simplifyPolylineWithZeroToleranceKeepsAll() async throws {
+        let coords: [CLLocationCoordinate2D] = [
+            CLLocationCoordinate2D(latitude: 40.7000, longitude: -74.0000),
+            CLLocationCoordinate2D(latitude: 40.7001, longitude: -74.0001),
+            CLLocationCoordinate2D(latitude: 40.7003, longitude: -74.0000),
+            CLLocationCoordinate2D(latitude: 40.7005, longitude: -74.0002),
+        ]
+        let simplified = simplifyPolyline(coords, tolerance: 0)
+        #expect(simplified.count == coords.count)
+    }
 }

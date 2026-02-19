@@ -371,6 +371,30 @@ struct TrackMapView: View {
     private static let commuterRailStrokeStyle = StrokeStyle(
         lineWidth: 2.5, lineCap: .round, dash: [6, 4])
 
+    /// Stations filtered to the visible map viewport.
+    /// Avoids rendering hundreds of off-screen annotations, which is one of
+    /// the biggest performance drains when stations are visible.
+    private var visibleStations: [HomeViewModel.CachedSubwayStation] {
+        guard let center = currentMapCenter, let distance = currentMapDistance else {
+            return viewModel.cachedStations
+        }
+        // Convert camera distance to an approximate lat/lon span with generous padding
+        // 1° latitude ≈ 111 km; use 1.5× to include stations just outside the viewport
+        let latSpan = (distance / 111_000) * 1.5
+        let lonSpan = (distance / (111_000 * cos(center.latitude * .pi / 180))) * 1.5
+        let minLat = center.latitude - latSpan
+        let maxLat = center.latitude + latSpan
+        let minLon = center.longitude - lonSpan
+        let maxLon = center.longitude + lonSpan
+
+        return viewModel.cachedStations.filter { station in
+            station.coordinate.latitude >= minLat
+                && station.coordinate.latitude <= maxLat
+                && station.coordinate.longitude >= minLon
+                && station.coordinate.longitude <= maxLon
+        }
+    }
+
     @MapContentBuilder
     private var systemMapPolylines: some MapContent {
         if viewModel.routeShape == nil {
@@ -386,9 +410,9 @@ struct TrackMapView: View {
                     .stroke(polyline.color, style: Self.commuterRailStrokeStyle)
             }
 
-            // Stations layer (only when zoomed in)
+            // Stations layer (only when zoomed in, filtered to visible viewport)
             if showStations {
-                ForEach(viewModel.cachedStations) { station in
+                ForEach(visibleStations) { station in
                     Annotation(station.name, coordinate: station.coordinate) {
                         SubwayStationMarker(station: station)
                     }

@@ -361,7 +361,10 @@ final class HomeViewModel {
     // Route detail sheet
     var selectedGroupedRoute: GroupedNearbyTransitResponse?
     var selectedDirectionIndex: Int = 0 {
-        didSet { rebuildCachedPolylines() }
+        didSet {
+            rebuildCachedPolylines()
+            rebuildDirectionalSplit()
+        }
     }
     var isRouteDetailPresented = false
 
@@ -370,7 +373,9 @@ final class HomeViewModel {
     var isSearchPinActive = false
 
     // Walking route to the nearest station (forwarded from goMode)
-    var nearestStopCoordinate: CLLocationCoordinate2D?
+    var nearestStopCoordinate: CLLocationCoordinate2D? {
+        didSet { rebuildDirectionalSplit() }
+    }
     var selectedStopId: String?
 
     // Live bus/train tracking on map
@@ -443,7 +448,10 @@ final class HomeViewModel {
     var lastBusUpdateTime: Date = .distantPast
 
     var routeShape: RouteShapeResponse? {
-        didSet { rebuildCachedPolylines() }
+        didSet {
+            rebuildCachedPolylines()
+            rebuildDirectionalSplit()
+        }
     }
 
     /// Pre-decoded polylines for the currently selected route direction.
@@ -482,13 +490,20 @@ final class HomeViewModel {
         }
     }
 
-    /// Polyline split at the nearest stop: `ahead` keeps full color, `behind` fades.
-    /// Computed on-demand from existing state — no cache invalidation timing issues.
-    var directionalSplit: (ahead: [CLLocationCoordinate2D], behind: [CLLocationCoordinate2D])? {
+    /// Cached polyline split at the nearest stop: `ahead` keeps full color, `behind` fades.
+    /// Pre-computed when inputs change to avoid O(n) distance calculations during view render.
+    private(set) var directionalSplit: (ahead: [CLLocationCoordinate2D], behind: [CLLocationCoordinate2D])?
+
+    /// Rebuilds the cached directional split from current state.
+    /// Called when `routeShape`, `nearestStopCoordinate`, or `selectedDirectionIndex` changes.
+    private func rebuildDirectionalSplit() {
         guard let nearestCoord = nearestStopCoordinate,
             !cachedInterpolationPolyline.isEmpty,
             let shape = routeShape
-        else { return nil }
+        else {
+            directionalSplit = nil
+            return
+        }
 
         let polyline = cachedInterpolationPolyline
 
@@ -511,7 +526,10 @@ final class HomeViewModel {
         // stopsForDirection handles the subway fallback from
         // directions[x].stops → top-level stops automatically
         let dirStops = shape.stopsForDirection(selectedDirectionIndex)
-        guard !dirStops.isEmpty else { return nil }
+        guard !dirStops.isEmpty else {
+            directionalSplit = nil
+            return
+        }
 
         // Determine polyline flow direction relative to stop ordering
         let firstStopLoc = CLLocation(latitude: dirStops[0].lat, longitude: dirStops[0].lon)
@@ -528,9 +546,9 @@ final class HomeViewModel {
 
         if polyFlowsWithStops {
             // Polyline flows first→last stop. Before the split = already passed.
-            return (ahead: afterSplit, behind: beforeSplit)
+            directionalSplit = (ahead: afterSplit, behind: beforeSplit)
         } else {
-            return (ahead: beforeSplit, behind: afterSplit)
+            directionalSplit = (ahead: beforeSplit, behind: afterSplit)
         }
     }
 
