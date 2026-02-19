@@ -147,6 +147,24 @@ struct SettingsView: View {
             Text("Developer Settings")
         }
     }
+
+    // MARK: - Legal & Attributes
+
+    private var legalSection: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Data provided by the MTA is redistributed from an MTA server. Not an official MTA app.")
+                
+                Text("This app is provided \"as is\" without warranty of any kind. The developer makes no representation that the data is accurate, complete, or timely.")
+                
+                Text("Real-time data may be delayed.")
+            }
+            .font(.caption)
+            .foregroundColor(AppTheme.Colors.textSecondary)
+        } header: {
+            Text("Legal & Attributes")
+        }
+    }
 }
 
 #Preview {
