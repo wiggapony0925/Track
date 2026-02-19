@@ -98,8 +98,10 @@ private func encodeValue(_ value: Int32, into result: inout String) {
 ///
 /// - Parameters:
 ///   - coordinates: The original polyline coordinates.
-///   - tolerance: Maximum perpendicular distance (in degrees) a point
-///     can deviate before it must be kept. ~0.00015° ≈ 17 m at NYC latitude.
+///   - tolerance: Maximum perpendicular distance a point can deviate before
+///     it must be kept. Uses an approximate planar projection (degree
+///     differences) which is suitable for small geographic areas like a
+///     city transit network. ~0.00015° ≈ 17 m at NYC latitude (40.7°N).
 /// - Returns: A simplified coordinate array. Returns the original array
 ///   unchanged if it has fewer than 3 points.
 func simplifyPolyline(

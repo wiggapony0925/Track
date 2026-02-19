@@ -363,10 +363,13 @@ final class MapSystemViewModel {
             subwayFlat.reduce(0) { $0 + $1.coordinates.count }
             + commuterFlat.reduce(0) { $0 + $1.coordinates.count }
         let originalPoints = originalSubwayPoints + originalCommuterPoints
+        let reductionPercent = originalPoints > 0
+            ? Int(Double(originalPoints - simplifiedPoints) / Double(originalPoints) * 100)
+            : 0
         AppLogger.shared.log(
             "SYSTEM_MAP",
             message:
-                "Flattened \(totalPolylines) polylines (\(subwayFlat.count) subway, \(commuterFlat.count) commuter rail) — \(originalPoints) → \(simplifiedPoints) points (simplified \(originalPoints > 0 ? Int(Double(originalPoints - simplifiedPoints) / Double(originalPoints) * 100) : 0)%)"
+                "Flattened \(totalPolylines) polylines (\(subwayFlat.count) subway, \(commuterFlat.count) commuter rail) — \(originalPoints) → \(simplifiedPoints) points (simplified \(reductionPercent)%)"
         )
     }
 

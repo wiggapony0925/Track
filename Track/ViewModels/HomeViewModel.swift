@@ -491,7 +491,8 @@ final class HomeViewModel {
     }
 
     /// Cached polyline split at the nearest stop: `ahead` keeps full color, `behind` fades.
-    /// Pre-computed when inputs change to avoid O(n) distance calculations during view render.
+    /// Pre-computed when inputs change to avoid O(n) distance calculations (where n = number
+    /// of polyline points) during every SwiftUI view render cycle.
     private(set) var directionalSplit: (ahead: [CLLocationCoordinate2D], behind: [CLLocationCoordinate2D])?
 
     /// Rebuilds the cached directional split from current state.
