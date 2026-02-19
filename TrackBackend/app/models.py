@@ -134,6 +134,7 @@ class BusVehicle(BaseModel):
     next_stop: str | None = None
     status_text: str | None = None
     direction_ref: int | None = None
+    expected_arrival: datetime | None = None
 
 
 class DirectionShape(BaseModel):

@@ -46,11 +46,12 @@ struct AppTheme {
 
     // MARK: - Typography
 
-    // MARK: - Typography
-
     struct Typography {
         /// Large rounded header (Dynamic Type: Large Title).
         static let headerLarge: Font = .custom("Helvetica-Bold", size: 34)
+
+        /// Medium header for sheet titles and card headers.
+        static let headerMedium: Font = .custom("Helvetica-Bold", size: 18)
 
         /// Section headers (Dynamic Type: Subheadline).
         static let sectionHeader: Font = .custom("Helvetica-Bold", size: 15)
@@ -61,13 +62,33 @@ struct AppTheme {
 
         /// Standard body text (Dynamic Type: Callout).
         static let body: Font = .custom("Helvetica", size: 16)
-        
+
+        /// Card title text (bold).
+        static let cardTitle: Font = .custom("Helvetica-Bold", size: 16)
+
+        /// Card subtitle / secondary text.
+        static let cardSubtitle: Font = .custom("Helvetica", size: 14)
+
+        /// Caption text for timestamps, metadata, and small labels.
+        static let caption: Font = .custom("Helvetica", size: 13)
+
+        /// Small bold caption (e.g. day badges, counters).
+        static let captionBold: Font = .custom("Helvetica-Bold", size: 13)
+
+        /// Search bar input text.
+        static let searchInput: Font = .system(size: 15, weight: .regular)
+
+        /// Navigation back button text.
+        static let navButton: Font = .custom("Helvetica", size: 16)
+
+        /// Settings row title.
+        static let settingsTitle: Font = .custom("Helvetica-Bold", size: 15)
+
+        /// Settings row description.
+        static let settingsDescription: Font = .custom("Helvetica", size: 13)
+
         /// Helper to get Helvetica with specific weight/size
         static func helvetica(size: CGFloat, weight: Font.Weight = .regular) -> Font {
-            // Helvetica handles weights via font names mostly, but SwiftUI can apply weights too.
-            // Standard Helvetica doesn't always support all weights via .weight() modifier on ".custom",
-            // so we stick to the main ones or let system simulate.
-            // For safety and consistency:
             return .custom("Helvetica", size: size).weight(weight)
         }
     }
@@ -160,6 +181,12 @@ struct AppTheme {
         static let badgeFontSmall: CGFloat = 13.0
         static let badgeFontMedium: CGFloat = 18.0
         static let badgeFontLarge: CGFloat = 22.0
+
+        /// Corner radius for search bars and small interactive elements.
+        static let searchBarCornerRadius: CGFloat = 12.0
+
+        /// Standard icon circle size (used in info cards, schedule rows, etc.).
+        static let iconCircleSize: CGFloat = 44.0
     }
 
     // MARK: - NYC Metro Map Configuration

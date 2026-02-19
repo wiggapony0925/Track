@@ -61,11 +61,14 @@ struct BusArrival: Identifiable, Codable {
 }
 
 /// Matches the backend's `BusVehicle` JSON schema.
-struct BusVehicleResponse: Codable, Identifiable {
-    /// Unique ID combining vehicle, route, and position for stable SwiftUI identity.
+struct BusVehicleResponse: Codable, Identifiable, Equatable {
+    /// Stable identity that does NOT include lat/lon.
+    /// Including coordinates in `id` causes SwiftUI to treat every interpolation
+    /// tick as a brand-new annotation, forcing the Map to destroy and recreate
+    /// views — the #1 cause of map slowness during live tracking.
     var id: String {
         if vehicleId.isEmpty {
-            return "\(routeId)-\(lat)-\(lon)"
+            return "\(routeId)-unknown-\(nextStop ?? "none")"
         }
         return vehicleId
     }
@@ -79,10 +82,20 @@ struct BusVehicleResponse: Codable, Identifiable {
     let statusText: String?
     /// SIRI DirectionRef: 0 or 1, used to filter vehicles by selected direction.
     let directionRef: Int?
+    /// Expected arrival time at next stop from SIRI MonitoredCall.
+    var expectedArrival: Date?
 
     /// Strips "MTA NYCT_" prefix for display.
     var displayRouteName: String {
         stripMTAPrefix(routeId)
+    }
+
+    /// Minutes until arrival at next stop, or nil if unavailable.
+    var minutesAway: Int? {
+        guard let eta = expectedArrival else { return nil }
+        let seconds = eta.timeIntervalSinceNow
+        guard seconds > -60 else { return nil }
+        return max(0, Int(seconds / 60))
     }
 
     enum CodingKeys: String, CodingKey {
@@ -92,6 +105,7 @@ struct BusVehicleResponse: Codable, Identifiable {
         case nextStop = "next_stop"
         case statusText = "status_text"
         case directionRef = "direction_ref"
+        case expectedArrival = "expected_arrival"
     }
 
     /// Returns a copy with an interpolated position for smooth map animation.
@@ -166,5 +180,51 @@ struct RouteShapeResponse: Codable {
         let safeIdx = min(directionIndex, directions.count - 1)
         let dirStops = directions[safeIdx].stops
         return dirStops.isEmpty ? stops : dirStops
+    }
+}
+
+// MARK: - Bus Schedule
+
+/// Response from /bus/schedule/{route_id} — today's upcoming scheduled departures.
+struct BusScheduleResponse: Codable {
+    let routeId: String
+    let directions: [BusScheduleDirection]
+    
+    enum CodingKeys: String, CodingKey {
+        case routeId = "route_id"
+        case directions
+    }
+}
+
+struct BusScheduleDirection: Codable {
+    let direction: String
+    let headsign: String
+    let departures: [BusScheduledDeparture]
+}
+
+struct BusScheduledDeparture: Codable, Identifiable {
+    var id: String { tripId + "_\(departureTime)" }
+    let stopName: String
+    let stopId: String
+    let departureTime: Int  // epoch seconds
+    let headsign: String
+    let tripId: String
+    
+    enum CodingKeys: String, CodingKey {
+        case stopName = "stop_name"
+        case stopId = "stop_id"
+        case departureTime = "departure_time"
+        case headsign
+        case tripId = "trip_id"
+    }
+    
+    /// The departure as a Date
+    var departureDate: Date {
+        Date(timeIntervalSince1970: TimeInterval(departureTime))
+    }
+    
+    /// Minutes until departure from now
+    var minutesAway: Int {
+        Int(departureDate.timeIntervalSinceNow / 60)
     }
 }

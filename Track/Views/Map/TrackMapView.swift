@@ -51,15 +51,16 @@ struct TrackMapView: View {
         }
         return AppTheme.Colors.mtaBlue
     }
-    
+
     /// Stroke style for bus route polylines — rounded caps for smooth joins.
     private var busRouteStrokeStyle: StrokeStyle {
         StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round)
     }
-    
+
     /// Stroke style for subway/rail route polylines — solid with rounded ends.
-    private static let subwayRouteStrokeStyle = StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round)
-    
+    private static let subwayRouteStrokeStyle = StrokeStyle(
+        lineWidth: 5, lineCap: .round, lineJoin: .round)
+
     var body: some View {
         Map(
             position: $cameraPosition,
@@ -99,9 +100,6 @@ struct TrackMapView: View {
             // Bus stop annotations when in bus mode
             busStopAnnotations
 
-            // Route shape stops when a route is selected
-            routeStopAnnotations
-
             // Live bus vehicle positions on map
             busVehicleAnnotations
 
@@ -119,6 +117,10 @@ struct TrackMapView: View {
 
             // Route polylines
             routePolylines
+
+            // Route shape stops when a route is selected
+            // (rendered after polylines so markers draw on top of the line)
+            routeStopAnnotations
 
             // System map (default view)
             systemMapPolylines
@@ -178,20 +180,14 @@ struct TrackMapView: View {
     private var routeStopAnnotations: some MapContent {
         if let shape = viewModel.routeShape {
             let isBusRoute = viewModel.selectedGroupedRoute?.isBus == true
-            let groupDirCount = viewModel.selectedGroupedRoute?.directions.count ?? 0
-            let shouldFilter = !shape.directions.isEmpty && groupDirCount > 1
-
-            // Use direction-specific stops when the user can switch directions
-            let directionStops =
-                shouldFilter
-                ? shape.stopsForDirection(viewModel.selectedDirectionIndex)
-                : shape.stops
+            let directionStops = shape.stopsForDirection(viewModel.selectedDirectionIndex)
 
             ForEach(directionStops) { stop in
                 let isSelected = stop.id == viewModel.selectedStopId
                 Annotation(
-                    stop.name,
-                    coordinate: CLLocationCoordinate2D(latitude: stop.lat, longitude: stop.lon)
+                    "",
+                    coordinate: CLLocationCoordinate2D(latitude: stop.lat, longitude: stop.lon),
+                    anchor: .center
                 ) {
                     RouteStopMarker(
                         isBusRoute: isBusRoute,
@@ -205,6 +201,7 @@ struct TrackMapView: View {
                         }
                     }
                 }
+                .annotationTitles(.hidden)
             }
         }
     }
@@ -214,7 +211,20 @@ struct TrackMapView: View {
     @MapContentBuilder
     private var busVehicleAnnotations: some MapContent {
         ForEach(viewModel.filteredBusVehicles) { vehicle in
-            BusVehicleMarker(vehicle: vehicle)
+            BusVehicleMarker(
+                vehicle: vehicle,
+                isHighlighted: viewModel.tappedVehicleId == vehicle.vehicleId,
+                onTap: {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        // Toggle: tap again to deselect
+                        if viewModel.tappedVehicleId == vehicle.vehicleId {
+                            viewModel.tappedVehicleId = nil
+                        } else {
+                            viewModel.tappedVehicleId = vehicle.vehicleId
+                        }
+                    }
+                }
+            )
         }
     }
 
@@ -223,18 +233,27 @@ struct TrackMapView: View {
     @MapContentBuilder
     private var trainVehicleAnnotations: some MapContent {
         ForEach(viewModel.filteredTrainVehicles) { train in
-            if train.routeId.contains("LIRR") || train.routeId.lowercased().contains("lir") {
-                LIRRMarker(train: train)
-            } else if train.routeId.contains("MNR") || train.routeId.lowercased().contains("mnr")
-                || train.routeId.lowercased().contains("metro")
-            {
-                MNRMarker(train: train)
-            } else if train.routeId.lowercased().contains("amtrak")
-                || train.routeId.lowercased().contains("amt")
-            {
-                AmtrakMarker(train: train)
+            let rid = train.routeId.lowercased()
+            let vehicleKey = train.tripId ?? train.id
+            let isHighlighted = viewModel.tappedVehicleId == vehicleKey
+            let onTap = {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                    // Toggle: tap again to deselect
+                    if viewModel.tappedVehicleId == vehicleKey {
+                        viewModel.tappedVehicleId = nil
+                    } else {
+                        viewModel.tappedVehicleId = vehicleKey
+                    }
+                }
+            }
+            if rid.contains("lirr") || rid.contains("lir") {
+                LIRRMarker(train: train, isHighlighted: isHighlighted, onTap: onTap)
+            } else if rid.contains("mnr") || rid.contains("metro") {
+                MNRMarker(train: train, isHighlighted: isHighlighted, onTap: onTap)
+            } else if rid.contains("amtrak") || rid.contains("amt") {
+                AmtrakMarker(train: train, isHighlighted: isHighlighted, onTap: onTap)
             } else {
-                SubwayTrainMarker(train: train)
+                SubwayTrainMarker(train: train, isHighlighted: isHighlighted, onTap: onTap)
             }
         }
     }
@@ -288,79 +307,61 @@ struct TrackMapView: View {
 
     // MARK: - Route Polylines
 
-    /// Returns the polylines for the currently selected direction.
-    /// Uses the backend's per-direction data when available; falls back to
-    /// the midpoint-split heuristic for legacy responses without direction data.
-    private func filteredPolylines(from polylines: [[CLLocationCoordinate2D]])
-        -> [[CLLocationCoordinate2D]]
-    {
-        guard let group = viewModel.selectedGroupedRoute,
-            group.directions.count > 1
-        else {
-            // Single direction — show everything
-            return polylines
-        }
-
-        let directionIndex = viewModel.selectedDirectionIndex
-
-        // Prefer the backend's per-direction shape data
-        if let shape = viewModel.routeShape, !shape.directions.isEmpty {
-            return shape.polylinesForDirection(directionIndex)
-        }
-
-        // Legacy fallback: split in half (first half = direction 0, second = direction 1)
-        guard polylines.count >= 2 else { return polylines }
-        let midpoint = polylines.count / 2
-        if directionIndex == 0 {
-            return Array(polylines.prefix(midpoint))
-        } else {
-            return Array(polylines.suffix(from: midpoint))
-        }
-    }
-
     @MapContentBuilder
     private var routePolylines: some MapContent {
-        if let shape = viewModel.routeShape {
-            let isBusRoute = viewModel.selectedGroupedRoute?.isBus == true
-            let groupDirCount = viewModel.selectedGroupedRoute?.directions.count ?? 0
-            let shapeHasDirections = !shape.directions.isEmpty
+        let polylines = viewModel.cachedRoutePolylines
+        let isBus = viewModel.selectedGroupedRoute?.isBus == true
+        let split = viewModel.directionalSplit
 
-            // Always use direction-specific polylines when:
-            // 1. The shape has per-direction data, AND
-            // 2. The group has multiple direction tabs (so the user can switch)
-            // This ensures switching directions only shows that direction's line.
-            let shouldFilter = shapeHasDirections && groupDirCount > 1
-
-            let polylines: [[CLLocationCoordinate2D]] =
-                shouldFilter
-                ? shape.polylinesForDirection(viewModel.selectedDirectionIndex)
-                : shape.decodedPolylines
-
-            if !polylines.isEmpty {
-                ForEach(Array(polylines.enumerated()), id: \.offset) { _, coords in
-                    if isBusRoute {
-                        MapPolyline(coordinates: coords)
-                            .stroke(selectedRouteColor, style: busRouteStrokeStyle)
-                    } else {
-                        // White casing behind the colored line for contrast
-                        MapPolyline(coordinates: coords)
-                            .stroke(.white.opacity(0.8), style: StrokeStyle(lineWidth: 7, lineCap: .round, lineJoin: .round))
-                        MapPolyline(coordinates: coords)
-                            .stroke(selectedRouteColor, style: Self.subwayRouteStrokeStyle)
-                    }
-                }
-            } else if !shape.stops.isEmpty {
-                // Fallback: connect direction-specific stops (not all stops)
-                let fallbackStops =
-                    shouldFilter
-                    ? shape.stopsForDirection(viewModel.selectedDirectionIndex)
-                    : shape.stops
+        if let split, split.ahead.count >= 2 || split.behind.count >= 2 {
+            // Two-tone rendering: faded "behind" + full-color "ahead"
+            if split.behind.count >= 2 {
+                polylineStroke(
+                    coords: split.behind, color: selectedRouteColor.opacity(0.25),
+                    casingOpacity: 0.3, isBus: isBus)
+            }
+            if split.ahead.count >= 2 {
+                polylineStroke(
+                    coords: split.ahead, color: selectedRouteColor,
+                    casingOpacity: 0.8, isBus: isBus)
+            }
+        } else if !polylines.isEmpty {
+            // No directional split — full color for all segments
+            ForEach(Array(polylines.enumerated()), id: \.offset) { _, coords in
+                polylineStroke(
+                    coords: coords, color: selectedRouteColor,
+                    casingOpacity: 0.8, isBus: isBus)
+            }
+        } else if let shape = viewModel.routeShape {
+            // Fallback: connect stops when no polyline data
+            let fallbackStops = shape.stopsForDirection(viewModel.selectedDirectionIndex)
+            if fallbackStops.count >= 2 {
                 let stopCoords = fallbackStops.map {
                     CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lon)
                 }
                 MapPolyline(coordinates: stopCoords)
                     .stroke(selectedRouteColor, style: busRouteStrokeStyle)
             }
+        }
+    }
+
+    /// Reusable polyline stroke — draws white casing + colored line for subway/rail,
+    /// or a single colored line for bus routes.
+    @MapContentBuilder
+    private func polylineStroke(
+        coords: [CLLocationCoordinate2D], color: Color,
+        casingOpacity: Double, isBus: Bool
+    ) -> some MapContent {
+        if isBus {
+            MapPolyline(coordinates: coords)
+                .stroke(color, style: busRouteStrokeStyle)
+        } else {
+            MapPolyline(coordinates: coords)
+                .stroke(
+                    .white.opacity(casingOpacity),
+                    style: StrokeStyle(lineWidth: 7, lineCap: .round, lineJoin: .round))
+            MapPolyline(coordinates: coords)
+                .stroke(color, style: Self.subwayRouteStrokeStyle)
         }
     }
 

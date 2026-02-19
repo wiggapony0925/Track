@@ -240,6 +240,37 @@ struct HomeView: View {
                 }
             }
         }
+        // Re-fetch transit data when the user applies new radius settings
+        .onReceive(NotificationCenter.default.publisher(for: .radiusSettingsChanged)) { _ in
+            Task {
+                await viewModel.refresh(location: effectiveLocation)
+                lastUpdated = Date()
+            }
+        }
+        .onChange(of: viewModel.tappedVehicleId) { _, newValue in
+            // When a vehicle marker is tapped on the map, expand the sheet
+            // so the matching arrival row is visible, and zoom/center on the marker.
+            guard let tappedId = newValue, !tappedId.isEmpty else { return }
+            
+            // Expand the sheet to show the arrivals list
+            if sheetDetent != .large {
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                    sheetDetent = .large
+                }
+            }
+            
+            // Zoom the camera to center on the tapped vehicle marker
+            if let coord = viewModel.coordinateForTappedVehicle(tappedId) {
+                withAnimation(.spring(response: 0.6, dampingFraction: 0.85)) {
+                    cameraPosition = .camera(MapCamera(
+                        centerCoordinate: coord,
+                        distance: 1500,
+                        heading: 0,
+                        pitch: is3DMode ? 60 : 0
+                    ))
+                }
+            }
+        }
     }
     
     // MARK: - Sheet Content Builder
@@ -283,6 +314,8 @@ struct HomeView: View {
                 routeShape: $viewModel.routeShape,
                 selectedDirectionIndex: $viewModel.selectedDirectionIndex,
                 serviceAlerts: viewModel.serviceAlerts,
+                busSchedule: viewModel.busSchedule,
+                cachedTrainArrivals: viewModel.cachedTrainArrivals,
                 cachedStations: viewModel.cachedStations,
                 liveVehicleCount: vehicleCount,
                 isSheetExpanded: sheetDetent == .large,
@@ -292,8 +325,45 @@ struct HomeView: View {
                 selectedStopId: viewModel.selectedStopId,
                 onTrack: { arrival in
                     viewModel.trackNearbyArrival(arrival, location: locationManager.currentLocation)
+                    
+                    // Zoom the map to center on the tracked vehicle/stop marker
+                    if let coord = viewModel.trackedVehicleCoordinate {
+                        withAnimation(.spring(response: 0.6, dampingFraction: 0.85)) {
+                            cameraPosition = .camera(MapCamera(
+                                centerCoordinate: coord,
+                                distance: 1500,
+                                heading: 0,
+                                pitch: is3DMode ? 60 : 0
+                            ))
+                        }
+                    }
                 },
                 isTracking: { viewModel.isTracking($0) },
+                isLiveOnMap: { viewModel.isVehicleLiveOnMap($0) },
+                onClearHighlight: {
+                    // Clear the map highlight when the user taps a highlighted row
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        viewModel.tappedVehicleId = nil
+                    }
+                },
+                onFocusVehicle: { key in
+                    // Row expanded/collapsed — highlight the matching marker on the map
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        viewModel.tappedVehicleId = key
+                    }
+                    // Zoom to the marker if a key was provided
+                    if let key, let coord = viewModel.coordinateForTappedVehicle(key) {
+                        withAnimation(.spring(response: 0.6, dampingFraction: 0.85)) {
+                            cameraPosition = .camera(MapCamera(
+                                centerCoordinate: coord,
+                                distance: 1500,
+                                heading: 0,
+                                pitch: is3DMode ? 60 : 0
+                            ))
+                        }
+                    }
+                },
+                tappedVehicleId: viewModel.tappedVehicleId,
                 onDismiss: {
                     withAnimation(.easeInOut(duration: 0.25)) {
                         viewModel.isRouteDetailPresented = false
@@ -411,28 +481,40 @@ struct HomeView: View {
             let isBus = viewModel.selectedGroupedRoute?.isBus ?? false
             let isCommuterRail = viewModel.selectedGroupedRoute?.isCommuterRail ?? false
             let startTime = Date()
-            let timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
-                let tick = Int(Date().timeIntervalSince(startTime))
+            var consecutiveErrors = 0
+            // Bus: interpolate every 2s (was 1s — reduces map re-renders by 50%).
+            // Subway/Rail: simulate every 2s, network refresh at longer intervals.
+            let tickInterval: TimeInterval = 2.0
+            let timer = Timer.scheduledTimer(withTimeInterval: tickInterval, repeats: true) { _ in
+                let tick = Int(Date().timeIntervalSince(startTime) / tickInterval)
                 
                 Task { @MainActor in
                     if isBus {
-                        // Buses: Fetch fresh GPS every 2s, interpolate on off-ticks
-                        if tick % 2 == 0 {
+                        // Buses: MTA SIRI updates GPS every ~30s.
+                        // Poll every 10s for fresh data, interpolate on other ticks.
+                        // Back off on errors: skip network calls after 3+ failures.
+                        let pollInterval = consecutiveErrors >= 3 ? 15 : 5 // ticks (×2s = 10s / 30s)
+                        if tick % pollInterval == 0 {
                             await viewModel.refreshBusVehicles()
+                            if viewModel.errorMessage != nil {
+                                consecutiveErrors += 1
+                            } else {
+                                consecutiveErrors = 0
+                            }
                         } else {
                             viewModel.updateBusSimulation()
                         }
                     } else if isCommuterRail {
                         // LIRR / MNR: Same interpolation engine as subway —
-                        // simulate every tick, network refresh every 5s.
+                        // simulate every tick, network refresh every 10s.
                         viewModel.updateSimulation()
-                        if tick % 5 == 0 {
+                        if tick % 5 == 0 { // 5 ticks × 2s = 10s
                             await viewModel.refreshCommuterRailVehicles()
                         }
                     } else {
-                        // Subway: Simulate every tick, network refresh every 3s
+                        // Subway: Simulate every tick, network refresh every 6s
                         viewModel.updateSimulation()
-                        if tick % 3 == 0 {
+                        if tick % 3 == 0 { // 3 ticks × 2s = 6s
                             await viewModel.refreshTrainVehicles()
                         }
                     }

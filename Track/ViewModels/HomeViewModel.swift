@@ -32,37 +32,55 @@ final class HomeViewModel {
     /// User-entered search text for filtering transit results.
     var searchText = ""
 
-    /// Grouped transit results filtered by the current search query.
-    /// Returns all results when the search text is empty.
-    /// Searches route names, directions, current arrival stops, AND all stations served by the route.
-    var filteredGroupedTransit: [GroupedNearbyTransitResponse] {
-        guard !searchText.isEmpty else { return groupedTransit }
-        let query = searchText.lowercased()
+    // MARK: - Search Helpers
 
-        // Find all routes that serve stations matching the search query
-        let matchingStationRoutes = Set(
+    /// Checks whether a `GroupedNearbyTransitResponse` matches the given query.
+    /// Searches display name, route ID, directions, arrival stop names,
+    /// destination names, AND all stations served by the route.
+    private func groupMatchesQuery(
+        _ group: GroupedNearbyTransitResponse, query: String, stationRoutes: Set<String>
+    ) -> Bool {
+        // Match by route display name or ID
+        group.displayName.lowercased().contains(query)
+            || group.routeId.lowercased().contains(query)
+            // Match by direction, stop name, or destination name
+            || group.directions.contains { direction in
+                direction.direction.lowercased().contains(query)
+                    || direction.arrivals.contains {
+                        $0.stopName.lowercased().contains(query)
+                            || ($0.destination?.lowercased().contains(query) ?? false)
+                    }
+            }
+            // Match if this route serves any station matching the query
+            || stationRoutes.contains(group.displayName)
+            || stationRoutes.contains(group.routeId)
+    }
+
+    /// Returns the set of route names that serve stations matching the query.
+    /// Computed once per search to avoid O(n²) lookups.
+    private func stationRoutesForQuery(_ query: String) -> Set<String> {
+        Set(
             cachedStations
                 .filter { $0.name.lowercased().contains(query) }
                 .flatMap { $0.routes }
         )
+    }
 
-        return groupedTransit.filter { group in
-            // Match by route display name or ID
-            group.displayName.lowercased().contains(query)
-                || group.routeId.lowercased().contains(query)
-                // Match by direction or current arrival stop names
-                || group.directions.contains { direction in
-                    direction.direction.lowercased().contains(query)
-                        || direction.arrivals.contains { $0.stopName.lowercased().contains(query) }
-                }
-                // Match if this route serves any station matching the query
-                || matchingStationRoutes.contains(group.displayName)
-                || matchingStationRoutes.contains(group.routeId)
+    /// Grouped transit results filtered by the current search query.
+    /// Returns all results when the search text is empty.
+    /// Searches route names, directions, current arrival stops, destinations,
+    /// AND all stations served by the route.
+    var filteredGroupedTransit: [GroupedNearbyTransitResponse] {
+        guard !searchText.isEmpty else { return groupedTransit }
+        let query = searchText.lowercased()
+        let stationRoutes = stationRoutesForQuery(query)
+        return groupedTransit.filter {
+            groupMatchesQuery($0, query: query, stationRoutes: stationRoutes)
         }
     }
 
     /// LIRR arrivals filtered by search text.
-    /// Searches route ID, station ID, direction, and destination.
+    /// Searches route ID, station ID, station name, direction, and destination.
     var filteredLIRRArrivals: [TrainArrival] {
         guard !searchText.isEmpty else { return lirrArrivals }
         let query = searchText.lowercased()
@@ -76,7 +94,7 @@ final class HomeViewModel {
     }
 
     /// Metro-North arrivals filtered by search text.
-    /// Searches route ID, station ID, direction, and destination.
+    /// Searches route ID, station ID, station name, direction, and destination.
     var filteredMNRArrivals: [TrainArrival] {
         guard !searchText.isEmpty else { return mnrArrivals }
         let query = searchText.lowercased()
@@ -103,7 +121,7 @@ final class HomeViewModel {
     }
 
     /// Bus arrivals filtered by search text.
-    /// Searches both the full routeId and the stripped display name for flexibility.
+    /// Searches both the full routeId, stopId, destination, and the status text.
     var filteredBusArrivals: [BusArrival] {
         guard !searchText.isEmpty else { return busArrivals }
         let query = searchText.lowercased()
@@ -111,6 +129,7 @@ final class HomeViewModel {
             arrival.routeId.lowercased().contains(query)
                 || arrival.stopId.lowercased().contains(query)
                 || arrival.statusText.lowercased().contains(query)
+                || (arrival.destinationName?.lowercased().contains(query) ?? false)
         }
     }
 
@@ -120,6 +139,7 @@ final class HomeViewModel {
         let query = searchText.lowercased()
         return nearbyBusStops.filter { stop in
             stop.name.lowercased().contains(query)
+                || stop.id.lowercased().contains(query)
         }
     }
 
@@ -127,13 +147,9 @@ final class HomeViewModel {
     var filteredNearbyGroupedBusArrivals: [GroupedNearbyTransitResponse] {
         guard !searchText.isEmpty else { return nearbyGroupedBusArrivals }
         let query = searchText.lowercased()
-        return nearbyGroupedBusArrivals.filter { group in
-            group.displayName.lowercased().contains(query)
-                || group.routeId.lowercased().contains(query)
-                || group.directions.contains { direction in
-                    direction.direction.lowercased().contains(query)
-                        || direction.arrivals.contains { $0.stopName.lowercased().contains(query) }
-                }
+        let stationRoutes = stationRoutesForQuery(query)
+        return nearbyGroupedBusArrivals.filter {
+            groupMatchesQuery($0, query: query, stationRoutes: stationRoutes)
         }
     }
 
@@ -141,13 +157,9 @@ final class HomeViewModel {
     var filteredNearbyGroupedSubwayArrivals: [GroupedNearbyTransitResponse] {
         guard !searchText.isEmpty else { return nearbyGroupedSubwayArrivals }
         let query = searchText.lowercased()
-        return nearbyGroupedSubwayArrivals.filter { group in
-            group.displayName.lowercased().contains(query)
-                || group.routeId.lowercased().contains(query)
-                || group.directions.contains { direction in
-                    direction.direction.lowercased().contains(query)
-                        || direction.arrivals.contains { $0.stopName.lowercased().contains(query) }
-                }
+        let stationRoutes = stationRoutesForQuery(query)
+        return nearbyGroupedSubwayArrivals.filter {
+            groupMatchesQuery($0, query: query, stationRoutes: stationRoutes)
         }
     }
 
@@ -348,24 +360,63 @@ final class HomeViewModel {
 
     // Route detail sheet
     var selectedGroupedRoute: GroupedNearbyTransitResponse?
-    var selectedDirectionIndex: Int = 0
+    var selectedDirectionIndex: Int = 0 {
+        didSet { rebuildCachedPolylines() }
+    }
     var isRouteDetailPresented = false
 
     // Draggable search pin
     var searchPinCoordinate: CLLocationCoordinate2D?
     var isSearchPinActive = false
 
-    // Walking route to the nearest station
-    var walkingRoute: MKRoute?
+    // Walking route to the nearest station (forwarded from goMode)
     var nearestStopCoordinate: CLLocationCoordinate2D?
     var selectedStopId: String?
 
     // Live bus/train tracking on map
     var selectedRouteId: String?
     var highlightedVehicleId: String?
+    /// Coordinate of the tracked vehicle/arrival for map zoom-to-center.
+    /// Set by `trackNearbyArrival` so the View can animate the camera.
+    var trackedVehicleCoordinate: CLLocationCoordinate2D?
+    /// Vehicle/trip ID tapped on the map — used to highlight and expand the
+    /// matching arrival row in the RouteDetailSheet.
+    /// The ID of the currently expanded arrival row in the flat list.
+    /// Used to enforce single-row expansion.
+    var selectedExpandedArrivalID: String? = nil
+
+    /// Validates the vehicle ID currently selected on the map.
+    var tappedVehicleId: String? {
+        didSet {
+            // When map selection changes, auto-expand the corresponding row
+            guard let id = tappedVehicleId else { return }
+
+            // Find the best matching arrival to expand
+            // prioritize exact vehicle ID match
+            if let match = nearbyTransit.first(where: { $0.vehicleId == id || $0.tripId == id }) {
+                // Only change if not already selected to avoid animation glitches
+                if selectedExpandedArrivalID != match.id {
+                    withAnimation {
+                        selectedExpandedArrivalID = match.id
+                    }
+                }
+            }
+        }
+    }
+
+    /// Toggles the expansion state for a given arrival ID.
+    func toggleArrivalExpansion(_ id: String) {
+        withAnimation {
+            if selectedExpandedArrivalID == id {
+                selectedExpandedArrivalID = nil
+            } else {
+                selectedExpandedArrivalID = id
+            }
+        }
+    }
     var busVehicles: [BusVehicleResponse] = []
 
-    struct TrainVehicle: Identifiable {
+    struct TrainVehicle: Identifiable, Equatable {
         let id: String
         let tripId: String?
         let routeId: String
@@ -374,6 +425,8 @@ final class HomeViewModel {
         var lon: Double
         var bearing: Double?
         var nextStationName: String?
+        /// Minutes until arrival at the next station, derived from GTFS-RT.
+        var minutesAway: Int?
     }
     var trainVehicles: [TrainVehicle] = []
 
@@ -389,7 +442,97 @@ final class HomeViewModel {
     /// When the last bus GPS batch arrived (for elapsed-time calculation).
     var lastBusUpdateTime: Date = .distantPast
 
-    var routeShape: RouteShapeResponse?
+    var routeShape: RouteShapeResponse? {
+        didSet { rebuildCachedPolylines() }
+    }
+
+    /// Pre-decoded polylines for the currently selected route direction.
+    /// Invalidated and rebuilt when `routeShape` or `selectedDirectionIndex` changes
+    /// so the map never decodes encoded strings during render.
+    private(set) var cachedRoutePolylines: [[CLLocationCoordinate2D]] = []
+
+    /// Single combined polyline for vehicle interpolation (bus simulation / train positions).
+    /// Invalidated and rebuilt alongside `cachedRoutePolylines`.
+    private(set) var cachedInterpolationPolyline: [CLLocationCoordinate2D] = []
+
+    /// Rebuilds the cached decoded polylines from the current route shape and direction.
+    private func rebuildCachedPolylines() {
+        guard let shape = routeShape else {
+            cachedRoutePolylines = []
+            cachedInterpolationPolyline = []
+            return
+        }
+        let groupDirCount = selectedGroupedRoute?.directions.count ?? 0
+        let shouldFilter = !shape.directions.isEmpty && groupDirCount > 1
+
+        cachedRoutePolylines =
+            shouldFilter
+            ? shape.polylinesForDirection(selectedDirectionIndex)
+            : shape.decodedPolylines
+
+        // Build a single continuous polyline for interpolation.
+        // Prefer direction-filtered segments; fall back to all polylines
+        // when the filtered set has too few points (e.g. single-direction routes).
+        let combined = cachedRoutePolylines.flatMap { $0 }
+        if combined.count >= 2 {
+            cachedInterpolationPolyline = combined
+        } else {
+            let all = shape.decodedPolylines.flatMap { $0 }
+            cachedInterpolationPolyline = all.count >= 2 ? all : []
+        }
+    }
+
+    /// Polyline split at the nearest stop: `ahead` keeps full color, `behind` fades.
+    /// Computed on-demand from existing state — no cache invalidation timing issues.
+    var directionalSplit: (ahead: [CLLocationCoordinate2D], behind: [CLLocationCoordinate2D])? {
+        guard let nearestCoord = nearestStopCoordinate,
+            !cachedInterpolationPolyline.isEmpty,
+            let shape = routeShape
+        else { return nil }
+
+        let polyline = cachedInterpolationPolyline
+
+        // Find the closest point on the polyline to the nearest stop
+        let nearestLoc = CLLocation(
+            latitude: nearestCoord.latitude, longitude: nearestCoord.longitude)
+        var closestIdx = 0
+        var minDist: CLLocationDistance = .greatestFiniteMagnitude
+        for (i, coord) in polyline.enumerated() {
+            let d = CLLocation(latitude: coord.latitude, longitude: coord.longitude)
+                .distance(from: nearestLoc)
+            if d < minDist {
+                minDist = d
+                closestIdx = i
+            }
+        }
+
+        let splitIdx = max(0, min(closestIdx, polyline.count - 1))
+
+        // stopsForDirection handles the subway fallback from
+        // directions[x].stops → top-level stops automatically
+        let dirStops = shape.stopsForDirection(selectedDirectionIndex)
+        guard !dirStops.isEmpty else { return nil }
+
+        // Determine polyline flow direction relative to stop ordering
+        let firstStopLoc = CLLocation(latitude: dirStops[0].lat, longitude: dirStops[0].lon)
+        let firstPolyLoc = CLLocation(
+            latitude: polyline[0].latitude, longitude: polyline[0].longitude)
+        let lastPolyLoc = CLLocation(
+            latitude: polyline.last!.latitude, longitude: polyline.last!.longitude)
+        let polyFlowsWithStops =
+            firstPolyLoc.distance(from: firstStopLoc)
+            <= lastPolyLoc.distance(from: firstStopLoc)
+
+        let beforeSplit = Array(polyline[0...splitIdx])
+        let afterSplit = Array(polyline[splitIdx...])
+
+        if polyFlowsWithStops {
+            // Polyline flows first→last stop. Before the split = already passed.
+            return (ahead: afterSplit, behind: beforeSplit)
+        } else {
+            return (ahead: beforeSplit, behind: afterSplit)
+        }
+    }
 
     // MARK: - Direction-Filtered Vehicles
 
@@ -409,7 +552,8 @@ final class HomeViewModel {
 
     /// Train vehicles filtered to the currently selected direction.
     /// Subway directions use "N"/"S" (or destination names); we match by
-    /// checking the direction string of the arrivals in the selected group.
+    /// checking the direction string of the arrivals in the selected group,
+    /// and also map compass codes to ensure GTFS-RT "N"/"S" values match.
     var filteredTrainVehicles: [TrainVehicle] {
         guard let group = selectedGroupedRoute,
             group.directions.count > 1
@@ -430,65 +574,104 @@ final class HomeViewModel {
             }
         }
 
+        // Map compass codes ↔ directional labels so GTFS-RT "N"/"S" values
+        // match grouped API labels like "Northbound", "Uptown", etc.
+        let compassExpansions: [String: [String]] = [
+            "N": ["NORTHBOUND", "UPTOWN"],
+            "S": ["SOUTHBOUND", "DOWNTOWN"],
+            "E": ["EASTBOUND"],
+            "W": ["WESTBOUND"],
+            "NE": ["NORTHBOUND", "EASTBOUND"],
+            "NW": ["NORTHBOUND", "WESTBOUND"],
+            "SE": ["SOUTHBOUND", "EASTBOUND"],
+            "SW": ["SOUTHBOUND", "WESTBOUND"],
+        ]
+        let reverseCompass: [String: String] = [
+            "NORTHBOUND": "N", "UPTOWN": "N",
+            "SOUTHBOUND": "S", "DOWNTOWN": "S",
+            "EASTBOUND": "E", "WESTBOUND": "W",
+        ]
+        // Expand existing compass codes and add reverse mappings
+        for dir in Array(validDirs) {
+            if let expansions = compassExpansions[dir] {
+                for e in expansions { validDirs.insert(e) }
+            }
+            if let code = reverseCompass[dir] {
+                validDirs.insert(code)
+            }
+        }
+
+        // Bridge grouped API destination names with GTFS compass codes.
+        // The grouped API uses destination names (e.g. "Flushing-Main St")
+        // while GTFS-RT vehicles use compass codes ("N"/"S"). When validDirs
+        // only contains destination names, the compass expansion above has
+        // nothing to work with. Use the route shape's direction data to find
+        // which GTFS direction_id corresponds to the selected tab, then map
+        // direction_id to the standard GTFS compass convention.
+        let hasCompassCode =
+            validDirs.contains("N") || validDirs.contains("S")
+            || validDirs.contains("E") || validDirs.contains("W")
+        if !hasCompassCode, let shape = routeShape, !shape.directions.isEmpty {
+            // Try matching the selected direction's name against shape headsigns
+            let selectedName = selectedDir.direction.uppercased()
+            if let matchedShape = shape.directions.first(where: {
+                $0.headsign.uppercased() == selectedName
+                    || selectedName.contains($0.headsign.uppercased())
+                    || $0.headsign.uppercased().contains(selectedName)
+            }) {
+                // GTFS convention: direction_id 0 = southbound, 1 = northbound
+                let compassCode = matchedShape.directionId == 0 ? "S" : "N"
+                validDirs.insert(compassCode)
+                if let expansions = compassExpansions[compassCode] {
+                    for e in expansions { validDirs.insert(e) }
+                }
+            } else {
+                // No headsign match — fall back to positional mapping.
+                // The selected direction tab index often aligns with
+                // shape direction order.
+                let shapeIdx = min(safeIdx, shape.directions.count - 1)
+                let dirId = shape.directions[shapeIdx].directionId
+                let compassCode = dirId == 0 ? "S" : "N"
+                validDirs.insert(compassCode)
+                if let expansions = compassExpansions[compassCode] {
+                    for e in expansions { validDirs.insert(e) }
+                }
+            }
+        }
+
         let filtered = trainVehicles.filter { vehicle in
             validDirs.contains(vehicle.direction.uppercased())
         }
-        // If no vehicles matched, show all (safety fallback)
-        return filtered.isEmpty && !trainVehicles.isEmpty ? trainVehicles : filtered
+        return filtered
     }
 
-    // Full transit system map (pre-decoded for performance)
-    // Includes Subway, LIRR, and Metro-North lines
-    struct CachedTransitLine: Identifiable {
-        let id: String
-        let color: Color
-        let coordinates: [[CLLocationCoordinate2D]]
-        let mode: TransitLineMode
+    // MARK: - Sub-ViewModels
 
-        enum TransitLineMode {
-            case subway
-            case lirr
-            case mnr
-        }
+    /// System map data (subway/LIRR/MNR polylines and stations).
+    /// Loaded once at startup; the View reads directly from this sub-ViewModel.
+    let mapSystem = MapSystemViewModel()
+
+    /// GO Mode (live transit tracking) state and logic.
+    let goMode = GoModeViewModel()
+
+    // MARK: - Type Aliases (backward compatibility)
+
+    typealias CachedSubwayStation = MapSystemViewModel.CachedSubwayStation
+    typealias FlattenedMapPolyline = MapSystemViewModel.FlattenedMapPolyline
+    typealias CachedTransitLine = MapSystemViewModel.CachedTransitLine
+
+    // MARK: - System Map Forwarding (backward compatibility)
+
+    /// Forwarding properties so existing views can still use `viewModel.flattenedSubwayPolylines`, etc.
+    var flattenedSubwayPolylines: [MapSystemViewModel.FlattenedMapPolyline] {
+        mapSystem.flattenedSubwayPolylines
     }
-    var cachedSystemMap: [CachedTransitLine] = []
-
-    /// Pre-computed subway lines with perpendicular offsets applied to shared corridors.
-    /// Computed once when cachedSystemMap is set, so the View never recalculates it.
-    struct OffsetSubwayLine: Identifiable {
-        let id: String
-        let color: Color
-        let coordinates: [[CLLocationCoordinate2D]]
+    var flattenedCommuterRailPolylines: [MapSystemViewModel.FlattenedMapPolyline] {
+        mapSystem.flattenedCommuterRailPolylines
     }
-    var cachedOffsetSubwayLines: [OffsetSubwayLine] = []
-
-    // MARK: - Flattened Map Polylines (Performance Optimized)
-
-    /// A single polyline segment ready for rendering with a stable ID.
-    /// This flattens nested structures to avoid nested ForEach loops in SwiftUI Map,
-    /// which dramatically improves rendering performance.
-    struct FlattenedMapPolyline: Identifiable {
-        let id: String  // Stable unique ID: "routeId_branchIndex"
-        let coordinates: [CLLocationCoordinate2D]
-        let color: Color
-        let lineWidth: CGFloat
+    var cachedStations: [MapSystemViewModel.CachedSubwayStation] {
+        mapSystem.cachedStations
     }
-
-    /// Pre-computed flattened subway polylines for the system map view.
-    /// Uses stable IDs and avoids nested ForEach for optimal MapKit rendering.
-    var flattenedSubwayPolylines: [FlattenedMapPolyline] = []
-
-    /// Pre-computed flattened commuter rail (LIRR/MNR) polylines for the system map view.
-    var flattenedCommuterRailPolylines: [FlattenedMapPolyline] = []
-
-    // Full subway station list with served lines
-    struct CachedSubwayStation: Identifiable {
-        let id: String
-        let name: String
-        let coordinate: CLLocationCoordinate2D
-        let routes: [String]
-    }
-    var cachedStations: [CachedSubwayStation] = []
 
     // MARK: - Offline Support
 
@@ -509,338 +692,7 @@ final class HomeViewModel {
 
     init() {
         syncTrackedRoute()
-        Task {
-            await loadSystemMap()
-            await loadStations()
-        }
-    }
-
-    /// Fetches the full transit system map (subway, LIRR, MNR polylines).
-    /// Falls back to bundled offline data when network is unavailable.
-    func loadSystemMap() async {
-        // If offline, use bundled static data
-        if !OfflineCacheManager.shared.isOnline {
-            await loadOfflineSystemMap()
-            return
-        }
-
-        do {
-            // Fetch subway shapes from API
-            let response = try await TrackAPI.fetchAllSubwayShapes()
-
-            // Pre-decode subway coordinates for the system-map overview.
-            // Deduplication and simplification are handled by the backend.
-            var decoded: [CachedTransitLine] = response.lines.map { line in
-                let branches = line.decodedPolylines
-                return CachedTransitLine(
-                    id: line.routeId,
-                    color: Color(hex: line.colorHex),
-                    coordinates: branches,
-                    mode: .subway
-                )
-            }
-
-            // Fetch LIRR shapes from API
-            if let lirrResponse = try? await TrackAPI.fetchAllLIRRShapes() {
-                let lirrLines: [CachedTransitLine] = lirrResponse.lines.map { line in
-                    CachedTransitLine(
-                        id: line.routeId,
-                        color: Color(hex: line.colorHex),
-                        coordinates: line.decodedPolylines,
-                        mode: .lirr
-                    )
-                }
-                decoded.append(contentsOf: lirrLines)
-                // Cache for offline use
-                await MainActor.run {
-                    OfflineCacheManager.shared.cacheLIRRShapes(lirrResponse)
-                }
-            }
-
-            // Fetch MNR shapes from API
-            if let mnrResponse = try? await TrackAPI.fetchAllMNRShapes() {
-                let mnrLines: [CachedTransitLine] = mnrResponse.lines.map { line in
-                    CachedTransitLine(
-                        id: line.routeId,
-                        color: Color(hex: line.colorHex),
-                        coordinates: line.decodedPolylines,
-                        mode: .mnr
-                    )
-                }
-                decoded.append(contentsOf: mnrLines)
-                // Cache for offline use
-                await MainActor.run {
-                    OfflineCacheManager.shared.cacheMNRShapes(mnrResponse)
-                }
-            }
-
-            // Log details about what we loaded
-            let subwayCount = decoded.filter { $0.mode == .subway }.count
-            let lirrCount = decoded.filter { $0.mode == .lirr }.count
-            let mnrCount = decoded.filter { $0.mode == .mnr }.count
-            let totalBranches = decoded.reduce(0) { $0 + $1.coordinates.count }
-            let totalPoints = decoded.reduce(0) { $0 + $1.coordinates.reduce(0) { $0 + $1.count } }
-
-            await MainActor.run {
-                self.cachedSystemMap = decoded
-                self.computeSubwayOffsets()
-            }
-
-            AppLogger.shared.log(
-                "SYSTEM_MAP",
-                message:
-                    "Loaded \(decoded.count) transit lines (\(subwayCount) subway, \(lirrCount) LIRR, \(mnrCount) MNR) — \(totalBranches) branches, \(totalPoints) total points"
-            )
-        } catch {
-            AppLogger.shared.logError("loadSystemMap", error: error)
-            // Fall back to offline data on error
-            await loadOfflineSystemMap()
-        }
-    }
-
-    /// Determines the transit mode for a route ID based on prefix
-    private func transitMode(for routeId: String) -> CachedTransitLine.TransitLineMode? {
-        let upper = routeId.uppercased()
-        if upper.hasPrefix("LIRR") { return .lirr }
-        if upper.hasPrefix("MNR") { return .mnr }
-        return nil
-    }
-
-    /// Checks if a route ID is a commuter rail route (LIRR or MNR)
-    private func isCommuterRailRoute(_ routeId: String) -> Bool {
-        transitMode(for: routeId) != nil
-    }
-
-    // MARK: - Commuter Rail Bundle Loading
-
-    /// Loads LIRR and MNR routes from the static bundle
-    private func loadCommuterRailFromBundle(_ bundle: StaticBundle) -> [CachedTransitLine] {
-        var lines: [CachedTransitLine] = []
-
-        // Log all route IDs in the bundle for debugging
-        let allRouteIds = bundle.routes.routeIds
-
-        // Count LIRR and MNR routes (uppercase once for efficiency)
-        var lirrCount = 0
-        var mnrCount = 0
-        for routeId in allRouteIds {
-            let upper = routeId.uppercased()
-            if upper.hasPrefix("LIRR") {
-                lirrCount += 1
-            } else if upper.hasPrefix("MNR") {
-                mnrCount += 1
-            }
-        }
-
-        AppLogger.shared.log(
-            "BUNDLE",
-            message: "Bundle has \(allRouteIds.count) routes: \(lirrCount) LIRR, \(mnrCount) MNR")
-
-        for routeId in allRouteIds {
-            // Only process LIRR and MNR routes
-            guard let mode = transitMode(for: routeId) else { continue }
-
-            let branches = bundle.routes.branches(for: routeId)
-            guard !branches.isEmpty else { continue }
-
-            // Convert BundleCoordinate to CLLocationCoordinate2D
-            let coordinates: [[CLLocationCoordinate2D]] = branches.map { branch in
-                branch.map { coord in
-                    CLLocationCoordinate2D(latitude: coord.lat, longitude: coord.lon)
-                }
-            }
-
-            let color = SubwayRoutesData.color(for: routeId)
-
-            lines.append(
-                CachedTransitLine(
-                    id: routeId,
-                    color: color,
-                    coordinates: coordinates,
-                    mode: mode
-                ))
-        }
-
-        return lines
-    }
-
-    /// Loads all transit routes from bundled offline data.
-    private func loadOfflineSystemMap() async {
-        // Load subway routes from bundled offline data
-        var offlineLines: [CachedTransitLine] = SubwayRoutesData.allRouteIds.compactMap {
-            routeId -> CachedTransitLine? in
-            let rawBranches = SubwayRoutesData.routeBranches(for: routeId)
-            guard !rawBranches.isEmpty else { return nil }
-            return CachedTransitLine(
-                id: routeId,
-                color: SubwayRoutesData.color(for: routeId),
-                coordinates: rawBranches,
-                mode: .subway
-            )
-        }
-
-        // Load LIRR shapes from disk cache (saved when last online)
-        if let lirrResponse = OfflineCacheManager.shared.getCachedLIRRShapes() {
-            let lirrLines: [CachedTransitLine] = lirrResponse.lines.map { line in
-                CachedTransitLine(
-                    id: line.routeId,
-                    color: Color(hex: line.colorHex),
-                    coordinates: line.decodedPolylines,
-                    mode: .lirr
-                )
-            }
-            offlineLines.append(contentsOf: lirrLines)
-        }
-
-        // Load MNR shapes from disk cache (saved when last online)
-        if let mnrResponse = OfflineCacheManager.shared.getCachedMNRShapes() {
-            let mnrLines: [CachedTransitLine] = mnrResponse.lines.map { line in
-                CachedTransitLine(
-                    id: line.routeId,
-                    color: Color(hex: line.colorHex),
-                    coordinates: line.decodedPolylines,
-                    mode: .mnr
-                )
-            }
-            offlineLines.append(contentsOf: mnrLines)
-        }
-
-        self.cachedSystemMap = offlineLines
-        self.computeSubwayOffsets()
-
-        // Count per mode for logging
-        let subwayCount = offlineLines.filter { $0.mode == .subway }.count
-        let lirrCount = offlineLines.filter { $0.mode == .lirr }.count
-        let mnrCount = offlineLines.filter { $0.mode == .mnr }.count
-        let totalBranches = offlineLines.reduce(0) { $0 + $1.coordinates.count }
-        AppLogger.shared.log(
-            "OFFLINE",
-            message:
-                "Loaded \(offlineLines.count) offline transit routes (\(subwayCount) subway, \(lirrCount) LIRR, \(mnrCount) MNR, \(totalBranches) total branches)"
-        )
-    }
-
-    /// Populates `cachedOffsetSubwayLines` from the system map.
-    ///
-    /// Corridor offsets (fanning out co-located lines like 4/5/6 on Lex Ave)
-    /// are now computed server-side by `/subway/shapes/all`, so the client
-    /// simply converts `CachedTransitLine` → `OffsetSubwayLine` 1:1.
-    private func computeSubwayOffsets() {
-        let subwayLines = cachedSystemMap.filter { $0.mode == .subway }
-        cachedOffsetSubwayLines = subwayLines.map {
-            OffsetSubwayLine(id: $0.id, color: $0.color, coordinates: $0.coordinates)
-        }
-        AppLogger.shared.log(
-            "SYSTEM_MAP",
-            message: "Mapped \(subwayLines.count) subway lines (offsets applied server-side)")
-
-        // Pre-compute flattened polylines for efficient rendering
-        computeFlattenedPolylines()
-    }
-
-    /// Pre-computes flattened polyline arrays with stable IDs for efficient MapKit rendering.
-    /// This eliminates nested ForEach loops in the View, dramatically improving performance.
-    /// Called once after `cachedOffsetSubwayLines` is populated.
-    private func computeFlattenedPolylines() {
-        // Flatten subway polylines from offset lines
-        var subwayFlat: [FlattenedMapPolyline] = []
-        for line in cachedOffsetSubwayLines {
-            for (branchIndex, coords) in line.coordinates.enumerated() {
-                // Skip empty or single-point polylines
-                guard coords.count >= 2 else { continue }
-                subwayFlat.append(
-                    FlattenedMapPolyline(
-                        id: "\(line.id)_\(branchIndex)",
-                        coordinates: coords,
-                        color: line.color,
-                        lineWidth: 3
-                    ))
-            }
-        }
-        flattenedSubwayPolylines = subwayFlat
-
-        // Flatten commuter rail polylines (LIRR and MNR)
-        var commuterFlat: [FlattenedMapPolyline] = []
-        for line in cachedSystemMap where line.mode != .subway {
-            for (branchIndex, coords) in line.coordinates.enumerated() {
-                // Skip empty or single-point polylines
-                guard coords.count >= 2 else { continue }
-                commuterFlat.append(
-                    FlattenedMapPolyline(
-                        id: "\(line.id)_\(branchIndex)",
-                        coordinates: coords,
-                        color: line.color,
-                        lineWidth: 2.5
-                    ))
-            }
-        }
-        flattenedCommuterRailPolylines = commuterFlat
-
-        let totalPolylines = subwayFlat.count + commuterFlat.count
-        let totalPoints =
-            subwayFlat.reduce(0) { $0 + $1.coordinates.count }
-            + commuterFlat.reduce(0) { $0 + $1.coordinates.count }
-        AppLogger.shared.log(
-            "SYSTEM_MAP",
-            message:
-                "Flattened \(totalPolylines) polylines (\(subwayFlat.count) subway, \(commuterFlat.count) commuter rail) with \(totalPoints) total points"
-        )
-    }
-
-    /// Fetches all subway stations and their served lines.
-    /// Falls back to bundled offline data when network is unavailable.
-    func loadStations() async {
-        // If offline, use bundled static data
-        if !OfflineCacheManager.shared.isOnline {
-            loadOfflineStations()
-            return
-        }
-
-        do {
-            let response = try await TrackAPI.fetchAllSubwayStations()
-            let stations = response.stations.map { s in
-                CachedSubwayStation(
-                    id: s.id,
-                    name: s.name,
-                    coordinate: CLLocationCoordinate2D(latitude: s.lat, longitude: s.lon),
-                    routes: s.routes
-                )
-            }
-            await MainActor.run {
-                self.cachedStations = stations
-            }
-
-            // Cache stations for offline use
-            let cachedStations = response.stations.map { s in
-                CachedStation(
-                    id: s.id,
-                    name: s.name,
-                    latitude: s.lat,
-                    longitude: s.lon,
-                    routes: s.routes
-                )
-            }
-            OfflineCacheManager.shared.cacheStations(cachedStations)
-
-        } catch {
-            AppLogger.shared.logError("loadStations", error: error)
-            // Fall back to offline data on error
-            loadOfflineStations()
-        }
-    }
-
-    /// Loads stations from bundled offline data.
-    private func loadOfflineStations() {
-        let offlineStations = SubwayRoutesData.majorStations.map { station in
-            CachedSubwayStation(
-                id: station.id,
-                name: station.name,
-                coordinate: station.coordinate,
-                routes: station.routes
-            )
-        }
-        self.cachedStations = offlineStations
-        AppLogger.shared.log("OFFLINE", message: "Loaded \(offlineStations.count) offline stations")
+        // System map and stations are now loaded by MapSystemViewModel
     }
 
     /// Syncs the local tracking state with the persisted TrackedRoute in UserDefaults.
@@ -873,22 +725,106 @@ final class HomeViewModel {
         return cleanRouteId == trackedCleanId && tracked.stopName == arrival.stopId
     }
 
-    // MARK: - GO Mode (Live Transit Tracking)
+    /// Returns the map-marker key for an arrival — the same identifier
+    /// the map uses for `tappedVehicleId`. Bus vehicles use `vehicleId`;
+    /// trains use `tripId` (falling back to `vehicleId`).
+    /// Returns nil when the arrival has no live vehicle on the map.
+    func vehicleKeyForArrival(_ arrival: NearbyTransitResponse) -> String? {
+        if arrival.isBus, let vid = arrival.vehicleId, !vid.isEmpty,
+            busVehicles.contains(where: { $0.vehicleId == vid })
+        {
+            return vid
+        }
+        if !arrival.isBus {
+            if let tid = arrival.tripId, !tid.isEmpty,
+                trainVehicles.contains(where: { $0.tripId == tid })
+            {
+                return tid
+            }
+            if let vid = arrival.vehicleId, !vid.isEmpty,
+                trainVehicles.contains(where: { $0.id == vid })
+            {
+                return vid
+            }
+        }
+        return nil
+    }
 
-    /// Whether the user is in "GO" mode — passively tracking a vehicle.
-    var isGoModeActive = false
+    /// Returns the coordinate of a tapped vehicle marker (bus or train) by its ID.
+    /// Used by HomeView to zoom/center the map on the tapped marker.
+    func coordinateForTappedVehicle(_ vehicleId: String) -> CLLocationCoordinate2D? {
+        // Check bus vehicles
+        if let bus = busVehicles.first(where: { $0.vehicleId == vehicleId }) {
+            return CLLocationCoordinate2D(latitude: bus.lat, longitude: bus.lon)
+        }
+        // Check train vehicles (by tripId or id)
+        if let train = trainVehicles.first(where: { $0.tripId == vehicleId || $0.id == vehicleId })
+        {
+            return CLLocationCoordinate2D(latitude: train.lat, longitude: train.lon)
+        }
+        return nil
+    }
 
-    /// The route being tracked in GO mode (e.g. "L", "B63").
-    var goModeRouteName: String?
+    /// Finds the map coordinate for a tracked arrival.
+    /// Looks up the live vehicle position first (bus by vehicleId, train by tripId);
+    /// falls back to the arrival's stop lat/lon if no live vehicle is found.
+    /// Works for all modes: subway, bus, LIRR, Metro-North.
+    func coordinateForTrackedArrival(_ arrival: NearbyTransitResponse) -> CLLocationCoordinate2D? {
+        // 1. Try to find a live bus vehicle by vehicleId
+        if arrival.isBus, let vid = arrival.vehicleId, !vid.isEmpty {
+            if let vehicle = busVehicles.first(where: { $0.vehicleId == vid }) {
+                return CLLocationCoordinate2D(latitude: vehicle.lat, longitude: vehicle.lon)
+            }
+        }
 
-    /// Route color for the tracked line in GO mode.
-    var goModeRouteColor: Color?
+        // 2. Try to find a live train vehicle by tripId
+        if !arrival.isBus, let tripId = arrival.tripId, !tripId.isEmpty {
+            if let train = trainVehicles.first(where: { $0.tripId == tripId }) {
+                return CLLocationCoordinate2D(latitude: train.lat, longitude: train.lon)
+            }
+        }
 
-    /// Stops the user has already passed in GO mode (for checklist dimming).
-    var passedStopIds: Set<String> = []
+        // 3. Try to find a train vehicle by vehicleId
+        if !arrival.isBus, let vid = arrival.vehicleId, !vid.isEmpty {
+            if let train = trainVehicles.first(where: { $0.id == vid }) {
+                return CLLocationCoordinate2D(latitude: train.lat, longitude: train.lon)
+            }
+        }
 
-    /// Transit ETA computed via MKDirections (minutes remaining).
-    var transitEtaMinutes: Int?
+        // 4. Fall back to the stop's coordinates
+        if let lat = arrival.stopLat, let lon = arrival.stopLon {
+            return CLLocationCoordinate2D(latitude: lat, longitude: lon)
+        }
+
+        return nil
+    }
+
+    /// Returns true if the arrival has a live vehicle currently on the map.
+    /// Checks bus vehicles by vehicleId and train vehicles by tripId/vehicleId.
+    /// Works for all modes: subway, bus, LIRR, Metro-North.
+    func isVehicleLiveOnMap(_ arrival: NearbyTransitResponse) -> Bool {
+        if arrival.isBus, let vid = arrival.vehicleId, !vid.isEmpty {
+            return busVehicles.contains(where: { $0.vehicleId == vid })
+        }
+        if !arrival.isBus {
+            if let tripId = arrival.tripId, !tripId.isEmpty {
+                if trainVehicles.contains(where: { $0.tripId == tripId }) { return true }
+            }
+            if let vid = arrival.vehicleId, !vid.isEmpty {
+                if trainVehicles.contains(where: { $0.id == vid }) { return true }
+            }
+        }
+        return false
+    }
+
+    // MARK: - GO Mode Forwarding (backward compatibility)
+
+    var isGoModeActive: Bool { goMode.isGoModeActive }
+    var goModeRouteName: String? { goMode.goModeRouteName }
+    var goModeRouteColor: Color? { goMode.goModeRouteColor }
+    var passedStopIds: Set<String> { goMode.passedStopIds }
+    var transitEtaMinutes: Int? { goMode.transitEtaMinutes }
+    var walkingRoute: MKRoute? { goMode.walkingRoute }
 
     private let repository = TransitRepository()
 
@@ -984,18 +920,30 @@ final class HomeViewModel {
                 .sorted()
         }
 
-        guard let current = foundArrival else { return }
+        if let current = foundArrival {
+            let eta = Date().addingTimeInterval(Double(current.minutesAway) * 60)
+            let progress = 1.0 - (Double(current.minutesAway) / 15.0)  // Simple 15-min scale progress
 
-        let eta = Date().addingTimeInterval(Double(current.minutesAway) * 60)
-        let progress = 1.0 - (Double(current.minutesAway) / 15.0)  // Simple 15-min scale progress
-
-        LiveActivityManager.shared.updateActivity(
-            statusText: current.minutesAway <= 1 ? "Arriving" : "\(current.minutesAway) stops away",
-            arrivalTime: eta,
-            progress: max(0, min(1.0, progress)),
-            stopsAway: current.minutesAway,
-            nextArrivals: Array(siblings.prefix(2))
-        )
+            LiveActivityManager.shared.updateActivity(
+                statusText: current.minutesAway <= 1
+                    ? "Arriving" : "\(current.minutesAway) stops away",
+                arrivalTime: eta,
+                progress: max(0, min(1.0, progress)),
+                stopsAway: current.minutesAway,
+                nextArrivals: Array(siblings.prefix(2))
+            )
+        } else {
+            // Fallback: If no arrival is found (e.g. train just left and next one not yet in feed),
+            // keep the widget alive and indicate we're waiting for the next one.
+            // Do NOT end the activity; let the next refresh pick up the new train.
+            LiveActivityManager.shared.updateActivity(
+                statusText: "Waiting for next train...",
+                arrivalTime: Date().addingTimeInterval(300),  // 5 min buffer to keep widget alive
+                progress: 0.0,
+                stopsAway: nil,
+                nextArrivals: []
+            )
+        }
     }
 
     // MARK: - Search Pin
@@ -1017,11 +965,20 @@ final class HomeViewModel {
     }
 
     /// Deactivates the search pin and returns to user location.
+    /// Clears stale transit data so the dashboard shows a loading state
+    /// instead of results from the drag-search location (which would
+    /// appear as "nothing in your area" since those stops are far away).
     func clearSearchPin(userLocation: CLLocation?) async {
         isSearchPinActive = false
         searchPinCoordinate = nil
-        walkingRoute = nil
+        goMode.walkingRoute = nil
         nearestStopCoordinate = nil
+        // Clear stale data to avoid showing drag-search results
+        // measured against the real GPS (wrong distances)
+        groupedTransit = []
+        nearbyTransit = []
+        nearestTransit = nil
+        nearestTransitDistance = nil
     }
 
     // MARK: - Route Detail
@@ -1046,7 +1003,7 @@ final class HomeViewModel {
         }
 
         // Reset previous route data
-        walkingRoute = nil
+        goMode.walkingRoute = nil
         nearestStopCoordinate = nil
         busVehicles = []
         trainVehicles = []
@@ -1162,11 +1119,12 @@ final class HomeViewModel {
         // Use effectiveLocation so drag-to-search computes distances
         // from the explored center, not the user's real GPS position.
         let refLocation = effectiveLocation(userLocation: userLocation)
-        if let shape = routeShape, !shape.stops.isEmpty, let userLoc = refLocation {
+        let allStops = routeShape?.stopsForDirection(selectedDirectionIndex) ?? []
+        if !allStops.isEmpty, let userLoc = refLocation {
             var closestStop: BusStop?
             var minDistance: CLLocationDistance = .greatestFiniteMagnitude
 
-            for stop in shape.stops {
+            for stop in allStops {
                 let stopLoc = CLLocation(latitude: stop.lat, longitude: stop.lon)
                 let distance = userLoc.distance(from: stopLoc)
                 if distance < minDistance {
@@ -1176,30 +1134,35 @@ final class HomeViewModel {
             }
 
             if let closest = closestStop {
-                nearestStopCoordinate = CLLocationCoordinate2D(
+                let closestCoord = CLLocationCoordinate2D(
                     latitude: closest.lat, longitude: closest.lon)
+                nearestStopCoordinate = closestCoord
 
                 // Fetch walking route in background
-                Task {
-                    await fetchWalkingRoute(from: userLoc.coordinate, to: nearestStopCoordinate!)
-                }
+                let from = userLoc.coordinate
+                Task { await fetchWalkingRoute(from: from, to: closestCoord) }
             }
-        } else if routeShape == nil || routeShape?.stops.isEmpty == true {
+        } else if allStops.isEmpty {
             // Fallback: zoom to the first arrival's stop coordinates when
             // route shape data is unavailable (common for buses when the
             // OBA API is slow or returns empty data).
             if let first = group.directions.first?.arrivals.first,
                 let lat = first.stopLat, let lon = first.stopLon
             {
-                nearestStopCoordinate = CLLocationCoordinate2D(latitude: lat, longitude: lon)
+                let fallbackCoord = CLLocationCoordinate2D(latitude: lat, longitude: lon)
+                nearestStopCoordinate = fallbackCoord
 
                 if let userLoc = refLocation {
-                    Task {
-                        await fetchWalkingRoute(
-                            from: userLoc.coordinate, to: nearestStopCoordinate!)
-                    }
+                    let from = userLoc.coordinate
+                    Task { await fetchWalkingRoute(from: from, to: fallbackCoord) }
                 }
             }
+        }
+
+        // After loading shape and vehicles, check if we need schedule data
+        // for directions with no live buses
+        if group.isBus {
+            await fetchBusScheduleIfNeeded()
         }
     }
 
@@ -1223,13 +1186,14 @@ final class HomeViewModel {
                 let stopId = arrival.stopId ?? "\(arrival.stopName)_\(lat)_\(lon)"
                 guard !seenIds.contains(stopId) else { continue }
                 seenIds.insert(stopId)
-                synthesized.append(BusStop(
-                    id: stopId,
-                    name: arrival.stopName,
-                    lat: lat,
-                    lon: lon,
-                    direction: nil
-                ))
+                synthesized.append(
+                    BusStop(
+                        id: stopId,
+                        name: arrival.stopName,
+                        lat: lat,
+                        lon: lon,
+                        direction: nil
+                    ))
             }
         }
 
@@ -1528,20 +1492,32 @@ final class HomeViewModel {
     /// Refreshes only the vehicle positions for the currently selected bus route.
     /// Stores the previous positions for smooth polyline-based interpolation.
     func refreshBusVehicles() async {
-        guard let routeId = selectedRouteId, selectedMode == .bus else { return }
+        guard let routeId = selectedRouteId,
+            selectedGroupedRoute?.isBus == true
+        else { return }
         do {
             let vehicles = try await TrackAPI.fetchBusVehicles(routeID: routeId)
             await MainActor.run {
-                // Snapshot current positions before overwriting
-                for v in self.busVehicles {
-                    previousBusPositions[v.vehicleId] = BusSnapshot(
-                        lat: v.lat, lon: v.lon, timestamp: self.lastBusUpdateTime
-                    )
+                // Snapshot current positions before overwriting so that
+                // updateBusSimulation() can interpolate between old → new.
+                if self.busVehicles.isEmpty {
+                    // First fetch: seed snapshots from the new data so
+                    // interpolation can start on the very next GPS cycle
+                    // instead of waiting for a second fetch.
+                    for v in vehicles {
+                        previousBusPositions[v.vehicleId] = BusSnapshot(
+                            lat: v.lat, lon: v.lon, timestamp: Date()
+                        )
+                    }
+                } else {
+                    for v in self.busVehicles {
+                        previousBusPositions[v.vehicleId] = BusSnapshot(
+                            lat: v.lat, lon: v.lon, timestamp: self.lastBusUpdateTime
+                        )
+                    }
                 }
                 self.lastBusUpdateTime = Date()
-                withAnimation(.linear(duration: 2.0)) {
-                    self.busVehicles = vehicles
-                }
+                self.busVehicles = vehicles
             }
         } catch {
             AppLogger.shared.logError("refreshBusVehicles(\(routeId))", error: error)
@@ -1555,7 +1531,7 @@ final class HomeViewModel {
             async let arrivalsTask = TrackAPI.fetchSubwayArrivals(lineID: routeId)
             let arrivals = try await arrivalsTask
             await MainActor.run {
-                withAnimation(.linear(duration: 2.0)) {
+                withAnimation(.interpolatingSpring(stiffness: 30, damping: 15)) {
                     updateTrainPositions(arrivals: arrivals)
                 }
             }
@@ -1568,7 +1544,8 @@ final class HomeViewModel {
     /// Uses the same GTFS-RT arrivals → interpolation pipeline as subway.
     func refreshCommuterRailVehicles() async {
         guard let group = selectedGroupedRoute,
-              group.isCommuterRail else { return }
+            group.isCommuterRail
+        else { return }
         do {
             let arrivals: [TrainArrival]
             if group.isLIRR {
@@ -1588,12 +1565,29 @@ final class HomeViewModel {
                     || "mnr_\(id)" == target
             }
             await MainActor.run {
-                withAnimation(.linear(duration: 2.0)) {
+                withAnimation(.interpolatingSpring(stiffness: 30, damping: 15)) {
                     updateTrainPositions(arrivals: routeArrivals)
                 }
             }
         } catch {
             AppLogger.shared.logError("refreshCommuterRailVehicles", error: error)
+        }
+    }
+
+    // MARK: - Bus Schedule
+
+    /// Cached bus schedule for the currently selected bus route.
+    var busSchedule: BusScheduleResponse?
+
+    /// Fetches the schedule for the currently selected bus route.
+    /// Used to show scheduled departures when no live buses are running.
+    func fetchBusScheduleIfNeeded() async {
+        guard let group = selectedGroupedRoute, group.isBus else { return }
+        do {
+            busSchedule = try await TrackAPI.fetchBusSchedule(routeID: group.routeId)
+        } catch {
+            AppLogger.shared.logError("fetchBusSchedule(\(group.routeId))", error: error)
+            busSchedule = nil
         }
     }
 
@@ -1610,12 +1604,15 @@ final class HomeViewModel {
         errorMessage = nil
         nearestStopCoordinate = nil
         highlightedVehicleId = nil
+        trackedVehicleCoordinate = nil
+        tappedVehicleId = nil
         selectedStopId = nil
-        walkingRoute = nil
+        goMode.walkingRoute = nil
+        busSchedule = nil
     }
 
     // Cache latest arrivals to allow client-side simulation between network fetches
-    private var cachedTrainArrivals: [TrainArrival] = []
+    private(set) var cachedTrainArrivals: [TrainArrival] = []
 
     /// Re-calculates train positions based on the current time and cached arrivals.
     /// Call this frequently (e.g. every 1s) to animate trains smoothly.
@@ -1625,20 +1622,13 @@ final class HomeViewModel {
     }
 
     /// Interpolates bus positions along the route polyline between GPS fetches.
-    /// Called on off-ticks (1s between the 2s GPS fetch) for glassy-smooth movement.
+    /// Called every tick (1s) for smooth movement between the 10s GPS refresh.
     func updateBusSimulation() {
-        guard !busVehicles.isEmpty, let shape = routeShape else { return }
+        guard !busVehicles.isEmpty, routeShape != nil else { return }
         let elapsed = Date().timeIntervalSince(lastBusUpdateTime)
-        let duration: TimeInterval = 2.0 // seconds between GPS fetches
+        let duration: TimeInterval = 10.0  // seconds between GPS poll (matches handleRouteSelection timer)
 
-        // Decode direction-specific polyline
-        let polyline: [CLLocationCoordinate2D] = {
-            let dirPolys = shape.polylinesForDirection(selectedDirectionIndex)
-            let combined = dirPolys.flatMap { $0 }
-            if combined.count >= 2 { return combined }
-            let allCombined = shape.decodedPolylines.flatMap { $0 }
-            return allCombined.count >= 2 ? allCombined : []
-        }()
+        let polyline = cachedInterpolationPolyline
         guard polyline.count >= 2 else { return }
 
         var updated = busVehicles
@@ -1646,7 +1636,8 @@ final class HomeViewModel {
             guard let prev = previousBusPositions[updated[i].vehicleId] else { continue }
             let result = VehicleInterpolator.smoothBusPosition(
                 previous: CLLocationCoordinate2D(latitude: prev.lat, longitude: prev.lon),
-                current: CLLocationCoordinate2D(latitude: updated[i].lat, longitude: updated[i].lon),
+                current: CLLocationCoordinate2D(
+                    latitude: updated[i].lat, longitude: updated[i].lon),
                 elapsed: elapsed,
                 duration: duration,
                 along: polyline
@@ -1659,33 +1650,48 @@ final class HomeViewModel {
                 bearing: result.bearing
             )
         }
-        withAnimation(.linear(duration: 1.0)) {
+        withAnimation(.interpolatingSpring(stiffness: 30, damping: 15)) {
             self.busVehicles = updated
         }
     }
 
     /// Solves for "Ghost Trains" by interpolating position between stations
     /// along the actual route polyline for realistic curved movement.
+    /// Builds vehicles from ALL directions (not just the selected one) so
+    /// `filteredTrainVehicles` can properly filter them.
     private func updateTrainPositions(arrivals: [TrainArrival]) {
         guard let shape = routeShape else { return }
         self.cachedTrainArrivals = arrivals
 
-        // Use direction-specific stops when available for better matching
-        let dirStops: [BusStop] = {
-            let ds = shape.stopsForDirection(selectedDirectionIndex)
-            return ds.isEmpty ? shape.stops : ds
-        }()
+        // Build stops and polyline per direction so we can match arrivals
+        // against the correct direction's stops.
+        struct DirectionContext {
+            let stops: [BusStop]
+            let polyline: [CLLocationCoordinate2D]
+        }
 
-        // Decode the polyline once per update for polyline-aware interpolation
-        let polyline: [CLLocationCoordinate2D] = {
-            let dirPolys = shape.polylinesForDirection(selectedDirectionIndex)
-            // Concatenate all direction polyline segments for a continuous path
-            let combined = dirPolys.flatMap { $0 }
-            if combined.count >= 2 { return combined }
-            // Fallback to combined polylines
-            let allCombined = shape.decodedPolylines.flatMap { $0 }
-            return allCombined.count >= 2 ? allCombined : []
-        }()
+        // Build direction contexts for all available directions
+        var dirContexts: [DirectionContext] = []
+        if !shape.directions.isEmpty {
+            for i in 0..<shape.directions.count {
+                let ds = shape.stopsForDirection(i)
+                let stops = ds.isEmpty ? shape.stops : ds
+                let pl = shape.polylinesForDirection(i)
+                let polyline: [CLLocationCoordinate2D] =
+                    pl.isEmpty
+                    ? cachedInterpolationPolyline
+                    : pl.flatMap { $0 }
+                dirContexts.append(DirectionContext(stops: stops, polyline: polyline))
+            }
+        }
+        // If no direction data, use the combined stops
+        if dirContexts.isEmpty {
+            dirContexts.append(
+                DirectionContext(
+                    stops: shape.stops,
+                    polyline: cachedInterpolationPolyline
+                ))
+        }
 
         // 1. Group arrivals by UNIQUE trip.
         var trips: [String: [TrainArrival]] = [:]
@@ -1700,6 +1706,7 @@ final class HomeViewModel {
         var newVehicles: [TrainVehicle] = []
 
         // 2. Process each trip to find its "current location"
+        // Try matching against each direction's stops until we find a match.
         for (tripId, tripArrivals) in trips {
             let sorted = tripArrivals.sorted { $0.estimatedTime < $1.estimatedTime }
 
@@ -1709,78 +1716,94 @@ final class HomeViewModel {
 
             let nextStopIdBase = nextStop.stationID.prefix(3)
 
-            guard
-                let nextStopIndex = dirStops.firstIndex(where: {
-                    $0.id.hasPrefix(nextStopIdBase)
-                })
-            else { continue }
+            // Try each direction context to find which one has this stop
+            for ctx in dirContexts {
+                guard
+                    let nextStopIndex = ctx.stops.firstIndex(where: {
+                        $0.id.hasPrefix(nextStopIdBase)
+                    })
+                else { continue }
 
-            var lat = dirStops[nextStopIndex].lat
-            var lon = dirStops[nextStopIndex].lon
-            var bearing: Double = 0
+                let dirStops = ctx.stops
+                let polyline = ctx.polyline
 
-            let previousIndex = nextStopIndex > 0 ? nextStopIndex - 1 : nextStopIndex
-            let nextIndex = nextStopIndex
+                var lat = dirStops[nextStopIndex].lat
+                var lon = dirStops[nextStopIndex].lon
+                var bearing: Double = 0
 
-            if previousIndex != nextIndex {
-                let prevStop = dirStops[previousIndex]
-                let targetStop = dirStops[nextIndex]
+                let previousIndex = nextStopIndex > 0 ? nextStopIndex - 1 : nextStopIndex
+                let nextIndex = nextStopIndex
 
-                let timeUntilArrival = nextStop.estimatedTime.timeIntervalSinceNow
-                let minutes = timeUntilArrival / 60.0
-                let travelTime = 3.0
-                let t = min(max(minutes / travelTime, 0.0), 1.0)
+                if previousIndex != nextIndex {
+                    let prevStop = dirStops[previousIndex]
+                    let targetStop = dirStops[nextIndex]
 
-                // progress: 0.0 at prevStop → 1.0 at targetStop
-                let rawProgress = 1.0 - t
+                    let timeUntilArrival = nextStop.estimatedTime.timeIntervalSinceNow
+                    let minutes = timeUntilArrival / 60.0
+                    let travelTime = 3.0
+                    let t = min(max(minutes / travelTime, 0.0), 1.0)
 
-                let progress: Double
-                if AppSettings.shared.simulationEasingEnabled {
-                    progress = rawProgress < 0.5
-                        ? 2 * rawProgress * rawProgress
-                        : 1 - pow(-2 * rawProgress + 2, 2) / 2
-                } else {
-                    progress = rawProgress
+                    // progress: 0.0 at prevStop → 1.0 at targetStop
+                    let rawProgress = 1.0 - t
+
+                    let progress: Double
+                    if AppSettings.shared.simulationEasingEnabled {
+                        progress =
+                            rawProgress < 0.5
+                            ? 2 * rawProgress * rawProgress
+                            : 1 - pow(-2 * rawProgress + 2, 2) / 2
+                    } else {
+                        progress = rawProgress
+                    }
+
+                    // Use polyline-aware interpolation if we have a polyline
+                    if polyline.count >= 2 {
+                        let fromCoord = CLLocationCoordinate2D(
+                            latitude: prevStop.lat, longitude: prevStop.lon)
+                        let toCoord = CLLocationCoordinate2D(
+                            latitude: targetStop.lat, longitude: targetStop.lon)
+                        let result = VehicleInterpolator.interpolateBetweenStops(
+                            from: fromCoord, to: toCoord,
+                            progress: progress, along: polyline)
+                        lat = result.coordinate.latitude
+                        lon = result.coordinate.longitude
+                        bearing = result.bearing
+                    } else {
+                        // Fallback: straight-line lerp
+                        lat = prevStop.lat + (targetStop.lat - prevStop.lat) * progress
+                        lon = prevStop.lon + (targetStop.lon - prevStop.lon) * progress
+                        bearing =
+                            atan2(
+                                targetStop.lon - prevStop.lon,
+                                targetStop.lat - prevStop.lat
+                            ) * 180 / .pi
+                        if bearing < 0 { bearing += 360 }
+                    }
                 }
 
-                // Use polyline-aware interpolation if we have a polyline
-                if polyline.count >= 2 {
-                    let fromCoord = CLLocationCoordinate2D(
-                        latitude: prevStop.lat, longitude: prevStop.lon)
-                    let toCoord = CLLocationCoordinate2D(
-                        latitude: targetStop.lat, longitude: targetStop.lon)
-                    let result = VehicleInterpolator.interpolateBetweenStops(
-                        from: fromCoord, to: toCoord,
-                        progress: progress, along: polyline)
-                    lat = result.coordinate.latitude
-                    lon = result.coordinate.longitude
-                    bearing = result.bearing
-                } else {
-                    // Fallback: straight-line lerp
-                    lat = prevStop.lat + (targetStop.lat - prevStop.lat) * progress
-                    lon = prevStop.lon + (targetStop.lon - prevStop.lon) * progress
-                    bearing = atan2(
-                        targetStop.lon - prevStop.lon,
-                        targetStop.lat - prevStop.lat
-                    ) * 180 / .pi
-                    if bearing < 0 { bearing += 360 }
-                }
+                let etaMinutes: Int? = {
+                    let secs = nextStop.estimatedTime.timeIntervalSinceNow
+                    guard secs > -60 else { return nil }
+                    return max(0, Int(secs / 60))
+                }()
+
+                newVehicles.append(
+                    TrainVehicle(
+                        id: tripId,
+                        tripId: tripId,
+                        routeId: nextStop.routeID,
+                        direction: nextStop.direction,
+                        lat: lat,
+                        lon: lon,
+                        bearing: bearing,
+                        nextStationName: dirStops[nextStopIndex].name,
+                        minutesAway: etaMinutes
+                    ))
+                break  // Found a matching direction, stop searching
             }
-
-            newVehicles.append(
-                TrainVehicle(
-                    id: tripId,
-                    tripId: tripId,
-                    routeId: nextStop.routeID,
-                    direction: nextStop.direction,
-                    lat: lat,
-                    lon: lon,
-                    bearing: bearing,
-                    nextStationName: dirStops[nextStopIndex].name
-                ))
         }
 
-        withAnimation(.linear(duration: 1.1)) {
+        withAnimation(.interpolatingSpring(stiffness: 30, damping: 15)) {
             self.trainVehicles = newVehicles
         }
     }
@@ -1817,8 +1840,14 @@ final class HomeViewModel {
             async let flatTask = TrackAPI.fetchNearbyTransit(lat: lat, lon: lon)
             async let groupedTask = TrackAPI.fetchNearbyGrouped(lat: lat, lon: lon)
 
-            nearbyTransit = try await flatTask
+            let rawTransit = try await flatTask
             groupedTransit = try await groupedTask
+
+            // Deduplicate: Keep the first occurrence of each unique ID
+            // This prevents duplicate rows if the API returns the same arrival
+            // multiple times (e.g. slight timing differences or data glitches).
+            var seenIDs = Set<String>()
+            nearbyTransit = rawTransit.filter { seenIDs.insert($0.id).inserted }
 
             // Fetch alerts and accessibility only on full refreshes — these are
             // global feeds that don't change by location. Skipping them during
@@ -2086,16 +2115,23 @@ final class HomeViewModel {
         currentTrackedRoute = trackedRoute
         trackedRoute.save()
 
-        // Update visual highlighting on the map
+        // Update visual highlighting on the map — set tappedVehicleId so
+        // the marker scales up and the matching arrival row highlights.
         if arrival.isBus {
+            self.tappedVehicleId = arrival.vehicleId
             self.highlightedVehicleId = arrival.vehicleId
             AppLogger.shared.log(
                 "TRACKING", message: "Highlighting bus vehicle: \(arrival.vehicleId ?? "none")")
         } else {
+            self.tappedVehicleId = arrival.tripId
             self.highlightedVehicleId = arrival.tripId
             AppLogger.shared.log(
                 "TRACKING", message: "Highlighting train trip: \(arrival.tripId ?? "none")")
         }
+
+        // Set the zoom-to coordinate so the map centers on the tracked vehicle/stop.
+        // Prioritizes live vehicle position; falls back to stop coordinates.
+        self.trackedVehicleCoordinate = coordinateForTrackedArrival(arrival)
 
         // Immediately refresh the Live Activity
         updateLiveActivityFromRefresh()
@@ -2289,152 +2325,37 @@ final class HomeViewModel {
         LiveActivityManager.shared.endActivity()
     }
 
-    // MARK: - GO Mode (Live Transit Tracking)
+    // MARK: - GO Mode Forwarding (methods)
 
-    /// Activates "GO" mode for the currently selected route.
-    ///
-    /// GO mode replaces the standard blue dot with a pulsing vehicle icon
-    /// that snaps to the route polyline. The map auto-pans to follow the
-    /// user's position and dims already-passed stops.
-    ///
-    /// Inspired by the Transit app's hands-free tracking experience.
     func activateGoMode(routeName: String, routeColor: Color) {
-        isGoModeActive = true
-        goModeRouteName = routeName
-        goModeRouteColor = routeColor
-        passedStopIds = []
+        goMode.activateGoMode(routeName: routeName, routeColor: routeColor)
     }
 
-    /// Deactivates "GO" mode and returns to the normal map view.
     func deactivateGoMode() {
-        isGoModeActive = false
-        goModeRouteName = nil
-        goModeRouteColor = nil
-        passedStopIds = []
-        transitEtaMinutes = nil
+        goMode.deactivateGoMode()
     }
 
-    /// Marks a stop as passed (dimmed in the checklist). Called when
-    /// the user's GPS position moves beyond a stop along the route.
     func markStopPassed(_ stopId: String) {
-        passedStopIds.insert(stopId)
+        goMode.markStopPassed(stopId)
     }
 
-    /// Returns whether a stop has been passed in GO mode.
     func isStopPassed(_ stop: BusStop) -> Bool {
-        passedStopIds.contains(stop.id)
+        goMode.isStopPassed(stop)
     }
 
-    /// Distance threshold (meters) for marking a stop as passed.
-    /// When the user is within this radius of a stop, it is dimmed.
-    private static let stopPassedThreshold: CLLocationDistance = AppSettings.shared
-        .stopPassedThresholdMeters
-
-    /// Updates the list of passed stops based on the user's current
-    /// position and bearing relative to the route shape stops.
-    ///
-    /// A stop is marked as passed if the user is within
-    /// ``stopPassedThreshold`` meters **and** the user's heading
-    /// indicates they are moving away from the stop (or they have
-    /// already been marked once).
     func updatePassedStops(userLocation: CLLocation?) {
-        guard isGoModeActive, let loc = userLocation, let shape = routeShape else { return }
-        let userBearing = loc.course  // -1 if unavailable
-        for stop in shape.stops {
-            // Already passed — skip
-            if passedStopIds.contains(stop.id) { continue }
-
-            let stopLoc = CLLocation(latitude: stop.lat, longitude: stop.lon)
-            let distance = loc.distance(from: stopLoc)
-
-            guard distance < Self.stopPassedThreshold else { continue }
-
-            if userBearing >= 0 {
-                // Use bearing to confirm the stop is behind the user
-                let bearingToStop = loc.bearing(to: stopLoc)
-                let angleDiff = abs(userBearing - bearingToStop)
-                let normalized = angleDiff > 180 ? 360 - angleDiff : angleDiff
-                // If the stop is more than 90° behind, mark as passed
-                if normalized > 90 {
-                    passedStopIds.insert(stop.id)
-                }
-            } else {
-                // No bearing data — fall back to proximity only
-                passedStopIds.insert(stop.id)
-            }
-        }
+        goMode.updatePassedStops(userLocation: userLocation, routeShape: routeShape)
     }
 
-    // MARK: - Transit ETA via MKDirections
-
-    /// Uses ``MKDirections`` with ``MKDirectionsTransportType.transit`` to
-    /// estimate the time of arrival from the user's current position to
-    /// a destination coordinate.
-    ///
-    /// Reference: https://developer.apple.com/documentation/mapkit/mkdirections
-    ///
-    /// - Parameters:
-    ///   - from: User's current location.
-    ///   - to: Destination coordinate (e.g. a bus stop or station).
     func fetchTransitETA(
         from source: CLLocationCoordinate2D, to destination: CLLocationCoordinate2D
     ) async {
-        // MKPlacemark is deprecated in iOS 26.0
-        let sourceItem = MKMapItem(
-            location: CLLocation(latitude: source.latitude, longitude: source.longitude),
-            address: nil)
-        let destItem = MKMapItem(
-            location: CLLocation(latitude: destination.latitude, longitude: destination.longitude),
-            address: nil)
-
-        let request = MKDirections.Request()
-        request.source = sourceItem
-        request.destination = destItem
-        request.transportType = .transit
-
-        let directions = MKDirections(request: request)
-        do {
-            let eta = try await directions.calculateETA()
-            let minutes = Int(eta.expectedTravelTime / 60)
-            transitEtaMinutes = minutes
-        } catch {
-            AppLogger.shared.logError("Transit ETA calculation", error: error)
-            // Transit directions may not be available in all areas — fail silently
-            transitEtaMinutes = nil
-        }
+        await goMode.fetchTransitETA(from: source, to: destination)
     }
 
-    // MARK: - Walking Route
-
-    /// Fetches walking directions from user to a destination and stores the route polyline.
     func fetchWalkingRoute(
         from source: CLLocationCoordinate2D, to destination: CLLocationCoordinate2D
     ) async {
-        let sourceItem = MKMapItem(
-            location: CLLocation(latitude: source.latitude, longitude: source.longitude),
-            address: nil)
-        let destItem = MKMapItem(
-            location: CLLocation(latitude: destination.latitude, longitude: destination.longitude),
-            address: nil)
-
-        let request = MKDirections.Request()
-        request.source = sourceItem
-        request.destination = destItem
-        request.transportType = .walking
-
-        let directions = MKDirections(request: request)
-        do {
-            let response = try await directions.calculate()
-            if let route = response.routes.first {
-                await MainActor.run {
-                    self.walkingRoute = route
-                }
-            }
-        } catch {
-            AppLogger.shared.logError("Walking route calculation", error: error)
-            await MainActor.run {
-                self.walkingRoute = nil
-            }
-        }
+        await goMode.fetchWalkingRoute(from: source, to: destination)
     }
 }

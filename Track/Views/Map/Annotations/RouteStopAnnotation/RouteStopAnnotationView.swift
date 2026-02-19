@@ -6,35 +6,35 @@ struct RouteStopMarker: View {
     let isSelected: Bool
     let routeColor: Color
     let stopName: String
-    
+
     var body: some View {
         ZStack {
             if isSelected {
                 // Outer Pulse/Glow
                 Circle()
-                    .fill(routeColor.opacity(0.2))
-                    .frame(width: 24, height: 24)
-                    .scaleEffect(1.2)
+                    .fill(routeColor.opacity(0.25))
+                    .frame(width: 28, height: 28)
             }
 
-            // Central Point
+            // Outer ring — always uses the route color for visibility
             Circle()
                 .fill(Color.white)
-                .frame(width: isSelected ? 12 : 8)
-                .shadow(color: .black.opacity(0.1), radius: 1)
+                .frame(width: isSelected ? 16 : 14, height: isSelected ? 16 : 14)
                 .overlay {
                     Circle()
-                        .stroke(isSelected ? routeColor : Color.gray.opacity(0.5), lineWidth: isSelected ? 4 : 2)
+                        .stroke(
+                            isSelected ? routeColor : routeColor.opacity(0.8),
+                            lineWidth: isSelected ? 3 : 2.5)
                 }
-            
-            if isSelected {
-                // Tiny dot in middle for "selected" feel
-                Circle()
-                    .fill(routeColor)
-                    .frame(width: 4, height: 4)
-            }
+                .shadow(color: .black.opacity(0.25), radius: 2, x: 0, y: 1)
+
+            // Inner dot for visual anchor
+            Circle()
+                .fill(isSelected ? routeColor : routeColor.opacity(0.6))
+                .frame(width: isSelected ? 6 : 4, height: isSelected ? 6 : 4)
         }
-        .scaleEffect(isSelected ? 1.4 : 1.0)
+        .frame(width: 30, height: 30)
+        .scaleEffect(isSelected ? 1.3 : 1.0)
         .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isSelected)
         .accessibilityLabel(stopName)
     }
