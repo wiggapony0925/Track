@@ -8,8 +8,8 @@
 //  Extracted from HomeView for reusability.
 //
 
-import SwiftUI
 import CoreLocation
+import SwiftUI
 
 struct GroupedRouteRow: View {
     let group: GroupedNearbyTransitResponse
@@ -26,7 +26,8 @@ struct GroupedRouteRow: View {
         }
         if group.isLIRR { return AppTheme.CommuterRailColors.lirrBlue }
         if group.isMNR { return AppTheme.CommuterRailColors.mnrBlue }
-        return group.isBus ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: group.displayName)
+        return group.isBus
+            ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: group.displayName)
     }
 
     /// Distance from user to the closest stop in this group (meters).
@@ -77,8 +78,10 @@ struct GroupedRouteRow: View {
             } else {
                 VStack(alignment: .leading, spacing: 4) {
                     TabView(selection: $currentDirectionIndex) {
-                        ForEach(Array(group.directions.enumerated()), id: \.element.id) { index, direction in
-                            let label = direction.arrivals.first?.destination
+                        ForEach(Array(group.directions.enumerated()), id: \.element.id) {
+                            index, direction in
+                            let label =
+                                direction.arrivals.first?.destination
                                 ?? direction.directionLabel
                                 ?? directionLabel(direction.direction)
                             VStack(alignment: .leading, spacing: 2) {
@@ -90,17 +93,23 @@ struct GroupedRouteRow: View {
 
                                 // Station name + walking distance
                                 HStack(spacing: 4) {
-                                    if let stopName = direction.arrivals.first?.stopName,
-                                       !stopName.isEmpty,
-                                       stopName != direction.arrivals.first?.destination {
-                                        Text("at \(stopName)")
+                                    // Show terminus so users know which direction this is
+                                    let terminus =
+                                        direction.directionLabel
+                                        ?? direction.direction
+                                    // Avoid repeating the main label above
+                                    if !terminus.isEmpty,
+                                        terminus.lowercased() != label.lowercased()
+                                    {
+                                        Text("To \(terminus)")
                                             .font(.custom("Helvetica", size: 12))
                                             .foregroundColor(AppTheme.Colors.textSecondary)
                                             .lineLimit(1)
                                     }
 
                                     if let dist = closestStopDistance,
-                                       dist < Double.greatestFiniteMagnitude {
+                                        dist < Double.greatestFiniteMagnitude
+                                    {
                                         HStack(spacing: 2) {
                                             Image(systemName: "figure.walk")
                                                 .font(.system(size: 9, weight: .medium))
@@ -123,11 +132,17 @@ struct GroupedRouteRow: View {
                         HStack(spacing: 4) {
                             ForEach(0..<group.directions.count, id: \.self) { index in
                                 Capsule()
-                                    .fill(index == currentDirectionIndex
-                                          ? routeColor
-                                          : AppTheme.Colors.textSecondary.opacity(0.2))
-                                    .frame(width: index == currentDirectionIndex ? 12 : 5, height: 5)
-                                    .animation(.spring(response: 0.35, dampingFraction: 0.8), value: currentDirectionIndex)
+                                    .fill(
+                                        index == currentDirectionIndex
+                                            ? routeColor
+                                            : AppTheme.Colors.textSecondary.opacity(0.2)
+                                    )
+                                    .frame(
+                                        width: index == currentDirectionIndex ? 12 : 5, height: 5
+                                    )
+                                    .animation(
+                                        .spring(response: 0.35, dampingFraction: 0.8),
+                                        value: currentDirectionIndex)
                             }
                         }
                     }

@@ -450,6 +450,58 @@ final class HomeViewModel {
         }
     }
 
+    /// Polyline split at the nearest stop: `ahead` keeps full color, `behind` fades.
+    /// Computed on-demand from existing state — no cache invalidation timing issues.
+    var directionalSplit: (ahead: [CLLocationCoordinate2D], behind: [CLLocationCoordinate2D])? {
+        guard let nearestCoord = nearestStopCoordinate,
+            !cachedInterpolationPolyline.isEmpty,
+            let shape = routeShape
+        else { return nil }
+
+        let polyline = cachedInterpolationPolyline
+
+        // Find the closest point on the polyline to the nearest stop
+        let nearestLoc = CLLocation(
+            latitude: nearestCoord.latitude, longitude: nearestCoord.longitude)
+        var closestIdx = 0
+        var minDist: CLLocationDistance = .greatestFiniteMagnitude
+        for (i, coord) in polyline.enumerated() {
+            let d = CLLocation(latitude: coord.latitude, longitude: coord.longitude)
+                .distance(from: nearestLoc)
+            if d < minDist {
+                minDist = d
+                closestIdx = i
+            }
+        }
+
+        let splitIdx = max(0, min(closestIdx, polyline.count - 1))
+
+        // stopsForDirection handles the subway fallback from
+        // directions[x].stops → top-level stops automatically
+        let dirStops = shape.stopsForDirection(selectedDirectionIndex)
+        guard !dirStops.isEmpty else { return nil }
+
+        // Determine polyline flow direction relative to stop ordering
+        let firstStopLoc = CLLocation(latitude: dirStops[0].lat, longitude: dirStops[0].lon)
+        let firstPolyLoc = CLLocation(
+            latitude: polyline[0].latitude, longitude: polyline[0].longitude)
+        let lastPolyLoc = CLLocation(
+            latitude: polyline.last!.latitude, longitude: polyline.last!.longitude)
+        let polyFlowsWithStops =
+            firstPolyLoc.distance(from: firstStopLoc)
+            <= lastPolyLoc.distance(from: firstStopLoc)
+
+        let beforeSplit = Array(polyline[0...splitIdx])
+        let afterSplit = Array(polyline[splitIdx...])
+
+        if polyFlowsWithStops {
+            // Polyline flows first→last stop. Before the split = already passed.
+            return (ahead: afterSplit, behind: beforeSplit)
+        } else {
+            return (ahead: beforeSplit, behind: afterSplit)
+        }
+    }
+
     // MARK: - Direction-Filtered Vehicles
 
     /// Bus vehicles filtered to the currently selected direction.
@@ -558,9 +610,6 @@ final class HomeViewModel {
         let filtered = trainVehicles.filter { vehicle in
             validDirs.contains(vehicle.direction.uppercased())
         }
-        print(
-            "🚂 [TRAIN_FILTER] \(trainVehicles.count) total → \(filtered.count) after filter (validDirs: \(validDirs), vehicleDirs: \(Set(trainVehicles.map { $0.direction.uppercased() })))"
-        )
         return filtered
     }
 
@@ -1026,11 +1075,12 @@ final class HomeViewModel {
         // Use effectiveLocation so drag-to-search computes distances
         // from the explored center, not the user's real GPS position.
         let refLocation = effectiveLocation(userLocation: userLocation)
-        if let shape = routeShape, !shape.stops.isEmpty, let userLoc = refLocation {
+        let allStops = routeShape?.stopsForDirection(selectedDirectionIndex) ?? []
+        if !allStops.isEmpty, let userLoc = refLocation {
             var closestStop: BusStop?
             var minDistance: CLLocationDistance = .greatestFiniteMagnitude
 
-            for stop in shape.stops {
+            for stop in allStops {
                 let stopLoc = CLLocation(latitude: stop.lat, longitude: stop.lon)
                 let distance = userLoc.distance(from: stopLoc)
                 if distance < minDistance {
@@ -1040,28 +1090,27 @@ final class HomeViewModel {
             }
 
             if let closest = closestStop {
-                nearestStopCoordinate = CLLocationCoordinate2D(
+                let closestCoord = CLLocationCoordinate2D(
                     latitude: closest.lat, longitude: closest.lon)
+                nearestStopCoordinate = closestCoord
 
                 // Fetch walking route in background
-                Task {
-                    await fetchWalkingRoute(from: userLoc.coordinate, to: nearestStopCoordinate!)
-                }
+                let from = userLoc.coordinate
+                Task { await fetchWalkingRoute(from: from, to: closestCoord) }
             }
-        } else if routeShape == nil || routeShape?.stops.isEmpty == true {
+        } else if allStops.isEmpty {
             // Fallback: zoom to the first arrival's stop coordinates when
             // route shape data is unavailable (common for buses when the
             // OBA API is slow or returns empty data).
             if let first = group.directions.first?.arrivals.first,
                 let lat = first.stopLat, let lon = first.stopLon
             {
-                nearestStopCoordinate = CLLocationCoordinate2D(latitude: lat, longitude: lon)
+                let fallbackCoord = CLLocationCoordinate2D(latitude: lat, longitude: lon)
+                nearestStopCoordinate = fallbackCoord
 
                 if let userLoc = refLocation {
-                    Task {
-                        await fetchWalkingRoute(
-                            from: userLoc.coordinate, to: nearestStopCoordinate!)
-                    }
+                    let from = userLoc.coordinate
+                    Task { await fetchWalkingRoute(from: from, to: fallbackCoord) }
                 }
             }
         }
@@ -1710,20 +1759,6 @@ final class HomeViewModel {
             }
         }
 
-        print(
-            "🚂 [TRAIN_POS] updateTrainPositions: \(arrivals.count) arrivals → \(trips.count) unique trips → \(newVehicles.count) positioned vehicles"
-        )
-        if newVehicles.isEmpty && !arrivals.isEmpty {
-            print(
-                "🚂 [TRAIN_POS] ⚠️ No vehicles created! shape.stops=\(shape.stops.count), directions=\(shape.directions.count), cachedPolyline=\(cachedInterpolationPolyline.count) pts"
-            )
-            // Print a sample arrival for debugging
-            if let sample = arrivals.first {
-                print(
-                    "🚂 [TRAIN_POS] Sample arrival: station=\(sample.stationID), route=\(sample.routeID), dir=\(sample.direction)"
-                )
-            }
-        }
         withAnimation(.interpolatingSpring(stiffness: 30, damping: 15)) {
             self.trainVehicles = newVehicles
         }
