@@ -56,6 +56,21 @@ struct SingleRouteProvider: TimelineProvider {
 
     /// Fetch arrivals for the tracked route from the /nearby API
     private func fetchTrackedRouteEntry(trackedRoute: TrackedRoute, completion: @escaping (SingleRouteEntry?) -> Void) {
+        // In challenge mode, return mock data without network
+        if ChallengeMode.isEnabled {
+            let arrivals = [
+                NearbyArrival(routeId: trackedRoute.routeId, stopName: "Times Sq-42 St", direction: "Uptown", minutesAway: 2, status: "Approaching", mode: trackedRoute.mode, arrivalTime: Date().addingTimeInterval(120)),
+                NearbyArrival(routeId: trackedRoute.routeId, stopName: "Times Sq-42 St", direction: "Uptown", minutesAway: 8, status: "En Route", mode: trackedRoute.mode, arrivalTime: Date().addingTimeInterval(480)),
+                NearbyArrival(routeId: trackedRoute.routeId, stopName: "Times Sq-42 St", direction: "Downtown", minutesAway: 4, status: "En Route", mode: trackedRoute.mode, arrivalTime: Date().addingTimeInterval(240)),
+            ]
+            completion(SingleRouteEntry(
+                date: Date(),
+                state: .tracking(route: trackedRoute, arrivals: arrivals),
+                relevance: TimelineEntryRelevance(score: 80)
+            ))
+            return
+        }
+
         let defaults = UserDefaults(suiteName: kAppGroupIdentifier) ?? UserDefaults.standard
         let lat = defaults.double(forKey: "lastLatitude")
         let lon = defaults.double(forKey: "lastLongitude")

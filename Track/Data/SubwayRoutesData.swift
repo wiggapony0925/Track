@@ -50,6 +50,7 @@ struct SubwayRoutesData {
     
     /// Update bundle from API (call when online)
     static func updateBundleFromAPI() async {
+        if ChallengeMode.isEnabled { return }
         guard let url = URL(string: "\(AppSettings.shared.prodBaseURL)/static/bundle") else { return }
         
         do {

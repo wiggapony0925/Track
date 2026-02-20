@@ -84,6 +84,19 @@ struct LiveNearMeProvider: TimelineProvider {
 
     /// Fetches live nearby transit data from the backend API.
     private func fetchLiveEntry(maxRoutes: Int, completion: @escaping (LiveNearMeEntry?) -> Void) {
+        // In challenge mode, return mock data without network
+        if ChallengeMode.isEnabled {
+            let arrivals = [
+                NearbyArrival(routeId: "1", stopName: "Times Sq-42 St", direction: "Uptown", minutesAway: 2, status: "Approaching", mode: "subway", arrivalTime: Date().addingTimeInterval(120)),
+                NearbyArrival(routeId: "7", stopName: "Times Sq-42 St", direction: "Queens", minutesAway: 3, status: "Approaching", mode: "subway", arrivalTime: Date().addingTimeInterval(180)),
+                NearbyArrival(routeId: "N", stopName: "Times Sq-42 St", direction: "Uptown", minutesAway: 5, status: "En Route", mode: "subway", arrivalTime: Date().addingTimeInterval(300)),
+                NearbyArrival(routeId: "A", stopName: "42 St-Port Authority", direction: "Uptown", minutesAway: 4, status: "En Route", mode: "subway", arrivalTime: Date().addingTimeInterval(240)),
+                NearbyArrival(routeId: "M42", stopName: "W 42 ST/7 AV", direction: "East", minutesAway: 6, status: "Approaching", mode: "bus", arrivalTime: Date().addingTimeInterval(360)),
+            ]
+            completion(LiveNearMeEntry(date: Date(), state: .active(arrivals: Array(arrivals.prefix(maxRoutes)))))
+            return
+        }
+
         let defaults = UserDefaults(suiteName: kAppGroupIdentifier) ?? UserDefaults.standard
         let lat = defaults.double(forKey: "lastLatitude")
         let lon = defaults.double(forKey: "lastLongitude")
