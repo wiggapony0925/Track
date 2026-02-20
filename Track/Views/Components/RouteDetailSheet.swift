@@ -59,6 +59,11 @@ struct RouteDetailSheet: View {
     /// Track expanded row ID locally in the sheet
     @State private var expandedArrivalID: String?
 
+    /// Controls the brief stop-origin highlight on first open.
+    /// Auto-clears after 1.5 s so only the first arrival at the tapped
+    /// stop flashes blue momentarily — not every arrival at that stop.
+    @State private var stopHighlightActive: Bool = true
+
     /// Favorites manager for heart button
     @State private var isFavorited = false
 
@@ -1122,11 +1127,16 @@ struct RouteDetailSheet: View {
                     VStack(spacing: 8) {
                         ForEach(Array(sortedArrivals.enumerated()), id: \.element.id) {
                             index, arrival in
+                            // Only highlight the *first* arrival at the origin stop,
+                            // and only while stopHighlightActive is true.
+                            let isFirstAtStop = stopHighlightActive
+                                && selectedStopId != nil
+                                && arrival.stopId == selectedStopId
+                                && !sortedArrivals.prefix(index).contains(where: { $0.stopId == selectedStopId })
                             NearbyTransitRow(
                                 arrival: arrival,
                                 isTracking: isTracking?(arrival) ?? false,
-                                isSelected: selectedStopId != nil
-                                    && arrival.stopId == selectedStopId,
+                                isSelected: isFirstAtStop,
                                 isLiveOnMap: isLiveOnMap?(arrival) ?? false,
                                 tappedVehicleId: tappedVehicleId,
                                 onTrack: {
@@ -1180,6 +1190,20 @@ struct RouteDetailSheet: View {
                                 expandedArrivalID = match.id
                                 proxy.scrollTo(match.id, anchor: .top)
                             }
+                        }
+                    }
+                    // Clear the expanded row whenever the direction tab changes —
+                    // guards against stale IDs matching rows in the new direction.
+                    .onChange(of: selectedDirectionIndex) { _, _ in
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                            expandedArrivalID = nil
+                        }
+                    }
+                    // Auto-clear the stop-origin highlight after 1.5 s
+                    .task {
+                        try? await Task.sleep(for: .seconds(1.5))
+                        withAnimation(.easeOut(duration: 0.4)) {
+                            stopHighlightActive = false
                         }
                     }
                 }

@@ -97,158 +97,27 @@ struct TrackWidgetLiveActivity: Widget {
 
     // MARK: - Lock Screen Banner
 
+    // MARK: - Lock Screen Banner
+
     @ViewBuilder
     private func lockScreenView(context: ActivityViewContext<TrackActivityAttributes>) -> some View
     {
-        VStack(spacing: 0) {
-            // Top Section: Route Badge + Countdown
-            HStack(alignment: .top, spacing: 12) {  // Spacing: 16 -> 12
-                // Left: Route + Destination
-                HStack(alignment: .center, spacing: 10) {  // Spacing: 14 -> 10
-                    if let walk = context.state.walkMinutes {
-                        // Walking indicator
-                        ZStack {
-                            Circle()
-                                .fill(
-                                    context.state.isHurryUp
-                                        ? AppTheme.Colors.alertRed.opacity(0.15)
-                                        : Color.white.opacity(0.1)
-                                )
-                                .frame(width: 44, height: 44)  // Reduced from 50
-
-                            Image(systemName: walk <= 2 ? "figure.run" : "figure.walk")
-                                .font(.system(size: 22, weight: .bold))  // Reduced from 26
-                                .foregroundColor(
-                                    context.state.isHurryUp ? AppTheme.Colors.alertRed : .white)
-                        }
-                    } else {
-                        lineBadge(context: context, size: 44)  // Reduced from 50
-                    }
-
-                    VStack(alignment: .leading, spacing: 0) {  // Spacing: 2 -> 0
-                        if context.state.isHurryUp {
-                            Text("Hurry up!")
-                                .font(.system(size: 17, weight: .black, design: .rounded))  // 18 -> 17
-                                .foregroundColor(AppTheme.Colors.alertRed)
-                        } else if context.state.walkMinutes != nil {
-                            Text("Time to walk")
-                                .font(.system(size: 17, weight: .bold, design: .rounded))  // 18 -> 17
-                                .foregroundColor(.white)
-                        } else {
-                            Text(context.attributes.destination)
-                                .font(.system(size: 18, weight: .bold, design: .rounded))  // 19 -> 18
-                                .foregroundColor(.white)
-                                .lineLimit(2)
-                                .minimumScaleFactor(0.65)  // 0.8 -> 0.65
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-
-                        Text(context.state.proximityText)
-                            .font(.system(size: 13, weight: .medium, design: .rounded))
-                            .foregroundColor(
-                                context.state.stopsAway == 1
-                                    ? AppTheme.Colors.alertRed : AppTheme.Colors.textSecondary
-                            )
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
-                    }
-                }
-
-                Spacer()
-
-                // Right: Hero countdown
-                heroCountdownLockScreen(context: context)
-            }
-            .padding(.horizontal, 20)  // 22 -> 20
-            .padding(.top, 14)  // 16 -> 14
-            .padding(.bottom, 10)  // 12 -> 10
-
-            // Middle: Progress Slider
-            VStack(spacing: 6) {  // 8 -> 6
-                progressSlider(progress: context.state.progress, context: context)
-
-                HStack {
-                    if let walkMins = context.state.walkMinutes {
-                        Label("\(walkMins) min walk", systemImage: "figure.walk")
-                            .font(.system(size: 11, weight: .semibold, design: .rounded))
-                            .foregroundColor(AppTheme.Colors.textSecondary)
-                    } else {
-                        HStack(spacing: 4) {  // 6 -> 4
-                            lineBadge(context: context, size: 14)  // 16 -> 14
-                            Text("to " + context.attributes.destination)
-                                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                                .foregroundColor(AppTheme.Colors.textSecondary)
-                                .lineLimit(1)
-                        }
-                    }
-
-                    Spacer()
-
-                    // Show next train if available
-                    if let next = context.state.nextArrivals.first {
-                        Text("Next: \(next) min")
-                            .font(.system(size: 11, weight: .medium, design: .rounded))
-                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.8))
-                    }
-                }
-                .padding(.horizontal, 2)  // 4 -> 2
-            }
-            .padding(.horizontal, 20)  // 22 -> 20
-            .padding(.bottom, 10)  // 12 -> 10
-
-            // Bottom: "I made it!" Action Button
-            Button(intent: EndTrackingIntent()) {
-                HStack(spacing: 8) {
-                    Image(systemName: "hand.thumbsup.fill")
-                        .font(.system(size: 15, weight: .bold))
-                    Text("I made it!")
-                        .font(.system(size: 15, weight: .bold, design: .rounded))
-                }
-                .foregroundColor(.white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .background(
-                    LinearGradient(
-                        colors: [
-                            AppTheme.Colors.successGreen,
-                            AppTheme.Colors.successGreen.opacity(0.8)
-                        ],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.15), lineWidth: 0.5)
-                )
-                .shadow(color: AppTheme.Colors.successGreen.opacity(0.3), radius: 8, y: 2)
-            }
-            .buttonStyle(.plain)
-            .padding(.horizontal, 20)
-            .padding(.bottom, 14)
-        }
-        .background {
-            ZStack {
-                // Main dark background
-                Color.black
-
-                // Subtle gradient accent from the route color
-                let accentColor = context.attributes.isBus
-                    ? AppTheme.Colors.mtaBlue
-                    : AppTheme.SubwayColors.color(for: context.attributes.lineId)
-                
-                LinearGradient(
-                    colors: [accentColor.opacity(0.12), Color.clear],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-
-                if context.state.isHurryUp {
-                    AppTheme.Colors.alertRed.opacity(0.1)
-                }
-            }
-        }
+        TrackLiveBannerView(
+            data: TrackLiveBannerData(
+                lineId: context.attributes.lineId,
+                destination: context.attributes.destination,
+                isBus: context.attributes.isBus,
+                isLIRR: false,
+                arrivalTime: context.state.arrivalTime,
+                proximityText: context.state.proximityText,
+                stopsAway: context.state.stopsAway,
+                walkMinutes: context.state.walkMinutes,
+                isHurryUp: context.state.isHurryUp,
+                progress: context.state.progress,
+                nextArrivals: context.state.nextArrivals
+            ),
+            showActionButton: true // Always show the dismiss button in the Lock Screen banner
+        )
         .activityBackgroundTint(Color.black)
     }
 

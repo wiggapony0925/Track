@@ -108,41 +108,37 @@ struct WidgetSchedulesContentView: View {
 
     // MARK: - Widget Preview
 
-    /// A mock preview showing users what the LiveNearMe widget looks like.
+    /// Shows the real widget medium views using placeholder data.
+    /// TrackLiveBannerView lives in Shared/ so it compiles here without duplicating layout code.
     private var widgetPreviewCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Widget Preview")
-                .font(AppTheme.Typography.cardTitle)
-                .foregroundColor(AppTheme.Colors.textPrimary)
-
-            // Mini widget mockup
-            VStack(spacing: 0) {
-                // Widget header
-                HStack(spacing: 6) {
-                    Image(systemName: "tram.fill")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(AppTheme.Colors.mtaBlue)
-                    Text("Live Near Me")
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
-                        .foregroundColor(AppTheme.Colors.textPrimary)
-                    Spacer()
-                }
-                .padding(.bottom, 8)
-
-                // Sample transit rows
-                widgetMockRow(line: "A", destination: "Far Rockaway", minutes: 3, color: AppTheme.SubwayColors.color(for: "A"))
-                widgetMockRow(line: "C", destination: "Euclid Av", minutes: 7, color: AppTheme.SubwayColors.color(for: "C"))
-                widgetMockRow(line: "B63", destination: "Bay Ridge", minutes: 5, color: AppTheme.Colors.mtaBlue)
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Text("Widget Preview")
+                    .font(AppTheme.Typography.cardTitle)
+                    .foregroundColor(AppTheme.Colors.textPrimary)
+                Spacer()
+                Text("Live")
+                    .font(.system(size: 10, weight: .black, design: .rounded))
+                    .foregroundColor(AppTheme.Colors.alertRed)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(AppTheme.Colors.alertRed.opacity(0.12))
+                    .clipShape(Capsule())
             }
-            .padding(12)
-            .background(AppTheme.Colors.cardBackground)
-            .cornerRadius(AppTheme.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius)
-                    .stroke(AppTheme.Colors.textSecondary.opacity(0.15), lineWidth: 1)
-            )
 
-            Text("The widget shows the nearest transit departures based on your schedule and location.")
+            VStack(spacing: 16) {
+                // Nearby Arrivals preview
+                VStack(spacing: 8) {
+                    widgetFrame {
+                        NearbyListWidgetView.placeholder
+                    }
+                    Text("Nearby Arrivals")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+                }
+            }
+
+            Text("These previews match your widget layout. They update live every minute on your home screen.")
                 .font(AppTheme.Typography.settingsDescription)
                 .foregroundColor(AppTheme.Colors.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -153,30 +149,18 @@ struct WidgetSchedulesContentView: View {
         .padding(.horizontal, AppTheme.Layout.margin)
     }
 
-    /// A single row in the widget preview mockup.
-    private func widgetMockRow(line: String, destination: String, minutes: Int, color: Color) -> some View {
-        HStack(spacing: 8) {
-            // Route badge
-            Text(line)
-                .font(.system(size: 11, weight: .heavy, design: .rounded))
-                .foregroundColor(AppTheme.SubwayColors.textColor(for: line))
-                .frame(width: 22, height: 22)
-                .background(color)
-                .clipShape(Circle())
-
-            Text(destination)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundColor(AppTheme.Colors.textPrimary)
-                .lineLimit(1)
-
-            Spacer()
-
-            Text("\(minutes) min")
-                .font(.system(size: 12, weight: .bold, design: .rounded))
-                .foregroundColor(AppTheme.Colors.countdown(minutes))
-        }
-        .padding(.vertical, 3)
+    /// A rounded rectangle that mimics an iOS home screen medium widget slot.
+    @ViewBuilder
+    private func widgetFrame<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        content()
+            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+            )
+            .shadow(color: .black.opacity(0.2), radius: 14, x: 0, y: 6)
     }
+
     
     // MARK: - Info Card
     

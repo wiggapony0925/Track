@@ -31,10 +31,33 @@ struct TrackWidgetProvider: TimelineProvider {
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<TrackWidgetEntry>) -> Void) {
-        fetchLiveEntry { entry in
-            let resolvedEntry = entry ?? buildSmartEntry() ?? .placeholder
+        let schedules = WidgetSchedule.loadAll()
+        let isActive = schedules.isEmpty || schedules.hasActiveSchedule()
 
-            // Refresh every 5 minutes
+        print("[TrackWidget] getTimeline called at \(Date())")
+        print("[TrackWidget] Loaded \(schedules.count) schedules. isActive: \(isActive)")
+
+        if !isActive {
+            let nextActivation = schedules.nextActivation() ?? Calendar.current.date(byAdding: .hour, value: 1, to: Date())!
+            
+            // To ensure WidgetKit doesn't go to sleep forever if the next activation is days away,
+            // we enforce a maximum sleep time of 15 minutes before checking the schedule again.
+            let maxSleep = Calendar.current.date(byAdding: .minute, value: 15, to: Date())!
+            let refreshDate = min(nextActivation, maxSleep)
+            
+            print("[TrackWidget] Paused. Next activation estimated: \(nextActivation), actually refreshing at: \(refreshDate)")
+
+            let entry = TrackWidgetEntry(date: Date(), arrivals: [], isActive: false)
+            completion(Timeline(entries: [entry], policy: .after(refreshDate)))
+            return
+        }
+
+        print("[TrackWidget] Active! Fetching live entry...")
+        fetchLiveEntry { entry in
+            var resolvedEntry = entry ?? buildSmartEntry() ?? .placeholder
+            resolvedEntry = TrackWidgetEntry(date: resolvedEntry.date, arrivals: resolvedEntry.arrivals, isActive: true)
+
+            // Refresh every 5 minutes while active
             let refreshDate = Calendar.current.date(byAdding: .minute, value: 5, to: Date())!
             let timeline = Timeline(entries: [resolvedEntry], policy: .after(refreshDate))
             completion(timeline)
@@ -108,7 +131,8 @@ struct TrackWidgetProvider: TimelineProvider {
                         minutesAway: item.minutesAway,
                         status: item.status,
                         mode: item.mode,
-                        arrivalTime: Date().addingTimeInterval(Double(item.minutesAway) * 60)
+                        // Prefer feed epoch timestamp; fall back to minutesAway offset
+                        arrivalTime: item.resolvedArrivalTime
                     )
                 }
                 .sorted { a, b in
@@ -124,7 +148,7 @@ struct TrackWidgetProvider: TimelineProvider {
                 }
                 .prefix(5)
 
-                completion(TrackWidgetEntry(date: Date(), arrivals: Array(arrivals)))
+                completion(TrackWidgetEntry(date: Date(), arrivals: Array(arrivals), isActive: true))
             } catch {
                 completion(nil)
             }
@@ -149,7 +173,8 @@ struct TrackWidgetProvider: TimelineProvider {
                         mode: "subway",
                         arrivalTime: Date().addingTimeInterval(300)
                     )
-                ]
+                ],
+                isActive: true
             )
         }
         return nil
@@ -160,6 +185,7 @@ struct TrackWidgetProvider: TimelineProvider {
 struct TrackWidgetEntry: TimelineEntry {
     let date: Date
     let arrivals: [NearbyArrival]
+    let isActive: Bool
 
     static let placeholder = TrackWidgetEntry(
         date: Date(),
@@ -169,7 +195,8 @@ struct TrackWidgetEntry: TimelineEntry {
             NearbyArrival(routeId: "G", stopName: "Metropolitan Av", direction: "Church Av", minutesAway: 8, status: "On Time", mode: "subway", arrivalTime: Date().addingTimeInterval(480)),
             NearbyArrival(routeId: "A", stopName: "Fulton St", direction: "Far Rockaway", minutesAway: 11, status: "On Time", mode: "subway", arrivalTime: Date().addingTimeInterval(660)),
             NearbyArrival(routeId: "4", stopName: "Bowling Green", direction: "Woodlawn", minutesAway: 14, status: "On Time", mode: "subway", arrivalTime: Date().addingTimeInterval(840)),
-        ]
+        ],
+        isActive: true
     )
 }
 
@@ -187,363 +214,86 @@ struct TrackWidgetEntryView: View {
             mediumView
         case .systemLarge:
             largeView
+        case .accessoryRectangular:
+            accessoryRectangularView
+        case .accessoryInline:
+            accessoryInlineView
         default:
             smallView
         }
     }
 
-    // MARK: - Small Widget
+    // MARK: - Accessory Widgets
 
-    private var smallView: some View {
+    private var accessoryRectangularView: some View {
         Group {
-            if let arrival = entry.arrivals.first {
-                VStack(spacing: 6) {
-                    // Top Bar: Live indicator
-                    HStack {
-                        Capsule()
-                            .fill(AppTheme.Colors.alertRed)
-                            .frame(width: 4, height: 4)
-                        Text("LIVE")
-                            .font(.system(size: 8, weight: .black))
-                            .foregroundColor(AppTheme.Colors.alertRed)
+            if !entry.isActive {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Transit Paused")
+                        .font(.system(size: 14, weight: .bold))
+                    Text("Outside scheduled hours")
+                        .font(.system(size: 12))
+                }
+            } else if let arrival = entry.arrivals.first {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 4) {
+                        Image(systemName: arrival.isBus ? "bus.fill" : "tram.fill")
+                        Text(arrival.displayName)
+                            .font(.system(size: 14, weight: .bold))
                         Spacer()
-                        Text(entry.date, style: .time)
-                            .font(.system(size: 8, weight: .medium))
-                            .foregroundColor(AppTheme.Colors.textSecondary)
+                        Text(arrival.arrivalTime, style: .timer)
+                            .font(.system(size: 14, weight: .bold, design: .rounded))
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.top, 8)
-
-                    Spacer(minLength: 0)
-
-                    // Hero Badge
-                    if arrival.isCommuterRail {
-                        HStack(spacing: 3) {
-                            Image(systemName: "train.side.front.car")
-                                .font(.system(size: 16, weight: .bold))
-                                .foregroundColor(.white)
-                            Text(arrival.displayName)
-                                .font(.system(size: 14, weight: .heavy, design: .rounded))
-                                .foregroundColor(.white)
-                                .minimumScaleFactor(0.3)
-                                .lineLimit(1)
-                        }
-                        .padding(.horizontal, 6)
-                        .frame(minWidth: 50, minHeight: 50)
-                        .background(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .fill(arrival.isLIRR ? AppTheme.CommuterRailColors.lirrBlue : AppTheme.CommuterRailColors.mnrBlue)
-                                .shadow(color: (arrival.isLIRR ? AppTheme.CommuterRailColors.lirrBlue : AppTheme.CommuterRailColors.mnrBlue).opacity(0.3), radius: 6, x: 0, y: 3)
-                        )
-                    } else {
-                        ZStack {
-                            Circle()
-                                .fill(arrival.isBus ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: arrival.displayName))
-                                .frame(width: 50, height: 50)
-                                .shadow(color: (arrival.isBus ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: arrival.displayName)).opacity(0.3), radius: 6, x: 0, y: 3)
-                            
-                            if arrival.isBus {
-                                Image(systemName: "bus.fill")
-                                    .font(.system(size: 22, weight: .bold))
-                                    .foregroundColor(.white)
-                            } else {
-                                Text(arrival.displayName)
-                                    .font(.system(size: 24, weight: .heavy, design: .rounded))
-                                    .foregroundColor(AppTheme.SubwayColors.textColor(for: arrival.displayName))
-                            }
-                        }
-                    }
-
-                    // Live Timer
-                    Text(arrival.arrivalTime, style: .timer)
-                        .font(.system(size: 32, weight: .bold, design: .rounded))
-                        .foregroundColor(AppTheme.Colors.countdown(arrival.minutesAway))
-                        .multilineTextAlignment(.center)
-                        .padding(.top, 4)
-
-                    VStack(spacing: 1) {
-                        Text(arrival.stopName)
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(AppTheme.Colors.textPrimary)
-                            .lineLimit(1)
-                        Text("→ \(arrival.direction)")
-                            .font(.system(size: 9, weight: .medium))
-                            .foregroundColor(AppTheme.Colors.textSecondary)
-                            .lineLimit(1)
-                    }
-                    .padding(.horizontal, 8)
-
-                    Spacer(minLength: 0)
-
-                    // Divider and next arrival preview
-                    if entry.arrivals.count > 1 {
-                        let next = entry.arrivals[1]
-                        HStack(spacing: 4) {
-                            Text("NEXT")
-                                .font(.system(size: 7, weight: .black))
-                                .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
-                            Text(next.displayName)
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundColor(next.isBus ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: next.displayName))
-                            Text(next.arrivalTime, style: .timer)
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundColor(AppTheme.Colors.textSecondary)
-                        }
-                        .padding(.bottom, 8)
-                    }
+                    Text(arrival.stopName)
+                        .font(.system(size: 12))
+                        .lineLimit(1)
                 }
             } else {
-                emptyState
+                Text("No arrivals nearby")
+                    .font(.system(size: 14, weight: .medium))
             }
         }
-        .containerBackground(for: .widget) {
-            WidgetBackground()
+    }
+
+    private var accessoryInlineView: some View {
+        Group {
+            if !entry.isActive {
+                Text("Transit Paused")
+            } else if let arrival = entry.arrivals.first {
+                Text("\(arrival.displayName) in \(arrival.minutesAway)m")
+            } else {
+                Text("No Nearby Transit")
+            }
         }
+    }
+
+    // MARK: - Small Widget
+    // Content is in Shared/WidgetSmallViews.swift (NearbySmallWidgetView) so the
+    // main app can render it for live settings previews without duplicating code.
+
+    private var smallView: some View {
+        NearbySmallWidgetView(arrivals: entry.arrivals, date: entry.date, isActive: entry.isActive)
+            .containerBackground(for: .widget) {
+                WidgetBackground()
+            }
     }
 
     // MARK: - Medium Widget
 
     private var mediumView: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            // Premium Header
-            HStack(spacing: 8) {
-                ZStack {
-                    Circle()
-                        .fill(AppTheme.Colors.mtaBlue.opacity(0.15))
-                        .frame(width: 24, height: 24)
-                    Image(systemName: "tram.fill")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(AppTheme.Colors.mtaBlue)
-                }
-                
-                Text("Nearby Transit")
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundColor(AppTheme.Colors.textPrimary)
-                
-                Spacer()
-                
-                HStack(spacing: 4) {
-                    Circle()
-                        .fill(AppTheme.Colors.successGreen)
-                        .frame(width: 4, height: 4)
-                    Text("LIVE")
-                        .font(.system(size: 9, weight: .black))
-                        .foregroundColor(AppTheme.Colors.successGreen)
-                }
-                .padding(.horizontal, 6)
-                .padding(.vertical, 3)
-                .background(AppTheme.Colors.successGreen.opacity(0.1))
-                .clipShape(Capsule())
+        NearbyListWidgetView(arrivals: entry.arrivals, maxVisible: 3, date: entry.date, isActive: entry.isActive)
+            .containerBackground(for: .widget) {
+                WidgetBackground()
             }
-
-            if entry.arrivals.isEmpty {
-                Spacer()
-                HStack {
-                    Spacer()
-                    Text("No arrivals found nearby")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(AppTheme.Colors.textSecondary)
-                    Spacer()
-                }
-                Spacer()
-            } else {
-                VStack(spacing: 8) {
-                    ForEach(Array(entry.arrivals.prefix(3).enumerated()), id: \.offset) { index, arrival in
-                        HStack(spacing: 12) {
-                            // Badge with ring
-                            if arrival.isCommuterRail {
-                                HStack(spacing: 2) {
-                                    Image(systemName: "train.side.front.car")
-                                        .font(.system(size: 10, weight: .bold))
-                                        .foregroundColor(.white)
-                                    Text(arrival.displayName)
-                                        .font(.system(size: 9, weight: .heavy, design: .rounded))
-                                        .foregroundColor(.white)
-                                        .minimumScaleFactor(0.3)
-                                        .lineLimit(1)
-                                }
-                                .padding(.horizontal, 4)
-                                .frame(minWidth: 34, minHeight: 28)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                        .fill(arrival.isLIRR ? AppTheme.CommuterRailColors.lirrBlue : AppTheme.CommuterRailColors.mnrBlue)
-                                )
-                            } else {
-                                ZStack {
-                                    Circle()
-                                        .strokeBorder(arrival.isBus ? AppTheme.Colors.mtaBlue.opacity(0.2) : AppTheme.SubwayColors.color(for: arrival.displayName).opacity(0.2), lineWidth: 1)
-                                        .frame(width: 34, height: 34)
-                                    
-                                    Circle()
-                                        .fill(arrival.isBus ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: arrival.displayName))
-                                        .frame(width: 28, height: 28)
-                                    
-                                    if arrival.isBus {
-                                        Image(systemName: "bus.fill")
-                                            .font(.system(size: 14, weight: .bold))
-                                            .foregroundColor(.white)
-                                    } else {
-                                        Text(arrival.displayName)
-                                            .font(.system(size: 14, weight: .heavy, design: .rounded))
-                                            .foregroundColor(AppTheme.SubwayColors.textColor(for: arrival.displayName))
-                                    }
-                                }
-                            }
-                            
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(arrival.stopName)
-                                    .font(.system(size: 13, weight: .bold))
-                                    .foregroundColor(AppTheme.Colors.textPrimary)
-                                    .lineLimit(1)
-                                Text("→ \(arrival.direction)")
-                                    .font(.system(size: 11, weight: .medium))
-                                    .foregroundColor(AppTheme.Colors.textSecondary)
-                                    .lineLimit(1)
-                            }
-                            
-                            Spacer()
-                            
-                            VStack(alignment: .trailing, spacing: 0) {
-                                Text(arrival.arrivalTime, style: .timer)
-                                    .font(.system(size: 18, weight: .bold, design: .rounded))
-                                    .foregroundColor(AppTheme.Colors.countdown(arrival.minutesAway))
-                                    .monospacedDigit()
-                                if !arrival.status.isEmpty && arrival.status != "On Time" {
-                                    Text(arrival.status)
-                                        .font(.system(size: 9, weight: .bold))
-                                        .foregroundColor(AppTheme.Colors.alertRed)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        .padding(14)
-        .containerBackground(for: .widget) {
-            WidgetBackground()
-        }
     }
 
     // MARK: - Large Widget
 
     private var largeView: some View {
-        VStack(alignment: .leading, spacing: 14) {
-             // Header
-            HStack(spacing: 10) {
-                Image(systemName: "location.north.fill")
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundColor(AppTheme.Colors.mtaBlue)
-                
-                VStack(alignment: .leading, spacing: 0) {
-                    Text("Nearby Predictions")
-                        .font(.system(size: 17, weight: .bold))
-                        .foregroundColor(AppTheme.Colors.textPrimary)
-                    Text("Auto-refreshing live arrivals")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(AppTheme.Colors.textSecondary)
-                }
-                
-                Spacer()
-                
-                Text(entry.date, style: .time)
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(AppTheme.Colors.textSecondary)
+        NearbyListWidgetView(arrivals: entry.arrivals, maxVisible: 6, date: entry.date, isActive: entry.isActive)
+            .containerBackground(for: .widget) {
+                WidgetBackground()
             }
-            .padding(.bottom, 4)
-
-            if entry.arrivals.isEmpty {
-                emptyState
-            } else {
-                VStack(spacing: 10) {
-                    ForEach(Array(entry.arrivals.prefix(5).enumerated()), id: \.offset) { index, arrival in
-                        HStack(spacing: 14) {
-                            // Badge with subtle depth
-                            if arrival.isCommuterRail {
-                                HStack(spacing: 3) {
-                                    Image(systemName: "train.side.front.car")
-                                        .font(.system(size: 12, weight: .bold))
-                                        .foregroundColor(.white)
-                                    Text(arrival.displayName)
-                                        .font(.system(size: 11, weight: .heavy, design: .rounded))
-                                        .foregroundColor(.white)
-                                        .minimumScaleFactor(0.3)
-                                        .lineLimit(1)
-                                }
-                                .padding(.horizontal, 5)
-                                .frame(minWidth: 38, minHeight: 38)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                        .fill(arrival.isLIRR ? AppTheme.CommuterRailColors.lirrBlue : AppTheme.CommuterRailColors.mnrBlue)
-                                        .shadow(color: .black.opacity(0.1), radius: 2, x: 0, y: 1)
-                                )
-                            } else {
-                                ZStack {
-                                    Circle()
-                                        .fill(arrival.isBus ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: arrival.displayName))
-                                        .frame(width: 38, height: 38)
-                                        .shadow(color: .black.opacity(0.1), radius: 2, x: 0, y: 1)
-                                    
-                                    if arrival.isBus {
-                                        Image(systemName: "bus.fill")
-                                            .font(.system(size: 16, weight: .bold))
-                                            .foregroundColor(.white)
-                                    } else {
-                                        Text(arrival.displayName)
-                                            .font(.system(size: 16, weight: .heavy, design: .rounded))
-                                            .foregroundColor(AppTheme.SubwayColors.textColor(for: arrival.displayName))
-                                    }
-                                }
-                            }
-                            
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(arrival.stopName)
-                                    .font(.system(size: 14, weight: .bold))
-                                    .foregroundColor(AppTheme.Colors.textPrimary)
-                                    .lineLimit(1)
-                                Text(arrival.direction)
-                                    .font(.system(size: 12, weight: .medium))
-                                    .foregroundColor(AppTheme.Colors.textSecondary)
-                                    .lineLimit(1)
-                            }
-                            
-                            Spacer()
-                            
-                            HStack(alignment: .firstTextBaseline, spacing: 2) {
-                                Text(arrival.arrivalTime, style: .timer)
-                                    .font(.system(size: 22, weight: .bold, design: .rounded))
-                                    .foregroundColor(AppTheme.Colors.countdown(arrival.minutesAway))
-                                    .monospacedDigit()
-                                Text("m")
-                                    .font(.system(size: 12, weight: .bold))
-                                    .foregroundColor(AppTheme.Colors.textSecondary)
-                            }
-                        }
-                        .padding(10)
-                        .background(Color.white.opacity(0.03))
-                        .cornerRadius(12)
-                    }
-                }
-            }
-        }
-        .padding(16)
-        .containerBackground(for: .widget) {
-            WidgetBackground()
-        }
-    }
-
-    // MARK: - Helpers
-
-    private var emptyState: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "tram.fill")
-                .font(.system(size: 32, weight: .light))
-                .foregroundColor(AppTheme.Colors.textSecondary)
-            Text("No arrivals 😭")
-                .font(.system(size: 14, weight: .bold))
-                .foregroundColor(AppTheme.Colors.textSecondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -559,7 +309,7 @@ struct TrackWidget: Widget {
         }
         .configurationDisplayName("Nearby Transit")
         .description("Live countdowns for the nearest buses and trains.")
-        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
+        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge, .accessoryRectangular, .accessoryInline])
     }
 }
 

@@ -115,6 +115,7 @@ struct SettingsContentView: View {
                                 }
                                 .padding(.horizontal, AppTheme.Layout.cardPadding)
                                 .padding(.vertical, 14)
+                                .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
                         }

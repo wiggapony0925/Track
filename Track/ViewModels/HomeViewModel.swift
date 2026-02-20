@@ -2709,6 +2709,9 @@ final class HomeViewModel {
 
     /// Starts tracking a nearby transit arrival via Widget.
     func trackNearbyArrival(_ arrival: NearbyTransitResponse, location: CLLocation?) {
+        // End any existing tracking session first — only one route at a time.
+        if currentTrackedRoute != nil { stopTracking() }
+
         // Log track interaction to Supabase for analytics
         Task {
             await SupabaseManager.shared.logRouteInteraction(
@@ -2802,6 +2805,9 @@ final class HomeViewModel {
 
     /// Starts tracking a subway arrival.
     func trackSubwayArrival(_ arrival: TrainArrival, location: CLLocation?) {
+        // End any existing tracking session first — only one route at a time.
+        if currentTrackedRoute != nil { stopTracking() }
+
         // Log track interaction to Supabase for analytics
         Task {
             await SupabaseManager.shared.logRouteInteraction(
@@ -2850,6 +2856,9 @@ final class HomeViewModel {
 
     /// Starts tracking a bus arrival.
     func trackBusArrival(_ arrival: BusArrival, location: CLLocation?) {
+        // End any existing tracking session first — only one route at a time.
+        if currentTrackedRoute != nil { stopTracking() }
+
         // Log track interaction to Supabase for analytics
         Task {
             await SupabaseManager.shared.logRouteInteraction(
@@ -2907,6 +2916,9 @@ final class HomeViewModel {
 
     /// Generic rail arrival tracking (LIRR & MNR).
     private func trackRailArrival(_ arrival: TrainArrival, location: CLLocation?, agency: String) {
+        // End any existing tracking session first — only one route at a time.
+        if currentTrackedRoute != nil { stopTracking() }
+
         // Log track interaction to Supabase for analytics
         Task {
             await SupabaseManager.shared.logRouteInteraction(

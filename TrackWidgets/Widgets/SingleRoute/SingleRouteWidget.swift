@@ -118,7 +118,8 @@ struct SingleRouteProvider: TimelineProvider {
                             minutesAway: item.minutesAway,
                             status: item.status,
                             mode: item.mode,
-                            arrivalTime: Date().addingTimeInterval(Double(item.minutesAway) * 60)
+                            // Prefer feed epoch timestamp; fall back to minutesAway offset
+                            arrivalTime: item.resolvedArrivalTime
                         )
                     }
                     .prefix(3)
@@ -218,97 +219,14 @@ struct SingleRouteWidgetView: View {
     }
 
     // MARK: - Small Widget
+    // Content is in Shared/WidgetSmallViews.swift (TrackRouteSmallWidgetView) so the
+    // main app can render it for live settings previews without duplicating code.
 
     private var smallView: some View {
         Group {
             switch entry.state {
             case .tracking(let route, let arrivals):
-                if let firstArrival = arrivals.first {
-                    VStack(spacing: 6) {
-                        // Header
-                        HStack {
-                            ZStack(alignment: .leading) {
-                                Capsule()
-                                    .fill(AppTheme.Colors.alertRed.opacity(0.1))
-                                    .frame(width: 32, height: 12)
-                                HStack(spacing: 2) {
-                                    Circle()
-                                        .fill(AppTheme.Colors.alertRed)
-                                        .frame(width: 4, height: 4)
-                                    Text("LIVE")
-                                        .font(.system(size: 7, weight: .black))
-                                        .foregroundColor(AppTheme.Colors.alertRed)
-                                }
-                                .padding(.horizontal, 4)
-                            }
-                            Spacer()
-                            Text(entry.date, style: .time)
-                                .font(.system(size: 8, weight: .bold))
-                                .foregroundColor(AppTheme.Colors.textSecondary)
-                        }
-                        .padding(.horizontal, 10)
-                        .padding(.top, 8)
-
-                        Spacer(minLength: 0)
-
-                        // Route badge
-                        ZStack {
-                            Circle()
-                                .fill(route.isBus ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: route.cleanDisplayName))
-                                .frame(width: 48, height: 48)
-                                .shadow(color: (route.isBus ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: route.cleanDisplayName)).opacity(0.3), radius: 6, x: 0, y: 3)
-
-                            if route.isBus {
-                                Image(systemName: "bus.fill")
-                                    .font(.system(size: 20, weight: .bold))
-                                    .foregroundColor(.white)
-                            } else {
-                                Text(route.cleanDisplayName)
-                                    .font(.system(size: 22, weight: .heavy, design: .rounded))
-                                    .foregroundColor(AppTheme.SubwayColors.textColor(for: route.cleanDisplayName))
-                                    .minimumScaleFactor(0.5)
-                            }
-                        }
-
-                        // Live Timer
-                        Text(firstArrival.arrivalTime, style: .timer)
-                            .font(.system(size: 34, weight: .bold, design: .rounded))
-                            .foregroundColor(AppTheme.Colors.countdown(firstArrival.minutesAway))
-                            .monospacedDigit()
-
-                        // Stop / Direction
-                        VStack(spacing: 1) {
-                            Text(route.stopName)
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(AppTheme.Colors.textPrimary)
-                                .lineLimit(1)
-                            Text("→ \(route.direction)")
-                                .font(.system(size: 9, weight: .medium))
-                                .foregroundColor(AppTheme.Colors.textSecondary)
-                                .lineLimit(1)
-                        }
-                        .padding(.horizontal, 8)
-
-                        Spacer(minLength: 0)
-
-                        // Next arrivals
-                        if arrivals.count > 1 {
-                            HStack(spacing: 8) {
-                                ForEach(Array(arrivals.dropFirst().prefix(2).enumerated()), id: \.offset) { _, next in
-                                    HStack(spacing: 2) {
-                                        Text(next.arrivalTime, style: .timer)
-                                            .font(.system(size: 9, weight: .bold))
-                                            .foregroundColor(AppTheme.Colors.textSecondary)
-                                    }
-                                }
-                            }
-                            .padding(.bottom, 8)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    noDataView(route: route)
-                }
+                TrackRouteSmallWidgetView(route: route, arrivals: arrivals, date: entry.date)
 
             case .noData(let route):
                 noDataView(route: route)
@@ -328,86 +246,30 @@ struct SingleRouteWidgetView: View {
         Group {
             switch entry.state {
             case .tracking(let route, let arrivals):
-                VStack(alignment: .leading, spacing: 0) {
-                    // Premium Header
-                    HStack(spacing: 12) {
-                        transitBadge(route: route, size: 38)
-                            .shadow(color: (route.isBus ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: route.cleanDisplayName)).opacity(0.3), radius: 4, x: 0, y: 2)
-
-                        VStack(alignment: .leading, spacing: 1) {
-                            HStack(spacing: 4) {
-                                Circle()
-                                    .fill(AppTheme.Colors.successGreen)
-                                    .frame(width: 4, height: 4)
-                                Text("TRACKING")
-                                    .font(.system(size: 9, weight: .black))
-                                    .foregroundColor(AppTheme.Colors.successGreen)
-                            }
-                            Text(route.stopName)
-                                .font(.system(size: 15, weight: .bold))
-                                .foregroundColor(AppTheme.Colors.textPrimary)
-                                .lineLimit(1)
-                        }
-
-                        Spacer()
-
-                        VStack(alignment: .trailing, spacing: 0) {
-                            Text(entry.date, style: .time)
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(AppTheme.Colors.textPrimary)
-                            Text("Updated")
-                                .font(.system(size: 8, weight: .medium))
-                                .foregroundColor(AppTheme.Colors.textSecondary)
-                        }
-                    }
-                    .padding(.bottom, 16)
-
-                    // Arrival cards
-                    VStack(spacing: 10) {
-                        ForEach(Array(arrivals.enumerated()), id: \.offset) { index, arrival in
-                            HStack(spacing: 12) {
-                                // Position Badge
-                                ZStack {
-                                    Circle()
-                                        .fill(index == 0 ? AppTheme.Colors.mtaBlue.opacity(0.1) : Color.clear)
-                                        .frame(width: 28, height: 28)
-                                    Text(index == 0 ? "1st" : "#\(index + 1)")
-                                        .font(.system(size: 10, weight: .heavy))
-                                        .foregroundColor(index == 0 ? AppTheme.Colors.mtaBlue : AppTheme.Colors.textSecondary)
-                                }
-
-                                Text(route.direction)
-                                    .font(.system(size: 13, weight: .bold))
-                                    .foregroundColor(AppTheme.Colors.textPrimary)
-                                    .lineLimit(1)
-
-                                Spacer()
-
-                                // Live Countdown
-                                Text(arrival.arrivalTime, style: .timer)
-                                    .font(.system(size: 20, weight: .bold, design: .rounded))
-                                    .foregroundColor(AppTheme.Colors.countdown(arrival.minutesAway))
-                                    .monospacedDigit()
-                                
-                                if !arrival.status.isEmpty {
-                                    Text(arrival.status.prefix(3).uppercased())
-                                        .font(.system(size: 8, weight: .black))
-                                        .foregroundColor(statusTextColor(arrival.status))
-                                        .padding(.horizontal, 4)
-                                        .padding(.vertical, 2)
-                                        .background(statusTextColor(arrival.status).opacity(0.1))
-                                        .cornerRadius(4)
-                                }
-                            }
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 8)
-                            .background(index == 0 ? Color.white.opacity(0.04) : Color.clear)
-                            .cornerRadius(12)
-                        }
-                    }
+                if let firstArrival = arrivals.first {
+                    // Convert widget state into Live Activity banner data
+                    let progress = calculateProgress(arrival: firstArrival)
+                    let nextArrivals = arrivals.dropFirst().prefix(2).map { $0.minutesAway }
+                    
+                    TrackLiveBannerView(
+                        data: TrackLiveBannerData(
+                            lineId: route.cleanDisplayName,
+                            destination: "to " + (route.destination ?? route.direction),
+                            isBus: route.isBus,
+                            isLIRR: route.isLIRR,
+                            arrivalTime: firstArrival.arrivalTime,
+                            proximityText: stopsAwayText(for: firstArrival),
+                            stopsAway: nil,
+                            walkMinutes: nil,
+                            isHurryUp: firstArrival.minutesAway <= 2,
+                            progress: progress,
+                            nextArrivals: Array(nextArrivals)
+                        ),
+                        showActionButton: false
+                    )
+                } else {
+                    noDataView(route: route)
                 }
-                .padding(14)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
 
             case .noData(let route):
                 noDataView(route: route)
@@ -419,6 +281,22 @@ struct SingleRouteWidgetView: View {
         .containerBackground(for: .widget) {
             dynamicBackground
         }
+    }
+
+    private func calculateProgress(arrival: NearbyArrival) -> Double {
+        let maxMins: Double = 20.0
+        let currentMins = max(0.0, Double(arrival.minutesAway))
+        let remainingRatio = currentMins / maxMins
+        return max(0.0, min(1.0, 1.0 - remainingRatio))
+    }
+    
+    private func stopsAwayText(for arrival: NearbyArrival) -> String {
+        if arrival.minutesAway <= 0 {
+            return "Arriving now"
+        } else if arrival.minutesAway <= 2 {
+            return "Arriving shortly"
+        }
+        return "Waiting for next vehicle..."
     }
 
     // MARK: - Large Widget
