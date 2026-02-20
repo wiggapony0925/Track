@@ -81,7 +81,8 @@ struct GroupedRouteRow: View {
                         ForEach(Array(group.directions.enumerated()), id: \.element.id) {
                             index, direction in
                             let label =
-                                direction.arrivals.first?.destination
+                                direction.liveArrivals.first?.destination
+                                ?? direction.arrivals.first?.destination
                                 ?? direction.directionLabel
                                 ?? directionLabel(direction.direction)
                             VStack(alignment: .leading, spacing: 2) {
@@ -184,46 +185,37 @@ struct GroupedRouteRow: View {
     private var countdownView: some View {
         let dir = currentDirection
 
-        if let first = dir.arrivals.first {
-            let isPlaceholder = first.minutesAway >= 99 && first.arrivalTs == nil
+        // Prefer the first live (non-placeholder) arrival for the countdown.
+        // If only placeholders exist, show "Sched" indicator instead of fake times.
+        let liveFirst = dir.liveArrivals.first
+        let hasOnlyPlaceholders = liveFirst == nil && !dir.arrivals.isEmpty
 
-            if isPlaceholder {
-                // ── Scheduled but not live ──
-                // Show the scheduled time greyed out instead of "No live"
+        if let first = liveFirst {
+            // ── Live data ──
+            VStack(spacing: 2) {
                 if let ts = first.arrivalTs {
-                    let date = Date(timeIntervalSince1970: TimeInterval(ts))
-                    let mins = max(0, Int(date.timeIntervalSinceNow / 60))
-                    VStack(spacing: 2) {
+                    // Live countdown using arrivalTs — stays in sync with
+                    // RouteDetailSheet and NearbyTransitRow countdowns.
+                    TimelineView(.periodic(from: .now, by: 1.0)) { context in
+                        let secondsUntil = Double(ts) - context.date.timeIntervalSince1970
+                        let mins = max(0, Int(secondsUntil / 60))
+                        let isNow = secondsUntil <= 30
+
                         HStack(alignment: .firstTextBaseline, spacing: 2) {
-                            Text("\(mins)")
-                                .font(.custom("Helvetica-Bold", size: 22))
-                                .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.5))
-                            Text("min")
-                                .font(.custom("Helvetica", size: 11))
-                                .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.4))
+                            Text(isNow ? "Now" : "\(mins)")
+                                .font(.custom("Helvetica-Bold", size: isNow ? 20 : 26))
+                                .foregroundColor(AppTheme.Colors.countdown(mins))
+                                .contentTransition(.numericText())
+
+                            if !isNow {
+                                Text("min")
+                                    .font(.custom("Helvetica", size: 12))
+                                    .foregroundColor(AppTheme.Colors.textSecondary)
+                            }
                         }
-                        Text("Sched")
-                            .font(.custom("Helvetica-Bold", size: 9))
-                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.5))
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(AppTheme.Colors.textSecondary.opacity(0.08))
-                            .clipShape(Capsule())
                     }
                 } else {
-                    // Truly no data — minimal indicator
-                    VStack(spacing: 3) {
-                        Image(systemName: "clock")
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.4))
-                        Text("Sched")
-                            .font(.custom("Helvetica-Bold", size: 9))
-                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.4))
-                    }
-                }
-            } else {
-                // ── Live data ──
-                VStack(spacing: 2) {
+                    // Fallback to static minutesAway when no timestamp
                     HStack(alignment: .firstTextBaseline, spacing: 2) {
                         Text("\(first.minutesAway)")
                             .font(.custom("Helvetica-Bold", size: 26))
@@ -233,10 +225,18 @@ struct GroupedRouteRow: View {
                             .font(.custom("Helvetica", size: 12))
                             .foregroundColor(AppTheme.Colors.textSecondary)
                     }
-
-                    // Status indicator
-                    statusPill(for: first)
                 }
+                statusPill(for: first)
+            }
+        } else if hasOnlyPlaceholders {
+            // Direction exists but only has backend placeholder arrivals
+            VStack(spacing: 3) {
+                Image(systemName: "clock")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.4))
+                Text("Sched")
+                    .font(.custom("Helvetica-Bold", size: 9))
+                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.4))
             }
         } else {
             // No arrivals at all

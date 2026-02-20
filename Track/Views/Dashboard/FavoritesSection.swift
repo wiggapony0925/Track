@@ -68,13 +68,13 @@ private struct FavoriteCard: View {
     }
     
     /// Minutes until next arrival for this favorite, if live data is available.
-    private var nextMinutes: Int? {
+    private var nextArrival: NearbyTransitResponse? {
         guard let group = matchedGroup else { return nil }
         // Find the direction matching this favorite
         let dir = group.directions.first(where: {
             $0.direction.lowercased() == (favorite.direction ?? "").lowercased()
         }) ?? group.directions.first
-        return dir?.arrivals.first?.minutesAway
+        return dir?.liveArrivals.first
     }
     
     var body: some View {
@@ -96,10 +96,23 @@ private struct FavoriteCard: View {
                         mode: favorite.mode
                     )
                     
-                    if let mins = nextMinutes {
-                        Text("\(mins) min")
-                            .font(.custom("Helvetica-Bold", size: 14))
-                            .foregroundColor(mins <= 2 ? AppTheme.Colors.alertRed : AppTheme.Colors.textPrimary)
+                    if let arrival = nextArrival {
+                        if let ts = arrival.arrivalTs {
+                            // Live countdown from arrivalTs — consistent
+                            // with RouteDetailSheet and NearbyTransitRow.
+                            TimelineView(.periodic(from: .now, by: 1.0)) { context in
+                                let secondsUntil = Double(ts) - context.date.timeIntervalSince1970
+                                let mins = max(0, Int(secondsUntil / 60))
+                                let isNow = secondsUntil <= 30
+                                Text(isNow ? "Now" : "\(mins) min")
+                                    .font(.custom("Helvetica-Bold", size: 14))
+                                    .foregroundColor(mins <= 2 ? AppTheme.Colors.alertRed : AppTheme.Colors.textPrimary)
+                            }
+                        } else {
+                            Text("\(arrival.minutesAway) min")
+                                .font(.custom("Helvetica-Bold", size: 14))
+                                .foregroundColor(arrival.minutesAway <= 2 ? AppTheme.Colors.alertRed : AppTheme.Colors.textPrimary)
+                        }
                     } else {
                         Text("—")
                             .font(.custom("Helvetica-Bold", size: 14))

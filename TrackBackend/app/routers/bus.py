@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 import traceback
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 import httpx
 from fastapi import APIRouter, HTTPException, Query
@@ -185,6 +185,16 @@ async def bus_live(stop_id: str) -> list[BusArrival]:
     """Return real-time bus arrivals at a stop (e.g. ``/bus/live/MTA_308214``)."""
     try:
         live_arrivals = await get_realtime_arrivals(stop_id)
+        
+        # Filter out stale arrivals (older than 1 minute ago)
+        now_utc = datetime.now(timezone.utc)
+        live_arrivals = [
+            a for a in live_arrivals
+            if not a.expected_arrival or (
+                a.expected_arrival.replace(tzinfo=timezone.utc) if a.expected_arrival.tzinfo is None else a.expected_arrival
+            ) > now_utc - timedelta(seconds=60)
+        ]
+
         if not live_arrivals:
             # Fallback to schedule
             scheduled = schedule_service.get_scheduled_arrivals(stop_id, limit=5)

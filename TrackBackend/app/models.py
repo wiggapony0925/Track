@@ -74,6 +74,7 @@ class BusArrival(BaseModel):
     route_id: str
     vehicle_id: str
     stop_id: str
+    stop_name: str | None = None
     status_text: str
     status: str = "Live"
     expected_arrival: datetime | None = None
@@ -135,6 +136,7 @@ class BusVehicle(BaseModel):
     status_text: str | None = None
     direction_ref: int | None = None
     expected_arrival: datetime | None = None
+    onward_calls: list[BusArrival] = []
 
 
 class DirectionShape(BaseModel):
@@ -144,6 +146,7 @@ class DirectionShape(BaseModel):
     headsign: str = ""  # e.g. "Manhattan", "Far Rockaway"
     polylines: list[str]
     stops: list[BusStop]
+    service_type: str | None = None  # "express", "local", "mixed", or None
 
 
 class RouteShape(BaseModel):
@@ -158,6 +161,7 @@ class RouteShape(BaseModel):
     polylines: list[str]
     stops: list[BusStop]
     directions: list[DirectionShape] = []
+    service_type: str | None = None  # "express", "local", "mixed", or None
 
 
 class SubwayLineOverlay(BaseModel):

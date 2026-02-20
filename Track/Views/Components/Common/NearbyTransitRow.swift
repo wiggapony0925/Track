@@ -105,7 +105,14 @@ struct NearbyTransitRow: View {
                 // MARK: Right Side (Time + Status)
                 VStack(alignment: .trailing, spacing: 6) {
                     // Minutes countdown
-                    if let ts = arrival.arrivalTs {
+                    if arrival.isPlaceholder {
+                        // Backend backfill placeholder — should not normally
+                        // render (filtered by RouteDetailSheet) but guard
+                        // against it leaking through.
+                        Image(systemName: "clock")
+                            .font(.system(size: 20, weight: .medium))
+                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.4))
+                    } else if let ts = arrival.arrivalTs {
                         // Live countdown using local system time vs arrival timestamp
                         TimelineView(.periodic(from: .now, by: 1.0)) { context in
                             let secondsUntil = Double(ts) - context.date.timeIntervalSince1970
@@ -177,9 +184,9 @@ struct NearbyTransitRow: View {
                             onFocusVehicle?(key)
                         }
                     } else {
-                        // Show scheduled clock time when vehicle is NOT live on the map
-                        // so users still see when the train/bus is expected.
+                        // Vehicle is NOT live on the map (no GPS marker matched).
                         if let ts = arrival.arrivalTs {
+                            // Has an arrival timestamp — show the clock time.
                             let arrivalDate = Date(timeIntervalSince1970: Double(ts))
                             HStack(spacing: 4) {
                                 Image(systemName: "calendar.badge.clock")
@@ -192,7 +199,26 @@ struct NearbyTransitRow: View {
                             .padding(.vertical, 3)
                             .background(AppTheme.Colors.textSecondary.opacity(0.08))
                             .clipShape(Capsule())
+                        } else if arrival.vehicleId != nil || arrival.tripId != nil {
+                            // Real GTFS-RT arrival (has vehicleId/tripId) but no
+                            // arrivalTs and no live marker on the map yet.
+                            // This is NOT a schedule-only row — the feed confirms
+                            // a vehicle exists; it just lacks a precise ETA or GPS.
+                            HStack(spacing: 4) {
+                                Image(systemName: "bus.fill")
+                                    .font(.system(size: 8, weight: .semibold))
+                                Text("En Route")
+                                    .font(.custom("Helvetica-Bold", size: 9))
+                                    .textCase(.uppercase)
+                            }
+                            .foregroundColor(AppTheme.Colors.mtaBlue.opacity(0.7))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(AppTheme.Colors.mtaBlue.opacity(0.08))
+                            .clipShape(Capsule())
                         } else {
+                            // Truly static / schedule-only arrival — no vehicle
+                            // or trip info from any real-time feed.
                             HStack(spacing: 4) {
                                 Image(systemName: "clock")
                                     .font(.system(size: 8, weight: .semibold))
@@ -254,9 +280,20 @@ struct NearbyTransitRow: View {
                                 .font(.custom("Helvetica-Bold", size: 11))
                                 .foregroundColor(AppTheme.Colors.textSecondary)
                                 .textCase(.uppercase)
-                            Text(formatArrivalTime(minutesAway: arrival.minutesAway))
-                                .font(.custom("Helvetica-Bold", size: 14))
-                                .foregroundColor(AppTheme.Colors.textPrimary)
+                            if let ts = arrival.arrivalTs {
+                                // Live countdown matching the main row's TimelineView
+                                TimelineView(.periodic(from: .now, by: 1.0)) { context in
+                                    let secondsUntil = Double(ts) - context.date.timeIntervalSince1970
+                                    let mins = max(0, Int(secondsUntil / 60))
+                                    Text(mins <= 0 ? "Arriving now" : "In \(mins) min — \(Date(timeIntervalSince1970: Double(ts)).formatted(date: .omitted, time: .shortened))")
+                                        .font(.custom("Helvetica-Bold", size: 14))
+                                        .foregroundColor(AppTheme.Colors.textPrimary)
+                                }
+                            } else {
+                                Text(formatArrivalTime(minutesAway: arrival.minutesAway))
+                                    .font(.custom("Helvetica-Bold", size: 14))
+                                    .foregroundColor(AppTheme.Colors.textPrimary)
+                            }
                         }
 
                         Spacer()

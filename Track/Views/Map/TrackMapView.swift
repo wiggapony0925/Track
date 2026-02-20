@@ -128,7 +128,13 @@ struct TrackMapView: View {
         .mapStyle(
             .standard(
                 emphasis: .muted,
-                pointsOfInterest: .including([.publicTransport]),
+                // Hide Apple's built-in transit POI markers when a route is
+                // selected — the app renders its own stop annotations in the
+                // route color, so Apple's markers create visual clutter with
+                // mismatched colors.
+                pointsOfInterest: viewModel.selectedRouteId != nil
+                    ? .excludingAll
+                    : .including([.publicTransport]),
                 showsTraffic: false
             )
         )
@@ -180,7 +186,7 @@ struct TrackMapView: View {
     private var routeStopAnnotations: some MapContent {
         if let shape = viewModel.routeShape {
             let isBusRoute = viewModel.selectedGroupedRoute?.isBus == true
-            let directionStops = shape.stopsForDirection(viewModel.selectedDirectionIndex)
+            let directionStops = shape.stopsForDirection(index: viewModel.selectedDirectionIndex, name: viewModel.selectedDirectionName)
 
             ForEach(directionStops) { stop in
                 let isSelected = stop.id == viewModel.selectedStopId
@@ -310,20 +316,41 @@ struct TrackMapView: View {
     @MapContentBuilder
     private var routePolylines: some MapContent {
         let polylines = viewModel.cachedRoutePolylines
+        let inactivePolylines = viewModel.cachedInactivePolylines
         let isBus = viewModel.selectedGroupedRoute?.isBus == true
         let split = viewModel.directionalSplit
 
-        if let split, split.ahead.count >= 2 || split.behind.count >= 2 {
-            // Two-tone rendering: faded "behind" + full-color "ahead"
-            if split.behind.count >= 2 {
+        // 1) Inactive directions — draw first (behind) at low opacity.
+        //    Shows branches, short-turns, and alternate paths so users
+        //    understand the full route structure.
+        ForEach(Array(inactivePolylines.enumerated()), id: \.offset) { _, coords in
+            if coords.count >= 2 {
                 polylineStroke(
-                    coords: split.behind, color: selectedRouteColor.opacity(0.25),
-                    casingOpacity: 0.3, isBus: isBus)
+                    coords: coords,
+                    color: selectedRouteColor.opacity(0.15),
+                    casingOpacity: 0.15,
+                    isBus: isBus)
             }
-            if split.ahead.count >= 2 {
-                polylineStroke(
-                    coords: split.ahead, color: selectedRouteColor,
-                    casingOpacity: 0.8, isBus: isBus)
+        }
+
+        // 2) Active direction — full color or two-tone split
+        if let split, !split.ahead.isEmpty || !split.behind.isEmpty {
+            // Two-tone rendering: faded "behind" + full-color "ahead"
+            // Each is an array of separate polyline segments to avoid
+            // straight-line artifacts between disconnected route portions.
+            ForEach(Array(split.behind.enumerated()), id: \.offset) { _, coords in
+                if coords.count >= 2 {
+                    polylineStroke(
+                        coords: coords, color: selectedRouteColor.opacity(0.25),
+                        casingOpacity: 0.3, isBus: isBus)
+                }
+            }
+            ForEach(Array(split.ahead.enumerated()), id: \.offset) { _, coords in
+                if coords.count >= 2 {
+                    polylineStroke(
+                        coords: coords, color: selectedRouteColor,
+                        casingOpacity: 0.8, isBus: isBus)
+                }
             }
         } else if !polylines.isEmpty {
             // No directional split — full color for all segments
@@ -334,7 +361,7 @@ struct TrackMapView: View {
             }
         } else if let shape = viewModel.routeShape {
             // Fallback: connect stops when no polyline data
-            let fallbackStops = shape.stopsForDirection(viewModel.selectedDirectionIndex)
+            let fallbackStops = shape.stopsForDirection(index: viewModel.selectedDirectionIndex, name: viewModel.selectedDirectionName)
             if fallbackStops.count >= 2 {
                 let stopCoords = fallbackStops.map {
                     CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lon)

@@ -123,6 +123,12 @@ struct RouteDetailSheet: View {
             ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: group.displayName)
     }
 
+    /// The name of the currently selected direction, used to match headsigns in RouteShape.
+    private var selectedDirectionName: String? {
+        guard selectedDirectionIndex >= 0, selectedDirectionIndex < group.directions.count else { return nil }
+        return group.directions[selectedDirectionIndex].direction
+    }
+
     /// Current direction bucket, clamped to bounds.
     private var safeDirection: DirectionArrivalsResponse {
         guard !group.directions.isEmpty else {
@@ -223,32 +229,45 @@ struct RouteDetailSheet: View {
 
                 if group.directions.indices.contains(selectedDirectionIndex) {
                     let dir = group.directions[selectedDirectionIndex]
-                    let headsign = routeShape?.directions
-                        .first(where: { $0.directionId == selectedDirectionIndex })?
-                        .headsign
-                    let subtitle =
-                        (headsign != nil && !headsign!.isEmpty)
-                        ? "→ \(headsign!)"
-                        : dir.directionLabel ?? directionLabel(dir.direction)
+                    // Use the same priority as the direction pills:
+                    // headsign > arrival destination > directionLabel > compass
+                    let shapeHeadsign = routeShape?.matchedDirection(
+                        index: selectedDirectionIndex,
+                        name: dir.direction
+                    )?.headsign
+                    let arrivalDest = dir.liveArrivals.first?.destination ?? dir.arrivals.first?.destination
+                    let subtitle: String = {
+                        if let hs = shapeHeadsign, !hs.isEmpty { return "→ \(hs)" }
+                        if let dest = arrivalDest, !dest.isEmpty { return "→ \(dest)" }
+                        if let dl = dir.directionLabel, !dl.isEmpty { return dl }
+                        return directionLabel(dir.direction)
+                    }()
                     Text(subtitle)
                         .font(.custom("Helvetica", size: 15))
                         .foregroundColor(AppTheme.Colors.textSecondary)
                         .lineLimit(1)
                 }
 
-                // Mode badge
-                Text(
-                    group.isCommuterRail
-                        ? (group.isLIRR ? "LIRR" : "Metro-North") : group.isBus ? "Bus" : "Subway"
-                )
-                .font(.custom("Helvetica-Bold", size: 10))
-                .foregroundColor(routeColor)
-                .textCase(.uppercase)
-                .tracking(0.8)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
-                .background(routeColor.opacity(0.1))
-                .clipShape(Capsule())
+                // Mode badge + Express/Local badge
+                HStack(spacing: 6) {
+                    Text(
+                        group.isCommuterRail
+                            ? (group.isLIRR ? "LIRR" : "Metro-North") : group.isBus ? "Bus" : "Subway"
+                    )
+                    .font(.custom("Helvetica-Bold", size: 10))
+                    .foregroundColor(routeColor)
+                    .textCase(.uppercase)
+                    .tracking(0.8)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(routeColor.opacity(0.1))
+                    .clipShape(Capsule())
+
+                    // Express / Local / Mixed service type (route-level, from GTFS)
+                    if let serviceType = routeShape?.serviceType, !serviceType.isEmpty {
+                        serviceTypeBadge(serviceType)
+                    }
+                }
             }
 
             Spacer()
@@ -346,8 +365,11 @@ struct RouteDetailSheet: View {
 
     private var countdownSection: some View {
         let direction = safeDirection
+        // Filter out backend placeholders (minutesAway=99, no vehicle/trip)
+        // so we only show real live arrivals in the countdown chips.
+        let liveArrivals = direction.liveArrivals
         let nextArrivals = Array(
-            direction.arrivals.prefix(AppSettings.shared.maxRouteDetailArrivals))
+            liveArrivals.prefix(AppSettings.shared.maxRouteDetailArrivals))
 
         return VStack(alignment: .leading, spacing: 10) {
             Text("Next Arrivals")
@@ -358,8 +380,23 @@ struct RouteDetailSheet: View {
                 .padding(.horizontal, AppTheme.Layout.margin)
 
             if nextArrivals.isEmpty {
-                // When no live arrivals, show scheduled departures or empty state
-                if !scheduledDeparturesForCurrentDirection.isEmpty {
+                // When no live arrivals, show vehicle count awareness, scheduled departures, or empty state
+                if liveVehicleCount > 0 {
+                    // Vehicles are on the map but no arrival data for this direction yet
+                    VStack(spacing: 8) {
+                        Image(systemName: group.isBus ? "bus.fill" : "tram.fill")
+                            .font(.system(size: 28))
+                            .foregroundColor(routeColor.opacity(0.6))
+                        Text("\(liveVehicleCount) vehicle\(liveVehicleCount == 1 ? "" : "s") on route")
+                            .font(.custom("Helvetica-Bold", size: 14))
+                            .foregroundColor(AppTheme.Colors.textPrimary)
+                        Text("No arrival times for this direction yet")
+                            .font(.custom("Helvetica", size: 12))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 20)
+                } else if !scheduledDeparturesForCurrentDirection.isEmpty {
                     scheduledDeparturesView
                 } else {
                     VStack(spacing: 8) {
@@ -379,14 +416,39 @@ struct RouteDetailSheet: View {
                         ForEach(Array(nextArrivals.enumerated()), id: \.element.id) {
                             index, arrival in
                             VStack(spacing: 6) {
-                                // Big countdown number
-                                Text("\(arrival.minutesAway)")
-                                    .font(.custom("Helvetica-Bold", size: index == 0 ? 40 : 30))
-                                    .foregroundColor(AppTheme.Colors.countdown(arrival.minutesAway))
+                                // Live countdown using arrivalTs, falls back to static minutesAway
+                                if let ts = arrival.arrivalTs {
+                                    TimelineView(.periodic(from: .now, by: 1.0)) { context in
+                                        let secondsUntil = Double(ts) - context.date.timeIntervalSince1970
+                                        let mins = max(0, Int(secondsUntil / 60))
+                                        let isNow = secondsUntil <= 30
 
-                                Text("min")
-                                    .font(.custom("Helvetica-Bold", size: 12))
-                                    .foregroundColor(AppTheme.Colors.textSecondary)
+                                        if isNow {
+                                            Text("Now")
+                                                .font(.custom("Helvetica-Bold", size: index == 0 ? 32 : 24))
+                                                .foregroundColor(AppTheme.Colors.countdown(0))
+                                        } else {
+                                            Text("\(mins)")
+                                                .font(.custom("Helvetica-Bold", size: index == 0 ? 40 : 30))
+                                                .foregroundColor(AppTheme.Colors.countdown(mins))
+                                        }
+
+                                        if !isNow {
+                                            Text("min")
+                                                .font(.custom("Helvetica-Bold", size: 12))
+                                                .foregroundColor(AppTheme.Colors.textSecondary)
+                                        }
+                                    }
+                                } else {
+                                    // Fallback to static minutesAway
+                                    Text("\(arrival.minutesAway)")
+                                        .font(.custom("Helvetica-Bold", size: index == 0 ? 40 : 30))
+                                        .foregroundColor(AppTheme.Colors.countdown(arrival.minutesAway))
+
+                                    Text("min")
+                                        .font(.custom("Helvetica-Bold", size: 12))
+                                        .foregroundColor(AppTheme.Colors.textSecondary)
+                                }
 
                                 // Show the actual clock time so users know
                                 // exactly when the train/bus is expected
@@ -492,7 +554,7 @@ struct RouteDetailSheet: View {
                 Image(systemName: "calendar.badge.clock")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(AppTheme.Colors.textSecondary)
-                Text("Scheduled — not yet on route")
+                Text("Scheduled Departures")
                     .font(.custom("Helvetica-Bold", size: 11))
                     .foregroundColor(AppTheme.Colors.textSecondary)
                     .textCase(.uppercase)
@@ -560,13 +622,24 @@ struct RouteDetailSheet: View {
                                 selectedDirectionIndex = index
                             }
                         } label: {
-                            let headsign = routeShape?.directions
-                                .first(where: { $0.directionId == index })?
-                                .headsign
-                            let rawLabel =
-                                (headsign != nil && !headsign!.isEmpty)
-                                ? headsign!
-                                : dir.directionLabel ?? shortDirectionLabel(dir.direction)
+                            // Priority for direction label:
+                            // 1. Route shape headsign (actual last stop name, most useful)
+                            // 2. First arrival's destination (live data)
+                            // 3. directionLabel from backend
+                            // 4. Compass label ("↑ North") as last resort
+                            let matchedDir = routeShape?.matchedDirection(
+                                index: index,
+                                name: dir.direction
+                            )
+                            let shapeHeadsign = matchedDir?.headsign
+                            let dirServiceType = matchedDir?.serviceType
+                            let arrivalDest = dir.liveArrivals.first?.destination ?? dir.arrivals.first?.destination
+                            let rawLabel: String = {
+                                if let hs = shapeHeadsign, !hs.isEmpty { return hs }
+                                if let dest = arrivalDest, !dest.isEmpty { return dest }
+                                if let dl = dir.directionLabel, !dl.isEmpty { return dl }
+                                return shortDirectionLabel(dir.direction)
+                            }()
                             // Truncate long labels to keep pills compact
                             let label =
                                 rawLabel.count > 24 ? String(rawLabel.prefix(22)) + "…" : rawLabel
@@ -589,9 +662,35 @@ struct RouteDetailSheet: View {
                                     )
                                     .lineLimit(1)
 
+                                // Express / Local badge per direction
+                                if let sType = dirServiceType, !sType.isEmpty {
+                                    let badgeLabel = sType.lowercased() == "express" ? "Exp"
+                                        : sType.lowercased() == "local" ? "Lcl"
+                                        : sType.lowercased() == "mixed" ? "Exp/Lcl"
+                                        : sType.prefix(3).capitalized
+                                    let badgeColor: Color = sType.lowercased() == "express"
+                                        ? AppTheme.Colors.successGreen
+                                        : sType.lowercased() == "mixed"
+                                            ? AppTheme.Colors.warningYellow
+                                            : AppTheme.Colors.textSecondary
+                                    Text(badgeLabel)
+                                        .font(.custom("Helvetica-Bold", size: 9))
+                                        .foregroundColor(isActive ? badgeColor : badgeColor)
+                                        .padding(.horizontal, 5)
+                                        .padding(.vertical, 2)
+                                        .background(
+                                            isActive
+                                                ? Color.white.opacity(0.85)
+                                                : badgeColor.opacity(0.12)
+                                        )
+                                        .clipShape(Capsule())
+                                }
+
                                 // Arrival count
-                                if dir.arrivals.count > 0 {
-                                    Text("\(dir.arrivals.count)")
+                                // Show live arrival count (exclude placeholders)
+                                let liveCount = dir.liveArrivals.count
+                                if liveCount > 0 {
+                                    Text("\(liveCount)")
                                         .font(.custom("Helvetica-Bold", size: 11))
                                         .foregroundColor(isActive ? routeColor : .white)
                                         .padding(.horizontal, 6)
@@ -619,7 +718,7 @@ struct RouteDetailSheet: View {
                                 y: 2)
                         }
                         .accessibilityLabel(
-                            "\(dir.directionLabel ?? directionLabel(dir.direction)), \(dir.arrivals.count) arrivals"
+                            "\(dir.directionLabel ?? directionLabel(dir.direction)), \(dir.liveArrivals.count) arrivals"
                         )
                     }
                 }
@@ -629,16 +728,52 @@ struct RouteDetailSheet: View {
     }
 
     /// Returns an appropriate SF Symbol arrow for the direction index.
+    /// Supports up to 16 unique icons; wraps safely for any number of directions.
     private func directionIcon(for index: Int, total: Int) -> String {
         if total <= 2 {
             return index == 0 ? "arrow.up" : "arrow.down"
         }
-        // For 3+ directions, use compass-style arrows
+        // For 3+ directions, cycle through a large set of directional icons.
+        // 16 unique icons covers most realistic scenarios; wraps for even more.
         let icons = [
             "arrow.up", "arrow.down", "arrow.left", "arrow.right",
             "arrow.up.right", "arrow.down.left", "arrow.up.left", "arrow.down.right",
+            "arrow.turn.up.right", "arrow.turn.down.left",
+            "arrow.turn.up.left", "arrow.turn.down.right",
+            "arrow.uturn.up", "arrow.uturn.down",
+            "arrow.uturn.left", "arrow.uturn.right",
         ]
         return icons[index % icons.count]
+    }
+
+    /// Reusable service-type badge (Express / Local / Mixed) for the header.
+    @ViewBuilder
+    private func serviceTypeBadge(_ serviceType: String) -> some View {
+        let (label, icon, color): (String, String, Color) = {
+            switch serviceType.lowercased() {
+            case "express":
+                return ("Express", "bolt.fill", AppTheme.Colors.successGreen)
+            case "local":
+                return ("Local", "circle.fill", AppTheme.Colors.textSecondary)
+            case "mixed":
+                return ("Express/Local", "bolt.horizontal.fill", AppTheme.Colors.warningYellow)
+            default:
+                return (serviceType.capitalized, "tram.fill", AppTheme.Colors.textSecondary)
+            }
+        }()
+        HStack(spacing: 3) {
+            Image(systemName: icon)
+                .font(.system(size: 7, weight: .bold))
+            Text(label)
+                .font(.custom("Helvetica-Bold", size: 10))
+                .textCase(.uppercase)
+                .tracking(0.8)
+        }
+        .foregroundColor(color)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .background(color.opacity(0.1))
+        .clipShape(Capsule())
     }
 
     // MARK: - Arrivals List (same card pattern as HomeView)
@@ -646,12 +781,15 @@ struct RouteDetailSheet: View {
     private var arrivalsList: some View {
         let direction = safeDirection
 
+        // Filter out backend placeholders so we only list real arrivals.
+        let liveOnly = direction.liveArrivals
+
         // Reorder arrivals so the tapped vehicle's row appears first
         let sortedArrivals: [NearbyTransitResponse] = {
             guard let tapped = tappedVehicleId, !tapped.isEmpty else {
-                return direction.arrivals
+                return liveOnly
             }
-            var arr = direction.arrivals
+            var arr = liveOnly
             if let idx = arr.firstIndex(where: { $0.vehicleId == tapped || $0.tripId == tapped }) {
                 let matched = arr.remove(at: idx)
                 arr.insert(matched, at: 0)
@@ -678,9 +816,26 @@ struct RouteDetailSheet: View {
             .padding(.horizontal, AppTheme.Layout.margin)
 
             if sortedArrivals.isEmpty {
-                // Show scheduled departures if available, otherwise empty state
-                let scheduled = scheduledDeparturesForCurrentDirection
-                if !scheduled.isEmpty {
+                // Priority: live vehicle awareness > scheduled departures > empty state
+                if liveVehicleCount > 0 {
+                    // Vehicles are on the map for this route, just no arrival data here
+                    VStack(spacing: 8) {
+                        Image(systemName: group.isBus ? "bus.fill" : "tram.fill")
+                            .font(.system(size: 32, weight: .light))
+                            .foregroundColor(routeColor.opacity(0.5))
+                        Text("\(liveVehicleCount) vehicle\(liveVehicleCount == 1 ? "" : "s") on route")
+                            .font(.custom("Helvetica-Bold", size: 14))
+                            .foregroundColor(AppTheme.Colors.textPrimary)
+                        Text("Arrival times not available for this direction")
+                            .font(.custom("Helvetica", size: 13))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 30)
+                    .background(AppTheme.Colors.cardBackground)
+                    .cornerRadius(AppTheme.Layout.cornerRadius)
+                    .padding(.horizontal, AppTheme.Layout.margin)
+                } else if !scheduledDeparturesForCurrentDirection.isEmpty {
                     scheduledDeparturesView
                 } else {
                     // Empty state — matches HomeView's emptyStateView pattern
@@ -828,7 +983,7 @@ struct RouteDetailSheet: View {
 
                             // Badge: show stop count on Stops tab
                             if tab == .stops, let shape = routeShape {
-                                let stopCount = shape.stopsForDirection(selectedDirectionIndex)
+                                let stopCount = shape.stopsForDirection(index: selectedDirectionIndex, name: selectedDirectionName)
                                     .count
                                 if stopCount > 0 {
                                     Text("\(stopCount)")
@@ -878,7 +1033,7 @@ struct RouteDetailSheet: View {
 
     /// List of all stops for the current direction, with transfer indicators.
     private var stopsListSection: some View {
-        let dirStops: [BusStop] = routeShape?.stopsForDirection(selectedDirectionIndex) ?? []
+        let dirStops: [BusStop] = routeShape?.stopsForDirection(index: selectedDirectionIndex, name: selectedDirectionName) ?? []
 
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
@@ -1201,7 +1356,7 @@ struct RouteDetailSheet: View {
             return AnyView(
                 HStack(spacing: 16) {
                     if hasStops {
-                        let dirStops = routeShape!.stopsForDirection(selectedDirectionIndex)
+                        let dirStops = routeShape!.stopsForDirection(index: selectedDirectionIndex, name: selectedDirectionName)
                         HStack(spacing: 6) {
                             Image(systemName: "mappin.and.ellipse")
                                 .font(.system(size: 12, weight: .medium))
