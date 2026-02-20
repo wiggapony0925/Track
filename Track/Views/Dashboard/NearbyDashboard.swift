@@ -79,14 +79,14 @@ struct NearbyDashboard: View {
                         sheetNavigator: sheetNavigator,
                         referenceLocation: refLocation
                     )
-                } else {
+                } else if viewModel.searchText.isEmpty {
                     NearYouSectionHeader(radiusMeters: nearYouRadius, updated: lastUpdated)
                     EmptyTierHint()
                 }
 
                 // Display "A Little Farther Away" section
-                FartherAwaySectionHeader(radiusMeters: fartherAwayRadius)
                 if !fartherAway.isEmpty {
+                    FartherAwaySectionHeader(radiusMeters: fartherAwayRadius)
                     GroupedRouteList(
                         groups: fartherAway,
                         viewModel: viewModel,
@@ -94,13 +94,14 @@ struct NearbyDashboard: View {
                         sheetNavigator: sheetNavigator,
                         referenceLocation: refLocation
                     )
-                } else {
+                } else if viewModel.searchText.isEmpty {
+                    FartherAwaySectionHeader(radiusMeters: fartherAwayRadius)
                     EmptyTierHint()
                 }
 
                 // Display "Much Farther Away" section
-                MuchFartherAwaySectionHeader(radiusMeters: muchFartherAwayRadius)
                 if !muchFarther.isEmpty {
+                    MuchFartherAwaySectionHeader(radiusMeters: muchFartherAwayRadius)
                     GroupedRouteList(
                         groups: muchFarther,
                         viewModel: viewModel,
@@ -108,7 +109,8 @@ struct NearbyDashboard: View {
                         sheetNavigator: sheetNavigator,
                         referenceLocation: refLocation
                     )
-                } else {
+                } else if viewModel.searchText.isEmpty {
+                    MuchFartherAwaySectionHeader(radiusMeters: muchFartherAwayRadius)
                     EmptyTierHint()
                 }
 

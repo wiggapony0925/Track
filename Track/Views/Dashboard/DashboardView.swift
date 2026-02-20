@@ -177,34 +177,36 @@ struct DashboardView: View {
 
 /// Shimmer placeholder shown while transit data is being fetched.
 /// Prevents service alerts from appearing as the first visible content.
+/// Uses the reusable skeleton shapes from ShimmerEffect.swift.
 struct TransitLoadingSkeleton: View {
-    @State private var isAnimating = false
-    
     var body: some View {
         VStack(spacing: 12) {
-            ForEach(0..<3, id: \.self) { _ in
+            ForEach(0..<3, id: \.self) { index in
                 HStack(spacing: 12) {
                     // Route badge placeholder
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(AppTheme.Colors.textSecondary.opacity(0.1))
-                        .frame(width: 44, height: 44)
-                    
+                    SkeletonBar(width: 44, height: 44)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+
                     // Text lines placeholder
                     VStack(alignment: .leading, spacing: 6) {
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(AppTheme.Colors.textSecondary.opacity(0.1))
-                            .frame(width: 120, height: 14)
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(AppTheme.Colors.textSecondary.opacity(0.07))
-                            .frame(width: 80, height: 12)
+                        SkeletonBar(
+                            width: CGFloat([120, 100, 140][index % 3]),
+                            height: 14
+                        )
+                        SkeletonBar(
+                            width: CGFloat([80, 65, 90][index % 3]),
+                            height: 12,
+                            opacity: 0.07
+                        )
                     }
-                    
+
                     Spacer()
-                    
-                    // Time placeholder
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(AppTheme.Colors.textSecondary.opacity(0.1))
-                        .frame(width: 40, height: 20)
+
+                    // Countdown placeholder
+                    VStack(alignment: .trailing, spacing: 4) {
+                        SkeletonBar(width: 40, height: 22)
+                        SkeletonBar(width: 50, height: 16, opacity: 0.08)
+                    }
                 }
                 .padding(.horizontal, AppTheme.Layout.margin)
                 .padding(.vertical, 10)
@@ -214,9 +216,7 @@ struct TransitLoadingSkeleton: View {
         .background(.ultraThinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius, style: .continuous))
         .padding(.horizontal, AppTheme.Layout.margin)
-        .opacity(isAnimating ? 0.6 : 1.0)
-        .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: isAnimating)
-        .onAppear { isAnimating = true }
+        .shimmer()
     }
 }
 

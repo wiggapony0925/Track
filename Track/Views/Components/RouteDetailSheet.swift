@@ -266,6 +266,11 @@ struct RouteDetailSheet: View {
                     // Express / Local / Mixed service type (route-level, from GTFS)
                     if let serviceType = routeShape?.serviceType, !serviceType.isEmpty {
                         serviceTypeBadge(serviceType)
+                    } else if routeShape == nil && !group.isBus {
+                        // Shape loading — show shimmer placeholder for service type
+                        SkeletonBar(width: 52, height: 20, opacity: 0.08)
+                            .clipShape(Capsule())
+                            .shimmer()
                     }
                 }
             }
@@ -981,20 +986,26 @@ struct RouteDetailSheet: View {
                                     .clipShape(Capsule())
                             }
 
-                            // Badge: show stop count on Stops tab
-                            if tab == .stops, let shape = routeShape {
-                                let stopCount = shape.stopsForDirection(index: selectedDirectionIndex, name: selectedDirectionName)
-                                    .count
-                                if stopCount > 0 {
-                                    Text("\(stopCount)")
-                                        .font(.custom("Helvetica-Bold", size: 11))
-                                        .foregroundColor(isActive ? routeColor : .white)
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 2)
-                                        .background(
-                                            isActive ? Color.white.opacity(0.9) : routeColor
-                                        )
-                                        .clipShape(Capsule())
+                            // Badge: show stop count on Stops tab (or loading dot)
+                            if tab == .stops {
+                                if let shape = routeShape {
+                                    let stopCount = shape.stopsForDirection(index: selectedDirectionIndex, name: selectedDirectionName)
+                                        .count
+                                    if stopCount > 0 {
+                                        Text("\(stopCount)")
+                                            .font(.custom("Helvetica-Bold", size: 11))
+                                            .foregroundColor(isActive ? routeColor : .white)
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 2)
+                                            .background(
+                                                isActive ? Color.white.opacity(0.9) : routeColor
+                                            )
+                                            .clipShape(Capsule())
+                                    }
+                                } else {
+                                    // Shape loading — tiny pulsing dot
+                                    SkeletonCircle(size: 8, opacity: 0.3)
+                                        .shimmer()
                                 }
                             }
                         }
@@ -1054,22 +1065,25 @@ struct RouteDetailSheet: View {
             .padding(.horizontal, AppTheme.Layout.margin)
 
             if dirStops.isEmpty {
-                VStack(spacing: 10) {
-                    Image(systemName: "mappin.slash")
-                        .font(.system(size: 32, weight: .light))
-                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.5))
-                    Text("Stop information unavailable")
-                        .font(.custom("Helvetica", size: 15))
-                        .foregroundColor(AppTheme.Colors.textSecondary)
-                    Text("Route shape data hasn't loaded yet.")
-                        .font(.custom("Helvetica", size: 12))
-                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
+                if routeShape == nil {
+                    // Route shape still loading — show animated skeleton
+                    StopsListSkeleton()
+                } else {
+                    // Shape loaded but this direction has no stops
+                    VStack(spacing: 10) {
+                        Image(systemName: "mappin.slash")
+                            .font(.system(size: 32, weight: .light))
+                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.5))
+                        Text("No stops for this direction")
+                            .font(.custom("Helvetica", size: 15))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 40)
+                    .background(AppTheme.Colors.cardBackground)
+                    .cornerRadius(AppTheme.Layout.cornerRadius)
+                    .padding(.horizontal, AppTheme.Layout.margin)
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 40)
-                .background(AppTheme.Colors.cardBackground)
-                .cornerRadius(AppTheme.Layout.cornerRadius)
-                .padding(.horizontal, AppTheme.Layout.margin)
             } else {
                 VStack(spacing: 0) {
                     ForEach(Array(dirStops.enumerated()), id: \.element.id) { index, stop in
@@ -1350,9 +1364,12 @@ struct RouteDetailSheet: View {
     private var routeInfoFooter: some View {
         let hasStops = routeShape != nil && !routeShape!.stops.isEmpty
         let hasVehicles = liveVehicleCount > 0
+        let isShapeLoading = routeShape == nil
 
-        // Only show if there's info to display
-        if hasStops || hasVehicles {
+        if isShapeLoading {
+            // Shape still loading — show shimmer placeholders
+            return AnyView(RouteInfoFooterSkeleton())
+        } else if hasStops || hasVehicles {
             return AnyView(
                 HStack(spacing: 16) {
                     if hasStops {
