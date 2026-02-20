@@ -13,7 +13,7 @@ import MapKit
 /// A MapKit `Annotation` for a single Metro-North train vehicle.
 /// Uses `Annotation` instead of `Marker` so `onTapGesture` works.
 struct MNRMarker: MapContent {
-    let train: HomeViewModel.TrainVehicle
+    let train: TrainVehicle
     var isHighlighted: Bool = false
     var onTap: (() -> Void)? = nil
 

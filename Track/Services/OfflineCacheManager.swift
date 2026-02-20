@@ -206,30 +206,3 @@ final class OfflineCacheManager: ObservableObject {
         lastFetchTime = nil
     }
 }
-
-// MARK: - Cached Data Models
-
-/// Simplified arrival data for caching
-struct CachedArrival: Codable, Identifiable {
-    let id: String
-    let routeId: String
-    let routeName: String
-    let stopName: String
-    let direction: String
-    let arrivalTime: Date
-    let mode: String // "subway", "bus", "lirr"
-    
-    var minutesAway: Int {
-        let seconds = arrivalTime.timeIntervalSince(Date())
-        return max(0, Int(seconds / 60))
-    }
-}
-
-/// Simplified station data for caching
-struct CachedStation: Codable, Identifiable {
-    let id: String
-    let name: String
-    let latitude: Double
-    let longitude: Double
-    let routes: [String] // Route IDs that serve this station
-}
