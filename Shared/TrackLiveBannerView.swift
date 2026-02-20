@@ -311,33 +311,36 @@ struct TrackLiveBannerView: View {
 
     @ViewBuilder
     private var actionButton: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "hand.thumbsup.fill")
-                .font(.system(size: 15, weight: .bold))
-            Text("I made it!")
-                .font(.system(size: 15, weight: .bold, design: .rounded))
-        }
-        .foregroundColor(.white)
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 12)
-        .background(
-            LinearGradient(
-                colors: [
-                    AppTheme.Colors.successGreen,
-                    AppTheme.Colors.successGreen.opacity(0.8)
-                ],
-                startPoint: .leading,
-                endPoint: .trailing
+        Button(intent: EndTrackingIntent()) {
+            HStack(spacing: 8) {
+                Image(systemName: "hand.thumbsup.fill")
+                    .font(.system(size: 15, weight: .bold))
+                Text("I made it!")
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+            }
+            .foregroundColor(.white)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .background(
+                LinearGradient(
+                    colors: [
+                        AppTheme.Colors.successGreen,
+                        AppTheme.Colors.successGreen.opacity(0.8)
+                    ],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
             )
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.15), lineWidth: 0.5)
-        )
-        .shadow(color: AppTheme.Colors.successGreen.opacity(0.3), radius: 8, y: 2)
-        .padding(.horizontal, 20)
-        .padding(.bottom, 14)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.15), lineWidth: 0.5)
+            )
+            .shadow(color: AppTheme.Colors.successGreen.opacity(0.3), radius: 8, y: 2)
+            .padding(.horizontal, 20)
+            .padding(.bottom, 14)
+        }
+        .buttonStyle(.plain)
     }
 }
 
