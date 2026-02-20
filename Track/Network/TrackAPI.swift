@@ -42,8 +42,7 @@ struct TrackAPI {
 
         // Check if developer has set a custom IP for local network testing
         let storedIP = UserDefaults.standard.string(forKey: "dev_custom_ip")
-        let hasCustomIP = storedIP != nil && storedIP?.isEmpty == false
-            && storedIP != settings.defaultDeviceIP
+        let hasCustomIP = storedIP?.isEmpty == false && storedIP != settings.defaultDeviceIP
 
         if useLocalhost && hasCustomIP {
             // Developer mode: use the custom IP for physical device testing
