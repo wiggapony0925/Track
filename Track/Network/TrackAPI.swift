@@ -40,11 +40,22 @@ struct TrackAPI {
             }
         #endif
 
-        // Physical device (or simulator with localhost off) — always use the WiFi IP
+        // Check if developer has set a custom IP for local network testing
         let storedIP = UserDefaults.standard.string(forKey: "dev_custom_ip")
-        let ip = (storedIP?.isEmpty == false) ? storedIP! : settings.defaultDeviceIP
-        let url = "http://\(ip):\(settings.localPort)"
-        AppLogger.shared.log("API_CONFIG", message: "baseURL: \(url)  (ip=\(ip))")
+        let hasCustomIP = storedIP != nil && storedIP?.isEmpty == false
+            && storedIP != settings.defaultDeviceIP
+
+        if useLocalhost && hasCustomIP {
+            // Developer mode: use the custom IP for physical device testing
+            let url = "http://\(storedIP!):\(settings.localPort)"
+            AppLogger.shared.log("API_CONFIG", message: "baseURL (dev): \(url)")
+            _cachedBaseURL = url
+            return url
+        }
+
+        // Production: use the deployed Render backend
+        let url = settings.prodBaseURL
+        AppLogger.shared.log("API_CONFIG", message: "baseURL (production): \(url)")
         _cachedBaseURL = url
         return url
     }

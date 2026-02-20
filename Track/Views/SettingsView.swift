@@ -127,15 +127,21 @@ struct SettingsView: View {
 
     private var developerSettingsSection: some View {
         Section {
-            Toggle("Use Simulator (Localhost)", isOn: $useLocalhost)
+            Toggle("Use Local Server", isOn: $useLocalhost)
                 .tint(AppTheme.Colors.mtaBlue)
+                .onChange(of: useLocalhost) { _, _ in
+                    TrackAPI.invalidateBaseURL()
+                }
 
-            if !useLocalhost {
+            if useLocalhost {
                 HStack {
                     Text("http://")
                     TextField("192.168.1.X", text: $customIP)
                         .keyboardType(.numbersAndPunctuation)
                     Text(":8000")
+                }
+                .onChange(of: customIP) { _, _ in
+                    TrackAPI.invalidateBaseURL()
                 }
             }
 
@@ -145,6 +151,8 @@ struct SettingsView: View {
                 .foregroundColor(AppTheme.Colors.textSecondary)
         } header: {
             Text("Developer Settings")
+        } footer: {
+            Text("When off, the app connects to the production server. Turn on only for local development.")
         }
     }
 

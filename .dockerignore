@@ -1,0 +1,43 @@
+# iOS app (not needed for backend Docker build)
+Track/
+Track.xcodeproj/
+TrackTests/
+TrackUITests/
+TrackWidgets/
+Shared/
+Info.plist
+*.entitlements
+
+# Git
+.git/
+.gitignore
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+*.md
+
+# Environment files (secrets should be set via Render dashboard)
+.env
+TrackBackend/.env
+
+# Test files (not needed in production image)
+TrackBackend/tests/
+TrackBackend/scripts/
+TrackBackend/pytest.ini
+
+# Large GTFS data directories (downloaded at runtime or pre-loaded)
+TrackBackend/app/data/subway/
+TrackBackend/app/data/bus/
+TrackBackend/app/data/lirr/
+TrackBackend/app/data/metro_north/
+TrackBackend/app/data/MTA Bus Company/

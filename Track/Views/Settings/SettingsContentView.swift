@@ -362,13 +362,13 @@ struct SettingsContentView: View {
                             settingsRow(
                                 icon: "desktopcomputer",
                                 iconColor: .mint,
-                                title: "Use Localhost"
+                                title: "Use Local Server"
                             ) {
                                 Toggle("", isOn: $draftUseLocalhost)
                                     .tint(AppTheme.Colors.mtaBlue)
                             }
                             
-                            if !draftUseLocalhost {
+                            if draftUseLocalhost {
                                 settingsDivider
                                 
                                 HStack {
@@ -393,7 +393,9 @@ struct SettingsContentView: View {
                                 Image(systemName: "link")
                                     .font(.system(size: 11))
                                     .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.5))
-                                Text(TrackAPI.baseURL)
+                                Text(draftUseLocalhost
+                                    ? "http://\(draftCustomIP.isEmpty ? "127.0.0.1" : draftCustomIP):8000"
+                                    : AppSettings.shared.prodBaseURL)
                                     .font(.system(size: 10, weight: .regular, design: .monospaced))
                                     .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.5))
                                     .lineLimit(1)
@@ -401,6 +403,13 @@ struct SettingsContentView: View {
                             }
                             .padding(.horizontal, AppTheme.Layout.cardPadding)
                             .padding(.vertical, 8)
+                            
+                            if !draftUseLocalhost {
+                                Text("Connected to production server")
+                                    .font(.caption2)
+                                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.4))
+                                    .padding(.bottom, 8)
+                            }
                         }
                     }
                     
