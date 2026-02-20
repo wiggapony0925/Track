@@ -21,5 +21,16 @@ import Foundation
 enum ChallengeMode {
     /// Set to `true` for Swift Student Challenge submission.
     /// Set to `false` for production builds.
+    ///
+    /// ⚠️ IMPORTANT: Remember to set this back to `false` before
+    /// submitting to the App Store. When `true`, all live transit
+    /// data is replaced with static mock data.
     static let isEnabled = true
+
+    #if !DEBUG
+    // Emit a compile-time warning when challenge mode is on in a Release build.
+    // This prevents accidentally shipping mock data to the App Store.
+    @available(*, deprecated, message: "ChallengeMode is ON — set isEnabled to false for App Store builds")
+    private static let _releaseGuard: Void = ()
+    #endif
 }
