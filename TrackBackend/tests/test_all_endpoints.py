@@ -290,11 +290,12 @@ class TestBusLive:
 
     @patch("app.routers.bus.get_realtime_arrivals", new_callable=AsyncMock)
     def test_live_returns_arrivals(self, mock_live):
+        from datetime import timedelta
         mock_live.return_value = [
             BusArrival(
                 route_id="MTA NYCT_B63", vehicle_id="V1", stop_id="S1",
                 status_text="Approaching", status="Live",
-                expected_arrival=datetime(2026, 2, 16, 12, 0, tzinfo=timezone.utc),
+                expected_arrival=datetime.now(timezone.utc) + timedelta(minutes=10),
             ),
         ]
         response = client.get("/bus/live/MTA_308214")

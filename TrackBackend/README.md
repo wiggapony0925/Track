@@ -29,89 +29,144 @@ pip install pytest pytest-asyncio httpx
 python -m pytest tests/ -v
 ```
 
-## Endpoints
+## 🏪 Track API Marketplace
 
-| Method | Path                                | Description                                    |
-|--------|-------------------------------------|------------------------------------------------|
-| GET    | `/config`                           | Returns app settings from settings.json        |
-| GET    | `/nearby?lat=&lon=`                 | **Unified nearby transit** — buses + trains sorted by arrival time |
-| GET    | `/subway/{line_id}`                 | Real-time arrivals for a subway line           |
-| GET    | `/lirr`                             | Real-time LIRR arrivals                        |
-| GET    | `/bus/routes`                       | All MTA bus routes                             |
-| GET    | `/bus/stops/{route_id}`             | Stops for a bus route                          |
-| GET    | `/bus/nearby?lat=&lon=`             | Nearby bus stops by GPS coordinate             |
-| GET    | `/bus/live/{stop_id}`               | Live bus arrivals at a stop via SIRI           |
-| GET    | `/bus/vehicles/{route_id}`          | **Live bus vehicle positions** with GPS/bearing |
-| GET    | `/bus/route-shape/{route_id}`       | **Route polylines + stops** for map drawing    |
-| GET    | `/alerts`                           | Critical subway service alerts                 |
-| GET    | `/accessibility`                    | Currently broken elevators/escalators          |
+Welcome to the **Track API Marketplace**, a high-performance Python proxy API powering the Track NYC Transit iOS app.
 
-### Endpoint Details
+The API merges highly disparate MTA feeds (GTFS-Realtime Protobuf, GTFS Static JSON/CSV, SIRI, OBA) into unified, pristine JSON schemas ready for mobile clients.
 
-#### `GET /nearby?lat=&lon=`
+### 🔐 Global Authentication
+Currently, no API key is required. However, for future enterprise usage, include:
+```http
+Authorization: Bearer <YOUR_API_KEY>
+```
 
-Returns the nearest buses and trains with live countdown timers, sorted by `minutes_away`. No routing or trip planning — just a flat list of what's arriving soon nearby. Combines subway arrivals from GTFS-RT feeds and bus arrivals from SIRI.
+---
 
-**Query Parameters:**
-- `lat` (required) — User latitude
-- `lon` (required) — User longitude
-- `radius` (optional, default: 500) — Search radius in meters
+### 🚄 1. Subway Endpoints
 
-**Response:** `NearbyTransitArrival[]`
+#### `GET /subway/shapes/all`
+Returns polylines and colors for ALL subway lines. Used to render the full NYC system map.
+- **Response `200 OK`**: `{"lines": [{"mode": "subway", "route_id": "L", "name": "L", "color_hex": "A7A9AC", "polylines": ["..."]}]}`
+
+#### `GET /subway/stations/all`
+Returns all stations with their coordinates and routes served.
+- **Response `200 OK`**: `{"count": 472, "stations": [{"id": "L01", "name": "8 Av", "lat": 40.74, "lon": -74.0, "routes": ["L"]}]}`
+
+#### `GET /subway/stations/nearby`
+Returns stations strictly within a GPS radius.
+- **Parameters**: `lat` (required), `lon` (required), `radius` (optional)
+- **Response `200 OK`**: `{"count": 2, "stations": [...]}`
+
+#### `GET /subway/shape/{route_id}`
+Returns the full geometry (polylines) and ordered list of stops for a single subway line.
+- **Response `200 OK`**: `{"route_id": "L", "polylines": [...], "stops": [...], "directions": [...]}`
+
+#### `GET /subway/{line_id}`
+Live countdown arrivals for a single subway line.
+- **Response `200 OK`**: `[{"route_id": "L", "station": "L01", "station_name": "8 Av", "direction": "N", "destination": "8 Av", "minutes_away": 3, "arrival_ts": 1700000000, "status": "On Time"}]`
+
+---
+
+### 🚆 2. Commuter Rail (LIRR & Metro-North)
+
+#### `GET /lirr` | `GET /mnr`
+Live countdown arrivals for the Long Island Rail Road or Metro-North.
+- **Response `200 OK`**: Array of `TrackArrival` objects matching the subway schema.
+
+#### `GET /lirr/shapes/all` | `GET /mnr/shapes/all`
+Polylines and brand colors for all branched routes.
+- **Response `200 OK`**: `{"lines": [...]}`
+
+#### `GET /lirr/shape/{route_id}` | `GET /mnr/shape/{route_id}`
+Polyline geometry for a specific branch (e.g. `LIRR_9` for Port Washington).
+
+---
+
+### 🚌 3. Bus Endpoints (OBA + SIRI)
+
+#### `GET /bus/routes`
+Returns all MTA bus routes.
+- **Response `200 OK`**: `[{"id": "MTA NYCT_B63", "short_name": "B63", "long_name": "Atlantic Av", "color": "0039A6"}]`
+
+#### `GET /bus/stops/{route_id}`
+Returns all ordered stops for a bus route.
+- **Response `200 OK`**: `[{"id": "MTA_308214", "name": "5 Av / Union St", "lat": 40.67, "lon": -73.98, "direction": "0"}]`
+
+#### `GET /bus/live/{stop_id}`
+Real-time SIRI bus arrivals at a targeted stop.
+- **Response `200 OK`**: `[{"route_id": "...", "vehicle_id": "...", "status_text": "Approaching", "expected_arrival": "2026-...", "distance_meters": 150}]`
+
+#### `GET /bus/vehicles/{route_id}`
+Live GPS tracking positions, bearing, and distance for all active buses on a route.
+- **Response `200 OK`**: `[{"vehicle_id": "...", "lat": 40.6, "lon": -73.9, "bearing": 180.0, "next_stop": "...", "status_text": "at stop"}]`
+
+#### `GET /bus/route-shape/{route_id}`
+Returns encoded polylines to draw the bus path on Apple/Google Maps.
+
+---
+
+### 🌍 4. Nearby Transit (Unified)
+
+#### `GET /nearby/grouped`
+The flagship endpoint. Combines **Subway, Bus, LIRR, and MNR** into a single grouped response, sorted by the absolute fastest arriving trains or buses near the user. Returns cleanly formatted JSON designed for multi-tab UI cards.
+- **Parameters**: `lat` (required), `lon` (required), `radius` (optional, default 500m), `mode` (optional filter)
+- **Response `200 OK`**:
 ```json
 [
   {
     "route_id": "L",
-    "stop_name": "1st Avenue",
-    "direction": "Manhattan",
-    "minutes_away": 3,
-    "status": "On Time",
-    "mode": "subway"
-  },
-  {
-    "route_id": "MTA NYCT_B63",
-    "stop_name": "5 Av / Union St",
-    "direction": "Approaching",
-    "minutes_away": 5,
-    "status": "Approaching",
-    "mode": "bus"
+    "display_name": "L",
+    "color_hex": "A7A9AC",
+    "mode": "subway",
+    "directions": [
+      {
+        "headsign": "8 Av",
+        "direction": "N",
+        "arrivals": [
+          { "minutes_away": 2, "destination": "8 Av", "status": "On Time" }
+        ]
+      }
+    ]
   }
 ]
 ```
 
-#### `GET /bus/vehicles/{route_id}`
+#### `GET /nearby`
+A flattened version of the above, returning purely the nearest raw arrivals.
 
-Returns live GPS positions for all active buses on a route. Used by the iOS app to show bus icons on the map with real-time movement and bearing.
+---
 
-**Response:** `BusVehicle[]`
-```json
-[
-  {
-    "vehicle_id": "MTA NYCT_7582",
-    "route_id": "MTA NYCT_B63",
-    "lat": 40.6728,
-    "lon": -73.9894,
-    "bearing": 180.0,
-    "next_stop": "5 Av / Union St",
-    "status_text": "Approaching"
-  }
-]
-```
+### ⚠️ 5. Status & Alerts
 
-#### `GET /bus/route-shape/{route_id}`
+#### `GET /alerts`
+Real-time service alerts (delays, planned work) matching the MTA Service Status tracker.
+- **Parameters**: `mode` (optional)
+- **Response `200 OK`**: `[{"route_id": "L", "title": "Planned Work", "description": "...", "severity": "MODERATE"}]`
 
-Returns Google-encoded polylines for drawing the route path on a map, along with all stops on the route.
+#### `GET /accessibility`
+Live list of broken elevators and escalators across the system.
 
-**Response:** `RouteShape`
-```json
-{
-  "route_id": "MTA NYCT_B63",
-  "polylines": ["encoded_polyline_string_1", "encoded_polyline_string_2"],
-  "stops": [
-    {"id": "MTA_308214", "name": "5 Av / Union St", "lat": 40.6728, "lon": -73.9894, "direction": "0"}
-  ]
-}
-```
+---
+
+### 📊 6. Analytics & Intelligence
+
+#### `POST /analytics/log`
+Logs an interaction metric when a user tracks a route.
+- **Parameters**: `route_id`, `mode`, `interaction_type`
+
+#### `GET /analytics/popular`
+Returns the most interacted routes across the entire platform.
+
+---
+
+### 📦 7. Static Data Bundle
+
+#### `GET /static/bundle`
+A heavy, highly-cached endpoint hit once by the iOS app to download route shapes, branding, stops, and colors into local CoreData to avoid massive repeated network fetches.
+
+---
+
 
 ## Configuration
 
