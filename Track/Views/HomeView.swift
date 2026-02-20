@@ -44,7 +44,6 @@ struct HomeView: View {
     
     // Drag-to-search state
     @AppStorage("drag_to_search") private var dragToSearchEnabled = true
-    @AppStorage("auto_refresh_enabled") private var autoRefreshEnabled = true
     @State private var isDragSearchActive = false
     @State private var isDragSearchPanning = false
     @State private var hasFiredDragHaptic = false
@@ -157,15 +156,6 @@ struct HomeView: View {
             // Immediately clean up when the user toggles the setting off
             if !enabled && isDragSearchActive {
                 dismissDragSearch()
-            }
-        }
-        .onChange(of: autoRefreshEnabled) { _, enabled in
-            // Start or stop the auto-refresh timer live
-            if enabled {
-                startRefreshTimer()
-            } else {
-                refreshTimer?.invalidate()
-                refreshTimer = nil
             }
         }
         .onChange(of: viewModel.selectedRouteId) {
@@ -431,10 +421,7 @@ struct HomeView: View {
     private func setupLocationAndTimers() {
         locationManager.requestPermission()
         locationManager.startUpdating()
-        
-        if autoRefreshEnabled {
-            startRefreshTimer()
-        }
+        startRefreshTimer()
     }
     
     /// Creates the auto-refresh timer. Safe to call multiple times.

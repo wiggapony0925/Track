@@ -29,7 +29,6 @@ struct SettingsContentView: View {
     @AppStorage("near_you_radius_meters") private var nearYouRadius: Double = 2414
     @AppStorage("farther_away_radius_meters") private var fartherAwayRadius: Double = 4023
     @AppStorage("much_farther_away_radius_meters") private var muchFartherAwayRadius: Double = 8047
-    @AppStorage("auto_refresh_enabled") private var autoRefreshEnabled = true
     @AppStorage("show_search_radius") private var showSearchRadius = false
     @AppStorage("drag_to_search") private var dragToSearch = true
     @AppStorage("subway_line_offset_meters") private var subwayLineOffset: Double = AppSettings.shared.subwayLineOffsetMeters
@@ -38,7 +37,6 @@ struct SettingsContentView: View {
     @State private var draftRadius: Double = 8047
     @State private var draftShowSearchRadius = false
     @State private var draftDragToSearch = true
-    @State private var draftAutoRefresh = true
     @State private var draftSubwayLineOffset: Double = 10
     @State private var draftUseLocalhost = false
     @State private var draftCustomIP = ""
@@ -93,6 +91,35 @@ struct SettingsContentView: View {
                             }
                         }
                     }
+                    
+                    // Widgets Section — quick access
+                    settingsSection(title: "Widgets", icon: "rectangle.3.group.fill", iconColor: .cyan) {
+                        VStack(spacing: 0) {
+                            Button {
+                                sheetNavigator.navigate(to: .widgetSchedules)
+                            } label: {
+                                HStack {
+                                    settingsIcon("calendar.badge.clock", color: AppTheme.Colors.mtaBlue)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Widget Schedules")
+                                            .font(.custom("Helvetica", size: 15))
+                                            .foregroundColor(AppTheme.Colors.textPrimary)
+                                        Text("Configure home screen widgets")
+                                            .font(.system(size: 11))
+                                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
+                                    }
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.4))
+                                }
+                                .padding(.horizontal, AppTheme.Layout.cardPadding)
+                                .padding(.vertical, 14)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    
                     
                     // Transit Preferences Section — single search radius
                     settingsSection(title: "Search Radius", icon: "scope", iconColor: AppTheme.Colors.mtaBlue) {
@@ -305,55 +332,6 @@ struct SettingsContentView: View {
                         }
                     }
                     
-                    // General Section
-                    settingsSection(title: "General", icon: "gearshape.fill", iconColor: .gray) {
-                        VStack(spacing: 0) {
-                            // Auto-refresh toggle
-                            settingsRow(
-                                icon: "arrow.clockwise",
-                                iconColor: AppTheme.Colors.successGreen,
-                                title: "Auto-Refresh"
-                            ) {
-                                Toggle("", isOn: $draftAutoRefresh)
-                                    .tint(AppTheme.Colors.mtaBlue)
-                            }
-                            
-                            settingsDivider
-                            
-                            // Haptic feedback toggle
-                            settingsRow(
-                                icon: "waveform",
-                                iconColor: .orange,
-                                title: "Haptic Feedback"
-                            ) {
-                                Toggle("", isOn: $hapticsEnabled)
-                                    .tint(AppTheme.Colors.mtaBlue)
-                            }
-                        }
-                    }
-                    
-                    // Widget Section
-                    settingsSection(title: "Widgets", icon: "rectangle.3.group.fill", iconColor: .cyan) {
-                        VStack(spacing: 0) {
-                            Button {
-                                sheetNavigator.navigate(to: .widgetSchedules)
-                            } label: {
-                                HStack {
-                                    settingsIcon("calendar.badge.clock", color: AppTheme.Colors.mtaBlue)
-                                    Text("Widget Schedules")
-                                        .font(.custom("Helvetica", size: 15))
-                                        .foregroundColor(AppTheme.Colors.textPrimary)
-                                    Spacer()
-                                    Image(systemName: "chevron.right")
-                                        .font(.system(size: 13, weight: .semibold))
-                                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.4))
-                                }
-                                .padding(.horizontal, AppTheme.Layout.cardPadding)
-                                .padding(.vertical, 14)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
                     
                     // Account Section
                     settingsSection(title: "Account", icon: "person.crop.circle.fill", iconColor: AppTheme.Colors.mtaBlue) {
@@ -443,7 +421,6 @@ struct SettingsContentView: View {
         .onChange(of: draftRadius) { _, _ in checkForChanges() }
         .onChange(of: draftShowSearchRadius) { _, _ in checkForChanges() }
         .onChange(of: draftDragToSearch) { _, _ in checkForChanges() }
-        .onChange(of: draftAutoRefresh) { _, _ in checkForChanges() }
         .onChange(of: draftSubwayLineOffset) { _, _ in checkForChanges() }
         .onChange(of: draftUseLocalhost) { _, _ in checkForChanges() }
         .onChange(of: draftCustomIP) { _, _ in checkForChanges() }
@@ -480,7 +457,6 @@ struct SettingsContentView: View {
         draftRadius = muchFartherAwayRadius
         draftShowSearchRadius = showSearchRadius
         draftDragToSearch = dragToSearch
-        draftAutoRefresh = autoRefreshEnabled
         draftSubwayLineOffset = subwayLineOffset
         draftUseLocalhost = useLocalhost
         draftCustomIP = customIP
@@ -492,7 +468,6 @@ struct SettingsContentView: View {
             draftRadius != muchFartherAwayRadius ||
             draftShowSearchRadius != showSearchRadius ||
             draftDragToSearch != dragToSearch ||
-            draftAutoRefresh != autoRefreshEnabled ||
             draftSubwayLineOffset != subwayLineOffset ||
             draftUseLocalhost != useLocalhost ||
             draftCustomIP != customIP
@@ -509,9 +484,6 @@ struct SettingsContentView: View {
         showSearchRadius = draftShowSearchRadius
         dragToSearch = draftDragToSearch
         subwayLineOffset = draftSubwayLineOffset
-        
-        // General
-        autoRefreshEnabled = draftAutoRefresh
         
         // Developer
         useLocalhost = draftUseLocalhost
@@ -777,55 +749,118 @@ struct SettingsContentView: View {
     }
     
     private var aboutSection: some View {
-        settingsSection(title: "About", icon: "info.circle.fill", iconColor: .blue) {
+        settingsSection(title: "About", icon: "info.circle.fill", iconColor: AppTheme.Colors.mtaBlue) {
             VStack(spacing: 0) {
-                // App logo + name
-                VStack(spacing: 8) {
-                    Image(systemName: "tram.fill")
-                        .font(.system(size: 32))
-                        .foregroundColor(AppTheme.Colors.mtaBlue)
+                // App identity card
+                VStack(spacing: 12) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 20)
+                            .fill(AppTheme.Colors.subwayBlack)
+                            .frame(width: 72, height: 72)
+                            .shadow(color: AppTheme.Colors.subwayBlack.opacity(0.25), radius: 10, y: 4)
+                        Image(systemName: "tram.fill")
+                            .font(.system(size: 30, weight: .bold))
+                            .foregroundColor(.white)
+                    }
                     
-                    Text("Track NYC")
-                        .font(.custom("Helvetica-Bold", size: 18))
-                        .foregroundColor(AppTheme.Colors.textPrimary)
-                    
-                    Text("Real-time NYC transit at your fingertips")
-                        .font(.system(size: 13))
-                        .foregroundColor(AppTheme.Colors.textSecondary)
+                    VStack(spacing: 4) {
+                        Text("Track")
+                            .font(.system(size: 22, weight: .bold, design: .rounded))
+                            .foregroundColor(AppTheme.Colors.textPrimary)
+                        
+                        Text("NYC Transit, Live")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
+                    }
                     
                     if let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
                        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String {
-                        Text("Version \(version) (\(build))")
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.5))
+                        Text("v\(version) (\(build))")
+                            .font(.system(size: 11, weight: .medium, design: .monospaced))
+                            .foregroundColor(AppTheme.Colors.mtaBlue)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(AppTheme.Colors.mtaBlue.opacity(0.1))
+                            .clipShape(Capsule())
                     }
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
+                .padding(.vertical, 20)
                 
                 settingsDivider
                 
-                // Transport modes supported
-                HStack(spacing: 16) {
-                    transitBadge("🚇", "Subway")
-                    transitBadge("🚌", "Bus")
-                    transitBadge("🚂", "LIRR")
-                    transitBadge("🚆", "MNR")
+                // Transport modes
+                VStack(spacing: 10) {
+                    Text("SUPPORTED TRANSIT")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.5))
+                        .tracking(0.6)
+                    
+                    HStack(spacing: 0) {
+                        transitModeBadge("🚇", "Subway", AppTheme.Colors.mtaBlue)
+                        transitModeBadge("🚌", "Bus", Color(red: 0/255, green: 57/255, blue: 166/255))
+                        transitModeBadge("🚂", "LIRR", Color(red: 0/255, green: 115/255, blue: 191/255))
+                        transitModeBadge("🚆", "MNR", Color(red: 0/255, green: 90/255, blue: 140/255))
+                    }
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
+                .padding(.vertical, 14)
+                
+                settingsDivider
+                
+                // Data sources
+                VStack(spacing: 8) {
+                    Text("POWERED BY")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.5))
+                        .tracking(0.6)
+                    
+                    HStack(spacing: 16) {
+                        dataSourcePill("MTA GTFS")
+                        dataSourcePill("Real-Time Feeds")
+                        dataSourcePill("Apple Maps")
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                
+                settingsDivider
+                
+                // Credits
+                VStack(spacing: 6) {
+                    Text("Made with ❤️ in NYC")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+                    
+                    Text("© \(Calendar.current.component(.year, from: Date())) Track NYC Transit")
+                        .font(.system(size: 11))
+                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.5))
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
             }
         }
     }
     
-    private func transitBadge(_ emoji: String, _ label: String) -> some View {
-        VStack(spacing: 4) {
+    private func transitModeBadge(_ emoji: String, _ label: String, _ color: Color) -> some View {
+        VStack(spacing: 6) {
             Text(emoji)
-                .font(.system(size: 24))
+                .font(.system(size: 26))
             Text(label)
-                .font(.system(size: 10, weight: .medium))
-                .foregroundColor(AppTheme.Colors.textSecondary)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(color)
         }
+        .frame(maxWidth: .infinity)
+    }
+    
+    private func dataSourcePill(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(AppTheme.Colors.textSecondary.opacity(0.08))
+            .clipShape(Capsule())
     }
     
     // MARK: - Section Builder

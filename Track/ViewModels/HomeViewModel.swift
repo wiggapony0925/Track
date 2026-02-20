@@ -1106,32 +1106,37 @@ final class HomeViewModel {
     /// `isSearchPinActive` is set, `effectiveLocation` will always
     /// return the pin coordinate for all subsequent operations.
     ///
-    /// Uses a fast-path refresh that skips global feeds (alerts,
-    /// accessibility) since those don't change by location.
+    /// Uses the standard mode-aware `refresh()` so that drag-search
+    /// works correctly on every tab (Nearby, Subway, Bus, etc.).
     func setSearchPin(_ coordinate: CLLocationCoordinate2D, userLocation: CLLocation?) async {
         searchPinCoordinate = coordinate
         isSearchPinActive = true
-        // Fast-path: only fetch location-dependent transit data
+        // Use the full mode-aware refresh so bus/subway/LIRR/MNR tabs
+        // all get correct data at the drag-search location.
         let loc = effectiveLocation(userLocation: userLocation)
-        await refreshNearbyTransit(location: loc, skipGlobalFeeds: true)
-        syncTrackedRoute()
+        await refresh(location: loc)
     }
 
     /// Deactivates the search pin and returns to user location.
-    /// Clears stale transit data so the dashboard shows a loading state
-    /// instead of results from the drag-search location (which would
-    /// appear as "nothing in your area" since those stops are far away).
+    /// Clears stale transit data across ALL modes so the dashboard shows
+    /// a loading state instead of results from the drag-search location
+    /// (which would appear as "nothing in your area" since those stops
+    /// are far away from the user's real GPS).
     func clearSearchPin(userLocation: CLLocation?) async {
         isSearchPinActive = false
         searchPinCoordinate = nil
         goMode.walkingRoute = nil
         nearestStopCoordinate = nil
-        // Clear stale data to avoid showing drag-search results
-        // measured against the real GPS (wrong distances)
+        // Clear stale data for every mode to avoid showing drag-search
+        // results measured against the real GPS (wrong distances)
         groupedTransit = []
         nearbyTransit = []
         nearestTransit = nil
         nearestTransitDistance = nil
+        nearbyGroupedBusArrivals = []
+        nearbyGroupedSubwayArrivals = []
+        nearbyGroupedLIRRArrivals = []
+        nearbyGroupedMNRArrivals = []
     }
 
     // MARK: - Route Detail
