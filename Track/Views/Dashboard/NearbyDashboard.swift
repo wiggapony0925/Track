@@ -79,14 +79,14 @@ struct NearbyDashboard: View {
                         sheetNavigator: sheetNavigator,
                         referenceLocation: refLocation
                     )
-                } else {
+                } else if viewModel.searchText.isEmpty {
                     NearYouSectionHeader(radiusMeters: nearYouRadius, updated: lastUpdated)
                     EmptyTierHint()
                 }
 
                 // Display "A Little Farther Away" section
-                FartherAwaySectionHeader(radiusMeters: fartherAwayRadius)
                 if !fartherAway.isEmpty {
+                    FartherAwaySectionHeader(radiusMeters: fartherAwayRadius)
                     GroupedRouteList(
                         groups: fartherAway,
                         viewModel: viewModel,
@@ -94,13 +94,14 @@ struct NearbyDashboard: View {
                         sheetNavigator: sheetNavigator,
                         referenceLocation: refLocation
                     )
-                } else {
+                } else if viewModel.searchText.isEmpty {
+                    FartherAwaySectionHeader(radiusMeters: fartherAwayRadius)
                     EmptyTierHint()
                 }
 
                 // Display "Much Farther Away" section
-                MuchFartherAwaySectionHeader(radiusMeters: muchFartherAwayRadius)
                 if !muchFarther.isEmpty {
+                    MuchFartherAwaySectionHeader(radiusMeters: muchFartherAwayRadius)
                     GroupedRouteList(
                         groups: muchFarther,
                         viewModel: viewModel,
@@ -108,7 +109,8 @@ struct NearbyDashboard: View {
                         sheetNavigator: sheetNavigator,
                         referenceLocation: refLocation
                     )
-                } else {
+                } else if viewModel.searchText.isEmpty {
+                    MuchFartherAwaySectionHeader(radiusMeters: muchFartherAwayRadius)
                     EmptyTierHint()
                 }
 
@@ -425,21 +427,27 @@ struct GroupedRouteList: View {
                         || !viewModel.serviceAlerts.matching(
                             routeId: group.displayName, mode: group.mode
                         ).isEmpty,
-                    userLocation: referenceLocation
-                ) { directionIndex in
-                    RouteAnalyticsManager.shared.logInteraction(routeId: group.routeId)
-                    Task {
-                        await viewModel.selectGroupedRoute(
-                            group, directionIndex: directionIndex,
-                            userLocation: locationManager.currentLocation)
-                        // Navigate only after route selection completes successfully
-                        // The viewModel sets isRouteDetailPresented = true on success
-                        if viewModel.isRouteDetailPresented {
-                            sheetNavigator.navigate(
-                                to: .routeDetail(group: group, directionIndex: directionIndex))
+                    userLocation: referenceLocation,
+                    onSelect: { directionIndex in
+                        RouteAnalyticsManager.shared.logInteraction(routeId: group.routeId)
+                        Task {
+                            await viewModel.selectGroupedRoute(
+                                group, directionIndex: directionIndex,
+                                userLocation: locationManager.currentLocation)
+                            if viewModel.isRouteDetailPresented {
+                                sheetNavigator.navigate(
+                                    to: .routeDetail(group: group, directionIndex: directionIndex))
+                            }
                         }
+                    },
+                    onTrack: { directionIndex in
+                        let dir = group.directions[
+                            min(directionIndex, group.directions.count - 1)]
+                        guard let arrival = dir.liveArrivals.first else { return }
+                        viewModel.trackNearbyArrival(
+                            arrival, location: locationManager.currentLocation)
                     }
-                }
+                )
                 if index < groups.count - 1 {
                     Divider()
                         .padding(

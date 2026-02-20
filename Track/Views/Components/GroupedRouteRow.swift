@@ -16,8 +16,20 @@ struct GroupedRouteRow: View {
     var hasAlert: Bool = false
     var userLocation: CLLocation? = nil
     var onSelect: ((Int) -> Void)? = nil
+    var onTrack: ((Int) -> Void)? = nil
 
     @State private var currentDirectionIndex = 0
+    @State private var swipeOffset: CGFloat = 0
+    @State private var showTrackingBanner = false
+    @State private var trackingBannerText = ""
+
+    /// Locks to horizontal once the initial drag direction is determined.
+    /// Prevents vertical scroll from accidentally triggering the swipe action.
+    @State private var swipeLocked = false
+    @State private var swipeDirectionDecided = false
+
+    /// How far right the user must drag to trigger tracking.
+    private let swipeThreshold: CGFloat = 80
 
     /// Route color derived from group data or theme defaults.
     private var routeColor: Color {
@@ -45,6 +57,32 @@ struct GroupedRouteRow: View {
     }
 
     var body: some View {
+        ZStack(alignment: .leading) {
+            // ── Swipe-to-track background (only visible during swipe) ──
+            if swipeOffset > 0 {
+                swipeTrackBackground
+                    .transition(.opacity)
+            }
+
+            // ── Main row content ──
+            mainRowContent
+                .offset(x: swipeOffset)
+                .simultaneousGesture(swipeToTrackGesture)
+        }
+        .clipped()
+        .overlay(alignment: .top) {
+            // ── "Now tracking" confirmation banner ──
+            if showTrackingBanner {
+                trackingConfirmationBanner
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .zIndex(1)
+            }
+        }
+    }
+
+    // MARK: - Main Row Content
+
+    private var mainRowContent: some View {
         HStack(spacing: 14) {
             // ── Route Badge ──
             RouteBadge(
@@ -81,7 +119,8 @@ struct GroupedRouteRow: View {
                         ForEach(Array(group.directions.enumerated()), id: \.element.id) {
                             index, direction in
                             let label =
-                                direction.arrivals.first?.destination
+                                direction.liveArrivals.first?.destination
+                                ?? direction.arrivals.first?.destination
                                 ?? direction.directionLabel
                                 ?? directionLabel(direction.direction)
                             VStack(alignment: .leading, spacing: 2) {
@@ -164,6 +203,7 @@ struct GroupedRouteRow: View {
         }
         .padding(.vertical, 14)
         .padding(.horizontal, AppTheme.Layout.margin)
+        .background(AppTheme.Colors.cardBackground)
         .contentShape(Rectangle())
         .onTapGesture {
             HapticManager.selection()
@@ -173,7 +213,160 @@ struct GroupedRouteRow: View {
         .accessibilityLabel(
             "\(group.isLIRR ? "LIRR" : group.isMNR ? "Metro-North" : group.isBus ? "Bus" : "Train") \(group.displayName), swipe for directions"
         )
-        .accessibilityHint("Double tap to see details for current direction")
+        .accessibilityHint("Double tap to see details. Swipe right to track.")
+        .accessibilityAction(named: "Track this route") {
+            triggerTracking()
+        }
+    }
+
+    // MARK: - Swipe-to-Track Background
+
+    /// Blue background with bell icon revealed when the user swipes right.
+    private var swipeTrackBackground: some View {
+        HStack {
+            VStack(spacing: 4) {
+                Image(systemName: "bell.fill")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundColor(.white)
+                Text("Track")
+                    .font(.custom("Helvetica-Bold", size: 10))
+                    .foregroundColor(.white.opacity(0.9))
+            }
+            .frame(width: swipeThreshold)
+            .opacity(min(1.0, swipeOffset / swipeThreshold))
+            .scaleEffect(min(1.0, swipeOffset / swipeThreshold * 1.1))
+
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(red: 0.25, green: 0.58, blue: 0.96)) // Light blue
+    }
+
+    // MARK: - Swipe Gesture
+
+    /// Drag gesture that reveals the tracking action on right-swipe.
+    /// Ignores vertical drags (scrolling) by locking direction on first movement.
+    private var swipeToTrackGesture: some Gesture {
+        DragGesture(minimumDistance: 30)
+            .onChanged { value in
+                let dx = value.translation.width
+                let dy = value.translation.height
+
+                // First significant movement — decide if this is horizontal or vertical
+                if !swipeDirectionDecided {
+                    // Need enough movement to decide
+                    guard abs(dx) > 10 || abs(dy) > 10 else { return }
+                    swipeDirectionDecided = true
+                    // Lock to horizontal only when clearly swiping right (not vertical scroll)
+                    swipeLocked = dx > 0 && abs(dx) > abs(dy) * 1.5
+                }
+
+                // If locked as vertical (scroll), do nothing
+                guard swipeLocked else { return }
+
+                let translation = max(0, dx)
+                withAnimation(.interactiveSpring()) {
+                    if translation > swipeThreshold {
+                        let overShoot = translation - swipeThreshold
+                        swipeOffset = swipeThreshold + overShoot * 0.3
+                    } else {
+                        swipeOffset = translation
+                    }
+                }
+            }
+            .onEnded { value in
+                defer {
+                    // Reset direction lock for next gesture
+                    swipeLocked = false
+                    swipeDirectionDecided = false
+                }
+
+                guard swipeLocked else {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                        swipeOffset = 0
+                    }
+                    return
+                }
+
+                if value.translation.width > swipeThreshold {
+                    // ── Confirmed track! ──
+                    // Quick overshoot animation then snap back
+                    withAnimation(.spring(response: 0.25, dampingFraction: 0.6)) {
+                        swipeOffset = swipeThreshold + 20
+                    }
+                    // Snap back after a beat
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                            swipeOffset = 0
+                        }
+                    }
+                    triggerTracking()
+                } else {
+                    // Didn't reach threshold — snap back
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                        swipeOffset = 0
+                    }
+                }
+            }
+    }
+
+    // MARK: - Tracking Trigger
+
+    /// Called when the swipe threshold is exceeded — triggers tracking and shows banner.
+    private func triggerTracking() {
+        HapticManager.notification(.success)
+        onTrack?(currentDirectionIndex)
+
+        // Build banner text from current direction
+        let dir = currentDirection
+        let destination = dir.directionLabel
+            ?? dir.liveArrivals.first?.destination
+            ?? dir.direction
+        trackingBannerText = "Now tracking \(group.displayName) → \(destination)"
+
+        // Pop in
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.7, blendDuration: 0)) {
+            showTrackingBanner = true
+        }
+
+        // Auto-dismiss after 2.5 seconds
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+            withAnimation(.easeInOut(duration: 0.35)) {
+                showTrackingBanner = false
+            }
+        }
+    }
+
+    // MARK: - Tracking Confirmation Banner
+
+    /// Compact pill banner that slides in from the top to confirm tracking.
+    private var trackingConfirmationBanner: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "bell.badge.fill")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(.white)
+
+            Text(trackingBannerText)
+                .font(.custom("Helvetica-Bold", size: 12))
+                .foregroundColor(.white)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(
+            Capsule()
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.22, green: 0.52, blue: 0.90),
+                            Color(red: 0.30, green: 0.62, blue: 1.0),
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .shadow(color: Color(red: 0.25, green: 0.58, blue: 0.96).opacity(0.4), radius: 10, x: 0, y: 4)
+        )
     }
 
     // MARK: - Countdown View
@@ -184,59 +377,47 @@ struct GroupedRouteRow: View {
     private var countdownView: some View {
         let dir = currentDirection
 
-        if let first = dir.arrivals.first {
-            let isPlaceholder = first.minutesAway >= 99 && first.arrivalTs == nil
+        // Prefer the first live (non-placeholder) arrival for the countdown.
+        // If only placeholders exist, show "Sched" indicator instead of fake times.
+        let liveFirst = dir.liveArrivals.first
+        let hasOnlyPlaceholders = liveFirst == nil && !dir.arrivals.isEmpty
 
-            if isPlaceholder {
-                // ── Scheduled but not live ──
-                // Show the scheduled time greyed out instead of "No live"
-                if let ts = first.arrivalTs {
-                    let date = Date(timeIntervalSince1970: TimeInterval(ts))
-                    let mins = max(0, Int(date.timeIntervalSinceNow / 60))
-                    VStack(spacing: 2) {
-                        HStack(alignment: .firstTextBaseline, spacing: 2) {
-                            Text("\(mins)")
-                                .font(.custom("Helvetica-Bold", size: 22))
-                                .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.5))
-                            Text("min")
-                                .font(.custom("Helvetica", size: 11))
-                                .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.4))
-                        }
-                        Text("Sched")
-                            .font(.custom("Helvetica-Bold", size: 9))
-                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.5))
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(AppTheme.Colors.textSecondary.opacity(0.08))
-                            .clipShape(Capsule())
-                    }
-                } else {
-                    // Truly no data — minimal indicator
-                    VStack(spacing: 3) {
-                        Image(systemName: "clock")
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.4))
-                        Text("Sched")
-                            .font(.custom("Helvetica-Bold", size: 9))
-                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.4))
-                    }
-                }
-            } else {
-                // ── Live data ──
-                VStack(spacing: 2) {
+        if let first = liveFirst {
+            // ── Live data — smart countdown using ArrivalETAEngine ──
+            VStack(spacing: 2) {
+                TimelineView(.periodic(from: .now, by: 1.0)) { _ in
+                    let eta = ArrivalETAEngine.computeETA(
+                        vehicleCoord: nil, vehicleKey: nil, stopCoord: nil,
+                        arrivalTs: first.arrivalTs,
+                        staticMinutes: first.minutesAway,
+                        mode: first.mode)
+                    let mins = eta.minutesRemaining
+                    let isNow = eta.isAtStop || eta.secondsRemaining <= 30
+
                     HStack(alignment: .firstTextBaseline, spacing: 2) {
-                        Text("\(first.minutesAway)")
-                            .font(.custom("Helvetica-Bold", size: 26))
-                            .foregroundColor(AppTheme.Colors.countdown(first.minutesAway))
+                        Text(isNow ? "Now" : "\(mins)")
+                            .font(.custom("Helvetica-Bold", size: isNow ? 20 : 26))
+                            .foregroundColor(AppTheme.Colors.countdown(mins))
                             .contentTransition(.numericText())
-                        Text("min")
-                            .font(.custom("Helvetica", size: 12))
-                            .foregroundColor(AppTheme.Colors.textSecondary)
-                    }
 
-                    // Status indicator
-                    statusPill(for: first)
+                        if !isNow {
+                            Text("min")
+                                .font(.custom("Helvetica", size: 12))
+                                .foregroundColor(AppTheme.Colors.textSecondary)
+                        }
+                    }
                 }
+                statusPill(for: first)
+            }
+        } else if hasOnlyPlaceholders {
+            // Direction exists but only has backend placeholder arrivals
+            VStack(spacing: 3) {
+                Image(systemName: "clock")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.4))
+                Text("Sched")
+                    .font(.custom("Helvetica-Bold", size: 9))
+                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.4))
             }
         } else {
             // No arrivals at all

@@ -41,6 +41,9 @@ struct WidgetNearbyResponse: Codable {
     let minutesAway: Int
     let status: String
     let mode: String
+    /// Feed's predicted Unix epoch for this arrival — used for a precise
+    /// live countdown (same approach as ArrivalETAEngine feedTimestamp path).
+    let arrivalTs: Int?
 
     enum CodingKeys: String, CodingKey {
         case routeId = "route_id"
@@ -49,5 +52,15 @@ struct WidgetNearbyResponse: Codable {
         case minutesAway = "minutes_away"
         case status
         case mode
+        case arrivalTs = "arrival_ts"
+    }
+
+    /// The best available absolute arrival date.
+    /// Prefer the feed's arrivalTs epoch; fall back to minutesAway offset.
+    var resolvedArrivalTime: Date {
+        if let ts = arrivalTs, ts > 0 {
+            return Date(timeIntervalSince1970: Double(ts))
+        }
+        return Date().addingTimeInterval(Double(minutesAway) * 60)
     }
 }

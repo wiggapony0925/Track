@@ -68,14 +68,14 @@ struct SubwayDashboard: View {
                         sheetNavigator: sheetNavigator,
                         referenceLocation: refLocation
                     )
-                } else {
+                } else if viewModel.searchText.isEmpty {
                     NearYouSectionHeader(radiusMeters: nearYouRadius, updated: lastUpdated)
                     EmptyTierHint()
                 }
                 
                 // "A Little Farther Away" section (~2.5 mi)
-                FartherAwaySectionHeader(radiusMeters: fartherAwayRadius)
                 if !fartherAway.isEmpty {
+                    FartherAwaySectionHeader(radiusMeters: fartherAwayRadius)
                     GroupedRouteList(
                         groups: fartherAway,
                         viewModel: viewModel,
@@ -83,13 +83,14 @@ struct SubwayDashboard: View {
                         sheetNavigator: sheetNavigator,
                         referenceLocation: refLocation
                     )
-                } else {
+                } else if viewModel.searchText.isEmpty {
+                    FartherAwaySectionHeader(radiusMeters: fartherAwayRadius)
                     EmptyTierHint()
                 }
                 
                 // "Much Farther Away" section (~5 mi)
-                MuchFartherAwaySectionHeader(radiusMeters: muchFartherAwayRadius)
                 if !muchFarther.isEmpty {
+                    MuchFartherAwaySectionHeader(radiusMeters: muchFartherAwayRadius)
                     GroupedRouteList(
                         groups: muchFarther,
                         viewModel: viewModel,
@@ -97,7 +98,8 @@ struct SubwayDashboard: View {
                         sheetNavigator: sheetNavigator,
                         referenceLocation: refLocation
                     )
-                } else {
+                } else if viewModel.searchText.isEmpty {
+                    MuchFartherAwaySectionHeader(radiusMeters: muchFartherAwayRadius)
                     EmptyTierHint()
                 }
                 

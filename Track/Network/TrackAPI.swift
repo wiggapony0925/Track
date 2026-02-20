@@ -6,8 +6,8 @@
 //  All MTA data flows through the backend — the iOS app never calls MTA directly.
 //
 
-import Foundation
 import CoreLocation
+import Foundation
 
 /// Centralized API client for the Track backend.
 struct TrackAPI {
@@ -16,26 +16,36 @@ struct TrackAPI {
 
     /// The active backend URL, determined by the Developer Settings in SettingsView.
     /// On a physical device, localhost is never used (it would point to the phone itself).
+    /// Cached to avoid re-computing (and logging) on every API call.
+    private static var _cachedBaseURL: String?
+    
+    /// Invalidate the cached URL when developer settings change.
+    static func invalidateBaseURL() {
+        _cachedBaseURL = nil
+    }
+    
     static var baseURL: String {
+        if let cached = _cachedBaseURL { return cached }
+        
         let settings = AppSettings.shared
         let useLocalhost = UserDefaults.standard.bool(forKey: "dev_use_localhost")
 
         #if targetEnvironment(simulator)
-        // Simulator runs on the Mac — localhost works fine
-        if useLocalhost {
-            let url = settings.localBaseURL
-            print("🌐 TrackAPI baseURL (simulator/localhost): \(url)")
-            return url
-        }
+            // Simulator runs on the Mac — localhost works fine
+            if useLocalhost {
+                let url = settings.localBaseURL
+                AppLogger.shared.log("API_CONFIG", message: "baseURL (simulator/localhost): \(url)")
+                _cachedBaseURL = url
+                return url
+            }
         #endif
 
         // Physical device (or simulator with localhost off) — always use the WiFi IP
         let storedIP = UserDefaults.standard.string(forKey: "dev_custom_ip")
         let ip = (storedIP?.isEmpty == false) ? storedIP! : settings.defaultDeviceIP
         let url = "http://\(ip):\(settings.localPort)"
-        #if DEBUG
-        print("🌐 TrackAPI baseURL: \(url)  (ip=\(ip), stored=\(storedIP ?? "nil"), default=\(settings.defaultDeviceIP))")
-        #endif
+        AppLogger.shared.log("API_CONFIG", message: "baseURL: \(url)  (ip=\(ip))")
+        _cachedBaseURL = url
         return url
     }
 
@@ -58,7 +68,9 @@ struct TrackAPI {
     /// - Returns: Array of decoded `TrainArrival` objects.
     static func fetchSubwayArrivals(lineID: String) async throws -> [TrainArrival] {
         let data = try await get(path: "/subway/\(lineID)")
-        return try decoder.decode([SubwayArrivalResponse].self, from: data).map { $0.toTrainArrival() }
+        return try decoder.decode([SubwayArrivalResponse].self, from: data).map {
+            $0.toTrainArrival()
+        }
     }
 
     // MARK: - Bus
@@ -69,7 +81,9 @@ struct TrackAPI {
     ///   - lat: User's latitude.
     ///   - lon: User's longitude.
     /// - Returns: Array of `BusStop`.
-    static func fetchNearbyBusStops(lat: Double, lon: Double, radius: Int? = nil) async throws -> [BusStop] {
+    static func fetchNearbyBusStops(lat: Double, lon: Double, radius: Int? = nil) async throws
+        -> [BusStop]
+    {
         let effectiveRadius = radius ?? AppSettings.shared.effectiveAPISearchRadius
         guard var components = URLComponents(string: baseURL + "/bus/nearby") else {
             throw TrackAPIError.invalidURL
@@ -109,7 +123,8 @@ struct TrackAPI {
     /// - Parameter routeID: Fully-qualified route ID (e.g. "MTA NYCT_B63").
     /// - Returns: Array of `BusStop` along the route.
     static func fetchBusStopsForRoute(routeID: String) async throws -> [BusStop] {
-        let encoded = routeID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? routeID
+        let encoded =
+            routeID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? routeID
         let data = try await get(path: "/bus/stops/\(encoded)")
         return try decoder.decode([BusStop].self, from: data)
     }
@@ -119,7 +134,8 @@ struct TrackAPI {
     /// Fetches today's scheduled departures for a bus route.
     /// Used when no live buses are running to show upcoming scheduled times.
     static func fetchBusSchedule(routeID: String) async throws -> BusScheduleResponse {
-        let stripped = routeID
+        let stripped =
+            routeID
             .replacingOccurrences(of: "MTA NYCT_", with: "")
             .replacingOccurrences(of: "MTABC_", with: "")
         let data = try await get(path: "/bus/schedule/\(stripped)")
@@ -136,7 +152,9 @@ struct TrackAPI {
     ///   - lon: User's longitude.
     ///   - radius: Search radius in meters (from settings.json by default).
     /// - Returns: Array of `NearbyTransitResponse`.
-    static func fetchNearbyTransit(lat: Double, lon: Double, radius: Int? = nil) async throws -> [NearbyTransitResponse] {
+    static func fetchNearbyTransit(lat: Double, lon: Double, radius: Int? = nil) async throws
+        -> [NearbyTransitResponse]
+    {
         let effectiveRadius = radius ?? AppSettings.shared.effectiveAPISearchRadius
         guard var components = URLComponents(string: baseURL + "/nearby") else {
             throw TrackAPIError.invalidURL
@@ -162,7 +180,9 @@ struct TrackAPI {
     ///   - radius: Search radius in meters (from settings.json by default).
     ///   - mode: Optional transit mode filter ("subway", "bus", "lirr", "mnr").
     /// - Returns: Array of `GroupedNearbyTransitResponse`.
-    static func fetchNearbyGrouped(lat: Double, lon: Double, radius: Int? = nil, mode: String? = nil) async throws -> [GroupedNearbyTransitResponse] {
+    static func fetchNearbyGrouped(
+        lat: Double, lon: Double, radius: Int? = nil, mode: String? = nil
+    ) async throws -> [GroupedNearbyTransitResponse] {
         let effectiveRadius = radius ?? AppSettings.shared.effectiveAPISearchRadius
         guard var components = URLComponents(string: baseURL + "/nearby/grouped") else {
             throw TrackAPIError.invalidURL
@@ -190,7 +210,8 @@ struct TrackAPI {
     /// - Parameter routeID: Fully-qualified route ID (e.g. "MTA NYCT_B63").
     /// - Returns: Array of `BusVehicleResponse` with GPS positions.
     static func fetchBusVehicles(routeID: String) async throws -> [BusVehicleResponse] {
-        let encoded = routeID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? routeID
+        let encoded =
+            routeID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? routeID
         let data = try await get(path: "/bus/vehicles/\(encoded)")
         return try decoder.decode([BusVehicleResponse].self, from: data)
     }
@@ -200,7 +221,8 @@ struct TrackAPI {
     /// - Parameter routeID: Fully-qualified route ID (e.g. "MTA NYCT_B63").
     /// - Returns: A `RouteShapeResponse` with encoded polylines and stops.
     static func fetchRouteShape(routeID: String) async throws -> RouteShapeResponse {
-        let encoded = routeID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? routeID
+        let encoded =
+            routeID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? routeID
         let data = try await get(path: "/bus/route-shape/\(encoded)")
         return try decoder.decode(RouteShapeResponse.self, from: data)
     }
@@ -210,7 +232,8 @@ struct TrackAPI {
     /// - Parameter routeID: Subway line letter/number (e.g. "C", "L", "1").
     /// - Returns: A `RouteShapeResponse` with the complete polyline and all stations.
     static func fetchSubwayShape(routeID: String) async throws -> RouteShapeResponse {
-        let encoded = routeID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? routeID
+        let encoded =
+            routeID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? routeID
         let data = try await get(path: "/subway/shape/\(encoded)")
         return try decoder.decode(RouteShapeResponse.self, from: data)
     }
@@ -220,7 +243,8 @@ struct TrackAPI {
     /// - Parameter routeID: LIRR branch ID (e.g. "LIRR_9" or "9").
     /// - Returns: A `RouteShapeResponse` with the branch polyline.
     static func fetchLIRRShape(routeID: String) async throws -> RouteShapeResponse {
-        let encoded = routeID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? routeID
+        let encoded =
+            routeID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? routeID
         let data = try await get(path: "/lirr/shape/\(encoded)")
         return try decoder.decode(RouteShapeResponse.self, from: data)
     }
@@ -230,7 +254,8 @@ struct TrackAPI {
     /// - Parameter routeID: MNR line ID (e.g. "MNR_1" or "1").
     /// - Returns: A `RouteShapeResponse` with the line polyline.
     static func fetchMNRShape(routeID: String) async throws -> RouteShapeResponse {
-        let encoded = routeID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? routeID
+        let encoded =
+            routeID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? routeID
         let data = try await get(path: "/mnr/shape/\(encoded)")
         return try decoder.decode(RouteShapeResponse.self, from: data)
     }
@@ -273,7 +298,9 @@ struct TrackAPI {
     ///   - lon: User's longitude.
     ///   - radius: Search radius in meters (defaults to ~1 mile).
     /// - Returns: An `AllSubwayStationsResponse` with nearby stations.
-    static func fetchNearbySubwayStations(lat: Double, lon: Double, radius: Int = 1600) async throws -> AllSubwayStationsResponse {
+    static func fetchNearbySubwayStations(lat: Double, lon: Double, radius: Int = 1600) async throws
+        -> AllSubwayStationsResponse
+    {
         guard var components = URLComponents(string: baseURL + "/subway/stations/nearby") else {
             throw TrackAPIError.invalidURL
         }
@@ -350,7 +377,9 @@ struct TrackAPI {
     /// - Returns: Array of decoded `TrainArrival` objects.
     static func fetchLIRRArrivals() async throws -> [TrainArrival] {
         let data = try await get(path: "/lirr")
-        return try decoder.decode([SubwayArrivalResponse].self, from: data).map { $0.toTrainArrival() }
+        return try decoder.decode([SubwayArrivalResponse].self, from: data).map {
+            $0.toTrainArrival()
+        }
     }
 
     // MARK: - Metro-North
@@ -360,7 +389,9 @@ struct TrackAPI {
     /// - Returns: Array of decoded `TrainArrival` objects.
     static func fetchMNRArrivals() async throws -> [TrainArrival] {
         let data = try await get(path: "/mnr")
-        return try decoder.decode([SubwayArrivalResponse].self, from: data).map { $0.toTrainArrival() }
+        return try decoder.decode([SubwayArrivalResponse].self, from: data).map {
+            $0.toTrainArrival()
+        }
     }
 
     // MARK: - Private
@@ -385,13 +416,13 @@ struct TrackAPI {
             throw TrackAPIError.networkError
         }
 
-        // Log the response JSON
-        let jsonString = String(data: data, encoding: .utf8) ?? "<binary>"
-        AppLogger.shared.logResponse(
-            url: url.absoluteString,
-            statusCode: http.statusCode,
-            json: jsonString
-        )
+        // Log the response JSON - DISABLED for performance/clutter
+        // let jsonString = String(data: data, encoding: .utf8) ?? "<binary>"
+        // AppLogger.shared.logResponse(
+        //     url: url.absoluteString,
+        //     statusCode: http.statusCode,
+        //     json: jsonString
+        // )
 
         guard (200...299).contains(http.statusCode) else {
             throw TrackAPIError.serverError(statusCode: http.statusCode)

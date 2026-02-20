@@ -61,7 +61,7 @@ struct BusArrivalRow: View {
                     .foregroundColor(statusColor)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
-                
+
                 if arrival.status == "Scheduled" {
                     Image(systemName: "clock")
                         .font(.system(size: 10, weight: .bold))
@@ -112,7 +112,10 @@ struct BusArrivalRow: View {
                             .foregroundColor(AppTheme.Colors.textOnColor)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
-                            .background(arrival.status == "Scheduled" ? Color.gray.opacity(0.6) : statusColor)
+                            .background(
+                                arrival.status == "Scheduled"
+                                    ? Color.gray.opacity(0.6) : statusColor
+                            )
                             .clipShape(Capsule())
                     }
 
@@ -141,15 +144,20 @@ struct BusArrivalRow: View {
                         onTrack?()
                     } label: {
                         HStack(spacing: 6) {
-                            Image(systemName: isTracking ? "antenna.radiowaves.left.and.right" : "bell.fill")
-                                .font(.system(size: 12, weight: .bold))
+                            Image(
+                                systemName: isTracking
+                                    ? "antenna.radiowaves.left.and.right" : "bell.fill"
+                            )
+                            .font(.system(size: 12, weight: .bold))
                             Text(isTracking ? "Tracking" : "Track This Bus")
                                 .font(.custom("Helvetica-Bold", size: 13))
                         }
                         .foregroundColor(AppTheme.Colors.textOnColor)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 10)
-                        .background(isTracking ? AppTheme.Colors.successGreen : AppTheme.Colors.mtaBlue)
+                        .background(
+                            isTracking ? AppTheme.Colors.successGreen : AppTheme.Colors.mtaBlue
+                        )
                         .cornerRadius(AppTheme.Layout.cornerRadius)
                     }
                 }
@@ -160,7 +168,8 @@ struct BusArrivalRow: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Bus \(shortRouteName), \(arrival.statusText)")
-        .accessibilityHint(isExpanded ? "Expanded. Shows arrival details." : "Tap to see arrival details")
+        .accessibilityHint(
+            isExpanded ? "Expanded. Shows arrival details." : "Tap to see arrival details")
     }
 
     /// Strips the "MTA NYCT_" prefix for display.
@@ -188,6 +197,7 @@ struct BusArrivalRow: View {
                 routeId: "MTA NYCT_B63",
                 vehicleId: "MTA NYCT_7582",
                 stopId: "MTA_308214",
+                stopName: "5 Av/Bay Ridge Pkwy",
                 statusText: "Approaching",
                 status: "Live",
                 expectedArrival: nil,
@@ -195,24 +205,28 @@ struct BusArrivalRow: View {
             ),
             isTracking: true
         )
-        BusArrivalRow(arrival: BusArrival(
-            routeId: "MTA NYCT_B63",
-            vehicleId: "MTA NYCT_7590",
-            stopId: "MTA_308214",
-            statusText: "3 stops away",
-            status: "Live",
-            expectedArrival: nil,
-            distanceMeters: 1200
-        ))
-        BusArrivalRow(arrival: BusArrival(
-            routeId: "MTA NYCT_B63",
-            vehicleId: "BUS_1234",
-            stopId: "MTA_308214",
-            statusText: "Scheduled",
-            status: "Scheduled",
-            expectedArrival: Date().addingTimeInterval(600),
-            distanceMeters: nil
-        ))
+        BusArrivalRow(
+            arrival: BusArrival(
+                routeId: "MTA NYCT_B63",
+                vehicleId: "MTA NYCT_7590",
+                stopId: "MTA_308214",
+                stopName: "5 Av/Bay Ridge Pkwy",
+                statusText: "3 stops away",
+                status: "Live",
+                expectedArrival: nil,
+                distanceMeters: 1200
+            ))
+        BusArrivalRow(
+            arrival: BusArrival(
+                routeId: "MTA NYCT_B63",
+                vehicleId: "BUS_1234",
+                stopId: "MTA_308214",
+                stopName: "5 Av/Bay Ridge Pkwy",
+                statusText: "Scheduled",
+                status: "Scheduled",
+                expectedArrival: Date().addingTimeInterval(600),
+                distanceMeters: nil
+            ))
     }
     .background(AppTheme.Colors.background)
 }

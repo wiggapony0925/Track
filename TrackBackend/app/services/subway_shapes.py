@@ -28,6 +28,7 @@ _DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 _SHAPES_PATH = _DATA_DIR / "shapes.txt"
 _TRIPS_PATH = _DATA_DIR / "trips.txt"
 _SHAPE_STOPS_PATH = _DATA_DIR / "shape_stops.json"
+_ROUTES_TXT_PATH = _DATA_DIR / "subway" / "regular_GTFS" / "routes.txt"
 
 
 class ShapePoint(NamedTuple):
@@ -295,6 +296,52 @@ def get_subway_route_shape(
     # Final sort of stops by sequence is not perfectly valid across branches, 
     # but the client usually just needs the collection of stops served.
     return polylines, all_stops, direction_data
+
+
+# ---------------------------------------------------------------------------
+# Express / Local service type detection
+# ---------------------------------------------------------------------------
+
+@lru_cache(maxsize=1)
+def _load_service_types() -> dict[str, str]:
+    """Parse routes.txt to classify each route as express, local, mixed, or None.
+
+    Reads the ``route_long_name`` column from the GTFS static routes.txt.
+    Examples:
+      - "Lexington Avenue Express" → "express"
+      - "8 Avenue Local"           → "local"
+      - "Queens Blvd Express/6 Av Local" → "mixed"
+      - "Brooklyn-Queens Crosstown" → (omitted)
+    """
+    if not _ROUTES_TXT_PATH.exists():
+        return {}
+
+    result: dict[str, str] = {}
+    with open(_ROUTES_TXT_PATH, encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            route_id = row.get("route_id", "").strip()
+            long_name = row.get("route_long_name", "").lower()
+            if not route_id:
+                continue
+
+            has_express = "express" in long_name
+            has_local = "local" in long_name
+
+            if has_express and has_local:
+                result[route_id] = "mixed"
+            elif has_express:
+                result[route_id] = "express"
+            elif has_local:
+                result[route_id] = "local"
+            # else: shuttles, crosstown, SIR — no label
+
+    return result
+
+
+def get_subway_service_type(route_id: str) -> str | None:
+    """Return 'express', 'local', 'mixed', or None for a subway route_id."""
+    return _load_service_types().get(route_id)
 
 
 def get_all_subway_stations() -> list[dict]:

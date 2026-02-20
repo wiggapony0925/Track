@@ -34,6 +34,7 @@ struct RouteStopMarker: View {
                 .frame(width: isSelected ? 6 : 4, height: isSelected ? 6 : 4)
         }
         .frame(width: 30, height: 30)
+        .drawingGroup()
         .scaleEffect(isSelected ? 1.3 : 1.0)
         .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isSelected)
         .accessibilityLabel(stopName)

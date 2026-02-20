@@ -33,6 +33,13 @@ struct NearbyTransitResponse: Codable, Identifiable {
     var isMNR: Bool { mode == "mnr" }
     var isCommuterRail: Bool { isLIRR || isMNR }
 
+    /// True when this arrival is a backend-generated placeholder used to ensure
+    /// at least two direction tabs exist.  Placeholders have `minutesAway >= 99`,
+    /// no live vehicle/trip id, and no real arrival timestamp.
+    var isPlaceholder: Bool {
+        minutesAway >= 99 && arrivalTs == nil && (vehicleId == nil || vehicleId?.isEmpty == true)
+    }
+
     /// Human-readable display name for the route.
     /// Uses branch name lookup for LIRR/MNR, strips MTA prefix for subway/bus.
     var displayName: String {
@@ -58,11 +65,35 @@ struct NearbyTransitResponse: Codable, Identifiable {
 
 /// Arrivals for a single direction within a grouped route.
 struct DirectionArrivalsResponse: Codable, Identifiable {
-    var id: String { direction }
+    /// Stable identity that handles routes with many directions sharing similar names.
+    /// Falls back to just `direction` when `directionLabel` is nil (backward compat).
+    var id: String { "\(direction)_\(directionLabel ?? "")" }
 
     let direction: String
     let directionLabel: String?
     let arrivals: [NearbyTransitResponse]
+
+    /// Live (non-placeholder) arrivals — filters out backend backfill entries
+    /// that exist only to guarantee direction tabs, AND arrivals whose timestamp
+    /// is more than 90 seconds in the past (vehicle already passed the stop).
+    var liveArrivals: [NearbyTransitResponse] {
+        let now = Date.now.timeIntervalSince1970
+        return arrivals.filter { arrival in
+            // Filter out placeholders
+            guard !arrival.isPlaceholder else { return false }
+            // Filter out arrivals whose timestamp is >90s in the past
+            if let ts = arrival.arrivalTs, ts > 0 {
+                let elapsed = now - Double(ts)
+                if elapsed > 90 { return false }
+            }
+            // Filter out arrivals with 0 minutesAway and no timestamp
+            // (stale static data)
+            if arrival.minutesAway <= 0 && arrival.arrivalTs == nil {
+                return false
+            }
+            return true
+        }
+    }
 
     init(direction: String, directionLabel: String? = nil, arrivals: [NearbyTransitResponse]) {
         self.direction = direction
@@ -93,15 +124,16 @@ struct GroupedNearbyTransitResponse: Codable, Identifiable {
     var isMNR: Bool { mode == "mnr" }
     var isCommuterRail: Bool { isLIRR || isMNR }
 
-    /// The soonest arrival across all directions.
+    /// The soonest live arrival across all directions (ignores placeholders).
     var soonestMinutes: Int {
-        directions.flatMap(\.arrivals).map(\.minutesAway).min() ?? 99
+        let live = directions.flatMap(\.liveArrivals)
+        return live.map(\.minutesAway).min() ?? 99
     }
 
-    /// The name of the direction (destination) for the soonest arrival.
+    /// The name of the direction (destination) for the soonest live arrival.
     var soonestDirectionName: String? {
         let all = directions.flatMap { dir in 
-            dir.arrivals.map { (dir.direction, $0.minutesAway) }
+            dir.liveArrivals.map { (dir.direction, $0.minutesAway) }
         }
         return all.min(by: { $0.1 < $1.1 })?.0
     }

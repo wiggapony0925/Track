@@ -17,6 +17,7 @@ struct TrackWidgetLiveActivity: Widget {
         ActivityConfiguration(for: TrackActivityAttributes.self) { context in
             // Lock Screen banner
             lockScreenView(context: context)
+                .widgetURL(URL(string: "track://route/\(context.attributes.lineId)")!)
         } dynamicIsland: { context in
             DynamicIsland {
                 // Expanded view regions
@@ -42,7 +43,7 @@ struct TrackWidgetLiveActivity: Widget {
                     }
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    VStack(spacing: 12) {
+                    VStack(spacing: 10) {
                         HStack {
                             // Proximity text
                             Text(context.state.proximityText)
@@ -57,13 +58,26 @@ struct TrackWidgetLiveActivity: Widget {
 
                         // "I made it!" button for quick dismissal
                         Button(intent: EndTrackingIntent()) {
-                            Label("I made it!", systemImage: "checkmark.circle.fill")
-                                .font(.system(size: 14, weight: .bold, design: .rounded))
-                                .foregroundColor(AppTheme.Colors.successGreen)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 8)
-                                .background(AppTheme.Colors.successGreen.opacity(0.15))
-                                .clipShape(Capsule())
+                            HStack(spacing: 6) {
+                                Image(systemName: "hand.thumbsup.fill")
+                                    .font(.system(size: 12, weight: .bold))
+                                Text("I made it!")
+                                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                            }
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                            .background(
+                                LinearGradient(
+                                    colors: [
+                                        AppTheme.Colors.successGreen,
+                                        AppTheme.Colors.successGreen.opacity(0.8)
+                                    ],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .clipShape(Capsule())
                         }
                         .buttonStyle(.plain)
                     }
@@ -77,143 +91,34 @@ struct TrackWidgetLiveActivity: Widget {
             } minimal: {
                 compactLineBadge(context: context)
             }
+            .widgetURL(URL(string: "track://route/\(context.attributes.lineId)")!)
         }
     }
+
+    // MARK: - Lock Screen Banner
 
     // MARK: - Lock Screen Banner
 
     @ViewBuilder
     private func lockScreenView(context: ActivityViewContext<TrackActivityAttributes>) -> some View
     {
-        VStack(spacing: 0) {
-            // Top Section: Route Badge + Countdown
-            HStack(alignment: .top, spacing: 12) {  // Spacing: 16 -> 12
-                // Left: Route + Destination
-                HStack(alignment: .center, spacing: 10) {  // Spacing: 14 -> 10
-                    if let walk = context.state.walkMinutes {
-                        // Walking indicator
-                        ZStack {
-                            Circle()
-                                .fill(
-                                    context.state.isHurryUp
-                                        ? AppTheme.Colors.alertRed.opacity(0.15)
-                                        : Color.white.opacity(0.1)
-                                )
-                                .frame(width: 44, height: 44)  // Reduced from 50
-
-                            Image(systemName: walk <= 2 ? "figure.run" : "figure.walk")
-                                .font(.system(size: 22, weight: .bold))  // Reduced from 26
-                                .foregroundColor(
-                                    context.state.isHurryUp ? AppTheme.Colors.alertRed : .white)
-                        }
-                    } else {
-                        lineBadge(context: context, size: 44)  // Reduced from 50
-                    }
-
-                    VStack(alignment: .leading, spacing: 0) {  // Spacing: 2 -> 0
-                        if context.state.isHurryUp {
-                            Text("Hurry up!")
-                                .font(.system(size: 17, weight: .black, design: .rounded))  // 18 -> 17
-                                .foregroundColor(AppTheme.Colors.alertRed)
-                        } else if context.state.walkMinutes != nil {
-                            Text("Time to walk")
-                                .font(.system(size: 17, weight: .bold, design: .rounded))  // 18 -> 17
-                                .foregroundColor(.white)
-                        } else {
-                            Text(context.attributes.destination)
-                                .font(.system(size: 18, weight: .bold, design: .rounded))  // 19 -> 18
-                                .foregroundColor(.white)
-                                .lineLimit(2)
-                                .minimumScaleFactor(0.65)  // 0.8 -> 0.65
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-
-                        Text(context.state.proximityText)
-                            .font(.system(size: 13, weight: .medium, design: .rounded))
-                            .foregroundColor(
-                                context.state.stopsAway == 1
-                                    ? AppTheme.Colors.alertRed : AppTheme.Colors.textSecondary
-                            )
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
-                    }
-                }
-
-                Spacer()
-
-                // Right: Hero countdown
-                heroCountdownLockScreen(context: context)
-            }
-            .padding(.horizontal, 20)  // 22 -> 20
-            .padding(.top, 14)  // 16 -> 14
-            .padding(.bottom, 10)  // 12 -> 10
-
-            // Middle: Progress Slider
-            VStack(spacing: 6) {  // 8 -> 6
-                progressSlider(progress: context.state.progress, context: context)
-
-                HStack {
-                    if let walkMins = context.state.walkMinutes {
-                        Label("\(walkMins) min walk", systemImage: "figure.walk")
-                            .font(.system(size: 11, weight: .semibold, design: .rounded))
-                            .foregroundColor(AppTheme.Colors.textSecondary)
-                    } else {
-                        HStack(spacing: 4) {  // 6 -> 4
-                            lineBadge(context: context, size: 14)  // 16 -> 14
-                            Text("to " + context.attributes.destination)
-                                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                                .foregroundColor(AppTheme.Colors.textSecondary)
-                                .lineLimit(1)
-                        }
-                    }
-
-                    Spacer()
-
-                    // Show next train if available
-                    if let next = context.state.nextArrivals.first {
-                        Text("Next: \(next) min")
-                            .font(.system(size: 11, weight: .medium, design: .rounded))
-                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.8))
-                    }
-                }
-                .padding(.horizontal, 2)  // 4 -> 2
-            }
-            .padding(.horizontal, 20)  // 22 -> 20
-            .padding(.bottom, 10)  // 12 -> 10
-
-            // Bottom: "I made it!" Action Button
-            Button(intent: EndTrackingIntent()) {
-                HStack(spacing: 6) {
-                    Image(systemName: "checkmark.circle.fill")
-                    Text("I made it!")
-                }
-                .font(.system(size: 14, weight: .bold, design: .rounded))
-                .foregroundColor(.white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 10)  // Kept compact
-                .background(AppTheme.Colors.successGreen.opacity(0.9))
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            }
-            .buttonStyle(.plain)
-            .padding(.horizontal, 20)  // 22 -> 20
-            .padding(.bottom, 14)  // 16 -> 14
-        }
-        .background {
-            ZStack {
-                // Main background
-                Color.black.opacity(0.8)
-
-                // Subtle blur
-                Rectangle()
-                    .fill(.ultraThinMaterial)
-                    .opacity(0.3)
-
-                if context.state.isHurryUp {
-                    AppTheme.Colors.alertRed.opacity(0.08)
-                }
-            }
-        }
-        .activityBackgroundTint(Color.black.opacity(0.6))
+        TrackLiveBannerView(
+            data: TrackLiveBannerData(
+                lineId: context.attributes.lineId,
+                destination: context.attributes.destination,
+                isBus: context.attributes.isBus,
+                isLIRR: false,
+                arrivalTime: context.state.arrivalTime,
+                proximityText: context.state.proximityText,
+                stopsAway: context.state.stopsAway,
+                walkMinutes: context.state.walkMinutes,
+                isHurryUp: context.state.isHurryUp,
+                progress: context.state.progress,
+                nextArrivals: context.state.nextArrivals
+            ),
+            showActionButton: true // Always show the dismiss button in the Lock Screen banner
+        )
+        .activityBackgroundTint(Color.black)
     }
 
     // MARK: - Hero Countdown (Lock Screen)
@@ -292,20 +197,20 @@ struct TrackWidgetLiveActivity: Widget {
         -> some View
     {
         if !context.state.nextArrivals.isEmpty {
-            HStack(spacing: 6) {
+            HStack(spacing: 5) {
                 Text("NEXT")
-                    .font(.system(size: 9, weight: .black))
+                    .font(.system(size: 9, weight: .black, design: .rounded))
                     .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.5))
 
-                HStack(spacing: 4) {
+                HStack(spacing: 3) {
                     ForEach(Array(context.state.nextArrivals.prefix(2).enumerated()), id: \.offset)
                     { _, mins in
                         Text("\(mins)m")
                             .font(.system(size: 12, weight: .bold, design: .rounded))
-                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.9))
-                            .padding(.horizontal, 7)
+                            .foregroundColor(.white.opacity(0.9))
+                            .padding(.horizontal, 8)
                             .padding(.vertical, 3)
-                            .background(Color.white.opacity(0.08))
+                            .background(Color.white.opacity(0.1))
                             .clipShape(Capsule())
                     }
                 }
@@ -376,24 +281,47 @@ struct TrackWidgetLiveActivity: Widget {
             ? .white : AppTheme.SubwayColors.textColor(for: context.attributes.lineId)
 
         ZStack {
-            Circle()
-                .fill(
-                    LinearGradient(
-                        colors: [color.opacity(1.0), color.opacity(0.85)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .overlay(
-                    Circle()
-                        .strokeBorder(Color.white.opacity(0.25), lineWidth: 1.5)
-                )
-
             if context.attributes.isBus {
-                Image(systemName: "bus.fill")
-                    .font(.system(size: size * 0.4, weight: .bold))
-                    .foregroundColor(.white)
+                // Bus: Rounded rectangle with route name (e.g. "B44")
+                RoundedRectangle(cornerRadius: size * 0.22, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [color.opacity(1.0), color.opacity(0.85)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: size * 0.22, style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.25), lineWidth: 1.5)
+                    )
+
+                // Show bus route name, with bus icon only as fallback
+                VStack(spacing: 0) {
+                    Image(systemName: "bus.fill")
+                        .font(.system(size: size * 0.22, weight: .bold))
+                        .foregroundColor(.white.opacity(0.7))
+                    Text(context.attributes.lineId)
+                        .font(.system(size: size * 0.32, weight: .heavy, design: .rounded))
+                        .foregroundColor(textColor)
+                        .minimumScaleFactor(0.4)
+                        .lineLimit(1)
+                }
             } else {
+                // Subway/Rail: Circle with line letter/number
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [color.opacity(1.0), color.opacity(0.85)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .overlay(
+                        Circle()
+                            .strokeBorder(Color.white.opacity(0.25), lineWidth: 1.5)
+                    )
+
                 Text(context.attributes.lineId)
                     .font(.system(size: size * 0.45, weight: .heavy, design: .rounded))
                     .foregroundColor(textColor)
@@ -401,7 +329,7 @@ struct TrackWidgetLiveActivity: Widget {
                     .lineLimit(1)
             }
         }
-        .frame(width: size, height: size)
+        .frame(width: context.attributes.isBus ? size * 1.3 : size, height: size)
     }
 
     @ViewBuilder
@@ -415,15 +343,24 @@ struct TrackWidgetLiveActivity: Widget {
             context.attributes.isBus
             ? .white : AppTheme.SubwayColors.textColor(for: context.attributes.lineId)
 
-        ZStack {
-            Circle()
-                .fill(color)
-                .frame(width: 24, height: 24)
-            if context.attributes.isBus {
-                Image(systemName: "bus.fill")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(.white)
-            } else {
+        if context.attributes.isBus {
+            // Bus: Show route name in rounded rect (e.g. "B44")
+            ZStack {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(color)
+                    .frame(width: 34, height: 24)
+                Text(context.attributes.lineId)
+                    .font(.system(size: 10, weight: .heavy, design: .rounded))
+                    .foregroundColor(textColor)
+                    .minimumScaleFactor(0.4)
+                    .lineLimit(1)
+            }
+        } else {
+            // Subway/Rail: Circle with line letter/number
+            ZStack {
+                Circle()
+                    .fill(color)
+                    .frame(width: 24, height: 24)
                 Text(context.attributes.lineId)
                     .font(.system(size: 11, weight: .heavy, design: .rounded))
                     .foregroundColor(textColor)

@@ -30,6 +30,12 @@ struct TrackApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .onOpenURL { url in
+                    // Store the deep-link flag so HomeView can pick it up.
+                    // The actual navigation happens in HomeView.handleDeepLink.
+                    guard url.scheme == "track", url.host == "route" else { return }
+                    UserDefaults.standard.set(true, forKey: "pending_deep_link")
+                }
         }
         .modelContainer(DataController.shared.container)
     }

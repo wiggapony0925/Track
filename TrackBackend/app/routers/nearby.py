@@ -195,6 +195,9 @@ def _direction_label(direction: str, arrivals: list[NearbyTransitArrival] | None
     Returns the long-form label for known compass codes (e.g. "N" → "Northbound"),
     or the original string for destination names like "Far Rockaway".
     
+    For subway routes grouped by "N"/"S", appends unique destination names
+    (e.g. "Northbound → Inwood-207 St") so the user sees where trains go.
+
     For bus routes the direction key is now the SIRI DestinationName
     (e.g. "KINGS PLAZA", "AV H"), so it already carries meaning.
     We title-case it for a clean display label.
@@ -215,7 +218,17 @@ def _direction_label(direction: str, arrivals: list[NearbyTransitArrival] | None
 
     # Known compass / special codes → canonical label
     if upper in _DIRECTION_LABELS:
-        return _DIRECTION_LABELS[upper]
+        base_label = _DIRECTION_LABELS[upper]
+        # For subway compass directions, enrich with unique destination names
+        # so the label shows where trains are heading (e.g. "Northbound → Inwood-207 St").
+        # Only apply to subway — bus routes with compass keys don't need this.
+        if arrivals and upper in ("N", "S"):
+            subway_arrivals = [a for a in arrivals if a.mode == "subway"]
+            if subway_arrivals:
+                dests = sorted({a.destination for a in subway_arrivals if a.destination})
+                if dests:
+                    return f"{base_label} → {' / '.join(dests)}"
+        return base_label
 
     # Destination-name keys (e.g. "KINGS PLAZA") → title-case for display
     return direction.title()
@@ -358,15 +371,17 @@ async def _fetch_nearby_subway(
             # Use the actual route_id from the GTFS-RT trip, not the feed line
             total_kept += 1
             
-            # Use destination (e.g. "Wakefield-241 St") for direction label if available.
-            # Otherwise fallback to "N"/"S" which frontend maps to North/Southbound.
-            display_dir = arrival.destination if arrival.destination else arrival.direction
+            # For subway, keep the compass direction ("N"/"S") as the grouping
+            # key so that all branches (e.g. Far Rockaway, Lefferts Blvd) are
+            # consolidated into a single direction bucket. The destination name
+            # is preserved in the separate `destination` field for display.
+            # Bus/rail modes can still use destination as the direction key.
             
             results.append(
                 NearbyTransitArrival(
                     route_id=arrival.route_id or line,
                     stop_name=stop_name,
-                    direction=display_dir,
+                    direction=arrival.direction,
                     destination=arrival.destination,
                     minutes_away=arrival.minutes_away,
                     arrival_ts=arrival.arrival_ts,
@@ -415,10 +430,13 @@ async def _fetch_nearby_subway(
                     continue
 
                 sinfo = get_stop_info(s.station)
+                # For subway scheduled arrivals, use compass direction ("N"/"S")
+                # as the grouping key, same as live arrivals above.
+                sched_dir = s.direction  # already "N"/"S" from stop_id suffix
                 results.append(NearbyTransitArrival(
                     route_id=s.route_id,
                     stop_name=sinfo.name if sinfo else s.station,
-                    direction=s.destination or s.direction,
+                    direction=sched_dir,
                     destination=s.destination,
                     minutes_away=s.minutes_away,
                     arrival_ts=s.arrival_ts,
@@ -497,6 +515,17 @@ async def _fetch_nearby_buses(
         
         # result is a list[BusArrival]
         for arrival in result:
+            # Skip arrivals in the past
+            if arrival.expected_arrival:
+                now_utc = datetime.now(timezone.utc)
+                exp_utc = arrival.expected_arrival
+                if exp_utc.tzinfo is None:
+                    exp_utc = exp_utc.replace(tzinfo=timezone.utc)
+                
+                # Allow 1 minute grace period for "Just Moved"
+                if (exp_utc - now_utc).total_seconds() < -60:
+                    continue
+
             minutes = _bus_minutes_away(arrival.expected_arrival)
 
             # Normalise route_id — SIRI sometimes gives "B63" (PublishedLineName)

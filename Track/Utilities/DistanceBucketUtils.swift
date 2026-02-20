@@ -61,12 +61,10 @@ func separateGroupsByDistance(
     // Read current settings
     let rawR1 = AppSettings.shared.nearYouRadiusMeters
     let rawR2 = AppSettings.shared.fartherAwayRadiusMeters
-    let rawR3 = AppSettings.shared.muchFartherAwayRadiusMeters
 
     // Enforce strict ring ordering with a 400m minimum gap
     let r1 = rawR1
     let r2 = max(rawR2, r1 + 400)
-    let r3 = max(rawR3, r2 + 400)
 
     var nearYou:     [GroupedNearbyTransitResponse] = []
     var fartherAway: [GroupedNearbyTransitResponse] = []
@@ -78,10 +76,12 @@ func separateGroupsByDistance(
             nearYou.append(group)
         } else if dist <= r2 {
             fartherAway.append(group)
-        } else if dist <= r3 {
+        } else {
+            // Everything beyond r2 goes into the outermost tier.
+            // Never silently drop data the API returned — the user's
+            // tier thresholds may be smaller than the API search radius.
             muchFarther.append(group)
         }
-        // Beyond r3 → dropped; the API shouldn't have returned these
     }
 
     // Adaptive promotion
@@ -121,9 +121,7 @@ func separateFlatArrivalsByDistance(
     }
 
     let rawR1 = AppSettings.shared.nearYouRadiusMeters
-    let rawR2 = AppSettings.shared.fartherAwayRadiusMeters
     let r1 = rawR1
-    let r2 = max(rawR2, r1 + 400)
 
     var nearYou:     [NearbyTransitResponse] = []
     var fartherAway: [NearbyTransitResponse] = []
@@ -132,7 +130,9 @@ func separateFlatArrivalsByDistance(
         let dist = arrivalDistance(for: arrival, from: location)
         if dist <= r1 {
             nearYou.append(arrival)
-        } else if dist <= r2 {
+        } else {
+            // Everything beyond r1 goes into "Farther Away".
+            // Never silently drop data the API returned.
             fartherAway.append(arrival)
         }
     }

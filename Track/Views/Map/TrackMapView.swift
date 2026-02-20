@@ -35,8 +35,18 @@ struct TrackMapView: View {
     @AppStorage("near_you_radius_meters") private var nearYouRadius: Double = 2414
     @AppStorage("farther_away_radius_meters") private var fartherAwayRadius: Double = 4023
     @AppStorage("much_farther_away_radius_meters") private var muchFartherAwayRadius: Double = 8047
+    @AppStorage("subway_line_offset_meters") private var subwayLineSpread: Double = 12
 
     // MARK: - Computed Properties
+
+    /// Subway line width for the system-map overview, derived from the
+    /// "Line Spread" setting. The slider range is 4–30 m (conceptual spread
+    /// in shared tunnels); we map that linearly to 1.0–5.0 pt on screen.
+    /// Formula: 1.0 + (spread - 4) / (30 - 4) * (5 - 1)
+    private var systemMapSubwayLineWidth: CGFloat {
+        let clamped = min(max(subwayLineSpread, 4), 30)
+        return 1.0 + CGFloat((clamped - 4) / 26.0) * 4.0
+    }
 
     /// Color of the currently selected route, used for polylines and annotations.
     private var selectedRouteColor: Color {
@@ -128,7 +138,13 @@ struct TrackMapView: View {
         .mapStyle(
             .standard(
                 emphasis: .muted,
-                pointsOfInterest: .including([.publicTransport]),
+                // Hide Apple's built-in transit POI markers when a route is
+                // selected — the app renders its own stop annotations in the
+                // route color, so Apple's markers create visual clutter with
+                // mismatched colors.
+                pointsOfInterest: viewModel.selectedRouteId != nil
+                    ? .excludingAll
+                    : .including([.publicTransport]),
                 showsTraffic: false
             )
         )
@@ -180,7 +196,7 @@ struct TrackMapView: View {
     private var routeStopAnnotations: some MapContent {
         if let shape = viewModel.routeShape {
             let isBusRoute = viewModel.selectedGroupedRoute?.isBus == true
-            let directionStops = shape.stopsForDirection(viewModel.selectedDirectionIndex)
+            let directionStops = shape.stopsForDirection(index: viewModel.selectedDirectionIndex, name: viewModel.selectedDirectionName)
 
             ForEach(directionStops) { stop in
                 let isSelected = stop.id == viewModel.selectedStopId
@@ -310,20 +326,41 @@ struct TrackMapView: View {
     @MapContentBuilder
     private var routePolylines: some MapContent {
         let polylines = viewModel.cachedRoutePolylines
+        let inactivePolylines = viewModel.cachedInactivePolylines
         let isBus = viewModel.selectedGroupedRoute?.isBus == true
         let split = viewModel.directionalSplit
 
-        if let split, split.ahead.count >= 2 || split.behind.count >= 2 {
-            // Two-tone rendering: faded "behind" + full-color "ahead"
-            if split.behind.count >= 2 {
+        // 1) Inactive directions — draw first (behind) at low opacity.
+        //    Shows branches, short-turns, and alternate paths so users
+        //    understand the full route structure.
+        ForEach(Array(inactivePolylines.enumerated()), id: \.offset) { _, coords in
+            if coords.count >= 2 {
                 polylineStroke(
-                    coords: split.behind, color: selectedRouteColor.opacity(0.25),
-                    casingOpacity: 0.3, isBus: isBus)
+                    coords: coords,
+                    color: selectedRouteColor.opacity(0.15),
+                    casingOpacity: 0.15,
+                    isBus: isBus)
             }
-            if split.ahead.count >= 2 {
-                polylineStroke(
-                    coords: split.ahead, color: selectedRouteColor,
-                    casingOpacity: 0.8, isBus: isBus)
+        }
+
+        // 2) Active direction — full color or two-tone split
+        if let split, !split.ahead.isEmpty || !split.behind.isEmpty {
+            // Two-tone rendering: faded "behind" + full-color "ahead"
+            // Each is an array of separate polyline segments to avoid
+            // straight-line artifacts between disconnected route portions.
+            ForEach(Array(split.behind.enumerated()), id: \.offset) { _, coords in
+                if coords.count >= 2 {
+                    polylineStroke(
+                        coords: coords, color: selectedRouteColor.opacity(0.25),
+                        casingOpacity: 0.3, isBus: isBus)
+                }
+            }
+            ForEach(Array(split.ahead.enumerated()), id: \.offset) { _, coords in
+                if coords.count >= 2 {
+                    polylineStroke(
+                        coords: coords, color: selectedRouteColor,
+                        casingOpacity: 0.8, isBus: isBus)
+                }
             }
         } else if !polylines.isEmpty {
             // No directional split — full color for all segments
@@ -334,7 +371,7 @@ struct TrackMapView: View {
             }
         } else if let shape = viewModel.routeShape {
             // Fallback: connect stops when no polyline data
-            let fallbackStops = shape.stopsForDirection(viewModel.selectedDirectionIndex)
+            let fallbackStops = shape.stopsForDirection(index: viewModel.selectedDirectionIndex, name: viewModel.selectedDirectionName)
             if fallbackStops.count >= 2 {
                 let stopCoords = fallbackStops.map {
                     CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lon)
@@ -371,13 +408,38 @@ struct TrackMapView: View {
     private static let commuterRailStrokeStyle = StrokeStyle(
         lineWidth: 2.5, lineCap: .round, dash: [6, 4])
 
+    /// Stations filtered to the visible map viewport.
+    /// Avoids rendering hundreds of off-screen annotations, which is one of
+    /// the biggest performance drains when stations are visible.
+    private var visibleStations: [HomeViewModel.CachedSubwayStation] {
+        guard let center = currentMapCenter, let distance = currentMapDistance else {
+            return viewModel.cachedStations
+        }
+        // Convert camera distance to an approximate lat/lon span with generous padding
+        // 1° latitude ≈ 111 km; use 1.5× to include stations just outside the viewport
+        let latSpan = (distance / 111_000) * 1.5
+        let lonSpan = (distance / (111_000 * cos(center.latitude * .pi / 180))) * 1.5
+        let minLat = center.latitude - latSpan
+        let maxLat = center.latitude + latSpan
+        let minLon = center.longitude - lonSpan
+        let maxLon = center.longitude + lonSpan
+
+        return viewModel.cachedStations.filter { station in
+            station.coordinate.latitude >= minLat
+                && station.coordinate.latitude <= maxLat
+                && station.coordinate.longitude >= minLon
+                && station.coordinate.longitude <= maxLon
+        }
+    }
+
     @MapContentBuilder
     private var systemMapPolylines: some MapContent {
         if viewModel.routeShape == nil {
             // Subway lines - single flat ForEach with stable IDs for optimal performance
+            // Line width is driven by the "Line Spread" setting (subway_line_offset_meters).
             ForEach(viewModel.flattenedSubwayPolylines) { polyline in
                 MapPolyline(coordinates: polyline.coordinates)
-                    .stroke(polyline.color, lineWidth: polyline.lineWidth)
+                    .stroke(polyline.color, lineWidth: systemMapSubwayLineWidth)
             }
 
             // Commuter rail lines (LIRR and MNR) - single flat ForEach with stable IDs
@@ -386,9 +448,9 @@ struct TrackMapView: View {
                     .stroke(polyline.color, style: Self.commuterRailStrokeStyle)
             }
 
-            // Stations layer (only when zoomed in)
+            // Stations layer (only when zoomed in, filtered to visible viewport)
             if showStations {
-                ForEach(viewModel.cachedStations) { station in
+                ForEach(visibleStations) { station in
                     Annotation(station.name, coordinate: station.coordinate) {
                         SubwayStationMarker(station: station)
                     }

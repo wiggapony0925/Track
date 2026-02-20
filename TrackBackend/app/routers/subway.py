@@ -23,7 +23,7 @@ from app.models import (
     TrackArrival,
 )
 from app.services.data_cleaner import get_arrivals_for_line
-from app.services.subway_shapes import get_all_subway_stations, get_subway_route_shape
+from app.services.subway_shapes import get_all_subway_stations, get_subway_route_shape, get_subway_service_type
 from app.services.station_lookup import get_nearby_stop_ids, get_stop_info
 from app.utils.logger import TrackLogger
 from app.utils.polyline_utils import decode_polyline as _decode_polyline, encode_polyline as _encode_polyline
@@ -251,6 +251,7 @@ async def subway_shape(route_id: str) -> RouteShape:
             headsign=dd.headsign,
             polylines=dir_encoded,
             stops=dir_stops,
+            service_type=get_subway_service_type(clean_id),
         ))
 
     TrackLogger.info(
@@ -263,6 +264,7 @@ async def subway_shape(route_id: str) -> RouteShape:
         polylines=encoded_polylines,
         stops=stops,
         directions=directions,
+        service_type=get_subway_service_type(clean_id),
     )
 
 

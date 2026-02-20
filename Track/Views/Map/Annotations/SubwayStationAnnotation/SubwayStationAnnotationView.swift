@@ -31,6 +31,7 @@ struct SubwayStationMarker: View {
                 .stroke(Color.gray.opacity(0.4), lineWidth: 1.5)
                 .frame(width: 16, height: 16)
         }
+        .drawingGroup()
         .accessibilityLabel("Station: \(station.name)")
     }
 }

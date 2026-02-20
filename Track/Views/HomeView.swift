@@ -44,7 +44,6 @@ struct HomeView: View {
     
     // Drag-to-search state
     @AppStorage("drag_to_search") private var dragToSearchEnabled = true
-    @AppStorage("auto_refresh_enabled") private var autoRefreshEnabled = true
     @State private var isDragSearchActive = false
     @State private var isDragSearchPanning = false
     @State private var hasFiredDragHaptic = false
@@ -76,6 +75,43 @@ struct HomeView: View {
     }
     
     var body: some View {
+        dataObservedContent
+    }
+    
+    /// Second modifier group: map/route data observers + notifications.
+    /// Split from body to keep each expression under the type-checker limit.
+    private var dataObservedContent: some View {
+        lifecycleObservedContent
+            .onChange(of: currentMapCenter?.latitude) { handleMapCenterChange() }
+            .onChange(of: viewModel.routeShape?.polylines.count) { handleRouteShapeLoaded() }
+            .onChange(of: viewModel.nearestStopCoordinate?.latitude) { handleNearestStopChanged() }
+            .onChange(of: viewModel.selectedDirectionIndex) { handleDirectionIndexChanged() }
+            .onChange(of: viewModel.groupedTransit.count) { attemptDeepLinkNavigation() }
+            .onChange(of: viewModel.tappedVehicleId) { _, newValue in handleTappedVehicle(newValue) }
+            .onReceive(NotificationCenter.default.publisher(for: .radiusSettingsChanged)) { _ in
+                Task {
+                    await viewModel.refresh(location: effectiveLocation)
+                    lastUpdated = Date()
+                }
+            }
+    }
+    
+    /// First modifier group: lifecycle + navigation state observers.
+    private var lifecycleObservedContent: some View {
+        mapAndSheetContent
+            .onAppear { onAppearSetup() }
+            .onDisappear { cleanupTimers() }
+            .onOpenURL { handleDeepLink($0) }
+            .onChange(of: scenePhase) { _, newPhase in handleScenePhaseChange(newPhase) }
+            .onChange(of: dragToSearchEnabled) { _, enabled in handleDragToggle(enabled) }
+            .onChange(of: viewModel.selectedRouteId) { handleRouteSelection() }
+            .onChange(of: viewModel.selectedMode) { handleModeChange() }
+            .onChange(of: locationManager.currentLocation) { handleLocationUpdate() }
+    }
+    
+    // MARK: - Map & Sheet Content (extracted to reduce body complexity)
+    
+    private var mapAndSheetContent: some View {
         GeometryReader { geometry in
             ZStack {
                 // MARK: - Map Layer
@@ -135,140 +171,131 @@ struct HomeView: View {
                 }
             }
         }
-        // MARK: - Lifecycle
-        .onAppear {
-            setupLocationAndTimers()
+    }
+    
+    // MARK: - Modifier Handler Methods (extracted from body)
+    
+    private func onAppearSetup() {
+        setupLocationAndTimers()
+        // Cold-launch deep link: check if TrackApp stored a pending flag
+        if UserDefaults.standard.bool(forKey: "pending_deep_link") {
+            UserDefaults.standard.removeObject(forKey: "pending_deep_link")
+            viewModel.pendingDeepLink = true
         }
-        .onDisappear {
-            cleanupTimers()
-        }
-        .onChange(of: scenePhase) { _, newPhase in
-            if newPhase == .active {
-                // Clear any drag search when returning to the app
-                if isDragSearchActive {
-                    dismissDragSearch()
-                } else {
-                    recenterOnUser()
-                }
-            }
-        }
-        // MARK: - State Change Handlers
-        .onChange(of: dragToSearchEnabled) { _, enabled in
-            // Immediately clean up when the user toggles the setting off
-            if !enabled && isDragSearchActive {
+    }
+    
+    private func handleScenePhaseChange(_ newPhase: ScenePhase) {
+        if newPhase == .active {
+            // Clear any drag search when returning to the app
+            if isDragSearchActive {
+                // dismissDragSearch already calls clearSearchPin + refresh
                 dismissDragSearch()
-            }
-        }
-        .onChange(of: autoRefreshEnabled) { _, enabled in
-            // Start or stop the auto-refresh timer live
-            if enabled {
-                startRefreshTimer()
             } else {
-                refreshTimer?.invalidate()
-                refreshTimer = nil
-            }
-        }
-        .onChange(of: viewModel.selectedRouteId) {
-            handleRouteSelection()
-        }
-        .onChange(of: viewModel.selectedMode) {
-            handleModeChange()
-        }
-        .onChange(of: locationManager.currentLocation) {
-            handleLocationUpdate()
-        }
-        .onChange(of: currentMapCenter?.latitude) {
-            // Debounced drag-to-search: fires when the map center changes
-            if let center = currentMapCenter {
-                handleMapCameraIdle(center: center)
-            }
-        }
-        .onChange(of: viewModel.routeShape?.polylines.count) {
-            // Route shape loaded (possibly after nearestStopCoordinate was set) —
-            // re-fit the map to show the full route.
-            if viewModel.selectedRouteId != nil,
-               let fitCamera = viewModel.cameraPositionFittingRoute(
-                   userLocation: locationManager.currentLocation,
-                   is3D: is3DMode
-               ) {
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                    sheetDetent = .fraction(0.4)
-                }
-                withAnimation(.spring(response: 0.8, dampingFraction: 0.8)) {
-                    cameraPosition = fitCamera
-                }
-            }
-        }
-        .onChange(of: viewModel.nearestStopCoordinate?.latitude) {
-            // When a route is selected and shape data is loaded, fit the
-            // entire route on the map. Falls back to centering on the
-            // nearest stop if shape data isn't available yet.
-            if let fitCamera = viewModel.cameraPositionFittingRoute(
-                userLocation: locationManager.currentLocation,
-                is3D: is3DMode
-            ) {
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                    sheetDetent = .fraction(0.4)
-                }
-                withAnimation(.spring(response: 0.8, dampingFraction: 0.8)) {
-                    cameraPosition = fitCamera
-                }
-            } else if let coordinate = viewModel.nearestStopCoordinate {
-                centerMap(on: coordinate)
-            }
-        }
-        .onChange(of: viewModel.selectedDirectionIndex) {
-            // When the user switches direction tabs in the route detail sheet,
-            // re-fit the camera to show the direction-specific polyline & stops.
-            guard viewModel.selectedRouteId != nil,
-                  viewModel.routeShape != nil else { return }
-            
-            // Immediately re-simulate vehicles against the new direction's polyline
-            // so markers reposition smoothly without waiting for the next timer tick.
-            withAnimation(.spring(response: 0.5, dampingFraction: 0.85)) {
-                viewModel.updateSimulation()
-                // Clear stale bus snapshots so interpolation starts fresh
-                viewModel.previousBusPositions.removeAll()
-            }
-            
-            if let fitCamera = viewModel.cameraPositionFittingRoute(
-                userLocation: locationManager.currentLocation,
-                is3D: is3DMode
-            ) {
-                withAnimation(.spring(response: 0.6, dampingFraction: 0.85)) {
-                    cameraPosition = fitCamera
-                }
-            }
-        }
-        // Re-fetch transit data when the user applies new radius settings
-        .onReceive(NotificationCenter.default.publisher(for: .radiusSettingsChanged)) { _ in
-            Task {
-                await viewModel.refresh(location: effectiveLocation)
-                lastUpdated = Date()
-            }
-        }
-        .onChange(of: viewModel.tappedVehicleId) { _, newValue in
-            // When a vehicle marker is tapped on the map, expand the sheet
-            // so the matching arrival row is visible, and zoom/center on the marker.
-            guard let tappedId = newValue, !tappedId.isEmpty else { return }
-            
-            // Expand the sheet to show the arrivals list
-            if sheetDetent != .large {
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                    sheetDetent = .large
+                recenterOnUser()
+                // Force a fresh data fetch so nearby rows never appear
+                // empty after returning from background.
+                Task {
+                    await viewModel.refresh(location: effectiveLocation)
+                    lastUpdated = Date()
                 }
             }
             
-            // Zoom the camera to center on the tapped vehicle marker
-            if let coord = viewModel.coordinateForTappedVehicle(tappedId) {
-                withAnimation(.spring(response: 0.6, dampingFraction: 0.85)) {
-                    cameraPosition = .camera(MapCamera(
-                        centerCoordinate: coord,
-                        distance: 1500,
-                        heading: 0,
-                        pitch: is3DMode ? 60 : 0
-                    ))
-                }
+            // Always restart the auto-refresh timer — iOS may have
+            // invalidated it while the app was suspended.
+            startRefreshTimer()
+        } else if newPhase == .background {
+            // Timers don't fire reliably in the background — invalidate
+            // so they can be cleanly restarted on .active.
+            refreshTimer?.invalidate()
+            refreshTimer = nil
+        }
+    }
+    
+    private func handleDragToggle(_ enabled: Bool) {
+        if !enabled && isDragSearchActive {
+            dismissDragSearch()
+        }
+    }
+    
+    private func handleMapCenterChange() {
+        if let center = currentMapCenter {
+            handleMapCameraIdle(center: center)
+        }
+    }
+    
+    private func handleRouteShapeLoaded() {
+        if viewModel.selectedRouteId != nil,
+           let fitCamera = viewModel.cameraPositionFittingRoute(
+               userLocation: locationManager.currentLocation,
+               is3D: is3DMode
+           ) {
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                sheetDetent = .fraction(0.4)
+            }
+            withAnimation(.spring(response: 0.8, dampingFraction: 0.8)) {
+                cameraPosition = fitCamera
+            }
+        }
+    }
+    
+    private func handleNearestStopChanged() {
+        if let fitCamera = viewModel.cameraPositionFittingRoute(
+            userLocation: locationManager.currentLocation,
+            is3D: is3DMode
+        ) {
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                sheetDetent = .fraction(0.4)
+            }
+            withAnimation(.spring(response: 0.8, dampingFraction: 0.8)) {
+                cameraPosition = fitCamera
+            }
+        } else if let coordinate = viewModel.nearestStopCoordinate {
+            centerMap(on: coordinate)
+        }
+    }
+    
+    private func handleDirectionIndexChanged() {
+        guard viewModel.selectedRouteId != nil,
+              viewModel.routeShape != nil else { return }
+        
+        withAnimation(.spring(response: 0.5, dampingFraction: 0.85)) {
+            viewModel.updateSimulation()
+            viewModel.previousBusPositions.removeAll()
+        }
+        
+        // Recalculate the nearest stop for the new direction so the
+        // arrivals list and countdown chips show the closest stop first.
+        viewModel.updateNearestStop(
+            userLocation: locationManager.currentLocation
+        )
+        
+        if let fitCamera = viewModel.cameraPositionFittingRoute(
+            userLocation: locationManager.currentLocation,
+            is3D: is3DMode
+        ) {
+            withAnimation(.spring(response: 0.6, dampingFraction: 0.85)) {
+                cameraPosition = fitCamera
+            }
+        }
+    }
+    
+    private func handleTappedVehicle(_ newValue: String?) {
+        guard let tappedId = newValue, !tappedId.isEmpty else { return }
+        
+        if sheetDetent != .large {
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                sheetDetent = .large
+            }
+        }
+        
+        if let coord = viewModel.coordinateForTappedVehicle(tappedId) {
+            withAnimation(.spring(response: 0.6, dampingFraction: 0.85)) {
+                cameraPosition = .camera(MapCamera(
+                    centerCoordinate: coord,
+                    distance: 1500,
+                    heading: 0,
+                    pitch: is3DMode ? 60 : 0
+                ))
             }
         }
     }
@@ -431,10 +458,7 @@ struct HomeView: View {
     private func setupLocationAndTimers() {
         locationManager.requestPermission()
         locationManager.startUpdating()
-        
-        if autoRefreshEnabled {
-            startRefreshTimer()
-        }
+        startRefreshTimer()
     }
     
     /// Creates the auto-refresh timer. Safe to call multiple times.
@@ -719,6 +743,49 @@ struct HomeView: View {
                 heading: 0,
                 pitch: is3DMode ? 60 : 0
             ))
+        }
+    }
+
+    // MARK: - Deep Link
+
+    /// Called when a Live Activity or widget URL opens the app.
+    /// Sets a pending flag so the tracked route detail opens automatically.
+    private func handleDeepLink(_ url: URL) {
+        guard url.scheme == "track", url.host == "route" else { return }
+        
+        viewModel.pendingDeepLink = true
+        // Clear any stored flag from TrackApp cold-launch handler
+        UserDefaults.standard.removeObject(forKey: "pending_deep_link")
+        
+        // If data is already loaded, navigate immediately
+        attemptDeepLinkNavigation()
+    }
+
+    /// Tries to navigate to the tracked route's detail page.
+    /// Succeeds only when `groupedTransit` is populated with a matching route.
+    private func attemptDeepLinkNavigation() {
+        guard viewModel.pendingDeepLink else { return }
+        guard let match = viewModel.groupForTrackedRoute() else { return }
+        
+        viewModel.pendingDeepLink = false
+        
+        Task {
+            await viewModel.selectGroupedRoute(
+                match.group,
+                directionIndex: match.directionIndex,
+                userLocation: locationManager.currentLocation
+            )
+            if viewModel.isRouteDetailPresented {
+                sheetNavigator.navigate(
+                    to: .routeDetail(
+                        group: match.group,
+                        directionIndex: match.directionIndex
+                    )
+                )
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                    sheetDetent = .fraction(0.4)
+                }
+            }
         }
     }
 }

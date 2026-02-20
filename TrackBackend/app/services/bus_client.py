@@ -806,6 +806,7 @@ async def _get_vehicles_impl(route_id: str) -> list[BusVehicle]:
         "key": settings.api_keys.mta_bus_key,
         "version": "2",
         "LineRef": route_id,
+        "VehicleMonitoringDetailLevel": "calls",
     }
 
     data = await _fetch_bus_json(url, params, is_siri=True)
@@ -875,6 +876,72 @@ async def _get_vehicles_impl(route_id: str) -> list[BusVehicle]:
             except (ValueError, TypeError):
                 pass
 
+        # Parse OnwardCalls (future stops) to populate the arrivals list client-side
+        onward_calls: list[BusArrival] = []
+        onward_data = journey.get("OnwardCalls", {}).get("OnwardCall", [])
+        # If it's a single dict, wrap it in a list (SIRI XML-to-JSON quirk)
+        if isinstance(onward_data, dict):
+            onward_data = [onward_data]
+
+        for call in onward_data:
+            stop_ref = call.get("StopPointRef")
+            if not stop_ref:
+                continue
+
+            # Extensions/Distances
+            call_ext = call.get("Extensions", {})
+            call_dist = call_ext.get("Distances", {})
+            present_dist = call_dist.get("PresentableDistance", "")
+            
+            # Distance in meters
+            dist_m: float | None = None
+            raw_dm = call_dist.get("DistanceFromCall")
+            if raw_dm is not None:
+                try:
+                    dist_m = float(raw_dm)
+                except (ValueError, TypeError):
+                    pass
+
+            # Expected Arrival
+            call_expected: datetime | None = None
+            call_exp_str = call.get("ExpectedArrivalTime")
+            if call_exp_str:
+                try:
+                    call_expected = datetime.fromisoformat(call_exp_str)
+                except (ValueError, TypeError):
+                    pass
+            
+            # Skip if no useful info
+            if not present_dist and not call_expected:
+                continue
+
+            # StopPointName can be a string or a list (e.g. [{'@lang': 'en', '#text': '5 Av'}])
+            stop_name_raw = call.get("StopPointName", "")
+            stop_name = ""
+            if isinstance(stop_name_raw, list) and len(stop_name_raw) > 0:
+                # Sometimes it's just a list of strings ["5 Av"]
+                if isinstance(stop_name_raw[0], str):
+                    stop_name = stop_name_raw[0]
+                # Sometimes it's a dict inside a list
+                elif isinstance(stop_name_raw[0], dict):
+                    stop_name = stop_name_raw[0].get("#text", "") or stop_name_raw[0].get("value", "")
+            elif isinstance(stop_name_raw, str):
+                stop_name = stop_name_raw
+
+            onward_calls.append(BusArrival(
+                route_id=journey.get("LineRef", route_id),
+                vehicle_id=journey.get("VehicleRef", ""),
+                stop_id=stop_ref,
+                stop_name=stop_name,
+                status_text=present_dist or "Scheduled",
+                status="Live",
+                expected_arrival=call_expected,
+                distance_meters=dist_m,
+                bearing=bearing, # Inherit bearing from vehicle
+                direction_ref=direction_ref, # Inherit direction
+                destination_name=None # Will be filled by frontend via route/stop lookup if needed
+            ))
+
         vehicles.append(
             BusVehicle(
                 vehicle_id=journey.get("VehicleRef", ""),
@@ -886,6 +953,7 @@ async def _get_vehicles_impl(route_id: str) -> list[BusVehicle]:
                 status_text=status_text,
                 direction_ref=direction_ref,
                 expected_arrival=expected_arrival,
+                onward_calls=onward_calls,
             )
         )
 
