@@ -14,7 +14,7 @@ import MapKit
 /// Uses `Annotation` instead of `Marker` so `onTapGesture` works,
 /// allowing users to tap a train on the map to highlight its arrival row.
 struct SubwayTrainMarker: MapContent {
-    let train: HomeViewModel.TrainVehicle
+    let train: TrainVehicle
     var isHighlighted: Bool = false
     var onTap: (() -> Void)? = nil
 

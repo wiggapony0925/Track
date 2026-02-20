@@ -16,11 +16,16 @@ struct ScheduledItem: Identifiable {
     let stopName: String
     let headsign: String
 
-    /// Formatted departure time (e.g. "9:15 AM")
-    var formattedTime: String {
+    /// Cached DateFormatter to avoid repeated allocation.
+    private static let timeFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "h:mm a"
-        return formatter.string(from: departureDate)
+        return formatter
+    }()
+
+    /// Formatted departure time (e.g. "9:15 AM")
+    var formattedTime: String {
+        Self.timeFormatter.string(from: departureDate)
     }
 
     // MARK: - Factory: from BusScheduledDeparture

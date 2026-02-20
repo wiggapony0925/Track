@@ -43,7 +43,7 @@ struct NearbyTransitResponse: Codable, Identifiable {
     /// Human-readable display name for the route.
     /// Uses branch name lookup for LIRR/MNR, strips MTA prefix for subway/bus.
     var displayName: String {
-        HomeViewModel.resolveDisplayName(routeId: routeId, mode: mode)
+        BranchNames.resolveDisplayName(routeId: routeId, mode: mode)
     }
 
     enum CodingKeys: String, CodingKey {

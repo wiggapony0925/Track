@@ -260,7 +260,7 @@ final class HomeViewModel {
             let colorHex: String? = mode == "subway" ? nil : nil
 
             // Resolve display name: use branch name lookup for commuter rail
-            let displayName = Self.resolveDisplayName(routeId: routeId, mode: mode)
+            let displayName = BranchNames.resolveDisplayName(routeId: routeId, mode: mode)
 
             return GroupedNearbyTransitResponse(
                 routeId: routeId,
@@ -270,45 +270,6 @@ final class HomeViewModel {
                 directions: directions
             )
         }.sorted { $0.soonestMinutes < $1.soonestMinutes }
-    }
-
-    /// Maps a LIRR/MNR route_id (e.g. "LIRR_9") to a human-readable branch name
-    /// (e.g. "Port Washington Branch"). Falls back to stripMTAPrefix for subway/bus.
-    private static let lirrBranchNames: [String: String] = [
-        "1": "Babylon Branch",
-        "2": "Hempstead Branch",
-        "3": "Oyster Bay Branch",
-        "4": "Ronkonkoma Branch",
-        "5": "Montauk Branch",
-        "6": "Long Beach Branch",
-        "7": "Far Rockaway Branch",
-        "8": "West Hempstead Branch",
-        "9": "Port Washington Branch",
-        "10": "Port Jefferson Branch",
-        "11": "Belmont Park",
-        "12": "City Terminal Zone",
-        "13": "Greenport Service",
-    ]
-
-    private static let mnrLineNames: [String: String] = [
-        "1": "Hudson Line",
-        "2": "Harlem Line",
-        "3": "New Haven Line",
-        "4": "New Canaan Line",
-        "5": "Danbury Line",
-        "6": "Waterbury Line",
-    ]
-
-    static func resolveDisplayName(routeId: String, mode: String) -> String {
-        if mode == "lirr" {
-            let numeric = routeId.hasPrefix("LIRR_") ? String(routeId.dropFirst(5)) : routeId
-            return lirrBranchNames[numeric] ?? stripMTAPrefix(routeId)
-        }
-        if mode == "mnr" {
-            let numeric = routeId.hasPrefix("MNR_") ? String(routeId.dropFirst(4)) : routeId
-            return mnrLineNames[numeric] ?? stripMTAPrefix(routeId)
-        }
-        return stripMTAPrefix(routeId)
     }
 
     // Bus mode
@@ -430,27 +391,10 @@ final class HomeViewModel {
     }
     var busVehicles: [BusVehicleResponse] = []
 
-    struct TrainVehicle: Identifiable, Equatable {
-        let id: String
-        let tripId: String?
-        let routeId: String
-        let direction: String
-        var lat: Double
-        var lon: Double
-        var bearing: Double?
-        var nextStationName: String?
-        /// Minutes until arrival at the next station, derived from GTFS-RT.
-        var minutesAway: Int?
-    }
     var trainVehicles: [TrainVehicle] = []
 
     // Smooth bus interpolation state — stores the previous GPS snapshot
     // so we can glide between updates along the route polyline.
-    struct BusSnapshot {
-        let lat: Double
-        let lon: Double
-        let timestamp: Date
-    }
     /// Previous GPS positions keyed by vehicle ID for smooth interpolation.
     var previousBusPositions: [String: BusSnapshot] = [:]
     /// When the last bus GPS batch arrived (for elapsed-time calculation).

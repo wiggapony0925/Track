@@ -266,8 +266,6 @@ struct TrackMapView: View {
                 LIRRMarker(train: train, isHighlighted: isHighlighted, onTap: onTap)
             } else if rid.contains("mnr") || rid.contains("metro") {
                 MNRMarker(train: train, isHighlighted: isHighlighted, onTap: onTap)
-            } else if rid.contains("amtrak") || rid.contains("amt") {
-                AmtrakMarker(train: train, isHighlighted: isHighlighted, onTap: onTap)
             } else {
                 SubwayTrainMarker(train: train, isHighlighted: isHighlighted, onTap: onTap)
             }

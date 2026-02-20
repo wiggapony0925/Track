@@ -254,20 +254,27 @@ class SyncManager: ObservableObject {
     
     // MARK: - Time Parsing
     
+    /// Cached DateFormatters for time string parsing
+    private static let inputTimeFormatters: [DateFormatter] = [
+        makeTimeFormatter("HH:mm:ss"),
+        makeTimeFormatter("HH:mm"),
+        makeTimeFormatter("H:mm:ss"),
+        makeTimeFormatter("H:mm")
+    ]
+    private static let outputTimeFormatter = makeTimeFormatter("HH:mm")
+    
+    private static func makeTimeFormatter(_ format: String) -> DateFormatter {
+        let formatter = DateFormatter()
+        formatter.dateFormat = format
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        return formatter
+    }
+    
     /// Parses a time string from various formats to "HH:mm"
     private func parseTimeString(_ timeString: String) -> String {
-        let inputFormatters: [DateFormatter] = [
-            createTimeFormatter("HH:mm:ss"),
-            createTimeFormatter("HH:mm"),
-            createTimeFormatter("H:mm:ss"),
-            createTimeFormatter("H:mm")
-        ]
-        
-        let outputFormatter = createTimeFormatter("HH:mm")
-        
-        for formatter in inputFormatters {
+        for formatter in Self.inputTimeFormatters {
             if let date = formatter.date(from: timeString) {
-                return outputFormatter.string(from: date)
+                return Self.outputTimeFormatter.string(from: date)
             }
         }
         
@@ -276,13 +283,6 @@ class SyncManager: ObservableObject {
             return String(timeString.prefix(5))
         }
         return timeString
-    }
-    
-    private func createTimeFormatter(_ format: String) -> DateFormatter {
-        let formatter = DateFormatter()
-        formatter.dateFormat = format
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        return formatter
     }
     
     // MARK: - Sync Status
