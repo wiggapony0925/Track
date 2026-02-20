@@ -443,12 +443,12 @@ struct SettingsContentView: View {
     
     /// Derived tier thresholds from the draft radius (live preview)
     private var draftDerivedNearRadius: Double {
-        let derived = (draftRadius * 0.30 / 100).rounded() * 100
+        let derived = (draftRadius * 0.40 / 100).rounded() * 100
         return max(400, derived)
     }
     
     private var draftDerivedFartherRadius: Double {
-        let derived = (draftRadius * 0.50 / 100).rounded() * 100
+        let derived = (draftRadius * 0.65 / 100).rounded() * 100
         return max(draftDerivedNearRadius + 400, derived)
     }
     
@@ -488,6 +488,9 @@ struct SettingsContentView: View {
         // Developer
         useLocalhost = draftUseLocalhost
         customIP = draftCustomIP
+        
+        // Invalidate cached base URL so new dev settings take effect
+        TrackAPI.invalidateBaseURL()
         
         hasUnappliedChanges = false
         

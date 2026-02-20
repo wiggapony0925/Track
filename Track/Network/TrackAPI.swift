@@ -16,7 +16,17 @@ struct TrackAPI {
 
     /// The active backend URL, determined by the Developer Settings in SettingsView.
     /// On a physical device, localhost is never used (it would point to the phone itself).
+    /// Cached to avoid re-computing (and logging) on every API call.
+    private static var _cachedBaseURL: String?
+    
+    /// Invalidate the cached URL when developer settings change.
+    static func invalidateBaseURL() {
+        _cachedBaseURL = nil
+    }
+    
     static var baseURL: String {
+        if let cached = _cachedBaseURL { return cached }
+        
         let settings = AppSettings.shared
         let useLocalhost = UserDefaults.standard.bool(forKey: "dev_use_localhost")
 
@@ -24,7 +34,8 @@ struct TrackAPI {
             // Simulator runs on the Mac — localhost works fine
             if useLocalhost {
                 let url = settings.localBaseURL
-                print("🌐 TrackAPI baseURL (simulator/localhost): \(url)")
+                AppLogger.shared.log("API_CONFIG", message: "baseURL (simulator/localhost): \(url)")
+                _cachedBaseURL = url
                 return url
             }
         #endif
@@ -33,11 +44,8 @@ struct TrackAPI {
         let storedIP = UserDefaults.standard.string(forKey: "dev_custom_ip")
         let ip = (storedIP?.isEmpty == false) ? storedIP! : settings.defaultDeviceIP
         let url = "http://\(ip):\(settings.localPort)"
-        #if DEBUG
-            print(
-                "🌐 TrackAPI baseURL: \(url)  (ip=\(ip), stored=\(storedIP ?? "nil"), default=\(settings.defaultDeviceIP))"
-            )
-        #endif
+        AppLogger.shared.log("API_CONFIG", message: "baseURL: \(url)  (ip=\(ip))")
+        _cachedBaseURL = url
         return url
     }
 
