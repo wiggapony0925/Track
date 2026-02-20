@@ -36,6 +36,8 @@ class SyncManager: ObservableObject {
     
     /// Performs a full sync of all user data
     func performFullSync() async {
+        if ChallengeMode.isEnabled { return }
+        
         guard SupabaseManager.shared.isAuthenticated else {
             print("[SyncManager] Skipping sync - not authenticated")
             return

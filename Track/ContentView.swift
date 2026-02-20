@@ -22,7 +22,7 @@ struct ContentView: View {
 
     /// Unified authentication state
     private var isAuth: Bool {
-        supabase.isAuthenticated || isLoggedIn
+        ChallengeMode.isEnabled || supabase.isAuthenticated || isLoggedIn
     }
 
     /// True when the user has granted location access.
@@ -44,9 +44,9 @@ struct ContentView: View {
         Group {
             if !isAuth {
                 LoginView()
-            } else if !hasCompletedOnboarding {
+            } else if !hasCompletedOnboarding && !ChallengeMode.isEnabled {
                 OnboardingView()
-            } else if locationGranted {
+            } else if locationGranted || ChallengeMode.isEnabled {
                 HomeView()
             } else {
                 LocationPermissionView(

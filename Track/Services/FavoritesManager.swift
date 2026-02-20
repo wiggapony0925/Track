@@ -83,6 +83,7 @@ class FavoritesManager: ObservableObject {
     
     /// Pull the latest favorites from Supabase
     func refresh() async {
+        if ChallengeMode.isEnabled { return }
         guard SupabaseManager.shared.isAuthenticated else { return }
         isLoading = true
         defer { isLoading = false }

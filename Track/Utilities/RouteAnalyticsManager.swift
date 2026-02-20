@@ -49,6 +49,9 @@ class RouteAnalyticsManager {
         stats[routeId] = currentCount + 1
         save()
         
+        // Skip cloud sync in challenge mode (no analytics tracking for judges)
+        if ChallengeMode.isEnabled { return }
+        
         // Queue for debounced cloud sync
         pendingCloudSync.append((
             routeId: routeId,
