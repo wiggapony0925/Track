@@ -27,6 +27,13 @@ struct NearbyTransitRow: View {
     /// can highlight the corresponding marker without starting full tracking.
     var onFocusVehicle: ((String?) -> Void)?
     var userLocation: CLLocation?
+    /// Optional smart ETA provider — when set, uses vehicle-position-aware
+    /// countdown instead of raw arrivalTs. Provided by the parent ViewModel.
+    var smartETAProvider: ((NearbyTransitResponse) -> SmartETA)? = nil
+    /// Optional pre-resolved ETA context (vehicle coord, stop coord, polyline).
+    /// When set, this takes priority over the bare `smartETAProvider` closure,
+    /// giving any call site vehicle-position awareness without a full closure.
+    var etaContext: ETAContext? = nil
 
     // Hoisted state
     var isExpanded: Bool
@@ -112,12 +119,13 @@ struct NearbyTransitRow: View {
                         Image(systemName: "clock")
                             .font(.system(size: 20, weight: .medium))
                             .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.4))
-                    } else if let ts = arrival.arrivalTs {
-                        // Live countdown using local system time vs arrival timestamp
-                        TimelineView(.periodic(from: .now, by: 1.0)) { context in
-                            let secondsUntil = Double(ts) - context.date.timeIntervalSince1970
-                            let mins = max(0, Int(secondsUntil / 60))
-                            let isNow = secondsUntil <= 30
+                    } else {
+                        // Smart countdown: uses vehicle position + polyline when
+                        // a provider or etaContext is set, falls back to arrivalTs → static minutesAway.
+                        TimelineView(.periodic(from: .now, by: 1.0)) { _ in
+                            let eta: SmartETA = resolvedETA(for: arrival)
+                            let mins = eta.minutesRemaining
+                            let isNow = eta.isAtStop || eta.secondsRemaining <= 30
 
                             HStack(alignment: .firstTextBaseline, spacing: 3) {
                                 Text(isNow ? "Now" : "\(mins)")
@@ -131,17 +139,6 @@ struct NearbyTransitRow: View {
                                         .offset(y: -2)
                                 }
                             }
-                        }
-                    } else {
-                        // Fallback to static minutesAway
-                        HStack(alignment: .firstTextBaseline, spacing: 3) {
-                            Text("\(arrival.minutesAway)")
-                                .font(.custom("Helvetica-Bold", size: 32))
-                                .foregroundColor(AppTheme.Colors.countdown(arrival.minutesAway))
-                            Text("min")
-                                .font(.custom("Helvetica-Bold", size: 13))
-                                .foregroundColor(AppTheme.Colors.textSecondary)
-                                .offset(y: -2)
                         }
                     }
 
@@ -280,17 +277,21 @@ struct NearbyTransitRow: View {
                                 .font(.custom("Helvetica-Bold", size: 11))
                                 .foregroundColor(AppTheme.Colors.textSecondary)
                                 .textCase(.uppercase)
-                            if let ts = arrival.arrivalTs {
-                                // Live countdown matching the main row's TimelineView
-                                TimelineView(.periodic(from: .now, by: 1.0)) { context in
-                                    let secondsUntil = Double(ts) - context.date.timeIntervalSince1970
-                                    let mins = max(0, Int(secondsUntil / 60))
-                                    Text(mins <= 0 ? "Arriving now" : "In \(mins) min — \(Date(timeIntervalSince1970: Double(ts)).formatted(date: .omitted, time: .shortened))")
-                                        .font(.custom("Helvetica-Bold", size: 14))
-                                        .foregroundColor(AppTheme.Colors.textPrimary)
-                                }
-                            } else {
-                                Text(formatArrivalTime(minutesAway: arrival.minutesAway))
+                            // Smart ETA for expanded detail — consistent with main countdown
+                            TimelineView(.periodic(from: .now, by: 1.0)) { _ in
+                                let eta: SmartETA = resolvedETA(for: arrival)
+                                let mins = eta.minutesRemaining
+                                let isNow = eta.isAtStop || eta.secondsRemaining <= 30
+                                let timeStr: String = {
+                                    if let ts = arrival.arrivalTs {
+                                        return Date(timeIntervalSince1970: Double(ts))
+                                            .formatted(date: .omitted, time: .shortened)
+                                    }
+                                    return ""
+                                }()
+                                Text(isNow || mins <= 0
+                                    ? "Arriving now"
+                                    : "In \(mins) min" + (timeStr.isEmpty ? "" : " — \(timeStr)"))
                                     .font(.custom("Helvetica-Bold", size: 14))
                                     .foregroundColor(AppTheme.Colors.textPrimary)
                             }
@@ -372,5 +373,28 @@ struct NearbyTransitRow: View {
     /// Formats walking distance to the stop.
     private func formatDistance(_ meters: Double) -> String {
         formatWalkingDistance(meters)
+    }
+
+    /// Resolves the best available ETA for an arrival:
+    /// 1. etaContext (explicit vehicle coord + stop + polyline)
+    /// 2. smartETAProvider closure
+    /// 3. ArrivalETAEngine with arrivalTs / staticMinutes only
+    private func resolvedETA(for arrival: NearbyTransitResponse) -> SmartETA {
+        if let ctx = etaContext {
+            return ArrivalETAEngine.computeETA(
+                vehicleCoord: ctx.vehicleCoord,
+                vehicleKey: ctx.vehicleKey,
+                stopCoord: ctx.stopCoord,
+                polyline: ctx.polyline,
+                arrivalTs: arrival.arrivalTs,
+                staticMinutes: arrival.minutesAway,
+                mode: arrival.mode)
+        }
+        return smartETAProvider?(arrival)
+            ?? ArrivalETAEngine.computeETA(
+                vehicleCoord: nil, vehicleKey: nil, stopCoord: nil,
+                arrivalTs: arrival.arrivalTs,
+                staticMinutes: arrival.minutesAway,
+                mode: arrival.mode)
     }
 }

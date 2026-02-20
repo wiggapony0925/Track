@@ -2,8 +2,9 @@
 //  LocationPermissionView.swift
 //  Track
 //
-//  A blocking overlay that requires the user to share their location
-//  before using the app. Displayed when location permission is not granted.
+//  Premium location-permission gate. Shown when the user hasn't granted
+//  location access yet. Supports both not-determined (first ask) and
+//  denied (redirect to Settings) states.
 //
 
 import SwiftUI
@@ -13,72 +14,159 @@ struct LocationPermissionView: View {
     @Binding var authorizationStatus: CLAuthorizationStatus
     let onRequestPermission: () -> Void
 
+    @State private var iconScale: CGFloat = 0.7
+    @State private var contentOpacity: Double = 0
+    @State private var iconPulse = false
+
+    private var isDenied: Bool {
+        authorizationStatus == .denied || authorizationStatus == .restricted
+    }
+
     var body: some View {
         ZStack {
-            AppTheme.Colors.background
-                .ignoresSafeArea()
+            // MARK: - Animated gradient background
+            LinearGradient(
+                colors: [
+                    Color(red: 0.04, green: 0.06, blue: 0.16),
+                    Color(red: 0.06, green: 0.11, blue: 0.28),
+                    Color(red: 0.02, green: 0.08, blue: 0.20),
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
 
-            VStack(spacing: 24) {
+            // Subtle radial glow behind the icon
+            RadialGradient(
+                colors: [
+                    AppTheme.Colors.mtaBlue.opacity(0.35),
+                    Color.clear
+                ],
+                center: .init(x: 0.5, y: 0.32),
+                startRadius: 10,
+                endRadius: 280
+            )
+            .ignoresSafeArea()
+
+            VStack(spacing: 0) {
                 Spacer()
 
-                Image(systemName: "location.circle.fill")
-                    .font(.system(size: 80))
-                    .foregroundColor(AppTheme.Colors.mtaBlue)
-                    .accessibilityHidden(true)
+                // MARK: - Hero icon
+                ZStack {
+                    // Outer glow ring (pulsing)
+                    Circle()
+                        .fill(AppTheme.Colors.mtaBlue.opacity(0.18))
+                        .frame(width: iconPulse ? 180 : 160, height: iconPulse ? 180 : 160)
+                        .animation(
+                            .easeInOut(duration: 1.8).repeatForever(autoreverses: true),
+                            value: iconPulse
+                        )
 
-                Text("Track Needs Your Location")
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
-                    .foregroundColor(AppTheme.Colors.textPrimary)
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
+                    // Inner circle
+                    Circle()
+                        .fill(AppTheme.Colors.mtaBlue.opacity(0.25))
+                        .frame(width: 120, height: 120)
 
-                Text("To show nearby stations and real-time arrivals, Track needs access to your location. Your location data stays on your device.")
-                    .font(.system(size: 16, weight: .regular))
-                    .foregroundColor(AppTheme.Colors.textSecondary)
+                    Image(systemName: isDenied ? "location.slash.fill" : "location.fill")
+                        .font(.system(size: 52, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .symbolEffect(.pulse, isActive: !isDenied)
+                }
+                .scaleEffect(iconScale)
+                .padding(.bottom, 36)
+
+                // MARK: - Headline
+                Text(isDenied ? "Location Access Needed" : "Track Needs Your Location")
+                    .font(.system(size: 30, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 32)
-                    .lineLimit(4)
 
-                if authorizationStatus == .denied || authorizationStatus == .restricted {
-                    // User has explicitly denied — direct them to Settings
-                    VStack(spacing: 12) {
-                        Text("Location access was denied. Please enable it in Settings to use Track.")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(AppTheme.Colors.alertRed)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 32)
-                            .lineLimit(3)
+                Text(
+                    isDenied
+                        ? "You've denied location access. Open Settings and enable \"While Using the App\" to see nearby transit."
+                        : "To show real-time arrivals and your nearest stops, Track needs to know where you are. Your location never leaves your device."
+                )
+                .font(.system(size: 16, weight: .regular))
+                .foregroundStyle(Color.white.opacity(0.65))
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 36)
+                .padding(.top, 14)
+                .lineSpacing(3)
 
-                        Button(action: openSettings) {
-                            Text("Open Settings")
-                                .font(.system(size: 17, weight: .semibold))
-                                .foregroundColor(AppTheme.Colors.textOnColor)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 16)
-                                .background(AppTheme.Colors.mtaBlue)
-                                .cornerRadius(AppTheme.Layout.cornerRadius)
-                        }
-                        .padding(.horizontal, 40)
-                        .accessibilityHint("Opens device Settings to enable location access")
+                // MARK: - Feature pills (only on first-ask)
+                if !isDenied {
+                    HStack(spacing: 10) {
+                        featurePill(icon: "tram.fill", label: "Subway")
+                        featurePill(icon: "bus.fill", label: "Bus")
+                        featurePill(icon: "train.side.front.car", label: "LIRR / MNR")
                     }
-                } else {
-                    // First time — ask for permission
-                    Button(action: onRequestPermission) {
-                        Text("Share My Location")
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundColor(AppTheme.Colors.textOnColor)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 16)
-                            .background(AppTheme.Colors.mtaBlue)
-                            .cornerRadius(AppTheme.Layout.cornerRadius)
-                    }
-                    .padding(.horizontal, 40)
-                    .accessibilityHint("Requests location permission for Track")
+                    .padding(.top, 28)
                 }
 
                 Spacer()
+
+                // MARK: - CTA
+                VStack(spacing: 12) {
+                    if isDenied {
+                        Button(action: openSettings) {
+                            Label("Open Settings", systemImage: "gear")
+                                .font(.system(size: 17, weight: .bold))
+                                .foregroundStyle(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 18)
+                                .background(AppTheme.Colors.mtaBlue)
+                                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                                .shadow(color: AppTheme.Colors.mtaBlue.opacity(0.5), radius: 12, y: 6)
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        Button(action: onRequestPermission) {
+                            Label("Share My Location", systemImage: "location.fill")
+                                .font(.system(size: 17, weight: .bold))
+                                .foregroundStyle(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 18)
+                                .background(AppTheme.Colors.mtaBlue)
+                                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                                .shadow(color: AppTheme.Colors.mtaBlue.opacity(0.5), radius: 12, y: 6)
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    Text("Only used while the app is open")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Color.white.opacity(0.4))
+                }
+                .padding(.horizontal, 32)
+                .padding(.bottom, 52)
             }
+            .opacity(contentOpacity)
         }
+        .onAppear {
+            withAnimation(.spring(response: 0.65, dampingFraction: 0.7)) {
+                iconScale = 1.0
+                contentOpacity = 1.0
+            }
+            iconPulse = true
+        }
+    }
+
+    // MARK: - Helpers
+
+    private func featurePill(icon: String, label: String) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon)
+                .font(.system(size: 11, weight: .semibold))
+            Text(label)
+                .font(.system(size: 12, weight: .semibold))
+        }
+        .foregroundStyle(.white.opacity(0.85))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .background(Color.white.opacity(0.1))
+        .clipShape(Capsule())
+        .overlay(Capsule().stroke(Color.white.opacity(0.15), lineWidth: 1))
     }
 
     private func openSettings() {

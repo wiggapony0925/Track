@@ -16,6 +16,10 @@ struct ContentView: View {
     @AppStorage("appTheme") private var appTheme = "system"
     @State private var locationManager = LocationManager()
 
+    // Watch scene transitions so we instantly re-check location status
+    // when the user returns from the iOS Settings app after granting permission.
+    @Environment(\.scenePhase) private var scenePhase
+
     /// Unified authentication state
     private var isAuth: Bool {
         supabase.isAuthenticated || isLoggedIn
@@ -60,14 +64,25 @@ struct ContentView: View {
                 Task {
                     await SyncManager.shared.performFullSync()
                 }
-                
+
+                // Auto-request if still undecided (e.g. first launch)
                 if locationManager.authorizationStatus == .notDetermined {
                     locationManager.requestPermission()
                 }
             }
         }
+        // Re-check location the moment the user returns to the app
+        // (e.g. after enabling location access in iOS Settings).
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active && isAuth && hasCompletedOnboarding {
+                // Trigger a status refresh — CLLocationManager will publish
+                // the latest authorizationStatus via didChangeAuthorization.
+                locationManager.refreshAuthorizationStatus()
+            }
+        }
     }
 }
+
 
 #Preview {
     ContentView()

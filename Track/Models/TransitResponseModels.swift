@@ -74,9 +74,25 @@ struct DirectionArrivalsResponse: Codable, Identifiable {
     let arrivals: [NearbyTransitResponse]
 
     /// Live (non-placeholder) arrivals — filters out backend backfill entries
-    /// that exist only to guarantee direction tabs.
+    /// that exist only to guarantee direction tabs, AND arrivals whose timestamp
+    /// is more than 90 seconds in the past (vehicle already passed the stop).
     var liveArrivals: [NearbyTransitResponse] {
-        arrivals.filter { !$0.isPlaceholder }
+        let now = Date.now.timeIntervalSince1970
+        return arrivals.filter { arrival in
+            // Filter out placeholders
+            guard !arrival.isPlaceholder else { return false }
+            // Filter out arrivals whose timestamp is >90s in the past
+            if let ts = arrival.arrivalTs, ts > 0 {
+                let elapsed = now - Double(ts)
+                if elapsed > 90 { return false }
+            }
+            // Filter out arrivals with 0 minutesAway and no timestamp
+            // (stale static data)
+            if arrival.minutesAway <= 0 && arrival.arrivalTs == nil {
+                return false
+            }
+            return true
+        }
     }
 
     init(direction: String, directionLabel: String? = nil, arrivals: [NearbyTransitResponse]) {

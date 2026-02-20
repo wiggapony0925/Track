@@ -121,9 +121,7 @@ func separateFlatArrivalsByDistance(
     }
 
     let rawR1 = AppSettings.shared.nearYouRadiusMeters
-    let rawR2 = AppSettings.shared.fartherAwayRadiusMeters
     let r1 = rawR1
-    let r2 = max(rawR2, r1 + 400)
 
     var nearYou:     [NearbyTransitResponse] = []
     var fartherAway: [NearbyTransitResponse] = []

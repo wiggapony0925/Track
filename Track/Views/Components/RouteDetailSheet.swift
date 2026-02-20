@@ -40,6 +40,9 @@ struct RouteDetailSheet: View {
     @Binding var is3DMode: Bool
     @Binding var cameraPosition: MapCameraPosition
     var currentLocation: CLLocationCoordinate2D?
+    /// When the user has dragged the search pin, this is the pin's coordinate.
+    /// Used as the reference point for nearest-stop filtering when GPS is unavailable.
+    var searchCenter: CLLocationCoordinate2D?
     var selectedStopId: String?
 
     /// Number of live vehicles (buses or trains) filtered by the current direction.
@@ -80,6 +83,7 @@ struct RouteDetailSheet: View {
         is3DMode: Binding<Bool> = .constant(false),
         cameraPosition: Binding<MapCameraPosition> = .constant(.automatic),
         currentLocation: CLLocationCoordinate2D? = nil,
+        searchCenter: CLLocationCoordinate2D? = nil,
         selectedStopId: String? = nil,
         onTrack: ((NearbyTransitResponse) -> Void)? = nil,
         isTracking: ((NearbyTransitResponse) -> Bool)? = nil,
@@ -109,6 +113,7 @@ struct RouteDetailSheet: View {
         self._is3DMode = is3DMode
         self._cameraPosition = cameraPosition
         self.currentLocation = currentLocation
+        self.searchCenter = searchCenter
         self.selectedStopId = selectedStopId
     }
 
@@ -129,12 +134,48 @@ struct RouteDetailSheet: View {
         return group.directions[selectedDirectionIndex].direction
     }
 
+    /// Resolves the best display label for a direction.
+    ///
+    /// Priority:
+    /// 1. Route shape headsign (GTFS terminal name — most reliable, e.g. "Far Rockaway-Mott Av")
+    /// 2. Last stop name in the route shape's stop list for that direction
+    /// 3. First unique destination from live arrivals
+    /// 4. Compass fallback ("↑ North")
+    ///
+    /// **Intentionally skips `directionLabel`** from the backend because for
+    /// subway routes it concatenates ALL branch destinations
+    /// ("Southbound → Far Rockaway / Lefferts Blvd") which causes duplicated
+    /// or overly long labels.  The headsign/last-stop approach gives ONE clean
+    /// terminal name per direction pill.
+    private func resolvedDirectionLabel(for dir: DirectionArrivalsResponse, at index: Int) -> String {
+        let matchedDir = routeShape?.matchedDirection(index: index, name: dir.direction)
+
+        // 1. GTFS headsign — this IS the terminal/last-stop name
+        if let hs = matchedDir?.headsign, !hs.isEmpty {
+            return hs
+        }
+
+        // 2. Last stop in route shape's stops for this direction
+        if let stops = matchedDir?.stops, let lastStop = stops.last {
+            return lastStop.name
+        }
+
+        // 3. First live arrival's destination (single destination, not concatenated)
+        if let dest = dir.liveArrivals.first?.destination ?? dir.arrivals.first?.destination,
+           !dest.isEmpty {
+            return dest
+        }
+
+        // 4. Compass fallback
+        return shortDirectionLabel(dir.direction)
+    }
+
     /// Current direction bucket, clamped to bounds.
     private var safeDirection: DirectionArrivalsResponse {
         guard !group.directions.isEmpty else {
             return DirectionArrivalsResponse(direction: "—", arrivals: [])
         }
-        let idx = min(selectedDirectionIndex, group.directions.count - 1)
+        let idx = max(0, min(selectedDirectionIndex, group.directions.count - 1))
         return group.directions[idx]
     }
 
@@ -229,19 +270,7 @@ struct RouteDetailSheet: View {
 
                 if group.directions.indices.contains(selectedDirectionIndex) {
                     let dir = group.directions[selectedDirectionIndex]
-                    // Use the same priority as the direction pills:
-                    // headsign > arrival destination > directionLabel > compass
-                    let shapeHeadsign = routeShape?.matchedDirection(
-                        index: selectedDirectionIndex,
-                        name: dir.direction
-                    )?.headsign
-                    let arrivalDest = dir.liveArrivals.first?.destination ?? dir.arrivals.first?.destination
-                    let subtitle: String = {
-                        if let hs = shapeHeadsign, !hs.isEmpty { return "→ \(hs)" }
-                        if let dest = arrivalDest, !dest.isEmpty { return "→ \(dest)" }
-                        if let dl = dir.directionLabel, !dl.isEmpty { return dl }
-                        return directionLabel(dir.direction)
-                    }()
+                    let subtitle = "→ \(resolvedDirectionLabel(for: dir, at: selectedDirectionIndex))"
                     Text(subtitle)
                         .font(.custom("Helvetica", size: 15))
                         .foregroundColor(AppTheme.Colors.textSecondary)
@@ -368,21 +397,269 @@ struct RouteDetailSheet: View {
 
     // MARK: - Countdown Chips
 
-    private var countdownSection: some View {
+    /// Live arrivals filtered to the user's nearest stop ONLY.
+    /// No other stops are shown — the user only cares about when the next
+    /// vehicle arrives at THEIR stop.
+    ///
+    /// Reference priority for "nearest stop":
+    /// 1. `selectedStopId` (explicitly tapped stop on the map)
+    /// 2. GPS location (`currentLocation`)
+    /// 3. Drag-search center pin (`searchCenter`) — used when GPS is unavailable
+    /// 4. Soonest arrivals deduplicated by trip (last resort)
+    private var prioritizedArrivals: [NearbyTransitResponse] {
         let direction = safeDirection
-        // Filter out backend placeholders (minutesAway=99, no vehicle/trip)
-        // so we only show real live arrivals in the countdown chips.
-        let liveArrivals = direction.liveArrivals
+        let liveOnly = direction.liveArrivals
+
+        guard !liveOnly.isEmpty else { return [] }
+
+        // ── 1. Filter to explicitly selected stop ──
+        if let stopId = selectedStopId, !stopId.isEmpty {
+            let atNearestStop = liveOnly.filter { arrivalMatchesStop($0, stopId: stopId) }
+            if !atNearestStop.isEmpty {
+                return atNearestStop.sorted { $0.minutesAway < $1.minutesAway }
+            }
+        }
+
+        // ── 2 & 3. Find the closest stop from the reference coordinate.
+        // Use GPS if available; fall back to the drag-search pin coordinate.
+        let refCoord: CLLocationCoordinate2D? = currentLocation ?? searchCenter
+        if let refCoordUnwrapped = refCoord {
+            let refLoc = CLLocation(
+                latitude: refCoordUnwrapped.latitude,
+                longitude: refCoordUnwrapped.longitude)
+
+            // Find which stop key is closest to the reference coordinate
+            var closestStopKey: String?
+            var minDist: CLLocationDistance = .greatestFiniteMagnitude
+            for arrival in liveOnly {
+                let dist = arrivalDistance(arrival, from: refLoc)
+                if dist < minDist {
+                    minDist = dist
+                    closestStopKey = arrival.stopId ?? arrival.stopName
+                }
+            }
+
+            if let key = closestStopKey {
+                let atClosest = liveOnly.filter { ($0.stopId ?? $0.stopName) == key }
+                if !atClosest.isEmpty {
+                    return atClosest.sorted { $0.minutesAway < $1.minutesAway }
+                }
+            }
+        }
+
+        // ── 4. Last resort: soonest arrivals deduplicated by trip ──
+        // Avoids showing the same vehicle at multiple stops along the route.
+        var seenTrips = Set<String>()
+        return liveOnly
+            .sorted { $0.minutesAway < $1.minutesAway }
+            .filter { arrival in
+                let key = arrival.tripId ?? arrival.vehicleId ?? arrival.id
+                return seenTrips.insert(key).inserted
+            }
+            .prefix(3)
+            .map { $0 }
+    }
+
+    /// Arrivals at the user's nearest stop only — used for countdown chips.
+    /// Strictly filters to one stop. Falls back to closest stop by distance.
+    private var nearestStopArrivals: [NearbyTransitResponse] {
+        // Reuse prioritizedArrivals which already filters to nearest stop
+        return prioritizedArrivals
+    }
+
+    /// Checks if an arrival matches a stop ID, with fuzzy matching for
+    /// different ID formats (e.g. "MTA_305423" vs "305423" vs "MTA NYCT_305423").
+    /// Also handles subway N/S direction suffixes (e.g. "120N" vs "120S" both
+    /// refer to the same physical station) and falls back to name-based matching.
+    private func arrivalMatchesStop(_ arrival: NearbyTransitResponse, stopId: String) -> Bool {
+        guard let arrivalStopId = arrival.stopId, !arrivalStopId.isEmpty else {
+            // No stopId on arrival — try name-based match as last resort
+            return matchesByName(arrivalStopName: arrival.stopName, shapeStopId: stopId)
+        }
+        // Exact match
+        if arrivalStopId == stopId { return true }
+        // Strip common MTA prefixes for fuzzy matching
+        let stripped1 = stripMTAPrefix(arrivalStopId)
+        let stripped2 = stripMTAPrefix(stopId)
+        if stripped1 == stripped2 { return true }
+        // One might be a suffix of the other (e.g. "305423" vs "MTA_305423")
+        if stripped1.hasSuffix(stripped2) || stripped2.hasSuffix(stripped1) { return true }
+        // Subway parent station match: "120N" and "120S" share parent "120".
+        // Since safeDirection already restricts arrivals to one direction,
+        // matching by parent station is safe (no cross-direction leakage).
+        let parent1 = stripDirectionSuffix(stripped1)
+        let parent2 = stripDirectionSuffix(stripped2)
+        if parent1 == parent2 && !parent1.isEmpty { return true }
+        // Name-based fallback: lookup what name the route shape gives this stopId
+        return matchesByName(arrivalStopName: arrival.stopName, shapeStopId: stopId)
+    }
+
+    /// Strips MTA agency prefixes from a stop ID for comparison.
+    private func stripMTAPrefix(_ id: String) -> String {
+        id.replacingOccurrences(of: "MTA NYCT_", with: "")
+            .replacingOccurrences(of: "MTA_", with: "")
+            .replacingOccurrences(of: "MTABC_", with: "")
+    }
+
+    /// Strips trailing N/S direction suffix from a subway stop ID.
+    /// e.g. "120N" → "120", "A31S" → "A31", "H11N" → "H11".
+    /// Leaves bus/commuter rail IDs unchanged (they don't use this convention).
+    private func stripDirectionSuffix(_ id: String) -> String {
+        guard id.count > 1, let last = id.last, last == "N" || last == "S" else { return id }
+        // Only strip if the character before the suffix is a digit or lowercase letter
+        // (avoids stripping from IDs like "GS" — Grand Central Shuttle)
+        let penultimate = id[id.index(before: id.index(before: id.endIndex))]
+        if penultimate.isNumber || penultimate.isLowercase {
+            return String(id.dropLast())
+        }
+        return id
+    }
+
+    /// Checks if an arrival's stop name matches the name of a route shape stop by ID.
+    private func matchesByName(arrivalStopName: String, shapeStopId: String) -> Bool {
+        guard let shape = routeShape else { return false }
+        let allStops = shape.stopsForDirection(index: selectedDirectionIndex, name: selectedDirectionName)
+        // Try exact ID match first, then parent station ID match
+        let shapeStop = allStops.first(where: { $0.id == shapeStopId })
+            ?? allStops.first(where: { stripDirectionSuffix(stripMTAPrefix($0.id)) == stripDirectionSuffix(stripMTAPrefix(shapeStopId)) })
+        guard let shapeStop else { return false }
+        // Compare names case-insensitively, allowing partial matches
+        let a = arrivalStopName.lowercased().trimmingCharacters(in: .whitespaces)
+        let b = shapeStop.name.lowercased().trimmingCharacters(in: .whitespaces)
+        return a == b || a.contains(b) || b.contains(a)
+    }
+
+    /// Calculates distance from a user location to an arrival's stop.
+    /// Uses stop lat/lon from the arrival, or tries to look up from route shape.
+    private func arrivalDistance(_ arrival: NearbyTransitResponse, from userLoc: CLLocation) -> CLLocationDistance {
+        // Use arrival's own coordinates if available
+        if let lat = arrival.stopLat, let lon = arrival.stopLon {
+            return userLoc.distance(from: CLLocation(latitude: lat, longitude: lon))
+        }
+        // Try to look up coordinates from route shape stops
+        if let stopId = arrival.stopId, let shape = routeShape {
+            let allStops = shape.stopsForDirection(index: selectedDirectionIndex, name: selectedDirectionName)
+            if let stop = allStops.first(where: { $0.id == stopId }) {
+                return userLoc.distance(from: CLLocation(latitude: stop.lat, longitude: stop.lon))
+            }
+            // Fuzzy match on stripped IDs (MTA prefix + N/S suffix)
+            let stripped = stripMTAPrefix(stopId)
+            if let stop = allStops.first(where: { stripMTAPrefix($0.id) == stripped }) {
+                return userLoc.distance(from: CLLocation(latitude: stop.lat, longitude: stop.lon))
+            }
+            // Parent station match (strip N/S)
+            let parent = stripDirectionSuffix(stripped)
+            if let stop = allStops.first(where: { stripDirectionSuffix(stripMTAPrefix($0.id)) == parent }) {
+                return userLoc.distance(from: CLLocation(latitude: stop.lat, longitude: stop.lon))
+            }
+        }
+        // Try name-based lookup
+        if let shape = routeShape {
+            let allStops = shape.stopsForDirection(index: selectedDirectionIndex, name: selectedDirectionName)
+            if let stop = allStops.first(where: { $0.name.lowercased() == arrival.stopName.lowercased() }) {
+                return userLoc.distance(from: CLLocation(latitude: stop.lat, longitude: stop.lon))
+            }
+        }
+        return .greatestFiniteMagnitude
+    }
+
+    // MARK: - Smart ETA
+
+    /// Computes a smart ETA for an arrival using live vehicle position + polyline.
+    /// Uses the data already available on the sheet (busVehicles, routeShape).
+    private func smartETA(for arrival: NearbyTransitResponse) -> SmartETA {
+        // Find the vehicle's live coordinate from busVehicles binding
+        let vehicleCoord: CLLocationCoordinate2D? = {
+            if arrival.isBus, let vid = arrival.vehicleId, !vid.isEmpty,
+               let bus = busVehicles.first(where: { $0.vehicleId == vid }) {
+                return CLLocationCoordinate2D(latitude: bus.lat, longitude: bus.lon)
+            }
+            // For trains, check isLiveOnMap callback — if true, vehicle is on the map
+            // but we don't have direct access to trainVehicles here.
+            // The engine will fall back to arrivalTs in that case.
+            return nil
+        }()
+
+        let stopCoord: CLLocationCoordinate2D? = {
+            if let lat = arrival.stopLat, let lon = arrival.stopLon {
+                return CLLocationCoordinate2D(latitude: lat, longitude: lon)
+            }
+            // Try route shape lookup
+            if let sid = arrival.stopId, let shape = routeShape {
+                let stops = shape.stopsForDirection(index: selectedDirectionIndex, name: selectedDirectionName)
+                if let s = stops.first(where: { $0.id == sid }) {
+                    return CLLocationCoordinate2D(latitude: s.lat, longitude: s.lon)
+                }
+                let stripped = stripMTAPrefix(sid)
+                if let s = stops.first(where: { stripMTAPrefix($0.id) == stripped }) {
+                    return CLLocationCoordinate2D(latitude: s.lat, longitude: s.lon)
+                }
+                // Parent station match (strip N/S suffix)
+                let parent = stripDirectionSuffix(stripped)
+                if let s = stops.first(where: { stripDirectionSuffix(stripMTAPrefix($0.id)) == parent }) {
+                    return CLLocationCoordinate2D(latitude: s.lat, longitude: s.lon)
+                }
+            }
+            return nil
+        }()
+
+        let polyline: [CLLocationCoordinate2D]? = {
+            guard let shape = routeShape else { return nil }
+            let decoded = shape.polylinesForDirection(
+                index: selectedDirectionIndex, name: selectedDirectionName
+            ).flatMap { $0 }
+            return decoded.count >= 2 ? decoded : nil
+        }()
+
+        return ArrivalETAEngine.computeETA(
+            vehicleCoord: vehicleCoord,
+            vehicleKey: arrival.vehicleId ?? arrival.tripId,
+            stopCoord: stopCoord,
+            polyline: polyline,
+            arrivalTs: arrival.arrivalTs,
+            staticMinutes: arrival.minutesAway,
+            mode: arrival.mode
+        )
+    }
+
+    private var countdownSection: some View {
+        // Show countdown for arrivals at the user's nearest stop ONLY
         let nextArrivals = Array(
-            liveArrivals.prefix(AppSettings.shared.maxRouteDetailArrivals))
+            nearestStopArrivals.prefix(AppSettings.shared.maxRouteDetailArrivals))
+        // Resolve the stop name for the header
+        let nearestStopName: String? = {
+            if let stopId = selectedStopId, !stopId.isEmpty {
+                // Try from the arrivals first (freshest data)
+                if let name = nearestStopArrivals.first?.stopName { return name }
+                // Fall back to route shape stops (with parent station fallback)
+                if let shape = routeShape {
+                    let stops = shape.stopsForDirection(index: selectedDirectionIndex, name: selectedDirectionName)
+                    let parentId = stripDirectionSuffix(stripMTAPrefix(stopId))
+                    return stops.first(where: { $0.id == stopId })?.name
+                        ?? stops.first(where: { stripDirectionSuffix(stripMTAPrefix($0.id)) == parentId })?.name
+                }
+            }
+            // Fall back to whatever the first arrival says
+            return nearestStopArrivals.first?.stopName
+        }()
 
         return VStack(alignment: .leading, spacing: 10) {
-            Text("Next Arrivals")
-                .font(.custom("Helvetica-Bold", size: 13))
-                .foregroundColor(AppTheme.Colors.textSecondary)
-                .textCase(.uppercase)
-                .tracking(0.6)
-                .padding(.horizontal, AppTheme.Layout.margin)
+            // Show the stop name in the header when filtered to nearest stop
+            HStack(spacing: 6) {
+                Text("Next Arrivals")
+                    .font(.custom("Helvetica-Bold", size: 13))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+                    .textCase(.uppercase)
+                    .tracking(0.6)
+
+                if let stopName = nearestStopName {
+                    Text("at \(stopName)")
+                        .font(.custom("Helvetica", size: 12))
+                        .foregroundColor(routeColor)
+                        .lineLimit(1)
+                }
+            }
+            .padding(.horizontal, AppTheme.Layout.margin)
 
             if nextArrivals.isEmpty {
                 // When no live arrivals, show vehicle count awareness, scheduled departures, or empty state
@@ -421,38 +698,28 @@ struct RouteDetailSheet: View {
                         ForEach(Array(nextArrivals.enumerated()), id: \.element.id) {
                             index, arrival in
                             VStack(spacing: 6) {
-                                // Live countdown using arrivalTs, falls back to static minutesAway
-                                if let ts = arrival.arrivalTs {
-                                    TimelineView(.periodic(from: .now, by: 1.0)) { context in
-                                        let secondsUntil = Double(ts) - context.date.timeIntervalSince1970
-                                        let mins = max(0, Int(secondsUntil / 60))
-                                        let isNow = secondsUntil <= 30
+                                // Smart countdown: uses vehicle position + polyline when
+                                // available, falls back to arrivalTs → static minutesAway.
+                                TimelineView(.periodic(from: .now, by: 1.0)) { _ in
+                                    let eta = smartETA(for: arrival)
+                                    let mins = eta.minutesRemaining
+                                    let isNow = eta.isAtStop || eta.secondsRemaining <= 30
 
-                                        if isNow {
-                                            Text("Now")
-                                                .font(.custom("Helvetica-Bold", size: index == 0 ? 32 : 24))
-                                                .foregroundColor(AppTheme.Colors.countdown(0))
-                                        } else {
-                                            Text("\(mins)")
-                                                .font(.custom("Helvetica-Bold", size: index == 0 ? 40 : 30))
-                                                .foregroundColor(AppTheme.Colors.countdown(mins))
-                                        }
-
-                                        if !isNow {
-                                            Text("min")
-                                                .font(.custom("Helvetica-Bold", size: 12))
-                                                .foregroundColor(AppTheme.Colors.textSecondary)
-                                        }
+                                    if isNow {
+                                        Text("Now")
+                                            .font(.custom("Helvetica-Bold", size: index == 0 ? 32 : 24))
+                                            .foregroundColor(AppTheme.Colors.countdown(0))
+                                    } else {
+                                        Text("\(mins)")
+                                            .font(.custom("Helvetica-Bold", size: index == 0 ? 40 : 30))
+                                            .foregroundColor(AppTheme.Colors.countdown(mins))
                                     }
-                                } else {
-                                    // Fallback to static minutesAway
-                                    Text("\(arrival.minutesAway)")
-                                        .font(.custom("Helvetica-Bold", size: index == 0 ? 40 : 30))
-                                        .foregroundColor(AppTheme.Colors.countdown(arrival.minutesAway))
 
-                                    Text("min")
-                                        .font(.custom("Helvetica-Bold", size: 12))
-                                        .foregroundColor(AppTheme.Colors.textSecondary)
+                                    if !isNow {
+                                        Text("min")
+                                            .font(.custom("Helvetica-Bold", size: 12))
+                                            .foregroundColor(AppTheme.Colors.textSecondary)
+                                    }
                                 }
 
                                 // Show the actual clock time so users know
@@ -627,24 +894,15 @@ struct RouteDetailSheet: View {
                                 selectedDirectionIndex = index
                             }
                         } label: {
-                            // Priority for direction label:
-                            // 1. Route shape headsign (actual last stop name, most useful)
-                            // 2. First arrival's destination (live data)
-                            // 3. directionLabel from backend
-                            // 4. Compass label ("↑ North") as last resort
+                            // Use the shared direction label resolver —
+                            // always shows the terminal/last stop name,
+                            // consistent with the header subtitle.
                             let matchedDir = routeShape?.matchedDirection(
                                 index: index,
                                 name: dir.direction
                             )
-                            let shapeHeadsign = matchedDir?.headsign
                             let dirServiceType = matchedDir?.serviceType
-                            let arrivalDest = dir.liveArrivals.first?.destination ?? dir.arrivals.first?.destination
-                            let rawLabel: String = {
-                                if let hs = shapeHeadsign, !hs.isEmpty { return hs }
-                                if let dest = arrivalDest, !dest.isEmpty { return dest }
-                                if let dl = dir.directionLabel, !dl.isEmpty { return dl }
-                                return shortDirectionLabel(dir.direction)
-                            }()
+                            let rawLabel = resolvedDirectionLabel(for: dir, at: index)
                             // Truncate long labels to keep pills compact
                             let label =
                                 rawLabel.count > 24 ? String(rawLabel.prefix(22)) + "…" : rawLabel
@@ -723,7 +981,7 @@ struct RouteDetailSheet: View {
                                 y: 2)
                         }
                         .accessibilityLabel(
-                            "\(dir.directionLabel ?? directionLabel(dir.direction)), \(dir.liveArrivals.count) arrivals"
+                            "\(resolvedDirectionLabel(for: dir, at: index)), \(dir.liveArrivals.count) arrivals"
                         )
                     }
                 }
@@ -784,10 +1042,8 @@ struct RouteDetailSheet: View {
     // MARK: - Arrivals List (same card pattern as HomeView)
 
     private var arrivalsList: some View {
-        let direction = safeDirection
-
-        // Filter out backend placeholders so we only list real arrivals.
-        let liveOnly = direction.liveArrivals
+        // Use prioritized arrivals (nearest stop first) for the list
+        let liveOnly = prioritizedArrivals
 
         // Reorder arrivals so the tapped vehicle's row appears first
         let sortedArrivals: [NearbyTransitResponse] = {
@@ -813,7 +1069,7 @@ struct RouteDetailSheet: View {
                 Spacer()
 
                 if !sortedArrivals.isEmpty {
-                    Text("\(sortedArrivals.count) stop\(sortedArrivals.count == 1 ? "" : "s")")
+                    Text("\(sortedArrivals.count) upcoming")
                         .font(.custom("Helvetica", size: 12))
                         .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
                 }
@@ -1362,9 +1618,10 @@ struct RouteDetailSheet: View {
     // MARK: - Route Info Footer
 
     private var routeInfoFooter: some View {
-        let hasStops = routeShape != nil && !routeShape!.stops.isEmpty
+        let shape = routeShape
+        let hasStops = shape != nil && !shape!.stops.isEmpty
         let hasVehicles = liveVehicleCount > 0
-        let isShapeLoading = routeShape == nil
+        let isShapeLoading = shape == nil
 
         if isShapeLoading {
             // Shape still loading — show shimmer placeholders
@@ -1372,8 +1629,8 @@ struct RouteDetailSheet: View {
         } else if hasStops || hasVehicles {
             return AnyView(
                 HStack(spacing: 16) {
-                    if hasStops {
-                        let dirStops = routeShape!.stopsForDirection(index: selectedDirectionIndex, name: selectedDirectionName)
+                    if let shape, hasStops {
+                        let dirStops = shape.stopsForDirection(index: selectedDirectionIndex, name: selectedDirectionName)
                         HStack(spacing: 6) {
                             Image(systemName: "mappin.and.ellipse")
                                 .font(.system(size: 12, weight: .medium))

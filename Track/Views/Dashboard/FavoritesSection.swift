@@ -97,21 +97,18 @@ private struct FavoriteCard: View {
                     )
                     
                     if let arrival = nextArrival {
-                        if let ts = arrival.arrivalTs {
-                            // Live countdown from arrivalTs — consistent
-                            // with RouteDetailSheet and NearbyTransitRow.
-                            TimelineView(.periodic(from: .now, by: 1.0)) { context in
-                                let secondsUntil = Double(ts) - context.date.timeIntervalSince1970
-                                let mins = max(0, Int(secondsUntil / 60))
-                                let isNow = secondsUntil <= 30
-                                Text(isNow ? "Now" : "\(mins) min")
-                                    .font(.custom("Helvetica-Bold", size: 14))
-                                    .foregroundColor(mins <= 2 ? AppTheme.Colors.alertRed : AppTheme.Colors.textPrimary)
-                            }
-                        } else {
-                            Text("\(arrival.minutesAway) min")
+                        // Smart countdown — consistent with all other countdown views.
+                        TimelineView(.periodic(from: .now, by: 1.0)) { _ in
+                            let eta = ArrivalETAEngine.computeETA(
+                                vehicleCoord: nil, vehicleKey: nil, stopCoord: nil,
+                                arrivalTs: arrival.arrivalTs,
+                                staticMinutes: arrival.minutesAway,
+                                mode: arrival.mode)
+                            let mins = eta.minutesRemaining
+                            let isNow = eta.isAtStop || eta.secondsRemaining <= 30
+                            Text(isNow ? "Now" : "\(mins) min")
                                 .font(.custom("Helvetica-Bold", size: 14))
-                                .foregroundColor(arrival.minutesAway <= 2 ? AppTheme.Colors.alertRed : AppTheme.Colors.textPrimary)
+                                .foregroundColor(mins <= 2 ? AppTheme.Colors.alertRed : AppTheme.Colors.textPrimary)
                         }
                     } else {
                         Text("—")

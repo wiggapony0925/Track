@@ -323,7 +323,7 @@ struct SettingsContentView: View {
                                 Slider(value: $draftSubwayLineOffset, in: 4...30, step: 1)
                                     .tint(AppTheme.Colors.mtaBlue)
                                 
-                                Text("How far apart subway lines spread in shared tunnels")
+                                Text("Controls how thick subway lines appear on the map overview (thinner at low values, bolder at high values)")
                                     .font(.system(size: 11))
                                     .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
                             }
@@ -557,36 +557,36 @@ struct SettingsContentView: View {
     // MARK: - Sheet Header
     
     private var sheetHeader: some View {
-        HStack(spacing: 12) {
-            // Back button
-            Button {
-                sheetNavigator.goBack()
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 16, weight: .semibold))
-                    Text("Home")
-                        .font(.custom("Helvetica", size: 16))
-                }
-                .foregroundColor(AppTheme.Colors.mtaBlue)
-            }
-            
-            Spacer()
-            
-            // Title
+        ZStack {
+            // Centred title — always exactly centred regardless of side-button widths
             Text("Settings")
                 .font(.custom("Helvetica-Bold", size: 18))
                 .foregroundColor(AppTheme.Colors.textPrimary)
-            
-            Spacer()
-            
-            // Close button
-            Button {
-                sheetNavigator.popToRoot()
-            } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 24))
-                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.4))
+
+            HStack {
+                // Back button — left-aligned
+                Button {
+                    sheetNavigator.goBack()
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 16, weight: .semibold))
+                        Text("Home")
+                            .font(.custom("Helvetica", size: 16))
+                    }
+                    .foregroundColor(AppTheme.Colors.mtaBlue)
+                }
+
+                Spacer()
+
+                // Close button — right-aligned
+                Button {
+                    sheetNavigator.popToRoot()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 24))
+                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.4))
+                }
             }
         }
         .padding(.horizontal, AppTheme.Layout.margin)

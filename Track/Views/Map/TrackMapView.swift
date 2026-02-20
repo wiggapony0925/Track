@@ -35,8 +35,18 @@ struct TrackMapView: View {
     @AppStorage("near_you_radius_meters") private var nearYouRadius: Double = 2414
     @AppStorage("farther_away_radius_meters") private var fartherAwayRadius: Double = 4023
     @AppStorage("much_farther_away_radius_meters") private var muchFartherAwayRadius: Double = 8047
+    @AppStorage("subway_line_offset_meters") private var subwayLineSpread: Double = 12
 
     // MARK: - Computed Properties
+
+    /// Subway line width for the system-map overview, derived from the
+    /// "Line Spread" setting. The slider range is 4–30 m (conceptual spread
+    /// in shared tunnels); we map that linearly to 1.0–5.0 pt on screen.
+    /// Formula: 1.0 + (spread - 4) / (30 - 4) * (5 - 1)
+    private var systemMapSubwayLineWidth: CGFloat {
+        let clamped = min(max(subwayLineSpread, 4), 30)
+        return 1.0 + CGFloat((clamped - 4) / 26.0) * 4.0
+    }
 
     /// Color of the currently selected route, used for polylines and annotations.
     private var selectedRouteColor: Color {
@@ -426,9 +436,10 @@ struct TrackMapView: View {
     private var systemMapPolylines: some MapContent {
         if viewModel.routeShape == nil {
             // Subway lines - single flat ForEach with stable IDs for optimal performance
+            // Line width is driven by the "Line Spread" setting (subway_line_offset_meters).
             ForEach(viewModel.flattenedSubwayPolylines) { polyline in
                 MapPolyline(coordinates: polyline.coordinates)
-                    .stroke(polyline.color, lineWidth: polyline.lineWidth)
+                    .stroke(polyline.color, lineWidth: systemMapSubwayLineWidth)
             }
 
             // Commuter rail lines (LIRR and MNR) - single flat ForEach with stable IDs

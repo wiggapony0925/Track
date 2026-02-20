@@ -27,6 +27,17 @@ final class LocationManager: NSObject, CLLocationManagerDelegate {
         manager.requestWhenInUseAuthorization()
     }
 
+    /// Re-reads the current authorization status from CLLocationManager and
+    /// publishes it. Called when the app returns to the foreground so the UI
+    /// transitions immediately if the user just granted access in iOS Settings.
+    func refreshAuthorizationStatus() {
+        let current = manager.authorizationStatus
+        authorizationStatus = current
+        if current == .authorizedWhenInUse || current == .authorizedAlways {
+            manager.startUpdatingLocation()
+        }
+    }
+
     func startUpdating() {
         manager.startUpdatingLocation()
     }

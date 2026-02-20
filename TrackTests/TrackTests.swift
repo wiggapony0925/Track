@@ -204,4 +204,120 @@ struct TrackTests {
         let simplified = simplifyPolyline(coords, tolerance: 0)
         #expect(simplified.count == coords.count)
     }
+
+    // MARK: - ArrivalETAEngine Tests
+
+    /// Vehicle coord + stop coord provided → source should be vehiclePosition.
+    @Test func etaEngineUsesVehiclePositionWhenProvided() async throws {
+        // Vehicle is ~500 m north of the stop along the same longitude
+        let vehicleCoord = CLLocationCoordinate2D(latitude: 40.7050, longitude: -74.0060)
+        let stopCoord    = CLLocationCoordinate2D(latitude: 40.7005, longitude: -74.0060)
+        let futureTs = Int(Date.now.timeIntervalSince1970) + 300  // 5 min from now
+
+        let eta = ArrivalETAEngine.computeETA(
+            vehicleCoord: vehicleCoord,
+            vehicleKey: "test-v1",
+            stopCoord: stopCoord,
+            polyline: nil,
+            arrivalTs: futureTs,
+            staticMinutes: 10,
+            mode: "subway"
+        )
+        #expect(eta.source == .vehiclePosition)
+        #expect(!eta.isPastArrival)
+    }
+
+    /// No vehicle coord → engine should count down from the feed's arrivalTs.
+    @Test func etaEngineFallsBackToFeedTimestamp() async throws {
+        let futureTs = Int(Date.now.timeIntervalSince1970) + 240  // 4 min from now
+        let eta = ArrivalETAEngine.computeETA(
+            vehicleCoord: nil,
+            vehicleKey: nil,
+            stopCoord: nil,
+            polyline: nil,
+            arrivalTs: futureTs,
+            staticMinutes: 99,
+            mode: "bus"
+        )
+        #expect(eta.source == .feedTimestamp)
+        // secondsRemaining should be close to 240 (±5 s for execution time)
+        #expect(eta.secondsRemaining >= 230)
+        #expect(eta.secondsRemaining <= 245)
+    }
+
+    /// Vehicle within 50 m of stop → isAtStop must be true.
+    @Test func etaEngineReturnsNowWhenVehicleAtStop() async throws {
+        // Close enough: ~10 m offset
+        let stopCoord    = CLLocationCoordinate2D(latitude: 40.7128, longitude: -74.0060)
+        let vehicleCoord = CLLocationCoordinate2D(latitude: 40.71281, longitude: -74.0060)
+
+        let eta = ArrivalETAEngine.computeETA(
+            vehicleCoord: vehicleCoord,
+            vehicleKey: "test-v2",
+            stopCoord: stopCoord,
+            polyline: nil,
+            arrivalTs: nil,
+            staticMinutes: 1,
+            mode: "subway"
+        )
+        #expect(eta.isAtStop)
+        #expect(eta.secondsRemaining == 0)
+    }
+
+    /// Stopped vehicle within 150 m of destination stop → treated as "Now"
+    /// (dwell detection: speed ≈ 0 && routeDistance < 150 m).
+    @Test func etaEngineStoppedVehicleNearStopIsNow() async throws {
+        // Place vehicle ~80 m south of the stop — well within 150 m
+        let stopCoord    = CLLocationCoordinate2D(latitude: 40.7128, longitude: -74.0060)
+        let vehicleCoord = CLLocationCoordinate2D(latitude: 40.7121, longitude: -74.0060)
+
+        // Record the same position twice with 20 s gap → speed = 0
+        let key = "test-dwell"
+        ArrivalETAEngine.recordPosition(
+            vehicleKey: key,
+            coordinate: vehicleCoord,
+            at: Date.now.addingTimeInterval(-20))
+        ArrivalETAEngine.recordPosition(
+            vehicleKey: key,
+            coordinate: vehicleCoord,
+            at: Date.now)
+
+        let eta = ArrivalETAEngine.computeETA(
+            vehicleCoord: vehicleCoord,
+            vehicleKey: key,
+            stopCoord: stopCoord,
+            polyline: nil,
+            arrivalTs: nil,
+            staticMinutes: 2,
+            mode: "subway"
+        )
+        // With speed=0 and routeDistance < 150 m, engine returns isAtStop=true
+        #expect(eta.isAtStop)
+        ArrivalETAEngine.clearHistory(for: key)
+    }
+
+    /// When routeDistance > 2 km and no position history, the feed timestamp
+    /// is weighted more heavily (positionWeight ≈ 0.3).
+    @Test func etaEngineBlendedETAFavorsFeedWhenFar() async throws {
+        // Vehicle is ~3 km north of stop
+        let vehicleCoord = CLLocationCoordinate2D(latitude: 40.7400, longitude: -74.0060)
+        let stopCoord    = CLLocationCoordinate2D(latitude: 40.7128, longitude: -74.0060)
+        // Feed says 5 min; position-speed would estimate ~3000/9 = 333 s ≈ 5.5 min
+        let futureTs = Int(Date.now.timeIntervalSince1970) + 300
+
+        let eta = ArrivalETAEngine.computeETA(
+            vehicleCoord: vehicleCoord,
+            vehicleKey: "test-far",
+            stopCoord: stopCoord,
+            polyline: nil,
+            arrivalTs: futureTs,
+            staticMinutes: 5,
+            mode: "subway"
+        )
+        #expect(eta.source == .vehiclePosition)
+        // Blended result should be close to the feed (5 min = 300 s) —
+        // with 0.3 position weight and similar estimates, expect ~300–360 s
+        #expect(eta.secondsRemaining >= 200)
+        #expect(eta.secondsRemaining <= 400)
+    }
 }
