@@ -237,7 +237,7 @@ struct TrackAPI {
     /// - Parameter routeID: Fully-qualified route ID (e.g. "MTA NYCT_B63").
     /// - Returns: Array of `BusVehicleResponse` with GPS positions.
     static func fetchBusVehicles(routeID: String) async throws -> [BusVehicleResponse] {
-        if ChallengeMode.isEnabled { return [] }
+        if ChallengeMode.isEnabled { return MockDataProvider.busVehicles(routeID: routeID) }
         let encoded =
             routeID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? routeID
         let data = try await get(path: "/bus/vehicles/\(encoded)")

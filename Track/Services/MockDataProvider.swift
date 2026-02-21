@@ -1507,9 +1507,66 @@ enum MockDataProvider {
         )
     }
 
+    /// Full stops along each bus route for proper polylines and markers.
+    private static let busRouteStops: [String: [(id: String, name: String, lat: Double, lon: Double, dir: String)]] = [
+        "MTA NYCT_M34A-SBS": [
+            ("401510", "W 34 ST/12 AV", 40.75410, -74.00220, "E"),
+            ("401512", "W 34 ST/11 AV", 40.75380, -74.00050, "E"),
+            ("401514", "W 34 ST/10 AV", 40.75340, -73.99940, "E"),
+            ("401516", "W 34 ST/9 AV", 40.75300, -73.99800, "E"),
+            ("401517", "W 34 ST/8 AV", 40.75260, -73.99660, "E"),
+            ("401519", "W 34 ST/7 AV", 40.75220, -73.99380, "E"),
+            ("401521", "W 34 ST/BROADWAY", 40.75170, -73.99070, "E"),
+            ("401523", "W 34 ST/6 AV", 40.75110, -73.98850, "E"),
+            ("401525", "E 34 ST/PARK AV", 40.74880, -73.98200, "E"),
+            ("401527", "E 34 ST/2 AV", 40.74580, -73.97590, "E"),
+            ("401529", "E 34 ST/1 AV", 40.74450, -73.97300, "E"),
+            ("401531", "E 34 ST/FDR DR", 40.74340, -73.97110, "E"),
+        ],
+        "MTA NYCT_M20": [
+            ("401535", "8 AV/W 42 ST", 40.75730, -73.99000, "S"),
+            ("401537", "8 AV/W 38 ST", 40.75540, -73.99430, "S"),
+            ("401540", "8 AV/W 35 ST", 40.75340, -73.99700, "S"),
+            ("401541", "8 AV/W 33 ST", 40.75180, -73.99920, "S"),
+            ("401543", "8 AV/W 28 ST", 40.74730, -73.99830, "S"),
+            ("401545", "8 AV/W 23 ST", 40.74340, -73.99630, "S"),
+            ("401547", "8 AV/W 14 ST", 40.73940, -73.99760, "S"),
+            ("401549", "HUDSON ST/CHRISTOPHER ST", 40.73350, -74.00280, "S"),
+            ("401551", "HUDSON ST/KING ST", 40.72770, -74.00580, "S"),
+            ("401553", "HUDSON ST/CHAMBERS ST", 40.71900, -74.00810, "S"),
+        ],
+        "MTA NYCT_M42": [
+            ("400895", "W 42 ST/12 AV", 40.76100, -73.99860, "E"),
+            ("400897", "W 42 ST/10 AV", 40.75950, -73.99600, "E"),
+            ("400899", "W 42 ST/9 AV", 40.75850, -73.99350, "E"),
+            ("400901", "W 42 ST/8 AV", 40.75730, -73.99000, "E"),
+            ("400903", "W 42 ST/7 AV", 40.75660, -73.98620, "E"),
+            ("400905", "W 42 ST/BROADWAY", 40.75580, -73.98500, "E"),
+            ("400907", "W 42 ST/6 AV", 40.75470, -73.98230, "E"),
+            ("400909", "W 42 ST/5 AV", 40.75330, -73.98000, "E"),
+            ("400911", "E 42 ST/MADISON AV", 40.75210, -73.97850, "E"),
+            ("400913", "E 42 ST/GRAND CENTRAL", 40.75200, -73.97710, "E"),
+            ("400915", "E 42 ST/2 AV", 40.74940, -73.97070, "E"),
+            ("400917", "E 42 ST/1 AV", 40.74860, -73.96830, "E"),
+        ],
+    ]
+
+    /// Mock bus vehicle positions for route detail view.
+    static func busVehicles(routeID: String) -> [BusVehicleResponse] {
+        guard let stops = busRouteStops[routeID], stops.count >= 4 else { return [] }
+        // Place 2 vehicles along the route — one near each end
+        let v1 = stops[1]
+        let v2 = stops[stops.count - 3]
+        return [
+            BusVehicleResponse(vehicleId: "MV_\(routeID)_1", routeId: routeID, lat: v1.lat, lon: v1.lon, bearing: 90, nextStop: stops[2].name, statusText: "at stop", directionRef: 0, expectedArrival: Date().addingTimeInterval(30)),
+            BusVehicleResponse(vehicleId: "MV_\(routeID)_2", routeId: routeID, lat: v2.lat, lon: v2.lon, bearing: 90, nextStop: stops[stops.count - 2].name, statusText: "2 stops away", directionRef: 0, expectedArrival: Date().addingTimeInterval(300)),
+        ]
+    }
+
     /// Mock route shape for a single bus route.
     static func busRouteShape(routeID: String) -> RouteShapeResponse {
-        let stops = nearbyBusStops().filter { $0.routeIds?.contains(routeID) ?? false }
+        let stopTuples = busRouteStops[routeID] ?? []
+        let stops = stopTuples.map { BusStop(id: $0.id, name: $0.name, lat: $0.lat, lon: $0.lon, direction: $0.dir, routeIds: [routeID]) }
         let coords = stops.map { CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lon) }
         let polyline = coords.count >= 2 ? encodePolyline(coords) : ""
         return RouteShapeResponse(
@@ -1540,13 +1597,119 @@ enum MockDataProvider {
         ])
     }
 
+    // MARK: - LIRR Station Data
+
+    /// Key stations for each LIRR branch (real GTFS coordinates).
+    private static let lirrBranchStations: [String: [(id: String, name: String, lat: Double, lon: Double)]] = [
+        "LIRR_9": [ // Babylon
+            ("LI-1", "Penn Station", 40.7504, -73.9910),
+            ("LI-12", "Woodside", 40.7451, -73.9028),
+            ("LI-15", "Jamaica", 40.7002, -73.8079),
+            ("LI-51", "Valley Stream", 40.6641, -73.7083),
+            ("LI-52", "Lynbrook", 40.6548, -73.6737),
+            ("LI-53", "Rockville Centre", 40.6583, -73.6402),
+            ("LI-55", "Freeport", 40.6574, -73.5835),
+            ("LI-57", "Merrick", 40.6624, -73.5515),
+            ("LI-59", "Wantagh", 40.6705, -73.5105),
+            ("LI-61", "Seaford", 40.6729, -73.4888),
+            ("LI-63", "Massapequa", 40.6806, -73.4716),
+            ("LI-66", "Amityville", 40.6813, -73.4163),
+            ("LI-68", "Lindenhurst", 40.6856, -73.3769),
+            ("LI-70", "Babylon", 40.7019, -73.3244),
+        ],
+        "LIRR_2": [ // Montauk
+            ("LI-15", "Jamaica", 40.7002, -73.8079),
+            ("LI-70", "Babylon", 40.7019, -73.3244),
+            ("LI-80", "Bay Shore", 40.7248, -73.2455),
+            ("LI-82", "Islip", 40.7342, -73.2114),
+            ("LI-85", "Patchogue", 40.7714, -73.0148),
+            ("LI-90", "Speonk", 40.8803, -72.7027),
+            ("LI-94", "Hampton Bays", 40.8675, -72.5244),
+            ("LI-97", "Montauk", 41.0468, -71.9545),
+        ],
+        "LIRR_10": [ // Ronkonkoma
+            ("LI-1", "Penn Station", 40.7504, -73.9910),
+            ("LI-15", "Jamaica", 40.7002, -73.8079),
+            ("LI-25", "Mineola", 40.7470, -73.6398),
+            ("LI-28", "Hicksville", 40.7665, -73.5848),
+            ("LI-30", "Farmingdale", 40.7312, -73.4419),
+            ("LI-33", "Deer Park", 40.7617, -73.3234),
+            ("LI-35", "Brentwood", 40.7810, -73.2461),
+            ("LI-38", "Central Islip", 40.7909, -73.2013),
+            ("LI-40", "Ronkonkoma", 40.8092, -73.1171),
+        ],
+        "LIRR_11": [ // Port Jefferson
+            ("LI-40R", "Ronkonkoma", 40.8092, -73.1171),
+            ("LI-42", "Medford", 40.8174, -73.0439),
+            ("LI-44", "Yaphank", 40.8329, -72.9211),
+            ("LI-46", "Riverhead", 40.9169, -72.6578),
+            ("LI-48", "Stony Brook", 40.9123, -73.1275),
+            ("LI-50", "Port Jefferson", 40.9371, -73.0524),
+        ],
+        "LIRR_1": [ // Long Beach
+            ("LI-1", "Penn Station", 40.7504, -73.9910),
+            ("LI-15", "Jamaica", 40.7002, -73.8079),
+            ("LI-51", "Valley Stream", 40.6641, -73.7083),
+            ("LI-52", "Lynbrook", 40.6548, -73.6737),
+            ("LI-74", "East Rockaway", 40.6420, -73.6663),
+            ("LI-75", "Oceanside", 40.6350, -73.6398),
+            ("LI-76", "Island Park", 40.6049, -73.6557),
+            ("LI-77", "Long Beach", 40.5886, -73.6578),
+        ],
+        "LIRR_3": [ // Hempstead
+            ("LI-1", "Penn Station", 40.7504, -73.9910),
+            ("LI-15", "Jamaica", 40.7002, -73.8079),
+            ("LI-20", "Floral Park", 40.7234, -73.7054),
+            ("LI-22", "Garden City", 40.7262, -73.6349),
+            ("LI-23", "Hempstead", 40.7024, -73.6194),
+        ],
+        "LIRR_4": [ // Far Rockaway
+            ("LI-1", "Penn Station", 40.7504, -73.9910),
+            ("LI-15", "Jamaica", 40.7002, -73.8079),
+            ("LI-51", "Valley Stream", 40.6641, -73.7083),
+            ("LI-78", "Gibson", 40.6322, -73.7242),
+            ("LI-79", "Far Rockaway", 40.6088, -73.7506),
+        ],
+        "LIRR_7": [ // Port Washington
+            ("LI-1", "Penn Station", 40.7504, -73.9910),
+            ("LI-12", "Woodside", 40.7451, -73.9028),
+            ("LI-100", "Flushing Main St", 40.7591, -73.8302),
+            ("LI-101", "Bayside", 40.7624, -73.7700),
+            ("LI-103", "Great Neck", 40.7741, -73.7283),
+            ("LI-104", "Manhasset", 40.7897, -73.7004),
+            ("LI-105", "Port Washington", 40.8296, -73.6868),
+        ],
+        "LIRR_5": [ // West Hempstead
+            ("LI-1", "Penn Station", 40.7504, -73.9910),
+            ("LI-15", "Jamaica", 40.7002, -73.8079),
+            ("LI-110", "St. Albans", 40.6902, -73.7549),
+            ("LI-111", "Lakeview", 40.6689, -73.6546),
+            ("LI-112", "West Hempstead", 40.6864, -73.6449),
+        ],
+        "LIRR_6": [ // Oyster Bay
+            ("LI-25", "Mineola", 40.7470, -73.6398),
+            ("LI-120", "East Williston", 40.7586, -73.6283),
+            ("LI-121", "Albertson", 40.7694, -73.6399),
+            ("LI-123", "Syosset", 40.8110, -73.5044),
+            ("LI-125", "Oyster Bay", 40.8715, -73.5327),
+        ],
+        "LIRR_8": [ // City Terminal Zone
+            ("LI-1", "Penn Station", 40.7504, -73.9910),
+            ("LI-5", "Atlantic Terminal", 40.6849, -73.9773),
+            ("LI-12", "Woodside", 40.7451, -73.9028),
+            ("LI-15", "Jamaica", 40.7002, -73.8079),
+        ],
+    ]
+
     /// Mock route shape for a single LIRR branch.
     static func lirrShape(routeID: String) -> RouteShapeResponse {
         let branch = allLIRRShapes().lines.first { $0.routeId == routeID }
+        let stationTuples = lirrBranchStations[routeID] ?? []
+        let stops = stationTuples.map { BusStop(id: $0.id, name: $0.name, lat: $0.lat, lon: $0.lon, direction: "Outbound") }
         return RouteShapeResponse(
             routeId: routeID,
             polylines: branch?.polylines ?? [],
-            stops: [],
+            stops: stops,
             directions: [],
             serviceType: nil
         )
@@ -1566,13 +1729,82 @@ enum MockDataProvider {
         ])
     }
 
+    // MARK: - MNR Station Data
+
+    /// Key stations for each Metro-North line (real GTFS coordinates).
+    private static let mnrLineStations: [String: [(id: String, name: String, lat: Double, lon: Double)]] = [
+        "MNR_1": [ // Hudson
+            ("MN-1", "Grand Central Terminal", 40.7527, -73.9772),
+            ("MN-2", "Harlem-125th St", 40.8052, -73.9389),
+            ("MN-3", "Marble Hill", 40.8748, -73.9107),
+            ("MN-5", "Yonkers", 40.9344, -73.8990),
+            ("MN-7", "Hastings-on-Hudson", 40.9933, -73.8790),
+            ("MN-9", "Irvington", 41.0391, -73.8678),
+            ("MN-10", "Tarrytown", 41.0752, -73.8641),
+            ("MN-12", "Ossining", 41.1557, -73.8676),
+            ("MN-13", "Croton-Harmon", 41.1908, -73.8820),
+            ("MN-15", "Peekskill", 41.2856, -73.9288),
+            ("MN-17", "Cold Spring", 41.4148, -73.9581),
+            ("MN-18", "Beacon", 41.5044, -73.9846),
+            ("MN-20", "Poughkeepsie", 41.7047, -73.9371),
+        ],
+        "MNR_2": [ // New Haven
+            ("MN-1", "Grand Central Terminal", 40.7527, -73.9772),
+            ("MN-2", "Harlem-125th St", 40.8052, -73.9389),
+            ("MN-30", "New Rochelle", 40.9116, -73.7826),
+            ("MN-32", "Larchmont", 40.9279, -73.7558),
+            ("MN-33", "Mamaroneck", 40.9496, -73.7402),
+            ("MN-35", "Rye", 40.9836, -73.6836),
+            ("MN-37", "Greenwich", 41.0195, -73.6247),
+            ("MN-40", "Stamford", 41.0467, -73.5420),
+            ("MN-43", "South Norwalk", 41.0952, -73.4218),
+            ("MN-45", "Westport", 41.1180, -73.3720),
+            ("MN-48", "Bridgeport", 41.1789, -73.1870),
+            ("MN-51", "Milford", 41.2228, -73.0574),
+            ("MN-53", "New Haven-Union Station", 41.2975, -72.9265),
+        ],
+        "MNR_4": [ // Harlem
+            ("MN-1", "Grand Central Terminal", 40.7527, -73.9772),
+            ("MN-2", "Harlem-125th St", 40.8052, -73.9389),
+            ("MN-60", "Fordham", 40.8616, -73.8884),
+            ("MN-62", "Crestwood", 40.9372, -73.8209),
+            ("MN-64", "Scarsdale", 40.9892, -73.8064),
+            ("MN-65", "White Plains", 41.0339, -73.7745),
+            ("MN-68", "Chappaqua", 41.1594, -73.7706),
+            ("MN-70", "Katonah", 41.2609, -73.6861),
+            ("MN-72", "Brewster", 41.3987, -73.6126),
+            ("MN-75", "Southeast", 41.4047, -73.5706),
+            ("MN-77", "Wassaic", 41.8164, -73.5574),
+        ],
+        "MNR_5": [ // Danbury
+            ("MN-40", "Stamford", 41.0467, -73.5420),
+            ("MN-80", "Springdale", 41.0939, -73.5601),
+            ("MN-81", "Bethel", 41.3669, -73.4113),
+            ("MN-82", "Danbury", 41.3966, -73.4510),
+        ],
+        "MNR_6": [ // New Canaan
+            ("MN-40", "Stamford", 41.0467, -73.5420),
+            ("MN-85", "Talmadge Hill", 41.0798, -73.5630),
+            ("MN-86", "New Canaan", 41.1461, -73.4952),
+        ],
+        "MNR_7": [ // Waterbury
+            ("MN-48", "Bridgeport", 41.1789, -73.1870),
+            ("MN-90", "Derby-Shelton", 41.3160, -73.0832),
+            ("MN-91", "Seymour", 41.3938, -73.0833),
+            ("MN-92", "Naugatuck", 41.4886, -73.0505),
+            ("MN-93", "Waterbury", 41.5510, -73.0412),
+        ],
+    ]
+
     /// Mock route shape for a single MNR line.
     static func mnrShape(routeID: String) -> RouteShapeResponse {
         let line = allMNRShapes().lines.first { $0.routeId == routeID }
+        let stationTuples = mnrLineStations[routeID] ?? []
+        let stops = stationTuples.map { BusStop(id: $0.id, name: $0.name, lat: $0.lat, lon: $0.lon, direction: "Outbound") }
         return RouteShapeResponse(
             routeId: routeID,
             polylines: line?.polylines ?? [],
-            stops: [],
+            stops: stops,
             directions: [],
             serviceType: nil
         )
