@@ -25,8 +25,10 @@ struct SettingsView: View {
                 appearanceSection
                 widgetSection
                 mapSection
-                accountSection
-                developerSettingsSection
+                if !ChallengeMode.isEnabled {
+                    accountSection
+                    developerSettingsSection
+                }
                 legalSection
             }
             .navigationTitle("Settings")

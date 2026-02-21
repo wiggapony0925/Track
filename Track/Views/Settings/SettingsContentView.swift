@@ -334,6 +334,7 @@ struct SettingsContentView: View {
                     }
                     
                     
+                    if !ChallengeMode.isEnabled {
                     // Account Section
                     settingsSection(title: "Account", icon: "person.crop.circle.fill", iconColor: AppTheme.Colors.mtaBlue) {
                         VStack(spacing: 0) {
@@ -412,6 +413,7 @@ struct SettingsContentView: View {
                             }
                         }
                     }
+                    } // end if !ChallengeMode.isEnabled
                     
                     // About Section
                     aboutSection

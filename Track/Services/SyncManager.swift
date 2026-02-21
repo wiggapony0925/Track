@@ -103,6 +103,7 @@ class SyncManager: ObservableObject {
     
     /// Uploads a schedule to Supabase (call when user creates/edits a schedule)
     func uploadSchedule(_ schedule: WidgetSchedule) async {
+        if ChallengeMode.isEnabled { return }
         guard let userIdString = defaults.string(forKey: "supabase_user_id"),
               let userId = UUID(uuidString: userIdString) else {
             print("[SyncManager] Cannot upload schedule - not authenticated")
@@ -133,6 +134,7 @@ class SyncManager: ObservableObject {
     
     /// Deletes a schedule from Supabase
     func deleteSchedule(_ scheduleId: UUID) async {
+        if ChallengeMode.isEnabled { return }
         do {
             try await SupabaseManager.shared.deleteSchedule(id: scheduleId)
             print("[SyncManager] Deleted schedule \(scheduleId)")
@@ -191,6 +193,7 @@ class SyncManager: ObservableObject {
     
     /// Push current @AppStorage values to Supabase
     func pushUserSettings() async {
+        if ChallengeMode.isEnabled { return }
         guard let userIdString = defaults.string(forKey: "supabase_user_id"),
               let userId = UUID(uuidString: userIdString) else {
             return
@@ -224,7 +227,7 @@ class SyncManager: ObservableObject {
     
     // MARK: - Commute Patterns Sync
     
-    /// Upload a commute pattern to Supabase for cross-device sync
+    /// Upload a commute pattern to Supabase for cross-device sync.
     func syncCommutePattern(
         routeId: String,
         direction: String,
@@ -236,6 +239,7 @@ class SyncManager: ObservableObject {
         dayOfWeek: Int,
         frequency: Int
     ) async {
+        if ChallengeMode.isEnabled { return }
         do {
             try await SupabaseManager.shared.syncCommutePattern(
                 routeId: routeId,
