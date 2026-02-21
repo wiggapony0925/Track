@@ -250,7 +250,7 @@ struct TrackAPI {
     /// - Returns: A `RouteShapeResponse` with encoded polylines and stops.
     static func fetchRouteShape(routeID: String) async throws -> RouteShapeResponse {
         if ChallengeMode.isEnabled {
-            return RouteShapeResponse(routeId: routeID, polylines: [], stops: [], directions: [], serviceType: nil)
+            return MockDataProvider.busRouteShape(routeID: routeID)
         }
         let encoded =
             routeID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? routeID
@@ -264,7 +264,7 @@ struct TrackAPI {
     /// - Returns: A `RouteShapeResponse` with the complete polyline and all stations.
     static func fetchSubwayShape(routeID: String) async throws -> RouteShapeResponse {
         if ChallengeMode.isEnabled {
-            return RouteShapeResponse(routeId: routeID, polylines: [], stops: [], directions: [], serviceType: nil)
+            return MockDataProvider.subwayShape(routeID: routeID)
         }
         let encoded =
             routeID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? routeID
@@ -278,7 +278,7 @@ struct TrackAPI {
     /// - Returns: A `RouteShapeResponse` with the branch polyline.
     static func fetchLIRRShape(routeID: String) async throws -> RouteShapeResponse {
         if ChallengeMode.isEnabled {
-            return RouteShapeResponse(routeId: routeID, polylines: [], stops: [], directions: [], serviceType: nil)
+            return MockDataProvider.lirrShape(routeID: routeID)
         }
         let encoded =
             routeID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? routeID
@@ -292,7 +292,7 @@ struct TrackAPI {
     /// - Returns: A `RouteShapeResponse` with the line polyline.
     static func fetchMNRShape(routeID: String) async throws -> RouteShapeResponse {
         if ChallengeMode.isEnabled {
-            return RouteShapeResponse(routeId: routeID, polylines: [], stops: [], directions: [], serviceType: nil)
+            return MockDataProvider.mnrShape(routeID: routeID)
         }
         let encoded =
             routeID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? routeID
@@ -305,7 +305,7 @@ struct TrackAPI {
     /// Called once on app launch to draw every line on the map.
     /// - Returns: An `AllSubwayLinesResponse` with lightweight overlay data per line.
     static func fetchAllSubwayShapes() async throws -> AllSubwayLinesResponse {
-        if ChallengeMode.isEnabled { return AllSubwayLinesResponse(lines: []) }
+        if ChallengeMode.isEnabled { return MockDataProvider.allSubwayShapes() }
         let data = try await get(path: "/subway/shapes/all")
         return try decoder.decode(AllSubwayLinesResponse.self, from: data)
     }
@@ -313,7 +313,7 @@ struct TrackAPI {
     /// Fetches polylines + colors for ALL LIRR branches.
     /// - Returns: An `AllCommuterRailLinesResponse` with overlay data per branch.
     static func fetchAllLIRRShapes() async throws -> AllCommuterRailLinesResponse {
-        if ChallengeMode.isEnabled { return AllCommuterRailLinesResponse(lines: []) }
+        if ChallengeMode.isEnabled { return MockDataProvider.allLIRRShapes() }
         let data = try await get(path: "/lirr/shapes/all")
         return try decoder.decode(AllCommuterRailLinesResponse.self, from: data)
     }
@@ -321,7 +321,7 @@ struct TrackAPI {
     /// Fetches polylines + colors for ALL Metro-North branches.
     /// - Returns: An `AllCommuterRailLinesResponse` with overlay data per branch.
     static func fetchAllMNRShapes() async throws -> AllCommuterRailLinesResponse {
-        if ChallengeMode.isEnabled { return AllCommuterRailLinesResponse(lines: []) }
+        if ChallengeMode.isEnabled { return MockDataProvider.allMNRShapes() }
         let data = try await get(path: "/mnr/shapes/all")
         return try decoder.decode(AllCommuterRailLinesResponse.self, from: data)
     }

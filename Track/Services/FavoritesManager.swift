@@ -29,6 +29,11 @@ class FavoritesManager: ObservableObject {
     private init() {
         // Load cached favorites from disk on launch
         loadFromCache()
+
+        // In ChallengeMode, seed a few favorites so judges see a populated screen
+        if ChallengeMode.isEnabled && favorites.isEmpty {
+            favorites = MockDataProvider.defaultFavorites()
+        }
     }
     
     // MARK: - Public API

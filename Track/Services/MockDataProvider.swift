@@ -624,4 +624,130 @@ enum MockDataProvider {
             TrainArrival(routeID: "MNR_4", stationID: "Grand Central", stationName: "Grand Central Terminal", direction: "Northbound", scheduledTime: now.addingTimeInterval(1680), estimatedTime: now.addingTimeInterval(1680), minutesAway: 28, destination: "Wassaic", status: "On Time", tripId: "MNR_T3"),
         ]
     }
+
+    // MARK: - Default Favorites (for ChallengeMode)
+
+    /// Pre-populated favorites so judges don't see an empty Favorites tab.
+    static func defaultFavorites() -> [CloudFavorite] {
+        let mockUserId = UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
+        return [
+            CloudFavorite(userId: mockUserId, routeId: "1", routeDisplayName: "1", stopId: "128N", stopName: "34 St-Penn Station", direction: "Uptown", destination: "Van Cortlandt Park - 242 St", mode: "subway", stopLat: 40.75037, stopLon: -73.99106, displayOrder: 0),
+            CloudFavorite(userId: mockUserId, routeId: "A", routeDisplayName: "A", stopId: "A28N", stopName: "34 St-Penn Station", direction: "Uptown", destination: "Inwood - 207 St", mode: "subway", stopLat: 40.75229, stopLon: -73.99339, displayOrder: 1),
+            CloudFavorite(userId: mockUserId, routeId: "7", routeDisplayName: "7", stopId: "726N", stopName: "34 St-Hudson Yards", direction: "Queens", destination: "Flushing - Main St", mode: "subway", stopLat: 40.75588, stopLon: -74.00191, displayOrder: 2),
+        ]
+    }
+
+    // MARK: - Subway Polylines
+
+    /// Simplified real GTFS polylines for subway lines (RDP-simplified to ~15-50 pts each).
+    private static let subwayPolylines: [String: String] = [
+        "1": "____F____M_N_G__@_R__@_]__A_K__@_X__C__A__@_S_S_C__A_A__@_H__B__A_Y_F__J__G_O__@__@__@__@__@__A__@",
+        "2": "____F____M_^__E__@__@_I__D_Q__A__B__A_T__@_\\_L_U__A_X__@_GM_Y_W_U_[_Z_S__A_L__@_W__C__A__@_S_S_C__A_A_]_G__B__A_C_K_M__@_I__@__B__A_C_FO__@_T__A_@__@__@__B__@_B__@_X_W__@A_\\_S_V__@_P__D_D__C__A__@_[",
+        "3": "____F____M_^__E__@__@_I__D_Q__A__B__A_T__@_\\_L_V__A_Y__@__@_Y_K_J_H_P_Z_S__A_K__@_X__C__A__@_T_Q_B__A_A__@_H__B__AO_H_M__@_J__@__C__B_G_A_D_I",
+        "A": "____F____M_N_Z_P_Q__@__@_F__AY__@_L__A_H__@__B__@__H__A__C__A_H__B_R__@_X__D_C_H_Y_G_D_J_O__I_Q__A_S__@L_Y_O__@_C_B__@_D_G_B_Q__A__@__@_P_]__@_\\_Z[__A__@__@_P__L__H_Q_@_[_W__A__@__@_T__@_E_K_F__@_T__@__@_Y__A",
+        "C": "____F____M_S__C_D_G_X_F_D_J_O__I_R__A_S__@L_Y_Q__@__@_C_H_C_C_^_L__@__@__@_P_]__@_]_Z[__A__@__@_P__L__H_Q_@_[_W__A__@__@_S__@_@",
+        "E": "____F____M__@_Z_ZY__A__@__@_P__C__B_B_E__@__C__@__@_M__A_J__@_O_V_C__@__@_]_@_K__B__E_L_R_Y_N_F_H__@__C_R_Z__@__A_R_\\_W__@__A__@_C_T_P__A",
+        "7": "____F____M_S_O_@_M__B__F_G__@_I__@_L_D_M_C_R_P_I_X_\\__@_J__B_M__@_\\__H__@__E",
+        "B": "____F____M_B_I__@_^_T_B__I__A__A_R__@_E__B__A_\\_E_J_U__D__A__@_Q_Z__@_E_A__E__C_E_@_J_X_EZ__G__E_Q_@_[_W__@_Y__@_V_D_JZ__@_N__@]_K_^_Q__@__@__@_N_W_\\__@__@__@_Z__@_]_X_\\",
+        "D": "____F____M__@_A_Q_N__@_J__A__B_M_@__C__@__A_F_J_H__@__A__A__A__@__@__@__@_N_A_H_P__D__A__@_R_Z__@_F_A__E__C_E_@_J_X_EZ__G__E_Q_@_[_W__@_Y__@_W_C_J\\__@_N__@]_K_^_Q__@__@__@_N_X_\\__@__@__@_Y__@_^_N_T_[_P_A_K_K_\\",
+        "F": "____F____M_F_A_A_O_E_U__A_@__A_K__G__@_G_A_H_Q_H_D__@_D_Q_V__@_T_\\__@_R__@_R_Y_Y_I__A__@__A_D__@_Q_V_C__@_T_E_E_R__@_Q_]__F__D_B_H_B_M__@__C__@__A_F_U_B__@__@_]_@_M__B__E_L_R_Y_N_F_H__@__C_R_Z__@__A_R_\\_W__@__@_V_E_I__@__D_D__@",
+        "N": "____F____M_S_@__A_T__C_^__@__A_T_P__@__A_\\__A__D__D__A__@__@__@_Q\\_H_O_Q_J_A__@_G_I__@__C__@_M__@_UQ_K__@__@_H_E_H_E__A__@__C__@__@__@_I__@__B__E_O_T__B__A__@__@",
+        "Q": "____F____M_F_B_A_R_E_W_A__@_H__@__@__@_[R__I__@__A_R__@_G__B__A_]_E_J_U__D__A_Z__@__A__@__C__@__A__@_C_P_^__AB_M__B__A",
+        "R": "____F____M_^__@__@__C_F_H_Y_N_L_R__B__E_@_K__@_\\_C__@_O_V_F_W_I_L_K_@_D_D__A__D_I__@__@__@__C__@__A__@_H_E_F_G__@__@P_K__@_U_\\_H_E_E__@__C_G_I_A__@_Q_J_H_O_O_@__@__@__A__@__A__A__@__A_J_G__A_F__C__@_N_B_[__@",
+        "L": "____F____M__@_W__B__@_T_A__@_Q_P_C_\\_X_H_@__A__C_I__A__@_H_R_H_A__@__A__C__A__D",
+    ]
+
+    /// Mock polylines+colors for ALL subway lines (full system map).
+    static func allSubwayShapes() -> AllSubwayLinesResponse {
+        let colors: [String: String] = [
+            "1": "#EE352E", "2": "#EE352E", "3": "#EE352E",
+            "A": "#0039A6", "C": "#0039A6", "E": "#0039A6",
+            "7": "#B933AD",
+            "B": "#FF6319", "D": "#FF6319", "F": "#FF6319",
+            "N": "#FCCC0A", "Q": "#FCCC0A", "R": "#FCCC0A",
+            "L": "#A7A9AC",
+        ]
+        return AllSubwayLinesResponse(lines: subwayPolylines.map { routeId, polyline in
+            SubwayLineOverlay(
+                routeId: routeId,
+                colorHex: colors[routeId] ?? "#808183",
+                polylines: [polyline]
+            )
+        })
+    }
+
+    /// Mock route shape for a single subway line.
+    static func subwayShape(routeID: String) -> RouteShapeResponse {
+        let polyline = subwayPolylines[routeID.uppercased()] ?? ""
+        let stations = subwayStations().stations.filter { $0.routes.contains(routeID.uppercased()) }
+        let stops = stations.map { BusStop(id: $0.id, name: $0.name, lat: $0.lat, lon: $0.lon, direction: "", routeIds: $0.routes) }
+        return RouteShapeResponse(
+            routeId: routeID,
+            polylines: polyline.isEmpty ? [] : [polyline],
+            stops: stops,
+            directions: [],
+            serviceType: nil
+        )
+    }
+
+    /// Mock route shape for a single bus route.
+    static func busRouteShape(routeID: String) -> RouteShapeResponse {
+        let stops = nearbyBusStops().filter { $0.routeIds.contains(routeID) }
+        let coords = stops.map { CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lon) }
+        let polyline = coords.count >= 2 ? encodePolyline(coords) : ""
+        return RouteShapeResponse(
+            routeId: routeID,
+            polylines: polyline.isEmpty ? [] : [polyline],
+            stops: stops,
+            directions: [],
+            serviceType: nil
+        )
+    }
+
+    // MARK: - LIRR Polylines
+
+    /// Mock LIRR branch polylines for map overlay.
+    static func allLIRRShapes() -> AllCommuterRailLinesResponse {
+        AllCommuterRailLinesResponse(lines: [
+            CommuterRailLineOverlay(routeId: "LIRR_9", name: "Babylon", colorHex: "#00985F", polylines: ["____F____M__H__W__A__I__C__T_E__H_^__O_X__["], mode: "lirr"),
+            CommuterRailLineOverlay(routeId: "LIRR_2", name: "Montauk", colorHex: "#00985F", polylines: ["____F____M__H__W__A__I__C__T_E__H_^__O_X__[__I___@__Z___A"], mode: "lirr"),
+            CommuterRailLineOverlay(routeId: "LIRR_10", name: "Ronkonkoma", colorHex: "#00985F", polylines: ["____F____M__H__W__G__]__@__R__A___@__C___@"], mode: "lirr"),
+            CommuterRailLineOverlay(routeId: "LIRR_1", name: "Long Beach", colorHex: "#00985F", polylines: ["____F____M__H__W__A__I__E__O__L__L"], mode: "lirr"),
+        ])
+    }
+
+    /// Mock route shape for a single LIRR branch.
+    static func lirrShape(routeID: String) -> RouteShapeResponse {
+        let branch = allLIRRShapes().lines.first { $0.routeId == routeID }
+        return RouteShapeResponse(
+            routeId: routeID,
+            polylines: branch?.polylines ?? [],
+            stops: [],
+            directions: [],
+            serviceType: nil
+        )
+    }
+
+    // MARK: - MNR Polylines
+
+    /// Mock Metro-North line polylines for map overlay.
+    static func allMNRShapes() -> AllCommuterRailLinesResponse {
+        AllCommuterRailLinesResponse(lines: [
+            CommuterRailLineOverlay(routeId: "MNR_1", name: "Hudson", colorHex: "#009B3A", polylines: ["____F____M__M__D__P__H__V__C__W__@__[__R"], mode: "mnr"),
+            CommuterRailLineOverlay(routeId: "MNR_2", name: "New Haven", colorHex: "#EE0034", polylines: ["____F____M__M__D__O__V__Z___@__W___A__V___@"], mode: "mnr"),
+            CommuterRailLineOverlay(routeId: "MNR_4", name: "Harlem", colorHex: "#0039A6", polylines: ["____F____M__M__D__R__M___@__F___@__N___@___@"], mode: "mnr"),
+        ])
+    }
+
+    /// Mock route shape for a single MNR line.
+    static func mnrShape(routeID: String) -> RouteShapeResponse {
+        let line = allMNRShapes().lines.first { $0.routeId == routeID }
+        return RouteShapeResponse(
+            routeId: routeID,
+            polylines: line?.polylines ?? [],
+            stops: [],
+            directions: [],
+            serviceType: nil
+        )
+    }
 }
