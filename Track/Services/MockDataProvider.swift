@@ -1412,15 +1412,15 @@ enum MockDataProvider {
         let mockUserId = UUID()
         return [
             // Subway: 1 train
-            CloudFavorite(userId: mockUserId, routeId: "1", routeDisplayName: "1", stopId: "128N", stopName: "34 St-Penn Station", direction: "Uptown", destination: "Van Cortlandt Park - 242 St", mode: "subway", stopLat: 40.75037, stopLon: -73.99106, displayOrder: 0),
+            CloudFavorite(id: 1, userId: mockUserId, routeId: "1", routeDisplayName: "1", stopId: "128N", stopName: "34 St-Penn Station", direction: "Uptown", destination: "Van Cortlandt Park - 242 St", mode: "subway", stopLat: 40.75037, stopLon: -73.99106, displayOrder: 0),
             // Bus: M34A-SBS crosstown
-            CloudFavorite(userId: mockUserId, routeId: "MTA NYCT_M34A-SBS", routeDisplayName: "M34A-SBS", stopId: "401517", stopName: "W 34 ST/8 AV", direction: "East", destination: "Waterside via 34 St", mode: "bus", stopLat: 40.75260, stopLon: -73.99930, displayOrder: 1),
+            CloudFavorite(id: 2, userId: mockUserId, routeId: "MTA NYCT_M34A-SBS", routeDisplayName: "M34A-SBS", stopId: "401517", stopName: "W 34 ST/8 AV", direction: "East", destination: "Waterside via 34 St", mode: "bus", stopLat: 40.75260, stopLon: -73.99930, displayOrder: 1),
             // Subway: E train
-            CloudFavorite(userId: mockUserId, routeId: "E", routeDisplayName: "E", stopId: "A28N", stopName: "34 St-Penn Station", direction: "Uptown", destination: "Jamaica Center", mode: "subway", stopLat: 40.75229, stopLon: -73.99339, displayOrder: 2),
+            CloudFavorite(id: 3, userId: mockUserId, routeId: "E", routeDisplayName: "E", stopId: "A28N", stopName: "34 St-Penn Station", direction: "Uptown", destination: "Jamaica Center", mode: "subway", stopLat: 40.75229, stopLon: -73.99339, displayOrder: 2),
             // LIRR: Babylon Branch
-            CloudFavorite(userId: mockUserId, routeId: "LIRR_9", routeDisplayName: "Babylon", stopId: "Penn Station", stopName: "Penn Station", direction: "Eastbound", destination: "Babylon", mode: "lirr", stopLat: 40.75037, stopLon: -73.99106, displayOrder: 3),
+            CloudFavorite(id: 4, userId: mockUserId, routeId: "LIRR_9", routeDisplayName: "Babylon", stopId: "Penn Station", stopName: "Penn Station", direction: "Eastbound", destination: "Babylon", mode: "lirr", stopLat: 40.75037, stopLon: -73.99106, displayOrder: 3),
             // MNR: Hudson Line
-            CloudFavorite(userId: mockUserId, routeId: "MNR_1", routeDisplayName: "Hudson", stopId: "Grand Central", stopName: "Grand Central Terminal", direction: "Northbound", destination: "Croton-Harmon", mode: "mnr", stopLat: 40.75270, stopLon: -73.97720, displayOrder: 4),
+            CloudFavorite(id: 5, userId: mockUserId, routeId: "MNR_1", routeDisplayName: "Hudson", stopId: "Grand Central", stopName: "Grand Central Terminal", direction: "Northbound", destination: "Croton-Harmon", mode: "mnr", stopLat: 40.75270, stopLon: -73.97720, displayOrder: 4),
         ]
     }
 
