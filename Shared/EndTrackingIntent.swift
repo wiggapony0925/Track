@@ -1,6 +1,6 @@
 //
 //  EndTrackingIntent.swift
-//  TrackWidgets
+//  Shared
 //
 //  AppIntent for the "I made it!" button in the Live Activity.
 //  Ends the current live activity and clears the tracked route.
