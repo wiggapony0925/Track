@@ -187,12 +187,16 @@ struct LoginView: View {
                 // Sign in with Supabase
                 Task { @MainActor in
                     do {
-                        try await SupabaseManager.shared.signInWithApple(credentials: credentials)
+                        if !ChallengeMode.isEnabled {
+                            try await SupabaseManager.shared.signInWithApple(credentials: credentials)
+                        }
                         isLoading = false
                         isLoggedIn = true
                         
                         // Sync user data immediately after login
-                        await SyncManager.shared.performFullSync()
+                        if !ChallengeMode.isEnabled {
+                            await SyncManager.shared.performFullSync()
+                        }
                     } catch {
                         isLoading = false
                         errorMessage = error.localizedDescription
@@ -220,13 +224,15 @@ struct LoginView: View {
         
         // Optionally create anonymous Supabase session for basic features
         Task { @MainActor in
-            do {
-                try await SupabaseManager.shared.signInAnonymously()
-                // Initial sync for anonymous user
-                await SyncManager.shared.performFullSync()
-            } catch {
-                // Continue anyway - local-only mode
-                print("Anonymous sign-in failed: \(error)")
+            if !ChallengeMode.isEnabled {
+                do {
+                    try await SupabaseManager.shared.signInAnonymously()
+                    // Initial sync for anonymous user
+                    await SyncManager.shared.performFullSync()
+                } catch {
+                    // Continue anyway - local-only mode
+                    print("Anonymous sign-in failed: \(error)")
+                }
             }
             isLoading = false
             isLoggedIn = true

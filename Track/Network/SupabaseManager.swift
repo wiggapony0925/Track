@@ -81,6 +81,14 @@ class SupabaseManager: ObservableObject {
         // In challenge mode, mark as authenticated without network
         if ChallengeMode.isEnabled {
             self.isAuthenticated = true
+            self.currentUser = UserProfile(
+                id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+                appleUserId: "challenge_mode_user",
+                email: "student@example.com",
+                fullName: "Challenge User",
+                givenName: "Challenge",
+                familyName: "User"
+            )
             return
         }
         
