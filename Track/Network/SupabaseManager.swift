@@ -402,7 +402,9 @@ class SupabaseManager: ObservableObject {
         }
         
         let (data, _) = try await URLSession.shared.data(for: request)
-        return try JSONDecoder().decode([CloudFavorite].self, from: data)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode([CloudFavorite].self, from: data)
     }
     
     /// Add a favorite
@@ -474,7 +476,9 @@ class SupabaseManager: ObservableObject {
         }
         
         let (data, _) = try await URLSession.shared.data(for: request)
-        return try JSONDecoder().decode([CloudSchedule].self, from: data)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode([CloudSchedule].self, from: data)
     }
     
     /// Upsert a schedule
