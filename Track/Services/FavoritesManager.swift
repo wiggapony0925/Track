@@ -34,6 +34,8 @@ class FavoritesManager: ObservableObject {
         if ChallengeMode.isEnabled && favorites.isEmpty {
             favorites = MockDataProvider.defaultFavorites()
         }
+        
+        deduplicateFavorites()
     }
     
     // MARK: - Public API
@@ -96,6 +98,7 @@ class FavoritesManager: ObservableObject {
         do {
             let remote = try await SupabaseManager.shared.fetchFavorites()
             favorites = remote
+            deduplicateFavorites()
             saveToCache()
             print("[FavoritesManager] Refreshed \(remote.count) favorites from cloud")
         } catch {
@@ -116,6 +119,14 @@ class FavoritesManager: ObservableObject {
         stopLat: Double?,
         stopLon: Double?
     ) async {
+        // Prevent duplicates (guards against race conditions from rapid taps)
+        guard !favorites.contains(where: {
+            $0.routeId == routeId && $0.stopId == stopId && $0.direction == direction
+        }) else {
+            print("[FavoritesManager] Duplicate prevented for \(routeId)/\(stopId)")
+            return
+        }
+        
         guard let userId = SupabaseManager.shared.currentUser?.id else {
             print("[FavoritesManager] Cannot add favorite - not signed in")
             return
@@ -183,5 +194,21 @@ class FavoritesManager: ObservableObject {
             return
         }
         favorites = cached
+        deduplicateFavorites()
+    }
+    
+    /// Removes duplicate favorites, keeping the first occurrence.
+    /// A favorite is considered duplicate if it shares the same routeId + stopId + direction.
+    private func deduplicateFavorites() {
+        var seen = Set<String>()
+        let before = favorites.count
+        favorites = favorites.filter { fav in
+            let key = "\(fav.routeId)|\(fav.stopId)|\(fav.direction ?? "")"
+            return seen.insert(key).inserted
+        }
+        if favorites.count < before {
+            print("[FavoritesManager] Removed \(before - favorites.count) duplicate(s)")
+            saveToCache()
+        }
     }
 }
