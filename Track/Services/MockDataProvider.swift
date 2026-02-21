@@ -629,7 +629,7 @@ enum MockDataProvider {
 
     /// Pre-populated favorites so judges don't see an empty Favorites tab.
     static func defaultFavorites() -> [CloudFavorite] {
-        let mockUserId = UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
+        let mockUserId = UUID()
         return [
             CloudFavorite(userId: mockUserId, routeId: "1", routeDisplayName: "1", stopId: "128N", stopName: "34 St-Penn Station", direction: "Uptown", destination: "Van Cortlandt Park - 242 St", mode: "subway", stopLat: 40.75037, stopLon: -73.99106, displayOrder: 0),
             CloudFavorite(userId: mockUserId, routeId: "A", routeDisplayName: "A", stopId: "A28N", stopName: "34 St-Penn Station", direction: "Uptown", destination: "Inwood - 207 St", mode: "subway", stopLat: 40.75229, stopLon: -73.99339, displayOrder: 1),
