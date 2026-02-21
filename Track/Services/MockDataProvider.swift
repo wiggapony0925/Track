@@ -1226,7 +1226,7 @@ enum MockDataProvider {
 
     /// Mock route shape for a single bus route.
     static func busRouteShape(routeID: String) -> RouteShapeResponse {
-        let stops = nearbyBusStops().filter { $0.routeIds.contains(routeID) }
+        let stops = nearbyBusStops().filter { $0.routeIds?.contains(routeID) ?? false }
         let coords = stops.map { CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lon) }
         let polyline = coords.count >= 2 ? encodePolyline(coords) : ""
         return RouteShapeResponse(
