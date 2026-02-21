@@ -23,12 +23,12 @@ final class LocationManager: NSObject, CLLocationManagerDelegate {
         // so the app can demonstrate its capabilities without GPS.
         // Coordinates: Midtown Manhattan (near Penn Station / Herald Square)
         if ChallengeMode.isEnabled {
-            currentLocation = CLLocation(latitude: 40.75306, longitude: -73.99944)
+            currentLocation = CLLocation(latitude: ChallengeMode.mockLatitude, longitude: ChallengeMode.mockLongitude)
             authorizationStatus = .authorizedWhenInUse
             // Seed App Group UserDefaults so widgets also use the mock location
             let defaults = UserDefaults(suiteName: kAppGroupIdentifier) ?? UserDefaults.standard
-            defaults.set(40.75306, forKey: "lastLatitude")
-            defaults.set(-73.99944, forKey: "lastLongitude")
+            defaults.set(ChallengeMode.mockLatitude, forKey: "lastLatitude")
+            defaults.set(ChallengeMode.mockLongitude, forKey: "lastLongitude")
             defaults.set(true, forKey: "hasLastLocation")
             // Do NOT set delegate — prevents real GPS from overwriting mock coords
             return

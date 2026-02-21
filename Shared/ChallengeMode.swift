@@ -27,6 +27,10 @@ enum ChallengeMode {
     /// data is replaced with static mock data.
     static let isEnabled = true
 
+    /// Mock GPS location: Midtown Manhattan, near Penn Station / Herald Square.
+    static let mockLatitude: Double = 40.75306
+    static let mockLongitude: Double = -73.99944
+
     #if !DEBUG
     // Emit a compile-time warning when challenge mode is on in a Release build.
     // This prevents accidentally shipping mock data to the App Store.

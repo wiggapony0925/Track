@@ -430,7 +430,7 @@ enum MockDataProvider {
 
     // MARK: - Service Alerts
 
-    /// Mock service alerts for subway lines.
+    /// Mock service alerts for subway, bus, LIRR, and MNR lines.
     static func alerts() -> [TransitAlert] {
         [
             TransitAlert(
@@ -468,7 +468,34 @@ enum MockDataProvider {
                 mode: "bus",
                 updatedAt: Int(Date().timeIntervalSince1970) - 3600,
                 affectedRoutes: ["MTA NYCT_M34A-SBS"]
-            )
+            ),
+            TransitAlert(
+                routeId: "LIRR_9",
+                title: "LIRR: Babylon Branch Delays",
+                description: "Babylon branch trains are experiencing 10-15 minute delays due to switch problems east of Jamaica. Hempstead and Far Rockaway branches are also affected. Check schedules before traveling.",
+                severity: "severe",
+                mode: "lirr",
+                updatedAt: Int(Date().timeIntervalSince1970) - 900,
+                affectedRoutes: ["LIRR_9", "LIRR_8", "LIRR_7"]
+            ),
+            TransitAlert(
+                routeId: "MNR_1",
+                title: "Metro-North: Hudson Line Service Advisory",
+                description: "Due to bridge maintenance near Croton-Harmon, some Hudson Line trains will be replaced with shuttle bus service between Croton-Harmon and Peekskill this evening after 9 PM.",
+                severity: "moderate",
+                mode: "mnr",
+                updatedAt: Int(Date().timeIntervalSince1970) - 2400,
+                affectedRoutes: ["MNR_1"]
+            ),
+            TransitAlert(
+                routeId: "1",
+                title: "Planned Work: 1/2/3 Lines — Weekend",
+                description: "No 2 or 3 trains between 14 St and Chambers St this weekend. Take the 1 train or A/C trains as alternatives. Service resumes Monday at 5 AM.",
+                severity: "moderate",
+                mode: "subway",
+                updatedAt: Int(Date().timeIntervalSince1970) - 5400,
+                affectedRoutes: ["1", "2", "3"]
+            ),
         ]
     }
 
@@ -1116,6 +1143,9 @@ enum MockDataProvider {
             TrainArrival(routeID: "LIRR_2", stationID: "Penn Station", stationName: "Penn Station", direction: "Eastbound", scheduledTime: now.addingTimeInterval(900), estimatedTime: now.addingTimeInterval(960), minutesAway: 16, destination: "Montauk", status: "Delayed", tripId: "LIRR_T2"),
             TrainArrival(routeID: "LIRR_10", stationID: "Penn Station", stationName: "Penn Station", direction: "Eastbound", scheduledTime: now.addingTimeInterval(1500), estimatedTime: now.addingTimeInterval(1500), minutesAway: 25, destination: "Ronkonkoma", status: "On Time", tripId: "LIRR_T3"),
             TrainArrival(routeID: "LIRR_1", stationID: "Penn Station", stationName: "Penn Station", direction: "Eastbound", scheduledTime: now.addingTimeInterval(1800), estimatedTime: now.addingTimeInterval(1800), minutesAway: 30, destination: "Long Beach", status: "On Time", tripId: "LIRR_T4"),
+            TrainArrival(routeID: "LIRR_3", stationID: "Penn Station", stationName: "Penn Station", direction: "Eastbound", scheduledTime: now.addingTimeInterval(720), estimatedTime: now.addingTimeInterval(720), minutesAway: 12, destination: "Port Jefferson", status: "On Time", tripId: "LIRR_T5"),
+            TrainArrival(routeID: "LIRR_8", stationID: "Penn Station", stationName: "Penn Station", direction: "Eastbound", scheduledTime: now.addingTimeInterval(1080), estimatedTime: now.addingTimeInterval(1140), minutesAway: 19, destination: "Hempstead", status: "Delayed", tripId: "LIRR_T6"),
+            TrainArrival(routeID: "LIRR_7", stationID: "Penn Station", stationName: "Penn Station", direction: "Eastbound", scheduledTime: now.addingTimeInterval(2100), estimatedTime: now.addingTimeInterval(2100), minutesAway: 35, destination: "Far Rockaway", status: "On Time", tripId: "LIRR_T7"),
         ]
     }
 
@@ -1126,6 +1156,9 @@ enum MockDataProvider {
             TrainArrival(routeID: "MNR_1", stationID: "Grand Central", stationName: "Grand Central Terminal", direction: "Northbound", scheduledTime: now.addingTimeInterval(600), estimatedTime: now.addingTimeInterval(600), minutesAway: 10, destination: "White Plains", status: "On Time", tripId: "MNR_T1"),
             TrainArrival(routeID: "MNR_2", stationID: "Grand Central", stationName: "Grand Central Terminal", direction: "Northbound", scheduledTime: now.addingTimeInterval(1200), estimatedTime: now.addingTimeInterval(1200), minutesAway: 20, destination: "New Haven", status: "On Time", tripId: "MNR_T2"),
             TrainArrival(routeID: "MNR_4", stationID: "Grand Central", stationName: "Grand Central Terminal", direction: "Northbound", scheduledTime: now.addingTimeInterval(1680), estimatedTime: now.addingTimeInterval(1680), minutesAway: 28, destination: "Wassaic", status: "On Time", tripId: "MNR_T3"),
+            TrainArrival(routeID: "MNR_1", stationID: "Grand Central", stationName: "Grand Central Terminal", direction: "Northbound", scheduledTime: now.addingTimeInterval(420), estimatedTime: now.addingTimeInterval(480), minutesAway: 8, destination: "Croton-Harmon", status: "Delayed", tripId: "MNR_T4"),
+            TrainArrival(routeID: "MNR_2", stationID: "Grand Central", stationName: "Grand Central Terminal", direction: "Northbound", scheduledTime: now.addingTimeInterval(960), estimatedTime: now.addingTimeInterval(960), minutesAway: 16, destination: "Danbury", status: "On Time", tripId: "MNR_T5"),
+            TrainArrival(routeID: "MNR_4", stationID: "Grand Central", stationName: "Grand Central Terminal", direction: "Northbound", scheduledTime: now.addingTimeInterval(2400), estimatedTime: now.addingTimeInterval(2400), minutesAway: 40, destination: "Southeast", status: "On Time", tripId: "MNR_T6"),
         ]
     }
 
