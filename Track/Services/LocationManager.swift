@@ -18,9 +18,6 @@ final class LocationManager: NSObject, CLLocationManagerDelegate {
 
     override init() {
         super.init()
-        manager.delegate = self
-        manager.desiredAccuracy = kCLLocationAccuracyBest
-        manager.distanceFilter = AppSettings.shared.distanceFilterMeters
 
         // In challenge mode, provide a mock NYC location immediately
         // so the app can demonstrate its capabilities without GPS.
@@ -28,7 +25,18 @@ final class LocationManager: NSObject, CLLocationManagerDelegate {
         if ChallengeMode.isEnabled {
             currentLocation = CLLocation(latitude: 40.75306, longitude: -73.99944)
             authorizationStatus = .authorizedWhenInUse
+            // Seed App Group UserDefaults so widgets also use the mock location
+            let defaults = UserDefaults(suiteName: kAppGroupIdentifier) ?? UserDefaults.standard
+            defaults.set(40.75306, forKey: "lastLatitude")
+            defaults.set(-73.99944, forKey: "lastLongitude")
+            defaults.set(true, forKey: "hasLastLocation")
+            // Do NOT set delegate — prevents real GPS from overwriting mock coords
+            return
         }
+
+        manager.delegate = self
+        manager.desiredAccuracy = kCLLocationAccuracyBest
+        manager.distanceFilter = AppSettings.shared.distanceFilterMeters
     }
 
     func requestPermission() {
@@ -61,6 +69,7 @@ final class LocationManager: NSObject, CLLocationManagerDelegate {
 
     nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         MainActor.assumeIsolated {
+            if ChallengeMode.isEnabled { return }
             currentLocation = locations.last
             // Cache location for widget access via App Group
             if let location = locations.last {
@@ -74,6 +83,7 @@ final class LocationManager: NSObject, CLLocationManagerDelegate {
 
     nonisolated func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
         MainActor.assumeIsolated {
+            if ChallengeMode.isEnabled { return }
             authorizationStatus = status
             if status == .authorizedWhenInUse || status == .authorizedAlways {
                 manager.startUpdatingLocation()

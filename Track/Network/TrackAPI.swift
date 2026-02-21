@@ -345,7 +345,7 @@ struct TrackAPI {
     static func fetchNearbySubwayStations(lat: Double, lon: Double, radius: Int = 1600) async throws
         -> AllSubwayStationsResponse
     {
-        if ChallengeMode.isEnabled { return MockDataProvider.subwayStations() }
+        if ChallengeMode.isEnabled { return MockDataProvider.nearbySubwayStations() }
         guard var components = URLComponents(string: baseURL + "/subway/stations/nearby") else {
             throw TrackAPIError.invalidURL
         }
