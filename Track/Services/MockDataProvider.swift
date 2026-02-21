@@ -158,7 +158,7 @@ enum MockDataProvider {
                 directions: [
                     DirectionArrivalsResponse(
                         direction: "Uptown",
-                        directionLabel: "Jamaica Center",
+                        directionLabel: "Jamaica Center - Parsons/Archer",
                         arrivals: [
                             NearbyTransitResponse(routeId: "E", stopName: "34 St-Penn Station", direction: "Uptown", destination: "Jamaica Center - Parsons/Archer", minutesAway: 3, status: "En Route", mode: "subway", stopLat: 40.75229, stopLon: -73.99339, arrivalTs: ts(minutesFromNow: 3), vehicleId: "0E01", tripId: "T008", stopId: "A28N"),
                             NearbyTransitResponse(routeId: "E", stopName: "34 St-Penn Station", direction: "Uptown", destination: "Jamaica Center - Parsons/Archer", minutesAway: 9, status: "En Route", mode: "subway", stopLat: 40.75229, stopLon: -73.99339, arrivalTs: ts(minutesFromNow: 9), vehicleId: "0E02", tripId: "T009", stopId: "A28N")
