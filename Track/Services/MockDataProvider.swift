@@ -416,6 +416,188 @@ enum MockDataProvider {
                     )
                 ]
             ),
+
+            // ═══════════════════════════════════════════
+            //  LIRR — Penn Station departures
+            // ═══════════════════════════════════════════
+
+            // ── LIRR: Babylon Branch ──
+            GroupedNearbyTransitResponse(
+                routeId: "LIRR_9",
+                displayName: "Babylon",
+                mode: "lirr",
+                colorHex: "#00985F",
+                directions: [
+                    DirectionArrivalsResponse(
+                        direction: "Eastbound",
+                        directionLabel: "Eastbound to Babylon",
+                        arrivals: [
+                            NearbyTransitResponse(routeId: "LIRR_9", stopName: "Penn Station", direction: "Eastbound", destination: "Babylon", minutesAway: 8, status: "On Time", mode: "lirr", stopLat: 40.75037, stopLon: -73.99106, arrivalTs: ts(minutesFromNow: 8), vehicleId: nil, tripId: "LIRR_T1", stopId: "Penn Station"),
+                            NearbyTransitResponse(routeId: "LIRR_9", stopName: "Penn Station", direction: "Eastbound", destination: "Babylon", minutesAway: 38, status: "On Time", mode: "lirr", stopLat: 40.75037, stopLon: -73.99106, arrivalTs: ts(minutesFromNow: 38), vehicleId: nil, tripId: "LIRR_T8", stopId: "Penn Station"),
+                        ]
+                    )
+                ]
+            ),
+
+            // ── LIRR: Montauk Branch ──
+            GroupedNearbyTransitResponse(
+                routeId: "LIRR_2",
+                displayName: "Montauk",
+                mode: "lirr",
+                colorHex: "#006983",
+                directions: [
+                    DirectionArrivalsResponse(
+                        direction: "Eastbound",
+                        directionLabel: "Eastbound to Montauk",
+                        arrivals: [
+                            NearbyTransitResponse(routeId: "LIRR_2", stopName: "Penn Station", direction: "Eastbound", destination: "Montauk", minutesAway: 16, status: "Delayed", mode: "lirr", stopLat: 40.75037, stopLon: -73.99106, arrivalTs: ts(minutesFromNow: 16), vehicleId: nil, tripId: "LIRR_T2", stopId: "Penn Station"),
+                        ]
+                    )
+                ]
+            ),
+
+            // ── LIRR: Ronkonkoma Branch ──
+            GroupedNearbyTransitResponse(
+                routeId: "LIRR_10",
+                displayName: "Ronkonkoma",
+                mode: "lirr",
+                colorHex: "#A626AA",
+                directions: [
+                    DirectionArrivalsResponse(
+                        direction: "Eastbound",
+                        directionLabel: "Eastbound to Ronkonkoma",
+                        arrivals: [
+                            NearbyTransitResponse(routeId: "LIRR_10", stopName: "Penn Station", direction: "Eastbound", destination: "Ronkonkoma", minutesAway: 25, status: "On Time", mode: "lirr", stopLat: 40.75037, stopLon: -73.99106, arrivalTs: ts(minutesFromNow: 25), vehicleId: nil, tripId: "LIRR_T3", stopId: "Penn Station"),
+                        ]
+                    )
+                ]
+            ),
+
+            // ── LIRR: Long Beach Branch ──
+            GroupedNearbyTransitResponse(
+                routeId: "LIRR_1",
+                displayName: "Long Beach",
+                mode: "lirr",
+                colorHex: "#FF6319",
+                directions: [
+                    DirectionArrivalsResponse(
+                        direction: "Eastbound",
+                        directionLabel: "Eastbound to Long Beach",
+                        arrivals: [
+                            NearbyTransitResponse(routeId: "LIRR_1", stopName: "Penn Station", direction: "Eastbound", destination: "Long Beach", minutesAway: 30, status: "On Time", mode: "lirr", stopLat: 40.75037, stopLon: -73.99106, arrivalTs: ts(minutesFromNow: 30), vehicleId: nil, tripId: "LIRR_T4", stopId: "Penn Station"),
+                        ]
+                    )
+                ]
+            ),
+
+            // ── LIRR: Port Jefferson Branch ──
+            GroupedNearbyTransitResponse(
+                routeId: "LIRR_3",
+                displayName: "Port Jefferson",
+                mode: "lirr",
+                colorHex: "#00AF3F",
+                directions: [
+                    DirectionArrivalsResponse(
+                        direction: "Eastbound",
+                        directionLabel: "Eastbound to Port Jefferson",
+                        arrivals: [
+                            NearbyTransitResponse(routeId: "LIRR_3", stopName: "Penn Station", direction: "Eastbound", destination: "Port Jefferson", minutesAway: 12, status: "On Time", mode: "lirr", stopLat: 40.75037, stopLon: -73.99106, arrivalTs: ts(minutesFromNow: 12), vehicleId: nil, tripId: "LIRR_T5", stopId: "Penn Station"),
+                        ]
+                    )
+                ]
+            ),
+
+            // ── LIRR: Hempstead Branch ──
+            GroupedNearbyTransitResponse(
+                routeId: "LIRR_8",
+                displayName: "Hempstead",
+                mode: "lirr",
+                colorHex: "#CE8C00",
+                directions: [
+                    DirectionArrivalsResponse(
+                        direction: "Eastbound",
+                        directionLabel: "Eastbound to Hempstead",
+                        arrivals: [
+                            NearbyTransitResponse(routeId: "LIRR_8", stopName: "Penn Station", direction: "Eastbound", destination: "Hempstead", minutesAway: 19, status: "Delayed", mode: "lirr", stopLat: 40.75037, stopLon: -73.99106, arrivalTs: ts(minutesFromNow: 19), vehicleId: nil, tripId: "LIRR_T6", stopId: "Penn Station"),
+                        ]
+                    )
+                ]
+            ),
+
+            // ── LIRR: Far Rockaway Branch ──
+            GroupedNearbyTransitResponse(
+                routeId: "LIRR_7",
+                displayName: "Far Rockaway",
+                mode: "lirr",
+                colorHex: "#6E3219",
+                directions: [
+                    DirectionArrivalsResponse(
+                        direction: "Eastbound",
+                        directionLabel: "Eastbound to Far Rockaway",
+                        arrivals: [
+                            NearbyTransitResponse(routeId: "LIRR_7", stopName: "Penn Station", direction: "Eastbound", destination: "Far Rockaway", minutesAway: 35, status: "On Time", mode: "lirr", stopLat: 40.75037, stopLon: -73.99106, arrivalTs: ts(minutesFromNow: 35), vehicleId: nil, tripId: "LIRR_T7", stopId: "Penn Station"),
+                        ]
+                    )
+                ]
+            ),
+
+            // ═══════════════════════════════════════════
+            //  Metro-North — Grand Central departures
+            // ═══════════════════════════════════════════
+
+            // ── MNR: Hudson Line ──
+            GroupedNearbyTransitResponse(
+                routeId: "MNR_1",
+                displayName: "Hudson",
+                mode: "mnr",
+                colorHex: "#009B3A",
+                directions: [
+                    DirectionArrivalsResponse(
+                        direction: "Northbound",
+                        directionLabel: "Northbound — Hudson Line",
+                        arrivals: [
+                            NearbyTransitResponse(routeId: "MNR_1", stopName: "Grand Central Terminal", direction: "Northbound", destination: "Croton-Harmon", minutesAway: 8, status: "Delayed", mode: "mnr", stopLat: 40.75270, stopLon: -73.97720, arrivalTs: ts(minutesFromNow: 8), vehicleId: nil, tripId: "MNR_T4", stopId: "Grand Central"),
+                            NearbyTransitResponse(routeId: "MNR_1", stopName: "Grand Central Terminal", direction: "Northbound", destination: "White Plains", minutesAway: 10, status: "On Time", mode: "mnr", stopLat: 40.75270, stopLon: -73.97720, arrivalTs: ts(minutesFromNow: 10), vehicleId: nil, tripId: "MNR_T1", stopId: "Grand Central"),
+                        ]
+                    )
+                ]
+            ),
+
+            // ── MNR: New Haven Line ──
+            GroupedNearbyTransitResponse(
+                routeId: "MNR_2",
+                displayName: "New Haven",
+                mode: "mnr",
+                colorHex: "#EE0034",
+                directions: [
+                    DirectionArrivalsResponse(
+                        direction: "Northbound",
+                        directionLabel: "Northbound — New Haven Line",
+                        arrivals: [
+                            NearbyTransitResponse(routeId: "MNR_2", stopName: "Grand Central Terminal", direction: "Northbound", destination: "Danbury", minutesAway: 16, status: "On Time", mode: "mnr", stopLat: 40.75270, stopLon: -73.97720, arrivalTs: ts(minutesFromNow: 16), vehicleId: nil, tripId: "MNR_T5", stopId: "Grand Central"),
+                            NearbyTransitResponse(routeId: "MNR_2", stopName: "Grand Central Terminal", direction: "Northbound", destination: "New Haven", minutesAway: 20, status: "On Time", mode: "mnr", stopLat: 40.75270, stopLon: -73.97720, arrivalTs: ts(minutesFromNow: 20), vehicleId: nil, tripId: "MNR_T2", stopId: "Grand Central"),
+                        ]
+                    )
+                ]
+            ),
+
+            // ── MNR: Harlem Line ──
+            GroupedNearbyTransitResponse(
+                routeId: "MNR_4",
+                displayName: "Harlem",
+                mode: "mnr",
+                colorHex: "#0039A6",
+                directions: [
+                    DirectionArrivalsResponse(
+                        direction: "Northbound",
+                        directionLabel: "Northbound — Harlem Line",
+                        arrivals: [
+                            NearbyTransitResponse(routeId: "MNR_4", stopName: "Grand Central Terminal", direction: "Northbound", destination: "Wassaic", minutesAway: 28, status: "On Time", mode: "mnr", stopLat: 40.75270, stopLon: -73.97720, arrivalTs: ts(minutesFromNow: 28), vehicleId: nil, tripId: "MNR_T3", stopId: "Grand Central"),
+                            NearbyTransitResponse(routeId: "MNR_4", stopName: "Grand Central Terminal", direction: "Northbound", destination: "Southeast", minutesAway: 40, status: "On Time", mode: "mnr", stopLat: 40.75270, stopLon: -73.97720, arrivalTs: ts(minutesFromNow: 40), vehicleId: nil, tripId: "MNR_T6", stopId: "Grand Central"),
+                        ]
+                    )
+                ]
+            ),
         ]
     }
 
@@ -496,7 +678,68 @@ enum MockDataProvider {
                 updatedAt: Int(Date().timeIntervalSince1970) - 5400,
                 affectedRoutes: ["1", "2", "3"]
             ),
+            TransitAlert(
+                routeId: "N",
+                title: "Signal Delays: N/R/W",
+                description: "N, R, and W trains running with delays in both directions due to signal problems at Times Sq-42 St. Expect 8-12 minute delays. Consider B/D/F/M as alternatives.",
+                severity: "severe",
+                mode: "subway",
+                updatedAt: Int(Date().timeIntervalSince1970) - 300,
+                affectedRoutes: ["N", "R", "W"]
+            ),
+            TransitAlert(
+                routeId: "L",
+                title: "L Train: Reduced Service",
+                description: "L trains running every 10-12 minutes between 8 Av and Canarsie-Rockaway Pkwy due to crew availability. Normal frequency expected to resume by 6 PM.",
+                severity: "moderate",
+                mode: "subway",
+                updatedAt: Int(Date().timeIntervalSince1970) - 1200,
+                affectedRoutes: ["L"]
+            ),
+            TransitAlert(
+                routeId: "B",
+                title: "Service Change: B/D Express",
+                description: "B and D trains making local stops between 145 St and 34 St-Herald Sq due to track maintenance. Additional travel time: approximately 10 minutes.",
+                severity: "moderate",
+                mode: "subway",
+                updatedAt: Int(Date().timeIntervalSince1970) - 4200,
+                affectedRoutes: ["B", "D"]
+            ),
+            TransitAlert(
+                routeId: "LIRR_3",
+                title: "LIRR: Port Jefferson Branch — Single Track",
+                description: "Port Jefferson branch operating on a single track between Huntington and Port Jefferson due to rail replacement. Trains may be held at stations. Allow 15-20 minutes extra travel time.",
+                severity: "severe",
+                mode: "lirr",
+                updatedAt: Int(Date().timeIntervalSince1970) - 1500,
+                affectedRoutes: ["LIRR_3"]
+            ),
+            TransitAlert(
+                routeId: "MNR_2",
+                title: "Metro-North: New Haven Line Delays",
+                description: "New Haven Line trains experiencing 10-15 minute delays due to a disabled train at Stamford. Crews are on scene. Danbury and Waterbury branches may also be affected.",
+                severity: "severe",
+                mode: "mnr",
+                updatedAt: Int(Date().timeIntervalSince1970) - 180,
+                affectedRoutes: ["MNR_2"]
+            ),
         ]
+    }
+
+    /// Number of alerts included in the initial "seed" — subsequent alerts appear as new.
+    private static let initialAlertCount = 7
+
+    /// Returns a subset of alerts for the initial "seed" call so that subsequent
+    /// calls with the full set appear as new alerts and trigger notifications.
+    /// Used by ChallengeMode to demonstrate live notification delivery.
+    static func initialAlerts() -> [TransitAlert] {
+        Array(alerts().prefix(initialAlertCount))
+    }
+
+    /// Returns the alerts that should appear "new" on the second refresh,
+    /// triggering local push notifications for the judge to see.
+    static func newAlerts() -> [TransitAlert] {
+        Array(alerts().suffix(from: initialAlertCount))
     }
 
     // MARK: - Subway Arrivals

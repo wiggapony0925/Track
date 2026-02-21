@@ -21,6 +21,10 @@ final class AlertNotificationManager {
     /// Previously known alert IDs — used to detect *new* alerts.
     private var previousAlertIDs: Set<String> = []
 
+    /// Tracks how many times processAlerts has been called — used in
+    /// ChallengeMode to stagger alert delivery so notifications fire.
+    private var processCallCount = 0
+
     private init() {}
 
     // MARK: - Permission
@@ -42,8 +46,32 @@ final class AlertNotificationManager {
     /// for any that are new. Returns the count of **new** alerts this cycle.
     @discardableResult
     func processAlerts(_ alerts: [TransitAlert]) -> Int {
+        processCallCount += 1
         let currentIDs = Set(alerts.map(\.id))
 
+        // ── ChallengeMode: stagger alerts so notifications fire on 2nd refresh ──
+        if ChallengeMode.isEnabled {
+            if processCallCount == 1 {
+                // First call — seed with only the initial subset (no notifications)
+                let initialIDs = Set(MockDataProvider.initialAlerts().map(\.id))
+                previousAlertIDs = initialIDs
+                notifiedAlertIDs = initialIDs
+                return 0
+            } else {
+                // Subsequent calls — the full set includes new alerts → notifications fire
+                let newIDs = currentIDs.subtracting(previousAlertIDs)
+                previousAlertIDs = currentIDs
+                guard !newIDs.isEmpty else { return 0 }
+                let newAlerts = alerts.filter { newIDs.contains($0.id) }
+                for alert in newAlerts where !notifiedAlertIDs.contains(alert.id) {
+                    scheduleNotification(for: alert)
+                    notifiedAlertIDs.insert(alert.id)
+                }
+                return newAlerts.count
+            }
+        }
+
+        // ── Normal mode ──
         // First call — seed the set without spamming notifications
         guard !previousAlertIDs.isEmpty else {
             previousAlertIDs = currentIDs
