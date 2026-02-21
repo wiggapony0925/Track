@@ -30,8 +30,9 @@ class FavoritesManager: ObservableObject {
         // Load cached favorites from disk on launch
         loadFromCache()
 
-        // In ChallengeMode, seed a few favorites so judges see a populated screen
-        if ChallengeMode.isEnabled && favorites.isEmpty {
+        // In ChallengeMode, always reset to the curated demo set so judges
+        // see the intended mix of subway, bus, LIRR, and MNR favorites.
+        if ChallengeMode.isEnabled {
             favorites = MockDataProvider.defaultFavorites()
         }
         

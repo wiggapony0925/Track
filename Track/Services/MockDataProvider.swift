@@ -492,7 +492,7 @@ enum MockDataProvider {
 
             // ── LIRR: Port Jefferson Branch ──
             GroupedNearbyTransitResponse(
-                routeId: "LIRR_3",
+                routeId: "LIRR_11",
                 displayName: "Port Jefferson",
                 mode: "lirr",
                 colorHex: "#00AF3F",
@@ -501,7 +501,7 @@ enum MockDataProvider {
                         direction: "Eastbound",
                         directionLabel: "Eastbound to Port Jefferson",
                         arrivals: [
-                            NearbyTransitResponse(routeId: "LIRR_3", stopName: "Penn Station", direction: "Eastbound", destination: "Port Jefferson", minutesAway: 12, status: "On Time", mode: "lirr", stopLat: 40.75037, stopLon: -73.99106, arrivalTs: ts(minutesFromNow: 12), vehicleId: nil, tripId: "LIRR_T5", stopId: "Penn Station"),
+                            NearbyTransitResponse(routeId: "LIRR_11", stopName: "Penn Station", direction: "Eastbound", destination: "Port Jefferson", minutesAway: 12, status: "On Time", mode: "lirr", stopLat: 40.75037, stopLon: -73.99106, arrivalTs: ts(minutesFromNow: 12), vehicleId: nil, tripId: "LIRR_T5", stopId: "Penn Station"),
                         ]
                     )
                 ]
@@ -509,7 +509,7 @@ enum MockDataProvider {
 
             // ── LIRR: Hempstead Branch ──
             GroupedNearbyTransitResponse(
-                routeId: "LIRR_8",
+                routeId: "LIRR_3",
                 displayName: "Hempstead",
                 mode: "lirr",
                 colorHex: "#CE8C00",
@@ -518,7 +518,7 @@ enum MockDataProvider {
                         direction: "Eastbound",
                         directionLabel: "Eastbound to Hempstead",
                         arrivals: [
-                            NearbyTransitResponse(routeId: "LIRR_8", stopName: "Penn Station", direction: "Eastbound", destination: "Hempstead", minutesAway: 19, status: "Delayed", mode: "lirr", stopLat: 40.75037, stopLon: -73.99106, arrivalTs: ts(minutesFromNow: 19), vehicleId: nil, tripId: "LIRR_T6", stopId: "Penn Station"),
+                            NearbyTransitResponse(routeId: "LIRR_3", stopName: "Penn Station", direction: "Eastbound", destination: "Hempstead", minutesAway: 19, status: "Delayed", mode: "lirr", stopLat: 40.75037, stopLon: -73.99106, arrivalTs: ts(minutesFromNow: 19), vehicleId: nil, tripId: "LIRR_T6", stopId: "Penn Station"),
                         ]
                     )
                 ]
@@ -526,7 +526,7 @@ enum MockDataProvider {
 
             // ── LIRR: Far Rockaway Branch ──
             GroupedNearbyTransitResponse(
-                routeId: "LIRR_7",
+                routeId: "LIRR_4",
                 displayName: "Far Rockaway",
                 mode: "lirr",
                 colorHex: "#6E3219",
@@ -535,7 +535,7 @@ enum MockDataProvider {
                         direction: "Eastbound",
                         directionLabel: "Eastbound to Far Rockaway",
                         arrivals: [
-                            NearbyTransitResponse(routeId: "LIRR_7", stopName: "Penn Station", direction: "Eastbound", destination: "Far Rockaway", minutesAway: 35, status: "On Time", mode: "lirr", stopLat: 40.75037, stopLon: -73.99106, arrivalTs: ts(minutesFromNow: 35), vehicleId: nil, tripId: "LIRR_T7", stopId: "Penn Station"),
+                            NearbyTransitResponse(routeId: "LIRR_4", stopName: "Penn Station", direction: "Eastbound", destination: "Far Rockaway", minutesAway: 35, status: "On Time", mode: "lirr", stopLat: 40.75037, stopLon: -73.99106, arrivalTs: ts(minutesFromNow: 35), vehicleId: nil, tripId: "LIRR_T7", stopId: "Penn Station"),
                         ]
                     )
                 ]
@@ -658,7 +658,7 @@ enum MockDataProvider {
                 severity: "severe",
                 mode: "lirr",
                 updatedAt: Int(Date().timeIntervalSince1970) - 900,
-                affectedRoutes: ["LIRR_9", "LIRR_8", "LIRR_7"]
+                affectedRoutes: ["LIRR_9", "LIRR_3", "LIRR_4"]
             ),
             TransitAlert(
                 routeId: "MNR_1",
@@ -706,13 +706,13 @@ enum MockDataProvider {
                 affectedRoutes: ["B", "D"]
             ),
             TransitAlert(
-                routeId: "LIRR_3",
+                routeId: "LIRR_11",
                 title: "LIRR: Port Jefferson Branch — Single Track",
                 description: "Port Jefferson branch operating on a single track between Huntington and Port Jefferson due to rail replacement. Trains may be held at stations. Allow 15-20 minutes extra travel time.",
                 severity: "severe",
                 mode: "lirr",
                 updatedAt: Int(Date().timeIntervalSince1970) - 1500,
-                affectedRoutes: ["LIRR_3"]
+                affectedRoutes: ["LIRR_11"]
             ),
             TransitAlert(
                 routeId: "MNR_2",
@@ -1386,9 +1386,9 @@ enum MockDataProvider {
             TrainArrival(routeID: "LIRR_2", stationID: "Penn Station", stationName: "Penn Station", direction: "Eastbound", scheduledTime: now.addingTimeInterval(900), estimatedTime: now.addingTimeInterval(960), minutesAway: 16, destination: "Montauk", status: "Delayed", tripId: "LIRR_T2"),
             TrainArrival(routeID: "LIRR_10", stationID: "Penn Station", stationName: "Penn Station", direction: "Eastbound", scheduledTime: now.addingTimeInterval(1500), estimatedTime: now.addingTimeInterval(1500), minutesAway: 25, destination: "Ronkonkoma", status: "On Time", tripId: "LIRR_T3"),
             TrainArrival(routeID: "LIRR_1", stationID: "Penn Station", stationName: "Penn Station", direction: "Eastbound", scheduledTime: now.addingTimeInterval(1800), estimatedTime: now.addingTimeInterval(1800), minutesAway: 30, destination: "Long Beach", status: "On Time", tripId: "LIRR_T4"),
-            TrainArrival(routeID: "LIRR_3", stationID: "Penn Station", stationName: "Penn Station", direction: "Eastbound", scheduledTime: now.addingTimeInterval(720), estimatedTime: now.addingTimeInterval(720), minutesAway: 12, destination: "Port Jefferson", status: "On Time", tripId: "LIRR_T5"),
-            TrainArrival(routeID: "LIRR_8", stationID: "Penn Station", stationName: "Penn Station", direction: "Eastbound", scheduledTime: now.addingTimeInterval(1080), estimatedTime: now.addingTimeInterval(1140), minutesAway: 19, destination: "Hempstead", status: "Delayed", tripId: "LIRR_T6"),
-            TrainArrival(routeID: "LIRR_7", stationID: "Penn Station", stationName: "Penn Station", direction: "Eastbound", scheduledTime: now.addingTimeInterval(2100), estimatedTime: now.addingTimeInterval(2100), minutesAway: 35, destination: "Far Rockaway", status: "On Time", tripId: "LIRR_T7"),
+            TrainArrival(routeID: "LIRR_11", stationID: "Penn Station", stationName: "Penn Station", direction: "Eastbound", scheduledTime: now.addingTimeInterval(720), estimatedTime: now.addingTimeInterval(720), minutesAway: 12, destination: "Port Jefferson", status: "On Time", tripId: "LIRR_T5"),
+            TrainArrival(routeID: "LIRR_3", stationID: "Penn Station", stationName: "Penn Station", direction: "Eastbound", scheduledTime: now.addingTimeInterval(1080), estimatedTime: now.addingTimeInterval(1140), minutesAway: 19, destination: "Hempstead", status: "Delayed", tripId: "LIRR_T6"),
+            TrainArrival(routeID: "LIRR_4", stationID: "Penn Station", stationName: "Penn Station", direction: "Eastbound", scheduledTime: now.addingTimeInterval(2100), estimatedTime: now.addingTimeInterval(2100), minutesAway: 35, destination: "Far Rockaway", status: "On Time", tripId: "LIRR_T7"),
         ]
     }
 
@@ -1411,11 +1411,16 @@ enum MockDataProvider {
     static func defaultFavorites() -> [CloudFavorite] {
         let mockUserId = UUID()
         return [
+            // Subway: 1 train
             CloudFavorite(userId: mockUserId, routeId: "1", routeDisplayName: "1", stopId: "128N", stopName: "34 St-Penn Station", direction: "Uptown", destination: "Van Cortlandt Park - 242 St", mode: "subway", stopLat: 40.75037, stopLon: -73.99106, displayOrder: 0),
+            // Bus: M34A-SBS crosstown
             CloudFavorite(userId: mockUserId, routeId: "MTA NYCT_M34A-SBS", routeDisplayName: "M34A-SBS", stopId: "401517", stopName: "W 34 ST/8 AV", direction: "East", destination: "Waterside via 34 St", mode: "bus", stopLat: 40.75260, stopLon: -73.99930, displayOrder: 1),
-            CloudFavorite(userId: mockUserId, routeId: "A", routeDisplayName: "A", stopId: "A28N", stopName: "34 St-Penn Station", direction: "Uptown", destination: "Inwood - 207 St", mode: "subway", stopLat: 40.75229, stopLon: -73.99339, displayOrder: 2),
-            CloudFavorite(userId: mockUserId, routeId: "MTA NYCT_M20", routeDisplayName: "M20", stopId: "401540", stopName: "8 AV/W 35 ST", direction: "South", destination: "South via 8 Av / Hudson St", mode: "bus", stopLat: 40.75340, stopLon: -73.99970, displayOrder: 3),
-            CloudFavorite(userId: mockUserId, routeId: "LIRR_9", routeDisplayName: "Babylon", stopId: "Penn Station", stopName: "Penn Station", direction: "Eastbound", destination: "Babylon", mode: "lirr", stopLat: 40.75037, stopLon: -73.99106, displayOrder: 4),
+            // Subway: E train
+            CloudFavorite(userId: mockUserId, routeId: "E", routeDisplayName: "E", stopId: "A28N", stopName: "34 St-Penn Station", direction: "Uptown", destination: "Jamaica Center", mode: "subway", stopLat: 40.75229, stopLon: -73.99339, displayOrder: 2),
+            // LIRR: Babylon Branch
+            CloudFavorite(userId: mockUserId, routeId: "LIRR_9", routeDisplayName: "Babylon", stopId: "Penn Station", stopName: "Penn Station", direction: "Eastbound", destination: "Babylon", mode: "lirr", stopLat: 40.75037, stopLon: -73.99106, displayOrder: 3),
+            // MNR: Hudson Line
+            CloudFavorite(userId: mockUserId, routeId: "MNR_1", routeDisplayName: "Hudson", stopId: "Grand Central", stopName: "Grand Central Terminal", direction: "Northbound", destination: "Croton-Harmon", mode: "mnr", stopLat: 40.75270, stopLon: -73.97720, displayOrder: 4),
         ]
     }
 
@@ -1518,13 +1523,20 @@ enum MockDataProvider {
 
     // MARK: - LIRR Polylines
 
-    /// Mock LIRR branch polylines for map overlay.
+    /// Mock LIRR branch polylines for map overlay — encoded from real GTFS station coordinates.
     static func allLIRRShapes() -> AllCommuterRailLinesResponse {
         AllCommuterRailLinesResponse(lines: [
-            CommuterRailLineOverlay(routeId: "LIRR_9", name: "Babylon", colorHex: "#00985F", polylines: ["____F____M__H__W__A__I__C__T_E__H_^__O_X__["], mode: "lirr"),
-            CommuterRailLineOverlay(routeId: "LIRR_2", name: "Montauk", colorHex: "#00985F", polylines: ["____F____M__H__W__A__I__C__T_E__H_^__O_X__[__I___@__Z___A"], mode: "lirr"),
-            CommuterRailLineOverlay(routeId: "LIRR_10", name: "Ronkonkoma", colorHex: "#00985F", polylines: ["____F____M__H__W__G__]__@__R__A___@__C___@"], mode: "lirr"),
-            CommuterRailLineOverlay(routeId: "LIRR_1", name: "Long Beach", colorHex: "#00985F", polylines: ["____F____M__H__W__A__I__E__O__L__L"], mode: "lirr"),
+            CommuterRailLineOverlay(routeId: "LIRR_9", name: "Babylon", colorHex: "#00985F", polylines: ["savwFjzrbMr]stPvzG{nQ~xFwhF~\\gpKrXcyEnFwyEjHw_HzE_yFjC{qCvBgfFz@ccFkC_gEcG_qE{pAsqE{r@odEg^c`EguAklG"], mode: "lirr"),
+            CommuterRailLineOverlay(routeId: "LIRR_2", name: "Montauk", colorHex: "#00985F", polylines: ["s{iwFjka~LgjD_gJseA{qHsmB_jK{gCwbN{lCo{ZkbBodOw_CglWcG{eXkp@k_UkpEgpPwsCcgNcoE__IkhD{cJwxCo_OcuLgxQ"], mode: "lirr"),
+            CommuterRailLineOverlay(routeId: "LIRR_10", name: "Ronkonkoma", colorHex: "#00985F", polylines: ["savwFjzrbMr]stPvzG{nQwj@gbMwj@krIkk@scLoKc~EwLsjF{@kdF_S_|GcLwcFwe@clI_hBcoOo_@ckGsl@olK_]{xGgc@scL{Ys_Iox@c{N"], mode: "lirr"),
+            CommuterRailLineOverlay(routeId: "LIRR_11", name: "Port Jefferson", colorHex: "#00985F", polylines: ["coswFrzx~Lk}A_pC_mBolAcdCo~GkxAcxC{dBsyFgbCcdH{pAcmFgzAg|Ew}CkjH"], mode: "lirr"),
+            CommuterRailLineOverlay(routeId: "LIRR_1", name: "Long Beach", colorHex: "#00985F", polylines: ["savwFjzrbMr]stPvzG{nQ~xFwhFvmAo}EvfBkhD~xA_kCfkA{gCzfAwwAj\\fr@g@by@"], mode: "lirr"),
+            CommuterRailLineOverlay(routeId: "LIRR_3", name: "Hempstead", colorHex: "#00985F", polylines: ["savwFjzrbMr]stPvzG{nQwj@gbMwj@krIkk@scLrIkfEj\\o}Ejf@_bEjRkmDjR~|X"], mode: "lirr"),
+            CommuterRailLineOverlay(routeId: "LIRR_4", name: "Far Rockaway", colorHex: "#00985F", polylines: ["savwFjzrbMr]stPvzG{nQ~xFwhFz}B_q@vzBcj@vhA_b@b[j\\r]_D"], mode: "lirr"),
+            CommuterRailLineOverlay(routeId: "LIRR_7", name: "Port Washington", colorHex: "#00985F", polylines: ["savwFjzrbMr]stPw~@ggCcGslE{Yg~Dsb@w~EoF{oDcBomCk\\wuBw`@keC{aA{~Dka@skCsb@_|B"], mode: "lirr"),
+            CommuterRailLineOverlay(routeId: "LIRR_5", name: "West Hempstead", colorHex: "#00985F", polylines: ["savwFjzrbMr]stPvzG{nQ~xFwhF{^whFka@crFox@wuGw~@{uA"], mode: "lirr"),
+            CommuterRailLineOverlay(routeId: "LIRR_6", name: "Oyster Bay", colorHex: "#00985F", polylines: ["ggqwFnis_Mkk@skCwo@koC{aA_zCkz@cdCknAszCoqAcqD_tA_xDgdBcgDcpB{{C"], mode: "lirr"),
+            CommuterRailLineOverlay(routeId: "LIRR_8", name: "City Terminal Zone", colorHex: "#00985F", polylines: ["gglwFztnaMjxAgvCvL{xBvQwrAzw@_yA{pAf|m@"], mode: "lirr"),
         ])
     }
 
@@ -1542,12 +1554,15 @@ enum MockDataProvider {
 
     // MARK: - MNR Polylines
 
-    /// Mock Metro-North line polylines for map overlay.
+    /// Mock Metro-North line polylines for map overlay — encoded from real GTFS station coordinates.
     static func allMNRShapes() -> AllCommuterRailLinesResponse {
         AllCommuterRailLinesResponse(lines: [
-            CommuterRailLineOverlay(routeId: "MNR_1", name: "Hudson", colorHex: "#009B3A", polylines: ["____F____M__M__D__P__H__V__C__W__@__[__R"], mode: "mnr"),
-            CommuterRailLineOverlay(routeId: "MNR_2", name: "New Haven", colorHex: "#EE0034", polylines: ["____F____M__M__D__O__V__Z___@__W___A__V___@"], mode: "mnr"),
-            CommuterRailLineOverlay(routeId: "MNR_4", name: "Harlem", colorHex: "#0039A6", polylines: ["____F____M__M__D__R__M___@__F___@__N___@___@"], mode: "mnr"),
+            CommuterRailLineOverlay(routeId: "MNR_1", name: "Hudson", colorHex: "#009B3A", polylines: ["kovwFntobMgeIwmFo|HwbD{bCsDshBzOg|@gc@_yAwj@_mBc~@ku@sv@stAgkAwhAw`@_oAoAkz@n_@wpB~C{iBjHogAsSksAoKcsC{JcsCvj@oqFwaBciHbcA{qCrpCw`En|HoaNfbCsiXrfCwoJwhA"], mode: "mnr"),
+            CommuterRailLineOverlay(routeId: "MNR_2", name: "New Haven", colorHex: "#EE0034", polylines: ["kovwFntobMgeIwmF_|Bw|F{pAw{Dgw@sbEka@ogAgfAg{Ck~C{dBwy@SwcAgaAgkA{nBccA{_B_eAg}BsjAwmA{pA{}B_tAggC_mBoxEobAsuCwj@gxBsq@{tD{}Bo`Bcy@suCco@spCcj@okDsjAo|Cwy@skC_oAwqDkiAwoE{|@{~DovAccFcrAcqD_hBkpE{kA_wGgbCsnI_pC{xLg_GkzJkwDg}L"], mode: "mnr"),
+            CommuterRailLineOverlay(routeId: "MNR_4", name: "Harlem", colorHex: "#0039A6", polylines: ["kovwFntobMgeIwmF_|Bw|F{pAw{Dgw@sbEka@ogAgfAg{CgzAsyA_yAguAs`A_v@_{@soAk_AczB_yA{nB_cBcy@wgDja@_uCjp@wfBns@wpB~f@_iDz^{jDzdBczBzaAk~CzJ_zC_I_uCkz@giBgsBgnBwzGwzB{lC{mJ_qJs~FwqDksF_|B_wBwrAs`FwmAwlDfnBweJ~vB"], mode: "mnr"),
+            CommuterRailLineOverlay(routeId: "MNR_5", name: "Danbury", colorHex: "#EE0034", polylines: ["{}vyFfbg_Mc|Acj@w|AgJ{gC{aA_|B{xBg{C{w@szCgw@_{EoZ"], mode: "mnr"),
+            CommuterRailLineOverlay(routeId: "MNR_6", name: "New Canaan", colorHex: "#EE0034", polylines: ["{|oyFntz_MseAn}@wt@zr@_{@bj@_uCfiB"], mode: "mnr"),
+            CommuterRailLineOverlay(routeId: "MNR_7", name: "Waterbury", colorHex: "#EE0034", polylines: ["odhzFrj}}LojB{iB_yF_`FcdCwcAkjCk{B_pH{lCkuEwyEcif@c|F"], mode: "mnr"),
         ])
     }
 
