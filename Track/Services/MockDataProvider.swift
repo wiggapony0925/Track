@@ -1169,8 +1169,10 @@ enum MockDataProvider {
         let mockUserId = UUID()
         return [
             CloudFavorite(userId: mockUserId, routeId: "1", routeDisplayName: "1", stopId: "128N", stopName: "34 St-Penn Station", direction: "Uptown", destination: "Van Cortlandt Park - 242 St", mode: "subway", stopLat: 40.75037, stopLon: -73.99106, displayOrder: 0),
-            CloudFavorite(userId: mockUserId, routeId: "A", routeDisplayName: "A", stopId: "A28N", stopName: "34 St-Penn Station", direction: "Uptown", destination: "Inwood - 207 St", mode: "subway", stopLat: 40.75229, stopLon: -73.99339, displayOrder: 1),
-            CloudFavorite(userId: mockUserId, routeId: "7", routeDisplayName: "7", stopId: "726N", stopName: "34 St-Hudson Yards", direction: "Queens", destination: "Flushing - Main St", mode: "subway", stopLat: 40.75588, stopLon: -74.00191, displayOrder: 2),
+            CloudFavorite(userId: mockUserId, routeId: "MTA NYCT_M34A-SBS", routeDisplayName: "M34A-SBS", stopId: "401517", stopName: "W 34 ST/8 AV", direction: "East", destination: "Waterside via 34 St", mode: "bus", stopLat: 40.75260, stopLon: -73.99930, displayOrder: 1),
+            CloudFavorite(userId: mockUserId, routeId: "A", routeDisplayName: "A", stopId: "A28N", stopName: "34 St-Penn Station", direction: "Uptown", destination: "Inwood - 207 St", mode: "subway", stopLat: 40.75229, stopLon: -73.99339, displayOrder: 2),
+            CloudFavorite(userId: mockUserId, routeId: "MTA NYCT_M20", routeDisplayName: "M20", stopId: "401540", stopName: "8 AV/W 35 ST", direction: "South", destination: "South via 8 Av / Hudson St", mode: "bus", stopLat: 40.75340, stopLon: -73.99970, displayOrder: 3),
+            CloudFavorite(userId: mockUserId, routeId: "LIRR_9", routeDisplayName: "Babylon", stopId: "Penn Station", stopName: "Penn Station", direction: "Eastbound", destination: "Babylon", mode: "lirr", stopLat: 40.75037, stopLon: -73.99106, displayOrder: 4),
         ]
     }
 

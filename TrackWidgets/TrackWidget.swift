@@ -242,7 +242,7 @@ struct TrackWidgetEntryView: View {
                         Text(arrival.displayName)
                             .font(.system(size: 14, weight: .bold))
                         Spacer()
-                        Text(arrival.arrivalTime, style: .timer)
+                        Text(timerInterval: Date()...max(Date(), arrival.arrivalTime), countsDown: true)
                             .font(.system(size: 14, weight: .bold, design: .rounded))
                     }
                     Text(arrival.stopName)

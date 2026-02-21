@@ -134,7 +134,7 @@ struct TrackWidgetLiveActivity: Widget {
 
         VStack(alignment: .center, spacing: -2) {  // Negative spacing to tighten number and label
             // Big countdown number
-            Text(context.state.arrivalTime, style: .timer)
+            Text(timerInterval: Date()...max(Date(), context.state.arrivalTime), countsDown: true)
                 .font(.system(size: 40, weight: .black, design: .rounded))  // 46 -> 40
                 .monospacedDigit()
                 .foregroundStyle(.white)
@@ -164,7 +164,7 @@ struct TrackWidgetLiveActivity: Widget {
         -> some View
     {
         HStack(alignment: .firstTextBaseline, spacing: 2) {
-            Text(context.state.arrivalTime, style: .timer)
+            Text(timerInterval: Date()...max(Date(), context.state.arrivalTime), countsDown: true)
                 .font(.system(size: size, weight: .bold, design: .rounded))
                 .monospacedDigit()
                 .foregroundStyle(.white)
@@ -182,7 +182,7 @@ struct TrackWidgetLiveActivity: Widget {
     private func compactCountdown(context: ActivityViewContext<TrackActivityAttributes>)
         -> some View
     {
-        Text(context.state.arrivalTime, style: .timer)
+        Text(timerInterval: Date()...max(Date(), context.state.arrivalTime), countsDown: true)
             .font(.system(size: 15, weight: .bold, design: .rounded))
             .monospacedDigit()
             .foregroundStyle(.white)

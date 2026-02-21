@@ -368,7 +368,7 @@ struct SingleRouteWidgetView: View {
                             Spacer()
                             
                             HStack(alignment: .firstTextBaseline, spacing: 2) {
-                                Text(first.arrivalTime, style: .timer)
+                                Text(timerInterval: Date()...max(Date(), first.arrivalTime), countsDown: true)
                                     .font(.system(size: 42, weight: .bold, design: .rounded))
                                     .foregroundColor(AppTheme.Colors.countdown(first.minutesAway))
                                     .monospacedDigit()
@@ -388,7 +388,7 @@ struct SingleRouteWidgetView: View {
                                     .font(.system(size: 13, weight: .bold))
                                     .foregroundColor(AppTheme.Colors.textSecondary)
                                 Spacer()
-                                Text(arrival.arrivalTime, style: .timer)
+                                Text(timerInterval: Date()...max(Date(), arrival.arrivalTime), countsDown: true)
                                     .font(.system(size: 15, weight: .bold, design: .rounded))
                                     .foregroundColor(AppTheme.Colors.textPrimary)
                                     .monospacedDigit()

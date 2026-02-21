@@ -386,7 +386,7 @@ struct LiveNearMeWidgetView: View {
                 .shadow(color: .black.opacity(0.1), radius: 2, x: 0, y: 1)
 
             HStack(alignment: .firstTextBaseline, spacing: 1) {
-                Text(arrival.arrivalTime, style: .timer)
+                Text(timerInterval: Date()...max(Date(), arrival.arrivalTime), countsDown: true)
                     .font(.system(size: 18, weight: .bold, design: .rounded))
                     .foregroundColor(AppTheme.Colors.countdown(arrival.minutesAway))
                     .monospacedDigit()
@@ -422,7 +422,7 @@ struct LiveNearMeWidgetView: View {
             Spacer()
 
             VStack(alignment: .trailing, spacing: 0) {
-                Text(arrival.arrivalTime, style: .timer)
+                Text(timerInterval: Date()...max(Date(), arrival.arrivalTime), countsDown: true)
                     .font(.system(size: 20, weight: .bold, design: .rounded))
                     .foregroundColor(AppTheme.Colors.countdown(arrival.minutesAway))
                     .monospacedDigit()
