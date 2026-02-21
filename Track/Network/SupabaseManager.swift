@@ -420,13 +420,30 @@ class SupabaseManager: ObservableObject {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
         
-        let encoder = JSONEncoder()
-        request.httpBody = try encoder.encode(favorite)
+        // Build a minimal insert payload — omit server-generated fields
+        // (id, created_at, updated_at) so Supabase uses its defaults
+        var payload: [String: Any] = [
+            "user_id": favorite.userId.uuidString,
+            "route_id": favorite.routeId,
+            "route_display_name": favorite.routeDisplayName,
+            "stop_id": favorite.stopId,
+            "stop_name": favorite.stopName,
+            "mode": favorite.mode,
+            "display_order": favorite.displayOrder ?? 0
+        ]
+        if let direction = favorite.direction { payload["direction"] = direction }
+        if let destination = favorite.destination { payload["destination"] = destination }
+        if let lat = favorite.stopLat { payload["stop_lat"] = lat }
+        if let lon = favorite.stopLon { payload["stop_lon"] = lon }
         
-        let (_, response) = try await URLSession.shared.data(for: request)
+        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
         
         guard let httpResponse = response as? HTTPURLResponse,
               (200...299).contains(httpResponse.statusCode) else {
+            let body = String(data: data, encoding: .utf8) ?? "(no body)"
+            print("[SupabaseManager] addFavorite failed: \(body)")
             throw SupabaseError.insertFailed
         }
     }

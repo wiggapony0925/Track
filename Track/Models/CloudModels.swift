@@ -47,7 +47,7 @@ struct UserProfile: Codable, Identifiable {
 // MARK: - Cloud Favorite
 
 /// Favorite route/stop stored in Supabase
-struct CloudFavorite: Codable, Identifiable {
+struct CloudFavorite: Codable, Identifiable, Equatable {
     var id: Int64?
     let userId: UUID
     let routeId: String

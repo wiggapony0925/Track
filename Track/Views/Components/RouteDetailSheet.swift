@@ -66,6 +66,13 @@ struct RouteDetailSheet: View {
 
     /// Favorites manager for heart button
     @State private var isFavorited = false
+    @State private var showSignInPrompt = false
+    @ObservedObject private var supabase = SupabaseManager.shared
+    @ObservedObject private var favoritesManager = FavoritesManager.shared
+
+    /// True while the first arrivals batch is still in-flight.
+    /// Drives skeleton placeholders so the sheet never looks empty on open.
+    @State private var isLoadingArrivals: Bool = true
 
     /// Available tabs for this route.
     enum RouteDetailTab: String, CaseIterable {
@@ -208,11 +215,17 @@ struct RouteDetailSheet: View {
                 // MARK: - Alert Banner (most recent alert, if any)
                 if let topAlert = routeAlerts.first {
                     routeAlertBanner(topAlert)
+                } else if isLoadingArrivals {
+                    // Skeleton while alerts haven't loaded yet
+                    alertBannerSkeleton
                 }
 
                 // MARK: - Direction Picker (above countdown so user picks direction first)
                 if group.directions.count > 1 {
                     directionPicker
+                } else if isLoadingArrivals {
+                    // Skeleton direction pills while shape / arrivals are in-flight
+                    directionPickerSkeleton
                 }
 
                 // MARK: - Content Tab Picker
@@ -248,11 +261,43 @@ struct RouteDetailSheet: View {
         .background(AppTheme.Colors.background)
         .onAppear {
             let dir = safeDirection
-            isFavorited = FavoritesManager.shared.isFavorite(
+            isFavorited = favoritesManager.isFavorite(
                 routeId: group.routeId,
                 stopId: dir.arrivals.first?.stopId ?? "",
                 direction: dir.direction
             )
+            // Seed loading state: if the current direction already has arrivals
+            // (e.g. sheet re-opened after data landed), skip the skeleton phase.
+            isLoadingArrivals = safeDirection.arrivals.isEmpty
+        }
+        .onChange(of: group) { _, _ in
+            // Clear loading skeleton the moment any arrivals arrive.
+            if !safeDirection.arrivals.isEmpty {
+                withAnimation(.easeOut(duration: 0.3)) {
+                    isLoadingArrivals = false
+                }
+            }
+        }
+        .task(id: group.id) {
+            // Safety timeout: if no arrivals arrive within 6 s (e.g. truly no service),
+            // stop showing skeletons and let the real empty-state render.
+            try? await Task.sleep(for: .seconds(6))
+            withAnimation(.easeOut(duration: 0.3)) {
+                isLoadingArrivals = false
+            }
+        }
+        .onChange(of: favoritesManager.favorites) { _, _ in
+            let dir = safeDirection
+            isFavorited = favoritesManager.isFavorite(
+                routeId: group.routeId,
+                stopId: dir.arrivals.first?.stopId ?? "",
+                direction: dir.direction
+            )
+        }
+        .alert("Sign In to Save Favorites", isPresented: $showSignInPrompt) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Create a free account to save your favorite routes and access them across all your devices.")
         }
     }
 
@@ -356,9 +401,14 @@ struct RouteDetailSheet: View {
                 }
             }
 
-            // Favorite button
-            if SupabaseManager.shared.isAuthenticated {
+            // Favorite + Close buttons — always visible, side by side
+            HStack(spacing: 14) {
+                // Heart button — always shown
                 Button {
+                    guard supabase.isAuthenticated else {
+                        showSignInPrompt = true
+                        return
+                    }
                     let dir = safeDirection
                     let firstArrival = dir.arrivals.first
                     Task {
@@ -380,22 +430,23 @@ struct RouteDetailSheet: View {
                     }
                 } label: {
                     Image(systemName: isFavorited ? "heart.fill" : "heart")
-                        .font(.custom("Helvetica", size: 22))
+                        .font(.system(size: 20, weight: .semibold))
                         .foregroundColor(isFavorited ? .red : AppTheme.Colors.textSecondary)
                         .symbolEffect(.bounce, value: isFavorited)
+                        .frame(width: 36, height: 36)
                 }
                 .accessibilityLabel(isFavorited ? "Remove from favorites" : "Add to favorites")
-            }
 
-            // Close button
-            Button {
-                onDismiss?()
-            } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.custom("Helvetica", size: 24))
-                    .foregroundColor(AppTheme.Colors.textSecondary)
+                // Close button
+                Button {
+                    onDismiss?()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.custom("Helvetica", size: 24))
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+                }
+                .accessibilityLabel("Close")
             }
-            .accessibilityLabel("Close")
         }
         .padding(.horizontal, AppTheme.Layout.margin)
     }
@@ -667,8 +718,10 @@ struct RouteDetailSheet: View {
             .padding(.horizontal, AppTheme.Layout.margin)
 
             if nextArrivals.isEmpty {
-                // When no live arrivals, show vehicle count awareness, scheduled departures, or empty state
-                if liveVehicleCount > 0 {
+                // Still fetching first batch → show skeleton chips
+                if isLoadingArrivals {
+                    CountdownChipSkeleton(count: 3)
+                } else if liveVehicleCount > 0 {
                     // Vehicles are on the map but no arrival data for this direction yet
                     VStack(spacing: 8) {
                         Image(systemName: group.isBus ? "bus.fill" : "tram.fill")
@@ -1082,8 +1135,10 @@ struct RouteDetailSheet: View {
             .padding(.horizontal, AppTheme.Layout.margin)
 
             if sortedArrivals.isEmpty {
-                // Priority: live vehicle awareness > scheduled departures > empty state
-                if liveVehicleCount > 0 {
+                // Still fetching → show skeleton rows so sheet isn't blank
+                if isLoadingArrivals {
+                    ArrivalRowSkeleton(count: 4)
+                } else if liveVehicleCount > 0 {
                     // Vehicles are on the map for this route, just no arrival data here
                     VStack(spacing: 8) {
                         Image(systemName: group.isBus ? "bus.fill" : "tram.fill")
@@ -1591,6 +1646,45 @@ struct RouteDetailSheet: View {
     }
 
     // MARK: - Route Alerts Section
+
+    // MARK: - Loading Skeletons
+
+    /// Shimmer placeholder for the alert banner while arrivals are in-flight.
+    private var alertBannerSkeleton: some View {
+        HStack(spacing: 10) {
+            SkeletonBar(width: 14, height: 14, opacity: 0.12)
+            SkeletonBar(width: 200, height: 14, opacity: 0.10)
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(AppTheme.Colors.cardBackground)
+        )
+        .padding(.horizontal, AppTheme.Layout.margin)
+        .shimmer()
+    }
+
+    /// Shimmer placeholder for direction pills while shape / arrivals load.
+    private var directionPickerSkeleton: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SkeletonBar(width: 70, height: 12, opacity: 0.08)
+                .padding(.horizontal, AppTheme.Layout.margin)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    // Two pill placeholders
+                    ForEach([CGFloat(110), 90], id: \.self) { width in
+                        SkeletonBar(width: width, height: 40, opacity: 0.10)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+                }
+                .padding(.horizontal, AppTheme.Layout.margin)
+            }
+        }
+        .shimmer()
+    }
 
     private var routeAlertsSection: some View {
         VStack(alignment: .leading, spacing: 10) {

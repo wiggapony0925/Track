@@ -2,7 +2,7 @@ import Foundation
 import CoreLocation
 
 /// Matches the backend's `NearbyTransitArrival` JSON schema.
-struct NearbyTransitResponse: Codable, Identifiable {
+struct NearbyTransitResponse: Codable, Identifiable, Equatable {
     /// Unique identity combining route, stop, ETA, and trip/timestamp
     /// to avoid collisions when two trains share the same minutesAway.
     var id: String {
@@ -64,7 +64,7 @@ struct NearbyTransitResponse: Codable, Identifiable {
 }
 
 /// Arrivals for a single direction within a grouped route.
-struct DirectionArrivalsResponse: Codable, Identifiable {
+struct DirectionArrivalsResponse: Codable, Identifiable, Equatable {
     /// Stable identity that handles routes with many directions sharing similar names.
     /// Falls back to just `direction` when `directionLabel` is nil (backward compat).
     var id: String { "\(direction)_\(directionLabel ?? "")" }
@@ -110,7 +110,7 @@ struct DirectionArrivalsResponse: Codable, Identifiable {
 
 /// Matches the backend's `GroupedNearbyTransit` JSON schema.
 /// One entry per route; directions are swipeable sub-groups.
-struct GroupedNearbyTransitResponse: Codable, Identifiable {
+struct GroupedNearbyTransitResponse: Codable, Identifiable, Equatable {
     var id: String { routeId }
 
     let routeId: String
