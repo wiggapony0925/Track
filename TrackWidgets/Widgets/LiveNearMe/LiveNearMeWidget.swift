@@ -84,6 +84,19 @@ struct LiveNearMeProvider: TimelineProvider {
 
     /// Fetches live nearby transit data from the backend API.
     private func fetchLiveEntry(maxRoutes: Int, completion: @escaping (LiveNearMeEntry?) -> Void) {
+        // In challenge mode, return mock data without network
+        if ChallengeMode.isEnabled {
+            let arrivals = [
+                NearbyArrival(routeId: "1", stopName: "Times Sq-42 St", direction: "Uptown", minutesAway: 2, status: "Approaching", mode: "subway", arrivalTime: Date().addingTimeInterval(120)),
+                NearbyArrival(routeId: "7", stopName: "Times Sq-42 St", direction: "Queens", minutesAway: 3, status: "Approaching", mode: "subway", arrivalTime: Date().addingTimeInterval(180)),
+                NearbyArrival(routeId: "N", stopName: "Times Sq-42 St", direction: "Uptown", minutesAway: 5, status: "En Route", mode: "subway", arrivalTime: Date().addingTimeInterval(300)),
+                NearbyArrival(routeId: "A", stopName: "42 St-Port Authority", direction: "Uptown", minutesAway: 4, status: "En Route", mode: "subway", arrivalTime: Date().addingTimeInterval(240)),
+                NearbyArrival(routeId: "M42", stopName: "W 42 ST/7 AV", direction: "East", minutesAway: 6, status: "Approaching", mode: "bus", arrivalTime: Date().addingTimeInterval(360)),
+            ]
+            completion(LiveNearMeEntry(date: Date(), state: .active(arrivals: Array(arrivals.prefix(maxRoutes)))))
+            return
+        }
+
         let defaults = UserDefaults(suiteName: kAppGroupIdentifier) ?? UserDefaults.standard
         let lat = defaults.double(forKey: "lastLatitude")
         let lon = defaults.double(forKey: "lastLongitude")
@@ -94,20 +107,7 @@ struct LiveNearMeProvider: TimelineProvider {
             return
         }
 
-        let useLocalhost = defaults.bool(forKey: "dev_use_localhost")
-        let baseURL: String
-        #if targetEnvironment(simulator)
-        if useLocalhost {
-            baseURL = "http://127.0.0.1:8000"
-        } else {
-            let storedIP = defaults.string(forKey: "dev_custom_ip") ?? "192.168.12.101"
-            baseURL = "http://\(storedIP):8000"
-        }
-        #else
-        // Physical device — never use localhost
-        let storedIP = defaults.string(forKey: "dev_custom_ip") ?? "192.168.12.101"
-        baseURL = "http://\(storedIP):8000"
-        #endif
+        let baseURL = WidgetURLHelper.resolvedBaseURL()
 
         guard var components = URLComponents(string: baseURL + "/nearby") else {
             completion(nil)
@@ -386,7 +386,7 @@ struct LiveNearMeWidgetView: View {
                 .shadow(color: .black.opacity(0.1), radius: 2, x: 0, y: 1)
 
             HStack(alignment: .firstTextBaseline, spacing: 1) {
-                Text(arrival.arrivalTime, style: .timer)
+                Text(timerInterval: Date()...max(Date(), arrival.arrivalTime), countsDown: true)
                     .font(.system(size: 18, weight: .bold, design: .rounded))
                     .foregroundColor(AppTheme.Colors.countdown(arrival.minutesAway))
                     .monospacedDigit()
@@ -422,7 +422,7 @@ struct LiveNearMeWidgetView: View {
             Spacer()
 
             VStack(alignment: .trailing, spacing: 0) {
-                Text(arrival.arrivalTime, style: .timer)
+                Text(timerInterval: Date()...max(Date(), arrival.arrivalTime), countsDown: true)
                     .font(.system(size: 20, weight: .bold, design: .rounded))
                     .foregroundColor(AppTheme.Colors.countdown(arrival.minutesAway))
                     .monospacedDigit()

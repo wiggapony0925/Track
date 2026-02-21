@@ -63,6 +63,7 @@ struct TrackAPI {
 
     /// Fetches app settings from the backend on launch.
     static func fetchConfig() async throws -> [String: Any] {
+        if ChallengeMode.isEnabled { return [:] }
         let data = try await get(path: "/config")
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw TrackAPIError.decodingFailed
@@ -77,6 +78,7 @@ struct TrackAPI {
     /// - Parameter lineID: A subway line identifier (e.g. "L", "A", "1").
     /// - Returns: Array of decoded `TrainArrival` objects.
     static func fetchSubwayArrivals(lineID: String) async throws -> [TrainArrival] {
+        if ChallengeMode.isEnabled { return MockDataProvider.subwayArrivals(lineID: lineID) }
         let data = try await get(path: "/subway/\(lineID)")
         return try decoder.decode([SubwayArrivalResponse].self, from: data).map {
             $0.toTrainArrival()
@@ -94,6 +96,7 @@ struct TrackAPI {
     static func fetchNearbyBusStops(lat: Double, lon: Double, radius: Int? = nil) async throws
         -> [BusStop]
     {
+        if ChallengeMode.isEnabled { return MockDataProvider.nearbyBusStops() }
         let effectiveRadius = radius ?? AppSettings.shared.effectiveAPISearchRadius
         guard var components = URLComponents(string: baseURL + "/bus/nearby") else {
             throw TrackAPIError.invalidURL
@@ -115,6 +118,7 @@ struct TrackAPI {
     /// - Parameter stopID: The bus stop identifier (e.g. "MTA_308214").
     /// - Returns: Array of `BusArrival`.
     static func fetchBusArrivals(stopID: String) async throws -> [BusArrival] {
+        if ChallengeMode.isEnabled { return MockDataProvider.busArrivals() }
         let encoded = stopID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? stopID
         let data = try await get(path: "/bus/live/\(encoded)")
         return try decoder.decode([BusArrival].self, from: data)
@@ -124,6 +128,7 @@ struct TrackAPI {
     ///
     /// - Returns: Array of `BusRoute` with short name, long name, and color.
     static func fetchBusRoutes() async throws -> [BusRoute] {
+        if ChallengeMode.isEnabled { return [] }
         let data = try await get(path: "/bus/routes")
         return try decoder.decode([BusRoute].self, from: data)
     }
@@ -133,6 +138,7 @@ struct TrackAPI {
     /// - Parameter routeID: Fully-qualified route ID (e.g. "MTA NYCT_B63").
     /// - Returns: Array of `BusStop` along the route.
     static func fetchBusStopsForRoute(routeID: String) async throws -> [BusStop] {
+        if ChallengeMode.isEnabled { return MockDataProvider.nearbyBusStops() }
         let encoded =
             routeID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? routeID
         let data = try await get(path: "/bus/stops/\(encoded)")
@@ -144,6 +150,9 @@ struct TrackAPI {
     /// Fetches today's scheduled departures for a bus route.
     /// Used when no live buses are running to show upcoming scheduled times.
     static func fetchBusSchedule(routeID: String) async throws -> BusScheduleResponse {
+        if ChallengeMode.isEnabled {
+            return BusScheduleResponse(routeId: routeID, directions: [])
+        }
         let stripped =
             routeID
             .replacingOccurrences(of: "MTA NYCT_", with: "")
@@ -165,6 +174,7 @@ struct TrackAPI {
     static func fetchNearbyTransit(lat: Double, lon: Double, radius: Int? = nil) async throws
         -> [NearbyTransitResponse]
     {
+        if ChallengeMode.isEnabled { return MockDataProvider.nearbyTransit() }
         let effectiveRadius = radius ?? AppSettings.shared.effectiveAPISearchRadius
         guard var components = URLComponents(string: baseURL + "/nearby") else {
             throw TrackAPIError.invalidURL
@@ -193,6 +203,13 @@ struct TrackAPI {
     static func fetchNearbyGrouped(
         lat: Double, lon: Double, radius: Int? = nil, mode: String? = nil
     ) async throws -> [GroupedNearbyTransitResponse] {
+        if ChallengeMode.isEnabled {
+            let all = MockDataProvider.groupedNearbyTransit()
+            if let mode = mode {
+                return all.filter { $0.mode == mode }
+            }
+            return all
+        }
         let effectiveRadius = radius ?? AppSettings.shared.effectiveAPISearchRadius
         guard var components = URLComponents(string: baseURL + "/nearby/grouped") else {
             throw TrackAPIError.invalidURL
@@ -220,6 +237,7 @@ struct TrackAPI {
     /// - Parameter routeID: Fully-qualified route ID (e.g. "MTA NYCT_B63").
     /// - Returns: Array of `BusVehicleResponse` with GPS positions.
     static func fetchBusVehicles(routeID: String) async throws -> [BusVehicleResponse] {
+        if ChallengeMode.isEnabled { return MockDataProvider.busVehicles(routeID: routeID) }
         let encoded =
             routeID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? routeID
         let data = try await get(path: "/bus/vehicles/\(encoded)")
@@ -231,6 +249,9 @@ struct TrackAPI {
     /// - Parameter routeID: Fully-qualified route ID (e.g. "MTA NYCT_B63").
     /// - Returns: A `RouteShapeResponse` with encoded polylines and stops.
     static func fetchRouteShape(routeID: String) async throws -> RouteShapeResponse {
+        if ChallengeMode.isEnabled {
+            return MockDataProvider.busRouteShape(routeID: routeID)
+        }
         let encoded =
             routeID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? routeID
         let data = try await get(path: "/bus/route-shape/\(encoded)")
@@ -242,6 +263,9 @@ struct TrackAPI {
     /// - Parameter routeID: Subway line letter/number (e.g. "C", "L", "1").
     /// - Returns: A `RouteShapeResponse` with the complete polyline and all stations.
     static func fetchSubwayShape(routeID: String) async throws -> RouteShapeResponse {
+        if ChallengeMode.isEnabled {
+            return MockDataProvider.subwayShape(routeID: routeID)
+        }
         let encoded =
             routeID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? routeID
         let data = try await get(path: "/subway/shape/\(encoded)")
@@ -253,6 +277,9 @@ struct TrackAPI {
     /// - Parameter routeID: LIRR branch ID (e.g. "LIRR_9" or "9").
     /// - Returns: A `RouteShapeResponse` with the branch polyline.
     static func fetchLIRRShape(routeID: String) async throws -> RouteShapeResponse {
+        if ChallengeMode.isEnabled {
+            return MockDataProvider.lirrShape(routeID: routeID)
+        }
         let encoded =
             routeID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? routeID
         let data = try await get(path: "/lirr/shape/\(encoded)")
@@ -264,6 +291,9 @@ struct TrackAPI {
     /// - Parameter routeID: MNR line ID (e.g. "MNR_1" or "1").
     /// - Returns: A `RouteShapeResponse` with the line polyline.
     static func fetchMNRShape(routeID: String) async throws -> RouteShapeResponse {
+        if ChallengeMode.isEnabled {
+            return MockDataProvider.mnrShape(routeID: routeID)
+        }
         let encoded =
             routeID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? routeID
         let data = try await get(path: "/mnr/shape/\(encoded)")
@@ -275,6 +305,7 @@ struct TrackAPI {
     /// Called once on app launch to draw every line on the map.
     /// - Returns: An `AllSubwayLinesResponse` with lightweight overlay data per line.
     static func fetchAllSubwayShapes() async throws -> AllSubwayLinesResponse {
+        if ChallengeMode.isEnabled { return MockDataProvider.allSubwayShapes() }
         let data = try await get(path: "/subway/shapes/all")
         return try decoder.decode(AllSubwayLinesResponse.self, from: data)
     }
@@ -282,6 +313,7 @@ struct TrackAPI {
     /// Fetches polylines + colors for ALL LIRR branches.
     /// - Returns: An `AllCommuterRailLinesResponse` with overlay data per branch.
     static func fetchAllLIRRShapes() async throws -> AllCommuterRailLinesResponse {
+        if ChallengeMode.isEnabled { return MockDataProvider.allLIRRShapes() }
         let data = try await get(path: "/lirr/shapes/all")
         return try decoder.decode(AllCommuterRailLinesResponse.self, from: data)
     }
@@ -289,6 +321,7 @@ struct TrackAPI {
     /// Fetches polylines + colors for ALL Metro-North branches.
     /// - Returns: An `AllCommuterRailLinesResponse` with overlay data per branch.
     static func fetchAllMNRShapes() async throws -> AllCommuterRailLinesResponse {
+        if ChallengeMode.isEnabled { return MockDataProvider.allMNRShapes() }
         let data = try await get(path: "/mnr/shapes/all")
         return try decoder.decode(AllCommuterRailLinesResponse.self, from: data)
     }
@@ -296,6 +329,7 @@ struct TrackAPI {
     /// Fetches all subway stations for map markers.
     /// - Returns: An `AllSubwayStationsResponse` with all stations and their routes.
     static func fetchAllSubwayStations() async throws -> AllSubwayStationsResponse {
+        if ChallengeMode.isEnabled { return MockDataProvider.subwayStations() }
         let data = try await get(path: "/subway/stations/all")
         return try decoder.decode(AllSubwayStationsResponse.self, from: data)
     }
@@ -311,6 +345,7 @@ struct TrackAPI {
     static func fetchNearbySubwayStations(lat: Double, lon: Double, radius: Int = 1600) async throws
         -> AllSubwayStationsResponse
     {
+        if ChallengeMode.isEnabled { return MockDataProvider.nearbySubwayStations() }
         guard var components = URLComponents(string: baseURL + "/subway/stations/nearby") else {
             throw TrackAPIError.invalidURL
         }
@@ -347,6 +382,7 @@ struct TrackAPI {
         dayOfWeek: Int,
         weather: String = "clear"
     ) async throws -> DelayPredictionResponse {
+        if ChallengeMode.isEnabled { return MockDataProvider.delayPrediction(minutesAway: minutesAway) }
         guard var components = URLComponents(string: baseURL + "/predict/delay") else {
             throw TrackAPIError.invalidURL
         }
@@ -370,6 +406,7 @@ struct TrackAPI {
     ///
     /// - Returns: Array of `TransitAlert`.
     static func fetchAlerts() async throws -> [TransitAlert] {
+        if ChallengeMode.isEnabled { return MockDataProvider.alerts() }
         let data = try await get(path: "/alerts")
         return try decoder.decode([TransitAlert].self, from: data)
     }
@@ -378,6 +415,7 @@ struct TrackAPI {
     ///
     /// - Returns: Array of `ElevatorStatus`.
     static func fetchAccessibility() async throws -> [ElevatorStatus] {
+        if ChallengeMode.isEnabled { return MockDataProvider.accessibility() }
         let data = try await get(path: "/accessibility")
         return try decoder.decode([ElevatorStatus].self, from: data)
     }
@@ -386,6 +424,7 @@ struct TrackAPI {
     ///
     /// - Returns: Array of decoded `TrainArrival` objects.
     static func fetchLIRRArrivals() async throws -> [TrainArrival] {
+        if ChallengeMode.isEnabled { return MockDataProvider.lirrArrivals() }
         let data = try await get(path: "/lirr")
         return try decoder.decode([SubwayArrivalResponse].self, from: data).map {
             $0.toTrainArrival()
@@ -398,6 +437,7 @@ struct TrackAPI {
     ///
     /// - Returns: Array of decoded `TrainArrival` objects.
     static func fetchMNRArrivals() async throws -> [TrainArrival] {
+        if ChallengeMode.isEnabled { return MockDataProvider.mnrArrivals() }
         let data = try await get(path: "/mnr")
         return try decoder.decode([SubwayArrivalResponse].self, from: data).map {
             $0.toTrainArrival()

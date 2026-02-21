@@ -56,6 +56,21 @@ struct SingleRouteProvider: TimelineProvider {
 
     /// Fetch arrivals for the tracked route from the /nearby API
     private func fetchTrackedRouteEntry(trackedRoute: TrackedRoute, completion: @escaping (SingleRouteEntry?) -> Void) {
+        // In challenge mode, return mock data without network
+        if ChallengeMode.isEnabled {
+            let arrivals = [
+                NearbyArrival(routeId: trackedRoute.routeId, stopName: "Times Sq-42 St", direction: "Uptown", minutesAway: 2, status: "Approaching", mode: trackedRoute.mode, arrivalTime: Date().addingTimeInterval(120)),
+                NearbyArrival(routeId: trackedRoute.routeId, stopName: "Times Sq-42 St", direction: "Uptown", minutesAway: 8, status: "En Route", mode: trackedRoute.mode, arrivalTime: Date().addingTimeInterval(480)),
+                NearbyArrival(routeId: trackedRoute.routeId, stopName: "Times Sq-42 St", direction: "Downtown", minutesAway: 4, status: "En Route", mode: trackedRoute.mode, arrivalTime: Date().addingTimeInterval(240)),
+            ]
+            completion(SingleRouteEntry(
+                date: Date(),
+                state: .tracking(route: trackedRoute, arrivals: arrivals),
+                relevance: TimelineEntryRelevance(score: 80)
+            ))
+            return
+        }
+
         let defaults = UserDefaults(suiteName: kAppGroupIdentifier) ?? UserDefaults.standard
         let lat = defaults.double(forKey: "lastLatitude")
         let lon = defaults.double(forKey: "lastLongitude")
@@ -66,19 +81,7 @@ struct SingleRouteProvider: TimelineProvider {
             return
         }
 
-        let useLocalhost = defaults.bool(forKey: "dev_use_localhost")
-        let baseURL: String
-        #if targetEnvironment(simulator)
-        if useLocalhost {
-            baseURL = "http://127.0.0.1:8000"
-        } else {
-            let storedIP = defaults.string(forKey: "dev_custom_ip") ?? "192.168.12.101"
-            baseURL = "http://\(storedIP):8000"
-        }
-        #else
-        let storedIP = defaults.string(forKey: "dev_custom_ip") ?? "192.168.12.101"
-        baseURL = "http://\(storedIP):8000"
-        #endif
+        let baseURL = WidgetURLHelper.resolvedBaseURL()
 
         guard var components = URLComponents(string: baseURL + "/nearby") else {
             completion(nil)
@@ -365,7 +368,7 @@ struct SingleRouteWidgetView: View {
                             Spacer()
                             
                             HStack(alignment: .firstTextBaseline, spacing: 2) {
-                                Text(first.arrivalTime, style: .timer)
+                                Text(timerInterval: Date()...max(Date(), first.arrivalTime), countsDown: true)
                                     .font(.system(size: 42, weight: .bold, design: .rounded))
                                     .foregroundColor(AppTheme.Colors.countdown(first.minutesAway))
                                     .monospacedDigit()
@@ -385,7 +388,7 @@ struct SingleRouteWidgetView: View {
                                     .font(.system(size: 13, weight: .bold))
                                     .foregroundColor(AppTheme.Colors.textSecondary)
                                 Spacer()
-                                Text(arrival.arrivalTime, style: .timer)
+                                Text(timerInterval: Date()...max(Date(), arrival.arrivalTime), countsDown: true)
                                     .font(.system(size: 15, weight: .bold, design: .rounded))
                                     .foregroundColor(AppTheme.Colors.textPrimary)
                                     .monospacedDigit()

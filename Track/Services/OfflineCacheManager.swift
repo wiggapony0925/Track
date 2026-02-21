@@ -59,7 +59,9 @@ final class OfflineCacheManager: ObservableObject {
             self.lastFetchTime = timestamp
         }
         
-        startNetworkMonitoring()
+        if !ChallengeMode.isEnabled {
+            startNetworkMonitoring()
+        }
     }
     
     deinit {

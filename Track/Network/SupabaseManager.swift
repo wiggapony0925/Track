@@ -78,6 +78,20 @@ class SupabaseManager: ObservableObject {
         self.baseURL = URL(string: SupabaseConfig.url)!
         self.apiKey = SupabaseConfig.anonKey
         
+        // In challenge mode, mark as authenticated without network
+        if ChallengeMode.isEnabled {
+            self.isAuthenticated = true
+            self.currentUser = UserProfile(
+                id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+                appleUserId: "challenge_mode_user",
+                email: "student@example.com",
+                fullName: "Challenge User",
+                givenName: "Challenge",
+                familyName: "User"
+            )
+            return
+        }
+        
         // Restore session if available
         if let token = defaults.string(forKey: accessTokenKey) {
             self.accessToken = token
@@ -341,6 +355,7 @@ class SupabaseManager: ObservableObject {
         latitude: Double? = nil,
         longitude: Double? = nil
     ) async {
+        if ChallengeMode.isEnabled { return }
         let url = baseURL.appendingPathComponent("rest/v1/route_interactions")
         
         var request = URLRequest(url: url)
@@ -382,6 +397,7 @@ class SupabaseManager: ObservableObject {
     
     /// Fetch all favorites for current user
     func fetchFavorites() async throws -> [CloudFavorite] {
+        if ChallengeMode.isEnabled { return [] }
         guard let userId = defaults.string(forKey: userIdKey) else {
             return []
         }
@@ -407,6 +423,7 @@ class SupabaseManager: ObservableObject {
     
     /// Add a favorite
     func addFavorite(_ favorite: CloudFavorite) async throws {
+        if ChallengeMode.isEnabled { return }
         let url = baseURL.appendingPathComponent("rest/v1/favorites")
         
         var request = URLRequest(url: url)
@@ -431,6 +448,7 @@ class SupabaseManager: ObservableObject {
     
     /// Remove a favorite
     func removeFavorite(id: Int64) async throws {
+        if ChallengeMode.isEnabled { return }
         let url = baseURL.appendingPathComponent("rest/v1/favorites")
         var urlComponents = URLComponents(url: url, resolvingAgainstBaseURL: false)!
         urlComponents.queryItems = [URLQueryItem(name: "id", value: "eq.\(id)")]
@@ -455,6 +473,7 @@ class SupabaseManager: ObservableObject {
     
     /// Fetch all schedules for current user
     func fetchSchedules() async throws -> [CloudSchedule] {
+        if ChallengeMode.isEnabled { return [] }
         guard let userId = defaults.string(forKey: userIdKey) else {
             return []
         }
@@ -479,6 +498,7 @@ class SupabaseManager: ObservableObject {
     
     /// Upsert a schedule
     func upsertSchedule(_ schedule: CloudSchedule) async throws {
+        if ChallengeMode.isEnabled { return }
         let url = baseURL.appendingPathComponent("rest/v1/schedules")
         
         var request = URLRequest(url: url)
@@ -503,6 +523,7 @@ class SupabaseManager: ObservableObject {
     
     /// Delete a schedule
     func deleteSchedule(id: UUID) async throws {
+        if ChallengeMode.isEnabled { return }
         let url = baseURL.appendingPathComponent("rest/v1/schedules")
         var urlComponents = URLComponents(url: url, resolvingAgainstBaseURL: false)!
         urlComponents.queryItems = [URLQueryItem(name: "id", value: "eq.\(id.uuidString)")]
@@ -527,6 +548,7 @@ class SupabaseManager: ObservableObject {
     
     /// Fetch user settings from Supabase
     func fetchUserSettings() async throws -> CloudUserSettings? {
+        if ChallengeMode.isEnabled { return nil }
         guard let userId = currentUser?.id else { return nil }
         
         let url = baseURL.appendingPathComponent("rest/v1/user_settings")
@@ -553,6 +575,7 @@ class SupabaseManager: ObservableObject {
     
     /// Save user settings to Supabase (upsert)
     func saveUserSettings(_ settings: CloudUserSettings) async throws {
+        if ChallengeMode.isEnabled { return }
         guard currentUser != nil else { throw SupabaseError.unauthorized }
         
         let url = baseURL.appendingPathComponent("rest/v1/user_settings")
@@ -591,6 +614,7 @@ class SupabaseManager: ObservableObject {
         dayOfWeek: Int,
         frequency: Int
     ) async throws {
+        if ChallengeMode.isEnabled { return }
         guard let userId = currentUser?.id else {
             throw SupabaseError.unauthorized
         }
@@ -635,6 +659,7 @@ class SupabaseManager: ObservableObject {
     
     /// Fetch commute patterns from cloud
     func fetchCommutePatterns() async throws -> [CloudCommutePattern] {
+        if ChallengeMode.isEnabled { return [] }
         guard let userId = currentUser?.id else {
             return []
         }

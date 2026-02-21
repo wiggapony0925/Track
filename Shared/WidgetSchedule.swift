@@ -45,15 +45,49 @@ struct WidgetSchedule: Codable, Identifiable, Equatable {
     /// Load all schedules from UserDefaults
     static func loadAll() -> [WidgetSchedule] {
         guard let data = defaults.data(forKey: storageKey) else {
+            // Seed demo schedules in ChallengeMode so judges see a populated screen
+            if ChallengeMode.isEnabled {
+                let seed = defaultSchedules()
+                saveAll(seed)
+                return seed
+            }
             return []
         }
         
         do {
-            return try JSONDecoder().decode([WidgetSchedule].self, from: data)
+            let schedules = try JSONDecoder().decode([WidgetSchedule].self, from: data)
+            if schedules.isEmpty && ChallengeMode.isEnabled {
+                let seed = defaultSchedules()
+                saveAll(seed)
+                return seed
+            }
+            return schedules
         } catch {
             print("[WidgetSchedule] Failed to decode schedules: \(error)")
             return []
         }
+    }
+
+    /// Pre-populated demo schedules for ChallengeMode (morning + evening commute).
+    private static func defaultSchedules() -> [WidgetSchedule] {
+        [
+            WidgetSchedule(
+                days: [1, 2, 3, 4, 5], // Mon–Fri
+                startTime: "07:30",
+                duration: 30,
+                enabled: true,
+                routeId: nil,
+                direction: nil
+            ),
+            WidgetSchedule(
+                days: [1, 2, 3, 4, 5], // Mon–Fri
+                startTime: "17:00",
+                duration: 30,
+                enabled: true,
+                routeId: nil,
+                direction: nil
+            ),
+        ]
     }
     
     /// Save all schedules to UserDefaults

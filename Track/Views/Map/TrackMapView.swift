@@ -78,7 +78,19 @@ struct TrackMapView: View {
         ) {
 
             // User location
-            UserAnnotation()
+            if ChallengeMode.isEnabled {
+                // In ChallengeMode, show a mock blue dot at the NYC coordinates
+                // instead of UserAnnotation() which reads real hardware GPS.
+                Annotation("", coordinate: CLLocationCoordinate2D(latitude: ChallengeMode.mockLatitude, longitude: ChallengeMode.mockLongitude)) {
+                    Circle()
+                        .fill(Color.blue)
+                        .frame(width: 14, height: 14)
+                        .overlay(Circle().stroke(Color.white, lineWidth: 2.5))
+                        .shadow(color: .blue.opacity(0.4), radius: 6)
+                }
+            } else {
+                UserAnnotation()
+            }
 
             // Search radius circles
             // During drag-to-search the circles track the live map center
