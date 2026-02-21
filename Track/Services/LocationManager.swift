@@ -21,9 +21,18 @@ final class LocationManager: NSObject, CLLocationManagerDelegate {
         manager.delegate = self
         manager.desiredAccuracy = kCLLocationAccuracyBest
         manager.distanceFilter = AppSettings.shared.distanceFilterMeters
+
+        // In challenge mode, provide a mock NYC location immediately
+        // so the app can demonstrate its capabilities without GPS.
+        // Coordinates: Midtown Manhattan (near Penn Station / Herald Square)
+        if ChallengeMode.isEnabled {
+            currentLocation = CLLocation(latitude: 40.75306, longitude: -73.99944)
+            authorizationStatus = .authorizedWhenInUse
+        }
     }
 
     func requestPermission() {
+        if ChallengeMode.isEnabled { return }
         manager.requestWhenInUseAuthorization()
     }
 
@@ -31,6 +40,7 @@ final class LocationManager: NSObject, CLLocationManagerDelegate {
     /// publishes it. Called when the app returns to the foreground so the UI
     /// transitions immediately if the user just granted access in iOS Settings.
     func refreshAuthorizationStatus() {
+        if ChallengeMode.isEnabled { return }
         let current = manager.authorizationStatus
         authorizationStatus = current
         if current == .authorizedWhenInUse || current == .authorizedAlways {
@@ -39,6 +49,7 @@ final class LocationManager: NSObject, CLLocationManagerDelegate {
     }
 
     func startUpdating() {
+        if ChallengeMode.isEnabled { return }
         manager.startUpdatingLocation()
     }
 

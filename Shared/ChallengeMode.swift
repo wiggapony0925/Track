@@ -1,6 +1,6 @@
 //
 //  ChallengeMode.swift
-//  Track
+//  Shared
 //
 //  Swift Student Challenge 2026 offline mode.
 //  When enabled, the app runs entirely without network access:
