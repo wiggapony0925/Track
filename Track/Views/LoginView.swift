@@ -56,16 +56,15 @@ struct LoginView: View {
     private var appHeader: some View {
         VStack(spacing: 20) {
             // App icon
-            ZStack {
-                RoundedRectangle(cornerRadius: 28)
-                    .fill(AppTheme.Colors.subwayBlack)
+            if let uiImage = UIImage(named: "AppIcon") {
+                Image(uiImage: uiImage)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
                     .frame(width: 110, height: 110)
+                    .clipShape(RoundedRectangle(cornerRadius: 28))
                     .shadow(color: AppTheme.Colors.subwayBlack.opacity(0.3), radius: 16, y: 8)
-                Image(systemName: "tram.fill")
-                    .font(.system(size: 46, weight: .bold))
-                    .foregroundColor(.white)
+                    .accessibilityHidden(true)
             }
-            .accessibilityHidden(true)
 
             VStack(spacing: 8) {
                 Text("Track")

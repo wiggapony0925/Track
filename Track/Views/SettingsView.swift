@@ -314,14 +314,15 @@ struct SettingsView: View {
         settingsSection(title: "About", icon: "info.circle.fill", iconColor: AppTheme.Colors.mtaBlue) {
             VStack(spacing: 0) {
                 VStack(spacing: 12) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 20)
-                            .fill(AppTheme.Colors.subwayBlack)
-                            .frame(width: 72, height: 72)
-                            .shadow(color: AppTheme.Colors.subwayBlack.opacity(0.25), radius: 10, y: 4)
-                        Image(systemName: "tram.fill")
-                            .font(.system(size: 30, weight: .bold))
-                            .foregroundColor(.white)
+                    Group {
+                        if let uiImage = UIImage(named: "AppIcon") {
+                            Image(uiImage: uiImage)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(width: 72, height: 72)
+                                .clipShape(RoundedRectangle(cornerRadius: 20))
+                                .shadow(color: AppTheme.Colors.subwayBlack.opacity(0.25), radius: 10, y: 4)
+                        }
                     }
 
                     VStack(spacing: 4) {
