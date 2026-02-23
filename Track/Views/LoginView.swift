@@ -13,6 +13,7 @@ import AuthenticationServices
 struct LoginView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
+    @State private var appleSignInDelegate: AppleSignInDelegate?
 
     var body: some View {
         ZStack {
@@ -109,14 +110,19 @@ struct LoginView: View {
     private var loginActions: some View {
         VStack(spacing: 14) {
             // Sign in with Apple button
-            SignInWithAppleButton(.signIn) { request in
-                request.requestedScopes = [.fullName, .email]
-            } onCompletion: { result in
-                handleAppleSignIn(result: result)
+            Button(action: startAppleSignIn) {
+                HStack(spacing: 8) {
+                    Image(systemName: "apple.logo")
+                        .font(.system(size: 18, weight: .semibold))
+                    Text("Sign in with Apple")
+                        .font(.system(size: 18, weight: .semibold))
+                }
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .frame(height: 54)
+                .background(Color.black)
+                .cornerRadius(14)
             }
-            .signInWithAppleButtonStyle(.black)
-            .frame(height: 54)
-            .cornerRadius(14)
             .shadow(color: AppTheme.Colors.subwayBlack.opacity(0.15), radius: 8, y: 4)
             .disabled(isLoading)
 
@@ -146,6 +152,32 @@ struct LoginView: View {
 
     // MARK: - Actions
     
+    private func startAppleSignIn() {
+        isLoading = true
+        errorMessage = nil
+        
+        let provider = ASAuthorizationAppleIDProvider()
+        let request = provider.createRequest()
+        request.requestedScopes = [.fullName, .email]
+        
+        let delegate = AppleSignInDelegate { result in
+            handleAppleSignIn(result: result)
+        }
+        self.appleSignInDelegate = delegate
+        
+        let controller = ASAuthorizationController(authorizationRequests: [request])
+        controller.delegate = delegate
+        
+        // Set presentation context to the key window
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let window = windowScene.windows.first(where: { $0.isKeyWindow }) {
+            delegate.presentationAnchor = window
+            controller.presentationContextProvider = delegate
+        }
+        
+        controller.performRequests()
+    }
+    
     private func handleAppleSignIn(result: Result<ASAuthorization, Error>) {
         isLoading = true
         errorMessage = nil
@@ -171,7 +203,8 @@ struct LoginView: View {
                         isLoading = false
                     } catch {
                         isLoading = false
-                        errorMessage = error.localizedDescription
+                        print("[LoginView] Supabase sign-in error: \(error)")
+                        errorMessage = "Sign-in error: \(error.localizedDescription)"
                     }
                 }
             }
@@ -217,4 +250,38 @@ struct LoginView: View {
 
 #Preview {
     LoginView()
+}
+
+// MARK: - Apple Sign-In Delegate
+
+/// Handles ASAuthorizationController callbacks with proper presentation context.
+class AppleSignInDelegate: NSObject, ASAuthorizationControllerDelegate, ASAuthorizationControllerPresentationContextProviding {
+    var presentationAnchor: UIWindow?
+    private let completion: (Result<ASAuthorization, Error>) -> Void
+    
+    init(completion: @escaping (Result<ASAuthorization, Error>) -> Void) {
+        self.completion = completion
+    }
+    
+    func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
+        let scene = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first
+        if let window = scene?.windows.first(where: { $0.isKeyWindow }) {
+            return window
+        }
+        if let anchor = presentationAnchor {
+            return anchor
+        }
+        // scene is guaranteed non-nil on iOS — always at least one UIWindowScene
+        return UIWindow(windowScene: scene!)
+    }
+    
+    func authorizationController(controller: ASAuthorizationController, didCompleteWithAuthorization authorization: ASAuthorization) {
+        completion(.success(authorization))
+    }
+    
+    func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: Error) {
+        completion(.failure(error))
+    }
 }

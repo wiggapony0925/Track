@@ -75,6 +75,30 @@ class SupabaseManager: ObservableObject {
     
     // MARK: - Initialization
     
+    /// Shared decoder that handles Supabase ISO 8601 timestamps with fractional seconds.
+    private let supabaseDecoder: JSONDecoder = {
+        let decoder = JSONDecoder()
+        nonisolated(unsafe) let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        nonisolated(unsafe) let fallback = ISO8601DateFormatter()
+        fallback.formatOptions = [.withInternetDateTime]
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let string = try container.decode(String.self)
+            if let date = formatter.date(from: string) { return date }
+            if let date = fallback.date(from: string) { return date }
+            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Cannot decode date: \(string)")
+        }
+        return decoder
+    }()
+
+    /// Shared encoder that writes ISO 8601 timestamps for Supabase.
+    private let supabaseEncoder: JSONEncoder = {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        return encoder
+    }()
+
     private init() {
         self.baseURL = URL(string: SupabaseConfig.url)!
         self.apiKey = SupabaseConfig.anonKey
@@ -199,7 +223,7 @@ class SupabaseManager: ObservableObject {
         
         if httpResponse.statusCode == 200 {
             // Parse auth response
-            let authResponse = try JSONDecoder().decode(AuthResponse.self, from: data)
+            let authResponse = try supabaseDecoder.decode(AuthResponse.self, from: data)
             guard let userId = UUID(uuidString: authResponse.user.id) else {
                 throw SupabaseError.invalidCredentials
             }
@@ -212,17 +236,21 @@ class SupabaseManager: ObservableObject {
 
             do {
                 // Ensure profile exists and is readable before finalizing auth state.
+                print("[SupabaseManager] Auth succeeded for userId: \(userId). Updating profile...")
                 try await updateProfileWithAppleData(
                     credentials: credentials,
                     tokenClaims: tokenClaims,
                     authUser: authResponse.user,
                     userId: userId
                 )
+                print("[SupabaseManager] Profile updated. Fetching profile...")
 
                 let profile = try await fetchProfile(userId: userId)
+                print("[SupabaseManager] Profile fetched: \(profile.email ?? "no email")")
                 currentUser = profile
                 isAuthenticated = true
             } catch {
+                print("[SupabaseManager] Post-auth profile setup FAILED: \(error)")
                 signOut()
                 throw SupabaseError.authFailed("Unable to complete account setup: \(error.localizedDescription)")
             }
@@ -324,7 +352,7 @@ class SupabaseManager: ObservableObject {
             throw SupabaseError.networkError
         }
 
-        let profiles = try JSONDecoder().decode([UserProfile].self, from: data)
+        let profiles = try supabaseDecoder.decode([UserProfile].self, from: data)
         
         guard let profile = profiles.first else {
             throw SupabaseError.notFound
@@ -345,12 +373,21 @@ class SupabaseManager: ObservableObject {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
 
-        let encoder = JSONEncoder()
-        request.httpBody = try encoder.encode(profile)
+        let body = try supabaseEncoder.encode(profile)
+        request.httpBody = body
+        
+        print("[SupabaseManager] Upsert profile body: \(String(data: body, encoding: .utf8) ?? "nil")")
 
-        let (_, response) = try await URLSession.shared.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse,
-              (200...299).contains(httpResponse.statusCode) else {
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            print("[SupabaseManager] Upsert: no HTTP response")
+            throw SupabaseError.upsertFailed
+        }
+        
+        let responseBody = String(data: data, encoding: .utf8) ?? "nil"
+        print("[SupabaseManager] Upsert response: \(httpResponse.statusCode) — \(responseBody)")
+        
+        guard (200...299).contains(httpResponse.statusCode) else {
             throw SupabaseError.upsertFailed
         }
 
@@ -381,7 +418,7 @@ class SupabaseManager: ObservableObject {
             throw SupabaseError.networkError
         }
 
-        return try JSONDecoder().decode(AuthUser.self, from: data)
+        return try supabaseDecoder.decode(AuthUser.self, from: data)
     }
 
     /// Rebuild a missing profile row from authenticated user identity data.
@@ -426,8 +463,7 @@ class SupabaseManager: ObservableObject {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
         
-        let encoder = JSONEncoder()
-        request.httpBody = try encoder.encode(profile)
+        request.httpBody = try supabaseEncoder.encode(profile)
         
         let (_, response) = try await URLSession.shared.data(for: request)
         
@@ -580,9 +616,7 @@ class SupabaseManager: ObservableObject {
         }
         
         let (data, _) = try await URLSession.shared.data(for: request)
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        return try decoder.decode([CloudFavorite].self, from: data)
+        return try supabaseDecoder.decode([CloudFavorite].self, from: data)
     }
     
     /// Add a favorite
@@ -671,9 +705,7 @@ class SupabaseManager: ObservableObject {
         }
         
         let (data, _) = try await URLSession.shared.data(for: request)
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        return try decoder.decode([CloudSchedule].self, from: data)
+        return try supabaseDecoder.decode([CloudSchedule].self, from: data)
     }
     
     /// Upsert a schedule
@@ -689,8 +721,7 @@ class SupabaseManager: ObservableObject {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
         
-        let encoder = JSONEncoder()
-        request.httpBody = try encoder.encode(schedule)
+        request.httpBody = try supabaseEncoder.encode(schedule)
         
         let (_, response) = try await URLSession.shared.data(for: request)
         
@@ -744,9 +775,7 @@ class SupabaseManager: ObservableObject {
         }
         
         let (data, _) = try await URLSession.shared.data(for: request)
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-        let results = try decoder.decode([CloudUserSettings].self, from: data)
+        let results = try supabaseDecoder.decode([CloudUserSettings].self, from: data)
         return results.first
     }
     
@@ -765,9 +794,7 @@ class SupabaseManager: ObservableObject {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
         
-        let encoder = JSONEncoder()
-        encoder.keyEncodingStrategy = .convertToSnakeCase
-        request.httpBody = try encoder.encode(settings)
+        request.httpBody = try supabaseEncoder.encode(settings)
         
         let (_, response) = try await URLSession.shared.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse,
@@ -820,9 +847,7 @@ class SupabaseManager: ObservableObject {
             lastUsed: Date()
         )
         
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        request.httpBody = try encoder.encode(pattern)
+        request.httpBody = try supabaseEncoder.encode(pattern)
         
         let (_, response) = try await URLSession.shared.data(for: request)
         
@@ -855,48 +880,6 @@ class SupabaseManager: ObservableObject {
         
         let (data, _) = try await URLSession.shared.data(for: request)
         
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        return try decoder.decode([CloudCommutePattern].self, from: data)
-    }
-}
-
-// MARK: - Auth Response
-
-private struct AuthResponse: Codable {
-    let accessToken: String
-    let refreshToken: String
-    let user: AuthUser
-    
-    enum CodingKeys: String, CodingKey {
-        case accessToken = "access_token"
-        case refreshToken = "refresh_token"
-        case user
-    }
-}
-
-private struct AuthUser: Codable {
-    let id: String
-    let email: String?
-    let userMetadata: AuthUserMetadata?
-
-    enum CodingKeys: String, CodingKey {
-        case id
-        case email
-        case userMetadata = "user_metadata"
-    }
-}
-
-private struct AuthUserMetadata: Codable {
-    let sub: String?
-    let fullName: String?
-    let givenName: String?
-    let familyName: String?
-
-    enum CodingKeys: String, CodingKey {
-        case sub
-        case fullName = "full_name"
-        case givenName = "given_name"
-        case familyName = "family_name"
+        return try supabaseDecoder.decode([CloudCommutePattern].self, from: data)
     }
 }

@@ -154,6 +154,26 @@ struct CloudUserSettings: Codable {
     var dragToSearch: Bool?
     var devUseLocalhost: Bool?
     var devCustomIp: String?
+    var createdAt: Date?
+    var updatedAt: Date?
+
+    enum CodingKeys: String, CodingKey {
+        case userId = "user_id"
+        case preferredTheme = "preferred_theme"
+        case nearYouRadiusMeters = "near_you_radius_meters"
+        case fartherAwayRadiusMeters = "farther_away_radius_meters"
+        case muchFartherAwayRadiusMeters = "much_farther_away_radius_meters"
+        case showSystemMap = "show_system_map"
+        case subwayLineOffsetMeters = "subway_line_offset_meters"
+        case hapticsEnabled = "haptics_enabled"
+        case autoRefreshEnabled = "auto_refresh_enabled"
+        case notificationsEnabled = "notifications_enabled"
+        case dragToSearch = "drag_to_search"
+        case devUseLocalhost = "dev_use_localhost"
+        case devCustomIp = "dev_custom_ip"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
 }
 
 // MARK: - Apple Sign-In Credentials
@@ -193,6 +213,8 @@ struct CloudCommutePattern: Codable {
     let dayOfWeek: Int
     let frequency: Int
     let lastUsed: Date
+    var createdAt: Date?
+    var updatedAt: Date?
     
     enum CodingKeys: String, CodingKey {
         case id
@@ -207,6 +229,8 @@ struct CloudCommutePattern: Codable {
         case dayOfWeek = "day_of_week"
         case frequency
         case lastUsed = "last_used"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
     }
 }
 
