@@ -181,19 +181,27 @@ struct LoginView: View {
             
         case .failure(let error):
             isLoading = false
-            // User cancelled or error occurred
             let nsError = error as NSError
+
+            // User tapped Cancel — no error to show
             if nsError.code == ASAuthorizationError.canceled.rawValue {
-                // User tapped Cancel — no error to show
                 return
             }
 
-            print("[LoginView] Apple Sign-In failed: domain=\(nsError.domain) code=\(nsError.code) \(nsError.localizedDescription)")
+            // Dump everything Apple gives us so we can diagnose in Xcode console
+            print("╔══════════════════════════════════════════════")
+            print("║ [LoginView] APPLE SIGN-IN FAILED")
+            print("║ Domain : \(nsError.domain)")
+            print("║ Code   : \(nsError.code)")
+            print("║ Desc   : \(nsError.localizedDescription)")
+            print("║ Info   : \(nsError.userInfo)")
+            if let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError {
+                print("║ Underlying: domain=\(underlying.domain) code=\(underlying.code) \(underlying.localizedDescription)")
+            }
+            print("╚══════════════════════════════════════════════")
 
             switch ASAuthorizationError.Code(rawValue: nsError.code) {
             case .unknown:
-                // Code 1000 — usually means no Apple ID signed in on device,
-                // simulator limitations, or a provisioning / capability mismatch.
                 errorMessage = "Apple Sign-In couldn't connect. Make sure you're signed into an Apple ID in Settings and try again."
             case .invalidResponse:
                 errorMessage = "Apple returned an invalid response. Please try again."
