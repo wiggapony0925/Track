@@ -314,16 +314,12 @@ struct SettingsView: View {
         settingsSection(title: "About", icon: "info.circle.fill", iconColor: AppTheme.Colors.mtaBlue) {
             VStack(spacing: 0) {
                 VStack(spacing: 12) {
-                    Group {
-                        if let uiImage = UIImage(named: "AppIcon") {
-                            Image(uiImage: uiImage)
-                                .resizable()
-                                .aspectRatio(contentMode: .fit)
-                                .frame(width: 72, height: 72)
-                                .clipShape(RoundedRectangle(cornerRadius: 20))
-                                .shadow(color: AppTheme.Colors.subwayBlack.opacity(0.25), radius: 10, y: 4)
-                        }
-                    }
+                    Image("AppIconImage")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 72, height: 72)
+                        .clipShape(RoundedRectangle(cornerRadius: 20))
+                        .shadow(color: AppTheme.Colors.subwayBlack.opacity(0.25), radius: 10, y: 4)
 
                     VStack(spacing: 4) {
                         Text("Track")

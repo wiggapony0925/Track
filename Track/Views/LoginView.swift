@@ -56,15 +56,13 @@ struct LoginView: View {
     private var appHeader: some View {
         VStack(spacing: 20) {
             // App icon
-            if let uiImage = UIImage(named: "AppIcon") {
-                Image(uiImage: uiImage)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: 110, height: 110)
-                    .clipShape(RoundedRectangle(cornerRadius: 28))
-                    .shadow(color: AppTheme.Colors.subwayBlack.opacity(0.3), radius: 16, y: 8)
-                    .accessibilityHidden(true)
-            }
+            Image("AppIconImage")
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 110, height: 110)
+                .clipShape(RoundedRectangle(cornerRadius: 28))
+                .shadow(color: AppTheme.Colors.subwayBlack.opacity(0.3), radius: 16, y: 8)
+                .accessibilityHidden(true)
 
             VStack(spacing: 8) {
                 Text("Track")
