@@ -17,15 +17,14 @@ import SwiftUI
 /// (and synced to the cloud) when the user taps the **Apply** button.
 /// Purely visual settings (theme, distance unit) take effect immediately.
 struct SettingsContentView: View {
+    @ObservedObject private var supabase = SupabaseManager.shared
+
     // MARK: - Instant-apply settings (visual only, no API impact)
     @AppStorage("appTheme") private var appTheme = "system"
-    @AppStorage("isLoggedIn") private var isLoggedIn = false
     @AppStorage("distance_unit") private var distanceUnit = "mi"
     @AppStorage("haptics_enabled") private var hapticsEnabled = true
     
     // MARK: - Persisted values (source of truth, written on Apply)
-    @AppStorage("dev_use_localhost") private var useLocalhost = false
-    @AppStorage("dev_custom_ip") private var customIP = AppSettings.shared.defaultDeviceIP
     @AppStorage("near_you_radius_meters") private var nearYouRadius: Double = 2414
     @AppStorage("farther_away_radius_meters") private var fartherAwayRadius: Double = 4023
     @AppStorage("much_farther_away_radius_meters") private var muchFartherAwayRadius: Double = 8047
@@ -38,8 +37,6 @@ struct SettingsContentView: View {
     @State private var draftShowSearchRadius = false
     @State private var draftDragToSearch = true
     @State private var draftSubwayLineOffset: Double = 10
-    @State private var draftUseLocalhost = false
-    @State private var draftCustomIP = ""
     
     /// Tracks whether any draft value differs from the persisted value.
     @State private var hasUnappliedChanges = false
@@ -47,6 +44,24 @@ struct SettingsContentView: View {
     @State private var showAppliedConfirmation = false
     
     let sheetNavigator: SheetNavigator
+
+    private var currentProfile: UserProfile? { supabase.currentUser }
+
+    private var displayNameForWelcome: String {
+        if let fullName = currentProfile?.fullName?.trimmingCharacters(in: .whitespacesAndNewlines), !fullName.isEmpty {
+            return fullName
+        }
+        if let givenName = currentProfile?.givenName?.trimmingCharacters(in: .whitespacesAndNewlines), !givenName.isEmpty {
+            return givenName
+        }
+        if let username = currentProfile?.username?.trimmingCharacters(in: .whitespacesAndNewlines), !username.isEmpty {
+            return username
+        }
+        if let email = currentProfile?.email, !email.isEmpty {
+            return email.components(separatedBy: "@").first ?? "there"
+        }
+        return "there"
+    }
     
     var body: some View {
         VStack(spacing: 0) {
@@ -56,6 +71,62 @@ struct SettingsContentView: View {
             // MARK: - Scrollable Content
             ScrollView {
                 VStack(spacing: 24) {
+                    settingsSection(title: "Profile", icon: "person.crop.circle.fill", iconColor: AppTheme.Colors.mtaBlue) {
+                        VStack(spacing: 0) {
+                            HStack(spacing: 10) {
+                                ZStack {
+                                    Circle()
+                                        .fill(AppTheme.Colors.mtaBlue.opacity(0.14))
+                                        .frame(width: 38, height: 38)
+                                    Image(systemName: "person.fill")
+                                        .font(.system(size: 16, weight: .bold))
+                                        .foregroundColor(AppTheme.Colors.mtaBlue)
+                                }
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Welcome, \(displayNameForWelcome)")
+                                        .font(.system(size: 15, weight: .bold))
+                                        .foregroundColor(AppTheme.Colors.textPrimary)
+                                        .lineLimit(1)
+                                    Text(currentProfile?.email ?? "Signed in with Apple")
+                                        .font(.system(size: 12, weight: .medium))
+                                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
+                                        .lineLimit(1)
+                                }
+
+                                Spacer()
+                            }
+                            .padding(.horizontal, AppTheme.Layout.cardPadding)
+                            .padding(.vertical, 14)
+
+                            settingsDivider
+
+                            Button {
+                                sheetNavigator.navigate(to: .profileSettings)
+                            } label: {
+                                HStack {
+                                    settingsIcon("person.text.rectangle.fill", color: .indigo)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Manage Profile")
+                                            .font(.custom("Helvetica", size: 15))
+                                            .foregroundColor(AppTheme.Colors.textPrimary)
+                                        Text("Name, username, account details")
+                                            .font(.system(size: 11))
+                                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
+                                    }
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.4))
+                                }
+                                .padding(.horizontal, AppTheme.Layout.cardPadding)
+                                .padding(.vertical, 14)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+
                     // Appearance Section
                     settingsSection(title: "Appearance", icon: "paintbrush.fill", iconColor: .purple) {
                         VStack(spacing: 0) {
@@ -339,7 +410,6 @@ struct SettingsContentView: View {
                         VStack(spacing: 0) {
                             Button {
                                 SupabaseManager.shared.signOut()
-                                isLoggedIn = false
                                 sheetNavigator.popToRoot()
                             } label: {
                                 HStack {
@@ -355,63 +425,35 @@ struct SettingsContentView: View {
                             .buttonStyle(.plain)
                         }
                     }
-                    
-                    // Developer Section
+
+#if DEBUG
+                    // Developer Navigation (debug only)
                     settingsSection(title: "Developer", icon: "hammer.fill", iconColor: .orange) {
-                        VStack(spacing: 0) {
-                            settingsRow(
-                                icon: "desktopcomputer",
-                                iconColor: .mint,
-                                title: "Use Local Server"
-                            ) {
-                                Toggle("", isOn: $draftUseLocalhost)
-                                    .tint(AppTheme.Colors.mtaBlue)
-                            }
-                            
-                            if draftUseLocalhost {
-                                settingsDivider
-                                
-                                HStack {
-                                    Text("http://")
-                                        .font(.system(size: 13, design: .monospaced))
-                                        .foregroundColor(AppTheme.Colors.textSecondary)
-                                    TextField("192.168.1.X", text: $draftCustomIP)
-                                        .font(.system(size: 13, design: .monospaced))
-                                        .foregroundColor(AppTheme.Colors.textPrimary)
-                                        .keyboardType(.numbersAndPunctuation)
-                                    Text(":8000")
-                                        .font(.system(size: 13, design: .monospaced))
-                                        .foregroundColor(AppTheme.Colors.textSecondary)
-                                }
-                                .padding(.horizontal, AppTheme.Layout.cardPadding)
-                                .padding(.vertical, 12)
-                            }
-                            
-                            settingsDivider
-                            
+                        Button {
+                            sheetNavigator.navigate(to: .developerSettings)
+                        } label: {
                             HStack {
-                                Image(systemName: "link")
-                                    .font(.system(size: 11))
-                                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.5))
-                                Text(draftUseLocalhost
-                                    ? "http://\(draftCustomIP.isEmpty ? "127.0.0.1" : draftCustomIP):8000"
-                                    : AppSettings.shared.prodBaseURL)
-                                    .font(.system(size: 10, weight: .regular, design: .monospaced))
-                                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.5))
-                                    .lineLimit(1)
+                                settingsIcon("wrench.and.screwdriver.fill", color: .orange)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Developer Settings")
+                                        .font(.custom("Helvetica", size: 15))
+                                        .foregroundColor(AppTheme.Colors.textPrimary)
+                                    Text("Local backend, connectivity checks")
+                                        .font(.system(size: 11))
+                                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
+                                }
                                 Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.4))
                             }
                             .padding(.horizontal, AppTheme.Layout.cardPadding)
-                            .padding(.vertical, 8)
-                            
-                            if !draftUseLocalhost {
-                                Text("Connected to production server")
-                                    .font(.caption2)
-                                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.4))
-                                    .padding(.bottom, 8)
-                            }
+                            .padding(.vertical, 14)
+                            .contentShape(Rectangle())
                         }
+                        .buttonStyle(.plain)
                     }
+#endif
                     
                     // About Section
                     aboutSection
@@ -432,8 +474,6 @@ struct SettingsContentView: View {
         .onChange(of: draftShowSearchRadius) { _, _ in checkForChanges() }
         .onChange(of: draftDragToSearch) { _, _ in checkForChanges() }
         .onChange(of: draftSubwayLineOffset) { _, _ in checkForChanges() }
-        .onChange(of: draftUseLocalhost) { _, _ in checkForChanges() }
-        .onChange(of: draftCustomIP) { _, _ in checkForChanges() }
         // Floating Apply button
         .overlay(alignment: .bottom) {
             if hasUnappliedChanges {
@@ -468,8 +508,6 @@ struct SettingsContentView: View {
         draftShowSearchRadius = showSearchRadius
         draftDragToSearch = dragToSearch
         draftSubwayLineOffset = subwayLineOffset
-        draftUseLocalhost = useLocalhost
-        draftCustomIP = customIP
     }
     
     /// Check if any draft value differs from the persisted value.
@@ -478,9 +516,7 @@ struct SettingsContentView: View {
             draftRadius != muchFartherAwayRadius ||
             draftShowSearchRadius != showSearchRadius ||
             draftDragToSearch != dragToSearch ||
-            draftSubwayLineOffset != subwayLineOffset ||
-            draftUseLocalhost != useLocalhost ||
-            draftCustomIP != customIP
+            draftSubwayLineOffset != subwayLineOffset
     }
     
     /// Commit all drafts to @AppStorage in one shot and sync once.
@@ -494,13 +530,6 @@ struct SettingsContentView: View {
         showSearchRadius = draftShowSearchRadius
         dragToSearch = draftDragToSearch
         subwayLineOffset = draftSubwayLineOffset
-        
-        // Developer
-        useLocalhost = draftUseLocalhost
-        customIP = draftCustomIP
-        
-        // Invalidate cached base URL so new dev settings take effect
-        TrackAPI.invalidateBaseURL()
         
         hasUnappliedChanges = false
         

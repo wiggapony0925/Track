@@ -11,7 +11,6 @@ import CoreLocation
 
 struct ContentView: View {
     @ObservedObject private var supabase = SupabaseManager.shared
-    @AppStorage("isLoggedIn") private var isLoggedIn = false // Legacy fallback
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @AppStorage("appTheme") private var appTheme = "system"
     @State private var locationManager = LocationManager()
@@ -22,7 +21,7 @@ struct ContentView: View {
 
     /// Unified authentication state
     private var isAuth: Bool {
-        supabase.isAuthenticated || isLoggedIn
+        supabase.isAuthenticated
     }
 
     /// True when the user has granted location access.
@@ -42,7 +41,9 @@ struct ContentView: View {
 
     var body: some View {
         Group {
-            if !isAuth {
+            if !supabase.isAuthResolved {
+                authLoadingView
+            } else if !isAuth {
                 LoginView()
             } else if !hasCompletedOnboarding {
                 OnboardingView()
@@ -59,7 +60,7 @@ struct ContentView: View {
         }
         .preferredColorScheme(colorScheme)
         .onAppear {
-            if isAuth && hasCompletedOnboarding {
+            if supabase.isAuthResolved && isAuth && hasCompletedOnboarding {
                 // Perform background sync on launch
                 Task {
                     await SyncManager.shared.performFullSync()
@@ -74,10 +75,31 @@ struct ContentView: View {
         // Re-check location the moment the user returns to the app
         // (e.g. after enabling location access in iOS Settings).
         .onChange(of: scenePhase) { _, newPhase in
-            if newPhase == .active && isAuth && hasCompletedOnboarding {
-                // Trigger a status refresh — CLLocationManager will publish
-                // the latest authorizationStatus via didChangeAuthorization.
-                locationManager.refreshAuthorizationStatus()
+            if newPhase == .active, !supabase.isLoading {
+                Task {
+                    await supabase.refreshSessionIfNeeded()
+
+                    if supabase.isAuthenticated && hasCompletedOnboarding {
+                        // Trigger a status refresh — CLLocationManager will publish
+                        // the latest authorizationStatus via didChangeAuthorization.
+                        locationManager.refreshAuthorizationStatus()
+                    }
+                }
+            }
+        }
+    }
+
+    private var authLoadingView: some View {
+        ZStack {
+            AppTheme.Colors.background
+                .ignoresSafeArea()
+
+            VStack(spacing: 12) {
+                ProgressView()
+                    .tint(AppTheme.Colors.mtaBlue)
+                Text("Checking session…")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
             }
         }
     }

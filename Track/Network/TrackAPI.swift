@@ -40,13 +40,12 @@ struct TrackAPI {
             }
         #endif
 
-        // Check if developer has set a custom IP for local network testing
-        let storedIP = UserDefaults.standard.string(forKey: "dev_custom_ip")
-        let hasCustomIP = storedIP?.isEmpty == false && storedIP != settings.defaultDeviceIP
+        // Physical device local mode: always use configured IP (or default fallback)
+        let storedIP = UserDefaults.standard.string(forKey: "dev_custom_ip")?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedIP = (storedIP?.isEmpty == false) ? storedIP! : settings.defaultDeviceIP
 
-        if useLocalhost && hasCustomIP {
-            // Developer mode: use the custom IP for physical device testing
-            let url = "http://\(storedIP!):\(settings.localPort)"
+        if useLocalhost {
+            let url = "http://\(resolvedIP):\(settings.localPort)"
             AppLogger.shared.log("API_CONFIG", message: "baseURL (dev): \(url)")
             _cachedBaseURL = url
             return url
@@ -68,6 +67,40 @@ struct TrackAPI {
             throw TrackAPIError.decodingFailed
         }
         return json
+    }
+
+    /// Pings the active backend and returns status + latency for developer diagnostics.
+    static func pingBackend(timeoutSeconds: TimeInterval = 5.0) async
+        -> (ok: Bool, statusCode: Int?, latencyMs: Double?, error: String?)
+    {
+        guard let url = URL(string: baseURL + "/config") else {
+            return (false, nil, nil, "Invalid backend URL")
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        request.timeoutInterval = timeoutSeconds
+
+        if let email = await MainActor.run(body: { SupabaseManager.shared.currentUser?.email }),
+            !email.isEmpty
+        {
+            request.setValue(email, forHTTPHeaderField: "x-user-email")
+        }
+
+        let start = Date()
+        do {
+            let (_, response) = try await URLSession.shared.data(for: request)
+            let latency = Date().timeIntervalSince(start) * 1000
+            guard let http = response as? HTTPURLResponse else {
+                return (false, nil, latency, "No HTTP response")
+            }
+            let ok = (200...299).contains(http.statusCode)
+            return (ok, http.statusCode, latency, ok ? nil : "HTTP \(http.statusCode)")
+        } catch {
+            let latency = Date().timeIntervalSince(start) * 1000
+            return (false, nil, latency, error.localizedDescription)
+        }
     }
 
     // MARK: - Subway
@@ -421,7 +454,14 @@ struct TrackAPI {
     }
 
     private static func get(url: URL) async throws -> Data {
-        let (data, response) = try await URLSession.shared.data(from: url)
+        var request = URLRequest(url: url)
+        if let email = await MainActor.run(body: { SupabaseManager.shared.currentUser?.email }),
+            !email.isEmpty
+        {
+            request.setValue(email, forHTTPHeaderField: "x-user-email")
+        }
+
+        let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw TrackAPIError.networkError
         }

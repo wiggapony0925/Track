@@ -1,33 +1,60 @@
-//
-//  SettingsView.swift
-//  Track
-//
-//  User-facing settings for appearance, developer configuration, and account.
-//
-
 import SwiftUI
 
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var supabase = SupabaseManager.shared
 
     @AppStorage("appTheme") private var appTheme = "system"
-    @AppStorage("isLoggedIn") private var isLoggedIn = false
-
+    @AppStorage("distance_unit") private var distanceUnit = "mi"
+    @AppStorage("subway_line_offset_meters") private var subwayLineOffset: Double = AppSettings.shared.subwayLineOffsetMeters
     @AppStorage("dev_use_localhost") private var useLocalhost = false
     @AppStorage("dev_custom_ip") private var customIP = AppSettings.shared.defaultDeviceIP
-    @AppStorage("subway_line_offset_meters") private var subwayLineOffset: Double = AppSettings
-        .shared.subwayLineOffsetMeters
-    @AppStorage("distance_unit") private var distanceUnit = "mi"
+
+    @State private var isPingingBackend = false
+    @State private var backendPingText: String = "Not checked"
+    @State private var backendPingIsHealthy: Bool? = nil
+
+    private var currentProfile: UserProfile? { supabase.currentUser }
+
+    private var displayNameForWelcome: String {
+        if let fullName = currentProfile?.fullName?.trimmingCharacters(in: .whitespacesAndNewlines), !fullName.isEmpty {
+            return fullName
+        }
+        if let givenName = currentProfile?.givenName?.trimmingCharacters(in: .whitespacesAndNewlines), !givenName.isEmpty {
+            return givenName
+        }
+        if let username = currentProfile?.username?.trimmingCharacters(in: .whitespacesAndNewlines), !username.isEmpty {
+            return username
+        }
+        if let email = currentProfile?.email, !email.isEmpty {
+            return email.components(separatedBy: "@").first ?? "there"
+        }
+        return "there"
+    }
 
     var body: some View {
         NavigationStack {
-            List {
-                appearanceSection
-                widgetSection
-                mapSection
-                accountSection
-                developerSettingsSection
-                legalSection
+            ZStack {
+                AppTheme.Colors.background
+                    .ignoresSafeArea()
+
+                ScrollView {
+                    VStack(spacing: 24) {
+                        profileSection
+                        appearanceSection
+                        widgetSection
+                        mapSection
+                        accountSection
+#if DEBUG
+                        developerSection
+#endif
+                        aboutSection
+
+                        Spacer()
+                            .frame(height: 24)
+                    }
+                    .padding(.top, 12)
+                }
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
@@ -40,137 +67,433 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - Appearance
+    private var profileSection: some View {
+        settingsSection(title: "Profile", icon: "person.crop.circle.fill", iconColor: AppTheme.Colors.mtaBlue) {
+            VStack(spacing: 0) {
+                HStack(spacing: 10) {
+                    ZStack {
+                        Circle()
+                            .fill(AppTheme.Colors.mtaBlue.opacity(0.14))
+                            .frame(width: 38, height: 38)
+                        Image(systemName: "person.fill")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundColor(AppTheme.Colors.mtaBlue)
+                    }
 
-    private var appearanceSection: some View {
-        Section {
-            Picker("Theme", selection: $appTheme) {
-                Text("System").tag("system")
-                Text("Dark").tag("dark")
-                Text("Light").tag("light")
-            }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Welcome, \(displayNameForWelcome)")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundColor(AppTheme.Colors.textPrimary)
+                            .lineLimit(1)
+                        Text(currentProfile?.email ?? "Signed in with Apple")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
+                            .lineLimit(1)
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal, AppTheme.Layout.cardPadding)
+                .padding(.vertical, 14)
 
-            Picker("Distance", selection: $distanceUnit) {
-                Text("Miles").tag("mi")
-                Text("Kilometers").tag("km")
+                settingsDivider
+
+                NavigationLink {
+                    ProfileSettingsView()
+                } label: {
+                    HStack {
+                        settingsIcon("person.text.rectangle.fill", color: .indigo)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Manage Profile")
+                                .font(.custom("Helvetica", size: 15))
+                                .foregroundColor(AppTheme.Colors.textPrimary)
+                            Text("Name, username, account details")
+                                .font(.system(size: 11))
+                                .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.4))
+                    }
+                    .padding(.horizontal, AppTheme.Layout.cardPadding)
+                    .padding(.vertical, 14)
+                }
+                .buttonStyle(.plain)
             }
-        } header: {
-            Text("Appearance")
         }
     }
 
-    // MARK: - Widgets
+    private var appearanceSection: some View {
+        settingsSection(title: "Appearance", icon: "paintbrush.fill", iconColor: .purple) {
+            VStack(spacing: 0) {
+                settingsRow(icon: "circle.lefthalf.filled", iconColor: .indigo, title: "Theme") {
+                    Picker("", selection: $appTheme) {
+                        Text("System").tag("system")
+                        Text("Dark").tag("dark")
+                        Text("Light").tag("light")
+                    }
+                    .pickerStyle(.menu)
+                    .tint(AppTheme.Colors.mtaBlue)
+                }
+
+                settingsDivider
+
+                settingsRow(icon: "ruler", iconColor: .orange, title: "Distance") {
+                    Picker("", selection: $distanceUnit) {
+                        Text("Miles").tag("mi")
+                        Text("Kilometers").tag("km")
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 160)
+                }
+            }
+        }
+    }
 
     private var widgetSection: some View {
-        Section {
+        settingsSection(title: "Widgets", icon: "rectangle.3.group.fill", iconColor: .cyan) {
             NavigationLink {
                 WidgetSchedulesView()
             } label: {
                 HStack {
-                    Image(systemName: "calendar.badge.clock")
-                        .foregroundColor(AppTheme.Colors.mtaBlue)
-                    Text("Widget Schedules")
+                    settingsIcon("calendar.badge.clock", color: AppTheme.Colors.mtaBlue)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Widget Schedules")
+                            .font(.custom("Helvetica", size: 15))
+                            .foregroundColor(AppTheme.Colors.textPrimary)
+                        Text("Configure home screen widgets")
+                            .font(.system(size: 11))
+                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.4))
                 }
+                .padding(.horizontal, AppTheme.Layout.cardPadding)
+                .padding(.vertical, 14)
             }
-        } header: {
-            Text("Live Near Me Widget")
-        } footer: {
-            Text("Configure when the nearby transit widget should activate throughout the day.")
+            .buttonStyle(.plain)
         }
     }
 
-    // MARK: - Map
-
     private var mapSection: some View {
-        Section {
+        settingsSection(title: "Map", icon: "map.fill", iconColor: .green) {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Image(systemName: "arrow.left.and.right")
-                        .foregroundColor(AppTheme.Colors.mtaBlue)
+                    settingsIcon("arrow.left.and.right", color: AppTheme.Colors.mtaBlue)
                     Text("Line Offset")
+                        .font(.custom("Helvetica", size: 15))
+                        .foregroundColor(AppTheme.Colors.textPrimary)
                     Spacer()
                     Text("\(Int(subwayLineOffset))m")
-                        .foregroundColor(AppTheme.Colors.textSecondary)
-                        .monospacedDigit()
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .foregroundColor(AppTheme.Colors.mtaBlue)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(AppTheme.Colors.mtaBlue.opacity(0.12))
+                        .clipShape(Capsule())
                 }
                 Slider(value: $subwayLineOffset, in: 4...30, step: 1)
                     .tint(AppTheme.Colors.mtaBlue)
+                Text("Controls how far apart subway lines are spread when sharing the same tunnel.")
+                    .font(.system(size: 11))
+                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
             }
-        } header: {
-            Text("Map")
-        } footer: {
-            Text(
-                "Controls how far apart subway lines are spread when sharing the same tunnel. Increase if lines overlap; decrease for a tighter look."
-            )
+            .padding(.horizontal, AppTheme.Layout.cardPadding)
+            .padding(.vertical, 14)
         }
     }
-
-    // MARK: - Account
 
     private var accountSection: some View {
-        Section {
-            Button(role: .destructive) {
-                isLoggedIn = false
+        settingsSection(title: "Account", icon: "person.fill", iconColor: AppTheme.Colors.mtaBlue) {
+            Button {
+                SupabaseManager.shared.signOut()
             } label: {
                 HStack {
-                    Image(systemName: "rectangle.portrait.and.arrow.right")
+                    settingsIcon("rectangle.portrait.and.arrow.right", color: AppTheme.Colors.alertRed)
                     Text("Sign Out")
+                        .font(.custom("Helvetica", size: 15))
+                        .foregroundColor(AppTheme.Colors.alertRed)
+                    Spacer()
                 }
-                .foregroundColor(AppTheme.Colors.alertRed)
+                .padding(.horizontal, AppTheme.Layout.cardPadding)
+                .padding(.vertical, 14)
             }
-        } header: {
-            Text("Account")
+            .buttonStyle(.plain)
         }
     }
 
-    // MARK: - Developer Settings
-
-    private var developerSettingsSection: some View {
-        Section {
-            Toggle("Use Local Server", isOn: $useLocalhost)
-                .tint(AppTheme.Colors.mtaBlue)
-                .onChange(of: useLocalhost) { _, _ in
-                    TrackAPI.invalidateBaseURL()
+#if DEBUG
+    private var developerSection: some View {
+        settingsSection(title: "Developer", icon: "hammer.fill", iconColor: .orange) {
+            VStack(spacing: 0) {
+                settingsRow(icon: "desktopcomputer", iconColor: .mint, title: "Use Local Server") {
+                    Toggle("", isOn: $useLocalhost)
+                        .tint(AppTheme.Colors.mtaBlue)
+                        .onChange(of: useLocalhost) { _, _ in
+                            TrackAPI.invalidateBaseURL()
+                        }
                 }
 
-            if useLocalhost {
+                if useLocalhost {
+                    settingsDivider
+                    HStack {
+                        Text("http://")
+                            .font(.system(size: 13, design: .monospaced))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
+                        TextField("192.168.1.X", text: $customIP)
+                            .font(.system(size: 13, design: .monospaced))
+                            .foregroundColor(AppTheme.Colors.textPrimary)
+                            .keyboardType(.numbersAndPunctuation)
+                            .onChange(of: customIP) { _, _ in
+                                TrackAPI.invalidateBaseURL()
+                            }
+                        Text(":8000")
+                            .font(.system(size: 13, design: .monospaced))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
+                    }
+                    .padding(.horizontal, AppTheme.Layout.cardPadding)
+                    .padding(.vertical, 12)
+                }
+
+                settingsDivider
+
                 HStack {
-                    Text("http://")
-                    TextField("192.168.1.X", text: $customIP)
-                        .keyboardType(.numbersAndPunctuation)
-                    Text(":8000")
+                    Image(systemName: "link")
+                        .font(.system(size: 11))
+                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.5))
+                    Text("Active: \(TrackAPI.baseURL)")
+                        .font(.system(size: 10, weight: .regular, design: .monospaced))
+                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
+                        .lineLimit(1)
+                    Spacer()
                 }
-                .onChange(of: customIP) { _, _ in
-                    TrackAPI.invalidateBaseURL()
-                }
-            }
+                .padding(.horizontal, AppTheme.Layout.cardPadding)
+                .padding(.vertical, 8)
 
-            // Show current base URL for debugging
-            Text("Active: \(TrackAPI.baseURL)")
-                .font(.system(size: 12, weight: .regular, design: .monospaced))
-                .foregroundColor(AppTheme.Colors.textSecondary)
-        } header: {
-            Text("Developer Settings")
-        } footer: {
-            Text("When off, the app connects to the production server. Turn on only for local development.")
+                settingsDivider
+
+                HStack(spacing: 10) {
+                    Circle()
+                        .fill(
+                            backendPingIsHealthy == nil
+                                ? AppTheme.Colors.textSecondary.opacity(0.4)
+                                : (backendPingIsHealthy == true ? AppTheme.Colors.successGreen : AppTheme.Colors.alertRed)
+                        )
+                        .frame(width: 8, height: 8)
+
+                    Text(backendPingText)
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+                        .lineLimit(1)
+
+                    Spacer()
+
+                    Button {
+                        Task { await pingBackend() }
+                    } label: {
+                        if isPingingBackend {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Text("Ping")
+                                .font(.system(size: 11, weight: .semibold))
+                        }
+                    }
+                    .disabled(isPingingBackend)
+                }
+                .padding(.horizontal, AppTheme.Layout.cardPadding)
+                .padding(.vertical, 10)
+            }
+        }
+    }
+#endif
+
+    private var aboutSection: some View {
+        settingsSection(title: "About", icon: "info.circle.fill", iconColor: AppTheme.Colors.mtaBlue) {
+            VStack(spacing: 0) {
+                VStack(spacing: 12) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 20)
+                            .fill(AppTheme.Colors.subwayBlack)
+                            .frame(width: 72, height: 72)
+                            .shadow(color: AppTheme.Colors.subwayBlack.opacity(0.25), radius: 10, y: 4)
+                        Image(systemName: "tram.fill")
+                            .font(.system(size: 30, weight: .bold))
+                            .foregroundColor(.white)
+                    }
+
+                    VStack(spacing: 4) {
+                        Text("Track")
+                            .font(.system(size: 22, weight: .bold, design: .rounded))
+                            .foregroundColor(AppTheme.Colors.textPrimary)
+
+                        Text("NYC Transit, Live")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
+                    }
+
+                    if let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
+                       let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String {
+                        Text("v\(version) (\(build))")
+                            .font(.system(size: 11, weight: .medium, design: .monospaced))
+                            .foregroundColor(AppTheme.Colors.mtaBlue)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(AppTheme.Colors.mtaBlue.opacity(0.1))
+                            .clipShape(Capsule())
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 20)
+
+                settingsDivider
+
+                VStack(spacing: 10) {
+                    Text("SUPPORTED TRANSIT")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.5))
+                        .tracking(0.6)
+
+                    HStack(spacing: 0) {
+                        transitModeBadge("🚇", "Subway", AppTheme.Colors.mtaBlue)
+                        transitModeBadge("🚌", "Bus", Color(red: 0/255, green: 57/255, blue: 166/255))
+                        transitModeBadge("🚂", "LIRR", Color(red: 0/255, green: 115/255, blue: 191/255))
+                        transitModeBadge("🚆", "MNR", Color(red: 0/255, green: 90/255, blue: 140/255))
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+
+                settingsDivider
+
+                VStack(spacing: 8) {
+                    Text("POWERED BY")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.5))
+                        .tracking(0.6)
+
+                    HStack(spacing: 16) {
+                        dataSourcePill("MTA GTFS")
+                        dataSourcePill("Real-Time Feeds")
+                        dataSourcePill("Apple Maps")
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+
+                settingsDivider
+
+                VStack(spacing: 6) {
+                    Text("Made with ❤️ in NYC")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+
+                    Text("© \(Calendar.current.component(.year, from: Date())) Track NYC Transit")
+                        .font(.system(size: 11))
+                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.5))
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+            }
         }
     }
 
-    // MARK: - Legal & Attributes
+    private func transitModeBadge(_ emoji: String, _ label: String, _ color: Color) -> some View {
+        VStack(spacing: 6) {
+            Text(emoji)
+                .font(.system(size: 26))
+            Text(label)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(color)
+        }
+        .frame(maxWidth: .infinity)
+    }
 
-    private var legalSection: some View {
-        Section {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Data provided by the MTA is redistributed from an MTA server. Not an official MTA app.")
-                
-                Text("This app is provided \"as is\" without warranty of any kind. The developer makes no representation that the data is accurate, complete, or timely.")
-                
-                Text("Real-time data may be delayed.")
+    private func dataSourcePill(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(AppTheme.Colors.textSecondary.opacity(0.08))
+            .clipShape(Capsule())
+    }
+
+    private func pingBackend() async {
+        isPingingBackend = true
+        let result = await TrackAPI.pingBackend()
+        isPingingBackend = false
+
+        if result.ok {
+            backendPingIsHealthy = true
+            let ms = Int((result.latencyMs ?? 0).rounded())
+            backendPingText = "Connected (\(result.statusCode ?? 200), \(ms)ms)"
+        } else {
+            backendPingIsHealthy = false
+            if let status = result.statusCode {
+                backendPingText = "Failed (HTTP \(status))"
+            } else {
+                backendPingText = "Failed (\(result.error ?? "unknown"))"
             }
-            .font(.caption)
-            .foregroundColor(AppTheme.Colors.textSecondary)
-        } header: {
-            Text("Legal & Attributes")
+        }
+    }
+
+    private var settingsDivider: some View {
+        Divider()
+            .padding(.leading, AppTheme.Layout.cardPadding + 36)
+    }
+
+    private func settingsIcon(_ name: String, color: Color) -> some View {
+        Image(systemName: name)
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundColor(.white)
+            .frame(width: 28, height: 28)
+            .background(color.gradient)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+    }
+
+    private func settingsRow<Trailing: View>(
+        icon: String,
+        iconColor: Color,
+        title: String,
+        @ViewBuilder trailing: () -> Trailing
+    ) -> some View {
+        HStack {
+            settingsIcon(icon, color: iconColor)
+            Text(title)
+                .font(.custom("Helvetica", size: 15))
+                .foregroundColor(AppTheme.Colors.textPrimary)
+            Spacer()
+            trailing()
+        }
+        .padding(.horizontal, AppTheme.Layout.cardPadding)
+        .padding(.vertical, 12)
+    }
+
+    private func settingsSection<Content: View>(
+        title: String,
+        icon: String,
+        iconColor: Color,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(iconColor.opacity(0.7))
+                Text(title.uppercased())
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
+                    .tracking(0.5)
+            }
+            .padding(.horizontal, AppTheme.Layout.margin)
+
+            content()
+                .background(AppTheme.Colors.cardBackground)
+                .cornerRadius(AppTheme.Layout.cornerRadius)
+                .padding(.horizontal, AppTheme.Layout.margin)
         }
     }
 }
