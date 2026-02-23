@@ -3,7 +3,9 @@
     "default_search_radius_meters": 8047,
     "nearest_metro_fallback_radius_meters": 8047,
     "refresh_interval_seconds": 30,
-    "prod_base_url": "https://track-api.onrender.com",
+    "refresh_cooldown_seconds": 60,
+    "significant_movement_meters": 150,
+    "prod_base_url": "https://track-vkrr.onrender.com",
     "local_base_url": "http://127.0.0.1:8000",
     "default_device_ip": "192.168.12.101",
     "local_port": 8000

@@ -22,7 +22,19 @@ final class HomeViewModel {
         []
     var upcomingArrivals: [TrainArrival] = []
     var isLoading = false
+    /// True after the first successful data load. Prevents skeleton placeholders
+    /// from appearing on subsequent refreshes (e.g. return from background).
+    var hasLoadedOnce = false
     var errorMessage: String?
+
+    /// Timestamp of the last successful data refresh.
+    /// Used to skip redundant fetches when the user returns from background
+    /// within a short window (e.g. < 15 seconds).
+    private(set) var lastRefreshDate: Date?
+    /// Location where the last refresh was performed.
+    /// Compared against the current position to decide whether the user
+    /// has moved far enough to warrant re-discovering nearby routes.
+    private var lastRefreshLocation: CLLocation?
 
     /// The currently tracked route for the widget, loaded from UserDefaults.
     var currentTrackedRoute: TrackedRoute? = nil
@@ -997,16 +1009,70 @@ final class HomeViewModel {
         return CLLocation(latitude: nyc.latitude, longitude: nyc.longitude)
     }
 
-    /// Refreshes the view based on current location and transport mode.
-    func refresh(location: CLLocation?) async {
-        isLoading = true
-        errorMessage = nil
+    // MARK: - Staleness / Distance Guards
 
+    /// Returns `true` when recent data is fresh enough AND the user
+    /// hasn't moved significantly, so we can safely skip a full refresh.
+    func canSkipRefresh(for location: CLLocation?) -> Bool {
+        guard hasLoadedOnce,
+              let lastDate = lastRefreshDate else {
+            AppLogger.shared.log("REFRESH", message: "canSkipRefresh → NO (first load or no last date)")
+            return false
+        }
+        let elapsed = Date().timeIntervalSince(lastDate)
+        let cooldown = TimeInterval(AppSettings.shared.refreshCooldownSeconds)
+        guard elapsed < cooldown else {
+            AppLogger.shared.log("REFRESH", message: "canSkipRefresh → NO (elapsed \(Int(elapsed))s ≥ cooldown \(Int(cooldown))s)")
+            return false
+        }
+        // If we have a previous fetch location, require meaningful movement
+        if let lastLoc = lastRefreshLocation, let newLoc = location {
+            let dist = newLoc.distance(from: lastLoc)
+            let threshold = AppSettings.shared.significantMovementMeters
+            let skip = dist < threshold
+            AppLogger.shared.log("REFRESH", message: "canSkipRefresh → \(skip ? "YES" : "NO") (moved \(Int(dist))m, threshold \(Int(threshold))m, \(Int(elapsed))s ago)")
+            return skip
+        }
+        // No location to compare — trust the time guard alone
+        AppLogger.shared.log("REFRESH", message: "canSkipRefresh → YES (time guard only, \(Int(elapsed))s ago)")
+        return true
+    }
+
+    /// Refreshes the view based on current location and transport mode.
+    /// Uses a "stale-while-revalidate" pattern: if data already exists,
+    /// the refresh happens silently in the background so the user keeps
+    /// seeing the previous results instead of skeleton placeholders.
+    ///
+    /// - Returns: `true` when a network fetch actually ran; `false` when
+    ///   the request was skipped by the staleness guard.
+    @discardableResult
+    func refresh(location: CLLocation?, force: Bool = false) async -> Bool {
         let loc = effectiveLocation(userLocation: location)
+
+        // Skip if data is still fresh and user hasn't moved far.
+        // force=true bypasses this (used by pull-to-refresh / mode switch).
+        if !force && canSkipRefresh(for: loc) {
+            AppLogger.shared.log("REFRESH", message: "⏭️ Skipped — data still fresh")
+            return false
+        }
+
+        AppLogger.shared.log(
+            "REFRESH",
+            message: "🔄 Running \(force ? "(forced)" : "") mode=\(selectedMode)"
+        )
+
+        // Only show the loading spinner on the very first fetch.
+        // Subsequent refreshes (e.g. return from background) keep
+        // showing the previous data and silently swap in new results.
+        let isSilentRefresh = hasLoadedOnce
+        if !isSilentRefresh {
+            isLoading = true
+        }
+        errorMessage = nil
 
         switch selectedMode {
         case .nearby:
-            await refreshNearbyTransit(location: loc)
+            await refreshNearbyTransit(location: loc, silent: isSilentRefresh)
         case .subway:
             await refreshSubway(location: loc)
         case .bus:
@@ -1019,7 +1085,11 @@ final class HomeViewModel {
 
         syncTrackedRoute()
         updateLiveActivityFromRefresh()
+        lastRefreshDate = Date()
+        lastRefreshLocation = loc
+        hasLoadedOnce = true
         isLoading = false
+        return true
     }
 
     /// Updates the running Live Activity with fresh data from the latest refresh.
@@ -2381,16 +2451,21 @@ final class HomeViewModel {
     ///   skips alerts and accessibility fetches since those are location-independent
     ///   and are loaded during the initial app refresh. This makes area scanning
     ///   noticeably faster.
-    func refreshNearbyTransit(location: CLLocation?, skipGlobalFeeds: Bool = false) async {
+    func refreshNearbyTransit(location: CLLocation?, skipGlobalFeeds: Bool = false, silent: Bool = false) async {
         guard let location = location else {
             errorMessage = "Location required"
             return
         }
 
-        isLoading = true
+        if !silent {
+            isLoading = true
+            // Only clear the nearest-metro recommendation on a visible
+            // (non-silent) refresh so it doesn't briefly vanish when
+            // data is reloaded in the background.
+            nearestTransit = nil
+            nearestTransitDistance = nil
+        }
         errorMessage = nil
-        nearestTransit = nil
-        nearestTransitDistance = nil
 
         let lat = location.coordinate.latitude
         let lon = location.coordinate.longitude

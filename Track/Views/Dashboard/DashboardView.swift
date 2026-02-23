@@ -46,7 +46,7 @@ struct DashboardView: View {
             // MARK: - Scrollable Content
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    let initialLoad = viewModel.isLoading && !hasTransitData
+                    let initialLoad = !viewModel.hasLoadedOnce && viewModel.isLoading
 
                     // ── Favorites: skeleton OR real section ───────────────────
                     // Shown immediately on load alongside the transit skeleton
@@ -153,7 +153,7 @@ struct DashboardView: View {
             // Use effectiveLocation so pull-to-refresh during drag-to-search
             // fetches from the explored area, not the user's GPS.
             let loc = viewModel.effectiveLocation(userLocation: locationManager.currentLocation)
-            await viewModel.refresh(location: loc)
+            await viewModel.refresh(location: loc, force: true)
             lastUpdated = Date()
         }
     }

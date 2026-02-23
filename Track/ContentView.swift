@@ -90,18 +90,7 @@ struct ContentView: View {
     }
 
     private var authLoadingView: some View {
-        ZStack {
-            AppTheme.Colors.background
-                .ignoresSafeArea()
-
-            VStack(spacing: 12) {
-                ProgressView()
-                    .tint(AppTheme.Colors.mtaBlue)
-                Text("Checking session…")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(AppTheme.Colors.textSecondary)
-            }
-        }
+        SplashLoadingView()
     }
 }
 

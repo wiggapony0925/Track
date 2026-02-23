@@ -474,6 +474,16 @@ struct SettingsContentView: View {
         .onChange(of: draftShowSearchRadius) { _, _ in checkForChanges() }
         .onChange(of: draftDragToSearch) { _, _ in checkForChanges() }
         .onChange(of: draftSubwayLineOffset) { _, _ in checkForChanges() }
+        // Auto-push instant-apply settings to cloud when they change
+        .onChange(of: appTheme) { _, _ in
+            Task { await SyncManager.shared.pushUserSettings() }
+        }
+        .onChange(of: hapticsEnabled) { _, _ in
+            Task { await SyncManager.shared.pushUserSettings() }
+        }
+        .onChange(of: distanceUnit) { _, _ in
+            Task { await SyncManager.shared.pushUserSettings() }
+        }
         // Floating Apply button
         .overlay(alignment: .bottom) {
             if hasUnappliedChanges {

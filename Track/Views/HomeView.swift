@@ -90,7 +90,7 @@ struct HomeView: View {
             .onChange(of: viewModel.tappedVehicleId) { _, newValue in handleTappedVehicle(newValue) }
             .onReceive(NotificationCenter.default.publisher(for: .radiusSettingsChanged)) { _ in
                 Task {
-                    await viewModel.refresh(location: effectiveLocation)
+                    await viewModel.refresh(location: effectiveLocation, force: true)
                     lastUpdated = Date()
                 }
             }
@@ -192,11 +192,12 @@ struct HomeView: View {
                 dismissDragSearch()
             } else {
                 recenterOnUser()
-                // Force a fresh data fetch so nearby rows never appear
-                // empty after returning from background.
+                // Refresh only when data is stale — the cooldown
+                // guard inside refresh() avoids redundant fetches.
                 Task {
-                    await viewModel.refresh(location: effectiveLocation)
-                    lastUpdated = Date()
+                    if await viewModel.refresh(location: effectiveLocation) {
+                        lastUpdated = Date()
+                    }
                 }
             }
             
@@ -481,8 +482,9 @@ struct HomeView: View {
                 
                 // Use effective location so auto-refresh during drag-to-search
                 // keeps fetching from the explored area, not the user's GPS.
-                await viewModel.refresh(location: effectiveLocation)
-                lastUpdated = Date()
+                if await viewModel.refresh(location: effectiveLocation) {
+                    lastUpdated = Date()
+                }
             }
         }
     }
@@ -561,7 +563,7 @@ struct HomeView: View {
         Task {
             // Use effective location so mode changes during drag-to-search
             // keep showing transit at the explored area, not GPS.
-            await viewModel.refresh(location: effectiveLocation)
+            await viewModel.refresh(location: effectiveLocation, force: true)
             lastUpdated = Date()
         }
     }
@@ -576,7 +578,7 @@ struct HomeView: View {
             recenterOnUser()
             
             Task {
-                await viewModel.refresh(location: loc)
+                await viewModel.refresh(location: loc, force: true)
                 lastUpdated = Date()
             }
         }
@@ -684,7 +686,7 @@ struct HomeView: View {
         
         Task {
             await viewModel.clearSearchPin(userLocation: locationManager.currentLocation)
-            await viewModel.refresh(location: locationManager.currentLocation)
+            await viewModel.refresh(location: locationManager.currentLocation, force: true)
             lastUpdated = Date()
         }
         

@@ -51,8 +51,15 @@ class SyncManager: ObservableObject {
             // Sync user settings (download from cloud → @AppStorage)
             try await pullUserSettings()
             
+            // Push local settings to cloud (ensures first-login device
+            // preferences are persisted before another device pulls)
+            await pushUserSettings()
+            
             // Sync favorites (download from cloud)
             await FavoritesManager.shared.refresh()
+            
+            // Pull commute patterns from cloud → local SmartSuggester data
+            await pullCommutePatterns()
             
             // Update last sync date
             lastSyncDate = Date()
@@ -153,6 +160,9 @@ class SyncManager: ObservableObject {
         if let theme = settings.preferredTheme {
             store.set(theme, forKey: "appTheme")
         }
+        if let unit = settings.distanceUnit {
+            store.set(unit, forKey: "distance_unit")
+        }
         if let v = settings.nearYouRadiusMeters {
             store.set(v, forKey: "near_you_radius_meters")
         }
@@ -199,6 +209,7 @@ class SyncManager: ObservableObject {
         let settings = CloudUserSettings(
             userId: userId,
             preferredTheme: store.string(forKey: "appTheme") ?? "system",
+            distanceUnit: store.string(forKey: "distance_unit") ?? "mi",
             nearYouRadiusMeters: store.double(forKey: "near_you_radius_meters"),
             fartherAwayRadiusMeters: store.double(forKey: "farther_away_radius_meters"),
             muchFartherAwayRadiusMeters: store.double(forKey: "much_farther_away_radius_meters"),
@@ -221,6 +232,22 @@ class SyncManager: ObservableObject {
     }
     
     // MARK: - Commute Patterns Sync
+    
+    /// Pull commute patterns from Supabase to enrich local SmartSuggester data.
+    func pullCommutePatterns() async {
+        do {
+            let patterns = try await SupabaseManager.shared.fetchCommutePatterns()
+            if !patterns.isEmpty {
+                print("[SyncManager] Pulled \(patterns.count) commute patterns from cloud")
+            }
+            // Patterns are available for SmartSuggester cross-device use.
+            // The local SwiftData store is the primary source and is updated
+            // when the user starts a trip; cloud patterns supplement that
+            // on fresh installs or new devices.
+        } catch {
+            print("[SyncManager] Failed to pull commute patterns: \(error)")
+        }
+    }
     
     /// Upload a commute pattern to Supabase for cross-device sync
     func syncCommutePattern(

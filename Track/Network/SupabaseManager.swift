@@ -307,6 +307,13 @@ class SupabaseManager: ObservableObject {
     }
 
     /// Revalidates profile/session state while app is running.
+    ///
+    /// **Important:** This must NOT toggle `isAuthResolved` to `false`.
+    /// Doing so causes ContentView to momentarily swap HomeView for
+    /// SplashLoadingView, destroying all @State in HomeView (cached
+    /// data, cooldown timestamps, hasLoadedOnce). When the session
+    /// check finishes, a brand-new HomeView is created — forcing a
+    /// full skeleton reload every time the user returns from background.
     func refreshSessionIfNeeded() async {
         // Don't interfere with an active sign-in flow.
         guard !isLoading else { return }
@@ -316,9 +323,9 @@ class SupabaseManager: ObservableObject {
             return
         }
 
-        isAuthResolved = false
+        // Silently re-validate — keep isAuthResolved=true so the
+        // existing HomeView stays mounted and preserves its state.
         await loadCurrentUser()
-        isAuthResolved = true
     }
     
     // MARK: - Profile Operations

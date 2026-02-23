@@ -165,6 +165,7 @@ CREATE TABLE IF NOT EXISTS user_settings (
   
   -- Appearance
   preferred_theme TEXT DEFAULT 'system' CHECK (preferred_theme IN ('system', 'light', 'dark')),
+  distance_unit TEXT DEFAULT 'mi' CHECK (distance_unit IN ('mi', 'km')),
   
   -- Transit search radii (meters)
   near_you_radius_meters DOUBLE PRECISION DEFAULT 2414,       -- ~1.5 mi

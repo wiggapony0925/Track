@@ -64,6 +64,16 @@ struct SettingsView: View {
                         .foregroundColor(AppTheme.Colors.mtaBlue)
                 }
             }
+            // Auto-push settings to cloud when instant-apply values change
+            .onChange(of: appTheme) { _, _ in
+                Task { await SyncManager.shared.pushUserSettings() }
+            }
+            .onChange(of: subwayLineOffset) { _, _ in
+                Task { await SyncManager.shared.pushUserSettings() }
+            }
+            .onChange(of: distanceUnit) { _, _ in
+                Task { await SyncManager.shared.pushUserSettings() }
+            }
         }
     }
 

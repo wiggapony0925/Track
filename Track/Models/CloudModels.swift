@@ -143,6 +143,7 @@ struct CloudSchedule: Codable, Identifiable {
 struct CloudUserSettings: Codable {
     let userId: UUID
     var preferredTheme: String?
+    var distanceUnit: String?
     var nearYouRadiusMeters: Double?
     var fartherAwayRadiusMeters: Double?
     var muchFartherAwayRadiusMeters: Double?
@@ -160,6 +161,7 @@ struct CloudUserSettings: Codable {
     enum CodingKeys: String, CodingKey {
         case userId = "user_id"
         case preferredTheme = "preferred_theme"
+        case distanceUnit = "distance_unit"
         case nearYouRadiusMeters = "near_you_radius_meters"
         case fartherAwayRadiusMeters = "farther_away_radius_meters"
         case muchFartherAwayRadiusMeters = "much_farther_away_radius_meters"

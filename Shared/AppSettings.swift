@@ -26,6 +26,12 @@ struct AppSettings {
     let nearestMetroFallbackRadiusMeters: Int
     /// How often the app polls for new data (in seconds).
     let refreshIntervalSeconds: Int
+    /// Minimum seconds before a background-return triggers a new fetch.
+    /// If the user comes back within this window, the previous data is reused.
+    let refreshCooldownSeconds: Int
+    /// Minimum distance (meters) the user must move before nearby-route
+    /// discovery is re-triggered on a background return.
+    let significantMovementMeters: Double
     /// Base URL for the production backend.
     let prodBaseURL: String
     /// Base URL for the local backend (simulator).
@@ -159,7 +165,9 @@ struct AppSettings {
             self.defaultSearchRadiusMeters = 8047
             self.nearestMetroFallbackRadiusMeters = 8047
             self.refreshIntervalSeconds = 30
-            self.prodBaseURL = "https://track-api.onrender.com"
+            self.refreshCooldownSeconds = 30
+            self.significantMovementMeters = 150
+            self.prodBaseURL = "https://track-vkrr.onrender.com"
             self.localBaseURL = "http://127.0.0.1:8000"
             self.defaultDeviceIP = "169.254.175.168"
             self.localPort = 8000
@@ -208,7 +216,9 @@ struct AppSettings {
         self.defaultSearchRadiusMeters = api["default_search_radius_meters"] as? Int ?? 8047
         self.nearestMetroFallbackRadiusMeters = api["nearest_metro_fallback_radius_meters"] as? Int ?? 8047
         self.refreshIntervalSeconds = api["refresh_interval_seconds"] as? Int ?? 30
-        self.prodBaseURL = api["prod_base_url"] as? String ?? "https://track-api.onrender.com"
+        self.refreshCooldownSeconds = api["refresh_cooldown_seconds"] as? Int ?? 30
+        self.significantMovementMeters = api["significant_movement_meters"] as? Double ?? 150
+        self.prodBaseURL = api["prod_base_url"] as? String ?? "https://track-vkrr.onrender.com"
         self.localBaseURL = api["local_base_url"] as? String ?? "http://127.0.0.1:8000"
         self.defaultDeviceIP = api["default_device_ip"] as? String ?? "169.254.175.168"
         self.localPort = api["local_port"] as? Int ?? 8000
