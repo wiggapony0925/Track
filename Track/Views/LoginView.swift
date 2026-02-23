@@ -11,12 +11,8 @@ import SwiftUI
 import AuthenticationServices
 
 struct LoginView: View {
-    @AppStorage("isLoggedIn") private var isLoggedIn = false
     @State private var isLoading = false
     @State private var errorMessage: String?
-    
-    /// Delay before allowing offline fallback login after cloud sync failure
-    private let cloudSyncFallbackDelay: TimeInterval = 2.0
 
     var body: some View {
         ZStack {
@@ -127,21 +123,6 @@ struct LoginView: View {
             .shadow(color: AppTheme.Colors.subwayBlack.opacity(0.15), radius: 8, y: 4)
             .disabled(isLoading)
 
-            // Continue without account
-            Button {
-                continueWithoutAccount()
-            } label: {
-                Text("Continue without account")
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundColor(AppTheme.Colors.mtaBlue)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(AppTheme.Colors.mtaBlue.opacity(0.1))
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            }
-            .accessibilityLabel("Continue without account")
-            .accessibilityHint("Skip sign in and use Track without an account")
-
             if isLoading {
                 ProgressView()
                     .tint(AppTheme.Colors.mtaBlue)
@@ -188,48 +169,51 @@ struct LoginView: View {
                 Task { @MainActor in
                     do {
                         try await SupabaseManager.shared.signInWithApple(credentials: credentials)
-                        isLoading = false
-                        isLoggedIn = true
-                        
-                        // Sync user data immediately after login
+                        // Cloud sync is best effort after a successful auth session.
                         await SyncManager.shared.performFullSync()
+                        isLoading = false
                     } catch {
                         isLoading = false
                         errorMessage = error.localizedDescription
-                        
-                        // Fallback: still allow login even if cloud sync fails
-                        // User data will be stored locally
-                        DispatchQueue.main.asyncAfter(deadline: .now() + cloudSyncFallbackDelay) {
-                            isLoggedIn = true
-                        }
                     }
                 }
             }
             
         case .failure(let error):
             isLoading = false
-            // User cancelled or error occurred
-            if (error as NSError).code != ASAuthorizationError.canceled.rawValue {
-                errorMessage = "Sign in failed. Please try again."
+            let nsError = error as NSError
+
+            // User tapped Cancel — no error to show
+            if nsError.code == ASAuthorizationError.canceled.rawValue {
+                return
             }
-        }
-    }
-    
-    private func continueWithoutAccount() {
-        isLoading = true
-        
-        // Optionally create anonymous Supabase session for basic features
-        Task { @MainActor in
-            do {
-                try await SupabaseManager.shared.signInAnonymously()
-                // Initial sync for anonymous user
-                await SyncManager.shared.performFullSync()
-            } catch {
-                // Continue anyway - local-only mode
-                print("Anonymous sign-in failed: \(error)")
+
+            // Dump everything Apple gives us so we can diagnose in Xcode console
+            print("╔══════════════════════════════════════════════")
+            print("║ [LoginView] APPLE SIGN-IN FAILED")
+            print("║ Domain : \(nsError.domain)")
+            print("║ Code   : \(nsError.code)")
+            print("║ Desc   : \(nsError.localizedDescription)")
+            print("║ Info   : \(nsError.userInfo)")
+            if let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError {
+                print("║ Underlying: domain=\(underlying.domain) code=\(underlying.code) \(underlying.localizedDescription)")
             }
-            isLoading = false
-            isLoggedIn = true
+            print("╚══════════════════════════════════════════════")
+
+            switch ASAuthorizationError.Code(rawValue: nsError.code) {
+            case .unknown:
+                errorMessage = "Apple Sign-In couldn't connect. Make sure you're signed into an Apple ID in Settings and try again."
+            case .invalidResponse:
+                errorMessage = "Apple returned an invalid response. Please try again."
+            case .notHandled:
+                errorMessage = "The sign-in request wasn't handled. Please try again."
+            case .failed:
+                errorMessage = "Apple Sign-In failed. Check your internet connection and try again."
+            case .notInteractive:
+                errorMessage = "Sign-in requires interaction. Please try again."
+            default:
+                errorMessage = "Sign in failed (code \(nsError.code)). Please try again."
+            }
         }
     }
 }

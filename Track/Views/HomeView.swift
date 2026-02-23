@@ -422,6 +422,9 @@ struct HomeView: View {
             
         case .settings:
             SettingsContentView(sheetNavigator: sheetNavigator)
+
+        case .profileSettings:
+            ProfileSettingsContentView(sheetNavigator: sheetNavigator)
             
         case .serviceAlerts:
             ServiceAlertsPage(
@@ -432,6 +435,11 @@ struct HomeView: View {
             
         case .widgetSchedules:
             WidgetSchedulesContentView(sheetNavigator: sheetNavigator)
+
+#if DEBUG
+        case .developerSettings:
+            DeveloperSettingsContentView(sheetNavigator: sheetNavigator)
+#endif
             
         case .scheduleEditor(let schedule):
             ScheduleEditorView(schedule: schedule) { newSchedule in

@@ -27,8 +27,12 @@ class FavoritesManager: ObservableObject {
     private let cacheKey = "cached_favorites"
     
     private init() {
-        // Load cached favorites from disk on launch
+        // Load cached favorites from disk on launch for instant offline display
         loadFromCache()
+        // Then kick off a live refresh from Supabase in the background
+        Task {
+            await refresh()
+        }
     }
     
     // MARK: - Public API
@@ -110,8 +114,17 @@ class FavoritesManager: ObservableObject {
         stopLat: Double?,
         stopLon: Double?
     ) async {
-        guard let userId = SupabaseManager.shared.currentUser?.id else {
-            print("[FavoritesManager] Cannot add favorite - not signed in")
+        // Use currentUser if loaded, otherwise fall back to the stored UUID in UserDefaults
+        let userId: UUID? = SupabaseManager.shared.currentUser?.id ?? {
+            let defaults = UserDefaults(suiteName: kAppGroupIdentifier) ?? .standard
+            if let str = defaults.string(forKey: "supabase_user_id") {
+                return UUID(uuidString: str)
+            }
+            return nil
+        }()
+        
+        guard let userId else {
+            print("[FavoritesManager] Cannot add favorite - no user ID available")
             return
         }
         

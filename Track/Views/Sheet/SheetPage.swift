@@ -20,12 +20,20 @@ enum SheetPage: Equatable, Identifiable {
     
     /// Settings and preferences
     case settings
+
+    /// User profile management
+    case profileSettings
     
     /// Full-page service alerts view
     case serviceAlerts
     
     /// Widget schedule management
     case widgetSchedules
+
+#if DEBUG
+    /// Developer tools and local backend controls (debug builds only)
+    case developerSettings
+#endif
     
     /// Schedule editor for a specific widget
     case scheduleEditor(schedule: WidgetSchedule?)
@@ -40,10 +48,16 @@ enum SheetPage: Equatable, Identifiable {
             return "routeDetail-\(group.routeId)"
         case .settings:
             return "settings"
+        case .profileSettings:
+            return "profileSettings"
         case .serviceAlerts:
             return "serviceAlerts"
         case .widgetSchedules:
             return "widgetSchedules"
+#if DEBUG
+        case .developerSettings:
+            return "developerSettings"
+#endif
         case .scheduleEditor(let schedule):
             return "scheduleEditor-\(schedule?.id.uuidString ?? "new")"
         }
@@ -59,10 +73,16 @@ enum SheetPage: Equatable, Identifiable {
             return g1.routeId == g2.routeId && d1 == d2
         case (.settings, .settings):
             return true
+        case (.profileSettings, .profileSettings):
+            return true
         case (.serviceAlerts, .serviceAlerts):
             return true
         case (.widgetSchedules, .widgetSchedules):
             return true
+#if DEBUG
+        case (.developerSettings, .developerSettings):
+            return true
+#endif
         case (.scheduleEditor(let s1), .scheduleEditor(let s2)):
             return s1?.id == s2?.id
         default:

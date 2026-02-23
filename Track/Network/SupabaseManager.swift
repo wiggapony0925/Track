@@ -54,6 +54,7 @@ class SupabaseManager: ObservableObject {
     
     @Published var currentUser: UserProfile?
     @Published var isAuthenticated = false
+    @Published var isAuthResolved = false
     @Published var isLoading = false
     @Published var errorMessage: String?
     
@@ -77,31 +78,101 @@ class SupabaseManager: ObservableObject {
     private init() {
         self.baseURL = URL(string: SupabaseConfig.url)!
         self.apiKey = SupabaseConfig.anonKey
-        
-        // Restore session if available
-        if let token = defaults.string(forKey: accessTokenKey) {
-            self.accessToken = token
-            self.isAuthenticated = true
-            
-            // Load user profile
-            Task {
-                await loadCurrentUser()
-            }
+
+        restoreSessionFromStorage()
+    }
+
+    private func restoreSessionFromStorage() {
+        guard let token = defaults.string(forKey: accessTokenKey), !token.isEmpty else {
+            accessToken = nil
+            currentUser = nil
+            isAuthenticated = false
+            isAuthResolved = true
+            return
+        }
+
+        accessToken = token
+        isAuthenticated = true
+        isAuthResolved = false
+
+        Task {
+            await loadCurrentUser()
+            isAuthResolved = true
         }
     }
     
     // MARK: - Authentication
+
+    private struct SupabaseAuthErrorResponse: Decodable {
+        let error: String?
+        let errorDescription: String?
+        let msg: String?
+
+        enum CodingKeys: String, CodingKey {
+            case error
+            case errorDescription = "error_description"
+            case msg
+        }
+    }
+
+    private struct AppleIDTokenClaims: Decodable {
+        let sub: String?
+        let email: String?
+        let name: String?
+        let givenName: String?
+        let familyName: String?
+
+        enum CodingKeys: String, CodingKey {
+            case sub
+            case email
+            case name
+            case givenName = "given_name"
+            case familyName = "family_name"
+        }
+    }
+
+    private func decodeAppleIDTokenClaims(from idToken: String) -> AppleIDTokenClaims? {
+        let segments = idToken.split(separator: ".")
+        guard segments.count >= 2 else { return nil }
+
+        var payload = String(segments[1])
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+
+        let padding = 4 - (payload.count % 4)
+        if padding < 4 {
+            payload += String(repeating: "=", count: padding)
+        }
+
+        guard let data = Data(base64Encoded: payload) else { return nil }
+        return try? JSONDecoder().decode(AppleIDTokenClaims.self, from: data)
+    }
+
+    private func authError(from data: Data, statusCode: Int) -> SupabaseError {
+        if let decoded = try? JSONDecoder().decode(SupabaseAuthErrorResponse.self, from: data) {
+            let message = decoded.errorDescription ?? decoded.msg ?? decoded.error
+            if let message, !message.isEmpty {
+                return .authFailed("Apple sign-in failed: \(message)")
+            }
+        }
+        return .authFailed("Apple sign-in failed with status \(statusCode)")
+    }
     
     /// Sign in with Apple credentials
     func signInWithApple(credentials: AppleSignInCredentials) async throws {
         isLoading = true
+        isAuthResolved = false
         errorMessage = nil
         
-        defer { isLoading = false }
+        defer {
+            isLoading = false
+            isAuthResolved = true
+        }
         
         guard let idToken = credentials.identityTokenString else {
             throw SupabaseError.invalidCredentials
         }
+        let tokenClaims = decodeAppleIDTokenClaims(from: idToken)
         
         // Build request to Supabase Auth
         let url = baseURL.appendingPathComponent("auth/v1/token")
@@ -129,108 +200,35 @@ class SupabaseManager: ObservableObject {
         if httpResponse.statusCode == 200 {
             // Parse auth response
             let authResponse = try JSONDecoder().decode(AuthResponse.self, from: data)
+            guard let userId = UUID(uuidString: authResponse.user.id) else {
+                throw SupabaseError.invalidCredentials
+            }
             
             // Store tokens
             accessToken = authResponse.accessToken
             defaults.set(authResponse.accessToken, forKey: accessTokenKey)
             defaults.set(authResponse.refreshToken, forKey: refreshTokenKey)
             defaults.set(authResponse.user.id, forKey: userIdKey)
-            
-            isAuthenticated = true
-            
-            // Update profile with Apple data
-            await updateProfileWithAppleData(credentials: credentials, userId: UUID(uuidString: authResponse.user.id)!)
-            
-            // Load full profile
-            await loadCurrentUser()
+
+            do {
+                // Ensure profile exists and is readable before finalizing auth state.
+                try await updateProfileWithAppleData(
+                    credentials: credentials,
+                    tokenClaims: tokenClaims,
+                    authUser: authResponse.user,
+                    userId: userId
+                )
+
+                let profile = try await fetchProfile(userId: userId)
+                currentUser = profile
+                isAuthenticated = true
+            } catch {
+                signOut()
+                throw SupabaseError.authFailed("Unable to complete account setup: \(error.localizedDescription)")
+            }
         } else {
-            // Try to create account if user doesn't exist
-            try await signUpWithApple(credentials: credentials)
+            throw authError(from: data, statusCode: httpResponse.statusCode)
         }
-    }
-    
-    /// Sign up with Apple (creates new account using native Apple ID token)
-    /// Uses Supabase's native OAuth flow with Apple identity token
-    private func signUpWithApple(credentials: AppleSignInCredentials) async throws {
-        guard let idToken = credentials.identityTokenString else {
-            throw SupabaseError.invalidCredentials
-        }
-        
-        // Use Supabase's token-based sign in for Apple
-        // This will create a new account if one doesn't exist
-        let url = baseURL.appendingPathComponent("auth/v1/token", isDirectory: false)
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        request.setValue(apiKey, forHTTPHeaderField: "apikey")
-        
-        // Use id_token grant type for native Apple Sign-In
-        let body: [String: Any] = [
-            "grant_type": "id_token",
-            "provider": "apple",
-            "id_token": idToken
-        ]
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        
-        let (data, response) = try await URLSession.shared.data(for: request)
-        
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            throw SupabaseError.signUpFailed
-        }
-        
-        let authResponse = try JSONDecoder().decode(AuthResponse.self, from: data)
-        
-        // Store tokens
-        accessToken = authResponse.accessToken
-        defaults.set(authResponse.accessToken, forKey: accessTokenKey)
-        defaults.set(authResponse.refreshToken, forKey: refreshTokenKey)
-        defaults.set(authResponse.user.id, forKey: userIdKey)
-        
-        isAuthenticated = true
-        
-        // Update profile with Apple data
-        await updateProfileWithAppleData(credentials: credentials, userId: UUID(uuidString: authResponse.user.id)!)
-        
-        await loadCurrentUser()
-    }
-    
-    /// Anonymous sign in (for users who skip login)
-    func signInAnonymously() async throws {
-        isLoading = true
-        errorMessage = nil
-        
-        defer { isLoading = false }
-        
-        let url = baseURL.appendingPathComponent("auth/v1/signup")
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        request.setValue(apiKey, forHTTPHeaderField: "apikey")
-        
-        // Generate anonymous user with full UUID for uniqueness
-        let anonymousEmail = "anon_\(UUID().uuidString.lowercased())@track.app"
-        let body: [String: Any] = [
-            "email": anonymousEmail,
-            "password": UUID().uuidString
-        ]
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        
-        let (data, response) = try await URLSession.shared.data(for: request)
-        
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            throw SupabaseError.signUpFailed
-        }
-        
-        let authResponse = try JSONDecoder().decode(AuthResponse.self, from: data)
-        
-        accessToken = authResponse.accessToken
-        defaults.set(authResponse.accessToken, forKey: accessTokenKey)
-        defaults.set(authResponse.refreshToken, forKey: refreshTokenKey)
-        defaults.set(authResponse.user.id, forKey: userIdKey)
-        
-        isAuthenticated = true
     }
     
     /// Sign out current user
@@ -238,6 +236,7 @@ class SupabaseManager: ObservableObject {
         accessToken = nil
         currentUser = nil
         isAuthenticated = false
+        isAuthResolved = true
         
         defaults.removeObject(forKey: accessTokenKey)
         defaults.removeObject(forKey: refreshTokenKey)
@@ -247,14 +246,51 @@ class SupabaseManager: ObservableObject {
     /// Load current user profile
     func loadCurrentUser() async {
         guard let userId = defaults.string(forKey: userIdKey),
-              let uuid = UUID(uuidString: userId) else { return }
+              let uuid = UUID(uuidString: userId) else {
+            signOut()
+            return
+        }
         
         do {
             let profile = try await fetchProfile(userId: uuid)
             currentUser = profile
+        } catch let supabaseError as SupabaseError {
+            switch supabaseError {
+            case .notFound:
+                do {
+                    let profile = try await bootstrapProfileFromSession(userId: uuid)
+                    currentUser = profile
+                    isAuthenticated = true
+                } catch {
+                    print("Profile missing and bootstrap failed: \(error)")
+                    errorMessage = "Your session is no longer valid. Please sign in again."
+                    signOut()
+                }
+            case .unauthorized:
+                print("Profile missing or unauthorized. Signing out local session.")
+                errorMessage = "Your session is no longer valid. Please sign in again."
+                signOut()
+            default:
+                print("Failed to load user profile: \(supabaseError)")
+            }
         } catch {
             print("Failed to load user profile: \(error)")
         }
+    }
+
+    /// Revalidates profile/session state while app is running.
+    func refreshSessionIfNeeded() async {
+        // Don't interfere with an active sign-in flow.
+        guard !isLoading else { return }
+
+        guard accessToken != nil else {
+            signOut()
+            return
+        }
+
+        isAuthResolved = false
+        await loadCurrentUser()
+        isAuthResolved = true
     }
     
     // MARK: - Profile Operations
@@ -275,7 +311,19 @@ class SupabaseManager: ObservableObject {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
         
-        let (data, _) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SupabaseError.networkError
+        }
+
+        if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
+            throw SupabaseError.unauthorized
+        }
+
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw SupabaseError.networkError
+        }
+
         let profiles = try JSONDecoder().decode([UserProfile].self, from: data)
         
         guard let profile = profiles.first else {
@@ -283,6 +331,85 @@ class SupabaseManager: ObservableObject {
         }
         
         return profile
+    }
+
+    /// Insert or update a profile row by primary key
+    private func upsertProfile(_ profile: UserProfile) async throws {
+        let url = baseURL.appendingPathComponent("rest/v1/profiles")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(apiKey, forHTTPHeaderField: "apikey")
+        request.setValue("resolution=merge-duplicates", forHTTPHeaderField: "Prefer")
+        if let token = accessToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        let encoder = JSONEncoder()
+        request.httpBody = try encoder.encode(profile)
+
+        let (_, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...299).contains(httpResponse.statusCode) else {
+            throw SupabaseError.upsertFailed
+        }
+
+        currentUser = profile
+    }
+
+    /// Fetch authenticated user identity from Supabase Auth API.
+    private func fetchAuthenticatedUserIdentity() async throws -> AuthUser {
+        guard let accessToken else { throw SupabaseError.unauthorized }
+
+        let url = baseURL.appendingPathComponent("auth/v1/user")
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(apiKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SupabaseError.networkError
+        }
+
+        if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
+            throw SupabaseError.unauthorized
+        }
+
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw SupabaseError.networkError
+        }
+
+        return try JSONDecoder().decode(AuthUser.self, from: data)
+    }
+
+    /// Rebuild a missing profile row from authenticated user identity data.
+    private func bootstrapProfileFromSession(userId: UUID) async throws -> UserProfile {
+        let authUser = try await fetchAuthenticatedUserIdentity()
+
+        let fullName = authUser.userMetadata?.fullName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let givenName = authUser.userMetadata?.givenName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let familyName = authUser.userMetadata?.familyName?.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let profile = UserProfile(
+            id: userId,
+            appleUserId: authUser.userMetadata?.sub,
+            email: authUser.email?.lowercased(),
+            fullName: (fullName?.isEmpty == false ? fullName : nil),
+            givenName: (givenName?.isEmpty == false ? givenName : nil),
+            familyName: (familyName?.isEmpty == false ? familyName : nil),
+            username: nil,
+            avatarUrl: nil,
+            preferredTheme: nil,
+            notificationsEnabled: nil,
+            createdAt: nil,
+            updatedAt: nil,
+            lastLoginAt: Date()
+        )
+
+        try await upsertProfile(profile)
+        return try await fetchProfile(userId: userId)
     }
     
     /// Update user profile
@@ -313,26 +440,75 @@ class SupabaseManager: ObservableObject {
     }
     
     /// Update profile with Apple Sign-In data
-    private func updateProfileWithAppleData(credentials: AppleSignInCredentials, userId: UUID) async {
+    private func updateProfileWithAppleData(
+        credentials: AppleSignInCredentials,
+        tokenClaims: AppleIDTokenClaims?,
+        authUser: AuthUser,
+        userId: UUID
+    ) async throws {
+        let existingProfile: UserProfile?
+        if let currentUser, currentUser.id == userId {
+            existingProfile = currentUser
+        } else {
+            existingProfile = try? await fetchProfile(userId: userId)
+        }
+
+        let appleFullName = credentials.fullName?.formatted().trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedFullName = (appleFullName?.isEmpty == false ? appleFullName : nil)
+
+        let resolvedEmail = (
+            credentials.email
+            ?? tokenClaims?.email
+            ?? authUser.email
+            ?? existingProfile?.email
+        )?.lowercased()
+
+        let resolvedGivenName = credentials.fullName?.givenName
+            ?? tokenClaims?.givenName
+            ?? authUser.userMetadata?.givenName
+            ?? existingProfile?.givenName
+
+        let resolvedFamilyName = credentials.fullName?.familyName
+            ?? tokenClaims?.familyName
+            ?? authUser.userMetadata?.familyName
+            ?? existingProfile?.familyName
+
+        let combinedNameFromParts: String? = {
+            let parts = [resolvedGivenName, resolvedFamilyName].compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            guard !parts.isEmpty else { return nil }
+            return parts.joined(separator: " ")
+        }()
+
+        let resolvedAppleUserId = credentials.userId.isEmpty
+            ? (tokenClaims?.sub ?? existingProfile?.appleUserId)
+            : credentials.userId
+
         let profile = UserProfile(
             id: userId,
-            appleUserId: credentials.userId,
-            email: credentials.email,
-            fullName: credentials.fullName?.formatted(),
-            givenName: credentials.fullName?.givenName,
-            familyName: credentials.fullName?.familyName
+            appleUserId: resolvedAppleUserId,
+            email: resolvedEmail,
+            fullName: resolvedFullName
+                ?? tokenClaims?.name
+                ?? authUser.userMetadata?.fullName
+                ?? combinedNameFromParts
+                ?? existingProfile?.fullName,
+            givenName: resolvedGivenName,
+            familyName: resolvedFamilyName,
+            username: existingProfile?.username,
+            avatarUrl: existingProfile?.avatarUrl,
+            preferredTheme: existingProfile?.preferredTheme,
+            notificationsEnabled: existingProfile?.notificationsEnabled,
+            createdAt: existingProfile?.createdAt,
+            updatedAt: existingProfile?.updatedAt,
+            lastLoginAt: Date()
         )
         
-        do {
-            try await updateProfile(profile)
-        } catch {
-            print("Failed to update profile with Apple data: \(error)")
-        }
+        try await upsertProfile(profile)
     }
     
     // MARK: - Analytics
     
-    /// Log a route interaction for analytics (works for anonymous users too)
+    /// Log a route interaction for analytics
     func logRouteInteraction(
         routeId: String,
         displayName: String? = nil,
@@ -361,9 +537,11 @@ class SupabaseManager: ObservableObject {
             body["route_display_name"] = displayName
         }
         
-        if let userId = defaults.string(forKey: userIdKey) {
-            body["user_id"] = userId
+        guard let userId = defaults.string(forKey: userIdKey), !userId.isEmpty else {
+            print("Skipping route interaction insert: missing authenticated user_id")
+            return
         }
+        body["user_id"] = userId
         
         if let lat = latitude, let lon = longitude {
             body["latitude"] = lat
@@ -402,7 +580,9 @@ class SupabaseManager: ObservableObject {
         }
         
         let (data, _) = try await URLSession.shared.data(for: request)
-        return try JSONDecoder().decode([CloudFavorite].self, from: data)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode([CloudFavorite].self, from: data)
     }
     
     /// Add a favorite
@@ -418,13 +598,30 @@ class SupabaseManager: ObservableObject {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
         
-        let encoder = JSONEncoder()
-        request.httpBody = try encoder.encode(favorite)
+        // Build a minimal insert payload — omit server-generated fields
+        // (id, created_at, updated_at) so Supabase uses its defaults
+        var payload: [String: Any] = [
+            "user_id": favorite.userId.uuidString,
+            "route_id": favorite.routeId,
+            "route_display_name": favorite.routeDisplayName,
+            "stop_id": favorite.stopId,
+            "stop_name": favorite.stopName,
+            "mode": favorite.mode,
+            "display_order": favorite.displayOrder ?? 0
+        ]
+        if let direction = favorite.direction { payload["direction"] = direction }
+        if let destination = favorite.destination { payload["destination"] = destination }
+        if let lat = favorite.stopLat { payload["stop_lat"] = lat }
+        if let lon = favorite.stopLon { payload["stop_lon"] = lon }
         
-        let (_, response) = try await URLSession.shared.data(for: request)
+        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
         
         guard let httpResponse = response as? HTTPURLResponse,
               (200...299).contains(httpResponse.statusCode) else {
+            let body = String(data: data, encoding: .utf8) ?? "(no body)"
+            print("[SupabaseManager] addFavorite failed: \(body)")
             throw SupabaseError.insertFailed
         }
     }
@@ -474,7 +671,9 @@ class SupabaseManager: ObservableObject {
         }
         
         let (data, _) = try await URLSession.shared.data(for: request)
-        return try JSONDecoder().decode([CloudSchedule].self, from: data)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode([CloudSchedule].self, from: data)
     }
     
     /// Upsert a schedule
@@ -679,4 +878,25 @@ private struct AuthResponse: Codable {
 private struct AuthUser: Codable {
     let id: String
     let email: String?
+    let userMetadata: AuthUserMetadata?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case email
+        case userMetadata = "user_metadata"
+    }
+}
+
+private struct AuthUserMetadata: Codable {
+    let sub: String?
+    let fullName: String?
+    let givenName: String?
+    let familyName: String?
+
+    enum CodingKeys: String, CodingKey {
+        case sub
+        case fullName = "full_name"
+        case givenName = "given_name"
+        case familyName = "family_name"
+    }
 }

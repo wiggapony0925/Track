@@ -44,16 +44,27 @@ async def startup_event():
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     start = time.perf_counter()
-    response = await call_next(request)
-    elapsed_ms = (time.perf_counter() - start) * 1000
-    query = f"?{request.url.query}" if request.url.query else ""
-    TrackLogger.request(
-        request.method,
-        f"{request.url.path}{query}",
-        response.status_code,
-        elapsed_ms=elapsed_ms,
+    user_email = (
+        request.headers.get("x-user-email")
+        or request.headers.get("x-auth-email")
+        or request.query_params.get("email")
+        or "-"
     )
-    return response
+    TrackLogger.set_user_email(user_email)
+
+    try:
+        response = await call_next(request)
+        elapsed_ms = (time.perf_counter() - start) * 1000
+        query = f"?{request.url.query}" if request.url.query else ""
+        TrackLogger.request(
+            request.method,
+            f"{request.url.path}{query}",
+            response.status_code,
+            elapsed_ms=elapsed_ms,
+        )
+        return response
+    finally:
+        TrackLogger.clear_user_email()
 
 
 @app.get("/config")

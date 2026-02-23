@@ -20,9 +20,11 @@
 
 from __future__ import annotations
 
+import contextvars
 import logging
 import sys
 import time
+from contextlib import contextmanager
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -50,6 +52,18 @@ _LEVEL_COLORS = {
     "CRITICAL": Fore.RED + Style.BRIGHT,
 }
 
+_user_email_ctx: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "track_user_email", default="-"
+)
+
+
+class _UserEmailFilter(logging.Filter):
+    """Inject request-scoped user email into every log record."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.user_email = _user_email_ctx.get()
+        return True
+
 
 class _ColorFormatter(logging.Formatter):
     """Console formatter that adds ANSI colors to the level name."""
@@ -59,13 +73,15 @@ class _ColorFormatter(logging.Formatter):
         reset = Style.RESET_ALL
         # Tag (subsystem) is stored in the `tag` extra field
         tag = getattr(record, "tag", "TRACK")
+        user_email = getattr(record, "user_email", "-")
         ts = self.formatTime(record, "%H:%M:%S")
         msg = record.getMessage()
-        # Format: 12:34:56 [INFO] [SUBWAY] message
+        # Format: 12:34:56 [INFO] [SUBWAY] [user@email] message
         return (
             f"{Fore.CYAN}{ts}{reset} "
             f"{color}[{record.levelname}]{reset} "
             f"{Fore.BLUE}[{tag}]{reset} "
+            f"{Fore.MAGENTA}[{user_email}]{reset} "
             f"{msg}"
         )
 
@@ -75,8 +91,9 @@ class _FileFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         tag = getattr(record, "tag", "TRACK")
+        user_email = getattr(record, "user_email", "-")
         ts = self.formatTime(record, "%Y-%m-%d %H:%M:%S")
-        return f"{ts} [{record.levelname}] [{tag}] {record.getMessage()}"
+        return f"{ts} [{record.levelname}] [{tag}] [{user_email}] {record.getMessage()}"
 
 
 # ---------------------------------------------------------------------------
@@ -91,6 +108,7 @@ if not _logger.handlers:
     # Console handler — INFO and above (colorful)
     _console = logging.StreamHandler(sys.stdout)
     _console.setLevel(logging.DEBUG)
+    _console.addFilter(_UserEmailFilter())
     _console.setFormatter(_ColorFormatter())
     _logger.addHandler(_console)
 
@@ -100,6 +118,7 @@ if not _logger.handlers:
             _LOG_FILE, maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8",
         )
         _file.setLevel(logging.DEBUG)
+        _file.addFilter(_UserEmailFilter())
         _file.setFormatter(_FileFormatter())
         _logger.addHandler(_file)
     except (OSError, PermissionError):
@@ -119,6 +138,28 @@ class TrackLogger:
     Convenience methods (``bus``, ``subway``, ``rail``, ``cache``, etc.)
     set the tag automatically.
     """
+
+    # ------------------------------------------------------------------
+    # Request-scoped user context
+    # ------------------------------------------------------------------
+    @staticmethod
+    def set_user_email(email: str | None) -> None:
+        value = (email or "-").strip() or "-"
+        _user_email_ctx.set(value)
+
+    @staticmethod
+    def clear_user_email() -> None:
+        _user_email_ctx.set("-")
+
+    @staticmethod
+    @contextmanager
+    def user_context(email: str | None):
+        """Temporarily bind a user email to logs in this context."""
+        token = _user_email_ctx.set((email or "-").strip() or "-")
+        try:
+            yield
+        finally:
+            _user_email_ctx.reset(token)
 
     # ------------------------------------------------------------------
     # ASCII startup banner (called once from main.py)

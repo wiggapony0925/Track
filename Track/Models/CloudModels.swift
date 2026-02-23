@@ -47,7 +47,7 @@ struct UserProfile: Codable, Identifiable {
 // MARK: - Cloud Favorite
 
 /// Favorite route/stop stored in Supabase
-struct CloudFavorite: Codable, Identifiable {
+struct CloudFavorite: Codable, Identifiable, Equatable {
     var id: Int64?
     let userId: UUID
     let routeId: String
@@ -215,7 +215,7 @@ struct CloudCommutePattern: Codable {
 enum SupabaseError: Error, LocalizedError {
     case invalidCredentials
     case networkError
-    case signUpFailed
+    case authFailed(String)
     case notFound
     case updateFailed
     case insertFailed
@@ -229,8 +229,8 @@ enum SupabaseError: Error, LocalizedError {
             return "Invalid sign-in credentials"
         case .networkError:
             return "Network connection error"
-        case .signUpFailed:
-            return "Failed to create account"
+        case .authFailed(let message):
+            return message
         case .notFound:
             return "Resource not found"
         case .updateFailed:
