@@ -359,7 +359,85 @@ Once the data is in place:
 | MTA SIRI | JSON | Bus arrivals, vehicle positions |
 | MTA OBA | JSON | Bus routes, stops, route shapes |
 | MTA Alerts | JSON | Service alerts, elevator status |
-| Supabase | REST | User data, analytics, schedules |
+| Supabase REST | REST | User data, analytics, schedules |
+| Supabase Storage | S3 | GTFS static data archives |
+
+## GTFS Data Pipeline
+
+The backend manages MTA's quarterly GTFS static updates automatically. No manual steps required.
+
+### Architecture: Supabase Primary → Docker Fallback
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  STARTUP                                                        │
+│                                                                 │
+│  1. Download 6 .tar.gz archives from Supabase Storage           │
+│     (ETag caching — skips unchanged files)                      │
+│  2. If Supabase is down → use Docker-bundled files (fallback)   │
+│  3. transit_schedule.db always comes from Docker image           │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│  BACKGROUND (every 24 hours)                                    │
+│                                                                 │
+│  1. HEAD requests to MTA GTFS URLs (~0.6s, checks Last-Modified)│
+│  2. If MTA published new data:                                  │
+│     → Download + extract .zip feeds                             │
+│     → Rebuild transit_schedule.db (atomic swap)                 │
+│     → Upload changed archives to Supabase                       │
+│     → Clear all @lru_cache'd data (zero-downtime refresh)       │
+│  3. If no updates → do nothing                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Data Groups in Supabase Storage
+
+| Archive | Contents | Compressed |
+|---------|----------|------------|
+| `subway_core.tar.gz` | shapes.txt, trips.txt, stops.txt, shape_stops.json | 1.0 MB |
+| `subway_routes.tar.gz` | routes.txt | <1 KB |
+| `subway_supplemented.tar.gz` | Full supplemented GTFS for iOS bundle | 18 MB |
+| `lirr.tar.gz` | LIRR GTFS static feed | 1.8 MB |
+| `mnr.tar.gz` | Metro-North GTFS static feed | 1.9 MB |
+| `bus_config.tar.gz` | Bus route tag overrides | <1 KB |
+
+> `transit_schedule.db` (863 MB) stays Docker-bundled — too large for Supabase free tier.
+
+### Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/data/status` | Data group availability + GTFS feed freshness |
+| POST | `/data/refresh` | Manually trigger GTFS update check |
+| POST | `/data/refresh?full=true` | Check all feeds including bus (slower) |
+
+### Manual GTFS Update (if needed)
+
+```bash
+cd TrackBackend
+
+# 1. Download fresh GTFS from MTA
+python scripts/download_gtfs.py
+
+# 2. Rebuild the schedule database
+python scripts/ingest_gtfs.py
+
+# 3. Upload to Supabase Storage
+export SUPABASE_SERVICE_KEY='your-service-role-key'
+python scripts/upload_gtfs_to_supabase.py
+
+# 4. Generate iOS static bundle (optional)
+python scripts/generate_static_bundle.py
+```
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SUPABASE_SERVICE_KEY` | — | Required for Supabase Storage uploads |
+| `GTFS_BUCKET` | `gtfs-data` | Supabase Storage bucket name |
+| `GTFS_CHECK_INTERVAL` | `86400` (24h) | Seconds between automatic MTA checks |
 
 ## Supabase Integration
 
