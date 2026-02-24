@@ -18,6 +18,12 @@ struct LIRRDashboard: View {
     let sheetNavigator: SheetNavigator
     let lastUpdated: Date?
     
+    // MARK: - Distance Settings
+    
+    private var nearYouRadius: Double { AppSettings.shared.nearYouRadiusMeters }
+    private var fartherAwayRadius: Double { AppSettings.shared.fartherAwayRadiusMeters }
+    private var muchFartherAwayRadius: Double { AppSettings.shared.muchFartherAwayRadiusMeters }
+    
     /// Grouped LIRR arrivals for tap-to-detail navigation (from backend)
     private var groupedArrivals: [GroupedNearbyTransitResponse] {
         viewModel.nearbyGroupedLIRRArrivals
@@ -52,6 +58,8 @@ struct LIRRDashboard: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
+            let refLocation = viewModel.effectiveLocation(userLocation: locationManager.currentLocation)
+
             if !groupedArrivals.isEmpty {
                 // MARK: - Far From Service Hero
                 if isFarFromService {
@@ -62,22 +70,51 @@ struct LIRRDashboard: View {
                         accentColor: AppTheme.CommuterRailColors.lirrBlue
                     )
                 }
-                
-                // MARK: - Tappable Route Cards
-                CommuterRailSectionHeader(
-                    title: isFarFromService ? "Nearest Departures" : (soonArrivals.isEmpty ? "Upcoming Departures" : "Arriving Soon"),
-                    iconName: "train.side.front.car",
-                    color: AppTheme.CommuterRailColors.lirrBlue,
-                    updated: lastUpdated
-                )
-                
-                GroupedRouteList(
-                    groups: groupedArrivals,
-                    viewModel: viewModel,
-                    locationManager: locationManager,
-                    sheetNavigator: sheetNavigator,
-                    referenceLocation: viewModel.effectiveLocation(userLocation: locationManager.currentLocation)
-                )
+
+                // Sort by distance from user / drag-search location
+                let sorted = sortGroupedByDistance(groups: groupedArrivals, from: refLocation)
+
+                // Separate into 3 tiers
+                let (nearYou, fartherAway, muchFarther) = separateByDistance(groups: sorted, from: refLocation)
+
+                // "Near You" section
+                if !nearYou.isEmpty {
+                    NearYouSectionHeader(radiusMeters: nearYouRadius, updated: lastUpdated)
+                    GroupedRouteList(
+                        groups: nearYou,
+                        viewModel: viewModel,
+                        locationManager: locationManager,
+                        sheetNavigator: sheetNavigator,
+                        referenceLocation: refLocation
+                    )
+                } else if viewModel.searchText.isEmpty {
+                    NearYouSectionHeader(radiusMeters: nearYouRadius, updated: lastUpdated)
+                    EmptyTierHint()
+                }
+
+                // "A Bit Farther" section
+                if !fartherAway.isEmpty {
+                    FartherAwaySectionHeader(radiusMeters: fartherAwayRadius)
+                    GroupedRouteList(
+                        groups: fartherAway,
+                        viewModel: viewModel,
+                        locationManager: locationManager,
+                        sheetNavigator: sheetNavigator,
+                        referenceLocation: refLocation
+                    )
+                }
+
+                // "Much Farther" section
+                if !muchFarther.isEmpty {
+                    MuchFartherAwaySectionHeader(radiusMeters: muchFartherAwayRadius)
+                    GroupedRouteList(
+                        groups: muchFarther,
+                        viewModel: viewModel,
+                        locationManager: locationManager,
+                        sheetNavigator: sheetNavigator,
+                        referenceLocation: refLocation
+                    )
+                }
             } else if !viewModel.isLoading {
                 if !viewModel.searchText.isEmpty && !viewModel.lirrArrivals.isEmpty {
                     EmptyStateView(
@@ -95,6 +132,25 @@ struct LIRRDashboard: View {
                 }
             }
         }
+    }
+
+    // MARK: - Distance Helpers (delegated to DistanceBucketUtils)
+
+    private func minDistance(for group: GroupedNearbyTransitResponse, from location: CLLocation)
+        -> CLLocationDistance
+    {
+        groupMinDistance(for: group, from: location)
+    }
+
+    private func separateByDistance(
+        groups: [GroupedNearbyTransitResponse],
+        from location: CLLocation?
+    ) -> (
+        nearYou: [GroupedNearbyTransitResponse],
+        fartherAway: [GroupedNearbyTransitResponse],
+        muchFarther: [GroupedNearbyTransitResponse]
+    ) {
+        separateGroupsByDistance(groups: groups, from: location)
     }
 }
 

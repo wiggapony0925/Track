@@ -24,6 +24,7 @@ from app.models import BusStop, DirectionArrivals, GroupedNearbyTransit, NearbyT
 from app.services.bus_client import get_nearby_stops, get_realtime_arrivals, BUS_AGENCY_PREFIXES
 from app.services.data_cleaner import get_arrivals_for_line
 from app.services.station_lookup import get_nearby_stop_ids, get_stop_info
+from app.utils.geo_utils import haversine_m
 from app.utils.logger import TrackLogger
 from app.utils.transit_utils import get_subway_color
 from app.services.schedule_service import schedule_service
@@ -820,6 +821,72 @@ async def _fetch_nearby_buses(
             f"for single-direction routes"
         )
 
+    # -----------------------------------------------------------------
+    # Phase D: Nearest-stop anchor
+    #
+    # Ensures every bus route has at least one entry at the **closest**
+    # nearby stop it serves — even when no live bus is heading there.
+    # Without this, `groupMinDistance` on the client measures distance
+    # to a farther stop where a bus happens to be arriving, causing the
+    # route to land in the wrong distance tier (e.g. "A Bit Farther"
+    # instead of "Near You").
+    #
+    # The anchor is a standard placeholder (minutes_away = 99, no
+    # vehicle_id/arrival_ts) so it won't appear in the live countdown
+    # but WILL be used by the client's distance calculation.
+    # -----------------------------------------------------------------
+
+    # For each bus route, find the nearest stop with an existing entry
+    nearest_entry_dist: dict[str, float] = {}
+    for r in results:
+        if r.mode != "bus" or r.stop_lat is None or r.stop_lon is None:
+            continue
+        d = haversine_m(lat, lon, r.stop_lat, r.stop_lon)
+        if r.route_id not in nearest_entry_dist or d < nearest_entry_dist[r.route_id]:
+            nearest_entry_dist[r.route_id] = d
+
+    phase_d_count = 0
+    for stop in stops:
+        stop_dist = haversine_m(lat, lon, stop.lat, stop.lon)
+        for rid in stop.route_ids:
+            short = _display_name(rid)
+            # Only consider routes already in results
+            if short not in nearest_entry_dist:
+                continue
+            # Skip if the route already has an entry at a stop this close or closer
+            if stop_dist >= nearest_entry_dist[short]:
+                continue
+            # Skip if this specific stop already contributed an entry
+            if stop.id in live_stop_ids_per_route.get(short, set()):
+                continue
+            # Add a nearest-stop anchor placeholder
+            results.append(
+                NearbyTransitArrival(
+                    route_id=short,
+                    stop_name=stop.name,
+                    arrival_ts=None,
+                    direction=stop.direction or "N/A",
+                    minutes_away=_PLACEHOLDER_MINUTES,
+                    status="Scheduled",
+                    mode="bus",
+                    stop_lat=stop.lat,
+                    stop_lon=stop.lon,
+                    stop_id=stop.id,
+                    vehicle_id=None,
+                    destination=None,
+                )
+            )
+            # Update tracking so we don't add duplicates
+            nearest_entry_dist[short] = stop_dist
+            live_stop_ids_per_route[short].add(stop.id)
+            phase_d_count += 1
+
+    if phase_d_count:
+        TrackLogger.bus(
+            f"Phase D: Added {phase_d_count} nearest-stop anchors "
+            f"(routes had live data only at farther stops)"
+        )
+
     return results
 
 
@@ -856,6 +923,9 @@ async def _fetch_nearby_rail(
 
     for arrival in arrivals:
         if arrival.station not in nearby_stops:
+            continue
+        # Skip arrivals with no route_id — these can't be meaningfully grouped
+        if not arrival.route_id:
             continue
             
         stop_info = get_stop_info(arrival.station, agency=agency)

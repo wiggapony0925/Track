@@ -33,8 +33,8 @@
     "lirr_alerts_json": "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Flirr-alerts.json",
     "mnr_alerts_json": "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fmnr-alerts.json",
     "elevators_json": "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fnyct_ene.json",
-    "bus_siri_base": "http://bustime.mta.info/api/siri",
-    "bus_oba_base": "http://bustime.mta.info/api/where",
+    "bus_siri_base": "https://bustime.mta.info/api/siri",
+    "bus_oba_base": "https://bustime.mta.info/api/where",
     "bus_endpoints": {
       "vehicle_monitoring": "/vehicle-monitoring.json",
       "stop_monitoring": "/stop-monitoring.json",

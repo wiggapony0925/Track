@@ -39,39 +39,15 @@ struct NearbyDashboard: View {
                 let filtered = viewModel.filteredGroupedTransit
 
                 // Sort groups by distance (closest entrance/stop)
-                let sorted = filtered.sorted { group1, group2 in
-                    guard let loc = refLocation else {
-                        return group1.soonestMinutes < group2.soonestMinutes
-                    }
-                    return minDistance(for: group1, from: loc) < minDistance(for: group2, from: loc)
-                }
+                let sorted = sortGroupedByDistance(groups: filtered, from: refLocation)
 
                 // Separate into "Near You", "Farther Away", and "Much Farther Away" based on distance
                 let (nearYou, fartherAway, muchFarther) = separateByDistance(
                     groups: sorted, from: refLocation)
 
-                // Check if the "Near You" section was populated via adaptive promotion
-                // (i.e. no routes were truly within nearYouRadius, but closest were promoted)
-                let wasPromoted: Bool = {
-                    guard let loc = refLocation, !nearYou.isEmpty else { return false }
-                    // If the closest route in "Near You" is beyond the radius, it was promoted
-                    return minDistance(for: nearYou[0], from: loc) > nearYouRadius
-                }()
-
-                // Display "Near You" section (includes promoted closest routes when applicable)
+                // Display "Near You" section
                 if !nearYou.isEmpty {
-                    if wasPromoted {
-                        // Adaptive header — the results were promoted from a farther bucket
-                        ClosestToYouSectionHeader(
-                            closestMeters: refLocation.map {
-                                minDistance(for: nearYou[0], from: $0)
-                            },
-                            updated: lastUpdated,
-                            isPromoted: viewModel.isSearchPinActive
-                        )
-                    } else {
-                        NearYouSectionHeader(radiusMeters: nearYouRadius, updated: lastUpdated)
-                    }
+                    NearYouSectionHeader(radiusMeters: nearYouRadius, updated: lastUpdated)
                     GroupedRouteList(
                         groups: nearYou,
                         viewModel: viewModel,

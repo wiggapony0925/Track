@@ -37,31 +37,14 @@ struct BusDashboard: View {
             
             if !groupedArrivals.isEmpty {
                 // Sort by distance from user
-                let sorted = groupedArrivals.sorted { g1, g2 in
-                    guard let loc = refLocation else { return g1.soonestMinutes < g2.soonestMinutes }
-                    return minDistance(for: g1, from: loc) < minDistance(for: g2, from: loc)
-                }
+                let sorted = sortGroupedByDistance(groups: groupedArrivals, from: refLocation)
                 
                 // Separate into 3 tiers
                 let (nearYou, fartherAway, muchFarther) = separateByDistance(groups: sorted, from: refLocation)
                 
-                // Check if "Near You" was populated by adaptive promotion
-                let wasPromoted: Bool = {
-                    guard let loc = refLocation, !nearYou.isEmpty else { return false }
-                    return minDistance(for: nearYou[0], from: loc) > nearYouRadius
-                }()
-                
                 // "Near You" section (~1.5 mi)
                 if !nearYou.isEmpty {
-                    if wasPromoted {
-                        ClosestToYouSectionHeader(
-                            closestMeters: refLocation.map { minDistance(for: nearYou[0], from: $0) },
-                            updated: lastUpdated,
-                            isPromoted: viewModel.isSearchPinActive
-                        )
-                    } else {
-                        NearYouSectionHeader(radiusMeters: nearYouRadius, updated: lastUpdated)
-                    }
+                    NearYouSectionHeader(radiusMeters: nearYouRadius, updated: lastUpdated)
                     GroupedRouteList(
                         groups: nearYou,
                         viewModel: viewModel,

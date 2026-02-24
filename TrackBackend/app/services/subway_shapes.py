@@ -204,12 +204,13 @@ def _load_direction_headsigns() -> dict[str, dict[int, str]]:
     return result
 
 
-def _get_stops_for_shape(shape_id: str) -> list[RouteStopEntry]:
+@lru_cache(maxsize=4096)
+def _get_stops_for_shape(shape_id: str) -> tuple[RouteStopEntry, ...]:
     """Return the ordered stop list for a shape_id, with resolved names/coords."""
     shape_stops = _load_shape_stops()
     stop_ids = shape_stops.get(shape_id, [])
     if not stop_ids:
-        return []
+        return ()
 
     entries: list[RouteStopEntry] = []
     seen_names: set[str] = set()
@@ -230,7 +231,7 @@ def _get_stops_for_shape(shape_id: str) -> list[RouteStopEntry]:
             sequence=seq,
         ))
 
-    return entries
+    return tuple(entries)
 
 
 # ---------------------------------------------------------------------------

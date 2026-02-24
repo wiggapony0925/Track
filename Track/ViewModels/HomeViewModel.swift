@@ -311,6 +311,16 @@ final class HomeViewModel {
     // Grouped nearby transit (one card per route)
     var groupedTransit: [GroupedNearbyTransitResponse] = []
 
+    /// Tracks how many consecutive refresh cycles each route has been
+    /// absent from the API response, keyed by data source ("nearby",
+    /// "bus", "subway", "lirr", "mnr").  A route is kept on screen
+    /// for up to `maxGraceCycles` consecutive misses before being
+    /// dropped. Cleared when the location context changes (search-pin
+    /// set/clear, significant movement).
+    private var graceMissCountBySource: [String: [String: Int]] = [:]
+    /// Maximum consecutive refresh misses before a route is dropped.
+    private let maxGraceCycles = 3
+
     // Nearest metro recommendation (shown when no nearby transit)
     var nearestTransit: NearbyTransitResponse?
     /// Distance in meters from the user to the nearest transit stop.
@@ -1061,6 +1071,16 @@ final class HomeViewModel {
             message: "🔄 Running \(force ? "(forced)" : "") mode=\(selectedMode)"
         )
 
+        // If the user has moved significantly since the last fetch,
+        // clear the grace period so stale routes from the old position
+        // don't linger in the new location's results.
+        if let loc, let lastLoc = lastRefreshLocation {
+            let moved = loc.distance(from: lastLoc)
+            if moved >= AppSettings.shared.significantMovementMeters {
+                graceMissCountBySource.removeAll()
+            }
+        }
+
         // Only show the loading spinner on the very first fetch.
         // Subsequent refreshes (e.g. return from background) keep
         // showing the previous data and silently swap in new results.
@@ -1078,9 +1098,9 @@ final class HomeViewModel {
         case .bus:
             await refreshBus(location: loc)
         case .lirr:
-            await refreshLIRR()
+            await refreshLIRR(location: loc)
         case .mnr:
-            await refreshMNR()
+            await refreshMNR(location: loc)
         }
 
         syncTrackedRoute()
@@ -1176,6 +1196,9 @@ final class HomeViewModel {
     func setSearchPin(_ coordinate: CLLocationCoordinate2D, userLocation: CLLocation?) async {
         searchPinCoordinate = coordinate
         isSearchPinActive = true
+        // New location context — clear grace so stale routes from the
+        // previous location don't persist.
+        graceMissCountBySource.removeAll()
         // Use the full mode-aware refresh so bus/subway/LIRR/MNR tabs
         // all get correct data at the drag-search location.
         let loc = effectiveLocation(userLocation: userLocation)
@@ -1190,6 +1213,7 @@ final class HomeViewModel {
     func clearSearchPin(userLocation: CLLocation?) async {
         isSearchPinActive = false
         searchPinCoordinate = nil
+        graceMissCountBySource.removeAll()
         goMode.walkingRoute = nil
         nearestStopCoordinate = nil
         nearestTransit = nil
@@ -2477,18 +2501,13 @@ final class HomeViewModel {
             let rawTransit = try await flatTask
             let newGrouped = try await groupedTask
 
-            // Only replace transit data if the API returned results.
-            // If the server returns empty but we already had data (e.g. brief
-            // server hiccup), keep showing the previous results so rows never
-            // vanish from the user's dashboard unexpectedly.
-            if !newGrouped.isEmpty || groupedTransit.isEmpty {
-                groupedTransit = newGrouped
-            } else {
-                AppLogger.shared.log(
-                    "REFRESH",
-                    message: "API returned 0 grouped routes but we had \(groupedTransit.count) — keeping previous data"
-                )
-            }
+            // Merge new grouped data with existing data using a multi-cycle
+            // grace period so routes don't vanish when the MTA feed briefly
+            // drops them.  A route survives up to 3 consecutive misses.
+            groupedTransit = mergeGroupedTransit(
+                new: newGrouped,
+                existing: groupedTransit
+            )
 
             if !rawTransit.isEmpty || nearbyTransit.isEmpty {
                 // Deduplicate: Keep the first occurrence of each unique ID
@@ -2530,6 +2549,77 @@ final class HomeViewModel {
         isLoading = false
     }
 
+    // MARK: - Grouped Transit Merge
+
+    /// Merges freshly fetched grouped transit data with existing data
+    /// using a multi-cycle grace period so routes don't vanish when the
+    /// MTA feed briefly drops them.
+    ///
+    /// - Routes present in the new response → use the fresh data
+    ///   and reset their miss counter.
+    /// - Routes only in the old response → increment their miss counter.
+    ///   Kept on screen for up to `maxGraceCycles` (3) consecutive misses.
+    /// - If the new response is completely empty but we had data, keep
+    ///   everything (server hiccup guard).
+    ///
+    /// Grace counters are cleared when the location context changes
+    /// (significant movement or search-pin set/clear).
+    private func mergeGroupedTransit(
+        new: [GroupedNearbyTransitResponse],
+        existing: [GroupedNearbyTransitResponse],
+        source: String = "nearby"
+    ) -> [GroupedNearbyTransitResponse] {
+        // Server hiccup guard: if the API returned nothing keep previous data.
+        guard !new.isEmpty || existing.isEmpty else {
+            AppLogger.shared.log(
+                "REFRESH",
+                message: "[\(source)] API returned 0 grouped routes but we had \(existing.count) — keeping previous data"
+            )
+            return existing
+        }
+
+        // First load or previous was empty — nothing to merge.
+        guard !existing.isEmpty else {
+            graceMissCountBySource[source] = [:]
+            return new
+        }
+
+        let newRouteIds = Set(new.map(\.routeId))
+        var missCounts = graceMissCountBySource[source] ?? [:]
+
+        // Routes that reappeared — reset their miss counter.
+        for id in newRouteIds {
+            missCounts.removeValue(forKey: id)
+        }
+
+        // Start with all new (fresh) data.
+        var merged = new
+
+        // Check each old route that's NOT in the new data.
+        for oldGroup in existing where !newRouteIds.contains(oldGroup.routeId) {
+            let count = (missCounts[oldGroup.routeId] ?? 0) + 1
+            if count <= maxGraceCycles {
+                // Still within grace — keep showing.
+                missCounts[oldGroup.routeId] = count
+                merged.append(oldGroup)
+                AppLogger.shared.log(
+                    "REFRESH",
+                    message: "[\(source)] Grace \(count)/\(maxGraceCycles) for \(oldGroup.routeId) — keeping visible"
+                )
+            } else {
+                // Exceeded grace — drop.
+                missCounts.removeValue(forKey: oldGroup.routeId)
+                AppLogger.shared.log(
+                    "REFRESH",
+                    message: "[\(source)] Dropped \(oldGroup.routeId) after \(maxGraceCycles) consecutive misses"
+                )
+            }
+        }
+
+        graceMissCountBySource[source] = missCounts
+        return merged
+    }
+
     /// Searches a wider radius to find the nearest metro stop when
     /// the default radius returns empty results.
     private func fetchNearestMetro(location: CLLocation) async {
@@ -2555,10 +2645,6 @@ final class HomeViewModel {
     // MARK: - Subway
 
     private func refreshSubway(location: CLLocation?) async {
-        nearbyBusStops = []
-        busArrivals = []
-        selectedBusStop = nil
-
         guard let location = location else {
             errorMessage = "Location required for subway arrivals"
             return
@@ -2575,10 +2661,11 @@ final class HomeViewModel {
 
             let allGrouped = try await groupedTask
             let filtered = allGrouped.filter { $0.mode == "subway" }
-            // Only replace if we got results or had nothing before
-            if !filtered.isEmpty || nearbyGroupedSubwayArrivals.isEmpty {
-                nearbyGroupedSubwayArrivals = filtered
-            }
+            nearbyGroupedSubwayArrivals = mergeGroupedTransit(
+                new: filtered,
+                existing: nearbyGroupedSubwayArrivals,
+                source: "subway"
+            )
 
             updateSelectedRouteFromRefreshedData(nearbyGroupedSubwayArrivals)
 
@@ -2596,10 +2683,6 @@ final class HomeViewModel {
     // MARK: - Bus
 
     private func refreshBus(location: CLLocation?) async {
-        nearbyStations = []
-        upcomingArrivals = []
-        lirrArrivals = []
-
         guard let location = location else {
             errorMessage = "Location required for bus arrivals"
             return
@@ -2611,10 +2694,11 @@ final class HomeViewModel {
         do {
             let allGrouped = try await TrackAPI.fetchNearbyGrouped(lat: lat, lon: lon, mode: "bus")
             let filtered = allGrouped.filter { $0.mode == "bus" }
-            // Only replace if we got results or had nothing before
-            if !filtered.isEmpty || nearbyGroupedBusArrivals.isEmpty {
-                nearbyGroupedBusArrivals = filtered
-            }
+            nearbyGroupedBusArrivals = mergeGroupedTransit(
+                new: filtered,
+                existing: nearbyGroupedBusArrivals,
+                source: "bus"
+            )
 
             updateSelectedRouteFromRefreshedData(nearbyGroupedBusArrivals)
 
@@ -2642,13 +2726,7 @@ final class HomeViewModel {
 
     // MARK: - LIRR
 
-    private func refreshLIRR() async {
-        nearbyStations = []
-        upcomingArrivals = []
-        nearbyBusStops = []
-        busArrivals = []
-        selectedBusStop = nil
-
+    private func refreshLIRR(location: CLLocation?) async {
         do {
             lirrArrivals = try await TrackAPI.fetchLIRRArrivals()
         } catch {
@@ -2657,16 +2735,18 @@ final class HomeViewModel {
         }
 
         // Fetch grouped LIRR arrivals from backend (with display names and colors)
-        if let loc = LocationManager().currentLocation {
+        if let loc = location {
             do {
                 let newGrouped = try await TrackAPI.fetchNearbyGrouped(
                     lat: loc.coordinate.latitude,
                     lon: loc.coordinate.longitude,
                     mode: "lirr"
                 )
-                if !newGrouped.isEmpty || nearbyGroupedLIRRArrivals.isEmpty {
-                    nearbyGroupedLIRRArrivals = newGrouped
-                }
+                nearbyGroupedLIRRArrivals = mergeGroupedTransit(
+                    new: newGrouped,
+                    existing: nearbyGroupedLIRRArrivals,
+                    source: "lirr"
+                )
             } catch {
                 AppLogger.shared.logError("fetchGroupedLIRR", error: error)
                 if nearbyGroupedLIRRArrivals.isEmpty {
@@ -2685,13 +2765,7 @@ final class HomeViewModel {
 
     // MARK: - Metro-North
 
-    private func refreshMNR() async {
-        nearbyStations = []
-        upcomingArrivals = []
-        nearbyBusStops = []
-        busArrivals = []
-        selectedBusStop = nil
-
+    private func refreshMNR(location: CLLocation?) async {
         do {
             mnrArrivals = try await TrackAPI.fetchMNRArrivals()
         } catch {
@@ -2700,16 +2774,18 @@ final class HomeViewModel {
         }
 
         // Fetch grouped MNR arrivals from backend (with display names and colors)
-        if let loc = LocationManager().currentLocation {
+        if let loc = location {
             do {
                 let newGrouped = try await TrackAPI.fetchNearbyGrouped(
                     lat: loc.coordinate.latitude,
                     lon: loc.coordinate.longitude,
                     mode: "mnr"
                 )
-                if !newGrouped.isEmpty || nearbyGroupedMNRArrivals.isEmpty {
-                    nearbyGroupedMNRArrivals = newGrouped
-                }
+                nearbyGroupedMNRArrivals = mergeGroupedTransit(
+                    new: newGrouped,
+                    existing: nearbyGroupedMNRArrivals,
+                    source: "mnr"
+                )
             } catch {
                 AppLogger.shared.logError("fetchGroupedMNR", error: error)
                 if nearbyGroupedMNRArrivals.isEmpty {

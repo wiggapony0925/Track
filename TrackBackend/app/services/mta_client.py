@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
 from typing import Any
 
@@ -87,6 +88,13 @@ class AsyncTTLCache:
 # Shared cache instance
 _HTTP_CACHE = AsyncTTLCache(ttl=15.0)
 
+# Prevent duplicate upstream calls for the same URL under burst traffic.
+_INFLIGHT_FETCHES: dict[str, asyncio.Task[Any]] = {}
+
+# Keep outbound MTA concurrency bounded.
+_MAX_UPSTREAM_CONCURRENCY = 32
+_upstream_semaphore = asyncio.Semaphore(_MAX_UPSTREAM_CONCURRENCY)
+
 
 # ---------------------------------------------------------------------------
 # Shared HTTP client (connection pooling)
@@ -121,6 +129,45 @@ def _get_client() -> httpx.AsyncClient:
     return _shared_client
 
 
+def _build_mta_headers() -> dict[str, str]:
+    settings = get_settings()
+    headers: dict[str, str] = {}
+    if settings.api_keys.mta_api_key:
+        headers["x-api-key"] = settings.api_keys.mta_api_key
+    return headers
+
+
+async def _fetch_from_upstream(url: str, *, parse_json: bool) -> Any:
+    client = _get_client()
+    async with _upstream_semaphore:
+        response = await client.get(url, headers=_build_mta_headers())
+    response.raise_for_status()
+    return response.json() if parse_json else response.content
+
+
+async def _fetch_with_cache(url: str, *, parse_json: bool) -> Any:
+    cached = _HTTP_CACHE.get(url)
+    if cached is not None:
+        return cached
+
+    inflight = _INFLIGHT_FETCHES.get(url)
+    if inflight is not None:
+        return await inflight
+
+    async def _run_fetch() -> Any:
+        data = await _fetch_from_upstream(url, parse_json=parse_json)
+        _HTTP_CACHE.set(url, data)
+        return data
+
+    task = asyncio.create_task(_run_fetch())
+    _INFLIGHT_FETCHES[url] = task
+    try:
+        return await task
+    finally:
+        if _INFLIGHT_FETCHES.get(url) is task:
+            _INFLIGHT_FETCHES.pop(url, None)
+
+
 # ---------------------------------------------------------------------------
 # Public fetch helpers
 # ---------------------------------------------------------------------------
@@ -128,41 +175,15 @@ def _get_client() -> httpx.AsyncClient:
 
 async def fetch_protobuf(url: str) -> bytes:
     """Fetch a GTFS-Realtime Protobuf feed and return raw bytes."""
-    cached = _HTTP_CACHE.get(url)
-    if cached is not None:
-        return cached
-
-    settings = get_settings()
-    headers = {}
-    if settings.api_keys.mta_api_key:
-        headers["x-api-key"] = settings.api_keys.mta_api_key
-
     TrackLogger.feed(f"Fetching protobuf: {url[:100]}")
-    client = _get_client()
-    response = await client.get(url, headers=headers)
-    response.raise_for_status()
-    data = response.content
+    data = await _fetch_with_cache(url, parse_json=False)
     TrackLogger.feed(f"Protobuf OK ({len(data)} bytes): {url[:100]}")
-    _HTTP_CACHE.set(url, data)
     return data
 
 
 async def fetch_json(url: str) -> Any:
     """Fetch a JSON feed and return the parsed object."""
-    cached = _HTTP_CACHE.get(url)
-    if cached is not None:
-        return cached
-
-    settings = get_settings()
-    headers = {}
-    if settings.api_keys.mta_api_key:
-        headers["x-api-key"] = settings.api_keys.mta_api_key
-
     TrackLogger.feed(f"Fetching JSON: {url[:100]}")
-    client = _get_client()
-    response = await client.get(url, headers=headers)
-    response.raise_for_status()
-    data = response.json()
+    data = await _fetch_with_cache(url, parse_json=True)
     TrackLogger.feed(f"JSON OK: {url[:100]}")
-    _HTTP_CACHE.set(url, data)
     return data
