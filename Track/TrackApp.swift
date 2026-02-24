@@ -39,4 +39,4 @@ struct TrackApp: App {
         }
         .modelContainer(DataController.shared.container)
     }
-}
+ }

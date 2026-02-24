@@ -16,5 +16,4 @@ __all__ = [
     "schedule_service",
     "station_lookup",
     "subway_shapes",
-    "supabase_client",
 ]

@@ -21,13 +21,15 @@ from fastapi import APIRouter, Query
 
 from app.config import get_settings
 from app.models import BusStop, DirectionArrivals, GroupedNearbyTransit, NearbyTransitArrival
-from app.services.bus_client import get_nearby_stops, get_realtime_arrivals, BUS_AGENCY_PREFIXES
+from app.services.bus_client import get_nearby_stops, get_realtime_arrivals, get_stops as get_bus_route_stops, BUS_AGENCY_PREFIXES
 from app.services.data_cleaner import get_arrivals_for_line
 from app.services.station_lookup import get_nearby_stop_ids, get_stop_info
+from app.utils.geo_utils import haversine_m
 from app.utils.logger import TrackLogger
 from app.utils.transit_utils import get_subway_color
 from app.services.schedule_service import schedule_service
 from app.services.rail_client import fetch_rail_arrivals
+from app.services.subway_shapes import get_stops_for_route as get_subway_stops_for_route
 from app.services.commuter_rail_shapes import (
     get_lirr_route_name,
     get_mnr_route_name,
@@ -126,6 +128,12 @@ async def _collect_all(
             results.extend(result)
         elif isinstance(result, Exception):
             TrackLogger.error(f"{label.upper()} feed failed: {result}")
+
+    # Populate distance_m (haversine from user to each stop) so the iOS
+    # client can sort/bucket by accurate distance without recomputing.
+    for r in results:
+        if r.stop_lat is not None and r.stop_lon is not None:
+            r.distance_m = round(haversine_m(lat, lon, r.stop_lat, r.stop_lon), 1)
 
     return results
 
@@ -452,6 +460,78 @@ async def _fetch_nearby_subway(
         if backfill_count:
             TrackLogger.info(f"Backfilled {backfill_count} subway schedule entries for {len(missing_stops)} stops")
 
+    # -----------------------------------------------------------------
+    # Nearest-stop anchor (same concept as bus Phase D)
+    #
+    # Ensures every subway route has at least one entry at the closest
+    # nearby stop it serves — even when no train is arriving there.
+    # Without this, `groupMinDistance` on the client measures distance
+    # to a farther stop where a train happens to be arriving, causing
+    # the route to appear in the wrong distance tier.
+    # -----------------------------------------------------------------
+    # Track which stop_ids each route already has entries for
+    route_stop_ids: dict[str, set[str]] = defaultdict(set)
+    nearest_entry_dist: dict[str, float] = {}
+    for r in results:
+        if r.stop_id:
+            route_stop_ids[r.route_id].add(r.stop_id)
+        if r.stop_lat is not None and r.stop_lon is not None:
+            d = haversine_m(lat, lon, r.stop_lat, r.stop_lon)
+            if r.route_id not in nearest_entry_dist or d < nearest_entry_dist[r.route_id]:
+                nearest_entry_dist[r.route_id] = d
+
+    anchor_count = 0
+    route_ids_in_results = set(nearest_entry_dist.keys())
+    for route_id in route_ids_in_results:
+        # Get ALL stop_ids this subway route serves
+        all_route_stops = get_subway_stops_for_route(route_id)
+        if not all_route_stops:
+            continue
+
+        # Find the nearest stop on this route that's within the search radius
+        best_stop_id: str | None = None
+        best_dist = nearest_entry_dist.get(route_id, float("inf"))
+
+        for stop_id in all_route_stops:
+            # Skip if already represented
+            if stop_id in route_stop_ids[route_id]:
+                continue
+            info = get_stop_info(stop_id)
+            if info is None:
+                continue
+            d = haversine_m(lat, lon, info.lat, info.lon)
+            if d <= radius and d < best_dist:
+                best_dist = d
+                best_stop_id = stop_id
+
+        if best_stop_id is not None:
+            info = get_stop_info(best_stop_id)
+            if info:
+                # Determine direction from stop_id suffix (N/S)
+                direction = "N" if best_stop_id.endswith("N") else "S"
+                results.append(NearbyTransitArrival(
+                    route_id=route_id,
+                    stop_name=info.name,
+                    direction=direction,
+                    destination=None,
+                    minutes_away=_PLACEHOLDER_MINUTES,
+                    arrival_ts=None,
+                    status="Scheduled",
+                    mode="subway",
+                    stop_lat=info.lat,
+                    stop_lon=info.lon,
+                    stop_id=best_stop_id,
+                    trip_id=None,
+                ))
+                route_stop_ids[route_id].add(best_stop_id)
+                anchor_count += 1
+
+    if anchor_count:
+        TrackLogger.info(
+            f"Subway: Added {anchor_count} nearest-stop anchors "
+            f"(routes had arrivals only at farther stops)"
+        )
+
     return results
 
 
@@ -485,6 +565,14 @@ async def _fetch_nearby_buses(
     if not stops:
         TrackLogger.info("No bus stops found within search radius")
         return results
+
+    # -----------------------------------------------------------------
+    # 0. Sort stops by distance so nearest are queried first / within cap
+    # -----------------------------------------------------------------
+    # OBA's stops-for-location does NOT guarantee distance ordering.
+    # Sorting ensures the _MAX_SIRI_STOPS cap always keeps the closest
+    # stops and that `closest_stops_by_route` picks the truly nearest one.
+    stops.sort(key=lambda s: haversine_m(lat, lon, s.lat, s.lon))
 
     # -----------------------------------------------------------------
     # 1. Fetch live SIRI arrivals for every nearby stop
@@ -583,6 +671,32 @@ async def _fetch_nearby_buses(
             f"Bus arrivals failed for {fail_count}/{len(stop_results)} stops (MTA 5xx): {first_error}"
         )
 
+    # -----------------------------------------------------------------
+    # 1b. Populate stop.route_ids from SIRI observations
+    # -----------------------------------------------------------------
+    # OBA's stops-for-location often returns EMPTY routeIds.  Without
+    # them the backfill / anchor phases below (A-D) are completely
+    # inoperative — they iterate `for rid in stop.route_ids` which
+    # yields nothing.  Fix: use the SIRI responses we just collected
+    # to learn which routes actually serve each stop.
+    _siri_routes_per_stop: dict[str, set[str]] = defaultdict(set)
+    for r in results:
+        if r.stop_id:
+            _siri_routes_per_stop[r.stop_id].add(r.route_id)
+    _siri_backfilled = 0
+    for stop in stops:
+        if not stop.route_ids and stop.id in _siri_routes_per_stop:
+            # Re-qualify IDs so _display_name() later still works.
+            # SIRI route_ids in `results` are already display-normalised,
+            # but the backfill loops call _display_name(rid) on them.
+            stop.route_ids = list(_siri_routes_per_stop[stop.id])
+            _siri_backfilled += 1
+    if _siri_backfilled:
+        TrackLogger.bus(
+            f"Populated route_ids for {_siri_backfilled} stops from SIRI "
+            f"(OBA returned empty routeIds)"
+        )
+
     # Log direction distribution per route for debugging
     _route_dirs: dict[str, set[str]] = defaultdict(set)
     for r in results:
@@ -609,19 +723,57 @@ async def _fetch_nearby_buses(
         live_route_dirs[r.route_id].add(r.direction)
 
     # Phase A: routes with zero live data — create one placeholder per route
+    # Also: create a placeholder for the ABSOLUTE CLOSEST stop of ANY route
+    # so that the iOS distance calculation is exactly the distance to the nearest stop.
     missing_routes: dict[str, tuple[BusStop, str]] = {}
+    closest_stops_by_route: dict[str, BusStop] = {}
+
     for stop in stops:
         for rid in stop.route_ids:
             short = _display_name(rid)
+            
+            # Track the closest physical stop for EVERY route (since `stops` is sorted by distance already)
+            if short not in closest_stops_by_route:
+                closest_stops_by_route[short] = stop
+
             # Skip if we already have live data for this route
             if rid in routes_with_live or short in routes_with_live:
                 continue
-            # Keep the first (closest) stop per route
+            # Keep the first (closest) stop per route for full missing route
             if rid not in missing_routes:
                 direction = stop.direction or "N/A"
                 missing_routes[rid] = (stop, direction)
 
+    # Inject the absolute nearest stop into the results so iOS distance sorting evaluates the true nearest stop.
+    for rid, closest_stop in closest_stops_by_route.items():
+        # Check if the closest stop ALREADY has a live arrival for this route
+        has_live_at_closest = any(r for r in results if r.route_id == rid and r.stop_id == closest_stop.id)
+        if not has_live_at_closest:
+            direction = closest_stop.direction or "N/A"
+            # It's possible the route isn't completely 'missing', just missing live data at the closest stop.
+            results.append(
+                NearbyTransitArrival(
+                    route_id=rid,
+                    stop_name=closest_stop.name,
+                    arrival_ts=None,
+                    direction=direction,
+                    minutes_away=_PLACEHOLDER_MINUTES,
+                    status="Scheduled",
+                    mode="bus",
+                    stop_lat=closest_stop.lat,
+                    stop_lon=closest_stop.lon,
+                    stop_id=closest_stop.id,
+                    vehicle_id=None,
+                    destination=None,
+                )
+            )
+
     for rid, (stop, direction) in missing_routes.items():
+        # Check if we didn't just add it above (in the closest stops backfill)
+        already_added = any(r for r in results if r.route_id == _display_name(rid) and r.stop_id == stop.id)
+        if already_added:
+            continue
+            
         results.append(
             NearbyTransitArrival(
                 route_id=_display_name(rid),
@@ -820,6 +972,101 @@ async def _fetch_nearby_buses(
             f"for single-direction routes"
         )
 
+    # -----------------------------------------------------------------
+    # Phase D: Nearest-stop anchor (OBA stops-for-route lookup)
+    #
+    # OBA's stops-for-location API does NOT return routeIds, so the
+    # SIRI-based backfill in Phase 1b only covers routes that happened
+    # to have a live bus heading to a nearby stop at query time.
+    #
+    # For routes whose nearest SIRI-observed stop is far (> 400 m),
+    # fetch the full stop list via OBA stops-for-route and check if
+    # the route actually serves a closer physical stop.  If so, add
+    # a placeholder anchor at that stop so the iOS distance badge
+    # reflects the true walking distance.
+    #
+    # get_bus_route_stops() is cached (60 s fresh / 300 s stale) so
+    # repeated calls for the same route are essentially free.
+    # -----------------------------------------------------------------
+
+    _ANCHOR_THRESHOLD_M = 400  # Only look up routes farther than this
+
+    # Build {route_id: nearest SIRI-observed distance}
+    nearest_entry_dist: dict[str, float] = {}
+    for r in results:
+        if r.mode != "bus" or r.stop_lat is None or r.stop_lon is None:
+            continue
+        d = haversine_m(lat, lon, r.stop_lat, r.stop_lon)
+        if r.route_id not in nearest_entry_dist or d < nearest_entry_dist[r.route_id]:
+            nearest_entry_dist[r.route_id] = d
+
+    # Build a quick lookup of nearby stop coordinates by ID
+    _nearby_stop_map: dict[str, BusStop] = {s.id: s for s in stops}
+
+    # Identify routes that might benefit from an anchor
+    routes_needing_anchor = [
+        rid for rid, d in nearest_entry_dist.items()
+        if d > _ANCHOR_THRESHOLD_M
+    ]
+
+    phase_d_count = 0
+    if routes_needing_anchor:
+        # Resolve display names → canonical OBA IDs for the API call
+        # get_bus_route_stops handles resolve_bus_id internally
+        anchor_tasks = {
+            rid: get_bus_route_stops(rid)
+            for rid in routes_needing_anchor
+        }
+        anchor_results = await asyncio.gather(
+            *anchor_tasks.values(), return_exceptions=True
+        )
+
+        for rid, route_stops in zip(anchor_tasks.keys(), anchor_results):
+            if isinstance(route_stops, Exception) or not route_stops:
+                continue
+
+            # Find the closest stop on this route to the user
+            best_stop: BusStop | None = None
+            best_dist = nearest_entry_dist.get(rid, float("inf"))
+            for rs in route_stops:
+                d = haversine_m(lat, lon, rs.lat, rs.lon)
+                if d < best_dist:
+                    best_dist = d
+                    best_stop = rs
+
+            if best_stop is None:
+                continue  # No closer stop found
+
+            # Skip if this stop already has an entry for this route
+            if best_stop.id in live_stop_ids_per_route.get(rid, set()):
+                continue
+
+            results.append(
+                NearbyTransitArrival(
+                    route_id=rid,
+                    stop_name=best_stop.name,
+                    arrival_ts=None,
+                    direction=best_stop.direction or "N/A",
+                    minutes_away=_PLACEHOLDER_MINUTES,
+                    status="Scheduled",
+                    mode="bus",
+                    stop_lat=best_stop.lat,
+                    stop_lon=best_stop.lon,
+                    stop_id=best_stop.id,
+                    vehicle_id=None,
+                    destination=None,
+                )
+            )
+            nearest_entry_dist[rid] = best_dist
+            live_stop_ids_per_route[rid].add(best_stop.id)
+            phase_d_count += 1
+
+    if phase_d_count:
+        TrackLogger.bus(
+            f"Phase D: Added {phase_d_count} nearest-stop anchors via "
+            f"stops-for-route lookup (checked {len(routes_needing_anchor)} routes)"
+        )
+
     return results
 
 
@@ -856,6 +1103,9 @@ async def _fetch_nearby_rail(
 
     for arrival in arrivals:
         if arrival.station not in nearby_stops:
+            continue
+        # Skip arrivals with no route_id — these can't be meaningfully grouped
+        if not arrival.route_id:
             continue
             
         stop_info = get_stop_info(arrival.station, agency=agency)

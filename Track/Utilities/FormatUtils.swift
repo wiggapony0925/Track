@@ -212,17 +212,11 @@ func formatDistanceImperial(_ meters: Double, suffix: String = "") -> String {
 
 // MARK: - MTA Route Name
 
+/// Strips any MTA agency prefix from a route or stop ID.
+/// Delegates to the shared `stripMTAAgencyPrefix` in `Shared/MTAPrefixes.swift`
+/// so all prefix definitions live in one place.
 func stripMTAPrefix(_ routeId: String) -> String {
-    if routeId.hasPrefix("MTA NYCT_") {
-        return String(routeId.dropFirst(9)).replacingOccurrences(of: "+", with: "")
-    }
-    if routeId.hasPrefix("LIRR_") {
-        return String(routeId.dropFirst(5))
-    }
-    if routeId.hasPrefix("MNR_") {
-        return String(routeId.dropFirst(4))
-    }
-    return routeId.replacingOccurrences(of: "+", with: "")
+    stripMTAAgencyPrefix(routeId)
 }
 
 // MARK: - Transit Status Color

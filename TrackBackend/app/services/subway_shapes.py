@@ -204,12 +204,13 @@ def _load_direction_headsigns() -> dict[str, dict[int, str]]:
     return result
 
 
-def _get_stops_for_shape(shape_id: str) -> list[RouteStopEntry]:
+@lru_cache(maxsize=4096)
+def _get_stops_for_shape(shape_id: str) -> tuple[RouteStopEntry, ...]:
     """Return the ordered stop list for a shape_id, with resolved names/coords."""
     shape_stops = _load_shape_stops()
     stop_ids = shape_stops.get(shape_id, [])
     if not stop_ids:
-        return []
+        return ()
 
     entries: list[RouteStopEntry] = []
     seen_names: set[str] = set()
@@ -230,7 +231,7 @@ def _get_stops_for_shape(shape_id: str) -> list[RouteStopEntry]:
             sequence=seq,
         ))
 
-    return entries
+    return tuple(entries)
 
 
 # ---------------------------------------------------------------------------
@@ -337,6 +338,24 @@ def _load_service_types() -> dict[str, str]:
             # else: shuttles, crosstown, SIR — no label
 
     return result
+
+
+def get_stops_for_route(route_id: str) -> set[str]:
+    """Return all stop_ids served by a subway route (both directions, all branches).
+
+    Uses the pre-computed ``shape_stops.json`` + ``trips.txt`` mapping so it's
+    fast (no database queries).  Returns platform-level IDs (e.g. ``"701N"``,
+    ``"701S"``) which can be looked up via ``get_stop_info``.
+    """
+    route_shapes = _load_route_shapes()
+    shape_stops = _load_shape_stops()
+    all_stops: set[str] = set()
+    if route_id not in route_shapes:
+        return all_stops
+    for _dir_id, shape_ids in route_shapes[route_id].items():
+        for sid in shape_ids:
+            all_stops.update(shape_stops.get(sid, []))
+    return all_stops
 
 
 def get_subway_service_type(route_id: str) -> str | None:

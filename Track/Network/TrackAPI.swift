@@ -60,15 +60,6 @@ struct TrackAPI {
 
     // MARK: - Config
 
-    /// Fetches app settings from the backend on launch.
-    static func fetchConfig() async throws -> [String: Any] {
-        let data = try await get(path: "/config")
-        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw TrackAPIError.decodingFailed
-        }
-        return json
-    }
-
     /// Pings the active backend and returns status + latency for developer diagnostics.
     static func pingBackend(timeoutSeconds: TimeInterval = 5.0) async
         -> (ok: Bool, statusCode: Int?, latencyMs: Double?, error: String?)
@@ -159,17 +150,6 @@ struct TrackAPI {
     static func fetchBusRoutes() async throws -> [BusRoute] {
         let data = try await get(path: "/bus/routes")
         return try decoder.decode([BusRoute].self, from: data)
-    }
-
-    /// Fetches stops for a specific bus route.
-    ///
-    /// - Parameter routeID: Fully-qualified route ID (e.g. "MTA NYCT_B63").
-    /// - Returns: Array of `BusStop` along the route.
-    static func fetchBusStopsForRoute(routeID: String) async throws -> [BusStop] {
-        let encoded =
-            routeID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? routeID
-        let data = try await get(path: "/bus/stops/\(encoded)")
-        return try decoder.decode([BusStop].self, from: data)
     }
 
     // MARK: - Bus Schedule
@@ -362,41 +342,6 @@ struct TrackAPI {
     // MARK: - Delay Prediction
 
     /// Fetches a delay-adjusted arrival time from the backend prediction service.
-    ///
-    /// Replaces the client-side `DelayCalculator` heuristic with a server-side model
-    /// that can be upgraded (e.g. to ML) without an app update.
-    ///
-    /// - Parameters:
-    ///   - minutesAway: MTA-predicted minutes until arrival
-    ///   - routeId: The transit route identifier
-    ///   - hour: Current hour (0-23)
-    ///   - dayOfWeek: Day of week (1=Sun, 7=Sat)
-    ///   - weather: Current weather: "clear", "rain", or "snow"
-    /// - Returns: A `DelayPredictionResponse` with adjusted time.
-    static func fetchDelayPrediction(
-        minutesAway: Int,
-        routeId: String,
-        hour: Int,
-        dayOfWeek: Int,
-        weather: String = "clear"
-    ) async throws -> DelayPredictionResponse {
-        guard var components = URLComponents(string: baseURL + "/predict/delay") else {
-            throw TrackAPIError.invalidURL
-        }
-        components.queryItems = [
-            URLQueryItem(name: "minutes_away", value: String(minutesAway)),
-            URLQueryItem(name: "route_id", value: routeId),
-            URLQueryItem(name: "hour", value: String(hour)),
-            URLQueryItem(name: "day_of_week", value: String(dayOfWeek)),
-            URLQueryItem(name: "weather", value: weather),
-        ]
-        guard let url = components.url else {
-            throw TrackAPIError.invalidURL
-        }
-        let data = try await get(url: url)
-        return try decoder.decode(DelayPredictionResponse.self, from: data)
-    }
-
     // MARK: - Service Status
 
     /// Fetches critical MTA service alerts.

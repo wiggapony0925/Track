@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 import json
 import math
 import os
@@ -20,7 +21,7 @@ import re
 import time as _time
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import quote
 
 import httpx
@@ -30,6 +31,18 @@ from app.models import BusArrival, BusRoute, BusStop, BusVehicle, DirectionShape
 from app.utils.geo_utils import haversine_m
 from app.utils.logger import TrackLogger
 from app.utils.polyline_utils import decode_polyline, encode_polyline
+
+# Python 3.14 no longer creates an implicit main-thread event loop.
+# Some legacy sync test paths still call asyncio.get_event_loop().run_until_complete(...).
+try:
+    asyncio.get_event_loop()
+except RuntimeError:
+    asyncio.set_event_loop(asyncio.new_event_loop())
+
+try:
+    import redis.asyncio as redis_asyncio
+except Exception:  # pragma: no cover - optional dependency
+    redis_asyncio = None
 
 # ---------------------------------------------------------------------------
 # Load Route Map (Canonical Source of Truth)
@@ -276,6 +289,172 @@ _siri_circuit_open: bool = False
 _siri_circuit_opened_at: float = 0.0
 _SIRI_CIRCUIT_COOLDOWN = 300  # retry after 5 minutes
 
+# OBA auth/quota cooldown — when OBA starts returning 401/403, avoid
+# hammering the same endpoint for a short window.
+_oba_auth_blocked_until: float = 0.0
+_OBA_AUTH_COOLDOWN = 60  # seconds
+
+# Shared upstream concurrency guard (protects MTA and our workers during spikes)
+_UPSTREAM_MAX_CONCURRENCY = 64
+_upstream_semaphore = asyncio.Semaphore(_UPSTREAM_MAX_CONCURRENCY)
+
+
+@dataclass
+class _TTLCacheEntry:
+    ts: float
+    value: Any
+
+
+def _cache_get(
+    cache: dict[str, _TTLCacheEntry],
+    key: str,
+    *,
+    fresh_ttl: float,
+    stale_ttl: float,
+) -> tuple[Any | None, str | None]:
+    entry = cache.get(key)
+    if entry is None:
+        return None, None
+    age = _time.monotonic() - entry.ts
+    if age <= fresh_ttl:
+        return entry.value, "fresh"
+    if age <= stale_ttl:
+        return entry.value, "stale"
+    cache.pop(key, None)
+    return None, None
+
+
+def _cache_set(cache: dict[str, _TTLCacheEntry], key: str, value: Any) -> None:
+    cache[key] = _TTLCacheEntry(ts=_time.monotonic(), value=value)
+
+
+# Route-shape cache: mostly-static data, long-lived
+_route_shape_cache: dict[str, _TTLCacheEntry] = {}
+_route_shape_inflight: dict[str, asyncio.Task[RouteShape]] = {}
+_ROUTE_SHAPE_FRESH_TTL = 6 * 60 * 60     # 6h
+_ROUTE_SHAPE_STALE_TTL = 7 * 24 * 60 * 60  # 7d
+
+# Vehicle cache: fast-moving data, short-lived
+_vehicle_cache: dict[str, _TTLCacheEntry] = {}
+_vehicle_inflight: dict[str, asyncio.Task[list[BusVehicle]]] = {}
+_VEHICLE_FRESH_TTL = 6.0
+_VEHICLE_STALE_TTL = 45.0
+
+# Stops cache: semi-static data
+_stops_cache: dict[str, _TTLCacheEntry] = {}
+_stops_inflight: dict[str, asyncio.Task[list[BusStop]]] = {}
+_STOPS_FRESH_TTL = 10 * 60.0
+_STOPS_STALE_TTL = 24 * 60 * 60.0
+
+# Optional shared cache (Redis) for multi-instance deployments.
+_redis_client: Any = None
+_redis_init_attempted: bool = False
+_REDIS_KEY_PREFIX = "track:bus"
+
+
+def _shared_key(kind: str, identifier: str) -> str:
+    return f"{_REDIS_KEY_PREFIX}:{kind}:{identifier}"
+
+
+async def init_shared_cache() -> None:
+    """Best-effort Redis initialization.
+
+    Enabled only when REDIS_URL is configured and redis-py is installed.
+    """
+    global _redis_client, _redis_init_attempted
+    if _redis_init_attempted:
+        return
+    _redis_init_attempted = True
+
+    redis_url = os.getenv("REDIS_URL", "").strip()
+    if not redis_url or redis_asyncio is None:
+        return
+    try:
+        client = redis_asyncio.from_url(redis_url, encoding="utf-8", decode_responses=True)
+        await client.ping()
+        _redis_client = client
+        TrackLogger.info("Redis shared cache enabled for bus endpoints")
+    except Exception as exc:
+        _redis_client = None
+        TrackLogger.warning(f"Redis disabled (connection failed): {exc}", tag="BUS")
+
+
+async def close_shared_cache() -> None:
+    """Close Redis client if enabled."""
+    global _redis_client
+    if _redis_client is None:
+        return
+    try:
+        await _redis_client.close()
+    except Exception:
+        pass
+    finally:
+        _redis_client = None
+
+
+async def _shared_cache_get(
+    kind: str,
+    identifier: str,
+    *,
+    fresh_ttl: float,
+    stale_ttl: float,
+    parser: Callable[[Any], Any],
+) -> tuple[Any | None, str | None]:
+    if _redis_client is None:
+        return None, None
+    key = _shared_key(kind, identifier)
+    try:
+        raw = await _redis_client.get(key)
+        if not raw:
+            return None, None
+        payload = json.loads(raw)
+        fetched_at = float(payload.get("fetched_at", 0.0))
+        value = parser(payload.get("data"))
+        age = _time.time() - fetched_at
+        if age <= fresh_ttl:
+            return value, "fresh"
+        if age <= stale_ttl:
+            return value, "stale"
+        return None, None
+    except Exception:
+        return None, None
+
+
+async def _shared_cache_set(
+    kind: str,
+    identifier: str,
+    *,
+    stale_ttl: float,
+    data: Any,
+) -> None:
+    if _redis_client is None:
+        return
+    key = _shared_key(kind, identifier)
+    payload = {
+        "fetched_at": _time.time(),
+        "data": data,
+    }
+    try:
+        await _redis_client.set(key, json.dumps(payload), ex=max(1, int(stale_ttl)))
+    except Exception:
+        pass
+
+
+def _normalize_mta_bus_url(url: str) -> str:
+    """Force HTTPS for MTA Bus Time endpoints.
+
+    MTA increasingly rejects plaintext HTTP requests with 403. Normalizing
+    here keeps settings/backward-compat values working while preventing
+    auth/rate-limit retry storms caused by doomed HTTP calls.
+    """
+    if url.startswith("http://bustime.mta.info"):
+        return "https://" + url[len("http://"):]
+    return url
+
+
+def _is_oba_url(url: str) -> bool:
+    return "bustime.mta.info/api/where" in url
+
 
 def _siri_circuit_is_open() -> bool:
     """Return True when calls should be short-circuited."""
@@ -303,10 +482,38 @@ def _record_siri_auth_failure() -> None:
         )
 
 
+def _record_oba_auth_failure(url: str) -> None:
+    """Open a short cooldown window for OBA after 401/403 responses."""
+    global _oba_auth_blocked_until
+    if not _is_oba_url(url):
+        return
+    now = _time.time()
+    was_open = _oba_auth_blocked_until > now
+    _oba_auth_blocked_until = now + _OBA_AUTH_COOLDOWN
+    if not was_open:
+        TrackLogger.circuit(
+            f"OBA auth cooldown OPENED ({_OBA_AUTH_COOLDOWN}s after 401/403)"
+        )
+
+
+def _oba_auth_cooldown_open(url: str) -> bool:
+    if not _is_oba_url(url):
+        return False
+    return _time.time() < _oba_auth_blocked_until
+
+
 def _reset_siri_auth_failures() -> None:
     """Reset the consecutive failure counter on a successful SIRI call."""
     global _siri_consecutive_auth_failures
     _siri_consecutive_auth_failures = 0
+
+
+def _trip_siri_circuit() -> None:
+    """Testing helper: force-open the SIRI circuit breaker immediately."""
+    global _siri_circuit_open, _siri_circuit_opened_at, _siri_consecutive_auth_failures
+    _siri_circuit_open = True
+    _siri_circuit_opened_at = _time.time()
+    _siri_consecutive_auth_failures = _SIRI_FAIL_THRESHOLD
 
 
 async def _fetch_bus_json(
@@ -327,6 +534,15 @@ async def _fetch_bus_json(
     **Retries** once on 5xx server errors with a short backoff, since the
     MTA SIRI endpoint occasionally returns transient 500s for specific stops.
     """
+    url = _normalize_mta_bus_url(url)
+
+    if not is_siri and _oba_auth_cooldown_open(url):
+        raise httpx.HTTPStatusError(
+            "OBA auth cooldown open – skipping request",
+            request=httpx.Request("GET", url),
+            response=httpx.Response(403),
+        )
+
     if is_siri and _siri_circuit_is_open():
         raise httpx.HTTPStatusError(
             "SIRI circuit breaker open – skipping request",
@@ -340,10 +556,13 @@ async def _fetch_bus_json(
     async with httpx.AsyncClient(timeout=_get_timeout()) as client:
         for attempt in range(_MAX_RETRIES):
             try:
-                response = await client.get(url, params=params)
+                async with _upstream_semaphore:
+                    response = await client.get(url, params=params)
                 if response.status_code in (401, 403):
                     if is_siri:
                         _record_siri_auth_failure()
+                    else:
+                        _record_oba_auth_failure(url)
                     response.raise_for_status()
                 if response.status_code >= 500 and attempt < _MAX_RETRIES - 1:
                     # Transient server error — wait briefly and retry
@@ -448,6 +667,91 @@ async def get_stops(route_id: str) -> list[BusStop]:
     else:
         canonical_id = route_id
 
+    def _parse_stops(payload: Any) -> list[BusStop]:
+        if not isinstance(payload, list):
+            return []
+        return [BusStop.model_validate(item) for item in payload]
+
+    cache_key = canonical_id
+    cached, cache_state = _cache_get(
+        _stops_cache,
+        cache_key,
+        fresh_ttl=_STOPS_FRESH_TTL,
+        stale_ttl=_STOPS_STALE_TTL,
+    )
+    if cache_state == "fresh":
+        return cached
+
+    if cache_state is None:
+        shared, shared_state = await _shared_cache_get(
+            "stops",
+            cache_key,
+            fresh_ttl=_STOPS_FRESH_TTL,
+            stale_ttl=_STOPS_STALE_TTL,
+            parser=_parse_stops,
+        )
+        if shared_state in ("fresh", "stale") and shared is not None:
+            _cache_set(_stops_cache, cache_key, shared)
+            cached = shared
+            cache_state = shared_state
+
+    if cache_state == "stale":
+        if cache_key not in _stops_inflight:
+            async def _refresh_stops() -> None:
+                task = _stops_inflight.get(cache_key)
+                try:
+                    fresh = await _fetch_stops_uncached(canonical_id)
+                    _cache_set(_stops_cache, cache_key, fresh)
+                    await _shared_cache_set(
+                        "stops",
+                        cache_key,
+                        stale_ttl=_STOPS_STALE_TTL,
+                        data=[item.model_dump(mode="json") for item in fresh],
+                    )
+                except Exception as exc:
+                    TrackLogger.warning(f"[BUS_STOPS] Background refresh failed for {cache_key}: {exc}", tag="BUS")
+                finally:
+                    if task is not None and _stops_inflight.get(cache_key) is task:
+                        _stops_inflight.pop(cache_key, None)
+
+            refresh_task = asyncio.create_task(_refresh_stops())
+            _stops_inflight[cache_key] = refresh_task
+        return cached
+
+    inflight = _stops_inflight.get(cache_key)
+    if inflight is not None:
+        try:
+            return await inflight
+        except Exception:
+            if cached is not None:
+                return cached
+            raise
+
+    task = asyncio.create_task(_fetch_stops_uncached(canonical_id))
+    _stops_inflight[cache_key] = task
+    try:
+        fresh = await task
+        _cache_set(_stops_cache, cache_key, fresh)
+        await _shared_cache_set(
+            "stops",
+            cache_key,
+            stale_ttl=_STOPS_STALE_TTL,
+            data=[item.model_dump(mode="json") for item in fresh],
+        )
+        return fresh
+    except Exception:
+        if cached is not None:
+            return cached
+        raise
+    finally:
+        if _stops_inflight.get(cache_key) is task:
+            _stops_inflight.pop(cache_key, None)
+
+
+async def _fetch_stops_uncached(canonical_id: str) -> list[BusStop]:
+    """Uncached stops fetch with retry/fallback behavior."""
+    settings = get_settings()
+
     max_retries = settings.app_settings.http_max_retries
     retry_delay = settings.app_settings.http_retry_delay_seconds
     last_error: Exception | None = None
@@ -463,6 +767,8 @@ async def get_stops(route_id: str) -> list[BusStop]:
                         return await _get_stops_impl(fallback_id)
                     except Exception:
                         pass
+                raise e
+            if e.response.status_code in (401, 403):
                 raise e
             last_error = e
             if attempt < max_retries:
@@ -599,6 +905,9 @@ async def get_nearby_stops(
             return results
         except (httpx.HTTPStatusError, httpx.TimeoutException) as exc:
             last_error = exc
+            if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code in (401, 403):
+                # Auth/quota failures are not transient — return immediately.
+                raise exc
             if attempt < max_retries:
                 await asyncio.sleep(retry_delay)  # Brief pause before retry
 
@@ -760,6 +1069,91 @@ async def get_vehicle_positions(route_id: str) -> list[BusVehicle]:
     else:
         canonical_id = route_id
 
+    def _parse_vehicles(payload: Any) -> list[BusVehicle]:
+        if not isinstance(payload, list):
+            return []
+        return [BusVehicle.model_validate(item) for item in payload]
+
+    cache_key = canonical_id
+    cached, cache_state = _cache_get(
+        _vehicle_cache,
+        cache_key,
+        fresh_ttl=_VEHICLE_FRESH_TTL,
+        stale_ttl=_VEHICLE_STALE_TTL,
+    )
+    if cache_state == "fresh":
+        return cached
+
+    if cache_state is None:
+        shared, shared_state = await _shared_cache_get(
+            "vehicles",
+            cache_key,
+            fresh_ttl=_VEHICLE_FRESH_TTL,
+            stale_ttl=_VEHICLE_STALE_TTL,
+            parser=_parse_vehicles,
+        )
+        if shared_state in ("fresh", "stale") and shared is not None:
+            _cache_set(_vehicle_cache, cache_key, shared)
+            cached = shared
+            cache_state = shared_state
+
+    if cache_state == "stale":
+        if cache_key not in _vehicle_inflight:
+            async def _refresh_vehicles() -> None:
+                task = _vehicle_inflight.get(cache_key)
+                try:
+                    fresh = await _fetch_vehicle_positions_uncached(canonical_id)
+                    _cache_set(_vehicle_cache, cache_key, fresh)
+                    await _shared_cache_set(
+                        "vehicles",
+                        cache_key,
+                        stale_ttl=_VEHICLE_STALE_TTL,
+                        data=[item.model_dump(mode="json") for item in fresh],
+                    )
+                except Exception as exc:
+                    TrackLogger.warning(f"[BUS_VEHICLES] Background refresh failed for {cache_key}: {exc}", tag="BUS")
+                finally:
+                    if task is not None and _vehicle_inflight.get(cache_key) is task:
+                        _vehicle_inflight.pop(cache_key, None)
+
+            refresh_task = asyncio.create_task(_refresh_vehicles())
+            _vehicle_inflight[cache_key] = refresh_task
+        return cached
+
+    inflight = _vehicle_inflight.get(cache_key)
+    if inflight is not None:
+        try:
+            return await inflight
+        except Exception:
+            if cached is not None:
+                return cached
+            raise
+
+    task = asyncio.create_task(_fetch_vehicle_positions_uncached(canonical_id))
+    _vehicle_inflight[cache_key] = task
+    try:
+        fresh = await task
+        _cache_set(_vehicle_cache, cache_key, fresh)
+        await _shared_cache_set(
+            "vehicles",
+            cache_key,
+            stale_ttl=_VEHICLE_STALE_TTL,
+            data=[item.model_dump(mode="json") for item in fresh],
+        )
+        return fresh
+    except Exception:
+        if cached is not None:
+            return cached
+        raise
+    finally:
+        if _vehicle_inflight.get(cache_key) is task:
+            _vehicle_inflight.pop(cache_key, None)
+
+
+async def _fetch_vehicle_positions_uncached(canonical_id: str) -> list[BusVehicle]:
+    """Uncached vehicle fetch with retry/fallback behavior."""
+    settings = get_settings()
+
     max_retries = settings.app_settings.http_max_retries
     retry_delay = settings.app_settings.http_retry_delay_seconds
     last_error: Exception | None = None
@@ -776,7 +1170,6 @@ async def get_vehicle_positions(route_id: str) -> list[BusVehicle]:
                     except Exception:
                         pass
                 raise e
-            # Don't retry if the circuit breaker has opened
             if e.response.status_code in (401, 403) and _siri_circuit_is_open():
                 raise e
             last_error = e
@@ -979,6 +1372,91 @@ async def get_route_shape(route_id: str) -> RouteShape:
     else:
         canonical_id = route_id
 
+    def _parse_shape(payload: Any) -> RouteShape:
+        if not isinstance(payload, dict):
+            return RouteShape(route_id=canonical_id, polylines=[], stops=[])
+        return RouteShape.model_validate(payload)
+
+    cache_key = canonical_id
+    cached, cache_state = _cache_get(
+        _route_shape_cache,
+        cache_key,
+        fresh_ttl=_ROUTE_SHAPE_FRESH_TTL,
+        stale_ttl=_ROUTE_SHAPE_STALE_TTL,
+    )
+    if cache_state == "fresh":
+        return cached
+
+    if cache_state is None:
+        shared, shared_state = await _shared_cache_get(
+            "route_shape",
+            cache_key,
+            fresh_ttl=_ROUTE_SHAPE_FRESH_TTL,
+            stale_ttl=_ROUTE_SHAPE_STALE_TTL,
+            parser=_parse_shape,
+        )
+        if shared_state in ("fresh", "stale") and shared is not None:
+            _cache_set(_route_shape_cache, cache_key, shared)
+            cached = shared
+            cache_state = shared_state
+
+    if cache_state == "stale":
+        if cache_key not in _route_shape_inflight:
+            async def _refresh_shape() -> None:
+                task = _route_shape_inflight.get(cache_key)
+                try:
+                    fresh = await _fetch_route_shape_uncached(canonical_id)
+                    _cache_set(_route_shape_cache, cache_key, fresh)
+                    await _shared_cache_set(
+                        "route_shape",
+                        cache_key,
+                        stale_ttl=_ROUTE_SHAPE_STALE_TTL,
+                        data=fresh.model_dump(mode="json"),
+                    )
+                except Exception as exc:
+                    TrackLogger.warning(f"[BUS_SHAPE] Background refresh failed for {cache_key}: {exc}", tag="BUS")
+                finally:
+                    if task is not None and _route_shape_inflight.get(cache_key) is task:
+                        _route_shape_inflight.pop(cache_key, None)
+
+            refresh_task = asyncio.create_task(_refresh_shape())
+            _route_shape_inflight[cache_key] = refresh_task
+        return cached
+
+    inflight = _route_shape_inflight.get(cache_key)
+    if inflight is not None:
+        try:
+            return await inflight
+        except Exception:
+            if cached is not None:
+                return cached
+            raise
+
+    task = asyncio.create_task(_fetch_route_shape_uncached(canonical_id))
+    _route_shape_inflight[cache_key] = task
+    try:
+        fresh = await task
+        _cache_set(_route_shape_cache, cache_key, fresh)
+        await _shared_cache_set(
+            "route_shape",
+            cache_key,
+            stale_ttl=_ROUTE_SHAPE_STALE_TTL,
+            data=fresh.model_dump(mode="json"),
+        )
+        return fresh
+    except Exception:
+        if cached is not None:
+            return cached
+        raise
+    finally:
+        if _route_shape_inflight.get(cache_key) is task:
+            _route_shape_inflight.pop(cache_key, None)
+
+
+async def _fetch_route_shape_uncached(canonical_id: str) -> RouteShape:
+    """Uncached route-shape fetch with retry/fallback behavior."""
+    settings = get_settings()
+
     max_retries = settings.app_settings.http_max_retries
     retry_delay = settings.app_settings.http_retry_delay_seconds
     last_error: Exception | None = None
@@ -988,16 +1466,15 @@ async def get_route_shape(route_id: str) -> RouteShape:
             return await _get_route_shape_impl(canonical_id)
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
-                # Try the alternative agency (MTA NYCT <-> MTABC)
                 fallback_id = await _guess_alternative_id(canonical_id)
                 if fallback_id:
                     try:
                         return await _get_route_shape_impl(fallback_id)
                     except Exception:
                         pass
-                # 404 is not retryable — route genuinely doesn't exist
                 raise e
-            # Transient errors (403 rate-limit, 503, etc.) — retry
+            if e.response.status_code in (401, 403):
+                raise e
             last_error = e
             if attempt < max_retries:
                 TrackLogger.retry(f"[BUS_SHAPE] Retry {attempt + 1}/{max_retries} for {canonical_id} (HTTP {e.response.status_code})")
@@ -1010,7 +1487,7 @@ async def get_route_shape(route_id: str) -> RouteShape:
 
     if last_error:
         raise last_error
-    return RouteShape(route_id=route_id, polylines=[], stops=[])
+    return RouteShape(route_id=canonical_id, polylines=[], stops=[])
 
 
 async def _get_route_shape_impl(route_id: str) -> RouteShape:

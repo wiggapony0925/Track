@@ -48,6 +48,9 @@ struct HomeView: View {
     @State private var isDragSearchPanning = false
     @State private var hasFiredDragHaptic = false
     @State private var dragSearchDebounce: Task<Void, Never>?
+    /// Cancellable task for mode-change refreshes — prevents rapid tab
+    /// switching from queueing duplicate API calls.
+    @State private var modeChangeTask: Task<Void, Never>?
     /// The settled center after a drag-search debounce fires. `nil` while
     /// the user is still panning — the radius circles hide until this is set.
     @State private var dragSearchSettledCenter: CLLocationCoordinate2D?
@@ -560,10 +563,14 @@ struct HomeView: View {
     
     private func handleModeChange() {
         viewModel.clearRoute()
-        Task {
+        // Cancel any in-flight mode-change refresh so only the latest
+        // tab switch actually hits the network.
+        modeChangeTask?.cancel()
+        modeChangeTask = Task {
+            let shouldForceRefresh = !viewModel.hasCachedData(for: viewModel.selectedMode)
             // Use effective location so mode changes during drag-to-search
             // keep showing transit at the explored area, not GPS.
-            await viewModel.refresh(location: effectiveLocation, force: true)
+            await viewModel.refresh(location: effectiveLocation, force: shouldForceRefresh)
             lastUpdated = Date()
         }
     }
@@ -778,6 +785,16 @@ struct HomeView: View {
         guard let match = viewModel.groupForTrackedRoute() else { return }
         
         viewModel.pendingDeepLink = false
+
+        sheetNavigator.navigate(
+            to: .routeDetail(
+                group: match.group,
+                directionIndex: match.directionIndex
+            )
+        )
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+            sheetDetent = .fraction(0.4)
+        }
         
         Task {
             await viewModel.selectGroupedRoute(
@@ -785,17 +802,6 @@ struct HomeView: View {
                 directionIndex: match.directionIndex,
                 userLocation: locationManager.currentLocation
             )
-            if viewModel.isRouteDetailPresented {
-                sheetNavigator.navigate(
-                    to: .routeDetail(
-                        group: match.group,
-                        directionIndex: match.directionIndex
-                    )
-                )
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                    sheetDetent = .fraction(0.4)
-                }
-            }
         }
     }
 }

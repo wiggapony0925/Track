@@ -38,40 +38,16 @@ struct NearbyDashboard: View {
             if !viewModel.groupedTransit.isEmpty {
                 let filtered = viewModel.filteredGroupedTransit
 
-                // Sort groups by distance (closest entrance/stop)
-                let sorted = filtered.sorted { group1, group2 in
-                    guard let loc = refLocation else {
-                        return group1.soonestMinutes < group2.soonestMinutes
-                    }
-                    return minDistance(for: group1, from: loc) < minDistance(for: group2, from: loc)
-                }
+                // Separate using the same distance source as row display distance
+                // so list value + category ring remain perfectly aligned.
+                let (nearYou, fartherAway, muchFarther) = viewModel.groupedDisplayBuckets(
+                    from: filtered,
+                    referenceLocation: refLocation
+                )
 
-                // Separate into "Near You", "Farther Away", and "Much Farther Away" based on distance
-                let (nearYou, fartherAway, muchFarther) = separateByDistance(
-                    groups: sorted, from: refLocation)
-
-                // Check if the "Near You" section was populated via adaptive promotion
-                // (i.e. no routes were truly within nearYouRadius, but closest were promoted)
-                let wasPromoted: Bool = {
-                    guard let loc = refLocation, !nearYou.isEmpty else { return false }
-                    // If the closest route in "Near You" is beyond the radius, it was promoted
-                    return minDistance(for: nearYou[0], from: loc) > nearYouRadius
-                }()
-
-                // Display "Near You" section (includes promoted closest routes when applicable)
+                // Display "Near You" section
                 if !nearYou.isEmpty {
-                    if wasPromoted {
-                        // Adaptive header — the results were promoted from a farther bucket
-                        ClosestToYouSectionHeader(
-                            closestMeters: refLocation.map {
-                                minDistance(for: nearYou[0], from: $0)
-                            },
-                            updated: lastUpdated,
-                            isPromoted: viewModel.isSearchPinActive
-                        )
-                    } else {
-                        NearYouSectionHeader(radiusMeters: nearYouRadius, updated: lastUpdated)
-                    }
+                    NearYouSectionHeader(radiusMeters: nearYouRadius, updated: lastUpdated)
                     GroupedRouteList(
                         groups: nearYou,
                         viewModel: viewModel,
@@ -193,28 +169,11 @@ struct NearbyDashboard: View {
 
     // MARK: - Distance Helpers (delegated to DistanceBucketUtils)
 
-    /// Convenience wrapper so call sites within this file stay concise.
-    private func minDistance(for group: GroupedNearbyTransitResponse, from location: CLLocation)
-        -> CLLocationDistance
-    {
-        groupMinDistance(for: group, from: location)
-    }
-
     /// Convenience wrapper for flat arrival distance.
     private func distance(for arrival: NearbyTransitResponse, from location: CLLocation)
         -> CLLocationDistance
     {
         arrivalDistance(for: arrival, from: location)
-    }
-
-    private func separateByDistance(
-        groups: [GroupedNearbyTransitResponse],
-        from location: CLLocation?
-    ) -> (
-        nearYou: [GroupedNearbyTransitResponse], fartherAway: [GroupedNearbyTransitResponse],
-        muchFarther: [GroupedNearbyTransitResponse]
-    ) {
-        separateGroupsByDistance(groups: groups, from: location)
     }
 
     private func separateArrivalsByDistance(
@@ -428,16 +387,15 @@ struct GroupedRouteList: View {
                             routeId: group.displayName, mode: group.mode
                         ).isEmpty,
                     userLocation: referenceLocation,
+                    distanceMetersOverride: viewModel.displayDistanceMeters(for: group, from: referenceLocation),
                     onSelect: { directionIndex in
                         RouteAnalyticsManager.shared.logInteraction(routeId: group.routeId)
+                        sheetNavigator.navigate(
+                            to: .routeDetail(group: group, directionIndex: directionIndex))
                         Task {
                             await viewModel.selectGroupedRoute(
                                 group, directionIndex: directionIndex,
                                 userLocation: locationManager.currentLocation)
-                            if viewModel.isRouteDetailPresented {
-                                sheetNavigator.navigate(
-                                    to: .routeDetail(group: group, directionIndex: directionIndex))
-                            }
                         }
                     },
                     onTrack: { directionIndex in

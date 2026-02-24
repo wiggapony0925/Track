@@ -15,6 +15,7 @@ struct GroupedRouteRow: View {
     let group: GroupedNearbyTransitResponse
     var hasAlert: Bool = false
     var userLocation: CLLocation? = nil
+    var distanceMetersOverride: Double? = nil
     var onSelect: ((Int) -> Void)? = nil
     var onTrack: ((Int) -> Void)? = nil
 
@@ -44,6 +45,7 @@ struct GroupedRouteRow: View {
 
     /// Distance from user to the closest stop in this group (meters).
     private var closestStopDistance: Double? {
+        if let distanceMetersOverride { return distanceMetersOverride }
         guard let loc = userLocation else { return nil }
         return groupMinDistance(for: group, from: loc)
     }
@@ -130,33 +132,31 @@ struct GroupedRouteRow: View {
                                     .lineLimit(1)
                                     .minimumScaleFactor(0.85)
 
-                                // Station name + walking distance
-                                HStack(spacing: 4) {
-                                    // Show terminus so users know which direction this is
-                                    let terminus =
-                                        direction.directionLabel
-                                        ?? direction.direction
-                                    // Avoid repeating the main label above
-                                    if !terminus.isEmpty,
-                                        terminus.lowercased() != label.lowercased()
-                                    {
-                                        Text("To \(terminus)")
-                                            .font(.custom("Helvetica", size: 12))
-                                            .foregroundColor(AppTheme.Colors.textSecondary)
-                                            .lineLimit(1)
-                                    }
+                                // Direction terminus (when different from
+                                // the main destination label above)
+                                let terminus =
+                                    direction.directionLabel
+                                    ?? direction.direction
+                                if !terminus.isEmpty,
+                                    terminus.lowercased() != label.lowercased()
+                                {
+                                    Text("To \(terminus)")
+                                        .font(.custom("Helvetica", size: 12))
+                                        .foregroundColor(AppTheme.Colors.textSecondary)
+                                        .lineLimit(1)
+                                }
 
-                                    if let dist = closestStopDistance,
-                                        dist < Double.greatestFiniteMagnitude
-                                    {
-                                        HStack(spacing: 2) {
-                                            Image(systemName: "figure.walk")
-                                                .font(.system(size: 9, weight: .medium))
-                                            Text(formatDistanceImperial(dist))
-                                                .font(.custom("Helvetica", size: 11))
-                                        }
-                                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
+                                // Walking distance — below the direction text
+                                if let dist = closestStopDistance,
+                                    dist < Double.greatestFiniteMagnitude
+                                {
+                                    HStack(spacing: 3) {
+                                        Image(systemName: "figure.walk")
+                                            .font(.system(size: 9, weight: .semibold))
+                                        Text(formatDistanceImperial(dist))
+                                            .font(.custom("Helvetica-Bold", size: 11))
                                     }
+                                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
                                 }
                             }
                             .tag(index)
@@ -164,7 +164,7 @@ struct GroupedRouteRow: View {
                         }
                     }
                     .tabViewStyle(.page(indexDisplayMode: .never))
-                    .frame(height: 38)
+                    .frame(height: 50)
 
                     // Pagination dots
                     if group.directions.count > 1 {
@@ -186,7 +186,7 @@ struct GroupedRouteRow: View {
                         }
                     }
                 }
-                .frame(height: 50)
+                .frame(height: 60)
             }
 
             Spacer(minLength: 4)

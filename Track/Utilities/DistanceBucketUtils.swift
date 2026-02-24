@@ -3,33 +3,109 @@
 //  Track
 //
 //  Shared distance-bucketing logic used by NearbyDashboard, SubwayDashboard,
-//  and BusDashboard. Centralised here so that strict-ring enforcement,
-//  adaptive promotion, and radius-reading all live in exactly one place.
+//  BusDashboard, LIRRDashboard, and MNRDashboard. Centralised here so that
+//  strict-ring enforcement, adaptive promotion, and radius-reading all live
+//  in exactly one place.
 //
 
 import CoreLocation
+
+private let distanceTieEpsilon: CLLocationDistance = 0.5
+
+private func groupedDistanceSort(
+    _ lhs: GroupedNearbyTransitResponse,
+    _ rhs: GroupedNearbyTransitResponse,
+    location: CLLocation
+) -> Bool {
+    let d1 = groupMinDistance(for: lhs, from: location)
+    let d2 = groupMinDistance(for: rhs, from: location)
+    if abs(d1 - d2) > distanceTieEpsilon { return d1 < d2 }
+    if lhs.soonestMinutes != rhs.soonestMinutes { return lhs.soonestMinutes < rhs.soonestMinutes }
+    let leftName = lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName)
+    if leftName != .orderedSame { return leftName == .orderedAscending }
+    return lhs.routeId.localizedCaseInsensitiveCompare(rhs.routeId) == .orderedAscending
+}
+
+/// Shared deterministic sort for grouped routes.
+/// - With location: closest → farthest, then soonest ETA, then stable name/id tiebreak.
+/// - Without location: soonest ETA, then stable name/id tiebreak.
+func sortGroupedByDistance(
+    groups: [GroupedNearbyTransitResponse],
+    from location: CLLocation?
+) -> [GroupedNearbyTransitResponse] {
+    guard let location else {
+        return groups.sorted {
+            if $0.soonestMinutes != $1.soonestMinutes { return $0.soonestMinutes < $1.soonestMinutes }
+            let leftName = $0.displayName.localizedCaseInsensitiveCompare($1.displayName)
+            if leftName != .orderedSame { return leftName == .orderedAscending }
+            return $0.routeId.localizedCaseInsensitiveCompare($1.routeId) == .orderedAscending
+        }
+    }
+    let sorted = groups.sorted { groupedDistanceSort($0, $1, location: location) }
+    #if DEBUG
+    for group in sorted {
+        let d = groupMinDistance(for: group, from: location)
+        let feet = d * 3.28084
+        let miles = d / 1609.34
+        let allArrivals = group.directions.flatMap { $0.arrivals }
+        let stop = allArrivals.first?.stopId ?? allArrivals.first?.stopName ?? "?"
+        let src = allArrivals.first(where: { $0.distanceM != nil }) != nil ? "server" : "client"
+        print("[DISTANCE] \(group.displayName) (\(group.mode)) → \(Int(d))m / \(Int(feet))ft / \(String(format: "%.2f", miles))mi  via=\(src)  stop=\(stop)  arrivals=\(allArrivals.count)")
+    }
+    #endif
+    return sorted
+}
+
+private func flatArrivalDistanceSort(
+    _ lhs: NearbyTransitResponse,
+    _ rhs: NearbyTransitResponse,
+    location: CLLocation
+) -> Bool {
+    let d1 = arrivalDistance(for: lhs, from: location)
+    let d2 = arrivalDistance(for: rhs, from: location)
+    if abs(d1 - d2) > distanceTieEpsilon { return d1 < d2 }
+    if lhs.minutesAway != rhs.minutesAway { return lhs.minutesAway < rhs.minutesAway }
+    let leftRoute = lhs.routeId.localizedCaseInsensitiveCompare(rhs.routeId)
+    if leftRoute != .orderedSame { return leftRoute == .orderedAscending }
+    return lhs.stopName.localizedCaseInsensitiveCompare(rhs.stopName) == .orderedAscending
+}
 
 // MARK: - Distance Helpers
 
 /// Returns the minimum distance from a reference location to any stop in a
 /// grouped transit response (i.e. the closest entrance / stop).
+/// Prefers server-side ``distance_m`` (haversine) when available, falling
+/// back to ``CLLocation.distance(from:)`` for client-synthesised entries.
 func groupMinDistance(
     for group: GroupedNearbyTransitResponse,
     from location: CLLocation
 ) -> CLLocationDistance {
     let allArrivals = group.directions.flatMap { $0.arrivals }
-    let distances = allArrivals.compactMap { arrival -> CLLocationDistance? in
-        guard let lat = arrival.stopLat, let lon = arrival.stopLon else { return nil }
-        return location.distance(from: CLLocation(latitude: lat, longitude: lon))
+    var bestDist = Double.greatestFiniteMagnitude
+    for arrival in allArrivals {
+        let d: CLLocationDistance
+        if let serverDist = arrival.distanceM {
+            d = serverDist
+        } else if let lat = arrival.stopLat, let lon = arrival.stopLon {
+            d = location.distance(from: CLLocation(latitude: lat, longitude: lon))
+        } else {
+            continue
+        }
+        if d < bestDist {
+            bestDist = d
+        }
     }
-    return distances.min() ?? Double.greatestFiniteMagnitude
+
+    return bestDist
 }
 
 /// Returns the distance from a reference location to a single flat arrival.
+/// Prefers server-side ``distance_m`` when available.
 func arrivalDistance(
     for arrival: NearbyTransitResponse,
     from location: CLLocation
 ) -> CLLocationDistance {
+    if let serverDist = arrival.distanceM { return serverDist }
     guard let lat = arrival.stopLat, let lon = arrival.stopLon else {
         return Double.greatestFiniteMagnitude
     }
@@ -45,8 +121,8 @@ func arrivalDistance(
 /// Ring 2 — "A Bit Farther":  `(R1 … R2]`   (strictly outside ring 1)
 /// Ring 3 — "Much Farther":   `(R2 … R3]`   (strictly outside ring 2)
 ///
-/// **Adaptive promotion:** When "Near You" is empty the closest 4 routes
-/// from the outer rings are promoted so the user always sees something.
+/// Never promotes outer-ring routes into inner rings, and never includes
+/// routes outside `R3`. This keeps section boundaries truthful to settings.
 func separateGroupsByDistance(
     groups: [GroupedNearbyTransitResponse],
     from location: CLLocation?
@@ -61,46 +137,58 @@ func separateGroupsByDistance(
     // Read current settings
     let rawR1 = AppSettings.shared.nearYouRadiusMeters
     let rawR2 = AppSettings.shared.fartherAwayRadiusMeters
+    let rawR3 = AppSettings.shared.muchFartherAwayRadiusMeters
 
-    // Enforce strict ring ordering with a 400m minimum gap
+    // Enforce monotonic ring ordering without expanding user-configured circles.
+    // If synced values are inconsistent, clamp minimally so boundaries remain valid.
     let r1 = rawR1
-    let r2 = max(rawR2, r1 + 400)
+    let r2 = max(rawR2, r1)
+    let r3 = max(rawR3, r2)
 
     var nearYou:     [GroupedNearbyTransitResponse] = []
     var fartherAway: [GroupedNearbyTransitResponse] = []
     var muchFarther: [GroupedNearbyTransitResponse] = []
 
     for group in groups {
+        let hasCoordinates = group.directions.flatMap(\.arrivals).contains {
+            $0.stopLat != nil && $0.stopLon != nil
+        }
+        if !hasCoordinates {
+            muchFarther.append(group)
+            continue
+        }
+
         let dist = groupMinDistance(for: group, from: location)
         if dist <= r1 {
             nearYou.append(group)
         } else if dist <= r2 {
             fartherAway.append(group)
-        } else {
-            // Everything beyond r2 goes into the outermost tier.
-            // Never silently drop data the API returned — the user's
-            // tier thresholds may be smaller than the API search radius.
+        } else if dist <= r3 {
             muchFarther.append(group)
         }
     }
 
-    // Adaptive promotion
-    if nearYou.isEmpty && (!fartherAway.isEmpty || !muchFarther.isEmpty) {
-        var outer = fartherAway + muchFarther
-        outer.sort { groupMinDistance(for: $0, from: location) < groupMinDistance(for: $1, from: location) }
-        let promoteCount = min(4, outer.count)
-        let promoted    = Array(outer.prefix(promoteCount))
-        let promotedIds = Set(promoted.map(\.routeId))
-
-        nearYou     = promoted
-        fartherAway = fartherAway.filter  { !promotedIds.contains($0.routeId) }
-        muchFarther = muchFarther.filter  { !promotedIds.contains($0.routeId) }
-    }
-
     // Sort within each tier: closest stop first (top → bottom = nearest → farthest)
-    nearYou.sort     { groupMinDistance(for: $0, from: location) < groupMinDistance(for: $1, from: location) }
-    fartherAway.sort { groupMinDistance(for: $0, from: location) < groupMinDistance(for: $1, from: location) }
-    muchFarther.sort { groupMinDistance(for: $0, from: location) < groupMinDistance(for: $1, from: location) }
+    nearYou.sort     { groupedDistanceSort($0, $1, location: location) }
+    fartherAway.sort { groupedDistanceSort($0, $1, location: location) }
+    muchFarther.sort { groupedDistanceSort($0, $1, location: location) }
+
+    // Debug: log final tier assignments with distances
+    #if DEBUG
+    let tierLog: (String, [GroupedNearbyTransitResponse]) -> Void = { tier, items in
+        for g in items {
+            let d = groupMinDistance(for: g, from: location)
+            let hasCoords = g.directions.flatMap(\.arrivals).contains { $0.stopLat != nil && $0.stopLon != nil }
+            AppLogger.shared.log("SORT", message: "\(tier) | \(g.displayName) (\(g.routeId)) → \(Int(d))m  coords=\(hasCoords)")
+        }
+    }
+    if !nearYou.isEmpty || !fartherAway.isEmpty || !muchFarther.isEmpty {
+        AppLogger.shared.log("SORT", message: "── Tier breakdown  R1=\(Int(r1))m  R2=\(Int(r2))m  R3=\(Int(r3))m  ref=(\(String(format: "%.5f", location.coordinate.latitude)), \(String(format: "%.5f", location.coordinate.longitude))) ──")
+        tierLog("Near You     ", nearYou)
+        tierLog("A Bit Farther", fartherAway)
+        tierLog("Much Farther ", muchFarther)
+    }
+    #endif
 
     return (nearYou, fartherAway, muchFarther)
 }
@@ -108,8 +196,7 @@ func separateGroupsByDistance(
 // MARK: - Flat Arrival Bucketing (2 tiers)
 
 /// Separates flat arrivals into "Near You" and "Farther Away" using strict
-/// non-overlapping rings. Also applies adaptive promotion when nothing is
-/// within the first ring.
+/// non-overlapping rings. Never promotes outer-ring arrivals into "Near You".
 func separateFlatArrivalsByDistance(
     arrivals: [NearbyTransitResponse],
     from location: CLLocation?
@@ -137,18 +224,9 @@ func separateFlatArrivalsByDistance(
         }
     }
 
-    // Adaptive promotion
-    if nearYou.isEmpty && !fartherAway.isEmpty {
-        var sorted = fartherAway
-        sorted.sort { arrivalDistance(for: $0, from: location) < arrivalDistance(for: $1, from: location) }
-        let promoteCount = min(6, sorted.count)
-        nearYou     = Array(sorted.prefix(promoteCount))
-        fartherAway = Array(sorted.dropFirst(promoteCount))
-    }
-
     // Sort within each tier: closest stop first
-    nearYou.sort     { arrivalDistance(for: $0, from: location) < arrivalDistance(for: $1, from: location) }
-    fartherAway.sort { arrivalDistance(for: $0, from: location) < arrivalDistance(for: $1, from: location) }
+    nearYou.sort     { flatArrivalDistanceSort($0, $1, location: location) }
+    fartherAway.sort { flatArrivalDistanceSort($0, $1, location: location) }
 
     return (nearYou, fartherAway)
 }

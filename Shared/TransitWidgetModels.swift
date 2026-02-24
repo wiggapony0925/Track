@@ -24,12 +24,10 @@ struct NearbyArrival: Hashable {
     var isMNR: Bool { mode == "mnr" }
     var isCommuterRail: Bool { isLIRR || isMNR }
 
-    /// Strips "MTA NYCT_" prefix for display.
+    /// Strips MTA agency prefixes for display.
+    /// Uses the shared prefix table in `MTAPrefixes.swift`.
     var displayName: String {
-        if routeId.hasPrefix("MTA NYCT_") {
-            return String(routeId.dropFirst(9))
-        }
-        return routeId
+        stripMTAAgencyPrefix(routeId)
     }
 }
 

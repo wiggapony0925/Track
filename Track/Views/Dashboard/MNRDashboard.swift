@@ -7,7 +7,6 @@
 //
 
 import SwiftUI
-import CoreLocation
 
 /// Metro-North specific dashboard showing rail departures.
 struct MNRDashboard: View {
@@ -18,9 +17,15 @@ struct MNRDashboard: View {
     let sheetNavigator: SheetNavigator
     let lastUpdated: Date?
     
+    // MARK: - Distance Settings
+    
+    private var nearYouRadius: Double { AppSettings.shared.nearYouRadiusMeters }
+    private var fartherAwayRadius: Double { AppSettings.shared.fartherAwayRadiusMeters }
+    private var muchFartherAwayRadius: Double { AppSettings.shared.muchFartherAwayRadiusMeters }
+    
     /// Grouped MNR arrivals for tap-to-detail navigation (from backend)
     private var groupedArrivals: [GroupedNearbyTransitResponse] {
-        viewModel.nearbyGroupedMNRArrivals
+        viewModel.filteredNearbyGroupedMNRArrivals
     }
     
     /// Get filtered arrivals based on search
@@ -47,6 +52,8 @@ struct MNRDashboard: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
+            let refLocation = viewModel.effectiveLocation(userLocation: locationManager.currentLocation)
+
             if !groupedArrivals.isEmpty {
                 // MARK: - Far From Service Hero
                 if isFarFromService {
@@ -57,22 +64,51 @@ struct MNRDashboard: View {
                         accentColor: AppTheme.CommuterRailColors.mnrBlue
                     )
                 }
-                
-                // MARK: - Tappable Route Cards
-                CommuterRailSectionHeader(
-                    title: isFarFromService ? "Nearest Departures" : (soonArrivals.isEmpty ? "Upcoming Departures" : "Arriving Soon"),
-                    iconName: "train.side.rear.car",
-                    color: AppTheme.CommuterRailColors.mnrBlue,
-                    updated: lastUpdated
+
+                // Sort by distance from user / drag-search location
+                let (nearYou, fartherAway, muchFarther) = viewModel.groupedDisplayBuckets(
+                    from: groupedArrivals,
+                    referenceLocation: refLocation
                 )
-                
-                GroupedRouteList(
-                    groups: groupedArrivals,
-                    viewModel: viewModel,
-                    locationManager: locationManager,
-                    sheetNavigator: sheetNavigator,
-                    referenceLocation: viewModel.effectiveLocation(userLocation: locationManager.currentLocation)
-                )
+
+                // "Near You" section
+                if !nearYou.isEmpty {
+                    NearYouSectionHeader(radiusMeters: nearYouRadius, updated: lastUpdated)
+                    GroupedRouteList(
+                        groups: nearYou,
+                        viewModel: viewModel,
+                        locationManager: locationManager,
+                        sheetNavigator: sheetNavigator,
+                        referenceLocation: refLocation
+                    )
+                } else if viewModel.searchText.isEmpty {
+                    NearYouSectionHeader(radiusMeters: nearYouRadius, updated: lastUpdated)
+                    EmptyTierHint()
+                }
+
+                // "A Bit Farther" section
+                if !fartherAway.isEmpty {
+                    FartherAwaySectionHeader(radiusMeters: fartherAwayRadius)
+                    GroupedRouteList(
+                        groups: fartherAway,
+                        viewModel: viewModel,
+                        locationManager: locationManager,
+                        sheetNavigator: sheetNavigator,
+                        referenceLocation: refLocation
+                    )
+                }
+
+                // "Much Farther" section
+                if !muchFarther.isEmpty {
+                    MuchFartherAwaySectionHeader(radiusMeters: muchFartherAwayRadius)
+                    GroupedRouteList(
+                        groups: muchFarther,
+                        viewModel: viewModel,
+                        locationManager: locationManager,
+                        sheetNavigator: sheetNavigator,
+                        referenceLocation: refLocation
+                    )
+                }
             } else if !viewModel.isLoading {
                 if !viewModel.searchText.isEmpty && !viewModel.mnrArrivals.isEmpty {
                     EmptyStateView(
@@ -91,6 +127,7 @@ struct MNRDashboard: View {
             }
         }
     }
+
 }
 
 #Preview {

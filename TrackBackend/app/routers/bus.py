@@ -13,7 +13,7 @@ import traceback
 from datetime import datetime, timezone, timedelta
 
 import httpx
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Response
 
 from app.config import get_settings
 from app.models import BusArrival, BusRoute, BusStop, BusVehicle, RouteShape
@@ -30,6 +30,19 @@ from app.utils.logger import TrackLogger
 
 logger = logging.getLogger("track")
 router = APIRouter(prefix="/bus", tags=["bus"])
+
+
+def _raise_bus_upstream_http_error(exc: httpx.HTTPStatusError) -> None:
+    """Normalize upstream bus API errors into stable API responses."""
+    status = exc.response.status_code if exc.response is not None else 502
+    if status in (401, 403):
+        raise HTTPException(
+            status_code=503,
+            detail="Bus API authentication failed or quota exceeded",
+        ) from exc
+    if status == 404:
+        raise HTTPException(status_code=404, detail="Route not found") from exc
+    raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @router.get("/schedule/{route_id}")
@@ -131,12 +144,7 @@ async def bus_routes() -> list[BusRoute]:
     try:
         return await get_routes()
     except httpx.HTTPStatusError as exc:
-        if exc.response.status_code in (401, 403):
-            raise HTTPException(
-                status_code=503,
-                detail="Bus API authentication failed or quota exceeded",
-            ) from exc
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        _raise_bus_upstream_http_error(exc)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
@@ -147,12 +155,7 @@ async def bus_stops(route_id: str) -> list[BusStop]:
     try:
         return await get_stops(route_id)
     except httpx.HTTPStatusError as exc:
-        if exc.response.status_code in (401, 403):
-            raise HTTPException(
-                status_code=503,
-                detail="Bus API authentication failed or quota exceeded",
-            ) from exc
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        _raise_bus_upstream_http_error(exc)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
@@ -170,12 +173,7 @@ async def bus_nearby(
     try:
         return await get_nearby_stops(lat, lon, radius_m=effective_radius)
     except httpx.HTTPStatusError as exc:
-        if exc.response.status_code in (401, 403):
-            raise HTTPException(
-                status_code=503,
-                detail="Bus API authentication failed or quota exceeded",
-            ) from exc
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        _raise_bus_upstream_http_error(exc)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
@@ -213,18 +211,13 @@ async def bus_live(stop_id: str) -> list[BusArrival]:
             ]
         return live_arrivals
     except httpx.HTTPStatusError as exc:
-        if exc.response.status_code in (401, 403):
-            raise HTTPException(
-                status_code=503,
-                detail="Bus API authentication failed or quota exceeded",
-            ) from exc
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        _raise_bus_upstream_http_error(exc)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @router.get("/vehicles/{route_id:path}", response_model=list[BusVehicle])
-async def bus_vehicles(route_id: str) -> list[BusVehicle]:
+async def bus_vehicles(route_id: str, response: Response) -> list[BusVehicle]:
     """Return live vehicle positions for a bus route.
 
     Example: ``/bus/vehicles/MTA NYCT_B63``
@@ -233,21 +226,17 @@ async def bus_vehicles(route_id: str) -> list[BusVehicle]:
     and distance status text — everything needed to plot live buses
     on a map.
     """
+    response.headers["Cache-Control"] = "public, max-age=5, stale-while-revalidate=30, stale-if-error=120"
     try:
         return await get_vehicle_positions(route_id)
     except httpx.HTTPStatusError as exc:
-        if exc.response.status_code in (401, 403):
-            raise HTTPException(
-                status_code=503,
-                detail="Bus API authentication failed or quota exceeded",
-            ) from exc
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        _raise_bus_upstream_http_error(exc)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @router.get("/route-shape/{route_id:path}", response_model=RouteShape)
-async def bus_route_shape(route_id: str) -> RouteShape:
+async def bus_route_shape(route_id: str, response: Response) -> RouteShape:
     """Return the route shape (polylines + stops) for a bus route.
 
     Example: ``/bus/route-shape/MTA NYCT_B63``
@@ -255,18 +244,11 @@ async def bus_route_shape(route_id: str) -> RouteShape:
     Returns Google-encoded polylines for drawing the route on a map,
     along with all stops on the route for annotation.
     """
+    response.headers["Cache-Control"] = "public, max-age=3600, stale-while-revalidate=86400, stale-if-error=604800"
     try:
         return await get_route_shape(route_id)
     except httpx.HTTPStatusError as exc:
-        if exc.response.status_code in (401, 403):
-            raise HTTPException(
-                status_code=503,
-                detail="Bus API authentication failed or quota exceeded",
-            ) from exc
-        # 404 is now handled inside get_route_shape (returns empty shape) but we might want to catch it if it bubbles up
-        if exc.response.status_code == 404:
-             raise HTTPException(status_code=404, detail="Route not found")
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        _raise_bus_upstream_http_error(exc)
     except Exception as exc:
         traceback.print_exc()
         raise HTTPException(status_code=502, detail=str(exc)) from exc

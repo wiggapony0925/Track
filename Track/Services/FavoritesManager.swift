@@ -37,12 +37,38 @@ class FavoritesManager: ObservableObject {
     
     // MARK: - Public API
     
-    /// Check whether a route+stop+direction combo is favorited
+    /// Check whether a route+mode combo is favorited.
+    /// Stop ID and direction are intentionally ignored so heart state remains
+    /// stable when nearest-stop or selected-direction context changes.
+    func isFavorite(routeId: String, direction: String?, mode: String) -> Bool {
+        _ = direction
+        return favorites.contains { fav in
+            matchesFavoriteIdentity(
+                favorite: fav,
+                routeId: routeId,
+                mode: mode
+            )
+        }
+    }
+
+    /// Route-level check used by route detail and list badges.
+    func isFavorite(routeId: String, mode: String) -> Bool {
+        return favorites.contains { fav in
+            matchesFavoriteIdentity(
+                favorite: fav,
+                routeId: routeId,
+                mode: mode
+            )
+        }
+    }
+
+    /// Backward-compatible overload.
+    /// Kept for existing call sites; uses route-only identity.
     func isFavorite(routeId: String, stopId: String, direction: String?) -> Bool {
-        favorites.contains { fav in
-            fav.routeId == routeId &&
-            fav.stopId == stopId &&
-            fav.direction == direction
+        _ = stopId
+        _ = direction
+        return favorites.contains { fav in
+            normalized(fav.routeId) == normalized(routeId)
         }
     }
     
@@ -60,13 +86,16 @@ class FavoritesManager: ObservableObject {
         stopLat: Double?,
         stopLon: Double?
     ) async -> Bool {
-        // If already favorited, remove it
-        if let existing = favorites.first(where: {
-            $0.routeId == routeId &&
-            $0.stopId == stopId &&
-            $0.direction == direction
-        }) {
-            await removeFavorite(existing)
+        // If already favorited (same route+mode), remove all duplicates.
+        let existing = favorites.filter {
+            matchesFavoriteIdentity(
+                favorite: $0,
+                routeId: routeId,
+                mode: mode
+            )
+        }
+        if !existing.isEmpty {
+            await removeFavorites(existing)
             return false
         }
         
@@ -93,9 +122,9 @@ class FavoritesManager: ObservableObject {
         
         do {
             let remote = try await SupabaseManager.shared.fetchFavorites()
-            favorites = remote
+            favorites = deduplicated(remote)
             saveToCache()
-            print("[FavoritesManager] Refreshed \(remote.count) favorites from cloud")
+            print("[FavoritesManager] Refreshed \(favorites.count) favorites from cloud")
         } catch {
             print("[FavoritesManager] Failed to refresh: \(error)")
         }
@@ -127,6 +156,17 @@ class FavoritesManager: ObservableObject {
             print("[FavoritesManager] Cannot add favorite - no user ID available")
             return
         }
+
+        // Guard against duplicate inserts for the same route identity.
+        if favorites.contains(where: {
+            matchesFavoriteIdentity(
+                favorite: $0,
+                routeId: routeId,
+                mode: mode
+            )
+        }) {
+            return
+        }
         
         let favorite = CloudFavorite(
             userId: userId,
@@ -153,10 +193,40 @@ class FavoritesManager: ObservableObject {
         } catch {
             // Roll back optimistic insert
             favorites.removeAll {
-                $0.routeId == routeId && $0.stopId == stopId && $0.direction == direction
+                matchesFavoriteIdentity(
+                    favorite: $0,
+                    routeId: routeId,
+                    mode: mode
+                )
             }
             saveToCache()
             print("[FavoritesManager] Failed to add: \(error)")
+        }
+    }
+
+    private func removeFavorites(_ items: [CloudFavorite]) async {
+        // Optimistic local remove (including records with nil id from cache)
+        let ids = Set(items.compactMap(\ .id))
+        favorites.removeAll { favorite in
+            if let id = favorite.id {
+                return ids.contains(id)
+            }
+            return items.contains(where: {
+                normalized($0.routeId) == normalized(favorite.routeId)
+                    && normalized($0.mode) == normalized(favorite.mode)
+            })
+        }
+        saveToCache()
+
+        for favorite in items {
+            guard let id = favorite.id else { continue }
+            do {
+                try await SupabaseManager.shared.removeFavorite(id: id)
+            } catch {
+                await refresh()
+                print("[FavoritesManager] Failed to remove: \(error)")
+                return
+            }
         }
     }
     
@@ -175,6 +245,24 @@ class FavoritesManager: ObservableObject {
             print("[FavoritesManager] Failed to remove: \(error)")
         }
     }
+
+    private func matchesFavoriteIdentity(
+        favorite: CloudFavorite,
+        routeId: String,
+        mode: String
+    ) -> Bool {
+        normalized(favorite.routeId) == normalized(routeId)
+            && normalized(favorite.mode) == normalized(mode)
+    }
+
+    private func normalized(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    private func normalizedDirection(_ value: String?) -> String {
+        guard let value else { return "" }
+        return normalized(value)
+    }
     
     // MARK: - Local Cache
     
@@ -189,6 +277,18 @@ class FavoritesManager: ObservableObject {
               let cached = try? JSONDecoder().decode([CloudFavorite].self, from: data) else {
             return
         }
-        favorites = cached
+        favorites = deduplicated(cached)
+    }
+
+    private func deduplicated(_ items: [CloudFavorite]) -> [CloudFavorite] {
+        var seen = Set<String>()
+        var result: [CloudFavorite] = []
+        for item in items {
+            let key = "\(normalized(item.routeId))|\(normalized(item.mode))"
+            if seen.insert(key).inserted {
+                result.append(item)
+            }
+        }
+        return result
     }
 }

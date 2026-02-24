@@ -7,7 +7,6 @@
 //
 
 import SwiftUI
-import CoreLocation
 
 /// LIRR-specific dashboard showing rail departures.
 struct LIRRDashboard: View {
@@ -18,9 +17,15 @@ struct LIRRDashboard: View {
     let sheetNavigator: SheetNavigator
     let lastUpdated: Date?
     
+    // MARK: - Distance Settings
+    
+    private var nearYouRadius: Double { AppSettings.shared.nearYouRadiusMeters }
+    private var fartherAwayRadius: Double { AppSettings.shared.fartherAwayRadiusMeters }
+    private var muchFartherAwayRadius: Double { AppSettings.shared.muchFartherAwayRadiusMeters }
+    
     /// Grouped LIRR arrivals for tap-to-detail navigation (from backend)
     private var groupedArrivals: [GroupedNearbyTransitResponse] {
-        viewModel.nearbyGroupedLIRRArrivals
+        viewModel.filteredNearbyGroupedLIRRArrivals
     }
     
     /// Get filtered arrivals based on search
@@ -31,11 +36,6 @@ struct LIRRDashboard: View {
     /// Arrivals within 15 minutes (soon)
     private var soonArrivals: [TrainArrival] {
         displayArrivals.filter { $0.minutesAway <= 15 && ($0.minutesAway > 0 || $0.estimatedTime > Date()) }
-    }
-    
-    /// Arrivals more than 15 minutes away
-    private var laterArrivals: [TrainArrival] {
-        displayArrivals.filter { $0.minutesAway > 15 }
     }
     
     /// Check if user is likely far from LIRR service area
@@ -52,6 +52,8 @@ struct LIRRDashboard: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
+            let refLocation = viewModel.effectiveLocation(userLocation: locationManager.currentLocation)
+
             if !groupedArrivals.isEmpty {
                 // MARK: - Far From Service Hero
                 if isFarFromService {
@@ -62,22 +64,51 @@ struct LIRRDashboard: View {
                         accentColor: AppTheme.CommuterRailColors.lirrBlue
                     )
                 }
-                
-                // MARK: - Tappable Route Cards
-                CommuterRailSectionHeader(
-                    title: isFarFromService ? "Nearest Departures" : (soonArrivals.isEmpty ? "Upcoming Departures" : "Arriving Soon"),
-                    iconName: "train.side.front.car",
-                    color: AppTheme.CommuterRailColors.lirrBlue,
-                    updated: lastUpdated
+
+                // Sort by distance from user / drag-search location
+                let (nearYou, fartherAway, muchFarther) = viewModel.groupedDisplayBuckets(
+                    from: groupedArrivals,
+                    referenceLocation: refLocation
                 )
-                
-                GroupedRouteList(
-                    groups: groupedArrivals,
-                    viewModel: viewModel,
-                    locationManager: locationManager,
-                    sheetNavigator: sheetNavigator,
-                    referenceLocation: viewModel.effectiveLocation(userLocation: locationManager.currentLocation)
-                )
+
+                // "Near You" section
+                if !nearYou.isEmpty {
+                    NearYouSectionHeader(radiusMeters: nearYouRadius, updated: lastUpdated)
+                    GroupedRouteList(
+                        groups: nearYou,
+                        viewModel: viewModel,
+                        locationManager: locationManager,
+                        sheetNavigator: sheetNavigator,
+                        referenceLocation: refLocation
+                    )
+                } else if viewModel.searchText.isEmpty {
+                    NearYouSectionHeader(radiusMeters: nearYouRadius, updated: lastUpdated)
+                    EmptyTierHint()
+                }
+
+                // "A Bit Farther" section
+                if !fartherAway.isEmpty {
+                    FartherAwaySectionHeader(radiusMeters: fartherAwayRadius)
+                    GroupedRouteList(
+                        groups: fartherAway,
+                        viewModel: viewModel,
+                        locationManager: locationManager,
+                        sheetNavigator: sheetNavigator,
+                        referenceLocation: refLocation
+                    )
+                }
+
+                // "Much Farther" section
+                if !muchFarther.isEmpty {
+                    MuchFartherAwaySectionHeader(radiusMeters: muchFartherAwayRadius)
+                    GroupedRouteList(
+                        groups: muchFarther,
+                        viewModel: viewModel,
+                        locationManager: locationManager,
+                        sheetNavigator: sheetNavigator,
+                        referenceLocation: refLocation
+                    )
+                }
             } else if !viewModel.isLoading {
                 if !viewModel.searchText.isEmpty && !viewModel.lirrArrivals.isEmpty {
                     EmptyStateView(
@@ -96,6 +127,7 @@ struct LIRRDashboard: View {
             }
         }
     }
+
 }
 
 #Preview {

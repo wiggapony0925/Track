@@ -260,12 +260,7 @@ struct RouteDetailSheet: View {
         }
         .background(AppTheme.Colors.background)
         .onAppear {
-            let dir = safeDirection
-            isFavorited = favoritesManager.isFavorite(
-                routeId: group.routeId,
-                stopId: dir.arrivals.first?.stopId ?? "",
-                direction: dir.direction
-            )
+            isFavorited = favoritesManager.isFavorite(routeId: group.routeId, mode: group.mode)
             // Seed loading state: if the current direction already has arrivals
             // (e.g. sheet re-opened after data landed), skip the skeleton phase.
             isLoadingArrivals = safeDirection.arrivals.isEmpty
@@ -287,12 +282,10 @@ struct RouteDetailSheet: View {
             }
         }
         .onChange(of: favoritesManager.favorites) { _, _ in
-            let dir = safeDirection
-            isFavorited = favoritesManager.isFavorite(
-                routeId: group.routeId,
-                stopId: dir.arrivals.first?.stopId ?? "",
-                direction: dir.direction
-            )
+            isFavorited = favoritesManager.isFavorite(routeId: group.routeId, mode: group.mode)
+        }
+        .onChange(of: selectedDirectionIndex) { _, _ in
+            isFavorited = favoritesManager.isFavorite(routeId: group.routeId, mode: group.mode)
         }
         .alert("Sign In to Save Favorites", isPresented: $showSignInPrompt) {
             Button("OK", role: .cancel) {}
@@ -551,10 +544,9 @@ struct RouteDetailSheet: View {
     }
 
     /// Strips MTA agency prefixes from a stop ID for comparison.
+    /// Uses the shared prefix table in `MTAPrefixes.swift`.
     private func stripMTAPrefix(_ id: String) -> String {
-        id.replacingOccurrences(of: "MTA NYCT_", with: "")
-            .replacingOccurrences(of: "MTA_", with: "")
-            .replacingOccurrences(of: "MTABC_", with: "")
+        stripMTAStopPrefix(id)
     }
 
     /// Strips trailing N/S direction suffix from a subway stop ID.

@@ -9,7 +9,6 @@
 //
 
 import SwiftUI
-import CoreLocation
 
 /// Bus-specific dashboard showing grouped bus arrivals.
 struct BusDashboard: View {
@@ -36,32 +35,16 @@ struct BusDashboard: View {
             let refLocation = viewModel.effectiveLocation(userLocation: locationManager.currentLocation)
             
             if !groupedArrivals.isEmpty {
-                // Sort by distance from user
-                let sorted = groupedArrivals.sorted { g1, g2 in
-                    guard let loc = refLocation else { return g1.soonestMinutes < g2.soonestMinutes }
-                    return minDistance(for: g1, from: loc) < minDistance(for: g2, from: loc)
-                }
-                
-                // Separate into 3 tiers
-                let (nearYou, fartherAway, muchFarther) = separateByDistance(groups: sorted, from: refLocation)
-                
-                // Check if "Near You" was populated by adaptive promotion
-                let wasPromoted: Bool = {
-                    guard let loc = refLocation, !nearYou.isEmpty else { return false }
-                    return minDistance(for: nearYou[0], from: loc) > nearYouRadius
-                }()
+                // Separate using shared display-distance source so categories
+                // and row distance are based on the same nearest-stop logic.
+                let (nearYou, fartherAway, muchFarther) = viewModel.groupedDisplayBuckets(
+                    from: groupedArrivals,
+                    referenceLocation: refLocation
+                )
                 
                 // "Near You" section (~1.5 mi)
                 if !nearYou.isEmpty {
-                    if wasPromoted {
-                        ClosestToYouSectionHeader(
-                            closestMeters: refLocation.map { minDistance(for: nearYou[0], from: $0) },
-                            updated: lastUpdated,
-                            isPromoted: viewModel.isSearchPinActive
-                        )
-                    } else {
-                        NearYouSectionHeader(radiusMeters: nearYouRadius, updated: lastUpdated)
-                    }
+                    NearYouSectionHeader(radiusMeters: nearYouRadius, updated: lastUpdated)
                     GroupedRouteList(
                         groups: nearYou,
                         viewModel: viewModel,
@@ -130,18 +113,6 @@ struct BusDashboard: View {
         }
     }
     
-    // MARK: - Distance Helpers (delegated to DistanceBucketUtils)
-    
-    private func minDistance(for group: GroupedNearbyTransitResponse, from location: CLLocation) -> CLLocationDistance {
-        groupMinDistance(for: group, from: location)
-    }
-    
-    private func separateByDistance(
-        groups: [GroupedNearbyTransitResponse],
-        from location: CLLocation?
-    ) -> (nearYou: [GroupedNearbyTransitResponse], fartherAway: [GroupedNearbyTransitResponse], muchFarther: [GroupedNearbyTransitResponse]) {
-        separateGroupsByDistance(groups: groups, from: location)
-    }
 }
 
 #Preview {

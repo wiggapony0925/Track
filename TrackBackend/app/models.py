@@ -100,6 +100,7 @@ class NearbyTransitArrival(BaseModel):
     stop_id: str | None = None
     vehicle_id: str | None = None
     trip_id: str | None = None
+    distance_m: float | None = None  # haversine distance from user to this stop (meters)
 
 
 class DirectionArrivals(BaseModel):

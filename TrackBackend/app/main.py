@@ -14,7 +14,8 @@ from typing import Any
 from fastapi import FastAPI, Request
 
 from app.config import get_settings
-from app.routers import analytics, bus, lirr, mnr, nearby, predict, status, subway, static_data
+from app.routers import bus, lirr, mnr, nearby, predict, status, subway
+from app.services.bus_client import close_shared_cache, init_shared_cache
 from app.utils.logger import TrackLogger
 
 app = FastAPI(
@@ -31,13 +32,17 @@ app.include_router(status.router)
 app.include_router(bus.router)
 app.include_router(nearby.router)
 app.include_router(predict.router)
-app.include_router(analytics.router)
-app.include_router(static_data.router)
 
 
 @app.on_event("startup")
 async def startup_event():
     TrackLogger.startup()
+    await init_shared_cache()
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    await close_shared_cache()
 
 
 # Middleware to log every request with color, query params, and timing
