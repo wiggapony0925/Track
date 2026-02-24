@@ -77,9 +77,6 @@ ARCHIVES: dict[str, list[tuple[str, str | None]]] = {
     "mnr": [
         ("metro_north/gtfsmnr", None),
     ],
-    "transit_schedule": [
-        ("transit_schedule.db", "transit_schedule.db"),
-    ],
     "bus_config": [
         ("early_2026_buses_tag.json", "early_2026_buses_tag.json"),
     ],
@@ -169,7 +166,6 @@ def _ensure_bucket_exists() -> bool:
             "id": BUCKET,
             "name": BUCKET,
             "public": False,
-            "file_size_limit": 500 * 1024 * 1024,  # 500 MB
         },
         timeout=10,
     )
