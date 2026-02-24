@@ -27,6 +27,9 @@ struct NearbyTransitResponse: Codable, Identifiable, Equatable {
     let vehicleId: String?
     let tripId: String?
     let stopId: String?
+    /// Haversine distance (meters) from the user to this stop, computed server-side.
+    /// Preferred over client-side CLLocation.distance for sorting/bucketing.
+    var distanceM: Double? = nil
 
     var isBus: Bool { mode == "bus" }
     var isLIRR: Bool { mode == "lirr" }
@@ -60,6 +63,7 @@ struct NearbyTransitResponse: Codable, Identifiable, Equatable {
         case vehicleId = "vehicle_id"
         case tripId = "trip_id"
         case stopId = "stop_id"
+        case distanceM = "distance_m"
     }
 }
 

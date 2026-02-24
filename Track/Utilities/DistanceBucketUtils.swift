@@ -41,7 +41,19 @@ func sortGroupedByDistance(
             return $0.routeId.localizedCaseInsensitiveCompare($1.routeId) == .orderedAscending
         }
     }
-    return groups.sorted { groupedDistanceSort($0, $1, location: location) }
+    let sorted = groups.sorted { groupedDistanceSort($0, $1, location: location) }
+    #if DEBUG
+    for group in sorted {
+        let d = groupMinDistance(for: group, from: location)
+        let feet = d * 3.28084
+        let miles = d / 1609.34
+        let allArrivals = group.directions.flatMap { $0.arrivals }
+        let stop = allArrivals.first?.stopId ?? allArrivals.first?.stopName ?? "?"
+        let src = allArrivals.first(where: { $0.distanceM != nil }) != nil ? "server" : "client"
+        print("[DISTANCE] \(group.displayName) (\(group.mode)) → \(Int(d))m / \(Int(feet))ft / \(String(format: "%.2f", miles))mi  via=\(src)  stop=\(stop)  arrivals=\(allArrivals.count)")
+    }
+    #endif
+    return sorted
 }
 
 private func flatArrivalDistanceSort(
@@ -62,23 +74,38 @@ private func flatArrivalDistanceSort(
 
 /// Returns the minimum distance from a reference location to any stop in a
 /// grouped transit response (i.e. the closest entrance / stop).
+/// Prefers server-side ``distance_m`` (haversine) when available, falling
+/// back to ``CLLocation.distance(from:)`` for client-synthesised entries.
 func groupMinDistance(
     for group: GroupedNearbyTransitResponse,
     from location: CLLocation
 ) -> CLLocationDistance {
     let allArrivals = group.directions.flatMap { $0.arrivals }
-    let distances = allArrivals.compactMap { arrival -> CLLocationDistance? in
-        guard let lat = arrival.stopLat, let lon = arrival.stopLon else { return nil }
-        return location.distance(from: CLLocation(latitude: lat, longitude: lon))
+    var bestDist = Double.greatestFiniteMagnitude
+    for arrival in allArrivals {
+        let d: CLLocationDistance
+        if let serverDist = arrival.distanceM {
+            d = serverDist
+        } else if let lat = arrival.stopLat, let lon = arrival.stopLon {
+            d = location.distance(from: CLLocation(latitude: lat, longitude: lon))
+        } else {
+            continue
+        }
+        if d < bestDist {
+            bestDist = d
+        }
     }
-    return distances.min() ?? Double.greatestFiniteMagnitude
+
+    return bestDist
 }
 
 /// Returns the distance from a reference location to a single flat arrival.
+/// Prefers server-side ``distance_m`` when available.
 func arrivalDistance(
     for arrival: NearbyTransitResponse,
     from location: CLLocation
 ) -> CLLocationDistance {
+    if let serverDist = arrival.distanceM { return serverDist }
     guard let lat = arrival.stopLat, let lon = arrival.stopLon else {
         return Double.greatestFiniteMagnitude
     }

@@ -340,6 +340,24 @@ def _load_service_types() -> dict[str, str]:
     return result
 
 
+def get_stops_for_route(route_id: str) -> set[str]:
+    """Return all stop_ids served by a subway route (both directions, all branches).
+
+    Uses the pre-computed ``shape_stops.json`` + ``trips.txt`` mapping so it's
+    fast (no database queries).  Returns platform-level IDs (e.g. ``"701N"``,
+    ``"701S"``) which can be looked up via ``get_stop_info``.
+    """
+    route_shapes = _load_route_shapes()
+    shape_stops = _load_shape_stops()
+    all_stops: set[str] = set()
+    if route_id not in route_shapes:
+        return all_stops
+    for _dir_id, shape_ids in route_shapes[route_id].items():
+        for sid in shape_ids:
+            all_stops.update(shape_stops.get(sid, []))
+    return all_stops
+
+
 def get_subway_service_type(route_id: str) -> str | None:
     """Return 'express', 'local', 'mixed', or None for a subway route_id."""
     return _load_service_types().get(route_id)

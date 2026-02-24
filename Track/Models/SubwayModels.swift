@@ -10,6 +10,8 @@ struct SubwayArrivalResponse: Codable {
     let destination: String?
     let minutesAway: Int
     let status: String
+    let stopLat: Double?
+    let stopLon: Double?
     let tripId: String? // Optional since backend might not send it for older cached data
     let arrivalTs: Int? // Optional timestamp in seconds
 
@@ -21,6 +23,8 @@ struct SubwayArrivalResponse: Codable {
         case destination
         case minutesAway = "minutes_away"
         case status
+        case stopLat = "stop_lat"
+        case stopLon = "stop_lon"
         case tripId = "trip_id"
         case arrivalTs = "arrival_ts"
     }
@@ -40,6 +44,8 @@ struct SubwayArrivalResponse: Codable {
             routeID: routeId,
             stationID: station,
             stationName: stationName ?? station,
+            stopLat: stopLat,
+            stopLon: stopLon,
             direction: direction,
             scheduledTime: arrivalDate,
             estimatedTime: arrivalDate,

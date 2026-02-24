@@ -14,6 +14,8 @@ struct TrainArrival: Identifiable {
     let routeID: String
     let stationID: String
     let stationName: String
+    let stopLat: Double?
+    let stopLon: Double?
     let direction: String
     let scheduledTime: Date
     let estimatedTime: Date

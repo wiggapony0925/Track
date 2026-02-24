@@ -369,7 +369,11 @@ final class HomeViewModel {
                     dirArrivals
                     .sorted { $0.minutesAway < $1.minutesAway }
                     .map { train -> NearbyTransitResponse in
-                        NearbyTransitResponse(
+                        var dist: Double? = nil
+                        if let sLat = train.stopLat, let sLon = train.stopLon, let ref = self.lastRefreshLocation {
+                            dist = ref.distance(from: CLLocation(latitude: sLat, longitude: sLon))
+                        }
+                        return NearbyTransitResponse(
                             routeId: train.routeID,
                             stopName: train.stationName,
                             direction: train.direction,
@@ -377,12 +381,13 @@ final class HomeViewModel {
                             minutesAway: train.minutesAway,
                             status: train.status,
                             mode: mode,
-                            stopLat: nil,
-                            stopLon: nil,
+                            stopLat: train.stopLat,
+                            stopLon: train.stopLon,
                             arrivalTs: Int(train.estimatedTime.timeIntervalSince1970),
                             vehicleId: nil,
                             tripId: train.tripId,
-                            stopId: train.stationID
+                            stopId: train.stationID,
+                            distanceM: dist
                         )
                     }
                 return DirectionArrivalsResponse(direction: direction, arrivals: nearbyArrivals)
@@ -1997,7 +2002,20 @@ final class HomeViewModel {
                 } else {
                     minutes = 99
                 }
+                // Attempt to backfill the missing coordinates from the downloaded Map Shape route
+                var stopLat: Double? = nil
+                var stopLon: Double? = nil
+                if let knownStop = self.routeShape?.stops.first(where: { $0.id == call.stopId }) {
+                    stopLat = knownStop.lat
+                    stopLon = knownStop.lon
+                }
 
+                // Compute distance_m so the distance badge stays accurate
+                // after this sync replaces the original API arrivals.
+                var dist: Double? = nil
+                if let sLat = stopLat, let sLon = stopLon, let ref = self.lastRefreshLocation {
+                    dist = ref.distance(from: CLLocation(latitude: sLat, longitude: sLon))
+                }
                 let arrival = NearbyTransitResponse(
                     routeId: vehicle.routeId,
                     stopName: call.stopName ?? "Unknown Stop",
@@ -2006,12 +2024,13 @@ final class HomeViewModel {
                     minutesAway: minutes,
                     status: call.statusText,
                     mode: "bus",
-                    stopLat: nil,
-                    stopLon: nil,
+                    stopLat: stopLat,
+                    stopLon: stopLon,
                     arrivalTs: call.expectedArrival.map { Int($0.timeIntervalSince1970) } ?? 0,
                     vehicleId: vehicle.vehicleId,
                     tripId: nil,
-                    stopId: call.stopId
+                    stopId: call.stopId,
+                    distanceM: dist
                 )
                 newArrivals.append(arrival)
             }
@@ -2146,6 +2165,11 @@ final class HomeViewModel {
 
         var newArrivals: [NearbyTransitResponse] = []
         for a in routeArrivals {
+            // Compute distance_m so the badge stays accurate after sync
+            var dist: Double? = nil
+            if let sLat = a.stopLat, let sLon = a.stopLon, let ref = self.lastRefreshLocation {
+                dist = ref.distance(from: CLLocation(latitude: sLat, longitude: sLon))
+            }
             newArrivals.append(
                 NearbyTransitResponse(
                     routeId: a.routeID,
@@ -2155,12 +2179,13 @@ final class HomeViewModel {
                     minutesAway: a.minutesAway,
                     status: a.status,
                     mode: mode,
-                    stopLat: nil,
-                    stopLon: nil,
+                    stopLat: a.stopLat,
+                    stopLon: a.stopLon,
                     arrivalTs: Int(a.estimatedTime.timeIntervalSince1970),
                     vehicleId: nil,
                     tripId: a.tripId,
-                    stopId: a.stationID
+                    stopId: a.stationID,
+                    distanceM: dist
                 ))
         }
 
