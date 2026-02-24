@@ -44,3 +44,7 @@ TrackBackend/app/data/*.txt
 
 # Logs
 TrackBackend/logs/
+
+# GTFS metadata (local download/freshness tracking)
+TrackBackend/app/data/.dl_meta/
+TrackBackend/app/data/.gtfs_meta/

@@ -8,6 +8,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import os
 import time
 from typing import Any
 
@@ -35,17 +37,53 @@ app.include_router(nearby.router)
 app.include_router(predict.router)
 
 
+# Background task handle for periodic GTFS refresh
+_gtfs_refresh_task: asyncio.Task | None = None
+
+# How often to check MTA for new GTFS data (default: 24 hours)
+_GTFS_CHECK_INTERVAL = int(os.environ.get("GTFS_CHECK_INTERVAL", 86400))
+
+
 @app.on_event("startup")
 async def startup_event():
+    global _gtfs_refresh_task
     TrackLogger.startup()
     # Download fresh GTFS data from Supabase (falls back to Docker-bundled files)
     await ensure_data_available()
     await init_shared_cache()
+    # Start background GTFS freshness checker
+    _gtfs_refresh_task = asyncio.create_task(_periodic_gtfs_check())
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
+    global _gtfs_refresh_task
+    if _gtfs_refresh_task:
+        _gtfs_refresh_task.cancel()
     await close_shared_cache()
+
+
+async def _periodic_gtfs_check():
+    """Background task: check MTA feeds for updates periodically."""
+    from app.services.gtfs_refresh import check_and_refresh_gtfs
+
+    # Wait 5 minutes after startup before first check (let server warm up)
+    await asyncio.sleep(300)
+
+    while True:
+        try:
+            TrackLogger.info(
+                f"[GTFS] Periodic check starting (interval={_GTFS_CHECK_INTERVAL}s)",
+                tag="GTFS",
+            )
+            await check_and_refresh_gtfs(full_check=False)
+        except asyncio.CancelledError:
+            break
+        except Exception as exc:
+            TrackLogger.error(
+                f"[GTFS] Periodic check failed: {exc}", tag="GTFS"
+            )
+        await asyncio.sleep(_GTFS_CHECK_INTERVAL)
 
 
 # Middleware to log every request with color, query params, and timing
@@ -83,7 +121,24 @@ async def config() -> dict[str, Any]:
 
 
 @app.get("/data/status")
-async def data_status() -> dict[str, bool]:
-    """Check which GTFS data groups are available locally."""
+async def data_status() -> dict[str, Any]:
+    """Check which GTFS data groups are available and their freshness."""
     from app.services.data_loader import check_local_data_status
-    return check_local_data_status()
+    from app.services.gtfs_refresh import get_gtfs_freshness
+    return {
+        "data_groups": check_local_data_status(),
+        "gtfs_feeds": get_gtfs_freshness(),
+    }
+
+
+@app.post("/data/refresh")
+async def data_refresh(full: bool = False) -> dict[str, Any]:
+    """Manually trigger a GTFS data refresh check.
+
+    Query params:
+        full: If true, check all feeds including bus (slower).
+              Default checks only subway/lirr/mnr.
+    """
+    from app.services.gtfs_refresh import check_and_refresh_gtfs
+    results = await check_and_refresh_gtfs(full_check=full)
+    return {"results": results}
