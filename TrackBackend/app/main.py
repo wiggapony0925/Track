@@ -14,7 +14,7 @@ from typing import Any
 from fastapi import FastAPI, Request
 
 from app.config import get_settings
-from app.routers import analytics, bus, lirr, mnr, nearby, predict, status, subway, static_data
+from app.routers import bus, lirr, mnr, nearby, predict, status, subway
 from app.services.bus_client import close_shared_cache, init_shared_cache
 from app.utils.logger import TrackLogger
 
@@ -32,8 +32,6 @@ app.include_router(status.router)
 app.include_router(bus.router)
 app.include_router(nearby.router)
 app.include_router(predict.router)
-app.include_router(analytics.router)
-app.include_router(static_data.router)
 
 
 @app.on_event("startup")

@@ -2,10 +2,8 @@
 //  DelayCalculator.swift
 //  Track
 //
-//  Calculates "Real Feel" delay adjustments.
-//  Prefers the server-side /predict/delay endpoint (which can be upgraded
-//  to ML without an app update), falling back to a local heuristic when
-//  the network is unavailable.
+//  Calculates "Real Feel" delay adjustments using a local heuristic
+//  based on time-of-day, day-of-week, and weather conditions.
 //
 
 import Foundation
@@ -19,43 +17,7 @@ struct DelayPrediction {
 
 struct DelayCalculator {
 
-    /// Fetches a delay prediction from the backend, falling back to the
-    /// local heuristic on network failure.
-    static func predict(
-        mtaMinutes: Int,
-        routeID: String,
-        timeOfDay: Int,
-        dayOfWeek: Int,
-        weather: WeatherCondition
-    ) async -> DelayPrediction {
-        // Try backend first
-        do {
-            let response = try await TrackAPI.fetchDelayPrediction(
-                minutesAway: mtaMinutes,
-                routeId: routeID,
-                hour: timeOfDay,
-                dayOfWeek: dayOfWeek,
-                weather: weather.rawValue
-            )
-            return DelayPrediction(
-                adjustedMinutes: response.adjustedMinutes,
-                originalMinutes: response.originalMinutes,
-                adjustmentReason: response.adjustmentReason,
-                delayFactor: response.delayFactor
-            )
-        } catch {
-            // Fall back to local heuristic
-            return predictLocally(
-                mtaMinutes: mtaMinutes,
-                routeID: routeID,
-                timeOfDay: timeOfDay,
-                dayOfWeek: dayOfWeek,
-                weather: weather
-            )
-        }
-    }
-
-    /// Local heuristic fallback (same logic that was originally the only path).
+    /// Local heuristic for delay prediction.
     static func predictLocally(
         mtaMinutes: Int,
         routeID: String,

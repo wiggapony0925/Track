@@ -48,24 +48,6 @@ struct SubwayRoutesData {
         return StaticBundle(version: "0", routes: .v2([:]), stops: [], colors: [:])
     }
     
-    /// Update bundle from API (call when online)
-    static func updateBundleFromAPI() async {
-        guard let url = URL(string: "\(AppSettings.shared.prodBaseURL)/static/bundle") else { return }
-        
-        do {
-            let (data, _) = try await URLSession.shared.data(from: url)
-            let bundle = try JSONDecoder().decode(StaticBundle.self, from: data)
-            
-            // Save to UserDefaults for offline use
-            UserDefaults(suiteName: kAppGroupIdentifier)?.set(data, forKey: "subway_bundle")
-            cachedBundle = bundle
-            
-            print("[SubwayRoutesData] Updated bundle: \(bundle.routes.count) routes, \(bundle.stops.count) stops")
-        } catch {
-            print("[SubwayRoutesData] Failed to update bundle: \(error)")
-        }
-    }
-    
     // MARK: - Route Colors (Official MTA Colors)
     
     /// Dynamic route colors from bundle

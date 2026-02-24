@@ -147,17 +147,3 @@ struct GroupedNearbyTransitResponse: Codable, Identifiable, Equatable {
     }
 }
 
-/// Matches the backend's `DelayPrediction` JSON schema from `/predict/delay`.
-struct DelayPredictionResponse: Codable {
-    let adjustedMinutes: Int
-    let originalMinutes: Int
-    let delayFactor: Double
-    let adjustmentReason: String?
-
-    enum CodingKeys: String, CodingKey {
-        case adjustedMinutes = "adjusted_minutes"
-        case originalMinutes = "original_minutes"
-        case delayFactor = "delay_factor"
-        case adjustmentReason = "adjustment_reason"
-    }
-}

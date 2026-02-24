@@ -4,7 +4,7 @@
 #
 # Comprehensive test suite for EVERY endpoint in the Track backend.
 # Tests cover: models, grouping logic, subway, bus, LIRR, MNR,
-# nearby, status, analytics, static data, and config endpoints.
+# nearby, status, predict, and config endpoints.
 #
 
 from __future__ import annotations
@@ -734,115 +734,7 @@ class TestAccessibility:
 
 
 # ===================================================================
-# 8. ANALYTICS ENDPOINTS
-# ===================================================================
-
-
-class TestAnalyticsPopular:
-    """GET /analytics/popular — most popular routes."""
-
-    @patch("app.routers.analytics.supabase")
-    def test_popular_returns_routes(self, mock_supabase):
-        mock_supabase.get_popular_routes = AsyncMock(return_value=[
-            {"route_id": "L", "mode": "subway", "count": 42},
-        ])
-        response = client.get("/analytics/popular")
-        assert response.status_code == 200
-        data = response.json()
-        assert "popular_routes" in data
-        assert data["count"] == 1
-
-    @patch("app.routers.analytics.supabase")
-    def test_popular_with_mode_filter(self, mock_supabase):
-        mock_supabase.get_popular_routes = AsyncMock(return_value=[])
-        response = client.get("/analytics/popular?mode=bus&limit=5")
-        assert response.status_code == 200
-
-
-class TestAnalyticsLog:
-    """POST /analytics/log — log a route interaction."""
-
-    @patch("app.routers.analytics.supabase")
-    def test_log_interaction(self, mock_supabase):
-        mock_supabase.log_route_interaction = AsyncMock(return_value=True)
-        response = client.post("/analytics/log?route_id=L&mode=subway&interaction_type=click")
-        assert response.status_code == 200
-        data = response.json()
-        assert data["success"] is True
-
-
-# ===================================================================
-# 9. STATIC DATA ENDPOINTS
-# ===================================================================
-
-
-class TestStaticRoutes:
-    """GET /static/routes — subway route polylines."""
-
-    @patch("app.routers.static_data.generate_bundle")
-    def test_routes_returns_data(self, mock_bundle):
-        mock_bundle.return_value = {
-            "routes": {"L": [[{"lat": 40.74, "lon": -74.0}]]},
-            "stops": [],
-            "colors": {},
-        }
-        response = client.get("/static/routes")
-        assert response.status_code == 200
-        data = response.json()
-        assert "count" in data
-        assert "routes" in data
-        assert data["count"] == 1
-
-
-class TestStaticStops:
-    """GET /static/stops — all subway stations."""
-
-    @patch("app.routers.static_data.generate_bundle")
-    def test_stops_returns_data(self, mock_bundle):
-        mock_bundle.return_value = {
-            "routes": {},
-            "stops": [{"id": "L01", "name": "8 Av", "lat": 40.74, "lon": -74.0}],
-            "colors": {},
-        }
-        response = client.get("/static/stops")
-        assert response.status_code == 200
-        data = response.json()
-        assert data["count"] == 1
-
-
-class TestStaticColors:
-    """GET /static/colors — official MTA route colors."""
-
-    @patch("app.routers.static_data.get_route_colors")
-    def test_colors_returns_dict(self, mock_colors):
-        mock_colors.return_value = {"L": "#A7A9AC", "A": "#0039A6"}
-        response = client.get("/static/colors")
-        assert response.status_code == 200
-        data = response.json()
-        assert data["L"] == "#A7A9AC"
-
-
-class TestStaticBundle:
-    """GET /static/bundle — complete data bundle for offline use."""
-
-    @patch("app.routers.static_data.generate_bundle")
-    def test_bundle_returns_data(self, mock_bundle):
-        mock_bundle.return_value = {"routes": [], "stops": [], "colors": {}}
-        response = client.get("/static/bundle")
-        assert response.status_code == 200
-
-
-class TestStaticHealth:
-    """GET /static/health — health check."""
-
-    def test_health_returns_ok(self):
-        response = client.get("/static/health")
-        assert response.status_code == 200
-        assert response.json()["status"] == "ok"
-
-
-# ===================================================================
-# 10. DISPLAY NAME / GROUPING LOGIC (UNIT TESTS)
+# 8. DISPLAY NAME / GROUPING LOGIC (UNIT TESTS)
 # ===================================================================
 
 
