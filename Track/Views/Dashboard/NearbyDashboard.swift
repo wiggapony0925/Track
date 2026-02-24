@@ -169,28 +169,11 @@ struct NearbyDashboard: View {
 
     // MARK: - Distance Helpers (delegated to DistanceBucketUtils)
 
-    /// Convenience wrapper so call sites within this file stay concise.
-    private func minDistance(for group: GroupedNearbyTransitResponse, from location: CLLocation)
-        -> CLLocationDistance
-    {
-        groupMinDistance(for: group, from: location)
-    }
-
     /// Convenience wrapper for flat arrival distance.
     private func distance(for arrival: NearbyTransitResponse, from location: CLLocation)
         -> CLLocationDistance
     {
         arrivalDistance(for: arrival, from: location)
-    }
-
-    private func separateByDistance(
-        groups: [GroupedNearbyTransitResponse],
-        from location: CLLocation?
-    ) -> (
-        nearYou: [GroupedNearbyTransitResponse], fartherAway: [GroupedNearbyTransitResponse],
-        muchFarther: [GroupedNearbyTransitResponse]
-    ) {
-        separateGroupsByDistance(groups: groups, from: location)
     }
 
     private func separateArrivalsByDistance(

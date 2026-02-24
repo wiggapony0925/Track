@@ -7,7 +7,6 @@
 //
 
 import SwiftUI
-import CoreLocation
 
 /// Metro-North specific dashboard showing rail departures.
 struct MNRDashboard: View {
@@ -67,10 +66,10 @@ struct MNRDashboard: View {
                 }
 
                 // Sort by distance from user / drag-search location
-                let sorted = sortGroupedByDistance(groups: groupedArrivals, from: refLocation)
-
-                // Separate into 3 tiers
-                let (nearYou, fartherAway, muchFarther) = separateByDistance(groups: sorted, from: refLocation)
+                let (nearYou, fartherAway, muchFarther) = viewModel.groupedDisplayBuckets(
+                    from: groupedArrivals,
+                    referenceLocation: refLocation
+                )
 
                 // "Near You" section
                 if !nearYou.isEmpty {
@@ -129,24 +128,6 @@ struct MNRDashboard: View {
         }
     }
 
-    // MARK: - Distance Helpers (delegated to DistanceBucketUtils)
-
-    private func minDistance(for group: GroupedNearbyTransitResponse, from location: CLLocation)
-        -> CLLocationDistance
-    {
-        groupMinDistance(for: group, from: location)
-    }
-
-    private func separateByDistance(
-        groups: [GroupedNearbyTransitResponse],
-        from location: CLLocation?
-    ) -> (
-        nearYou: [GroupedNearbyTransitResponse],
-        fartherAway: [GroupedNearbyTransitResponse],
-        muchFarther: [GroupedNearbyTransitResponse]
-    ) {
-        separateGroupsByDistance(groups: groups, from: location)
-    }
 }
 
 #Preview {

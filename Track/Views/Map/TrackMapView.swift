@@ -173,21 +173,7 @@ struct TrackMapView: View {
 
     @MapContentBuilder
     private var busStopAnnotations: some MapContent {
-        if viewModel.selectedMode == .bus {
-            ForEach(viewModel.nearbyBusStops) { stop in
-                Annotation(
-                    stop.name,
-                    coordinate: CLLocationCoordinate2D(latitude: stop.lat, longitude: stop.lon)
-                ) {
-                    BusStopAnnotation(stopName: stop.name)
-                        .onTapGesture {
-                            Task {
-                                await viewModel.fetchBusArrivals(for: stop)
-                            }
-                        }
-                }
-            }
-        }
+        EmptyMapContent()
     }
 
     // MARK: - Route Stop Annotations

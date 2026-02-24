@@ -288,7 +288,11 @@ final class HomeViewModel {
         var muchFarther: [GroupedNearbyTransitResponse] = []
 
         for group in groups {
-            guard let distance = displayDistanceMeters(for: group, from: referenceLocation) else { continue }
+            guard let distance = displayDistanceMeters(for: group, from: referenceLocation) else {
+                // Keep route rows visible during short feed/coordinate gaps.
+                muchFarther.append(group)
+                continue
+            }
             if distance <= r1 {
                 nearYou.append(group)
             } else if distance <= r2 {

@@ -7,7 +7,6 @@
 //
 
 import SwiftUI
-import CoreLocation
 
 /// LIRR-specific dashboard showing rail departures.
 struct LIRRDashboard: View {
@@ -25,8 +24,8 @@ struct LIRRDashboard: View {
     private var muchFartherAwayRadius: Double { AppSettings.shared.muchFartherAwayRadiusMeters }
     
     /// Grouped LIRR arrivals for tap-to-detail navigation (from backend)
-        private var groupedArrivals: [GroupedNearbyTransitResponse] {
-            viewModel.filteredNearbyGroupedLIRRArrivals
+    private var groupedArrivals: [GroupedNearbyTransitResponse] {
+        viewModel.filteredNearbyGroupedLIRRArrivals
     }
     
     /// Get filtered arrivals based on search
@@ -37,11 +36,6 @@ struct LIRRDashboard: View {
     /// Arrivals within 15 minutes (soon)
     private var soonArrivals: [TrainArrival] {
         displayArrivals.filter { $0.minutesAway <= 15 && ($0.minutesAway > 0 || $0.estimatedTime > Date()) }
-    }
-    
-    /// Arrivals more than 15 minutes away
-    private var laterArrivals: [TrainArrival] {
-        displayArrivals.filter { $0.minutesAway > 15 }
     }
     
     /// Check if user is likely far from LIRR service area
@@ -72,10 +66,10 @@ struct LIRRDashboard: View {
                 }
 
                 // Sort by distance from user / drag-search location
-                let sorted = sortGroupedByDistance(groups: groupedArrivals, from: refLocation)
-
-                // Separate into 3 tiers
-                let (nearYou, fartherAway, muchFarther) = separateByDistance(groups: sorted, from: refLocation)
+                let (nearYou, fartherAway, muchFarther) = viewModel.groupedDisplayBuckets(
+                    from: groupedArrivals,
+                    referenceLocation: refLocation
+                )
 
                 // "Near You" section
                 if !nearYou.isEmpty {
@@ -134,24 +128,6 @@ struct LIRRDashboard: View {
         }
     }
 
-    // MARK: - Distance Helpers (delegated to DistanceBucketUtils)
-
-    private func minDistance(for group: GroupedNearbyTransitResponse, from location: CLLocation)
-        -> CLLocationDistance
-    {
-        groupMinDistance(for: group, from: location)
-    }
-
-    private func separateByDistance(
-        groups: [GroupedNearbyTransitResponse],
-        from location: CLLocation?
-    ) -> (
-        nearYou: [GroupedNearbyTransitResponse],
-        fartherAway: [GroupedNearbyTransitResponse],
-        muchFarther: [GroupedNearbyTransitResponse]
-    ) {
-        separateGroupsByDistance(groups: groups, from: location)
-    }
 }
 
 #Preview {

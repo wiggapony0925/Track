@@ -9,7 +9,6 @@
 //
 
 import SwiftUI
-import CoreLocation
 
 /// Bus-specific dashboard showing grouped bus arrivals.
 struct BusDashboard: View {
@@ -114,18 +113,6 @@ struct BusDashboard: View {
         }
     }
     
-    // MARK: - Distance Helpers (delegated to DistanceBucketUtils)
-    
-    private func minDistance(for group: GroupedNearbyTransitResponse, from location: CLLocation) -> CLLocationDistance {
-        groupMinDistance(for: group, from: location)
-    }
-    
-    private func separateByDistance(
-        groups: [GroupedNearbyTransitResponse],
-        from location: CLLocation?
-    ) -> (nearYou: [GroupedNearbyTransitResponse], fartherAway: [GroupedNearbyTransitResponse], muchFarther: [GroupedNearbyTransitResponse]) {
-        separateGroupsByDistance(groups: groups, from: location)
-    }
 }
 
 #Preview {

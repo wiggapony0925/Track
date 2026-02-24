@@ -8,7 +8,6 @@
 //
 
 import SwiftUI
-import CoreLocation
 
 /// Subway-specific dashboard showing nearby arrivals and stations.
 struct SubwayDashboard: View {
@@ -35,11 +34,11 @@ struct SubwayDashboard: View {
             let refLocation = viewModel.effectiveLocation(userLocation: locationManager.currentLocation)
             
             if !groupedArrivals.isEmpty {
-                // Sort by distance from user
-                let sorted = sortGroupedByDistance(groups: groupedArrivals, from: refLocation)
-                
-                // Separate into 3 tiers
-                let (nearYou, fartherAway, muchFarther) = separateByDistance(groups: sorted, from: refLocation)
+                // Separate into 3 tiers using shared nearest→farthest ordering.
+                let (nearYou, fartherAway, muchFarther) = viewModel.groupedDisplayBuckets(
+                    from: groupedArrivals,
+                    referenceLocation: refLocation
+                )
                 
                 // "Near You" section (~1.5 mi)
                 if !nearYou.isEmpty {
@@ -113,18 +112,6 @@ struct SubwayDashboard: View {
         }
     }
     
-    // MARK: - Distance Helpers (delegated to DistanceBucketUtils)
-    
-    private func minDistance(for group: GroupedNearbyTransitResponse, from location: CLLocation) -> CLLocationDistance {
-        groupMinDistance(for: group, from: location)
-    }
-    
-    private func separateByDistance(
-        groups: [GroupedNearbyTransitResponse],
-        from location: CLLocation?
-    ) -> (nearYou: [GroupedNearbyTransitResponse], fartherAway: [GroupedNearbyTransitResponse], muchFarther: [GroupedNearbyTransitResponse]) {
-        separateGroupsByDistance(groups: groups, from: location)
-    }
 }
 
 #Preview {
