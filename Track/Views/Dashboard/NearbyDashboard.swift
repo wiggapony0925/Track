@@ -38,12 +38,12 @@ struct NearbyDashboard: View {
             if !viewModel.groupedTransit.isEmpty {
                 let filtered = viewModel.filteredGroupedTransit
 
-                // Sort groups by distance (closest entrance/stop)
-                let sorted = sortGroupedByDistance(groups: filtered, from: refLocation)
-
-                // Separate into "Near You", "Farther Away", and "Much Farther Away" based on distance
-                let (nearYou, fartherAway, muchFarther) = separateByDistance(
-                    groups: sorted, from: refLocation)
+                // Separate using the same distance source as row display distance
+                // so list value + category ring remain perfectly aligned.
+                let (nearYou, fartherAway, muchFarther) = viewModel.groupedDisplayBuckets(
+                    from: filtered,
+                    referenceLocation: refLocation
+                )
 
                 // Display "Near You" section
                 if !nearYou.isEmpty {
@@ -404,16 +404,15 @@ struct GroupedRouteList: View {
                             routeId: group.displayName, mode: group.mode
                         ).isEmpty,
                     userLocation: referenceLocation,
+                    distanceMetersOverride: viewModel.displayDistanceMeters(for: group, from: referenceLocation),
                     onSelect: { directionIndex in
                         RouteAnalyticsManager.shared.logInteraction(routeId: group.routeId)
+                        sheetNavigator.navigate(
+                            to: .routeDetail(group: group, directionIndex: directionIndex))
                         Task {
                             await viewModel.selectGroupedRoute(
                                 group, directionIndex: directionIndex,
                                 userLocation: locationManager.currentLocation)
-                            if viewModel.isRouteDetailPresented {
-                                sheetNavigator.navigate(
-                                    to: .routeDetail(group: group, directionIndex: directionIndex))
-                            }
                         }
                     },
                     onTrack: { directionIndex in

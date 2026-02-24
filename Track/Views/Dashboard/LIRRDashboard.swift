@@ -25,8 +25,8 @@ struct LIRRDashboard: View {
     private var muchFartherAwayRadius: Double { AppSettings.shared.muchFartherAwayRadiusMeters }
     
     /// Grouped LIRR arrivals for tap-to-detail navigation (from backend)
-    private var groupedArrivals: [GroupedNearbyTransitResponse] {
-        viewModel.nearbyGroupedLIRRArrivals
+        private var groupedArrivals: [GroupedNearbyTransitResponse] {
+            viewModel.filteredNearbyGroupedLIRRArrivals
     }
     
     /// Get filtered arrivals based on search

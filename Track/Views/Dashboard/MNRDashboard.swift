@@ -26,7 +26,7 @@ struct MNRDashboard: View {
     
     /// Grouped MNR arrivals for tap-to-detail navigation (from backend)
     private var groupedArrivals: [GroupedNearbyTransitResponse] {
-        viewModel.nearbyGroupedMNRArrivals
+        viewModel.filteredNearbyGroupedMNRArrivals
     }
     
     /// Get filtered arrivals based on search

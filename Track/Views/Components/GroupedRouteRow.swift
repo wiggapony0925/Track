@@ -15,6 +15,7 @@ struct GroupedRouteRow: View {
     let group: GroupedNearbyTransitResponse
     var hasAlert: Bool = false
     var userLocation: CLLocation? = nil
+    var distanceMetersOverride: Double? = nil
     var onSelect: ((Int) -> Void)? = nil
     var onTrack: ((Int) -> Void)? = nil
 
@@ -44,6 +45,7 @@ struct GroupedRouteRow: View {
 
     /// Distance from user to the closest stop in this group (meters).
     private var closestStopDistance: Double? {
+        if let distanceMetersOverride { return distanceMetersOverride }
         guard let loc = userLocation else { return nil }
         return groupMinDistance(for: group, from: loc)
     }

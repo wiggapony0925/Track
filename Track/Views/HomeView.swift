@@ -567,9 +567,10 @@ struct HomeView: View {
         // tab switch actually hits the network.
         modeChangeTask?.cancel()
         modeChangeTask = Task {
+            let shouldForceRefresh = !viewModel.hasCachedData(for: viewModel.selectedMode)
             // Use effective location so mode changes during drag-to-search
             // keep showing transit at the explored area, not GPS.
-            await viewModel.refresh(location: effectiveLocation, force: true)
+            await viewModel.refresh(location: effectiveLocation, force: shouldForceRefresh)
             lastUpdated = Date()
         }
     }
@@ -784,6 +785,16 @@ struct HomeView: View {
         guard let match = viewModel.groupForTrackedRoute() else { return }
         
         viewModel.pendingDeepLink = false
+
+        sheetNavigator.navigate(
+            to: .routeDetail(
+                group: match.group,
+                directionIndex: match.directionIndex
+            )
+        )
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+            sheetDetent = .fraction(0.4)
+        }
         
         Task {
             await viewModel.selectGroupedRoute(
@@ -791,17 +802,6 @@ struct HomeView: View {
                 directionIndex: match.directionIndex,
                 userLocation: locationManager.currentLocation
             )
-            if viewModel.isRouteDetailPresented {
-                sheetNavigator.navigate(
-                    to: .routeDetail(
-                        group: match.group,
-                        directionIndex: match.directionIndex
-                    )
-                )
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                    sheetDetent = .fraction(0.4)
-                }
-            }
         }
     }
 }

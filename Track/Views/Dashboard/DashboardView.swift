@@ -59,11 +59,9 @@ struct DashboardView: View {
                         FavoritesSection(
                             groupedTransit: viewModel.groupedTransit,
                             onSelect: { group, directionIndex in
+                                sheetNavigator.navigate(to: .routeDetail(group: group, directionIndex: directionIndex))
                                 Task {
                                     await viewModel.selectGroupedRoute(group, directionIndex: directionIndex, userLocation: locationManager.currentLocation)
-                                    if viewModel.isRouteDetailPresented {
-                                        sheetNavigator.navigate(to: .routeDetail(group: group, directionIndex: directionIndex))
-                                    }
                                 }
                             }
                         )
@@ -167,13 +165,13 @@ struct DashboardView: View {
         case .nearby:
             return !viewModel.groupedTransit.isEmpty || !viewModel.nearbyTransit.isEmpty
         case .subway:
-            return !viewModel.nearbyGroupedSubwayArrivals.isEmpty
+            return !viewModel.filteredNearbyGroupedSubwayArrivals.isEmpty
         case .bus:
-            return !viewModel.nearbyGroupedBusArrivals.isEmpty
+            return !viewModel.filteredNearbyGroupedBusArrivals.isEmpty
         case .lirr:
-            return !viewModel.nearbyGroupedLIRRArrivals.isEmpty
+            return !viewModel.filteredNearbyGroupedLIRRArrivals.isEmpty
         case .mnr:
-            return !viewModel.nearbyGroupedMNRArrivals.isEmpty
+            return !viewModel.filteredNearbyGroupedMNRArrivals.isEmpty
         }
     }
 }

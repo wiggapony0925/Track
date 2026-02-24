@@ -36,11 +36,12 @@ struct BusDashboard: View {
             let refLocation = viewModel.effectiveLocation(userLocation: locationManager.currentLocation)
             
             if !groupedArrivals.isEmpty {
-                // Sort by distance from user
-                let sorted = sortGroupedByDistance(groups: groupedArrivals, from: refLocation)
-                
-                // Separate into 3 tiers
-                let (nearYou, fartherAway, muchFarther) = separateByDistance(groups: sorted, from: refLocation)
+                // Separate using shared display-distance source so categories
+                // and row distance are based on the same nearest-stop logic.
+                let (nearYou, fartherAway, muchFarther) = viewModel.groupedDisplayBuckets(
+                    from: groupedArrivals,
+                    referenceLocation: refLocation
+                )
                 
                 // "Near You" section (~1.5 mi)
                 if !nearYou.isEmpty {
