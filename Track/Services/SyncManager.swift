@@ -199,8 +199,11 @@ class SyncManager: ObservableObject {
     
     /// Push current @AppStorage values to Supabase
     func pushUserSettings() async {
-        guard let userIdString = defaults.string(forKey: "supabase_user_id"),
-              let userId = UUID(uuidString: userIdString) else {
+        let userId: UUID? =
+            SupabaseManager.shared.currentUser?.id
+            ?? defaults.string(forKey: "supabase_user_id").flatMap(UUID.init(uuidString:))
+
+        guard let userId else {
             return
         }
         

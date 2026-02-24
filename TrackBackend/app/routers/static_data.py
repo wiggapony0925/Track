@@ -9,8 +9,6 @@ from fastapi.responses import JSONResponse
 from typing import Dict, List, Any
 
 from ..services.gtfs_parser import (
-    parse_stops,
-    get_routes_with_shapes,
     get_route_colors,
     generate_bundle
 )
@@ -21,11 +19,12 @@ router = APIRouter(prefix="/static", tags=["static"])
 @router.get("/routes")
 async def get_routes() -> Dict[str, Any]:
     """
-    Get all subway route polylines.
-    
+    Get all route polylines across Subway, LIRR, and Metro-North.
+
     Returns GeoJSON-like structure with route coordinates.
     """
-    routes = get_routes_with_shapes()
+    bundle = generate_bundle()
+    routes = bundle.get("routes", {})
     return {
         "count": len(routes),
         "routes": routes
@@ -35,9 +34,10 @@ async def get_routes() -> Dict[str, Any]:
 @router.get("/stops")
 async def get_stops() -> Dict[str, Any]:
     """
-    Get all subway stations with coordinates.
+    Get all stations with coordinates across Subway, LIRR, and Metro-North.
     """
-    stops = parse_stops()
+    bundle = generate_bundle()
+    stops = bundle.get("stops", [])
     return {
         "count": len(stops),
         "stops": stops

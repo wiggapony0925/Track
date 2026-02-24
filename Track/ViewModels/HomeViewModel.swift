@@ -229,38 +229,15 @@ final class HomeViewModel {
         }
     }
 
-    /// Stable row distance for grouped routes.
+    /// Distance from the user to the closest stop in this grouped route.
     ///
-    /// For bus routes, prefer the nearest nearby bus stop that serves this route
-    /// (`/bus/nearby` with `route_ids`) so distance does not jump when the live
-    /// arrival subset changes as radius grows.
-    /// For non-bus routes (or missing stop metadata), falls back to grouped
-    /// arrival stop coordinates.
+    /// Uses the same algorithm as the walking polyline on the map: iterate
+    /// every stop coordinate in the group and return the minimum distance
+    /// to the reference location — no separate data source, no race.
     func displayDistanceMeters(for group: GroupedNearbyTransitResponse, from location: CLLocation?) -> CLLocationDistance? {
         guard let location else { return nil }
-
-        let groupedFallback = groupMinDistance(for: group, from: location)
-
-        if group.isBus {
-            let targetRoute = stripMTAPrefix(group.routeId).lowercased()
-            let matchedStops = nearbyBusStops.filter { stop in
-                guard let routeIds = stop.routeIds, !routeIds.isEmpty else { return false }
-                return routeIds.contains { rid in
-                    let normalized = stripMTAPrefix(rid).lowercased()
-                    return normalized == targetRoute
-                }
-            }
-            if let nearest = matchedStops.map({ stop in
-                location.distance(from: CLLocation(latitude: stop.lat, longitude: stop.lon))
-            }).min() {
-                if groupedFallback.isFinite {
-                    return min(nearest, groupedFallback)
-                }
-                return nearest
-            }
-        }
-
-        return groupedFallback.isFinite ? groupedFallback : nil
+        let dist = groupMinDistance(for: group, from: location)
+        return dist.isFinite ? dist : nil
     }
 
     /// Groups and sorts routes for dashboard display using the same distance source
@@ -2637,9 +2614,23 @@ final class HomeViewModel {
             async let flatTask = TrackAPI.fetchNearbyTransit(lat: lat, lon: lon)
             async let groupedTask = TrackAPI.fetchNearbyGrouped(lat: lat, lon: lon)
             async let nearbyBusStopsTask = TrackAPI.fetchNearbyBusStops(lat: lat, lon: lon)
+            async let stationsTask = repository.fetchNearbyStations(
+                latitude: lat, longitude: lon
+            )
 
             let rawTransit = try await flatTask
             let newGrouped = try await groupedTask
+
+            // ── Resolve nearby bus stops and subway stations BEFORE
+            //    assigning grouped data so that when SwiftUI re-renders,
+            //    displayDistanceMeters() already has fresh physical-stop
+            //    data to match against — no more stale distance flash. ──
+            do {
+                nearbyBusStops = try await nearbyBusStopsTask
+            } catch {
+                AppLogger.shared.logError("fetchNearbyBusStops", error: error)
+            }
+            nearbyStations = (try? await stationsTask) ?? nearbyStations
 
             // Merge new grouped data with existing data using a multi-cycle
             // grace period so routes don't vanish when the MTA feed briefly
@@ -2658,12 +2649,6 @@ final class HomeViewModel {
                     "REFRESH",
                     message: "API returned 0 flat arrivals but we had \(nearbyTransit.count) — keeping previous data"
                 )
-            }
-
-            do {
-                nearbyBusStops = try await nearbyBusStopsTask
-            } catch {
-                AppLogger.shared.logError("fetchNearbyBusStops", error: error)
             }
 
             // Fetch alerts and accessibility only on full refreshes — these are
@@ -2738,14 +2723,25 @@ final class HomeViewModel {
         // Start with all new (fresh) data.
         var merged = new
 
-        // Keep each old route that's NOT in the new data.
+        // Keep each old route that's NOT in the new data, up to a limit.
+        // After 3 consecutive misses the route is stale (likely the user
+        // moved away) and its stop coordinates may no longer be accurate,
+        // which causes displayDistanceMeters to bucket it incorrectly.
+        let maxGraceCycles = 3
         for oldGroup in existing where !newRouteIds.contains(oldGroup.routeId) {
             let count = (missCounts[oldGroup.routeId] ?? 0) + 1
             missCounts[oldGroup.routeId] = count
+            if count > maxGraceCycles {
+                AppLogger.shared.log(
+                    "REFRESH",
+                    message: "[\(source)] Evicting \(oldGroup.routeId) after \(count) grace cycles"
+                )
+                continue   // drop it from merged
+            }
             merged.append(oldGroup)
             AppLogger.shared.log(
                 "REFRESH",
-                message: "[\(source)] Grace \(count) for \(oldGroup.routeId) — keeping visible"
+                message: "[\(source)] Grace \(count)/\(maxGraceCycles) for \(oldGroup.routeId) — keeping visible"
             )
         }
 
@@ -2794,6 +2790,11 @@ final class HomeViewModel {
 
             let allGrouped = try await groupedTask
             let filtered = allGrouped.filter { $0.mode == "subway" }
+
+            // Resolve stations BEFORE grouped data so displayDistanceMeters()
+            // has fresh physical-station distances when SwiftUI re-renders.
+            nearbyStations = (try? await stationsTask) ?? nearbyStations
+
             nearbyGroupedSubwayArrivals = mergeGroupedTransit(
                 new: filtered,
                 existing: nearbyGroupedSubwayArrivals,
@@ -2801,8 +2802,6 @@ final class HomeViewModel {
             )
 
             updateSelectedRouteFromRefreshedData(nearbyGroupedSubwayArrivals)
-
-            nearbyStations = try await stationsTask
         } catch {
             AppLogger.shared.logError("refreshSubway", error: error)
             errorMessage = (error as? TransitError)?.description ?? error.localizedDescription
@@ -2830,17 +2829,21 @@ final class HomeViewModel {
 
             let allGrouped = try await groupedTask
             let filtered = allGrouped.filter { $0.mode == "bus" }
-            nearbyGroupedBusArrivals = mergeGroupedTransit(
-                new: filtered,
-                existing: nearbyGroupedBusArrivals,
-                source: "bus"
-            )
 
+            // Resolve bus stops BEFORE updating grouped arrivals so that
+            // when SwiftUI re-renders the dashboard, displayDistanceMeters()
+            // already has fresh nearbyBusStops to match against.
             do {
                 nearbyBusStops = try await nearbyBusStopsTask
             } catch {
                 AppLogger.shared.logError("fetchNearbyBusStops", error: error)
             }
+
+            nearbyGroupedBusArrivals = mergeGroupedTransit(
+                new: filtered,
+                existing: nearbyGroupedBusArrivals,
+                source: "bus"
+            )
 
             updateSelectedRouteFromRefreshedData(nearbyGroupedBusArrivals)
 

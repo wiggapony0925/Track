@@ -779,22 +779,31 @@ class TestAnalyticsLog:
 class TestStaticRoutes:
     """GET /static/routes — subway route polylines."""
 
-    @patch("app.routers.static_data.get_routes_with_shapes")
-    def test_routes_returns_data(self, mock_routes):
-        mock_routes.return_value = [{"route_id": "L", "coords": []}]
+    @patch("app.routers.static_data.generate_bundle")
+    def test_routes_returns_data(self, mock_bundle):
+        mock_bundle.return_value = {
+            "routes": {"L": [[{"lat": 40.74, "lon": -74.0}]]},
+            "stops": [],
+            "colors": {},
+        }
         response = client.get("/static/routes")
         assert response.status_code == 200
         data = response.json()
         assert "count" in data
         assert "routes" in data
+        assert data["count"] == 1
 
 
 class TestStaticStops:
     """GET /static/stops — all subway stations."""
 
-    @patch("app.routers.static_data.parse_stops")
-    def test_stops_returns_data(self, mock_stops):
-        mock_stops.return_value = [{"id": "L01", "name": "8 Av", "lat": 40.74, "lon": -74.0}]
+    @patch("app.routers.static_data.generate_bundle")
+    def test_stops_returns_data(self, mock_bundle):
+        mock_bundle.return_value = {
+            "routes": {},
+            "stops": [{"id": "L01", "name": "8 Av", "lat": 40.74, "lon": -74.0}],
+            "colors": {},
+        }
         response = client.get("/static/stops")
         assert response.status_code == 200
         data = response.json()

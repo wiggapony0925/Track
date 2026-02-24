@@ -528,23 +528,16 @@ struct DistanceBucketUtilsTests {
         #expect(buckets.muchFarther.map(\.routeId) == ["NOC"])
     }
 
-    @Test func busDisplayDistanceUsesNearestNearbyStopForRoute() async throws {
+    @Test func busDisplayDistanceUsesArrivalCoords() async throws {
         let origin = CLLocation(latitude: 40.7128, longitude: -74.0060)
         let viewModel = HomeViewModel()
 
+        // nearbyBusStops are NOT used for distance — only arrival coords matter.
         viewModel.nearbyBusStops = [
             BusStop(
                 id: "NEAR",
                 name: "Near Stop",
                 lat: origin.coordinate.latitude + (120.0 / 111_111.0),
-                lon: origin.coordinate.longitude,
-                direction: nil,
-                routeIds: ["MTA NYCT_Q10"]
-            ),
-            BusStop(
-                id: "FAR",
-                name: "Far Stop",
-                lat: origin.coordinate.latitude + (900.0 / 111_111.0),
                 lon: origin.coordinate.longitude,
                 direction: nil,
                 routeIds: ["MTA NYCT_Q10"]
@@ -561,16 +554,17 @@ struct DistanceBucketUtilsTests {
                     direction: "Northbound",
                     directionLabel: "Northbound",
                     arrivals: [
-                        // Simulate grouped payload shifting to a farther stop.
                         makeArrival(routeId: "Q10", distanceMeters: 800, origin: origin)
                     ]
                 )
             ]
         )
 
-        let anchored = viewModel.displayDistanceMeters(for: group, from: origin)
-        #expect(anchored != nil)
-        #expect((anchored ?? .greatestFiniteMagnitude) < 250)
+        let result = viewModel.displayDistanceMeters(for: group, from: origin)
+        #expect(result != nil)
+        // Uses arrival stop coords (~800 m), not nearbyBusStops.
+        #expect((result ?? 0) > 700)
+        #expect((result ?? 0) < 900)
     }
 
     @Test func busDisplayDistanceFallsBackToGroupedStopsWhenNearbyStopMetadataMissing() async throws {
@@ -599,6 +593,155 @@ struct DistanceBucketUtilsTests {
         #expect((anchored ?? 0) > 300)
         #expect((anchored ?? 0) < 560)
     }
+
+    // MARK: - Unified displayDistanceMeters (groupMinDistance only)
+
+    @Test func subwayDisplayDistanceUsesArrivalCoords() async throws {
+        let origin = CLLocation(latitude: 40.7128, longitude: -74.0060)
+        let viewModel = HomeViewModel()
+
+        // nearbyStations are NOT used for distance — only arrival coords matter.
+        viewModel.nearbyStations = [
+            (stationID: "A27", name: "Chambers St", distance: 80.0, routeIDs: ["A", "C", "E"])
+        ]
+
+        let group = GroupedNearbyTransitResponse(
+            routeId: "A",
+            displayName: "A",
+            mode: "subway",
+            colorHex: nil,
+            directions: [
+                DirectionArrivalsResponse(
+                    direction: "Northbound",
+                    directionLabel: "Uptown",
+                    arrivals: [
+                        makeArrivalSubway(routeId: "A", distanceMeters: 350, origin: origin)
+                    ]
+                )
+            ]
+        )
+
+        let result = viewModel.displayDistanceMeters(for: group, from: origin)
+        #expect(result != nil)
+        // Uses arrival stop coords (~350 m), not nearbyStations.
+        #expect((result ?? 0) > 300)
+        #expect((result ?? 0) < 400)
+    }
+
+    @Test func subwayDisplayDistanceFallsBackToArrivalWhenNoStationMatch() async throws {
+        let origin = CLLocation(latitude: 40.7128, longitude: -74.0060)
+        let viewModel = HomeViewModel()
+
+        // nearbyStations has no station serving the G train.
+        viewModel.nearbyStations = [
+            (stationID: "A27", name: "Chambers St", distance: 80.0, routeIDs: ["A", "C", "E"])
+        ]
+
+        let group = GroupedNearbyTransitResponse(
+            routeId: "G",
+            displayName: "G",
+            mode: "subway",
+            colorHex: nil,
+            directions: [
+                DirectionArrivalsResponse(
+                    direction: "Northbound",
+                    directionLabel: "Court Sq",
+                    arrivals: [
+                        makeArrivalSubway(routeId: "G", distanceMeters: 500, origin: origin)
+                    ]
+                )
+            ]
+        )
+
+        let result = viewModel.displayDistanceMeters(for: group, from: origin)
+        #expect(result != nil)
+        // Falls back to grouped arrival stop distance (~500 m).
+        #expect((result ?? 0) > 400)
+        #expect((result ?? 0) < 600)
+    }
+
+    @Test func subwayDisplayDistanceUsesArrivalCoordsRegardlessOfStations() async throws {
+        let origin = CLLocation(latitude: 40.7128, longitude: -74.0060)
+        let viewModel = HomeViewModel()
+
+        // nearbyStations present but irrelevant — only arrival coords matter.
+        viewModel.nearbyStations = [
+            (stationID: "L01", name: "1 Av", distance: 200.0, routeIDs: ["L"])
+        ]
+
+        let group = GroupedNearbyTransitResponse(
+            routeId: "L",
+            displayName: "L",
+            mode: "subway",
+            colorHex: nil,
+            directions: [
+                DirectionArrivalsResponse(
+                    direction: "Westbound",
+                    directionLabel: "8 Av",
+                    arrivals: [
+                        makeArrivalSubway(routeId: "L", distanceMeters: 150, origin: origin)
+                    ]
+                )
+            ]
+        )
+
+        let result = viewModel.displayDistanceMeters(for: group, from: origin)
+        #expect(result != nil)
+        // Uses arrival stop coords (~150 m).
+        #expect((result ?? .greatestFiniteMagnitude) < 180)
+    }
+
+    @Test func subwayDisplayDistanceWithEmptyStations() async throws {
+        let origin = CLLocation(latitude: 40.7128, longitude: -74.0060)
+        let viewModel = HomeViewModel()
+        viewModel.nearbyStations = []
+
+        let group = GroupedNearbyTransitResponse(
+            routeId: "7",
+            displayName: "7",
+            mode: "subway",
+            colorHex: nil,
+            directions: [
+                DirectionArrivalsResponse(
+                    direction: "Eastbound",
+                    directionLabel: "Flushing",
+                    arrivals: [
+                        makeArrivalSubway(routeId: "7", distanceMeters: 300, origin: origin)
+                    ]
+                )
+            ]
+        )
+
+        let result = viewModel.displayDistanceMeters(for: group, from: origin)
+        #expect(result != nil)
+        // Falls back to grouped arrival distance (~300 m).
+        #expect((result ?? 0) > 250)
+        #expect((result ?? 0) < 400)
+    }
+
+    private func makeArrivalSubway(routeId: String, distanceMeters: Double, origin: CLLocation) -> NearbyTransitResponse {
+        let stopCoordinate = CLLocationCoordinate2D(
+            latitude: origin.coordinate.latitude + (distanceMeters / 111_111.0),
+            longitude: origin.coordinate.longitude
+        )
+        return NearbyTransitResponse(
+            routeId: routeId,
+            stopName: "Stop \(routeId)",
+            direction: "Northbound",
+            destination: "Terminal",
+            minutesAway: 5,
+            status: "OK",
+            mode: "subway",
+            stopLat: stopCoordinate.latitude,
+            stopLon: stopCoordinate.longitude,
+            arrivalTs: Int(Date.now.timeIntervalSince1970) + 300,
+            vehicleId: "V-\(routeId)",
+            tripId: "T-\(routeId)",
+            stopId: "S-\(routeId)"
+        )
+    }
+
+    // MARK: - Distance assertion helpers
 
     private func assertAscendingDistance(_ groups: [GroupedNearbyTransitResponse], from origin: CLLocation) {
         guard groups.count > 1 else { return }

@@ -22,12 +22,10 @@ struct TrackedRoute: Codable {
     var isMNR: Bool { mode == "mnr" }
     var isCommuterRail: Bool { isLIRR || isMNR }
 
-    /// Strips "MTA NYCT_" prefix for display.
+    /// Strips MTA agency prefixes for display.
+    /// Uses the shared prefix table in `MTAPrefixes.swift`.
     var cleanDisplayName: String {
-        if displayName.hasPrefix("MTA NYCT_") {
-            return String(displayName.dropFirst(9))
-        }
-        return displayName
+        stripMTAAgencyPrefix(displayName)
     }
 
     // MARK: - Persistence
