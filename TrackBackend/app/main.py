@@ -16,6 +16,7 @@ from fastapi import FastAPI, Request
 from app.config import get_settings
 from app.routers import bus, lirr, mnr, nearby, predict, status, subway
 from app.services.bus_client import close_shared_cache, init_shared_cache
+from app.services.data_loader import ensure_data_available
 from app.utils.logger import TrackLogger
 
 app = FastAPI(
@@ -37,6 +38,8 @@ app.include_router(predict.router)
 @app.on_event("startup")
 async def startup_event():
     TrackLogger.startup()
+    # Download fresh GTFS data from Supabase (falls back to Docker-bundled files)
+    await ensure_data_available()
     await init_shared_cache()
 
 
@@ -77,3 +80,10 @@ async def config() -> dict[str, Any]:
     """Return the *app_settings* block from settings.json."""
     settings = get_settings()
     return settings.app_settings.model_dump()
+
+
+@app.get("/data/status")
+async def data_status() -> dict[str, bool]:
+    """Check which GTFS data groups are available locally."""
+    from app.services.data_loader import check_local_data_status
+    return check_local_data_status()

@@ -11,3 +11,20 @@ env/
 .idea/
 .DS_Store
 *.md
+
+# ---------------------------------------------------------------
+# Large GTFS data — NOT needed at runtime (only for ingest scripts)
+# or completely orphaned.  Saves ~550 MB from Docker image.
+# Runtime data is downloaded from Supabase Storage on startup.
+# ---------------------------------------------------------------
+app/data/bus/
+app/data/MTA Bus Company/
+app/data/subway/gtfs_subway/
+app/data/MTA_Colors_Lines_20260215.csv
+app/data/metadata
+
+# Tests / scripts not needed in production image
+tests/
+scripts/
+pytest.ini
+logs/

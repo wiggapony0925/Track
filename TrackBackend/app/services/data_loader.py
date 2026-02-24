@@ -1,0 +1,335 @@
+#
+# data_loader.py
+# TrackBackend
+#
+# Downloads GTFS data from Supabase Storage on startup, with automatic
+# fallback to Docker-bundled files when Supabase is unreachable.
+#
+# Architecture:
+#   PRIMARY  — Download fresh .tar.gz archives from Supabase Storage bucket.
+#   FALLBACK — Use local files already present in app/data/ (Docker image).
+#
+# Data is organized into download groups (archives) so large directories
+# can be fetched as a single compressed file instead of hundreds of
+# individual requests.
+#
+
+from __future__ import annotations
+
+import gzip
+import hashlib
+import os
+import shutil
+import tarfile
+import tempfile
+import time
+from pathlib import Path
+from typing import Any
+
+import httpx
+
+from app.utils.logger import TrackLogger
+
+# ---------------------------------------------------------------------------
+# Config
+# ---------------------------------------------------------------------------
+
+_DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+_METADATA_DIR = _DATA_DIR / ".dl_meta"
+
+SUPABASE_URL = os.environ.get(
+    "SUPABASE_URL", "https://octpebjxadbufiplgjqg.supabase.co"
+)
+SUPABASE_KEY = os.environ.get(
+    "SUPABASE_SERVICE_KEY",
+    os.environ.get("SUPABASE_KEY", "sb_publishable_lAEZ_x8O4vjdGaw-I-QUMg_oS5iWKIn"),
+)
+
+BUCKET_NAME = os.environ.get("GTFS_BUCKET", "gtfs-data")
+
+# Timeout for downloading — generous for large files (transit_schedule.db ~100MB gzipped)
+_DOWNLOAD_TIMEOUT = httpx.Timeout(connect=10.0, read=120.0, write=30.0, pool=10.0)
+
+# ---------------------------------------------------------------------------
+# Manifest: what to download and where to extract
+# ---------------------------------------------------------------------------
+# Each entry: (object_path_in_bucket, local_extract_dir, description)
+#
+# Files in the bucket are .tar.gz archives.  Each archive unpacks relative
+# to its local_extract_dir.  For example "subway_core.tar.gz" contains
+# shapes.txt, trips.txt, stops.txt, shape_stops.json and extracts into
+# app/data/ root.
+
+DOWNLOAD_MANIFEST: list[dict[str, Any]] = [
+    {
+        "object": "subway_core.tar.gz",
+        "extract_to": "",           # relative to _DATA_DIR
+        "description": "Subway shapes, trips, stops, shape_stops.json",
+        "required_files": ["shapes.txt", "trips.txt", "shape_stops.json"],
+        "critical": True,           # server can't function well without this
+    },
+    {
+        "object": "subway_routes.tar.gz",
+        "extract_to": "subway/regular_GTFS",
+        "description": "Subway routes.txt for route colors/metadata",
+        "required_files": ["subway/regular_GTFS/routes.txt"],
+        "critical": True,
+    },
+    {
+        "object": "subway_supplemented.tar.gz",
+        "extract_to": "subway/supplemented_GTFS",
+        "description": "Supplemented GTFS for iOS bundle generation",
+        "required_files": ["subway/supplemented_GTFS/stop_times.txt"],
+        "critical": False,
+    },
+    {
+        "object": "lirr.tar.gz",
+        "extract_to": "lirr/gtfslirr",
+        "description": "LIRR GTFS static feed",
+        "required_files": ["lirr/gtfslirr/shapes.txt", "lirr/gtfslirr/trips.txt"],
+        "critical": True,
+    },
+    {
+        "object": "mnr.tar.gz",
+        "extract_to": "metro_north/gtfsmnr",
+        "description": "Metro-North GTFS static feed",
+        "required_files": ["metro_north/gtfsmnr/shapes.txt", "metro_north/gtfsmnr/trips.txt"],
+        "critical": True,
+    },
+    {
+        "object": "transit_schedule.tar.gz",
+        "extract_to": "",
+        "description": "Pre-built schedule SQLite database",
+        "required_files": ["transit_schedule.db"],
+        "critical": False,
+    },
+    {
+        "object": "bus_config.tar.gz",
+        "extract_to": "",
+        "description": "Bus route tag overrides",
+        "required_files": ["early_2026_buses_tag.json"],
+        "critical": False,
+    },
+]
+
+
+# ---------------------------------------------------------------------------
+# Supabase Storage helpers
+# ---------------------------------------------------------------------------
+
+def _storage_url(object_path: str) -> str:
+    """Build the Supabase Storage download URL for an object."""
+    base = SUPABASE_URL.rstrip("/")
+    return f"{base}/storage/v1/object/{BUCKET_NAME}/{object_path}"
+
+
+def _auth_headers() -> dict[str, str]:
+    return {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+    }
+
+
+def _etag_path(object_name: str) -> Path:
+    """Local path to store the ETag for an object (skip re-download if unchanged)."""
+    return _METADATA_DIR / f"{object_name}.etag"
+
+
+def _read_local_etag(object_name: str) -> str | None:
+    p = _etag_path(object_name)
+    if p.exists():
+        return p.read_text().strip()
+    return None
+
+
+def _write_local_etag(object_name: str, etag: str) -> None:
+    _METADATA_DIR.mkdir(parents=True, exist_ok=True)
+    _etag_path(object_name).write_text(etag)
+
+
+# ---------------------------------------------------------------------------
+# Download + extract
+# ---------------------------------------------------------------------------
+
+def _has_required_files(entry: dict[str, Any]) -> bool:
+    """Check if the required local files for a manifest entry already exist."""
+    for rel in entry["required_files"]:
+        if not (_DATA_DIR / rel).exists():
+            return False
+    return True
+
+
+def _download_and_extract(
+    client: httpx.Client,
+    entry: dict[str, Any],
+) -> bool:
+    """Download a single archive from Supabase and extract it.
+
+    Returns True if data is now available (either freshly downloaded or
+    already up-to-date), False if download failed AND no local fallback.
+    """
+    obj = entry["object"]
+    extract_to = _DATA_DIR / entry["extract_to"] if entry["extract_to"] else _DATA_DIR
+    desc = entry["description"]
+
+    url = _storage_url(obj)
+    headers = _auth_headers()
+
+    # Send ETag to avoid re-downloading unchanged data
+    local_etag = _read_local_etag(obj)
+    if local_etag:
+        headers["If-None-Match"] = local_etag
+
+    try:
+        t0 = time.monotonic()
+        with client.stream("GET", url, headers=headers) as resp:
+            if resp.status_code == 304:
+                TrackLogger.info(
+                    f"[DATA] {desc}: up-to-date (ETag match)", tag="DATA"
+                )
+                return True
+
+            if resp.status_code == 404:
+                TrackLogger.warning(
+                    f"[DATA] {desc}: not found in bucket ({obj})", tag="DATA"
+                )
+                return _has_required_files(entry)
+
+            if resp.status_code >= 400:
+                TrackLogger.warning(
+                    f"[DATA] {desc}: HTTP {resp.status_code}", tag="DATA"
+                )
+                return _has_required_files(entry)
+
+            # Stream to a temp file, then extract
+            etag = resp.headers.get("etag", "")
+            content_length = int(resp.headers.get("content-length", 0))
+
+            with tempfile.NamedTemporaryFile(
+                suffix=".tar.gz", delete=False
+            ) as tmp:
+                tmp_path = tmp.name
+                downloaded = 0
+                for chunk in resp.iter_bytes(chunk_size=65_536):
+                    tmp.write(chunk)
+                    downloaded += len(chunk)
+
+        elapsed = time.monotonic() - t0
+        size_mb = downloaded / (1024 * 1024)
+        TrackLogger.info(
+            f"[DATA] {desc}: downloaded {size_mb:.1f} MB in {elapsed:.1f}s",
+            tag="DATA",
+        )
+
+        # Extract archive
+        extract_to.mkdir(parents=True, exist_ok=True)
+        with tarfile.open(tmp_path, "r:gz") as tar:
+            # Security: prevent path traversal
+            for member in tar.getmembers():
+                member_path = (extract_to / member.name).resolve()
+                if not str(member_path).startswith(str(extract_to.resolve())):
+                    TrackLogger.warning(
+                        f"[DATA] Skipping suspicious tar member: {member.name}",
+                        tag="DATA",
+                    )
+                    continue
+            tar.extractall(path=extract_to)
+
+        os.unlink(tmp_path)
+
+        # Save ETag for next time
+        if etag:
+            _write_local_etag(obj, etag)
+
+        return True
+
+    except (httpx.ConnectError, httpx.TimeoutException, httpx.ReadTimeout) as exc:
+        TrackLogger.warning(
+            f"[DATA] {desc}: Supabase unreachable ({type(exc).__name__})",
+            tag="DATA",
+        )
+        return _has_required_files(entry)
+    except Exception as exc:
+        TrackLogger.error(
+            f"[DATA] {desc}: unexpected error — {exc}", tag="DATA"
+        )
+        return _has_required_files(entry)
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+async def ensure_data_available() -> dict[str, bool]:
+    """Download GTFS data from Supabase Storage with Docker-bundled fallback.
+
+    Called once at startup.  Returns a dict of {description: available?}
+    so the caller can log which data is ready.
+
+    Flow:
+        1. For each archive in the manifest, try to download from Supabase.
+        2. If download succeeds, extract into app/data/.
+        3. If Supabase is down or file missing, check if local files exist
+           (Docker-bundled fallback).
+        4. Log results — critical failures are logged as errors.
+    """
+    results: dict[str, bool] = {}
+
+    TrackLogger.info("[DATA] Starting GTFS data sync from Supabase Storage...", tag="DATA")
+    t_total = time.monotonic()
+
+    # Use sync httpx inside an executor to avoid blocking the event loop
+    # while streaming large downloads.
+    import asyncio
+    loop = asyncio.get_running_loop()
+    results = await loop.run_in_executor(None, _sync_download_all)
+
+    elapsed = time.monotonic() - t_total
+
+    ready = sum(1 for v in results.values() if v)
+    total = len(results)
+    failed = [k for k, v in results.items() if not v]
+
+    if failed:
+        TrackLogger.error(
+            f"[DATA] GTFS sync done in {elapsed:.1f}s — {ready}/{total} ready. "
+            f"MISSING: {', '.join(failed)}",
+            tag="DATA",
+        )
+    else:
+        TrackLogger.info(
+            f"[DATA] GTFS sync done in {elapsed:.1f}s — all {total} data groups ready.",
+            tag="DATA",
+        )
+
+    return results
+
+
+def _sync_download_all() -> dict[str, bool]:
+    """Synchronous worker that downloads all manifest entries."""
+    results: dict[str, bool] = {}
+
+    with httpx.Client(timeout=_DOWNLOAD_TIMEOUT, follow_redirects=True) as client:
+        for entry in DOWNLOAD_MANIFEST:
+            ok = _download_and_extract(client, entry)
+            results[entry["description"]] = ok
+
+            if not ok and entry.get("critical"):
+                TrackLogger.error(
+                    f"[DATA] CRITICAL: {entry['description']} unavailable! "
+                    "Some endpoints will fail.",
+                    tag="DATA",
+                )
+
+    return results
+
+
+def check_local_data_status() -> dict[str, bool]:
+    """Check which data groups have their required files present locally.
+
+    Useful for health checks without triggering downloads.
+    """
+    return {
+        entry["description"]: _has_required_files(entry)
+        for entry in DOWNLOAD_MANIFEST
+    }
