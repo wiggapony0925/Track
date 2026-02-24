@@ -97,7 +97,7 @@ async def subway_shapes_all() -> AllSubwayLinesResponse:
     - Only direction-0 shapes are returned because northbound and southbound
       trace the same physical tracks — halving the polyline count.
     """
-    from app.services.subway_shapes import _load_route_shapes, _load_shapes
+    from app.services.subway_shapes import _load_route_shapes, _load_shapes, _unpack_coords
 
     # Routes to skip: express/shuttle duplicates of parent lines
     skip_variants = {"6X", "7X", "FX", "FS", "GS", "SR"}
@@ -119,9 +119,9 @@ async def subway_shapes_all() -> AllSubwayLinesResponse:
 
         polylines_raw: list[list[tuple[float, float]]] = []
         for shape_id in shape_ids:
-            shape_points = shapes_data.get(shape_id)
-            if shape_points:
-                raw = [(p.lat, p.lon) for p in shape_points]
+            shape_buf = shapes_data.get(shape_id)
+            if shape_buf:
+                raw = _unpack_coords(shape_buf)
                 # Simplify for the system map (~11 m tolerance, invisible at overview zoom)
                 polylines_raw.append(_simplify_polyline(raw, tolerance=0.0001))
 

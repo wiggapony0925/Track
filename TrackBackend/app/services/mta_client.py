@@ -34,7 +34,7 @@ def _get_timeout() -> httpx.Timeout:
 # TTL Cache with bounded size
 # ---------------------------------------------------------------------------
 
-_CACHE_MAX_SIZE = 256  # Max entries before forced eviction
+_CACHE_MAX_SIZE = 64  # Max entries before forced eviction
 
 
 class AsyncTTLCache:

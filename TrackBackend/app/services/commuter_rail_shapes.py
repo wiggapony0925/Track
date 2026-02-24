@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import csv
+import struct
 from collections import defaultdict
 from functools import lru_cache
 from pathlib import Path
@@ -39,15 +40,43 @@ class CommuterRoute(NamedTuple):
 
 
 # ---------------------------------------------------------------------------
+# Compact shape helpers (same as subway_shapes.py)
+# ---------------------------------------------------------------------------
+
+def _pack_coords(points: list[ShapePoint]) -> bytes:
+    if not points:
+        return b""
+    return struct.pack(f"<{len(points) * 2}f",
+                       *[v for p in points for v in (p.lat, p.lon)])
+
+
+def _unpack_coords(buf: bytes) -> list[tuple[float, float]]:
+    if not buf:
+        return []
+    n = len(buf) // 8
+    vals = struct.unpack(f"<{n * 2}f", buf)
+    return [(vals[i], vals[i + 1]) for i in range(0, len(vals), 2)]
+
+
+def _unpack_point_set(buf: bytes, decimals: int = 5) -> set[tuple[float, float]]:
+    if not buf:
+        return set()
+    n = len(buf) // 8
+    vals = struct.unpack(f"<{n * 2}f", buf)
+    return {(round(vals[i], decimals), round(vals[i + 1], decimals))
+            for i in range(0, len(vals), 2)}
+
+
+# ---------------------------------------------------------------------------
 # Generic GTFS parsers
 # ---------------------------------------------------------------------------
 
-def _parse_shapes(shapes_path: Path) -> dict[str, list[ShapePoint]]:
-    """Parse a GTFS shapes.txt into shape_id → sorted list of ShapePoints."""
-    shapes: dict[str, list[ShapePoint]] = defaultdict(list)
+def _parse_shapes(shapes_path: Path) -> dict[str, bytes]:
+    """Parse a GTFS shapes.txt into shape_id → packed bytes (8 bytes/point)."""
+    raw: dict[str, list[ShapePoint]] = defaultdict(list)
     if not shapes_path.exists():
         TrackLogger.warning(f"shapes.txt not found: {shapes_path}")
-        return dict(shapes)
+        return {}
 
     with open(shapes_path, encoding="utf-8") as f:
         reader = csv.DictReader(f)
@@ -61,12 +90,14 @@ def _parse_shapes(shapes_path: Path) -> dict[str, list[ShapePoint]]:
                 seq = int(row["shape_pt_sequence"].strip('"'))
             except (ValueError, KeyError):
                 continue
-            shapes[shape_id].append(ShapePoint(lat=lat, lon=lon, sequence=seq))
+            raw[shape_id].append(ShapePoint(lat=lat, lon=lon, sequence=seq))
 
-    for pts in shapes.values():
+    result: dict[str, bytes] = {}
+    for shape_id, pts in raw.items():
         pts.sort(key=lambda p: p.sequence)
+        result[shape_id] = _pack_coords(pts)
 
-    return dict(shapes)
+    return result
 
 
 def _parse_routes(routes_path: Path) -> dict[str, CommuterRoute]:
@@ -92,90 +123,55 @@ def _parse_routes(routes_path: Path) -> dict[str, CommuterRoute]:
     return routes
 
 
-def _parse_route_shapes(trips_path: Path) -> dict[str, set[str]]:
-    """Parse trips.txt to map route_id → set of shape_ids."""
-    route_shapes: dict[str, set[str]] = defaultdict(set)
-    if not trips_path.exists():
-        TrackLogger.warning(f"trips.txt not found: {trips_path}")
-        return dict(route_shapes)
-
-    with open(trips_path, encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            route_id = row.get("route_id", "").strip().strip('"')
-            shape_id = row.get("shape_id", "").strip().strip('"')
-            if route_id and shape_id:
-                route_shapes[route_id].add(shape_id)
-
-    return dict(route_shapes)
-
-
-def _parse_route_shapes_by_direction(
+def _parse_trips_combined(
     trips_path: Path,
-) -> dict[str, dict[int, set[str]]]:
-    """Parse trips.txt to map route_id → {direction_id: set of shape_ids}."""
-    result: dict[str, dict[int, set[str]]] = defaultdict(lambda: defaultdict(set))
-    if not trips_path.exists():
-        TrackLogger.warning(f"trips.txt not found: {trips_path}")
-        return dict(result)
+) -> tuple[
+    dict[str, set[str]],               # route_shapes: route_id → {shape_ids}
+    dict[str, dict[int, set[str]]],    # route_shapes_by_dir: route_id → {dir: {shape_ids}}
+    dict[str, dict[int, str]],         # headsigns: route_id → {dir: headsign}
+]:
+    """Single-pass parse of trips.txt returning all three data structures.
 
-    with open(trips_path, encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            route_id = row.get("route_id", "").strip().strip('"')
-            shape_id = row.get("shape_id", "").strip().strip('"')
-            if not route_id or not shape_id:
-                continue
-            try:
-                direction = int(row.get("direction_id", "0").strip().strip('"'))
-            except ValueError:
-                direction = 0
-            result[route_id][direction].add(shape_id)
-
-    return dict(result)
-
-
-def _parse_direction_headsigns(
-    trips_path: Path,
-) -> dict[str, dict[int, str]]:
-    """Parse trips.txt to get the most common headsign per route/direction.
-
-    Returns: {route_id: {direction_id: headsign}}
+    Replaces _parse_route_shapes, _parse_route_shapes_by_direction, and
+    _parse_direction_headsigns to avoid reading the file 3 times.
     """
     from collections import Counter
 
-    if not trips_path.exists():
-        return {}
+    route_shapes: dict[str, set[str]] = defaultdict(set)
+    by_dir: dict[str, dict[int, set[str]]] = defaultdict(lambda: defaultdict(set))
+    headsign_counts: dict[str, dict[int, Counter]] = defaultdict(lambda: defaultdict(Counter))
 
-    counts: dict[str, dict[int, Counter]] = defaultdict(lambda: defaultdict(Counter))
+    if not trips_path.exists():
+        TrackLogger.warning(f"trips.txt not found: {trips_path}")
+        return {}, {}, {}
 
     with open(trips_path, encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
             route_id = row.get("route_id", "").strip().strip('"')
+            shape_id = row.get("shape_id", "").strip().strip('"')
             headsign = row.get("trip_headsign", "").strip().strip('"')
-            if not route_id or not headsign:
-                continue
-            # Skip bus-like headsigns (contain "(Bus)")
-            if "(Bus)" in headsign:
-                continue
             try:
                 direction = int(row.get("direction_id", "0").strip().strip('"'))
             except ValueError:
                 direction = 0
-            counts[route_id][direction][headsign] += 1
 
-    result: dict[str, dict[int, str]] = {}
-    for route_id, dir_map in counts.items():
-        result[route_id] = {}
-        for direction, counter in dir_map.items():
-            result[route_id][direction] = counter.most_common(1)[0][0]
-    return result
+            if route_id and shape_id:
+                route_shapes[route_id].add(shape_id)
+                by_dir[route_id][direction].add(shape_id)
+            if route_id and headsign and "(Bus)" not in headsign:
+                headsign_counts[route_id][direction][headsign] += 1
+
+    headsigns: dict[str, dict[int, str]] = {}
+    for rid, dm in headsign_counts.items():
+        headsigns[rid] = {d: c.most_common(1)[0][0] for d, c in dm.items()}
+
+    return dict(route_shapes), dict(by_dir), headsigns
 
 
 def _deduplicate_shapes(
     shape_ids: set[str],
-    shapes_data: dict[str, list[ShapePoint]],
+    shapes_data: dict[str, bytes],
 ) -> list[str]:
     """Keep only the longest / most unique shape per route to reduce duplication.
 
@@ -193,8 +189,8 @@ def _deduplicate_shapes(
     kept_point_sets: list[set[tuple[float, float]]] = []
 
     for sid in candidates:
-        pts = shapes_data[sid]
-        point_set = {(round(p.lat, 5), round(p.lon, 5)) for p in pts}
+        buf = shapes_data[sid]
+        point_set = _unpack_point_set(buf)
 
         # If >80% of this shape's points already exist in a kept shape, skip
         is_subset = False
@@ -216,7 +212,7 @@ def _deduplicate_shapes(
 # ---------------------------------------------------------------------------
 
 @lru_cache(maxsize=1)
-def _lirr_shapes() -> dict[str, list[ShapePoint]]:
+def _lirr_shapes() -> dict[str, bytes]:
     return _parse_shapes(_LIRR_DIR / "shapes.txt")
 
 
@@ -226,18 +222,20 @@ def _lirr_routes() -> dict[str, CommuterRoute]:
 
 
 @lru_cache(maxsize=1)
+def _lirr_trips() -> tuple[dict[str, set[str]], dict[str, dict[int, set[str]]], dict[str, dict[int, str]]]:
+    return _parse_trips_combined(_LIRR_DIR / "trips.txt")
+
+
 def _lirr_route_shapes() -> dict[str, set[str]]:
-    return _parse_route_shapes(_LIRR_DIR / "trips.txt")
+    return _lirr_trips()[0]
 
 
-@lru_cache(maxsize=1)
 def _lirr_route_shapes_by_dir() -> dict[str, dict[int, set[str]]]:
-    return _parse_route_shapes_by_direction(_LIRR_DIR / "trips.txt")
+    return _lirr_trips()[1]
 
 
-@lru_cache(maxsize=1)
 def _lirr_headsigns() -> dict[str, dict[int, str]]:
-    return _parse_direction_headsigns(_LIRR_DIR / "trips.txt")
+    return _lirr_trips()[2]
 
 
 def get_all_lirr_lines() -> list[dict]:
@@ -259,9 +257,9 @@ def get_all_lirr_lines() -> list[dict]:
         unique_sids = _deduplicate_shapes(raw_shape_ids, shapes_data)
         polylines: list[list[tuple[float, float]]] = []
         for sid in unique_sids:
-            pts = shapes_data.get(sid, [])
-            if pts:
-                polylines.append([(p.lat, p.lon) for p in pts])
+            buf = shapes_data.get(sid, b"")
+            if buf:
+                polylines.append(_unpack_coords(buf))
 
         if polylines:
             results.append({
@@ -280,7 +278,7 @@ def get_all_lirr_lines() -> list[dict]:
 # ---------------------------------------------------------------------------
 
 @lru_cache(maxsize=1)
-def _mnr_shapes() -> dict[str, list[ShapePoint]]:
+def _mnr_shapes() -> dict[str, bytes]:
     return _parse_shapes(_MNR_DIR / "shapes.txt")
 
 
@@ -290,18 +288,20 @@ def _mnr_routes() -> dict[str, CommuterRoute]:
 
 
 @lru_cache(maxsize=1)
+def _mnr_trips() -> tuple[dict[str, set[str]], dict[str, dict[int, set[str]]], dict[str, dict[int, str]]]:
+    return _parse_trips_combined(_MNR_DIR / "trips.txt")
+
+
 def _mnr_route_shapes() -> dict[str, set[str]]:
-    return _parse_route_shapes(_MNR_DIR / "trips.txt")
+    return _mnr_trips()[0]
 
 
-@lru_cache(maxsize=1)
 def _mnr_route_shapes_by_dir() -> dict[str, dict[int, set[str]]]:
-    return _parse_route_shapes_by_direction(_MNR_DIR / "trips.txt")
+    return _mnr_trips()[1]
 
 
-@lru_cache(maxsize=1)
 def _mnr_headsigns() -> dict[str, dict[int, str]]:
-    return _parse_direction_headsigns(_MNR_DIR / "trips.txt")
+    return _mnr_trips()[2]
 
 
 def get_all_mnr_lines() -> list[dict]:
@@ -323,9 +323,9 @@ def get_all_mnr_lines() -> list[dict]:
         unique_sids = _deduplicate_shapes(raw_shape_ids, shapes_data)
         polylines: list[list[tuple[float, float]]] = []
         for sid in unique_sids:
-            pts = shapes_data.get(sid, [])
-            if pts:
-                polylines.append([(p.lat, p.lon) for p in pts])
+            buf = shapes_data.get(sid, b"")
+            if buf:
+                polylines.append(_unpack_coords(buf))
 
         if polylines:
             results.append({
@@ -404,9 +404,9 @@ def get_single_lirr_line(route_id: str) -> dict | None:
     unique_sids = _deduplicate_shapes(raw_shape_ids, shapes_data)
     polylines: list[list[tuple[float, float]]] = []
     for sid in unique_sids:
-        pts = shapes_data.get(sid, [])
-        if pts:
-            polylines.append([(p.lat, p.lon) for p in pts])
+        buf = shapes_data.get(sid, b"")
+        if buf:
+            polylines.append(_unpack_coords(buf))
 
     if not polylines:
         return None
@@ -417,9 +417,9 @@ def get_single_lirr_line(route_id: str) -> dict | None:
         dir_sids = _deduplicate_shapes(dir_shapes[direction_id], shapes_data)
         dir_polys: list[list[tuple[float, float]]] = []
         for sid in dir_sids:
-            pts = shapes_data.get(sid, [])
-            if pts:
-                dir_polys.append([(p.lat, p.lon) for p in pts])
+            buf = shapes_data.get(sid, b"")
+            if buf:
+                dir_polys.append(_unpack_coords(buf))
         if dir_polys:
             directions.append({
                 "direction_id": direction_id,
@@ -458,9 +458,9 @@ def get_single_mnr_line(route_id: str) -> dict | None:
     unique_sids = _deduplicate_shapes(raw_shape_ids, shapes_data)
     polylines: list[list[tuple[float, float]]] = []
     for sid in unique_sids:
-        pts = shapes_data.get(sid, [])
-        if pts:
-            polylines.append([(p.lat, p.lon) for p in pts])
+        buf = shapes_data.get(sid, b"")
+        if buf:
+            polylines.append(_unpack_coords(buf))
 
     if not polylines:
         return None
@@ -471,9 +471,9 @@ def get_single_mnr_line(route_id: str) -> dict | None:
         dir_sids = _deduplicate_shapes(dir_shapes[direction_id], shapes_data)
         dir_polys: list[list[tuple[float, float]]] = []
         for sid in dir_sids:
-            pts = shapes_data.get(sid, [])
-            if pts:
-                dir_polys.append([(p.lat, p.lon) for p in pts])
+            buf = shapes_data.get(sid, b"")
+            if buf:
+                dir_polys.append(_unpack_coords(buf))
         if dir_polys:
             directions.append({
                 "direction_id": direction_id,

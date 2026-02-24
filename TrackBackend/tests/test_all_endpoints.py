@@ -99,19 +99,16 @@ class TestSubwayShapesAll:
     @patch("app.services.subway_shapes._load_route_shapes")
     @patch("app.services.subway_shapes._load_shapes")
     def test_shapes_all_returns_overlays(self, mock_shapes, mock_route_shapes, mock_lines):
+        import struct
+
         mock_route_shapes.return_value = {
             "A": {0: ["shapeA"]},
             "L": {0: ["shapeL"]},
         }
 
-        class FakePoint:
-            def __init__(self, lat, lon):
-                self.lat = lat
-                self.lon = lon
-
         mock_shapes.return_value = {
-            "shapeA": [FakePoint(40.7, -74.0), FakePoint(40.71, -74.01)],
-            "shapeL": [FakePoint(40.72, -73.95), FakePoint(40.73, -73.96)],
+            "shapeA": struct.pack("<4f", 40.7, -74.0, 40.71, -74.01),
+            "shapeL": struct.pack("<4f", 40.72, -73.95, 40.73, -73.96),
         }
 
         response = client.get("/subway/shapes/all")

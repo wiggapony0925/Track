@@ -324,27 +324,60 @@ def _cache_get(
     return None, None
 
 
-def _cache_set(cache: dict[str, _TTLCacheEntry], key: str, value: Any) -> None:
+def _cache_set(
+    cache: dict[str, _TTLCacheEntry],
+    key: str,
+    value: Any,
+    *,
+    max_size: int = 0,
+    stale_ttl: float = 0,
+) -> None:
+    """Insert into cache with optional bounded eviction.
+
+    When *max_size* > 0 and the cache exceeds that limit, expired entries
+    are evicted first (using *stale_ttl*).  If still over, the oldest 25%
+    are dropped.
+    """
     cache[key] = _TTLCacheEntry(ts=_time.monotonic(), value=value)
+    if max_size > 0 and len(cache) > max_size:
+        _evict_cache(cache, max_size, stale_ttl)
+
+
+def _evict_cache(
+    cache: dict[str, _TTLCacheEntry], max_size: int, stale_ttl: float
+) -> None:
+    """Remove expired entries; if still over *max_size*, drop oldest 25%."""
+    now = _time.monotonic()
+    if stale_ttl > 0:
+        expired = [k for k, e in cache.items() if now - e.ts > stale_ttl]
+        for k in expired:
+            del cache[k]
+    if len(cache) > max_size:
+        by_age = sorted(cache, key=lambda k: cache[k].ts)
+        for k in by_age[: max(1, len(by_age) // 4)]:
+            del cache[k]
 
 
 # Route-shape cache: mostly-static data, long-lived
 _route_shape_cache: dict[str, _TTLCacheEntry] = {}
 _route_shape_inflight: dict[str, asyncio.Task[RouteShape]] = {}
-_ROUTE_SHAPE_FRESH_TTL = 6 * 60 * 60     # 6h
+_ROUTE_SHAPE_FRESH_TTL = 6 * 60 * 60       # 6h
 _ROUTE_SHAPE_STALE_TTL = 7 * 24 * 60 * 60  # 7d
+_ROUTE_SHAPE_MAX_SIZE = 120                 # ~330 NYC routes; keep ~1/3 hot
 
 # Vehicle cache: fast-moving data, short-lived
 _vehicle_cache: dict[str, _TTLCacheEntry] = {}
 _vehicle_inflight: dict[str, asyncio.Task[list[BusVehicle]]] = {}
 _VEHICLE_FRESH_TTL = 6.0
 _VEHICLE_STALE_TTL = 45.0
+_VEHICLE_MAX_SIZE = 200
 
 # Stops cache: semi-static data
 _stops_cache: dict[str, _TTLCacheEntry] = {}
 _stops_inflight: dict[str, asyncio.Task[list[BusStop]]] = {}
 _STOPS_FRESH_TTL = 10 * 60.0
 _STOPS_STALE_TTL = 24 * 60 * 60.0
+_STOPS_MAX_SIZE = 120
 
 # Optional shared cache (Redis) for multi-instance deployments.
 _redis_client: Any = None
@@ -691,7 +724,7 @@ async def get_stops(route_id: str) -> list[BusStop]:
             parser=_parse_stops,
         )
         if shared_state in ("fresh", "stale") and shared is not None:
-            _cache_set(_stops_cache, cache_key, shared)
+            _cache_set(_stops_cache, cache_key, shared, max_size=_STOPS_MAX_SIZE, stale_ttl=_STOPS_STALE_TTL)
             cached = shared
             cache_state = shared_state
 
@@ -701,7 +734,7 @@ async def get_stops(route_id: str) -> list[BusStop]:
                 task = _stops_inflight.get(cache_key)
                 try:
                     fresh = await _fetch_stops_uncached(canonical_id)
-                    _cache_set(_stops_cache, cache_key, fresh)
+                    _cache_set(_stops_cache, cache_key, fresh, max_size=_STOPS_MAX_SIZE, stale_ttl=_STOPS_STALE_TTL)
                     await _shared_cache_set(
                         "stops",
                         cache_key,
@@ -731,7 +764,7 @@ async def get_stops(route_id: str) -> list[BusStop]:
     _stops_inflight[cache_key] = task
     try:
         fresh = await task
-        _cache_set(_stops_cache, cache_key, fresh)
+        _cache_set(_stops_cache, cache_key, fresh, max_size=_STOPS_MAX_SIZE, stale_ttl=_STOPS_STALE_TTL)
         await _shared_cache_set(
             "stops",
             cache_key,
@@ -830,6 +863,7 @@ async def _get_stops_impl(route_id: str) -> list[BusStop]:
 
 _nearby_stops_cache: dict[tuple[float, float, int], tuple[float, list[BusStop]]] = {}
 _NEARBY_CACHE_TTL = 60.0  # seconds
+_NEARBY_CACHE_MAX_SIZE = 50  # cap unique grid cells
 
 
 async def get_nearby_stops(
@@ -900,8 +934,13 @@ async def get_nearby_stops(
                         route_ids=s.get("routeIds", []),
                     )
                 )
-            # Cache successful result
+            # Cache successful result (with bounded eviction)
             _nearby_stops_cache[cache_key] = (_time.monotonic(), results)
+            if len(_nearby_stops_cache) > _NEARBY_CACHE_MAX_SIZE:
+                # Evict oldest entries
+                by_age = sorted(_nearby_stops_cache, key=lambda k: _nearby_stops_cache[k][0])
+                for k in by_age[: max(1, len(by_age) // 4)]:
+                    _nearby_stops_cache.pop(k, None)
             return results
         except (httpx.HTTPStatusError, httpx.TimeoutException) as exc:
             last_error = exc
@@ -1093,7 +1132,7 @@ async def get_vehicle_positions(route_id: str) -> list[BusVehicle]:
             parser=_parse_vehicles,
         )
         if shared_state in ("fresh", "stale") and shared is not None:
-            _cache_set(_vehicle_cache, cache_key, shared)
+            _cache_set(_vehicle_cache, cache_key, shared, max_size=_VEHICLE_MAX_SIZE, stale_ttl=_VEHICLE_STALE_TTL)
             cached = shared
             cache_state = shared_state
 
@@ -1103,7 +1142,7 @@ async def get_vehicle_positions(route_id: str) -> list[BusVehicle]:
                 task = _vehicle_inflight.get(cache_key)
                 try:
                     fresh = await _fetch_vehicle_positions_uncached(canonical_id)
-                    _cache_set(_vehicle_cache, cache_key, fresh)
+                    _cache_set(_vehicle_cache, cache_key, fresh, max_size=_VEHICLE_MAX_SIZE, stale_ttl=_VEHICLE_STALE_TTL)
                     await _shared_cache_set(
                         "vehicles",
                         cache_key,
@@ -1133,7 +1172,7 @@ async def get_vehicle_positions(route_id: str) -> list[BusVehicle]:
     _vehicle_inflight[cache_key] = task
     try:
         fresh = await task
-        _cache_set(_vehicle_cache, cache_key, fresh)
+        _cache_set(_vehicle_cache, cache_key, fresh, max_size=_VEHICLE_MAX_SIZE, stale_ttl=_VEHICLE_STALE_TTL)
         await _shared_cache_set(
             "vehicles",
             cache_key,
@@ -1396,7 +1435,7 @@ async def get_route_shape(route_id: str) -> RouteShape:
             parser=_parse_shape,
         )
         if shared_state in ("fresh", "stale") and shared is not None:
-            _cache_set(_route_shape_cache, cache_key, shared)
+            _cache_set(_route_shape_cache, cache_key, shared, max_size=_ROUTE_SHAPE_MAX_SIZE, stale_ttl=_ROUTE_SHAPE_STALE_TTL)
             cached = shared
             cache_state = shared_state
 
@@ -1406,7 +1445,7 @@ async def get_route_shape(route_id: str) -> RouteShape:
                 task = _route_shape_inflight.get(cache_key)
                 try:
                     fresh = await _fetch_route_shape_uncached(canonical_id)
-                    _cache_set(_route_shape_cache, cache_key, fresh)
+                    _cache_set(_route_shape_cache, cache_key, fresh, max_size=_ROUTE_SHAPE_MAX_SIZE, stale_ttl=_ROUTE_SHAPE_STALE_TTL)
                     await _shared_cache_set(
                         "route_shape",
                         cache_key,
@@ -1436,7 +1475,7 @@ async def get_route_shape(route_id: str) -> RouteShape:
     _route_shape_inflight[cache_key] = task
     try:
         fresh = await task
-        _cache_set(_route_shape_cache, cache_key, fresh)
+        _cache_set(_route_shape_cache, cache_key, fresh, max_size=_ROUTE_SHAPE_MAX_SIZE, stale_ttl=_ROUTE_SHAPE_STALE_TTL)
         await _shared_cache_set(
             "route_shape",
             cache_key,
