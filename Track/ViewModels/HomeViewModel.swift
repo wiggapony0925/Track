@@ -2829,7 +2829,7 @@ final class HomeViewModel {
 
         // Fire alerts and accessibility in parallel with transit data
         async let alertsTask: Void = refreshAlerts()
-        async let accessTask: [ElevatorOutage]? = { try? await TrackAPI.fetchAccessibility() }()
+        async let accessTask: [ElevatorStatus]? = { try? await TrackAPI.fetchAccessibility() }()
 
         do {
             async let groupedTask = TrackAPI.fetchNearbyGrouped(lat: lat, lon: lon, mode: "subway")
@@ -2874,7 +2874,7 @@ final class HomeViewModel {
 
         // Fire alerts and accessibility in parallel with transit data
         async let alertsTask: Void = refreshAlerts()
-        async let accessTask: [ElevatorOutage]? = { try? await TrackAPI.fetchAccessibility() }()
+        async let accessTask: [ElevatorStatus]? = { try? await TrackAPI.fetchAccessibility() }()
 
         do {
             async let groupedTask = TrackAPI.fetchNearbyGrouped(lat: lat, lon: lon, mode: "bus")
@@ -2927,7 +2927,7 @@ final class HomeViewModel {
     private func refreshLIRR(location: CLLocation?) async {
         // Fire alerts and accessibility in parallel with transit data
         async let alertsTask: Void = refreshAlerts()
-        async let accessTask: [ElevatorOutage]? = { try? await TrackAPI.fetchAccessibility() }()
+        async let accessTask: [ElevatorStatus]? = { try? await TrackAPI.fetchAccessibility() }()
 
         do {
             lirrArrivals = try await TrackAPI.fetchLIRRArrivals()
@@ -2971,7 +2971,7 @@ final class HomeViewModel {
     private func refreshMNR(location: CLLocation?) async {
         // Fire alerts and accessibility in parallel with transit data
         async let alertsTask: Void = refreshAlerts()
-        async let accessTask: [ElevatorOutage]? = { try? await TrackAPI.fetchAccessibility() }()
+        async let accessTask: [ElevatorStatus]? = { try? await TrackAPI.fetchAccessibility() }()
 
         do {
             mnrArrivals = try await TrackAPI.fetchMNRArrivals()

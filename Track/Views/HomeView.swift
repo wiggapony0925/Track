@@ -197,7 +197,7 @@ struct HomeView: View {
                 hasLoadedInitialData = true
                 let cachedLoc = CLLocation(latitude: lat, longitude: lon)
                 cameraPosition = .camera(
-                    MapCamera(centerCoordinate: cachedLoc.coordinate, distance: AppTheme.MapConfig.defaultDistance)
+                    MapCamera(centerCoordinate: cachedLoc.coordinate, distance: AppTheme.MapConfig.userZoomDistance)
                 )
                 Task {
                     await viewModel.refresh(location: cachedLoc, force: true)

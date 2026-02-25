@@ -99,7 +99,7 @@ class SupabaseManager: ObservableObject {
     // MARK: - Initialization
     
     /// Thread-safe ISO 8601 date parsing for Supabase timestamps.
-    private static func parseISO8601Date(_ string: String) -> Date? {
+    nonisolated private static func parseISO8601Date(_ string: String) -> Date? {
         // ISO8601DateFormatter is not thread-safe, so create per-call.
         // These are only used during JSON decoding which is infrequent.
         let primary = ISO8601DateFormatter()

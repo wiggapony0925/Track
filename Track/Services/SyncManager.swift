@@ -192,14 +192,10 @@ class SyncManager: ObservableObject {
         if let v = settings.dragToSearch {
             store.set(v, forKey: "drag_to_search")
         }
-        #if DEBUG
-        if let v = settings.devUseLocalhost {
-            store.set(v, forKey: "dev_use_localhost")
-        }
-        if let v = settings.devCustomIp {
-            store.set(v, forKey: "dev_custom_ip")
-        }
-        #endif
+        // NOTE: dev_use_localhost and dev_custom_ip are intentionally NOT
+        // pulled from cloud. These are device-specific networking flags —
+        // a physical device on WiFi can't use another device's local IP.
+        // Syncing them caused the app to flip between prod/dev URLs mid-session.
         
         print("[SyncManager] Pulled user settings from cloud")
     }
@@ -216,13 +212,10 @@ class SyncManager: ObservableObject {
         
         let store = UserDefaults.standard
         
-        #if DEBUG
-        let devUseLocalhostValue = store.bool(forKey: "dev_use_localhost")
-        let devCustomIpValue = store.string(forKey: "dev_custom_ip") ?? ""
-        #else
+        // Dev networking flags are device-specific and never synced.
+        // Always push false/empty so the cloud row stays clean.
         let devUseLocalhostValue = false
         let devCustomIpValue = ""
-        #endif
         
         let settings = CloudUserSettings(
             userId: userId,

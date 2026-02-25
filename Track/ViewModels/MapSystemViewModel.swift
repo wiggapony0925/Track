@@ -75,9 +75,15 @@ final class MapSystemViewModel {
 
     var cachedStations: [CachedSubwayStation] = []
 
+    /// Guards against redundant network fetches when the ViewModel is
+    /// re-created (e.g. HomeView structural identity changes).
+    private var hasStartedLoading = false
+
     // MARK: - Init
 
     init() {
+        guard !hasStartedLoading else { return }
+        hasStartedLoading = true
         Task {
             await loadSystemMap()
             await loadStations()
