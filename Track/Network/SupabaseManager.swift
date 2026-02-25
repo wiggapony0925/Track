@@ -25,21 +25,27 @@ import Combine
 /// but should still not be committed to public repositories.
 enum SupabaseConfig {
     static var url: String {
-        // Try to load from Info.plist first
-        if let url = Bundle.main.object(forInfoDictionaryKey: "SUPABASE_URL") as? String, !url.isEmpty {
-            return url
+        guard let url = Bundle.main.object(forInfoDictionaryKey: "SUPABASE_URL") as? String, !url.isEmpty else {
+            #if DEBUG
+            // Development fallback — NEVER ships in release builds
+            return "https://octpebjxadbufiplgjqg.supabase.co"
+            #else
+            fatalError("SUPABASE_URL missing from Info.plist. Add it via build configuration.")
+            #endif
         }
-        // Fallback to hardcoded (development only)
-        return "https://octpebjxadbufiplgjqg.supabase.co"
+        return url
     }
-    
+
     static var anonKey: String {
-        // Try to load from Info.plist first
-        if let key = Bundle.main.object(forInfoDictionaryKey: "SUPABASE_ANON_KEY") as? String, !key.isEmpty {
-            return key
+        guard let key = Bundle.main.object(forInfoDictionaryKey: "SUPABASE_ANON_KEY") as? String, !key.isEmpty else {
+            #if DEBUG
+            // Development fallback — NEVER ships in release builds
+            return "sb_publishable_lAEZ_x8O4vjdGaw-I-QUMg_oS5iWKIn"
+            #else
+            fatalError("SUPABASE_ANON_KEY missing from Info.plist. Add it via build configuration.")
+            #endif
         }
-        // Fallback to hardcoded (development only)
-        return "sb_publishable_lAEZ_x8O4vjdGaw-I-QUMg_oS5iWKIn"
+        return key
     }
 }
 
@@ -64,9 +70,10 @@ class SupabaseManager: ObservableObject {
     private let apiKey: String
     private var accessToken: String?
     
-    // UserDefaults keys
+    // Keychain keys for sensitive tokens
     private let accessTokenKey = "supabase_access_token"
     private let refreshTokenKey = "supabase_refresh_token"
+    // UserDefaults key for non-sensitive user ID
     private let userIdKey = "supabase_user_id"
     
     private var defaults: UserDefaults {
@@ -75,18 +82,25 @@ class SupabaseManager: ObservableObject {
     
     // MARK: - Initialization
     
+    /// Thread-safe ISO 8601 date parsing for Supabase timestamps.
+    private static func parseISO8601Date(_ string: String) -> Date? {
+        // ISO8601DateFormatter is not thread-safe, so create per-call.
+        // These are only used during JSON decoding which is infrequent.
+        let primary = ISO8601DateFormatter()
+        primary.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = primary.date(from: string) { return date }
+        let fallback = ISO8601DateFormatter()
+        fallback.formatOptions = [.withInternetDateTime]
+        return fallback.date(from: string)
+    }
+
     /// Shared decoder that handles Supabase ISO 8601 timestamps with fractional seconds.
     private let supabaseDecoder: JSONDecoder = {
         let decoder = JSONDecoder()
-        nonisolated(unsafe) let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        nonisolated(unsafe) let fallback = ISO8601DateFormatter()
-        fallback.formatOptions = [.withInternetDateTime]
         decoder.dateDecodingStrategy = .custom { decoder in
             let container = try decoder.singleValueContainer()
             let string = try container.decode(String.self)
-            if let date = formatter.date(from: string) { return date }
-            if let date = fallback.date(from: string) { return date }
+            if let date = SupabaseManager.parseISO8601Date(string) { return date }
             throw DecodingError.dataCorruptedError(in: container, debugDescription: "Cannot decode date: \(string)")
         }
         return decoder
@@ -100,14 +114,31 @@ class SupabaseManager: ObservableObject {
     }()
 
     private init() {
-        self.baseURL = URL(string: SupabaseConfig.url)!
+        guard let url = URL(string: SupabaseConfig.url) else {
+            fatalError("[SupabaseManager] Invalid SUPABASE_URL: '\(SupabaseConfig.url)'. Check Info.plist configuration.")
+        }
+        self.baseURL = url
         self.apiKey = SupabaseConfig.anonKey
 
+        migrateTokensToKeychainIfNeeded()
         restoreSessionFromStorage()
     }
 
+    /// One-time migration: move tokens from UserDefaults to Keychain.
+    private func migrateTokensToKeychainIfNeeded() {
+        // Check if tokens are still in UserDefaults (legacy storage)
+        if let legacyAccess = defaults.string(forKey: accessTokenKey), !legacyAccess.isEmpty {
+            KeychainHelper.set(legacyAccess, forKey: accessTokenKey)
+            defaults.removeObject(forKey: accessTokenKey)
+        }
+        if let legacyRefresh = defaults.string(forKey: refreshTokenKey), !legacyRefresh.isEmpty {
+            KeychainHelper.set(legacyRefresh, forKey: refreshTokenKey)
+            defaults.removeObject(forKey: refreshTokenKey)
+        }
+    }
+
     private func restoreSessionFromStorage() {
-        guard let token = defaults.string(forKey: accessTokenKey), !token.isEmpty else {
+        guard let token = KeychainHelper.get(accessTokenKey), !token.isEmpty else {
             accessToken = nil
             currentUser = nil
             isAuthenticated = false
@@ -228,29 +259,29 @@ class SupabaseManager: ObservableObject {
                 throw SupabaseError.invalidCredentials
             }
             
-            // Store tokens
+            // Store tokens securely in Keychain
             accessToken = authResponse.accessToken
-            defaults.set(authResponse.accessToken, forKey: accessTokenKey)
-            defaults.set(authResponse.refreshToken, forKey: refreshTokenKey)
+            KeychainHelper.set(authResponse.accessToken, forKey: accessTokenKey)
+            KeychainHelper.set(authResponse.refreshToken, forKey: refreshTokenKey)
             defaults.set(authResponse.user.id, forKey: userIdKey)
 
             do {
                 // Ensure profile exists and is readable before finalizing auth state.
-                print("[SupabaseManager] Auth succeeded for userId: \(userId). Updating profile...")
+                AppLogger.shared.log("AUTH", message: "Auth succeeded for userId: \(userId). Updating profile...")
                 try await updateProfileWithAppleData(
                     credentials: credentials,
                     tokenClaims: tokenClaims,
                     authUser: authResponse.user,
                     userId: userId
                 )
-                print("[SupabaseManager] Profile updated. Fetching profile...")
+                AppLogger.shared.log("AUTH", message: "Profile updated. Fetching profile...")
 
                 let profile = try await fetchProfile(userId: userId)
-                print("[SupabaseManager] Profile fetched: \(profile.email ?? "no email")")
+                AppLogger.shared.log("AUTH", message: "Profile fetched: \(profile.email ?? "no email")")
                 currentUser = profile
                 isAuthenticated = true
             } catch {
-                print("[SupabaseManager] Post-auth profile setup FAILED: \(error)")
+                AppLogger.shared.logError("Post-auth profile setup", error: error)
                 signOut()
                 throw SupabaseError.authFailed("Unable to complete account setup: \(error.localizedDescription)")
             }
@@ -266,8 +297,8 @@ class SupabaseManager: ObservableObject {
         isAuthenticated = false
         isAuthResolved = true
         
-        defaults.removeObject(forKey: accessTokenKey)
-        defaults.removeObject(forKey: refreshTokenKey)
+        KeychainHelper.delete(accessTokenKey)
+        KeychainHelper.delete(refreshTokenKey)
         defaults.removeObject(forKey: userIdKey)
     }
     
@@ -290,19 +321,25 @@ class SupabaseManager: ObservableObject {
                     currentUser = profile
                     isAuthenticated = true
                 } catch {
-                    print("Profile missing and bootstrap failed: \(error)")
+                    AppLogger.shared.logError("Profile missing and bootstrap failed", error: error)
                     errorMessage = "Your session is no longer valid. Please sign in again."
                     signOut()
                 }
             case .unauthorized:
-                print("Profile missing or unauthorized. Signing out local session.")
+                // Try refreshing the token before giving up
+                if await refreshAccessToken() {
+                    AppLogger.shared.log("AUTH", message: "Token refreshed successfully, retrying profile fetch")
+                    await loadCurrentUser()
+                    return
+                }
+                AppLogger.shared.log("AUTH", message: "Unauthorized and refresh failed. Signing out.")
                 errorMessage = "Your session is no longer valid. Please sign in again."
                 signOut()
             default:
-                print("Failed to load user profile: \(supabaseError)")
+                AppLogger.shared.logError("Failed to load user profile", error: supabaseError)
             }
         } catch {
-            print("Failed to load user profile: \(error)")
+            AppLogger.shared.logError("Failed to load user profile", error: error)
         }
     }
 
@@ -327,7 +364,55 @@ class SupabaseManager: ObservableObject {
         // existing HomeView stays mounted and preserves its state.
         await loadCurrentUser()
     }
-    
+
+    // MARK: - Token Refresh
+
+    /// Attempts to refresh the access token using the stored refresh token.
+    /// Returns `true` if the token was successfully refreshed.
+    private func refreshAccessToken() async -> Bool {
+        guard let refreshToken = KeychainHelper.get(refreshTokenKey), !refreshToken.isEmpty else {
+            AppLogger.shared.log("AUTH", message: "No refresh token available")
+            return false
+        }
+
+        let url = baseURL.appendingPathComponent("auth/v1/token")
+        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return false }
+        components.queryItems = [URLQueryItem(name: "grant_type", value: "refresh_token")]
+
+        guard let requestURL = components.url else { return false }
+
+        var request = URLRequest(url: requestURL)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(apiKey, forHTTPHeaderField: "apikey")
+
+        let body: [String: String] = ["refresh_token": refreshToken]
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        } catch {
+            return false
+        }
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+                AppLogger.shared.log("AUTH", message: "Token refresh returned non-200")
+                return false
+            }
+
+            let authResponse = try supabaseDecoder.decode(AuthResponse.self, from: data)
+            accessToken = authResponse.accessToken
+            KeychainHelper.set(authResponse.accessToken, forKey: accessTokenKey)
+            KeychainHelper.set(authResponse.refreshToken, forKey: refreshTokenKey)
+            AppLogger.shared.log("AUTH", message: "Access token refreshed successfully")
+            return true
+        } catch {
+            AppLogger.shared.logError("Token refresh", error: error)
+            return false
+        }
+    }
+
     // MARK: - Profile Operations
     
     /// Fetch user profile from Supabase
@@ -383,16 +468,16 @@ class SupabaseManager: ObservableObject {
         let body = try supabaseEncoder.encode(profile)
         request.httpBody = body
         
-        print("[SupabaseManager] Upsert profile body: \(String(data: body, encoding: .utf8) ?? "nil")")
+        AppLogger.shared.log("SUPABASE", message: "Upsert profile for \(profile.id.uuidString)")
 
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
-            print("[SupabaseManager] Upsert: no HTTP response")
+            AppLogger.shared.log("SUPABASE", message: "Upsert: no HTTP response")
             throw SupabaseError.upsertFailed
         }
         
         let responseBody = String(data: data, encoding: .utf8) ?? "nil"
-        print("[SupabaseManager] Upsert response: \(httpResponse.statusCode) — \(responseBody)")
+        AppLogger.shared.log("SUPABASE", message: "Upsert response: \(httpResponse.statusCode) — \(responseBody)")
         
         guard (200...299).contains(httpResponse.statusCode) else {
             throw SupabaseError.upsertFailed
@@ -581,7 +666,7 @@ class SupabaseManager: ObservableObject {
         }
         
         guard let userId = defaults.string(forKey: userIdKey), !userId.isEmpty else {
-            print("Skipping route interaction insert: missing authenticated user_id")
+            AppLogger.shared.log("ANALYTICS", message: "Skipping route interaction insert: missing authenticated user_id")
             return
         }
         body["user_id"] = userId
@@ -595,7 +680,7 @@ class SupabaseManager: ObservableObject {
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
             let (_, _) = try await URLSession.shared.data(for: request)
         } catch {
-            print("Failed to log route interaction: \(error)")
+            AppLogger.shared.logError("Route interaction logging", error: error)
         }
     }
     
@@ -662,7 +747,7 @@ class SupabaseManager: ObservableObject {
         guard let httpResponse = response as? HTTPURLResponse,
               (200...299).contains(httpResponse.statusCode) else {
             let body = String(data: data, encoding: .utf8) ?? "(no body)"
-            print("[SupabaseManager] addFavorite failed: \(body)")
+            AppLogger.shared.log("SUPABASE", message: "addFavorite failed: \(body)")
             throw SupabaseError.insertFailed
         }
     }
