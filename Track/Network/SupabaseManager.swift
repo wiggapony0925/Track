@@ -58,7 +58,9 @@ class SupabaseManager: ObservableObject {
     
     // MARK: - Published State
     
-    @Published var currentUser: UserProfile?
+    @Published var currentUser: UserProfile? {
+        didSet { TrackAPI.setCachedEmail(currentUser?.email) }
+    }
     @Published var isAuthenticated = false
     @Published var isAuthResolved = false
     @Published var isLoading = false
@@ -148,11 +150,14 @@ class SupabaseManager: ObservableObject {
 
         accessToken = token
         isAuthenticated = true
-        isAuthResolved = false
+        // Unblock the UI immediately — the token's presence is enough
+        // to show HomeView.  Profile validation runs in the background.
+        isAuthResolved = true
 
         Task {
             await loadCurrentUser()
-            isAuthResolved = true
+            // If the profile load fails and the token is invalid,
+            // loadCurrentUser() will call signOut() which resets state.
         }
     }
     

@@ -2833,6 +2833,10 @@ final class HomeViewModel {
         let lat = location.coordinate.latitude
         let lon = location.coordinate.longitude
 
+        // Fire alerts and accessibility in parallel with transit data
+        async let alertsTask: Void = refreshAlerts()
+        async let accessTask: [ElevatorOutage]? = { try? await TrackAPI.fetchAccessibility() }()
+
         do {
             async let groupedTask = TrackAPI.fetchNearbyGrouped(lat: lat, lon: lon, mode: "subway")
             async let stationsTask = repository.fetchNearbyStations(
@@ -2858,9 +2862,9 @@ final class HomeViewModel {
             errorMessage = (error as? TransitError)?.description ?? error.localizedDescription
         }
 
-        // Fetch alerts and accessibility alongside subway
-        await refreshAlerts()
-        do { elevatorOutages = try await TrackAPI.fetchAccessibility() } catch {}
+        // Await the parallel global feeds
+        _ = await alertsTask
+        if let outages = await accessTask { elevatorOutages = outages }
     }
 
     // MARK: - Bus
@@ -2873,6 +2877,10 @@ final class HomeViewModel {
 
         let lat = location.coordinate.latitude
         let lon = location.coordinate.longitude
+
+        // Fire alerts and accessibility in parallel with transit data
+        async let alertsTask: Void = refreshAlerts()
+        async let accessTask: [ElevatorOutage]? = { try? await TrackAPI.fetchAccessibility() }()
 
         do {
             async let groupedTask = TrackAPI.fetchNearbyGrouped(lat: lat, lon: lon, mode: "bus")
@@ -2904,9 +2912,9 @@ final class HomeViewModel {
             errorMessage = (error as? TransitError)?.description ?? error.localizedDescription
         }
 
-        // Fetch alerts and accessibility alongside bus
-        await refreshAlerts()
-        do { elevatorOutages = try await TrackAPI.fetchAccessibility() } catch {}
+        // Await the parallel global feeds
+        _ = await alertsTask
+        if let outages = await accessTask { elevatorOutages = outages }
     }
 
     /// Fetches live bus arrivals for a specific stop.
@@ -2923,6 +2931,10 @@ final class HomeViewModel {
     // MARK: - LIRR
 
     private func refreshLIRR(location: CLLocation?) async {
+        // Fire alerts and accessibility in parallel with transit data
+        async let alertsTask: Void = refreshAlerts()
+        async let accessTask: [ElevatorOutage]? = { try? await TrackAPI.fetchAccessibility() }()
+
         do {
             lirrArrivals = try await TrackAPI.fetchLIRRArrivals()
         } catch {
@@ -2955,13 +2967,18 @@ final class HomeViewModel {
 
         updateSelectedRouteFromRefreshedData(nearbyGroupedLIRRArrivals)
 
-        await refreshAlerts()
-        do { elevatorOutages = try await TrackAPI.fetchAccessibility() } catch {}
+        // Await the parallel global feeds
+        _ = await alertsTask
+        if let outages = await accessTask { elevatorOutages = outages }
     }
 
     // MARK: - Metro-North
 
     private func refreshMNR(location: CLLocation?) async {
+        // Fire alerts and accessibility in parallel with transit data
+        async let alertsTask: Void = refreshAlerts()
+        async let accessTask: [ElevatorOutage]? = { try? await TrackAPI.fetchAccessibility() }()
+
         do {
             mnrArrivals = try await TrackAPI.fetchMNRArrivals()
         } catch {
@@ -2994,8 +3011,9 @@ final class HomeViewModel {
 
         updateSelectedRouteFromRefreshedData(nearbyGroupedMNRArrivals)
 
-        await refreshAlerts()
-        do { elevatorOutages = try await TrackAPI.fetchAccessibility() } catch {}
+        // Await the parallel global feeds
+        _ = await alertsTask
+        if let outages = await accessTask { elevatorOutages = outages }
     }
 
     /// Starts tracking a nearby transit arrival via Widget.

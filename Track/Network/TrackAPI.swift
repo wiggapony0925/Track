@@ -12,6 +12,16 @@ import Foundation
 /// Centralized API client for the Track backend.
 struct TrackAPI {
 
+    // MARK: - Cached User Email (avoids MainActor hop on every request)
+
+    /// Set by SupabaseManager after login/profile load to avoid hopping
+    /// to @MainActor on every API call.
+    private(set) static var cachedUserEmail: String?
+
+    static func setCachedEmail(_ email: String?) {
+        cachedUserEmail = email
+    }
+
     // MARK: - Environment Configuration
 
     /// The active backend URL, determined by the Developer Settings in SettingsView.
@@ -78,9 +88,7 @@ struct TrackAPI {
         request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
         request.timeoutInterval = timeoutSeconds
 
-        if let email = await MainActor.run(body: { SupabaseManager.shared.currentUser?.email }),
-            !email.isEmpty
-        {
+        if let email = cachedUserEmail, !email.isEmpty {
             request.setValue(email, forHTTPHeaderField: "x-user-email")
         }
 
@@ -405,9 +413,7 @@ struct TrackAPI {
 
     private static func get(url: URL) async throws -> Data {
         var request = URLRequest(url: url)
-        if let email = await MainActor.run(body: { SupabaseManager.shared.currentUser?.email }),
-            !email.isEmpty
-        {
+        if let email = cachedUserEmail, !email.isEmpty {
             request.setValue(email, forHTTPHeaderField: "x-user-email")
         }
 

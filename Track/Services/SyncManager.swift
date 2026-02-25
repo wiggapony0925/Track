@@ -37,7 +37,7 @@ class SyncManager: ObservableObject {
     /// Performs a full sync of all user data
     func performFullSync() async {
         guard SupabaseManager.shared.isAuthenticated else {
-            print("[SyncManager] Skipping sync - not authenticated")
+            AppLogger.shared.log("SYNC", message: "Skipping sync - not authenticated")
             return
         }
         
@@ -45,31 +45,36 @@ class SyncManager: ObservableObject {
         syncError = nil
         
         do {
-            // Sync schedules (download from cloud)
-            try await syncSchedules()
-            
-            // Sync user settings (download from cloud → @AppStorage)
-            try await pullUserSettings()
-            
-            // Push local settings to cloud (ensures first-login device
-            // preferences are persisted before another device pulls)
+            // Run independent sync operations in parallel to reduce
+            // startup network contention (was ~2-5s sequential).
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                group.addTask { @MainActor in
+                    try await self.syncSchedules()
+                }
+                group.addTask { @MainActor in
+                    try await self.pullUserSettings()
+                }
+                group.addTask { @MainActor in
+                    await FavoritesManager.shared.refresh()
+                }
+                group.addTask { @MainActor in
+                    await self.pullCommutePatterns()
+                }
+                try await group.waitForAll()
+            }
+
+            // Push local settings after pull completes to avoid race conditions
             await pushUserSettings()
-            
-            // Sync favorites (download from cloud)
-            await FavoritesManager.shared.refresh()
-            
-            // Pull commute patterns from cloud → local SmartSuggester data
-            await pullCommutePatterns()
             
             // Update last sync date
             lastSyncDate = Date()
             defaults.set(lastSyncDate, forKey: lastSyncKey)
             
-            print("[SyncManager] Sync completed successfully")
+            AppLogger.shared.log("SYNC", message: "Sync completed successfully")
             
         } catch {
             syncError = error.localizedDescription
-            print("[SyncManager] Sync error: \(error)")
+            AppLogger.shared.logError("SyncManager.performFullSync", error: error)
         }
         
         isSyncing = false

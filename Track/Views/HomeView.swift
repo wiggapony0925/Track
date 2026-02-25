@@ -185,6 +185,26 @@ struct HomeView: View {
             UserDefaults.standard.removeObject(forKey: "pending_deep_link")
             viewModel.pendingDeepLink = true
         }
+
+        // Immediately kick off the first fetch using the cached location
+        // from the previous session (stored in App Group by LocationManager).
+        // This shaves ~1-2s off startup by not waiting for a fresh GPS fix.
+        if !hasLoadedInitialData {
+            let defaults = UserDefaults(suiteName: kAppGroupIdentifier) ?? .standard
+            let lat = defaults.double(forKey: "lastLatitude")
+            let lon = defaults.double(forKey: "lastLongitude")
+            if lat != 0 && lon != 0 {
+                hasLoadedInitialData = true
+                let cachedLoc = CLLocation(latitude: lat, longitude: lon)
+                cameraPosition = .camera(
+                    MapCamera(centerCoordinate: cachedLoc.coordinate, distance: AppTheme.MapConfig.defaultDistance)
+                )
+                Task {
+                    await viewModel.refresh(location: cachedLoc, force: true)
+                    lastUpdated = Date()
+                }
+            }
+        }
     }
     
     private func handleScenePhaseChange(_ newPhase: ScenePhase) {
@@ -588,6 +608,10 @@ struct HomeView: View {
                 await viewModel.refresh(location: loc, force: true)
                 lastUpdated = Date()
             }
+        } else {
+            // We already kicked off data with the cached location —
+            // just recenter the map on the real GPS position.
+            recenterOnUser()
         }
     }
     
