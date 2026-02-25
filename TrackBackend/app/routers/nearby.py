@@ -193,8 +193,9 @@ _DIRECTION_LABELS: dict[str, str] = {
 # SIRI numeric direction keys (DirectionRef: 0/1 live, 2/3 backfill branches)
 _NUMERIC_DIR_KEYS = {"0", "1", "2", "3"}
 
-# Fallback direction key for Phase C when no compass direction can be inferred
-_OPPOSITE_DIRECTION = "Opposite"
+# Fallback direction key for Phase C when no terminal/compass can be inferred
+# (requested UX: use Inbound/Outbound terminology, not "Opposite").
+_OPPOSITE_DIRECTION = "Outbound"
 
 
 def _is_fallback_direction_key(direction: str) -> bool:
@@ -228,12 +229,25 @@ def _direction_label(direction: str, arrivals: list[NearbyTransitArrival] | None
     when DestinationName was unavailable; in that case we try to pull
     the destination from the first arrival in the group.
     """
+    # Best-effort terminal name for this direction bucket.
+    # Prefer the soonest arrival's destination because it reflects what the
+    # user sees as "where this direction goes".
+    def _primary_destination(items: list[NearbyTransitArrival] | None) -> str | None:
+        if not items:
+            return None
+        ordered = sorted(items, key=lambda a: a.minutes_away)
+        for a in ordered:
+            if a.destination and a.destination.strip() and a.destination.strip().lower() != "unknown":
+                return a.destination.strip()
+        return None
+
+    terminal = _primary_destination(arrivals)
+
     # For legacy numeric direction keys (DirectionRef fallback),
     # try to get the destination from the first arrival.
     if direction in _NUMERIC_DIR_KEYS and arrivals:
-        for a in arrivals:
-            if a.destination:
-                return a.destination
+        if terminal:
+            return terminal
         return _DIRECTION_LABELS.get(direction, f"Direction {direction}")
 
     upper = direction.upper()
@@ -241,19 +255,42 @@ def _direction_label(direction: str, arrivals: list[NearbyTransitArrival] | None
     # Known compass / special codes → canonical label
     if upper in _DIRECTION_LABELS:
         base_label = _DIRECTION_LABELS[upper]
-        # For subway compass directions, enrich with unique destination names
-        # so the label shows where trains are heading (e.g. "Northbound → Inwood-207 St").
-        # Only apply to subway — bus routes with compass keys don't need this.
-        if arrivals and upper in ("N", "S"):
-            subway_arrivals = [a for a in arrivals if a.mode == "subway"]
-            if subway_arrivals:
-                dests = sorted({a.destination for a in subway_arrivals if a.destination})
-                if dests:
-                    return f"{base_label} → {' / '.join(dests)}"
+        if terminal:
+            return f"{base_label} → {terminal}"
         return base_label
 
     # Destination-name keys (e.g. "KINGS PLAZA") → title-case for display
     return direction.title()
+
+
+def _opposite_direction_key(mode: str, direction: str) -> str | None:
+    """Infer the opposite direction key for placeholder backfill.
+
+    Used when a grouped route currently has only one direction bucket.
+    This keeps route cards swipeable and avoids transient one-direction
+    cards when one side has no immediate arrivals.
+    """
+    upper = direction.upper()
+
+    # Compass and commuter-rail canonical pairs
+    opposite_map = {
+        "N": "S", "S": "N", "E": "W", "W": "E",
+        "NE": "SW", "SW": "NE", "NW": "SE", "SE": "NW",
+        "INBOUND": "Outbound", "OUTBOUND": "Inbound",
+        "0": "1", "1": "0", "2": "3", "3": "2",
+    }
+    if upper in opposite_map:
+        return opposite_map[upper]
+
+    # Destination-name direction keys (common on bus branches)
+    if mode == "bus":
+        return _OPPOSITE_DIRECTION
+
+    # Subway / rail fallback if no canonical opposite can be inferred
+    if mode in {"subway", "lirr", "mnr"}:
+        return _OPPOSITE_DIRECTION
+
+    return None
 
 
 def _group_arrivals(flat: list[NearbyTransitArrival]) -> list[GroupedNearbyTransit]:
@@ -274,6 +311,8 @@ def _group_arrivals(flat: list[NearbyTransitArrival]) -> list[GroupedNearbyTrans
             route_meta[a.route_id] = (a.mode, _display_name(a.route_id))
 
     groups: list[GroupedNearbyTransit] = []
+    single_direction_before = 0
+    single_direction_after = 0
     for route_id, dir_map in by_route.items():
         mode, display = route_meta[route_id]
         # Assign color: subway lines use the official palette,
@@ -300,6 +339,38 @@ def _group_arrivals(flat: list[NearbyTransitArrival]) -> list[GroupedNearbyTrans
                 arrivals=arrivals,
             ))
 
+        if len(directions) == 1:
+            single_direction_before += 1
+
+            primary = directions[0]
+            opposite = _opposite_direction_key(mode, primary.direction)
+            if opposite and opposite != primary.direction and opposite not in dir_map:
+                exemplar = primary.arrivals[0] if primary.arrivals else None
+                placeholder = NearbyTransitArrival(
+                    route_id=route_id,
+                    stop_name=exemplar.stop_name if exemplar else display,
+                    direction=opposite,
+                    destination=None,
+                    minutes_away=_PLACEHOLDER_MINUTES,
+                    arrival_ts=None,
+                    status="Scheduled",
+                    mode=mode,
+                    stop_lat=exemplar.stop_lat if exemplar else None,
+                    stop_lon=exemplar.stop_lon if exemplar else None,
+                    stop_id=exemplar.stop_id if exemplar else None,
+                    vehicle_id=None,
+                    trip_id=None,
+                    distance_m=exemplar.distance_m if exemplar else None,
+                )
+                directions.append(DirectionArrivals(
+                    direction=opposite,
+                    direction_label=_direction_label(opposite, [placeholder]),
+                    arrivals=[placeholder],
+                ))
+
+        if len(directions) == 1:
+            single_direction_after += 1
+
         # Sort directions alphabetically for consistency
         directions.sort(key=lambda d: d.direction)
 
@@ -315,6 +386,11 @@ def _group_arrivals(flat: list[NearbyTransitArrival]) -> list[GroupedNearbyTrans
 
     # Sort groups by the soonest arrival across all directions
     groups.sort(key=_soonest_minutes)
+
+    if single_direction_before:
+        TrackLogger.info(
+            f"Grouped routes with 1 direction: before={single_direction_before}, after={single_direction_after}"
+        )
 
     return groups
 
@@ -394,16 +470,16 @@ async def _fetch_nearby_subway(
             total_kept += 1
             
             # For subway, keep the compass direction ("N"/"S") as the grouping
-            # key so that all branches (e.g. Far Rockaway, Lefferts Blvd) are
-            # consolidated into a single direction bucket. The destination name
-            # is preserved in the separate `destination` field for display.
-            # Bus/rail modes can still use destination as the direction key.
+            # key only as fallback. Prefer destination to preserve branch-specific
+            # direction tabs (supports 3+ direction cases naturally).
+            # If destination is missing, fall back to compass direction.
+            direction_key = arrival.destination or arrival.direction
             
             results.append(
                 NearbyTransitArrival(
                     route_id=arrival.route_id or line,
                     stop_name=stop_name,
-                    direction=arrival.direction,
+                    direction=direction_key,
                     destination=arrival.destination,
                     minutes_away=arrival.minutes_away,
                     arrival_ts=arrival.arrival_ts,
@@ -453,8 +529,8 @@ async def _fetch_nearby_subway(
 
                 sinfo = get_stop_info(s.station)
                 # For subway scheduled arrivals, use compass direction ("N"/"S")
-                # as the grouping key, same as live arrivals above.
-                sched_dir = s.direction  # already "N"/"S" from stop_id suffix
+                # as fallback key; prefer destination when present.
+                sched_dir = s.destination or s.direction
                 results.append(NearbyTransitArrival(
                     route_id=s.route_id,
                     stop_name=sinfo.name if sinfo else s.station,
@@ -1147,6 +1223,9 @@ async def _fetch_nearby_rail(
             NearbyTransitArrival(
                 route_id=prefixed_route_id,
                 stop_name=stop_info.name if stop_info else arrival.station,
+                # Prefer terminal destination for direction grouping so branch
+                # terminals can appear as distinct tabs. If destination is
+                # unavailable, fall back to canonical Inbound/Outbound.
                 direction=arrival.destination or arrival.direction,
                 destination=arrival.destination,
                 minutes_away=arrival.minutes_away,
