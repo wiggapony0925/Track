@@ -271,7 +271,6 @@ final class HomeViewModel {
 
         let r1 = AppSettings.shared.nearYouRadiusMeters
         let r2 = max(AppSettings.shared.fartherAwayRadiusMeters, r1)
-        let r3 = max(AppSettings.shared.muchFartherAwayRadiusMeters, r2)
 
         var nearYou: [GroupedNearbyTransitResponse] = []
         var fartherAway: [GroupedNearbyTransitResponse] = []
