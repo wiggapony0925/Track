@@ -17,6 +17,8 @@ struct GroupedRouteRow: View {
     var userLocation: CLLocation? = nil
     var distanceMetersOverride: Double? = nil
     var smartETAProvider: ((NearbyTransitResponse) -> SmartETA)? = nil
+    var initialDirectionIndex: Int = 0
+    var onDirectionChanged: ((Int) -> Void)? = nil
     var onSelect: ((Int) -> Void)? = nil
     var onTrack: ((Int) -> Void)? = nil
 
@@ -82,6 +84,18 @@ struct GroupedRouteRow: View {
             return DirectionArrivalsResponse(direction: "—", arrivals: [])
         }
         return visibleDirections[min(currentDirectionIndex, visibleDirections.count - 1)]
+    }
+
+    /// Maps an original group direction index to the visible direction index.
+    private func visibleIndex(forOriginal original: Int) -> Int {
+        guard group.directions.indices.contains(original) else {
+            return min(currentDirectionIndex, max(0, visibleDirections.count - 1))
+        }
+        let targetId = group.directions[original].id
+        if let idx = visibleDirections.firstIndex(where: { $0.id == targetId }) {
+            return idx
+        }
+        return min(original, max(0, visibleDirections.count - 1))
     }
 
     /// Returns the countdown arrival for a direction, preferring the user's
@@ -283,6 +297,24 @@ struct GroupedRouteRow: View {
         .onTapGesture {
             HapticManager.selection()
             onSelect?(originalDirectionIndex)
+        }
+        .onAppear {
+            // Restore previously swiped direction for this route row.
+            let restoredVisible = visibleIndex(forOriginal: initialDirectionIndex)
+            if restoredVisible != currentDirectionIndex {
+                currentDirectionIndex = restoredVisible
+            }
+        }
+        .onChange(of: initialDirectionIndex) { _, newValue in
+            // Keep row direction in sync when parent updates preferences.
+            let restoredVisible = visibleIndex(forOriginal: newValue)
+            if restoredVisible != currentDirectionIndex {
+                currentDirectionIndex = restoredVisible
+            }
+        }
+        .onChange(of: currentDirectionIndex) { _, _ in
+            // Persist user's swipe choice using original group index.
+            onDirectionChanged?(originalDirectionIndex)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(

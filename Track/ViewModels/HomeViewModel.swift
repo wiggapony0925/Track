@@ -452,12 +452,77 @@ final class HomeViewModel {
     // Grouped nearby transit (one card per route)
     var groupedTransit: [GroupedNearbyTransitResponse] = []
 
+    /// Remembers the user's last selected direction per grouped route card.
+    /// Keyed by "mode:routeId" so bus/subway routes with similar IDs don't collide.
+    /// Stores both a stable direction key and the last known index fallback.
+    private var preferredDirectionByRoute: [String: DirectionPreference] = [:]
+
+    private struct DirectionPreference {
+        let index: Int
+        let directionKey: String?
+    }
+
     /// Tracks how many consecutive refresh cycles each route has been
     /// absent from the API response, keyed by data source ("nearby",
     /// "bus", "subway", "lirr", "mnr"). Routes are retained while
     /// the location context is stable, and counters are cleared when
     /// the context changes (search-pin set/clear, significant movement).
     private var graceMissCountBySource: [String: [String: Int]] = [:]
+
+    // MARK: - Direction Preference Persistence
+
+    private func directionPreferenceKey(for group: GroupedNearbyTransitResponse) -> String {
+        "\(group.mode):\(group.routeId)"
+    }
+
+    /// Stable, normalized identity for a direction entry.
+    /// Uses direction text + optional label so reordered arrays still resolve correctly.
+    private func normalizedDirectionKey(_ direction: DirectionArrivalsResponse) -> String {
+        let base = direction.direction.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let label = direction.directionLabel?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() ?? ""
+        return label.isEmpty ? base : "\(base)|\(label)"
+    }
+
+    /// Returns the remembered direction index for a grouped route, clamped to
+    /// the group's current direction count.
+    func preferredDirectionIndex(for group: GroupedNearbyTransitResponse) -> Int {
+        guard !group.directions.isEmpty else { return 0 }
+
+        let key = directionPreferenceKey(for: group)
+        guard let stored = preferredDirectionByRoute[key] else { return 0 }
+
+        if let storedDirectionKey = stored.directionKey,
+           let resolvedIndex = group.directions.firstIndex(where: {
+               normalizedDirectionKey($0) == storedDirectionKey
+           }) {
+            return resolvedIndex
+        }
+
+        return max(0, min(stored.index, group.directions.count - 1))
+    }
+
+    /// Stores the user's currently selected direction for a grouped route.
+    func setPreferredDirectionIndex(_ index: Int, for group: GroupedNearbyTransitResponse) {
+        guard !group.directions.isEmpty else { return }
+
+        let clampedIndex = max(0, min(index, group.directions.count - 1))
+        let directionKey = normalizedDirectionKey(group.directions[clampedIndex])
+        let key = directionPreferenceKey(for: group)
+        preferredDirectionByRoute[key] = DirectionPreference(
+            index: clampedIndex,
+            directionKey: directionKey
+        )
+
+        #if DEBUG
+        AppLogger.shared.log(
+            "DIR_PREF",
+            message:
+                "STORE route=\(group.routeId) mode=\(group.mode) idx=\(clampedIndex) dir=\(group.directions[clampedIndex].direction) key=\(directionKey)"
+        )
+        #endif
+    }
 
     // Nearest metro recommendation (shown when no nearby transit)
     var nearestTransit: NearbyTransitResponse?
@@ -1648,6 +1713,10 @@ final class HomeViewModel {
         guard let group = selectedGroupedRoute, !shape.directions.isEmpty else { return }
 
         let existingCount = group.directions.count
+        let previousSelectedDirectionKey: String? = {
+            guard group.directions.indices.contains(selectedDirectionIndex) else { return nil }
+            return normalizedDirectionKey(group.directions[selectedDirectionIndex])
+        }()
 
         // Build a new directions array ordered by shape direction_id.
         // For each shape direction, either find the matching existing group
@@ -1752,13 +1821,47 @@ final class HomeViewModel {
             })
 
         if changed {
-            selectedGroupedRoute = GroupedNearbyTransitResponse(
+            let updatedGroup = GroupedNearbyTransitResponse(
                 routeId: group.routeId,
                 displayName: group.displayName,
                 mode: group.mode,
                 colorHex: group.colorHex,
                 directions: orderedDirections
             )
+            selectedGroupedRoute = updatedGroup
+
+            // Preserve the user's selected direction when shape enrichment
+            // reorders or backfills direction entries.
+            if let key = previousSelectedDirectionKey,
+               let resolvedIndex = updatedGroup.directions.firstIndex(where: {
+                   normalizedDirectionKey($0) == key
+               }) {
+                let previousIndex = selectedDirectionIndex
+                selectedDirectionIndex = resolvedIndex
+
+                #if DEBUG
+                AppLogger.shared.log(
+                    "DIR_PREF",
+                    message:
+                        "RESTORE route=\(updatedGroup.routeId) mode=\(updatedGroup.mode) oldIdx=\(previousIndex) newIdx=\(resolvedIndex) oldKey=\(key) newDir=\(updatedGroup.directions[resolvedIndex].direction)"
+                )
+                #endif
+            } else {
+                let previousIndex = selectedDirectionIndex
+                selectedDirectionIndex = max(
+                    0,
+                    min(selectedDirectionIndex, max(0, updatedGroup.directions.count - 1))
+                )
+
+                #if DEBUG
+                AppLogger.shared.log(
+                    "DIR_PREF",
+                    message:
+                        "RESTORE_FALLBACK route=\(updatedGroup.routeId) mode=\(updatedGroup.mode) oldIdx=\(previousIndex) newIdx=\(selectedDirectionIndex) reason=no-key-match"
+                )
+                #endif
+            }
+
             AppLogger.shared.log(
                 "ROUTE_DETAIL",
                 message:

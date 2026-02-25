@@ -389,7 +389,12 @@ struct GroupedRouteList: View {
                     userLocation: referenceLocation,
                     distanceMetersOverride: viewModel.displayDistanceMeters(for: group, from: referenceLocation),
                     smartETAProvider: { viewModel.smartETA(for: $0) },
+                    initialDirectionIndex: viewModel.preferredDirectionIndex(for: group),
+                    onDirectionChanged: { newIndex in
+                        viewModel.setPreferredDirectionIndex(newIndex, for: group)
+                    },
                     onSelect: { directionIndex in
+                        viewModel.setPreferredDirectionIndex(directionIndex, for: group)
                         RouteAnalyticsManager.shared.logInteraction(routeId: group.routeId)
                         sheetNavigator.navigate(
                             to: .routeDetail(group: group, directionIndex: directionIndex))
@@ -400,6 +405,7 @@ struct GroupedRouteList: View {
                         }
                     },
                     onTrack: { directionIndex in
+                        viewModel.setPreferredDirectionIndex(directionIndex, for: group)
                         let dir = group.directions[
                             min(directionIndex, group.directions.count - 1)]
                         guard let arrival = dir.liveArrivals.first else { return }
