@@ -156,7 +156,7 @@ struct LiveNearMeProvider: TimelineProvider {
                         minutesAway: item.minutesAway,
                         status: item.status,
                         mode: item.mode,
-                        arrivalTime: Date().addingTimeInterval(Double(item.minutesAway) * 60)
+                        arrivalTime: item.resolvedArrivalTime
                     )
                 }
                 .sorted { a, b in
@@ -168,7 +168,7 @@ struct LiveNearMeProvider: TimelineProvider {
                         return countA > countB
                     }
                     // Fallback to soonest arrival
-                    return a.minutesAway < b.minutesAway
+                    return a.arrivalTime < b.arrivalTime
                 }
                 .prefix(maxRoutes)
 
@@ -397,7 +397,7 @@ struct LiveNearMeWidgetView: View {
             HStack(alignment: .firstTextBaseline, spacing: 1) {
                 Text(arrival.arrivalTime, style: .timer)
                     .font(.system(size: 18, weight: .bold, design: .rounded))
-                    .foregroundColor(AppTheme.Colors.countdown(arrival.minutesAway))
+                    .foregroundColor(AppTheme.Colors.countdown(minutesRemaining(for: arrival)))
                     .monospacedDigit()
             }
 
@@ -433,7 +433,7 @@ struct LiveNearMeWidgetView: View {
             VStack(alignment: .trailing, spacing: 0) {
                 Text(arrival.arrivalTime, style: .timer)
                     .font(.system(size: 20, weight: .bold, design: .rounded))
-                    .foregroundColor(AppTheme.Colors.countdown(arrival.minutesAway))
+                    .foregroundColor(AppTheme.Colors.countdown(minutesRemaining(for: arrival)))
                     .monospacedDigit()
                 
                 if !arrival.status.isEmpty {
@@ -504,6 +504,10 @@ struct LiveNearMeWidgetView: View {
             return AppTheme.Colors.alertRed
         }
         return AppTheme.Colors.textSecondary
+    }
+
+    private func minutesRemaining(for arrival: NearbyArrival) -> Int {
+        TrackingTimeSync.remainingMinutes(until: arrival.arrivalTime)
     }
 
     private func calculateActiveUntil() -> Date? {

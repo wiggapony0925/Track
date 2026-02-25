@@ -24,8 +24,8 @@ struct TrackActivityAttributes: ActivityAttributes {
         /// Trip progress from 0.0 (just started) to 1.0 (arrived).
         var progress: Double
 
-        /// Number of stops away (0 = at station, nil = unknown).
-        var stopsAway: Int?
+        /// Minutes away (0 = at station, nil = unknown).
+        var minutesAway: Int?
 
         /// Minutes until the next 2–3 arrivals after the tracked one.
         var nextArrivals: [Int]
@@ -36,18 +36,66 @@ struct TrackActivityAttributes: ActivityAttributes {
         /// Whether the user needs to "Hurry up" to catch the trip.
         var isHurryUp: Bool
 
-        /// Dynamic proximity label derived from stopsAway.
-        /// e.g. "3 stops away", "1 stop away", "Arriving", "At station".
+        /// Dynamic proximity label derived from minutes-away.
+        /// e.g. "3 min away", "1 min away", "Arriving", "At station".
         var proximityText: String {
             if let walk = walkMinutes {
                 return walk <= 2 ? "Run now!" : "Walk to station"
             }
-            guard let stops = stopsAway else { return statusText }
-            switch stops {
-            case 0:  return "At station"
-            case 1:  return "Arriving"
-            default: return "\(stops) stops away"
-            }
+            guard let minutes = minutesAway else { return statusText }
+            return TrackingTimeSync.proximityText(minutesAway: minutes)
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case statusText
+            case arrivalTime
+            case progress
+            case minutesAway
+            case stopsAway
+            case nextArrivals
+            case walkMinutes
+            case isHurryUp
+        }
+
+        init(
+            statusText: String,
+            arrivalTime: Date,
+            progress: Double,
+            minutesAway: Int?,
+            nextArrivals: [Int],
+            walkMinutes: Int?,
+            isHurryUp: Bool
+        ) {
+            self.statusText = statusText
+            self.arrivalTime = arrivalTime
+            self.progress = progress
+            self.minutesAway = minutesAway
+            self.nextArrivals = nextArrivals
+            self.walkMinutes = walkMinutes
+            self.isHurryUp = isHurryUp
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            statusText = try container.decode(String.self, forKey: .statusText)
+            arrivalTime = try container.decode(Date.self, forKey: .arrivalTime)
+            progress = try container.decode(Double.self, forKey: .progress)
+            minutesAway = try container.decodeIfPresent(Int.self, forKey: .minutesAway)
+                ?? container.decodeIfPresent(Int.self, forKey: .stopsAway)
+            nextArrivals = try container.decode([Int].self, forKey: .nextArrivals)
+            walkMinutes = try container.decodeIfPresent(Int.self, forKey: .walkMinutes)
+            isHurryUp = try container.decode(Bool.self, forKey: .isHurryUp)
+        }
+
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(statusText, forKey: .statusText)
+            try container.encode(arrivalTime, forKey: .arrivalTime)
+            try container.encode(progress, forKey: .progress)
+            try container.encodeIfPresent(minutesAway, forKey: .minutesAway)
+            try container.encode(nextArrivals, forKey: .nextArrivals)
+            try container.encodeIfPresent(walkMinutes, forKey: .walkMinutes)
+            try container.encode(isHurryUp, forKey: .isHurryUp)
         }
     }
 

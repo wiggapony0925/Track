@@ -33,7 +33,7 @@ final class LiveActivityManager {
     ///   - arrivalTime: The estimated arrival time.
     ///   - isBus: Whether this is a bus trip.
     ///   - stationId: The station/stop the user is at.
-    ///   - stopsAway: Number of stops until arrival (nil if unknown).
+    ///   - minutesAway: Minutes until arrival (nil if unknown).
     ///   - nextArrivals: Minutes until the next 2–3 trains/buses.
     func startActivity(
         lineId: String,
@@ -41,7 +41,7 @@ final class LiveActivityManager {
         arrivalTime: Date,
         isBus: Bool,
         stationId: String = "",
-        stopsAway: Int? = nil,
+        minutesAway: Int? = nil,
         nextArrivals: [Int] = [],
         walkMinutes: Int? = nil,
         isHurryUp: Bool = false
@@ -64,7 +64,7 @@ final class LiveActivityManager {
             statusText: "Tracking...",
             arrivalTime: arrivalTime,
             progress: 0.0,
-            stopsAway: stopsAway,
+            minutesAway: minutesAway,
             nextArrivals: nextArrivals,
             walkMinutes: walkMinutes,
             isHurryUp: isHurryUp
@@ -96,13 +96,13 @@ final class LiveActivityManager {
     ///   - statusText: Updated status (e.g. "Arriving in 1 min").
     ///   - arrivalTime: Updated ETA (can be sooner or later than before).
     ///   - progress: Updated progress (0.0–1.0).
-    ///   - stopsAway: Updated stop count (nil if unknown).
+    ///   - minutesAway: Updated minutes away (nil if unknown).
     ///   - nextArrivals: Updated upcoming arrival minutes.
     func updateActivity(
         statusText: String,
         arrivalTime: Date,
         progress: Double,
-        stopsAway: Int? = nil,
+        minutesAway: Int? = nil,
         nextArrivals: [Int] = [],
         walkMinutes: Int? = nil,
         isHurryUp: Bool = false
@@ -113,7 +113,7 @@ final class LiveActivityManager {
             statusText: statusText,
             arrivalTime: arrivalTime,
             progress: min(1.0, max(0.0, progress)),
-            stopsAway: stopsAway,
+            minutesAway: minutesAway,
             nextArrivals: nextArrivals,
             walkMinutes: walkMinutes,
             isHurryUp: isHurryUp
@@ -144,7 +144,7 @@ final class LiveActivityManager {
                     statusText: "Arrived",
                     arrivalTime: Date(),
                     progress: 1.0,
-                    stopsAway: 0,
+                    minutesAway: 0,
                     nextArrivals: [],
                     walkMinutes: nil,
                     isHurryUp: false

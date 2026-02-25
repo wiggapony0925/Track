@@ -110,7 +110,7 @@ struct TrackWidgetLiveActivity: Widget {
                 isLIRR: false,
                 arrivalTime: context.state.arrivalTime,
                 proximityText: context.state.proximityText,
-                stopsAway: context.state.stopsAway,
+                minutesAway: context.state.minutesAway,
                 walkMinutes: context.state.walkMinutes,
                 isHurryUp: context.state.isHurryUp,
                 progress: context.state.progress,

@@ -153,7 +153,7 @@ struct TrackWidgetProvider: TimelineProvider {
                         return countA > countB
                     }
                     // Fallback to soonest arrival
-                    return a.minutesAway < b.minutesAway
+                    return a.arrivalTime < b.arrivalTime
                 }
                 .prefix(5)
 
@@ -269,7 +269,8 @@ struct TrackWidgetEntryView: View {
             if !entry.isActive {
                 Text("Transit Paused")
             } else if let arrival = entry.arrivals.first {
-                Text("\(arrival.displayName) in \(arrival.minutesAway)m")
+                let mins = TrackingTimeSync.remainingMinutes(until: arrival.arrivalTime)
+                Text("\(arrival.displayName) in \(mins)m")
             } else {
                 Text("No Nearby Transit")
             }

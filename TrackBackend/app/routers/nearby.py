@@ -197,6 +197,20 @@ _NUMERIC_DIR_KEYS = {"0", "1", "2", "3"}
 _OPPOSITE_DIRECTION = "Opposite"
 
 
+def _is_fallback_direction_key(direction: str) -> bool:
+    """True when a direction key is compass/numeric/generic fallback.
+
+    Destination-name keys (e.g. "JFK AIRPORT TRAVEL PLAZA via ROCKAWAY BL")
+    return False.
+    """
+    upper = direction.upper()
+    return (
+        upper in _DIRECTION_LABELS
+        or upper in _NUMERIC_DIR_KEYS
+        or upper == _OPPOSITE_DIRECTION.upper()
+    )
+
+
 def _direction_label(direction: str, arrivals: list[NearbyTransitArrival] | None = None) -> str:
     """Convert a raw direction code to a human-readable label.
 
@@ -722,6 +736,12 @@ async def _fetch_nearby_buses(
     for r in results:
         live_route_dirs[r.route_id].add(r.direction)
 
+    # Prefer an existing route direction key for placeholder anchors so
+    # we don't create synthetic tabs like "Eastbound" next to destination tabs.
+    route_primary_direction: dict[str, str] = {}
+    for r in sorted(results, key=lambda x: x.minutes_away):
+        route_primary_direction.setdefault(r.route_id, r.direction)
+
     # Phase A: routes with zero live data — create one placeholder per route
     # Also: create a placeholder for the ABSOLUTE CLOSEST stop of ANY route
     # so that the iOS distance calculation is exactly the distance to the nearest stop.
@@ -749,7 +769,7 @@ async def _fetch_nearby_buses(
         # Check if the closest stop ALREADY has a live arrival for this route
         has_live_at_closest = any(r for r in results if r.route_id == rid and r.stop_id == closest_stop.id)
         if not has_live_at_closest:
-            direction = closest_stop.direction or "N/A"
+            direction = route_primary_direction.get(rid) or closest_stop.direction or "N/A"
             # It's possible the route isn't completely 'missing', just missing live data at the closest stop.
             results.append(
                 NearbyTransitArrival(
@@ -834,6 +854,11 @@ async def _fetch_nearby_buses(
             # Determine a direction key for this stop's placeholder.
             existing_dirs = live_route_dirs[short]
 
+            # Route already has semantic destination tabs — don't add compass
+            # fallback tabs (e.g. "EASTBOUND") that create a fake 3rd direction.
+            if any(not _is_fallback_direction_key(d) for d in existing_dirs):
+                continue
+
             # If ALL existing keys are SIRI numeric (rare: DestinationName
             # was unavailable), assign next unused numeric key.
             if existing_dirs and existing_dirs <= _NUMERIC_DIR_KEYS:
@@ -909,6 +934,11 @@ async def _fetch_nearby_buses(
             continue  # Already has 2+ directions
 
         existing_dir = next(iter(dirs))
+
+        # If this is already a destination-key route, don't synthesize an
+        # opposite fallback direction.
+        if not _is_fallback_direction_key(existing_dir):
+            continue
 
         # Find a representative stop for this route to anchor the placeholder
         rep_stop: BusStop | None = None
@@ -1046,7 +1076,7 @@ async def _fetch_nearby_buses(
                     route_id=rid,
                     stop_name=best_stop.name,
                     arrival_ts=None,
-                    direction=best_stop.direction or "N/A",
+                    direction=route_primary_direction.get(rid) or best_stop.direction or "N/A",
                     minutes_away=_PLACEHOLDER_MINUTES,
                     status="Scheduled",
                     mode="bus",

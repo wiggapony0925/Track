@@ -19,7 +19,8 @@ struct TrackLiveBannerData {
     let isLIRR: Bool
     let arrivalTime: Date
     let proximityText: String
-    let stopsAway: Int?
+    /// Minutes away for urgency styling.
+    let minutesAway: Int?
     let walkMinutes: Int?
     let isHurryUp: Bool
     let progress: Double
@@ -77,7 +78,7 @@ struct TrackLiveBannerView: View {
                         Text(data.proximityText)
                             .font(.system(size: 13, weight: .medium, design: .rounded))
                             .foregroundColor(
-                                data.stopsAway == 1
+                                data.minutesAway == 1
                                     ? AppTheme.Colors.alertRed : AppTheme.Colors.textSecondary
                             )
                             .lineLimit(1)
@@ -356,7 +357,7 @@ extension TrackLiveBannerData {
             isLIRR: false,
             arrivalTime: Date().addingTimeInterval(298), // 4:58
             proximityText: "Waiting for next train...",
-            stopsAway: nil,
+            minutesAway: nil,
             walkMinutes: nil,
             isHurryUp: false,
             progress: 0.1,
@@ -371,8 +372,8 @@ extension TrackLiveBannerData {
             isBus: true,
             isLIRR: false,
             arrivalTime: Date().addingTimeInterval(420), // 7:00
-            proximityText: "2 stops away",
-            stopsAway: 2,
+            proximityText: "2 min away",
+            minutesAway: 2,
             walkMinutes: nil,
             isHurryUp: false,
             progress: 0.8,

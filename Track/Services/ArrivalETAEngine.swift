@@ -31,6 +31,7 @@
 
 import CoreLocation
 import Foundation
+import MapKit
 
 // MARK: - ETA Result
 
@@ -80,6 +81,12 @@ struct ETAContext {
 
 @MainActor
 enum ArrivalETAEngine {
+
+    private struct SpeedEstimate {
+        let speedMps: Double
+        let confidence: Double
+        let isStopped: Bool
+    }
 
     // MARK: - Position History (for speed estimation)
 
@@ -165,8 +172,7 @@ enum ArrivalETAEngine {
 
         // ── 1. Try vehicle-position-based ETA ──
         if let vCoord = vehicleCoord, let sCoord = stopCoord {
-            let straightLine = CLLocation(latitude: vCoord.latitude, longitude: vCoord.longitude)
-                .distance(from: CLLocation(latitude: sCoord.latitude, longitude: sCoord.longitude))
+            let straightLine = MKMapPoint(vCoord).distance(to: MKMapPoint(sCoord))
 
             // Vehicle is at the stop (within 50 m)
             if straightLine < 50 {
@@ -188,13 +194,19 @@ enum ArrivalETAEngine {
             }
 
             // Estimate speed from position history
-            let speed = estimateSpeed(
+            let speedEstimate = estimateSpeed(
                 vehicleKey: vehicleKey, mode: mode, routeDistance: routeDistance)
+            let speed = speedEstimate.speedMps
+            let towardScore = movementTowardStopScore(
+                vehicleKey: vehicleKey,
+                current: vCoord,
+                stop: sCoord
+            )
 
             // ── Dwell detection ──
             // If the vehicle is stopped (speed ≈ 0) and is very close to the
             // DESTINATION stop, it is arriving — treat as "Now" rather than stalled.
-            if speed < 0.5, routeDistance < 150 {
+            if speedEstimate.isStopped, routeDistance < 150 {
                 if let key = vehicleKey { smoothedETA.removeValue(forKey: key) }
                 return SmartETA(
                     secondsRemaining: 0, isAtStop: true, isPastArrival: isPast,
@@ -204,7 +216,7 @@ enum ArrivalETAEngine {
             // If completely stopped but not near the destination stop, fall
             // back to the feed timestamp (the driver / operator determines
             // when they leave the current stop).
-            if speed < 0.5 {
+            if speedEstimate.isStopped {
                 if let ts = arrivalTs {
                     let feedSeconds = max(0, Double(ts) - Date.now.timeIntervalSince1970)
                     return smoothed(
@@ -236,7 +248,10 @@ enum ArrivalETAEngine {
                 let blended = blendETAs(
                     positionSeconds: correctedPositionETA,
                     feedSeconds: feedSeconds,
-                    routeDistance: routeDistance)
+                    routeDistance: routeDistance,
+                    speedConfidence: speedEstimate.confidence,
+                    towardScore: towardScore,
+                    mode: mode)
 
                 return smoothed(
                     vehicleKey: vehicleKey,
@@ -304,17 +319,18 @@ enum ArrivalETAEngine {
         vehicleKey: String?,
         mode: String,
         routeDistance: Double
-    ) -> Double {
+    ) -> SpeedEstimate {
+        let defaultSpeedMps = defaultSpeed(for: mode)
+
         guard let key = vehicleKey,
               let samples = positionHistory[key],
               samples.count >= 2
         else {
-            return defaultSpeed(for: mode)
+            return SpeedEstimate(speedMps: defaultSpeedMps, confidence: 0.25, isStopped: false)
         }
 
-        // Use the last few samples to compute average speed
-        let recent = Array(samples.suffix(4))
-        var totalDist: Double = 0
+        let recent = Array(samples.suffix(6))
+        var segmentSpeeds: [Double] = []
         var totalTime: TimeInterval = 0
 
         for i in 1..<recent.count {
@@ -322,30 +338,81 @@ enum ArrivalETAEngine {
             let curr = recent[i]
             let dt = curr.timestamp.timeIntervalSince(prev.timestamp)
             guard dt > 0 else { continue }
-            let dist = CLLocation(latitude: prev.coordinate.latitude, longitude: prev.coordinate.longitude)
-                .distance(from: CLLocation(latitude: curr.coordinate.latitude, longitude: curr.coordinate.longitude))
-            totalDist += dist
-            totalTime += dt
+
+            let dist = MKMapPoint(prev.coordinate).distance(to: MKMapPoint(curr.coordinate))
+            let segmentSpeed = dist / dt
+            if segmentSpeed.isFinite {
+                segmentSpeeds.append(segmentSpeed)
+                totalTime += dt
+            }
         }
 
-        guard totalTime > 2 else {
-            return defaultSpeed(for: mode)
+        guard totalTime > 2, !segmentSpeeds.isEmpty else {
+            return SpeedEstimate(speedMps: defaultSpeedMps, confidence: 0.3, isStopped: false)
         }
 
-        let measuredSpeed = totalDist / totalTime  // m/s
+        // Robust speed estimate:
+        // 1) median to suppress GPS spikes
+        // 2) blend with trimmed mean for responsiveness
+        let sorted = segmentSpeeds.sorted()
+        let median = sorted[sorted.count / 2]
+
+        let trimmed: [Double]
+        if sorted.count >= 5 {
+            trimmed = Array(sorted.dropFirst().dropLast())
+        } else {
+            trimmed = sorted
+        }
+        let trimmedMean = trimmed.reduce(0, +) / Double(trimmed.count)
+        var measuredSpeed = 0.65 * median + 0.35 * trimmedMean
+
+        // Mode-aware sanity cap (m/s)
+        let maxReasonable: Double
+        switch mode.lowercased() {
+        case "bus": maxReasonable = 22.0
+        case "subway": maxReasonable = 33.0
+        case "lirr", "mnr": maxReasonable = 50.0
+        default: maxReasonable = 33.0
+        }
+        measuredSpeed = min(max(measuredSpeed, 0), maxReasonable)
+
+        // Stability confidence: higher when recent speed samples agree.
+        let variance: Double = {
+            guard trimmed.count > 1 else { return 0 }
+            let mean = trimmedMean
+            let sumSq = trimmed.reduce(0) { $0 + pow($1 - mean, 2) }
+            return sumSq / Double(trimmed.count - 1)
+        }()
+        let stdDev = sqrt(max(0, variance))
+        let coeffVar = measuredSpeed > 0.1 ? stdDev / measuredSpeed : 1.0
+        let variabilityScore = max(0, min(1, 1 - coeffVar))
+
+        // History depth confidence: more elapsed sample time means better confidence.
+        let historyScore = max(0, min(1, totalTime / 45.0))
+
+        // Distance context confidence: closer vehicles are easier to model.
+        let distanceScore: Double = {
+            if routeDistance < 400 { return 1.0 }
+            if routeDistance < 2000 {
+                let t = (routeDistance - 400) / 1600
+                return 1.0 - 0.4 * t
+            }
+            return 0.6
+        }()
+        let confidence = max(0.1, min(1.0, 0.45 * variabilityScore + 0.35 * historyScore + 0.20 * distanceScore))
 
         // Sanity bounds: if measured speed is near-zero the vehicle is stopped.
         // If it's unrealistically fast (>40 m/s ≈ 90mph), cap it.
         if measuredSpeed < 0.5 {
             // Vehicle appears stopped — check if it's been stopped for a while
             if totalTime > 15 {
-                return 0  // Stopped for 15+ s → definitely dwelling
+                return SpeedEstimate(speedMps: 0, confidence: max(confidence, 0.75), isStopped: true)  // Stopped for 15+ s → definitely dwelling
             }
             // Might just be a brief pause — use a fraction of default
-            return defaultSpeed(for: mode) * 0.3
+            return SpeedEstimate(speedMps: defaultSpeedMps * 0.3, confidence: max(0.15, confidence * 0.5), isStopped: false)
         }
 
-        return min(measuredSpeed, 40.0)
+        return SpeedEstimate(speedMps: measuredSpeed, confidence: confidence, isStopped: false)
     }
 
     /// Mode-specific default average speeds (m/s) for when we have no history.
@@ -445,21 +512,53 @@ enum ArrivalETAEngine {
     private static func blendETAs(
         positionSeconds: Double,
         feedSeconds: Double,
-        routeDistance: Double
+        routeDistance: Double,
+        speedConfidence: Double,
+        towardScore: Double,
+        mode: String
     ) -> Double {
-        // Within 500m: trust position data more (0.7 position, 0.3 feed)
-        // 500m–2km: equal blend
-        // Beyond 2km: trust feed more (0.3 position, 0.7 feed)
-        let positionWeight: Double
-        if routeDistance < 500 {
-            positionWeight = 0.7
-        } else if routeDistance < 2000 {
-            // Linear interpolation from 0.7 to 0.3
-            let t = (routeDistance - 500) / 1500
-            positionWeight = 0.7 - t * 0.4
-        } else {
-            positionWeight = 0.3
+        // Within near-threshold: trust position more.
+        // Between near/far: gradual taper.
+        // Beyond far: trust feed more.
+        let (nearThreshold, farThreshold): (Double, Double)
+        switch mode.lowercased() {
+        case "bus":
+            (nearThreshold, farThreshold) = (350, 1800)
+        case "subway":
+            (nearThreshold, farThreshold) = (500, 2500)
+        case "lirr", "mnr":
+            (nearThreshold, farThreshold) = (800, 5000)
+        default:
+            (nearThreshold, farThreshold) = (500, 2500)
         }
+
+        let basePositionWeight: Double
+        if routeDistance < nearThreshold {
+            basePositionWeight = 0.75
+        } else if routeDistance < farThreshold {
+            let t = (routeDistance - nearThreshold) / max(1, (farThreshold - nearThreshold))
+            basePositionWeight = 0.75 - t * 0.45
+        } else {
+            basePositionWeight = 0.30
+        }
+
+        // Confidence multiplier from observed speed stability and whether the
+        // vehicle is moving toward the target stop.
+        let quality = max(0, min(1, (0.25 + 0.75 * speedConfidence) * towardScore))
+        var positionWeight = basePositionWeight * (0.35 + 0.65 * quality)
+
+        // If vehicle appears to move away from stop, heavily damp position ETA.
+        if towardScore < 0.25 {
+            positionWeight = min(positionWeight, 0.2)
+        }
+
+        // Large disagreement with low confidence => favor feed more.
+        let disagreement = abs(positionSeconds - feedSeconds)
+        if disagreement > 240, speedConfidence < 0.45 {
+            positionWeight *= 0.65
+        }
+
+        positionWeight = max(0.12, min(0.88, positionWeight))
 
         let blended = positionSeconds * positionWeight + feedSeconds * (1 - positionWeight)
 
@@ -470,5 +569,48 @@ enum ArrivalETAEngine {
         }
 
         return max(blended, 0)
+    }
+
+    /// Scores whether the vehicle is moving toward the stop.
+    /// 1.0 = clearly toward, 0.0 = clearly away, 0.5 = unknown.
+    private static func movementTowardStopScore(
+        vehicleKey: String?,
+        current: CLLocationCoordinate2D,
+        stop: CLLocationCoordinate2D
+    ) -> Double {
+        guard let vehicleKey,
+              let samples = positionHistory[vehicleKey],
+              let prev = samples.dropLast().last
+        else {
+            return 0.6
+        }
+
+        let moveVec = vector(from: prev.coordinate, to: current)
+        let stopVec = vector(from: current, to: stop)
+
+        let moveNorm = hypot(moveVec.dx, moveVec.dy)
+        let stopNorm = hypot(stopVec.dx, stopVec.dy)
+        guard moveNorm > 1e-9, stopNorm > 1e-9 else { return 0.6 }
+
+        let cosine = ((moveVec.dx * stopVec.dx) + (moveVec.dy * stopVec.dy)) / (moveNorm * stopNorm)
+        // Map cosine [-1,1] -> [0,1]
+        let directional = (cosine + 1) / 2
+
+        // Distance trend signal: if distance is shrinking, boost confidence.
+        let prevDist = MKMapPoint(prev.coordinate).distance(to: MKMapPoint(stop))
+        let currDist = MKMapPoint(current).distance(to: MKMapPoint(stop))
+        let trend = prevDist - currDist
+        let trendScore = max(0, min(1, 0.5 + trend / 120.0))
+
+        return max(0, min(1, 0.6 * directional + 0.4 * trendScore))
+    }
+
+    private static func vector(
+        from: CLLocationCoordinate2D,
+        to: CLLocationCoordinate2D
+    ) -> (dx: Double, dy: Double) {
+        let a = MKMapPoint(from)
+        let b = MKMapPoint(to)
+        return (dx: b.x - a.x, dy: b.y - a.y)
     }
 }

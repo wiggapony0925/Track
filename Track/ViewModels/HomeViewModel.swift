@@ -1264,58 +1264,78 @@ final class HomeViewModel {
     private func updateLiveActivityFromRefresh() {
         if currentTrackedRoute == nil { return }
 
-        // Find matching arrival and its siblings across all possible data sources
-        var foundArrival: (minutesAway: Int, destination: String, isBus: Bool)?
-        var siblings: [Int] = []
+        // Find matching arrival and its siblings across all possible data sources.
+        var found: (secondsRemaining: Double, siblings: [Int])?
 
         // 1. Check Nearby Transit (Unified)
         if let match = nearbyTransit.first(where: { isTracking($0) }) {
-            foundArrival = (match.minutesAway, match.destination ?? match.direction, match.isBus)
-            siblings =
-                nearbyTransit
+            let now = Date()
+            let currentETA = smartETA(for: match)
+            let currentSecs = currentETA.secondsRemaining
+            let currentArrival = now.addingTimeInterval(currentSecs)
+            let siblingTimes = nearbyTransit
                 .filter {
-                    $0.routeId == match.routeId && $0.direction == match.direction
-                        && $0.minutesAway > match.minutesAway
+                    $0.routeId == match.routeId
+                        && $0.direction == match.direction
+                        && $0.id != match.id
                 }
-                .map { $0.minutesAway }
-                .sorted()
+                .map { now.addingTimeInterval(smartETA(for: $0).secondsRemaining) }
+
+            let siblingMinutes = TrackingTimeSync.nextArrivalMinutes(
+                arrivalTimes: siblingTimes,
+                after: currentArrival,
+                now: now
+            )
+            found = (secondsRemaining: currentSecs, siblings: siblingMinutes)
         }
         // 2. Check Subway Dedicated
         else if let match = upcomingArrivals.first(where: { isTracking($0) }) {
-            foundArrival = (match.minutesAway, match.direction, false)
-            siblings =
-                upcomingArrivals
+            let now = Date()
+            let currentArrival = match.estimatedTime
+            let siblingTimes = upcomingArrivals
                 .filter {
-                    $0.direction == match.direction && $0.stationID == match.stationID
-                        && $0.minutesAway > match.minutesAway
+                    $0.direction == match.direction
+                        && $0.stationID == match.stationID
+                        && $0.id != match.id
                 }
-                .map { $0.minutesAway }
-                .sorted()
+                .map(\ .estimatedTime)
+
+            let siblingMinutes = TrackingTimeSync.nextArrivalMinutes(
+                arrivalTimes: siblingTimes,
+                after: currentArrival,
+                now: now
+            )
+            let currentSecs = TrackingTimeSync.remainingSeconds(until: currentArrival, now: now)
+            found = (secondsRemaining: currentSecs, siblings: siblingMinutes)
         }
         // 3. Check Bus Dedicated
         else if let match = busArrivals.first(where: { isTracking($0) }) {
-            let mins = match.expectedArrival.map { Int($0.timeIntervalSinceNow / 60) } ?? 0
-            foundArrival = (mins, "Bus", true)
-            siblings =
-                busArrivals
-                .filter { $0.routeId == match.routeId && $0.stopId == match.stopId }
-                .compactMap { $0.expectedArrival }
-                .map { Int($0.timeIntervalSinceNow / 60) }
-                .filter { $0 > mins }
-                .sorted()
+            let now = Date()
+            let currentArrival = match.expectedArrival ?? now
+            let siblingTimes = busArrivals
+                .filter { $0.routeId == match.routeId && $0.stopId == match.stopId && $0.id != match.id }
+                .compactMap(\ .expectedArrival)
+
+            let siblingMinutes = TrackingTimeSync.nextArrivalMinutes(
+                arrivalTimes: siblingTimes,
+                after: currentArrival,
+                now: now
+            )
+            let currentSecs = TrackingTimeSync.remainingSeconds(until: currentArrival, now: now)
+            found = (secondsRemaining: currentSecs, siblings: siblingMinutes)
         }
 
-        if let current = foundArrival {
-            let eta = Date().addingTimeInterval(Double(current.minutesAway) * 60)
-            let progress = 1.0 - (Double(current.minutesAway) / 15.0)  // Simple 15-min scale progress
+        if let current = found {
+            let eta = Date().addingTimeInterval(current.secondsRemaining)
+            let mins = TrackingTimeSync.remainingMinutes(until: eta)
+            let progress = TrackingTimeSync.progress(until: eta)
 
             LiveActivityManager.shared.updateActivity(
-                statusText: current.minutesAway <= 1
-                    ? "Arriving" : "\(current.minutesAway) stops away",
+                statusText: TrackingTimeSync.statusText(until: eta),
                 arrivalTime: eta,
-                progress: max(0, min(1.0, progress)),
-                stopsAway: current.minutesAway,
-                nextArrivals: Array(siblings.prefix(2))
+                progress: progress,
+                minutesAway: mins,
+                nextArrivals: Array(current.siblings.prefix(2))
             )
         } else {
             // Fallback: If no arrival is found (e.g. train just left and next one not yet in feed),
@@ -1325,7 +1345,7 @@ final class HomeViewModel {
                 statusText: "Waiting for next train...",
                 arrivalTime: Date().addingTimeInterval(300),  // 5 min buffer to keep widget alive
                 progress: 0.0,
-                stopsAway: nil,
+                minutesAway: nil,
                 nextArrivals: []
             )
         }
@@ -1378,6 +1398,14 @@ final class HomeViewModel {
         selectedGroupedRoute = group
         selectedDirectionIndex = directionIndex
         isRouteDetailPresented = true
+
+        #if DEBUG
+        AppLogger.shared.log(
+            "ROUTE_DETAIL",
+            message:
+                "OPEN route=\(group.routeId) mode=\(group.mode) selectedDirIdx=\(directionIndex) dirs=\(group.directions.count) snapshot=\(debugDirectionSnapshot(group))"
+        )
+        #endif
 
         // Log route interaction to Supabase for analytics
         Task {
@@ -1557,6 +1585,16 @@ final class HomeViewModel {
         if group.isBus {
             await fetchBusScheduleIfNeeded()
         }
+
+        #if DEBUG
+        if let selected = selectedGroupedRoute {
+            AppLogger.shared.log(
+                "ROUTE_DETAIL",
+                message:
+                    "READY route=\(selected.routeId) mode=\(selected.mode) selectedDirIdx=\(selectedDirectionIndex) snapshot=\(debugDirectionSnapshot(selected))"
+            )
+        }
+        #endif
     }
 
     /// Populates the route shape's empty `stops` array from the group's arrival
@@ -1963,6 +2001,18 @@ final class HomeViewModel {
     private func syncBusArrivalsFromVehicles(_ vehicles: [BusVehicleResponse]) async {
         guard let currentGroup = selectedGroupedRoute else { return }
 
+        func normalizeStopId(_ raw: String) -> String {
+            let stripped = stripMTAStopPrefix(raw)
+            guard stripped.count > 1, let last = stripped.last, last == "N" || last == "S" else {
+                return stripped
+            }
+            let penultimate = stripped[stripped.index(before: stripped.index(before: stripped.endIndex))]
+            if penultimate.isNumber || penultimate.isLowercase {
+                return String(stripped.dropLast())
+            }
+            return stripped
+        }
+
         // Build a mapping from numeric directionRef (0/1) to the existing
         // group direction key (e.g. "Inbound", "EAST NEW YORK", etc.).
         // The grouped API uses descriptive direction names while SIRI
@@ -1992,6 +2042,20 @@ final class HomeViewModel {
             return result
         }()
 
+        // Build stop-id membership per direction from route shape.
+        // This is the most reliable source for assigning arrivals to the
+        // correct direction tab when destination/headsign text is ambiguous.
+        let directionStopSets: [(dirKey: String, stopIds: Set<String>)] = {
+            guard let shape = routeShape else { return [] }
+            return currentGroup.directions.enumerated().map { index, dir in
+                let ids = Set(
+                    shape.stopsForDirection(index: index, name: dir.direction)
+                        .map { normalizeStopId($0.id) }
+                )
+                return (dirKey: dir.direction, stopIds: ids)
+            }
+        }()
+
         // Flats list of all new arrivals from all vehicles, keyed to the
         // correct group direction string (not the raw numeric directionRef).
         var newArrivals: [NearbyTransitResponse] = []
@@ -1999,32 +2063,47 @@ final class HomeViewModel {
         for vehicle in vehicles {
             guard let calls = vehicle.onwardCalls else { continue }
 
-            // Resolve which group direction this vehicle belongs to:
-            // 1) Try destination-name matching against the vehicle's destination
-            // 2) Fall back to directionRef → index mapping
-            let resolvedDirection: String = {
-                // Try matching vehicle destination against known direction destinations
-                if let destName = calls.first?.destinationName?.uppercased() ?? vehicle.statusText?.uppercased() {
-                    for (dirKey, dests) in directionDestinations {
-                        if dests.contains(where: { destName.contains($0) || $0.contains(destName) }) {
-                            return dirKey
+            for call in calls {
+                // Resolve direction PER call (not per vehicle) so branching routes
+                // don't mirror times across tabs.
+                let resolvedDirection: String? = {
+                    // 1) Stop-ID membership against route-shape direction stops
+                    let sid = call.stopId
+                    if !sid.isEmpty {
+                        let normalized = normalizeStopId(sid)
+                        let candidates = directionStopSets.filter { $0.stopIds.contains(normalized) }
+                        if candidates.count == 1 {
+                            return candidates[0].dirKey
                         }
                     }
-                }
-                // Fall back to directionRef index mapping
-                if let ref = vehicle.directionRef, let mapped = dirRefToGroupDirection[ref] {
-                    return mapped
-                }
-                // Last resort: use first direction
-                return currentGroup.directions.first?.direction ?? "0"
-            }()
 
-            for call in calls {
+                    // 2) Destination/headsign text matching
+                    if let destName = (call.destinationName ?? vehicle.statusText)?.uppercased(), !destName.isEmpty {
+                        for (dirKey, dests) in directionDestinations {
+                            if dests.contains(where: { destName.contains($0) || $0.contains(destName) }) {
+                                return dirKey
+                            }
+                        }
+                    }
+
+                    // 3) directionRef fallback for simple 2-direction mapping
+                    if let ref = vehicle.directionRef, let mapped = dirRefToGroupDirection[ref] {
+                        return mapped
+                    }
+
+                    // 4) Multi-direction routes: skip unknown instead of contaminating tabs.
+                    if currentGroup.directions.count > 1 {
+                        return nil
+                    }
+                    return currentGroup.directions.first?.direction
+                }()
+
+                guard let resolvedDirection else { continue }
+
                 // Calculate minutes away
                 let minutes: Int
                 if let idx = call.expectedArrival {
-                    let diff = idx.timeIntervalSinceNow
-                    minutes = max(0, Int(diff / 60))
+                    minutes = TrackingTimeSync.remainingMinutes(until: idx)
                 } else {
                     minutes = 99
                 }
@@ -2118,6 +2197,14 @@ final class HomeViewModel {
             directions: newDirections
         )
 
+        #if DEBUG
+        AppLogger.shared.log(
+            "SYNC_BUS",
+            message:
+                "route=\(currentGroup.routeId) vehicles=\(vehicles.count) calls=\(newArrivals.count) snapshot=\(debugDirectionSnapshot(updatedGroup))"
+        )
+        #endif
+
         await MainActor.run {
             // Only update if the route hasn't changed in the meantime
             if self.selectedGroupedRoute?.routeId == currentGroup.routeId {
@@ -2185,6 +2272,18 @@ final class HomeViewModel {
     private func syncTrainArrivals(_ arrivals: [TrainArrival], mode: String = "subway") async {
         guard let currentGroup = selectedGroupedRoute else { return }
 
+        func normalizeStopId(_ raw: String) -> String {
+            let stripped = stripMTAStopPrefix(raw)
+            guard stripped.count > 1, let last = stripped.last, last == "N" || last == "S" else {
+                return stripped
+            }
+            let penultimate = stripped[stripped.index(before: stripped.index(before: stripped.endIndex))]
+            if penultimate.isNumber || penultimate.isLowercase {
+                return String(stripped.dropLast())
+            }
+            return stripped
+        }
+
         // Map TrainArrival -> NearbyTransitResponse
         // Filter to only this route if needed (though caller usually filters)
         let routeArrivals = arrivals.filter { $0.routeID == currentGroup.routeId }
@@ -2216,6 +2315,19 @@ final class HomeViewModel {
         }
 
         if newArrivals.isEmpty { return }
+
+        // Build stop-id membership per direction from route shape, used as
+        // primary assignment to prevent branch directions from sharing ETAs.
+        let directionStopSets: [(dirKey: String, stopIds: Set<String>)] = {
+            guard let shape = routeShape else { return [] }
+            return currentGroup.directions.enumerated().map { index, dir in
+                let ids = Set(
+                    shape.stopsForDirection(index: index, name: dir.direction)
+                        .map { normalizeStopId($0.id) }
+                )
+                return (dirKey: dir.direction, stopIds: ids)
+            }
+        }()
 
         // Build compass ↔ label expansion tables for fuzzy direction matching.
         // Train arrivals use GTFS-RT direction codes ("N"/"S") while the group's
@@ -2269,6 +2381,15 @@ final class HomeViewModel {
 
         // Assign each new arrival to the correct group direction using fuzzy matching
         func resolveDirection(for arrival: NearbyTransitResponse) -> String {
+            // 0) Stop-ID membership against route-shape direction stops
+            if let sid = arrival.stopId {
+                let normalized = normalizeStopId(sid)
+                let candidates = directionStopSets.filter { $0.stopIds.contains(normalized) }
+                if candidates.count == 1 {
+                    return candidates[0].dirKey
+                }
+            }
+
             let arrDir = arrival.direction.uppercased()
             let arrDest = arrival.destination?.uppercased() ?? ""
 
@@ -2338,6 +2459,14 @@ final class HomeViewModel {
             colorHex: currentGroup.colorHex,
             directions: newDirections
         )
+
+        #if DEBUG
+        AppLogger.shared.log(
+            "SYNC_TRAIN",
+            message:
+                "route=\(currentGroup.routeId) mode=\(mode) arrivals=\(newArrivals.count) snapshot=\(debugDirectionSnapshot(updatedGroup))"
+        )
+        #endif
 
         await MainActor.run {
             if self.selectedGroupedRoute?.routeId == currentGroup.routeId {
@@ -2466,7 +2595,7 @@ final class HomeViewModel {
                 vehicleKey: updated[i].vehicleId,
                 coordinate: result.coordinate)
         }
-        withAnimation(.interpolatingSpring(stiffness: 30, damping: 15)) {
+        withAnimation(.linear(duration: 1.0)) {
             self.busVehicles = updated
         }
     }
@@ -2617,7 +2746,7 @@ final class HomeViewModel {
             }
         }
 
-        withAnimation(.interpolatingSpring(stiffness: 30, damping: 15)) {
+        withAnimation(.linear(duration: 1.0)) {
             self.trainVehicles = newVehicles
         }
     }
@@ -3085,24 +3214,31 @@ final class HomeViewModel {
         // Update local state and reload widgets
         WidgetCenter.shared.reloadAllTimelines()
 
-        // Start Live Activity
-        let eta = Date().addingTimeInterval(Double(arrival.minutesAway) * 60)
+        // Start Live Activity using the same smart ETA path as route detail.
+        let eta = Date().addingTimeInterval(smartETA(for: arrival).secondsRemaining)
 
         // Find sibling arrivals for the "Other upcoming trains" section
-        let nextArrivals =
+        let now = Date()
+        let currentArrival = eta
+        let siblingTimes =
             (groupedTransit.first(where: { $0.routeId == arrival.routeId })?
             .directions.first(where: { $0.direction == arrival.direction })?
-            .arrivals.filter { $0.minutesAway > arrival.minutesAway }
-            .map { $0.minutesAway }
-            .sorted() ?? [])
-            .prefix(2)
+            .arrivals
+            .filter { $0.id != arrival.id }
+            .map { now.addingTimeInterval(smartETA(for: $0).secondsRemaining) } ?? [])
+
+        let nextArrivals = TrackingTimeSync.nextArrivalMinutes(
+            arrivalTimes: siblingTimes,
+            after: currentArrival,
+            now: now
+        )
 
         LiveActivityManager.shared.startActivity(
             lineId: arrival.isBus ? stripMTAPrefix(arrival.routeId) : arrival.routeId,
             destination: arrival.destination ?? arrival.direction,
             arrivalTime: eta,
             isBus: arrival.isBus,
-            nextArrivals: Array(nextArrivals)
+            nextArrivals: nextArrivals
         )
     }
 
@@ -3134,26 +3270,27 @@ final class HomeViewModel {
         currentTrackedRoute = trackedRoute
         WidgetCenter.shared.reloadAllTimelines()
 
-        // Start Live Activity
-        let eta = Date().addingTimeInterval(Double(arrival.minutesAway) * 60)
+        // Start Live Activity using feed timestamp (`estimatedTime`) for precision.
+        let eta = arrival.estimatedTime
 
         // Find sibling arrivals for the "Other upcoming trains" section
-        let nextArrivals =
-            upcomingArrivals
-            .filter {
-                $0.direction == arrival.direction && $0.stationID == arrival.stationID
-                    && $0.minutesAway > arrival.minutesAway
-            }
-            .map { $0.minutesAway }
-            .sorted()
-            .prefix(2)
+        let nextArrivals = TrackingTimeSync.nextArrivalMinutes(
+            arrivalTimes: upcomingArrivals
+                .filter {
+                    $0.direction == arrival.direction
+                        && $0.stationID == arrival.stationID
+                        && $0.id != arrival.id
+                }
+                .map(\ .estimatedTime),
+            after: eta
+        )
 
         LiveActivityManager.shared.startActivity(
             lineId: arrival.routeID,
             destination: arrival.direction,
             arrivalTime: eta,
             isBus: false,
-            nextArrivals: Array(nextArrivals)
+            nextArrivals: nextArrivals
         )
     }
 
@@ -3189,21 +3326,19 @@ final class HomeViewModel {
         let arrivalTime = arrival.expectedArrival ?? Date().addingTimeInterval(300)
 
         // Find sibling arrivals for the "Other upcoming trains" section
-        let nextArrivals =
-            busArrivals
-            .filter { $0.routeId == arrival.routeId && $0.stopId == arrival.stopId }
-            .compactMap { $0.expectedArrival }
-            .filter { $0 > arrivalTime }
-            .map { Int($0.timeIntervalSinceNow / 60) }
-            .sorted()
-            .prefix(2)
+        let nextArrivals = TrackingTimeSync.nextArrivalMinutes(
+            arrivalTimes: busArrivals
+                .filter { $0.routeId == arrival.routeId && $0.stopId == arrival.stopId }
+                .compactMap(\ .expectedArrival),
+            after: arrivalTime
+        )
 
         LiveActivityManager.shared.startActivity(
             lineId: stripMTAPrefix(arrival.routeId),
             destination: "Bus Tracking",
             arrivalTime: arrivalTime,
             isBus: true,
-            nextArrivals: Array(nextArrivals)
+            nextArrivals: nextArrivals
         )
     }
 
@@ -3245,27 +3380,28 @@ final class HomeViewModel {
         currentTrackedRoute = trackedRoute
         WidgetCenter.shared.reloadAllTimelines()
 
-        // Start Live Activity
-        let eta = Date().addingTimeInterval(Double(arrival.minutesAway) * 60)
+        // Start Live Activity using feed timestamp (`estimatedTime`) for precision.
+        let eta = arrival.estimatedTime
 
         // Find sibling arrivals for the "Other upcoming trains" section
         let agencyArrivals = agency == "lirr" ? lirrArrivals : mnrArrivals
-        let nextArrivals =
-            agencyArrivals
-            .filter {
-                $0.direction == arrival.direction && $0.stationID == arrival.stationID
-                    && $0.minutesAway > arrival.minutesAway
-            }
-            .map { $0.minutesAway }
-            .sorted()
-            .prefix(2)
+        let nextArrivals = TrackingTimeSync.nextArrivalMinutes(
+            arrivalTimes: agencyArrivals
+                .filter {
+                    $0.direction == arrival.direction
+                        && $0.stationID == arrival.stationID
+                        && $0.id != arrival.id
+                }
+                .map(\ .estimatedTime),
+            after: eta
+        )
 
         LiveActivityManager.shared.startActivity(
             lineId: arrival.routeID,
             destination: arrival.direction,
             arrivalTime: eta,
             isBus: false,
-            nextArrivals: Array(nextArrivals)
+            nextArrivals: nextArrivals
         )
     }
 
@@ -3335,8 +3471,23 @@ final class HomeViewModel {
                     self.enrichGroupWithShapeDirections(shape)
                 }
                 AppLogger.shared.log("SYNC", message: "Updated selected route: \(match.routeId)")
+                #if DEBUG
+                if let selected = self.selectedGroupedRoute {
+                    AppLogger.shared.log(
+                        "SYNC",
+                        message:
+                            "Persist route=\(selected.routeId) mode=\(selected.mode) selectedDirIdx=\(self.selectedDirectionIndex) snapshot=\(self.debugDirectionSnapshot(selected))"
+                    )
+                }
+                #endif
             }
         }
+    }
+
+    private func debugDirectionSnapshot(_ group: GroupedNearbyTransitResponse) -> String {
+        group.directions.enumerated().map { index, direction in
+            "#\(index):\(direction.direction){all:\(direction.arrivals.count),live:\(direction.liveArrivals.count)}"
+        }.joined(separator: " | ")
     }
 
     // MARK: - Deep Link

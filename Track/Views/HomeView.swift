@@ -368,6 +368,7 @@ struct HomeView: View {
                 busSchedule: viewModel.busSchedule,
                 cachedTrainArrivals: viewModel.cachedTrainArrivals,
                 cachedStations: viewModel.cachedStations,
+                smartETAProvider: { viewModel.smartETA(for: $0) },
                 liveVehicleCount: vehicleCount,
                 isSheetExpanded: sheetDetent == .large,
                 is3DMode: $is3DMode,
@@ -539,9 +540,9 @@ struct HomeView: View {
             let isCommuterRail = viewModel.selectedGroupedRoute?.isCommuterRail ?? false
             let startTime = Date()
             var consecutiveErrors = 0
-            // Bus: interpolate every 2s (was 1s — reduces map re-renders by 50%).
-            // Subway/Rail: simulate every 2s, network refresh at longer intervals.
-            let tickInterval: TimeInterval = 2.0
+            // Run simulation every second for smoother marker glide.
+            // Keep network poll cadence unchanged via tick divisors below.
+            let tickInterval: TimeInterval = 1.0
             let timer = Timer.scheduledTimer(withTimeInterval: tickInterval, repeats: true) { _ in
                 let tick = Int(Date().timeIntervalSince(startTime) / tickInterval)
                 
@@ -550,7 +551,7 @@ struct HomeView: View {
                         // Buses: MTA SIRI updates GPS every ~30s.
                         // Poll every 10s for fresh data, interpolate on other ticks.
                         // Back off on errors: skip network calls after 3+ failures.
-                        let pollInterval = consecutiveErrors >= 3 ? 15 : 5 // ticks (×2s = 10s / 30s)
+                        let pollInterval = consecutiveErrors >= 3 ? 30 : 10 // ticks (×1s = 10s / 30s)
                         if tick % pollInterval == 0 {
                             await viewModel.refreshBusVehicles()
                             if viewModel.errorMessage != nil {
@@ -565,13 +566,13 @@ struct HomeView: View {
                         // LIRR / MNR: Same interpolation engine as subway —
                         // simulate every tick, network refresh every 10s.
                         viewModel.updateSimulation()
-                        if tick % 5 == 0 { // 5 ticks × 2s = 10s
+                        if tick % 10 == 0 { // 10 ticks × 1s = 10s
                             await viewModel.refreshCommuterRailVehicles()
                         }
                     } else {
                         // Subway: Simulate every tick, network refresh every 6s
                         viewModel.updateSimulation()
-                        if tick % 3 == 0 { // 3 ticks × 2s = 6s
+                        if tick % 6 == 0 { // 6 ticks × 1s = 6s
                             await viewModel.refreshTrainVehicles()
                         }
                     }

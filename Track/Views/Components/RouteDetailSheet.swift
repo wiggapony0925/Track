@@ -22,6 +22,9 @@ struct RouteDetailSheet: View {
     var cachedTrainArrivals: [TrainArrival] = []
     var cachedStations: [HomeViewModel.CachedSubwayStation] = []
     var onTrack: ((NearbyTransitResponse) -> Void)?
+    /// Optional shared smart ETA provider from HomeViewModel.
+    /// When provided, Route Detail and Home rows use the same ETA source.
+    var smartETAProvider: ((NearbyTransitResponse) -> SmartETA)? = nil
     var isTracking: ((NearbyTransitResponse) -> Bool)?
     /// Returns true if the arrival has a live vehicle position on the map.
     var isLiveOnMap: ((NearbyTransitResponse) -> Bool)?
@@ -90,6 +93,7 @@ struct RouteDetailSheet: View {
         busSchedule: BusScheduleResponse? = nil,
         cachedTrainArrivals: [TrainArrival] = [],
         cachedStations: [HomeViewModel.CachedSubwayStation] = [],
+        smartETAProvider: ((NearbyTransitResponse) -> SmartETA)? = nil,
         liveVehicleCount: Int = 0,
         isSheetExpanded: Bool = false,
         is3DMode: Binding<Bool> = .constant(false),
@@ -113,6 +117,7 @@ struct RouteDetailSheet: View {
         self.busSchedule = busSchedule
         self.cachedTrainArrivals = cachedTrainArrivals
         self.cachedStations = cachedStations
+        self.smartETAProvider = smartETAProvider
         self.liveVehicleCount = liveVehicleCount
         self.onTrack = onTrack
         self.isTracking = isTracking
@@ -264,6 +269,14 @@ struct RouteDetailSheet: View {
             // Seed loading state: if the current direction already has arrivals
             // (e.g. sheet re-opened after data landed), skip the skeleton phase.
             isLoadingArrivals = safeDirection.arrivals.isEmpty
+            #if DEBUG
+            AppLogger.shared.log(
+                "ROUTE_DETAIL",
+                message:
+                    "VIEW_OPEN route=\(group.routeId) mode=\(group.mode) selectedDirIdx=\(selectedDirectionIndex) dir=\(safeDirection.direction) all=\(safeDirection.arrivals.count) live=\(safeDirection.liveArrivals.count)"
+            )
+            #endif
+            logETAParity(reason: "open")
         }
         .onChange(of: group) { _, _ in
             // Clear loading skeleton the moment any arrivals arrive.
@@ -272,6 +285,7 @@ struct RouteDetailSheet: View {
                     isLoadingArrivals = false
                 }
             }
+            logETAParity(reason: "group_update")
         }
         .task(id: group.id) {
             // Safety timeout: if no arrivals arrive within 6 s (e.g. truly no service),
@@ -286,6 +300,15 @@ struct RouteDetailSheet: View {
         }
         .onChange(of: selectedDirectionIndex) { _, _ in
             isFavorited = favoritesManager.isFavorite(routeId: group.routeId, mode: group.mode)
+            #if DEBUG
+            let direction = safeDirection
+            AppLogger.shared.log(
+                "ROUTE_DETAIL",
+                message:
+                    "DIR_CHANGE route=\(group.routeId) mode=\(group.mode) selectedDirIdx=\(selectedDirectionIndex) dir=\(direction.direction) all=\(direction.arrivals.count) live=\(direction.liveArrivals.count)"
+            )
+            #endif
+                    logETAParity(reason: "dir_change")
         }
         .alert("Sign In to Save Favorites", isPresented: $showSignInPrompt) {
             Button("OK", role: .cancel) {}
@@ -465,7 +488,7 @@ struct RouteDetailSheet: View {
         if let stopId = selectedStopId, !stopId.isEmpty {
             let atNearestStop = liveOnly.filter { arrivalMatchesStop($0, stopId: stopId) }
             if !atNearestStop.isEmpty {
-                return atNearestStop.sorted { $0.minutesAway < $1.minutesAway }
+                return sortArrivalsByETA(atNearestStop)
             }
         }
 
@@ -491,7 +514,7 @@ struct RouteDetailSheet: View {
             if let key = closestStopKey {
                 let atClosest = liveOnly.filter { ($0.stopId ?? $0.stopName) == key }
                 if !atClosest.isEmpty {
-                    return atClosest.sorted { $0.minutesAway < $1.minutesAway }
+                    return sortArrivalsByETA(atClosest)
                 }
             }
         }
@@ -499,8 +522,7 @@ struct RouteDetailSheet: View {
         // ── 4. Last resort: soonest arrivals deduplicated by trip ──
         // Avoids showing the same vehicle at multiple stops along the route.
         var seenTrips = Set<String>()
-        return liveOnly
-            .sorted { $0.minutesAway < $1.minutesAway }
+        return sortArrivalsByETA(liveOnly)
             .filter { arrival in
                 let key = arrival.tripId ?? arrival.vehicleId ?? arrival.id
                 return seenTrips.insert(key).inserted
@@ -514,6 +536,62 @@ struct RouteDetailSheet: View {
     private var nearestStopArrivals: [NearbyTransitResponse] {
         // Reuse prioritizedArrivals which already filters to nearest stop
         return prioritizedArrivals
+    }
+
+    /// Mirrors `GroupedRouteRow.countdownArrival(for:)` as closely as possible,
+    /// so we can compare Home-row countdown ETA against Route Detail countdown ETA.
+    private func rowComparableCountdownArrival(for direction: DirectionArrivalsResponse) -> NearbyTransitResponse? {
+        let live = direction.liveArrivals
+        guard !live.isEmpty else { return nil }
+
+        let refCoord = currentLocation ?? searchCenter
+        if let refCoord {
+            let refLoc = CLLocation(latitude: refCoord.latitude, longitude: refCoord.longitude)
+            var nearestStopKey: String?
+            var nearestDistance: CLLocationDistance = .greatestFiniteMagnitude
+
+            for arrival in live {
+                let distance = arrivalDistance(arrival, from: refLoc)
+                if distance < nearestDistance {
+                    nearestDistance = distance
+                    nearestStopKey = arrival.stopId ?? arrival.stopName
+                }
+            }
+
+            if let key = nearestStopKey {
+                let atNearestStop = live.filter { ($0.stopId ?? $0.stopName) == key }
+                if let first = sortArrivalsByETA(atNearestStop).first {
+                    return first
+                }
+            }
+        }
+
+        return sortArrivalsByETA(live).first
+    }
+
+    private func logETAParity(reason: String) {
+        #if DEBUG
+        let direction = safeDirection
+        guard let rowArrival = rowComparableCountdownArrival(for: direction),
+              let detailArrival = nearestStopArrivals.first
+        else {
+            AppLogger.shared.log(
+                "ETA_PARITY",
+                message: "reason=\(reason) route=\(group.routeId) dir=\(direction.direction) unavailable"
+            )
+            return
+        }
+
+        let rowETA = smartETA(for: rowArrival)
+        let detailETA = smartETA(for: detailArrival)
+        let deltaSeconds = Int(abs(rowETA.secondsRemaining - detailETA.secondsRemaining))
+
+        AppLogger.shared.log(
+            "ETA_PARITY",
+            message:
+                "reason=\(reason) route=\(group.routeId) dir=\(direction.direction) row=\(rowETA.minutesRemaining)m detail=\(detailETA.minutesRemaining)m delta=\(deltaSeconds)s rowStop=\(rowArrival.stopName) detailStop=\(detailArrival.stopName)"
+        )
+        #endif
     }
 
     /// Checks if an arrival matches a stop ID, with fuzzy matching for
@@ -611,11 +689,25 @@ struct RouteDetailSheet: View {
         return .greatestFiniteMagnitude
     }
 
+    /// Sorts arrivals by smart ETA so chips and rows use the same ordering.
+    private func sortArrivalsByETA(_ arrivals: [NearbyTransitResponse]) -> [NearbyTransitResponse] {
+        arrivals.sorted { lhs, rhs in
+            let left = smartETA(for: lhs).secondsRemaining
+            let right = smartETA(for: rhs).secondsRemaining
+            if left != right { return left < right }
+            return lhs.id < rhs.id
+        }
+    }
+
     // MARK: - Smart ETA
 
     /// Computes a smart ETA for an arrival using live vehicle position + polyline.
     /// Uses the data already available on the sheet (busVehicles, routeShape).
     private func smartETA(for arrival: NearbyTransitResponse) -> SmartETA {
+        if let shared = smartETAProvider {
+            return shared(arrival)
+        }
+
         // Find the vehicle's live coordinate from busVehicles binding
         let vehicleCoord: CLLocationCoordinate2D? = {
             if arrival.isBus, let vid = arrival.vehicleId, !vid.isEmpty,
@@ -1177,57 +1269,7 @@ struct RouteDetailSheet: View {
                     VStack(spacing: 8) {
                         ForEach(Array(sortedArrivals.enumerated()), id: \.element.id) {
                             index, arrival in
-                            // Only highlight the *first* arrival at the origin stop,
-                            // and only while stopHighlightActive is true.
-                            let isFirstAtStop = stopHighlightActive
-                                && selectedStopId != nil
-                                && arrival.stopId == selectedStopId
-                                && !sortedArrivals.prefix(index).contains(where: { $0.stopId == selectedStopId })
-                            NearbyTransitRow(
-                                arrival: arrival,
-                                isTracking: isTracking?(arrival) ?? false,
-                                isSelected: isFirstAtStop,
-                                isLiveOnMap: isLiveOnMap?(arrival) ?? false,
-                                tappedVehicleId: tappedVehicleId,
-                                onTrack: {
-                                    onTrack?(arrival)
-                                },
-                                onSelectRoute: nil,
-                                onClearHighlight: {
-                                    onClearHighlight?()
-                                },
-                                onFocusVehicle: { key in
-                                    onFocusVehicle?(key)
-                                },
-                                userLocation: currentLocation.map {
-                                    CLLocation(latitude: $0.latitude, longitude: $0.longitude)
-                                },
-                                isExpanded: expandedArrivalID == arrival.id,
-                                onExpand: {
-                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
-                                        if expandedArrivalID == arrival.id {
-                                            expandedArrivalID = nil
-                                            // Collapse -> clear map highlight
-                                            onFocusVehicle?(nil)
-                                        } else {
-                                            expandedArrivalID = arrival.id
-                                            // Expand -> focus map if live
-                                            if isLiveOnMap?(arrival) ?? false {
-                                                onFocusVehicle?(arrival.vehicleId ?? arrival.tripId)
-                                            }
-                                        }
-                                    }
-                                }
-                            )
-                            .id(arrival.id)
-                            .background(AppTheme.Colors.cardBackground)
-                            .cornerRadius(16)
-                            .shadow(color: .black.opacity(0.04), radius: 4, x: 0, y: 2)
-                            .padding(.horizontal, AppTheme.Layout.margin)
-                            .accessibilityElement(children: .combine)
-                            .accessibilityLabel(
-                                "\(arrival.stopName), \(arrival.minutesAway) minutes, \(arrival.status)"
-                            )
+                            arrivalRowView(arrival: arrival, index: index, in: sortedArrivals)
                         }
                     }
                     .onChange(of: tappedVehicleId) { _, newValue in
@@ -1276,6 +1318,70 @@ struct RouteDetailSheet: View {
         )
         .accessibilityHint(
             group.directions.count > 1 ? "Swipe left or right to switch direction" : "")
+    }
+
+    @ViewBuilder
+    private func arrivalRowView(
+        arrival: NearbyTransitResponse,
+        index: Int,
+        in sortedArrivals: [NearbyTransitResponse]
+    ) -> some View {
+        let isFirstAtStop = stopHighlightActive
+            && selectedStopId != nil
+            && arrival.stopId == selectedStopId
+            && !sortedArrivals.prefix(index).contains(where: { $0.stopId == selectedStopId })
+
+        NearbyTransitRow(
+            arrival: arrival,
+            isTracking: isTracking?(arrival) ?? false,
+            isSelected: isFirstAtStop,
+            isLiveOnMap: isLiveOnMap?(arrival) ?? false,
+            tappedVehicleId: tappedVehicleId,
+            onTrack: {
+                onTrack?(arrival)
+            },
+            onSelectRoute: nil,
+            onClearHighlight: {
+                onClearHighlight?()
+            },
+            onFocusVehicle: { key in
+                onFocusVehicle?(key)
+            },
+            userLocation: currentLocation.map {
+                CLLocation(latitude: $0.latitude, longitude: $0.longitude)
+            },
+            smartETAProvider: { smartETA(for: $0) },
+            isExpanded: expandedArrivalID == arrival.id,
+            onExpand: {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                    if expandedArrivalID == arrival.id {
+                        expandedArrivalID = nil
+                        // Collapse -> clear map highlight
+                        onFocusVehicle?(nil)
+                    } else {
+                        expandedArrivalID = arrival.id
+                        // Expand -> focus map if live
+                        if isLiveOnMap?(arrival) ?? false {
+                            onFocusVehicle?(arrival.vehicleId ?? arrival.tripId)
+                        }
+                    }
+                }
+            }
+        )
+        .id(arrival.id)
+        .background(AppTheme.Colors.cardBackground)
+        .cornerRadius(16)
+        .shadow(color: .black.opacity(0.04), radius: 4, x: 0, y: 2)
+        .padding(.horizontal, AppTheme.Layout.margin)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(arrivalAccessibilityLabel(for: arrival))
+    }
+
+    private func arrivalAccessibilityLabel(for arrival: NearbyTransitResponse) -> String {
+        let eta = smartETA(for: arrival)
+        let etaText = (eta.isAtStop || eta.secondsRemaining <= 30)
+            ? "Now" : "\(eta.minutesRemaining) minutes"
+        return "\(arrival.stopName), \(etaText), \(arrival.status)"
     }
 
     // MARK: - Content Tab Picker

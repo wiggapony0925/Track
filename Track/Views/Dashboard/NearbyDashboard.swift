@@ -388,6 +388,7 @@ struct GroupedRouteList: View {
                         ).isEmpty,
                     userLocation: referenceLocation,
                     distanceMetersOverride: viewModel.displayDistanceMeters(for: group, from: referenceLocation),
+                    smartETAProvider: { viewModel.smartETA(for: $0) },
                     onSelect: { directionIndex in
                         RouteAnalyticsManager.shared.logInteraction(routeId: group.routeId)
                         sheetNavigator.navigate(

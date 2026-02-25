@@ -65,7 +65,7 @@ struct NearbySmallWidgetView: View {
                     transitBadge(arrival: arrival, size: 50)
 
                     // Live Timer — centred under the badge
-                    if arrival.minutesAway <= 0 {
+                    if TrackingTimeSync.remainingMinutes(until: arrival.arrivalTime) <= 0 {
                         Text("NOW")
                             .font(.system(size: 26, weight: .black, design: .rounded))
                             .foregroundColor(.white)
@@ -76,7 +76,7 @@ struct NearbySmallWidgetView: View {
                     } else {
                         Text(arrival.arrivalTime, style: .timer)
                             .font(.system(size: 32, weight: .bold, design: .rounded))
-                            .foregroundColor(AppTheme.Colors.countdown(arrival.minutesAway))
+                            .foregroundColor(AppTheme.Colors.countdown(TrackingTimeSync.remainingMinutes(until: arrival.arrivalTime)))
                             .multilineTextAlignment(.center)
                             .frame(maxWidth: .infinity)
                             .minimumScaleFactor(0.7)
@@ -325,7 +325,7 @@ struct NearbyWidgetRowView: View {
             VStack(alignment: .trailing, spacing: 4) {
                 Text(arrival.arrivalTime, style: .timer)
                     .font(.custom("Helvetica-Bold", size: 18))
-                    .foregroundColor(AppTheme.Colors.countdown(arrival.minutesAway))
+                    .foregroundColor(AppTheme.Colors.countdown(TrackingTimeSync.remainingMinutes(until: arrival.arrivalTime)))
                     .monospacedDigit()
                 
                 if !arrival.status.isEmpty {
@@ -400,7 +400,7 @@ struct TrackRouteSmallWidgetView: View {
                     transitBadge(size: 44)
 
                     // Hero ETA
-                    if firstArrival.minutesAway <= 0 {
+                    if TrackingTimeSync.remainingMinutes(until: firstArrival.arrivalTime) <= 0 {
                         Text("NOW")
                             .font(.system(size: 28, weight: .black, design: .rounded))
                             .foregroundColor(.white)
@@ -412,7 +412,7 @@ struct TrackRouteSmallWidgetView: View {
                     } else {
                         Text(firstArrival.arrivalTime, style: .timer)
                             .font(.system(size: 30, weight: .bold, design: .rounded))
-                            .foregroundColor(AppTheme.Colors.countdown(firstArrival.minutesAway))
+                            .foregroundColor(AppTheme.Colors.countdown(TrackingTimeSync.remainingMinutes(until: firstArrival.arrivalTime)))
                             .monospacedDigit()
                             .multilineTextAlignment(.center)
                             .frame(maxWidth: .infinity)

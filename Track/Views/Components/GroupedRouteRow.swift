@@ -16,6 +16,7 @@ struct GroupedRouteRow: View {
     var hasAlert: Bool = false
     var userLocation: CLLocation? = nil
     var distanceMetersOverride: Double? = nil
+    var smartETAProvider: ((NearbyTransitResponse) -> SmartETA)? = nil
     var onSelect: ((Int) -> Void)? = nil
     var onTrack: ((Int) -> Void)? = nil
 
@@ -81,6 +82,55 @@ struct GroupedRouteRow: View {
             return DirectionArrivalsResponse(direction: "—", arrivals: [])
         }
         return visibleDirections[min(currentDirectionIndex, visibleDirections.count - 1)]
+    }
+
+    /// Returns the countdown arrival for a direction, preferring the user's
+    /// nearest stop so the card aligns with the route detail sheet.
+    private func countdownArrival(for direction: DirectionArrivalsResponse) -> NearbyTransitResponse? {
+        let live = direction.liveArrivals
+        guard !live.isEmpty else { return nil }
+
+        if let loc = userLocation {
+            var nearestStopKey: String?
+            var nearestDistance: CLLocationDistance = .greatestFiniteMagnitude
+
+            for arrival in live {
+                guard let lat = arrival.stopLat, let lon = arrival.stopLon else { continue }
+                let dist = loc.distance(from: CLLocation(latitude: lat, longitude: lon))
+                if dist < nearestDistance {
+                    nearestDistance = dist
+                    nearestStopKey = arrival.stopId ?? arrival.stopName
+                }
+            }
+
+            if let key = nearestStopKey {
+                let atNearestStop = live.filter { ($0.stopId ?? $0.stopName) == key }
+                if let first = sortedByETA(atNearestStop).first { return first }
+            }
+        }
+
+        return sortedByETA(live).first
+    }
+
+    private func sortedByETA(_ arrivals: [NearbyTransitResponse]) -> [NearbyTransitResponse] {
+        arrivals.sorted { lhs, rhs in
+            let left = resolvedETA(for: lhs).secondsRemaining
+            let right = resolvedETA(for: rhs).secondsRemaining
+            if left != right { return left < right }
+            return lhs.id < rhs.id
+        }
+    }
+
+    private func resolvedETA(for arrival: NearbyTransitResponse) -> SmartETA {
+        smartETAProvider?(arrival)
+            ?? ArrivalETAEngine.computeETA(
+                vehicleCoord: nil,
+                vehicleKey: nil,
+                stopCoord: nil,
+                arrivalTs: arrival.arrivalTs,
+                staticMinutes: arrival.minutesAway,
+                mode: arrival.mode
+            )
     }
 
     var body: some View {
@@ -407,15 +457,13 @@ struct GroupedRouteRow: View {
         let liveFirst = dir.liveArrivals.first
         let hasOnlyPlaceholders = liveFirst == nil && !dir.arrivals.isEmpty
 
-        if let first = liveFirst {
+        let countdownFirst = countdownArrival(for: dir)
+
+        if let first = countdownFirst {
             // ── Live data — smart countdown using ArrivalETAEngine ──
             VStack(spacing: 2) {
                 TimelineView(.periodic(from: .now, by: 1.0)) { _ in
-                    let eta = ArrivalETAEngine.computeETA(
-                        vehicleCoord: nil, vehicleKey: nil, stopCoord: nil,
-                        arrivalTs: first.arrivalTs,
-                        staticMinutes: first.minutesAway,
-                        mode: first.mode)
+                    let eta = resolvedETA(for: first)
                     let mins = eta.minutesRemaining
                     let isNow = eta.isAtStop || eta.secondsRemaining <= 30
 

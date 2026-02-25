@@ -258,7 +258,12 @@ struct SingleRouteWidgetView: View {
                 if let firstArrival = arrivals.first {
                     // Convert widget state into Live Activity banner data
                     let progress = calculateProgress(arrival: firstArrival)
-                    let nextArrivals = arrivals.dropFirst().prefix(2).map { $0.minutesAway }
+                    let firstMinutes = TrackingTimeSync.remainingMinutes(until: firstArrival.arrivalTime)
+                    let nextArrivals = arrivals
+                        .dropFirst()
+                        .map { TrackingTimeSync.remainingMinutes(until: $0.arrivalTime) }
+                        .filter { $0 >= 0 }
+                        .prefix(2)
                     
                     TrackLiveBannerView(
                         data: TrackLiveBannerData(
@@ -267,10 +272,10 @@ struct SingleRouteWidgetView: View {
                             isBus: route.isBus,
                             isLIRR: route.isLIRR,
                             arrivalTime: firstArrival.arrivalTime,
-                            proximityText: stopsAwayText(for: firstArrival),
-                            stopsAway: nil,
+                            proximityText: TrackingTimeSync.proximityText(minutesAway: firstMinutes),
+                            minutesAway: firstMinutes,
                             walkMinutes: nil,
-                            isHurryUp: firstArrival.minutesAway <= 2,
+                            isHurryUp: firstMinutes <= 2,
                             progress: progress,
                             nextArrivals: Array(nextArrivals)
                         ),
@@ -293,19 +298,7 @@ struct SingleRouteWidgetView: View {
     }
 
     private func calculateProgress(arrival: NearbyArrival) -> Double {
-        let maxMins: Double = 20.0
-        let currentMins = max(0.0, Double(arrival.minutesAway))
-        let remainingRatio = currentMins / maxMins
-        return max(0.0, min(1.0, 1.0 - remainingRatio))
-    }
-    
-    private func stopsAwayText(for arrival: NearbyArrival) -> String {
-        if arrival.minutesAway <= 0 {
-            return "Arriving now"
-        } else if arrival.minutesAway <= 2 {
-            return "Arriving shortly"
-        }
-        return "Waiting for next vehicle..."
+        TrackingTimeSync.progress(until: arrival.arrivalTime)
     }
 
     // MARK: - Large Widget
@@ -376,7 +369,7 @@ struct SingleRouteWidgetView: View {
                             HStack(alignment: .firstTextBaseline, spacing: 2) {
                                 Text(first.arrivalTime, style: .timer)
                                     .font(.system(size: 42, weight: .bold, design: .rounded))
-                                    .foregroundColor(AppTheme.Colors.countdown(first.minutesAway))
+                                    .foregroundColor(AppTheme.Colors.countdown(TrackingTimeSync.remainingMinutes(until: first.arrivalTime)))
                                     .monospacedDigit()
                             }
                         }
