@@ -46,7 +46,16 @@ struct DataController {
         do {
             container = try ModelContainer(for: schema, configurations: config)
         } catch {
-            fatalError("Failed to load shared ModelContainer: \(error)")
+            // Attempt in-memory fallback so the app can still launch
+            #if DEBUG
+            print("⚠️ ModelContainer init failed: \(error). Falling back to in-memory store.")
+            #endif
+            let fallback = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+            do {
+                container = try ModelContainer(for: schema, configurations: fallback)
+            } catch {
+                fatalError("Failed to load even in-memory ModelContainer: \(error)")
+            }
         }
     }
 }

@@ -25,7 +25,7 @@ struct HomeView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
     @State private var viewModel = HomeViewModel()
-    @State private var locationManager = LocationManager()
+    var locationManager: LocationManager
     @State private var sheetNavigator = SheetNavigator()
     @State private var sheetDetent: PresentationDetent = .fraction(0.4)
     @State private var cameraPosition: MapCameraPosition = AppTheme.MapConfig.initialPosition
@@ -831,5 +831,5 @@ struct HomeView: View {
 }
 
 #Preview {
-    HomeView()
+    HomeView(locationManager: LocationManager())
 }

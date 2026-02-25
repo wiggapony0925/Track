@@ -16,7 +16,10 @@ struct TrackAPI {
 
     /// Set by SupabaseManager after login/profile load to avoid hopping
     /// to @MainActor on every API call.
-    private(set) static var cachedUserEmail: String?
+    /// nonisolated(unsafe) is safe here: written only from @MainActor
+    /// (SupabaseManager.currentUser didSet) and read from async contexts
+    /// where a stale/nil value is harmless (just omits the header).
+    nonisolated(unsafe) private(set) static var cachedUserEmail: String?
 
     static func setCachedEmail(_ email: String?) {
         cachedUserEmail = email
@@ -27,7 +30,8 @@ struct TrackAPI {
     /// The active backend URL, determined by the Developer Settings in SettingsView.
     /// On a physical device, localhost is never used (it would point to the phone itself).
     /// Cached to avoid re-computing (and logging) on every API call.
-    private static var _cachedBaseURL: String?
+    /// nonisolated(unsafe): written from @MainActor, read from async contexts.
+    nonisolated(unsafe) private static var _cachedBaseURL: String?
     
     /// Invalidate the cached URL when developer settings change.
     static func invalidateBaseURL() {

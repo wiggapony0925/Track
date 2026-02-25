@@ -79,8 +79,9 @@ struct TrackWidgetProvider: TimelineProvider {
             return
         }
 
-        let useLocalhost = defaults.bool(forKey: "dev_use_localhost")
         let baseURL: String
+        #if DEBUG
+        let useLocalhost = defaults.bool(forKey: "dev_use_localhost")
         #if targetEnvironment(simulator)
         if useLocalhost {
             baseURL = "http://127.0.0.1:8000"
@@ -89,8 +90,16 @@ struct TrackWidgetProvider: TimelineProvider {
             baseURL = "http://\(storedIP):8000"
         }
         #else
-        let storedIP = defaults.string(forKey: "dev_custom_ip") ?? "192.168.12.101"
-        baseURL = "http://\(storedIP):8000"
+        if useLocalhost {
+            let storedIP = defaults.string(forKey: "dev_custom_ip") ?? "192.168.12.101"
+            baseURL = "http://\(storedIP):8000"
+        } else {
+            baseURL = "https://track-vkrr.onrender.com"
+        }
+        #endif
+        #else
+        // Release builds ALWAYS use the production backend
+        baseURL = "https://track-vkrr.onrender.com"
         #endif
 
         guard var components = URLComponents(string: baseURL + "/nearby") else {

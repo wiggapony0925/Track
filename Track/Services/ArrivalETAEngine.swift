@@ -78,6 +78,7 @@ struct ETAContext {
 
 // MARK: - Engine
 
+@MainActor
 enum ArrivalETAEngine {
 
     // MARK: - Position History (for speed estimation)

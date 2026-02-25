@@ -82,6 +82,20 @@ class SupabaseManager: ObservableObject {
         UserDefaults(suiteName: kAppGroupIdentifier) ?? .standard
     }
     
+    // MARK: - URL Helpers
+    
+    /// Safely builds URLComponents for a Supabase REST endpoint.
+    /// Throws `SupabaseError.networkError` instead of force-unwrapping.
+    private func components(for path: String, queryItems: [URLQueryItem] = []) throws -> URL {
+        let url = baseURL.appendingPathComponent(path)
+        guard var comps = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            throw SupabaseError.networkError
+        }
+        if !queryItems.isEmpty { comps.queryItems = queryItems }
+        guard let final = comps.url else { throw SupabaseError.networkError }
+        return final
+    }
+    
     // MARK: - Initialization
     
     /// Thread-safe ISO 8601 date parsing for Supabase timestamps.
@@ -235,11 +249,12 @@ class SupabaseManager: ObservableObject {
         let tokenClaims = decodeAppleIDTokenClaims(from: idToken)
         
         // Build request to Supabase Auth
-        let url = baseURL.appendingPathComponent("auth/v1/token")
-        var urlComponents = URLComponents(url: url, resolvingAgainstBaseURL: false)!
-        urlComponents.queryItems = [URLQueryItem(name: "grant_type", value: "id_token")]
+        let tokenURL = try components(
+            for: "auth/v1/token",
+            queryItems: [URLQueryItem(name: "grant_type", value: "id_token")]
+        )
         
-        var request = URLRequest(url: urlComponents.url!)
+        var request = URLRequest(url: tokenURL)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
@@ -308,7 +323,9 @@ class SupabaseManager: ObservableObject {
     }
     
     /// Load current user profile
-    func loadCurrentUser() async {
+    /// - Parameter retryCount: Internal counter to prevent infinite recursion
+    ///   when token refresh succeeds but re-fetch is immediately rejected.
+    func loadCurrentUser(retryCount: Int = 0) async {
         guard let userId = defaults.string(forKey: userIdKey),
               let uuid = UUID(uuidString: userId) else {
             signOut()
@@ -331,15 +348,15 @@ class SupabaseManager: ObservableObject {
                     signOut()
                 }
             case .unauthorized:
-                // Try refreshing the token before giving up
-                if await refreshAccessToken() {
-                    AppLogger.shared.log("AUTH", message: "Token refreshed successfully, retrying profile fetch")
-                    await loadCurrentUser()
+                // Try refreshing the token before giving up — but only once
+                guard retryCount == 0, await refreshAccessToken() else {
+                    AppLogger.shared.log("AUTH", message: "Unauthorized and refresh failed. Signing out.")
+                    errorMessage = "Your session is no longer valid. Please sign in again."
+                    signOut()
                     return
                 }
-                AppLogger.shared.log("AUTH", message: "Unauthorized and refresh failed. Signing out.")
-                errorMessage = "Your session is no longer valid. Please sign in again."
-                signOut()
+                AppLogger.shared.log("AUTH", message: "Token refreshed successfully, retrying profile fetch")
+                await loadCurrentUser(retryCount: retryCount + 1)
             default:
                 AppLogger.shared.logError("Failed to load user profile", error: supabaseError)
             }
@@ -422,14 +439,15 @@ class SupabaseManager: ObservableObject {
     
     /// Fetch user profile from Supabase
     func fetchProfile(userId: UUID) async throws -> UserProfile {
-        let url = baseURL.appendingPathComponent("rest/v1/profiles")
-        var urlComponents = URLComponents(url: url, resolvingAgainstBaseURL: false)!
-        urlComponents.queryItems = [
-            URLQueryItem(name: "id", value: "eq.\(userId.uuidString)"),
-            URLQueryItem(name: "select", value: "*")
-        ]
+        let profileURL = try components(
+            for: "rest/v1/profiles",
+            queryItems: [
+                URLQueryItem(name: "id", value: "eq.\(userId.uuidString)"),
+                URLQueryItem(name: "select", value: "*")
+            ]
+        )
         
-        var request = URLRequest(url: urlComponents.url!)
+        var request = URLRequest(url: profileURL)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(apiKey, forHTTPHeaderField: "apikey")
         if let token = accessToken {
@@ -548,11 +566,11 @@ class SupabaseManager: ObservableObject {
     
     /// Update user profile
     func updateProfile(_ profile: UserProfile) async throws {
-        let url = baseURL.appendingPathComponent("rest/v1/profiles")
-        var urlComponents = URLComponents(url: url, resolvingAgainstBaseURL: false)!
-        urlComponents.queryItems = [URLQueryItem(name: "id", value: "eq.\(profile.id.uuidString)")]
+        let finalURL = try components(for: "rest/v1/profiles", queryItems: [
+            URLQueryItem(name: "id", value: "eq.\(profile.id.uuidString)")
+        ])
         
-        var request = URLRequest(url: urlComponents.url!)
+        var request = URLRequest(url: finalURL)
         request.httpMethod = "PATCH"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(apiKey, forHTTPHeaderField: "apikey")
@@ -697,15 +715,13 @@ class SupabaseManager: ObservableObject {
             return []
         }
         
-        let url = baseURL.appendingPathComponent("rest/v1/favorites")
-        var urlComponents = URLComponents(url: url, resolvingAgainstBaseURL: false)!
-        urlComponents.queryItems = [
+        let finalURL = try components(for: "rest/v1/favorites", queryItems: [
             URLQueryItem(name: "user_id", value: "eq.\(userId)"),
             URLQueryItem(name: "select", value: "*"),
             URLQueryItem(name: "order", value: "display_order.asc")
-        ]
+        ])
         
-        var request = URLRequest(url: urlComponents.url!)
+        var request = URLRequest(url: finalURL)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(apiKey, forHTTPHeaderField: "apikey")
         if let token = accessToken {
@@ -759,11 +775,11 @@ class SupabaseManager: ObservableObject {
     
     /// Remove a favorite
     func removeFavorite(id: Int64) async throws {
-        let url = baseURL.appendingPathComponent("rest/v1/favorites")
-        var urlComponents = URLComponents(url: url, resolvingAgainstBaseURL: false)!
-        urlComponents.queryItems = [URLQueryItem(name: "id", value: "eq.\(id)")]
+        let finalURL = try components(for: "rest/v1/favorites", queryItems: [
+            URLQueryItem(name: "id", value: "eq.\(id)")
+        ])
         
-        var request = URLRequest(url: urlComponents.url!)
+        var request = URLRequest(url: finalURL)
         request.httpMethod = "DELETE"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(apiKey, forHTTPHeaderField: "apikey")
@@ -787,14 +803,12 @@ class SupabaseManager: ObservableObject {
             return []
         }
         
-        let url = baseURL.appendingPathComponent("rest/v1/schedules")
-        var urlComponents = URLComponents(url: url, resolvingAgainstBaseURL: false)!
-        urlComponents.queryItems = [
+        let finalURL = try components(for: "rest/v1/schedules", queryItems: [
             URLQueryItem(name: "user_id", value: "eq.\(userId)"),
             URLQueryItem(name: "select", value: "*")
-        ]
+        ])
         
-        var request = URLRequest(url: urlComponents.url!)
+        var request = URLRequest(url: finalURL)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(apiKey, forHTTPHeaderField: "apikey")
         if let token = accessToken {
@@ -830,11 +844,11 @@ class SupabaseManager: ObservableObject {
     
     /// Delete a schedule
     func deleteSchedule(id: UUID) async throws {
-        let url = baseURL.appendingPathComponent("rest/v1/schedules")
-        var urlComponents = URLComponents(url: url, resolvingAgainstBaseURL: false)!
-        urlComponents.queryItems = [URLQueryItem(name: "id", value: "eq.\(id.uuidString)")]
+        let finalURL = try components(for: "rest/v1/schedules", queryItems: [
+            URLQueryItem(name: "id", value: "eq.\(id.uuidString)")
+        ])
         
-        var request = URLRequest(url: urlComponents.url!)
+        var request = URLRequest(url: finalURL)
         request.httpMethod = "DELETE"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(apiKey, forHTTPHeaderField: "apikey")
@@ -856,15 +870,12 @@ class SupabaseManager: ObservableObject {
     func fetchUserSettings() async throws -> CloudUserSettings? {
         guard let userId = currentUser?.id else { return nil }
         
-        let url = baseURL.appendingPathComponent("rest/v1/user_settings")
-        var urlComponents = URLComponents(url: url, resolvingAgainstBaseURL: false)!
-        urlComponents.queryItems = [
+        let finalURL = try components(for: "rest/v1/user_settings", queryItems: [
             URLQueryItem(name: "user_id", value: "eq.\(userId.uuidString)"),
             URLQueryItem(name: "select", value: "*")
-        ]
+        ])
         
-        var request = URLRequest(url: url)
-        request.url = urlComponents.url
+        var request = URLRequest(url: finalURL)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(apiKey, forHTTPHeaderField: "apikey")
         if let token = accessToken {
@@ -960,15 +971,13 @@ class SupabaseManager: ObservableObject {
             return []
         }
         
-        let url = baseURL.appendingPathComponent("rest/v1/commute_patterns", isDirectory: false)
-        var urlComponents = URLComponents(url: url, resolvingAgainstBaseURL: false)!
-        urlComponents.queryItems = [
+        let finalURL = try components(for: "rest/v1/commute_patterns", queryItems: [
             URLQueryItem(name: "user_id", value: "eq.\(userId.uuidString)"),
             URLQueryItem(name: "select", value: "*"),
             URLQueryItem(name: "order", value: "frequency.desc")
-        ]
+        ])
         
-        var request = URLRequest(url: urlComponents.url!)
+        var request = URLRequest(url: finalURL)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(apiKey, forHTTPHeaderField: "apikey")
         if let token = accessToken {

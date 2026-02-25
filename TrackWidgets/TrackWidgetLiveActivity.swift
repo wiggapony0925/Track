@@ -17,7 +17,7 @@ struct TrackWidgetLiveActivity: Widget {
         ActivityConfiguration(for: TrackActivityAttributes.self) { context in
             // Lock Screen banner
             lockScreenView(context: context)
-                .widgetURL(URL(string: "track://route/\(context.attributes.lineId)")!)
+                .widgetURL(URL(string: "track://route/\(context.attributes.lineId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? context.attributes.lineId)"))
         } dynamicIsland: { context in
             DynamicIsland {
                 // Expanded view regions
@@ -91,7 +91,7 @@ struct TrackWidgetLiveActivity: Widget {
             } minimal: {
                 compactLineBadge(context: context)
             }
-            .widgetURL(URL(string: "track://route/\(context.attributes.lineId)")!)
+            .widgetURL(URL(string: "track://route/\(context.attributes.lineId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? context.attributes.lineId)"))
         }
     }
 

@@ -46,14 +46,18 @@ final class AppLogger {
     ///   - tag: Category tag (e.g. "API_REQ", "API_RES", "ERROR")
     ///   - message: The log message
     func log(_ tag: String, message: String) {
-        let timestamp = dateFormatter.string(from: Date())
-        let entry = "[\(timestamp)] [\(tag)] \(message)\n"
-
-        // Print to Xcode console (synchronous, safe on main thread)
-        print(entry, terminator: "")
+        let now = Date()
+        // Capture the formatter reference once — actual formatting
+        // happens on the serial writeQueue to avoid DateFormatter races.
+        let fmt = dateFormatter
 
         // Append to log file asynchronously to avoid blocking main thread
         writeQueue.async { [fileURL] in
+            let timestamp = fmt.string(from: now)
+            let entry = "[\(timestamp)] [\(tag)] \(message)\n"
+
+            // Print to Xcode console
+            print(entry, terminator: "")
             guard let data = entry.data(using: .utf8) else { return }
             
             do {

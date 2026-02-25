@@ -49,10 +49,11 @@ final class LocationManager: NSObject, CLLocationManagerDelegate {
     // MARK: - CLLocationManagerDelegate
 
     nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        MainActor.assumeIsolated {
-            currentLocation = locations.last
+        let latest = locations.last
+        Task { @MainActor in
+            currentLocation = latest
             // Cache location for widget access via App Group
-            if let location = locations.last {
+            if let location = latest {
                 let defaults = UserDefaults(suiteName: kAppGroupIdentifier) ?? UserDefaults.standard
                 defaults.set(location.coordinate.latitude, forKey: "lastLatitude")
                 defaults.set(location.coordinate.longitude, forKey: "lastLongitude")
@@ -62,7 +63,7 @@ final class LocationManager: NSObject, CLLocationManagerDelegate {
     }
 
     nonisolated func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
-        MainActor.assumeIsolated {
+        Task { @MainActor in
             authorizationStatus = status
             if status == .authorizedWhenInUse || status == .authorizedAlways {
                 manager.startUpdatingLocation()
@@ -71,8 +72,9 @@ final class LocationManager: NSObject, CLLocationManagerDelegate {
     }
 
     nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
-        MainActor.assumeIsolated {
-            locationError = error.localizedDescription
+        let desc = error.localizedDescription
+        Task { @MainActor in
+            locationError = desc
         }
     }
 

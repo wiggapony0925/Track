@@ -11,6 +11,7 @@
 import Foundation
 import CoreLocation
 
+@MainActor
 class RouteAnalyticsManager {
     static let shared = RouteAnalyticsManager()
     

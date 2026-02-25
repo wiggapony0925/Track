@@ -133,6 +133,10 @@ final class LiveActivityManager {
     /// Ends the current Live Activity.
     func endActivity() {
         guard let activityID = currentActivityID else { return }
+        // Clear immediately so `isTracking` returns false
+        // and `startActivity()` won't see a stale ID.
+        currentActivityID = nil
+        AppLogger.shared.log("LIVE_ACTIVITY", message: "Ending activity \(activityID)")
 
         Task {
             for activity in Activity<TrackActivityAttributes>.activities where activity.id == activityID {
@@ -151,8 +155,5 @@ final class LiveActivityManager {
                 )
             }
         }
-
-        currentActivityID = nil
-        AppLogger.shared.log("LIVE_ACTIVITY", message: "Ended activity \(activityID)")
     }
 }
