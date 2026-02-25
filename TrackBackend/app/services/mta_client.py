@@ -17,6 +17,7 @@ from typing import Any
 
 import httpx
 
+from app.cache_config import MTA_CACHE_MAX_SIZE, MTA_FEED_TTL_SECONDS, MTA_UPSTREAM_CONCURRENCY
 from app.config import get_settings
 from app.utils.logger import TrackLogger
 
@@ -34,9 +35,6 @@ def _get_timeout() -> httpx.Timeout:
 # TTL Cache with bounded size
 # ---------------------------------------------------------------------------
 
-_CACHE_MAX_SIZE = 64  # Max entries before forced eviction
-
-
 class AsyncTTLCache:
     """Simple bounded TTL cache.
 
@@ -46,7 +44,7 @@ class AsyncTTLCache:
       If still over limit, drops the oldest 25%.
     """
 
-    def __init__(self, ttl: float = 15.0, max_size: int = _CACHE_MAX_SIZE):
+    def __init__(self, ttl: float = MTA_FEED_TTL_SECONDS, max_size: int = MTA_CACHE_MAX_SIZE):
         self.ttl = ttl
         self.max_size = max_size
         self._cache: dict[str, tuple[float, Any]] = {}
@@ -86,14 +84,13 @@ class AsyncTTLCache:
 
 
 # Shared cache instance
-_HTTP_CACHE = AsyncTTLCache(ttl=15.0)
+_HTTP_CACHE = AsyncTTLCache()
 
 # Prevent duplicate upstream calls for the same URL under burst traffic.
 _INFLIGHT_FETCHES: dict[str, asyncio.Task[Any]] = {}
 
 # Keep outbound MTA concurrency bounded.
-_MAX_UPSTREAM_CONCURRENCY = 32
-_upstream_semaphore = asyncio.Semaphore(_MAX_UPSTREAM_CONCURRENCY)
+_upstream_semaphore = asyncio.Semaphore(MTA_UPSTREAM_CONCURRENCY)
 
 
 # ---------------------------------------------------------------------------
@@ -171,6 +168,14 @@ async def _fetch_with_cache(url: str, *, parse_json: bool) -> Any:
 # ---------------------------------------------------------------------------
 # Public fetch helpers
 # ---------------------------------------------------------------------------
+
+
+def clear_mta_cache() -> int:
+    """Clear the HTTP/protobuf TTL cache. Returns number of entries cleared."""
+    count = len(_HTTP_CACHE._cache)
+    _HTTP_CACHE._cache.clear()
+    _INFLIGHT_FETCHES.clear()
+    return count
 
 
 async def fetch_protobuf(url: str) -> bytes:

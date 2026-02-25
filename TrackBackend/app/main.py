@@ -17,7 +17,7 @@ from fastapi import FastAPI, Request
 
 from app.config import get_settings
 from app.routers import bus, lirr, mnr, nearby, predict, status, subway
-from app.services.bus_client import close_shared_cache, init_shared_cache
+from app.services.bus_client import close_shared_cache, init_shared_cache, clear_bus_cache
 from app.services.data_loader import ensure_data_available
 from app.utils.logger import TrackLogger
 
@@ -53,6 +53,8 @@ async def startup_event():
     await init_shared_cache()
     # Start background GTFS freshness checker
     _gtfs_refresh_task = asyncio.create_task(_periodic_gtfs_check())
+    # Prime caches in background so first real user never eats a cold penalty
+    asyncio.create_task(_warmup_caches())
 
 
 @app.on_event("shutdown")
@@ -84,6 +86,35 @@ async def _periodic_gtfs_check():
                 f"[GTFS] Periodic check failed: {exc}", tag="GTFS"
             )
         await asyncio.sleep(_GTFS_CHECK_INTERVAL)
+
+
+async def _warmup_caches():
+    """Pre-fetch subway feeds and bus data during startup.
+
+    Primes L3 (subway GTFS-RT feeds) and L4 (bus routes) caches so the
+    very first user request is fast.  Runs in the background — the server
+    accepts requests immediately while this completes.
+    """
+    from app.services.data_cleaner import get_arrivals_for_line
+    from app.services.bus_client import get_routes as get_bus_routes
+
+    t0 = time.perf_counter()
+    TrackLogger.info("[WARMUP] Priming subway GTFS-RT feeds + bus routes...", tag="WARMUP")
+
+    # One representative line per feed → primes all 9 subway feeds
+    feed_lines = ["A", "B", "N", "1", "G", "L", "J", "7", "SI"]
+    results = await asyncio.gather(
+        *[get_arrivals_for_line(line) for line in feed_lines],
+        get_bus_routes(),
+        return_exceptions=True,
+    )
+    feed_ok = sum(1 for r in results[:9] if isinstance(r, list))
+    bus_ok = "OK" if isinstance(results[9], list) else "FAIL"
+    elapsed = time.perf_counter() - t0
+    TrackLogger.info(
+        f"[WARMUP] Done in {elapsed:.1f}s — subway feeds: {feed_ok}/9, bus routes: {bus_ok}",
+        tag="WARMUP",
+    )
 
 
 # Middleware to log every request with color, query params, and timing
@@ -142,3 +173,26 @@ async def data_refresh(full: bool = False) -> dict[str, Any]:
     from app.services.gtfs_refresh import check_and_refresh_gtfs
     results = await check_and_refresh_gtfs(full_check=full)
     return {"results": results}
+
+
+@app.post("/admin/cache/clear")
+async def clear_all_caches(request: Request) -> dict[str, Any]:
+    """Clear all in-memory caches. Localhost only — used by speed tests.
+
+    Returns counts of cleared entries per cache layer.
+    """
+    client = request.client
+    if client and client.host not in ("127.0.0.1", "::1", "localhost"):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403, detail="localhost only")
+
+    from app.routers.nearby import clear_nearby_cache
+    from app.services.mta_client import clear_mta_cache
+
+    counts = {
+        "nearby_response": clear_nearby_cache(),
+        "mta_feeds": clear_mta_cache(),
+        "bus": clear_bus_cache(),
+    }
+    TrackLogger.info(f"[ADMIN] All caches cleared: {counts}", tag="ADMIN")
+    return {"cleared": counts}

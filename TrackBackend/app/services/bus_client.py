@@ -28,6 +28,16 @@ from urllib.parse import quote
 
 import httpx
 
+from app.cache_config import (
+    BUS_ARRIVALS_FRESH_TTL, BUS_ARRIVALS_MAX_SIZE, BUS_ARRIVALS_STALE_TTL,
+    BUS_NEARBY_STOPS_MAX_SIZE, BUS_NEARBY_STOPS_TTL,
+    BUS_ROUTE_SHAPE_FRESH_TTL, BUS_ROUTE_SHAPE_MAX_SIZE, BUS_ROUTE_SHAPE_STALE_TTL,
+    BUS_ROUTES_FRESH_TTL, BUS_ROUTES_MAX_SIZE, BUS_ROUTES_STALE_TTL,
+    BUS_STOPS_FRESH_TTL, BUS_STOPS_MAX_SIZE, BUS_STOPS_STALE_TTL,
+    BUS_UPSTREAM_CONCURRENCY, BUS_VEHICLES_FRESH_TTL, BUS_VEHICLES_MAX_SIZE,
+    BUS_VEHICLES_STALE_TTL, OBA_AUTH_COOLDOWN, REDIS_KEY_PREFIX,
+    SIRI_CIRCUIT_COOLDOWN, SIRI_FAIL_THRESHOLD,
+)
 from app.config import get_settings
 from app.models import BusArrival, BusRoute, BusStop, BusVehicle, DirectionShape, RouteShape
 from app.utils.geo_utils import haversine_m
@@ -280,25 +290,19 @@ def _merge_polyline_segments(encoded_segments: list[str], gap_threshold_m: float
 # likely invalid.  Rather than flood the MTA server with requests that will
 # all fail, we flip a flag and immediately raise on subsequent calls.
 #
-# Changed from original: require _SIRI_FAIL_THRESHOLD consecutive auth
+# Changed from original: require SIRI_FAIL_THRESHOLD consecutive auth
 # failures before opening the circuit, so a single transient 403 (rate-limit)
 # doesn't block all bus routes for 5 minutes.
 # ---------------------------------------------------------------------------
 
 _siri_consecutive_auth_failures: int = 0
-_SIRI_FAIL_THRESHOLD: int = 3   # open after 3 consecutive 401/403
 _siri_circuit_open: bool = False
 _siri_circuit_opened_at: float = 0.0
-_SIRI_CIRCUIT_COOLDOWN = 300  # retry after 5 minutes
 
-# OBA auth/quota cooldown — when OBA starts returning 401/403, avoid
-# hammering the same endpoint for a short window.
 _oba_auth_blocked_until: float = 0.0
-_OBA_AUTH_COOLDOWN = 60  # seconds
 
-# Shared upstream concurrency guard (protects MTA and our workers during spikes)
-_UPSTREAM_MAX_CONCURRENCY = 64
-_upstream_semaphore = asyncio.Semaphore(_UPSTREAM_MAX_CONCURRENCY)
+# Upstream concurrency guard — values sourced from cache_config.py
+_upstream_semaphore = asyncio.Semaphore(BUS_UPSTREAM_CONCURRENCY)
 
 
 @dataclass
@@ -360,12 +364,9 @@ def _evict_cache(
             del cache[k]
 
 
-# Route-shape cache: mostly-static data, long-lived
+# Route-shape cache: mostly-static data, long-lived (TTLs from cache_config)
 _route_shape_cache: dict[str, _TTLCacheEntry] = {}
 _route_shape_inflight: dict[str, asyncio.Task[RouteShape]] = {}
-_ROUTE_SHAPE_FRESH_TTL = 6 * 60 * 60       # 6h
-_ROUTE_SHAPE_STALE_TTL = 7 * 24 * 60 * 60  # 7d
-_ROUTE_SHAPE_MAX_SIZE = 120                 # ~330 NYC routes; keep ~1/3 hot
 
 _BUS_STATIC_GTFS_ROOT = Path(__file__).resolve().parent.parent / "data" / "bus"
 _static_route_shape_index: dict[str, RouteShape] | None = None
@@ -577,28 +578,50 @@ def get_static_route_shape(route_id: str) -> RouteShape | None:
         service_type=shape.service_type,
     )
 
-# Vehicle cache: fast-moving data, short-lived
+# Arrivals cache: live SIRI stop-monitoring data (TTLs from cache_config)
+_arrivals_cache: dict[str, _TTLCacheEntry] = {}
+_arrivals_inflight: dict[str, asyncio.Task[list[BusArrival]]] = {}
+
+# Vehicle cache: live GPS dots on map (TTLs from cache_config)
 _vehicle_cache: dict[str, _TTLCacheEntry] = {}
 _vehicle_inflight: dict[str, asyncio.Task[list[BusVehicle]]] = {}
-_VEHICLE_FRESH_TTL = 6.0
-_VEHICLE_STALE_TTL = 45.0
-_VEHICLE_MAX_SIZE = 200
 
-# Stops cache: semi-static data
+# Stops cache: semi-static (TTLs from cache_config)
 _stops_cache: dict[str, _TTLCacheEntry] = {}
 _stops_inflight: dict[str, asyncio.Task[list[BusStop]]] = {}
-_STOPS_FRESH_TTL = 10 * 60.0
-_STOPS_STALE_TTL = 24 * 60 * 60.0
-_STOPS_MAX_SIZE = 120
+
+# Routes cache: nearly static (TTLs from cache_config)
+_routes_cache: dict[str, _TTLCacheEntry] = {}
+_routes_inflight: dict[str, asyncio.Task[list[BusRoute]]] = {}
+
+def clear_bus_cache() -> int:
+    """Clear all bus in-memory caches. Returns total entries cleared."""
+    count = (
+        len(_arrivals_cache) + len(_vehicle_cache)
+        + len(_stops_cache) + len(_routes_cache)
+        + len(_route_shape_cache) + len(_nearby_stops_cache)
+    )
+    _arrivals_cache.clear()
+    _arrivals_inflight.clear()
+    _vehicle_cache.clear()
+    _vehicle_inflight.clear()
+    _stops_cache.clear()
+    _stops_inflight.clear()
+    _routes_cache.clear()
+    _routes_inflight.clear()
+    _route_shape_cache.clear()
+    _route_shape_inflight.clear()
+    _nearby_stops_cache.clear()
+    return count
+
 
 # Optional shared cache (Redis) for multi-instance deployments.
 _redis_client: Any = None
 _redis_init_attempted: bool = False
-_REDIS_KEY_PREFIX = "track:bus"
 
 
 def _shared_key(kind: str, identifier: str) -> str:
-    return f"{_REDIS_KEY_PREFIX}:{kind}:{identifier}"
+    return f"{REDIS_KEY_PREFIX}:{kind}:{identifier}"
 
 
 async def init_shared_cache() -> None:
@@ -707,7 +730,7 @@ def _siri_circuit_is_open() -> bool:
     if not _siri_circuit_open:
         return False
     # Auto-reset after cooldown so the app can self-heal
-    if _time.time() - _siri_circuit_opened_at > _SIRI_CIRCUIT_COOLDOWN:
+    if _time.time() - _siri_circuit_opened_at > SIRI_CIRCUIT_COOLDOWN:
         _siri_circuit_open = False
         _siri_consecutive_auth_failures = 0
         TrackLogger.circuit("SIRI circuit breaker CLOSED (cooldown expired)")
@@ -719,7 +742,7 @@ def _record_siri_auth_failure() -> None:
     """Record a SIRI 401/403 failure; trip the breaker after threshold."""
     global _siri_consecutive_auth_failures, _siri_circuit_open, _siri_circuit_opened_at
     _siri_consecutive_auth_failures += 1
-    if _siri_consecutive_auth_failures >= _SIRI_FAIL_THRESHOLD and not _siri_circuit_open:
+    if _siri_consecutive_auth_failures >= SIRI_FAIL_THRESHOLD and not _siri_circuit_open:
         _siri_circuit_open = True
         _siri_circuit_opened_at = _time.time()
         TrackLogger.circuit(
@@ -734,10 +757,10 @@ def _record_oba_auth_failure(url: str) -> None:
         return
     now = _time.time()
     was_open = _oba_auth_blocked_until > now
-    _oba_auth_blocked_until = now + _OBA_AUTH_COOLDOWN
+    _oba_auth_blocked_until = now + OBA_AUTH_COOLDOWN
     if not was_open:
         TrackLogger.circuit(
-            f"OBA auth cooldown OPENED ({_OBA_AUTH_COOLDOWN}s after 401/403)"
+            f"OBA auth cooldown OPENED ({OBA_AUTH_COOLDOWN}s after 401/403)"
         )
 
 
@@ -758,7 +781,7 @@ def _trip_siri_circuit() -> None:
     global _siri_circuit_open, _siri_circuit_opened_at, _siri_consecutive_auth_failures
     _siri_circuit_open = True
     _siri_circuit_opened_at = _time.time()
-    _siri_consecutive_auth_failures = _SIRI_FAIL_THRESHOLD
+    _siri_consecutive_auth_failures = SIRI_FAIL_THRESHOLD
 
 
 async def _fetch_bus_json(
@@ -846,7 +869,78 @@ async def get_routes() -> list[BusRoute]:
 
     Queries every agency listed in ``settings.json`` (MTA NYCT *and* MTABC)
     and merges the results, de-duplicating by route id.
+
+    Results are cached for 1 hour (fresh) / 24h (stale) — route lists
+    barely ever change, so there's no reason to hit OBA every call.
     """
+    cache_key = "all_agencies"
+
+    cached, cache_state = _cache_get(
+        _routes_cache,
+        cache_key,
+        fresh_ttl=BUS_ROUTES_FRESH_TTL,
+        stale_ttl=BUS_ROUTES_STALE_TTL,
+    )
+    if cache_state == "fresh":
+        return cached
+
+    if cache_state == "stale":
+        # Serve stale immediately, refresh in background
+        if cache_key not in _routes_inflight:
+            async def _refresh_routes() -> None:
+                task = _routes_inflight.get(cache_key)
+                try:
+                    fresh = await _fetch_routes_uncached()
+                    _cache_set(
+                        _routes_cache, cache_key, fresh,
+                        max_size=BUS_ROUTES_MAX_SIZE,
+                        stale_ttl=BUS_ROUTES_STALE_TTL,
+                    )
+                except Exception as exc:
+                    TrackLogger.warning(
+                        f"[BUS_ROUTES] Background refresh failed: {exc}",
+                        tag="BUS",
+                    )
+                finally:
+                    if task is not None and _routes_inflight.get(cache_key) is task:
+                        _routes_inflight.pop(cache_key, None)
+
+            refresh_task = asyncio.create_task(_refresh_routes())
+            _routes_inflight[cache_key] = refresh_task
+        return cached
+
+    # No cache — check inflight dedup
+    inflight = _routes_inflight.get(cache_key)
+    if inflight is not None:
+        try:
+            return await inflight
+        except Exception:
+            if cached is not None:
+                return cached
+            raise
+
+    # Fresh upstream fetch
+    task = asyncio.create_task(_fetch_routes_uncached())
+    _routes_inflight[cache_key] = task
+    try:
+        fresh = await task
+        _cache_set(
+            _routes_cache, cache_key, fresh,
+            max_size=BUS_ROUTES_MAX_SIZE,
+            stale_ttl=BUS_ROUTES_STALE_TTL,
+        )
+        return fresh
+    except Exception:
+        if cached is not None:
+            return cached
+        raise
+    finally:
+        if _routes_inflight.get(cache_key) is task:
+            _routes_inflight.pop(cache_key, None)
+
+
+async def _fetch_routes_uncached() -> list[BusRoute]:
+    """Uncached OBA routes-for-agency fetch."""
     settings = get_settings()
     eps = settings.urls.bus_endpoints
     if eps is None:
@@ -921,8 +1015,8 @@ async def get_stops(route_id: str) -> list[BusStop]:
     cached, cache_state = _cache_get(
         _stops_cache,
         cache_key,
-        fresh_ttl=_STOPS_FRESH_TTL,
-        stale_ttl=_STOPS_STALE_TTL,
+        fresh_ttl=BUS_STOPS_FRESH_TTL,
+        stale_ttl=BUS_STOPS_STALE_TTL,
     )
     if cache_state == "fresh":
         return cached
@@ -931,12 +1025,12 @@ async def get_stops(route_id: str) -> list[BusStop]:
         shared, shared_state = await _shared_cache_get(
             "stops",
             cache_key,
-            fresh_ttl=_STOPS_FRESH_TTL,
-            stale_ttl=_STOPS_STALE_TTL,
+            fresh_ttl=BUS_STOPS_FRESH_TTL,
+            stale_ttl=BUS_STOPS_STALE_TTL,
             parser=_parse_stops,
         )
         if shared_state in ("fresh", "stale") and shared is not None:
-            _cache_set(_stops_cache, cache_key, shared, max_size=_STOPS_MAX_SIZE, stale_ttl=_STOPS_STALE_TTL)
+            _cache_set(_stops_cache, cache_key, shared, max_size=BUS_STOPS_MAX_SIZE, stale_ttl=BUS_STOPS_STALE_TTL)
             cached = shared
             cache_state = shared_state
 
@@ -946,11 +1040,11 @@ async def get_stops(route_id: str) -> list[BusStop]:
                 task = _stops_inflight.get(cache_key)
                 try:
                     fresh = await _fetch_stops_uncached(canonical_id)
-                    _cache_set(_stops_cache, cache_key, fresh, max_size=_STOPS_MAX_SIZE, stale_ttl=_STOPS_STALE_TTL)
+                    _cache_set(_stops_cache, cache_key, fresh, max_size=BUS_STOPS_MAX_SIZE, stale_ttl=BUS_STOPS_STALE_TTL)
                     await _shared_cache_set(
                         "stops",
                         cache_key,
-                        stale_ttl=_STOPS_STALE_TTL,
+                        stale_ttl=BUS_STOPS_STALE_TTL,
                         data=[item.model_dump(mode="json") for item in fresh],
                     )
                 except Exception as exc:
@@ -976,11 +1070,11 @@ async def get_stops(route_id: str) -> list[BusStop]:
     _stops_inflight[cache_key] = task
     try:
         fresh = await task
-        _cache_set(_stops_cache, cache_key, fresh, max_size=_STOPS_MAX_SIZE, stale_ttl=_STOPS_STALE_TTL)
+        _cache_set(_stops_cache, cache_key, fresh, max_size=BUS_STOPS_MAX_SIZE, stale_ttl=BUS_STOPS_STALE_TTL)
         await _shared_cache_set(
             "stops",
             cache_key,
-            stale_ttl=_STOPS_STALE_TTL,
+            stale_ttl=BUS_STOPS_STALE_TTL,
             data=[item.model_dump(mode="json") for item in fresh],
         )
         return fresh
@@ -1072,10 +1166,9 @@ async def _get_stops_impl(route_id: str) -> list[BusStop]:
 
 # Simple TTL cache for nearby stops to avoid hammering the MTA API
 # Key: rounded (lat, lon, radius) tuple → (timestamp, result)
+# TTLs from cache_config.py
 
 _nearby_stops_cache: dict[tuple[float, float, int], tuple[float, list[BusStop]]] = {}
-_NEARBY_CACHE_TTL = 60.0  # seconds
-_NEARBY_CACHE_MAX_SIZE = 50  # cap unique grid cells
 
 
 async def get_nearby_stops(
@@ -1098,7 +1191,7 @@ async def get_nearby_stops(
     cached = _nearby_stops_cache.get(cache_key)
     if cached is not None:
         ts, result = cached
-        if _time.monotonic() - ts < _NEARBY_CACHE_TTL:
+        if _time.monotonic() - ts < BUS_NEARBY_STOPS_TTL:
             return result
 
     eps = settings.urls.bus_endpoints
@@ -1148,7 +1241,7 @@ async def get_nearby_stops(
                 )
             # Cache successful result (with bounded eviction)
             _nearby_stops_cache[cache_key] = (_time.monotonic(), results)
-            if len(_nearby_stops_cache) > _NEARBY_CACHE_MAX_SIZE:
+            if len(_nearby_stops_cache) > BUS_NEARBY_STOPS_MAX_SIZE:
                 # Evict oldest entries
                 by_age = sorted(_nearby_stops_cache, key=lambda k: _nearby_stops_cache[k][0])
                 for k in by_age[: max(1, len(by_age) // 4)]:
@@ -1181,7 +1274,80 @@ async def get_realtime_arrivals(stop_id: str) -> list[BusArrival]:
 
     If both ``ExpectedArrivalTime`` and ``PresentableDistance`` are missing
     the entry is filtered out.
+
+    Results are cached for 15s (fresh) / 30s (stale) so concurrent and
+    near-concurrent requests for the same stop reuse a single upstream
+    call instead of each firing their own SIRI request.
     """
+    cache_key = stop_id
+
+    # --- Cache hierarchy: local → stale-serve-while-refresh → inflight dedup → upstream ---
+    cached, cache_state = _cache_get(
+        _arrivals_cache,
+        cache_key,
+        fresh_ttl=BUS_ARRIVALS_FRESH_TTL,
+        stale_ttl=BUS_ARRIVALS_STALE_TTL,
+    )
+    if cache_state == "fresh":
+        return cached
+
+    if cache_state == "stale":
+        # Serve stale data immediately; kick off a background refresh
+        if cache_key not in _arrivals_inflight:
+            async def _refresh_arrivals() -> None:
+                task = _arrivals_inflight.get(cache_key)
+                try:
+                    fresh = await _fetch_realtime_arrivals_uncached(stop_id)
+                    _cache_set(
+                        _arrivals_cache, cache_key, fresh,
+                        max_size=BUS_ARRIVALS_MAX_SIZE,
+                        stale_ttl=BUS_ARRIVALS_STALE_TTL,
+                    )
+                except Exception as exc:
+                    TrackLogger.warning(
+                        f"[BUS_ARRIVALS] Background refresh failed for {cache_key}: {exc}",
+                        tag="BUS",
+                    )
+                finally:
+                    if task is not None and _arrivals_inflight.get(cache_key) is task:
+                        _arrivals_inflight.pop(cache_key, None)
+
+            refresh_task = asyncio.create_task(_refresh_arrivals())
+            _arrivals_inflight[cache_key] = refresh_task
+        return cached
+
+    # No cache hit — check for inflight dedup
+    inflight = _arrivals_inflight.get(cache_key)
+    if inflight is not None:
+        try:
+            return await inflight
+        except Exception:
+            if cached is not None:
+                return cached
+            raise
+
+    # Fresh upstream fetch
+    task = asyncio.create_task(_fetch_realtime_arrivals_uncached(stop_id))
+    _arrivals_inflight[cache_key] = task
+    try:
+        fresh = await task
+        _cache_set(
+            _arrivals_cache, cache_key, fresh,
+            max_size=BUS_ARRIVALS_MAX_SIZE,
+            stale_ttl=BUS_ARRIVALS_STALE_TTL,
+        )
+        return fresh
+    except Exception:
+        if cached is not None:
+            return cached
+        raise
+    finally:
+        if _arrivals_inflight.get(cache_key) is task:
+            _arrivals_inflight.pop(cache_key, None)
+
+
+async def _fetch_realtime_arrivals_uncached(stop_id: str) -> list[BusArrival]:
+    """Uncached SIRI stop-monitoring fetch — the actual upstream call."""
     settings = get_settings()
     eps = settings.urls.bus_endpoints
     if eps is None:
@@ -1329,8 +1495,8 @@ async def get_vehicle_positions(route_id: str) -> list[BusVehicle]:
     cached, cache_state = _cache_get(
         _vehicle_cache,
         cache_key,
-        fresh_ttl=_VEHICLE_FRESH_TTL,
-        stale_ttl=_VEHICLE_STALE_TTL,
+        fresh_ttl=BUS_VEHICLES_FRESH_TTL,
+        stale_ttl=BUS_VEHICLES_STALE_TTL,
     )
     if cache_state == "fresh":
         return cached
@@ -1339,12 +1505,12 @@ async def get_vehicle_positions(route_id: str) -> list[BusVehicle]:
         shared, shared_state = await _shared_cache_get(
             "vehicles",
             cache_key,
-            fresh_ttl=_VEHICLE_FRESH_TTL,
-            stale_ttl=_VEHICLE_STALE_TTL,
+            fresh_ttl=BUS_VEHICLES_FRESH_TTL,
+            stale_ttl=BUS_VEHICLES_STALE_TTL,
             parser=_parse_vehicles,
         )
         if shared_state in ("fresh", "stale") and shared is not None:
-            _cache_set(_vehicle_cache, cache_key, shared, max_size=_VEHICLE_MAX_SIZE, stale_ttl=_VEHICLE_STALE_TTL)
+            _cache_set(_vehicle_cache, cache_key, shared, max_size=BUS_VEHICLES_MAX_SIZE, stale_ttl=BUS_VEHICLES_STALE_TTL)
             cached = shared
             cache_state = shared_state
 
@@ -1354,11 +1520,11 @@ async def get_vehicle_positions(route_id: str) -> list[BusVehicle]:
                 task = _vehicle_inflight.get(cache_key)
                 try:
                     fresh = await _fetch_vehicle_positions_uncached(canonical_id)
-                    _cache_set(_vehicle_cache, cache_key, fresh, max_size=_VEHICLE_MAX_SIZE, stale_ttl=_VEHICLE_STALE_TTL)
+                    _cache_set(_vehicle_cache, cache_key, fresh, max_size=BUS_VEHICLES_MAX_SIZE, stale_ttl=BUS_VEHICLES_STALE_TTL)
                     await _shared_cache_set(
                         "vehicles",
                         cache_key,
-                        stale_ttl=_VEHICLE_STALE_TTL,
+                        stale_ttl=BUS_VEHICLES_STALE_TTL,
                         data=[item.model_dump(mode="json") for item in fresh],
                     )
                 except Exception as exc:
@@ -1384,11 +1550,11 @@ async def get_vehicle_positions(route_id: str) -> list[BusVehicle]:
     _vehicle_inflight[cache_key] = task
     try:
         fresh = await task
-        _cache_set(_vehicle_cache, cache_key, fresh, max_size=_VEHICLE_MAX_SIZE, stale_ttl=_VEHICLE_STALE_TTL)
+        _cache_set(_vehicle_cache, cache_key, fresh, max_size=BUS_VEHICLES_MAX_SIZE, stale_ttl=BUS_VEHICLES_STALE_TTL)
         await _shared_cache_set(
             "vehicles",
             cache_key,
-            stale_ttl=_VEHICLE_STALE_TTL,
+            stale_ttl=BUS_VEHICLES_STALE_TTL,
             data=[item.model_dump(mode="json") for item in fresh],
         )
         return fresh
@@ -1632,8 +1798,8 @@ async def get_route_shape(route_id: str) -> RouteShape:
     cached, cache_state = _cache_get(
         _route_shape_cache,
         cache_key,
-        fresh_ttl=_ROUTE_SHAPE_FRESH_TTL,
-        stale_ttl=_ROUTE_SHAPE_STALE_TTL,
+        fresh_ttl=BUS_ROUTE_SHAPE_FRESH_TTL,
+        stale_ttl=BUS_ROUTE_SHAPE_STALE_TTL,
     )
     if cache_state == "fresh":
         return cached
@@ -1642,12 +1808,12 @@ async def get_route_shape(route_id: str) -> RouteShape:
         shared, shared_state = await _shared_cache_get(
             "route_shape",
             cache_key,
-            fresh_ttl=_ROUTE_SHAPE_FRESH_TTL,
-            stale_ttl=_ROUTE_SHAPE_STALE_TTL,
+            fresh_ttl=BUS_ROUTE_SHAPE_FRESH_TTL,
+            stale_ttl=BUS_ROUTE_SHAPE_STALE_TTL,
             parser=_parse_shape,
         )
         if shared_state in ("fresh", "stale") and shared is not None:
-            _cache_set(_route_shape_cache, cache_key, shared, max_size=_ROUTE_SHAPE_MAX_SIZE, stale_ttl=_ROUTE_SHAPE_STALE_TTL)
+            _cache_set(_route_shape_cache, cache_key, shared, max_size=BUS_ROUTE_SHAPE_MAX_SIZE, stale_ttl=BUS_ROUTE_SHAPE_STALE_TTL)
             cached = shared
             cache_state = shared_state
 
@@ -1657,11 +1823,11 @@ async def get_route_shape(route_id: str) -> RouteShape:
                 task = _route_shape_inflight.get(cache_key)
                 try:
                     fresh = await _fetch_route_shape_uncached(canonical_id)
-                    _cache_set(_route_shape_cache, cache_key, fresh, max_size=_ROUTE_SHAPE_MAX_SIZE, stale_ttl=_ROUTE_SHAPE_STALE_TTL)
+                    _cache_set(_route_shape_cache, cache_key, fresh, max_size=BUS_ROUTE_SHAPE_MAX_SIZE, stale_ttl=BUS_ROUTE_SHAPE_STALE_TTL)
                     await _shared_cache_set(
                         "route_shape",
                         cache_key,
-                        stale_ttl=_ROUTE_SHAPE_STALE_TTL,
+                        stale_ttl=BUS_ROUTE_SHAPE_STALE_TTL,
                         data=fresh.model_dump(mode="json"),
                     )
                 except Exception as exc:
@@ -1687,11 +1853,11 @@ async def get_route_shape(route_id: str) -> RouteShape:
     _route_shape_inflight[cache_key] = task
     try:
         fresh = await task
-        _cache_set(_route_shape_cache, cache_key, fresh, max_size=_ROUTE_SHAPE_MAX_SIZE, stale_ttl=_ROUTE_SHAPE_STALE_TTL)
+        _cache_set(_route_shape_cache, cache_key, fresh, max_size=BUS_ROUTE_SHAPE_MAX_SIZE, stale_ttl=BUS_ROUTE_SHAPE_STALE_TTL)
         await _shared_cache_set(
             "route_shape",
             cache_key,
-            stale_ttl=_ROUTE_SHAPE_STALE_TTL,
+            stale_ttl=BUS_ROUTE_SHAPE_STALE_TTL,
             data=fresh.model_dump(mode="json"),
         )
         return fresh

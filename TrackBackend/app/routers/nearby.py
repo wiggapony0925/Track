@@ -22,6 +22,13 @@ from pathlib import Path
 
 from fastapi import APIRouter, Query
 
+from app.cache_config import (
+    BUS_MAX_SIRI_STOPS,
+    NEARBY_GPS_DECIMALS,
+    NEARBY_RESPONSE_FRESH_TTL,
+    NEARBY_RESPONSE_MAX_SIZE,
+    NEARBY_RESPONSE_STALE_TTL,
+)
 from app.config import get_settings
 from app.models import BusStop, DirectionArrivals, GroupedNearbyTransit, NearbyTransitArrival
 from app.services.bus_client import (
@@ -174,6 +181,38 @@ def _route_prefix(route_id: str) -> str:
             break
     return "".join(chars)
 
+
+# ---------------------------------------------------------------------------
+# Response-level cache for /nearby/grouped
+# ---------------------------------------------------------------------------
+# Caches the final assembled list[GroupedNearbyTransit] so that repeat
+# requests from the same ~111m GPS grid cell skip ALL upstream calls
+# and processing.  Uses stale-while-revalidate: serve stale instantly
+# and kick a background refresh so the next request gets fresh data.
+
+_nearby_resp_cache: dict[
+    tuple[float, float, int, str | None],  # (rounded_lat, rounded_lon, radius, mode)
+    tuple[float, list["GroupedNearbyTransit"]],  # (timestamp, result)
+] = {}
+_nearby_resp_inflight: dict[tuple, asyncio.Task] = {}
+
+
+def clear_nearby_cache() -> int:
+    """Clear the response-level cache. Returns number of entries cleared."""
+    count = len(_nearby_resp_cache)
+    _nearby_resp_cache.clear()
+    _nearby_resp_inflight.clear()
+    return count
+
+
+def _nearby_cache_key(
+    lat: float, lon: float, radius: int, mode: str | None
+) -> tuple[float, float, int, str | None]:
+    """Round GPS to ~111m grid cells for cache bucketing."""
+    factor = 10 ** NEARBY_GPS_DECIMALS
+    return (round(lat * factor) / factor, round(lon * factor) / factor, radius, mode)
+
+
 router = APIRouter(tags=["nearby"])
 
 
@@ -215,11 +254,51 @@ async def nearby_transit_grouped(
     The optional ``mode`` filter restricts results to a single transit mode
     (e.g. ``?mode=subway`` returns only subway groups, ``?mode=lirr`` for LIRR).
     """
+    import time as _time
+
     settings = get_settings()
     effective_radius = radius if radius is not None else settings.app_settings.search_radius_meters
     TrackLogger.location(lat, lon, "nearby/grouped")
+
+    key = _nearby_cache_key(lat, lon, effective_radius, mode)
+    now = _time.time()
+
+    # 1. Check cache
+    cached = _nearby_resp_cache.get(key)
+    if cached is not None:
+        ts, data = cached
+        age = now - ts
+        if age < NEARBY_RESPONSE_FRESH_TTL:
+            TrackLogger.cache(f"RESP HIT (fresh {age:.1f}s) /nearby/grouped")
+            return data
+        if age < NEARBY_RESPONSE_STALE_TTL:
+            TrackLogger.cache(f"RESP HIT (stale {age:.1f}s) /nearby/grouped — bg refresh")
+            # Kick background refresh if not already in-flight
+            if key not in _nearby_resp_inflight:
+                async def _bg_refresh(k: tuple, r: int, m: str | None) -> None:
+                    try:
+                        flat = await _collect_all(k[0], k[1], r, mode_filter=m)
+                        grouped = _group_arrivals(flat)
+                        _nearby_resp_cache[k] = (_time.time(), grouped)
+                    except Exception as exc:
+                        TrackLogger.error(f"BG refresh /nearby/grouped failed: {exc}")
+                    finally:
+                        _nearby_resp_inflight.pop(k, None)
+                task = asyncio.create_task(_bg_refresh(key, effective_radius, mode))
+                _nearby_resp_inflight[key] = task
+            return data
+
+    # 2. Cache miss — full fetch
     flat = await _collect_all(lat, lon, effective_radius, mode_filter=mode)
-    return _group_arrivals(flat)
+    grouped = _group_arrivals(flat)
+
+    # Evict if over size
+    if len(_nearby_resp_cache) >= NEARBY_RESPONSE_MAX_SIZE:
+        oldest_key = min(_nearby_resp_cache, key=lambda k: _nearby_resp_cache[k][0])
+        del _nearby_resp_cache[oldest_key]
+
+    _nearby_resp_cache[key] = (now, grouped)
+    return grouped
 
 
 # ---------------------------------------------------------------------------
@@ -242,6 +321,8 @@ async def _collect_all(
     results: list[NearbyTransitArrival] = []
 
     # Build task list based on mode filter
+    import time as _t
+    _t0 = _t.perf_counter()
     tasks: dict[str, asyncio.Task] = {}
     if mode_filter is None or mode_filter == "subway":
         tasks["subway"] = asyncio.ensure_future(_fetch_nearby_subway(lat, lon, effective_radius))
@@ -253,12 +334,21 @@ async def _collect_all(
         tasks["mnr"] = asyncio.ensure_future(_fetch_nearby_rail(lat, lon, effective_radius, "mnr"))
 
     task_results = await asyncio.gather(*tasks.values(), return_exceptions=True)
+    _elapsed = _t.perf_counter() - _t0
     
+    _mode_times: dict[str, str] = {}
     for label, result in zip(tasks.keys(), task_results):
         if isinstance(result, list):
             results.extend(result)
+            _mode_times[label] = f"{len(result)} items"
         elif isinstance(result, Exception):
             TrackLogger.error(f"{label.upper()} feed failed: {result}")
+            _mode_times[label] = f"FAILED"
+    
+    TrackLogger.info(
+        f"⏱ _collect_all wall={_elapsed:.3f}s radius={effective_radius}m "
+        f"mode={mode_filter or 'all'} → {_mode_times}"
+    )
 
     # Guardrail: never return empty route IDs to clients.
     # Keep canonical IDs for rail/subway; only strip bus agency prefixes.
@@ -854,11 +944,14 @@ async def _fetch_nearby_buses(
         )
         return placeholders
 
+    import time as _t
+    _t_oba = _t.perf_counter()
     try:
         stops = await get_nearby_stops(lat, lon, radius_m=effective_radius)
     except Exception as exc:
         TrackLogger.error(f"Bus stops fetch failed: {exc}")
         return _add_static_only_placeholders("nearby-stop lookup failed")
+    _oba_ms = (_t.perf_counter() - _t_oba) * 1000
 
     if not stops:
         TrackLogger.info("No bus stops found within search radius")
@@ -871,6 +964,10 @@ async def _fetch_nearby_buses(
     # Sorting ensures the _MAX_SIRI_STOPS cap always keeps the closest
     # stops and that `closest_stops_by_route` picks the truly nearest one.
     stops.sort(key=lambda s: haversine_m(lat, lon, s.lat, s.lon))
+    TrackLogger.info(
+        f"⏱ BUS OBA stops: {len(stops)} found in {_oba_ms:.0f}ms "
+        f"(querying {min(len(stops), BUS_MAX_SIRI_STOPS)} via SIRI)"
+    )
 
     # -----------------------------------------------------------------
     # 1. Fetch live SIRI arrivals for every nearby stop
@@ -878,13 +975,17 @@ async def _fetch_nearby_buses(
     # Query ALL nearby stops (not truncated by max_nearby_results) so that
     # both directions of a route are captured even when the opposite-direction
     # stop is farther away in the sorted list.
-    # Safety cap at 80 stops to avoid hammering the MTA API in extremely
-    # dense areas; 80 is generous enough to cover both sides of a street
+    # Safety cap to avoid hammering the MTA API in extremely
+    # dense areas; generous enough to cover both sides of a street
     # for all routes in the search radius.
-    _MAX_SIRI_STOPS = 80
-    stops_to_query = stops[:_MAX_SIRI_STOPS]
+    stops_to_query = stops[:BUS_MAX_SIRI_STOPS]
     tasks = [get_realtime_arrivals(stop.id) for stop in stops_to_query]
+    _t_siri = _t.perf_counter()
     stop_results = await asyncio.gather(*tasks, return_exceptions=True)
+    _siri_ms = (_t.perf_counter() - _t_siri) * 1000
+    TrackLogger.info(
+        f"⏱ BUS SIRI: {len(stops_to_query)} stops fetched in {_siri_ms:.0f}ms"
+    )
 
     # Track which route IDs already have live data
     routes_with_live: set[str] = set()
