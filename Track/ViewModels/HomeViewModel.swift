@@ -31,10 +31,17 @@ final class HomeViewModel {
     /// Used to skip redundant fetches when the user returns from background
     /// within a short window (e.g. < 15 seconds).
     private(set) var lastRefreshDate: Date?
+    /// Per-mode refresh timestamps so `canSkipRefresh` doesn't let a
+    /// recent "Nearby" fetch prevent a first-time "Bus" fetch.
+    private var lastRefreshDateByMode: [TransportMode: Date] = [:]
     /// Location where the last refresh was performed.
     /// Compared against the current position to decide whether the user
     /// has moved far enough to warrant re-discovering nearby routes.
     private var lastRefreshLocation: CLLocation?
+    /// Tracks which modes have had their dedicated data arrays populated
+    /// via a mode-specific API call.  Prevents tab switches from relying
+    /// solely on `groupedTransit` fallback data that can later vanish.
+    private var modesEverRefreshed: Set<TransportMode> = []
 
     /// The currently tracked route for the widget, loaded from UserDefaults.
     var currentTrackedRoute: TrackedRoute? = nil
@@ -212,20 +219,26 @@ final class HomeViewModel {
         }
     }
 
-    /// Returns whether the selected mode already has renderable cached data,
-    /// allowing tab switches without forcing a network refresh.
+    /// Returns whether the selected mode already has renderable cached data
+    /// from a **dedicated** API call (not just fallback from Nearby's `groupedTransit`).
+    /// This prevents modes from thinking they have data when they're actually
+    /// depending on Nearby's transient fallback which can later be evicted.
     func hasCachedData(for mode: TransportMode) -> Bool {
+        // A mode only counts as "cached" if it has been explicitly fetched
+        // at least once.  Otherwise the fallback from groupedTransit might
+        // give a false positive and the dedicated array stays empty forever.
+        guard modesEverRefreshed.contains(mode) else { return false }
         switch mode {
         case .nearby:
             return !groupedTransit.isEmpty || !nearbyTransit.isEmpty
         case .subway:
-            return !filteredNearbyGroupedSubwayArrivals.isEmpty
+            return !nearbyGroupedSubwayArrivals.isEmpty
         case .bus:
-            return !filteredNearbyGroupedBusArrivals.isEmpty
+            return !nearbyGroupedBusArrivals.isEmpty
         case .lirr:
-            return !filteredNearbyGroupedLIRRArrivals.isEmpty
+            return !nearbyGroupedLIRRArrivals.isEmpty
         case .mnr:
-            return !filteredNearbyGroupedMNRArrivals.isEmpty
+            return !nearbyGroupedMNRArrivals.isEmpty
         }
     }
 
@@ -274,7 +287,12 @@ final class HomeViewModel {
                 nearYou.append(group)
             } else if distance <= r2 {
                 fartherAway.append(group)
-            } else if distance <= r3 {
+            } else {
+                // Include everything beyond r2 in the "much farther" bucket
+                // instead of silently dropping routes beyond r3.  This keeps
+                // routes visible during radius-setting transitions (old data
+                // bucketed with new, tighter thresholds) instead of causing
+                // a flash where rows vanish before the new API data arrives.
                 muchFarther.append(group)
             }
         }
@@ -1144,16 +1162,22 @@ final class HomeViewModel {
 
     /// Returns `true` when recent data is fresh enough AND the user
     /// hasn't moved significantly, so we can safely skip a full refresh.
+    ///
+    /// Uses per-mode timestamps so switching from "Nearby" to "Bus"
+    /// won't skip the bus fetch just because "Nearby" ran recently.
     func canSkipRefresh(for location: CLLocation?) -> Bool {
+        // Use the mode-specific timestamp when available; fall back to
+        // the global one for backwards-compatibility (first load, etc.).
+        let modeDate = lastRefreshDateByMode[selectedMode]
         guard hasLoadedOnce,
-              let lastDate = lastRefreshDate else {
-            AppLogger.shared.log("REFRESH", message: "canSkipRefresh → NO (first load or no last date)")
+              let lastDate = modeDate ?? lastRefreshDate else {
+            AppLogger.shared.log("REFRESH", message: "canSkipRefresh → NO (first load or no last date for \(selectedMode))")
             return false
         }
         let elapsed = Date().timeIntervalSince(lastDate)
         let cooldown = TimeInterval(AppSettings.shared.refreshCooldownSeconds)
         guard elapsed < cooldown else {
-            AppLogger.shared.log("REFRESH", message: "canSkipRefresh → NO (elapsed \(Int(elapsed))s ≥ cooldown \(Int(cooldown))s)")
+            AppLogger.shared.log("REFRESH", message: "canSkipRefresh → NO (elapsed \(Int(elapsed))s ≥ cooldown \(Int(cooldown))s, mode=\(selectedMode))")
             return false
         }
         // If we have a previous fetch location, require meaningful movement
@@ -1161,11 +1185,11 @@ final class HomeViewModel {
             let dist = newLoc.distance(from: lastLoc)
             let threshold = AppSettings.shared.significantMovementMeters
             let skip = dist < threshold
-            AppLogger.shared.log("REFRESH", message: "canSkipRefresh → \(skip ? "YES" : "NO") (moved \(Int(dist))m, threshold \(Int(threshold))m, \(Int(elapsed))s ago)")
+            AppLogger.shared.log("REFRESH", message: "canSkipRefresh → \(skip ? "YES" : "NO") (moved \(Int(dist))m, threshold \(Int(threshold))m, \(Int(elapsed))s ago, mode=\(selectedMode))")
             return skip
         }
         // No location to compare — trust the time guard alone
-        AppLogger.shared.log("REFRESH", message: "canSkipRefresh → YES (time guard only, \(Int(elapsed))s ago)")
+        AppLogger.shared.log("REFRESH", message: "canSkipRefresh → YES (time guard only, \(Int(elapsed))s ago, mode=\(selectedMode))")
         return true
     }
 
@@ -1226,7 +1250,10 @@ final class HomeViewModel {
 
         syncTrackedRoute()
         updateLiveActivityFromRefresh()
-        lastRefreshDate = Date()
+        let now = Date()
+        lastRefreshDate = now
+        lastRefreshDateByMode[selectedMode] = now
+        modesEverRefreshed.insert(selectedMode)
         lastRefreshLocation = loc
         hasLoadedOnce = true
         isLoading = false

@@ -28,6 +28,11 @@ struct TrackAPI {
         if let cached = _cachedBaseURL { return cached }
         
         let settings = AppSettings.shared
+
+        #if DEBUG
+        // --- Local-server logic is strictly debug-only ---
+        // This prevents a leftover `dev_use_localhost` UserDefaults flag
+        // from accidentally routing a release/TestFlight build to localhost.
         let useLocalhost = UserDefaults.standard.bool(forKey: "dev_use_localhost")
 
         #if targetEnvironment(simulator)
@@ -40,18 +45,18 @@ struct TrackAPI {
             }
         #endif
 
-        // Physical device local mode: always use configured IP (or default fallback)
-        let storedIP = UserDefaults.standard.string(forKey: "dev_custom_ip")?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let resolvedIP = (storedIP?.isEmpty == false) ? storedIP! : settings.defaultDeviceIP
-
         if useLocalhost {
+            // Physical device local mode: use configured IP (or default fallback)
+            let storedIP = UserDefaults.standard.string(forKey: "dev_custom_ip")?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let resolvedIP = (storedIP?.isEmpty == false) ? storedIP! : settings.defaultDeviceIP
             let url = "http://\(resolvedIP):\(settings.localPort)"
             AppLogger.shared.log("API_CONFIG", message: "baseURL (dev): \(url)")
             _cachedBaseURL = url
             return url
         }
+        #endif
 
-        // Production: use the deployed Render backend
+        // Production (always used in release builds): deployed Render backend
         let url = settings.prodBaseURL
         AppLogger.shared.log("API_CONFIG", message: "baseURL (production): \(url)")
         _cachedBaseURL = url

@@ -187,12 +187,14 @@ class SyncManager: ObservableObject {
         if let v = settings.dragToSearch {
             store.set(v, forKey: "drag_to_search")
         }
+        #if DEBUG
         if let v = settings.devUseLocalhost {
             store.set(v, forKey: "dev_use_localhost")
         }
         if let v = settings.devCustomIp {
             store.set(v, forKey: "dev_custom_ip")
         }
+        #endif
         
         print("[SyncManager] Pulled user settings from cloud")
     }
@@ -222,8 +224,13 @@ class SyncManager: ObservableObject {
             autoRefreshEnabled: store.object(forKey: "auto_refresh_enabled") as? Bool ?? true,
             notificationsEnabled: true,
             dragToSearch: store.object(forKey: "drag_to_search") as? Bool ?? true,
+            #if DEBUG
             devUseLocalhost: store.bool(forKey: "dev_use_localhost"),
             devCustomIp: store.string(forKey: "dev_custom_ip") ?? ""
+            #else
+            devUseLocalhost: false,
+            devCustomIp: ""
+            #endif
         )
         
         do {
