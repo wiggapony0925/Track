@@ -58,6 +58,9 @@ struct GroupedRouteRow: View {
     /// placeholder minutesAway ≥ 99). Falls back to all directions if
     /// filtering would leave zero.
     private var visibleDirections: [DirectionArrivalsResponse] {
+        if group.isBus && group.directions.count == 2 {
+            return group.directions
+        }
         let real = group.directions.filter { dir in
             // Keep if it has at least one live (non-placeholder) arrival
             if !dir.liveArrivals.isEmpty { return true }
