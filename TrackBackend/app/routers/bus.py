@@ -22,6 +22,7 @@ from app.services.bus_client import (
     get_realtime_arrivals,
     get_route_shape,
     get_routes,
+    get_static_route_shape,
     get_stops,
     get_vehicle_positions,
 )
@@ -30,6 +31,19 @@ from app.utils.logger import TrackLogger
 
 logger = logging.getLogger("track")
 router = APIRouter(prefix="/bus", tags=["bus"])
+
+
+def _fallback_route_shape(route_id: str) -> RouteShape:
+    static_shape = get_static_route_shape(route_id)
+    if static_shape is not None:
+        return static_shape
+    return RouteShape(
+        route_id=route_id,
+        polylines=[],
+        stops=[],
+        directions=[],
+        service_type=None,
+    )
 
 
 def _raise_bus_upstream_http_error(exc: httpx.HTTPStatusError) -> None:
@@ -150,18 +164,32 @@ async def bus_routes() -> list[BusRoute]:
 
 
 @router.get("/stops/{route_id:path}", response_model=list[BusStop])
-async def bus_stops(route_id: str) -> list[BusStop]:
+async def bus_stops(route_id: str, response: Response) -> list[BusStop]:
     """Return stops for a bus route (e.g. ``/bus/stops/MTA NYCT_B63``)."""
     try:
         return await get_stops(route_id)
     except httpx.HTTPStatusError as exc:
+        status = exc.response.status_code if exc.response is not None else 502
+        if status in (401, 403, 404, 429, 500, 502, 503, 504):
+            TrackLogger.warning(
+                f"[BUS] /stops/{route_id}: upstream HTTP {status} — returning empty fallback",
+                tag="BUS",
+            )
+            response.headers["X-Track-Degraded"] = "stops-fallback"
+            return []
         _raise_bus_upstream_http_error(exc)
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        TrackLogger.warning(
+            f"[BUS] /stops/{route_id}: upstream error ({exc}) — returning empty fallback",
+            tag="BUS",
+        )
+        response.headers["X-Track-Degraded"] = "stops-fallback"
+        return []
 
 
 @router.get("/nearby", response_model=list[BusStop])
 async def bus_nearby(
+    response: Response,
     lat: float = Query(..., description="Latitude"),
     lon: float = Query(..., description="Longitude"),
     radius: int | None = Query(None, description="Search radius in meters"),
@@ -173,14 +201,43 @@ async def bus_nearby(
     try:
         return await get_nearby_stops(lat, lon, radius_m=effective_radius)
     except httpx.HTTPStatusError as exc:
+        status = exc.response.status_code if exc.response is not None else 502
+        if status in (401, 403, 404, 429, 500, 502, 503, 504):
+            TrackLogger.warning(
+                f"[BUS] /nearby: upstream HTTP {status} — returning empty fallback",
+                tag="BUS",
+            )
+            response.headers["X-Track-Degraded"] = "nearby-fallback"
+            return []
         _raise_bus_upstream_http_error(exc)
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        TrackLogger.warning(
+            f"[BUS] /nearby: upstream error ({exc}) — returning empty fallback",
+            tag="BUS",
+        )
+        response.headers["X-Track-Degraded"] = "nearby-fallback"
+        return []
 
 
 @router.get("/live/{stop_id:path}", response_model=list[BusArrival])
-async def bus_live(stop_id: str) -> list[BusArrival]:
+async def bus_live(stop_id: str, response: Response) -> list[BusArrival]:
     """Return real-time bus arrivals at a stop (e.g. ``/bus/live/MTA_308214``)."""
+    def _schedule_fallback() -> list[BusArrival]:
+        scheduled = schedule_service.get_scheduled_arrivals(stop_id, limit=5)
+        return [
+            BusArrival(
+                route_id=s.route_id,
+                vehicle_id="",
+                stop_id=s.station,
+                status_text=f"{s.destination} ({s.status})",
+                status="Scheduled",
+                expected_arrival=datetime.fromtimestamp(s.arrival_ts) if s.arrival_ts else None,
+                distance_meters=None,
+                bearing=None,
+            )
+            for s in scheduled
+        ]
+
     try:
         live_arrivals = await get_realtime_arrivals(stop_id)
         
@@ -194,26 +251,25 @@ async def bus_live(stop_id: str) -> list[BusArrival]:
         ]
 
         if not live_arrivals:
-            # Fallback to schedule
-            scheduled = schedule_service.get_scheduled_arrivals(stop_id, limit=5)
-            return [
-                BusArrival(
-                    route_id=s.route_id,
-                    vehicle_id="",
-                    stop_id=s.station,
-                    status_text=f"{s.destination} ({s.status})",
-                    status="Scheduled",
-                    expected_arrival=datetime.fromtimestamp(s.arrival_ts) if s.arrival_ts else None,
-                    distance_meters=None,
-                    bearing=None
-                )
-                for s in scheduled
-            ]
+            return _schedule_fallback()
         return live_arrivals
     except httpx.HTTPStatusError as exc:
+        status = exc.response.status_code if exc.response is not None else 502
+        if status in (401, 403, 404, 429, 500, 502, 503, 504):
+            TrackLogger.warning(
+                f"[BUS] /live/{stop_id}: upstream HTTP {status} — returning schedule fallback",
+                tag="BUS",
+            )
+            response.headers["X-Track-Degraded"] = "live-fallback"
+            return _schedule_fallback()
         _raise_bus_upstream_http_error(exc)
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        TrackLogger.warning(
+            f"[BUS] /live/{stop_id}: upstream error ({exc}) — returning schedule fallback",
+            tag="BUS",
+        )
+        response.headers["X-Track-Degraded"] = "live-fallback"
+        return _schedule_fallback()
 
 
 @router.get("/vehicles/{route_id:path}", response_model=list[BusVehicle])
@@ -230,9 +286,22 @@ async def bus_vehicles(route_id: str, response: Response) -> list[BusVehicle]:
     try:
         return await get_vehicle_positions(route_id)
     except httpx.HTTPStatusError as exc:
+        status = exc.response.status_code if exc.response is not None else 502
+        if status in (401, 403, 404, 429, 500, 502, 503, 504):
+            TrackLogger.warning(
+                f"[BUS] /vehicles/{route_id}: upstream HTTP {status} — returning empty fallback",
+                tag="BUS",
+            )
+            response.headers["X-Track-Degraded"] = "vehicles-fallback"
+            return []
         _raise_bus_upstream_http_error(exc)
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        TrackLogger.warning(
+            f"[BUS] /vehicles/{route_id}: upstream error ({exc}) — returning empty fallback",
+            tag="BUS",
+        )
+        response.headers["X-Track-Degraded"] = "vehicles-fallback"
+        return []
 
 
 @router.get("/route-shape/{route_id:path}", response_model=RouteShape)
@@ -248,7 +317,20 @@ async def bus_route_shape(route_id: str, response: Response) -> RouteShape:
     try:
         return await get_route_shape(route_id)
     except httpx.HTTPStatusError as exc:
+        status = exc.response.status_code if exc.response is not None else 502
+        if status in (401, 403, 404, 429, 500, 502, 503, 504):
+            TrackLogger.warning(
+                f"[BUS] /route-shape/{route_id}: upstream HTTP {status} — returning empty shape fallback",
+                tag="BUS",
+            )
+            response.headers["X-Track-Degraded"] = "shape-fallback"
+            return _fallback_route_shape(route_id)
         _raise_bus_upstream_http_error(exc)
     except Exception as exc:
         traceback.print_exc()
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        TrackLogger.warning(
+            f"[BUS] /route-shape/{route_id}: upstream error ({exc}) — returning empty shape fallback",
+            tag="BUS",
+        )
+        response.headers["X-Track-Degraded"] = "shape-fallback"
+        return _fallback_route_shape(route_id)

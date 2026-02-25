@@ -14,14 +14,23 @@
 from __future__ import annotations
 
 import asyncio
+import csv
 from collections import defaultdict
 from datetime import datetime, timezone
+from functools import lru_cache
+from pathlib import Path
 
 from fastapi import APIRouter, Query
 
 from app.config import get_settings
 from app.models import BusStop, DirectionArrivals, GroupedNearbyTransit, NearbyTransitArrival
-from app.services.bus_client import get_nearby_stops, get_realtime_arrivals, get_stops as get_bus_route_stops, BUS_AGENCY_PREFIXES
+from app.services.bus_client import (
+    get_nearby_stops,
+    get_realtime_arrivals,
+    get_routes as get_all_bus_routes,
+    get_stops as get_bus_route_stops,
+    BUS_AGENCY_PREFIXES,
+)
 from app.services.data_cleaner import get_arrivals_for_line
 from app.services.station_lookup import get_nearby_stop_ids, get_stop_info
 from app.utils.geo_utils import haversine_m
@@ -43,6 +52,128 @@ _BUS_DEFAULT_COLOR = "#0039A6"
 # Placeholder minutes_away value — sorts to the bottom within its distance tier
 _PLACEHOLDER_MINUTES = 99
 
+_BUS_STATIC_GTFS_ROOT = Path(__file__).resolve().parent.parent / "data" / "bus"
+
+
+def _canonical_bus_stop_id(stop_id: str) -> str:
+    sid = (stop_id or "").strip()
+    if sid.startswith("MTA_"):
+        sid = sid[4:]
+    return sid
+
+
+@lru_cache(maxsize=1)
+def _load_static_bus_route_stop_index() -> dict[str, tuple[float, float, str, set[str]]]:
+    """Load local GTFS bus files into stop_id -> (lat, lon, name, {route_short})."""
+    index: dict[str, tuple[float, float, str, set[str]]] = {}
+    if not _BUS_STATIC_GTFS_ROOT.exists():
+        return index
+
+    for borough_dir in _BUS_STATIC_GTFS_ROOT.iterdir():
+        if not borough_dir.is_dir():
+            continue
+
+        routes_path = borough_dir / "routes.txt"
+        trips_path = borough_dir / "trips.txt"
+        stops_path = borough_dir / "stops.txt"
+        stop_times_path = borough_dir / "stop_times.txt"
+        if not (routes_path.exists() and trips_path.exists() and stops_path.exists() and stop_times_path.exists()):
+            continue
+
+        route_id_to_short: dict[str, str] = {}
+        with open(routes_path, encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                route_id = (row.get("route_id") or "").strip()
+                route_short = (row.get("route_short_name") or route_id).strip()
+                if route_id:
+                    route_id_to_short[route_id] = route_short
+
+        trip_to_route_short: dict[str, str] = {}
+        with open(trips_path, encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                trip_id = (row.get("trip_id") or "").strip()
+                route_id = (row.get("route_id") or "").strip()
+                if trip_id and route_id:
+                    short = route_id_to_short.get(route_id, route_id)
+                    trip_to_route_short[trip_id] = short
+
+        stop_meta: dict[str, tuple[float, float, str]] = {}
+        with open(stops_path, encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                stop_id = _canonical_bus_stop_id((row.get("stop_id") or "").strip())
+                if not stop_id:
+                    continue
+                try:
+                    lat = float(row.get("stop_lat") or 0.0)
+                    lon = float(row.get("stop_lon") or 0.0)
+                except ValueError:
+                    continue
+                stop_name = (row.get("stop_name") or stop_id).strip()
+                stop_meta[stop_id] = (lat, lon, stop_name)
+
+        stop_routes: dict[str, set[str]] = defaultdict(set)
+        with open(stop_times_path, encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                stop_id = _canonical_bus_stop_id((row.get("stop_id") or "").strip())
+                trip_id = (row.get("trip_id") or "").strip()
+                if not stop_id or not trip_id:
+                    continue
+                route_short = trip_to_route_short.get(trip_id)
+                if route_short:
+                    stop_routes[stop_id].add(route_short)
+
+        for stop_id, routes in stop_routes.items():
+            meta = stop_meta.get(stop_id)
+            if not meta:
+                continue
+            lat, lon, name = meta
+            if stop_id in index:
+                existing_lat, existing_lon, existing_name, existing_routes = index[stop_id]
+                existing_routes.update(routes)
+                index[stop_id] = (existing_lat, existing_lon, existing_name, existing_routes)
+            else:
+                index[stop_id] = (lat, lon, name, set(routes))
+
+    TrackLogger.bus(f"Static bus fallback index loaded: {len(index)} stops")
+    return index
+
+
+def _nearby_static_bus_routes(lat: float, lon: float, radius_m: int) -> dict[str, tuple[str, float, float, str]]:
+    """Return route_short -> (stop_name, stop_lat, stop_lon, stop_id) for nearest nearby static stop."""
+    index = _load_static_bus_route_stop_index()
+    if not index:
+        return {}
+
+    _METERS_PER_DEG_LAT = 111_000
+    _METERS_PER_DEG_LON_NYC = 85_000
+    lat_span = radius_m / _METERS_PER_DEG_LAT
+    lon_span = radius_m / _METERS_PER_DEG_LON_NYC
+
+    best_by_route: dict[str, tuple[float, tuple[str, float, float, str]]] = {}
+    for stop_id, (s_lat, s_lon, s_name, routes) in index.items():
+        if abs(s_lat - lat) > lat_span or abs(s_lon - lon) > lon_span:
+            continue
+        distance = haversine_m(lat, lon, s_lat, s_lon)
+        if distance > radius_m:
+            continue
+        for route in routes:
+            current = best_by_route.get(route)
+            payload = (s_name, s_lat, s_lon, stop_id)
+            if current is None or distance < current[0]:
+                best_by_route[route] = (distance, payload)
+
+    return {route: data for route, (_distance, data) in best_by_route.items()}
+
+
+def _route_prefix(route_id: str) -> str:
+    chars: list[str] = []
+    for ch in route_id:
+        if ch.isalpha():
+            chars.append(ch.upper())
+        else:
+            break
+    return "".join(chars)
+
 router = APIRouter(tags=["nearby"])
 
 
@@ -63,7 +194,7 @@ async def nearby_transit(
     TrackLogger.location(lat, lon, "nearby")
     results = await _collect_all(lat, lon, effective_radius)
     results.sort(key=lambda a: a.minutes_away)
-    return results[:settings.app_settings.max_nearby_results]
+    return results
 
 
 @router.get("/nearby/grouped", response_model=list[GroupedNearbyTransit])
@@ -128,6 +259,31 @@ async def _collect_all(
             results.extend(result)
         elif isinstance(result, Exception):
             TrackLogger.error(f"{label.upper()} feed failed: {result}")
+
+    # Guardrail: never return empty route IDs to clients.
+    # Keep canonical IDs for rail/subway; only strip bus agency prefixes.
+    sanitised: list[NearbyTransitArrival] = []
+    dropped_empty_route_id = 0
+    for arrival in results:
+        raw_route = (arrival.route_id or "").strip()
+        if not raw_route:
+            dropped_empty_route_id += 1
+            continue
+        if arrival.mode == "bus":
+            normalised_route = _display_name(raw_route).strip()
+            if not normalised_route:
+                dropped_empty_route_id += 1
+                continue
+            arrival.route_id = normalised_route
+        else:
+            arrival.route_id = raw_route
+        sanitised.append(arrival)
+    results = sanitised
+
+    if dropped_empty_route_id:
+        TrackLogger.warning(
+            f"Dropped {dropped_empty_route_id} nearby arrivals with empty route_id"
+        )
 
     # Populate distance_m (haversine from user to each stop) so the iOS
     # client can sort/bucket by accurate distance without recomputing.
@@ -242,6 +398,7 @@ def _direction_label(direction: str, arrivals: list[NearbyTransitArrival] | None
         return None
 
     terminal = _primary_destination(arrivals)
+    mode = arrivals[0].mode if arrivals else None
 
     # For legacy numeric direction keys (DirectionRef fallback),
     # try to get the destination from the first arrival.
@@ -255,6 +412,8 @@ def _direction_label(direction: str, arrivals: list[NearbyTransitArrival] | None
     # Known compass / special codes → canonical label
     if upper in _DIRECTION_LABELS:
         base_label = _DIRECTION_LABELS[upper]
+        if mode == "bus":
+            return base_label
         if terminal:
             return f"{base_label} → {terminal}"
         return base_label
@@ -313,6 +472,21 @@ def _group_arrivals(flat: list[NearbyTransitArrival]) -> list[GroupedNearbyTrans
     groups: list[GroupedNearbyTransit] = []
     single_direction_before = 0
     single_direction_after = 0
+
+    def _has_live_arrivals(direction_group: DirectionArrivals) -> bool:
+        return any(a.minutes_away < _PLACEHOLDER_MINUTES for a in direction_group.arrivals)
+
+    def _direction_sort_key(direction_group: DirectionArrivals) -> tuple[int, int, int, str]:
+        direction = direction_group.direction
+        has_live = _has_live_arrivals(direction_group)
+        is_fallback = _is_fallback_direction_key(direction)
+        return (
+            0 if not is_fallback else 1,
+            0 if has_live else 1,
+            0,
+            direction.upper(),
+        )
+
     for route_id, dir_map in by_route.items():
         mode, display = route_meta[route_id]
         # Assign color: subway lines use the official palette,
@@ -343,8 +517,15 @@ def _group_arrivals(flat: list[NearbyTransitArrival]) -> list[GroupedNearbyTrans
             single_direction_before += 1
 
             primary = directions[0]
+            allow_opposite_placeholder = True
+
             opposite = _opposite_direction_key(mode, primary.direction)
-            if opposite and opposite != primary.direction and opposite not in dir_map:
+            if (
+                allow_opposite_placeholder
+                and opposite
+                and opposite != primary.direction
+                and opposite not in dir_map
+            ):
                 exemplar = primary.arrivals[0] if primary.arrivals else None
                 placeholder = NearbyTransitArrival(
                     route_id=route_id,
@@ -371,8 +552,9 @@ def _group_arrivals(flat: list[NearbyTransitArrival]) -> list[GroupedNearbyTrans
         if len(directions) == 1:
             single_direction_after += 1
 
-        # Sort directions alphabetically for consistency
-        directions.sort(key=lambda d: d.direction)
+        # Prioritise terminal/live directions before fallback placeholders
+        # (prevents transient "Outbound" tabs from becoming the default tab).
+        directions.sort(key=_direction_sort_key)
 
         groups.append(
             GroupedNearbyTransit(
@@ -646,15 +828,41 @@ async def _fetch_nearby_buses(
     effective_radius = radius if radius is not None else settings.app_settings.search_radius_meters
     results: list[NearbyTransitArrival] = []
 
+    def _add_static_only_placeholders(reason: str) -> list[NearbyTransitArrival]:
+        static_routes = _nearby_static_bus_routes(lat, lon, effective_radius)
+        placeholders: list[NearbyTransitArrival] = []
+        for route_id, (stop_name, stop_lat, stop_lon, stop_id) in static_routes.items():
+            placeholders.append(
+                NearbyTransitArrival(
+                    route_id=route_id,
+                    stop_name=stop_name,
+                    arrival_ts=None,
+                    direction="N/A",
+                    minutes_away=_PLACEHOLDER_MINUTES,
+                    status="Scheduled",
+                    mode="bus",
+                    stop_lat=stop_lat,
+                    stop_lon=stop_lon,
+                    stop_id=f"MTA_{stop_id}",
+                    vehicle_id=None,
+                    destination=None,
+                )
+            )
+
+        TrackLogger.bus(
+            f"Bus static fallback: added {len(placeholders)} routes ({reason})"
+        )
+        return placeholders
+
     try:
         stops = await get_nearby_stops(lat, lon, radius_m=effective_radius)
     except Exception as exc:
         TrackLogger.error(f"Bus stops fetch failed: {exc}")
-        return results
+        return _add_static_only_placeholders("nearby-stop lookup failed")
 
     if not stops:
         TrackLogger.info("No bus stops found within search radius")
-        return results
+        return _add_static_only_placeholders("no nearby OBA stops")
 
     # -----------------------------------------------------------------
     # 0. Sort stops by distance so nearest are queried first / within cap
@@ -785,6 +993,32 @@ async def _fetch_nearby_buses(
         TrackLogger.bus(
             f"Populated route_ids for {_siri_backfilled} stops from SIRI "
             f"(OBA returned empty routeIds)"
+        )
+
+    # -----------------------------------------------------------------
+    # 1c. Populate stop.route_ids from static schedule DB (bus fallback)
+    # -----------------------------------------------------------------
+    # Some areas have no live SIRI vehicles at query time and OBA returns
+    # empty routeIds for nearby stops. Use static schedule arrivals to infer
+    # route membership so those routes still appear in /nearby and grouped cards.
+    _schedule_backfilled = 0
+    for stop in stops:
+        if stop.route_ids:
+            continue
+        scheduled = schedule_service.get_scheduled_arrivals(stop.id, limit=20)
+        inferred_routes: set[str] = set()
+        for s in scheduled:
+            rid = _display_name(s.route_id)
+            if rid and rid.upper() not in {"N/A", "UNKNOWN"}:
+                inferred_routes.add(rid)
+        if inferred_routes:
+            stop.route_ids = sorted(inferred_routes)
+            _schedule_backfilled += 1
+
+    if _schedule_backfilled:
+        TrackLogger.bus(
+            f"Populated route_ids for {_schedule_backfilled} stops from schedule DB "
+            f"(no live SIRI + empty OBA routeIds)"
         )
 
     # Log direction distribution per route for debugging
@@ -930,9 +1164,12 @@ async def _fetch_nearby_buses(
             # Determine a direction key for this stop's placeholder.
             existing_dirs = live_route_dirs[short]
 
-            # Route already has semantic destination tabs — don't add compass
-            # fallback tabs (e.g. "EASTBOUND") that create a fake 3rd direction.
-            if any(not _is_fallback_direction_key(d) for d in existing_dirs):
+            # If a route already has 2+ semantic destination tabs, don't add
+            # compass fallback tabs (would create fake extra directions).
+            # But if there's only ONE semantic tab, allow compass backfill from
+            # other nearby stops to surface branching directions.
+            semantic_dirs = {d for d in existing_dirs if not _is_fallback_direction_key(d)}
+            if len(semantic_dirs) >= 2:
                 continue
 
             # If ALL existing keys are SIRI numeric (rare: DestinationName
@@ -996,6 +1233,7 @@ async def _fetch_nearby_buses(
     _OPPOSITE_COMPASS: dict[str, str] = {
         "N": "S", "S": "N", "E": "W", "W": "E",
         "NE": "SW", "SW": "NE", "NW": "SE", "SE": "NW",
+        "INBOUND": "OUTBOUND", "OUTBOUND": "INBOUND",
     }
 
     # Rebuild direction counts after Phase B additions
@@ -1005,16 +1243,12 @@ async def _fetch_nearby_buses(
             final_route_dirs[r.route_id].add(r.direction)
 
     phase_c_count = 0
+
     for route_id, dirs in final_route_dirs.items():
         if len(dirs) != 1:
             continue  # Already has 2+ directions
 
         existing_dir = next(iter(dirs))
-
-        # If this is already a destination-key route, don't synthesize an
-        # opposite fallback direction.
-        if not _is_fallback_direction_key(existing_dir):
-            continue
 
         # Find a representative stop for this route to anchor the placeholder
         rep_stop: BusStop | None = None
@@ -1173,6 +1407,130 @@ async def _fetch_nearby_buses(
             f"stops-for-route lookup (checked {len(routes_needing_anchor)} routes)"
         )
 
+    # -----------------------------------------------------------------
+    # Phase E: Static GTFS fallback (guarantee route visibility in radius)
+    # -----------------------------------------------------------------
+    # When both live SIRI and OBA stop routeIds are sparse, some valid nearby
+    # routes can still be missed. Use local GTFS bus stop-times to ensure any
+    # route with a stop inside the radius is represented with a placeholder.
+    # Only run broad static fallback during degraded upstream conditions
+    # to avoid over-inflating direction/tab expectations in normal mode.
+    run_phase_e = fail_count > 0 or any(not s.route_ids for s in stops)
+    if run_phase_e:
+        static_routes = _nearby_static_bus_routes(lat, lon, effective_radius)
+        existing_routes = {r.route_id for r in results if r.mode == "bus"}
+        phase_e_count = 0
+        for route_id, (stop_name, stop_lat, stop_lon, stop_id) in static_routes.items():
+            if route_id in existing_routes:
+                continue
+            results.append(
+                NearbyTransitArrival(
+                    route_id=route_id,
+                    stop_name=stop_name,
+                    arrival_ts=None,
+                    direction=route_primary_direction.get(route_id) or "N/A",
+                    minutes_away=_PLACEHOLDER_MINUTES,
+                    status="Scheduled",
+                    mode="bus",
+                    stop_lat=stop_lat,
+                    stop_lon=stop_lon,
+                    stop_id=f"MTA_{stop_id}",
+                    vehicle_id=None,
+                    destination=None,
+                )
+            )
+            existing_routes.add(route_id)
+            phase_e_count += 1
+
+        if phase_e_count:
+            TrackLogger.bus(
+                f"Phase E: Added {phase_e_count} static-GTFS nearby bus routes "
+                f"(radius={effective_radius}m)"
+            )
+
+    # -----------------------------------------------------------------
+    # Phase F: OBA route-stop scan for locale-matched candidates
+    # -----------------------------------------------------------------
+    # Final safety net: if nearby stops still have missing route metadata,
+    # scan candidate routes (matching local prefixes like Q/B/M/BX) via
+    # OBA stops-for-route and inject placeholders for routes with stops
+    # inside the radius.
+    empty_route_metadata_stops = sum(1 for s in stops if not s.route_ids)
+    run_phase_f = empty_route_metadata_stops and (fail_count > 0)
+    if run_phase_f:
+        local_prefixes = {
+            _route_prefix(r.route_id)
+            for r in results
+            if r.mode == "bus" and _route_prefix(r.route_id)
+        }
+        if not local_prefixes:
+            local_prefixes = {"B", "BX", "M", "Q", "S", "BM", "QM", "SIM"}
+
+        try:
+            all_routes = await get_all_bus_routes()
+        except Exception:
+            all_routes = []
+
+        candidate_route_ids: list[str] = []
+        for route in all_routes:
+            short = _display_name(route.short_name or route.id)
+            if not short:
+                continue
+            if _route_prefix(short) in local_prefixes:
+                candidate_route_ids.append(short)
+
+        # Keep request load bounded; route-stop responses are cached in bus_client.
+        _MAX_PHASE_F_CANDIDATES = 160
+        candidate_route_ids = sorted(set(candidate_route_ids))[:_MAX_PHASE_F_CANDIDATES]
+
+        phase_f_count = 0
+        existing_routes = {r.route_id for r in results if r.mode == "bus"}
+        if candidate_route_ids:
+            scan_tasks = [get_bus_route_stops(route_id) for route_id in candidate_route_ids]
+            scan_results = await asyncio.gather(*scan_tasks, return_exceptions=True)
+
+            for route_id, route_stops in zip(candidate_route_ids, scan_results):
+                if route_id in existing_routes:
+                    continue
+                if isinstance(route_stops, Exception) or not route_stops:
+                    continue
+
+                best_stop: BusStop | None = None
+                best_dist = float("inf")
+                for s in route_stops:
+                    d = haversine_m(lat, lon, s.lat, s.lon)
+                    if d <= effective_radius and d < best_dist:
+                        best_dist = d
+                        best_stop = s
+
+                if best_stop is None:
+                    continue
+
+                results.append(
+                    NearbyTransitArrival(
+                        route_id=route_id,
+                        stop_name=best_stop.name,
+                        arrival_ts=None,
+                        direction=route_primary_direction.get(route_id) or best_stop.direction or "N/A",
+                        minutes_away=_PLACEHOLDER_MINUTES,
+                        status="Scheduled",
+                        mode="bus",
+                        stop_lat=best_stop.lat,
+                        stop_lon=best_stop.lon,
+                        stop_id=best_stop.id,
+                        vehicle_id=None,
+                        destination=None,
+                    )
+                )
+                existing_routes.add(route_id)
+                phase_f_count += 1
+
+        if phase_f_count:
+            TrackLogger.bus(
+                f"Phase F: Added {phase_f_count} OBA-scanned nearby bus routes "
+                f"from {len(candidate_route_ids)} locale candidates"
+            )
+
     return results
 
 
@@ -1238,6 +1596,53 @@ async def _fetch_nearby_rail(
                 trip_id=arrival.trip_id,
             )
         )
+
+    # -----------------------------------------------------------------
+    # Fallback: ensure routes still appear when no live train is nearby.
+    # -----------------------------------------------------------------
+    stops_with_live = {a.stop_id for a in results}
+    missing_stops = nearby_stops - stops_with_live
+
+    if missing_stops:
+        fallback_count = 0
+        for stop_id in missing_stops:
+            stop_info = get_stop_info(stop_id, agency=agency)
+            if stop_info is None:
+                continue
+
+            scheduled = schedule_service.get_scheduled_arrivals(stop_id, limit=6)
+            for s in scheduled:
+                if not s.route_id:
+                    continue
+
+                # Rail branches are numeric GTFS route IDs in this codepath.
+                if not s.route_id.isdigit():
+                    continue
+
+                prefixed_route_id = f"{prefix}{s.route_id}"
+                results.append(
+                    NearbyTransitArrival(
+                        route_id=prefixed_route_id,
+                        stop_name=stop_info.name,
+                        direction=s.destination or s.direction,
+                        destination=s.destination,
+                        minutes_away=s.minutes_away,
+                        arrival_ts=s.arrival_ts,
+                        status="Scheduled",
+                        mode=agency,
+                        stop_lat=stop_info.lat,
+                        stop_lon=stop_info.lon,
+                        stop_id=stop_id,
+                        trip_id=s.trip_id,
+                    )
+                )
+                fallback_count += 1
+
+        if fallback_count:
+            TrackLogger.info(
+                f"{agency.upper()}: Backfilled {fallback_count} scheduled entries "
+                f"for {len(missing_stops)} nearby stops with no live trains"
+            )
         
     return results
 

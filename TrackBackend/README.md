@@ -254,6 +254,12 @@ Set these environment variables (or use defaults for development):
 ```bash
 export SUPABASE_URL=https://octpebjxadbufiplgjqg.supabase.co
 export SUPABASE_KEY=sb_publishable_lAEZ_x8O4vjdGaw-I-QUMg_oS5iWKIn
+# Optional: mirror URL that hosts the same GTFS .tar.gz files
+# (used if Supabase download fails before local Docker-bundled fallback)
+export GTFS_DOCKER_FALLBACK_BASE_URL=https://your-docker-mirror.example.com/gtfs
+
+If you set SUPABASE_SERVICE_KEY correctly and restart, sync should work even without those loader tweaks.
+The most important action now is key rotation (since a secret was exposed) and updating env with the new key before startup.
 ```
 
 ### Database Tables

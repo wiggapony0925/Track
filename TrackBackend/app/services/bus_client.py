@@ -13,12 +13,14 @@
 from __future__ import annotations
 
 import asyncio
+import csv
 from dataclasses import dataclass
 import json
 import math
 import os
 import re
 import time as _time
+from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
@@ -364,6 +366,216 @@ _route_shape_inflight: dict[str, asyncio.Task[RouteShape]] = {}
 _ROUTE_SHAPE_FRESH_TTL = 6 * 60 * 60       # 6h
 _ROUTE_SHAPE_STALE_TTL = 7 * 24 * 60 * 60  # 7d
 _ROUTE_SHAPE_MAX_SIZE = 120                 # ~330 NYC routes; keep ~1/3 hot
+
+_BUS_STATIC_GTFS_ROOT = Path(__file__).resolve().parent.parent / "data" / "bus"
+_static_route_shape_index: dict[str, RouteShape] | None = None
+
+
+def _route_short_name(route_id: str) -> str:
+    rid = (route_id or "").strip()
+    if "_" in rid:
+        rid = rid.split("_", 1)[1]
+    return rid.strip()
+
+
+def _load_static_bus_route_shape_index() -> dict[str, RouteShape]:
+    global _static_route_shape_index
+    if _static_route_shape_index is not None:
+        return _static_route_shape_index
+
+    index: dict[str, RouteShape] = {}
+    if not _BUS_STATIC_GTFS_ROOT.exists():
+        _static_route_shape_index = index
+        return index
+
+    for borough_dir in _BUS_STATIC_GTFS_ROOT.iterdir():
+        if not borough_dir.is_dir():
+            continue
+
+        routes_path = borough_dir / "routes.txt"
+        trips_path = borough_dir / "trips.txt"
+        shapes_path = borough_dir / "shapes.txt"
+        stops_path = borough_dir / "stops.txt"
+        stop_times_path = borough_dir / "stop_times.txt"
+        if not (routes_path.exists() and trips_path.exists() and shapes_path.exists() and stops_path.exists() and stop_times_path.exists()):
+            continue
+
+        route_id_to_short: dict[str, str] = {}
+        with open(routes_path, encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                route_id = (row.get("route_id") or "").strip()
+                route_short = (row.get("route_short_name") or route_id).strip()
+                if route_id and route_short:
+                    route_id_to_short[route_id] = route_short
+
+        trip_to_meta: dict[str, tuple[str, int, str]] = {}
+        route_shape_ids_by_dir: dict[str, dict[int, set[str]]] = defaultdict(lambda: defaultdict(set))
+        with open(trips_path, encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                trip_id = (row.get("trip_id") or "").strip()
+                route_id = (row.get("route_id") or "").strip()
+                shape_id = (row.get("shape_id") or "").strip()
+                dir_raw = (row.get("direction_id") or "0").strip()
+                if not trip_id or not route_id:
+                    continue
+                short = route_id_to_short.get(route_id, route_id)
+                try:
+                    direction_id = int(dir_raw)
+                except ValueError:
+                    direction_id = 0
+                trip_to_meta[trip_id] = (short, direction_id, shape_id)
+                if shape_id:
+                    route_shape_ids_by_dir[short][direction_id].add(shape_id)
+
+        needed_shape_ids: set[str] = {
+            sid
+            for by_dir in route_shape_ids_by_dir.values()
+            for shape_ids in by_dir.values()
+            for sid in shape_ids
+        }
+
+        shape_points: dict[str, list[tuple[int, float, float]]] = defaultdict(list)
+        with open(shapes_path, encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                shape_id = (row.get("shape_id") or "").strip()
+                if not shape_id or shape_id not in needed_shape_ids:
+                    continue
+                try:
+                    seq = int(row.get("shape_pt_sequence") or 0)
+                    lat = float(row.get("shape_pt_lat") or 0.0)
+                    lon = float(row.get("shape_pt_lon") or 0.0)
+                except (ValueError, TypeError):
+                    continue
+                shape_points[shape_id].append((seq, lat, lon))
+
+        stop_meta: dict[str, tuple[str, float, float]] = {}
+        with open(stops_path, encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                stop_id = (row.get("stop_id") or "").strip()
+                if not stop_id:
+                    continue
+                try:
+                    lat = float(row.get("stop_lat") or 0.0)
+                    lon = float(row.get("stop_lon") or 0.0)
+                except (ValueError, TypeError):
+                    continue
+                name = (row.get("stop_name") or stop_id).strip()
+                stop_meta[stop_id] = (name, lat, lon)
+
+        route_stop_ids: dict[str, set[str]] = defaultdict(set)
+        with open(stop_times_path, encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                trip_id = (row.get("trip_id") or "").strip()
+                stop_id = (row.get("stop_id") or "").strip()
+                if not trip_id or not stop_id:
+                    continue
+                meta = trip_to_meta.get(trip_id)
+                if not meta:
+                    continue
+                short, _dir_id, _shape_id = meta
+                route_stop_ids[short].add(stop_id)
+
+        for short, by_dir in route_shape_ids_by_dir.items():
+            directions: list[DirectionShape] = []
+            route_polylines: list[str] = []
+
+            for direction_id in sorted(by_dir.keys()):
+                dir_polylines: list[str] = []
+                for shape_id in sorted(by_dir[direction_id]):
+                    pts = shape_points.get(shape_id)
+                    if not pts:
+                        continue
+                    ordered = sorted(pts, key=lambda x: x[0])
+                    coords = [(lat, lon) for _, lat, lon in ordered]
+                    if len(coords) < 2:
+                        continue
+                    encoded = encode_polyline(coords)
+                    if encoded:
+                        dir_polylines.append(encoded)
+
+                if not dir_polylines:
+                    continue
+
+                dir_polylines = _merge_polyline_segments(dir_polylines)
+                route_polylines.extend(dir_polylines)
+                directions.append(
+                    DirectionShape(
+                        direction_id=direction_id,
+                        headsign=f"Direction {direction_id}",
+                        polylines=dir_polylines,
+                        stops=[],
+                    )
+                )
+
+            if not route_polylines:
+                continue
+
+            stops: list[BusStop] = []
+            for stop_id in sorted(route_stop_ids.get(short, set())):
+                meta = stop_meta.get(stop_id)
+                if not meta:
+                    continue
+                name, lat, lon = meta
+                stops.append(
+                    BusStop(
+                        id=stop_id,
+                        name=name,
+                        lat=lat,
+                        lon=lon,
+                        direction=None,
+                    )
+                )
+
+            route_polylines = _merge_polyline_segments(route_polylines)
+            fresh = RouteShape(
+                route_id=short,
+                polylines=route_polylines,
+                stops=stops,
+                directions=directions,
+                service_type=None,
+            )
+
+            existing = index.get(short)
+            if existing is None:
+                index[short] = fresh
+            else:
+                merged_polylines = _merge_polyline_segments(existing.polylines + fresh.polylines)
+                seen_stop_ids = {s.id for s in existing.stops}
+                merged_stops = list(existing.stops)
+                for stop in fresh.stops:
+                    if stop.id not in seen_stop_ids:
+                        merged_stops.append(stop)
+                        seen_stop_ids.add(stop.id)
+                merged_dirs = existing.directions + fresh.directions
+                index[short] = RouteShape(
+                    route_id=short,
+                    polylines=merged_polylines,
+                    stops=merged_stops,
+                    directions=merged_dirs,
+                    service_type=None,
+                )
+
+    TrackLogger.bus(f"Static bus route-shape index loaded: {len(index)} routes")
+    _static_route_shape_index = index
+    return index
+
+
+def get_static_route_shape(route_id: str) -> RouteShape | None:
+    """Best-effort static GTFS route shape fallback for degraded bus APIs."""
+    short = _route_short_name(route_id)
+    if not short:
+        return None
+    index = _load_static_bus_route_shape_index()
+    shape = index.get(short)
+    if shape is None:
+        return None
+    return RouteShape(
+        route_id=short,
+        polylines=list(shape.polylines),
+        stops=list(shape.stops),
+        directions=list(shape.directions),
+        service_type=shape.service_type,
+    )
 
 # Vehicle cache: fast-moving data, short-lived
 _vehicle_cache: dict[str, _TTLCacheEntry] = {}

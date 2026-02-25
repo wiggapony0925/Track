@@ -46,6 +46,7 @@ SUPABASE_KEY = os.environ.get(
 )
 
 BUCKET_NAME = os.environ.get("GTFS_BUCKET", "gtfs-data")
+DOCKER_FALLBACK_BASE_URL = os.environ.get("GTFS_DOCKER_FALLBACK_BASE_URL", "").strip()
 
 # Timeout for downloading — generous for large files (transit_schedule.db ~100MB gzipped)
 _DOWNLOAD_TIMEOUT = httpx.Timeout(connect=10.0, read=120.0, write=30.0, pool=10.0)
@@ -151,6 +152,84 @@ def _write_local_etag(object_name: str, etag: str) -> None:
     _etag_path(object_name).write_text(etag)
 
 
+def _extract_tar_archive(tmp_path: str, extract_to: Path) -> None:
+    """Extract a .tar.gz archive into *extract_to* with path safety checks."""
+    extract_to.mkdir(parents=True, exist_ok=True)
+    with tarfile.open(tmp_path, "r:gz") as tar:
+        for member in tar.getmembers():
+            member_path = (extract_to / member.name).resolve()
+            if not str(member_path).startswith(str(extract_to.resolve())):
+                TrackLogger.warning(
+                    f"[DATA] Skipping suspicious tar member: {member.name}",
+                    tag="DATA",
+                )
+                continue
+        tar.extractall(path=extract_to)
+
+
+def _docker_fallback_url(object_path: str) -> str | None:
+    """Build optional Docker mirror URL for GTFS archives."""
+    base = DOCKER_FALLBACK_BASE_URL.rstrip("/")
+    if not base:
+        return None
+    return f"{base}/{object_path}"
+
+
+def _try_download_from_docker_fallback(
+    client: httpx.Client,
+    entry: dict[str, Any],
+) -> bool:
+    """Attempt archive download from Docker mirror URL (no auth)."""
+    obj = entry["object"]
+    extract_to = _DATA_DIR / entry["extract_to"] if entry["extract_to"] else _DATA_DIR
+    desc = entry["description"]
+
+    url = _docker_fallback_url(obj)
+    if not url:
+        return False
+
+    try:
+        t0 = time.monotonic()
+        with client.stream("GET", url) as resp:
+            if resp.status_code >= 400:
+                TrackLogger.warning(
+                    f"[DATA] {desc}: Docker fallback HTTP {resp.status_code}",
+                    tag="DATA",
+                )
+                return False
+
+            with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as tmp:
+                tmp_path = tmp.name
+                downloaded = 0
+                for chunk in resp.iter_bytes(chunk_size=65_536):
+                    tmp.write(chunk)
+                    downloaded += len(chunk)
+
+        elapsed = time.monotonic() - t0
+        size_mb = downloaded / (1024 * 1024)
+        TrackLogger.info(
+            f"[DATA] {desc}: downloaded {size_mb:.1f} MB from Docker fallback in {elapsed:.1f}s",
+            tag="DATA",
+        )
+
+        _extract_tar_archive(tmp_path, extract_to)
+        os.unlink(tmp_path)
+        return True
+
+    except (httpx.ConnectError, httpx.TimeoutException, httpx.ReadTimeout) as exc:
+        TrackLogger.warning(
+            f"[DATA] {desc}: Docker fallback unreachable ({type(exc).__name__})",
+            tag="DATA",
+        )
+        return False
+    except Exception as exc:
+        TrackLogger.warning(
+            f"[DATA] {desc}: Docker fallback failed ({exc})",
+            tag="DATA",
+        )
+        return False
+
+
 # ---------------------------------------------------------------------------
 # Download + extract
 # ---------------------------------------------------------------------------
@@ -166,11 +245,15 @@ def _has_required_files(entry: dict[str, Any]) -> bool:
 def _download_and_extract(
     client: httpx.Client,
     entry: dict[str, Any],
-) -> bool:
+) -> tuple[bool, bool]:
     """Download a single archive from Supabase and extract it.
 
-    Returns True if data is now available (either freshly downloaded or
-    already up-to-date), False if download failed AND no local fallback.
+    Returns (available, fetched_from_remote).
+
+    available:
+        True when data is usable (downloaded, 304 up-to-date, or local fallback).
+    fetched_from_remote:
+        True only when the remote fetch succeeded (200/304).
     """
     obj = entry["object"]
     extract_to = _DATA_DIR / entry["extract_to"] if entry["extract_to"] else _DATA_DIR
@@ -191,19 +274,31 @@ def _download_and_extract(
                 TrackLogger.info(
                     f"[DATA] {desc}: up-to-date (ETag match)", tag="DATA"
                 )
-                return True
+                return True, True
 
             if resp.status_code == 404:
+                docker_ok = _try_download_from_docker_fallback(client, entry)
+                if docker_ok:
+                    return True, True
+                fallback_ok = _has_required_files(entry)
                 TrackLogger.warning(
-                    f"[DATA] {desc}: not found in bucket ({obj})", tag="DATA"
+                    f"[DATA] {desc}: not found in bucket ({obj})"
+                    + (" — using local fallback" if fallback_ok else ""),
+                    tag="DATA",
                 )
-                return _has_required_files(entry)
+                return fallback_ok, False
 
             if resp.status_code >= 400:
+                docker_ok = _try_download_from_docker_fallback(client, entry)
+                if docker_ok:
+                    return True, True
+                fallback_ok = _has_required_files(entry)
                 TrackLogger.warning(
-                    f"[DATA] {desc}: HTTP {resp.status_code}", tag="DATA"
+                    f"[DATA] {desc}: HTTP {resp.status_code}"
+                    + (" — using local fallback" if fallback_ok else ""),
+                    tag="DATA",
                 )
-                return _has_required_files(entry)
+                return fallback_ok, False
 
             # Stream to a temp file, then extract
             etag = resp.headers.get("etag", "")
@@ -226,18 +321,7 @@ def _download_and_extract(
         )
 
         # Extract archive
-        extract_to.mkdir(parents=True, exist_ok=True)
-        with tarfile.open(tmp_path, "r:gz") as tar:
-            # Security: prevent path traversal
-            for member in tar.getmembers():
-                member_path = (extract_to / member.name).resolve()
-                if not str(member_path).startswith(str(extract_to.resolve())):
-                    TrackLogger.warning(
-                        f"[DATA] Skipping suspicious tar member: {member.name}",
-                        tag="DATA",
-                    )
-                    continue
-            tar.extractall(path=extract_to)
+        _extract_tar_archive(tmp_path, extract_to)
 
         os.unlink(tmp_path)
 
@@ -245,19 +329,28 @@ def _download_and_extract(
         if etag:
             _write_local_etag(obj, etag)
 
-        return True
+        return True, True
 
     except (httpx.ConnectError, httpx.TimeoutException, httpx.ReadTimeout) as exc:
+        docker_ok = _try_download_from_docker_fallback(client, entry)
+        if docker_ok:
+            return True, True
+        fallback_ok = _has_required_files(entry)
         TrackLogger.warning(
-            f"[DATA] {desc}: Supabase unreachable ({type(exc).__name__})",
+            f"[DATA] {desc}: Supabase unreachable ({type(exc).__name__})"
+            + (" — using local fallback" if fallback_ok else ""),
             tag="DATA",
         )
-        return _has_required_files(entry)
+        return fallback_ok, False
     except Exception as exc:
+        docker_ok = _try_download_from_docker_fallback(client, entry)
+        if docker_ok:
+            return True, True
+        fallback_ok = _has_required_files(entry)
         TrackLogger.error(
             f"[DATA] {desc}: unexpected error — {exc}", tag="DATA"
         )
-        return _has_required_files(entry)
+        return fallback_ok, False
 
 
 # ---------------------------------------------------------------------------
@@ -312,11 +405,15 @@ async def ensure_data_available() -> dict[str, bool]:
 def _sync_download_all() -> dict[str, bool]:
     """Synchronous worker that downloads all manifest entries."""
     results: dict[str, bool] = {}
+    remote_failures: list[str] = []
 
     with httpx.Client(timeout=_DOWNLOAD_TIMEOUT, follow_redirects=True) as client:
         for entry in DOWNLOAD_MANIFEST:
-            ok = _download_and_extract(client, entry)
+            ok, fetched_from_remote = _download_and_extract(client, entry)
             results[entry["description"]] = ok
+
+            if ok and not fetched_from_remote:
+                remote_failures.append(entry["description"])
 
             if not ok and entry.get("critical"):
                 TrackLogger.error(
@@ -324,6 +421,15 @@ def _sync_download_all() -> dict[str, bool]:
                     "Some endpoints will fail.",
                     tag="DATA",
                 )
+
+    if remote_failures:
+        failed_list = ", ".join(remote_failures[:3])
+        extra = "" if len(remote_failures) <= 3 else f", +{len(remote_failures) - 3} more"
+        TrackLogger.warning(
+            f"[DATA] Remote sync failed for {len(remote_failures)} data groups; "
+            f"served via local fallback: {failed_list}{extra}",
+            tag="DATA",
+        )
 
     return results
 
