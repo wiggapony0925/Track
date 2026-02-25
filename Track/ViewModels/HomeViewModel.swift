@@ -2888,15 +2888,16 @@ final class HomeViewModel {
         let lon = location.coordinate.longitude
 
         do {
-            async let flatTask = TrackAPI.fetchNearbyTransit(lat: lat, lon: lon)
             async let groupedTask = TrackAPI.fetchNearbyGrouped(lat: lat, lon: lon)
             async let nearbyBusStopsTask = TrackAPI.fetchNearbyBusStops(lat: lat, lon: lon)
             async let stationsTask = repository.fetchNearbyStations(
                 latitude: lat, longitude: lon
             )
 
-            let rawTransit = try await flatTask
             let newGrouped = try await groupedTask
+            let rawTransit = newGrouped
+                .flatMap(\ .directions)
+                .flatMap(\ .arrivals)
 
             // ── Resolve nearby bus stops and subway stations BEFORE
             //    assigning grouped data so that when SwiftUI re-renders,
@@ -2932,13 +2933,21 @@ final class HomeViewModel {
             // global feeds that don't change by location. Skipping them during
             // drag-to-search avoids 2 extra network calls per pan gesture.
             if !skipGlobalFeeds {
-                async let alertsTask = TrackAPI.fetchAlerts()
-                async let accessTask = TrackAPI.fetchAccessibility()
-                do {
-                    serviceAlerts = try await alertsTask
-                    AlertNotificationManager.shared.processAlerts(serviceAlerts)
-                } catch {}
-                do { elevatorOutages = try await accessTask } catch {}
+                Task {
+                    async let alertsTask = TrackAPI.fetchAlerts()
+                    async let accessTask = TrackAPI.fetchAccessibility()
+                    do {
+                        let alerts = try await alertsTask
+                        await MainActor.run {
+                            serviceAlerts = alerts
+                            AlertNotificationManager.shared.processAlerts(alerts)
+                        }
+                    } catch {}
+                    do {
+                        let accessibility = try await accessTask
+                        await MainActor.run { elevatorOutages = accessibility }
+                    } catch {}
+                }
             }
 
             // Sync the selected route if it's currently open

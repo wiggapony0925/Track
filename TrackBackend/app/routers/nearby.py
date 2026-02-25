@@ -197,6 +197,26 @@ _nearby_resp_cache: dict[
 _nearby_resp_inflight: dict[tuple, asyncio.Task] = {}
 
 
+async def _compute_and_cache_grouped(
+    key: tuple[float, float, int, str | None],
+    lat: float,
+    lon: float,
+    radius: int,
+    mode: str | None,
+) -> list["GroupedNearbyTransit"]:
+    import time as _time
+
+    flat = await _collect_all(lat, lon, radius, mode_filter=mode)
+    grouped = _group_arrivals(flat)
+
+    if len(_nearby_resp_cache) >= NEARBY_RESPONSE_MAX_SIZE:
+        oldest_key = min(_nearby_resp_cache, key=lambda k: _nearby_resp_cache[k][0])
+        del _nearby_resp_cache[oldest_key]
+
+    _nearby_resp_cache[key] = (_time.time(), grouped)
+    return grouped
+
+
 def clear_nearby_cache() -> int:
     """Clear the response-level cache. Returns number of entries cleared."""
     count = len(_nearby_resp_cache)
@@ -277,9 +297,7 @@ async def nearby_transit_grouped(
             if key not in _nearby_resp_inflight:
                 async def _bg_refresh(k: tuple, r: int, m: str | None) -> None:
                     try:
-                        flat = await _collect_all(k[0], k[1], r, mode_filter=m)
-                        grouped = _group_arrivals(flat)
-                        _nearby_resp_cache[k] = (_time.time(), grouped)
+                        await _compute_and_cache_grouped(k, k[0], k[1], r, m)
                     except Exception as exc:
                         TrackLogger.error(f"BG refresh /nearby/grouped failed: {exc}")
                     finally:
@@ -288,17 +306,21 @@ async def nearby_transit_grouped(
                 _nearby_resp_inflight[key] = task
             return data
 
-    # 2. Cache miss — full fetch
-    flat = await _collect_all(lat, lon, effective_radius, mode_filter=mode)
-    grouped = _group_arrivals(flat)
+    # 2. Cache miss — coalesce concurrent requests for same key
+    inflight = _nearby_resp_inflight.get(key)
+    if inflight is not None:
+        TrackLogger.cache("RESP MISS coalesced /nearby/grouped")
+        return await inflight
 
-    # Evict if over size
-    if len(_nearby_resp_cache) >= NEARBY_RESPONSE_MAX_SIZE:
-        oldest_key = min(_nearby_resp_cache, key=lambda k: _nearby_resp_cache[k][0])
-        del _nearby_resp_cache[oldest_key]
+    async def _miss_compute() -> list[GroupedNearbyTransit]:
+        try:
+            return await _compute_and_cache_grouped(key, lat, lon, effective_radius, mode)
+        finally:
+            _nearby_resp_inflight.pop(key, None)
 
-    _nearby_resp_cache[key] = (now, grouped)
-    return grouped
+    task = asyncio.create_task(_miss_compute())
+    _nearby_resp_inflight[key] = task
+    return await task
 
 
 # ---------------------------------------------------------------------------

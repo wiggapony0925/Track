@@ -11,6 +11,11 @@ fail=0
 
 log(){ printf "%s\n" "$1"; }
 
+time_get(){
+  local url="$1"
+  curl -sS "$url" -o /tmp/api_body.json -w "%{time_total}"
+}
+
 log "=== RUN $RUN_LABEL lat=$LAT lon=$LON radius=$RAD ==="
 
 hit(){
@@ -105,3 +110,20 @@ python -c "import json, pathlib; nearby=json.loads(pathlib.Path('/tmp/nearby.jso
 
 log "\n=== SUMMARY ==="
 log "pass=$pass fail=$fail"
+
+log "\n=== SPEED CHECK (/nearby/grouped) ==="
+curl -sS -X POST "$BASE/admin/cache/clear" >/dev/null || true
+
+url_grouped="$BASE/nearby/grouped?lat=$LAT&lon=$LON&radius=$RAD"
+url_grouped_bus="$BASE/nearby/grouped?lat=$LAT&lon=$LON&radius=$RAD&mode=bus"
+
+t_cold_all=$(time_get "$url_grouped")
+t_warm_all_1=$(time_get "$url_grouped")
+t_warm_all_2=$(time_get "$url_grouped")
+
+t_cold_bus=$(time_get "$url_grouped_bus")
+t_warm_bus_1=$(time_get "$url_grouped_bus")
+t_warm_bus_2=$(time_get "$url_grouped_bus")
+
+log "grouped(all): cold=${t_cold_all}s warm1=${t_warm_all_1}s warm2=${t_warm_all_2}s"
+log "grouped(bus): cold=${t_cold_bus}s warm1=${t_warm_bus_1}s warm2=${t_warm_bus_2}s"
