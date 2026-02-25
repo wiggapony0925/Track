@@ -211,6 +211,14 @@ class SyncManager: ObservableObject {
         
         let store = UserDefaults.standard
         
+        #if DEBUG
+        let devUseLocalhostValue = store.bool(forKey: "dev_use_localhost")
+        let devCustomIpValue = store.string(forKey: "dev_custom_ip") ?? ""
+        #else
+        let devUseLocalhostValue = false
+        let devCustomIpValue = ""
+        #endif
+        
         let settings = CloudUserSettings(
             userId: userId,
             preferredTheme: store.string(forKey: "appTheme") ?? "system",
@@ -224,13 +232,8 @@ class SyncManager: ObservableObject {
             autoRefreshEnabled: store.object(forKey: "auto_refresh_enabled") as? Bool ?? true,
             notificationsEnabled: true,
             dragToSearch: store.object(forKey: "drag_to_search") as? Bool ?? true,
-            #if DEBUG
-            devUseLocalhost: store.bool(forKey: "dev_use_localhost"),
-            devCustomIp: store.string(forKey: "dev_custom_ip") ?? ""
-            #else
-            devUseLocalhost: false,
-            devCustomIp: ""
-            #endif
+            devUseLocalhost: devUseLocalhostValue,
+            devCustomIp: devCustomIpValue
         )
         
         do {
