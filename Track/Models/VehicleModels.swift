@@ -22,8 +22,18 @@ struct TrainVehicle: Identifiable, Equatable {
     var lon: Double
     var bearing: Double?
     var nextStationName: String?
-    /// Minutes until arrival at the next station, derived from GTFS-RT.
-    var minutesAway: Int?
+    /// Estimated arrival time at the next station, derived from GTFS-RT.
+    /// Stored as a Date so `minutesAway` is computed live (matches row countdowns).
+    var estimatedArrival: Date?
+
+    /// Minutes until arrival at the next station. Computed live from
+    /// `estimatedArrival` using ceil() to match `ArrivalETAEngine.minutesRemaining`.
+    var minutesAway: Int? {
+        guard let eta = estimatedArrival else { return nil }
+        let seconds = eta.timeIntervalSinceNow
+        guard seconds > -60 else { return nil }
+        return max(0, Int(ceil(seconds / 60)))
+    }
 }
 
 // MARK: - Bus Snapshot

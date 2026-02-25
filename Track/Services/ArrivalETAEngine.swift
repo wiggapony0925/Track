@@ -91,8 +91,8 @@ enum ArrivalETAEngine {
 
     /// Smoothed ETA per vehicle — prevents the countdown jumping backwards
     /// when a vehicle dwells at an intermediate stop.
-    /// Keyed by vehicleKey. Value is seconds remaining (last blended output).
-    private static var smoothedETA: [String: Double] = [:]
+    /// Keyed by vehicleKey. Value is (seconds remaining, wall-clock timestamp).
+    private static var smoothedETA: [String: (seconds: Double, timestamp: Date)] = [:]
 
     struct PositionSample {
         let coordinate: CLLocationCoordinate2D
@@ -380,34 +380,60 @@ enum ArrivalETAEngine {
 
     // MARK: - ETA Smoothing
 
-    /// Applies exponential smoothing to prevent the countdown jumping
-    /// backwards when a vehicle arrives at and departs from an intermediate stop.
+    /// Applies time-aware smoothing to prevent the countdown oscillating
+    /// between "counting up" and "counting down."
     ///
-    /// If the new ETA is more than 30 s HIGHER than the smoothed value,
-    /// we cap the increase so the rider never sees the timer go from
-    /// "2 min" back to "5 min" due to a dwell at a preceding stop.
+    /// **Between TimelineView ticks** (< 3 s apart): the countdown ONLY
+    /// decreases. If the raw ETA tries to increase, we project the
+    /// expected value (previous − elapsed wall-clock time) and clamp.
+    ///
+    /// **After an API poll** (≥ 3 s since last evaluation): upward jumps
+    /// are allowed but capped at +30 s to prevent wild swings from a
+    /// single delayed poll.
     private static func smoothed(vehicleKey: String?, raw: SmartETA) -> SmartETA {
         guard let key = vehicleKey else { return raw }
 
         let rawSecs = raw.secondsRemaining
+        let now = Date.now
 
         if let prev = smoothedETA[key] {
-            // Only smooth upward jumps (delays). If the vehicle is getting
-            // closer, let the countdown decrease freely.
-            if rawSecs > prev + 30 {
-                // Dampen: allow at most +30 s per evaluation cycle
-                let damped = prev + 30
-                smoothedETA[key] = damped
-                return SmartETA(
-                    secondsRemaining: damped,
-                    isAtStop: raw.isAtStop,
-                    isPastArrival: raw.isPastArrival,
-                    source: raw.source,
-                    estimatedSpeedMps: raw.estimatedSpeedMps)
+            let elapsed = now.timeIntervalSince(prev.timestamp)
+
+            if elapsed < 3.0 {
+                // ── Between TimelineView ticks — monotonic decrease only ──
+                // The expected value is the previous smoothed value minus
+                // how much wall-clock time passed (i.e. "count down normally").
+                let expected = max(0, prev.seconds - elapsed)
+
+                if rawSecs > expected {
+                    // Raw ETA is HIGHER than expected → vehicle data fluctuation.
+                    // Hold the smoothed countdown at the expected decreasing value.
+                    smoothedETA[key] = (expected, now)
+                    return SmartETA(
+                        secondsRemaining: expected,
+                        isAtStop: raw.isAtStop,
+                        isPastArrival: raw.isPastArrival,
+                        source: raw.source,
+                        estimatedSpeedMps: raw.estimatedSpeedMps)
+                }
+            } else {
+                // ── New data arrived (API poll, ≥ 3 s gap) ──
+                // Allow controlled upward jump, capped at +30 s.
+                let expectedAfterElapsed = max(0, prev.seconds - elapsed)
+                if rawSecs > expectedAfterElapsed + 30 {
+                    let damped = expectedAfterElapsed + 30
+                    smoothedETA[key] = (damped, now)
+                    return SmartETA(
+                        secondsRemaining: damped,
+                        isAtStop: raw.isAtStop,
+                        isPastArrival: raw.isPastArrival,
+                        source: raw.source,
+                        estimatedSpeedMps: raw.estimatedSpeedMps)
+                }
             }
         }
 
-        smoothedETA[key] = rawSecs
+        smoothedETA[key] = (rawSecs, now)
         return raw
     }
 

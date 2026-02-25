@@ -50,12 +50,37 @@ struct GroupedRouteRow: View {
         return groupMinDistance(for: group, from: loc)
     }
 
+    /// Directions that have real data — filters out backend placeholder-only tabs
+    /// (e.g., Phase C "Opposite Direction" with no live arrivals and all
+    /// placeholder minutesAway ≥ 99). Falls back to all directions if
+    /// filtering would leave zero.
+    private var visibleDirections: [DirectionArrivalsResponse] {
+        let real = group.directions.filter { dir in
+            // Keep if it has at least one live (non-placeholder) arrival
+            if !dir.liveArrivals.isEmpty { return true }
+            // Keep if the direction isn't a backend "Opposite" placeholder
+            if dir.direction.lowercased() != "opposite" { return true }
+            // Drop: "Opposite" direction with no live arrivals
+            return false
+        }
+        return real.isEmpty ? group.directions : real
+    }
+
+    /// Maps the current `visibleDirections` index back to the original
+    /// `group.directions` index so parent callbacks (selectGroupedRoute,
+    /// trackNearbyArrival) receive the correct index.
+    private var originalDirectionIndex: Int {
+        let dir = currentDirection
+        return group.directions.firstIndex(where: { $0.id == dir.id })
+            ?? min(currentDirectionIndex, group.directions.count - 1)
+    }
+
     /// Currently visible direction (clamped to bounds).
     private var currentDirection: DirectionArrivalsResponse {
-        guard !group.directions.isEmpty else {
+        guard !visibleDirections.isEmpty else {
             return DirectionArrivalsResponse(direction: "—", arrivals: [])
         }
-        return group.directions[min(currentDirectionIndex, group.directions.count - 1)]
+        return visibleDirections[min(currentDirectionIndex, visibleDirections.count - 1)]
     }
 
     var body: some View {
@@ -110,7 +135,7 @@ struct GroupedRouteRow: View {
             }
 
             // ── Destination + Station info ──
-            if group.directions.isEmpty {
+            if visibleDirections.isEmpty {
                 Text("No active service")
                     .font(.custom("Helvetica-Bold", size: 15))
                     .foregroundColor(AppTheme.Colors.textSecondary)
@@ -118,7 +143,7 @@ struct GroupedRouteRow: View {
             } else {
                 VStack(alignment: .leading, spacing: 4) {
                     TabView(selection: $currentDirectionIndex) {
-                        ForEach(Array(group.directions.enumerated()), id: \.element.id) {
+                        ForEach(Array(visibleDirections.enumerated()), id: \.element.id) {
                             index, direction in
                             let label =
                                 direction.liveArrivals.first?.destination
@@ -167,9 +192,9 @@ struct GroupedRouteRow: View {
                     .frame(height: 50)
 
                     // Pagination dots
-                    if group.directions.count > 1 {
+                    if visibleDirections.count > 1 {
                         HStack(spacing: 4) {
-                            ForEach(0..<group.directions.count, id: \.self) { index in
+                            ForEach(0..<visibleDirections.count, id: \.self) { index in
                                 Capsule()
                                     .fill(
                                         index == currentDirectionIndex
@@ -192,7 +217,7 @@ struct GroupedRouteRow: View {
             Spacer(minLength: 4)
 
             // ── Countdown / Scheduled Time ──
-            if !group.directions.isEmpty {
+            if !visibleDirections.isEmpty {
                 countdownView
             }
 
@@ -207,7 +232,7 @@ struct GroupedRouteRow: View {
         .contentShape(Rectangle())
         .onTapGesture {
             HapticManager.selection()
-            onSelect?(currentDirectionIndex)
+            onSelect?(originalDirectionIndex)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
@@ -315,7 +340,7 @@ struct GroupedRouteRow: View {
     /// Called when the swipe threshold is exceeded — triggers tracking and shows banner.
     private func triggerTracking() {
         HapticManager.notification(.success)
-        onTrack?(currentDirectionIndex)
+        onTrack?(originalDirectionIndex)
 
         // Build banner text from current direction
         let dir = currentDirection
@@ -410,14 +435,16 @@ struct GroupedRouteRow: View {
                 statusPill(for: first)
             }
         } else if hasOnlyPlaceholders {
-            // Direction exists but only has backend placeholder arrivals
+            // Direction exists but only has backend placeholder arrivals.
+            // Check if other directions have live data and hint to swipe.
+            let otherDirectionsHaveLive = visibleDirections.contains { $0.id != dir.id && !$0.liveArrivals.isEmpty }
             VStack(spacing: 3) {
                 Image(systemName: "clock")
                     .font(.system(size: 16, weight: .medium))
                     .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.4))
-                Text("Sched")
+                Text(otherDirectionsHaveLive ? "Swipe →" : "Sched")
                     .font(.custom("Helvetica-Bold", size: 9))
-                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.4))
+                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(otherDirectionsHaveLive ? 0.6 : 0.4))
             }
         } else {
             // No arrivals at all

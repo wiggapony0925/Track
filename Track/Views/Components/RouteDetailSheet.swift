@@ -714,15 +714,18 @@ struct RouteDetailSheet: View {
                 if isLoadingArrivals {
                     CountdownChipSkeleton(count: 3)
                 } else if liveVehicleCount > 0 {
-                    // Vehicles are on the map but no arrival data for this direction yet
+                    // Vehicles are on the map but no arrival data for this stop/direction yet.
+                    // Clarify that vehicles exist on the route but aren't predicted for
+                    // the user's stop to avoid confusion with the "Sched" indicator on
+                    // GroupedRouteRow.
                     VStack(spacing: 8) {
                         Image(systemName: group.isBus ? "bus.fill" : "tram.fill")
                             .font(.system(size: 28))
                             .foregroundColor(routeColor.opacity(0.6))
-                        Text("\(liveVehicleCount) vehicle\(liveVehicleCount == 1 ? "" : "s") on route")
+                        Text("\(liveVehicleCount) vehicle\(liveVehicleCount == 1 ? "" : "s") en route")
                             .font(.custom("Helvetica-Bold", size: 14))
                             .foregroundColor(AppTheme.Colors.textPrimary)
-                        Text("No arrival times for this direction yet")
+                        Text("No predicted arrivals at your stop yet")
                             .font(.custom("Helvetica", size: 12))
                             .foregroundColor(AppTheme.Colors.textSecondary)
                     }
@@ -1131,15 +1134,15 @@ struct RouteDetailSheet: View {
                 if isLoadingArrivals {
                     ArrivalRowSkeleton(count: 4)
                 } else if liveVehicleCount > 0 {
-                    // Vehicles are on the map for this route, just no arrival data here
+                    // Vehicles are on the map for this route, just no arrival data at this stop
                     VStack(spacing: 8) {
                         Image(systemName: group.isBus ? "bus.fill" : "tram.fill")
                             .font(.system(size: 32, weight: .light))
                             .foregroundColor(routeColor.opacity(0.5))
-                        Text("\(liveVehicleCount) vehicle\(liveVehicleCount == 1 ? "" : "s") on route")
+                        Text("\(liveVehicleCount) vehicle\(liveVehicleCount == 1 ? "" : "s") en route")
                             .font(.custom("Helvetica-Bold", size: 14))
                             .foregroundColor(AppTheme.Colors.textPrimary)
-                        Text("Arrival times not available for this direction")
+                        Text("No predicted arrivals at your stop yet")
                             .font(.custom("Helvetica", size: 13))
                             .foregroundColor(AppTheme.Colors.textSecondary)
                     }

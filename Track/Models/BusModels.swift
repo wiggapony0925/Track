@@ -97,11 +97,12 @@ struct BusVehicleResponse: Codable, Identifiable, Equatable {
     }
 
     /// Minutes until arrival at next stop, or nil if unavailable.
+    /// Uses ceil() to match ArrivalETAEngine.minutesRemaining and row countdowns.
     var minutesAway: Int? {
         guard let eta = expectedArrival else { return nil }
         let seconds = eta.timeIntervalSinceNow
         guard seconds > -60 else { return nil }
-        return max(0, Int(seconds / 60))
+        return max(0, Int(ceil(seconds / 60)))
     }
 
     enum CodingKeys: String, CodingKey {
