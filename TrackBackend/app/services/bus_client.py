@@ -41,6 +41,7 @@ from app.cache_config import (
 from app.config import get_settings
 from app.models import BusArrival, BusRoute, BusStop, BusVehicle, DirectionShape, RouteShape
 from app.utils.geo_utils import haversine_m
+from app.utils import cache_stats
 from app.utils.logger import TrackLogger
 from app.utils.polyline_utils import decode_polyline, encode_polyline
 
@@ -645,10 +646,9 @@ async def init_shared_cache() -> None:
         return
 
     if not redis_url:
-        TrackLogger.info(
+        TrackLogger.redis(
             "[REDIS] REDIS_URL not set — running with in-process cache only. "
-            "Set REDIS_URL env var on Render to enable shared cache.",
-            tag="REDIS",
+            "Set REDIS_URL env var on Render to enable shared cache."
         )
         return
 
@@ -660,7 +660,7 @@ async def init_shared_cache() -> None:
     except Exception:
         _safe_url = "(url parse error)"
 
-    TrackLogger.info(f"[REDIS] Connecting to {_safe_url} ...", tag="REDIS")
+    TrackLogger.redis(f"[REDIS] Connecting to {_safe_url} ...")
 
     try:
         client = redis_asyncio.from_url(redis_url, encoding="utf-8", decode_responses=True)
@@ -668,10 +668,9 @@ async def init_shared_cache() -> None:
         await client.ping()
         ping_ms = ((_time.monotonic() - t0) * 1000)
         _redis_client = client
-        TrackLogger.info(
+        TrackLogger.redis(
             f"[REDIS] Connected — ping {ping_ms:.1f}ms | "
-            f"host={_safe_url} | shared cache ACTIVE for all bus endpoints",
-            tag="REDIS",
+            f"host={_safe_url} | shared cache ACTIVE for all bus endpoints"
         )
     except Exception as exc:
         _redis_client = None
@@ -706,20 +705,32 @@ async def _shared_cache_get(
     if _redis_client is None:
         return None, None
     key = _shared_key(kind, identifier)
+    s = cache_stats.bucket(kind)
     try:
         raw = await _redis_client.get(key)
         if not raw:
+            s.miss += 1
+            cache_stats.tick()
             return None, None
         payload = json.loads(raw)
         fetched_at = float(payload.get("fetched_at", 0.0))
         value = parser(payload.get("data"))
         age = _time.time() - fetched_at
         if age <= fresh_ttl:
+            s.fresh += 1
+            cache_stats.tick()
             return value, "fresh"
         if age <= stale_ttl:
+            s.stale += 1
+            cache_stats.tick()
             return value, "stale"
+        s.miss += 1
+        cache_stats.tick()
         return None, None
-    except Exception:
+    except Exception as exc:
+        s.errors += 1
+        cache_stats.tick()
+        TrackLogger.warning(f"[REDIS] GET error kind={kind} id={identifier}: {exc}", tag="REDIS")
         return None, None
 
 
@@ -737,10 +748,24 @@ async def _shared_cache_set(
         "fetched_at": _time.time(),
         "data": data,
     }
+    s = cache_stats.bucket(kind)
     try:
-        await _redis_client.set(key, json.dumps(payload), ex=max(1, int(stale_ttl)))
-    except Exception:
-        pass
+        serialized = json.dumps(payload)
+        await _redis_client.set(key, serialized, ex=max(1, int(stale_ttl)))
+        s.sets += 1
+        # Log the very first write for each cache kind so you can confirm
+        # data is flowing into Redis right after startup / cold-start.
+        if not s._first_set_logged:
+            s._first_set_logged = True
+            size_kb = len(serialized) / 1024
+            TrackLogger.redis(
+                f"[REDIS] ✓ First SET  key={key}  ttl={int(stale_ttl)}s  "
+                f"size={size_kb:.1f}KB"
+            )
+        cache_stats.tick()
+    except Exception as exc:
+        s.errors += 1
+        TrackLogger.warning(f"[REDIS] SET error kind={kind} id={identifier}: {exc}", tag="REDIS")
 
 
 def _normalize_mta_bus_url(url: str) -> str:

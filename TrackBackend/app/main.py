@@ -19,6 +19,7 @@ from app.config import get_settings
 from app.routers import bus, lirr, mnr, nearby, predict, status, subway
 from app.services.bus_client import close_shared_cache, init_shared_cache, clear_bus_cache
 from app.services.data_loader import ensure_data_available
+from app.utils import cache_stats
 from app.utils.logger import TrackLogger
 
 app = FastAPI(
@@ -71,6 +72,9 @@ async def shutdown_event():
     global _gtfs_refresh_task
     if _gtfs_refresh_task:
         _gtfs_refresh_task.cancel()
+    # Emit final cache stats before the process exits so Render logs capture
+    # the lifetime activity summary for every cache kind (bus Redis + mta in-process).
+    cache_stats.flush()
     await close_shared_cache()
 
 

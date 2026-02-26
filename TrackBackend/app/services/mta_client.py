@@ -19,6 +19,7 @@ import httpx
 
 from app.cache_config import MTA_CACHE_MAX_SIZE, MTA_FEED_TTL_SECONDS, MTA_UPSTREAM_CONCURRENCY
 from app.config import get_settings
+from app.utils import cache_stats
 from app.utils.logger import TrackLogger
 
 
@@ -52,13 +53,19 @@ class AsyncTTLCache:
     def get(self, key: str) -> Any | None:
         entry = self._cache.get(key)
         if entry is None:
+            cache_stats.bucket("mta.feed").miss += 1
+            cache_stats.tick()
             return None
         ts, value = entry
         if time.time() - ts < self.ttl:
             TrackLogger.cache(f"HIT  {key[:80]}")
+            cache_stats.bucket("mta.feed").fresh += 1
+            cache_stats.tick()
             return value
         del self._cache[key]
         TrackLogger.cache(f"EXPIRED  {key[:80]}")
+        cache_stats.bucket("mta.feed").stale += 1
+        cache_stats.tick()
         return None
 
     def set(self, key: str, value: Any) -> None:
@@ -66,6 +73,12 @@ class AsyncTTLCache:
             TrackLogger.cache(f"Evicting — cache at {len(self._cache)}/{self.max_size}")
             self._evict()
         self._cache[key] = (time.time(), value)
+        s = cache_stats.bucket("mta.feed")
+        s.sets += 1
+        if not s._first_set_logged:
+            s._first_set_logged = True
+            TrackLogger.redis(f"[MTA CACHE] ✓ First SET  key={key[:100]}  ttl={int(self.ttl)}s")
+        cache_stats.tick()
 
     def _evict(self) -> None:
         """Remove expired entries; if still over limit, drop oldest 25%."""

@@ -252,6 +252,11 @@ class TrackLogger:
         _logger.debug(msg, extra={"tag": "CACHE"})
 
     @staticmethod
+    def redis(msg: str) -> None:
+        """Log Redis / shared-cache activity at INFO level (visible in Render logs)."""
+        _logger.info(msg, extra={"tag": "REDIS"})
+
+    @staticmethod
     def feed(msg: str) -> None:
         """Log GTFS / SIRI feed activity."""
         _logger.debug(msg, extra={"tag": "FEED"})

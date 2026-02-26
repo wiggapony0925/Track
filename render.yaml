@@ -1,0 +1,55 @@
+# render.yaml — Track infrastructure as code
+# Render reads this file to provision/sync services.
+# Dashboard: https://dashboard.render.com
+# Docs: https://render.com/docs/infrastructure-as-code
+
+# ────────────────────────────────────────────────────────────
+# Key Value (Redis-compatible) — shared bus cache
+# ────────────────────────────────────────────────────────────
+keyValueStores:
+  - name: track-redis
+    plan: free          # 25 MB — sufficient for transit cache (ephemeral data)
+    region: virginia    # same region as Track web service to minimise latency
+    maxmemoryPolicy: allkeys-lru  # evict oldest keys when memory is full
+
+# ────────────────────────────────────────────────────────────
+# Web services
+# ────────────────────────────────────────────────────────────
+services:
+  - type: web
+    name: Track
+    runtime: docker
+    region: virginia
+    plan: starter         # 512 MB RAM, 0.5 CPU — upgrade to standard if CPU-bound
+    rootDir: TrackBackend
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /config
+    branch: main
+    autoDeploy: true      # auto-deploy on every push to main
+    numInstances: 1
+
+    envVars:
+      # ── Redis (Key Value) ──────────────────────────────────
+      # Render injects the internal connection string automatically.
+      # This is the primary performance lever: enables shared Redis
+      # cache across all instances instead of per-process only.
+      - key: REDIS_URL
+        fromService:
+          type: keyValueStore
+          name: track-redis
+          property: connectionString
+
+      # ── MTA / transit API keys ─────────────────────────────
+      # These are secret — set them manually in the Render dashboard
+      # under Environment > Secret Files, or as individual env vars.
+      # They are listed here (without values) so future engineers know
+      # what is required.
+      - key: MTA_API_KEY
+        sync: false       # value managed in dashboard, not in this file
+      - key: OBA_API_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
