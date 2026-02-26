@@ -17,9 +17,10 @@ from fastapi import FastAPI, Request
 
 from app.config import get_settings
 from app.routers import bus, lirr, mnr, nearby, predict, status, subway
-from app.services.bus_client import close_shared_cache, init_shared_cache, clear_bus_cache
+from app.services.bus_client import clear_bus_cache
 from app.services.data_loader import ensure_data_available
 from app.utils import cache_stats
+from app.utils import redis_client as _redis
 from app.utils.logger import TrackLogger
 
 app = FastAPI(
@@ -51,10 +52,9 @@ async def startup_event():
     TrackLogger.startup()
     # Download fresh GTFS data from Supabase (falls back to Docker-bundled files)
     await ensure_data_available()
-    await init_shared_cache()
+    await _redis.init_redis()
     # Log startup summary so Render logs clearly show what's active
-    from app.services.bus_client import _redis_client as _rc
-    redis_status = "ACTIVE" if _rc is not None else "DISABLED (in-process only)"
+    redis_status = "ACTIVE  bus · subway · LIRR · MNR" if _redis.get_client() else "DISABLED (in-process only)"
     TrackLogger.info(
         f"[STARTUP] Track backend ready | "
         f"Redis={redis_status} | "
@@ -75,7 +75,7 @@ async def shutdown_event():
     # Emit final cache stats before the process exits so Render logs capture
     # the lifetime activity summary for every cache kind (bus Redis + mta in-process).
     cache_stats.flush()
-    await close_shared_cache()
+    await _redis.close_redis()
 
 
 async def _periodic_gtfs_check():

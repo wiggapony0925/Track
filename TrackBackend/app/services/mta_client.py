@@ -20,7 +20,12 @@ import httpx
 from app.cache_config import MTA_CACHE_MAX_SIZE, MTA_FEED_TTL_SECONDS, MTA_UPSTREAM_CONCURRENCY
 from app.config import get_settings
 from app.utils import cache_stats
+from app.utils import redis_client as _redis
 from app.utils.logger import TrackLogger
+
+# Cache-stats kind label used for all MTA feeds (subway / LIRR / MNR).
+# The URL itself is the unique key within this kind.
+_FEED_KIND = "mta.feed"
 
 
 def _get_timeout() -> httpx.Timeout:
@@ -156,17 +161,32 @@ async def _fetch_from_upstream(url: str, *, parse_json: bool) -> Any:
 
 
 async def _fetch_with_cache(url: str, *, parse_json: bool) -> Any:
+    # 1. Redis first — survives deploys and is shared across all Render instances.
+    #    If a sibling instance or a recent process already fetched this feed,
+    #    we get the result instantly without hitting MTA upstream.
+    redis_hit = await _redis.feed_get(
+        _FEED_KIND, url, ttl=_HTTP_CACHE.ttl, is_bytes=not parse_json
+    )
+    if redis_hit is not None:
+        return redis_hit
+
+    # 2. In-process TTL cache — zero-latency for same-instance repeat calls.
     cached = _HTTP_CACHE.get(url)
     if cached is not None:
         return cached
 
+    # 3. Deduplicate burst requests for the same URL within this instance.
     inflight = _INFLIGHT_FETCHES.get(url)
     if inflight is not None:
         return await inflight
 
     async def _run_fetch() -> Any:
         data = await _fetch_from_upstream(url, parse_json=parse_json)
+        # Populate both caches so every path benefits.
         _HTTP_CACHE.set(url, data)
+        await _redis.feed_set(
+            _FEED_KIND, url, data, ttl=_HTTP_CACHE.ttl, is_bytes=not parse_json
+        )
         return data
 
     task = asyncio.create_task(_run_fetch())
