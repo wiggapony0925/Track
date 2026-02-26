@@ -681,9 +681,19 @@ def _group_arrivals(flat: list[NearbyTransitArrival]) -> list[GroupedNearbyTrans
     # Sort groups by the soonest arrival across all directions
     groups.sort(key=_soonest_minutes)
 
-    if single_direction_before:
-        TrackLogger.info(
-            f"Grouped routes with 1 direction: before={single_direction_before}, after={single_direction_after}"
+    if single_direction_after > 0:
+        # Real problem: routes that slipped through all backfill phases with only 1 direction.
+        slipped = [
+            g.route_id for g in groups if len(g.directions) == 1
+        ]
+        TrackLogger.warning(
+            f"[BACKFILL GAP] {single_direction_after} route(s) still have only 1 direction "
+            f"after Phase B/C and grouping fix: {slipped}"
+        )
+    elif single_direction_before:
+        TrackLogger.debug(
+            f"All 1-direction routes fixed by backfill: "
+            f"{single_direction_before} routes → 0 remaining after Phase B/C"
         )
 
     return groups
@@ -1150,9 +1160,12 @@ async def _fetch_nearby_buses(
         _route_dirs[r.route_id].add(r.direction)
     single_dir = [rid for rid, dirs in _route_dirs.items() if len(dirs) == 1]
     if single_dir:
-        TrackLogger.bus(
-            f"Bus routes with only 1 direction ({len(single_dir)}/{len(_route_dirs)}): "
-            f"{single_dir[:10]}"
+        # PRE-BACKFILL count — Phase B/C will add placeholder opposite directions
+        # for all of these, so this number does NOT reflect the final grouped output.
+        # Only log at DEBUG to avoid false alarms.
+        TrackLogger.debug(
+            f"[pre-backfill] Bus routes with 1 live direction: "
+            f"{len(single_dir)}/{len(_route_dirs)} — Phase B/C will add placeholders"
         )
 
     # -----------------------------------------------------------------
