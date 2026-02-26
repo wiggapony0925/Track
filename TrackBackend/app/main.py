@@ -51,6 +51,15 @@ async def startup_event():
     # Download fresh GTFS data from Supabase (falls back to Docker-bundled files)
     await ensure_data_available()
     await init_shared_cache()
+    # Log startup summary so Render logs clearly show what's active
+    from app.services.bus_client import _redis_client as _rc
+    redis_status = "ACTIVE" if _rc is not None else "DISABLED (in-process only)"
+    TrackLogger.info(
+        f"[STARTUP] Track backend ready | "
+        f"Redis={redis_status} | "
+        f"env=production",
+        tag="STARTUP",
+    )
     # Start background GTFS freshness checker
     _gtfs_refresh_task = asyncio.create_task(_periodic_gtfs_check())
     # Prime caches in background so first real user never eats a cold penalty

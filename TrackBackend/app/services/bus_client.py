@@ -635,16 +635,51 @@ async def init_shared_cache() -> None:
     _redis_init_attempted = True
 
     redis_url = os.getenv("REDIS_URL", "").strip()
-    if not redis_url or redis_asyncio is None:
+
+    if redis_asyncio is None:
+        TrackLogger.warning(
+            "[REDIS] redis-py not installed — shared cache disabled. "
+            "Run: pip install redis>=5.0.0",
+            tag="REDIS",
+        )
         return
+
+    if not redis_url:
+        TrackLogger.info(
+            "[REDIS] REDIS_URL not set — running with in-process cache only. "
+            "Set REDIS_URL env var on Render to enable shared cache.",
+            tag="REDIS",
+        )
+        return
+
+    # Mask credentials for safe logging (redis://:password@host:port → redis://***@host:port)
+    try:
+        from urllib.parse import urlparse
+        _parsed = urlparse(redis_url)
+        _safe_url = f"{_parsed.scheme}://{'***@' if _parsed.password else ''}{_parsed.hostname}:{_parsed.port or 6379}"
+    except Exception:
+        _safe_url = "(url parse error)"
+
+    TrackLogger.info(f"[REDIS] Connecting to {_safe_url} ...", tag="REDIS")
+
     try:
         client = redis_asyncio.from_url(redis_url, encoding="utf-8", decode_responses=True)
+        t0 = _time.monotonic()
         await client.ping()
+        ping_ms = ((_time.monotonic() - t0) * 1000)
         _redis_client = client
-        TrackLogger.info("Redis shared cache enabled for bus endpoints")
+        TrackLogger.info(
+            f"[REDIS] Connected — ping {ping_ms:.1f}ms | "
+            f"host={_safe_url} | shared cache ACTIVE for all bus endpoints",
+            tag="REDIS",
+        )
     except Exception as exc:
         _redis_client = None
-        TrackLogger.warning(f"Redis disabled (connection failed): {exc}", tag="BUS")
+        TrackLogger.warning(
+            f"[REDIS] Connection FAILED to {_safe_url} — "
+            f"{type(exc).__name__}: {exc} | falling back to in-process cache",
+            tag="REDIS",
+        )
 
 
 async def close_shared_cache() -> None:
