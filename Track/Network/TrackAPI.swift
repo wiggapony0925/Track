@@ -9,6 +9,36 @@
 import CoreLocation
 import Foundation
 
+private actor APIRequestMemoizer {
+    private var inflight: [String: Task<Data, Error>] = [:]
+    private var cache: [String: (timestamp: Date, data: Data)] = [:]
+
+    func getCached(for key: String, ttl: TimeInterval) -> Data? {
+        guard let cached = cache[key] else { return nil }
+        guard Date().timeIntervalSince(cached.timestamp) <= ttl else {
+            cache.removeValue(forKey: key)
+            return nil
+        }
+        return cached.data
+    }
+
+    func setCached(_ data: Data, for key: String) {
+        cache[key] = (Date(), data)
+    }
+
+    func getInflight(for key: String) -> Task<Data, Error>? {
+        inflight[key]
+    }
+
+    func setInflight(_ task: Task<Data, Error>, for key: String) {
+        inflight[key] = task
+    }
+
+    func clearInflight(for key: String) {
+        inflight.removeValue(forKey: key)
+    }
+}
+
 /// Centralized API client for the Track backend.
 struct TrackAPI {
 
@@ -407,6 +437,23 @@ struct TrackAPI {
         return d
     }()
 
+    private static let memoizer = APIRequestMemoizer()
+    private static let staticEndpointTTL: TimeInterval = 30
+
+    private static func isStaticCacheablePath(_ path: String) -> Bool {
+        switch path {
+        case "/subway/shapes/all", "/lirr/shapes/all", "/mnr/shapes/all", "/subway/stations/all", "/alerts", "/accessibility":
+            return true
+        default:
+            return false
+        }
+    }
+
+    private static func cacheablePath(from url: URL) -> String? {
+        let path = url.path
+        return isStaticCacheablePath(path) ? path : nil
+    }
+
     private static func get(path: String) async throws -> Data {
         guard let url = URL(string: baseURL + path) else {
             throw TrackAPIError.invalidURL
@@ -416,28 +463,52 @@ struct TrackAPI {
     }
 
     private static func get(url: URL) async throws -> Data {
-        var request = URLRequest(url: url)
-        if let email = cachedUserEmail, !email.isEmpty {
-            request.setValue(email, forHTTPHeaderField: "x-user-email")
+        let cacheKey = url.absoluteString
+        let cacheablePath = cacheablePath(from: url)
+
+        if let cacheablePath,
+           let cached = await memoizer.getCached(for: cacheablePath, ttl: staticEndpointTTL)
+        {
+            AppLogger.shared.log("API_CACHE", message: "HIT \(cacheablePath)")
+            return cached
         }
 
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse else {
-            throw TrackAPIError.networkError
+        if let inflight = await memoizer.getInflight(for: cacheKey) {
+            AppLogger.shared.log("API_CACHE", message: "COALESCE \(url.path)")
+            return try await inflight.value
         }
 
-        // Log the response JSON - DISABLED for performance/clutter
-        // let jsonString = String(data: data, encoding: .utf8) ?? "<binary>"
-        // AppLogger.shared.logResponse(
-        //     url: url.absoluteString,
-        //     statusCode: http.statusCode,
-        //     json: jsonString
-        // )
+        let task = Task<Data, Error> {
+            var request = URLRequest(url: url)
+            if let email = cachedUserEmail, !email.isEmpty {
+                request.setValue(email, forHTTPHeaderField: "x-user-email")
+            }
 
-        guard (200...299).contains(http.statusCode) else {
-            throw TrackAPIError.serverError(statusCode: http.statusCode)
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse else {
+                throw TrackAPIError.networkError
+            }
+
+            guard (200...299).contains(http.statusCode) else {
+                throw TrackAPIError.serverError(statusCode: http.statusCode)
+            }
+            return data
         }
-        return data
+
+        await memoizer.setInflight(task, for: cacheKey)
+
+        do {
+            let data = try await task.value
+            if let cacheablePath {
+                await memoizer.setCached(data, for: cacheablePath)
+                AppLogger.shared.log("API_CACHE", message: "STORE \(cacheablePath)")
+            }
+            await memoizer.clearInflight(for: cacheKey)
+            return data
+        } catch {
+            await memoizer.clearInflight(for: cacheKey)
+            throw error
+        }
     }
 }
 

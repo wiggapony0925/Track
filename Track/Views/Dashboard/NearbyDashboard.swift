@@ -32,8 +32,7 @@ struct NearbyDashboard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             // Use active search pin OR user location for distance calculation
-            let refLocation = viewModel.effectiveLocation(
-                userLocation: locationManager.currentLocation)
+            let refLocation = viewModel.referenceLocation
 
             if !viewModel.groupedTransit.isEmpty {
                 let filtered = viewModel.filteredGroupedTransit
@@ -453,8 +452,7 @@ struct FlatTransitList: View {
                                     arrival, userLocation: locationManager.currentLocation)
                             }
                         } : nil,
-                    userLocation: viewModel.effectiveLocation(
-                        userLocation: locationManager.currentLocation),
+                    userLocation: viewModel.referenceLocation,
                     isExpanded: viewModel.selectedExpandedArrivalID == arrival.id,
                     onExpand: {
                         viewModel.toggleArrivalExpansion(arrival.id)

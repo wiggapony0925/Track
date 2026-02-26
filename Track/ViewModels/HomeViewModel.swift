@@ -18,7 +18,7 @@ import WidgetKit
 @Observable
 @MainActor
 final class HomeViewModel {
-    var nearbyStations: [(stationID: String, name: String, distance: Double, routeIDs: [String])] =
+    var nearbyStations: [(stationID: String, name: String, lat: Double, lon: Double, routeIDs: [String])] =
         []
     var upcomingArrivals: [TrainArrival] = []
     var isLoading = false
@@ -249,8 +249,99 @@ final class HomeViewModel {
     /// to the reference location — no separate data source, no race.
     func displayDistanceMeters(for group: GroupedNearbyTransitResponse, from location: CLLocation?) -> CLLocationDistance? {
         guard let location else { return nil }
-        let dist = groupMinDistance(for: group, from: location)
-        return dist.isFinite ? dist : nil
+
+        #if DEBUG
+        let centerLabel = isSearchPinActive
+            ? "📍 PIN (\(String(format: "%.5f", location.coordinate.latitude)), \(String(format: "%.5f", location.coordinate.longitude)))"
+            : "🔵 GPS (\(String(format: "%.5f", location.coordinate.latitude)), \(String(format: "%.5f", location.coordinate.longitude)))"
+        #endif
+
+        // Resolve the result into a local variable so we can emit one
+        // [DASHBOARD DIST] comparison log before every return.
+        let result: CLLocationDistance?
+
+        if group.isBus {
+            let target = normalizeMTARouteToken(group.routeId)
+            let matchingStops = nearbyBusStops.filter { stop in
+                guard let routeIds = stop.routeIds, !routeIds.isEmpty else { return false }
+                return routeIds.contains { normalizeMTARouteToken($0) == target }
+            }
+            #if DEBUG
+            if matchingStops.isEmpty {
+                print("[DIST] \(group.routeId) bus  center=\(centerLabel)  ⚠️ NO matching stops (token=\(target), nearbyBusStops=\(nearbyBusStops.count)) → fallback groupMinDistance")
+            } else {
+                for stop in matchingStops {
+                    let d = location.distance(from: CLLocation(latitude: stop.lat, longitude: stop.lon))
+                    print("[DIST] \(group.routeId) bus  center=\(centerLabel)  stop=\(stop.name)  (\(String(format: "%.5f", stop.lat)),\(String(format: "%.5f", stop.lon)))  d=\(Int(d))m / \(String(format: "%.2f", d * 3.28084 / 5280))mi")
+                }
+            }
+            #endif
+            // Always take the min of nearbyBusStops distance AND the group's
+            // own arrival-coordinate distance, so a stop inside the group that
+            // wasn't captured by the separate /bus/nearby fetch (different
+            // fetch radius / route-ID format) never gets silently ignored.
+            let groupDist = groupMinDistance(for: group, from: location)
+            if !matchingStops.isEmpty {
+                let nearbyDist = matchingStops.reduce(Double.greatestFiniteMagnitude) { best, stop in
+                    min(best, location.distance(from: CLLocation(latitude: stop.lat, longitude: stop.lon)))
+                }
+                let best = min(nearbyDist, groupDist)
+                result = best.isFinite ? best : nil
+            } else {
+                result = groupDist.isFinite ? groupDist : nil
+            }
+        } else {
+            let target = normalizeMTARouteToken(group.routeId)
+            let groupMode = group.mode  // "subway" | "lirr" | "mnr"
+            let matchingStations = nearbyStations.filter { station in
+                station.routeIDs.contains { rawID in
+                    // Guard mode-compatibility BEFORE normalizing so that
+                    // LIRR_2/3/4/5 don't match subway station routeIDs "2"/"3"/"4"/"5".
+                    let lower = rawID.lowercased()
+                    switch groupMode {
+                    case "lirr":
+                        guard lower.hasPrefix("lirr_") else { return false }
+                    case "mnr":
+                        guard lower.hasPrefix("mnr_") || lower.hasPrefix("mta mnr_") else { return false }
+                    default: // subway
+                        guard !lower.hasPrefix("lirr_") && !lower.hasPrefix("mnr_") && !lower.hasPrefix("mta mnr_") else { return false }
+                    }
+                    return normalizeMTARouteToken(rawID) == target
+                }
+            }
+            #if DEBUG
+            if matchingStations.isEmpty {
+                print("[DIST] \(group.routeId) \(group.mode)  center=\(centerLabel)  ⚠️ NO matching stations (token=\(target), nearbyStations=\(nearbyStations.count)) → fallback groupMinDistance")
+            } else {
+                for st in matchingStations {
+                    let d = location.distance(from: CLLocation(latitude: st.lat, longitude: st.lon))
+                    print("[DIST] \(group.routeId) \(group.mode)  center=\(centerLabel)  station=\(st.name)  (\(String(format: "%.5f", st.lat)),\(String(format: "%.5f", st.lon)))  d=\(Int(d))m / \(String(format: "%.2f", d * 3.28084 / 5280))mi")
+                }
+            }
+            #endif
+            let groupDist = groupMinDistance(for: group, from: location)
+            if !matchingStations.isEmpty {
+                let nearbyDist = matchingStations.reduce(Double.greatestFiniteMagnitude) { best, station in
+                    min(best, location.distance(from: CLLocation(latitude: station.lat, longitude: station.lon)))
+                }
+                let best = min(nearbyDist, groupDist)
+                result = best.isFinite ? best : nil
+            } else {
+                #if DEBUG
+                print("[DIST] \(group.routeId) \(group.mode)  center=\(centerLabel)  ⛔ using groupMinDistance=\(Int(groupDist))m / \(String(format: "%.2f", groupDist * 3.28084 / 5280))mi")
+                #endif
+                result = groupDist.isFinite ? groupDist : nil
+            }
+        }
+
+        #if DEBUG
+        if let r = result {
+            print("[DASHBOARD DIST] \(group.routeId) (\(group.mode))  center=\(centerLabel)  → \(Int(r))m / \(String(format: "%.2f", r / 1609.34))mi  ← this is what the row badge shows")
+        } else {
+            print("[DASHBOARD DIST] \(group.routeId) (\(group.mode))  center=\(centerLabel)  → nil (hidden)")
+        }
+        #endif
+        return result
     }
 
     /// Groups and sorts routes for dashboard display using the same distance source
@@ -264,6 +355,14 @@ final class HomeViewModel {
         fartherAway: [GroupedNearbyTransitResponse],
         muchFarther: [GroupedNearbyTransitResponse]
     ) {
+        #if DEBUG
+        if let referenceLocation {
+            let src = isSearchPinActive ? "PIN" : "GPS"
+            print("[BUCKETS] center=\(src) (\(String(format: "%.5f", referenceLocation.coordinate.latitude)), \(String(format: "%.5f", referenceLocation.coordinate.longitude)))  groups=\(groups.count)  nearbyBusStops=\(nearbyBusStops.count)  nearbyStations=\(nearbyStations.count)  lastKnownGPS=\(lastKnownUserLocation.map { "(\(String(format: "%.5f", $0.coordinate.latitude)),\(String(format: "%.5f", $0.coordinate.longitude)))" } ?? "nil")")
+        } else {
+            print("[BUCKETS] ⚠️ referenceLocation=nil — sorting without distance  lastKnownGPS=\(lastKnownUserLocation.map { "(\(String(format: "%.5f", $0.coordinate.latitude)),\(String(format: "%.5f", $0.coordinate.longitude)))" } ?? "nil")")
+        }
+        #endif
         guard let referenceLocation else {
             let sorted = sortGroupedByDistance(groups: groups, from: nil)
             return (sorted, [], [])
@@ -272,12 +371,23 @@ final class HomeViewModel {
         let r1 = AppSettings.shared.nearYouRadiusMeters
         let r2 = max(AppSettings.shared.fartherAwayRadiusMeters, r1)
 
+        // Pre-compute distances once per group so bucketing and sorting both
+        // use the same value without re-invoking displayDistanceMeters O(n log n)
+        // times (which also eliminates the duplicate [DIST] log spam).
+        var distanceCache: [String: CLLocationDistance] = [:]
+        distanceCache.reserveCapacity(groups.count)
+        for group in groups {
+            let key = "\(group.routeId)|\(group.mode)"
+            distanceCache[key] = displayDistanceMeters(for: group, from: referenceLocation)
+        }
+
         var nearYou: [GroupedNearbyTransitResponse] = []
         var fartherAway: [GroupedNearbyTransitResponse] = []
         var muchFarther: [GroupedNearbyTransitResponse] = []
 
         for group in groups {
-            guard let distance = displayDistanceMeters(for: group, from: referenceLocation) else {
+            let key = "\(group.routeId)|\(group.mode)"
+            guard let distance = distanceCache[key] else {
                 // Keep route rows visible during short feed/coordinate gaps.
                 muchFarther.append(group)
                 continue
@@ -298,10 +408,8 @@ final class HomeViewModel {
 
         let epsilon: CLLocationDistance = 0.5
         let sorter: (GroupedNearbyTransitResponse, GroupedNearbyTransitResponse) -> Bool = { lhs, rhs in
-            let leftDistance = self.displayDistanceMeters(for: lhs, from: referenceLocation)
-                ?? .greatestFiniteMagnitude
-            let rightDistance = self.displayDistanceMeters(for: rhs, from: referenceLocation)
-                ?? .greatestFiniteMagnitude
+            let leftDistance = distanceCache["\(lhs.routeId)|\(lhs.mode)"] ?? .greatestFiniteMagnitude
+            let rightDistance = distanceCache["\(rhs.routeId)|\(rhs.mode)"] ?? .greatestFiniteMagnitude
             if abs(leftDistance - rightDistance) > epsilon { return leftDistance < rightDistance }
             if lhs.soonestMinutes != rhs.soonestMinutes { return lhs.soonestMinutes < rhs.soonestMinutes }
             let leftName = lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName)
@@ -318,7 +426,7 @@ final class HomeViewModel {
 
     /// Nearby stations filtered by search text.
     var filteredNearbyStations:
-        [(stationID: String, name: String, distance: Double, routeIDs: [String])]
+        [(stationID: String, name: String, lat: Double, lon: Double, routeIDs: [String])]
     {
         guard !searchText.isEmpty else { return nearbyStations }
         let query = searchText.lowercased()
@@ -566,6 +674,10 @@ final class HomeViewModel {
     // Draggable search pin
     var searchPinCoordinate: CLLocationCoordinate2D?
     var isSearchPinActive = false
+
+    /// Last raw GPS location passed into `refresh()`.  Used by `referenceLocation`
+    /// so the ViewModel can resolve pin-vs-GPS without requiring a parameter.
+    var lastKnownUserLocation: CLLocation?
 
     // Walking route to the nearest station (forwarded from goMode)
     var nearestStopCoordinate: CLLocationCoordinate2D? {
@@ -1201,6 +1313,15 @@ final class HomeViewModel {
 
     private let repository = TransitRepository()
 
+    /// Single source of truth for "which location to measure distances from".
+    /// Returns the search-pin coordinate when the pin is active, otherwise the last
+    /// known GPS fix (falling back to Midtown if outside the service area).
+    /// SwiftUI re-evaluates this automatically whenever `isSearchPinActive` or
+    /// `searchPinCoordinate` changes because both are `@Observable` stored properties.
+    var referenceLocation: CLLocation? {
+        effectiveLocation(userLocation: lastKnownUserLocation)
+    }
+
     /// The effective location for data fetching — either the search pin or user location.
     /// If the GPS fix is outside the NYC service area, falls back to Midtown Manhattan
     /// so the app always shows MTA transit data.
@@ -1266,6 +1387,9 @@ final class HomeViewModel {
     ///   the request was skipped by the staleness guard.
     @discardableResult
     func refresh(location: CLLocation?, force: Bool = false) async -> Bool {
+        // Keep the raw GPS location up-to-date so `referenceLocation` can
+        // resolve pin vs GPS without needing a parameter at call sites.
+        if let location { lastKnownUserLocation = location }
         let loc = effectiveLocation(userLocation: location)
 
         // Skip if data is still fresh and user hasn't moved far.
@@ -1426,6 +1550,7 @@ final class HomeViewModel {
     /// Uses the standard mode-aware `refresh()` so that drag-search
     /// works correctly on every tab (Nearby, Subway, Bus, etc.).
     func setSearchPin(_ coordinate: CLLocationCoordinate2D, userLocation: CLLocation?) async {
+        if let userLocation { lastKnownUserLocation = userLocation }
         searchPinCoordinate = coordinate
         isSearchPinActive = true
         // New location context — clear grace so stale routes from the
@@ -1443,6 +1568,7 @@ final class HomeViewModel {
     /// them atomically with fresh data. This avoids a visible empty-state
     /// flash and ensures rows never disappear if the refresh fails.
     func clearSearchPin(userLocation: CLLocation?) async {
+        if let userLocation { lastKnownUserLocation = userLocation }
         isSearchPinActive = false
         searchPinCoordinate = nil
         graceMissCountBySource.removeAll()
@@ -1595,9 +1721,8 @@ final class HomeViewModel {
         }
 
         // Find nearest stop and calculate walking route.
-        // Use effectiveLocation so drag-to-search computes distances
-        // from the explored center, not the user's real GPS position.
-        let refLocation = effectiveLocation(userLocation: userLocation)
+        // Use referenceLocation — single source of truth for pin vs GPS.
+        let refLocation = referenceLocation
         let fallbackStops = routeShape?.stopsForDirection(index: selectedDirectionIndex) ?? []
         if !fallbackStops.isEmpty, let userLoc = refLocation {
             var closestStop: BusStop?
@@ -1619,7 +1744,7 @@ final class HomeViewModel {
                 // Highlight the nearest stop in the arrivals list
                 selectedStopId = closest.id
                 #if DEBUG
-                print("[HomeVM] selectGroupedRoute → selectedStopId = '\(closest.id)' (stop: \(closest.name))")
+                print("[WALK DIST] \(group.routeId) (\(group.mode))  source=routeShape (\(fallbackStops.count) stops)  nearest stop='\(closest.name)' id=\(closest.id)  (\(String(format: "%.5f", closest.lat)),\(String(format: "%.5f", closest.lon)))  straight-line=\(Int(minDistance))m / \(String(format: "%.2f", minDistance / 1609.34))mi  ← polyline targets this stop")
                 #endif
 
                 // Fetch walking route in background
@@ -1639,6 +1764,10 @@ final class HomeViewModel {
                 selectedStopId = first.stopId
 
                 if let userLoc = refLocation {
+                    #if DEBUG
+                    let fallbackDist = userLoc.distance(from: CLLocation(latitude: lat, longitude: lon))
+                    print("[WALK DIST] \(group.routeId) (\(group.mode))  source=arrivalFallback (no shape stops)  stop='\(first.stopName)'  (\(String(format: "%.5f", lat)),\(String(format: "%.5f", lon)))  straight-line=\(Int(fallbackDist))m / \(String(format: "%.2f", fallbackDist / 1609.34))mi  ← polyline targets this stop")
+                    #endif
                     let from = userLoc.coordinate
                     Task { await fetchWalkingRoute(from: from, to: fallbackCoord) }
                 }
@@ -2889,26 +3018,11 @@ final class HomeViewModel {
 
         do {
             async let groupedTask = TrackAPI.fetchNearbyGrouped(lat: lat, lon: lon)
-            async let nearbyBusStopsTask = TrackAPI.fetchNearbyBusStops(lat: lat, lon: lon)
-            async let stationsTask = repository.fetchNearbyStations(
-                latitude: lat, longitude: lon
-            )
 
             let newGrouped = try await groupedTask
             let rawTransit = newGrouped
                 .flatMap(\ .directions)
                 .flatMap(\ .arrivals)
-
-            // ── Resolve nearby bus stops and subway stations BEFORE
-            //    assigning grouped data so that when SwiftUI re-renders,
-            //    displayDistanceMeters() already has fresh physical-stop
-            //    data to match against — no more stale distance flash. ──
-            do {
-                nearbyBusStops = try await nearbyBusStopsTask
-            } catch {
-                AppLogger.shared.logError("fetchNearbyBusStops", error: error)
-            }
-            nearbyStations = (try? await stationsTask) ?? nearbyStations
 
             // Merge new grouped data with existing data using a multi-cycle
             // grace period so routes don't vanish when the MTA feed briefly
@@ -2927,6 +3041,28 @@ final class HomeViewModel {
                     "REFRESH",
                     message: "API returned 0 flat arrivals but we had \(nearbyTransit.count) — keeping previous data"
                 )
+            }
+
+            // Load auxiliary stop metadata in the background so first transit
+            // rows render immediately. These fields only refine distance display.
+            // Run both fetches in parallel so nearbyStations is populated before
+            // the first SwiftUI render that calls displayDistanceMeters.
+            Task {
+                // Both async let bindings start concurrently.
+                async let busStopsTask = TrackAPI.fetchNearbyBusStops(lat: lat, lon: lon)
+                async let stationsTask = repository.fetchNearbyStations(
+                    latitude: lat, longitude: lon
+                )
+
+                var stops: [BusStop] = []
+                do { stops = try await busStopsTask }
+                catch { AppLogger.shared.logError("fetchNearbyBusStops", error: error) }
+
+                let stations = (try? await stationsTask) ?? nearbyStations
+                await MainActor.run {
+                    nearbyBusStops = stops
+                    nearbyStations = stations
+                }
             }
 
             // Fetch alerts and accessibility only on full refreshes — these are

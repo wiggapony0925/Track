@@ -63,15 +63,12 @@ struct HomeView: View {
     }
     
     // MARK: - Effective Location
-    
-    /// The location used for all distance/centering calculations.
-    /// Returns the drag-search center when active, otherwise the real GPS.
-    /// Ensures tapping a route during drag-search uses the explored area,
-    /// not the user's physical position.
-    private var effectiveLocation: CLLocation? {
-        viewModel.effectiveLocation(userLocation: locationManager.currentLocation)
-    }
-    
+
+    /// The location used for all distance/centering/walking calculations.
+    /// Delegates to `viewModel.referenceLocation` — the single source of truth
+    /// that automatically picks the drag-search pin over the real GPS.
+    private var effectiveLocation: CLLocation? { viewModel.referenceLocation }
+
     /// Convenience coordinate from effectiveLocation.
     private var effectiveCoordinate: CLLocationCoordinate2D? {
         effectiveLocation?.coordinate
@@ -343,9 +340,7 @@ struct HomeView: View {
             // Pass the effective location (search pin center when drag-to-search
             // is active, otherwise the real GPS location) so that distance display,
             // walking directions, and map centering all work from the explored area.
-            let effectiveCoord = viewModel.effectiveLocation(
-                userLocation: locationManager.currentLocation
-            )?.coordinate
+            let effectiveCoord = viewModel.referenceLocation?.coordinate
             
             // Use the enriched group from the viewModel (which may have
             // additional directions added by enrichGroupWithShapeDirections)

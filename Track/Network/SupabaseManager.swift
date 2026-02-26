@@ -728,7 +728,16 @@ class SupabaseManager: ObservableObject {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
         
-        let (data, _) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SupabaseError.networkError
+        }
+        if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
+            throw SupabaseError.unauthorized
+        }
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw SupabaseError.networkError
+        }
         return try supabaseDecoder.decode([CloudFavorite].self, from: data)
     }
     
@@ -815,7 +824,16 @@ class SupabaseManager: ObservableObject {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
         
-        let (data, _) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SupabaseError.networkError
+        }
+        if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
+            throw SupabaseError.unauthorized
+        }
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw SupabaseError.networkError
+        }
         return try supabaseDecoder.decode([CloudSchedule].self, from: data)
     }
     
@@ -882,7 +900,16 @@ class SupabaseManager: ObservableObject {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
         
-        let (data, _) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SupabaseError.networkError
+        }
+        if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
+            throw SupabaseError.unauthorized
+        }
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw SupabaseError.networkError
+        }
         let results = try supabaseDecoder.decode([CloudUserSettings].self, from: data)
         return results.first
     }
@@ -984,7 +1011,16 @@ class SupabaseManager: ObservableObject {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
         
-        let (data, _) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SupabaseError.networkError
+        }
+        if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
+            throw SupabaseError.unauthorized
+        }
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw SupabaseError.networkError
+        }
         
         return try supabaseDecoder.decode([CloudCommutePattern].self, from: data)
     }

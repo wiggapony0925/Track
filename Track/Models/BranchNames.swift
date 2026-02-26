@@ -46,11 +46,11 @@ enum BranchNames {
     /// For subway/bus, strips the MTA prefix via `stripMTAPrefix()` from FormatUtils.swift.
     static func resolveDisplayName(routeId: String, mode: String) -> String {
         if mode == "lirr" {
-            let numeric = routeId.hasPrefix("LIRR_") ? String(routeId.dropFirst(5)) : routeId
+            let numeric = normalizeMTARouteToken(routeId)
             return lirr[numeric] ?? stripMTAPrefix(routeId)
         }
         if mode == "mnr" {
-            let numeric = routeId.hasPrefix("MNR_") ? String(routeId.dropFirst(4)) : routeId
+            let numeric = normalizeMTARouteToken(routeId)
             return mnr[numeric] ?? stripMTAPrefix(routeId)
         }
         return stripMTAPrefix(routeId)

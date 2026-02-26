@@ -115,18 +115,7 @@ extension Array where Element == TransitAlert {
     func matching(routeId: String, mode: String) -> [TransitAlert] {
         let query = routeId.lowercased()
         let queryMode = mode.lowercased()
-        
-        // For LIRR/MNR, also prepare the bare numeric and prefixed forms
-        let bareId: String? = {
-            if query.hasPrefix("lirr_") { return String(query.dropFirst(5)) }
-            if query.hasPrefix("mnr_") { return String(query.dropFirst(4)) }
-            return nil
-        }()
-        let prefixedId: String? = {
-            if queryMode == "lirr" && !query.hasPrefix("lirr_") { return "lirr_\(query)" }
-            if queryMode == "mnr" && !query.hasPrefix("mnr_") { return "mnr_\(query)" }
-            return nil
-        }()
+        let queryNormalized = normalizeMTARouteToken(routeId).lowercased()
         
         return filter { alert in
             // MUST be the same transit mode — this is the key guard
@@ -137,15 +126,11 @@ extension Array where Element == TransitAlert {
             
             // Exact match
             if alertRoute == query || affected.contains(query) { return true }
-            
-            // Stripped prefix: "LIRR_9" query matches alert routeId "9" in lirr mode
-            if let bare = bareId {
-                if alertRoute == bare || affected.contains(bare) { return true }
-            }
-            
-            // Added prefix: "9" query matches alert routeId "LIRR_9" in lirr mode
-            if let pf = prefixedId {
-                if alertRoute == pf || affected.contains(pf) { return true }
+
+            // Prefix-agnostic match via shared route token normalization
+            if normalizeMTARouteToken(alertRoute).lowercased() == queryNormalized { return true }
+            if affected.contains(where: { normalizeMTARouteToken($0).lowercased() == queryNormalized }) {
+                return true
             }
             
             return false

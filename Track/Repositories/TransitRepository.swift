@@ -44,7 +44,7 @@ final class TransitRepository {
         latitude: Double,
         longitude: Double,
         radius: Double? = nil
-    ) async throws -> [(stationID: String, name: String, distance: Double, routeIDs: [String])] {
+    ) async throws -> [(stationID: String, name: String, lat: Double, lon: Double, routeIDs: [String])] {
         let effectiveRadius = radius ?? Double(AppSettings.shared.effectiveAPISearchRadius)
         
         AppLogger.shared.log("TRANSIT", message: "Fetching nearby stations for (\(latitude), \(longitude))")
@@ -58,11 +58,13 @@ final class TransitRepository {
             )
             let userLoc = CLLocation(latitude: latitude, longitude: longitude)
             
-            let nearby = response.stations.map { station -> (stationID: String, name: String, distance: Double, routeIDs: [String]) in
-                let stopLoc = CLLocation(latitude: station.lat, longitude: station.lon)
-                let distance = userLoc.distance(from: stopLoc)
-                return (stationID: station.id, name: station.name, distance: distance, routeIDs: station.routes)
-            }.sorted { $0.distance < $1.distance }
+            let nearby = response.stations.map { station -> (stationID: String, name: String, lat: Double, lon: Double, routeIDs: [String]) in
+                return (stationID: station.id, name: station.name, lat: station.lat, lon: station.lon, routeIDs: station.routes)
+            }.sorted {
+                let d0 = userLoc.distance(from: CLLocation(latitude: $0.lat, longitude: $0.lon))
+                let d1 = userLoc.distance(from: CLLocation(latitude: $1.lat, longitude: $1.lon))
+                return d0 < d1
+            }
             
             return nearby
         } catch {

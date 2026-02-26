@@ -16,6 +16,18 @@ import SwiftUI
 @MainActor
 final class MapSystemViewModel {
 
+    // MARK: - Shared Snapshot Cache
+
+    private struct SharedSnapshot {
+        let systemMap: [CachedTransitLine]
+        let offsetSubwayLines: [OffsetSubwayLine]
+        let flattenedSubway: [FlattenedMapPolyline]
+        let flattenedCommuter: [FlattenedMapPolyline]
+        let stations: [CachedSubwayStation]
+    }
+
+    private static var sharedSnapshot: SharedSnapshot?
+
     // MARK: - Nested Types
 
     // Full transit system map (pre-decoded for performance)
@@ -82,11 +94,27 @@ final class MapSystemViewModel {
     // MARK: - Init
 
     init() {
+        if let snapshot = Self.sharedSnapshot {
+            cachedSystemMap = snapshot.systemMap
+            cachedOffsetSubwayLines = snapshot.offsetSubwayLines
+            flattenedSubwayPolylines = snapshot.flattenedSubway
+            flattenedCommuterRailPolylines = snapshot.flattenedCommuter
+            cachedStations = snapshot.stations
+            return
+        }
+
         guard !hasStartedLoading else { return }
         hasStartedLoading = true
         Task {
             await loadSystemMap()
             await loadStations()
+            Self.sharedSnapshot = SharedSnapshot(
+                systemMap: cachedSystemMap,
+                offsetSubwayLines: cachedOffsetSubwayLines,
+                flattenedSubway: flattenedSubwayPolylines,
+                flattenedCommuter: flattenedCommuterRailPolylines,
+                stations: cachedStations
+            )
         }
     }
 
@@ -95,6 +123,17 @@ final class MapSystemViewModel {
     /// Fetches the full transit system map (subway, LIRR, MNR polylines).
     /// Falls back to bundled offline data when network is unavailable.
     func loadSystemMap() async {
+        if !cachedSystemMap.isEmpty { return }
+
+        if let snapshot = Self.sharedSnapshot, !snapshot.systemMap.isEmpty {
+            cachedSystemMap = snapshot.systemMap
+            cachedOffsetSubwayLines = snapshot.offsetSubwayLines
+            flattenedSubwayPolylines = snapshot.flattenedSubway
+            flattenedCommuterRailPolylines = snapshot.flattenedCommuter
+            AppLogger.shared.log("SYSTEM_MAP", message: "Reused shared map snapshot")
+            return
+        }
+
         // If offline, use bundled static data
         if !OfflineCacheManager.shared.isOnline {
             await loadOfflineSystemMap()
@@ -384,6 +423,14 @@ final class MapSystemViewModel {
     /// Fetches all subway stations and their served lines.
     /// Falls back to bundled offline data when network is unavailable.
     func loadStations() async {
+        if !cachedStations.isEmpty { return }
+
+        if let snapshot = Self.sharedSnapshot, !snapshot.stations.isEmpty {
+            cachedStations = snapshot.stations
+            AppLogger.shared.log("SYSTEM_MAP", message: "Reused shared station snapshot")
+            return
+        }
+
         // If offline, use bundled static data
         if !OfflineCacheManager.shared.isOnline {
             loadOfflineStations()

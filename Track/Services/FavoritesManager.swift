@@ -25,6 +25,8 @@ class FavoritesManager: ObservableObject {
     
     private let defaults = UserDefaults(suiteName: kAppGroupIdentifier) ?? .standard
     private let cacheKey = "cached_favorites"
+    private var refreshTask: Task<Void, Never>?
+    private var lastRefreshDate: Date?
     
     private init() {
         // Load cached favorites from disk on launch for instant offline display
@@ -117,17 +119,41 @@ class FavoritesManager: ObservableObject {
     /// Pull the latest favorites from Supabase
     func refresh() async {
         guard SupabaseManager.shared.isAuthenticated else { return }
-        isLoading = true
-        defer { isLoading = false }
-        
-        do {
-            let remote = try await SupabaseManager.shared.fetchFavorites()
-            favorites = deduplicated(remote)
-            saveToCache()
-            print("[FavoritesManager] Refreshed \(favorites.count) favorites from cloud")
-        } catch {
-            print("[FavoritesManager] Failed to refresh: \(error)")
+
+        if let task = refreshTask {
+            await task.value
+            return
         }
+
+        if let lastRefreshDate,
+           Date().timeIntervalSince(lastRefreshDate) < 5
+        {
+            return
+        }
+
+        let task = Task { @MainActor in
+            isLoading = true
+            defer {
+                isLoading = false
+                refreshTask = nil
+            }
+
+            do {
+                let remote = try await SupabaseManager.shared.fetchFavorites()
+                favorites = deduplicated(remote)
+                saveToCache()
+                lastRefreshDate = Date()
+                print("[FavoritesManager] Refreshed \(favorites.count) favorites from cloud")
+            } catch SupabaseError.unauthorized {
+                // Session may be in-flight during startup token refresh.
+                // Keep cached favorites and avoid noisy decode/error churn.
+            } catch {
+                print("[FavoritesManager] Failed to refresh: \(error)")
+            }
+        }
+
+        refreshTask = task
+        await task.value
     }
     
     // MARK: - Private Helpers

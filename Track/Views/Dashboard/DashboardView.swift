@@ -47,6 +47,7 @@ struct DashboardView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     let initialLoad = !viewModel.hasLoadedOnce && viewModel.isLoading
+                    let showTransitSkeleton = initialLoad && !hasTransitData
 
                     // ── Favorites: skeleton OR real section ───────────────────
                     // Shown immediately on load alongside the transit skeleton
@@ -69,7 +70,7 @@ struct DashboardView: View {
                     }
 
                     // ── Transit: skeleton OR mode-specific content ────────────
-                    if initialLoad {
+                    if showTransitSkeleton {
                         TransitLoadingSkeleton()
                             .transition(.opacity)
                     } else {
@@ -148,10 +149,9 @@ struct DashboardView: View {
         }
         .background(AppTheme.Colors.background)
         .refreshable {
-            // Use effectiveLocation so pull-to-refresh during drag-to-search
-            // fetches from the explored area, not the user's GPS.
-            let loc = viewModel.effectiveLocation(userLocation: locationManager.currentLocation)
-            await viewModel.refresh(location: loc, force: true)
+            // Use referenceLocation (pin when active, GPS otherwise) so
+            // pull-to-refresh during drag-to-search fetches from the explored area.
+            await viewModel.refresh(location: viewModel.referenceLocation, force: true)
             lastUpdated = Date()
         }
     }

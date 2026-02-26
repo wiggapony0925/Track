@@ -45,7 +45,7 @@ let mtaAgencyPrefixes: [(prefix: String, length: Int)] = [
 ///   - `"L"`            → `"L"` (unchanged)
 ///
 /// Also strips stray `+` characters that occasionally appear in
-/// GTFS-RT feeds (e.g. `"MTA NYCT_L+"` → `"L"`).
+/// GTFS-RT feeds (e.g. `_L+"` → `"L"`).
 func stripMTAAgencyPrefix(_ id: String) -> String {
     for (prefix, length) in mtaAgencyPrefixes {
         if id.hasPrefix(prefix) {
@@ -73,4 +73,25 @@ func stripMTAStopPrefix(_ id: String) -> String {
         result = result.replacingOccurrences(of: prefix, with: "")
     }
     return result
+}
+
+// MARK: - Route Token Normalization
+
+/// Returns a canonical route token for matching across mixed ID formats.
+///
+/// Strips known agency prefixes, removes spaces, removes the `-SBS` suffix
+/// (grouped API uses `"M23-SBS"` while GTFS stop IDs use `"MTA NYCT_M23+"`),
+/// and uppercases the result so both representations compare equal.
+/// Examples:
+///   - "MTA NYCT_Q10"  -> "Q10"
+///   - "MTABC_Q10"     -> "Q10"
+///   - "M23-SBS"       -> "M23"
+///   - "MTA NYCT_M23+" -> "M23"
+///   - "LIRR_9"        -> "9"
+///   - "mnr_1"         -> "1"
+func normalizeMTARouteToken(_ id: String) -> String {
+    stripMTAAgencyPrefix(id)
+        .replacingOccurrences(of: "-SBS", with: "", options: .caseInsensitive)
+        .replacingOccurrences(of: " ", with: "")
+        .uppercased()
 }

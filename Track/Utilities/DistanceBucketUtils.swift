@@ -74,8 +74,9 @@ private func flatArrivalDistanceSort(
 
 /// Returns the minimum distance from a reference location to any stop in a
 /// grouped transit response (i.e. the closest entrance / stop).
-/// Prefers server-side ``distance_m`` (haversine) when available, falling
-/// back to ``CLLocation.distance(from:)`` for client-synthesised entries.
+/// Always recomputes from live stop coordinates when available so the value
+/// stays accurate after GPS updates or search-pin moves.  Falls back to the
+/// server-side haversine (``distance_m``) only when no coordinates exist.
 func groupMinDistance(
     for group: GroupedNearbyTransitResponse,
     from location: CLLocation
@@ -84,10 +85,12 @@ func groupMinDistance(
     var bestDist = Double.greatestFiniteMagnitude
     for arrival in allArrivals {
         let d: CLLocationDistance
-        if let serverDist = arrival.distanceM {
-            d = serverDist
-        } else if let lat = arrival.stopLat, let lon = arrival.stopLon {
+        // Prefer live coordinate distance — server distanceM is stale after
+        // any GPS movement or search-pin change.
+        if let lat = arrival.stopLat, let lon = arrival.stopLon {
             d = location.distance(from: CLLocation(latitude: lat, longitude: lon))
+        } else if let serverDist = arrival.distanceM {
+            d = serverDist
         } else {
             continue
         }
@@ -100,16 +103,18 @@ func groupMinDistance(
 }
 
 /// Returns the distance from a reference location to a single flat arrival.
-/// Prefers server-side ``distance_m`` when available.
+/// Prefers live stop coordinates over stale server-side ``distance_m``.
 func arrivalDistance(
     for arrival: NearbyTransitResponse,
     from location: CLLocation
 ) -> CLLocationDistance {
-    if let serverDist = arrival.distanceM { return serverDist }
-    guard let lat = arrival.stopLat, let lon = arrival.stopLon else {
-        return Double.greatestFiniteMagnitude
+    // Always recompute from coordinates when present — server distanceM is
+    // stale if the user has moved or changed the search pin since the fetch.
+    if let lat = arrival.stopLat, let lon = arrival.stopLon {
+        return location.distance(from: CLLocation(latitude: lat, longitude: lon))
     }
-    return location.distance(from: CLLocation(latitude: lat, longitude: lon))
+    if let serverDist = arrival.distanceM { return serverDist }
+    return Double.greatestFiniteMagnitude
 }
 
 // MARK: - Grouped Bucketing (3 tiers)
