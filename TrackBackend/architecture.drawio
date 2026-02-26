@@ -1,4 +1,4 @@
-<mxfile host="draw.io" modified="2026-02-24T00:00:00.000Z" agent="TrackBackend" version="24.0.0" type="device">
+<mxfile host="draw.io" modified="2026-02-26T16:41:00.000Z" agent="TrackBackend" version="24.0.0" type="device">
   <diagram name="TrackBackend Architecture" id="arch">
     <mxGraphModel dx="1800" dy="1200" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1920" pageHeight="2800" background="#F8F9FA" math="0" shadow="0">
       <root>
@@ -6,7 +6,7 @@
         <mxCell id="1" parent="0"/>
 
         <!-- ═══════════════════ TITLE ═══════════════════ -->
-        <mxCell id="title" value="&lt;font style=&quot;font-size:28px;color:#1a1a2e;&quot;&gt;&lt;b&gt;TrackBackend&lt;/b&gt;&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:13px;color:#6c757d;&quot;&gt;FastAPI · Python 3.11 · Docker · Render.com (512 MB)&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;fillColor=none;strokeColor=none;" vertex="1" parent="1">
+        <mxCell id="title" value="&lt;font style=&quot;font-size:28px;color:#1a1a2e;&quot;&gt;&lt;b&gt;TrackBackend&lt;/b&gt;&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:13px;color:#6c757d;&quot;&gt;FastAPI · Python 3.11 · Docker · Render.com Starter · Virginia · Redis ACTIVE (bus · subway · LIRR · MNR)&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;fillColor=none;strokeColor=none;" vertex="1" parent="1">
           <mxGeometry x="560" y="20" width="440" height="55" as="geometry"/>
         </mxCell>
 
@@ -41,7 +41,7 @@
           <mxGeometry x="1105" y="30" width="160" height="90" as="geometry"/>
         </mxCell>
 
-        <mxCell id="ext_redis" value="&lt;b&gt;Redis&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;color:#333;&quot;&gt;Optional&lt;br&gt;Bus cache sync&lt;/font&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#D32F2F;fontColor=#FFF;strokeColor=#B71C1C;shadow=1;size=8;boundedLbl=1;dashed=1;" vertex="1" parent="ext_tier">
+        <mxCell id="ext_redis" value="&lt;b&gt;Render Key Value&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;color:#FFCDD2;&quot;&gt;Valkey 8.1.4 · allkeys-lru&lt;br&gt;Virginia · Free plan&lt;br&gt;Ping: 7ms · ACTIVE&lt;br&gt;bus · subway · LIRR · MNR&lt;/font&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#D32F2F;fontColor=#FFF;strokeColor=#B71C1C;shadow=1;size=8;boundedLbl=1;" vertex="1" parent="ext_tier">
           <mxGeometry x="1300" y="35" width="140" height="82" as="geometry"/>
         </mxCell>
 
@@ -63,7 +63,7 @@
         <!-- ═══════════════════════════════════════════════════ -->
         <!--  TIER 3 — API ROUTERS                               -->
         <!-- ═══════════════════════════════════════════════════ -->
-        <mxCell id="rtr_tier" value="API Routers  —  26 Endpoints" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#1565C0;dashed=1;dashPattern=8 4;verticalAlign=top;fontStyle=1;fontSize=14;fontColor=#1565C0;arcSize=4;container=1;collapsible=0;strokeWidth=1;" vertex="1" parent="1">
+        <mxCell id="rtr_tier" value="API Routers  —  27 Endpoints" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#1565C0;dashed=1;dashPattern=8 4;verticalAlign=top;fontStyle=1;fontSize=14;fontColor=#1565C0;arcSize=4;container=1;collapsible=0;strokeWidth=1;" vertex="1" parent="1">
           <mxGeometry x="40" y="395" width="1500" height="290" as="geometry"/>
         </mxCell>
 
@@ -113,7 +113,7 @@
         <!-- ═══════════════════════════════════════════════════ -->
         <!--  TIER 4 — SERVICES LAYER                            -->
         <!-- ═══════════════════════════════════════════════════ -->
-        <mxCell id="svc_tier" value="Services Layer  —  12 Modules" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#2E7D32;dashed=1;dashPattern=8 4;verticalAlign=top;fontStyle=1;fontSize=14;fontColor=#2E7D32;arcSize=4;container=1;collapsible=0;strokeWidth=1;" vertex="1" parent="1">
+        <mxCell id="svc_tier" value="Services Layer  —  12 Modules  ·  8 Utils" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#2E7D32;dashed=1;dashPattern=8 4;verticalAlign=top;fontStyle=1;fontSize=14;fontColor=#2E7D32;arcSize=4;container=1;collapsible=0;strokeWidth=1;" vertex="1" parent="1">
           <mxGeometry x="40" y="720" width="1500" height="460" as="geometry"/>
         </mxCell>
 
@@ -122,7 +122,7 @@
           <mxGeometry x="25" y="30" width="150" height="20" as="geometry"/>
         </mxCell>
 
-        <mxCell id="svc_mta" value="&lt;b&gt;mta_client&lt;/b&gt;&lt;hr size=&quot;1&quot; style=&quot;border-color:#66BB6A;&quot;&gt;&lt;font style=&quot;font-size:9px;color:#C8E6C9;&quot;&gt;Shared httpx.AsyncClient&lt;br&gt;TTL cache (64 entries · 15s)&lt;br&gt;In-flight dedup · Semaphore(32)&lt;br&gt;fetch_protobuf() · fetch_json()&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2E7D32;fontColor=#FFFFFF;strokeColor=#1B5E20;arcSize=10;shadow=1;align=left;spacingLeft=8;" vertex="1" parent="svc_tier">
+        <mxCell id="svc_mta" value="&lt;b&gt;mta_client&lt;/b&gt;&lt;hr size=&quot;1&quot; style=&quot;border-color:#66BB6A;&quot;&gt;&lt;font style=&quot;font-size:9px;color:#C8E6C9;&quot;&gt;Shared httpx.AsyncClient&lt;br&gt;&lt;b&gt;3-layer cache:&lt;/b&gt; Redis(20s) → AsyncTTLCache(12s) → upstream&lt;br&gt;AsyncTTLCache: 128 entries · Semaphore(32)&lt;br&gt;In-flight dedup dict · fetch_protobuf() · fetch_json()&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2E7D32;fontColor=#FFFFFF;strokeColor=#1B5E20;arcSize=10;shadow=1;align=left;spacingLeft=8;" vertex="1" parent="svc_tier">
           <mxGeometry x="20" y="55" width="230" height="110" as="geometry"/>
         </mxCell>
 
@@ -130,11 +130,11 @@
           <mxGeometry x="270" y="55" width="210" height="100" as="geometry"/>
         </mxCell>
 
-        <mxCell id="svc_rail" value="&lt;b&gt;rail_client&lt;/b&gt;&lt;hr size=&quot;1&quot; style=&quot;border-color:#66BB6A;&quot;&gt;&lt;font style=&quot;font-size:9px;color:#C8E6C9;&quot;&gt;LIRR + MNR GTFS-RT&lt;br&gt;Protobuf → TrackArrival&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2E7D32;fontColor=#FFFFFF;strokeColor=#1B5E20;arcSize=10;shadow=1;align=left;spacingLeft=8;" vertex="1" parent="svc_tier">
+        <mxCell id="svc_rail" value="&lt;b&gt;rail_client&lt;/b&gt;&lt;hr size=&quot;1&quot; style=&quot;border-color:#66BB6A;&quot;&gt;&lt;font style=&quot;font-size:9px;color:#C8E6C9;&quot;&gt;LIRR + MNR GTFS-RT&lt;br&gt;Protobuf → TrackArrival&lt;br&gt;filter_fresh_arrivals() helper&lt;br&gt;_TERMINAL_IDS frozenset&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2E7D32;fontColor=#FFFFFF;strokeColor=#1B5E20;arcSize=10;shadow=1;align=left;spacingLeft=8;" vertex="1" parent="svc_tier">
           <mxGeometry x="500" y="55" width="200" height="85" as="geometry"/>
         </mxCell>
 
-        <mxCell id="svc_bus" value="&lt;b&gt;bus_client&lt;/b&gt;&lt;font style=&quot;font-size:9px;color:#A5D6A7;&quot;&gt;  (1,664 lines)&lt;/font&gt;&lt;hr size=&quot;1&quot; style=&quot;border-color:#66BB6A;&quot;&gt;&lt;font style=&quot;font-size:9px;color:#C8E6C9;&quot;&gt;OBA: routes · stops · nearby&lt;br&gt;SIRI: live arrivals · vehicles&lt;br&gt;Bounded TTL caches w/ eviction&lt;br&gt;Optional Redis sync&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2E7D32;fontColor=#FFFFFF;strokeColor=#1B5E20;arcSize=10;shadow=1;align=left;spacingLeft=8;" vertex="1" parent="svc_tier">
+        <mxCell id="svc_bus" value="&lt;b&gt;bus_client&lt;/b&gt;&lt;font style=&quot;font-size:9px;color:#A5D6A7;&quot;&gt;  (1,986 lines)&lt;/font&gt;&lt;hr size=&quot;1&quot; style=&quot;border-color:#66BB6A;&quot;&gt;&lt;font style=&quot;font-size:9px;color:#C8E6C9;&quot;&gt;OBA: routes · stops · nearby&lt;br&gt;SIRI: live arrivals · vehicles&lt;br&gt;Bounded TTL caches w/ eviction&lt;br&gt;Redis via redis_client (thin wrappers)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2E7D32;fontColor=#FFFFFF;strokeColor=#1B5E20;arcSize=10;shadow=1;align=left;spacingLeft=8;" vertex="1" parent="svc_tier">
           <mxGeometry x="720" y="55" width="230" height="110" as="geometry"/>
         </mxCell>
 
@@ -143,11 +143,11 @@
           <mxGeometry x="25" y="180" width="170" height="20" as="geometry"/>
         </mxCell>
 
-        <mxCell id="svc_subway_shapes" value="&lt;b&gt;subway_shapes&lt;/b&gt;&lt;font style=&quot;font-size:9px;color:#A5D6A7;&quot;&gt;  (450 lines)&lt;/font&gt;&lt;hr size=&quot;1&quot; style=&quot;border-color:#66BB6A;&quot;&gt;&lt;font style=&quot;font-size:9px;color:#C8E6C9;&quot;&gt;Route polylines + stops&lt;br&gt;struct.pack float32 compact&lt;br&gt;8 @lru_cache functions&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#388E3C;fontColor=#FFFFFF;strokeColor=#1B5E20;arcSize=10;shadow=1;align=left;spacingLeft=8;" vertex="1" parent="svc_tier">
+        <mxCell id="svc_subway_shapes" value="&lt;b&gt;subway_shapes&lt;/b&gt;&lt;font style=&quot;font-size:9px;color:#A5D6A7;&quot;&gt;  (422 lines)&lt;/font&gt;&lt;hr size=&quot;1&quot; style=&quot;border-color:#66BB6A;&quot;&gt;&lt;font style=&quot;font-size:9px;color:#C8E6C9;&quot;&gt;Route polylines + stops&lt;br&gt;float32 encoding via shape_utils&lt;br&gt;8 @lru_cache functions&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#388E3C;fontColor=#FFFFFF;strokeColor=#1B5E20;arcSize=10;shadow=1;align=left;spacingLeft=8;" vertex="1" parent="svc_tier">
           <mxGeometry x="20" y="205" width="225" height="95" as="geometry"/>
         </mxCell>
 
-        <mxCell id="svc_cr_shapes" value="&lt;b&gt;commuter_rail_shapes&lt;/b&gt;&lt;font style=&quot;font-size:9px;color:#A5D6A7;&quot;&gt;  (491 lines)&lt;/font&gt;&lt;hr size=&quot;1&quot; style=&quot;border-color:#66BB6A;&quot;&gt;&lt;font style=&quot;font-size:9px;color:#C8E6C9;&quot;&gt;LIRR + MNR polylines&lt;br&gt;struct.pack float32 compact&lt;br&gt;4 @lru_cache functions&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#388E3C;fontColor=#FFFFFF;strokeColor=#1B5E20;arcSize=10;shadow=1;align=left;spacingLeft=8;" vertex="1" parent="svc_tier">
+        <mxCell id="svc_cr_shapes" value="&lt;b&gt;commuter_rail_shapes&lt;/b&gt;&lt;font style=&quot;font-size:9px;color:#A5D6A7;&quot;&gt;  (465 lines)&lt;/font&gt;&lt;hr size=&quot;1&quot; style=&quot;border-color:#66BB6A;&quot;&gt;&lt;font style=&quot;font-size:9px;color:#C8E6C9;&quot;&gt;LIRR + MNR polylines&lt;br&gt;float32 encoding via shape_utils&lt;br&gt;7 @lru_cache functions&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#388E3C;fontColor=#FFFFFF;strokeColor=#1B5E20;arcSize=10;shadow=1;align=left;spacingLeft=8;" vertex="1" parent="svc_tier">
           <mxGeometry x="265" y="205" width="230" height="95" as="geometry"/>
         </mxCell>
 
@@ -181,12 +181,12 @@
         </mxCell>
 
         <!-- Utilities -->
-        <mxCell id="util_box" value="&lt;b&gt;Utilities&lt;/b&gt;&lt;hr size=&quot;1&quot; style=&quot;border-color:#90A4AE;&quot;&gt;&lt;font style=&quot;font-size:10px;color:#546E7A;&quot;&gt;&lt;b&gt;transit_utils&lt;/b&gt; — get_subway_color, clean_route_id&lt;br&gt;&lt;b&gt;geo_utils&lt;/b&gt; — haversine_m, bounding_box_degrees&lt;br&gt;&lt;b&gt;polyline_utils&lt;/b&gt; — encode/decode polyline&lt;br&gt;&lt;b&gt;logger&lt;/b&gt; — structured logging → /logs&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ECEFF1;fontColor=#37474F;strokeColor=#B0BEC5;arcSize=8;shadow=0;align=left;spacingLeft=10;verticalAlign=top;spacingTop=2;fontSize=12;" vertex="1" parent="svc_tier">
-          <mxGeometry x="1040" y="55" width="330" height="120" as="geometry"/>
+        <mxCell id="util_box" value="&lt;b&gt;Utilities (8 modules)&lt;/b&gt;&lt;hr size=&quot;1&quot; style=&quot;border-color:#90A4AE;&quot;&gt;&lt;font style=&quot;font-size:9px;color:#546E7A;&quot;&gt;&lt;b&gt;redis_client&lt;/b&gt; — init/close, cache_get/set (bus), feed_get/set (MTA)&lt;br&gt;&lt;b&gt;cache_stats&lt;/b&gt; — KindStats · bucket() · tick() · flush()&lt;br&gt;&lt;b&gt;shape_utils&lt;/b&gt; — ShapePoint, pack_coords, unpack_coords, unpack_point_set&lt;br&gt;&lt;b&gt;geo_utils&lt;/b&gt; — haversine_m, bounding_box_degrees, minutes_until&lt;br&gt;&lt;b&gt;transit_utils&lt;/b&gt; — get_subway_color, clean_route_id&lt;br&gt;&lt;b&gt;polyline_utils&lt;/b&gt; — encode/decode polyline&lt;br&gt;&lt;b&gt;logger&lt;/b&gt; — structured subsystems: bus/subway/rail/redis/feed/cache/…&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ECEFF1;fontColor=#37474F;strokeColor=#B0BEC5;arcSize=8;shadow=0;align=left;spacingLeft=10;verticalAlign=top;spacingTop=2;fontSize=12;" vertex="1" parent="svc_tier">
+          <mxGeometry x="1040" y="55" width="410" height="145" as="geometry"/>
         </mxCell>
 
         <!-- Background Task -->
-        <mxCell id="bg_task" value="&lt;b style=&quot;font-size:12px;&quot;&gt;⏱ Background Task&lt;/b&gt;&lt;hr size=&quot;1&quot; style=&quot;border-color:#FFB74D;&quot;&gt;&lt;font style=&quot;font-size:10px;color:#4E342E;&quot;&gt;_periodic_gtfs_check()&lt;br&gt;asyncio.create_task&lt;br&gt;5 min warmup → 24h cycle&lt;br&gt;HEAD requests to detect changes&lt;br&gt;Env: GTFS_CHECK_INTERVAL&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE082;fontColor=#3E2723;strokeColor=#FFB74D;arcSize=10;shadow=1;align=left;spacingLeft=10;verticalAlign=top;spacingTop=2;" vertex="1" parent="svc_tier">
+        <mxCell id="bg_task" value="&lt;b style=&quot;font-size:12px;&quot;&gt;⏱ Background Tasks&lt;/b&gt;&lt;hr size=&quot;1&quot; style=&quot;border-color:#FFB74D;&quot;&gt;&lt;font style=&quot;font-size:10px;color:#4E342E;&quot;&gt;_periodic_gtfs_check() — asyncio.create_task&lt;br&gt;5 min warmup → 24h cycle&lt;br&gt;HEAD requests to detect changes&lt;br&gt;Env: GTFS_CHECK_INTERVAL&lt;br&gt;[WARMUP] primes 9 subway feeds + bus routes on startup&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE082;fontColor=#3E2723;strokeColor=#FFB74D;arcSize=10;shadow=1;align=left;spacingLeft=10;verticalAlign=top;spacingTop=2;" vertex="1" parent="svc_tier">
           <mxGeometry x="1040" y="220" width="230" height="130" as="geometry"/>
         </mxCell>
 
@@ -194,7 +194,7 @@
         <!--  TIER 5 — DATA STORES                               -->
         <!-- ═══════════════════════════════════════════════════ -->
         <mxCell id="dat_tier" value="Data Stores" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#6A1B9A;dashed=1;dashPattern=8 4;verticalAlign=top;fontStyle=1;fontSize=14;fontColor=#6A1B9A;arcSize=4;container=1;collapsible=0;strokeWidth=1;" vertex="1" parent="1">
-          <mxGeometry x="40" y="1220" width="1500" height="240" as="geometry"/>
+          <mxGeometry x="40" y="1220" width="1500" height="290" as="geometry"/>
         </mxCell>
 
         <mxCell id="dat_sqlite" value="&lt;b style=&quot;font-size:12px;&quot;&gt;transit_schedule.db&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#E1BEE7;&quot;&gt;SQLite · ~170 MB&lt;br&gt;Bus schedules&lt;br&gt;Docker-bundled only&lt;br&gt;Atomic swap on refresh&lt;/font&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#6A1B9A;fontColor=#FFFFFF;strokeColor=#4A148C;shadow=1;size=10;boundedLbl=1;arcSize=8;" vertex="1" parent="dat_tier">
@@ -205,11 +205,11 @@
           <mxGeometry x="230" y="35" width="200" height="115" as="geometry"/>
         </mxCell>
 
-        <mxCell id="dat_lru" value="&lt;b style=&quot;font-size:12px;&quot;&gt;15 @lru_cache&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#E1BEE7;&quot;&gt;subway_shapes (8)&lt;br&gt;commuter_rail_shapes (4)&lt;br&gt;station_lookup (3)&lt;br&gt;struct.pack float32&lt;br&gt;Cleared on GTFS refresh&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#7B1FA2;fontColor=#FFFFFF;strokeColor=#4A148C;shadow=1;arcSize=10;" vertex="1" parent="dat_tier">
+        <mxCell id="dat_lru" value="&lt;b style=&quot;font-size:12px;&quot;&gt;17 @lru_cache&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#E1BEE7;&quot;&gt;subway_shapes (8)&lt;br&gt;commuter_rail_shapes (7)&lt;br&gt;station_lookup (2)&lt;br&gt;float32 via shape_utils&lt;br&gt;Cleared on GTFS refresh&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#7B1FA2;fontColor=#FFFFFF;strokeColor=#4A148C;shadow=1;arcSize=10;" vertex="1" parent="dat_tier">
           <mxGeometry x="455" y="35" width="185" height="115" as="geometry"/>
         </mxCell>
 
-        <mxCell id="dat_http_cache" value="&lt;b style=&quot;font-size:12px;&quot;&gt;HTTP TTL Cache&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#E1BEE7;&quot;&gt;64 entries · 15s TTL&lt;br&gt;In-flight dedup dict&lt;br&gt;in mta_client&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#7B1FA2;fontColor=#FFFFFF;strokeColor=#4A148C;shadow=1;arcSize=10;" vertex="1" parent="dat_tier">
+        <mxCell id="dat_http_cache" value="&lt;b style=&quot;font-size:12px;&quot;&gt;AsyncTTLCache&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#E1BEE7;&quot;&gt;128 entries · 12s TTL&lt;br&gt;In-flight dedup dict&lt;br&gt;Layer 2 of 3 in mta_client&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#7B1FA2;fontColor=#FFFFFF;strokeColor=#4A148C;shadow=1;arcSize=10;" vertex="1" parent="dat_tier">
           <mxGeometry x="665" y="35" width="175" height="95" as="geometry"/>
         </mxCell>
 
@@ -217,12 +217,16 @@
           <mxGeometry x="865" y="35" width="190" height="95" as="geometry"/>
         </mxCell>
 
+        <mxCell id="dat_redis_cache" value="&lt;b style=&quot;font-size:12px;&quot;&gt;Redis Cache (Render KV)&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#FFCDD2;&quot;&gt;MTA feeds: TTL 20s (base64 protobuf)&lt;br&gt;Bus: fresh/stale JSON envelopes&lt;br&gt;Key pattern: track:{mode}:{kind}:{id}&lt;br&gt;allkeys-lru eviction · cross-instance&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#C62828;fontColor=#FFFFFF;strokeColor=#B71C1C;shadow=1;arcSize=10;" vertex="1" parent="dat_tier">
+          <mxGeometry x="645" y="155" width="420" height="100" as="geometry"/>
+        </mxCell>
+
         <mxCell id="dat_meta" value="&lt;b style=&quot;font-size:12px;&quot;&gt;Metadata&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#E1BEE7;&quot;&gt;.dl_meta/ (ETags)&lt;br&gt;.gtfs_meta/ (Last-Modified)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#9C27B0;fontColor=#FFFFFF;strokeColor=#6A1B9A;shadow=1;arcSize=10;" vertex="1" parent="dat_tier">
           <mxGeometry x="1080" y="35" width="175" height="80" as="geometry"/>
         </mxCell>
 
-        <mxCell id="dat_logs" value="&lt;b&gt;Logs&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#E1BEE7;&quot;&gt;/logs dir&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#9C27B0;fontColor=#FFFFFF;strokeColor=#6A1B9A;shadow=1;arcSize=10;" vertex="1" parent="dat_tier">
-          <mxGeometry x="1285" y="38" width="100" height="55" as="geometry"/>
+        <mxCell id="dat_logs" value="&lt;b&gt;Logs&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#E1BEE7;&quot;&gt;/app/logs/track.log&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#9C27B0;fontColor=#FFFFFF;strokeColor=#6A1B9A;shadow=1;arcSize=10;" vertex="1" parent="dat_tier">
+          <mxGeometry x="1285" y="38" width="130" height="55" as="geometry"/>
         </mxCell>
 
         <!-- ═══════════════════════════════════════════════════ -->
@@ -276,14 +280,14 @@
           </mxGeometry>
         </mxCell>
 
-        <!-- Redis → bus_client -->
-        <mxCell id="e_ext_redis" value="&lt;font style=&quot;font-size:8px;color:#D32F2F;&quot;&gt;optional&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;strokeColor=#D32F2F;strokeWidth=1.5;dashed=1;dashPattern=8 4;curved=0;" edge="1" source="ext_redis" target="svc_bus" parent="1">
+        <!-- Redis → util_box/redis_client (shared by bus · subway · LIRR · MNR) -->
+        <mxCell id="e_ext_redis" value="&lt;font style=&quot;font-size:8px;color:#D32F2F;&quot;&gt;bus · subway · LIRR · MNR&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;strokeColor=#D32F2F;strokeWidth=2.5;dashed=0;curved=0;entryX=1;entryY=0.2;entryDx=0;entryDy=0;" edge="1" source="ext_redis" target="util_box" parent="1">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="1410" y="302"/>
-              <mxPoint x="1565" y="302"/>
-              <mxPoint x="1565" y="825"/>
-              <mxPoint x="955" y="825"/>
+              <mxPoint x="1480" y="130"/>
+              <mxPoint x="1570" y="130"/>
+              <mxPoint x="1570" y="790"/>
+              <mxPoint x="1490" y="790"/>
             </Array>
           </mxGeometry>
         </mxCell>
@@ -352,7 +356,7 @@
         <!--  LEGEND (horizontal bar at bottom)                  -->
         <!-- ═══════════════════════════════════════════════════ -->
         <mxCell id="legend" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#CFD8DC;arcSize=6;container=1;collapsible=0;shadow=1;" vertex="1" parent="1">
-          <mxGeometry x="40" y="1500" width="1500" height="70" as="geometry"/>
+          <mxGeometry x="40" y="1560" width="1500" height="70" as="geometry"/>
         </mxCell>
 
         <mxCell id="leg_title" value="&lt;b&gt;Legend:&lt;/b&gt;" style="text;html=1;align=left;verticalAlign=middle;fillColor=none;strokeColor=none;fontColor=#37474F;fontSize=12;" vertex="1" parent="legend">
@@ -446,19 +450,19 @@
         <!--  SIDEBAR — Deployment, Env, Scripts, Deps           -->
         <!-- ═══════════════════════════════════════════════════ -->
 
-        <mxCell id="sidebar_deploy" value="&lt;b style=&quot;font-size:13px;&quot;&gt;🐳 Deployment&lt;/b&gt;&lt;hr size=&quot;1&quot; style=&quot;border-color:#546E7A;&quot;&gt;&lt;font style=&quot;font-size:10px;color:#B0BEC5;&quot;&gt;Docker: python:3.11-slim&lt;br&gt;Host: Render.com (512 MB)&lt;br&gt;Port: $PORT (10000)&lt;br&gt;Server: uvicorn[standard]&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#263238;fontColor=#ECEFF1;strokeColor=#37474F;arcSize=10;shadow=1;align=left;spacingLeft=10;verticalAlign=top;spacingTop=2;" vertex="1" parent="1">
+        <mxCell id="sidebar_deploy" value="&lt;b style=&quot;font-size:13px;&quot;&gt;🐳 Deployment&lt;/b&gt;&lt;hr size=&quot;1&quot; style=&quot;border-color:#546E7A;&quot;&gt;&lt;font style=&quot;font-size:10px;color:#B0BEC5;&quot;&gt;Docker: python:3.11-slim&lt;br&gt;Render Starter plan · Virginia&lt;br&gt;WEB_CONCURRENCY=1 (auto)&lt;br&gt;Port: 10000 · Health: GET /config&lt;br&gt;autoDeploy: yes (on commit → main)&lt;br&gt;Server: uvicorn[standard]&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#263238;fontColor=#ECEFF1;strokeColor=#37474F;arcSize=10;shadow=1;align=left;spacingLeft=10;verticalAlign=top;spacingTop=2;" vertex="1" parent="1">
           <mxGeometry x="1600" y="720" width="220" height="125" as="geometry"/>
         </mxCell>
 
-        <mxCell id="sidebar_env" value="&lt;b style=&quot;font-size:13px;&quot;&gt;🔑 Env Variables&lt;/b&gt;&lt;hr size=&quot;1&quot; style=&quot;border-color:#546E7A;&quot;&gt;&lt;font style=&quot;font-size:10px;color:#B0BEC5;&quot;&gt;SUPABASE_URL&lt;br&gt;SUPABASE_SERVICE_KEY&lt;br&gt;GTFS_BUCKET (gtfs-data)&lt;br&gt;GTFS_CHECK_INTERVAL (86400s)&lt;br&gt;REDIS_URL (optional)&lt;br&gt;PORT (10000)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#263238;fontColor=#ECEFF1;strokeColor=#37474F;arcSize=10;shadow=1;align=left;spacingLeft=10;verticalAlign=top;spacingTop=2;" vertex="1" parent="1">
-          <mxGeometry x="1600" y="870" width="220" height="145" as="geometry"/>
+        <mxCell id="sidebar_env" value="&lt;b style=&quot;font-size:13px;&quot;&gt;🔑 Env Variables&lt;/b&gt;&lt;hr size=&quot;1&quot; style=&quot;border-color:#546E7A;&quot;&gt;&lt;font style=&quot;font-size:10px;color:#B0BEC5;&quot;&gt;SUPABASE_URL&lt;br&gt;SUPABASE_KEY&lt;br&gt;SUPABASE_SERVICE_KEY&lt;br&gt;REDIS_URL (required · internal URL)&lt;br&gt;GTFS_BUCKET (gtfs-data)&lt;br&gt;GTFS_CHECK_INTERVAL (86400s)&lt;br&gt;PORT (10000)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#263238;fontColor=#ECEFF1;strokeColor=#37474F;arcSize=10;shadow=1;align=left;spacingLeft=10;verticalAlign=top;spacingTop=2;" vertex="1" parent="1">
+          <mxGeometry x="1600" y="870" width="220" height="165" as="geometry"/>
         </mxCell>
 
         <mxCell id="sidebar_scripts" value="&lt;b style=&quot;font-size:13px;&quot;&gt;🔧 Build Scripts&lt;/b&gt;&lt;hr size=&quot;1&quot; style=&quot;border-color:#546E7A;&quot;&gt;&lt;font style=&quot;font-size:10px;color:#B0BEC5;&quot;&gt;download_gtfs.py&lt;br&gt;ingest_gtfs.py&lt;br&gt;fetch_routes.py&lt;br&gt;generate_static_bundle.py&lt;br&gt;upload_gtfs_to_supabase.py&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#263238;fontColor=#ECEFF1;strokeColor=#37474F;arcSize=10;shadow=1;align=left;spacingLeft=10;verticalAlign=top;spacingTop=2;" vertex="1" parent="1">
           <mxGeometry x="1600" y="1040" width="220" height="135" as="geometry"/>
         </mxCell>
 
-        <mxCell id="sidebar_deps" value="&lt;b style=&quot;font-size:13px;&quot;&gt;📦 Dependencies&lt;/b&gt;&lt;hr size=&quot;1&quot; style=&quot;border-color:#546E7A;&quot;&gt;&lt;font style=&quot;font-size:10px;color:#B0BEC5;&quot;&gt;fastapi · uvicorn[standard]&lt;br&gt;httpx · pydantic&lt;br&gt;gtfs-realtime-bindings&lt;br&gt;protobuf · redis&lt;br&gt;pydantic-settings&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#263238;fontColor=#ECEFF1;strokeColor=#37474F;arcSize=10;shadow=1;align=left;spacingLeft=10;verticalAlign=top;spacingTop=2;" vertex="1" parent="1">
+        <mxCell id="sidebar_deps" value="&lt;b style=&quot;font-size:13px;&quot;&gt;📦 Dependencies&lt;/b&gt;&lt;hr size=&quot;1&quot; style=&quot;border-color:#546E7A;&quot;&gt;&lt;font style=&quot;font-size:10px;color:#B0BEC5;&quot;&gt;fastapi · uvicorn[standard]&lt;br&gt;httpx · pydantic · pydantic-settings&lt;br&gt;gtfs-realtime-bindings · protobuf&lt;br&gt;redis (valkey-compatible)&lt;br&gt;polyline · supabase&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#263238;fontColor=#ECEFF1;strokeColor=#37474F;arcSize=10;shadow=1;align=left;spacingLeft=10;verticalAlign=top;spacingTop=2;" vertex="1" parent="1">
           <mxGeometry x="1600" y="1200" width="220" height="130" as="geometry"/>
         </mxCell>
 
