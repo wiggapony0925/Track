@@ -7,14 +7,13 @@
 
 from __future__ import annotations
 
-import time
-
 from google.transit import gtfs_realtime_pb2  # type: ignore[import-untyped]
 
 from app.config import get_settings
 from app.models import TrackArrival
 from app.services.mta_client import fetch_protobuf
 from app.services.station_lookup import get_stop_name
+from app.utils.geo_utils import minutes_until as _minutes_until
 from app.utils.logger import TrackLogger
 
 # Known terminal stop_ids for direction inference when direction_id is absent.
@@ -22,10 +21,18 @@ from app.utils.logger import TrackLogger
 _TERMINAL_IDS: frozenset[str] = frozenset({"1", "237", "12"})
 
 
-def _minutes_until(epoch: int) -> int:
-    """Return the number of whole minutes from *now* until *epoch*."""
-    diff = epoch - int(time.time())
-    return max(0, diff // 60)
+def filter_fresh_arrivals(arrivals: list) -> list:
+    """Drop already-departed trains and recalculate minutes_away from now.
+
+    Used identically by the LIRR and MNR routers — extracted here to avoid
+    copy-pasting the same four lines in two places.
+    """
+    import time as _t
+    now = int(_t.time())
+    fresh = [a for a in arrivals if a.arrival_ts and a.arrival_ts > now]
+    for a in fresh:
+        a.minutes_away = max(0, (a.arrival_ts - now) // 60)
+    return fresh
 
 
 async def fetch_rail_arrivals(agency: str) -> list[TrackArrival]:

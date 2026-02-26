@@ -375,7 +375,10 @@ struct GroupedRouteList: View {
     var referenceLocation: CLLocation? = nil
 
     var body: some View {
-        VStack(spacing: 0) {
+        // LazyVStack: rows are only built when they scroll into view.
+        // Critical for busy stops with 10+ routes — plain VStack eagerly
+        // renders every GroupedRouteRow, including all their arrival chips.
+        LazyVStack(spacing: 0) {
             ForEach(Array(groups.enumerated()), id: \.element.id) { index, group in
                 GroupedRouteRow(
                     group: group,

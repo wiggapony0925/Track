@@ -9,7 +9,6 @@
 from __future__ import annotations
 
 import asyncio
-import time
 from typing import Any
 
 from google.transit import gtfs_realtime_pb2  # type: ignore[import-untyped]
@@ -18,13 +17,8 @@ from app.config import get_feed_url, get_settings
 from app.models import ElevatorStatus, TrackArrival, TransitAlert
 from app.services.mta_client import fetch_json, fetch_protobuf
 from app.services.station_lookup import get_stop_name
+from app.utils.geo_utils import minutes_until as _minutes_until
 from app.utils.logger import TrackLogger
-
-
-def _minutes_until(epoch: int) -> int:
-    """Return the number of whole minutes from *now* until *epoch*."""
-    diff = epoch - int(time.time())
-    return max(0, diff // 60)
 
 
 async def get_arrivals_for_line(line_id: str) -> list[TrackArrival]:

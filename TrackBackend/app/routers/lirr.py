@@ -7,8 +7,6 @@
 
 from __future__ import annotations
 
-import time
-
 from fastapi import APIRouter, HTTPException
 
 from app.models import (
@@ -19,8 +17,7 @@ from app.models import (
     TrackArrival,
 )
 from app.services.commuter_rail_shapes import get_all_lirr_lines, get_single_lirr_line
-from app.services.rail_client import fetch_rail_arrivals
-from app.services.station_lookup import get_stop_info
+from app.services.rail_client import fetch_rail_arrivals, filter_fresh_arrivals
 from app.utils.polyline_utils import encode_polyline as _encode_polyline
 
 router = APIRouter(tags=["lirr"])
@@ -85,13 +82,6 @@ async def lirr_shape(route_id: str) -> RouteShape:
 async def lirr_arrivals() -> list[TrackArrival]:
     """Return upcoming LIRR arrivals from the GTFS-Realtime feed."""
     try:
-        arrivals = await fetch_rail_arrivals("lirr")
-        # Filter out stale arrivals (already departed / in the past)
-        now = int(time.time())
-        fresh = [a for a in arrivals if a.arrival_ts and a.arrival_ts > now]
-        # Recalculate minutes_away from the current time
-        for a in fresh:
-            a.minutes_away = max(0, (a.arrival_ts - now) // 60)
-        return fresh
+        return filter_fresh_arrivals(await fetch_rail_arrivals("lirr"))
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"LIRR Feed Error: {str(exc)}") from exc

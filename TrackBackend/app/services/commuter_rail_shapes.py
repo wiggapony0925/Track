@@ -13,24 +13,23 @@
 from __future__ import annotations
 
 import csv
-import struct
 from collections import defaultdict
 from functools import lru_cache
 from pathlib import Path
 from typing import NamedTuple
 
 from app.utils.logger import TrackLogger
+from app.utils.shape_utils import (
+    ShapePoint,
+    pack_coords as _pack_coords,
+    unpack_coords as _unpack_coords,
+    unpack_point_set as _unpack_point_set,
+)
 
 _DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
 _LIRR_DIR = _DATA_DIR / "lirr" / "gtfslirr"
 _MNR_DIR = _DATA_DIR / "metro_north" / "gtfsmnr"
-
-
-class ShapePoint(NamedTuple):
-    lat: float
-    lon: float
-    sequence: int
 
 
 class CommuterRoute(NamedTuple):
@@ -40,31 +39,7 @@ class CommuterRoute(NamedTuple):
 
 
 # ---------------------------------------------------------------------------
-# Compact shape helpers (same as subway_shapes.py)
-# ---------------------------------------------------------------------------
-
-def _pack_coords(points: list[ShapePoint]) -> bytes:
-    if not points:
-        return b""
-    return struct.pack(f"<{len(points) * 2}f",
-                       *[v for p in points for v in (p.lat, p.lon)])
-
-
-def _unpack_coords(buf: bytes) -> list[tuple[float, float]]:
-    if not buf:
-        return []
-    n = len(buf) // 8
-    vals = struct.unpack(f"<{n * 2}f", buf)
-    return [(vals[i], vals[i + 1]) for i in range(0, len(vals), 2)]
-
-
-def _unpack_point_set(buf: bytes, decimals: int = 5) -> set[tuple[float, float]]:
-    if not buf:
-        return set()
-    n = len(buf) // 8
-    vals = struct.unpack(f"<{n * 2}f", buf)
-    return {(round(vals[i], decimals), round(vals[i + 1], decimals))
-            for i in range(0, len(vals), 2)}
+# (imported from app.utils.shape_utils as _pack_coords / _unpack_coords / _unpack_point_set)
 
 
 # ---------------------------------------------------------------------------

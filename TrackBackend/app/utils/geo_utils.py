@@ -2,13 +2,15 @@
 # geo_utils.py
 # TrackBackend
 #
-# Shared geographic utilities. Eliminates duplication of haversine
-# between station_lookup.py and bus_client.py.
+# Shared geographic and time utilities.
+# Deduplicates haversine (bus_client + station_lookup) and
+# minutes_until (data_cleaner + rail_client).
 #
 
 from __future__ import annotations
 
 import math
+import time as _time
 
 # NYC-specific constants
 METERS_PER_DEG_LAT = 111_000.0
@@ -39,3 +41,9 @@ def bounding_box_degrees(radius_m: float) -> tuple[float, float]:
     lat_delta = radius_m / METERS_PER_DEG_LAT
     lon_delta = radius_m / METERS_PER_DEG_LON_NYC
     return lat_delta, lon_delta
+
+
+def minutes_until(epoch_s: int) -> int:
+    """Return whole minutes from now until *epoch_s* (clamped to 0)."""
+    diff = epoch_s - int(_time.time())
+    return max(0, diff // 60)

@@ -178,11 +178,29 @@ struct TrackMapView: View {
 
     // MARK: - Route Stop Annotations
 
+    /// Stops for the active direction filtered to the current map viewport.
+    /// Avoids creating hundreds of off-screen Annotation nodes — each is a
+    /// separate SwiftUI render tree with hit-testing overhead.
+    private var visibleDirectionStops: [BusStop] {
+        guard let shape = viewModel.routeShape else { return [] }
+        let all = shape.stopsForDirection(
+            index: viewModel.selectedDirectionIndex, name: viewModel.selectedDirectionName)
+        guard let center = currentMapCenter, let distance = currentMapDistance else {
+            return all
+        }
+        let latSpan = (distance / 111_000) * 1.5
+        let lonSpan = (distance / (111_000 * cos(center.latitude * .pi / 180))) * 1.5
+        return all.filter { stop in
+            abs(stop.lat - center.latitude) <= latSpan
+                && abs(stop.lon - center.longitude) <= lonSpan
+        }
+    }
+
     @MapContentBuilder
     private var routeStopAnnotations: some MapContent {
-        if let shape = viewModel.routeShape {
+        if viewModel.routeShape != nil {
             let isBusRoute = viewModel.selectedGroupedRoute?.isBus == true
-            let directionStops = shape.stopsForDirection(index: viewModel.selectedDirectionIndex, name: viewModel.selectedDirectionName)
+            let directionStops = visibleDirectionStops
 
             ForEach(directionStops) { stop in
                 let isSelected = stop.id == viewModel.selectedStopId

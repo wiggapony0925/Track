@@ -17,25 +17,24 @@ from __future__ import annotations
 
 import csv
 import json
-import struct
 from collections import defaultdict
 from functools import lru_cache
 from pathlib import Path
 from typing import NamedTuple
 
 from app.services.station_lookup import get_stop_info
+from app.utils.shape_utils import (
+    ShapePoint,
+    pack_coords as _pack_coords,
+    unpack_coords as _unpack_coords,
+    unpack_point_set as _unpack_point_set,
+)
 
 _DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 _SHAPES_PATH = _DATA_DIR / "shapes.txt"
 _TRIPS_PATH = _DATA_DIR / "trips.txt"
 _SHAPE_STOPS_PATH = _DATA_DIR / "shape_stops.json"
 _ROUTES_TXT_PATH = _DATA_DIR / "subway" / "regular_GTFS" / "routes.txt"
-
-
-class ShapePoint(NamedTuple):
-    lat: float
-    lon: float
-    sequence: int
 
 
 class RouteStopEntry(NamedTuple):
@@ -59,33 +58,7 @@ class DirectionData(NamedTuple):
 # Compact shape helpers — store sorted lat/lon as packed single-precision
 # floats (4 bytes each → 8 bytes/point) instead of NamedTuple objects
 # (~148 bytes/point).  For 347K points this saves ~48 MB.
-# ---------------------------------------------------------------------------
-
-def _pack_coords(points: list[ShapePoint]) -> bytes:
-    """Pack sorted ShapePoints into compact bytes (lat, lon pairs as float32)."""
-    if not points:
-        return b""
-    return struct.pack(f"<{len(points) * 2}f",
-                       *[v for p in points for v in (p.lat, p.lon)])
-
-
-def _unpack_coords(buf: bytes) -> list[tuple[float, float]]:
-    """Unpack compact bytes back to [(lat, lon), ...] with full precision."""
-    if not buf:
-        return []
-    n = len(buf) // 8  # 4 bytes per float × 2 floats
-    vals = struct.unpack(f"<{n * 2}f", buf)
-    return [(vals[i], vals[i + 1]) for i in range(0, len(vals), 2)]
-
-
-def _unpack_point_set(buf: bytes, decimals: int = 5) -> set[tuple[float, float]]:
-    """Unpack to a set of rounded (lat, lon) for deduplication."""
-    if not buf:
-        return set()
-    n = len(buf) // 8
-    vals = struct.unpack(f"<{n * 2}f", buf)
-    return {(round(vals[i], decimals), round(vals[i + 1], decimals))
-            for i in range(0, len(vals), 2)}
+# (imported from app.utils.shape_utils as _pack_coords / _unpack_coords / _unpack_point_set)
 
 
 # ---------------------------------------------------------------------------
