@@ -48,6 +48,13 @@ SUPABASE_KEY = os.environ.get(
 BUCKET_NAME = os.environ.get("GTFS_BUCKET", "gtfs-data")
 DOCKER_FALLBACK_BASE_URL = os.environ.get("GTFS_DOCKER_FALLBACK_BASE_URL", "").strip()
 
+# Set SKIP_REMOTE_SYNC=true to bypass Supabase downloads and use only Docker-
+# bundled local files.  Useful when the bucket is empty or Supabase is not
+# configured (defaults to false — always try remote first).
+SKIP_REMOTE_SYNC = os.environ.get("SKIP_REMOTE_SYNC", "").strip().lower() in (
+    "1", "true", "yes"
+)
+
 # Timeout for downloading — generous for large files (transit_schedule.db ~100MB gzipped)
 _DOWNLOAD_TIMEOUT = httpx.Timeout(connect=10.0, read=120.0, write=30.0, pool=10.0)
 
@@ -276,25 +283,37 @@ def _download_and_extract(
                 )
                 return True, True
 
-            if resp.status_code == 404:
-                docker_ok = _try_download_from_docker_fallback(client, entry)
-                if docker_ok:
-                    return True, True
-                fallback_ok = _has_required_files(entry)
-                TrackLogger.warning(
-                    f"[DATA] {desc}: not found in bucket ({obj})"
-                    + (" — using local fallback" if fallback_ok else ""),
-                    tag="DATA",
-                )
-                return fallback_ok, False
-
             if resp.status_code >= 400:
+                # Read the first 400 bytes of the error body for diagnostics.
+                # Supabase Storage returns HTTP 400 (not 404) with a JSON body
+                # of {"statusCode":"404","error":"not_found",...} when an
+                # object doesn't exist, so we surface the real message.
+                error_chunks: list[bytes] = []
+                for _chunk in resp.iter_bytes():
+                    error_chunks.append(_chunk)
+                    if sum(len(c) for c in error_chunks) >= 400:
+                        break
+                raw_err = b"".join(error_chunks).decode(errors="replace")
+                try:
+                    import json as _json
+                    err_data = _json.loads(raw_err)
+                    err_msg = err_data.get("message") or err_data.get("error") or raw_err[:120]
+                except Exception:
+                    err_msg = raw_err[:120]
+
+                is_not_found = (
+                    resp.status_code == 404
+                    or "not_found" in raw_err
+                    or "Object not found" in raw_err
+                )
+                status_label = f"HTTP {resp.status_code} (not found)" if is_not_found else f"HTTP {resp.status_code}"
+
                 docker_ok = _try_download_from_docker_fallback(client, entry)
                 if docker_ok:
                     return True, True
                 fallback_ok = _has_required_files(entry)
                 TrackLogger.warning(
-                    f"[DATA] {desc}: HTTP {resp.status_code}"
+                    f"[DATA] {desc}: {status_label} — {err_msg}"
                     + (" — using local fallback" if fallback_ok else ""),
                     tag="DATA",
                 )
@@ -407,6 +426,28 @@ def _sync_download_all() -> dict[str, bool]:
     results: dict[str, bool] = {}
     remote_failures: list[str] = []
 
+    # ------------------------------------------------------------------
+    # SKIP_REMOTE_SYNC fast-path: use only Docker-bundled local files.
+    # Activate by setting SKIP_REMOTE_SYNC=true in the environment when
+    # the Supabase bucket is empty or remote access is not configured.
+    # ------------------------------------------------------------------
+    if SKIP_REMOTE_SYNC:
+        TrackLogger.info(
+            "[DATA] SKIP_REMOTE_SYNC=true — skipping Supabase download, "
+            "using local fallback for all data groups.",
+            tag="DATA",
+        )
+        for entry in DOWNLOAD_MANIFEST:
+            ok = _has_required_files(entry)
+            results[entry["description"]] = ok
+            if not ok and entry.get("critical"):
+                TrackLogger.error(
+                    f"[DATA] CRITICAL: {entry['description']} not found locally! "
+                    "Some endpoints will fail.",
+                    tag="DATA",
+                )
+        return results
+
     with httpx.Client(timeout=_DOWNLOAD_TIMEOUT, follow_redirects=True) as client:
         for entry in DOWNLOAD_MANIFEST:
             ok, fetched_from_remote = _download_and_extract(client, entry)
@@ -425,9 +466,14 @@ def _sync_download_all() -> dict[str, bool]:
     if remote_failures:
         failed_list = ", ".join(remote_failures[:3])
         extra = "" if len(remote_failures) <= 3 else f", +{len(remote_failures) - 3} more"
+        all_failed = len(remote_failures) == len(DOWNLOAD_MANIFEST)
+        hint = (
+            " — set SKIP_REMOTE_SYNC=true to use only local data and silence these warnings"
+            if all_failed else ""
+        )
         TrackLogger.warning(
             f"[DATA] Remote sync failed for {len(remote_failures)} data groups; "
-            f"served via local fallback: {failed_list}{extra}",
+            f"served via local fallback: {failed_list}{extra}{hint}",
             tag="DATA",
         )
 
