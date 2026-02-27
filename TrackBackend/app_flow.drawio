@@ -1,0 +1,433 @@
+<mxfile host="draw.io" version="24.0.0" type="device">
+  <diagram name="Track App Flow" id="flow">
+    <mxGraphModel dx="1800" dy="1200" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2700" pageHeight="2150" background="#F8FAFC" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <!-- ══════════ TITLE ══════════ -->
+        <mxCell id="title_main" value="&lt;b style=&quot;font-size:26px;color:#0F172A;&quot;&gt;Track App — Full Connection &amp;amp; ML Flow&lt;/b&gt;" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;fillColor=none;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="700" y="18" width="950" height="42" as="geometry"/>
+        </mxCell>
+        <mxCell id="title_sub" value="&lt;font style=&quot;font-size:12px;color:#64748B;&quot;&gt;n8n-style pipeline · iPhone → FastAPI (Render) → MTA · ML · Supabase · Live Activity&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;fillColor=none;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="700" y="52" width="950" height="22" as="geometry"/>
+        </mxCell>
+
+        <!-- ══════════════════════════════════════════════════════════════
+             SECTION 1 — USER REQUEST
+        ══════════════════════════════════════════════════════════════ -->
+        <mxCell id="sec_user_bg" value="&lt;b style=&quot;font-size:13px;color:#1E40AF;&quot;&gt;📱 USER REQUEST FLOW&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EFF6FF;strokeColor=#BFDBFE;dashed=1;dashPattern=8 4;verticalAlign=top;arcSize=4;" vertex="1" parent="1">
+          <mxGeometry x="40" y="80" width="2600" height="190" as="geometry"/>
+        </mxCell>
+
+        <!-- iPhone -->
+        <mxCell id="n_phone" value="&lt;b style=&quot;font-size:13px;&quot;&gt;📱 iPhone&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;color:#C7D2FE;&quot;&gt;Track App&lt;br&gt;SwiftUI · MapKit&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;arcSize=22;fillColor=#4F46E5;fontColor=#FFFFFF;strokeColor=#3730A3;shadow=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="70" y="115" width="150" height="80" as="geometry"/>
+        </mxCell>
+
+        <!-- MapKit Display -->
+        <mxCell id="n_mapkit" value="&lt;b style=&quot;font-size:13px;&quot;&gt;🗺 MapKit&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;color:#C7D2FE;&quot;&gt;Live transit map&lt;br&gt;CoreData cache&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;arcSize=22;fillColor=#4F46E5;fontColor=#FFFFFF;strokeColor=#3730A3;shadow=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="300" y="115" width="160" height="80" as="geometry"/>
+        </mxCell>
+
+        <!-- Tap trigger -->
+        <mxCell id="n_tap" value="&lt;b style=&quot;font-size:12px;&quot;&gt;👆 Tap Stop&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#F3E8FF;&quot;&gt;user selects route&lt;/font&gt;" style="ellipse;whiteSpace=wrap;html=1;fillColor=#7C3AED;fontColor=#FFFFFF;strokeColor=#6D28D9;shadow=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="545" y="120" width="150" height="70" as="geometry"/>
+        </mxCell>
+
+        <!-- HTTPS GET -->
+        <mxCell id="n_https" value="&lt;b style=&quot;font-size:12px;&quot;&gt;🌐 HTTPS GET&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#BFDBFE;&quot;&gt;/nearby/grouped&lt;br&gt;lat · lon · radius&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;arcSize=22;fillColor=#2563EB;fontColor=#FFFFFF;strokeColor=#1D4ED8;shadow=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="775" y="118" width="170" height="78" as="geometry"/>
+        </mxCell>
+
+        <!-- FastAPI Hub -->
+        <mxCell id="n_fastapi" value="&lt;b style=&quot;font-size:14px;&quot;&gt;⚡ FastAPI&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;color:#BFDBFE;&quot;&gt;Render · Virginia · Starter&lt;br&gt;uvicorn · port 10000&lt;br&gt;log_requests middleware&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;arcSize=18;fillColor=#1E3A8A;fontColor=#FFFFFF;strokeColor=#1E40AF;shadow=1;fontSize=12;strokeWidth=3;" vertex="1" parent="1">
+          <mxGeometry x="1050" y="105" width="230" height="100" as="geometry"/>
+        </mxCell>
+
+        <!-- ── User flow arrows ── -->
+        <mxCell id="e_ph_mk" value="&lt;font style=&quot;font-size:9px;color:#4F46E5;&quot;&gt;opens&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#818CF8;strokeWidth=2;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" source="n_phone" target="n_mapkit" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_mk_tap" value="&lt;font style=&quot;font-size:9px;color:#7C3AED;&quot;&gt;taps route&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#A78BFA;strokeWidth=2;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" source="n_mapkit" target="n_tap" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_tap_http" value="&lt;font style=&quot;font-size:9px;color:#3B82F6;&quot;&gt;request&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#60A5FA;strokeWidth=2;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" source="n_tap" target="n_https" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_http_api" value="&lt;font style=&quot;font-size:9px;color:#3B82F6;&quot;&gt;arrives&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#60A5FA;strokeWidth=2;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" source="n_https" target="n_fastapi" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- ══════════════════════════════════════════════════════════════
+             SECTION 2 — THREE PARALLEL PROCESSING BRANCHES
+        ══════════════════════════════════════════════════════════════ -->
+
+        <!-- ─── MTA BRANCH background ─── -->
+        <mxCell id="sec_mta_bg" value="&lt;b style=&quot;font-size:12px;color:#92400E;&quot;&gt;🚇 LIVE ARRIVALS BRANCH&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFBEB;strokeColor=#FDE68A;dashed=1;dashPattern=8 4;verticalAlign=top;arcSize=4;" vertex="1" parent="1">
+          <mxGeometry x="40" y="290" width="370" height="520" as="geometry"/>
+        </mxCell>
+
+        <!-- ─── ML BRANCH background ─── -->
+        <mxCell id="sec_ml_bg" value="&lt;b style=&quot;font-size:12px;color:#065F46;&quot;&gt;🧠 ML PREDICTION BRANCH&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ECFDF5;strokeColor=#A7F3D0;dashed=1;dashPattern=8 4;verticalAlign=top;arcSize=4;" vertex="1" parent="1">
+          <mxGeometry x="680" y="290" width="560" height="870" as="geometry"/>
+        </mxCell>
+
+        <!-- ─── SUPABASE BRANCH background ─── -->
+        <mxCell id="sec_supa_bg" value="&lt;b style=&quot;font-size:12px;color:#0F766E;&quot;&gt;👤 USER DATA BRANCH&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F0FDFA;strokeColor=#99F6E4;dashed=1;dashPattern=8 4;verticalAlign=top;arcSize=4;" vertex="1" parent="1">
+          <mxGeometry x="1540" y="290" width="340" height="380" as="geometry"/>
+        </mxCell>
+
+        <!-- ════════════
+             MTA NODES
+        ════════════ -->
+        <mxCell id="n_mta_feeds" value="&lt;b style=&quot;font-size:12px;&quot;&gt;🔄 10× MTA Feeds&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#FEF3C7;&quot;&gt;GTFS-RT Protobuf (8 subway + LIRR + MNR)&lt;br&gt;JSON Alerts · Elevators · SIRI Bus · OBA&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;arcSize=16;fillColor=#D97706;fontColor=#FFFFFF;strokeColor=#B45309;shadow=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="70" y="340" width="310" height="85" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="n_mta_client" value="&lt;b style=&quot;font-size:12px;&quot;&gt;⚙️ mta_client.py&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#FEF3C7;&quot;&gt;3-layer cache · Semaphore(32)&lt;br&gt;Redis(20s) → TTLCache(12s) → upstream&lt;br&gt;In-flight dedup · httpx.AsyncClient&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;arcSize=16;fillColor=#B45309;fontColor=#FFFFFF;strokeColor=#92400E;shadow=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="70" y="497" width="310" height="90" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="n_data_cleaner" value="&lt;b style=&quot;font-size:12px;&quot;&gt;🧹 data_cleaner.py&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#FEF3C7;&quot;&gt;Protobuf → TrackArrival&lt;br&gt;Alerts → TransitAlert&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;arcSize=16;fillColor=#D97706;fontColor=#FFFFFF;strokeColor=#B45309;shadow=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="70" y="655" width="310" height="78" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="n_arrivals" value="&lt;b style=&quot;font-size:12px;&quot;&gt;📋 Arrivals List&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#FEF3C7;&quot;&gt;[{route, station, minutes_away, status}]&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;arcSize=16;fillColor=#92400E;fontColor=#FFFFFF;strokeColor=#78350F;shadow=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="70" y="800" width="310" height="70" as="geometry"/>
+        </mxCell>
+
+        <!-- MTA branch arrows -->
+        <mxCell id="e_api_mta" value="&lt;font style=&quot;font-size:9px;color:#D97706;&quot;&gt;fetch feeds&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#D97706;strokeWidth=2;html=1;exitX=0;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" source="n_fastapi" target="n_mta_feeds" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1050" y="270"/>
+              <mxPoint x="225" y="270"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_mta_cli" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#D97706;strokeWidth=2;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" source="n_mta_feeds" target="n_mta_client" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_cli_clean" value="&lt;font style=&quot;font-size:9px;&quot;&gt;parse&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#D97706;strokeWidth=2;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" source="n_mta_client" target="n_data_cleaner" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_clean_arr" value="&lt;font style=&quot;font-size:9px;&quot;&gt;TrackArrival[]&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#D97706;strokeWidth=2;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" source="n_data_cleaner" target="n_arrivals" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- ════════════
+             ML NODES
+        ════════════ -->
+        <mxCell id="n_predict_ep" value="&lt;b style=&quot;font-size:12px;&quot;&gt;🎯 GET /predict/delay&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#D1FAE5;&quot;&gt;params: minutes_away · route_id&lt;br&gt;hour · dow · weather · mode&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;arcSize=16;fillColor=#065F46;fontColor=#FFFFFF;strokeColor=#047857;shadow=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="720" y="340" width="260" height="85" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="n_l1" value="&lt;b style=&quot;font-size:12px;&quot;&gt;💾 L1 LRU Cache&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#FEE2E2;&quot;&gt;512 entries · in-process OrderedDict&lt;br&gt;TTL 1h · zero-latency same instance&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;arcSize=16;fillColor=#DC2626;fontColor=#FFFFFF;strokeColor=#B91C1C;shadow=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="720" y="500" width="260" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="n_l2" value="&lt;b style=&quot;font-size:12px;&quot;&gt;☁️ L2 Redis Cache&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#FEE2E2;&quot;&gt;TTL 1h · track:predict:factor:*&lt;br&gt;shared across all Render instances&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;arcSize=16;fillColor=#DC2626;fontColor=#FFFFFF;strokeColor=#B91C1C;shadow=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="720" y="650" width="260" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="n_lightgbm" value="&lt;b style=&quot;font-size:12px;&quot;&gt;🧠 LightGBM Model&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#D1FAE5;&quot;&gt;176 trees · 1,133 KB pkl&lt;br&gt;predict_factor() → delay multiplier&lt;br&gt;8 features: hour, rush, rain, otp…&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;arcSize=16;fillColor=#065F46;fontColor=#FFFFFF;strokeColor=#047857;shadow=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="695" y="805" width="240" height="90" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="n_recency" value="&lt;b style=&quot;font-size:12px;&quot;&gt;📡 Redis EWMA Recency&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#D1FAE5;&quot;&gt;get_weighted_error()&lt;br&gt;per-stop bias: exp decay α=0.5&lt;br&gt;Semaphore(8) · nil if &lt;3 obs&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;arcSize=16;fillColor=#065F46;fontColor=#FFFFFF;strokeColor=#047857;shadow=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="965" y="805" width="250" height="90" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="n_combine" value="&lt;b style=&quot;font-size:12px;&quot;&gt;🔢 Combine &amp;amp; Adjust&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#D1FAE5;&quot;&gt;adjusted = ceil(minutes × factor)&lt;br&gt;+ recency_error / 60&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;arcSize=16;fillColor=#047857;fontColor=#FFFFFF;strokeColor=#065F46;shadow=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="755" y="975" width="280" height="78" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="n_cache_write" value="&lt;b style=&quot;font-size:12px;&quot;&gt;✏️ Write L1 + L2&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#FEE2E2;&quot;&gt;key: (route, hour, dow, weather, mode)&lt;br&gt;next 1,000 users get it instantly&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;arcSize=16;fillColor=#DC2626;fontColor=#FFFFFF;strokeColor=#B91C1C;shadow=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="755" y="1120" width="280" height="75" as="geometry"/>
+        </mxCell>
+
+        <!-- ML branch arrows -->
+        <mxCell id="e_api_ml" value="&lt;font style=&quot;font-size:9px;color:#059669;&quot;&gt;predict&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#059669;strokeWidth=2;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" source="n_fastapi" target="n_predict_ep" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1165" y="275"/>
+              <mxPoint x="850" y="275"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_ep_l1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#059669;strokeWidth=2;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" source="n_predict_ep" target="n_l1" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_l1_l2" value="&lt;font style=&quot;font-size:9px;color:#DC2626;&quot;&gt;miss&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#DC2626;strokeWidth=2;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" source="n_l1" target="n_l2" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <!-- L1 cache hit bypass to combine -->
+        <mxCell id="e_l1_hit" value="&lt;font style=&quot;font-size:9px;color:#F87171;&quot;&gt;hit: skip model&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#F87171;strokeWidth=1.5;dashed=1;dashPattern=6 4;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0;entryDx=0;entryDy=0;" edge="1" source="n_l1" target="n_combine" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1090" y="540"/>
+              <mxPoint x="1090" y="975"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <!-- L2 cache hit bypass to combine -->
+        <mxCell id="e_l2_hit" value="&lt;font style=&quot;font-size:9px;color:#F87171;&quot;&gt;hit: skip model&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#F87171;strokeWidth=1.5;dashed=1;dashPattern=6 4;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" source="n_l2" target="n_combine" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1100" y="690"/>
+              <mxPoint x="1100" y="1014"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_l2_lgbm" value="&lt;font style=&quot;font-size:9px;color:#DC2626;&quot;&gt;miss&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#DC2626;strokeWidth=2;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" source="n_l2" target="n_lightgbm" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_lgbm_comb" value="&lt;font style=&quot;font-size:9px;color:#059669;&quot;&gt;factor&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#059669;strokeWidth=2;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" source="n_lightgbm" target="n_combine" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_rec_comb" value="&lt;font style=&quot;font-size:9px;color:#059669;&quot;&gt;error_s&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#059669;strokeWidth=2;html=1;exitX=0;exitY=1;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" source="n_recency" target="n_combine" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="965" y="930"/>
+              <mxPoint x="1050" y="930"/>
+              <mxPoint x="1050" y="1014"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_comb_cw" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#059669;strokeWidth=2;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" source="n_combine" target="n_cache_write" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <!-- L2 also feeds recency parallel (show recency is called alongside LightGBM) -->
+        <mxCell id="e_l2_rec" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#059669;strokeWidth=1.5;dashed=1;dashPattern=5 3;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" source="n_l2" target="n_recency" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1110" y="690"/>
+              <mxPoint x="1090" y="690"/>
+              <mxPoint x="1090" y="805"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- ════════════
+             SUPABASE NODES
+        ════════════ -->
+        <mxCell id="n_supa_req" value="&lt;b style=&quot;font-size:12px;&quot;&gt;🗄 Supabase REST&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#CCFBF1;&quot;&gt;/rest/v1/ · service_role auth&lt;br&gt;RLS enforced on every table&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;arcSize=16;fillColor=#0D9488;fontColor=#FFFFFF;strokeColor=#0F766E;shadow=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1580" y="340" width="270" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="n_user_data" value="&lt;b style=&quot;font-size:12px;&quot;&gt;👤 User Data&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#CCFBF1;&quot;&gt;→ favorites&lt;br&gt;→ schedules&lt;br&gt;→ commute_patterns&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;arcSize=16;fillColor=#0F766E;fontColor=#FFFFFF;strokeColor=#115E59;shadow=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1580" y="490" width="270" height="100" as="geometry"/>
+        </mxCell>
+
+        <!-- Supabase arrows -->
+        <mxCell id="e_api_supa" value="&lt;font style=&quot;font-size:9px;color:#0D9488;&quot;&gt;user data&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#0D9488;strokeWidth=2;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" source="n_fastapi" target="n_supa_req" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1390" y="155"/>
+              <mxPoint x="1715" y="155"/>
+              <mxPoint x="1715" y="340"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_supa_ud" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#0D9488;strokeWidth=2;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" source="n_supa_req" target="n_user_data" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- ══════════════════════════════════════════════════════════════
+             SECTION 3 — MERGE + RESPONSE
+        ══════════════════════════════════════════════════════════════ -->
+        <mxCell id="sec_resp_bg" value="&lt;b style=&quot;font-size:12px;color:#1E40AF;&quot;&gt;📤 RESPONSE ASSEMBLY&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EFF6FF;strokeColor=#BFDBFE;dashed=1;dashPattern=8 4;verticalAlign=top;arcSize=4;" vertex="1" parent="1">
+          <mxGeometry x="530" y="1240" width="1230" height="360" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="n_merge" value="&lt;b style=&quot;font-size:13px;&quot;&gt;🔀 Merge Response&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;color:#BFDBFE;&quot;&gt;arrivals + adjusted_minutes + user_data&lt;br&gt;&lt;i&gt;nearby/grouped: sort by fastest first&lt;/i&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;arcSize=18;fillColor=#1E40AF;fontColor=#FFFFFF;strokeColor=#1E3A8A;shadow=1;fontSize=12;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="870" y="1295" width="320" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="n_json_resp" value="&lt;b style=&quot;font-size:13px;&quot;&gt;📦 JSON Response&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;color:#BFDBFE;&quot;&gt;HTTP 200 · [{route, directions, arrivals}]&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;arcSize=18;fillColor=#1D4ED8;fontColor=#FFFFFF;strokeColor=#1E3A8A;shadow=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="920" y="1445" width="280" height="72" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="n_ios_render" value="&lt;b style=&quot;font-size:13px;&quot;&gt;📱 iOS Renders&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#C7D2FE;&quot;&gt;arrival cards · system map&lt;br&gt;adjusted countdown timers&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;arcSize=22;fillColor=#4F46E5;fontColor=#FFFFFF;strokeColor=#3730A3;shadow=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="680" y="1562" width="230" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="n_live_activity" value="&lt;b style=&quot;font-size:13px;&quot;&gt;🔔 Live Activity&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#C7D2FE;&quot;&gt;Dynamic Island countdown&lt;br&gt;real-time widget update&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;arcSize=22;fillColor=#4F46E5;fontColor=#FFFFFF;strokeColor=#3730A3;shadow=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="970" y="1562" width="230" height="80" as="geometry"/>
+        </mxCell>
+
+        <!-- Response arrows -->
+        <mxCell id="e_arr_merge" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#D97706;strokeWidth=2;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" source="n_arrivals" target="n_merge" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="225" y="920"/>
+              <mxPoint x="225" y="1335"/>
+              <mxPoint x="870" y="1335"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_cw_merge" value="&lt;font style=&quot;font-size:9px;color:#059669;&quot;&gt;adjusted_minutes&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#059669;strokeWidth=2;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" source="n_cache_write" target="n_merge" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_ud_merge" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#0D9488;strokeWidth=2;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" source="n_user_data" target="n_merge" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1715" y="640"/>
+              <mxPoint x="1715" y="1335"/>
+              <mxPoint x="1190" y="1335"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_merge_json" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#1D4ED8;strokeWidth=2;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" source="n_merge" target="n_json_resp" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_json_ios" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#4F46E5;strokeWidth=2;html=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" source="n_json_resp" target="n_ios_render" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="795" y="1481"/>
+              <mxPoint x="795" y="1562"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_json_la" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#4F46E5;strokeWidth=2;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" source="n_json_resp" target="n_live_activity" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1280" y="1481"/>
+              <mxPoint x="1085" y="1481"/>
+              <mxPoint x="1085" y="1562"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- ══════════════════════════════════════════════════════════════
+             SECTION 4 — BACKGROUND LEARNING LOOP
+        ══════════════════════════════════════════════════════════════ -->
+        <mxCell id="sec_loop_bg" value="&lt;b style=&quot;font-size:13px;color:#5B21B6;&quot;&gt;🔄 BACKGROUND LEARNING LOOP  —  how the ML model stays accurate over time&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5F3FF;strokeColor=#DDD6FE;dashed=1;dashPattern=8 4;verticalAlign=top;arcSize=4;" vertex="1" parent="1">
+          <mxGeometry x="40" y="1700" width="2600" height="390" as="geometry"/>
+        </mxCell>
+
+        <!-- Auto-collection sub-section -->
+        <mxCell id="sec_auto_bg" value="&lt;font style=&quot;font-size:10px;color:#374151;&quot;&gt;&lt;b&gt;AUTO (runs continuously)&lt;/b&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F9FAFB;strokeColor=#D1D5DB;dashed=1;dashPattern=5 3;verticalAlign=top;arcSize=6;" vertex="1" parent="1">
+          <mxGeometry x="60" y="1740" width="670" height="330" as="geometry"/>
+        </mxCell>
+
+        <!-- Manual retrain sub-section -->
+        <mxCell id="sec_manual_bg" value="&lt;font style=&quot;font-size:10px;color:#5B21B6;&quot;&gt;&lt;b&gt;MANUAL RETRAIN (~500+ real users)&lt;/b&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5F3FF;strokeColor=#C4B5FD;dashed=1;dashPattern=5 3;verticalAlign=top;arcSize=6;" vertex="1" parent="1">
+          <mxGeometry x="760" y="1740" width="1860" height="330" as="geometry"/>
+        </mxCell>
+
+        <!-- Auto nodes -->
+        <mxCell id="n_gtfs_poll" value="&lt;b style=&quot;font-size:11px;&quot;&gt;⏱ Every 12s&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#D1D5DB;&quot;&gt;GTFS-RT Poll&lt;br&gt;observe_trip_updates()&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;arcSize=16;fillColor=#374151;fontColor=#FFFFFF;strokeColor=#1F2937;shadow=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="80" y="1810" width="200" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="n_siri_poll" value="&lt;b style=&quot;font-size:11px;&quot;&gt;⏱ Every 30s&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#D1D5DB;&quot;&gt;SIRI Poll&lt;br&gt;observe_siri_delays_batch()&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;arcSize=16;fillColor=#374151;fontColor=#FFFFFF;strokeColor=#1F2937;shadow=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="80" y="1940" width="200" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="n_redis_ewma" value="&lt;b style=&quot;font-size:12px;&quot;&gt;📊 Redis EWMA ZSET&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#FEE2E2;&quot;&gt;track:recency:obs:{route}:{stop}:{dow}:{hr}&lt;br&gt;max 50 obs per key · 25h TTL&lt;br&gt;score=unix_ts · value=deviation_s&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;arcSize=16;fillColor=#B91C1C;fontColor=#FFFFFF;strokeColor=#991B1B;shadow=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="355" y="1860" width="340" height="88" as="geometry"/>
+        </mxCell>
+
+        <!-- Manual retrain nodes -->
+        <mxCell id="n_export" value="&lt;b style=&quot;font-size:11px;&quot;&gt;📤 export_observations.py&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#EDE9FE;&quot;&gt;scans Redis ZSET keys&lt;br&gt;deviation_s → actual_factor&lt;br&gt;--min-obs 3 --max-age-hours 24&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;arcSize=16;fillColor=#6D28D9;fontColor=#FFFFFF;strokeColor=#5B21B6;shadow=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="790" y="1850" width="260" height="88" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="n_obs_csv" value="&lt;b style=&quot;font-size:11px;&quot;&gt;📄 observations.csv&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#EDE9FE;&quot;&gt;route_id · hour · dow&lt;br&gt;weather · mode · actual_factor&lt;/font&gt;" style="shape=mxgraph.flowchart.document;whiteSpace=wrap;html=1;fillColor=#7C3AED;fontColor=#FFFFFF;strokeColor=#6D28D9;shadow=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1100" y="1848" width="230" height="88" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="n_train_model" value="&lt;b style=&quot;font-size:11px;&quot;&gt;🏋️ train_model.py&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#EDE9FE;&quot;&gt;--real-data observations.csv&lt;br&gt;bootstrap + MTA open data&lt;br&gt;LightGBM 300 rounds&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;arcSize=16;fillColor=#6D28D9;fontColor=#FFFFFF;strokeColor=#5B21B6;shadow=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1380" y="1850" width="240" height="88" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="n_pkl_new" value="&lt;b style=&quot;font-size:11px;&quot;&gt;🧠 delay_model.pkl&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#EDE9FE;&quot;&gt;retrained LightGBM&lt;br&gt;~1,100 KB&lt;/font&gt;" style="shape=mxgraph.flowchart.stored_data;whiteSpace=wrap;html=1;fillColor=#7C3AED;fontColor=#FFFFFF;strokeColor=#6D28D9;shadow=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1670" y="1848" width="210" height="88" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="n_upload" value="&lt;b style=&quot;font-size:11px;&quot;&gt;☁️ upload_model.py&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#EDE9FE;&quot;&gt;→ Supabase Storage&lt;br&gt;bucket: gtfs-data/delay_model.tar.gz&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;arcSize=16;fillColor=#6D28D9;fontColor=#FFFFFF;strokeColor=#5B21B6;shadow=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1930" y="1850" width="240" height="88" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="n_hot_swap" value="&lt;b style=&quot;font-size:11px;&quot;&gt;🔁 POST /predict/reload-model&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#EDE9FE;&quot;&gt;hot-swap without redeploy&lt;br&gt;zero downtime&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;arcSize=16;fillColor=#5B21B6;fontColor=#FFFFFF;strokeColor=#4C1D95;shadow=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="2230" y="1850" width="260" height="88" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="n_model_live" value="&lt;b style=&quot;font-size:12px;&quot;&gt;✅ New Model Live&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#BBF7D0;&quot;&gt;predictions improve&lt;br&gt;zero downtime&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;arcSize=22;fillColor=#14532D;fontColor=#FFFFFF;strokeColor=#166534;shadow=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="2550" y="1855" width="65" height="80" as="geometry"/>
+        </mxCell>
+
+        <!-- ── Learning loop arrows ── -->
+        <mxCell id="e_gtfs_ewma" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#6B7280;strokeWidth=2;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.3;entryDx=0;entryDy=0;" edge="1" source="n_gtfs_poll" target="n_redis_ewma" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_siri_ewma" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#6B7280;strokeWidth=2;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.7;entryDx=0;entryDy=0;" edge="1" source="n_siri_poll" target="n_redis_ewma" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_ewma_export" value="&lt;font style=&quot;font-size:9px;color:#7C3AED;&quot;&gt;manual trigger&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#7C3AED;strokeWidth=2;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" source="n_redis_ewma" target="n_export" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_exp_csv" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#7C3AED;strokeWidth=2;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" source="n_export" target="n_obs_csv" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_csv_train" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#7C3AED;strokeWidth=2;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" source="n_obs_csv" target="n_train_model" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_train_pkl" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#7C3AED;strokeWidth=2;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" source="n_train_model" target="n_pkl_new" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_pkl_upload" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#7C3AED;strokeWidth=2;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" source="n_pkl_new" target="n_upload" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_upload_hs" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#7C3AED;strokeWidth=2;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" source="n_upload" target="n_hot_swap" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_hs_live" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#14532D;strokeWidth=2;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" source="n_hot_swap" target="n_model_live" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- ── KEY cross-section arrow: Redis EWMA → recency_model ── -->
+        <!-- Shows how background observations power the live ML path -->
+        <mxCell id="e_ewma_recency" value="&lt;font style=&quot;font-size:9px;color:#DC2626;&quot;&gt;powers recency correction (live reads)&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#DC2626;strokeWidth=2;dashed=1;dashPattern=6 4;html=1;exitX=1;exitY=0;exitDx=0;exitDy=0;entryX=1;entryY=1;entryDx=0;entryDy=0;" edge="1" source="n_redis_ewma" target="n_recency" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1260" y="1820"/>
+              <mxPoint x="1260" y="895"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- ══════════════════════════════════════════════════════════════
+             LEGEND ROW
+        ══════════════════════════════════════════════════════════════ -->
+        <mxCell id="legend_bg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#E2E8F0;arcSize=6;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="2115" width="2600" height="18" as="geometry"/>
+        </mxCell>
+        <mxCell id="leg_t" value="&lt;b&gt;Legend:&lt;/b&gt;" style="text;html=1;align=left;verticalAlign=middle;fillColor=none;strokeColor=none;fontColor=#374151;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="55" y="2110" width="60" height="24" as="geometry"/>
+        </mxCell>
+        <mxCell id="l_ios" value="" style="rounded=1;fillColor=#4F46E5;strokeColor=#3730A3;arcSize=20;" vertex="1" parent="1"><mxGeometry x="120" y="2113" width="16" height="16" as="geometry"/></mxCell>
+        <mxCell id="lt_ios" value="iOS Client" style="text;html=1;align=left;verticalAlign=middle;fillColor=none;strokeColor=none;fontColor=#374151;fontSize=10;" vertex="1" parent="1"><mxGeometry x="140" y="2110" width="72" height="22" as="geometry"/></mxCell>
+        <mxCell id="l_api" value="" style="rounded=1;fillColor=#1E40AF;strokeColor=#1E3A8A;arcSize=20;" vertex="1" parent="1"><mxGeometry x="220" y="2113" width="16" height="16" as="geometry"/></mxCell>
+        <mxCell id="lt_api" value="FastAPI/HTTP" style="text;html=1;align=left;verticalAlign=middle;fillColor=none;strokeColor=none;fontColor=#374151;fontSize=10;" vertex="1" parent="1"><mxGeometry x="240" y="2110" width="82" height="22" as="geometry"/></mxCell>
+        <mxCell id="l_mta" value="" style="rounded=1;fillColor=#D97706;strokeColor=#B45309;arcSize=20;" vertex="1" parent="1"><mxGeometry x="330" y="2113" width="16" height="16" as="geometry"/></mxCell>
+        <mxCell id="lt_mta" value="MTA Feeds" style="text;html=1;align=left;verticalAlign=middle;fillColor=none;strokeColor=none;fontColor=#374151;fontSize=10;" vertex="1" parent="1"><mxGeometry x="350" y="2110" width="70" height="22" as="geometry"/></mxCell>
+        <mxCell id="l_ml" value="" style="rounded=1;fillColor=#065F46;strokeColor=#047857;arcSize=20;" vertex="1" parent="1"><mxGeometry x="428" y="2113" width="16" height="16" as="geometry"/></mxCell>
+        <mxCell id="lt_ml" value="ML Pipeline" style="text;html=1;align=left;verticalAlign=middle;fillColor=none;strokeColor=none;fontColor=#374151;fontSize=10;" vertex="1" parent="1"><mxGeometry x="448" y="2110" width="72" height="22" as="geometry"/></mxCell>
+        <mxCell id="l_red" value="" style="rounded=1;fillColor=#DC2626;strokeColor=#B91C1C;arcSize=20;" vertex="1" parent="1"><mxGeometry x="528" y="2113" width="16" height="16" as="geometry"/></mxCell>
+        <mxCell id="lt_red" value="Redis Cache" style="text;html=1;align=left;verticalAlign=middle;fillColor=none;strokeColor=none;fontColor=#374151;fontSize=10;" vertex="1" parent="1"><mxGeometry x="548" y="2110" width="70" height="22" as="geometry"/></mxCell>
+        <mxCell id="l_sup" value="" style="rounded=1;fillColor=#0D9488;strokeColor=#0F766E;arcSize=20;" vertex="1" parent="1"><mxGeometry x="626" y="2113" width="16" height="16" as="geometry"/></mxCell>
+        <mxCell id="lt_sup" value="Supabase" style="text;html=1;align=left;verticalAlign=middle;fillColor=none;strokeColor=none;fontColor=#374151;fontSize=10;" vertex="1" parent="1"><mxGeometry x="646" y="2110" width="62" height="22" as="geometry"/></mxCell>
+        <mxCell id="l_aut" value="" style="rounded=1;fillColor=#374151;strokeColor=#1F2937;arcSize=20;" vertex="1" parent="1"><mxGeometry x="716" y="2113" width="16" height="16" as="geometry"/></mxCell>
+        <mxCell id="lt_aut" value="Auto background" style="text;html=1;align=left;verticalAlign=middle;fillColor=none;strokeColor=none;fontColor=#374151;fontSize=10;" vertex="1" parent="1"><mxGeometry x="736" y="2110" width="100" height="22" as="geometry"/></mxCell>
+        <mxCell id="l_man" value="" style="rounded=1;fillColor=#6D28D9;strokeColor=#5B21B6;arcSize=20;" vertex="1" parent="1"><mxGeometry x="844" y="2113" width="16" height="16" as="geometry"/></mxCell>
+        <mxCell id="lt_man" value="Manual retrain" style="text;html=1;align=left;verticalAlign=middle;fillColor=none;strokeColor=none;fontColor=#374151;fontSize=10;" vertex="1" parent="1"><mxGeometry x="864" y="2110" width="95" height="22" as="geometry"/></mxCell>
+        <mxCell id="l_don" value="" style="rounded=1;fillColor=#14532D;strokeColor=#166534;arcSize=20;" vertex="1" parent="1"><mxGeometry x="967" y="2113" width="16" height="16" as="geometry"/></mxCell>
+        <mxCell id="lt_don" value="Complete / live" style="text;html=1;align=left;verticalAlign=middle;fillColor=none;strokeColor=none;fontColor=#374151;fontSize=10;" vertex="1" parent="1"><mxGeometry x="987" y="2110" width="95" height="22" as="geometry"/></mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
