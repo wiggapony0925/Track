@@ -113,6 +113,14 @@ _CBTC_LINES: frozenset[str] = frozenset({"L", "7"})
 _RUSH_MORNING = range(7, 10)
 _RUSH_EVENING = range(17, 20)
 
+# Feature names — must match train_model.py exactly.
+# Used to build a named DataFrame at inference time so LightGBM doesn't emit
+# "X does not have valid feature names" warnings on every prediction.
+FEATURE_NAMES: list[str] = [
+    "route_reliability", "hour", "dow", "weather", "mode",
+    "is_rush", "is_weekend", "delay_minutes",
+]
+
 # ── Singleton ──────────────────────────────────────────────────────────────
 _model: Any | None = None
 _model_loaded: bool = False
@@ -252,11 +260,12 @@ def predict_factor(
         return _heuristic(route_id, hour, dow, weather, mode), "heuristic"
 
     try:
-        import numpy as np  # type: ignore[import-untyped]
+        import pandas as pd  # type: ignore[import-untyped]
         feats = encode_features(route_id, hour, dow, weather, mode, current_delay_s)
         # Backward compat: older 7-feature models drop the delay_minutes column
         n_expected: int = getattr(model, "n_features_in_", len(feats))
-        X = np.array([feats[:n_expected]])
+        names = FEATURE_NAMES[:n_expected]
+        X = pd.DataFrame([feats[:n_expected]], columns=names)
         raw = float(model.predict(X)[0])
         return round(max(0.90, min(raw, 2.0)), 4), "model"
     except Exception as exc:
