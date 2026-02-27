@@ -115,13 +115,13 @@ DOWNLOAD_MANIFEST: list[dict[str, Any]] = [
         "critical": False,
     },
     {
-        # 487 KB model — well under Supabase 50 MB limit.
-        # Bootstrapped: gtfs_refresh.py uploads it on the first GTFS cycle
-        # after deployment; all subsequent cold-starts download from Supabase.
-        # Falls back to Docker-bundled copy (kept in image) until first upload.
+        # ML model — uploaded explicitly via scripts/upload_model.py when
+        # retrained.  Docker image always bundles the last trained pkl as a
+        # fallback; this download replaces it only when a newer version has
+        # been explicitly pushed to Supabase (i.e. after a local retrain).
         "object": "delay_model.tar.gz",
         "extract_to": "",           # extracts delay_model.pkl to app/data/ root
-        "description": "ML GBR delay prediction model",
+        "description": "ML LightGBM delay prediction model",
         "required_files": ["delay_model.pkl"],
         "critical": False,          # heuristic factor used if missing
     },

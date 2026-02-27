@@ -449,10 +449,10 @@ def _upload_to_supabase(archive_names: set[str]) -> None:
             "mnr": [
                 ("metro_north/gtfsmnr", None),
             ],
-            # ML model — always uploaded so cold-starts can download it
-            "delay_model": [
-                ("delay_model.pkl", "delay_model.pkl"),
-            ],
+            # delay_model is NOT included here — the model is uploaded
+            # explicitly via scripts/upload_model.py when retrained, not
+            # on every GTFS refresh cycle (which would push whatever stale
+            # pkl happens to be on the running server).
         }
 
         with httpx.Client(timeout=httpx.Timeout(connect=10, read=300, write=300, pool=10)) as client:
@@ -625,11 +625,6 @@ def _sync_check_and_refresh(full_check: bool) -> dict[str, str]:
     # Phase 4: Upload changed archives to Supabase
     if supabase_archives:
         _upload_to_supabase(supabase_archives)
-
-    # Phase 4b: Always sync the ML model to Supabase — self-bootstrapping.
-    # The model is only 158 KB gzipped so uploading it every refresh cycle
-    # is negligible and ensures the Supabase bucket always has the latest.
-    _upload_to_supabase({"delay_model"})
 
     # Phase 5: Clear in-memory caches so server uses fresh data
     if updated_feeds:
