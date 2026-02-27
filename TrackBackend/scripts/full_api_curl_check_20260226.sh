@@ -176,15 +176,17 @@ fi
 info ""
 info "── 6. Nearby ─────────────────────────────────"
 
-# Borough coordinates
-declare -A BOROUGH_LAT BOROUGH_LON
-BOROUGH_LAT=([manhattan]=40.7580  [brooklyn]=40.6782 [queens]=40.7282 [bronx]=40.8448 [staten_island]=40.5795)
-BOROUGH_LON=([manhattan]=-73.9855 [brooklyn]=-73.9442 [queens]=-73.7949 [bronx]=-73.8648 [staten_island]=-74.1502)
+# Borough coordinates (plain vars — bash 3.2 compatible)
 RAD=8047  # 5 miles
 
 for BOROUGH in manhattan brooklyn queens bronx staten_island; do
-  LAT="${BOROUGH_LAT[$BOROUGH]}"
-  LON="${BOROUGH_LON[$BOROUGH]}"
+  case "$BOROUGH" in
+    manhattan)    LAT=40.7580; LON=-73.9855 ;;
+    brooklyn)     LAT=40.6782; LON=-73.9442 ;;
+    queens)       LAT=40.7282; LON=-73.7949 ;;
+    bronx)        LAT=40.8448; LON=-73.8648 ;;
+    staten_island) LAT=40.5795; LON=-74.1502 ;;
+  esac
   hit GET "$BASE/nearby?lat=$LAT&lon=$LON&radius=$RAD" \
       "nearby (flat)   $BOROUGH"
   for MODE in bus subway lirr mnr; do
@@ -210,7 +212,7 @@ LAT=40.7580; LON=-73.9855
 
 LIVE_BUS=$(first_field \
   "$BASE/nearby/grouped?lat=$LAT&lon=$LON&radius=800&mode=bus" \
-  "(d[0].get('route_id') if isinstance(d,list) and d else '')" \
+  "(d[0].get('route_id') or (d[0].get('directions') or [{}])[0].get('route_id','') if isinstance(d,list) and d else '')" \
   "")
 if [[ -n "$LIVE_BUS" ]]; then
   hit GET "$BASE/bus/vehicles/$LIVE_BUS"        "bus/vehicles  (live: $LIVE_BUS)"
@@ -239,10 +241,16 @@ info ""
 info "── 9. Data Integrity ─────────────────────────"
 
 for BOROUGH in manhattan brooklyn; do
-  LAT="${BOROUGH_LAT[$BOROUGH]}"
-  LON="${BOROUGH_LON[$BOROUGH]}"
+  case "$BOROUGH" in
+    manhattan) LAT=40.7580; LON=-73.9855 ;;
+    brooklyn)  LAT=40.6782; LON=-73.9442 ;;
+  esac
   python3 -c "
-import json, pathlib, urllib.request, sys
+import json, ssl, urllib.request, sys
+
+ctx = ssl.create_default_context()
+ctx.check_hostname = False
+ctx.verify_mode = ssl.CERT_NONE
 
 base = '$BASE'
 borough = '$BOROUGH'
@@ -252,7 +260,7 @@ results = []
 for mode in ('bus', 'subway', 'lirr', 'mnr'):
     url = f'{base}/nearby/grouped?lat={lat}&lon={lon}&radius={rad}&mode={mode}'
     try:
-        with urllib.request.urlopen(url, timeout=15) as r:
+        with urllib.request.urlopen(url, timeout=15, context=ctx) as r:
             data = json.load(r)
     except Exception as e:
         print(f'  INTEGRITY SKIP {mode} ({e})')
