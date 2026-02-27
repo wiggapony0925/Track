@@ -345,6 +345,66 @@ Current infrastructure (as of Feb 2026):
 
 ---
 
+### Observability — Logging & Uptime Monitoring
+
+The backend ships structured logs to **Better Stack** for 30-day retention and search, and uses Better Stack Uptime to alert on downtime.
+
+#### What was set up (Feb 2026)
+
+| Component | Detail |
+|---|---|
+| **Log streaming** | Render → Observability → Log Streams → `s1768496.eu-fsn-3-vec.betterstackdata.com:6514` |
+| **Uptime monitor** | Better Stack Uptime → `https://track-vkrr.onrender.com/health` every 3 min |
+| **Health endpoint** | `GET /health` → `{"status": "ok"}` — lightweight, no DB/cache calls |
+| **Rndr-Id tracing** | Every log line includes the Render request ID for end-to-end request tracing |
+
+#### Log format
+
+Every log line emitted by the backend follows this structure:
+
+```
+2026-02-27 14:23:01.042 [INFO] [HTTP] [user@email.com] [58ebfa3c-8929-4485] GET /nearby/grouped → 200 (143.2ms)
+```
+
+| Field | Meaning |
+|---|---|
+| `[HTTP]` / `[ML]` / `[REDIS]` / `[CACHE]` | Subsystem tag — filterable in Better Stack |
+| `[user@email.com]` | Authenticated user making the request |
+| `[58ebfa3c-...]` | `Rndr-Id` header injected by Render — ties all log lines from one request together |
+
+#### Searching logs in Better Stack
+
+Go to **Telemetry → Live tail** or **Logs** and use queries like:
+
+```
+subsystem:[ML]          # all ML prediction logs
+level:ERROR             # errors only
+request_id:58ebfa3c    # all logs from one specific request
+user_email:user@email  # all logs for a specific user
+```
+
+#### How Rndr-Id tracing works (code)
+
+Render injects a unique `Rndr-Id` header on every inbound HTTP request. The `log_requests` middleware in `app/main.py` extracts it and binds it to a `contextvars.ContextVar` so every log call made during that request (across any service file) automatically includes it:
+
+```python
+# app/main.py — log_requests middleware
+request_id = request.headers.get("Rndr-Id") or "-"
+TrackLogger.set_request_id(request_id)
+# ... handle request ...
+finally:
+    TrackLogger.clear_request_id()
+```
+
+#### Re-configuring log stream
+
+If the Better Stack source is recreated or the endpoint changes:
+1. Render Dashboard → workspace name (top left) → **Integrations → Observability**
+2. **Log Streams** → edit the default destination
+3. Update host:port and token
+
+---
+
 ### Environment Variables (Render Dashboard)
 
 These must be set manually in **Render → Track service → Environment**. They are never in the repo.
