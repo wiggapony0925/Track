@@ -172,6 +172,12 @@ async def log_requests(request: Request, call_next):
         TrackLogger.clear_request_id()
 
 
+@app.get("/health")
+async def health() -> dict[str, str]:
+    """Lightweight liveness probe for uptime monitors (Better Stack, etc.)."""
+    return {"status": "ok"}
+
+
 @app.get("/config")
 async def config() -> dict[str, Any]:
     """Return the *app_settings* block from settings.json."""
