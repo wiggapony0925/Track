@@ -120,3 +120,16 @@ NEARBY_RESPONSE_FRESH_TTL: float = _ovr.get("nearby_response_fresh_ttl", 10.0)
 NEARBY_RESPONSE_STALE_TTL: float = _ovr.get("nearby_response_stale_ttl", 20.0)
 NEARBY_RESPONSE_MAX_SIZE: int = _ovr.get("nearby_response_max_size", 200)
 NEARBY_GPS_DECIMALS: int = _ovr.get("nearby_gps_decimals", 3)
+
+
+# ┌─────────────────────────────────────────────────────┐
+# │  /predict/delay  — Delay Factor Cache               │
+# │  Cache key: route_id + hour + dow + weather + mode  │
+# │  Same conditions → same factor → serve all users    │
+# │  from one computation. TTL = 1 hour because the     │
+# │  contextual factors (rush hour, weather bucket) are │
+# │  stable within a single hour window.                │
+# └─────────────────────────────────────────────────────┘
+
+PREDICT_FACTOR_TTL: float = _ovr.get("predict_factor_ttl", 3600.0)   # 1 hour
+PREDICT_FACTOR_MAX_SIZE: int = _ovr.get("predict_factor_max_size", 512)
