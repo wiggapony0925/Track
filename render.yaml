@@ -8,7 +8,7 @@
 # ────────────────────────────────────────────────────────────
 keyValueStores:
   - name: track-redis
-    plan: free          # 25 MB — sufficient for transit cache (ephemeral data)
+    plan: starter       # 100 MB — upgraded from free (25 MB) Feb 2026
     region: virginia    # same region as Track web service to minimise latency
     maxmemoryPolicy: allkeys-lru  # evict oldest keys when memory is full
 

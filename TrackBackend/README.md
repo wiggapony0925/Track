@@ -249,18 +249,15 @@ The backend connects to Supabase for user analytics and data sync.
 
 ### Configuration
 
-Set these environment variables (or use defaults for development):
+All secrets are set in the **Render dashboard → Environment**, never committed to the repo.
 
-```bash
-export SUPABASE_URL=https://octpebjxadbufiplgjqg.supabase.co
-export SUPABASE_KEY=sb_publishable_lAEZ_x8O4vjdGaw-I-QUMg_oS5iWKIn
-# Optional: mirror URL that hosts the same GTFS .tar.gz files
-# (used if Supabase download fails before local Docker-bundled fallback)
-export GTFS_DOCKER_FALLBACK_BASE_URL=https://your-docker-mirror.example.com/gtfs
-
-If you set SUPABASE_SERVICE_KEY correctly and restart, sync should work even without those loader tweaks.
-The most important action now is key rotation (since a secret was exposed) and updating env with the new key before startup.
-```
+| Env var | Where to get it |
+|---|---|
+| `SUPABASE_URL` | Supabase dashboard → Project Settings → API |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase dashboard → Project Settings → API |
+| `MTA_API_KEY` | https://api.mta.info |
+| `OBA_API_KEY` | https://bustime.mta.info |
+| `REDIS_URL` | Auto-injected by Render from the `track-redis` key-value store |
 
 ### Database Tables
 
@@ -270,6 +267,124 @@ The most important action now is key rotation (since a secret was exposed) and u
 | `route_interactions` | Analytics - what routes are popular | iOS HomeViewModel, Backend analytics router |
 | `schedules` | Widget activation schedules | iOS WidgetSchedules, SyncManager |
 | `commute_patterns` | Smart suggestions based on habits | iOS SmartSuggester |
+
+---
+
+## Operations & Maintenance Runbook
+
+> **For future developers and AI agents:** This section documents every periodic task that may need to be run. The backend is designed to be left alone. Only touch it when one of the triggers below applies.
+
+---
+
+### ML Model Retraining
+
+The delay prediction model (`app/data/delay_model.pkl`) was trained on MTA open data + bootstrap samples. Once real users are riding with the app, Redis accumulates actual observed delay errors via `recency_model.py`. When you have enough users (~500–1,000+), retrain to incorporate real data.
+
+**How to retrain:**
+
+```bash
+cd TrackBackend
+source .venv/bin/activate
+
+# Step 1 — Export live Redis observations to CSV
+# Requires REDIS_URL pointing at the production Redis instance
+export REDIS_URL=<from Render dashboard>
+python -m app.ml.export_observations -o observations.csv
+
+# Step 2 — Retrain the model (adds real data on top of MTA open data)
+python -m app.ml.train_model --real-data observations.csv
+
+# Step 3 — Upload the new model to Supabase Storage
+export SUPABASE_URL=https://octpebjxadbufiplgjqg.supabase.co
+export SUPABASE_SERVICE_ROLE_KEY=<from Render dashboard>
+python scripts/upload_model.py
+
+# Step 4 — Hot-swap without a deploy (zero downtime)
+curl -X POST https://track-api.onrender.com/predict/reload-model
+```
+
+**When to retrain:** When the app has been live for several weeks and you want predictions to reflect real NYC patterns rather than historical MTA data only.
+
+---
+
+### GTFS Static Data Refresh
+
+MTA updates GTFS static feeds (stop locations, route shapes, schedules) roughly quarterly. The backend downloads these on cold start from Supabase Storage.
+
+**How to refresh:**
+
+```bash
+cd TrackBackend
+source .venv/bin/activate
+
+# Re-download the latest MTA training datasets
+python scripts/fetch_mta_training_data.py
+
+# Then re-upload the updated tarballs to Supabase Storage
+# (do this from scripts/upload_gtfs.py if it exists, or manually via Supabase dashboard)
+# Buckets: gtfs-data/ (7 tarballs) and Static_MTA_data/ (raw GTFS text files)
+```
+
+**When to refresh:** If arrival times look wrong, trains don't show on certain routes, or MTA announces a major schedule change (usually September and January).
+
+---
+
+### Infrastructure Scaling
+
+| If you see... | Action |
+|---|---|
+| Render CPU consistently > 80% | Upgrade web service from `starter` to `standard` in `render.yaml` |
+| Redis memory > 80 MB | Increase `plan: starter` → `plan: standard` in `render.yaml`, or reduce TTLs in `settings.json` `cache` section |
+| Cold starts taking > 60s | The persistent disk may have been wiped — first boot re-downloads GTFS from Supabase (expected) |
+| Deploy fails with `libgomp` error | Check `Dockerfile` — `libgomp1` must be in the `apt-get install` line |
+
+Current infrastructure (as of Feb 2026):
+- **Web service:** Render Starter (512 MB RAM, 0.5 CPU)
+- **Redis:** Render Starter Key-Value (100 MB, `allkeys-lru`)
+- **Persistent disk:** 10 GB mounted at `/app/app/data`
+
+---
+
+### Environment Variables (Render Dashboard)
+
+These must be set manually in **Render → Track service → Environment**. They are never in the repo.
+
+| Variable | Description |
+|---|---|
+| `MTA_API_KEY` | From https://api.mta.info — required for all GTFS-RT feeds |
+| `OBA_API_KEY` | From https://bustime.mta.info — required for bus arrivals |
+| `SUPABASE_URL` | `https://octpebjxadbufiplgjqg.supabase.co` |
+| `SUPABASE_SERVICE_ROLE_KEY` | From Supabase dashboard → Project Settings → API |
+| `REDIS_URL` | Auto-injected by Render from the `track-redis` key-value store |
+| `ARRIVING_PREDICTION_MODEL` | Set to `false` to disable ML predictions instantly without a deploy |
+
+---
+
+### Database Schema Changes
+
+The schema source of truth is `db.txt` in the repo root. If you add a new table:
+
+1. Write idempotent SQL in `db.txt`
+2. Run it in the Supabase dashboard → SQL Editor
+3. Enable RLS on the new table
+4. Add a policy (`auth.uid() = user_id` pattern matches all existing tables)
+5. Update `app/models.py` with the corresponding Pydantic schema if the backend reads/writes it
+
+The `supabase/migrations/` folder is kept in sync via `supabase db pull` — run it after any schema change to keep the migration file current.
+
+---
+
+### Running Tests
+
+```bash
+cd TrackBackend
+source .venv/bin/activate
+python -m pytest tests/ -q --ignore=tests/integration
+# Expected: 2320 passed, 14 known failures (pre-existing, not regressions)
+```
+
+The 14 known failures are pre-existing test stubs that test live MTA/SIRI behavior — they require active network and are expected to fail locally.
+
 
 ### Analytics Endpoints
 
