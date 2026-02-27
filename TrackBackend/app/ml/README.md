@@ -1,5 +1,8 @@
 # Track ML — Delay Prediction System
 
+> **Current model:** LightGBM · 2,861,120 training samples · MAE 0.92 min · 176 trees  
+> **Last trained:** February 26, 2026 · `app/data/delay_model.pkl` (1,133 KB)
+
 ## Overview
 
 The Track ML system corrects MTA's raw `minutes_away` values before they reach the iOS app. Instead of displaying whatever the MTA GTFS-RT feed reports, every arrival time is passed through a four-stage pipeline that accounts for chronic route patterns, current service alerts, and recent real-world observations at the specific stop.
@@ -394,3 +397,28 @@ scripts/
 2. **Week 1–2 (recency warm-up):** SIRI observations fill Redis. Recency delta starts correcting per-stop behaviour. Bias drifts toward 0 for high-frequency stops.
 3. **Month 1 (first retrain):** Export Redis observations → CSV, retrain with `--real-data`. Real samples (weight=1.0) dominate bootstrap (weight=0.5). Feature importances shift from `hour/reliability` toward `delay_minutes`.
 4. **Ongoing:** Automatic nightly GTFS refresh triggers `delay_model.tar.gz` re-upload to Supabase. All cold-start containers download the latest model automatically.
+
+
+Dataset	Rows saved
+bus_segment_speeds_2023–2024	500,000 (capped)
+bus_segment_speeds_2025	500,000 (capped)
+bus_speeds_summary	156,836
+subway_otp × 3 eras	1,596 / 2,686 / 585
+subway_service_delivered × 3	2,729 / 2,733 / 602
+subway_delay_incidents	22,750
+subway_major_incidents × 3	2,867 / 2,018 / 597
+subway_trains_delayed	17,419
+subway_ridership_2017–2019	1,000,000 (capped)
+subway_ridership_2020–2024	1,000,000 (capped)
+subway_ridership_2025	500,000 (capped)
+bus_wait_assessment	162,330
+bus_service_delivered	78,977
+bus_customer_journey	64,504
+subway_customer_journey × 3	2,048 / 2,856 / 624
+lirr_otp	1,622
+metro_north_otp	511
+subway_elevator_escalator	78,260
+mta_service_alerts	470,763
+mta_daily_ridership	16,144
+bus_hourly_ridership_2020–2024	500,000 (capped)
+bus_hourly_ridership_2025	500,000 (capped)

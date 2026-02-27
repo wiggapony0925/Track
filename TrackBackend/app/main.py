@@ -59,9 +59,14 @@ async def startup_event():
     await _redis.init_redis()
     # Log startup summary so Render logs clearly show what's active
     redis_status = "ACTIVE  bus · subway · LIRR · MNR" if _redis.get_client() else "DISABLED (in-process only)"
+    # Check whether the ML prediction feature flag is active
+    _ml_flag = os.environ.get("ARRIVING_PREDICTION_MODEL", "true").strip().lower()
+    _ml_on = _ml_flag not in ("false", "0", "off", "no", "disabled")
+    _ml_label = "ENABLED" if _ml_on else f"*** DISABLED *** (env={_ml_flag})"
     TrackLogger.info(
         f"[STARTUP] Track backend ready | "
         f"Redis={redis_status} | "
+        f"ML={_ml_label} | "
         f"env=production",
         tag="STARTUP",
     )

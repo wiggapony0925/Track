@@ -9,12 +9,15 @@
 #   - Colored console output with timestamps
 #   - Rotating file logs (track.log, max 5 MB × 3 backups)
 #   - Structured context: request timing, feed performance, cache stats
-#   - Dedicated methods for every subsystem: bus, subway, rail, alerts, cache
+#   - Dedicated methods for every subsystem: bus, subway, rail, alerts, cache,
+#     ML (model load · per-prediction · cache hits), perf
 #
 # Usage:
 #   from app.utils.logger import TrackLogger
 #   TrackLogger.info("message")
-#   TrackLogger.bus("Route B63 resolved", route_id="B63")
+#   TrackLogger.ml("[MODEL] LightGBM loaded — 176 trees")
+#   TrackLogger.prediction(route_id="7", minutes_away=5, adjusted=6, factor=1.1,
+#                          source="model", recency_s=45.0)
 #   TrackLogger.request("GET", "/nearby", 200, elapsed_ms=42.3)
 #
 
@@ -87,13 +90,19 @@ class _ColorFormatter(logging.Formatter):
 
 
 class _FileFormatter(logging.Formatter):
-    """Plain-text formatter for the log file — no ANSI codes."""
+    """Plain-text formatter for the log file — no ANSI codes.
+
+    Includes milliseconds so Render log timestamps are precise enough to
+    correlate ML prediction latency with request timings.
+    """
 
     def format(self, record: logging.LogRecord) -> str:
         tag = getattr(record, "tag", "TRACK")
         user_email = getattr(record, "user_email", "-")
+        # %f gives microseconds; truncate to ms by slicing [:3]
         ts = self.formatTime(record, "%Y-%m-%d %H:%M:%S")
-        return f"{ts} [{record.levelname}] [{tag}] [{user_email}] {record.getMessage()}"
+        ms = f".{int(record.msecs):03d}"
+        return f"{ts}{ms} [{record.levelname}] [{tag}] [{user_email}] {record.getMessage()}"
 
 
 # ---------------------------------------------------------------------------
@@ -166,6 +175,7 @@ class TrackLogger:
     # ------------------------------------------------------------------
     @staticmethod
     def startup() -> None:
+        import os
         try:
             import pyfiglet
             banner = pyfiglet.figlet_format("TRACK", font="slant")
@@ -175,6 +185,15 @@ class TrackLogger:
             print(Fore.CYAN + Style.BRIGHT + "=== TRACK ===" + Style.RESET_ALL)
         _logger.info("Track backend starting up", extra={"tag": "STARTUP"})
         _logger.info(f"Log file: {_LOG_FILE}", extra={"tag": "STARTUP"})
+
+        # ── Key feature flags ────────────────────────────────────────────
+        ml_raw = os.environ.get("ARRIVING_PREDICTION_MODEL", "true")
+        ml_on = ml_raw.strip().lower() not in ("false", "0", "off", "no", "disabled")
+        ml_label = f"{'ENABLED' if ml_on else '*** DISABLED ***'} (ARRIVING_PREDICTION_MODEL={ml_raw})"
+        _logger.info(f"[STARTUP] ML prediction model: {ml_label}", extra={"tag": "STARTUP"})
+
+        env_name = os.environ.get("RENDER_SERVICE_NAME", os.environ.get("ENV", "local"))
+        _logger.info(f"[STARTUP] Environment: {env_name}", extra={"tag": "STARTUP"})
 
     # ------------------------------------------------------------------
     # Core levels
@@ -290,6 +309,51 @@ class TrackLogger:
     def analytics(msg: str) -> None:
         """Log analytics / Supabase events."""
         _logger.debug(msg, extra={"tag": "ANALYTICS"})
+
+    @staticmethod
+    def ml(msg: str) -> None:
+        """Log ML model events (load, reload, feature encoding, predictions) at INFO."""
+        _logger.info(msg, extra={"tag": "ML"})
+
+    @staticmethod
+    def prediction(
+        *,
+        route_id: str,
+        minutes_away: int,
+        adjusted: int,
+        factor: float,
+        source: str,
+        recency_s: float = 0.0,
+        stop_id: str | None = None,
+        mode: str = "subway",
+    ) -> None:
+        """Structured per-prediction log — emits at DEBUG to avoid log spam.
+
+        Use ``TrackLogger.ml()`` for INFO-level model lifecycle events, and
+        this for per-request prediction detail visible at DEBUG level:
+
+            TrackLogger.prediction(
+                route_id="7", minutes_away=5, adjusted=6,
+                factor=1.10, source="model", recency_s=45.0, stop_id="127N",
+            )
+        """
+        _logger.debug(
+            f"[PREDICT] {route_id}/{mode} {minutes_away}min"
+            f" → {adjusted}min | factor={factor:.3f}"
+            f" recency={recency_s:+.0f}s src={source}"
+            + (f" stop={stop_id}" if stop_id else ""),
+            extra={"tag": "ML"},
+        )
+
+    @staticmethod
+    def model_event(msg: str, *, level: str = "info") -> None:
+        """Log significant model lifecycle events (load, reload, fallback, flag).
+
+        Always visible in Render logs regardless of log level filter.
+        Use ``level='warning'`` when falling back to heuristic.
+        """
+        fn = getattr(_logger, level, _logger.info)
+        fn(f"[MODEL] {msg}", extra={"tag": "ML"})
 
     # ------------------------------------------------------------------
     # Performance timing helper

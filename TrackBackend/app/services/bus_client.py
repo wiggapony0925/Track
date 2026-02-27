@@ -42,7 +42,7 @@ from app.utils.geo_utils import haversine_m
 from app.utils import cache_stats
 from app.utils.logger import TrackLogger
 from app.utils.polyline_utils import decode_polyline, encode_polyline
-from app.ml.recency_model import observe_siri_delay
+from app.ml.recency_model import observe_siri_delay, observe_siri_delays_batch
 
 # Python 3.14 no longer creates an implicit main-thread event loop.
 # Some legacy sync test paths still call asyncio.get_event_loop().run_until_complete(...).
@@ -1324,6 +1324,9 @@ async def _fetch_realtime_arrivals_uncached(stop_id: str) -> list[BusArrival]:
     visits: list[dict[str, Any]] = deliveries[0].get("MonitoredStopVisit", [])
 
     arrivals: list[BusArrival] = []
+    # Accumulate recency observations; flush in one batch pipeline after the loop
+    # instead of N concurrent ensure_future calls — prevents Redis maxclients errors.
+    _stop_obs: list[tuple[str, str, float]] = []
     for visit in visits:
         journey = visit.get("MonitoredVehicleJourney", {})
         monitored_call = journey.get("MonitoredCall", {})
@@ -1405,6 +1408,10 @@ async def _fetch_realtime_arrivals_uncached(stop_id: str) -> list[BusArrival]:
         if expected_arrival and aimed_arrival:
             schedule_deviation_s = int((expected_arrival - aimed_arrival).total_seconds())
 
+        # MTA bus spooking detection — stop-monitoring visit
+        monitored_raw_visit = journey.get("Monitored", True)
+        is_realtime_visit = monitored_raw_visit not in (False, "false", "False", "0")
+
         arrivals.append(
             BusArrival(
                 route_id=raw_route or "",
@@ -1418,20 +1425,16 @@ async def _fetch_realtime_arrivals_uncached(stop_id: str) -> list[BusArrival]:
                 bearing=bearing,
                 direction_ref=direction_ref,
                 destination_name=destination_name,
+                is_realtime=is_realtime_visit,
             )
         )
-        # Feed live SIRI deviation straight into the recency model.
-        # Every SIRI poll (~30s) is now a real observation — no need to wait
-        # for stops to disappear from successive GTFS-RT snapshots.
+        # Accumulate SIRI deviation for batch write after the loop.
         if schedule_deviation_s is not None and raw_route:
-            asyncio.ensure_future(
-                observe_siri_delay(
-                    route_id=raw_route,
-                    stop_id=stop_id,
-                    deviation_s=float(schedule_deviation_s),
-                )
-            )
+            _stop_obs.append((raw_route, stop_id, float(schedule_deviation_s)))
 
+    # Flush all recency observations in one pipeline — avoids "max clients reached".
+    if _stop_obs:
+        asyncio.ensure_future(observe_siri_delays_batch(_stop_obs))
     return arrivals
 
 
@@ -1605,6 +1608,8 @@ async def _get_vehicles_impl(route_id: str) -> list[BusVehicle]:
     activities: list[dict[str, Any]] = deliveries[0].get("VehicleActivity", [])
 
     vehicles: list[BusVehicle] = []
+    # Accumulate recency observations; flush in one batch pipeline after the loop.
+    _veh_obs: list[tuple[str, str, float]] = []
     for activity in activities:
         journey = activity.get("MonitoredVehicleJourney", {})
         location = journey.get("VehicleLocation", {})
@@ -1627,6 +1632,28 @@ async def _get_vehicles_impl(route_id: str) -> list[BusVehicle]:
                 bearing = float(raw_bearing)
             except (ValueError, TypeError):
                 pass
+
+        # MTA bus spooking detection ─────────────────────────────────────────
+        # SIRI `Monitored` field: False when the vehicle is not actively
+        # transmitting GPS data and position is estimated from static schedule.
+        # RecordedAtTime: timestamp of last real GPS ping from this vehicle.
+        # Reference: MTA SIRI API architecture — "bus spooking / trip-level assignment".
+        monitored_raw = journey.get("Monitored", True)
+        is_realtime = monitored_raw not in (False, "false", "False", "0")
+        position_recorded_at: datetime | None = None
+        recorded_at_str = activity.get("RecordedAtTime")
+        if recorded_at_str:
+            try:
+                position_recorded_at = datetime.fromisoformat(recorded_at_str)
+            except (ValueError, TypeError):
+                pass
+        if not is_realtime:
+            TrackLogger.warning(
+                f"[BUS SPOOKING] {journey.get('LineRef', route_id)} "
+                f"vehicle={journey.get('VehicleRef', '?')} — "
+                f"position is schedule-estimated, not live GPS (Monitored=False)",
+                tag="BUS",
+            )
 
         # Next stop name
         monitored_call = journey.get("MonitoredCall", {})
@@ -1655,13 +1682,7 @@ async def _get_vehicles_impl(route_id: str) -> list[BusVehicle]:
             try:
                 aimed_mc_dt = datetime.fromisoformat(aimed_mc_str)
                 dev_mc_s = (expected_arrival - aimed_mc_dt).total_seconds()
-                asyncio.ensure_future(
-                    observe_siri_delay(
-                        route_id=journey.get("LineRef", route_id),
-                        stop_id=mc_stop_ref,
-                        deviation_s=dev_mc_s,
-                    )
-                )
+                _veh_obs.append((journey.get("LineRef", route_id), mc_stop_ref, dev_mc_s))
             except (ValueError, TypeError):
                 pass
 
@@ -1709,19 +1730,13 @@ async def _get_vehicles_impl(route_id: str) -> list[BusVehicle]:
                 except (ValueError, TypeError):
                     pass
 
-            # Schedule deviation for this onward stop → recency model
+            # Accumulate onward call deviation for batch write
             call_aimed_str = call.get("AimedArrivalTime")
             if call_expected and call_aimed_str and stop_ref:
                 try:
                     call_aimed_dt = datetime.fromisoformat(call_aimed_str)
                     call_dev_s = (call_expected - call_aimed_dt).total_seconds()
-                    asyncio.ensure_future(
-                        observe_siri_delay(
-                            route_id=journey.get("LineRef", route_id),
-                            stop_id=stop_ref,
-                            deviation_s=call_dev_s,
-                        )
-                    )
+                    _veh_obs.append((journey.get("LineRef", route_id), stop_ref, call_dev_s))
                 except (ValueError, TypeError):
                     pass
 
@@ -1753,7 +1768,8 @@ async def _get_vehicles_impl(route_id: str) -> list[BusVehicle]:
                 distance_meters=dist_m,
                 bearing=bearing, # Inherit bearing from vehicle
                 direction_ref=direction_ref, # Inherit direction
-                destination_name=None # Will be filled by frontend via route/stop lookup if needed
+                destination_name=None, # Will be filled by frontend via route/stop lookup if needed
+                is_realtime=is_realtime,  # Propagate spooking state
             ))
 
         vehicles.append(
@@ -1768,8 +1784,14 @@ async def _get_vehicles_impl(route_id: str) -> list[BusVehicle]:
                 direction_ref=direction_ref,
                 expected_arrival=expected_arrival,
                 onward_calls=onward_calls,
+                is_realtime=is_realtime,
+                position_recorded_at=position_recorded_at,
             )
         )
+
+    # Flush all recency observations in one pipeline — avoids "max clients reached".
+    if _veh_obs:
+        asyncio.ensure_future(observe_siri_delays_batch(_veh_obs))
 
     return vehicles
 

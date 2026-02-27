@@ -101,6 +101,15 @@ def _load_otp_reliability() -> None:
 WEATHER_ENCODING: dict[str, int] = {"clear": 0, "rain": 1, "snow": 2}
 MODE_ENCODING: dict[str, int] = {"subway": 0, "bus": 1, "lirr": 2, "mnr": 3}
 
+# Lines with Communications-Based Train Control (CBTC) deployment.
+# These lines have sub-segment moving-block position data available to the MTA
+# internally, which makes their GTFS-RT arrival predictions significantly more
+# accurate than the fixed-block system on other lines.
+# Source: MTA — L line (2009), 7 line (2019), Culver/8Av in progress.
+# Effect on heuristic: apply a smaller rush-hour correction since the MTA's
+# own predictions are already much closer to reality.
+_CBTC_LINES: frozenset[str] = frozenset({"L", "7"})
+
 _RUSH_MORNING = range(7, 10)
 _RUSH_EVENING = range(17, 20)
 
@@ -116,19 +125,27 @@ def _load_model() -> Any | None:
     _model_loaded = True
 
     if not MODEL_PATH.exists():
-        TrackLogger.warning(
-            f"[ML] No model at {MODEL_PATH}. Run: python -m app.ml.train_model",
-            tag="ML",
+        TrackLogger.model_event(
+            f"No model file at {MODEL_PATH} — heuristic fallback active. "
+            f"Run: python -m app.ml.train_model",
+            level="warning",
         )
         return None
 
     try:
         import joblib  # type: ignore[import-untyped]
         _model = joblib.load(MODEL_PATH)
-        TrackLogger.info(f"[ML] GBR delay model loaded from {MODEL_PATH}", tag="ML")
+        size_kb = MODEL_PATH.stat().st_size // 1024
+        n_trees = getattr(_model, "n_estimators", "?")
+        TrackLogger.model_event(
+            f"LightGBM model loaded — {n_trees} trees, {size_kb} KB ({MODEL_PATH.name})"
+        )
         return _model
     except Exception as exc:
-        TrackLogger.warning(f"[ML] Model load failed ({exc}). Using heuristic.", tag="ML")
+        TrackLogger.model_event(
+            f"Model load failed ({exc}) — heuristic fallback active.",
+            level="warning",
+        )
         return None
 
 
@@ -175,11 +192,30 @@ def encode_features(
 
 
 def _heuristic(route_id: str, hour: int, dow: int, weather: str, mode: str) -> float:
-    """Rule-based fallback — same logic as the original DelayCalculator.swift."""
+    """Rule-based fallback — same logic as the original DelayCalculator.swift.
+
+    CBTC-aware: the L and 7 lines use Communications-Based Train Control which
+    gives the MTA sub-segment position tracking (vs the fixed-block "occupancy
+    only" system on the rest of the network).  Their arrival times from GTFS-RT
+    are already significantly more accurate, so the heuristic applies a smaller
+    rush-hour bonus to avoid over-correcting an already-precise prediction.
+    Reference: MTA CBTC deployment — L line (2009), 7 line (2019).
+    """
+    key = route_id.upper().strip()
+    if "_" in key:
+        key = key.split("_")[-1]
+    is_cbtc = key in _CBTC_LINES
+
     factor = 1.0
     is_weekday = 2 <= dow <= 6
     if is_weekday and (hour in _RUSH_MORNING or hour in _RUSH_EVENING):
-        factor += 0.20 if mode.lower() == "bus" else 0.10
+        if mode.lower() == "bus":
+            factor += 0.20
+        elif is_cbtc:
+            # CBTC lines: MTA arrival time is already precise — smaller correction
+            factor += 0.04
+        else:
+            factor += 0.10
 
     w = weather.lower()
     if w == "rain":
@@ -187,9 +223,7 @@ def _heuristic(route_id: str, hour: int, dow: int, weather: str, mode: str) -> f
     elif w == "snow":
         factor += 0.30 if mode.lower() == "bus" else 0.20
 
-    key = route_id.upper().strip()
-    if "_" in key:
-        key = key.split("_")[-1]
+    # Route-specific chronic delay offsets (key already normalised above)
     if key == "G":
         factor += 0.10
     elif key in ("J", "Z", "A", "C", "4", "5", "6"):
@@ -226,7 +260,9 @@ def predict_factor(
         raw = float(model.predict(X)[0])
         return round(max(0.90, min(raw, 2.0)), 4), "model"
     except Exception as exc:
-        TrackLogger.warning(f"[ML] predict error ({exc}). Heuristic fallback.", tag="ML")
+        TrackLogger.model_event(
+            f"predict error ({exc}) — heuristic fallback.", level="warning"
+        )
         return _heuristic(route_id, hour, dow, weather, mode), "heuristic"
 
 

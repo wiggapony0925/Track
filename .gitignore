@@ -11,6 +11,10 @@ venv/
 env/
 .env
 
+# ML training data — large raw files from data.ny.gov, local dev only
+# Only delay_model.pkl (487 KB) ships to prod, not these source files
+TrackBackend/app/data/training/
+
 # IDE
 .vscode/
 .idea/

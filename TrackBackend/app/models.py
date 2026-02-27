@@ -84,6 +84,10 @@ class BusArrival(BaseModel):
     bearing: float | None = None
     direction_ref: int | None = None  # SIRI DirectionRef: 0 or 1
     destination_name: str | None = None  # SIRI DestinationName: e.g. "JAMAICA via BREWER BL"
+    # MTA SIRI spooking detection: False when position is estimated from static
+    # schedule rather than live GPS (vehicle not actively transmitting telemetry).
+    # iOS should show a “Scheduled” indicator instead of “Live” when False.
+    is_realtime: bool = True
 
 
 class NearbyTransitArrival(BaseModel):
@@ -140,6 +144,13 @@ class BusVehicle(BaseModel):
     direction_ref: int | None = None
     expected_arrival: datetime | None = None
     onward_calls: list[BusArrival] = []
+    # MTA SIRI spooking detection: False when vehicle is not actively transmitting
+    # GPS data and the position is interpolated from static schedule.
+    # The SIRI Monitored field drives this.
+    is_realtime: bool = True
+    # When the GPS position was last recorded by the vehicle (RecordedAtTime).
+    # Stale > 3 min may indicate a vehicle has lost signal.
+    position_recorded_at: datetime | None = None
 
 
 class DirectionShape(BaseModel):

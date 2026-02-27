@@ -41,6 +41,7 @@
 from __future__ import annotations
 
 import math
+import os
 import time
 from collections import OrderedDict
 
@@ -54,6 +55,16 @@ from app.utils import redis_client as _redis
 from app.utils.logger import TrackLogger
 
 router = APIRouter(tags=["predict"])
+
+# ── Feature flag ──────────────────────────────────────────────────────────
+# Set  ARRIVING_PREDICTION_MODEL=false  in your Render env vars to instantly
+# bypass the ML model and recency correction without a deploy.
+# Any value other than "false" / "0" / "off" leaves the feature ENABLED.
+def _ml_enabled() -> bool:
+    """Read the feature flag fresh each call so Render env changes take effect
+    without a restart (Render re-injects env vars on the fly for some tiers)."""
+    val = os.environ.get("ARRIVING_PREDICTION_MODEL", "true").strip().lower()
+    return val not in ("false", "0", "off", "no", "disabled")
 
 # ── In-process L1 LRU cache ───────────────────────────────────────────────
 _L1: "OrderedDict[str, tuple[float, float]]" = OrderedDict()  # key → (factor, stored_at)
@@ -115,7 +126,7 @@ class DelayPrediction(BaseModel):
     original_minutes: int
     delay_factor: float
     adjustment_reason: str | None = None
-    model_source: str = "heuristic"   # "model" | "heuristic" | "cache"
+    model_source: str = "heuristic"   # "model"|"model_live"|"heuristic"|"heuristic_live"|"l1_hit"|"l2_hit"|"disabled"
     recency_error_seconds: float = 0.0  # signed correction from recency model (+ = late)
 
 
@@ -148,7 +159,7 @@ async def predict_delay(
        more than old ones (half-life ≈1.4 hours).  Observations now arrive
        at every SIRI poll (~30 s) via ``observe_siri_delay``.
 
-    2. **GBR factor** (pattern model): accounts for route reliability,
+    2. **LightGBM factor** (pattern model): accounts for route reliability,
        rush-hour, day-of-week, weather, and transit mode.  Result is cached
        per (route, hour, dow, weather, mode) when no live deviation is
        available.  When ``schedule_deviation_s`` is provided the factor is
@@ -156,8 +167,8 @@ async def predict_delay(
        buses already running late tend to slip further).
 
     3. **Live SIRI deviation** (momentum): ``schedule_deviation_s`` feeds the
-       GBR model so it can learn that currently-late vehicles arrive even later
-       than the contextual factor alone predicts.
+       LightGBM model so it can learn that currently-late vehicles arrive even
+       later than the contextual factor alone predicts.
 
     Final ETA:
         adjusted_minutes = ceil((mta_seconds + recency_error_s) × factor / 60)
@@ -167,10 +178,29 @@ async def predict_delay(
     weather_lower = weather.lower()
     mode_lower = mode.lower()
 
-    # ── 1. GBR factor ──────────────────────────────────────────────────────
+    # ── 0. Feature flag guard ─────────────────────────────────────────────
+    # When ARRIVING_PREDICTION_MODEL=false the endpoint still exists and
+    # returns a valid response — the iOS client keeps working unchanged.
+    # We just pass `minutes_away` through untouched so every displayed ETA
+    # is straight from the MTA with no ML adjustment at all.
+    if not _ml_enabled():
+        TrackLogger.ml(
+            f"[PREDICT] ML disabled via env flag — passthrough "
+            f"route={route_id} {minutes_away}min",
+        )
+        return DelayPrediction(
+            adjusted_minutes=minutes_away,
+            original_minutes=minutes_away,
+            delay_factor=1.0,
+            adjustment_reason=None,
+            model_source="disabled",
+            recency_error_seconds=0.0,
+        )
+
+    # ── 1. LightGBM factor ─────────────────────────────────────────────────
     # Two paths:
     #   • Live  (schedule_deviation_s provided): vehicle-specific prediction.
-    #     The deviation is fed as the 8th GBR feature (momentum signal).
+    #     The deviation is fed as the 8th LightGBM feature (momentum signal).
     #     NOT cached — each vehicle has its own current running delay.
     #   • Contextual (no deviation): shared cache keyed on route+hour+dow+
     #     weather+mode.  One compute → every user on this route served.
@@ -182,7 +212,7 @@ async def predict_delay(
     source: str
 
     if use_live:
-        # Live per-vehicle path — bypass cache; feeds momentum into GBR
+        # Live per-vehicle path — bypass cache; feeds momentum into LightGBM
         factor, source = predict_factor(
             route_id=route_id,
             hour=hour,
@@ -195,12 +225,13 @@ async def predict_delay(
     else:
         # Cached contextual path
         factor = _l1_get(factor_cache_key)
-        source = "cache"
+        source = "l1_hit"
 
         if factor is None:
             factor = await _redis_get(factor_cache_key)
             if factor is not None:
                 _l1_set(factor_cache_key, factor)
+                source = "l2_hit"
             else:
                 factor, source = predict_factor(
                     route_id=route_id,
@@ -228,9 +259,9 @@ async def predict_delay(
             # or outlier data corrupting the displayed ETA.
             recency_error_s = max(-300.0, min(300.0, error))
 
-    # ── 3. Blend: apply recency first, then multiply by GBR factor ───────
+    # ── 3. Blend: apply recency first, then multiply by LightGBM factor ──
     # Recency corrects the base seconds (additive: "this stop runs +90s late")
-    # GBR factor then scales the corrected value (multiplicative: "rush hour × 1.1")
+    # LightGBM factor scales the corrected value (multiplicative: "rush hour × 1.1")
     # We never let the corrected seconds go below 0.
     base_seconds = max(0.0, minutes_away * 60.0 + recency_error_s)
     adjusted_seconds = base_seconds * factor
@@ -248,11 +279,15 @@ async def predict_delay(
         reason_parts.append(f"+{pct}% ({rush_label}, {weather_lower})")
     reason = "; ".join(reason_parts) if reason_parts else None
 
-    TrackLogger.info(
-        f"[PREDICT] {route_id} {mode_lower} {minutes_away}min "
-        f"recency={recency_error_s:+.0f}s factor={factor:.3f} → {adjusted}min "
-        f"src={source} stop={stop_id or '-'}",
-        tag="ML",
+    TrackLogger.prediction(
+        route_id=route_id,
+        minutes_away=minutes_away,
+        adjusted=adjusted,
+        factor=factor,
+        source=source,
+        recency_s=recency_error_s,
+        stop_id=stop_id,
+        mode=mode_lower,
     )
 
     return DelayPrediction(

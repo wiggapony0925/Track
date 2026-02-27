@@ -32,6 +32,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import math
 import time as _time
 from datetime import datetime, timezone
@@ -47,6 +48,12 @@ MAX_OBS_PER_KEY   = 50
 MAX_AGE_HOURS     = 6.0
 _LAMBDA           = 0.5      # decay constant (half-life ≈ 1.4 h)
 _MAX_ERROR_SECS   = 600      # ±10 min — discard garbage (cancelled trips)
+
+# Semaphore: cap concurrent Redis query connections so that a large /nearby
+# response (169+ stops) can't exhaust the pool (typically 20 connections) by
+# firing all get_weighted_error calls simultaneously.
+# 8 concurrent queries is plenty — each query takes ~1-2ms.
+_QUERY_SEMAPHORE = asyncio.Semaphore(8)
 
 
 def _snap_key(trip_id: str) -> str:
@@ -149,6 +156,55 @@ async def observe_siri_delay(
         )
 
 
+async def observe_siri_delays_batch(
+    observations: list[tuple[str, str, float]],
+) -> None:
+    """Write multiple SIRI deviation observations in a single Redis pipeline.
+
+    This is the preferred API for callers that collect multiple deviations
+    at once (e.g. a full SIRI response with 100s of stops).  Using one
+    pipeline instead of N concurrent futures prevents connection-pool
+    exhaustion on Render Redis plans with low maxclients limits.
+
+    Args:
+        observations: list of (route_id, stop_id, deviation_s) tuples.
+                      deviation_s = ExpectedArrivalTime − AimedArrivalTime (seconds).
+                      Positive = running late, negative = running early.
+    """
+    if not observations:
+        return
+
+    client = _redis.get_client()
+    if client is None:
+        return
+
+    now = _time.time()
+    dt = datetime.fromtimestamp(now, tz=timezone.utc)
+    dow = (dt.isoweekday() % 7) + 1   # Mon=2 … Sun=1
+    hour = dt.hour
+
+    # Filter garbage before touching Redis
+    valid = [
+        (r, s, d) for r, s, d in observations
+        if abs(d) <= _MAX_ERROR_SECS
+    ]
+    if not valid:
+        return
+
+    try:
+        pipe = client.pipeline(transaction=False)
+        for route_id, stop_id, deviation_s in valid:
+            obs_key = _obs_key(route_id, stop_id, dow, hour)
+            pipe.zadd(obs_key, {str(round(deviation_s, 2)): now})
+            pipe.zremrangebyrank(obs_key, 0, -(MAX_OBS_PER_KEY + 1))
+            pipe.expire(obs_key, _OBS_TTL)
+        await pipe.execute()
+    except Exception as exc:
+        TrackLogger.warning(
+            f"[RECENCY] batch observe error ({len(valid)} obs): {exc}", tag="ML"
+        )
+
+
 async def get_weighted_error(
     route_id: str, stop_id: str, dow: int, hour: int
 ) -> float | None:
@@ -156,57 +212,61 @@ async def get_weighted_error(
 
     Positive = trains running late. Negative = running early.
     Returns None when fewer than 3 observations exist.
+
+    A semaphore limits concurrent Redis queries to 8 to prevent pool
+    exhaustion when predict.py is called concurrently for many stops.
     """
     client = _redis.get_client()
     if client is None:
         return None
 
-    try:
-        now = _time.time()
-        cutoff = now - (MAX_AGE_HOURS * 3600)
+    async with _QUERY_SEMAPHORE:
+        try:
+            now = _time.time()
+            cutoff = now - (MAX_AGE_HOURS * 3600)
 
-        # Exact slot (2× weight) + adjacent hours ±1 (1× weight)
-        exact_key = _obs_key(route_id, stop_id, dow, hour)
-        raw_exact: list[tuple[str, float]] = await client.zrangebyscore(
-            exact_key, cutoff, "+inf", withscores=True
-        )
-
-        raw_adj: list[tuple[str, float]] = []
-        for h in [(hour - 1) % 24, (hour + 1) % 24]:
-            entries = await client.zrangebyscore(
-                _obs_key(route_id, stop_id, dow, h), cutoff, "+inf", withscores=True
+            # Exact slot (2× weight) + adjacent hours ±1 (1× weight)
+            exact_key = _obs_key(route_id, stop_id, dow, hour)
+            raw_exact: list[tuple[str, float]] = await client.zrangebyscore(
+                exact_key, cutoff, "+inf", withscores=True
             )
-            raw_adj.extend(entries)
 
-        if len(raw_exact) + len(raw_adj) < 3:
+            raw_adj: list[tuple[str, float]] = []
+            for h in [(hour - 1) % 24, (hour + 1) % 24]:
+                entries = await client.zrangebyscore(
+                    _obs_key(route_id, stop_id, dow, h), cutoff, "+inf", withscores=True
+                )
+                raw_adj.extend(entries)
+
+            if len(raw_exact) + len(raw_adj) < 3:
+                return None
+
+            def _wsum(entries: list[tuple[str, float]], scale: float) -> tuple[float, float]:
+                sw, swx = 0.0, 0.0
+                for val_str, ts in entries:
+                    try:
+                        err = float(val_str)
+                    except ValueError:
+                        continue
+                    w = math.exp(-_LAMBDA * (now - ts) / 3600.0) * scale
+                    swx += w * err
+                    sw  += w
+                return swx, sw
+
+            wx_e, w_e = _wsum(raw_exact, 2.0)
+            wx_a, w_a = _wsum(raw_adj,   1.0)
+            total_w = w_e + w_a
+            if total_w <= 0:
+                return None
+
+            error = (wx_e + wx_a) / total_w
+            TrackLogger.debug(
+                f"[RECENCY] {route_id} {stop_id} dow={dow} h={hour} → {error:+.1f}s "
+                f"({len(raw_exact)} exact + {len(raw_adj)} adj)",
+                tag="ML",
+            )
+            return error
+
+        except Exception as exc:
+            TrackLogger.warning(f"[RECENCY] query error {route_id}/{stop_id}: {exc}", tag="ML")
             return None
-
-        def _wsum(entries: list[tuple[str, float]], scale: float) -> tuple[float, float]:
-            sw, swx = 0.0, 0.0
-            for val_str, ts in entries:
-                try:
-                    err = float(val_str)
-                except ValueError:
-                    continue
-                w = math.exp(-_LAMBDA * (now - ts) / 3600.0) * scale
-                swx += w * err
-                sw  += w
-            return swx, sw
-
-        wx_e, w_e = _wsum(raw_exact, 2.0)
-        wx_a, w_a = _wsum(raw_adj,   1.0)
-        total_w = w_e + w_a
-        if total_w <= 0:
-            return None
-
-        error = (wx_e + wx_a) / total_w
-        TrackLogger.debug(
-            f"[RECENCY] {route_id} {stop_id} dow={dow} h={hour} → {error:+.1f}s "
-            f"({len(raw_exact)} exact + {len(raw_adj)} adj)",
-            tag="ML",
-        )
-        return error
-
-    except Exception as exc:
-        TrackLogger.warning(f"[RECENCY] query error {route_id}/{stop_id}: {exc}", tag="ML")
-        return None

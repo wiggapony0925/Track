@@ -90,13 +90,25 @@ async def init_redis() -> None:
     TrackLogger.redis(f"[REDIS] Connecting to {_safe_url} ...")
 
     try:
-        client = redis_asyncio.from_url(redis_url, encoding="utf-8", decode_responses=True)
+        # max_connections caps the pool so we never exceed the Render Redis
+        # plan's server-side maxclients limit (typically 25–100 depending on
+        # plan). Without this, 169 concurrent observe_siri_delay futures from
+        # a single /nearby request each grab a new connection → "max clients
+        # reached".  20 is safe on the Starter plan and generous for free tier.
+        _max_conn = int(os.getenv("REDIS_MAX_CONNECTIONS", "20"))
+        client = redis_asyncio.from_url(
+            redis_url,
+            encoding="utf-8",
+            decode_responses=True,
+            max_connections=_max_conn,
+        )
         t0 = _time.monotonic()
         await client.ping()
         ping_ms = (_time.monotonic() - t0) * 1000
         _redis_client = client
         TrackLogger.redis(
             f"[REDIS] Connected — ping {ping_ms:.1f}ms | {_safe_url} | "
+            f"pool max_connections={_max_conn} | "
             f"shared cache ACTIVE  bus · subway · LIRR · MNR"
         )
     except Exception as exc:
