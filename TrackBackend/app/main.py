@@ -19,6 +19,7 @@ from app.config import get_settings
 from app.routers import bus, lirr, mnr, nearby, predict, status, subway
 from app.services.bus_client import clear_bus_cache
 from app.services.data_loader import ensure_data_available
+from app.services.gtfs_refresh import rebuild_schedule_db_if_missing
 from app.utils import cache_stats
 from app.utils import redis_client as _redis
 from app.utils.logger import TrackLogger
@@ -52,6 +53,9 @@ async def startup_event():
     TrackLogger.startup()
     # Download fresh GTFS data from Supabase (falls back to Docker-bundled files)
     await ensure_data_available()
+    # On first boot with a fresh Render Disk, rebuild transit_schedule.db from
+    # the GTFS files we just downloaded.  No-op if the DB already exists.
+    await rebuild_schedule_db_if_missing()
     await _redis.init_redis()
     # Log startup summary so Render logs clearly show what's active
     redis_status = "ACTIVE  bus · subway · LIRR · MNR" if _redis.get_client() else "DISABLED (in-process only)"

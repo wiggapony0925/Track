@@ -42,6 +42,7 @@ from app.utils.geo_utils import haversine_m
 from app.utils import cache_stats
 from app.utils.logger import TrackLogger
 from app.utils.polyline_utils import decode_polyline, encode_polyline
+from app.ml.recency_model import observe_siri_delay
 
 # Python 3.14 no longer creates an implicit main-thread event loop.
 # Some legacy sync test paths still call asyncio.get_event_loop().run_until_complete(...).
@@ -1392,6 +1393,18 @@ async def _fetch_realtime_arrivals_uncached(stop_id: str) -> list[BusArrival]:
         elif isinstance(raw_dest, str):
             destination_name = raw_dest or None
 
+        # Schedule deviation: how late/early vs. published schedule
+        aimed_str: str | None = monitored_call.get("AimedArrivalTime")
+        aimed_arrival: datetime | None = None
+        if aimed_str:
+            try:
+                aimed_arrival = datetime.fromisoformat(aimed_str)
+            except (ValueError, TypeError):
+                pass
+        schedule_deviation_s: int | None = None
+        if expected_arrival and aimed_arrival:
+            schedule_deviation_s = int((expected_arrival - aimed_arrival).total_seconds())
+
         arrivals.append(
             BusArrival(
                 route_id=raw_route or "",
@@ -1399,12 +1412,25 @@ async def _fetch_realtime_arrivals_uncached(stop_id: str) -> list[BusArrival]:
                 stop_id=stop_id,
                 status_text=status_text or "En Route",
                 expected_arrival=expected_arrival,
+                aimed_arrival=aimed_arrival,
+                schedule_deviation_s=schedule_deviation_s,
                 distance_meters=distance_meters,
                 bearing=bearing,
                 direction_ref=direction_ref,
                 destination_name=destination_name,
             )
         )
+        # Feed live SIRI deviation straight into the recency model.
+        # Every SIRI poll (~30s) is now a real observation — no need to wait
+        # for stops to disappear from successive GTFS-RT snapshots.
+        if schedule_deviation_s is not None and raw_route:
+            asyncio.ensure_future(
+                observe_siri_delay(
+                    route_id=raw_route,
+                    stop_id=stop_id,
+                    deviation_s=float(schedule_deviation_s),
+                )
+            )
 
     return arrivals
 
@@ -1622,6 +1648,23 @@ async def _get_vehicles_impl(route_id: str) -> list[BusVehicle]:
             except (ValueError, TypeError):
                 expected_arrival = None
 
+        # Schedule deviation at next monitored stop → recency model observation
+        mc_stop_ref = monitored_call.get("StopPointRef")
+        aimed_mc_str = monitored_call.get("AimedArrivalTime")
+        if expected_arrival and aimed_mc_str and mc_stop_ref:
+            try:
+                aimed_mc_dt = datetime.fromisoformat(aimed_mc_str)
+                dev_mc_s = (expected_arrival - aimed_mc_dt).total_seconds()
+                asyncio.ensure_future(
+                    observe_siri_delay(
+                        route_id=journey.get("LineRef", route_id),
+                        stop_id=mc_stop_ref,
+                        deviation_s=dev_mc_s,
+                    )
+                )
+            except (ValueError, TypeError):
+                pass
+
         # Direction reference (0 or 1) from SIRI
         direction_ref: int | None = None
         raw_dir = journey.get("DirectionRef")
@@ -1665,7 +1708,23 @@ async def _get_vehicles_impl(route_id: str) -> list[BusVehicle]:
                     call_expected = datetime.fromisoformat(call_exp_str)
                 except (ValueError, TypeError):
                     pass
-            
+
+            # Schedule deviation for this onward stop → recency model
+            call_aimed_str = call.get("AimedArrivalTime")
+            if call_expected and call_aimed_str and stop_ref:
+                try:
+                    call_aimed_dt = datetime.fromisoformat(call_aimed_str)
+                    call_dev_s = (call_expected - call_aimed_dt).total_seconds()
+                    asyncio.ensure_future(
+                        observe_siri_delay(
+                            route_id=journey.get("LineRef", route_id),
+                            stop_id=stop_ref,
+                            deviation_s=call_dev_s,
+                        )
+                    )
+                except (ValueError, TypeError):
+                    pass
+
             # Skip if no useful info
             if not present_dist and not call_expected:
                 continue

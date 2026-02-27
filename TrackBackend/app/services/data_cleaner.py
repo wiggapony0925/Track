@@ -16,6 +16,7 @@ from google.transit import gtfs_realtime_pb2  # type: ignore[import-untyped]
 from app.config import get_feed_url, get_settings
 from app.models import ElevatorStatus, TrackArrival, TransitAlert
 from app.services.mta_client import fetch_json, fetch_protobuf
+from app.ml.recency_model import observe_trip_updates, observe_siri_delay
 from app.services.station_lookup import get_stop_name
 from app.utils.geo_utils import minutes_until as _minutes_until
 from app.utils.logger import TrackLogger
@@ -65,6 +66,21 @@ async def get_arrivals_for_line(line_id: str) -> list[TrackArrival]:
             minutes = _minutes_until(arrival_time)
             direction = "N" if stu.stop_id.endswith("N") else "S"
 
+            # GTFS-RT delay field: signed integer in seconds (+ve = late).
+            # MTA populates this when it has real-time tracking on the trip.
+            gtfs_delay_s: int | None = None
+            if stu.HasField("arrival") and stu.arrival.delay != 0:
+                gtfs_delay_s = stu.arrival.delay
+                # Fire-and-forget recency observation — gives us per-stop
+                # subway delay data at every GTFS-RT poll (~30 s).
+                asyncio.ensure_future(
+                    observe_siri_delay(
+                        route_id=route,
+                        stop_id=stu.stop_id,
+                        deviation_s=float(stu.arrival.delay),
+                    )
+                )
+
             # Resolve station name: try full ID first, then strip N/S suffix
             resolved_name = get_stop_name(stu.stop_id)
             if resolved_name == stu.stop_id and len(stu.stop_id) > 1 and stu.stop_id[-1] in "NS":
@@ -86,6 +102,22 @@ async def get_arrivals_for_line(line_id: str) -> list[TrackArrival]:
 
     arrivals.sort(key=lambda a: a.minutes_away)
     TrackLogger.subway(f"Feed {line_id}: {len(arrivals)} arrivals from {len(feed.entity)} entities")
+
+    # ── Fire-and-forget recency observations ────────────────────────────
+    # Build per-trip stop snapshot maps and push to RecencyModel without
+    # blocking the response.  If Redis is unavailable this is a no-op.
+    trip_stops: dict[str, tuple[str, dict[str, int]]] = {}  # trip_id → (route_id, {stop_id: ts})
+    for arrival in arrivals:
+        if arrival.trip_id and arrival.arrival_ts:
+            if arrival.trip_id not in trip_stops:
+                trip_stops[arrival.trip_id] = (arrival.route_id, {})
+            trip_stops[arrival.trip_id][1][arrival.station] = arrival.arrival_ts
+
+    for trip_id, (route_id, stop_map) in trip_stops.items():
+        asyncio.ensure_future(
+            observe_trip_updates(trip_id=trip_id, route_id=route_id, stop_arrivals=stop_map)
+        )
+
     return arrivals
 
 

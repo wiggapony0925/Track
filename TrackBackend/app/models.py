@@ -78,6 +78,8 @@ class BusArrival(BaseModel):
     status_text: str
     status: str = "Live"
     expected_arrival: datetime | None = None
+    aimed_arrival: datetime | None = None         # SIRI AimedArrivalTime (scheduled)
+    schedule_deviation_s: int | None = None       # ExpectedArrival - AimedArrival in seconds (+ve = late)
     distance_meters: float | None = None
     bearing: float | None = None
     direction_ref: int | None = None  # SIRI DirectionRef: 0 or 1
