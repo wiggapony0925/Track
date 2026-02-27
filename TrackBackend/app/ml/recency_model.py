@@ -205,6 +205,66 @@ async def observe_siri_delays_batch(
         )
 
 
+async def observe_trip_updates_batch(
+    trips: list[tuple[str, str, dict[str, int]]],
+) -> None:
+    """Record GTFS-RT snapshots for many trips in two pipelines (read then write).
+
+    Reduces N×2 connection borrows (one hgetall + one pipeline per trip) down
+    to exactly 2 connection borrows for ALL trips combined.
+
+    Args:
+        trips: list of (trip_id, route_id, stop_arrivals) where
+               stop_arrivals maps stop_id → arrival_ts (epoch seconds).
+    """
+    if not trips:
+        return
+
+    client = _redis.get_client()
+    if client is None:
+        return
+
+    try:
+        now = _time.time()
+        dt = datetime.fromtimestamp(now, tz=timezone.utc)
+        dow = (dt.isoweekday() % 7) + 1
+        hour = dt.hour
+
+        # ── Phase 1: read all previous snapshots in one pipeline ──────────
+        read_pipe = client.pipeline(transaction=False)
+        for trip_id, _route_id, _stop_arrivals in trips:
+            read_pipe.hgetall(_snap_key(trip_id))
+        prev_snapshots: list = await read_pipe.execute()
+
+        # ── Phase 2: compute all observations + write everything at once ──
+        write_pipe = client.pipeline(transaction=False)
+        for (trip_id, route_id, stop_arrivals), prev_raw in zip(trips, prev_snapshots):
+            snap_key = _snap_key(trip_id)
+
+            if prev_raw:
+                prev = {k: int(v) for k, v in prev_raw.items()}
+                passed = set(prev.keys()) - set(stop_arrivals.keys())
+                for stop_id in passed:
+                    error_s = now - prev[stop_id]
+                    if abs(error_s) > _MAX_ERROR_SECS:
+                        continue
+                    obs_key = _obs_key(route_id, stop_id, dow, hour)
+                    write_pipe.zadd(obs_key, {str(round(error_s, 2)): now})
+                    write_pipe.zremrangebyrank(obs_key, 0, -(MAX_OBS_PER_KEY + 1))
+                    write_pipe.expire(obs_key, _OBS_TTL)
+
+            if stop_arrivals:
+                write_pipe.hset(snap_key, mapping={k: str(v) for k, v in stop_arrivals.items()})
+                write_pipe.expire(snap_key, _SNAP_TTL)
+            else:
+                write_pipe.delete(snap_key)
+
+        await write_pipe.execute()
+
+    except Exception as exc:
+        TrackLogger.warning(f"[RECENCY] batch trip observe error ({len(trips)} trips): {exc}", tag="ML")
+
+
 async def get_weighted_errors_batch(
     queries: list[tuple[str, str, int, int]],  # (route_id, stop_id, dow, hour)
 ) -> dict[tuple[str, str], float | None]:
