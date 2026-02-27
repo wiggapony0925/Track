@@ -205,6 +205,79 @@ async def observe_siri_delays_batch(
         )
 
 
+async def get_weighted_errors_batch(
+    queries: list[tuple[str, str, int, int]],  # (route_id, stop_id, dow, hour)
+) -> dict[tuple[str, str], float | None]:
+    """Single-pipeline fetch for many (route_id, stop_id) pairs.
+
+    Deduplicates identical tuples, fires ONE Redis PIPELINE containing
+    all ZRANGEBYSCORE lookups (3 per unique pair: exact + ±1 hour), then
+    computes the EWMA-weighted error for each.
+
+    Returns {(route_id, stop_id): seconds_error | None}.
+
+    Used by nearby.py to pre-fetch all recency corrections before the ML
+    correction loop — reducing N×3 Redis round-trips down to 1 pipeline call
+    with a single connection borrow.
+    """
+    client = _redis.get_client()
+    if client is None or not queries:
+        return {}
+
+    now = _time.time()
+    cutoff = now - (MAX_AGE_HOURS * 3600)
+
+    # Deduplicate: same (route_id, stop_id, dow, hour) appears once per
+    # arrival — e.g. "A A57S" may appear 8+ times in one nearby response.
+    # Use dict to preserve first-seen order while deduplicating.
+    unique: list[tuple[str, str, int, int]] = list(dict.fromkeys(queries))
+
+    try:
+        pipe = client.pipeline(transaction=False)
+        for route_id, stop_id, dow, hour in unique:
+            pipe.zrangebyscore(_obs_key(route_id, stop_id, dow, hour),        cutoff, "+inf", withscores=True)
+            pipe.zrangebyscore(_obs_key(route_id, stop_id, dow, (hour-1)%24), cutoff, "+inf", withscores=True)
+            pipe.zrangebyscore(_obs_key(route_id, stop_id, dow, (hour+1)%24), cutoff, "+inf", withscores=True)
+        raw_all: list = await pipe.execute()
+    except Exception as exc:
+        TrackLogger.warning(
+            f"[RECENCY] batch query error ({len(unique)} unique stops): {exc}", tag="ML"
+        )
+        return {}
+
+    def _wsum(entries: list[tuple[str, float]], scale: float) -> tuple[float, float]:
+        sw, swx = 0.0, 0.0
+        for val_str, ts in entries:
+            try:
+                err = float(val_str)
+            except ValueError:
+                continue
+            w = math.exp(-_LAMBDA * (now - ts) / 3600.0) * scale
+            swx += w * err
+            sw  += w
+        return swx, sw
+
+    out: dict[tuple[str, str], float | None] = {}
+    for i, (route_id, stop_id, dow, hour) in enumerate(unique):
+        raw_exact: list[tuple[str, float]] = raw_all[i * 3]
+        raw_adj: list[tuple[str, float]]   = list(raw_all[i * 3 + 1]) + list(raw_all[i * 3 + 2])
+
+        if len(raw_exact) + len(raw_adj) < 3:
+            out[(route_id, stop_id)] = None
+            continue
+
+        wx_e, w_e = _wsum(raw_exact, 2.0)
+        wx_a, w_a = _wsum(raw_adj,   1.0)
+        total_w = w_e + w_a
+        if total_w <= 0:
+            out[(route_id, stop_id)] = None
+            continue
+
+        out[(route_id, stop_id)] = (wx_e + wx_a) / total_w
+
+    return out
+
+
 async def get_weighted_error(
     route_id: str, stop_id: str, dow: int, hour: int
 ) -> float | None:

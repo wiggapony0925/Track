@@ -53,7 +53,10 @@ from app.services.commuter_rail_shapes import (
     get_mnr_route_color,
 )
 from app.ml.delay_model import predict_factor as _predict_factor
-from app.ml.recency_model import get_weighted_error as _get_weighted_error
+from app.ml.recency_model import (
+    get_weighted_error as _get_weighted_error,
+    get_weighted_errors_batch as _get_weighted_errors_batch,
+)
 from app.services.alert_service import get_alert_boost as _get_alert_boost, maybe_refresh as _maybe_refresh_alerts
 import math as _math
 
@@ -749,6 +752,23 @@ async def _fetch_nearby_subway(
     tasks = [get_arrivals_for_line(line) for line in feed_lines]
     feed_results = await asyncio.gather(*tasks, return_exceptions=True)
 
+    # Pre-fetch all recency errors in ONE pipeline before the correction loop.
+    # Without this, N arrivals × 3 Redis calls each = hundreds of connections.
+    # Deduplication inside the batch call means repeated (route, stop) pairs
+    # (e.g. "A A57S" appearing 8× for 8 upcoming A trains) cost only 3 ops total.
+    _now_dt     = datetime.now(timezone.utc)
+    _batch_dow  = (_now_dt.isoweekday() % 7) + 1
+    _batch_hour = _now_dt.hour
+    _subway_recency_qs: list[tuple[str, str, int, int]] = []
+    for _ln, _arrs in zip(feed_lines, feed_results):
+        if isinstance(_arrs, Exception) or not isinstance(_arrs, list):
+            continue
+        for _a in _arrs:
+            if _a.minutes_away <= 0 or _a.station not in nearby_stops:
+                continue
+            _subway_recency_qs.append((_a.route_id or _ln, _a.station, _batch_dow, _batch_hour))
+    _subway_recency_cache = await _get_weighted_errors_batch(_subway_recency_qs)
+
     success_count = 0
     total_raw = 0
     total_kept = 0
@@ -785,6 +805,7 @@ async def _fetch_nearby_subway(
             corrected_mins = await _ml_corrected(
                 arrival.minutes_away, arrival.route_id or line, "subway",
                 stop_id=arrival.station,
+                recency_cache=_subway_recency_cache,
             )
             results.append(
                 NearbyTransitArrival(
@@ -1030,6 +1051,21 @@ async def _fetch_nearby_buses(
         f"⏱ BUS SIRI: {len(stops_to_query)} stops fetched in {_siri_ms:.0f}ms"
     )
 
+    # Pre-fetch all bus recency errors in one pipeline before the correction loop.
+    _bus_now_dt     = datetime.now(timezone.utc)
+    _bus_batch_dow  = (_bus_now_dt.isoweekday() % 7) + 1
+    _bus_batch_hour = _bus_now_dt.hour
+    _bus_recency_qs: list[tuple[str, str, int, int]] = []
+    for _bi, _bres in enumerate(stop_results):
+        if isinstance(_bres, Exception) or not isinstance(_bres, list):
+            continue
+        _bstop = stops_to_query[_bi]
+        for _barr in _bres:
+            _bus_recency_qs.append(
+                (_display_name(_barr.route_id), _bstop.id, _bus_batch_dow, _bus_batch_hour)
+            )
+    _bus_recency_cache = await _get_weighted_errors_batch(_bus_recency_qs)
+
     # Track which route IDs already have live data
     routes_with_live: set[str] = set()
 
@@ -1093,6 +1129,7 @@ async def _fetch_nearby_buses(
             corrected_mins = await _ml_corrected(
                 minutes, normalised_route, "bus",
                 stop_id=stop.id, deviation_s=float(arrival.schedule_deviation_s or 0),
+                recency_cache=_bus_recency_cache,
             )
             results.append(
                 NearbyTransitArrival(
@@ -1814,6 +1851,7 @@ async def _ml_corrected(
     mode: str,
     stop_id: str = "",
     deviation_s: float = 0.0,
+    recency_cache: dict | None = None,
 ) -> int:
     """Return ML-corrected minutes_away.
 
@@ -1854,9 +1892,14 @@ async def _ml_corrected(
     )
 
     # 3. Per-stop recency: additive seconds from observed SIRI deviations
+    # If a pre-fetched cache is supplied (from a batch call before the loop)
+    # use it directly — zero Redis calls. Fall back to direct query otherwise.
     recency_s = 0.0
     if stop_id:
-        err = await _get_weighted_error(route_id, stop_id, dow, hour)
+        if recency_cache is not None:
+            err = recency_cache.get((route_id, stop_id))
+        else:
+            err = await _get_weighted_error(route_id, stop_id, dow, hour)
         if err is not None:
             recency_s = max(-300.0, min(300.0, err))  # cap ±5 min
 
