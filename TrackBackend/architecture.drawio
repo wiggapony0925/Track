@@ -6,7 +6,7 @@
         <mxCell id="1" parent="0"/>
 
         <!-- ═══════════════════ TITLE ═══════════════════ -->
-        <mxCell id="title" value="&lt;font style=&quot;font-size:28px;color:#1a1a2e;&quot;&gt;&lt;b&gt;TrackBackend&lt;/b&gt;&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:13px;color:#6c757d;&quot;&gt;FastAPI · Python 3.11 · Docker · Render.com Starter · Virginia · Redis ACTIVE (bus · subway · LIRR · MNR)&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;fillColor=none;strokeColor=none;" vertex="1" parent="1">
+        <mxCell id="title" value="&lt;font style=&quot;font-size:28px;color:#1a1a2e;&quot;&gt;&lt;b&gt;TrackBackend&lt;/b&gt;&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:13px;color:#6c757d;&quot;&gt;FastAPI · Python 3.14 · Docker · Render.com Starter · Virginia · Redis ACTIVE (bus · subway · LIRR · MNR) · LightGBM ML&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;fillColor=none;strokeColor=none;" vertex="1" parent="1">
           <mxGeometry x="560" y="20" width="440" height="55" as="geometry"/>
         </mxCell>
 
@@ -93,7 +93,7 @@
           <mxGeometry x="270" y="190" width="200" height="80" as="geometry"/>
         </mxCell>
 
-        <mxCell id="rtr_predict" value="&lt;b style=&quot;font-size:13px;&quot;&gt;🔮 Predict&lt;/b&gt;&lt;hr size=&quot;1&quot; style=&quot;border-color:#5C6BC0;&quot;&gt;&lt;font style=&quot;font-size:10px;color:#C5CAE9;&quot;&gt;GET /predict/delay&lt;br&gt;&lt;i&gt;Self-contained heuristic&lt;/i&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1565C0;fontColor=#FFFFFF;strokeColor=#0D47A1;arcSize=10;shadow=1;align=left;spacingLeft=10;verticalAlign=top;spacingTop=2;" vertex="1" parent="rtr_tier">
+        <mxCell id="rtr_predict" value="&lt;b style=&quot;font-size:13px;&quot;&gt;🔮 Predict&lt;/b&gt;&lt;hr size=&quot;1&quot; style=&quot;border-color:#5C6BC0;&quot;&gt;&lt;font style=&quot;font-size:10px;color:#C5CAE9;&quot;&gt;GET /predict/delay&lt;br&gt;LightGBM · 2-layer cache&lt;br&gt;recency correction · CBTC-aware&lt;br&gt;ARRIVING_PREDICTION_MODEL flag&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1565C0;fontColor=#FFFFFF;strokeColor=#0D47A1;arcSize=10;shadow=1;align=left;spacingLeft=10;verticalAlign=top;spacingTop=2;" vertex="1" parent="rtr_tier">
           <mxGeometry x="490" y="190" width="200" height="80" as="geometry"/>
         </mxCell>
 
@@ -353,10 +353,75 @@
         </mxCell>
 
         <!-- ═══════════════════════════════════════════════════ -->
+        <!--  TIER 6 — ML PREDICTION SYSTEM                      -->
+        <!-- ═══════════════════════════════════════════════════ -->
+        <mxCell id="ml_tier" value="ML Prediction System  ·  3 Modules  ·  app/ml/" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#00838F;dashed=1;dashPattern=8 4;verticalAlign=top;fontStyle=1;fontSize=14;fontColor=#00838F;arcSize=4;container=1;collapsible=0;strokeWidth=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="1555" width="1500" height="370" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="ml_delay" value="&lt;b style=&quot;font-size:12px;&quot;&gt;delay_model.py&lt;/b&gt;&lt;hr size=&quot;1&quot; style=&quot;border-color:#4DD0E1;&quot;&gt;&lt;font style=&quot;font-size:9px;color:#B2EBF2;&quot;&gt;&lt;b&gt;LightGBM · 176 trees · 1,133 KB&lt;/b&gt;&lt;br&gt;MAE 0.92 min · 2.86 M samples&lt;br&gt;8 features: hour, dow, rush, rain,&lt;br&gt;congestion, otp, recency, line&lt;br&gt;CBTC-aware heuristic (L / 7 lines)&lt;br&gt;Fallback: pure heuristic if pkl missing&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#006064;fontColor=#FFFFFF;strokeColor=#00838F;arcSize=10;shadow=1;align=left;spacingLeft=10;verticalAlign=top;spacingTop=2;" vertex="1" parent="ml_tier">
+          <mxGeometry x="20" y="35" width="290" height="150" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="ml_recency" value="&lt;b style=&quot;font-size:12px;&quot;&gt;recency_model.py&lt;/b&gt;&lt;hr size=&quot;1&quot; style=&quot;border-color:#4DD0E1;&quot;&gt;&lt;font style=&quot;font-size:9px;color:#B2EBF2;&quot;&gt;Redis ZSET · EWMA weighting&lt;br&gt;Key: track:delay:factor:{route}:{stop}&lt;br&gt;Semaphore(8) on reads&lt;br&gt;observe_siri_delays_batch() → 1 pipeline&lt;br&gt;bus_client fires batch after each loop&lt;br&gt;TTL: 1800s · α = 0.4&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#006064;fontColor=#FFFFFF;strokeColor=#00838F;arcSize=10;shadow=1;align=left;spacingLeft=10;verticalAlign=top;spacingTop=2;" vertex="1" parent="ml_tier">
+          <mxGeometry x="330" y="35" width="290" height="150" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="ml_train" value="&lt;b style=&quot;font-size:12px;&quot;&gt;train_model.py&lt;/b&gt;&lt;hr size=&quot;1&quot; style=&quot;border-color:#4DD0E1;&quot;&gt;&lt;font style=&quot;font-size:9px;color:#B2EBF2;&quot;&gt;&lt;i&gt;Offline only — not deployed on Render&lt;/i&gt;&lt;br&gt;3-phase: download → train → evaluate&lt;br&gt;30 datasets · LightGBM 300 rounds&lt;br&gt;Outputs: app/data/delay_model.pkl&lt;br&gt;Metric log: app/data/model_metrics.json&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#00695C;fontColor=#FFFFFF;strokeColor=#00838F;arcSize=10;shadow=1;align=left;spacingLeft=10;verticalAlign=top;spacingTop=2;" vertex="1" parent="ml_tier">
+          <mxGeometry x="645" y="35" width="270" height="140" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="ml_pkl" value="&lt;b style=&quot;font-size:12px;&quot;&gt;delay_model.pkl&lt;/b&gt;&lt;hr size=&quot;1&quot; style=&quot;border-color:#4DD0E1;&quot;&gt;&lt;font style=&quot;font-size:9px;color:#B2EBF2;&quot;&gt;app/data/ · 1,133 KB&lt;br&gt;Loaded at startup via joblib&lt;br&gt;Docker-bundled (trained offline)&lt;/font&gt;" style="shape=mxgraph.flowchart.stored_data;whiteSpace=wrap;html=1;fillColor=#004D40;fontColor=#FFFFFF;strokeColor=#00796B;shadow=1;" vertex="1" parent="ml_tier">
+          <mxGeometry x="940" y="35" width="230" height="105" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="ml_flag" value="&lt;b style=&quot;font-size:11px;&quot;&gt;ARRIVING_PREDICTION_MODEL&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#37474F;&quot;&gt;Env flag · instant toggle (no redeploy)&lt;br&gt;false → passthrough, model_source=disabled&lt;br&gt;Flip in Render dashboard anytime&lt;/font&gt;" style="shape=note;whiteSpace=wrap;html=1;fillColor=#FFF9C4;fontColor=#37474F;strokeColor=#F9A825;arcSize=5;shadow=1;align=left;spacingLeft=8;" vertex="1" parent="ml_tier">
+          <mxGeometry x="1195" y="35" width="285" height="90" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="ml_cache" value="&lt;b style=&quot;font-size:11px;&quot;&gt;2-Layer Predict Cache&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#37474F;&quot;&gt;L1: in-process LRU dict (instant)&lt;br&gt;L2: Redis  track:predict:factor:*  TTL 1 h&lt;br&gt;Cache tags: l1_hit · l2_hit · miss · disabled&lt;/font&gt;" style="shape=note;whiteSpace=wrap;html=1;fillColor=#E3F2FD;fontColor=#0D47A1;strokeColor=#1565C0;arcSize=5;shadow=1;align=left;spacingLeft=8;" vertex="1" parent="ml_tier">
+          <mxGeometry x="1195" y="145" width="285" height="85" as="geometry"/>
+        </mxCell>
+
+        <!-- ML internal edges (parent=ml_tier) -->
+        <mxCell id="ml_e_train_pkl" value="&lt;font style=&quot;font-size:8px;color:#80CBC4;&quot;&gt;produces&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;curved=1;rounded=1;strokeColor=#4DB6AC;strokeWidth=1.5;dashed=1;dashPattern=6 3;" edge="1" source="ml_train" target="ml_pkl" parent="ml_tier">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ml_e_pkl_delay" value="&lt;font style=&quot;font-size:8px;color:#80CBC4;&quot;&gt;loads&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;curved=1;rounded=1;strokeColor=#4DB6AC;strokeWidth=1.5;dashed=1;dashPattern=6 3;" edge="1" source="ml_pkl" target="ml_delay" parent="ml_tier">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- ML cross-tier edges (parent=1) -->
+        <!-- predict router → delay_model -->
+        <mxCell id="e_predict_ml" value="&lt;font style=&quot;font-size:8px;color:#4DB6AC;&quot;&gt;calls&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#00838F;strokeWidth=2;dashed=1;dashPattern=5 3;" edge="1" source="rtr_predict" target="ml_delay" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- delay_model → recency_model -->
+        <mxCell id="e_delay_recency" value="&lt;font style=&quot;font-size:8px;color:#4DB6AC;&quot;&gt;query factor&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#00838F;strokeWidth=1.5;dashed=1;dashPattern=5 3;" edge="1" source="ml_delay" target="ml_recency" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- recency_model → Redis -->
+        <mxCell id="e_recency_redis" value="&lt;font style=&quot;font-size:8px;color:#D32F2F;&quot;&gt;ZSET EWMA&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#D32F2F;strokeWidth=1.5;dashed=1;dashPattern=5 3;" edge="1" source="ml_recency" target="dat_redis_cache" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- bus_client → recency_model (batch observations) -->
+        <mxCell id="e_bus_recency" value="&lt;font style=&quot;font-size:8px;color:#4DB6AC;&quot;&gt;batch obs&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#00838F;strokeWidth=1.5;dashed=1;dashPattern=5 3;" edge="1" source="svc_bus" target="ml_recency" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- flow arrow: dat_tier → ml_tier -->
+        <mxCell id="e_flow_5" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;strokeColor=#00838F;strokeWidth=4;curved=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" edge="1" source="dat_tier" target="ml_tier" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- ═══════════════════════════════════════════════════ -->
         <!--  LEGEND (horizontal bar at bottom)                  -->
         <!-- ═══════════════════════════════════════════════════ -->
         <mxCell id="legend" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#CFD8DC;arcSize=6;container=1;collapsible=0;shadow=1;" vertex="1" parent="1">
-          <mxGeometry x="40" y="1560" width="1500" height="70" as="geometry"/>
+          <mxGeometry x="40" y="1990" width="1500" height="70" as="geometry"/>
         </mxCell>
 
         <mxCell id="leg_title" value="&lt;b&gt;Legend:&lt;/b&gt;" style="text;html=1;align=left;verticalAlign=middle;fillColor=none;strokeColor=none;fontColor=#37474F;fontSize=12;" vertex="1" parent="legend">
@@ -405,6 +470,13 @@
           <mxGeometry x="657" y="5" width="60" height="24" as="geometry"/>
         </mxCell>
 
+        <mxCell id="l7" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#006064;strokeColor=#00838F;arcSize=8;" vertex="1" parent="legend">
+          <mxGeometry x="740" y="8" width="18" height="18" as="geometry"/>
+        </mxCell>
+        <mxCell id="l7t" value="&lt;font style=&quot;font-size:10px;&quot;&gt;ML Module&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=middle;fillColor=none;strokeColor=none;fontColor=#546E7A;" vertex="1" parent="legend">
+          <mxGeometry x="762" y="5" width="70" height="24" as="geometry"/>
+        </mxCell>
+
         <!-- Edge legend row -->
         <mxCell id="le1" value="" style="endArrow=classic;html=1;strokeColor=#FF6F00;strokeWidth=2;dashed=1;dashPattern=5 3;" edge="1" parent="legend">
           <mxGeometry relative="1" as="geometry">
@@ -450,20 +522,24 @@
         <!--  SIDEBAR — Deployment, Env, Scripts, Deps           -->
         <!-- ═══════════════════════════════════════════════════ -->
 
-        <mxCell id="sidebar_deploy" value="&lt;b style=&quot;font-size:13px;&quot;&gt;🐳 Deployment&lt;/b&gt;&lt;hr size=&quot;1&quot; style=&quot;border-color:#546E7A;&quot;&gt;&lt;font style=&quot;font-size:10px;color:#B0BEC5;&quot;&gt;Docker: python:3.11-slim&lt;br&gt;Render Starter plan · Virginia&lt;br&gt;WEB_CONCURRENCY=1 (auto)&lt;br&gt;Port: 10000 · Health: GET /config&lt;br&gt;autoDeploy: yes (on commit → main)&lt;br&gt;Server: uvicorn[standard]&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#263238;fontColor=#ECEFF1;strokeColor=#37474F;arcSize=10;shadow=1;align=left;spacingLeft=10;verticalAlign=top;spacingTop=2;" vertex="1" parent="1">
+        <mxCell id="sidebar_deploy" value="&lt;b style=&quot;font-size:13px;&quot;&gt;🐳 Deployment&lt;/b&gt;&lt;hr size=&quot;1&quot; style=&quot;border-color:#546E7A;&quot;&gt;&lt;font style=&quot;font-size:10px;color:#B0BEC5;&quot;&gt;Docker: python:3.14-slim&lt;br&gt;Render Starter plan · Virginia&lt;br&gt;WEB_CONCURRENCY=1 (auto)&lt;br&gt;Port: 10000 · Health: GET /config&lt;br&gt;autoDeploy: yes (on commit → main)&lt;br&gt;Server: uvicorn[standard]&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#263238;fontColor=#ECEFF1;strokeColor=#37474F;arcSize=10;shadow=1;align=left;spacingLeft=10;verticalAlign=top;spacingTop=2;" vertex="1" parent="1">
           <mxGeometry x="1600" y="720" width="220" height="125" as="geometry"/>
         </mxCell>
 
-        <mxCell id="sidebar_env" value="&lt;b style=&quot;font-size:13px;&quot;&gt;🔑 Env Variables&lt;/b&gt;&lt;hr size=&quot;1&quot; style=&quot;border-color:#546E7A;&quot;&gt;&lt;font style=&quot;font-size:10px;color:#B0BEC5;&quot;&gt;SUPABASE_URL&lt;br&gt;SUPABASE_KEY&lt;br&gt;SUPABASE_SERVICE_KEY&lt;br&gt;REDIS_URL (required · internal URL)&lt;br&gt;GTFS_BUCKET (gtfs-data)&lt;br&gt;GTFS_CHECK_INTERVAL (86400s)&lt;br&gt;PORT (10000)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#263238;fontColor=#ECEFF1;strokeColor=#37474F;arcSize=10;shadow=1;align=left;spacingLeft=10;verticalAlign=top;spacingTop=2;" vertex="1" parent="1">
-          <mxGeometry x="1600" y="870" width="220" height="165" as="geometry"/>
+        <mxCell id="sidebar_env" value="&lt;b style=&quot;font-size:13px;&quot;&gt;🔑 Env Variables&lt;/b&gt;&lt;hr size=&quot;1&quot; style=&quot;border-color:#546E7A;&quot;&gt;&lt;font style=&quot;font-size:10px;color:#B0BEC5;&quot;&gt;SUPABASE_URL&lt;br&gt;SUPABASE_KEY&lt;br&gt;SUPABASE_SERVICE_KEY&lt;br&gt;REDIS_URL (required · internal URL)&lt;br&gt;GTFS_BUCKET (gtfs-data)&lt;br&gt;GTFS_CHECK_INTERVAL (86400s)&lt;br&gt;PORT (10000)&lt;br&gt;&lt;b&gt;ARRIVING_PREDICTION_MODEL (true)&lt;/b&gt;&lt;br&gt;REDIS_MAX_CONNECTIONS (20)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#263238;fontColor=#ECEFF1;strokeColor=#37474F;arcSize=10;shadow=1;align=left;spacingLeft=10;verticalAlign=top;spacingTop=2;" vertex="1" parent="1">
+          <mxGeometry x="1600" y="870" width="220" height="195" as="geometry"/>
         </mxCell>
 
         <mxCell id="sidebar_scripts" value="&lt;b style=&quot;font-size:13px;&quot;&gt;🔧 Build Scripts&lt;/b&gt;&lt;hr size=&quot;1&quot; style=&quot;border-color:#546E7A;&quot;&gt;&lt;font style=&quot;font-size:10px;color:#B0BEC5;&quot;&gt;download_gtfs.py&lt;br&gt;ingest_gtfs.py&lt;br&gt;fetch_routes.py&lt;br&gt;generate_static_bundle.py&lt;br&gt;upload_gtfs_to_supabase.py&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#263238;fontColor=#ECEFF1;strokeColor=#37474F;arcSize=10;shadow=1;align=left;spacingLeft=10;verticalAlign=top;spacingTop=2;" vertex="1" parent="1">
           <mxGeometry x="1600" y="1040" width="220" height="135" as="geometry"/>
         </mxCell>
 
-        <mxCell id="sidebar_deps" value="&lt;b style=&quot;font-size:13px;&quot;&gt;📦 Dependencies&lt;/b&gt;&lt;hr size=&quot;1&quot; style=&quot;border-color:#546E7A;&quot;&gt;&lt;font style=&quot;font-size:10px;color:#B0BEC5;&quot;&gt;fastapi · uvicorn[standard]&lt;br&gt;httpx · pydantic · pydantic-settings&lt;br&gt;gtfs-realtime-bindings · protobuf&lt;br&gt;redis (valkey-compatible)&lt;br&gt;polyline · supabase&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#263238;fontColor=#ECEFF1;strokeColor=#37474F;arcSize=10;shadow=1;align=left;spacingLeft=10;verticalAlign=top;spacingTop=2;" vertex="1" parent="1">
-          <mxGeometry x="1600" y="1200" width="220" height="130" as="geometry"/>
+        <mxCell id="sidebar_deps" value="&lt;b style=&quot;font-size:13px;&quot;&gt;📦 Dependencies&lt;/b&gt;&lt;hr size=&quot;1&quot; style=&quot;border-color:#546E7A;&quot;&gt;&lt;font style=&quot;font-size:10px;color:#B0BEC5;&quot;&gt;fastapi · uvicorn[standard]&lt;br&gt;httpx · pydantic · pydantic-settings&lt;br&gt;gtfs-realtime-bindings · protobuf&lt;br&gt;redis (valkey-compatible)&lt;br&gt;polyline · supabase&lt;br&gt;lightgbm · joblib · numpy · pandas&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#263238;fontColor=#ECEFF1;strokeColor=#37474F;arcSize=10;shadow=1;align=left;spacingLeft=10;verticalAlign=top;spacingTop=2;" vertex="1" parent="1">
+          <mxGeometry x="1600" y="1200" width="220" height="145" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="sidebar_ml" value="&lt;b style=&quot;font-size:13px;&quot;&gt;🧠 ML System&lt;/b&gt;&lt;hr size=&quot;1&quot; style=&quot;border-color:#546E7A;&quot;&gt;&lt;font style=&quot;font-size:10px;color:#B0BEC5;&quot;&gt;LightGBM 176 trees · MAE 0.92 min&lt;br&gt;2.86 M samples · 1,133 KB pkl&lt;br&gt;8 features (incl. CBTC line flag)&lt;br&gt;Redis EWMA recency correction&lt;br&gt;Batch pipeline (1 conn/response)&lt;br&gt;Semaphore(8) on reads&lt;br&gt;ARRIVING_PREDICTION_MODEL flag&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#263238;fontColor=#ECEFF1;strokeColor=#00838F;arcSize=10;shadow=1;align=left;spacingLeft=10;verticalAlign=top;spacingTop=2;" vertex="1" parent="1">
+          <mxGeometry x="1600" y="1370" width="220" height="165" as="geometry"/>
         </mxCell>
 
       </root>
