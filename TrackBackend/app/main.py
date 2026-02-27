@@ -149,7 +149,12 @@ async def log_requests(request: Request, call_next):
         or request.query_params.get("email")
         or "-"
     )
+    # Render injects Rndr-Id on every inbound request — bind it so every log
+    # line for this request carries the same ID (traceable in Render dashboard
+    # and any syslog stream like Better Stack).
+    request_id = request.headers.get("Rndr-Id") or "-"
     TrackLogger.set_user_email(user_email)
+    TrackLogger.set_request_id(request_id)
 
     try:
         response = await call_next(request)
@@ -164,6 +169,7 @@ async def log_requests(request: Request, call_next):
         return response
     finally:
         TrackLogger.clear_user_email()
+        TrackLogger.clear_request_id()
 
 
 @app.get("/config")

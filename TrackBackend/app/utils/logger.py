@@ -58,13 +58,17 @@ _LEVEL_COLORS = {
 _user_email_ctx: contextvars.ContextVar[str] = contextvars.ContextVar(
     "track_user_email", default="-"
 )
+_request_id_ctx: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "track_request_id", default="-"
+)
 
 
 class _UserEmailFilter(logging.Filter):
-    """Inject request-scoped user email into every log record."""
+    """Inject request-scoped user email and Rndr-Id into every log record."""
 
     def filter(self, record: logging.LogRecord) -> bool:
         record.user_email = _user_email_ctx.get()
+        record.request_id = _request_id_ctx.get()
         return True
 
 
@@ -79,12 +83,15 @@ class _ColorFormatter(logging.Formatter):
         user_email = getattr(record, "user_email", "-")
         ts = self.formatTime(record, "%H:%M:%S")
         msg = record.getMessage()
-        # Format: 12:34:56 [INFO] [SUBWAY] [user@email] message
+        request_id = getattr(record, "request_id", "-")
+        rid = f" {Fore.YELLOW}[{request_id}]{reset}" if request_id != "-" else ""
+        # Format: 12:34:56 [INFO] [SUBWAY] [user@email] [rndr-id] message
         return (
             f"{Fore.CYAN}{ts}{reset} "
             f"{color}[{record.levelname}]{reset} "
             f"{Fore.BLUE}[{tag}]{reset} "
-            f"{Fore.MAGENTA}[{user_email}]{reset} "
+            f"{Fore.MAGENTA}[{user_email}]{reset}"
+            f"{rid} "
             f"{msg}"
         )
 
@@ -99,10 +106,11 @@ class _FileFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         tag = getattr(record, "tag", "TRACK")
         user_email = getattr(record, "user_email", "-")
+        request_id = getattr(record, "request_id", "-")
         # %f gives microseconds; truncate to ms by slicing [:3]
         ts = self.formatTime(record, "%Y-%m-%d %H:%M:%S")
         ms = f".{int(record.msecs):03d}"
-        return f"{ts}{ms} [{record.levelname}] [{tag}] [{user_email}] {record.getMessage()}"
+        return f"{ts}{ms} [{record.levelname}] [{tag}] [{user_email}] [{request_id}] {record.getMessage()}"
 
 
 # ---------------------------------------------------------------------------
@@ -169,6 +177,18 @@ class TrackLogger:
             yield
         finally:
             _user_email_ctx.reset(token)
+
+    # ------------------------------------------------------------------
+    # Request-scoped Render request ID (from Rndr-Id header)
+    # ------------------------------------------------------------------
+    @staticmethod
+    def set_request_id(request_id: str | None) -> None:
+        """Bind the Render Rndr-Id header value to all logs for this request."""
+        _request_id_ctx.set((request_id or "-").strip() or "-")
+
+    @staticmethod
+    def clear_request_id() -> None:
+        _request_id_ctx.set("-")
 
     # ------------------------------------------------------------------
     # ASCII startup banner (called once from main.py)
