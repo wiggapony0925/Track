@@ -52,6 +52,10 @@ from app.services.commuter_rail_shapes import (
     get_lirr_route_color,
     get_mnr_route_color,
 )
+from app.ml.delay_model import predict_factor as _predict_factor
+from app.ml.recency_model import get_weighted_error as _get_weighted_error
+from app.services.alert_service import get_alert_boost as _get_alert_boost, maybe_refresh as _maybe_refresh_alerts
+import math as _math
 
 # Default bus color (MTA blue) — used when bus routes don't provide one
 _BUS_DEFAULT_COLOR = "#0039A6"
@@ -778,14 +782,17 @@ async def _fetch_nearby_subway(
             # direction tabs (supports 3+ direction cases naturally).
             # If destination is missing, fall back to compass direction.
             direction_key = arrival.destination or arrival.direction
-            
+            corrected_mins = await _ml_corrected(
+                arrival.minutes_away, arrival.route_id or line, "subway",
+                stop_id=arrival.station,
+            )
             results.append(
                 NearbyTransitArrival(
                     route_id=arrival.route_id or line,
                     stop_name=stop_name,
                     direction=direction_key,
                     destination=arrival.destination,
-                    minutes_away=arrival.minutes_away,
+                    minutes_away=corrected_mins,
                     arrival_ts=arrival.arrival_ts,
                     status=arrival.status,
                     mode="subway",
@@ -835,12 +842,16 @@ async def _fetch_nearby_subway(
                 # For subway scheduled arrivals, use compass direction ("N"/"S")
                 # as fallback key; prefer destination when present.
                 sched_dir = s.destination or s.direction
+                corrected_mins = await _ml_corrected(
+                    s.minutes_away, s.route_id, "subway",
+                    stop_id=s.station,
+                )
                 results.append(NearbyTransitArrival(
                     route_id=s.route_id,
                     stop_name=sinfo.name if sinfo else s.station,
                     direction=sched_dir,
                     destination=s.destination,
-                    minutes_away=s.minutes_away,
+                    minutes_away=corrected_mins,
                     arrival_ts=s.arrival_ts,
                     status="Scheduled",
                     mode="subway",
@@ -1079,14 +1090,17 @@ async def _fetch_nearby_buses(
             routes_with_live.add(normalised_route)
             # Also track the raw form for the backfill check
             routes_with_live.add(arrival.route_id)
-
+            corrected_mins = await _ml_corrected(
+                minutes, normalised_route, "bus",
+                stop_id=stop.id, deviation_s=float(arrival.schedule_deviation_s or 0),
+            )
             results.append(
                 NearbyTransitArrival(
                     route_id=normalised_route,
                     stop_name=stop.name,
                     arrival_ts=int(arrival.expected_arrival.timestamp()) if arrival.expected_arrival else None,
                     direction=direction,
-                    minutes_away=minutes,
+                    minutes_away=corrected_mins,
                     status=arrival.status_text,
                     mode="bus",
                     stop_lat=stop.lat,
@@ -1792,3 +1806,72 @@ def _bus_minutes_away(expected: datetime | None) -> int:
         expected = expected.replace(tzinfo=timezone.utc)
     diff = (expected - now).total_seconds()
     return max(0, int(diff // 60))
+
+
+async def _ml_corrected(
+    minutes_away: int,
+    route_id: str,
+    mode: str,
+    stop_id: str = "",
+    deviation_s: float = 0.0,
+) -> int:
+    """Return ML-corrected minutes_away.
+
+    Async pipeline:
+      1. Alert boost  — SEVERE → ×1.25, WARNING → ×1.10  (in-process dict, ~0 µs)
+      2. GBR factor   — route × hour × dow × mode  (~5 µs, sync)
+      3. Recency delta — per-stop exponentially-weighted mean error from
+                         SIRI observations stored in Redis  (~1 ms, async)
+      4. Blend:
+           base_seconds  = raw_seconds + recency_delta       (additive)
+           final_factor  = min(2.0, gbr_factor × (1+boost))  (multiplicative)
+           corrected     = base_seconds × final_factor
+           result        = round(corrected / 60)
+
+    Factor range is [0.90, 2.0] before alert boost (floor allows early-arrival
+    predictions for reliable off-peak routes; ceiling guards sanity).
+    Placeholders (minutes=99) and already-departed (minutes=0) are unchanged.
+    """
+    if minutes_away <= 0 or minutes_away >= 99:
+        return minutes_away
+    now_utc = datetime.now(timezone.utc)
+    hour = now_utc.hour
+    dow = (now_utc.isoweekday() % 7) + 1   # Mon=2 … Sun=1
+
+    # 1. Alert index — non-blocking refresh if stale, O(1) read
+    await _maybe_refresh_alerts()
+    alert_boost = _get_alert_boost(route_id)
+
+    # 2. GBR contextual factor (weather always "clear" — live deviation_s
+    #    already encodes real-time weather impact via the delay_minutes feature)
+    factor, _ = _predict_factor(
+        route_id=route_id,
+        hour=hour,
+        dow=dow,
+        weather="clear",
+        mode=mode,
+        current_delay_s=deviation_s,
+    )
+
+    # 3. Per-stop recency: additive seconds from observed SIRI deviations
+    recency_s = 0.0
+    if stop_id:
+        err = await _get_weighted_error(route_id, stop_id, dow, hour)
+        if err is not None:
+            recency_s = max(-300.0, min(300.0, err))  # cap ±5 min
+
+    # 4. Blend
+    base_seconds  = max(0.0, minutes_away * 60.0 + recency_s)
+    final_factor  = min(2.0, factor * (1.0 + alert_boost))
+    corrected     = base_seconds * final_factor / 60.0
+    result        = round(corrected)
+
+    # 5. Horizon-scaled correction cap — addresses the +2.4 min over-inflation
+    #    bias observed on 25–50 min arrivals (GBR factor ×1.15 on raw 1800–3000s
+    #    produces 4–8 min over-shot).  Caps how far we can shift minutes_away:
+    #      ≤ 10 min horizon → ±2 min  (tight — live arrivals must be precise)
+    #      ≤ 25 min horizon → ±3 min
+    #      > 25 min horizon → ±4 min  (allow larger shift but clip the extreme)
+    max_delta = 2 if minutes_away <= 10 else (3 if minutes_away <= 25 else 4)
+    result    = max(minutes_away - max_delta, min(minutes_away + max_delta, result))
+    return max(0, result)

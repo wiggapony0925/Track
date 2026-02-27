@@ -42,7 +42,10 @@ SUPABASE_URL = os.environ.get(
 )
 SUPABASE_KEY = os.environ.get(
     "SUPABASE_SERVICE_KEY",
-    os.environ.get("SUPABASE_KEY", "sb_publishable_lAEZ_x8O4vjdGaw-I-QUMg_oS5iWKIn"),
+    os.environ.get(
+        "SUPABASE_SERVICE_ROLE_KEY",
+        os.environ.get("SUPABASE_KEY", "sb_publishable_lAEZ_x8O4vjdGaw-I-QUMg_oS5iWKIn"),
+    ),
 )
 
 BUCKET_NAME = os.environ.get("GTFS_BUCKET", "gtfs-data")
@@ -110,6 +113,17 @@ DOWNLOAD_MANIFEST: list[dict[str, Any]] = [
         "description": "Bus route tag overrides",
         "required_files": ["early_2026_buses_tag.json"],
         "critical": False,
+    },
+    {
+        # 487 KB model — well under Supabase 50 MB limit.
+        # Bootstrapped: gtfs_refresh.py uploads it on the first GTFS cycle
+        # after deployment; all subsequent cold-starts download from Supabase.
+        # Falls back to Docker-bundled copy (kept in image) until first upload.
+        "object": "delay_model.tar.gz",
+        "extract_to": "",           # extracts delay_model.pkl to app/data/ root
+        "description": "ML GBR delay prediction model",
+        "required_files": ["delay_model.pkl"],
+        "critical": False,          # heuristic factor used if missing
     },
 ]
 

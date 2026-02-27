@@ -401,7 +401,10 @@ def _upload_to_supabase(archive_names: set[str]) -> None:
     if not archive_names:
         return
 
-    supabase_key = os.environ.get("SUPABASE_SERVICE_KEY", "")
+    supabase_key = (
+        os.environ.get("SUPABASE_SERVICE_KEY")
+        or os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+    )
     if not supabase_key:
         TrackLogger.warning(
             "[GTFS] SUPABASE_SERVICE_KEY not set — skipping Supabase upload. "
@@ -445,6 +448,10 @@ def _upload_to_supabase(archive_names: set[str]) -> None:
             ],
             "mnr": [
                 ("metro_north/gtfsmnr", None),
+            ],
+            # ML model — always uploaded so cold-starts can download it
+            "delay_model": [
+                ("delay_model.pkl", "delay_model.pkl"),
             ],
         }
 
@@ -619,6 +626,11 @@ def _sync_check_and_refresh(full_check: bool) -> dict[str, str]:
     if supabase_archives:
         _upload_to_supabase(supabase_archives)
 
+    # Phase 4b: Always sync the ML model to Supabase — self-bootstrapping.
+    # The model is only 158 KB gzipped so uploading it every refresh cycle
+    # is negligible and ensures the Supabase bucket always has the latest.
+    _upload_to_supabase({"delay_model"})
+
     # Phase 5: Clear in-memory caches so server uses fresh data
     if updated_feeds:
         _clear_gtfs_caches()
@@ -632,6 +644,27 @@ def _sync_check_and_refresh(full_check: bool) -> dict[str, str]:
     )
 
     return results
+
+
+async def rebuild_schedule_db_if_missing() -> None:
+    """Rebuild transit_schedule.db if it is absent — e.g. a fresh Render Disk.
+
+    Called once at startup *after* ``ensure_data_available()`` so that the
+    GTFS source files (subway/lirr/mnr) are already on disk before we try
+    to ingest them.  Bus GTFS is downloaded separately by the daily refresh;
+    the initial build covers subway + commuter rail only.
+    """
+    db_path = _DATA_DIR / "transit_schedule.db"
+    if db_path.exists():
+        return  # Already present — Render Disk persisted it from a prior deploy
+    TrackLogger.info(
+        "[GTFS] transit_schedule.db not found — first-boot rebuild starting "
+        "(subway + LIRR + MNR; bus data added on next daily refresh).",
+        tag="GTFS",
+    )
+    import asyncio
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(None, _rebuild_schedule_db)
 
 
 def get_gtfs_freshness() -> dict[str, dict[str, str | None]]:

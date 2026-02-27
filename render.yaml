@@ -52,4 +52,15 @@ services:
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
-        sync: false
+        sync: false   # also accepted as SUPABASE_SERVICE_KEY \u2014 same value
+
+    # ── Render Persistent Disk ─────────────────────────────────────────────
+    # Persists app/data/ across deploys so the 809 MB transit_schedule.db
+    # and 430 MB bus GTFS are NOT baked into the Docker image.
+    # First boot: ensure_data_available() downloads GTFS from Supabase →
+    #             rebuild_schedule_db_if_missing() builds transit_schedule.db.
+    # Subsequent boots: disk already has the DB — startup is instant.
+    disk:
+      name: track-data
+      mountPath: /app/app/data
+      sizeGB: 10

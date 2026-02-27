@@ -23,6 +23,12 @@ app/data/subway/gtfs_subway/
 app/data/MTA_Colors_Lines_20260215.csv
 app/data/metadata
 
+# transit_schedule.db is 809 MB and is rebuilt at runtime on the
+# Render Persistent Disk (mountPath: /app/app/data).  Excluding it
+# from the Docker image cuts build/push time by ~800 MB.
+app/data/transit_schedule.db
+app/data/transit_schedule.db.tmp
+
 # Tests / scripts not needed in production image
 tests/
 scripts/
