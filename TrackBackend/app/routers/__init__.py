@@ -6,13 +6,11 @@ All routers expose a ``router`` attribute that is registered in
 """
 
 __all__ = [
-    "analytics",
     "bus",
     "lirr",
     "mnr",
     "nearby",
     "predict",
-    "static_data",
     "status",
     "subway",
 ]
