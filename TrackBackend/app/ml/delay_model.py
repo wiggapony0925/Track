@@ -2,13 +2,15 @@
 # delay_model.py
 # app/ml/delay_model.py
 #
-# GradientBoosting pattern model.
+# LightGBM pattern model.
 # Predicts a delay_factor for a transit context: route × hour × day × weather × mode.
 # The factor multiplies MTA's raw minutes_away to correct for known chronic patterns.
 #
-# Why GradientBoostingRegressor?
-#   • Handles the non-linear interactions we care about (G train × rush hour,
-#     bus × snow) without hand-coding every combination.
+# Why LightGBM?
+#   • 10–50× faster training vs sklearn GradientBoostingRegressor (leaf-wise growth)
+#   • Built-in early stopping — automatically finds optimal tree count, no guessing
+#   • Handles millions of rows without OOM issues
+#   • Same sklearn-compatible .predict() API — inference code unchanged
 #   • ~5 µs inference — safe on every API request.
 #   • Trivially retrained as real TripLog data accumulates.
 #   • Small model file (<500 KB), ships inside Docker.
@@ -28,7 +30,7 @@ from app.utils.logger import TrackLogger
 MODEL_PATH = Path(__file__).resolve().parent.parent / "data" / "delay_model.pkl"
 
 # ── Feature encoding tables ─────────────────────────────────────────────────
-# Route reliability tiers based on historical MTA on-time performance.
+# Route reliability tiers — fallback used when no JSON data is available.
 # 0 = most reliable → 4 = most chronically delayed.
 ROUTE_RELIABILITY: dict[str, int] = {
     "SI": 0, "L": 0,
@@ -39,6 +41,62 @@ ROUTE_RELIABILITY: dict[str, int] = {
     "4": 3, "5": 3, "6": 3, "J": 3, "A": 3, "C": 3,
     "G": 4,
 }
+
+# Dynamic OTP-derived reliability floats built from downloaded JSON files.
+# Populated lazily on first call to encode_features().
+# Keys match ROUTE_RELIABILITY keys (uppercase line names).
+# Values are floats 0.0–4.0 where 0=perfect OTP, 4=worst OTP.
+_OTP_RELIABILITY: dict[str, float] = {}
+_OTP_LOADED: bool = False
+
+
+def _load_otp_reliability() -> None:
+    """Read subway_otp_*.json files and populate _OTP_RELIABILITY.
+
+    Called once on demand. Silently skips if files are not present
+    (falls back to ROUTE_RELIABILITY integer tiers).
+    """
+    global _OTP_LOADED
+    if _OTP_LOADED:
+        return
+    _OTP_LOADED = True
+
+    training_dir = Path(__file__).resolve().parent.parent / "data" / "training"
+    if not training_dir.exists():
+        return
+
+    try:
+        import json
+        from collections import defaultdict
+
+        accum: dict[str, list[float]] = defaultdict(list)
+        for fname in ["subway_otp_2015_2019.json",
+                      "subway_otp_2020_2024.json",
+                      "subway_otp_2025.json"]:
+            p = training_dir / fname
+            if not p.exists():
+                continue
+            for row in json.loads(p.read_text()):
+                line = (row.get("line") or "").upper().strip()
+                try:
+                    accum[line].append(float(row["terminal_on_time_performance"]))
+                except (KeyError, ValueError, TypeError):
+                    pass
+
+        for line, vals in accum.items():
+            avg_otp = sum(vals) / len(vals)
+            # 100% OTP → 0.0 reliability score  (very reliable)
+            # 50%  OTP → 4.0 reliability score  (very unreliable)
+            _OTP_RELIABILITY[line] = max(0.0, min(4.0, (1.0 - avg_otp) * 8.0))
+
+        if _OTP_RELIABILITY:
+            TrackLogger.info(
+                f"[ML] Loaded OTP reliability for {len(_OTP_RELIABILITY)} lines "
+                f"from training JSON files.",
+                tag="ML",
+            )
+    except Exception as exc:
+        TrackLogger.warning(f"[ML] Could not load OTP reliability: {exc}", tag="ML")
 
 WEATHER_ENCODING: dict[str, int] = {"clear": 0, "rain": 1, "snow": 2}
 MODE_ENCODING: dict[str, int] = {"subway": 0, "bus": 1, "lirr": 2, "mnr": 3}
@@ -84,10 +142,12 @@ def encode_features(
       [route_reliability, hour, dow, weather_enc, mode_enc, is_rush, is_weekend,
        delay_minutes]  ← 8th feature: live schedule deviation (0.0 for bootstrap)
 
-    The 8th feature teaches the model momentum: a train already running 3 min
-    late is likely to arrive even later than the contextual factor alone suggests.
-    Backward compatible: models trained on 7 features skip it (see predict_factor).
+    route_reliability is a float 0.0–4.0.  When OTP JSON files are present it
+    is derived from real MTA on-time performance data; otherwise it falls back
+    to the hard-coded integer tier in ROUTE_RELIABILITY.
     """
+    _load_otp_reliability()
+
     key = route_id.upper().strip()
     if "_" in key:
         key = key.split("_")[-1]
@@ -96,17 +156,20 @@ def encode_features(
     elif mode.lower() == "mnr":
         key = "MNR"
 
-    reliability = ROUTE_RELIABILITY.get(key, 2)
+    # Prefer real OTP-derived float; fall back to hand-coded int tier
+    if key in _OTP_RELIABILITY:
+        reliability = _OTP_RELIABILITY[key]
+    else:
+        reliability = float(ROUTE_RELIABILITY.get(key, 2))
+
     weather_enc = WEATHER_ENCODING.get(weather.lower(), 0)
     mode_enc    = MODE_ENCODING.get(mode.lower(), 0)
     is_weekday  = 2 <= dow <= 6
     is_rush     = int(is_weekday and (hour in _RUSH_MORNING or hour in _RUSH_EVENING))
     is_weekend  = int(not is_weekday)
-    # Clamp live delay to ±10 min; normalize to minutes so the scale matches
-    # the other features.  0.0 for bootstrap / when not provided.
     delay_minutes = max(-10.0, min(10.0, current_delay_s / 60.0))
 
-    return [float(reliability), float(hour), float(dow),
+    return [reliability, float(hour), float(dow),
             float(weather_enc), float(mode_enc), float(is_rush), float(is_weekend),
             delay_minutes]
 
