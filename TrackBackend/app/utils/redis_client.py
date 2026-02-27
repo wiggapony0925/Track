@@ -95,7 +95,7 @@ async def init_redis() -> None:
         # plan). Without this, 169 concurrent observe_siri_delay futures from
         # a single /nearby request each grab a new connection → "max clients
         # reached".  20 is safe on the Starter plan and generous for free tier.
-        _max_conn = int(os.getenv("REDIS_MAX_CONNECTIONS", "20"))
+        _max_conn = int(os.getenv("REDIS_MAX_CONNECTIONS", "30"))
         client = redis_asyncio.from_url(
             redis_url,
             encoding="utf-8",

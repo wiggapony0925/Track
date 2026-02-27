@@ -41,7 +41,7 @@
           <mxGeometry x="1105" y="30" width="160" height="90" as="geometry"/>
         </mxCell>
 
-        <mxCell id="ext_redis" value="&lt;b&gt;Render Key Value&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;color:#FFCDD2;&quot;&gt;Valkey 8.1.4 · allkeys-lru&lt;br&gt;Virginia · Free plan&lt;br&gt;Ping: 7ms · ACTIVE&lt;br&gt;bus · subway · LIRR · MNR&lt;/font&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#D32F2F;fontColor=#FFF;strokeColor=#B71C1C;shadow=1;size=8;boundedLbl=1;" vertex="1" parent="ext_tier">
+        <mxCell id="ext_redis" value="&lt;b&gt;Render Key Value&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;color:#FFCDD2;&quot;&gt;Valkey 8.1.4 · allkeys-lru&lt;br&gt;Virginia · &lt;b&gt;Starter plan&lt;/b&gt;&lt;br&gt;256 MB · 250 connections · Persistent&lt;br&gt;Ping: 7ms · ACTIVE&lt;br&gt;bus · subway · LIRR · MNR&lt;/font&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#D32F2F;fontColor=#FFF;strokeColor=#B71C1C;shadow=1;size=8;boundedLbl=1;" vertex="1" parent="ext_tier">
           <mxGeometry x="1300" y="35" width="140" height="82" as="geometry"/>
         </mxCell>
 
@@ -534,7 +534,7 @@
           <mxGeometry x="1600" y="1040" width="220" height="135" as="geometry"/>
         </mxCell>
 
-        <mxCell id="sidebar_deps" value="&lt;b style=&quot;font-size:13px;&quot;&gt;📦 Dependencies&lt;/b&gt;&lt;hr size=&quot;1&quot; style=&quot;border-color:#546E7A;&quot;&gt;&lt;font style=&quot;font-size:10px;color:#B0BEC5;&quot;&gt;fastapi · uvicorn[standard]&lt;br&gt;httpx · pydantic · pydantic-settings&lt;br&gt;gtfs-realtime-bindings · protobuf&lt;br&gt;redis (valkey-compatible)&lt;br&gt;polyline · supabase&lt;br&gt;lightgbm · joblib · numpy · pandas&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#263238;fontColor=#ECEFF1;strokeColor=#37474F;arcSize=10;shadow=1;align=left;spacingLeft=10;verticalAlign=top;spacingTop=2;" vertex="1" parent="1">
+        <mxCell id="sidebar_deps" value="&lt;b style=&quot;font-size:13px;&quot;&gt;📦 Dependencies&lt;/b&gt;&lt;hr size=&quot;1&quot; style=&quot;border-color:#546E7A;&quot;&gt;&lt;font style=&quot;font-size:10px;color:#B0BEC5;&quot;&gt;fastapi · uvicorn[standard]&lt;br&gt;httpx · pydantic · pydantic-settings&lt;br&gt;gtfs-realtime-bindings · protobuf&lt;br&gt;Redis (valkey-compatible) &lt;b&gt;Starter&lt;/b&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#263238;fontColor=#ECEFF1;strokeColor=#37474F;arcSize=10;shadow=1;align=left;spacingLeft=10;verticalAlign=top;spacingTop=2;" vertex="1" parent="1">
           <mxGeometry x="1600" y="1200" width="220" height="145" as="geometry"/>
         </mxCell>
 
