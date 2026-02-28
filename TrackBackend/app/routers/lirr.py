@@ -7,10 +7,11 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response
 
 from app.models import (
     AllCommuterRailLinesResponse,
+    BusStop,
     CommuterRailLineOverlay,
     DirectionShape,
     RouteShape,
@@ -18,6 +19,7 @@ from app.models import (
 )
 from app.services.commuter_rail_shapes import get_all_lirr_lines, get_single_lirr_line
 from app.services.rail_client import fetch_rail_arrivals, filter_fresh_arrivals
+from app.utils.logger import TrackLogger
 from app.utils.polyline_utils import encode_polyline as _encode_polyline
 
 router = APIRouter(tags=["lirr"])
@@ -59,29 +61,44 @@ async def lirr_shape(route_id: str) -> RouteShape:
 
     encoded = [_encode_polyline(coords) for coords in line_data["polylines"]]
 
+    # Resolve stops from GTFS stops.txt + stop_times.txt
+    all_stops = [
+        BusStop(id=s.stop_id, name=s.name, lat=s.lat, lon=s.lon)
+        for s in line_data.get("stops", [])
+    ]
+
     # Build per-direction shapes
     directions: list[DirectionShape] = []
     for dd in line_data.get("directions", []):
         dir_encoded = [_encode_polyline(coords) for coords in dd["polylines"]]
+        dir_stops = [
+            BusStop(id=s.stop_id, name=s.name, lat=s.lat, lon=s.lon)
+            for s in dd.get("stops", [])
+        ]
         directions.append(DirectionShape(
             direction_id=dd["direction_id"],
             headsign=dd.get("headsign", ""),
             polylines=dir_encoded,
-            stops=[],
+            stops=dir_stops,
         ))
 
     return RouteShape(
         route_id=line_data["route_id"],
         polylines=encoded,
-        stops=[],
+        stops=all_stops,
         directions=directions,
     )
 
 
 @router.get("/lirr", response_model=list[TrackArrival])
-async def lirr_arrivals() -> list[TrackArrival]:
+async def lirr_arrivals(response: Response) -> list[TrackArrival]:
     """Return upcoming LIRR arrivals from the GTFS-Realtime feed."""
     try:
         return filter_fresh_arrivals(await fetch_rail_arrivals("lirr"))
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"LIRR Feed Error: {str(exc)}") from exc
+        TrackLogger.warning(
+            f"[LIRR] /lirr: feed error ({exc}) — returning empty fallback",
+            tag="LIRR",
+        )
+        response.headers["X-Track-Degraded"] = "lirr-arrivals-fallback"
+        return []

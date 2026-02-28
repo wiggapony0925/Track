@@ -921,6 +921,14 @@ extension HomeViewModel {
                 )
             }
 
+            // Pre-fetch ML delay factors for arrivals that lack live vehicle
+            // positions. Runs in the background so it doesn't block rendering.
+            if !rawTransit.isEmpty {
+                Task {
+                    await ArrivalETAEngine.prefetchDelayFactors(for: rawTransit)
+                }
+            }
+
             // Load auxiliary stop metadata in the background so first transit
             // rows render immediately. These fields only refine distance display.
             // Run both fetches in parallel so nearbyStations is populated before

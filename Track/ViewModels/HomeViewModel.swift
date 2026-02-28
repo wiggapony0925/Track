@@ -1157,7 +1157,8 @@ final class HomeViewModel {
             polyline: cachedInterpolationPolyline.count >= 2 ? cachedInterpolationPolyline : nil,
             arrivalTs: arrival.arrivalTs,
             staticMinutes: arrival.minutesAway,
-            mode: arrival.mode
+            mode: arrival.mode,
+            delayFactor: ArrivalETAEngine.cachedDelayFactor(routeId: arrival.routeId, mode: arrival.mode)
         )
     }
 

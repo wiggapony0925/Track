@@ -58,6 +58,8 @@ struct SmartETA {
         case feedTimestamp
         /// Static minutesAway from the feed (no timestamp, no vehicle).
         case staticMinutes
+        /// Static minutesAway adjusted by the ML delay-prediction model.
+        case mlPrediction
     }
 }
 
@@ -101,6 +103,68 @@ enum ArrivalETAEngine {
     /// Keyed by vehicleKey. Value is (seconds remaining, wall-clock timestamp).
     private static var smoothedETA: [String: (seconds: Double, timestamp: Date)] = [:]
 
+    // MARK: - ML Delay Factor Cache
+
+    /// Cached delay factors from `/predict/delay`, keyed by "routeId_mode".
+    /// Each entry expires after `delayFactorTTL` seconds to stay current
+    /// with changing traffic / weather patterns.
+    private static var delayFactorCache: [String: (factor: Double, fetchedAt: Date)] = [:]
+    /// How long a cached delay factor remains valid (5 minutes).
+    private static let delayFactorTTL: TimeInterval = 300
+
+    /// Returns the cached ML delay factor for a route+mode, or 1.0 if none/stale.
+    static func cachedDelayFactor(routeId: String, mode: String) -> Double {
+        let key = "\(routeId)_\(mode)"
+        guard let entry = delayFactorCache[key],
+              Date.now.timeIntervalSince(entry.fetchedAt) < delayFactorTTL
+        else { return 1.0 }
+        return entry.factor
+    }
+
+    /// Stores a freshly-fetched delay factor in the cache.
+    static func cacheDelayFactor(routeId: String, mode: String, factor: Double) {
+        let key = "\(routeId)_\(mode)"
+        delayFactorCache[key] = (factor, .now)
+    }
+
+    /// Fetches delay factors for a batch of arrivals and caches them.
+    /// De-duplicates by (routeId, mode) so each unique pair is fetched once.
+    /// Non-throwing — failures are silently ignored (factor defaults to 1.0).
+    static func prefetchDelayFactors(for arrivals: [NearbyTransitResponse]) async {
+        // Collect unique (routeId, mode) pairs that are not already cached
+        var seen = Set<String>()
+        var toFetch: [(routeId: String, mode: String, minutesAway: Int, stopId: String?)] = []
+        for a in arrivals {
+            let key = "\(a.routeId)_\(a.mode)"
+            guard !seen.contains(key) else { continue }
+            seen.insert(key)
+            // Skip if we have a fresh cached value
+            if let entry = delayFactorCache[key],
+               Date.now.timeIntervalSince(entry.fetchedAt) < delayFactorTTL { continue }
+            toFetch.append((a.routeId, a.mode, a.minutesAway, a.stopId))
+        }
+        guard !toFetch.isEmpty else { return }
+
+        // Fetch up to 6 concurrently to avoid flooding the backend
+        await withTaskGroup(of: Void.self) { group in
+            for item in toFetch.prefix(6) {
+                group.addTask { @MainActor in
+                    if let prediction = await TrackAPI.fetchDelayPrediction(
+                        minutesAway: item.minutesAway,
+                        routeId: item.routeId,
+                        mode: item.mode,
+                        stopId: item.stopId
+                    ) {
+                        cacheDelayFactor(
+                            routeId: item.routeId,
+                            mode: item.mode,
+                            factor: prediction.delayFactor)
+                    }
+                }
+            }
+        }
+    }
+
     struct PositionSample {
         let coordinate: CLLocationCoordinate2D
         let timestamp: Date
@@ -142,7 +206,7 @@ enum ArrivalETAEngine {
     /// 3. Dwell detection: if speed ≈ 0 and vehicle is within 150 m of
     ///    the stop, it's arriving — show "Now".
     /// 4. Fall back to arrivalTs countdown.
-    /// 5. Fall back to static minutesAway.
+    /// 5. Fall back to static minutesAway (optionally scaled by ML delayFactor).
     ///
     /// - Parameters:
     ///   - vehicleCoord: The vehicle's current GPS position (nil if unknown).
@@ -152,6 +216,9 @@ enum ArrivalETAEngine {
     ///   - arrivalTs: The feed's predicted arrival epoch (if available).
     ///   - staticMinutes: The feed's minutesAway value (last resort).
     ///   - mode: Transit mode — affects default speed assumptions.
+    ///   - delayFactor: ML-predicted multiplicative delay factor (1.0 = no change).
+    ///     Applied only when falling back to staticMinutes (path 5) where no live
+    ///     vehicle data exists.  Pass 1.0 or omit to skip ML adjustment.
     static func computeETA(
         vehicleCoord: CLLocationCoordinate2D?,
         vehicleKey: String?,
@@ -159,7 +226,8 @@ enum ArrivalETAEngine {
         polyline: [CLLocationCoordinate2D]? = nil,
         arrivalTs: Int? = nil,
         staticMinutes: Int = 99,
-        mode: String = "subway"
+        mode: String = "subway",
+        delayFactor: Double = 1.0
     ) -> SmartETA {
 
         // Check if arrivalTs is in the past (vehicle already came and went).
@@ -277,11 +345,13 @@ enum ArrivalETAEngine {
                 source: .feedTimestamp, estimatedSpeedMps: nil)
         }
 
-        // ── 3. Static minutesAway ──
+        // ── 3. Static minutesAway (optionally scaled by ML delay factor) ──
+        let adjustedSeconds = Double(staticMinutes) * 60 * max(0.5, min(delayFactor, 3.0))
+        let mlSource: SmartETA.ETASource = delayFactor != 1.0 ? .mlPrediction : .staticMinutes
         return SmartETA(
-            secondsRemaining: Double(staticMinutes) * 60, isAtStop: false,
+            secondsRemaining: adjustedSeconds, isAtStop: false,
             isPastArrival: staticMinutes <= 0,
-            source: .staticMinutes, estimatedSpeedMps: nil)
+            source: mlSource, estimatedSpeedMps: nil)
     }
 
     // MARK: - Distance Along Polyline

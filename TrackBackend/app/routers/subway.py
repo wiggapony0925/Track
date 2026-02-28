@@ -10,7 +10,7 @@ from __future__ import annotations
 import math
 import time
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Response
 
 from app.models import (
     AllSubwayLinesResponse,
@@ -269,7 +269,7 @@ async def subway_shape(route_id: str) -> RouteShape:
 
 
 @router.get("/subway/{line_id}", response_model=list[TrackArrival])
-async def subway_arrivals(line_id: str) -> list[TrackArrival]:
+async def subway_arrivals(line_id: str, response: Response) -> list[TrackArrival]:
     """Return upcoming arrivals for a subway line (e.g. ``/subway/L``)."""
     clean_id = clean_route_id(line_id)
     if resolve_subway_feed_key(clean_id) is None:
@@ -287,7 +287,12 @@ async def subway_arrivals(line_id: str) -> list[TrackArrival]:
             a.minutes_away = max(0, (a.arrival_ts - now) // 60)
         return fresh
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        TrackLogger.warning(
+            f"[SUBWAY] /{line_id}: feed error ({exc}) — returning empty fallback",
+            tag="SUBWAY",
+        )
+        response.headers["X-Track-Degraded"] = "subway-arrivals-fallback"
+        return []
 
 
 # ---------------------------------------------------------------------------

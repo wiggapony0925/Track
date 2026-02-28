@@ -25,7 +25,11 @@ struct AppSettings {
     /// Expanded radius to find the nearest subway station if none are found nearby.
     let nearestMetroFallbackRadiusMeters: Int
     /// How often the app polls for new data (in seconds).
-    let refreshIntervalSeconds: Int
+    /// Overridable via remote /config so the backend can throttle clients.
+    private let _refreshIntervalSeconds: Int
+    var refreshIntervalSeconds: Int {
+        UserDefaults.standard.object(forKey: "rc_refresh_interval_seconds") as? Int ?? _refreshIntervalSeconds
+    }
     /// Minimum seconds before a background-return triggers a new fetch.
     /// If the user comes back within this window, the previous data is reused.
     let refreshCooldownSeconds: Int
@@ -163,7 +167,7 @@ struct AppSettings {
             print("[AppSettings] WARNING: settings.json not found in bundle — using hardcoded defaults")
             self.defaultSearchRadiusMeters = 8047
             self.nearestMetroFallbackRadiusMeters = 8047
-            self.refreshIntervalSeconds = 30
+            self._refreshIntervalSeconds = 30
             self.refreshCooldownSeconds = 30
             self.significantMovementMeters = 150
             self.prodBaseURL = "https://track-vkrr.onrender.com"
@@ -213,7 +217,7 @@ struct AppSettings {
 
         self.defaultSearchRadiusMeters = api["default_search_radius_meters"] as? Int ?? 8047
         self.nearestMetroFallbackRadiusMeters = api["nearest_metro_fallback_radius_meters"] as? Int ?? 8047
-        self.refreshIntervalSeconds = api["refresh_interval_seconds"] as? Int ?? 30
+        self._refreshIntervalSeconds = api["refresh_interval_seconds"] as? Int ?? 30
         self.refreshCooldownSeconds = api["refresh_cooldown_seconds"] as? Int ?? 30
         self.significantMovementMeters = api["significant_movement_meters"] as? Double ?? 150
         self.prodBaseURL = api["prod_base_url"] as? String ?? "https://track-vkrr.onrender.com"
@@ -257,6 +261,29 @@ struct AppSettings {
         self.showMNRByDefault = map["show_mnr_by_default"] as? Bool ?? true
         self._subwayLineOffsetMeters = map["subway_line_offset_meters"] as? Double ?? 12.0
         self.polylineSimplificationTolerance = map["polyline_simplification_tolerance"] as? Double ?? 0.00015
+    }
+}
+
+// MARK: - Remote Config Overrides
+
+extension AppSettings {
+    /// Applies server-side overrides from the `/config` endpoint.
+    /// Only a curated set of safe-to-override keys are accepted.
+    /// Values persist in UserDefaults until the next `/config` fetch.
+    static func applyRemoteOverrides(_ config: [String: Any]) {
+        let store = UserDefaults.standard
+        if let interval = config["refresh_interval_seconds"] as? Int, interval >= 10 {
+            store.set(interval, forKey: "rc_refresh_interval_seconds")
+        }
+        if let showGhosts = config["show_ghost_trains"] as? Bool {
+            store.set(showGhosts, forKey: "rc_show_ghost_trains")
+        }
+    }
+
+    /// Whether "ghost" (scheduled-only) trains should appear in the UI.
+    /// Controlled remotely via `/config → show_ghost_trains`.
+    var showGhostTrains: Bool {
+        UserDefaults.standard.object(forKey: "rc_show_ghost_trains") as? Bool ?? false
     }
 }
 

@@ -24,6 +24,16 @@ struct TrackApp: App {
         // ContentView even renders — means the /nearby/grouped request fired
         // from HomeView.onAppear finds the connection already open.
         TrackAPI.warmConnection()
+
+        // Fetch remote config overrides (refresh interval, feature flags)
+        // in the background so the values are ready before the first refresh.
+        Task.detached(priority: .utility) {
+            if let config = await TrackAPI.fetchRemoteConfig() {
+                await MainActor.run {
+                    AppSettings.applyRemoteOverrides(config)
+                }
+            }
+        }
         // Request notification permissions for service alerts
         AlertNotificationManager.shared.requestPermissionIfNeeded()
         

@@ -45,7 +45,7 @@ import os
 import time
 from collections import OrderedDict
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
 from pydantic import BaseModel
 
 from app.cache_config import PREDICT_FACTOR_MAX_SIZE, PREDICT_FACTOR_TTL
@@ -306,12 +306,17 @@ def _is_rush(hour: int, dow: int) -> bool:
 
 
 @router.post("/predict/reload-model")
-async def reload_model_endpoint() -> dict:
+async def reload_model_endpoint(request: Request) -> dict:
     """Hot-reload the GBR model from disk without restarting the server.
 
     Call this after running scripts/train_model.py so new weights take
-    effect immediately.
+    effect immediately.  Restricted to localhost only (same as /admin/cache/clear).
     """
+    client = request.client
+    if client and client.host not in ("127.0.0.1", "::1", "localhost"):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403, detail="localhost only")
+
     from app.ml.delay_model import reload_model
     _L1.clear()  # flush L1 so stale factors are recomputed
     success = reload_model()

@@ -465,6 +465,94 @@ struct TrackAPI {
     // MARK: - Delay Prediction
 
     /// Fetches a delay-adjusted arrival time from the backend prediction service.
+    ///
+    /// Safe to call on every arrival row — the backend responds in <1 ms when
+    /// the result is cached.  Returns `nil` on any error so callers fall back
+    /// to the un-adjusted ETA without disrupting the UI.
+    ///
+    /// - Parameters:
+    ///   - minutesAway: MTA-predicted minutes until arrival.
+    ///   - routeId: Transit route ID (e.g. "7", "L", "B63").
+    ///   - mode: Transit mode: "subway", "bus", "lirr", "mnr".
+    ///   - stopId: Optional GTFS stop_id for recency correction.
+    /// - Returns: A `DelayPrediction`, or `nil` if the request fails.
+    static func fetchDelayPrediction(
+        minutesAway: Int,
+        routeId: String,
+        mode: String,
+        stopId: String? = nil
+    ) async -> DelayPrediction? {
+        let now = Date()
+        let calendar = Calendar.current
+        let hour = calendar.component(.hour, from: now)
+        // Calendar weekday: 1 = Sunday … 7 = Saturday (matches backend expectation)
+        let dayOfWeek = calendar.component(.weekday, from: now)
+
+        guard var components = URLComponents(string: baseURL + "/predict/delay") else {
+            return nil
+        }
+        var queryItems = [
+            URLQueryItem(name: "minutes_away", value: String(minutesAway)),
+            URLQueryItem(name: "route_id", value: routeId),
+            URLQueryItem(name: "hour", value: String(hour)),
+            URLQueryItem(name: "day_of_week", value: String(dayOfWeek)),
+            URLQueryItem(name: "weather", value: "clear"),
+            URLQueryItem(name: "mode", value: mode),
+        ]
+        if let stopId, !stopId.isEmpty {
+            queryItems.append(URLQueryItem(name: "stop_id", value: stopId))
+        }
+        components.queryItems = queryItems
+
+        guard let url = components.url else { return nil }
+        // Use a lightweight one-shot request — no retries, 4s timeout.
+        // The main `get(url:)` does 3 retries with exponential backoff
+        // (designed for critical endpoints like /nearby/grouped).
+        // Prediction is supplementary; burning 46s in retries when the
+        // endpoint is cold would waste resources for no UX benefit.
+        do {
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 4
+            if let email = cachedUserEmail, !email.isEmpty {
+                request.setValue(email, forHTTPHeaderField: "x-user-email")
+            }
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse,
+                  (200...299).contains(http.statusCode) else {
+                return nil
+            }
+            return try decoder.decode(DelayPrediction.self, from: data)
+        } catch {
+            // Non-fatal — caller falls back to un-adjusted ETA
+            return nil
+        }
+    }
+
+    // MARK: - Remote Config
+
+    /// Fetches server-side configuration overrides from `/config`.
+    /// Returns the raw JSON dictionary so AppSettings can merge selectively.
+    /// Uses a single-shot request (no retries) with a short timeout —
+    /// config is non-critical and the app runs fine on bundled defaults.
+    static func fetchRemoteConfig() async -> [String: Any]? {
+        guard let url = URL(string: baseURL + "/config") else { return nil }
+        do {
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 5
+            if let email = cachedUserEmail, !email.isEmpty {
+                request.setValue(email, forHTTPHeaderField: "x-user-email")
+            }
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse,
+                  (200...299).contains(http.statusCode) else {
+                return nil
+            }
+            return try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        } catch {
+            return nil
+        }
+    }
+
     // MARK: - Service Status
 
     /// Fetches critical MTA service alerts.

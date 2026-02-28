@@ -226,3 +226,29 @@ class AllCommuterRailLinesResponse(BaseModel):
 
     lines: list[CommuterRailLineOverlay]
 
+
+class BusScheduleDeparture(BaseModel):
+    """A single scheduled departure for a bus route."""
+
+    stop_name: str
+    stop_id: str
+    departure_time: int            # epoch seconds
+    headsign: str = ""
+    trip_id: str = ""
+
+
+class BusScheduleDirection(BaseModel):
+    """Scheduled departures for one direction of a bus route."""
+
+    route_id: str
+    direction: str
+    headsign: str = ""
+    departures: list[BusScheduleDeparture]
+
+
+class BusScheduleResponse(BaseModel):
+    """Today's upcoming scheduled departures for a bus route."""
+
+    route_id: str
+    directions: list[BusScheduleDirection]
+

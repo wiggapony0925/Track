@@ -107,13 +107,17 @@ struct TrackTests {
         let prediction = DelayPrediction(
             adjustedMinutes: 6,
             originalMinutes: 5,
+            delayFactor: 1.2,
             adjustmentReason: "Adjusted for rain (+1m)",
-            delayFactor: 1.2
+            modelSource: "model",
+            recencyErrorSeconds: 12.5
         )
         #expect(prediction.adjustedMinutes == 6)
         #expect(prediction.originalMinutes == 5)
         #expect(prediction.delayFactor == 1.2)
         #expect(prediction.adjustmentReason == "Adjusted for rain (+1m)")
+        #expect(prediction.modelSource == "model")
+        #expect(prediction.recencyErrorSeconds == 12.5)
     }
 
     // MARK: - RouteSuggestion Tests

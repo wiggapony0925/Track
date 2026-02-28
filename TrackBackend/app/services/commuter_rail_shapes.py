@@ -38,6 +38,14 @@ class CommuterRoute(NamedTuple):
     color_hex: str
 
 
+class CommuterStop(NamedTuple):
+    """A commuter rail stop with name + coordinates, resolved from stops.txt."""
+    stop_id: str
+    name: str
+    lat: float
+    lon: float
+
+
 # ---------------------------------------------------------------------------
 # (imported from app.utils.shape_utils as _pack_coords / _unpack_coords / _unpack_point_set)
 
@@ -180,6 +188,127 @@ def _deduplicate_shapes(
             kept_point_sets.append(point_set)
 
     return final
+
+
+# ---------------------------------------------------------------------------
+# Stop parsing: stops.txt + stop_times.txt + trips.txt → shape_id → [stops]
+# ---------------------------------------------------------------------------
+
+def _parse_stops_file(stops_path: Path) -> dict[str, CommuterStop]:
+    """Parse GTFS stops.txt into stop_id → CommuterStop."""
+    stops: dict[str, CommuterStop] = {}
+    if not stops_path.exists():
+        TrackLogger.warning(f"stops.txt not found: {stops_path}")
+        return stops
+
+    with open(stops_path, encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            stop_id = row.get("stop_id", "").strip().strip('"')
+            name = row.get("stop_name", "").strip().strip('"')
+            try:
+                lat = float(row["stop_lat"].strip('"'))
+                lon = float(row["stop_lon"].strip('"'))
+            except (ValueError, KeyError):
+                continue
+            if stop_id:
+                stops[stop_id] = CommuterStop(
+                    stop_id=stop_id, name=name, lat=lat, lon=lon,
+                )
+    return stops
+
+
+def _build_shape_stop_map(
+    stop_times_path: Path,
+    trips_path: Path,
+) -> dict[str, list[str]]:
+    """Build shape_id → ordered list of stop_ids from GTFS stop_times + trips.
+
+    Algorithm:
+    1. Parse trips.txt to get trip_id → shape_id mapping.
+    2. Parse stop_times.txt grouped by trip_id, picking one representative
+       trip per shape_id (the one with the most stops).
+    3. Return shape_id → [stop_ids in stop_sequence order].
+    """
+    # Step 1: trip_id → shape_id
+    trip_to_shape: dict[str, str] = {}
+    if trips_path.exists():
+        with open(trips_path, encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                tid = row.get("trip_id", "").strip().strip('"')
+                sid = row.get("shape_id", "").strip().strip('"')
+                if tid and sid:
+                    trip_to_shape[tid] = sid
+
+    if not trip_to_shape:
+        return {}
+
+    # Step 2: Parse stop_times.txt grouped by trip_id
+    trip_stops: dict[str, list[tuple[int, str]]] = defaultdict(list)
+    if stop_times_path.exists():
+        with open(stop_times_path, encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                tid = row.get("trip_id", "").strip().strip('"')
+                stop_id = row.get("stop_id", "").strip().strip('"')
+                try:
+                    seq = int(row.get("stop_sequence", "0").strip().strip('"'))
+                except ValueError:
+                    seq = 0
+                if tid and stop_id:
+                    trip_stops[tid].append((seq, stop_id))
+
+    # Step 3: Pick best trip per shape (most stops)
+    shape_best: dict[str, list[str]] = {}
+    for tid, stops in trip_stops.items():
+        sid = trip_to_shape.get(tid)
+        if not sid:
+            continue
+        ordered = [s[1] for s in sorted(stops, key=lambda x: x[0])]
+        if sid not in shape_best or len(ordered) > len(shape_best[sid]):
+            shape_best[sid] = ordered
+
+    return shape_best
+
+
+@lru_cache(maxsize=1)
+def _lirr_stops() -> dict[str, CommuterStop]:
+    return _parse_stops_file(_LIRR_DIR / "stops.txt")
+
+
+@lru_cache(maxsize=1)
+def _lirr_shape_stop_map() -> dict[str, list[str]]:
+    return _build_shape_stop_map(_LIRR_DIR / "stop_times.txt", _LIRR_DIR / "trips.txt")
+
+
+@lru_cache(maxsize=1)
+def _mnr_stops() -> dict[str, CommuterStop]:
+    return _parse_stops_file(_MNR_DIR / "stops.txt")
+
+
+@lru_cache(maxsize=1)
+def _mnr_shape_stop_map() -> dict[str, list[str]]:
+    return _build_shape_stop_map(_MNR_DIR / "stop_times.txt", _MNR_DIR / "trips.txt")
+
+
+def _resolve_stops_for_shapes(
+    shape_ids: list[str],
+    shape_stop_map: dict[str, list[str]],
+    stops_data: dict[str, CommuterStop],
+) -> list[CommuterStop]:
+    """Collect unique stops across multiple shapes, preserving order."""
+    seen: set[str] = set()
+    result: list[CommuterStop] = []
+    for sid in shape_ids:
+        for stop_id in shape_stop_map.get(sid, []):
+            if stop_id in seen:
+                continue
+            stop = stops_data.get(stop_id)
+            if stop:
+                result.append(stop)
+                seen.add(stop_id)
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -359,7 +488,7 @@ def get_mnr_route_color(route_id: str) -> str:
 def get_single_lirr_line(route_id: str) -> dict | None:
     """Return shape data for a single LIRR branch by numeric route_id.
 
-    Returns: {route_id, name, color_hex, polylines, directions}
+    Returns: {route_id, name, color_hex, polylines, stops, directions}
     """
     routes = _lirr_routes()
     route = routes.get(route_id)
@@ -369,6 +498,8 @@ def get_single_lirr_line(route_id: str) -> dict | None:
     dir_shapes = _lirr_route_shapes_by_dir().get(route_id, {})
     shapes_data = _lirr_shapes()
     headsigns = _lirr_headsigns().get(route_id, {})
+    shape_stop_map = _lirr_shape_stop_map()
+    stops_data = _lirr_stops()
 
     # Also fall back to the flat map for overall polylines
     route_shapes = _lirr_route_shapes()
@@ -386,6 +517,9 @@ def get_single_lirr_line(route_id: str) -> dict | None:
     if not polylines:
         return None
 
+    # Resolve stops for the overall route
+    all_stops = _resolve_stops_for_shapes(unique_sids, shape_stop_map, stops_data)
+
     # Build per-direction data
     directions: list[dict] = []
     for direction_id in sorted(dir_shapes.keys()):
@@ -396,10 +530,12 @@ def get_single_lirr_line(route_id: str) -> dict | None:
             if buf:
                 dir_polys.append(_unpack_coords(buf))
         if dir_polys:
+            dir_stops = _resolve_stops_for_shapes(dir_sids, shape_stop_map, stops_data)
             directions.append({
                 "direction_id": direction_id,
                 "headsign": headsigns.get(direction_id, ""),
                 "polylines": dir_polys,
+                "stops": dir_stops,
             })
 
     return {
@@ -407,6 +543,7 @@ def get_single_lirr_line(route_id: str) -> dict | None:
         "name": route.name,
         "color_hex": route.color_hex,
         "polylines": polylines,
+        "stops": all_stops,
         "directions": directions,
     }
 
@@ -414,7 +551,7 @@ def get_single_lirr_line(route_id: str) -> dict | None:
 def get_single_mnr_line(route_id: str) -> dict | None:
     """Return shape data for a single Metro-North line by numeric route_id.
 
-    Returns: {route_id, name, color_hex, polylines, directions}
+    Returns: {route_id, name, color_hex, polylines, stops, directions}
     """
     routes = _mnr_routes()
     route = routes.get(route_id)
@@ -424,6 +561,8 @@ def get_single_mnr_line(route_id: str) -> dict | None:
     dir_shapes = _mnr_route_shapes_by_dir().get(route_id, {})
     shapes_data = _mnr_shapes()
     headsigns = _mnr_headsigns().get(route_id, {})
+    shape_stop_map = _mnr_shape_stop_map()
+    stops_data = _mnr_stops()
 
     route_shapes = _mnr_route_shapes()
     raw_shape_ids = route_shapes.get(route_id, set())
@@ -440,6 +579,9 @@ def get_single_mnr_line(route_id: str) -> dict | None:
     if not polylines:
         return None
 
+    # Resolve stops for the overall route
+    all_stops = _resolve_stops_for_shapes(unique_sids, shape_stop_map, stops_data)
+
     # Build per-direction data
     directions: list[dict] = []
     for direction_id in sorted(dir_shapes.keys()):
@@ -450,10 +592,12 @@ def get_single_mnr_line(route_id: str) -> dict | None:
             if buf:
                 dir_polys.append(_unpack_coords(buf))
         if dir_polys:
+            dir_stops = _resolve_stops_for_shapes(dir_sids, shape_stop_map, stops_data)
             directions.append({
                 "direction_id": direction_id,
                 "headsign": headsigns.get(direction_id, ""),
                 "polylines": dir_polys,
+                "stops": dir_stops,
             })
 
     return {
@@ -461,5 +605,6 @@ def get_single_mnr_line(route_id: str) -> dict | None:
         "name": route.name,
         "color_hex": route.color_hex,
         "polylines": polylines,
+        "stops": all_stops,
         "directions": directions,
     }

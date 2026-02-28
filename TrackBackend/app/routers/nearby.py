@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Response
 
 from app.cache_config import (
     BUS_MAX_SIRI_STOPS,
@@ -244,21 +244,31 @@ def _nearby_cache_key(
 router = APIRouter(tags=["nearby"])
 
 
-@router.get("/nearby", response_model=list[NearbyTransitArrival])
+@router.get(
+    "/nearby",
+    response_model=list[NearbyTransitArrival],
+    deprecated=True,
+    summary="[Deprecated] Use /nearby/grouped instead",
+)
 async def nearby_transit(
+    response: Response,
     lat: float = Query(..., description="User latitude"),
     lon: float = Query(..., description="User longitude"),
     radius: int | None = Query(None, description="Search radius in meters"),
 ) -> list[NearbyTransitArrival]:
     """Return the nearest buses and trains with live countdowns.
 
-    Combines subway arrivals from GTFS-RT feeds and bus arrivals from
-    SIRI, sorted by ``minutes_away``. No routing or trips — just a
-    flat list of what's arriving soon nearby.
+    **Deprecated** — prefer ``/nearby/grouped`` which returns one card per
+    route with direction sub-groups, benefits from response-level caching,
+    and includes ML delay corrections.
+
+    This flat endpoint remains for the ``fetchNearestMetro`` fallback.
     """
     settings = get_settings()
     effective_radius = radius if radius is not None else settings.app_settings.search_radius_meters
     TrackLogger.location(lat, lon, "nearby")
+    response.headers["Deprecation"] = "true"
+    response.headers["Link"] = '</nearby/grouped>; rel="successor-version"'
     results = await _collect_all(lat, lon, effective_radius)
     results.sort(key=lambda a: a.minutes_away)
     return results
