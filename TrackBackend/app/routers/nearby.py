@@ -658,23 +658,45 @@ def _group_arrivals(flat: list[NearbyTransitArrival]) -> list[GroupedNearbyTrans
             arrivals.sort(key=lambda a: a.minutes_away)
 
             # ── Deduplicate by vehicle / trip ─────────────────────────────
-            # SIRI returns a prediction for every upcoming stop a vehicle will
-            # serve.  For a radius query covering many stops that means the same
-            # bus can appear 5-7 times in the flat list, all as "En Route".
-            # Keep only the *soonest* prediction per unique vehicle so the iOS
-            # arrival chips show one card per physical bus (matching Transit app).
-            # Arrivals with neither vehicle_id nor trip_id are kept as-is
-            # (they are GTFS-static scheduled entries which are already unique).
-            seen_vehicle_keys: set[str] = set()
-            deduped: list[NearbyTransitArrival] = []
+            # SIRI emits one prediction per upcoming stop for every vehicle, so
+            # the same bus appears 5-7 times in the flat list.  We keep exactly
+            # ONE prediction per unique vehicle: the one at the stop that is
+            # CLOSEST TO THE USER (smallest distance_m).  This is the prediction
+            # the iOS countdown chips should show.
+            #
+            # Previous bug: we kept the *globally soonest* prediction (stop
+            # nearest the bus).  iOS then filtered chips to arrivals at the
+            # user's nearest stop — but after dedup only the bus-nearest stop
+            # survived, so the user's stop had no match → chips disappeared.
+            #
+            # Fix: group predictions by vehicle, pick the one with min distance_m
+            # (fallback: min minutes_away when distance is unknown).
+            # Scheduled/GTFS-static entries (key is None) are kept as-is.
+            from collections import defaultdict as _dd
+            _veh_groups: dict[str, list] = _dd(list)
+            _no_key: list[NearbyTransitArrival] = []
             for arr in arrivals:
-                key = arr.vehicle_id or arr.trip_id
-                if key is None:
-                    deduped.append(arr)       # scheduled placeholder — keep
-                elif key not in seen_vehicle_keys:
-                    seen_vehicle_keys.add(key)
-                    deduped.append(arr)       # first (soonest) hit for this vehicle
-                # else: duplicate stop prediction for same vehicle — drop
+                _k = arr.vehicle_id or arr.trip_id
+                if _k is None:
+                    _no_key.append(arr)
+                else:
+                    _veh_groups[_k].append(arr)
+
+            deduped: list[NearbyTransitArrival] = list(_no_key)
+            for _preds in _veh_groups.values():
+                # Pick the prediction at the stop closest to the user.
+                # distance_m is None for entries that lack coordinates; rank
+                # those last so coordinate-rich entries always win.
+                best = min(
+                    _preds,
+                    key=lambda a: (
+                        a.distance_m if a.distance_m is not None else float("inf"),
+                        a.minutes_away,
+                    ),
+                )
+                deduped.append(best)
+
+            deduped.sort(key=lambda a: a.minutes_away)  # re-sort by ETA
             arrivals = deduped
             # ─────────────────────────────────────────────────────────────
 

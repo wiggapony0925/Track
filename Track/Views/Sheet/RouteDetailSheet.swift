@@ -608,39 +608,19 @@ struct RouteDetailSheet: View {
     ///  1. Find the stop closest to the user's reference location.
     ///  2. Return arrivals at that stop, sorted by ETA.
     ///  3. Fall back to all live arrivals when no location is available.
+    /// Arrivals for the countdown chips.
+    ///
+    /// The backend now returns exactly ONE prediction per unique vehicle — the
+    /// one at the stop CLOSEST to the user (smallest `distance_m`).  So we no
+    /// longer filter by nearest stop here; doing so was the root cause of chips
+    /// disappearing (the user's nearest stop ≠ the stop the backend kept after
+    /// dedup, producing zero matches).
+    ///
+    /// We simply return all live arrivals sorted by smart ETA, deduplicated by
+    /// vehicle key as a client-side safety net.
     private var nearestStopArrivals: [NearbyTransitResponse] {
         let live = safeDirection.liveArrivals
         guard !live.isEmpty else { return [] }
-
-        let refCoord = currentLocation ?? searchCenter
-        if let refCoord {
-            let refLoc = CLLocation(latitude: refCoord.latitude, longitude: refCoord.longitude)
-            var nearestStopKey: String?
-            var nearestDistance: CLLocationDistance = .greatestFiniteMagnitude
-
-            for arrival in live {
-                let dist = arrivalDistance(arrival, from: refLoc)
-                if dist < nearestDistance {
-                    nearestDistance = dist
-                    nearestStopKey = arrival.stopId ?? arrival.stopName
-                }
-            }
-
-            if let key = nearestStopKey {
-                let atNearest = live.filter { ($0.stopId ?? $0.stopName) == key }
-                if !atNearest.isEmpty {
-                    // Deduplicate by vehicle/trip key — keep soonest per unique bus.
-                    let sorted = sortArrivalsByETA(atNearest)
-                    var seen = Set<String>()
-                    return sorted.filter { arrival in
-                        guard let k = arrival.vehicleId ?? arrival.tripId else { return true }
-                        return seen.insert(k).inserted
-                    }
-                }
-            }
-        }
-
-        // Fallback: all live arrivals, deduplicated by vehicle key
         let sorted = sortArrivalsByETA(live)
         var seen = Set<String>()
         return sorted.filter { arrival in
