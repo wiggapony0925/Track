@@ -61,8 +61,12 @@ struct ContentView: View {
         .preferredColorScheme(colorScheme)
         .onAppear {
             if supabase.isAuthResolved && isAuth && hasCompletedOnboarding {
-                // Perform background sync on launch
+                // Delay the full sync 2 s so the critical-path transit fetch
+                // (/nearby/grouped) has an uncontested network slot first.
+                // performFullSync fires 4 parallel Supabase requests which
+                // would otherwise compete with the first transit load.
                 Task {
+                    try? await Task.sleep(nanoseconds: 2_000_000_000)
                     await SyncManager.shared.performFullSync()
                 }
 

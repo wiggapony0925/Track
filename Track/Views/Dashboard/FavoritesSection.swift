@@ -21,15 +21,50 @@ struct FavoritesSection: View {
     let sheetNavigator: SheetNavigator
     let onSelect: (GroupedNearbyTransitResponse, Int) -> Void
 
-    /// Favorites sorted closest-first using the saved stop coordinates.
-    /// In-radius cards (have a live matchedGroup) always precede out-of-radius ones.
+    /// Favorites sorted closest-first using the same distance function
+    /// as the nearby list (`groupMinDistance`), so the order matches
+    /// what the user sees in the Near You / Farther Away sections.
+    ///
+    /// Strategy:
+    /// 1. Matched favorites (route has live data) — sorted by actual
+    ///    meter distance from the user via `groupMinDistance`.
+    /// 2. Unmatched favorites — sorted by saved stop coordinates, then
+    ///    `displayOrder` as a final fallback.
     private var sortedFavorites: [CloudFavorite] {
-        let matched = groupedTransit.map(\.routeId)
+        // Build a lookup: routeId → matched GroupedNearbyTransitResponse
+        let groupLookup: [String: GroupedNearbyTransitResponse] = Dictionary(
+            uniqueKeysWithValues: groupedTransit.map { ($0.routeId, $0) }
+        )
+
         return favoritesManager.favorites.sorted { a, b in
-            let aInRadius = matched.contains(a.routeId)
-            let bInRadius = matched.contains(b.routeId)
-            if aInRadius != bInRadius { return aInRadius }
-            return distanceToStop(a) < distanceToStop(b)
+            let aGroup = groupLookup[a.routeId]
+            let bGroup = groupLookup[b.routeId]
+
+            switch (aGroup, bGroup) {
+            case let (ag?, bg?):
+                // Both matched — sort purely by physical distance to nearest stop.
+                // No soonestMinutes tiebreak: a far-away train arriving in 1 min
+                // should not jump ahead of a closer stop arriving in 3 min.
+                guard let loc = userLocation else {
+                    // No GPS yet — stable alpha tiebreak
+                    return ag.displayName.localizedCaseInsensitiveCompare(bg.displayName) == .orderedAscending
+                }
+                let aDist = groupMinDistance(for: ag, from: loc)
+                let bDist = groupMinDistance(for: bg, from: loc)
+                if abs(aDist - bDist) > 0.5 { return aDist < bDist }
+                // Exact tie — stable alpha tiebreak
+                return ag.displayName.localizedCaseInsensitiveCompare(bg.displayName) == .orderedAscending
+            case (.some, .none):
+                return true   // matched routes come before unmatched
+            case (.none, .some):
+                return false
+            case (.none, .none):
+                // Neither in radius — use saved stop coordinates
+                let aDist = distanceToStop(a)
+                let bDist = distanceToStop(b)
+                if aDist != bDist { return aDist < bDist }
+                return (a.displayOrder ?? 0) < (b.displayOrder ?? 0)
+            }
         }
     }
 

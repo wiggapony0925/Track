@@ -396,12 +396,10 @@ struct GroupedRouteList: View {
                         viewModel.setPreferredDirectionIndex(newIndex, for: group)
                     },
                     onSelect: { directionIndex in
-                        viewModel.setPreferredDirectionIndex(directionIndex, for: group)
-                        RouteAnalyticsManager.shared.logInteraction(routeId: group.routeId)
                         sheetNavigator.navigate(
                             to: .routeDetail(group: group, directionIndex: directionIndex))
                         Task {
-                            await viewModel.selectGroupedRoute(
+                            await viewModel.handleRouteSelection(
                                 group, directionIndex: directionIndex,
                                 userLocation: locationManager.currentLocation)
                         }

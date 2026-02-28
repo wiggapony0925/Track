@@ -69,7 +69,11 @@ struct TrackAPI {
     /// the connection is already open → that latency cost is paid in parallel
     /// with splash / auth checks rather than on the critical path.
     static func warmConnection() {
-        Task.detached(priority: .utility) {
+        // .userInitiated guarantees the TLS handshake completes before
+        // HomeView fires its first /nearby/grouped request. The former
+        // .utility priority let iOS defer this, leaving TLS on the
+        // critical path and adding ~1-2s on cellular cold launches.
+        Task.detached(priority: .userInitiated) {
             guard let url = URL(string: baseURL + "/health") else { return }
             var request = URLRequest(url: url)
             request.timeoutInterval = 5

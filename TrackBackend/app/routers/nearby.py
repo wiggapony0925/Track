@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import csv
+import re
 from collections import defaultdict
 from datetime import datetime, timezone
 from functools import lru_cache
@@ -418,21 +419,39 @@ async def _collect_all(
 # ---------------------------------------------------------------------------
 
 
+# MTA GTFS static data and SIRI real-time feeds sometimes disagree on zero-padding:
+# GTFS has "Q07" while SIRI sends "Q7". Normalise so both collapse to "Q7".
+_LEADING_ZERO_RE = re.compile(r'^([A-Za-z]+)0+(\d+)$')
+
+
+def _normalize_route_display(name: str) -> str:
+    """Strip leading zeros from the numeric part of a bus route display name.
+
+    Examples: Q07 → Q7, B09 → B9, Q09 → Q9, Bx12 unchanged (already no leading zeros).
+    Subway/LIRR/MNR identifiers are unaffected because they don't match the pattern.
+    """
+    m = _LEADING_ZERO_RE.match(name)
+    return (m.group(1) + m.group(2)) if m else name
+
+
 def _display_name(route_id: str) -> str:
     """Build a user-facing display name for a route_id.
-    
+
     Strips agency prefixes for subway/bus using the data-driven
     ``BUS_AGENCY_PREFIXES`` set (built from early_2026_buses_tag.json
     at import time).  This automatically supports any new agency
     prefix the MTA introduces without code changes.
-    
+
+    Additionally normalises bus route numbers to remove MTA-feed
+    leading-zero inconsistencies (Q07 → Q7, Q09 → Q9).
+
     Currently known bus prefixes: ``MTA NYCT_``, ``MTABC_``, ``MTA BUS_``.
     LIRR/MNR numeric IDs are resolved to human-readable branch names.
     """
-    # Bus / subway: strip any known agency prefix
+    # Bus / subway: strip any known agency prefix then normalise zero-padding
     for prefix in BUS_AGENCY_PREFIXES:
         if route_id.startswith(prefix):
-            return route_id[len(prefix):]
+            return _normalize_route_display(route_id[len(prefix):])
 
     # LIRR / MNR: resolve numeric branch IDs
     if route_id.startswith("LIRR_"):
@@ -577,16 +596,27 @@ def _group_arrivals(flat: list[NearbyTransitArrival]) -> list[GroupedNearbyTrans
     Each route gets direction buckets (e.g. "N" / "S" for subway,
     or compass directions like "SW" / "NE" for buses).  Arrivals
     inside each direction are sorted by ``minutes_away``.
+
+    Grouping is keyed on ``(mode, normalised_display_name)`` rather than the
+    raw ``route_id`` so that GTFS-static IDs (e.g. ``MTABC_Q07``) and
+    real-time IDs (e.g. ``MTA NYCT_Q7``) that refer to the same physical
+    route are merged into a single card instead of appearing twice.
     """
     by_route: dict[str, dict[str, list[NearbyTransitArrival]]] = defaultdict(
         lambda: defaultdict(list),
     )
-    route_meta: dict[str, tuple[str, str]] = {}  # route_id → (mode, display_name)
+    # merge_key → (mode, display_name, canonical_route_id)
+    route_meta: dict[str, tuple[str, str, str]] = {}
 
     for a in flat:
-        by_route[a.route_id][a.direction].append(a)
-        if a.route_id not in route_meta:
-            route_meta[a.route_id] = (a.mode, _display_name(a.route_id))
+        display = _display_name(a.route_id)          # already normalised
+        merge_key = f"{a.mode}:{display}"
+        by_route[merge_key][a.direction].append(a)
+        if merge_key not in route_meta:
+            # Keep the first-seen raw route_id as the canonical identifier
+            # so the client's favourite-matching logic (which uses route_id)
+            # continues to work with whichever ID was stored first.
+            route_meta[merge_key] = (a.mode, display, a.route_id)
 
     groups: list[GroupedNearbyTransit] = []
     single_direction_before = 0
@@ -606,8 +636,8 @@ def _group_arrivals(flat: list[NearbyTransitArrival]) -> list[GroupedNearbyTrans
             direction.upper(),
         )
 
-    for route_id, dir_map in by_route.items():
-        mode, display = route_meta[route_id]
+    for merge_key, dir_map in by_route.items():
+        mode, display, route_id = route_meta[merge_key]
         # Assign color: subway lines use the official palette,
         # LIRR/MNR use per-branch colors from routes.txt,
         # bus routes get the default MTA blue

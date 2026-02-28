@@ -91,11 +91,12 @@ async def init_redis() -> None:
 
     try:
         # max_connections caps the pool so we never exceed the Render Redis
-        # plan's server-side maxclients limit (typically 25–100 depending on
-        # plan). Without this, 169 concurrent observe_siri_delay futures from
-        # a single /nearby request each grab a new connection → "max clients
-        # reached".  20 is safe on the Starter plan and generous for free tier.
-        _max_conn = int(os.getenv("REDIS_MAX_CONNECTIONS", "30"))
+        # plan's server-side maxclients limit. Render's Redis Starter plan
+        # allows ~20 connections; free tier is lower (~10). The pool cap must
+        # be BELOW the server limit — connections are shared across all async
+        # tasks, so a pool of 10 comfortably serves observe + query workloads
+        # without hitting the server-side "Too many connections" error.
+        _max_conn = int(os.getenv("REDIS_MAX_CONNECTIONS", "10"))
         client = redis_asyncio.from_url(
             redis_url,
             encoding="utf-8",

@@ -212,10 +212,13 @@ struct HomeView: View {
                 dismissDragSearch()
             } else {
                 recenterOnUser()
-                // Refresh only when data is stale — the cooldown
-                // guard inside refresh() avoids redundant fetches.
+                // Refresh with the best location available right now.
+                // Prefer the live GPS fix over the stale cached reference
+                // location — if CoreLocation hasn't delivered a fix yet,
+                // handleLocationUpdate will fire shortly and correct it.
+                let refreshLoc = locationManager.currentLocation ?? effectiveLocation
                 Task {
-                    if await viewModel.refresh(location: effectiveLocation) {
+                    if await viewModel.refresh(location: refreshLoc) {
                         lastUpdated = Date()
                     }
                 }
@@ -459,7 +462,22 @@ struct HomeView: View {
         case .manageFavorites:
             ManageFavoritesView(
                 sheetNavigator: sheetNavigator,
-                groupedTransit: viewModel.groupedTransit
+                groupedTransit: viewModel.groupedTransit,
+                userLocation: locationManager.currentLocation,
+                onSelect: { group, directionIndex in
+                    sheetNavigator.navigate(to: .routeDetail(group: group, directionIndex: directionIndex))
+                    Task {
+                        await viewModel.handleRouteSelection(
+                            group, directionIndex: directionIndex,
+                            userLocation: locationManager.currentLocation)
+                    }
+                },
+                onTrack: { group, directionIndex in
+                    viewModel.setPreferredDirectionIndex(directionIndex, for: group)
+                    let dir = group.directions[min(directionIndex, group.directions.count - 1)]
+                    guard let arrival = dir.liveArrivals.first else { return }
+                    viewModel.trackNearbyArrival(arrival, location: locationManager.currentLocation)
+                }
             )
 
 #if DEBUG
@@ -611,9 +629,30 @@ struct HomeView: View {
                 lastUpdated = Date()
             }
         } else {
-            // We already kicked off data with the cached location —
-            // just recenter the map on the real GPS position.
+            // Re-center the map on the fresh GPS fix.
             recenterOnUser()
+
+            // If the user has moved significantly from where data was last fetched,
+            // force a new fetch at the real current location.
+            //
+            // This fixes the stale-location bug: when the user backgrounds the app
+            // at home and reopens it at work, handleScenePhaseChange fires before
+            // CoreLocation delivers a new fix — so it refreshes at the stale home
+            // position. When the real GPS fix arrives here moments later and shows
+            // a meaningful distance from the last fetch, we correct it immediately.
+            if let lastLoc = viewModel.lastRefreshLocation {
+                let moved = loc.distance(from: lastLoc)
+                if moved >= AppSettings.shared.significantMovementMeters {
+                    AppLogger.shared.log(
+                        "LOCATION",
+                        message: "📍 GPS fix shows \(Int(moved))m drift from last fetch — re-fetching at current position"
+                    )
+                    Task {
+                        await viewModel.refresh(location: loc, force: true)
+                        lastUpdated = Date()
+                    }
+                }
+            }
         }
     }
     

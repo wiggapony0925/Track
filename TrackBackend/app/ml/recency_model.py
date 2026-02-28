@@ -55,6 +55,13 @@ _MAX_ERROR_SECS   = 600      # ±10 min — discard garbage (cancelled trips)
 # 8 concurrent queries is plenty — each query takes ~1-2ms.
 _QUERY_SEMAPHORE = asyncio.Semaphore(8)
 
+# Semaphore: cap concurrent OBSERVE operations (write pipelines).
+# On Render's Redis plans maxclients is very low (10–20).  Multiple concurrent
+# /nearby requests each fire ensure_future(observe_siri_delays_batch(…)) at
+# the same moment.  Limiting to 2 concurrent write pipelines keeps us well
+# under the server limit while still writing observations fast enough.
+_OBSERVE_SEMAPHORE = asyncio.Semaphore(2)
+
 
 def _snap_key(trip_id: str) -> str:
     return f"{_SNAP_PREFIX}:{trip_id}"
@@ -145,11 +152,12 @@ async def observe_siri_delay(
         hour = dt.hour
 
         obs_key = _obs_key(route_id, stop_id, dow, hour)
-        pipe = client.pipeline(transaction=False)
-        pipe.zadd(obs_key, {str(round(deviation_s, 2)): now})
-        pipe.zremrangebyrank(obs_key, 0, -(MAX_OBS_PER_KEY + 1))
-        pipe.expire(obs_key, _OBS_TTL)
-        await pipe.execute()
+        async with _OBSERVE_SEMAPHORE:
+            pipe = client.pipeline(transaction=False)
+            pipe.zadd(obs_key, {str(round(deviation_s, 2)): now})
+            pipe.zremrangebyrank(obs_key, 0, -(MAX_OBS_PER_KEY + 1))
+            pipe.expire(obs_key, _OBS_TTL)
+            await pipe.execute()
     except Exception as exc:
         TrackLogger.warning(
             f"[RECENCY] observe_siri_delay error {route_id}/{stop_id}: {exc}", tag="ML"
@@ -192,13 +200,14 @@ async def observe_siri_delays_batch(
         return
 
     try:
-        pipe = client.pipeline(transaction=False)
-        for route_id, stop_id, deviation_s in valid:
-            obs_key = _obs_key(route_id, stop_id, dow, hour)
-            pipe.zadd(obs_key, {str(round(deviation_s, 2)): now})
-            pipe.zremrangebyrank(obs_key, 0, -(MAX_OBS_PER_KEY + 1))
-            pipe.expire(obs_key, _OBS_TTL)
-        await pipe.execute()
+        async with _OBSERVE_SEMAPHORE:
+            pipe = client.pipeline(transaction=False)
+            for route_id, stop_id, deviation_s in valid:
+                obs_key = _obs_key(route_id, stop_id, dow, hour)
+                pipe.zadd(obs_key, {str(round(deviation_s, 2)): now})
+                pipe.zremrangebyrank(obs_key, 0, -(MAX_OBS_PER_KEY + 1))
+                pipe.expire(obs_key, _OBS_TTL)
+            await pipe.execute()
     except Exception as exc:
         TrackLogger.warning(
             f"[RECENCY] batch observe error ({len(valid)} obs): {exc}", tag="ML"
@@ -259,7 +268,8 @@ async def observe_trip_updates_batch(
             else:
                 write_pipe.delete(snap_key)
 
-        await write_pipe.execute()
+        async with _OBSERVE_SEMAPHORE:
+            await write_pipe.execute()
 
     except Exception as exc:
         TrackLogger.warning(f"[RECENCY] batch trip observe error ({len(trips)} trips): {exc}", tag="ML")

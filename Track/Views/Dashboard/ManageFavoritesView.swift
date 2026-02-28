@@ -7,18 +7,29 @@
 //
 
 import SwiftUI
+import CoreLocation
 
 struct ManageFavoritesView: View {
 
     let sheetNavigator: SheetNavigator
     /// Passed from HomeView so rows show live countdowns matching the dashboard.
     var groupedTransit: [GroupedNearbyTransitResponse] = []
+    /// User's current GPS location — used to sort rows by physical distance,
+    /// matching the order in the Near You / Farther Away sections.
+    var userLocation: CLLocation? = nil
+    /// Called when a direction tab is tapped — triggers map polylines/markers,
+    /// preferred-direction tracking, and analytics. Wired by the parent (HomeView)
+    /// to match the identical callback in NearbyDashboard.
+    var onSelect: ((GroupedNearbyTransitResponse, Int) -> Void)? = nil
+    /// Called when the track button is tapped inside a row.
+    var onTrack: ((GroupedNearbyTransitResponse, Int) -> Void)? = nil
     @ObservedObject private var favoritesManager = FavoritesManager.shared
 
     @State private var searchText = ""
     @State private var modeFilter = "all"
     @State private var isEditing = false
-    @State private var selectedIds: Set<Int64> = []
+    /// Selected route IDs (one per unique route, not per direction).
+    @State private var selectedIds: Set<String> = []
     @State private var isRemoving = false
 
     // MARK: - Mode Definitions
@@ -44,11 +55,37 @@ struct ManageFavoritesView: View {
         }
     }
 
+    /// All CloudFavorite rows whose routeId is in the selection set.
     private var selectedFavorites: [CloudFavorite] {
-        favoritesManager.favorites.filter { fav in
-            guard let id = fav.id else { return false }
-            return selectedIds.contains(id)
+        favoritesManager.favorites.filter { selectedIds.contains($0.routeId) }
+    }
+
+    /// Deduplicated route IDs from `filtered`, sorted by actual meter distance
+    /// (same `groupMinDistance` function as the nearby list).
+    private var uniqueFilteredRouteIds: [String] {
+        let groupLookup: [String: GroupedNearbyTransitResponse] = Dictionary(
+            uniqueKeysWithValues: groupedTransit.map { ($0.routeId, $0) }
+        )
+        let sorted = filtered.sorted { a, b in
+            let ag = groupLookup[a.routeId]
+            let bg = groupLookup[b.routeId]
+            switch (ag, bg) {
+            case let (ag?, bg?):
+                // Sort purely by distance — same logic as FavoritesSection.
+                guard let loc = userLocation else {
+                    return ag.displayName.localizedCaseInsensitiveCompare(bg.displayName) == .orderedAscending
+                }
+                let aDist = groupMinDistance(for: ag, from: loc)
+                let bDist = groupMinDistance(for: bg, from: loc)
+                if abs(aDist - bDist) > 0.5 { return aDist < bDist }
+                return ag.displayName.localizedCaseInsensitiveCompare(bg.displayName) == .orderedAscending
+            case (.some, .none): return true
+            case (.none, .some): return false
+            case (.none, .none): return (a.displayOrder ?? 0) < (b.displayOrder ?? 0)
+            }
         }
+        var seen = Set<String>()
+        return sorted.compactMap { seen.insert($0.routeId).inserted ? $0.routeId : nil }
     }
 
     // MARK: - Body
@@ -245,77 +282,114 @@ struct ManageFavoritesView: View {
 
     private var favoritesList: some View {
         ScrollView {
-            VStack(spacing: 0) {
-                ForEach(Array(filtered.enumerated()), id: \.element.id) { index, fav in
+            LazyVStack(spacing: 0) {
+                ForEach(Array(uniqueFilteredRouteIds.enumerated()), id: \.element) { index, routeId in
                     VStack(spacing: 0) {
-                        favoriteRow(fav)
-                        if index < filtered.count - 1 {
+                        routeRow(routeId: routeId)
+                        if index < uniqueFilteredRouteIds.count - 1 {
                             Divider()
-                                .padding(.leading, isEditing ? 58 : AppTheme.Layout.margin)
+                                .padding(.leading, AppTheme.Layout.margin)
                         }
                     }
                 }
             }
-            .padding(.horizontal, AppTheme.Layout.margin)
             .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isEditing)
         }
     }
 
-    private func matchedGroup(for fav: CloudFavorite) -> GroupedNearbyTransitResponse? {
-        groupedTransit.first { $0.routeId == fav.routeId }
-    }
-
-    private func directionIndex(for fav: CloudFavorite, in group: GroupedNearbyTransitResponse) -> Int {
-        group.directions.firstIndex {
-            $0.direction.lowercased() == (fav.direction ?? "").lowercased()
-        } ?? 0
-    }
-
+    /// One row per unique route. In edit mode a full-width overlay captures taps
+    /// and disables the row's internal gestures to avoid conflicts.
     @ViewBuilder
-    private func favoriteRow(_ fav: CloudFavorite) -> some View {
-        let isSelected = fav.id.map { selectedIds.contains($0) } ?? false
-        let group = matchedGroup(for: fav)
+    private func routeRow(routeId: String) -> some View {
+        let isSelected = selectedIds.contains(routeId)
+        let matchedGroup = groupedTransit.first { $0.routeId == routeId }
+        let repFav = filtered.first { $0.routeId == routeId }
 
-        HStack(spacing: 12) {
-            // Edit-mode selection circle
-            if isEditing {
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 22))
-                    .foregroundColor(isSelected ? AppTheme.Colors.alertRed : AppTheme.Colors.textSecondary.opacity(0.3))
-                    .animation(.easeInOut(duration: 0.15), value: isSelected)
-                    .frame(width: 26)
-            }
-
-            // Reuse the exact same FavoriteCard component from the dashboard strip,
-            // rendered in list-row mode (full-width, medium badge, live countdown pill).
-            FavoriteCard(
-                favorite: fav,
-                matchedGroup: group,
-                onTap: { _, _ in },  // tap handled below via contentShape
-                isListRow: true
-            )
-        }
-        .padding(.horizontal, 4)
-        .contentShape(Rectangle())
-        .background(
-            isEditing && isSelected
-                ? AppTheme.Colors.alertRed.opacity(0.06)
-                : Color.clear
-        )
-        .onTapGesture {
-            HapticManager.impact(.light)
-            if isEditing {
-                guard let id = fav.id else { return }
-                withAnimation(.easeInOut(duration: 0.15)) {
-                    if selectedIds.contains(id) { selectedIds.remove(id) }
-                    else { selectedIds.insert(id) }
-                }
-            } else if let group {
-                sheetNavigator.navigate(
-                    to: .routeDetail(group: group, directionIndex: directionIndex(for: fav, in: group))
+        ZStack(alignment: .leading) {
+            // ── Real row content ──
+            if let group = matchedGroup {
+                GroupedRouteRow(
+                    group: group,
+                    hasAlert: false,
+                    userLocation: nil,
+                    onSelect: isEditing ? nil : { directionIndex in
+                        onSelect?(group, directionIndex)
+                    },
+                    onTrack: { directionIndex in
+                        onTrack?(group, directionIndex)
+                    }
                 )
+                // Disable the row's internal tap/swipe entirely in edit mode
+                .allowsHitTesting(!isEditing)
+            } else if let fav = repFav {
+                offlineFavoriteRow(fav: fav)
+                    .allowsHitTesting(!isEditing)
+            }
+
+            // ── Edit-mode overlay (selection circle + tap target) ──
+            if isEditing {
+                HStack(spacing: 0) {
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 22))
+                        .foregroundColor(
+                            isSelected
+                                ? AppTheme.Colors.alertRed
+                                : AppTheme.Colors.textSecondary.opacity(0.35)
+                        )
+                        .animation(.easeInOut(duration: 0.15), value: isSelected)
+                        .padding(.leading, AppTheme.Layout.margin)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .background(
+                    isSelected ? AppTheme.Colors.alertRed.opacity(0.07) : Color.clear
+                )
+                .onTapGesture {
+                    HapticManager.impact(.light)
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        if selectedIds.contains(routeId) { selectedIds.remove(routeId) }
+                        else { selectedIds.insert(routeId) }
+                    }
+                }
             }
         }
+    }
+
+    /// Compact row for a favorite that isn't currently in the nearby radius.
+    private func offlineFavoriteRow(fav: CloudFavorite) -> some View {
+        HStack(spacing: 12) {
+            RouteBadge(
+                routeID: fav.routeDisplayName,
+                size: .medium,
+                isBus: fav.mode == "bus",
+                hexColor: nil,
+                mode: fav.mode
+            )
+            VStack(alignment: .leading, spacing: 3) {
+                Text(fav.routeDisplayName)
+                    .font(.custom("Helvetica-Bold", size: 15))
+                    .foregroundColor(AppTheme.Colors.textPrimary)
+                    .lineLimit(1)
+                Text(fav.stopName)
+                    .font(.system(size: 13, weight: .regular))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+                    .lineLimit(1)
+            }
+            Spacer()
+            Text("Not nearby")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(AppTheme.Colors.textSecondary)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(AppTheme.Colors.textSecondary.opacity(0.1))
+                .clipShape(Capsule())
+            Image(systemName: "chevron.right")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.35))
+        }
+        .padding(.vertical, 14)
+        .padding(.horizontal, AppTheme.Layout.margin)
     }
 
     // MARK: - Remove Bar
@@ -335,7 +409,7 @@ struct ManageFavoritesView: View {
                     Text(
                         isRemoving
                             ? "Removing…"
-                            : "Remove \(selectedIds.count) Favorite\(selectedIds.count == 1 ? "" : "s")"
+                            : "Remove \(selectedIds.count) Route\(selectedIds.count == 1 ? "" : "s")"
                     )
                     .font(.system(size: 16, weight: .semibold))
                 }

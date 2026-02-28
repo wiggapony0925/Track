@@ -16,7 +16,7 @@ BEGIN
     NEW.updated_at = timezone('utc'::text, now());
     RETURN NEW;
 END;
-$$ language 'plpgsql';
+$$ language 'plpgsql' SECURITY DEFINER SET search_path = public, pg_temp;
 
 
 -- ============================================================
@@ -214,7 +214,7 @@ BEGIN
   ON CONFLICT (user_id) DO NOTHING;
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
 
 DROP TRIGGER IF EXISTS on_auth_user_created_settings ON auth.users;
 CREATE TRIGGER on_auth_user_created_settings
@@ -439,7 +439,7 @@ BEGIN
   ORDER BY interaction_count DESC
   LIMIT p_limit;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
 
 
 -- Auto-create profile when user signs up
@@ -451,7 +451,7 @@ BEGIN
   ON CONFLICT (id) DO NOTHING;
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
 
 -- Trigger to auto-create profile on signup (idempotent)
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;

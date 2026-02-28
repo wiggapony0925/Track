@@ -468,6 +468,26 @@ final class HomeViewModel {
         #endif
     }
 
+    /// Single entry-point for every route row tap across the entire app.
+    ///
+    /// Consolidates the three-step dance that every `onSelect` callsite used to
+    /// repeat independently:
+    ///   1. Record the direction the user chose as their preference for this route.
+    ///   2. Log the interaction to `RouteAnalyticsManager` (powers smart suggestions).
+    ///   3. Load the route shape + vehicles on the map via `selectGroupedRoute`.
+    ///
+    /// Navigation (`sheetNavigator.navigate`) is intentionally kept at the call
+    /// site because it is UI state and belongs in the View layer.
+    func handleRouteSelection(
+        _ group: GroupedNearbyTransitResponse,
+        directionIndex: Int,
+        userLocation: CLLocation?
+    ) async {
+        setPreferredDirectionIndex(directionIndex, for: group)
+        RouteAnalyticsManager.shared.logInteraction(routeId: group.routeId)
+        await selectGroupedRoute(group, directionIndex: directionIndex, userLocation: userLocation)
+    }
+
     // Nearest metro recommendation (shown when no nearby transit)
     var nearestTransit: NearbyTransitResponse?
     /// Distance in meters from the user to the nearest transit stop.

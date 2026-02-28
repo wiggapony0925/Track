@@ -29,12 +29,10 @@ class FavoritesManager: ObservableObject {
     private var lastRefreshDate: Date?
     
     private init() {
-        // Load cached favorites from disk on launch for instant offline display
+        // Load cached favorites from disk on launch for instant offline display.
+        // The live refresh is driven by SyncManager.performFullSync() so we
+        // don't fire an extra Supabase request here at cold launch.
         loadFromCache()
-        // Then kick off a live refresh from Supabase in the background
-        Task {
-            await refresh()
-        }
     }
     
     // MARK: - Public API

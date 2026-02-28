@@ -64,7 +64,7 @@ struct DashboardView: View {
                             onSelect: { group, directionIndex in
                                 sheetNavigator.navigate(to: .routeDetail(group: group, directionIndex: directionIndex))
                                 Task {
-                                    await viewModel.selectGroupedRoute(group, directionIndex: directionIndex, userLocation: locationManager.currentLocation)
+                                    await viewModel.handleRouteSelection(group, directionIndex: directionIndex, userLocation: locationManager.currentLocation)
                                 }
                             }
                         )
