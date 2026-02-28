@@ -608,25 +608,75 @@ struct RouteDetailSheet: View {
     ///  1. Find the stop closest to the user's reference location.
     ///  2. Return arrivals at that stop, sorted by ETA.
     ///  3. Fall back to all live arrivals when no location is available.
-    /// Arrivals for the countdown chips.
+    /// Arrivals shown in the countdown chips, ordered so chip #1 always matches
+    /// the home-row countdown (same vehicle / same stop as `GroupedRouteRow`).
     ///
-    /// The backend now returns exactly ONE prediction per unique vehicle — the
-    /// one at the stop CLOSEST to the user (smallest `distance_m`).  So we no
-    /// longer filter by nearest stop here; doing so was the root cause of chips
-    /// disappearing (the user's nearest stop ≠ the stop the backend kept after
-    /// dedup, producing zero matches).
+    /// The backend now returns ONE prediction per vehicle — at the stop with the
+    /// smallest `distance_m` from the user.  We mirror `GroupedRouteRow.countdownArrival`:
+    ///  1. Find the user's nearest stop across all live arrivals (by `distanceM`,
+    ///     falling back to lat/lon distance or server-side `distance_m`).
+    ///  2. Place arrivals at THAT stop first (sorted by smartETA).
+    ///  3. Append arrivals at other stops after (sorted by smartETA).
+    ///  4. Deduplicate by vehicle key within each partition.
     ///
-    /// We simply return all live arrivals sorted by smart ETA, deduplicated by
-    /// vehicle key as a client-side safety net.
+    /// This guarantees chip #1 == home-row countdown when at least one arrival
+    /// has coordinates, and degrades gracefully to "soonest globally" otherwise.
     private var nearestStopArrivals: [NearbyTransitResponse] {
         let live = safeDirection.liveArrivals
         guard !live.isEmpty else { return [] }
-        let sorted = sortArrivalsByETA(live)
-        var seen = Set<String>()
-        return sorted.filter { arrival in
-            guard let key = arrival.vehicleId ?? arrival.tripId else { return true }
-            return seen.insert(key).inserted
+
+        // ── Find nearest stop by the same algorithm as GroupedRouteRow ──────
+        let refLoc: CLLocation? = (currentLocation ?? searchCenter).map {
+            CLLocation(latitude: $0.latitude, longitude: $0.longitude)
         }
+
+        var nearestStopKey: String?
+        var nearestDist: CLLocationDistance = .greatestFiniteMagnitude
+
+        for arrival in live {
+            let dist: CLLocationDistance
+            if let dm = arrival.distanceM {
+                dist = dm
+            } else if let loc = refLoc, let lat = arrival.stopLat, let lon = arrival.stopLon {
+                dist = loc.distance(from: CLLocation(latitude: lat, longitude: lon))
+            } else {
+                dist = .greatestFiniteMagnitude
+            }
+            if dist < nearestDist {
+                nearestDist = dist
+                nearestStopKey = arrival.stopId ?? arrival.stopName
+            }
+        }
+
+        // ── Partition: nearest-stop first, then the rest ─────────────────────
+        var atNearest: [NearbyTransitResponse] = []
+        var elsewhere: [NearbyTransitResponse] = []
+        for arrival in live {
+            let key = arrival.stopId ?? arrival.stopName
+            if let nearest = nearestStopKey, key == nearest {
+                atNearest.append(arrival)
+            } else {
+                elsewhere.append(arrival)
+            }
+        }
+
+        // Deduplicate by vehicle key within each partition, preserving ETA order
+        func deduped(_ list: [NearbyTransitResponse]) -> [NearbyTransitResponse] {
+            var seen = Set<String>()
+            return sortArrivalsByETA(list).filter { a in
+                guard let k = a.vehicleId ?? a.tripId else { return true }
+                return seen.insert(k).inserted
+            }
+        }
+
+        // Show ONLY the nearest-stop arrivals (matches home-row chip #1 exactly).
+        // Cap at 6 to avoid flooding the chips section.
+        // Fallback: if no arrivals resolved to a nearest stop, show globally-soonest arrivals.
+        let nearestChips = deduped(atNearest)
+        if !nearestChips.isEmpty {
+            return Array(nearestChips.prefix(6))
+        }
+        return Array(deduped(elsewhere).prefix(6))
     }
 
     /// Mirrors `GroupedRouteRow.countdownArrival(for:)` as closely as possible,
@@ -879,10 +929,18 @@ struct RouteDetailSheet: View {
     }
 
     /// Sorts arrivals by smart ETA so chips and rows use the same ordering.
+    ///
+    /// Pre-computes ALL ETAs into a dictionary first so sorting only triggers
+    /// O(N) smartETA calls instead of O(N log N) — critical because smartETA
+    /// hits ArrivalETAEngine on the main thread on every comparison.
     private func sortArrivalsByETA(_ arrivals: [NearbyTransitResponse]) -> [NearbyTransitResponse] {
-        arrivals.sorted { lhs, rhs in
-            let left = smartETA(for: lhs).secondsRemaining
-            let right = smartETA(for: rhs).secondsRemaining
+        guard arrivals.count > 1 else { return arrivals }
+        let etaMap = Dictionary(uniqueKeysWithValues: arrivals.map {
+            ($0.id, smartETA(for: $0).secondsRemaining)
+        })
+        return arrivals.sorted { lhs, rhs in
+            let left  = etaMap[lhs.id] ?? .infinity
+            let right = etaMap[rhs.id] ?? .infinity
             if left != right { return left < right }
             return lhs.id < rhs.id
         }
@@ -953,8 +1011,12 @@ struct RouteDetailSheet: View {
 
     // MARK: - Arrival Card
 
+    /// `eta` is pre-computed by the single sheet-level `TimelineView` in
+    /// `countdownSection` — do NOT recompute it here.  This eliminates N
+    /// separate per-chip timer callbacks (one per second each) and replaces
+    /// them with one shared tick that computes all ETAs in a single pass.
     @ViewBuilder
-    private func arrivalCard(arrival: NearbyTransitResponse, index: Int) -> some View {
+    private func arrivalCard(arrival: NearbyTransitResponse, index: Int, eta: SmartETA) -> some View {
         let isFirst = index == 0
         let isSched = isEffectivelyScheduled(arrival)
 
@@ -992,12 +1054,10 @@ struct RouteDetailSheet: View {
             Spacer(minLength: 6)
 
             // ── ETA counter ───────────────────────────────────────────────
-            TimelineView(.periodic(from: .now, by: 1.0)) { _ in
-                let eta = smartETA(for: arrival)
-                let mins = eta.minutesRemaining
-                let isNow = !isSched && (eta.isAtStop || eta.secondsRemaining <= 30)
-                arrivalETA(mins: mins, isNow: isNow, isSched: isSched, isFirst: isFirst)
-            }
+            // `eta` is injected by the parent TimelineView in countdownSection.
+            let mins  = eta.minutesRemaining
+            let isNow = !isSched && (eta.isAtStop || eta.secondsRemaining <= 30)
+            arrivalETA(mins: mins, isNow: isNow, isSched: isSched, isFirst: isFirst)
 
             Spacer(minLength: isFirst ? 8 : 6)
 
@@ -1154,14 +1214,19 @@ struct RouteDetailSheet: View {
                     .padding(.vertical, 24)
                 }
             } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(alignment: .top, spacing: 10) {
-                        ForEach(Array(nextArrivals.enumerated()), id: \.element.id) { index, arrival in
-                            arrivalCard(arrival: arrival, index: index)
+                // ONE TimelineView drives all chips — replacing the previous N
+                // per-chip TimelineViews that each fired 1×/s on the main thread.
+                TimelineView(.periodic(from: .now, by: 1.0)) { _ in
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(alignment: .top, spacing: 10) {
+                            ForEach(Array(nextArrivals.enumerated()), id: \.element.id) { index, arrival in
+                                let eta = smartETA(for: arrival)
+                                arrivalCard(arrival: arrival, index: index, eta: eta)
+                            }
                         }
+                        .padding(.horizontal, AppTheme.Layout.margin)
+                        .padding(.vertical, 4)
                     }
-                    .padding(.horizontal, AppTheme.Layout.margin)
-                    .padding(.vertical, 4)
                 }
             }
         }

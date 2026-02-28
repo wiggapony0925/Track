@@ -125,12 +125,21 @@ struct NearbyTransitRow: View {
                         TimelineView(.periodic(from: .now, by: 1.0)) { _ in
                             let eta: SmartETA = resolvedETA(for: arrival)
                             let mins = eta.minutesRemaining
-                            let isNow = eta.isAtStop || eta.secondsRemaining <= 30
+                            // Never show "Now" for a trip that's only scheduled
+                            // (GTFS-static, vehicle still at terminal).
+                            let isNow = !arrival.isScheduledOnly
+                                && (eta.isAtStop || eta.secondsRemaining <= 30)
 
                             HStack(alignment: .firstTextBaseline, spacing: 3) {
                                 Text(isNow ? "Now" : "\(mins)")
                                     .font(.custom("Helvetica-Bold", size: isNow ? 22 : 32))
-                                    .foregroundColor(AppTheme.Colors.countdown(mins))
+                                    // Grey for scheduled (not yet in service); normal
+                                    // urgency color (red/green/black) once on route.
+                                    .foregroundColor(
+                                        arrival.isScheduledOnly
+                                            ? AppTheme.Colors.textSecondary.opacity(0.55)
+                                            : AppTheme.Colors.countdown(mins)
+                                    )
 
                                 if !isNow {
                                     Text("min")
@@ -161,7 +170,7 @@ struct NearbyTransitRow: View {
                     // "In Route" live indicator — shows when this vehicle
                     // has a live GPS/GTFS-RT position on the map.
                     // Tapping it focuses the map on this vehicle's marker.
-                    if isLiveOnMap {
+                    if isLiveOnMap && !arrival.isScheduledOnly {
                         HStack(spacing: 4) {
                             Circle()
                                 .fill(AppTheme.Colors.successGreen)
@@ -182,7 +191,22 @@ struct NearbyTransitRow: View {
                         }
                     } else {
                         // Vehicle is NOT live on the map (no GPS marker matched).
-                        if let ts = arrival.arrivalTs {
+                        if arrival.isScheduledOnly {
+                            // GTFS-static only — trip hasn't departed its first stop yet.
+                            // Show a clear "Scheduled" badge so users know it's not in service.
+                            HStack(spacing: 4) {
+                                Image(systemName: "calendar.badge.clock")
+                                    .font(.system(size: 8, weight: .semibold))
+                                Text("Scheduled")
+                                    .font(.custom("Helvetica-Bold", size: 9))
+                                    .textCase(.uppercase)
+                            }
+                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(AppTheme.Colors.textSecondary.opacity(0.06))
+                            .clipShape(Capsule())
+                        } else if let ts = arrival.arrivalTs {
                             // Has an arrival timestamp — show the clock time.
                             let arrivalDate = Date(timeIntervalSince1970: Double(ts))
                             HStack(spacing: 4) {

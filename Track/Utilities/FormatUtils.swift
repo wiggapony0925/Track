@@ -94,6 +94,7 @@ func formatArrivalTime(date: Date?, fallback: String = "—") -> String {
 ///   - meters: Distance in meters.
 ///   - suffix: Optional suffix appended after the value (e.g. "away"). Defaults to "away".
 /// - Returns: e.g. "250m away", "1.2km away" (metric) or "820 ft away", "0.3 mi away" (imperial)
+/// Imperial shows feet for distances under 1320 ft (0.25 mi).
 func formatDistance(_ meters: Double, suffix: String = "away") -> String {
     if isMetricDistance {
         let value: String
@@ -114,13 +115,13 @@ func formatDistance(_ meters: Double, suffix: String = "away") -> String {
 /// **Metric:** Under 100 m shows exact metres; 100–999 m rounds to nearest 10;
 /// ≥ 1 km shows one decimal place.
 ///
-/// **Imperial:** Under 528 ft (0.1 mi) shows feet rounded to nearest 10;
+/// **Imperial:** Under 1320 ft (0.25 mi) shows feet rounded to nearest 10;
 /// otherwise shows miles with one decimal.
 ///
 /// - Parameters:
 ///   - meters: Distance in meters.
 ///   - suffix: Optional suffix (e.g. "away"). Defaults to "away".
-/// - Returns: e.g. "82m away", "250m away", "1.2km away" or "270 ft away", "0.3 mi away"
+/// - Returns: e.g. "82m away", "250m away", "1.2km away" or "270 ft away", "820 ft away"
 func formatWalkingDistance(_ meters: Double, suffix: String = "away") -> String {
     if isMetricDistance {
         let value: String
@@ -168,7 +169,7 @@ func formatDistanceMiles(_ meters: Double) -> String {
 /// Formats a distance in meters using the user's preferred unit system
 /// for display on route cards.
 ///
-/// **Imperial:** Under 528 feet (0.1 mi) shows feet rounded to nearest 10.
+/// **Imperial:** Under 1320 feet (0.25 mi) shows feet rounded to nearest 10.
 /// Otherwise shows miles with one decimal.
 ///
 /// **Metric:** Under 100 m shows exact metres. Otherwise shows km with one decimal.
@@ -176,7 +177,7 @@ func formatDistanceMiles(_ meters: Double) -> String {
 /// - Parameters:
 ///   - meters: Distance in meters.
 ///   - suffix: Optional suffix (e.g. "away"). Defaults to empty.
-/// - Returns: e.g. "320 ft", "0.3 mi" or "95m", "0.3 km"
+/// - Returns: e.g. "250 ft", "820 ft", "0.3 mi" or "95m", "0.3 km"
 func formatDistanceImperial(_ meters: Double, suffix: String = "") -> String {
     let value: String
     if isMetricDistance {
@@ -194,8 +195,7 @@ func formatDistanceImperial(_ meters: Double, suffix: String = "") -> String {
         }
     } else {
         let feet = metersToFeet(meters)
-        if feet < 528 {  // 528 ft ≈ 0.1 mi
-            // Round to nearest 10 ft for a clean display
+        if feet < 1320 {  // 1320 ft ≈ 0.25 mi — keeps nearby stops in precise feet
             let rounded = Int((feet / 10).rounded()) * 10
             value = "\(max(rounded, 10)) ft"
         } else {

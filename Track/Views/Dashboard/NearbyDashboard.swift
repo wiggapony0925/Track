@@ -156,6 +156,9 @@ struct NearbyDashboard: View {
                             }
                         }
                     )
+                } else if viewModel.isNetworkError, let msg = viewModel.errorMessage {
+                    // Network is down — show a reconnect card, NOT the out-of-NYC card.
+                    OfflineEmptyStateCard(message: msg)
                 } else {
                     OutOfServiceAreaCard(
                         cameraPosition: $cameraPosition,
@@ -351,17 +354,21 @@ struct MuchFartherAwaySectionHeader: View {
 /// fall within that ring.  Always visible so all 3 tiers are present.
 struct EmptyTierHint: View {
     var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "minus.circle")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.4))
+        HStack(spacing: 8) {
+            // Dotted separator line
+            Rectangle()
+                .fill(AppTheme.Colors.textSecondary.opacity(0.12))
+                .frame(width: 20, height: 1.5)
+                .padding(.leading, AppTheme.Layout.margin)
+
             Text("Nothing in this range")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.4))
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.35))
+                .italic()
+
+            Spacer()
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, AppTheme.Layout.margin)
-        .padding(.vertical, 6)
+        .padding(.vertical, 5)
     }
 }
 
@@ -469,6 +476,45 @@ struct FlatTransitList: View {
         .padding(.vertical, 8)
         .background(.ultraThinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius, style: .continuous))
+        .padding(.horizontal, AppTheme.Layout.margin)
+    }
+}
+
+// MARK: - Offline Empty State Card
+
+/// Shown when the network is unavailable (not when the user is outside NYC).
+struct OfflineEmptyStateCard: View {
+    let message: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "wifi.exclamationmark")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(AppTheme.Colors.alertRed)
+                Text("No Connection")
+                    .font(.system(size: 17, weight: .semibold, design: .rounded))
+                    .foregroundColor(AppTheme.Colors.textPrimary)
+                Spacer()
+            }
+
+            Text(message)
+                .font(.system(size: 14, weight: .regular))
+                .foregroundColor(AppTheme.Colors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text("Transit data will reload automatically once you're back online.")
+                .font(.system(size: 12, weight: .regular))
+                .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(AppTheme.Layout.cardPadding)
+        .background(AppTheme.Colors.cardBackground)
+        .cornerRadius(AppTheme.Layout.cornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius)
+                .strokeBorder(AppTheme.Colors.alertRed.opacity(0.25), lineWidth: 1)
+        )
         .padding(.horizontal, AppTheme.Layout.margin)
     }
 }

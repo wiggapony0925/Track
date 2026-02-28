@@ -49,8 +49,6 @@ struct AppSettings {
     let maxElevatorOutages: Int
     /// How many LIRR arrivals to list.
     let maxLirrArrivals: Int
-    /// Number of upcoming arrivals to show in the Route Detail sheet.
-    let maxRouteDetailArrivals: Int
     /// Map zoom level (distance) at which station markers become visible.
     let stationVisibilityZoomMeters: Double
     /// How long before a Live Activity is considered stale (seconds).
@@ -175,7 +173,6 @@ struct AppSettings {
             self.maxServiceAlerts = 3
             self.maxElevatorOutages = 5
             self.maxLirrArrivals = 15
-            self.maxRouteDetailArrivals = 4
             self.stationVisibilityZoomMeters = 3500
             self.liveActivityStaleDateSeconds = 3600
             self.liveActivityDismissalSeconds = 120
@@ -227,7 +224,6 @@ struct AppSettings {
         self.maxServiceAlerts = display["max_service_alerts"] as? Int ?? 3
         self.maxElevatorOutages = display["max_elevator_outages"] as? Int ?? 5
         self.maxLirrArrivals = display["max_lirr_arrivals"] as? Int ?? 15
-        self.maxRouteDetailArrivals = display["max_route_detail_arrivals"] as? Int ?? 4
         self.stationVisibilityZoomMeters = display["station_visibility_zoom_meters"] as? Double ?? 3500
         self.liveActivityStaleDateSeconds = display["live_activity_stale_date_seconds"] as? Double ?? 3600
         self.liveActivityDismissalSeconds = display["live_activity_dismissal_seconds"] as? Double ?? 120

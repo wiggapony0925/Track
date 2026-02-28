@@ -368,6 +368,7 @@ struct HomeView: View {
                 cachedStations: viewModel.cachedStations,
                 smartETAProvider: { viewModel.smartETA(for: $0) },
                 liveVehicleCount: vehicleCount,
+                elevatorOutages: viewModel.elevatorOutages,
                 isSheetExpanded: sheetDetent == .large,
                 is3DMode: $is3DMode,
                 cameraPosition: $cameraPosition,

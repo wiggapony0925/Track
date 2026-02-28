@@ -27,6 +27,21 @@ final class HomeViewModel {
     var hasLoadedOnce = false
     var errorMessage: String?
 
+    /// True when `errorMessage` indicates a network/connectivity failure rather
+    /// than a legitimate "no transit in this area" empty state.
+    /// Used to show an offline banner instead of the out-of-service-area card.
+    var isNetworkError: Bool {
+        guard let msg = errorMessage?.lowercased() else { return false }
+        return msg.contains("no network")
+            || msg.contains("offline")
+            || msg.contains("connection")
+            || msg.contains("signal lost")
+            || msg.contains("internet")
+            || msg.contains("unavailable")
+            || msg.contains("timed out")
+            || msg.contains("timeout")
+    }
+
     /// Timestamp of the last successful data refresh.
     /// Used to skip redundant fetches when the user returns from background
     /// within a short window (e.g. < 15 seconds).
@@ -1138,6 +1153,11 @@ final class HomeViewModel {
     /// direction (which would have a marker on the map but for a different
     /// direction tab than the user is viewing).
     func isVehicleLiveOnMap(_ arrival: NearbyTransitResponse) -> Bool {
+        // Scheduled arrivals have a GTFS trip-id but their vehicle is still at the
+        // terminal — it hasn't started serving passengers on this direction yet.
+        // Never show a map marker or "In Route" badge for them.
+        if arrival.isScheduledOnly { return false }
+
         if arrival.isBus, let vid = arrival.vehicleId, !vid.isEmpty {
             return filteredBusVehicles.contains(where: { $0.vehicleId == vid })
         }
