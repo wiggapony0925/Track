@@ -83,9 +83,9 @@ struct RouteDetailSheet: View {
     @State private var isLoadingArrivals: Bool = true
 
     /// Debounced snapshot of the nearest-stop arrivals shown in countdown chips.
-    /// Only refreshes when the leading trip changes OR ETA shifts > 60 s —
-    /// prevents the chips from flickering 3× during the open-sheet data cascade
-    /// (initial load → vehicles refresh → shape refresh).
+    /// Refreshes when the set of vehicles changes (appeared / vanished).
+    /// The TimelineView re-sorts chips by live ETA every second, so this only
+    /// controls WHICH arrivals are in the chip list, not their order.
     @State private var stableNearestArrivals: [NearbyTransitResponse] = []
 
     /// Per-direction stop key lock: [directionIndex: stopId ?? stopName].
@@ -99,31 +99,23 @@ struct RouteDetailSheet: View {
     /// re-sorts of `group.directions` never flip the sheet to a different dir.
     @State private var lockedDirectionHeadsign: String?
 
-    /// One-way latch: once a trip has been observed as "live" (non-scheduled),
-    /// we never downgrade it back to "Scheduled" even if the backend flips
-    /// (e.g. SIRI GPS spooking toggles `Monitored` between polls).
-    @State private var knownLiveTripKeys: Set<String> = []
-
     /// Convenience: locked stop key for the currently-displayed direction.
     private var lockedNearestStopKey: String? { lockedStopKeyPerDirection[selectedDirectionIndex] }
 
-    /// Returns `true` only if this arrival has *never* been observed as live.
-    /// Prevents the "On Route" ↔ "Scheduled" flicker caused by MTA SIRI
-    /// GPS spooking (the `Monitored` flag toggles between consecutive polls).
-    private func isEffectivelyScheduled(_ arrival: NearbyTransitResponse) -> Bool {
-        guard arrival.isScheduledOnly else { return false }  // currently live → not scheduled
-        let key = arrival.tripId ?? arrival.vehicleId ?? ""
-        guard !key.isEmpty else { return true }  // unknown trip → trust backend
-        return !knownLiveTripKeys.contains(key)   // seen live before → still live
+    /// Three-tier chip status so the user can immediately tell what's real.
+    ///  • `.arriving`  – live vehicle within ~1 min (bright green, pulsing)
+    ///  • `.onRoute`   – live vehicle, > 1 min away (standard green)
+    ///  • `.scheduled`  – GTFS-static / no live tracking (grey)
+    private enum ChipStatus {
+        case arriving, onRoute, scheduled
     }
 
-    /// Record all currently-live trips so we never downgrade them to scheduled.
-    private func recordLiveTrips(_ arrivals: [NearbyTransitResponse]) {
-        for a in arrivals where !a.isScheduledOnly {
-            if let key = a.tripId ?? a.vehicleId, !key.isEmpty {
-                knownLiveTripKeys.insert(key)
-            }
-        }
+    /// Derives the chip status from the backend status + live ETA.
+    /// No latch — trusts the current poll so the tag always reflects reality.
+    private func chipStatus(for arrival: NearbyTransitResponse, eta: SmartETA) -> ChipStatus {
+        guard !arrival.isScheduledOnly else { return .scheduled }
+        if eta.isAtStop || eta.secondsRemaining <= 60 { return .arriving }
+        return .onRoute
     }
 
     /// Available tabs for this route.
@@ -340,13 +332,11 @@ struct RouteDetailSheet: View {
                let first = stableNearestArrivals.first {
                 lockedStopKeyPerDirection[selectedDirectionIndex] = first.stopId ?? first.stopName
             }
-            // Latch live trip keys so we never downgrade them to "Scheduled"
-            recordLiveTrips(safeDirection.liveArrivals)
             #if DEBUG
             AppLogger.shared.log(
                 "ROUTE_DETAIL",
                 message:
-                    "VIEW_OPEN route=\(group.routeId) dir=\(safeDirection.direction) live=\(safeDirection.liveArrivals.count) latchedLive=\(knownLiveTripKeys.count)"
+                    "VIEW_OPEN route=\(group.routeId) dir=\(safeDirection.direction) live=\(safeDirection.liveArrivals.count)"
             )
             #endif
         }
@@ -367,9 +357,6 @@ struct RouteDetailSheet: View {
                     isLoadingArrivals = false
                 }
             }
-
-            // Latch any newly-live trips so their status never regresses.
-            recordLiveTrips(safeDirection.liveArrivals)
 
             // Update the stable countdown only when it meaningfully changes:
             // different leading vehicle/trip, or ETA shifts > 60 s.
@@ -785,27 +772,30 @@ struct RouteDetailSheet: View {
     }
 
     /// Returns true when `new` differs enough from `stableNearestArrivals` to warrant
-    /// a display refresh — i.e. the leading trip changed, or the ETA shifted > 60 s.
+    /// a display refresh — i.e. the set of arrivals changed, or the count changed.
     ///
-    /// Uses ``smartETA`` (not the raw ``minutesAway`` integer) so changes that
-    /// result from live vehicle movement — not just backend poll boundary integers —
-    /// also trigger a refresh.
+    /// NOTE: We no longer gate on a large ETA threshold because the TimelineView
+    /// now re-sorts chips every tick.  `stableNearestArrivals` only controls WHICH
+    /// arrivals are in the chip list; their ORDER is handled live.  So we refresh
+    /// whenever the arrival set itself changes (different vehicle, count change,
+    /// or a new stop key), which keeps the chip list fresh without causing visual
+    /// flicker (the TimelineView sort handles smooth reordering).
     private func shouldRefreshStableArrivals(_ new: [NearbyTransitResponse]) -> Bool {
         guard !new.isEmpty else { return false }
         guard !stableNearestArrivals.isEmpty else { return true }
 
-        let newFirst = new[0]
-        let oldFirst = stableNearestArrivals[0]
+        // Count changed → refresh (arrival appeared or departed)
+        if new.count != stableNearestArrivals.count { return true }
 
-        // Different vehicle / trip → always refresh
-        let newKey = newFirst.tripId ?? newFirst.vehicleId
-        let oldKey = oldFirst.tripId ?? oldFirst.vehicleId
+        // Different leading vehicle/trip → refresh
+        let newKey = new[0].tripId ?? new[0].vehicleId
+        let oldKey = stableNearestArrivals[0].tripId ?? stableNearestArrivals[0].vehicleId
         if newKey != oldKey { return true }
 
-        // Same vehicle: compare using smartETA so live GPS refinements are captured
-        let newSecs = smartETA(for: newFirst).secondsRemaining
-        let oldSecs = smartETA(for: oldFirst).secondsRemaining
-        return abs(newSecs - oldSecs) > 60
+        // Different set of vehicles → refresh
+        let newKeys = Set(new.compactMap { $0.vehicleId ?? $0.tripId })
+        let oldKeys = Set(stableNearestArrivals.compactMap { $0.vehicleId ?? $0.tripId })
+        return newKeys != oldKeys
     }
 
     private func logETAParity(reason: String) {
@@ -1018,43 +1008,69 @@ struct RouteDetailSheet: View {
     @ViewBuilder
     private func arrivalCard(arrival: NearbyTransitResponse, index: Int, eta: SmartETA) -> some View {
         let isFirst = index == 0
-        let isSched = isEffectivelyScheduled(arrival)
+        let status = chipStatus(for: arrival, eta: eta)
+        let isSched = status == .scheduled
+        let isArriving = status == .arriving
+
+        // ── Tier colors ──────────────────────────────────────────────
+        let tagColor: Color = {
+            switch status {
+            case .arriving:  return routeColor
+            case .onRoute:   return AppTheme.Colors.successGreen
+            case .scheduled: return AppTheme.Colors.textSecondary.opacity(0.6)
+            }
+        }()
+        let tagBg: Color = {
+            switch status {
+            case .arriving:  return routeColor.opacity(0.18)
+            case .onRoute:   return AppTheme.Colors.successGreen.opacity(0.14)
+            case .scheduled: return AppTheme.Colors.textSecondary.opacity(0.10)
+            }
+        }()
+        let tagLabel: String = {
+            switch status {
+            case .arriving:  return "Arriving"
+            case .onRoute:   return "On Route"
+            case .scheduled: return "Scheduled"
+            }
+        }()
+        let tagIcon: String = {
+            switch status {
+            case .arriving:  return "location.fill"
+            case .onRoute:   return "circle.fill"
+            case .scheduled: return "clock"
+            }
+        }()
 
         VStack(spacing: 0) {
             // ── Status tag ────────────────────────────────────────────────
             HStack(spacing: 4) {
                 if isSched {
-                    Image(systemName: "clock")
+                    Image(systemName: tagIcon)
                         .font(.system(size: 8, weight: .bold))
-                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
-                    Text("Scheduled")
-                        .font(.custom("Helvetica-Bold", size: 8.5))
-                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
+                        .foregroundColor(tagColor)
+                } else if isArriving {
+                    Image(systemName: tagIcon)
+                        .font(.system(size: 7, weight: .bold))
+                        .foregroundColor(tagColor)
+                        .symbolEffect(.pulse, options: .repeating)
                 } else {
                     Circle()
-                        .fill(AppTheme.Colors.successGreen)
+                        .fill(tagColor)
                         .frame(width: 5, height: 5)
-                    Text("On Route")
-                        .font(.custom("Helvetica-Bold", size: 8.5))
-                        .foregroundColor(AppTheme.Colors.successGreen)
                 }
+                Text(tagLabel)
+                    .font(.custom("Helvetica-Bold", size: 8.5))
+                    .foregroundColor(tagColor)
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
-            .background(
-                Capsule()
-                    .fill(
-                        isSched
-                        ? AppTheme.Colors.textSecondary.opacity(0.10)
-                        : AppTheme.Colors.successGreen.opacity(0.14)
-                    )
-            )
+            .background(Capsule().fill(tagBg))
             .padding(.top, 13)
 
             Spacer(minLength: 6)
 
             // ── ETA counter ───────────────────────────────────────────────
-            // `eta` is injected by the parent TimelineView in countdownSection.
             let mins  = eta.minutesRemaining
             let isNow = !isSched && (eta.isAtStop || eta.secondsRemaining <= 30)
             arrivalETA(mins: mins, isNow: isNow, isSched: isSched, isFirst: isFirst)
@@ -1090,12 +1106,13 @@ struct RouteDetailSheet: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 18)
-                .stroke(
-                    isSched
-                    ? AppTheme.Colors.textSecondary.opacity(0.12)
-                    : (isFirst ? routeColor.opacity(0.35) : Color.clear),
-                    lineWidth: 1.2
-                )
+                .stroke({
+                    switch status {
+                    case .arriving: return routeColor.opacity(0.5)
+                    case .onRoute:  return isFirst ? routeColor.opacity(0.35) : Color.clear
+                    case .scheduled: return AppTheme.Colors.textSecondary.opacity(0.12)
+                    }
+                }(), lineWidth: 1.2)
         )
         // Tap card to start Live Activity tracking for this arrival
         .onTapGesture {
@@ -1216,12 +1233,27 @@ struct RouteDetailSheet: View {
             } else {
                 // ONE TimelineView drives all chips — replacing the previous N
                 // per-chip TimelineViews that each fired 1×/s on the main thread.
+                //
+                // CRITICAL: compute fresh ETAs, sort, and filter INSIDE the
+                // TimelineView closure each tick.  `stableNearestArrivals`
+                // determines WHICH arrivals appear; this tick-level sort ensures
+                // the ORDER always matches the DISPLAYED values.  Without this,
+                // chips that were sorted at "2 min" can later display "NOW" while
+                // sitting to the right of an "8 min" chip — exactly the bug the
+                // user reported.
                 TimelineView(.periodic(from: .now, by: 1.0)) { _ in
+                    let liveChips: [(arrival: NearbyTransitResponse, eta: SmartETA)] = nextArrivals.compactMap { arrival in
+                        let eta = smartETA(for: arrival)
+                        // Drop arrivals whose timestamp is >90 s in the past — bus already left.
+                        guard !eta.isPastArrival else { return nil }
+                        return (arrival, eta)
+                    }
+                    .sorted { $0.eta.secondsRemaining < $1.eta.secondsRemaining }
+
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(alignment: .top, spacing: 10) {
-                            ForEach(Array(nextArrivals.enumerated()), id: \.element.id) { index, arrival in
-                                let eta = smartETA(for: arrival)
-                                arrivalCard(arrival: arrival, index: index, eta: eta)
+                            ForEach(Array(liveChips.enumerated()), id: \.element.arrival.id) { index, pair in
+                                arrivalCard(arrival: pair.arrival, index: index, eta: pair.eta)
                             }
                         }
                         .padding(.horizontal, AppTheme.Layout.margin)
@@ -2076,7 +2108,7 @@ struct RouteDetailSheet: View {
                             .foregroundColor(AppTheme.Colors.successGreen)
                     } else {
                         HStack(spacing: 3) {
-                            if !isEffectivelyScheduled(arrival) {
+                            if !arrival.isScheduledOnly {
                                 Circle()
                                     .fill(AppTheme.Colors.successGreen)
                                     .frame(width: 5, height: 5)
@@ -2086,7 +2118,7 @@ struct RouteDetailSheet: View {
                                 .foregroundColor(
                                     isPassed
                                     ? AppTheme.Colors.textSecondary.opacity(0.35)
-                                    : (isEffectivelyScheduled(arrival)
+                                    : (arrival.isScheduledOnly
                                        ? AppTheme.Colors.textSecondary
                                        : routeColor)
                                 )

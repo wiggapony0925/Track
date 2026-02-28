@@ -88,20 +88,19 @@ struct DirectionArrivalsResponse: Codable, Identifiable, Equatable {
     /// that exist only to guarantee direction tabs, AND arrivals whose timestamp
     /// is more than 5 minutes in the past (vehicle already passed the stop).
     ///
-    /// NOTE: The window is intentionally generous (300 s, not 90 s) so that
-    /// buses running a minute or two late don't disappear from the countdown
-    /// chips between backend polls.  ArrivalETAEngine already clamps seconds to
-    /// 0 and shows "Now" for past arrivals, so there is no UX harm in keeping
-    /// them a bit longer client-side.
+    /// NOTE: 120 s grace period (> the engine's 90 s isPastArrival window)
+    /// keeps a bus that dwells 1-2 min at a stop from vanishing between
+    /// backend polls, while preventing 5-minute-stale ghosts from piling
+    /// up as extra "NOW" chips.
     var liveArrivals: [NearbyTransitResponse] {
         let now = Date.now.timeIntervalSince1970
         return arrivals.filter { arrival in
             // Filter out placeholders
             guard !arrival.isPlaceholder else { return false }
-            // Filter out arrivals whose timestamp is more than 5 minutes in the past
+            // Filter out arrivals whose timestamp is more than 2 minutes in the past
             if let ts = arrival.arrivalTs, ts > 0 {
                 let elapsed = now - Double(ts)
-                if elapsed > 300 { return false }
+                if elapsed > 120 { return false }
             }
             // Only filter 0-minute arrivals that are purely static GTFS with no
             // realtime context at all.  Live SIRI buses at minutesAway==0 are
