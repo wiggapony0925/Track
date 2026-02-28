@@ -706,6 +706,33 @@ def _group_arrivals(flat: list[NearbyTransitArrival]) -> list[GroupedNearbyTrans
                 arrivals=arrivals,
             ))
 
+        # ── Cross-direction vehicle dedup ─────────────────────────────────
+        # A vehicle can appear in multiple direction buckets when SIRI
+        # predictions for that vehicle span stops that map to different
+        # headsign keys (e.g. the same bus appears in both "RUSH JFK AIRPORT"
+        # AND "RUSH KEW GARDENS").  Keep each vehicle only in the direction
+        # where its user-nearest stop has the SMALLEST distance_m.
+        # Per-direction dedup above already selected the closest stop per
+        # vehicle within each direction, so we just arbitrate across buckets.
+        _veh_best_dir: dict[str, tuple[float, int]] = {}  # vkey → (dist, dir_idx)
+        for _dx, _d in enumerate(directions):
+            for _arr in _d.arrivals:
+                _vk = _arr.vehicle_id or _arr.trip_id
+                if _vk is None:
+                    continue
+                _dist = _arr.distance_m if _arr.distance_m is not None else float("inf")
+                if _vk not in _veh_best_dir or _dist < _veh_best_dir[_vk][0]:
+                    _veh_best_dir[_vk] = (_dist, _dx)
+        for _dx, _d in enumerate(directions):
+            _d.arrivals = [
+                _arr for _arr in _d.arrivals
+                if (_arr.vehicle_id or _arr.trip_id) is None
+                or _veh_best_dir.get(
+                    _arr.vehicle_id or _arr.trip_id, (None, _dx)
+                )[1] == _dx
+            ]
+        # ─────────────────────────────────────────────────────────────────
+
         if len(directions) == 1:
             single_direction_before += 1
 
