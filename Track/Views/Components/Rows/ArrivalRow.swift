@@ -10,7 +10,6 @@ import SwiftUI
 
 struct ArrivalRow: View {
     let arrival: TrainArrival
-    let prediction: DelayPrediction?
     var isTracking: Bool = false
     var reliabilityWarning: Int? = nil
     var onTrack: (() -> Void)?
@@ -53,25 +52,21 @@ struct ArrivalRow: View {
                 Spacer(minLength: 4)
 
                 // Time display
-                if let prediction = prediction {
-                    DelayBadgeView(prediction: prediction)
-                } else {
-                    HStack(alignment: .firstTextBaseline, spacing: 2) {
-                        Text("\(arrival.minutesAway)")
-                            .font(.system(size: 20, weight: .bold, design: .rounded))
-                            .foregroundColor(AppTheme.Colors.countdown(arrival.minutesAway))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.7)
-                        Text("min")
-                            .font(.system(size: 12, weight: .medium))
+                HStack(alignment: .firstTextBaseline, spacing: 2) {
+                    Text("\(arrival.minutesAway)")
+                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                        .foregroundColor(AppTheme.Colors.countdown(arrival.minutesAway))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                    Text("min")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+                    
+                    if arrival.status == "Scheduled" {
+                        Image(systemName: "clock")
+                            .font(.system(size: 10, weight: .bold))
                             .foregroundColor(AppTheme.Colors.textSecondary)
-                        
-                        if arrival.status == "Scheduled" {
-                            Image(systemName: "clock")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundColor(AppTheme.Colors.textSecondary)
-                                .offset(y: -4)
-                        }
+                            .offset(y: -4)
                     }
                 }
 
@@ -142,27 +137,6 @@ struct ArrivalRow: View {
                         }
                     }
 
-                    // Delay prediction info if available
-                    if let prediction = prediction, prediction.adjustedMinutes != prediction.originalMinutes {
-                        HStack(spacing: 10) {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(AppTheme.Colors.warningYellow)
-                                .frame(width: 20)
-
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Delay Prediction")
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundColor(AppTheme.Colors.textSecondary)
-                                    .textCase(.uppercase)
-                                Text(prediction.adjustmentReason ?? "Adjusted by +\(prediction.adjustedMinutes - prediction.originalMinutes) min")
-                                    .font(.system(size: 13, weight: .medium))
-                                    .foregroundColor(AppTheme.Colors.warningYellow)
-                                    .lineLimit(2)
-                            }
-                        }
-                    }
-
                     // Track button
                     Button {
                         onTrack?()
@@ -220,12 +194,6 @@ struct ArrivalRow: View {
                 status: "Live",
                 tripId: "L123"
             ),
-            prediction: DelayPrediction(
-                adjustedMinutes: 6,
-                originalMinutes: 5,
-                adjustmentReason: "Adjusted for rain (+1m)",
-                delayFactor: 1.2
-            ),
             isTracking: true
         )
         ArrivalRow(
@@ -242,8 +210,7 @@ struct ArrivalRow: View {
                 destination: "Court Sq",
                 status: "Scheduled",
                 tripId: nil
-            ),
-            prediction: nil
+            )
         )
     }
     .background(AppTheme.Colors.background)

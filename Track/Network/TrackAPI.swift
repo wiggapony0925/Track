@@ -113,7 +113,7 @@ struct TrackAPI {
     static func pingBackend(timeoutSeconds: TimeInterval = 5.0) async
         -> (ok: Bool, statusCode: Int?, latencyMs: Double?, error: String?)
     {
-        guard let url = URL(string: baseURL + "/config") else {
+        guard let url = URL(string: baseURL + "/health") else {
             return (false, nil, nil, "Invalid backend URL")
         }
 
@@ -479,20 +479,42 @@ struct TrackAPI {
         }
 
         let task = Task<Data, Error> {
-            var request = URLRequest(url: url)
-            if let email = cachedUserEmail, !email.isEmpty {
-                request.setValue(email, forHTTPHeaderField: "x-user-email")
-            }
+            var lastError: Error = TrackAPIError.networkError
+            for attempt in 0..<3 {
+                if attempt > 0 {
+                    // Exponential backoff: 0.5 s, 1.0 s
+                    let delay = UInt64(0.5 * Double(attempt) * 1_000_000_000)
+                    try await Task.sleep(nanoseconds: delay)
+                }
+                do {
+                    var request = URLRequest(url: url)
+                    if let email = cachedUserEmail, !email.isEmpty {
+                        request.setValue(email, forHTTPHeaderField: "x-user-email")
+                    }
 
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let http = response as? HTTPURLResponse else {
-                throw TrackAPIError.networkError
-            }
+                    let (data, response) = try await URLSession.shared.data(for: request)
+                    guard let http = response as? HTTPURLResponse else {
+                        lastError = TrackAPIError.networkError
+                        continue
+                    }
 
-            guard (200...299).contains(http.statusCode) else {
-                throw TrackAPIError.serverError(statusCode: http.statusCode)
+                    guard (200...299).contains(http.statusCode) else {
+                        let serverErr = TrackAPIError.serverError(statusCode: http.statusCode)
+                        // Do not retry 4xx client errors — they won't change
+                        if http.statusCode < 500 { throw serverErr }
+                        lastError = serverErr
+                        continue
+                    }
+                    return data
+                } catch let error as TrackAPIError {
+                    // Propagate non-retriable API errors immediately
+                    throw error
+                } catch {
+                    // URLError and other transient network errors → retry
+                    lastError = error
+                }
             }
-            return data
+            throw lastError
         }
 
         await memoizer.setInflight(task, for: cacheKey)
