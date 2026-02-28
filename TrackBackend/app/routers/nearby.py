@@ -1161,6 +1161,10 @@ async def _fetch_nearby_buses(
                 stop_id=stop.id, deviation_s=float(arrival.schedule_deviation_s or 0),
                 recency_cache=_bus_recency_cache,
             )
+            # Honour SIRI's is_realtime flag: when False the vehicle position is
+            # estimated from the static schedule (GPS not transmitting) — treat
+            # it identically to a GTFS-static fallback so iOS renders it grey.
+            bus_status = arrival.status_text if arrival.is_realtime else "Scheduled"
             results.append(
                 NearbyTransitArrival(
                     route_id=normalised_route,
@@ -1168,7 +1172,7 @@ async def _fetch_nearby_buses(
                     arrival_ts=int(arrival.expected_arrival.timestamp()) if arrival.expected_arrival else None,
                     direction=direction,
                     minutes_away=corrected_mins,
-                    status=arrival.status_text,
+                    status=bus_status,
                     mode="bus",
                     stop_lat=stop.lat,
                     stop_lon=stop.lon,
@@ -1181,6 +1185,76 @@ async def _fetch_nearby_buses(
     if fail_count > 0:
         TrackLogger.warning(
             f"Bus arrivals failed for {fail_count}/{len(stop_results)} stops (MTA 5xx): {first_error}"
+        )
+
+    # -----------------------------------------------------------------
+    # 1a-extra: Top-off each direction with upcoming scheduled departures
+    # so the route detail always shows a full departure board, not just
+    # the 1-2 buses currently in the SIRI feed.
+    #
+    # e.g.  SIRI returns:  [18m LIVE, 50m LIVE]
+    #       After top-off: [18m LIVE, 50m LIVE, 68m Scheduled, 85m Scheduled, …]
+    #
+    # Scheduled entries added here are AFTER the last live arrival so they
+    # never duplicate real-time data.  They are clearly marked "Scheduled"
+    # so the iOS app renders them grey and never shows a map marker.
+    # -----------------------------------------------------------------
+    _MIN_TOPOFF  = 6   # target total arrivals per (route, stop, direction)
+    _MAX_SCHED   = 8   # max scheduled entries added per direction
+
+    # Group current bus results by (route_id, stop_id, direction)
+    _live_by_key: dict[tuple, list] = defaultdict(list)
+    for _r in results:
+        if _r.mode == "bus" and _r.stop_id:
+            _live_by_key[(_r.route_id, _r.stop_id, _r.direction)].append(_r)
+
+    _topoff_added = 0
+    _topoff_seen: set[tuple] = set()  # (route, stop, trip_id|minutes) dedup
+
+    for (_rid, _sid, _dir), _entries in _live_by_key.items():
+        if len(_entries) >= _MIN_TOPOFF:
+            continue  # Already enough arrivals
+        _last_mins = max(e.minutes_away for e in _entries)
+        _need = min(_MIN_TOPOFF - len(_entries), _MAX_SCHED)
+
+        _sched_raw = schedule_service.get_scheduled_arrivals(
+            _sid, limit=_MIN_TOPOFF + _MAX_SCHED
+        )
+        _added = 0
+        for _s in _sched_raw:
+            if _added >= _need:
+                break
+            _s_rid = _display_name(_s.route_id)
+            if _s_rid != _rid:
+                continue
+            if _s.minutes_away <= _last_mins:
+                continue  # Earlier than or same as last live — skip
+            _dk = (_s_rid, _sid, _s.trip_id or str(_s.minutes_away))
+            if _dk in _topoff_seen:
+                continue
+            _topoff_seen.add(_dk)
+            _sinfo = get_stop_info(_sid)
+            results.append(NearbyTransitArrival(
+                route_id=_s_rid,
+                stop_name=_sinfo.name if _sinfo else _sid,
+                direction=_dir,
+                destination=_s.destination,
+                minutes_away=_s.minutes_away,
+                arrival_ts=_s.arrival_ts,
+                status="Scheduled",
+                mode="bus",
+                stop_lat=_sinfo.lat if _sinfo else None,
+                stop_lon=_sinfo.lon if _sinfo else None,
+                stop_id=_sid,
+                vehicle_id=None,
+                trip_id=_s.trip_id,
+            ))
+            _added += 1
+            _topoff_added += 1
+
+    if _topoff_added:
+        TrackLogger.info(
+            f"Topped off {_topoff_added} scheduled bus departures alongside live arrivals"
         )
 
     # -----------------------------------------------------------------
