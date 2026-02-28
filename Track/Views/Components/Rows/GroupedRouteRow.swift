@@ -110,7 +110,9 @@ struct GroupedRouteRow: View {
     ///  3. No coordinates at all → treat distance as ∞ (still participates,
     ///     never silently skipped so the fallback stays deterministic).
     private func countdownArrival(for direction: DirectionArrivalsResponse) -> NearbyTransitResponse? {
-        let live = direction.liveArrivals
+        // Filter out past arrivals the same way the detail sheet does.
+        // This prevents selecting a departed bus as the countdown candidate.
+        let live = direction.liveArrivals.filter { !resolvedETA(for: $0).isPastArrival }
         guard !live.isEmpty else { return nil }
 
         if let loc = userLocation {
@@ -228,10 +230,13 @@ struct GroupedRouteRow: View {
                     TabView(selection: $currentDirectionIndex) {
                         ForEach(Array(visibleDirections.enumerated()), id: \.element.id) {
                             index, direction in
+                            // Prefer directionLabel from the backend (contains resolved
+                            // terminal names like "Northbound → Far Rockaway").
+                            // Fall back to first arrival's destination, then compass label.
                             let label =
-                                direction.liveArrivals.first?.destination
+                                direction.directionLabel
+                                ?? direction.liveArrivals.first?.destination
                                 ?? direction.arrivals.first?.destination
-                                ?? direction.directionLabel
                                 ?? directionLabel(direction.direction)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(label)
@@ -515,35 +520,77 @@ struct GroupedRouteRow: View {
             VStack(spacing: 2) {
                 TimelineView(.periodic(from: .now, by: 1.0)) { _ in
                     let eta = resolvedETA(for: first)
-                    let mins = eta.minutesRemaining
-                    let isNow = eta.isAtStop || eta.secondsRemaining <= 30
 
-                    HStack(alignment: .firstTextBaseline, spacing: 2) {
-                        Text(isNow ? "Now" : "\(mins)")
-                            .font(.custom("Helvetica-Bold", size: isNow ? 20 : 26))
-                            .foregroundColor(AppTheme.Colors.countdown(mins))
-                            .contentTransition(.numericText())
+                    // Same isPastArrival guard that RouteDetailSheet uses in its
+                    // TimelineView — prevents the row showing a ghost "Now" for
+                    // a bus that already left while the sheet has already removed
+                    // its chip.  Without this, the 90s liveArrivals window and
+                    // the real-time isPastArrival check were out of sync.
+                    if eta.isPastArrival {
+                        // Bus departed — show "--" until the next backend poll
+                        // replaces this arrival with a newer one.
+                        Text("--")
+                            .font(.custom("Helvetica-Bold", size: 20))
+                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.4))
+                    } else {
+                        let mins = eta.minutesRemaining
+                        let isNow = eta.isAtStop || eta.secondsRemaining <= 30
+                        let isSched = first.status == "Scheduled"
 
-                        if !isNow {
-                            Text("min")
-                                .font(.custom("Helvetica", size: 12))
-                                .foregroundColor(AppTheme.Colors.textSecondary)
+                        HStack(alignment: .firstTextBaseline, spacing: 2) {
+                            Text(isNow ? "Now" : "\(mins)")
+                                .font(.custom("Helvetica-Bold", size: isNow ? 20 : 26))
+                                .foregroundColor(isSched ? AppTheme.Colors.textSecondary.opacity(0.45) : AppTheme.Colors.countdown(mins))
+                                .contentTransition(.numericText())
+
+                            if !isNow {
+                                Text("min")
+                                    .font(.custom("Helvetica", size: 12))
+                                    .foregroundColor(isSched ? AppTheme.Colors.textSecondary.opacity(0.35) : AppTheme.Colors.textSecondary)
+                            }
                         }
                     }
                 }
                 statusPill(for: first)
             }
         } else if hasOnlyPlaceholders {
-            // Direction exists but only has backend placeholder arrivals.
-            // Check if other directions have live data and hint to swipe.
+            // Direction exists but only has scheduled/placeholder arrivals.
+            // Show the soonest scheduled minutes greyed out so the user
+            // knows WHEN the next bus/train is, not just that it's scheduled.
+            let soonestScheduled = dir.arrivals
+                .filter { !$0.isPlaceholder && $0.minutesAway >= 0 }
+                .map(\.minutesAway)
+                .min()
             let otherDirectionsHaveLive = visibleDirections.contains { $0.id != dir.id && !$0.liveArrivals.isEmpty }
-            VStack(spacing: 3) {
-                Image(systemName: "clock")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.4))
-                Text(otherDirectionsHaveLive ? "Swipe →" : "Sched")
-                    .font(.custom("Helvetica-Bold", size: 9))
-                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(otherDirectionsHaveLive ? 0.6 : 0.4))
+            if let mins = soonestScheduled {
+                VStack(spacing: 2) {
+                    HStack(alignment: .firstTextBaseline, spacing: 2) {
+                        Text("\(mins)")
+                            .font(.custom("Helvetica-Bold", size: 26))
+                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.45))
+                            .contentTransition(.numericText())
+                        Text("min")
+                            .font(.custom("Helvetica", size: 12))
+                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.35))
+                    }
+                    HStack(spacing: 2) {
+                        Image(systemName: "calendar.badge.clock")
+                            .font(.system(size: 7, weight: .bold))
+                        Text("Sched")
+                            .font(.custom("Helvetica-Bold", size: 9))
+                    }
+                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(AppTheme.Colors.textSecondary.opacity(0.08))
+                    .clipShape(Capsule())
+                }
+            } else {
+                VStack(spacing: 3) {
+                    Text("No Service")
+                        .font(.custom("Helvetica-Bold", size: 10))
+                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.4))
+                }
             }
         } else {
             // No arrivals at all

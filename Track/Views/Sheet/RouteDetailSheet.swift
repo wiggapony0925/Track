@@ -88,6 +88,13 @@ struct RouteDetailSheet: View {
     /// controls WHICH arrivals are in the chip list, not their order.
     @State private var stableNearestArrivals: [NearbyTransitResponse] = []
 
+    /// Timestamp of the last time `stableNearestArrivals` was updated.
+    /// Used to debounce live→scheduled flapping: the SIRI feed can drop a
+    /// live vehicle for a single poll and fall back to GTFS-static, then
+    /// the vehicle reappears on the next poll.  A 30 s debounce gives the
+    /// feed 2-3 chances to recover before we downgrade the chips to grey.
+    @State private var lastStableRefreshDate: Date = .now
+
     /// Per-direction stop key lock: [directionIndex: stopId ?? stopName].
     /// Each direction remembers its nearest stop independently so that:
     ///  • Direction changes (including shape-enrichment reorders) never invalidate
@@ -102,20 +109,19 @@ struct RouteDetailSheet: View {
     /// Convenience: locked stop key for the currently-displayed direction.
     private var lockedNearestStopKey: String? { lockedStopKeyPerDirection[selectedDirectionIndex] }
 
-    /// Three-tier chip status so the user can immediately tell what's real.
-    ///  • `.arriving`  – live vehicle within ~1 min (bright green, pulsing)
-    ///  • `.onRoute`   – live vehicle, > 1 min away (standard green)
-    ///  • `.scheduled`  – GTFS-static / no live tracking (grey)
+    /// Two-tier chip status tied directly to map markers.
+    ///  • `.onRoute`   – vehicle has a live marker on the map (green)
+    ///  • `.scheduled`  – no live marker / GTFS-static only (grey)
     private enum ChipStatus {
-        case arriving, onRoute, scheduled
+        case onRoute, scheduled
     }
 
-    /// Derives the chip status from the backend status + live ETA.
-    /// No latch — trusts the current poll so the tag always reflects reality.
-    private func chipStatus(for arrival: NearbyTransitResponse, eta: SmartETA) -> ChipStatus {
-        guard !arrival.isScheduledOnly else { return .scheduled }
-        if eta.isAtStop || eta.secondsRemaining <= 60 { return .arriving }
-        return .onRoute
+    /// Derives the chip status from whether the vehicle is actually visible
+    /// on the map — NOT from the backend `status` string.  This guarantees
+    /// the chip tag matches exactly what the user sees on the route line.
+    private func chipStatus(for arrival: NearbyTransitResponse) -> ChipStatus {
+        if isLiveOnMap?(arrival) == true { return .onRoute }
+        return .scheduled
     }
 
     /// Available tabs for this route.
@@ -324,6 +330,7 @@ struct RouteDetailSheet: View {
             isLoadingArrivals = safeDirection.arrivals.isEmpty
             // Seed stable arrivals on first appear
             stableNearestArrivals = nearestStopArrivals
+            lastStableRefreshDate = .now
             // Lock the nearest stop key for this direction so subsequent refreshes don't hop stops
             if lockedDirectionHeadsign == nil {
                 lockedDirectionHeadsign = safeDirection.direction
@@ -368,6 +375,22 @@ struct RouteDetailSheet: View {
 
             if shouldRefreshStableArrivals(fresh) {
                 stableNearestArrivals = fresh
+                lastStableRefreshDate = .now
+            }
+
+            // Force-refresh when ALL current stable arrivals are past due.
+            // Without this, the TimelineView shows a blank scroll (isPastArrival
+            // kills every chip, but nextArrivals is non-empty so the empty state
+            // never renders).
+            if !stableNearestArrivals.isEmpty {
+                let allPast = stableNearestArrivals.allSatisfy { smartETA(for: $0).isPastArrival }
+                if allPast {
+                    stableNearestArrivals = fresh
+                    lastStableRefreshDate = .now
+                    #if DEBUG
+                    print("[STABLE_CHIPS] ♻️ FORCE-REFRESH: all \(stableNearestArrivals.count) stable arrivals are past due")
+                    #endif
+                }
             }
         }
         .task(id: group.id) {
@@ -381,14 +404,40 @@ struct RouteDetailSheet: View {
         .onChange(of: favoritesManager.favorites) { _, _ in
             isFavorited = favoritesManager.isFavorite(routeId: group.routeId, mode: group.mode)
         }
+        .onChange(of: selectedStopId) { _, newId in
+            // Bridge map-tap stop selection into the sheet's stop filter.
+            // When the user taps a stop marker on the map, the ViewModel
+            // updates selectedStopId. We mirror that to inSheetSelectedStopId
+            // so the countdown chips and departures board both respond.
+            if let sid = newId, !sid.isEmpty {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    inSheetSelectedStopId = sid
+                }
+            }
+        }
+        .onChange(of: inSheetSelectedStopId) { _, _ in
+            // When the user selects a stop (map tap or stops list tap),
+            // immediately refresh the countdown chips to show arrivals
+            // at the selected stop.
+            let fresh = nearestStopArrivals
+            stableNearestArrivals = fresh
+            lastStableRefreshDate = .now
+            #if DEBUG
+            print("[STOP_SELECT] inSheetSelectedStopId=\(inSheetSelectedStopId ?? "nil") chips=\(fresh.count)")
+            #endif
+        }
         .onChange(of: selectedDirectionIndex) { _, _ in
             // Reset stable countdown chips immediately when the user switches direction
             // so they see the new direction's nearest-stop times right away rather than
             // waiting for the next group poll cycle to trigger shouldRefreshStableArrivals.
+            // CRITICAL: Always assign — even when empty — so stale chips from the
+            // previous direction are cleared.  Without this, switching to a direction
+            // with no live arrivals keeps showing the old direction's chips.
+            // Also clear stop selection — it belongs to the previous direction.
+            inSheetSelectedStopId = nil
             let freshArrivals = nearestStopArrivals
-            if !freshArrivals.isEmpty {
-                stableNearestArrivals = freshArrivals
-            }
+            stableNearestArrivals = freshArrivals
+            lastStableRefreshDate = .now
             isFavorited = favoritesManager.isFavorite(routeId: group.routeId, mode: group.mode)
             #if DEBUG
             let direction = safeDirection
@@ -609,29 +658,67 @@ struct RouteDetailSheet: View {
     /// This guarantees chip #1 == home-row countdown when at least one arrival
     /// has coordinates, and degrades gracefully to "soonest globally" otherwise.
     private var nearestStopArrivals: [NearbyTransitResponse] {
+        // Show ALL arrivals (live + scheduled) — chip status is determined
+        // by `isLiveOnMap` (actual map marker presence), not the backend
+        // status string.  This keeps chips in sync with what the user sees
+        // on the route line.
         let live = safeDirection.liveArrivals
         guard !live.isEmpty else { return [] }
 
-        // ── Find nearest stop by the same algorithm as GroupedRouteRow ──────
-        let refLoc: CLLocation? = (currentLocation ?? searchCenter).map {
-            CLLocation(latitude: $0.latitude, longitude: $0.longitude)
+        // Deduplicate helper (used in multiple branches below)
+        func deduped(_ list: [NearbyTransitResponse]) -> [NearbyTransitResponse] {
+            var seen = Set<String>()
+            return sortArrivalsByETA(list).filter { a in
+                guard let k = a.vehicleId ?? a.tripId else { return true }
+                return seen.insert(k).inserted
+            }
         }
 
-        var nearestStopKey: String?
-        var nearestDist: CLLocationDistance = .greatestFiniteMagnitude
-
-        for arrival in live {
-            let dist: CLLocationDistance
-            if let dm = arrival.distanceM {
-                dist = dm
-            } else if let loc = refLoc, let lat = arrival.stopLat, let lon = arrival.stopLon {
-                dist = loc.distance(from: CLLocation(latitude: lat, longitude: lon))
-            } else {
-                dist = .greatestFiniteMagnitude
+        // ── USER-SELECTED STOP takes absolute priority ──────────────────
+        // When the user taps a stop on the map or in the Stops list,
+        // show arrivals at THAT stop — letting them explore upcoming
+        // vehicles at any point along the route.
+        if let userStop = inSheetSelectedStopId, !userStop.isEmpty {
+            let atSelected = live.filter { arrivalMatchesStop($0, stopId: userStop) }
+            if !atSelected.isEmpty {
+                return Array(deduped(atSelected).prefix(6))
             }
-            if dist < nearestDist {
-                nearestDist = dist
-                nearestStopKey = arrival.stopId ?? arrival.stopName
+            // No arrivals matched the selected stop yet (vehicle sync
+            // may not have run) — fall through to nearest-stop logic
+            // so chips don't flash empty.
+        }
+
+        // ── Prefer the locked stop key if arrivals still exist there ────────
+        // This prevents the nearest-stop from hopping between polls when a
+        // backend re-sort changes distance ordering.
+        var nearestStopKey: String?
+        if let lockedKey = lockedStopKeyPerDirection[selectedDirectionIndex] {
+            let atLocked = live.filter { ($0.stopId ?? $0.stopName) == lockedKey }
+            if !atLocked.isEmpty {
+                nearestStopKey = lockedKey
+            }
+        }
+
+        // ── Fall back to distance-based nearest stop ───────────────────────
+        if nearestStopKey == nil {
+            let refLoc: CLLocation? = (currentLocation ?? searchCenter).map {
+                CLLocation(latitude: $0.latitude, longitude: $0.longitude)
+            }
+            var nearestDist: CLLocationDistance = .greatestFiniteMagnitude
+
+            for arrival in live {
+                let dist: CLLocationDistance
+                if let dm = arrival.distanceM {
+                    dist = dm
+                } else if let loc = refLoc, let lat = arrival.stopLat, let lon = arrival.stopLon {
+                    dist = loc.distance(from: CLLocation(latitude: lat, longitude: lon))
+                } else {
+                    dist = .greatestFiniteMagnitude
+                }
+                if dist < nearestDist {
+                    nearestDist = dist
+                    nearestStopKey = arrival.stopId ?? arrival.stopName
+                }
             }
         }
 
@@ -644,15 +731,6 @@ struct RouteDetailSheet: View {
                 atNearest.append(arrival)
             } else {
                 elsewhere.append(arrival)
-            }
-        }
-
-        // Deduplicate by vehicle key within each partition, preserving ETA order
-        func deduped(_ list: [NearbyTransitResponse]) -> [NearbyTransitResponse] {
-            var seen = Set<String>()
-            return sortArrivalsByETA(list).filter { a in
-                guard let k = a.vehicleId ?? a.tripId else { return true }
-                return seen.insert(k).inserted
             }
         }
 
@@ -781,8 +859,43 @@ struct RouteDetailSheet: View {
     /// or a new stop key), which keeps the chip list fresh without causing visual
     /// flicker (the TimelineView sort handles smooth reordering).
     private func shouldRefreshStableArrivals(_ new: [NearbyTransitResponse]) -> Bool {
-        guard !new.isEmpty else { return false }
+        // When fresh data is empty (e.g. SIRI feed dropped live tracking),
+        // DON'T immediately clear the chips — the old live arrivals may still
+        // be valid (bus hasn't passed the stop yet).  Hold them until they
+        // naturally expire via isPastArrival.  This prevents the chips from
+        // flashing to empty/grey during a 1-poll SIRI dropout.
+        guard !new.isEmpty else {
+            if stableNearestArrivals.isEmpty { return false }
+            // Only clear when ALL old chips have expired
+            let allPast = stableNearestArrivals.allSatisfy { smartETA(for: $0).isPastArrival }
+            return allPast
+        }
         guard !stableNearestArrivals.isEmpty else { return true }
+
+        // ── Anti-flap: protect arrivals from SIRI feed dropouts ───────────
+        // Compare by VEHICLE SET — not count.  Only block when vehicles
+        // *vanished* (same vehicles minus some), which means the feed
+        // temporarily dropped them.  If a vehicle legitimately departed
+        // (new set has a different leading vehicle), allow the update.
+        let oldKeys = Set(stableNearestArrivals.compactMap { $0.vehicleId ?? $0.tripId })
+        let newKeys = Set(new.compactMap { $0.vehicleId ?? $0.tripId })
+        let vanished = oldKeys.subtracting(newKeys)
+        let appeared = newKeys.subtracting(oldKeys)
+
+        // Vehicles vanished but none appeared → likely a SIRI feed dropout.
+        // Block for 15s (1-2 polls) to let the feed recover.
+        if !vanished.isEmpty && appeared.isEmpty {
+            let elapsed = Date.now.timeIntervalSince(lastStableRefreshDate)
+            if elapsed < 15 {
+                #if DEBUG
+                print("[STABLE_CHIPS] ⏳ ANTI-FLAP: blocking vanished=\(vanished) with no new arrivals, \(String(format: "%.0f", elapsed))s since last refresh")
+                #endif
+                return false
+            }
+        }
+
+        // New vehicles appeared → always update immediately
+        if !appeared.isEmpty { return true }
 
         // Count changed → refresh (arrival appeared or departed)
         if new.count != stableNearestArrivals.count { return true }
@@ -792,9 +905,7 @@ struct RouteDetailSheet: View {
         let oldKey = stableNearestArrivals[0].tripId ?? stableNearestArrivals[0].vehicleId
         if newKey != oldKey { return true }
 
-        // Different set of vehicles → refresh
-        let newKeys = Set(new.compactMap { $0.vehicleId ?? $0.tripId })
-        let oldKeys = Set(stableNearestArrivals.compactMap { $0.vehicleId ?? $0.tripId })
+        // Different set of vehicles → refresh (reuse sets from anti-flap above)
         return newKeys != oldKeys
     }
 
@@ -835,39 +946,18 @@ struct RouteDetailSheet: View {
         // Exact match
         if arrivalStopId == stopId { return true }
         // Strip common MTA prefixes for fuzzy matching
-        let stripped1 = stripMTAPrefix(arrivalStopId)
-        let stripped2 = stripMTAPrefix(stopId)
+        let stripped1 = stripMTAStopPrefix(arrivalStopId)
+        let stripped2 = stripMTAStopPrefix(stopId)
         if stripped1 == stripped2 { return true }
         // One might be a suffix of the other (e.g. "305423" vs "MTA_305423")
         if stripped1.hasSuffix(stripped2) || stripped2.hasSuffix(stripped1) { return true }
         // Subway parent station match: "120N" and "120S" share parent "120".
-        // Since safeDirection already restricts arrivals to one direction,
-        // matching by parent station is safe (no cross-direction leakage).
-        let parent1 = stripDirectionSuffix(stripped1)
-        let parent2 = stripDirectionSuffix(stripped2)
+        // Uses shared normalizeStopId which strips prefix + N/S suffix.
+        let parent1 = normalizeStopId(arrivalStopId)
+        let parent2 = normalizeStopId(stopId)
         if parent1 == parent2 && !parent1.isEmpty { return true }
         // Name-based fallback: lookup what name the route shape gives this stopId
         return matchesByName(arrivalStopName: arrival.stopName, shapeStopId: stopId)
-    }
-
-    /// Strips MTA agency prefixes from a stop ID for comparison.
-    /// Uses the shared prefix table in `MTAPrefixes.swift`.
-    private func stripMTAPrefix(_ id: String) -> String {
-        stripMTAStopPrefix(id)
-    }
-
-    /// Strips trailing N/S direction suffix from a subway stop ID.
-    /// e.g. "120N" → "120", "A31S" → "A31", "H11N" → "H11".
-    /// Leaves bus/commuter rail IDs unchanged (they don't use this convention).
-    private func stripDirectionSuffix(_ id: String) -> String {
-        guard id.count > 1, let last = id.last, last == "N" || last == "S" else { return id }
-        // Only strip if the character before the suffix is a digit or lowercase letter
-        // (avoids stripping from IDs like "GS" — Grand Central Shuttle)
-        let penultimate = id[id.index(before: id.index(before: id.endIndex))]
-        if penultimate.isNumber || penultimate.isLowercase {
-            return String(id.dropLast())
-        }
-        return id
     }
 
     /// Checks if an arrival's stop name matches the name of a route shape stop by ID.
@@ -876,7 +966,7 @@ struct RouteDetailSheet: View {
         let allStops = shape.stopsForDirection(index: selectedDirectionIndex, name: selectedDirectionName)
         // Try exact ID match first, then parent station ID match
         let shapeStop = allStops.first(where: { $0.id == shapeStopId })
-            ?? allStops.first(where: { stripDirectionSuffix(stripMTAPrefix($0.id)) == stripDirectionSuffix(stripMTAPrefix(shapeStopId)) })
+            ?? allStops.first(where: { normalizeStopId($0.id) == normalizeStopId(shapeStopId) })
         guard let shapeStop else { return false }
         // Compare names case-insensitively, allowing partial matches
         let a = arrivalStopName.lowercased().trimmingCharacters(in: .whitespaces)
@@ -897,14 +987,9 @@ struct RouteDetailSheet: View {
             if let stop = allStops.first(where: { $0.id == stopId }) {
                 return userLoc.distance(from: CLLocation(latitude: stop.lat, longitude: stop.lon))
             }
-            // Fuzzy match on stripped IDs (MTA prefix + N/S suffix)
-            let stripped = stripMTAPrefix(stopId)
-            if let stop = allStops.first(where: { stripMTAPrefix($0.id) == stripped }) {
-                return userLoc.distance(from: CLLocation(latitude: stop.lat, longitude: stop.lon))
-            }
-            // Parent station match (strip N/S)
-            let parent = stripDirectionSuffix(stripped)
-            if let stop = allStops.first(where: { stripDirectionSuffix(stripMTAPrefix($0.id)) == parent }) {
+            // Fuzzy match on normalized IDs (MTA prefix + N/S suffix stripped)
+            let normalized = normalizeStopId(stopId)
+            if let stop = allStops.first(where: { normalizeStopId($0.id) == normalized }) {
                 return userLoc.distance(from: CLLocation(latitude: stop.lat, longitude: stop.lon))
             }
         }
@@ -967,13 +1052,9 @@ struct RouteDetailSheet: View {
                 if let s = stops.first(where: { $0.id == sid }) {
                     return CLLocationCoordinate2D(latitude: s.lat, longitude: s.lon)
                 }
-                let stripped = stripMTAPrefix(sid)
-                if let s = stops.first(where: { stripMTAPrefix($0.id) == stripped }) {
-                    return CLLocationCoordinate2D(latitude: s.lat, longitude: s.lon)
-                }
-                // Parent station match (strip N/S suffix)
-                let parent = stripDirectionSuffix(stripped)
-                if let s = stops.first(where: { stripDirectionSuffix(stripMTAPrefix($0.id)) == parent }) {
+                // Fuzzy match on normalized IDs (MTA prefix + N/S suffix stripped)
+                let normalized = normalizeStopId(sid)
+                if let s = stops.first(where: { normalizeStopId($0.id) == normalized }) {
                     return CLLocationCoordinate2D(latitude: s.lat, longitude: s.lon)
                 }
             }
@@ -1008,39 +1089,18 @@ struct RouteDetailSheet: View {
     @ViewBuilder
     private func arrivalCard(arrival: NearbyTransitResponse, index: Int, eta: SmartETA) -> some View {
         let isFirst = index == 0
-        let status = chipStatus(for: arrival, eta: eta)
+        let status = chipStatus(for: arrival)
         let isSched = status == .scheduled
-        let isArriving = status == .arriving
 
         // ── Tier colors ──────────────────────────────────────────────
-        let tagColor: Color = {
-            switch status {
-            case .arriving:  return routeColor
-            case .onRoute:   return AppTheme.Colors.successGreen
-            case .scheduled: return AppTheme.Colors.textSecondary.opacity(0.6)
-            }
-        }()
-        let tagBg: Color = {
-            switch status {
-            case .arriving:  return routeColor.opacity(0.18)
-            case .onRoute:   return AppTheme.Colors.successGreen.opacity(0.14)
-            case .scheduled: return AppTheme.Colors.textSecondary.opacity(0.10)
-            }
-        }()
-        let tagLabel: String = {
-            switch status {
-            case .arriving:  return "Arriving"
-            case .onRoute:   return "On Route"
-            case .scheduled: return "Scheduled"
-            }
-        }()
-        let tagIcon: String = {
-            switch status {
-            case .arriving:  return "location.fill"
-            case .onRoute:   return "circle.fill"
-            case .scheduled: return "clock"
-            }
-        }()
+        let tagColor: Color = isSched
+            ? AppTheme.Colors.textSecondary.opacity(0.6)
+            : AppTheme.Colors.successGreen
+        let tagBg: Color = isSched
+            ? AppTheme.Colors.textSecondary.opacity(0.10)
+            : AppTheme.Colors.successGreen.opacity(0.14)
+        let tagLabel = isSched ? "Scheduled" : "On Route"
+        let tagIcon  = isSched ? "clock" : "circle.fill"
 
         VStack(spacing: 0) {
             // ── Status tag ────────────────────────────────────────────────
@@ -1049,11 +1109,6 @@ struct RouteDetailSheet: View {
                     Image(systemName: tagIcon)
                         .font(.system(size: 8, weight: .bold))
                         .foregroundColor(tagColor)
-                } else if isArriving {
-                    Image(systemName: tagIcon)
-                        .font(.system(size: 7, weight: .bold))
-                        .foregroundColor(tagColor)
-                        .symbolEffect(.pulse, options: .repeating)
                 } else {
                     Circle()
                         .fill(tagColor)
@@ -1106,13 +1161,12 @@ struct RouteDetailSheet: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 18)
-                .stroke({
-                    switch status {
-                    case .arriving: return routeColor.opacity(0.5)
-                    case .onRoute:  return isFirst ? routeColor.opacity(0.35) : Color.clear
-                    case .scheduled: return AppTheme.Colors.textSecondary.opacity(0.12)
-                    }
-                }(), lineWidth: 1.2)
+                .stroke(
+                    isSched
+                        ? AppTheme.Colors.textSecondary.opacity(0.12)
+                        : (isFirst ? routeColor.opacity(0.35) : Color.clear),
+                    lineWidth: 1.2
+                )
         )
         // Tap card to start Live Activity tracking for this arrival
         .onTapGesture {
@@ -1159,20 +1213,31 @@ struct RouteDetailSheet: View {
         // Falls back to nearestStopArrivals if stable is empty (first render).
         let source = stableNearestArrivals.isEmpty ? nearestStopArrivals : stableNearestArrivals
         let nextArrivals = source
+        let isUserSelected = inSheetSelectedStopId != nil
         // Resolve the stop name for the header
-        let nearestStopName: String? = {
-            if let stopId = selectedStopId, !stopId.isEmpty {
-                // Try from the arrivals first (freshest data)
-                if let name = source.first?.stopName { return name }
-                // Fall back to route shape stops (with parent station fallback)
+        let displayStopName: String? = {
+            // 1) User-selected stop — resolve name from shape or arrivals
+            if let userStop = inSheetSelectedStopId, !userStop.isEmpty {
                 if let shape = routeShape {
                     let stops = shape.stopsForDirection(index: selectedDirectionIndex, name: selectedDirectionName)
-                    let parentId = stripDirectionSuffix(stripMTAPrefix(stopId))
+                    let parentId = normalizeStopId(userStop)
+                    if let name = stops.first(where: { $0.id == userStop })?.name
+                        ?? stops.first(where: { normalizeStopId($0.id) == parentId })?.name {
+                        return name
+                    }
+                }
+                return source.first?.stopName
+            }
+            // 2) Auto-nearest stop (selectedStopId from ViewModel)
+            if let stopId = selectedStopId, !stopId.isEmpty {
+                if let name = source.first?.stopName { return name }
+                if let shape = routeShape {
+                    let stops = shape.stopsForDirection(index: selectedDirectionIndex, name: selectedDirectionName)
+                    let parentId = normalizeStopId(stopId)
                     return stops.first(where: { $0.id == stopId })?.name
-                        ?? stops.first(where: { stripDirectionSuffix(stripMTAPrefix($0.id)) == parentId })?.name
+                        ?? stops.first(where: { normalizeStopId($0.id) == parentId })?.name
                 }
             }
-            // Fall back to whatever the first arrival says
             return source.first?.stopName
         }()
 
@@ -1185,11 +1250,35 @@ struct RouteDetailSheet: View {
                     .textCase(.uppercase)
                     .tracking(0.6)
 
-                if let stopName = nearestStopName {
-                    Text("at \(stopName)")
-                        .font(.custom("Helvetica", size: 12))
+                if let stopName = displayStopName {
+                    if isUserSelected {
+                        // User picked this stop — show as a dismissible filter pill
+                        HStack(spacing: 4) {
+                            Image(systemName: "mappin")
+                                .font(.system(size: 8, weight: .bold))
+                            Text(stopName)
+                                .font(.custom("Helvetica-Bold", size: 11))
+                                .lineLimit(1)
+                            Button {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                    inSheetSelectedStopId = nil
+                                }
+                            } label: {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 7, weight: .bold))
+                            }
+                        }
                         .foregroundColor(routeColor)
-                        .lineLimit(1)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(routeColor.opacity(0.12))
+                        .clipShape(Capsule())
+                    } else {
+                        Text("at \(stopName)")
+                            .font(.custom("Helvetica", size: 12))
+                            .foregroundColor(routeColor)
+                            .lineLimit(1)
+                    }
                 }
             }
             .padding(.horizontal, AppTheme.Layout.margin)
@@ -1250,14 +1339,31 @@ struct RouteDetailSheet: View {
                     }
                     .sorted { $0.eta.secondsRemaining < $1.eta.secondsRemaining }
 
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(alignment: .top, spacing: 10) {
-                            ForEach(Array(liveChips.enumerated()), id: \.element.arrival.id) { index, pair in
-                                arrivalCard(arrival: pair.arrival, index: index, eta: pair.eta)
+                    if liveChips.isEmpty {
+                        // All stable chips expired — clear stableNearestArrivals
+                        // so the NEXT SwiftUI layout pass enters the proper
+                        // empty-state branch (skeleton / scheduled / "no arrivals").
+                        // Using Color.clear as a zero-size placeholder ensures
+                        // this tick renders something valid.
+                        Color.clear
+                            .frame(height: 0)
+                            .onAppear {
+                                // Dispatch async to avoid mutating state during view update
+                                DispatchQueue.main.async {
+                                    stableNearestArrivals = []
+                                    lastStableRefreshDate = .now
+                                }
                             }
+                    } else {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(alignment: .top, spacing: 10) {
+                                ForEach(Array(liveChips.enumerated()), id: \.element.arrival.id) { index, pair in
+                                    arrivalCard(arrival: pair.arrival, index: index, eta: pair.eta)
+                                }
+                            }
+                            .padding(.horizontal, AppTheme.Layout.margin)
+                            .padding(.vertical, 4)
                         }
-                        .padding(.horizontal, AppTheme.Layout.margin)
-                        .padding(.vertical, 4)
                     }
                 }
             }
@@ -1388,7 +1494,24 @@ struct RouteDetailSheet: View {
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    ForEach(Array(group.directions.enumerated()), id: \.element.id) { index, dir in
+                    // Reorder pills so the selected direction is always first —
+                    // gives a nice visual bump when the user taps a pill, and
+                    // keeps the active direction front-and-center without scrolling.
+                    let orderedDirs: [(index: Int, dir: DirectionArrivalsResponse)] = {
+                        let all = group.directions.enumerated().map { (index: $0.offset, dir: $0.element) }
+                        guard selectedDirectionIndex >= 0,
+                              selectedDirectionIndex < group.directions.count else {
+                            return all
+                        }
+                        var result = all
+                        if let pos = result.firstIndex(where: { $0.index == selectedDirectionIndex }) {
+                            let selected = result.remove(at: pos)
+                            result.insert(selected, at: 0)
+                        }
+                        return result
+                    }()
+
+                    ForEach(orderedDirs, id: \.dir.id) { index, dir in
                         Button {
                             withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                                 selectedDirectionIndex = index
@@ -1831,8 +1954,10 @@ struct RouteDetailSheet: View {
                             }
 
                             // Badge: departure count on Departures tab
+                            // Must match what the Departures board actually displays
+                            // (deduped by vehicle, optionally filtered by stop).
                             if tab == .departures {
-                                let depCount = safeDirection.liveArrivals.count
+                                let depCount = prioritizedArrivals.count
                                 if depCount > 0 {
                                     let label = depCount > 99 ? "99+" : "\(depCount)"
                                     Text(label)
@@ -1883,11 +2008,9 @@ struct RouteDetailSheet: View {
     private func currentStopIndex(in dirStops: [BusStop]) -> Int? {
         // 1. Explicit stop selection from map tap
         if let sid = selectedStopId, !sid.isEmpty {
-            let stripped = stripMTAPrefix(sid)
-            let parent = stripDirectionSuffix(stripped)
+            let normalized = normalizeStopId(sid)
             if let idx = dirStops.firstIndex(where: {
-                let s = stripMTAPrefix($0.id)
-                return s == stripped || stripDirectionSuffix(s) == parent
+                normalizeStopId($0.id) == normalized
             }) { return idx }
         }
         // 2. Nearest stop to the reference coordinate
@@ -1916,7 +2039,7 @@ struct RouteDetailSheet: View {
         for a in allArrivals {
             // Key 1: normalised stop-id
             if let sid = a.stopId, !sid.isEmpty {
-                let key = stripDirectionSuffix(stripMTAPrefix(sid))
+                let key = normalizeStopId(sid)
                 if arrivalByStop[key] == nil { arrivalByStop[key] = a }
                 // also store raw
                 if arrivalByStop[sid] == nil { arrivalByStop[sid] = a }
@@ -1970,7 +2093,7 @@ struct RouteDetailSheet: View {
                             let isSelected = inSheetSelectedStopId == stop.id
 
                             // Resolve the next arriving bus for this specific stop
-                            let normId = stripDirectionSuffix(stripMTAPrefix(stop.id))
+                            let normId = normalizeStopId(stop.id)
                             let nextArrival: NearbyTransitResponse? =
                                 arrivalByStop[normId]
                                 ?? arrivalByStop[stop.id]

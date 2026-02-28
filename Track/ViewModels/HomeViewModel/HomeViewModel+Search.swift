@@ -49,10 +49,13 @@ extension HomeViewModel {
     /// Searches route names, directions, current arrival stops, destinations,
     /// AND all stations served by the route.
     var filteredGroupedTransit: [GroupedNearbyTransitResponse] {
-        guard !searchText.isEmpty else { return groupedTransit }
+        // First filter out placeholder-only routes (e.g. QM16 with only 99-min stubs).
+        // These have no real arrival data and would just show "No Service".
+        let base = groupedTransit.filter { $0.hasRealArrivals }
+        guard !searchText.isEmpty else { return base }
         let query = searchText.lowercased()
         let stationRoutes = stationRoutesForQuery(query)
-        return groupedTransit.filter {
+        return base.filter {
             groupMatchesQuery($0, query: query, stationRoutes: stationRoutes)
         }
     }

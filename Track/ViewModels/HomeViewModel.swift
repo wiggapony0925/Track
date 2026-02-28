@@ -28,18 +28,12 @@ final class HomeViewModel {
     var errorMessage: String?
 
     /// True when `errorMessage` indicates a network/connectivity failure rather
-    /// than a legitimate "no transit in this area" empty state.
-    /// Used to show an offline banner instead of the out-of-service-area card.
+    /// than a server-side or data issue.
     var isNetworkError: Bool {
         guard let msg = errorMessage?.lowercased() else { return false }
-        return msg.contains("no network")
-            || msg.contains("offline")
-            || msg.contains("connection")
-            || msg.contains("signal lost")
-            || msg.contains("internet")
-            || msg.contains("unavailable")
-            || msg.contains("timed out")
-            || msg.contains("timeout")
+        return msg.contains("network") || msg.contains("offline")
+            || msg.contains("internet") || msg.contains("connection")
+            || msg.contains("timed out") || msg.contains("not connected")
     }
 
     /// Timestamp of the last successful data refresh.
@@ -58,6 +52,11 @@ final class HomeViewModel {
     /// solely on `groupedTransit` fallback data that can later vanish.
     var modesEverRefreshed: Set<TransportMode> = []
 
+    /// Cached bus schedule for the currently selected bus route.
+    var busSchedule: BusScheduleResponse?
+    /// Cached train arrivals for interpolation between refresh cycles.
+    var cachedTrainArrivals: [TrainArrival] = []
+
     /// The currently tracked route for the widget, loaded from UserDefaults.
     var currentTrackedRoute: TrackedRoute? = nil
 
@@ -66,26 +65,10 @@ final class HomeViewModel {
     /// handling (e.g. tapping a Live Activity).
     var pendingDeepLink = false
 
-    /// Cached bus schedule for the currently selected bus route.
-    var busSchedule: BusScheduleResponse?
-
-    // Cache latest arrivals to allow client-side simulation between network fetches.
-    var cachedTrainArrivals: [TrainArrival] = []
-
     // MARK: - Search
 
     /// User-entered search text for filtering transit results.
     var searchText = ""
-
-    // MARK: - Search Helpers
-    // See HomeViewModel+Search.swift
-
-    // Set to true locally when you need to trace per-route distance math.
-    // Intentionally left false by default — with 30+ routes and frequent
-    // re-renders this generates hundreds of log lines per minute.
-    #if DEBUG
-    static let verboseDistanceLogs = false
-    #endif
 
     /// Distance from the user to the closest stop in this grouped route.
     ///
@@ -112,14 +95,12 @@ final class HomeViewModel {
                 return routeIds.contains { normalizeMTARouteToken($0) == target }
             }
             #if DEBUG
-            if HomeViewModel.verboseDistanceLogs {
-                if matchingStops.isEmpty {
-                    print("[DIST] \(group.routeId) bus  center=\(centerLabel)  ⚠️ NO matching stops (token=\(target), nearbyBusStops=\(nearbyBusStops.count)) → fallback groupMinDistance")
-                } else {
-                    for stop in matchingStops {
-                        let d = location.distance(from: CLLocation(latitude: stop.lat, longitude: stop.lon))
-                        print("[DIST] \(group.routeId) bus  center=\(centerLabel)  stop=\(stop.name)  (\(String(format: "%.5f", stop.lat)),\(String(format: "%.5f", stop.lon)))  d=\(Int(d))m / \(String(format: "%.2f", d * 3.28084 / 5280))mi")
-                    }
+            if matchingStops.isEmpty {
+                print("[DIST] \(group.routeId) bus  center=\(centerLabel)  ⚠️ NO matching stops (token=\(target), nearbyBusStops=\(nearbyBusStops.count)) → fallback groupMinDistance")
+            } else {
+                for stop in matchingStops {
+                    let d = location.distance(from: CLLocation(latitude: stop.lat, longitude: stop.lon))
+                    print("[DIST] \(group.routeId) bus  center=\(centerLabel)  stop=\(stop.name)  (\(String(format: "%.5f", stop.lat)),\(String(format: "%.5f", stop.lon)))  d=\(Int(d))m / \(String(format: "%.2f", d * 3.28084 / 5280))mi")
                 }
             }
             #endif
@@ -157,14 +138,12 @@ final class HomeViewModel {
                 }
             }
             #if DEBUG
-            if HomeViewModel.verboseDistanceLogs {
-                if matchingStations.isEmpty {
-                    print("[DIST] \(group.routeId) \(group.mode)  center=\(centerLabel)  ⚠️ NO matching stations (token=\(target), nearbyStations=\(nearbyStations.count)) → fallback groupMinDistance")
-                } else {
-                    for st in matchingStations {
-                        let d = location.distance(from: CLLocation(latitude: st.lat, longitude: st.lon))
-                        print("[DIST] \(group.routeId) \(group.mode)  center=\(centerLabel)  station=\(st.name)  (\(String(format: "%.5f", st.lat)),\(String(format: "%.5f", st.lon)))  d=\(Int(d))m / \(String(format: "%.2f", d * 3.28084 / 5280))mi")
-                    }
+            if matchingStations.isEmpty {
+                print("[DIST] \(group.routeId) \(group.mode)  center=\(centerLabel)  ⚠️ NO matching stations (token=\(target), nearbyStations=\(nearbyStations.count)) → fallback groupMinDistance")
+            } else {
+                for st in matchingStations {
+                    let d = location.distance(from: CLLocation(latitude: st.lat, longitude: st.lon))
+                    print("[DIST] \(group.routeId) \(group.mode)  center=\(centerLabel)  station=\(st.name)  (\(String(format: "%.5f", st.lat)),\(String(format: "%.5f", st.lon)))  d=\(Int(d))m / \(String(format: "%.2f", d * 3.28084 / 5280))mi")
                 }
             }
             #endif
@@ -177,17 +156,17 @@ final class HomeViewModel {
                 result = best.isFinite ? best : nil
             } else {
                 #if DEBUG
-                if HomeViewModel.verboseDistanceLogs {
-                    print("[DIST] \(group.routeId) \(group.mode)  center=\(centerLabel)  ⛔ using groupMinDistance=\(Int(groupDist))m / \(String(format: "%.2f", groupDist * 3.28084 / 5280))mi")
-                }
+                print("[DIST] \(group.routeId) \(group.mode)  center=\(centerLabel)  ⛔ using groupMinDistance=\(Int(groupDist))m / \(String(format: "%.2f", groupDist * 3.28084 / 5280))mi")
                 #endif
                 result = groupDist.isFinite ? groupDist : nil
             }
         }
 
         #if DEBUG
-        if HomeViewModel.verboseDistanceLogs, let r = result {
+        if let r = result {
             print("[DASHBOARD DIST] \(group.routeId) (\(group.mode))  center=\(centerLabel)  → \(Int(r))m / \(String(format: "%.2f", r / 1609.34))mi  ← this is what the row badge shows")
+        } else {
+            print("[DASHBOARD DIST] \(group.routeId) (\(group.mode))  center=\(centerLabel)  → nil (hidden)")
         }
         #endif
         return result
@@ -205,13 +184,11 @@ final class HomeViewModel {
         muchFarther: [GroupedNearbyTransitResponse]
     ) {
         #if DEBUG
-        if HomeViewModel.verboseDistanceLogs {
-            if let referenceLocation {
-                let src = isSearchPinActive ? "PIN" : "GPS"
-                print("[BUCKETS] center=\(src) (\(String(format: "%.5f", referenceLocation.coordinate.latitude)), \(String(format: "%.5f", referenceLocation.coordinate.longitude)))  groups=\(groups.count)  nearbyBusStops=\(nearbyBusStops.count)  nearbyStations=\(nearbyStations.count)  lastKnownGPS=\(lastKnownUserLocation.map { "(\(String(format: "%.5f", $0.coordinate.latitude)),\(String(format: "%.5f", $0.coordinate.longitude)))" } ?? "nil")")
-            } else {
-                print("[BUCKETS] ⚠️ referenceLocation=nil — sorting without distance  lastKnownGPS=\(lastKnownUserLocation.map { "(\(String(format: "%.5f", $0.coordinate.latitude)),\(String(format: "%.5f", $0.coordinate.longitude)))" } ?? "nil")")
-            }
+        if let referenceLocation {
+            let src = isSearchPinActive ? "PIN" : "GPS"
+            print("[BUCKETS] center=\(src) (\(String(format: "%.5f", referenceLocation.coordinate.latitude)), \(String(format: "%.5f", referenceLocation.coordinate.longitude)))  groups=\(groups.count)  nearbyBusStops=\(nearbyBusStops.count)  nearbyStations=\(nearbyStations.count)  lastKnownGPS=\(lastKnownUserLocation.map { "(\(String(format: "%.5f", $0.coordinate.latitude)),\(String(format: "%.5f", $0.coordinate.longitude)))" } ?? "nil")")
+        } else {
+            print("[BUCKETS] ⚠️ referenceLocation=nil — sorting without distance  lastKnownGPS=\(lastKnownUserLocation.map { "(\(String(format: "%.5f", $0.coordinate.latitude)),\(String(format: "%.5f", $0.coordinate.longitude)))" } ?? "nil")")
         }
         #endif
         guard let referenceLocation else {
@@ -481,26 +458,6 @@ final class HomeViewModel {
                 "STORE route=\(group.routeId) mode=\(group.mode) idx=\(clampedIndex) dir=\(group.directions[clampedIndex].direction) key=\(directionKey)"
         )
         #endif
-    }
-
-    /// Single entry-point for every route row tap across the entire app.
-    ///
-    /// Consolidates the three-step dance that every `onSelect` callsite used to
-    /// repeat independently:
-    ///   1. Record the direction the user chose as their preference for this route.
-    ///   2. Log the interaction to `RouteAnalyticsManager` (powers smart suggestions).
-    ///   3. Load the route shape + vehicles on the map via `selectGroupedRoute`.
-    ///
-    /// Navigation (`sheetNavigator.navigate`) is intentionally kept at the call
-    /// site because it is UI state and belongs in the View layer.
-    func handleRouteSelection(
-        _ group: GroupedNearbyTransitResponse,
-        directionIndex: Int,
-        userLocation: CLLocation?
-    ) async {
-        setPreferredDirectionIndex(directionIndex, for: group)
-        RouteAnalyticsManager.shared.logInteraction(routeId: group.routeId)
-        await selectGroupedRoute(group, directionIndex: directionIndex, userLocation: userLocation)
     }
 
     // Nearest metro recommendation (shown when no nearby transit)
@@ -1153,11 +1110,6 @@ final class HomeViewModel {
     /// direction (which would have a marker on the map but for a different
     /// direction tab than the user is viewing).
     func isVehicleLiveOnMap(_ arrival: NearbyTransitResponse) -> Bool {
-        // Scheduled arrivals have a GTFS trip-id but their vehicle is still at the
-        // terminal — it hasn't started serving passengers on this direction yet.
-        // Never show a map marker or "In Route" badge for them.
-        if arrival.isScheduledOnly { return false }
-
         if arrival.isBus, let vid = arrival.vehicleId, !vid.isEmpty {
             return filteredBusVehicles.contains(where: { $0.vehicleId == vid })
         }
@@ -1488,6 +1440,13 @@ final class HomeViewModel {
     // MARK: - Route Detail
 
     /// Opens the route detail sheet for a grouped route and loads its
+    /// Convenience alias used by the UI layer to select a grouped route.
+    func handleRouteSelection(
+        _ group: GroupedNearbyTransitResponse, directionIndex: Int = 0, userLocation: CLLocation?
+    ) async {
+        await selectGroupedRoute(group, directionIndex: directionIndex, userLocation: userLocation)
+    }
+
     /// route shape / vehicle positions on the map.
     /// Also centers the map on the nearest station and calculates walking directions.
     func selectGroupedRoute(
@@ -2059,8 +2018,4 @@ final class HomeViewModel {
                 pitch: is3D ? 60 : 0
             ))
     }
-
-    // MARK: - Route Selection, Vehicle Refresh, Nearby Transit, Tracking
-    // See HomeViewModel+Fetch.swift
-
 }

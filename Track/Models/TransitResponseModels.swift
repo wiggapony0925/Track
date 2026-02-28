@@ -86,21 +86,25 @@ struct DirectionArrivalsResponse: Codable, Identifiable, Equatable {
 
     /// Live (non-placeholder) arrivals — filters out backend backfill entries
     /// that exist only to guarantee direction tabs, AND arrivals whose timestamp
-    /// is more than 5 minutes in the past (vehicle already passed the stop).
+    /// is more than 90 s in the past (vehicle already passed the stop).
     ///
-    /// NOTE: 120 s grace period (> the engine's 90 s isPastArrival window)
-    /// keeps a bus that dwells 1-2 min at a stop from vanishing between
-    /// backend polls, while preventing 5-minute-stale ghosts from piling
-    /// up as extra "NOW" chips.
+    /// NOTE: 90 s grace period is intentionally aligned with
+    /// `ArrivalETAEngine.isPastArrival` (also 90 s) so that an arrival
+    /// disappears from `liveArrivals` at the SAME moment the engine marks
+    /// it as past.  Previous values (120 s, 300 s) created windows where
+    /// the arrival was still in the data source but the engine showed it
+    /// as past — causing ghost "NOW" chips or blank chip sections.
     var liveArrivals: [NearbyTransitResponse] {
         let now = Date.now.timeIntervalSince1970
         return arrivals.filter { arrival in
             // Filter out placeholders
             guard !arrival.isPlaceholder else { return false }
-            // Filter out arrivals whose timestamp is more than 2 minutes in the past
+            // Filter out arrivals whose timestamp is more than 90 s in the past.
+            // Aligned with ArrivalETAEngine.isPastArrival (90 s) so both layers
+            // agree on when an arrival is gone.
             if let ts = arrival.arrivalTs, ts > 0 {
                 let elapsed = now - Double(ts)
-                if elapsed > 120 { return false }
+                if elapsed > 90 { return false }
             }
             // Only filter 0-minute arrivals that are purely static GTFS with no
             // realtime context at all.  Live SIRI buses at minutesAway==0 are
@@ -156,6 +160,15 @@ struct GroupedNearbyTransitResponse: Codable, Identifiable, Equatable {
             dir.liveArrivals.map { (dir.direction, $0.minutesAway) }
         }
         return all.min(by: { $0.1 < $1.1 })?.0
+    }
+
+    /// True when at least one direction has a non-placeholder arrival.
+    /// Placeholder-only routes (e.g. QM16 with all 99-min stubs) return false
+    /// and should be filtered from the home dashboard.
+    var hasRealArrivals: Bool {
+        directions.contains { dir in
+            dir.arrivals.contains { !$0.isPlaceholder }
+        }
     }
 
     enum CodingKeys: String, CodingKey {

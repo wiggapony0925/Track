@@ -95,3 +95,29 @@ func normalizeMTARouteToken(_ id: String) -> String {
         .replacingOccurrences(of: " ", with: "")
         .uppercased()
 }
+
+// MARK: - Stop ID Normalization
+
+/// Strips MTA agency prefixes AND trailing N/S direction suffixes from a stop ID.
+///
+/// This is the canonical stop-ID normalization used for direction assignment
+/// and stop matching across the app.  Combines `stripMTAStopPrefix` with
+/// direction-suffix removal so both bus and subway stop IDs reduce to a
+/// stable parent-station key.
+///
+/// Examples:
+///   - `"MTA NYCT_120N"` → `"120"`
+///   - `"MTA_305423"`    → `"305423"`
+///   - `"A31S"`          → `"A31"`
+///   - `"GS"`            → `"GS"` (unchanged — not a direction suffix)
+func normalizeStopId(_ raw: String) -> String {
+    let stripped = stripMTAStopPrefix(raw)
+    guard stripped.count > 1, let last = stripped.last, last == "N" || last == "S" else {
+        return stripped
+    }
+    let penultimate = stripped[stripped.index(before: stripped.index(before: stripped.endIndex))]
+    if penultimate.isNumber || penultimate.isLowercase {
+        return String(stripped.dropLast())
+    }
+    return stripped
+}

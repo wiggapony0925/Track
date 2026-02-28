@@ -56,58 +56,63 @@ extension HomeViewModel {
 
     /// Refreshes only the vehicle positions for the currently selected bus route.
     /// Stores the previous positions for smooth polyline-based interpolation.
+    ///
+    /// CRITICAL: Updates `busVehicles` and `selectedGroupedRoute` in a single
+    /// MainActor dispatch so that `isVehicleLiveOnMap` never sees a mismatch
+    /// between the vehicle list and the arrival data — eliminating the chip
+    /// flicker between "On Route" and "Scheduled".
     func refreshBusVehicles() async {
         guard let routeId = selectedRouteId,
             selectedGroupedRoute?.isBus == true
         else { return }
         do {
             let vehicles = try await TrackAPI.fetchBusVehicles(routeID: routeId)
-            await MainActor.run {
-                // Snapshot current positions before overwriting so that
-                // updateBusSimulation() can interpolate between old → new.
+
+            // Snapshot current positions BEFORE overwriting so that
+            // updateBusSimulation() can interpolate between old → new.
+            // This happens on MainActor but does NOT publish the new vehicles yet.
+            let snapshots: [String: BusSnapshot] = await MainActor.run {
+                var result: [String: BusSnapshot] = [:]
                 if self.busVehicles.isEmpty {
-                    // First fetch: seed snapshots from the new data so
-                    // interpolation can start on the very next GPS cycle
-                    // instead of waiting for a second fetch.
                     for v in vehicles {
-                        previousBusPositions[v.vehicleId] = BusSnapshot(
+                        result[v.vehicleId] = BusSnapshot(
                             lat: v.lat, lon: v.lon, timestamp: Date()
                         )
                     }
                 } else {
                     for v in self.busVehicles {
-                        previousBusPositions[v.vehicleId] = BusSnapshot(
+                        result[v.vehicleId] = BusSnapshot(
                             lat: v.lat, lon: v.lon, timestamp: self.lastBusUpdateTime
                         )
                     }
                 }
+                return result
+            }
+
+            // Compute the synced group OFF the main thread.
+            // Returns nil if sync produces no new arrivals (keep existing group).
+            let updatedGroup = await buildSyncedBusGroup(vehicles)
+
+            // Apply BOTH updates atomically so isVehicleLiveOnMap never mismatches.
+            await MainActor.run {
+                self.previousBusPositions.merge(snapshots) { _, new in new }
                 self.lastBusUpdateTime = Date()
                 self.busVehicles = vehicles
+                if let updatedGroup,
+                   self.selectedGroupedRoute?.routeId == updatedGroup.routeId {
+                    self.selectedGroupedRoute = updatedGroup
+                }
             }
-            // Sync the arrivals list with these fresh vehicle positions
-            await syncBusArrivalsFromVehicles(vehicles)
-
         } catch {
             AppLogger.shared.logError("refreshBusVehicles(\(routeId))", error: error)
         }
     }
 
-    /// Updates the selected route's arrival list using `onwardCalls` from live vehicles.
-    /// This ensures the list stays perfectly in sync with the moving bus icons.
-    private func syncBusArrivalsFromVehicles(_ vehicles: [BusVehicleResponse]) async {
-        guard let currentGroup = selectedGroupedRoute else { return }
-
-        func normalizeStopId(_ raw: String) -> String {
-            let stripped = stripMTAStopPrefix(raw)
-            guard stripped.count > 1, let last = stripped.last, last == "N" || last == "S" else {
-                return stripped
-            }
-            let penultimate = stripped[stripped.index(before: stripped.index(before: stripped.endIndex))]
-            if penultimate.isNumber || penultimate.isLowercase {
-                return String(stripped.dropLast())
-            }
-            return stripped
-        }
+    /// Computes the synced bus group from live vehicle onwardCalls WITHOUT
+    /// touching any @Published properties.  Returns the updated group, or nil
+    /// if there were no onwardCalls to process.
+    private func buildSyncedBusGroup(_ vehicles: [BusVehicleResponse]) async -> GroupedNearbyTransitResponse? {
+        guard let currentGroup = await MainActor.run(body: { selectedGroupedRoute }) else { return nil }
 
         // Build a mapping from numeric directionRef (0/1) to the existing
         // group direction key (e.g. "Inbound", "EAST NEW YORK", etc.).
@@ -239,7 +244,7 @@ extension HomeViewModel {
 
         // If no OnwardCalls were found (e.g. all buses just started or API didn't return them),
         // fallback to keeping the existing list to avoid flashing empty.
-        if newArrivals.isEmpty { return }
+        if newArrivals.isEmpty { return nil }
 
         // Group by the resolved direction key (matches existing group direction strings)
         let grouped = Dictionary(grouping: newArrivals, by: { $0.direction })
@@ -301,27 +306,32 @@ extension HomeViewModel {
         )
         #endif
 
-        await MainActor.run {
-            // Only update if the route hasn't changed in the meantime
-            if self.selectedGroupedRoute?.routeId == currentGroup.routeId {
-                self.selectedGroupedRoute = updatedGroup
-            }
-        }
+        return updatedGroup
     }
 
     /// Refreshes only the vehicle positions for the currently selected subway route.
+    ///
+    /// CRITICAL: Updates `trainVehicles` (via `updateTrainPositions`) and
+    /// `selectedGroupedRoute` atomically so that `isVehicleLiveOnMap` never
+    /// sees a mismatch — eliminating the chip flicker.
     func refreshTrainVehicles() async {
         guard let routeId = selectedRouteId else { return }
         do {
-            async let arrivalsTask = TrackAPI.fetchSubwayArrivals(lineID: routeId)
-            let arrivals = try await arrivalsTask
+            let arrivals = try await TrackAPI.fetchSubwayArrivals(lineID: routeId)
+
+            // Compute positions and synced group before publishing.
+            let updatedGroup = await buildSyncedTrainGroup(arrivals)
+
+            // Apply all updates atomically on MainActor.
             await MainActor.run {
                 withAnimation(.interpolatingSpring(stiffness: 30, damping: 15)) {
                     updateTrainPositions(arrivals: arrivals)
                 }
+                if let updatedGroup,
+                   self.selectedGroupedRoute?.routeId == updatedGroup.routeId {
+                    self.selectedGroupedRoute = updatedGroup
+                }
             }
-            // Sync the arrivals list with the latest data
-            await syncTrainArrivals(arrivals)
         } catch {
             // Silently ignore failures on fast poll, or log debug
         }
@@ -329,6 +339,7 @@ extension HomeViewModel {
 
     /// Refreshes vehicle positions for the currently selected LIRR or MNR route.
     /// Uses the same GTFS-RT arrivals → interpolation pipeline as subway.
+    /// Atomic update: positions + group published together.
     func refreshCommuterRailVehicles() async {
         guard let group = selectedGroupedRoute,
             group.isCommuterRail
@@ -344,41 +355,35 @@ extension HomeViewModel {
             let routeArrivals = arrivals.filter { arrival in
                 let id = arrival.routeID.lowercased()
                 let target = group.routeId.lowercased()
-                // Match both "LIRR_9" and bare "9" forms
                 return id == target
                     || id == target.replacingOccurrences(of: "lirr_", with: "")
                     || id == target.replacingOccurrences(of: "mnr_", with: "")
                     || "lirr_\(id)" == target
                     || "mnr_\(id)" == target
             }
+
+            let mode = group.isLIRR ? "lirr" : "mnr"
+            let updatedGroup = await buildSyncedTrainGroup(routeArrivals, mode: mode)
+
             await MainActor.run {
                 withAnimation(.interpolatingSpring(stiffness: 30, damping: 15)) {
                     updateTrainPositions(arrivals: routeArrivals)
                 }
+                if let updatedGroup,
+                   self.selectedGroupedRoute?.routeId == updatedGroup.routeId {
+                    self.selectedGroupedRoute = updatedGroup
+                }
             }
-            // Sync the arrivals list with the latest data
-            await syncTrainArrivals(routeArrivals, mode: group.isLIRR ? "lirr" : "mnr")
         } catch {
             AppLogger.shared.logError("refreshCommuterRailVehicles", error: error)
         }
     }
 
-    /// Updates the selected route's arrival list using the latest full arrival data.
-    /// This ensures the list stays in sync with the map vehicle positions.
-    private func syncTrainArrivals(_ arrivals: [TrainArrival], mode: String = "subway") async {
-        guard let currentGroup = selectedGroupedRoute else { return }
-
-        func normalizeStopId(_ raw: String) -> String {
-            let stripped = stripMTAStopPrefix(raw)
-            guard stripped.count > 1, let last = stripped.last, last == "N" || last == "S" else {
-                return stripped
-            }
-            let penultimate = stripped[stripped.index(before: stripped.index(before: stripped.endIndex))]
-            if penultimate.isNumber || penultimate.isLowercase {
-                return String(stripped.dropLast())
-            }
-            return stripped
-        }
+    /// Computes the synced train group from GTFS-RT arrivals WITHOUT
+    /// touching any @Published properties. Returns the updated group, or nil
+    /// if there were no arrivals to process.
+    private func buildSyncedTrainGroup(_ arrivals: [TrainArrival], mode: String = "subway") async -> GroupedNearbyTransitResponse? {
+        guard let currentGroup = await MainActor.run(body: { selectedGroupedRoute }) else { return nil }
 
         // Map TrainArrival -> NearbyTransitResponse
         // Filter to only this route if needed (though caller usually filters)
@@ -410,7 +415,7 @@ extension HomeViewModel {
                 ))
         }
 
-        if newArrivals.isEmpty { return }
+        if newArrivals.isEmpty { return nil }
 
         // Build stop-id membership per direction from route shape, used as
         // primary assignment to prevent branch directions from sharing ETAs.
@@ -564,11 +569,7 @@ extension HomeViewModel {
         )
         #endif
 
-        await MainActor.run {
-            if self.selectedGroupedRoute?.routeId == currentGroup.routeId {
-                self.selectedGroupedRoute = updatedGroup
-            }
-        }
+        return updatedGroup
     }
 
     // MARK: - Bus Schedule
