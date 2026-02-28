@@ -931,9 +931,12 @@ class SupabaseManager: ObservableObject {
         
         request.httpBody = try supabaseEncoder.encode(settings)
         
-        let (_, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await URLSession.shared.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse,
               (200...299).contains(httpResponse.statusCode) else {
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
+            let body = String(data: data, encoding: .utf8) ?? "<non-UTF8>"
+            AppLogger.shared.log("SUPABASE", message: "saveUserSettings failed — HTTP \(statusCode): \(body)")
             throw SupabaseError.upsertFailed
         }
     }

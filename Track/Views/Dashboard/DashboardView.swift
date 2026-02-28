@@ -59,6 +59,8 @@ struct DashboardView: View {
                     } else {
                         FavoritesSection(
                             groupedTransit: viewModel.groupedTransit,
+                            userLocation: locationManager.currentLocation,
+                            sheetNavigator: sheetNavigator,
                             onSelect: { group, directionIndex in
                                 sheetNavigator.navigate(to: .routeDetail(group: group, directionIndex: directionIndex))
                                 Task {

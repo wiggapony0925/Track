@@ -229,7 +229,7 @@ class SyncManager: ObservableObject {
             hapticsEnabled: store.object(forKey: "haptics_enabled") as? Bool ?? true,
             autoRefreshEnabled: store.object(forKey: "auto_refresh_enabled") as? Bool ?? true,
             notificationsEnabled: true,
-            dragToSearch: store.object(forKey: "drag_to_search") as? Bool ?? true,
+            dragToSearch: store.object(forKey: "drag_to_search") as? Bool ?? false,
             devUseLocalhost: devUseLocalhostValue,
             devCustomIp: devCustomIpValue
         )

@@ -13,6 +13,17 @@ struct TrackApp: App {
     init() {
         // Initialize the file logger — clears log.app on every launch
         _ = AppLogger.shared
+
+        // Validate local-server flag before warming. If dev_use_localhost is
+        // set but the Mac isn't on the same network, this clears the flag and
+        // falls back to production before HomeView fires its first request.
+        TrackAPI.validateLocalServer()
+
+        // Pre-warm TCP/TLS connection to the backend immediately at launch.
+        // On cellular, TLS handshake takes 1–3 s. Doing it here — before
+        // ContentView even renders — means the /nearby/grouped request fired
+        // from HomeView.onAppear finds the connection already open.
+        TrackAPI.warmConnection()
         // Request notification permissions for service alerts
         AlertNotificationManager.shared.requestPermissionIfNeeded()
         

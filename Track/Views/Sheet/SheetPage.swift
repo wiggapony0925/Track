@@ -30,6 +30,9 @@ enum SheetPage: Equatable, Identifiable {
     /// Widget schedule management
     case widgetSchedules
 
+    /// Manage and remove saved favorites
+    case manageFavorites
+
 #if DEBUG
     /// Developer tools and local backend controls (debug builds only)
     case developerSettings
@@ -54,6 +57,8 @@ enum SheetPage: Equatable, Identifiable {
             return "serviceAlerts"
         case .widgetSchedules:
             return "widgetSchedules"
+        case .manageFavorites:
+            return "manageFavorites"
 #if DEBUG
         case .developerSettings:
             return "developerSettings"
@@ -78,6 +83,8 @@ enum SheetPage: Equatable, Identifiable {
         case (.serviceAlerts, .serviceAlerts):
             return true
         case (.widgetSchedules, .widgetSchedules):
+            return true
+        case (.manageFavorites, .manageFavorites):
             return true
 #if DEBUG
         case (.developerSettings, .developerSettings):

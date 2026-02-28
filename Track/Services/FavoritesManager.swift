@@ -230,7 +230,7 @@ class FavoritesManager: ObservableObject {
         }
     }
 
-    private func removeFavorites(_ items: [CloudFavorite]) async {
+    func removeFavorites(_ items: [CloudFavorite]) async {
         // Optimistic local remove (including records with nil id from cache)
         let ids = Set(items.compactMap(\ .id))
         favorites.removeAll { favorite in

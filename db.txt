@@ -175,7 +175,7 @@ CREATE TABLE IF NOT EXISTS user_settings (
   -- Map & display
   show_system_map BOOLEAN DEFAULT true,                       -- Show full transit system map overlay
   subway_line_offset_meters DOUBLE PRECISION DEFAULT 12,      -- How far apart co-located subway lines spread
-  drag_to_search BOOLEAN DEFAULT true,                        -- Pan map to explore transit at another location
+  drag_to_search BOOLEAN DEFAULT false,                       -- Pan map to explore transit at another location
   
   -- General behavior
   haptics_enabled BOOLEAN DEFAULT true,                       -- Haptic feedback on interactions
@@ -190,6 +190,13 @@ CREATE TABLE IF NOT EXISTS user_settings (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
+
+-- Migration: add columns introduced after initial table creation (idempotent)
+DO $$ BEGIN
+  ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS drag_to_search BOOLEAN DEFAULT false;
+  ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS distance_unit TEXT DEFAULT 'mi';
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
 
 -- Trigger for auto-updating updated_at (idempotent)
 DROP TRIGGER IF EXISTS update_user_settings_updated_at ON user_settings;

@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import CoreLocation
 
 // MARK: - FavoritesSection
 
@@ -16,18 +17,55 @@ import SwiftUI
 struct FavoritesSection: View {
     @ObservedObject private var favoritesManager = FavoritesManager.shared
     let groupedTransit: [GroupedNearbyTransitResponse]
+    let userLocation: CLLocation?
+    let sheetNavigator: SheetNavigator
     let onSelect: (GroupedNearbyTransitResponse, Int) -> Void
+
+    /// Favorites sorted closest-first using the saved stop coordinates.
+    /// In-radius cards (have a live matchedGroup) always precede out-of-radius ones.
+    private var sortedFavorites: [CloudFavorite] {
+        let matched = groupedTransit.map(\.routeId)
+        return favoritesManager.favorites.sorted { a, b in
+            let aInRadius = matched.contains(a.routeId)
+            let bInRadius = matched.contains(b.routeId)
+            if aInRadius != bInRadius { return aInRadius }
+            return distanceToStop(a) < distanceToStop(b)
+        }
+    }
+
+    private func distanceToStop(_ fav: CloudFavorite) -> CLLocationDistance {
+        guard let loc = userLocation,
+              let lat = fav.stopLat, let lon = fav.stopLon else { return .greatestFiniteMagnitude }
+        return loc.distance(from: CLLocation(latitude: lat, longitude: lon))
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            DashboardSectionHeader(title: "Favorites")
+            // Custom header row: FAVORITES title + Manage button
+            HStack {
+                Text("Favorites")
+                    .font(AppTheme.Typography.sectionHeader)
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+                    .textCase(.uppercase)
+                    .lineLimit(1)
+                Spacer()
+                if !favoritesManager.favorites.isEmpty {
+                    Button("Manage") {
+                        sheetNavigator.navigate(to: .manageFavorites)
+                    }
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(AppTheme.Colors.mtaBlue)
+                }
+            }
+            .padding(.horizontal, AppTheme.Layout.margin)
+            .padding(.top, 8)
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
                     if favoritesManager.favorites.isEmpty {
                         FavoritesEmptyCard()
                     } else {
-                        ForEach(favoritesManager.favorites) { favorite in
+                        ForEach(sortedFavorites) { favorite in
                             FavoriteCard(
                                 favorite: favorite,
                                 matchedGroup: groupedTransit.first { $0.routeId == favorite.routeId },
@@ -74,11 +112,17 @@ private struct FavoritesEmptyCard: View {
 
 // MARK: - Favorite Card
 
-/// A single compact card showing a favorited route with live countdown.
-private struct FavoriteCard: View {
+/// A single compact card (or full-width list row) showing a favorited route with live countdown.
+///
+/// Use `isListRow = false` (default) for the horizontal scroll strip on the dashboard.
+/// Use `isListRow = true` in ManageFavoritesView for a full-width list layout —
+/// in that mode the view renders plain content with no Button wrapper; the caller
+/// is responsible for tap handling.
+struct FavoriteCard: View {
     let favorite: CloudFavorite
     let matchedGroup: GroupedNearbyTransitResponse?
     let onTap: (GroupedNearbyTransitResponse, Int) -> Void
+    var isListRow: Bool = false
 
     // MARK: Helpers
 
@@ -110,16 +154,100 @@ private struct FavoriteCard: View {
     // MARK: Body
 
     var body: some View {
-        Button {
-            if let group = matchedGroup {
-                onTap(group, directionIndex)
+        if isListRow {
+            // Plain content — no Button wrapper. Caller owns tap + selection handling.
+            listRowContent
+        } else {
+            Button {
+                if let group = matchedGroup {
+                    onTap(group, directionIndex)
+                }
+            } label: {
+                cardContent
             }
-        } label: {
-            cardContent
+            .buttonStyle(.plain)
+            .opacity(matchedGroup != nil ? 1.0 : 0.5)
+            .disabled(matchedGroup == nil)
         }
-        .buttonStyle(.plain)
-        .opacity(matchedGroup != nil ? 1.0 : 0.5)
-        .disabled(matchedGroup == nil)
+    }
+
+    // MARK: - List Row Layout (used in ManageFavoritesView)
+
+    /// Full-width horizontal row: badge | text column | Spacer | countdown | chevron
+    var listRowContent: some View {
+        HStack(spacing: 12) {
+            RouteBadge(
+                routeID: favorite.routeDisplayName,
+                size: .medium,
+                hexColor: matchedGroup?.colorHex,
+                mode: favorite.mode
+            )
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(favorite.routeDisplayName)
+                    .font(.custom("Helvetica-Bold", size: 15))
+                    .foregroundColor(AppTheme.Colors.textPrimary)
+                    .lineLimit(1)
+                Text(favorite.stopName)
+                    .font(.custom("Helvetica", size: 12))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+                    .lineLimit(1)
+                if let dest = favorite.destination ?? favorite.direction {
+                    Text("→ \(dest)")
+                        .font(.custom("Helvetica", size: 11))
+                        .foregroundColor(routeColor.opacity(0.8))
+                        .lineLimit(1)
+                }
+            }
+
+            Spacer()
+
+            // Live countdown pill — same logic as the dashboard card
+            countdownPill
+
+            Image(systemName: "chevron.right")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.3))
+        }
+        .padding(.vertical, 13)
+        .opacity(matchedGroup != nil ? 1.0 : 0.55)
+    }
+
+    /// Pill-style countdown used in list rows (more prominent than the inline label in cards).
+    @ViewBuilder
+    private var countdownPill: some View {
+        if let arrival = nextArrival {
+            TimelineView(.periodic(from: .now, by: 1.0)) { _ in
+                let eta = ArrivalETAEngine.computeETA(
+                    vehicleCoord: nil,
+                    vehicleKey: nil,
+                    stopCoord: nil,
+                    arrivalTs: arrival.arrivalTs,
+                    staticMinutes: arrival.minutesAway,
+                    mode: arrival.mode
+                )
+                let isNow = eta.isAtStop || eta.secondsRemaining <= 30
+                Text(isNow ? "Now" : "\(eta.minutesRemaining) min")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(eta.minutesRemaining <= 2 ? .white : AppTheme.Colors.textPrimary)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4)
+                    .background(
+                        eta.minutesRemaining <= 2
+                            ? AppTheme.Colors.alertRed
+                            : AppTheme.Colors.cardBackground
+                    )
+                    .clipShape(Capsule())
+            }
+        } else {
+            Text("—")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(AppTheme.Colors.textSecondary)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 4)
+                .background(AppTheme.Colors.cardBackground)
+                .clipShape(Capsule())
+        }
     }
 
     @ViewBuilder

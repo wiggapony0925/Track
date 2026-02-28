@@ -127,7 +127,7 @@ async def _discover_and_cache_bus_id(short_name: str) -> str | None:
                 
                 if resp.status_code == 200:
                     data = resp.json()
-                    if data.get("code") == 200:
+                    if data and data.get("code") == 200:
                         routes = data.get("data", {}).get("list", [])
                         for r in routes:
                             sn = r.get("shortName", "").upper()

@@ -456,6 +456,12 @@ struct HomeView: View {
         case .widgetSchedules:
             WidgetSchedulesContentView(sheetNavigator: sheetNavigator)
 
+        case .manageFavorites:
+            ManageFavoritesView(
+                sheetNavigator: sheetNavigator,
+                groupedTransit: viewModel.groupedTransit
+            )
+
 #if DEBUG
         case .developerSettings:
             DeveloperSettingsContentView(sheetNavigator: sheetNavigator)

@@ -42,6 +42,78 @@ private actor APIRequestMemoizer {
 /// Centralized API client for the Track backend.
 struct TrackAPI {
 
+    // MARK: - Dedicated URLSession
+
+    /// Custom session used for all Track API calls.
+    /// - `waitsForConnectivity = true`  → queues the request until the network is
+    ///   available instead of failing immediately. Eliminates retry-backoff waste
+    ///   (~1.5 s) when the radio hasn't finished waking on app cold-start.
+    /// - 15 s request timeout → fail faster than the URLSession.shared default (60 s)
+    ///   so the user sees an error sooner when the server is actually unreachable.
+    private static let session: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.waitsForConnectivity = true
+        config.timeoutIntervalForRequest = 15
+        config.timeoutIntervalForResource = 30
+        config.httpMaximumConnectionsPerHost = 4
+        return URLSession(configuration: config)
+    }()
+
+    // MARK: - Connection Warm-Up
+
+    /// Fires a lightweight TCP/TLS warm-up to the backend host as early as
+    /// possible in the app lifecycle (called from TrackApp.init).
+    ///
+    /// On cellular, establishing a TLS connection cold takes 1–3 seconds.
+    /// By the time HomeView.onAppear fires the real /nearby/grouped request,
+    /// the connection is already open → that latency cost is paid in parallel
+    /// with splash / auth checks rather than on the critical path.
+    static func warmConnection() {
+        Task.detached(priority: .utility) {
+            guard let url = URL(string: baseURL + "/health") else { return }
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 5
+            _ = try? await session.data(for: request)
+        }
+    }
+
+    /// In DEBUG builds: if `dev_use_localhost` is set but the local server
+    /// doesn't respond within 1.5 s, auto-clear the flag and fall back to
+    /// production. Prevents a stale UserDefaults flag from bricking the app
+    /// when the developer's Mac isn't on the same network.
+    ///
+    /// Called from `TrackApp.init()` at `.userInitiated` priority so it
+    /// resolves before HomeView.onAppear fires its first real request.
+    static func validateLocalServer() {
+        #if DEBUG
+        guard UserDefaults.standard.bool(forKey: "dev_use_localhost") else { return }
+        Task.detached(priority: .userInitiated) {
+            // Use a plain URLSession — no waitsForConnectivity — so a TCP
+            // refused / host-unreachable error comes back in milliseconds.
+            let config = URLSessionConfiguration.ephemeral
+            config.timeoutIntervalForRequest = 1.5
+            config.timeoutIntervalForResource = 1.5
+            let probe = URLSession(configuration: config)
+            let storedIP = UserDefaults.standard.string(forKey: "dev_custom_ip")?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let resolvedIP = (storedIP?.isEmpty == false) ? storedIP! : AppSettings.shared.defaultDeviceIP
+            let localURL = "http://\(resolvedIP):\(AppSettings.shared.localPort)/health"
+            guard let url = URL(string: localURL) else { return }
+            do {
+                _ = try await probe.data(from: url)
+                // Server responded — keep the flag as-is
+                AppLogger.shared.log("API_CONFIG", message: "Local server reachable at \(localURL) ✓")
+            } catch {
+                // Server unreachable — clear the flag and force prod
+                AppLogger.shared.log("API_CONFIG", message: "Local server unreachable (\(error.localizedDescription)) — falling back to production")
+                await MainActor.run {
+                    UserDefaults.standard.removeObject(forKey: "dev_use_localhost")
+                }
+                invalidateBaseURL()
+            }
+        }
+        #endif
+    }
+
     // MARK: - Cached User Email (avoids MainActor hop on every request)
 
     /// Set by SupabaseManager after login/profile load to avoid hopping
@@ -128,7 +200,7 @@ struct TrackAPI {
 
         let start = Date()
         do {
-            let (_, response) = try await URLSession.shared.data(for: request)
+            let (_, response) = try await session.data(for: request)
             let latency = Date().timeIntervalSince(start) * 1000
             guard let http = response as? HTTPURLResponse else {
                 return (false, nil, latency, "No HTTP response")
@@ -492,7 +564,7 @@ struct TrackAPI {
                         request.setValue(email, forHTTPHeaderField: "x-user-email")
                     }
 
-                    let (data, response) = try await URLSession.shared.data(for: request)
+                    let (data, response) = try await session.data(for: request)
                     guard let http = response as? HTTPURLResponse else {
                         lastError = TrackAPIError.networkError
                         continue
