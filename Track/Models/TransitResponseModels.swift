@@ -103,9 +103,13 @@ struct DirectionArrivalsResponse: Codable, Identifiable, Equatable {
                 let elapsed = now - Double(ts)
                 if elapsed > 300 { return false }
             }
-            // Filter out arrivals with 0 minutesAway and no timestamp
-            // (stale static data)
-            if arrival.minutesAway <= 0 && arrival.arrivalTs == nil {
+            // Only filter 0-minute arrivals that are purely static GTFS with no
+            // realtime context at all.  Live SIRI buses at minutesAway==0 are
+            // literally at the stop and must NOT be dropped — they are the most
+            // important arrivals to show.  A scheduled entry has status "Scheduled"
+            // so we can distinguish them here.
+            if arrival.minutesAway <= 0 && arrival.arrivalTs == nil
+                && arrival.isScheduledOnly {
                 return false
             }
             return true

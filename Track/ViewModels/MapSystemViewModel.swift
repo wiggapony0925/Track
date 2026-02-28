@@ -89,7 +89,11 @@ final class MapSystemViewModel {
 
     /// Guards against redundant network fetches when the ViewModel is
     /// re-created (e.g. HomeView structural identity changes).
-    private var hasStartedLoading = false
+    /// MUST be static — an instance-level flag only guards the single instance
+    /// that owns it; if SwiftUI creates multiple instances before the first
+    /// finishes loading (observed as 6× SYSTEM_MAP in logs) each gets its own
+    /// fresh flag = false and kicks off a duplicate load task.
+    private static var hasStartedLoading = false
 
     // MARK: - Init
 
@@ -103,8 +107,8 @@ final class MapSystemViewModel {
             return
         }
 
-        guard !hasStartedLoading else { return }
-        hasStartedLoading = true
+        guard !Self.hasStartedLoading else { return }
+        Self.hasStartedLoading = true
         Task {
             await loadSystemMap()
             await loadStations()
