@@ -65,6 +65,13 @@ final class HomeViewModel {
     // MARK: - Search Helpers
     // See HomeViewModel+Search.swift
 
+    // Set to true locally when you need to trace per-route distance math.
+    // Intentionally left false by default — with 30+ routes and frequent
+    // re-renders this generates hundreds of log lines per minute.
+    #if DEBUG
+    static let verboseDistanceLogs = false
+    #endif
+
     /// Distance from the user to the closest stop in this grouped route.
     ///
     /// Uses the same algorithm as the walking polyline on the map: iterate
@@ -90,12 +97,14 @@ final class HomeViewModel {
                 return routeIds.contains { normalizeMTARouteToken($0) == target }
             }
             #if DEBUG
-            if matchingStops.isEmpty {
-                print("[DIST] \(group.routeId) bus  center=\(centerLabel)  ⚠️ NO matching stops (token=\(target), nearbyBusStops=\(nearbyBusStops.count)) → fallback groupMinDistance")
-            } else {
-                for stop in matchingStops {
-                    let d = location.distance(from: CLLocation(latitude: stop.lat, longitude: stop.lon))
-                    print("[DIST] \(group.routeId) bus  center=\(centerLabel)  stop=\(stop.name)  (\(String(format: "%.5f", stop.lat)),\(String(format: "%.5f", stop.lon)))  d=\(Int(d))m / \(String(format: "%.2f", d * 3.28084 / 5280))mi")
+            if HomeViewModel.verboseDistanceLogs {
+                if matchingStops.isEmpty {
+                    print("[DIST] \(group.routeId) bus  center=\(centerLabel)  ⚠️ NO matching stops (token=\(target), nearbyBusStops=\(nearbyBusStops.count)) → fallback groupMinDistance")
+                } else {
+                    for stop in matchingStops {
+                        let d = location.distance(from: CLLocation(latitude: stop.lat, longitude: stop.lon))
+                        print("[DIST] \(group.routeId) bus  center=\(centerLabel)  stop=\(stop.name)  (\(String(format: "%.5f", stop.lat)),\(String(format: "%.5f", stop.lon)))  d=\(Int(d))m / \(String(format: "%.2f", d * 3.28084 / 5280))mi")
+                    }
                 }
             }
             #endif
@@ -133,12 +142,14 @@ final class HomeViewModel {
                 }
             }
             #if DEBUG
-            if matchingStations.isEmpty {
-                print("[DIST] \(group.routeId) \(group.mode)  center=\(centerLabel)  ⚠️ NO matching stations (token=\(target), nearbyStations=\(nearbyStations.count)) → fallback groupMinDistance")
-            } else {
-                for st in matchingStations {
-                    let d = location.distance(from: CLLocation(latitude: st.lat, longitude: st.lon))
-                    print("[DIST] \(group.routeId) \(group.mode)  center=\(centerLabel)  station=\(st.name)  (\(String(format: "%.5f", st.lat)),\(String(format: "%.5f", st.lon)))  d=\(Int(d))m / \(String(format: "%.2f", d * 3.28084 / 5280))mi")
+            if HomeViewModel.verboseDistanceLogs {
+                if matchingStations.isEmpty {
+                    print("[DIST] \(group.routeId) \(group.mode)  center=\(centerLabel)  ⚠️ NO matching stations (token=\(target), nearbyStations=\(nearbyStations.count)) → fallback groupMinDistance")
+                } else {
+                    for st in matchingStations {
+                        let d = location.distance(from: CLLocation(latitude: st.lat, longitude: st.lon))
+                        print("[DIST] \(group.routeId) \(group.mode)  center=\(centerLabel)  station=\(st.name)  (\(String(format: "%.5f", st.lat)),\(String(format: "%.5f", st.lon)))  d=\(Int(d))m / \(String(format: "%.2f", d * 3.28084 / 5280))mi")
+                    }
                 }
             }
             #endif
@@ -151,17 +162,17 @@ final class HomeViewModel {
                 result = best.isFinite ? best : nil
             } else {
                 #if DEBUG
-                print("[DIST] \(group.routeId) \(group.mode)  center=\(centerLabel)  ⛔ using groupMinDistance=\(Int(groupDist))m / \(String(format: "%.2f", groupDist * 3.28084 / 5280))mi")
+                if HomeViewModel.verboseDistanceLogs {
+                    print("[DIST] \(group.routeId) \(group.mode)  center=\(centerLabel)  ⛔ using groupMinDistance=\(Int(groupDist))m / \(String(format: "%.2f", groupDist * 3.28084 / 5280))mi")
+                }
                 #endif
                 result = groupDist.isFinite ? groupDist : nil
             }
         }
 
         #if DEBUG
-        if let r = result {
+        if HomeViewModel.verboseDistanceLogs, let r = result {
             print("[DASHBOARD DIST] \(group.routeId) (\(group.mode))  center=\(centerLabel)  → \(Int(r))m / \(String(format: "%.2f", r / 1609.34))mi  ← this is what the row badge shows")
-        } else {
-            print("[DASHBOARD DIST] \(group.routeId) (\(group.mode))  center=\(centerLabel)  → nil (hidden)")
         }
         #endif
         return result
@@ -179,11 +190,13 @@ final class HomeViewModel {
         muchFarther: [GroupedNearbyTransitResponse]
     ) {
         #if DEBUG
-        if let referenceLocation {
-            let src = isSearchPinActive ? "PIN" : "GPS"
-            print("[BUCKETS] center=\(src) (\(String(format: "%.5f", referenceLocation.coordinate.latitude)), \(String(format: "%.5f", referenceLocation.coordinate.longitude)))  groups=\(groups.count)  nearbyBusStops=\(nearbyBusStops.count)  nearbyStations=\(nearbyStations.count)  lastKnownGPS=\(lastKnownUserLocation.map { "(\(String(format: "%.5f", $0.coordinate.latitude)),\(String(format: "%.5f", $0.coordinate.longitude)))" } ?? "nil")")
-        } else {
-            print("[BUCKETS] ⚠️ referenceLocation=nil — sorting without distance  lastKnownGPS=\(lastKnownUserLocation.map { "(\(String(format: "%.5f", $0.coordinate.latitude)),\(String(format: "%.5f", $0.coordinate.longitude)))" } ?? "nil")")
+        if HomeViewModel.verboseDistanceLogs {
+            if let referenceLocation {
+                let src = isSearchPinActive ? "PIN" : "GPS"
+                print("[BUCKETS] center=\(src) (\(String(format: "%.5f", referenceLocation.coordinate.latitude)), \(String(format: "%.5f", referenceLocation.coordinate.longitude)))  groups=\(groups.count)  nearbyBusStops=\(nearbyBusStops.count)  nearbyStations=\(nearbyStations.count)  lastKnownGPS=\(lastKnownUserLocation.map { "(\(String(format: "%.5f", $0.coordinate.latitude)),\(String(format: "%.5f", $0.coordinate.longitude)))" } ?? "nil")")
+            } else {
+                print("[BUCKETS] ⚠️ referenceLocation=nil — sorting without distance  lastKnownGPS=\(lastKnownUserLocation.map { "(\(String(format: "%.5f", $0.coordinate.latitude)),\(String(format: "%.5f", $0.coordinate.longitude)))" } ?? "nil")")
+            }
         }
         #endif
         guard let referenceLocation else {

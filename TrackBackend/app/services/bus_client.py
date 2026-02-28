@@ -1175,6 +1175,12 @@ async def get_nearby_stops(
 
             results: list[BusStop] = []
             for s in stops_data:
+                # OBA stops-for-location returns routes as full objects under
+                # the key "routes", not a flat "routeIds" list.  Extract the
+                # route id from each nested object so route matching works.
+                route_ids = [
+                    r["id"] for r in s.get("routes", []) if r.get("id")
+                ]
                 results.append(
                     BusStop(
                         id=s.get("id", ""),
@@ -1182,7 +1188,7 @@ async def get_nearby_stops(
                         lat=s.get("lat", 0.0),
                         lon=s.get("lon", 0.0),
                         direction=s.get("direction"),
-                        route_ids=s.get("routeIds", []),
+                        route_ids=route_ids,
                     )
                 )
             # Cache successful result (with bounded eviction)
