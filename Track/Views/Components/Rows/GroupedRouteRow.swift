@@ -103,6 +103,12 @@ struct GroupedRouteRow: View {
 
     /// Returns the countdown arrival for a direction, preferring the user's
     /// nearest stop so the card aligns with the route detail sheet.
+    ///
+    /// Distance resolution priority (mirrors `RouteDetailSheet.nearestStopArrivals`):
+    ///  1. `distanceM` — server-side haversine, most accurate.
+    ///  2. `stopLat`/`stopLon` — client-side CLLocation distance.
+    ///  3. No coordinates at all → treat distance as ∞ (still participates,
+    ///     never silently skipped so the fallback stays deterministic).
     private func countdownArrival(for direction: DirectionArrivalsResponse) -> NearbyTransitResponse? {
         let live = direction.liveArrivals
         guard !live.isEmpty else { return nil }
@@ -112,8 +118,18 @@ struct GroupedRouteRow: View {
             var nearestDistance: CLLocationDistance = .greatestFiniteMagnitude
 
             for arrival in live {
-                guard let lat = arrival.stopLat, let lon = arrival.stopLon else { continue }
-                let dist = loc.distance(from: CLLocation(latitude: lat, longitude: lon))
+                // Prefer server-side pre-computed distance (most accurate)
+                let dist: CLLocationDistance
+                if let dm = arrival.distanceM {
+                    dist = dm
+                } else if let lat = arrival.stopLat, let lon = arrival.stopLon {
+                    dist = loc.distance(from: CLLocation(latitude: lat, longitude: lon))
+                } else {
+                    // No coordinates available — assign max distance so coordinate-rich
+                    // arrivals always win, but this arrival still participates in the loop
+                    // (no silent skip that could cause row ↔ detail mismatches).
+                    dist = .greatestFiniteMagnitude
+                }
                 if dist < nearestDistance {
                     nearestDistance = dist
                     nearestStopKey = arrival.stopId ?? arrival.stopName

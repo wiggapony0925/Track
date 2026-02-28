@@ -52,12 +52,17 @@ struct RouteDetailSheet: View {
     /// Provided by the ViewModel's `filteredBusVehicles` / `filteredTrainVehicles`
     /// to avoid duplicating direction-filtering logic here.
     var liveVehicleCount: Int = 0
+    /// Active elevator/escalator outages — used to badge stops with accessibility warnings.
+    var elevatorOutages: [ElevatorStatus] = []
 
     /// Selected direction index - bound to viewModel so map can filter polylines
     @Binding var selectedDirectionIndex: Int
 
-    /// Which content tab is active: arrivals, stops, or alerts.
-    @State private var selectedTab: RouteDetailTab = .arrivals
+    /// Which content tab is active: arrivals, departures, or alerts.
+    @State private var selectedTab: RouteDetailTab = .stops
+
+    /// Stop ID selected by tapping a stop row — filters the Departures tab.
+    @State private var inSheetSelectedStopId: String?
 
     /// Track expanded row ID locally in the sheet
     @State private var expandedArrivalID: String?
@@ -77,10 +82,54 @@ struct RouteDetailSheet: View {
     /// Drives skeleton placeholders so the sheet never looks empty on open.
     @State private var isLoadingArrivals: Bool = true
 
+    /// Debounced snapshot of the nearest-stop arrivals shown in countdown chips.
+    /// Only refreshes when the leading trip changes OR ETA shifts > 60 s —
+    /// prevents the chips from flickering 3× during the open-sheet data cascade
+    /// (initial load → vehicles refresh → shape refresh).
+    @State private var stableNearestArrivals: [NearbyTransitResponse] = []
+
+    /// Per-direction stop key lock: [directionIndex: stopId ?? stopName].
+    /// Each direction remembers its nearest stop independently so that:
+    ///  • Direction changes (including shape-enrichment reorders) never invalidate
+    ///    another direction's resolved stop.
+    ///  • `prioritizedArrivals` never flip-flops to a different nearby stop between
+    ///    backend refresh cycles for a given direction.
+    @State private var lockedStopKeyPerDirection: [Int: String] = [:]
+    /// Headsign of the user's selected direction — locked so that backend
+    /// re-sorts of `group.directions` never flip the sheet to a different dir.
+    @State private var lockedDirectionHeadsign: String?
+
+    /// One-way latch: once a trip has been observed as "live" (non-scheduled),
+    /// we never downgrade it back to "Scheduled" even if the backend flips
+    /// (e.g. SIRI GPS spooking toggles `Monitored` between polls).
+    @State private var knownLiveTripKeys: Set<String> = []
+
+    /// Convenience: locked stop key for the currently-displayed direction.
+    private var lockedNearestStopKey: String? { lockedStopKeyPerDirection[selectedDirectionIndex] }
+
+    /// Returns `true` only if this arrival has *never* been observed as live.
+    /// Prevents the "On Route" ↔ "Scheduled" flicker caused by MTA SIRI
+    /// GPS spooking (the `Monitored` flag toggles between consecutive polls).
+    private func isEffectivelyScheduled(_ arrival: NearbyTransitResponse) -> Bool {
+        guard arrival.isScheduledOnly else { return false }  // currently live → not scheduled
+        let key = arrival.tripId ?? arrival.vehicleId ?? ""
+        guard !key.isEmpty else { return true }  // unknown trip → trust backend
+        return !knownLiveTripKeys.contains(key)   // seen live before → still live
+    }
+
+    /// Record all currently-live trips so we never downgrade them to scheduled.
+    private func recordLiveTrips(_ arrivals: [NearbyTransitResponse]) {
+        for a in arrivals where !a.isScheduledOnly {
+            if let key = a.tripId ?? a.vehicleId, !key.isEmpty {
+                knownLiveTripKeys.insert(key)
+            }
+        }
+    }
+
     /// Available tabs for this route.
     enum RouteDetailTab: String, CaseIterable {
-        case arrivals = "Arrivals"
         case stops = "Stops"
+        case departures = "Departures"
         case alerts = "Alerts"
     }
 
@@ -95,6 +144,7 @@ struct RouteDetailSheet: View {
         cachedStations: [HomeViewModel.CachedSubwayStation] = [],
         smartETAProvider: ((NearbyTransitResponse) -> SmartETA)? = nil,
         liveVehicleCount: Int = 0,
+        elevatorOutages: [ElevatorStatus] = [],
         isSheetExpanded: Bool = false,
         is3DMode: Binding<Bool> = .constant(false),
         cameraPosition: Binding<MapCameraPosition> = .constant(.automatic),
@@ -119,6 +169,7 @@ struct RouteDetailSheet: View {
         self.cachedStations = cachedStations
         self.smartETAProvider = smartETAProvider
         self.liveVehicleCount = liveVehicleCount
+        self.elevatorOutages = elevatorOutages
         self.onTrack = onTrack
         self.isTracking = isTracking
         self.isLiveOnMap = isLiveOnMap
@@ -192,6 +243,18 @@ struct RouteDetailSheet: View {
         guard !group.directions.isEmpty else {
             return DirectionArrivalsResponse(direction: "—", arrivals: [])
         }
+        // Prefer the direction whose headsign matches the locked one so that
+        // backend re-sorts of the directions array don't flip the sheet to a
+        // different direction (e.g. Q37 "KEW GARDENS" ↔ "SOUTH OZONE PARK").
+        if let locked = lockedDirectionHeadsign {
+            if let match = group.directions.first(where: { $0.direction == locked }) {
+                return match
+            }
+            // Locked direction is temporarily absent from this poll's response.
+            // Return an empty shell so nothing updates downstream while we wait
+            // for it to reappear — prevents flipping to a different direction.
+            return DirectionArrivalsResponse(direction: locked, arrivals: [])
+        }
         let idx = max(0, min(selectedDirectionIndex, group.directions.count - 1))
         return group.directions[idx]
     }
@@ -217,35 +280,33 @@ struct RouteDetailSheet: View {
                 // MARK: - Header Row
                 routeHeader
 
-                // MARK: - Alert Banner (most recent alert, if any)
+                // MARK: - Alert Banner
                 if let topAlert = routeAlerts.first {
                     routeAlertBanner(topAlert)
                 } else if isLoadingArrivals {
-                    // Skeleton while alerts haven't loaded yet
                     alertBannerSkeleton
                 }
 
-                // MARK: - Direction Picker (above countdown so user picks direction first)
+                // MARK: - Next Arrivals (always at top)
+                countdownSection
+
+                // MARK: - Direction Picker
                 if group.directions.count > 1 {
                     directionPicker
                 } else if isLoadingArrivals {
-                    // Skeleton direction pills while shape / arrivals are in-flight
                     directionPickerSkeleton
                 }
 
-                // MARK: - Content Tab Picker
+                // MARK: - Content Tab Picker (below direction)
                 contentTabPicker
 
                 // MARK: - Tab Content
                 switch selectedTab {
-                case .arrivals:
-                    // Countdown Chips
-                    countdownSection
-                    // Arrivals List
-                    arrivalsList
-
                 case .stops:
                     stopsListSection
+
+                case .departures:
+                    arrivalsList
 
                 case .alerts:
                     if !routeAlerts.isEmpty {
@@ -269,23 +330,58 @@ struct RouteDetailSheet: View {
             // Seed loading state: if the current direction already has arrivals
             // (e.g. sheet re-opened after data landed), skip the skeleton phase.
             isLoadingArrivals = safeDirection.arrivals.isEmpty
+            // Seed stable arrivals on first appear
+            stableNearestArrivals = nearestStopArrivals
+            // Lock the nearest stop key for this direction so subsequent refreshes don't hop stops
+            if lockedDirectionHeadsign == nil {
+                lockedDirectionHeadsign = safeDirection.direction
+            }
+            if lockedStopKeyPerDirection[selectedDirectionIndex] == nil,
+               let first = stableNearestArrivals.first {
+                lockedStopKeyPerDirection[selectedDirectionIndex] = first.stopId ?? first.stopName
+            }
+            // Latch live trip keys so we never downgrade them to "Scheduled"
+            recordLiveTrips(safeDirection.liveArrivals)
             #if DEBUG
             AppLogger.shared.log(
                 "ROUTE_DETAIL",
                 message:
-                    "VIEW_OPEN route=\(group.routeId) mode=\(group.mode) selectedDirIdx=\(selectedDirectionIndex) dir=\(safeDirection.direction) all=\(safeDirection.arrivals.count) live=\(safeDirection.liveArrivals.count)"
+                    "VIEW_OPEN route=\(group.routeId) dir=\(safeDirection.direction) live=\(safeDirection.liveArrivals.count) latchedLive=\(knownLiveTripKeys.count)"
             )
             #endif
-            logETAParity(reason: "open")
         }
         .onChange(of: group) { _, _ in
+            // If the user's locked direction is temporarily absent from this
+            // backend poll, ignore the update entirely rather than flipping to
+            // whichever direction happens to be at index 0.
+            if let locked = lockedDirectionHeadsign,
+               !group.directions.contains(where: { $0.direction == locked }) {
+                #if DEBUG
+                print("[ARRIVAL_DIFF] ⏭ SKIP — locked dir '\(locked)' absent from poll")
+                #endif
+                return
+            }
             // Clear loading skeleton the moment any arrivals arrive.
             if !safeDirection.arrivals.isEmpty {
                 withAnimation(.easeOut(duration: 0.3)) {
                     isLoadingArrivals = false
                 }
             }
-            logETAParity(reason: "group_update")
+
+            // Latch any newly-live trips so their status never regresses.
+            recordLiveTrips(safeDirection.liveArrivals)
+
+            // Update the stable countdown only when it meaningfully changes:
+            // different leading vehicle/trip, or ETA shifts > 60 s.
+            let fresh = nearestStopArrivals
+            // Lock the nearest stop key for this direction on first resolution
+            if lockedStopKeyPerDirection[selectedDirectionIndex] == nil, let first = fresh.first {
+                lockedStopKeyPerDirection[selectedDirectionIndex] = first.stopId ?? first.stopName
+            }
+
+            if shouldRefreshStableArrivals(fresh) {
+                stableNearestArrivals = fresh
+            }
         }
         .task(id: group.id) {
             // Safety timeout: if no arrivals arrive within 6 s (e.g. truly no service),
@@ -299,6 +395,13 @@ struct RouteDetailSheet: View {
             isFavorited = favoritesManager.isFavorite(routeId: group.routeId, mode: group.mode)
         }
         .onChange(of: selectedDirectionIndex) { _, _ in
+            // Reset stable countdown chips immediately when the user switches direction
+            // so they see the new direction's nearest-stop times right away rather than
+            // waiting for the next group poll cycle to trigger shouldRefreshStableArrivals.
+            let freshArrivals = nearestStopArrivals
+            if !freshArrivals.isEmpty {
+                stableNearestArrivals = freshArrivals
+            }
             isFavorited = favoritesManager.isFavorite(routeId: group.routeId, mode: group.mode)
             #if DEBUG
             let direction = safeDirection
@@ -469,73 +572,81 @@ struct RouteDetailSheet: View {
 
     // MARK: - Countdown Chips
 
-    /// Live arrivals filtered to the user's nearest stop ONLY.
-    /// No other stops are shown — the user only cares about when the next
-    /// vehicle arrives at THEIR stop.
+    /// Primary arrivals source for Route Details display.
     ///
-    /// Reference priority for "nearest stop":
-    /// 1. `selectedStopId` (explicitly tapped stop on the map)
-    /// 2. GPS location (`currentLocation`)
-    /// 3. Drag-search center pin (`searchCenter`) — used when GPS is unavailable
-    /// 4. Soonest arrivals deduplicated by trip (last resort)
+    /// Important UX rule:
+    /// - Route Details should show the full direction feed by default (not just
+    ///   a nearest-stop subset), so users can see all upcoming vehicles.
+    /// - Stop-specific filtering is applied only when the user explicitly taps a
+    ///   stop row in the Stops tab (`inSheetSelectedStopId`).
     private var prioritizedArrivals: [NearbyTransitResponse] {
         let direction = safeDirection
         let liveOnly = direction.liveArrivals
 
         guard !liveOnly.isEmpty else { return [] }
 
-        // ── 1. Filter to explicitly selected stop ──
-        if let stopId = selectedStopId, !stopId.isEmpty {
-            let atNearestStop = liveOnly.filter { arrivalMatchesStop($0, stopId: stopId) }
-            if !atNearestStop.isEmpty {
-                return sortArrivalsByETA(atNearestStop)
+        // Sort first, then deduplicate by vehicle/trip key.
+        // The backend already deduplicates, but this is a client-side safety net:
+        // same vehicle can still appear with different stop coordinates after
+        // shape enrichment re-processes the flat list.
+        let sorted = sortArrivalsByETA(liveOnly)
+        var seen = Set<String>()
+        return sorted.filter { arrival in
+            guard let key = arrival.vehicleId ?? arrival.tripId else {
+                return true  // no key → scheduled placeholder, always keep
             }
+            return seen.insert(key).inserted
         }
-
-        // ── 2 & 3. Find the closest stop from the reference coordinate.
-        // Use GPS if available; fall back to the drag-search pin coordinate.
-        let refCoord: CLLocationCoordinate2D? = currentLocation ?? searchCenter
-        if let refCoordUnwrapped = refCoord {
-            let refLoc = CLLocation(
-                latitude: refCoordUnwrapped.latitude,
-                longitude: refCoordUnwrapped.longitude)
-
-            // Find which stop key is closest to the reference coordinate
-            var closestStopKey: String?
-            var minDist: CLLocationDistance = .greatestFiniteMagnitude
-            for arrival in liveOnly {
-                let dist = arrivalDistance(arrival, from: refLoc)
-                if dist < minDist {
-                    minDist = dist
-                    closestStopKey = arrival.stopId ?? arrival.stopName
-                }
-            }
-
-            if let key = closestStopKey {
-                let atClosest = liveOnly.filter { ($0.stopId ?? $0.stopName) == key }
-                if !atClosest.isEmpty {
-                    return sortArrivalsByETA(atClosest)
-                }
-            }
-        }
-
-        // ── 4. Last resort: soonest arrivals deduplicated by trip ──
-        // Avoids showing the same vehicle at multiple stops along the route.
-        var seenTrips = Set<String>()
-        return sortArrivalsByETA(liveOnly)
-            .filter { arrival in
-                let key = arrival.tripId ?? arrival.vehicleId ?? arrival.id
-                return seenTrips.insert(key).inserted
-            }
-            .prefix(3)
-            .map { $0 }
     }
 
-    /// Arrivals at the user's nearest stop only — used for countdown chips.
-    /// Strictly filters to one stop. Falls back to closest stop by distance.
+    /// Arrivals used by the countdown chips at the top of the detail sheet.
+    ///
+    /// Uses the same nearest-stop filtering as ``GroupedRouteRow.countdownArrival``
+    /// so the chip times always agree with the home-row countdown.
+    ///
+    /// Strategy (mirrors GroupedRouteRow exactly):
+    ///  1. Find the stop closest to the user's reference location.
+    ///  2. Return arrivals at that stop, sorted by ETA.
+    ///  3. Fall back to all live arrivals when no location is available.
     private var nearestStopArrivals: [NearbyTransitResponse] {
-        // Reuse prioritizedArrivals which already filters to nearest stop
-        return prioritizedArrivals
+        let live = safeDirection.liveArrivals
+        guard !live.isEmpty else { return [] }
+
+        let refCoord = currentLocation ?? searchCenter
+        if let refCoord {
+            let refLoc = CLLocation(latitude: refCoord.latitude, longitude: refCoord.longitude)
+            var nearestStopKey: String?
+            var nearestDistance: CLLocationDistance = .greatestFiniteMagnitude
+
+            for arrival in live {
+                let dist = arrivalDistance(arrival, from: refLoc)
+                if dist < nearestDistance {
+                    nearestDistance = dist
+                    nearestStopKey = arrival.stopId ?? arrival.stopName
+                }
+            }
+
+            if let key = nearestStopKey {
+                let atNearest = live.filter { ($0.stopId ?? $0.stopName) == key }
+                if !atNearest.isEmpty {
+                    // Deduplicate by vehicle/trip key — keep soonest per unique bus.
+                    let sorted = sortArrivalsByETA(atNearest)
+                    var seen = Set<String>()
+                    return sorted.filter { arrival in
+                        guard let k = arrival.vehicleId ?? arrival.tripId else { return true }
+                        return seen.insert(k).inserted
+                    }
+                }
+            }
+        }
+
+        // Fallback: all live arrivals, deduplicated by vehicle key
+        let sorted = sortArrivalsByETA(live)
+        var seen = Set<String>()
+        return sorted.filter { arrival in
+            guard let key = arrival.vehicleId ?? arrival.tripId else { return true }
+            return seen.insert(key).inserted
+        }
     }
 
     /// Mirrors `GroupedRouteRow.countdownArrival(for:)` as closely as possible,
@@ -567,6 +678,104 @@ struct RouteDetailSheet: View {
         }
 
         return sortArrivalsByETA(live).first
+    }
+
+    // MARK: - Arrival diff logging
+
+    /// Logs a rich diff of arrivals every time `group` changes.
+    /// Each arrival line shows:
+    ///   • minutes away + clock time  (so you can cross-check against Transit app)
+    ///   • LIVE or ★SCHED             (live = confirmed SIRI real-time, sched = GTFS-static)
+    ///   • vehicle/trip id
+    ///   • GPS coordinates of the map marker (LIVE only) — proves the bus is physically on route
+    private func logArrivalDiff(
+        old: [NearbyTransitResponse],
+        new: [NearbyTransitResponse],
+        label: String
+    ) {
+        #if DEBUG
+        let ts = String(format: "%.1f", Date().timeIntervalSince1970.truncatingRemainder(dividingBy: 10000))
+        let route = group.routeId
+        let dir = safeDirection.direction
+        let lockInfo = lockedNearestStopKey.map { "lock:\($0)" } ?? "lock:none"
+
+        let fmt = DateFormatter()
+        fmt.dateFormat = "h:mm a"
+        fmt.locale = Locale(identifier: "en_US_POSIX")
+
+        // Build a rich one-liner per arrival
+        func describe(_ arr: [NearbyTransitResponse]) -> [String] {
+            arr.map { a in
+                let vid = a.vehicleId ?? a.tripId ?? "?"
+                let tag = a.isScheduledOnly ? "★SCHED" : "●LIVE "
+
+                // Clock time: prefer arrival_ts, fall back to now + minutesAway
+                let clockTime: String = {
+                    if let ts = a.arrivalTs {
+                        return fmt.string(from: Date(timeIntervalSince1970: Double(ts)))
+                    }
+                    let approx = Date().addingTimeInterval(Double(a.minutesAway) * 60)
+                    return "~" + fmt.string(from: approx)
+                }()
+
+                // GPS coordinates: look up the matching vehicle in the busVehicles binding
+                let coords: String = {
+                    guard !a.isScheduledOnly else { return "" }
+                    if let vid = a.vehicleId,
+                       let bus = busVehicles.first(where: { $0.vehicleId == vid }) {
+                        return String(format: " 📍%.5f,%.5f", bus.lat, bus.lon)
+                    }
+                    return " (no GPS match)"
+                }()
+
+                return "  \(tag) \(a.minutesAway)m @ \(clockTime)  id=\(vid)  stop=\(a.stopName)\(coords)"
+            }
+        }
+
+        let oldKeys = Set(old.map { $0.tripId ?? $0.vehicleId ?? $0.id })
+        let newKeys = Set(new.map { $0.tripId ?? $0.vehicleId ?? $0.id })
+        let appeared  = newKeys.subtracting(oldKeys)
+        let vanished  = oldKeys.subtracting(newKeys)
+
+        let oldLines = old.isEmpty ? ["  <empty>"] : describe(old)
+        let newLines = new.isEmpty ? ["  <empty>"] : describe(new)
+
+        var out = """
+        ┌─ [ARRIVAL_DIFF] \(ts)s  route=\(route)  dir=\(dir)  \(lockInfo)  (\(label))
+        │  ── OLD (\(old.count)) ──────────────────────────────────────
+        """
+        for l in oldLines { out += "\n│ \(l)" }
+        out += "\n│  ── NEW (\(new.count)) ──────────────────────────────────────"
+        for l in newLines { out += "\n│ \(l)" }
+        out += "\n│  APPEARED (\(appeared.count)): \(appeared.isEmpty ? "none" : appeared.joined(separator: ", "))"
+        out += "\n│  VANISHED (\(vanished.count)): \(vanished.isEmpty ? "none" : vanished.joined(separator: ", "))"
+        out += "\n└─────────────────────────────────────────────────────────────────"
+        print(out)
+        #endif
+    }
+
+    /// Returns true when `new` differs enough from `stableNearestArrivals` to warrant
+    /// a display refresh — i.e. the leading trip changed, or the ETA shifted > 60 s.
+    ///
+    /// Uses ``smartETA`` (not the raw ``minutesAway`` integer) so changes that
+    /// result from live vehicle movement — not just backend poll boundary integers —
+    /// also trigger a refresh.
+    private func shouldRefreshStableArrivals(_ new: [NearbyTransitResponse]) -> Bool {
+        guard !new.isEmpty else { return false }
+        guard !stableNearestArrivals.isEmpty else { return true }
+
+        let newFirst = new[0]
+        let oldFirst = stableNearestArrivals[0]
+
+        // Different vehicle / trip → always refresh
+        let newKey = newFirst.tripId ?? newFirst.vehicleId
+        let oldKey = oldFirst.tripId ?? oldFirst.vehicleId
+        if newKey != oldKey { return true }
+
+        // Same vehicle: compare using smartETA so live GPS refinements are captured
+        let newSecs = smartETA(for: newFirst).secondsRemaining
+        let oldSecs = smartETA(for: oldFirst).secondsRemaining
+        return abs(newSecs - oldSecs) > 60
     }
 
     private func logETAParity(reason: String) {
@@ -762,15 +971,142 @@ struct RouteDetailSheet: View {
         )
     }
 
+    // MARK: - Arrival Card
+
+    @ViewBuilder
+    private func arrivalCard(arrival: NearbyTransitResponse, index: Int) -> some View {
+        let isFirst = index == 0
+        let isSched = isEffectivelyScheduled(arrival)
+
+        VStack(spacing: 0) {
+            // ── Status tag ────────────────────────────────────────────────
+            HStack(spacing: 4) {
+                if isSched {
+                    Image(systemName: "clock")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
+                    Text("Scheduled")
+                        .font(.custom("Helvetica-Bold", size: 8.5))
+                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
+                } else {
+                    Circle()
+                        .fill(AppTheme.Colors.successGreen)
+                        .frame(width: 5, height: 5)
+                    Text("On Route")
+                        .font(.custom("Helvetica-Bold", size: 8.5))
+                        .foregroundColor(AppTheme.Colors.successGreen)
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+                Capsule()
+                    .fill(
+                        isSched
+                        ? AppTheme.Colors.textSecondary.opacity(0.10)
+                        : AppTheme.Colors.successGreen.opacity(0.14)
+                    )
+            )
+            .padding(.top, 13)
+
+            Spacer(minLength: 6)
+
+            // ── ETA counter ───────────────────────────────────────────────
+            TimelineView(.periodic(from: .now, by: 1.0)) { _ in
+                let eta = smartETA(for: arrival)
+                let mins = eta.minutesRemaining
+                let isNow = !isSched && (eta.isAtStop || eta.secondsRemaining <= 30)
+                arrivalETA(mins: mins, isNow: isNow, isSched: isSched, isFirst: isFirst)
+            }
+
+            Spacer(minLength: isFirst ? 8 : 6)
+
+            // ── Clock time ────────────────────────────────────────────────
+            if let ts = arrival.arrivalTs {
+                Text(Date(timeIntervalSince1970: Double(ts)), style: .time)
+                    .font(.custom("Helvetica-Bold", size: 10))
+                    .foregroundColor(
+                        isSched
+                        ? AppTheme.Colors.textSecondary.opacity(0.35)
+                        : AppTheme.Colors.textSecondary.opacity(0.70)
+                    )
+            }
+
+            Spacer(minLength: 14)
+        }
+        .frame(width: isFirst ? 92 : 76)
+        .frame(minHeight: isFirst ? 130 : 116)
+        .background(
+            RoundedRectangle(cornerRadius: 18)
+                .fill(
+                    isSched
+                    ? AppTheme.Colors.cardBackground.opacity(0.55)
+                    : AppTheme.Colors.cardBackground
+                )
+                .shadow(
+                    color: isSched ? .clear : .black.opacity(isFirst ? 0.09 : 0.05),
+                    radius: isFirst ? 8 : 5, x: 0, y: 2
+                )
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(
+                    isSched
+                    ? AppTheme.Colors.textSecondary.opacity(0.12)
+                    : (isFirst ? routeColor.opacity(0.35) : Color.clear),
+                    lineWidth: 1.2
+                )
+        )
+        // Tap card to start Live Activity tracking for this arrival
+        .onTapGesture {
+            guard !isSched else { return }
+            onTrack?(arrival)
+            HapticManager.impact(.medium)
+        }
+    }
+
+    @ViewBuilder
+    private func arrivalETA(mins: Int, isNow: Bool, isSched: Bool, isFirst: Bool) -> some View {
+        VStack(spacing: 1) {
+            if isNow {
+                Text("Now")
+                    .font(.custom("Helvetica-Bold", size: isFirst ? 30 : 24))
+                    .foregroundColor(AppTheme.Colors.countdown(0))
+                    .contentTransition(.numericText(countsDown: true))
+                    .animation(.spring(response: 0.4, dampingFraction: 0.8), value: mins)
+            } else {
+                Text("\(mins)")
+                    .font(.custom("Helvetica-Bold", size: isFirst ? 40 : 32))
+                    .foregroundColor(
+                        isSched
+                        ? AppTheme.Colors.textSecondary.opacity(0.45)
+                        : AppTheme.Colors.countdown(mins)
+                    )
+                    .contentTransition(.numericText(countsDown: true))
+                    .animation(.spring(response: 0.4, dampingFraction: 0.8), value: mins)
+                Text("min")
+                    .font(.custom("Helvetica-Bold", size: 11))
+                    .foregroundColor(
+                        isSched
+                        ? AppTheme.Colors.textSecondary.opacity(0.35)
+                        : AppTheme.Colors.textSecondary
+                    )
+            }
+        }
+        .monospacedDigit()
+    }
+
     private var countdownSection: some View {
-        // Show countdown for arrivals at the user's nearest stop ONLY
-        let nextArrivals = Array(
-            nearestStopArrivals.prefix(AppSettings.shared.maxRouteDetailArrivals))
+        // Use the debounced stable snapshot to prevent ETA flickering during
+        // the open cascade (initial → vehicles → shape).
+        // Falls back to nearestStopArrivals if stable is empty (first render).
+        let source = stableNearestArrivals.isEmpty ? nearestStopArrivals : stableNearestArrivals
+        let nextArrivals = source
         // Resolve the stop name for the header
         let nearestStopName: String? = {
             if let stopId = selectedStopId, !stopId.isEmpty {
                 // Try from the arrivals first (freshest data)
-                if let name = nearestStopArrivals.first?.stopName { return name }
+                if let name = source.first?.stopName { return name }
                 // Fall back to route shape stops (with parent station fallback)
                 if let shape = routeShape {
                     let stops = shape.stopsForDirection(index: selectedDirectionIndex, name: selectedDirectionName)
@@ -780,7 +1116,7 @@ struct RouteDetailSheet: View {
                 }
             }
             // Fall back to whatever the first arrival says
-            return nearestStopArrivals.first?.stopName
+            return source.first?.stopName
         }()
 
         return VStack(alignment: .leading, spacing: 10) {
@@ -839,71 +1175,13 @@ struct RouteDetailSheet: View {
                 }
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 12) {
-                        ForEach(Array(nextArrivals.enumerated()), id: \.element.id) {
-                            index, arrival in
-                            VStack(spacing: 6) {
-                                // Smart countdown: uses vehicle position + polyline when
-                                // available, falls back to arrivalTs → static minutesAway.
-                                TimelineView(.periodic(from: .now, by: 1.0)) { _ in
-                                    let eta = smartETA(for: arrival)
-                                    let mins = eta.minutesRemaining
-                                    let isNow = eta.isAtStop || eta.secondsRemaining <= 30
-
-                                    if isNow {
-                                        Text("Now")
-                                            .font(.custom("Helvetica-Bold", size: index == 0 ? 32 : 24))
-                                            .foregroundColor(AppTheme.Colors.countdown(0))
-                                    } else {
-                                        Text("\(mins)")
-                                            .font(.custom("Helvetica-Bold", size: index == 0 ? 40 : 30))
-                                            .foregroundColor(AppTheme.Colors.countdown(mins))
-                                    }
-
-                                    if !isNow {
-                                        Text("min")
-                                            .font(.custom("Helvetica-Bold", size: 12))
-                                            .foregroundColor(AppTheme.Colors.textSecondary)
-                                    }
-                                }
-
-                                // Show the actual clock time so users know
-                                // exactly when the train/bus is expected
-                                if let ts = arrival.arrivalTs {
-                                    Text(Date(timeIntervalSince1970: Double(ts)), style: .time)
-                                        .font(.custom("Helvetica-Bold", size: 10))
-                                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
-                                }
-
-                                // Status pill
-                                Text(arrival.status)
-                                    .font(.custom("Helvetica-Bold", size: 10))
-                                    .foregroundColor(AppTheme.Colors.textOnColor)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 3)
-                                    .background(transitStatusColor(for: arrival.status))
-                                    .clipShape(Capsule())
-                            }
-                            .frame(width: index == 0 ? 100 : 80)
-                            .padding(.vertical, 14)
-                            .background(
-                                RoundedRectangle(cornerRadius: 16)
-                                    .fill(AppTheme.Colors.cardBackground)
-                                    .shadow(
-                                        color: .black.opacity(index == 0 ? 0.08 : 0.04),
-                                        radius: index == 0 ? 8 : 4, x: 0, y: 2)
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 16)
-                                    .stroke(
-                                        index == 0 ? routeColor.opacity(0.3) : Color.clear,
-                                        lineWidth: index == 0 ? 1.5 : 0
-                                    )
-                            )
+                    HStack(alignment: .top, spacing: 10) {
+                        ForEach(Array(nextArrivals.enumerated()), id: \.element.id) { index, arrival in
+                            arrivalCard(arrival: arrival, index: index)
                         }
                     }
                     .padding(.horizontal, AppTheme.Layout.margin)
-                    .padding(.vertical, 2)  // Extra space for shadow to render
+                    .padding(.vertical, 4)
                 }
             }
         }
@@ -1037,6 +1315,7 @@ struct RouteDetailSheet: View {
                         Button {
                             withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                                 selectedDirectionIndex = index
+                                lockedDirectionHeadsign = dir.direction
                             }
                         } label: {
                             // Use the shared direction label resolver —
@@ -1184,32 +1463,70 @@ struct RouteDetailSheet: View {
         .clipShape(Capsule())
     }
 
-    // MARK: - Arrivals List (same card pattern as HomeView)
+    // MARK: - Departures Board
 
     private var arrivalsList: some View {
-        // Use prioritized arrivals (nearest stop first) for the list
-        let liveOnly = prioritizedArrivals
-
-        // Reorder arrivals so the tapped vehicle's row appears first
-        let sortedArrivals: [NearbyTransitResponse] = {
-            guard let tapped = tappedVehicleId, !tapped.isEmpty else {
-                return liveOnly
+        // When a stop was tapped in the stops list, filter to that stop only.
+        // Otherwise fall back to prioritizedArrivals (nearest stop).
+        let allArrivals = safeDirection.liveArrivals
+        let baseArrivals: [NearbyTransitResponse] = {
+            if let sid = inSheetSelectedStopId, !sid.isEmpty {
+                let filtered = allArrivals.filter {
+                    ($0.stopId == sid) || ($0.stopName == sid)
+                }
+                return filtered.isEmpty ? allArrivals : filtered
             }
-            var arr = liveOnly
+            return prioritizedArrivals
+        }()
+
+        // Reorder so the tapped vehicle appears first
+        let sortedArrivals: [NearbyTransitResponse] = {
+            guard let tapped = tappedVehicleId, !tapped.isEmpty else { return baseArrivals }
+            var arr = baseArrivals
             if let idx = arr.firstIndex(where: { $0.vehicleId == tapped || $0.tripId == tapped }) {
-                let matched = arr.remove(at: idx)
-                arr.insert(matched, at: 0)
+                arr.insert(arr.remove(at: idx), at: 0)
             }
             return arr
         }()
 
+        // Resolve stop name label for filter chip
+        let selectedStopName: String? = {
+            guard let sid = inSheetSelectedStopId else { return nil }
+            return baseArrivals.first?.stopName ?? sid
+        }()
+
         return VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("Arrivals")
+            // ── Header ───────────────────────────────────────────────────────
+            HStack(spacing: 8) {
+                Text("Departures")
                     .font(.custom("Helvetica-Bold", size: 13))
                     .foregroundColor(AppTheme.Colors.textSecondary)
                     .textCase(.uppercase)
                     .tracking(0.6)
+
+                // Active stop filter pill with clear button
+                if let name = selectedStopName {
+                    HStack(spacing: 4) {
+                        Image(systemName: "mappin")
+                            .font(.system(size: 9, weight: .bold))
+                        Text(name)
+                            .font(.custom("Helvetica-Bold", size: 10))
+                            .lineLimit(1)
+                        Button {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                inSheetSelectedStopId = nil
+                            }
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 8, weight: .bold))
+                        }
+                    }
+                    .foregroundColor(routeColor)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(routeColor.opacity(0.12))
+                    .clipShape(Capsule())
+                }
 
                 Spacer()
 
@@ -1386,7 +1703,7 @@ struct RouteDetailSheet: View {
 
     // MARK: - Content Tab Picker
 
-    /// Horizontal pill-style picker for Arrivals / Stops / Alerts tabs.
+    /// Horizontal pill-style picker for Stops / Departures / Alerts tabs.
     private var contentTabPicker: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
@@ -1422,26 +1739,32 @@ struct RouteDetailSheet: View {
                                     .clipShape(Capsule())
                             }
 
-                            // Badge: show stop count on Stops tab (or loading dot)
+                            // Badge: stop count on Stops tab
                             if tab == .stops {
-                                if let shape = routeShape {
-                                    let stopCount = shape.stopsForDirection(index: selectedDirectionIndex, name: selectedDirectionName)
-                                        .count
-                                    if stopCount > 0 {
-                                        Text("\(stopCount)")
-                                            .font(.custom("Helvetica-Bold", size: 11))
-                                            .foregroundColor(isActive ? routeColor : .white)
-                                            .padding(.horizontal, 6)
-                                            .padding(.vertical, 2)
-                                            .background(
-                                                isActive ? Color.white.opacity(0.9) : routeColor
-                                            )
-                                            .clipShape(Capsule())
-                                    }
-                                } else {
-                                    // Shape loading — tiny pulsing dot
-                                    SkeletonCircle(size: 8, opacity: 0.3)
-                                        .shimmer()
+                                let stopCount = routeShape?.stopsForDirection(index: selectedDirectionIndex, name: selectedDirectionName).count ?? 0
+                                if stopCount > 0 {
+                                    Text("\(stopCount)")
+                                        .font(.custom("Helvetica-Bold", size: 11))
+                                        .foregroundColor(isActive ? routeColor : .white)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(isActive ? Color.white.opacity(0.9) : routeColor)
+                                        .clipShape(Capsule())
+                                }
+                            }
+
+                            // Badge: departure count on Departures tab
+                            if tab == .departures {
+                                let depCount = safeDirection.liveArrivals.count
+                                if depCount > 0 {
+                                    let label = depCount > 99 ? "99+" : "\(depCount)"
+                                    Text(label)
+                                        .font(.custom("Helvetica-Bold", size: 11))
+                                        .foregroundColor(isActive ? routeColor : .white)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(isActive ? Color.white.opacity(0.9) : routeColor)
+                                        .clipShape(Capsule())
                                 }
                             }
                         }
@@ -1470,17 +1793,61 @@ struct RouteDetailSheet: View {
     /// SF Symbol icon for each content tab.
     private func tabIcon(for tab: RouteDetailTab) -> String {
         switch tab {
-        case .arrivals: return "clock.fill"
         case .stops: return "mappin.and.ellipse"
+        case .departures: return "arrow.up.right.circle.fill"
         case .alerts: return "exclamationmark.triangle.fill"
         }
     }
 
     // MARK: - Stops List
 
-    /// List of all stops for the current direction, with transfer indicators.
+    /// Index of the "current" stop in the direction's stop list.
+    /// Priority: 1) selectedStopId match  2) nearest stop to currentLocation/searchCenter  3) nil
+    private func currentStopIndex(in dirStops: [BusStop]) -> Int? {
+        // 1. Explicit stop selection from map tap
+        if let sid = selectedStopId, !sid.isEmpty {
+            let stripped = stripMTAPrefix(sid)
+            let parent = stripDirectionSuffix(stripped)
+            if let idx = dirStops.firstIndex(where: {
+                let s = stripMTAPrefix($0.id)
+                return s == stripped || stripDirectionSuffix(s) == parent
+            }) { return idx }
+        }
+        // 2. Nearest stop to the reference coordinate
+        let refCoord = currentLocation ?? searchCenter
+        guard let ref = refCoord else { return nil }
+        let refLoc = CLLocation(latitude: ref.latitude, longitude: ref.longitude)
+        var bestIdx: Int? = nil
+        var bestDist: CLLocationDistance = .greatestFiniteMagnitude
+        for (i, stop) in dirStops.enumerated() {
+            let d = refLoc.distance(from: CLLocation(latitude: stop.lat, longitude: stop.lon))
+            if d < bestDist { bestDist = d; bestIdx = i }
+        }
+        return bestIdx
+    }
+
+    /// List of all stops for the current direction.
+    /// Tapping a stop sets `inSheetSelectedStopId` and switches to the Departures tab.
     private var stopsListSection: some View {
         let dirStops: [BusStop] = routeShape?.stopsForDirection(index: selectedDirectionIndex, name: selectedDirectionName) ?? []
+        let currentIdx = currentStopIndex(in: dirStops)
+
+        // Build a lookup: normalised stop-id → nearest arriving bus at that stop.
+        // Keys use the same strip logic used elsewhere for stop-id matching.
+        let allArrivals = safeDirection.liveArrivals
+        var arrivalByStop: [String: NearbyTransitResponse] = [:]
+        for a in allArrivals {
+            // Key 1: normalised stop-id
+            if let sid = a.stopId, !sid.isEmpty {
+                let key = stripDirectionSuffix(stripMTAPrefix(sid))
+                if arrivalByStop[key] == nil { arrivalByStop[key] = a }
+                // also store raw
+                if arrivalByStop[sid] == nil { arrivalByStop[sid] = a }
+            }
+            // Key 2: stopName (lowercase, trimmed) as fallback
+            let nameKey = a.stopName.lowercased().trimmingCharacters(in: .whitespaces)
+            if arrivalByStop[nameKey] == nil { arrivalByStop[nameKey] = a }
+        }
 
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
@@ -1502,10 +1869,8 @@ struct RouteDetailSheet: View {
 
             if dirStops.isEmpty {
                 if routeShape == nil {
-                    // Route shape still loading — show animated skeleton
                     StopsListSkeleton()
                 } else {
-                    // Shape loaded but this direction has no stops
                     VStack(spacing: 10) {
                         Image(systemName: "mappin.slash")
                             .font(.system(size: 32, weight: .light))
@@ -1523,14 +1888,41 @@ struct RouteDetailSheet: View {
             } else {
                 VStack(spacing: 0) {
                     ForEach(Array(dirStops.enumerated()), id: \.element.id) { index, stop in
-                        stopRow(stop, index: index, total: dirStops.count)
+                            let isPassed = currentIdx.map { index < $0 } ?? false
+                            let isCurrent = currentIdx == index
+                            let isSelected = inSheetSelectedStopId == stop.id
+
+                            // Resolve the next arriving bus for this specific stop
+                            let normId = stripDirectionSuffix(stripMTAPrefix(stop.id))
+                            let nextArrival: NearbyTransitResponse? =
+                                arrivalByStop[normId]
+                                ?? arrivalByStop[stop.id]
+                                ?? arrivalByStop[stop.name.lowercased().trimmingCharacters(in: .whitespaces)]
+
+                                stopRow(stop, index: index, total: dirStops.count,
+                                    isCurrent: isCurrent, isPassed: isPassed,
+                                    isSelected: isSelected, nextArrival: nextArrival)
+                                .opacity(isPassed ? 0.38 : 1.0)
+                                // Tap: filter Departures to this stop
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                        if inSheetSelectedStopId == stop.id {
+                                            inSheetSelectedStopId = nil
+                                        } else {
+                                            inSheetSelectedStopId = stop.id
+                                            selectedTab = .departures
+                                        }
+                                    }
+                                    HapticManager.impact(.light)
+                                }
 
                         if index < dirStops.count - 1 {
-                            // Connecting line between stops
                             HStack(spacing: 0) {
                                 Spacer().frame(width: 27)
                                 Rectangle()
-                                    .fill(routeColor.opacity(0.25))
+                                    .fill((isPassed ? AppTheme.Colors.textSecondary : routeColor)
+                                        .opacity(isPassed ? 0.12 : 0.25))
                                     .frame(width: 2, height: 12)
                                 Spacer()
                             }
@@ -1542,39 +1934,75 @@ struct RouteDetailSheet: View {
                 .cornerRadius(AppTheme.Layout.cornerRadius)
                 .shadow(color: .black.opacity(0.06), radius: 4, y: 2)
                 .padding(.horizontal, AppTheme.Layout.margin)
+                .onChange(of: selectedDirectionIndex) { _, _ in
+                    // Clear stop filter when direction changes
+                    inSheetSelectedStopId = nil
+                }
             }
         }
     }
 
-    /// A single stop row with transfer line badges.
-    private func stopRow(_ stop: BusStop, index: Int, total: Int) -> some View {
+    /// A single stop row with transfer line badges and accessibility warnings.
+    private func stopRow(_ stop: BusStop, index: Int, total: Int,
+                         isCurrent: Bool = false, isPassed: Bool = false,
+                         isSelected: Bool = false,
+                         nextArrival: NearbyTransitResponse? = nil) -> some View {
         let transfers = transferRoutes(for: stop)
+        let outages = accessibilityOutages(at: stop)
         let isFirst = index == 0
         let isLast = index == total - 1
+        let dotColor = isCurrent ? routeColor : (isPassed ? AppTheme.Colors.textSecondary.opacity(0.4) : routeColor)
 
         return HStack(alignment: .center, spacing: 12) {
-            // Stop dot on the line
+            // Stop dot
             ZStack {
-                Circle()
-                    .fill(routeColor)
-                    .frame(
-                        width: (isFirst || isLast) ? 14 : 10,
-                        height: (isFirst || isLast) ? 14 : 10)
-                if isFirst || isLast {
+                if isCurrent {
+                    // Pulsing outer ring for the current stop
                     Circle()
-                        .fill(Color.white)
+                        .fill(routeColor.opacity(0.2))
+                        .frame(width: 22, height: 22)
+                }
+                Circle()
+                    .fill(dotColor)
+                    .frame(
+                        width: (isCurrent || isFirst || isLast) ? 14 : 10,
+                        height: (isCurrent || isFirst || isLast) ? 14 : 10)
+                if isCurrent || isFirst || isLast {
+                    Circle()
+                        .fill(isCurrent ? Color.white : Color.white)
                         .frame(width: 6, height: 6)
                 }
             }
-            .frame(width: 18)
+            .frame(width: 22)
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(stop.name)
-                    .font(.custom("Helvetica-Bold", size: 14))
-                    .foregroundColor(AppTheme.Colors.textPrimary)
-                    .lineLimit(1)
+                HStack(spacing: 5) {
+                    Text(stop.name)
+                        .font(.custom(isCurrent ? "Helvetica-Bold" : "Helvetica-Bold", size: 14))
+                        .foregroundColor(isCurrent ? routeColor : AppTheme.Colors.textPrimary)
+                        .lineLimit(1)
 
-                // Transfer badges
+                    if isCurrent {
+                        Text("HERE")
+                            .font(.system(size: 8, weight: .black))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(routeColor)
+                            .clipShape(Capsule())
+                    }
+
+                    // Elevator/escalator outage warning
+                    if !outages.isEmpty {
+                        let isElevator = outages.contains { $0.equipmentType.lowercased().contains("elevator") }
+                        Image(systemName: isElevator ? "arrow.up.arrow.down.circle.fill" : "stairs")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(AppTheme.Colors.alertRed)
+                            .help(outages.first?.description ?? "Accessibility outage")
+                    }
+                }
+
+                // Transfer badges — subway + bus
                 if !transfers.isEmpty {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 4) {
@@ -1594,52 +2022,146 @@ struct RouteDetailSheet: View {
 
             Spacer()
 
-            // Stop sequence number
-            Text("\(index + 1)")
-                .font(.custom("Helvetica", size: 11))
-                .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.5))
+            // ── Arrival time column ───────────────────────────────────────
+            if let arrival = nextArrival, !arrival.isPlaceholder {
+                VStack(alignment: .trailing, spacing: 2) {
+                    if arrival.minutesAway <= 0 {
+                        Text("Now")
+                            .font(.custom("Helvetica-Bold", size: 13))
+                            .foregroundColor(AppTheme.Colors.successGreen)
+                    } else {
+                        HStack(spacing: 3) {
+                            if !isEffectivelyScheduled(arrival) {
+                                Circle()
+                                    .fill(AppTheme.Colors.successGreen)
+                                    .frame(width: 5, height: 5)
+                            }
+                            Text("\(arrival.minutesAway)m")
+                                .font(.custom("Helvetica-Bold", size: 13))
+                                .foregroundColor(
+                                    isPassed
+                                    ? AppTheme.Colors.textSecondary.opacity(0.35)
+                                    : (isEffectivelyScheduled(arrival)
+                                       ? AppTheme.Colors.textSecondary
+                                       : routeColor)
+                                )
+                        }
+                        if let ts = arrival.arrivalTs {
+                            Text(Date(timeIntervalSince1970: Double(ts)), style: .time)
+                                .font(.custom("Helvetica", size: 10))
+                                .foregroundColor(AppTheme.Colors.textSecondary.opacity(isPassed ? 0.3 : 0.55))
+                        }
+                    }
+                }
+            } else {
+                Text("\(index + 1)")
+                    .font(.custom("Helvetica", size: 11))
+                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(isPassed ? 0.25 : 0.5))
+            }
         }
         .padding(.horizontal, AppTheme.Layout.cardPadding)
         .padding(.vertical, 8)
+        // Show subtle route-colored highlight when this stop is the active Departures filter
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(isSelected ? routeColor.opacity(0.09) : Color.clear)
+                .padding(.horizontal, 4)
+        )
+        .animation(.easeInOut(duration: 0.2), value: isSelected)
     }
 
-    /// Finds subway transfer routes at a given stop by matching against cached stations.
-    /// Uses name-based matching (case-insensitive, trimmed) to connect bus/subway stops
-    /// to known subway stations and their served routes.
+    /// Finds transfer routes at a given stop.
+    ///
+    /// Two sources:
+    /// 1. **Subway stations** — matched by name/proximity from `cachedStations`.
+    /// 2. **Bus routes** — pulled directly from `stop.routeIds` (set by the backend
+    ///    for stops fetched from /bus/nearby; often nil for shape-derived stops).
+    ///
+    /// Returns a deduplicated, sorted list of route display names (badges).
     private func transferRoutes(for stop: BusStop) -> [String] {
-        // Skip transfer detection for non-subway if no station data available
-        guard !cachedStations.isEmpty else { return [] }
-
-        let stopName = stop.name.lowercased().trimmingCharacters(in: .whitespaces)
         let currentRoute = group.displayName
-
-        // 1) Try exact name match first
-        if let match = cachedStations.first(where: {
-            $0.name.lowercased().trimmingCharacters(in: .whitespaces) == stopName
-        }) {
-            return match.routes.filter { $0 != currentRoute }.sorted()
-        }
-
-        // 2) Try proximity-based match (~100m) for nearby subway stations
-        let stopCoord = CLLocation(latitude: stop.lat, longitude: stop.lon)
-        let nearbyThreshold: CLLocationDistance = 100  // meters
-
-        let nearbyStations = cachedStations.filter { station in
-            let stationLoc = CLLocation(
-                latitude: station.coordinate.latitude,
-                longitude: station.coordinate.longitude)
-            return stopCoord.distance(from: stationLoc) <= nearbyThreshold
-        }
-
-        // Collect all routes from nearby stations, excluding the current route
         var routes = Set<String>()
-        for station in nearbyStations {
-            for route in station.routes where route != currentRoute {
-                routes.insert(route)
+
+        // ── 1. Subway station matches ──
+        if !cachedStations.isEmpty {
+            let stopName = stop.name.lowercased().trimmingCharacters(in: .whitespaces)
+
+            // Exact name match
+            if let match = cachedStations.first(where: {
+                $0.name.lowercased().trimmingCharacters(in: .whitespaces) == stopName
+            }) {
+                for r in match.routes where r != currentRoute { routes.insert(r) }
+            } else {
+                // Proximity match (~100 m)
+                let stopCoord = CLLocation(latitude: stop.lat, longitude: stop.lon)
+                let nearbyStations = cachedStations.filter { station in
+                    let loc = CLLocation(
+                        latitude: station.coordinate.latitude,
+                        longitude: station.coordinate.longitude)
+                    return stopCoord.distance(from: loc) <= 100
+                }
+                for station in nearbyStations {
+                    for r in station.routes where r != currentRoute { routes.insert(r) }
+                }
+            }
+        }
+
+        // ── 2. Bus route IDs served at this stop (from shape/nearby data) ──
+        if let routeIds = stop.routeIds {
+            for rawId in routeIds {
+                let display = BranchNames.resolveDisplayName(routeId: rawId, mode: "bus")
+                if display != currentRoute && !display.isEmpty {
+                    routes.insert(display)
+                }
+            }
+        }
+
+        // ── 3. Fallback: nearby/name-matched shape stops (captures bus transfers
+        // when the current stop row itself has nil routeIds) ──
+        if let shape = routeShape {
+            let here = CLLocation(latitude: stop.lat, longitude: stop.lon)
+            let stopNameKey = stop.name.lowercased().trimmingCharacters(in: .whitespaces)
+            for direction in shape.directions {
+                for candidate in direction.stops {
+                    guard let candidateRouteIds = candidate.routeIds, !candidateRouteIds.isEmpty else {
+                        continue
+                    }
+                    let candidateLoc = CLLocation(latitude: candidate.lat, longitude: candidate.lon)
+                    let isNearby = here.distance(from: candidateLoc) <= 80
+                    let isSameName = candidate.name.lowercased().trimmingCharacters(in: .whitespaces) == stopNameKey
+                    guard isNearby || isSameName else { continue }
+
+                    for rawId in candidateRouteIds {
+                        let display = BranchNames.resolveDisplayName(routeId: rawId, mode: "bus")
+                        if display != currentRoute && !display.isEmpty {
+                            routes.insert(display)
+                        }
+                    }
+                }
             }
         }
 
         return routes.sorted()
+    }
+
+    /// Returns true when this stop has an active elevator or escalator outage.
+    private func hasAccessibilityOutage(at stop: BusStop) -> Bool {
+        guard !elevatorOutages.isEmpty else { return false }
+        let name = stop.name.lowercased()
+        return elevatorOutages.contains { outage in
+            let station = outage.station.lowercased()
+            return name == station || name.contains(station) || station.contains(name)
+        }
+    }
+
+    /// Returns the outage descriptions for a stop, for tooltip/accessibility label.
+    private func accessibilityOutages(at stop: BusStop) -> [ElevatorStatus] {
+        guard !elevatorOutages.isEmpty else { return [] }
+        let name = stop.name.lowercased()
+        return elevatorOutages.filter { outage in
+            let station = outage.station.lowercased()
+            return name == station || name.contains(station) || station.contains(name)
+        }
     }
 
     // MARK: - No Alerts Empty State

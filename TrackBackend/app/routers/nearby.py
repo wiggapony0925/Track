@@ -656,6 +656,28 @@ def _group_arrivals(flat: list[NearbyTransitArrival]) -> list[GroupedNearbyTrans
         directions: list[DirectionArrivals] = []
         for direction, arrivals in dir_map.items():
             arrivals.sort(key=lambda a: a.minutes_away)
+
+            # ── Deduplicate by vehicle / trip ─────────────────────────────
+            # SIRI returns a prediction for every upcoming stop a vehicle will
+            # serve.  For a radius query covering many stops that means the same
+            # bus can appear 5-7 times in the flat list, all as "En Route".
+            # Keep only the *soonest* prediction per unique vehicle so the iOS
+            # arrival chips show one card per physical bus (matching Transit app).
+            # Arrivals with neither vehicle_id nor trip_id are kept as-is
+            # (they are GTFS-static scheduled entries which are already unique).
+            seen_vehicle_keys: set[str] = set()
+            deduped: list[NearbyTransitArrival] = []
+            for arr in arrivals:
+                key = arr.vehicle_id or arr.trip_id
+                if key is None:
+                    deduped.append(arr)       # scheduled placeholder — keep
+                elif key not in seen_vehicle_keys:
+                    seen_vehicle_keys.add(key)
+                    deduped.append(arr)       # first (soonest) hit for this vehicle
+                # else: duplicate stop prediction for same vehicle — drop
+            arrivals = deduped
+            # ─────────────────────────────────────────────────────────────
+
             directions.append(DirectionArrivals(
                 direction=direction,
                 direction_label=_direction_label(direction, arrivals),
