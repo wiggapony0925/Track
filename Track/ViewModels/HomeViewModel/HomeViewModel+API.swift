@@ -61,6 +61,11 @@ extension HomeViewModel {
     /// MainActor dispatch so that `isVehicleLiveOnMap` never sees a mismatch
     /// between the vehicle list and the arrival data — eliminating the chip
     /// flicker between "On Route" and "Scheduled".
+    ///
+    /// NOTE: We do NOT replace `busVehicles` coordinates with the raw GPS
+    /// response — that caused the snap-forward → jump-back flicker.  Instead
+    /// we store the new GPS in `_targetBusGPS` and let `updateBusSimulation()`
+    /// smoothly interpolate the display positions toward the targets each tick.
     func refreshBusVehicles() async {
         guard let routeId = selectedRouteId,
             selectedGroupedRoute?.isBus == true
@@ -68,36 +73,60 @@ extension HomeViewModel {
         do {
             let vehicles = try await TrackAPI.fetchBusVehicles(routeID: routeId)
 
-            // Snapshot current positions BEFORE overwriting so that
-            // updateBusSimulation() can interpolate between old → new.
-            // This happens on MainActor but does NOT publish the new vehicles yet.
-            let snapshots: [String: BusSnapshot] = await MainActor.run {
-                var result: [String: BusSnapshot] = [:]
-                if self.busVehicles.isEmpty {
+            // Compute the synced group OFF the main thread.
+            let updatedGroup = await buildSyncedBusGroup(vehicles)
+
+            // Apply atomically on MainActor.
+            await MainActor.run {
+                let isFirstLoad = self.busVehicles.isEmpty
+
+                // 1) Snapshot current DISPLAY positions as interpolation origins.
+                for v in self.busVehicles {
+                    self.previousBusPositions[v.vehicleId] = BusSnapshot(
+                        lat: v.lat, lon: v.lon, timestamp: self.lastBusUpdateTime
+                    )
+                }
+
+                // 2) Store new GPS as targets (simulation reads these).
+                self._targetBusGPS = Dictionary(
+                    vehicles.map { ($0.vehicleId, $0) },
+                    uniquingKeysWith: { $1 }
+                )
+                self.lastBusUpdateTime = Date()
+
+                // 3) Update the vehicle LIST (add/remove) without changing
+                //    coordinates of existing vehicles. This keeps
+                //    `isVehicleLiveOnMap` accurate while avoiding the snap.
+                if isFirstLoad {
+                    // First load: show at raw GPS — no previous position to lerp from.
+                    self.busVehicles = vehicles
                     for v in vehicles {
-                        result[v.vehicleId] = BusSnapshot(
+                        self.previousBusPositions[v.vehicleId] = BusSnapshot(
                             lat: v.lat, lon: v.lon, timestamp: Date()
                         )
                     }
                 } else {
-                    for v in self.busVehicles {
-                        result[v.vehicleId] = BusSnapshot(
-                            lat: v.lat, lon: v.lon, timestamp: self.lastBusUpdateTime
+                    let existingById = Dictionary(
+                        self.busVehicles.map { ($0.vehicleId, $0) },
+                        uniquingKeysWith: { $1 }
+                    )
+                    let newIds = Set(vehicles.map(\.vehicleId))
+
+                    var merged: [BusVehicleResponse] = []
+                    // Keep existing vehicles at their current display positions
+                    for v in self.busVehicles where newIds.contains(v.vehicleId) {
+                        merged.append(v)
+                    }
+                    // Add brand-new vehicles at their raw GPS position
+                    for v in vehicles where existingById[v.vehicleId] == nil {
+                        merged.append(v)
+                        self.previousBusPositions[v.vehicleId] = BusSnapshot(
+                            lat: v.lat, lon: v.lon, timestamp: Date()
                         )
                     }
+                    self.busVehicles = merged
                 }
-                return result
-            }
 
-            // Compute the synced group OFF the main thread.
-            // Returns nil if sync produces no new arrivals (keep existing group).
-            let updatedGroup = await buildSyncedBusGroup(vehicles)
-
-            // Apply BOTH updates atomically so isVehicleLiveOnMap never mismatches.
-            await MainActor.run {
-                self.previousBusPositions.merge(snapshots) { _, new in new }
-                self.lastBusUpdateTime = Date()
-                self.busVehicles = vehicles
                 if let updatedGroup,
                    self.selectedGroupedRoute?.routeId == updatedGroup.routeId {
                     self.selectedGroupedRoute = updatedGroup
@@ -323,10 +352,10 @@ extension HomeViewModel {
             let updatedGroup = await buildSyncedTrainGroup(arrivals)
 
             // Apply all updates atomically on MainActor.
+            // NOTE: No outer withAnimation — updateTrainPositions() applies
+            // its own .linear(duration: 1.0). Double-wrapping caused stuttering.
             await MainActor.run {
-                withAnimation(.interpolatingSpring(stiffness: 30, damping: 15)) {
-                    updateTrainPositions(arrivals: arrivals)
-                }
+                updateTrainPositions(arrivals: arrivals)
                 if let updatedGroup,
                    self.selectedGroupedRoute?.routeId == updatedGroup.routeId {
                     self.selectedGroupedRoute = updatedGroup
@@ -365,10 +394,9 @@ extension HomeViewModel {
             let mode = group.isLIRR ? "lirr" : "mnr"
             let updatedGroup = await buildSyncedTrainGroup(routeArrivals, mode: mode)
 
+            // NOTE: No outer withAnimation — updateTrainPositions() handles it.
             await MainActor.run {
-                withAnimation(.interpolatingSpring(stiffness: 30, damping: 15)) {
-                    updateTrainPositions(arrivals: routeArrivals)
-                }
+                updateTrainPositions(arrivals: routeArrivals)
                 if let updatedGroup,
                    self.selectedGroupedRoute?.routeId == updatedGroup.routeId {
                     self.selectedGroupedRoute = updatedGroup
@@ -595,6 +623,9 @@ extension HomeViewModel {
         trainVehicles = []
         cachedTrainArrivals = []
         previousBusPositions = [:]
+        _targetBusGPS = [:]
+        _previousTrainPositions = [:]
+        _trainGraceBuffer = [:]
         lastBusUpdateTime = .distantPast
         routeShape = nil
         errorMessage = nil
@@ -657,39 +688,42 @@ extension HomeViewModel {
 
     /// Interpolates bus positions along the route polyline between GPS fetches.
     /// Called every tick (1s) for smooth movement between the 10s GPS refresh.
+    ///
+    /// Reads target GPS from `_targetBusGPS` (set by `refreshBusVehicles`)
+    /// and smoothly moves the display positions in `busVehicles` toward
+    /// them, producing glitch-free gliding along the polyline.
     func updateBusSimulation() {
         guard !busVehicles.isEmpty, routeShape != nil else { return }
         let elapsed = Date().timeIntervalSince(lastBusUpdateTime)
-        let duration: TimeInterval = 10.0  // seconds between GPS poll (matches handleRouteSelection timer)
+        let duration: TimeInterval = 10.0  // seconds between GPS poll
 
         let polyline = cachedInterpolationPolyline
         guard polyline.count >= 2 else { return }
 
         var updated = busVehicles
-        // Track whether any vehicle actually moved enough to warrant a
-        // MapKit annotation diff. Replacing busVehicles every tick even
-        // when positions haven't changed causes @Observable to broadcast
-        // a change, forcing the Map to re-diff all bus Annotation views.
         var anyMoved = false
         let moveThreshold: CLLocationDistance = 2.0  // metres — sub-pixel at normal zoom
         for i in updated.indices {
-            guard let prev = previousBusPositions[updated[i].vehicleId] else { continue }
+            let vid = updated[i].vehicleId
+            guard let prev = previousBusPositions[vid] else { continue }
+            // Use the target GPS from the latest server response.
+            // If no target exists yet, fall back to the vehicle's own coords.
+            let target = _targetBusGPS[vid]
+            let targetCoord = CLLocationCoordinate2D(
+                latitude: target?.lat ?? updated[i].lat,
+                longitude: target?.lon ?? updated[i].lon
+            )
             let result = VehicleInterpolator.smoothBusPosition(
                 previous: CLLocationCoordinate2D(latitude: prev.lat, longitude: prev.lon),
-                current: CLLocationCoordinate2D(
-                    latitude: updated[i].lat, longitude: updated[i].lon),
+                current: targetCoord,
                 elapsed: elapsed,
                 duration: duration,
                 along: polyline
             )
-            // Only flag a move when the interpolated position has actually
-            // shifted far enough to be visible on screen.
             let currentLoc = CLLocation(latitude: updated[i].lat, longitude: updated[i].lon)
             let newLoc = CLLocation(
                 latitude: result.coordinate.latitude, longitude: result.coordinate.longitude)
             if newLoc.distance(from: currentLoc) >= moveThreshold {
-                // Update the vehicle's display position via a mutable copy
-                // (BusVehicleResponse is a struct, so this is a value-type update)
                 updated[i] = updated[i].withInterpolatedPosition(
                     lat: result.coordinate.latitude,
                     lon: result.coordinate.longitude,
@@ -697,13 +731,10 @@ extension HomeViewModel {
                 )
                 anyMoved = true
             }
-            // Always record for ETA engine regardless of render update
             ArrivalETAEngine.recordPosition(
-                vehicleKey: updated[i].vehicleId,
+                vehicleKey: vid,
                 coordinate: result.coordinate)
         }
-        // Skip the whole-array assignment (and its @Observable broadcast +
-        // MapKit annotation diff) when nothing moved visibly.
         guard anyMoved else { return }
         withAnimation(.linear(duration: 1.0)) {
             self.busVehicles = updated
@@ -714,6 +745,13 @@ extension HomeViewModel {
     /// along the actual route polyline for realistic curved movement.
     /// Builds vehicles from ALL directions (not just the selected one) so
     /// `filteredTrainVehicles` can properly filter them.
+    ///
+    /// Smooth-movement improvements:
+    ///  • Existing vehicles blend from their previous display position to
+    ///    the newly computed target using `.linear(duration: 1.0)`.
+    ///  • Vehicles that vanish for a single poll cycle are kept in a grace
+    ///    buffer (≤12 s) so their Annotation isn't destroyed and recreated,
+    ///    which would cause a visible pop/flash.
     func updateTrainPositions(arrivals: [TrainArrival]) {
         guard let shape = routeShape else { return }
         self.cachedTrainArrivals = arrivals
@@ -758,7 +796,13 @@ extension HomeViewModel {
             trips[key, default: []].append(arrival)
         }
 
+        // Snapshot current display positions before rebuilding.
+        for v in trainVehicles {
+            _previousTrainPositions[v.id] = CLLocationCoordinate2D(latitude: v.lat, longitude: v.lon)
+        }
+
         var newVehicles: [TrainVehicle] = []
+        var newIds = Set<String>()
 
         // 2. Process each trip to find its "current location"
         // Try matching against each direction's stops until we find a match.
@@ -782,8 +826,8 @@ extension HomeViewModel {
                 let dirStops = ctx.stops
                 let polyline = ctx.polyline
 
-                var lat = dirStops[nextStopIndex].lat
-                var lon = dirStops[nextStopIndex].lon
+                var targetLat = dirStops[nextStopIndex].lat
+                var targetLon = dirStops[nextStopIndex].lon
                 var bearing: Double = 0
 
                 let previousIndex = nextStopIndex > 0 ? nextStopIndex - 1 : nextStopIndex
@@ -820,13 +864,13 @@ extension HomeViewModel {
                         let result = VehicleInterpolator.interpolateBetweenStops(
                             from: fromCoord, to: toCoord,
                             progress: progress, along: polyline)
-                        lat = result.coordinate.latitude
-                        lon = result.coordinate.longitude
+                        targetLat = result.coordinate.latitude
+                        targetLon = result.coordinate.longitude
                         bearing = result.bearing
                     } else {
                         // Fallback: straight-line lerp
-                        lat = prevStop.lat + (targetStop.lat - prevStop.lat) * progress
-                        lon = prevStop.lon + (targetStop.lon - prevStop.lon) * progress
+                        targetLat = prevStop.lat + (targetStop.lat - prevStop.lat) * progress
+                        targetLon = prevStop.lon + (targetStop.lon - prevStop.lon) * progress
                         bearing =
                             atan2(
                                 targetStop.lon - prevStop.lon,
@@ -836,25 +880,62 @@ extension HomeViewModel {
                     }
                 }
 
+                // Smooth from previous display position toward the new target.
+                // This prevents a single-tick jump when the computed target
+                // shifts to a different inter-station segment.
+                var finalLat = targetLat
+                var finalLon = targetLon
+                if let prev = _previousTrainPositions[tripId] {
+                    let blendFactor = 0.35  // blend 35% toward target per tick (1 s)
+                    finalLat = prev.latitude + (targetLat - prev.latitude) * blendFactor
+                    finalLon = prev.longitude + (targetLon - prev.longitude) * blendFactor
+                }
+
                 newVehicles.append(
                     TrainVehicle(
                         id: tripId,
                         tripId: tripId,
                         routeId: nextStop.routeID,
                         direction: nextStop.direction,
-                        lat: lat,
-                        lon: lon,
+                        lat: finalLat,
+                        lon: finalLon,
                         bearing: bearing,
                         nextStationName: dirStops[nextStopIndex].name,
                         estimatedArrival: nextStop.estimatedTime
                     ))
+                newIds.insert(tripId)
                 // Record position for smart ETA speed estimation
                 ArrivalETAEngine.recordPosition(
                     vehicleKey: tripId,
-                    coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lon))
+                    coordinate: CLLocationCoordinate2D(latitude: finalLat, longitude: finalLon))
                 break  // Found a matching direction, stop searching
             }
         }
+
+        // Grace buffer: keep vehicles that vanished this tick for up to 12 s
+        // so the Annotation isn't destroyed/recreated on a single GTFS-RT dropout.
+        let now = Date()
+        for v in trainVehicles where !newIds.contains(v.id) {
+            if _trainGraceBuffer[v.id] == nil {
+                _trainGraceBuffer[v.id] = (vehicle: v, missedAt: now)
+            }
+        }
+        // Re-add graced vehicles and purge expired ones
+        var expiredIds: [String] = []
+        for (id, entry) in _trainGraceBuffer {
+            if newIds.contains(id) {
+                // Vehicle reappeared — remove from grace
+                expiredIds.append(id)
+            } else if now.timeIntervalSince(entry.missedAt) > 12 {
+                // Genuinely gone — purge
+                expiredIds.append(id)
+                _previousTrainPositions.removeValue(forKey: id)
+            } else {
+                // Still within grace period — keep on map
+                newVehicles.append(entry.vehicle)
+            }
+        }
+        for id in expiredIds { _trainGraceBuffer.removeValue(forKey: id) }
 
         withAnimation(.linear(duration: 1.0)) {
             self.trainVehicles = newVehicles

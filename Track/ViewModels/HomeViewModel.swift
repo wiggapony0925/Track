@@ -614,6 +614,17 @@ final class HomeViewModel {
     var previousBusPositions: [String: BusSnapshot] = [:]
     /// When the last bus GPS batch arrived (for elapsed-time calculation).
     var lastBusUpdateTime: Date = .distantPast
+    /// Target GPS positions from the latest API response. The simulation
+    /// interpolates `busVehicles` display positions toward these targets
+    /// each tick, eliminating the snap-forward → jump-back flicker.
+    var _targetBusGPS: [String: BusVehicleResponse] = [:]
+
+    /// Previous train display positions for smooth cross-tick interpolation.
+    /// Keyed by trip ID (same as TrainVehicle.id).
+    var _previousTrainPositions: [String: CLLocationCoordinate2D] = [:]
+    /// Train vehicles that disappeared in the latest poll. Kept for a grace
+    /// period (1 poll cycle) to avoid markers vanishing on a single GTFS-RT dropout.
+    var _trainGraceBuffer: [String: (vehicle: TrainVehicle, missedAt: Date)] = [:]
 
     var routeShape: RouteShapeResponse? {
         didSet {
@@ -1530,7 +1541,21 @@ final class HomeViewModel {
             async let shapeTask = TrackAPI.fetchRouteShape(routeID: group.routeId)
 
             do {
-                busVehicles = try await vehiclesTask
+                let vehicles = try await vehiclesTask
+                busVehicles = vehicles
+                // Seed interpolation state so the first updateBusSimulation()
+                // ticks have correct data (no movement until refreshBusVehicles
+                // provides a second GPS reading, but the bookkeeping is ready).
+                _targetBusGPS = Dictionary(
+                    vehicles.map { ($0.vehicleId, $0) },
+                    uniquingKeysWith: { $1 }
+                )
+                for v in vehicles {
+                    previousBusPositions[v.vehicleId] = BusSnapshot(
+                        lat: v.lat, lon: v.lon, timestamp: Date()
+                    )
+                }
+                lastBusUpdateTime = Date()
             } catch {
                 AppLogger.shared.logError("fetchBusVehicles(\(group.routeId))", error: error)
             }
