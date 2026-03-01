@@ -674,7 +674,7 @@ final class HomeViewModel {
         cachedRoutePolylines = activeRaw.map { simplifyPolyline($0, tolerance: 0.00007) }
 
         // Build inactive polylines from all OTHER directions.
-        // These render at low opacity so users see branching routes,
+        // These render at 0.15 opacity so users see branching routes,
         // short-turns, and the opposite direction's path while knowing
         // which direction is currently active.
         if shouldFilter && shape.directions.count > 1 {

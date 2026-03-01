@@ -795,8 +795,9 @@ extension HomeViewModel {
         // along the correct direction's path — not the selected one.
         var dirContexts: [DirectionContext] = []
         if !shape.directions.isEmpty {
-            // Pre-decode a shared fallback from the route-level polylines
-            // (only used when a direction has no polylines of its own).
+            // Pre-decode a shared fallback from the route-level polylines.
+            // Only used when a specific direction has no polylines of its own
+            // (rare — most GTFS shapes provide per-direction polylines).
             let sharedFallback: [CLLocationCoordinate2D] = {
                 let all = shape.decodedPolylines.flatMap { $0 }
                 return all.count >= 2 ? all : []
