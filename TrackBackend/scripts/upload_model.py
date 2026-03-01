@@ -37,9 +37,7 @@ DATA_DIR = BASE_DIR / "app" / "data"
 MODEL_PKL = DATA_DIR / "delay_model.pkl"
 ARCHIVE_NAME = "delay_model.tar.gz"
 
-SUPABASE_URL = os.environ.get(
-    "SUPABASE_URL", "https://octpebjxadbufiplgjqg.supabase.co"
-)
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
 BUCKET = os.environ.get("GTFS_BUCKET", "gtfs-data")
 

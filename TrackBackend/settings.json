@@ -46,7 +46,7 @@
   },
   "api_keys": {
     "mta_api_key": "",
-    "mta_bus_key": "d5e1a531-5aa6-4db0-bd29-8dbdec47a27a"
+    "mta_bus_key": ""
   },
   "urls": {
     "subway_ace": "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-ace",

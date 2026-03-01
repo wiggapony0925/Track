@@ -29,6 +29,7 @@ import argparse
 import asyncio
 import json
 import math
+import os
 import sys
 import time
 from datetime import datetime, timezone
@@ -39,7 +40,7 @@ import httpx
 # ── Config ────────────────────────────────────────────────────────────────
 LOCAL_BACKEND   = "http://localhost:8000"
 MTA_SIRI_BASE   = "https://bustime.mta.info/api/siri/stop-monitoring.json"
-MTA_BUS_KEY     = "d5e1a531-5aa6-4db0-bd29-8dbdec47a27a"
+MTA_BUS_KEY     = os.environ.get("OBA_API_KEY", "")
 
 # OBA stops-for-location (to discover stop IDs near the user)
 OBA_NEARBY      = "https://bustime.mta.info/api/where/stops-for-location.json"

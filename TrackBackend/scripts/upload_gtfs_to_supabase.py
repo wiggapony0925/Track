@@ -42,9 +42,7 @@ import httpx
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "app" / "data"
 
-SUPABASE_URL = os.environ.get(
-    "SUPABASE_URL", "https://octpebjxadbufiplgjqg.supabase.co"
-)
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
 BUCKET = os.environ.get("GTFS_BUCKET", "gtfs-data")
 

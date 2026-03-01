@@ -11,6 +11,14 @@ venv/
 env/
 .env
 
+# Secrets & keys — NEVER commit these
+*.p8
+*.jwt
+*.pem
+*.key
+Secrets.plist
+*.xcconfig
+
 # ML training data — large raw files from data.ny.gov, local dev only
 # Only delay_model.pkl (487 KB) ships to prod, not these source files
 TrackBackend/app/data/training/

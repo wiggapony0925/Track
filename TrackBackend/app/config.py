@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import json
+import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -78,8 +79,21 @@ class Settings(BaseModel):
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
-    """Read and parse *settings.json* once, then cache the result."""
+    """Read and parse *settings.json* once, then cache the result.
+
+    Environment variables override ``api_keys`` values from the file:
+      - ``MTA_API_KEY``  → ``api_keys.mta_api_key``
+      - ``OBA_API_KEY``  → ``api_keys.mta_bus_key``
+    """
     raw: dict[str, Any] = json.loads(_SETTINGS_PATH.read_text(encoding="utf-8"))
+
+    # ── env-var overrides for API keys ────────────────────────────────────
+    api_keys = raw.setdefault("api_keys", {})
+    if env_mta := os.environ.get("MTA_API_KEY"):
+        api_keys["mta_api_key"] = env_mta
+    if env_oba := os.environ.get("OBA_API_KEY"):
+        api_keys["mta_bus_key"] = env_oba
+
     return Settings(**raw)
 
 

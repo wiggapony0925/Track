@@ -22,12 +22,10 @@ from app.utils.logger import TrackLogger
 # In production, set these as environment variables
 # For development, defaults are provided
 
-# Default Supabase credentials for Track app
-_DEFAULT_SUPABASE_URL = "https://octpebjxadbufiplgjqg.supabase.co"
-_DEFAULT_SUPABASE_KEY = "sb_publishable_lAEZ_x8O4vjdGaw-I-QUMg_oS5iWKIn"
-
-SUPABASE_URL = os.environ.get("SUPABASE_URL", _DEFAULT_SUPABASE_URL)
-SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", os.environ.get("SUPABASE_KEY", _DEFAULT_SUPABASE_KEY))
+# Supabase credentials — MUST be set via environment variables in production.
+# No hardcoded defaults; the app logs a warning if they are missing.
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
+SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", os.environ.get("SUPABASE_KEY", ""))
 
 
 class SupabaseClient:

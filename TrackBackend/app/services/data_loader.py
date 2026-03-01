@@ -37,14 +37,12 @@ from app.utils.logger import TrackLogger
 _DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 _METADATA_DIR = _DATA_DIR / ".dl_meta"
 
-SUPABASE_URL = os.environ.get(
-    "SUPABASE_URL", "https://octpebjxadbufiplgjqg.supabase.co"
-)
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 SUPABASE_KEY = os.environ.get(
     "SUPABASE_SERVICE_KEY",
     os.environ.get(
         "SUPABASE_SERVICE_ROLE_KEY",
-        os.environ.get("SUPABASE_KEY", "sb_publishable_lAEZ_x8O4vjdGaw-I-QUMg_oS5iWKIn"),
+        os.environ.get("SUPABASE_KEY", ""),
     ),
 )
 
