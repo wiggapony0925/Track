@@ -135,6 +135,13 @@ enum VehicleInterpolator {
     ///
     /// This follows the polyline segments between the stops rather than
     /// doing a straight-line lerp, giving realistic curved movement.
+    ///
+    /// Guards against inverted snap fractions: when `fromStop` snaps to a
+    /// later point on the polyline than `toStop` (common on routes that
+    /// double-back or share overlapping segments), the interpolated fraction
+    /// would sweep backwards across the entire polyline, causing markers to
+    /// glitch up and down the route.  When the span exceeds half the polyline
+    /// or the fractions are inverted, we fall back to a safe straight-line lerp.
     static func interpolateBetweenStops(
         from fromStop: CLLocationCoordinate2D,
         to toStop: CLLocationCoordinate2D,
@@ -154,10 +161,22 @@ enum VehicleInterpolator {
             return (coord, bearingBetween(fromStop, toStop))
         }
 
-        // Interpolate between the two fractions
         let startFrac = snapFrom.fractionAlongPolyline
         let endFrac = snapTo.fractionAlongPolyline
-        let targetFrac = startFrac + (endFrac - startFrac) * progress
+
+        // Guard: if the snap fractions are inverted (end < start) or the
+        // span covers more than half the polyline, the stops snapped to
+        // the wrong parts of a looping/overlapping route.  Fall back to
+        // straight-line lerp to prevent the marker from sweeping across
+        // the entire polyline.
+        let span = endFrac - startFrac
+        if span <= 0 || span > 0.5 {
+            let coord = lerpCoord(fromStop, toStop, t: progress)
+            return (coord, bearingBetween(fromStop, toStop))
+        }
+
+        // Interpolate between the two fractions
+        let targetFrac = startFrac + span * progress
 
         let coord = interpolate(along: polyline, fraction: targetFrac)
             ?? lerpCoord(fromStop, toStop, t: progress)

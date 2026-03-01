@@ -790,16 +790,24 @@ extension HomeViewModel {
             let polyline: [CLLocationCoordinate2D]
         }
 
-        // Build direction contexts for all available directions
+        // Build direction contexts for all available directions.
+        // Each context gets its OWN polyline so vehicles interpolate
+        // along the correct direction's path — not the selected one.
         var dirContexts: [DirectionContext] = []
         if !shape.directions.isEmpty {
+            // Pre-decode a shared fallback from the route-level polylines
+            // (only used when a direction has no polylines of its own).
+            let sharedFallback: [CLLocationCoordinate2D] = {
+                let all = shape.decodedPolylines.flatMap { $0 }
+                return all.count >= 2 ? all : []
+            }()
             for i in 0..<shape.directions.count {
                 let ds = shape.stopsForDirection(index: i)
                 let stops = ds.isEmpty ? shape.stops : ds
                 let pl = shape.polylinesForDirection(index: i)
                 let polyline: [CLLocationCoordinate2D] =
                     pl.isEmpty
-                    ? cachedInterpolationPolyline
+                    ? sharedFallback
                     : pl.flatMap { $0 }
                 dirContexts.append(DirectionContext(stops: stops, polyline: polyline))
             }

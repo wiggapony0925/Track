@@ -674,11 +674,10 @@ final class HomeViewModel {
         cachedRoutePolylines = activeRaw.map { simplifyPolyline($0, tolerance: 0.00007) }
 
         // Build inactive polylines from all OTHER directions.
-        // Bus routes: skip entirely — the opposite direction runs 15–30 m across
-        // the same street. At 0.15 opacity it looks like a ghost duplicate and
-        // doubles MapKit polyline objects for zero navigational benefit.
-        // Subway/rail: keep it — branches can run on physically distinct tracks.
-        if shouldFilter && shape.directions.count > 1 && !isBus {
+        // These render at low opacity so users see branching routes,
+        // short-turns, and the opposite direction's path while knowing
+        // which direction is currently active.
+        if shouldFilter && shape.directions.count > 1 {
             // Collect the active direction's polyline encoded strings for dedup
             let activeDir = shape.matchedDirection(index: selectedDirectionIndex, name: selectedDirectionName)
             let activePolylineSet = Set(activeDir?.polylines ?? [])
@@ -713,16 +712,12 @@ final class HomeViewModel {
             cachedInactivePolylines = []
         }
 
-        // Build a single continuous polyline for interpolation.
-        // Prefer direction-filtered segments; fall back to all polylines
-        // when the filtered set has too few points (e.g. single-direction routes).
+        // Build a single continuous polyline for vehicle interpolation.
+        // Uses direction-filtered segments only — falling back to ALL
+        // directions would cause markers to interpolate along the wrong
+        // direction's path, producing glitching on branching bus routes.
         let combined = cachedRoutePolylines.flatMap { $0 }
-        if combined.count >= 2 {
-            cachedInterpolationPolyline = combined
-        } else {
-            let all = shape.decodedPolylines.flatMap { $0 }
-            cachedInterpolationPolyline = all.count >= 2 ? all : []
-        }
+        cachedInterpolationPolyline = combined.count >= 2 ? combined : []
     }
 
     /// Cached polyline split at the nearest stop: `ahead` keeps full color, `behind` fades.
@@ -865,8 +860,9 @@ final class HomeViewModel {
             if !byRef.isEmpty { return byRef }
         }
 
-        // 3) If no vehicles matched (data missing), show all
-        return busVehicles
+        // 3) No vehicles matched this direction — return empty rather than
+        //    showing all vehicles (which leaks wrong-direction markers onto the map).
+        return []
     }
 
     /// Train vehicles filtered to the currently selected direction.
@@ -985,8 +981,9 @@ final class HomeViewModel {
                 }
                 if !byTrip.isEmpty { return byTrip }
             }
-            // Last resort for many-direction routes: show all
-            return trainVehicles
+            // No trip/vehicle match found — return empty rather than showing
+            // all vehicles (which leaks wrong-direction markers onto the map).
+            return []
         }
 
         return filtered
