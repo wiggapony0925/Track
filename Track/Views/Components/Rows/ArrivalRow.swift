@@ -52,21 +52,27 @@ struct ArrivalRow: View {
                 Spacer(minLength: 4)
 
                 // Time display
-                HStack(alignment: .firstTextBaseline, spacing: 2) {
-                    Text("\(arrival.minutesAway)")
-                        .font(.system(size: 20, weight: .bold, design: .rounded))
-                        .foregroundColor(AppTheme.Colors.countdown(arrival.minutesAway))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                    Text("min")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(AppTheme.Colors.textSecondary)
-                    
-                    if arrival.status == "Scheduled" {
-                        Image(systemName: "clock")
-                            .font(.system(size: 10, weight: .bold))
+                if arrival.isCancelled {
+                    Text("Cancelled")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(AppTheme.Colors.alertRed)
+                } else {
+                    HStack(alignment: .firstTextBaseline, spacing: 2) {
+                        Text("\(arrival.minutesAway)")
+                            .font(.system(size: 20, weight: .bold, design: .rounded))
+                            .foregroundColor(AppTheme.Colors.countdown(arrival.minutesAway))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                        Text("min")
+                            .font(.system(size: 12, weight: .medium))
                             .foregroundColor(AppTheme.Colors.textSecondary)
-                            .offset(y: -4)
+                        
+                        if arrival.status == "Scheduled" {
+                            Image(systemName: "clock")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(AppTheme.Colors.textSecondary)
+                                .offset(y: -4)
+                        }
                     }
                 }
 

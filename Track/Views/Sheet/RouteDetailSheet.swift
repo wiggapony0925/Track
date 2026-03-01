@@ -37,6 +37,11 @@ struct RouteDetailSheet: View {
     /// and highlight the matching arrival row.
     var tappedVehicleId: String? = nil
     var onDismiss: (() -> Void)?
+    /// Called when the user manually selects a stop (from the stops list).
+    /// Passes the stop's coordinate so the ViewModel can update the
+    /// nearestStopCoordinate and rebuild the behind/ahead polyline split.
+    /// Pass nil to reset to auto-detected nearest stop.
+    var onStopSelected: ((CLLocationCoordinate2D?) -> Void)?
 
     // Map controls (shown in header when sheet is expanded)
     var isSheetExpanded: Bool = false
@@ -155,7 +160,8 @@ struct RouteDetailSheet: View {
         onClearHighlight: (() -> Void)? = nil,
         onFocusVehicle: ((String?) -> Void)? = nil,
         tappedVehicleId: String? = nil,
-        onDismiss: (() -> Void)? = nil
+        onDismiss: (() -> Void)? = nil,
+        onStopSelected: ((CLLocationCoordinate2D?) -> Void)? = nil
     ) {
         self.group = group
         self._busVehicles = busVehicles
@@ -175,6 +181,7 @@ struct RouteDetailSheet: View {
         self.onFocusVehicle = onFocusVehicle
         self.tappedVehicleId = tappedVehicleId
         self.onDismiss = onDismiss
+        self.onStopSelected = onStopSelected
         self.isSheetExpanded = isSheetExpanded
         self._is3DMode = is3DMode
         self._cameraPosition = cameraPosition
@@ -281,6 +288,9 @@ struct RouteDetailSheet: View {
                 // MARK: - Alert Banner
                 if let topAlert = routeAlerts.first {
                     routeAlertBanner(topAlert)
+                } else if let inlineAlert = group.alerts.first {
+                    // Fall back to inline alert from grouped response
+                    inlineAlertBanner(inlineAlert)
                 } else if isLoadingArrivals {
                     alertBannerSkeleton
                 }
@@ -435,6 +445,7 @@ struct RouteDetailSheet: View {
             // with no live arrivals keeps showing the old direction's chips.
             // Also clear stop selection — it belongs to the previous direction.
             inSheetSelectedStopId = nil
+            onStopSelected?(nil)
             let freshArrivals = nearestStopArrivals
             stableNearestArrivals = freshArrivals
             lastStableRefreshDate = .now
@@ -1089,23 +1100,32 @@ struct RouteDetailSheet: View {
     @ViewBuilder
     private func arrivalCard(arrival: NearbyTransitResponse, index: Int, eta: SmartETA) -> some View {
         let isFirst = index == 0
+        let isCancelled = arrival.isCancelled
         let status = chipStatus(for: arrival)
-        let isSched = status == .scheduled
+        let isSched = !isCancelled && status == .scheduled
 
         // ── Tier colors ──────────────────────────────────────────────
-        let tagColor: Color = isSched
-            ? AppTheme.Colors.textSecondary.opacity(0.6)
-            : AppTheme.Colors.successGreen
-        let tagBg: Color = isSched
-            ? AppTheme.Colors.textSecondary.opacity(0.10)
-            : AppTheme.Colors.successGreen.opacity(0.14)
-        let tagLabel = isSched ? "Scheduled" : "On Route"
-        let tagIcon  = isSched ? "clock" : "circle.fill"
+        let tagColor: Color = isCancelled
+            ? AppTheme.Colors.alertRed
+            : isSched
+                ? AppTheme.Colors.textSecondary.opacity(0.6)
+                : arrival.isRealTime
+                    ? AppTheme.Colors.successGreen
+                    : AppTheme.Colors.textSecondary.opacity(0.6)
+        let tagBg: Color = isCancelled
+            ? AppTheme.Colors.alertRed.opacity(0.14)
+            : isSched
+                ? AppTheme.Colors.textSecondary.opacity(0.10)
+                : arrival.isRealTime
+                    ? AppTheme.Colors.successGreen.opacity(0.14)
+                    : AppTheme.Colors.textSecondary.opacity(0.10)
+        let tagLabel = isCancelled ? "Cancelled" : isSched ? "Scheduled" : arrival.isRealTime ? "Live" : "On Route"
+        let tagIcon  = isCancelled ? "xmark.circle.fill" : isSched ? "clock" : "circle.fill"
 
         VStack(spacing: 0) {
             // ── Status tag ────────────────────────────────────────────────
             HStack(spacing: 4) {
-                if isSched {
+                if isCancelled || isSched {
                     Image(systemName: tagIcon)
                         .font(.system(size: 8, weight: .bold))
                         .foregroundColor(tagColor)
@@ -1127,7 +1147,7 @@ struct RouteDetailSheet: View {
 
             // ── ETA counter ───────────────────────────────────────────────
             let mins  = eta.minutesRemaining
-            let isNow = !isSched && (eta.isAtStop || eta.secondsRemaining <= 30)
+            let isNow = !isSched && !isCancelled && (eta.isAtStop || eta.secondsRemaining <= 30)
             arrivalETA(mins: mins, isNow: isNow, isSched: isSched, isFirst: isFirst)
 
             Spacer(minLength: isFirst ? 8 : 6)
@@ -1262,6 +1282,7 @@ struct RouteDetailSheet: View {
                             Button {
                                 withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                                     inSheetSelectedStopId = nil
+                                    onStopSelected?(nil)
                                 }
                             } label: {
                                 Image(systemName: "xmark")
@@ -1715,6 +1736,7 @@ struct RouteDetailSheet: View {
                         Button {
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                                 inSheetSelectedStopId = nil
+                                onStopSelected?(nil)
                             }
                         } label: {
                             Image(systemName: "xmark")
@@ -2109,9 +2131,14 @@ struct RouteDetailSheet: View {
                                     withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                                         if inSheetSelectedStopId == stop.id {
                                             inSheetSelectedStopId = nil
+                                            onStopSelected?(nil)
                                         } else {
                                             inSheetSelectedStopId = stop.id
                                             selectedTab = .departures
+                                            // Update the map's behind/ahead polyline split
+                                            // to anchor at this stop's location.
+                                            onStopSelected?(CLLocationCoordinate2D(
+                                                latitude: stop.lat, longitude: stop.lon))
                                         }
                                     }
                                     HapticManager.impact(.light)
@@ -2137,6 +2164,7 @@ struct RouteDetailSheet: View {
                 .onChange(of: selectedDirectionIndex) { _, _ in
                     // Clear stop filter when direction changes
                     inSheetSelectedStopId = nil
+                    onStopSelected?(nil)
                 }
             }
         }
@@ -2466,6 +2494,46 @@ struct RouteDetailSheet: View {
             )
             .padding(.horizontal, AppTheme.Layout.margin)
         }
+    }
+
+    /// Lightweight alert banner built from the backend's inline `InlineAlertResponse`.
+    /// Used as a fallback when the full `serviceAlerts` array hasn't loaded yet
+    /// but the grouped response already includes alert data.
+    private func inlineAlertBanner(_ alert: InlineAlertResponse) -> some View {
+        let isSevere = alert.severity == "severe"
+        let bannerColor = isSevere ? AppTheme.Colors.alertRed : AppTheme.Colors.warningYellow
+
+        return HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundColor(.white)
+
+            Text(alert.title)
+                .font(.custom("Helvetica-Bold", size: 12))
+                .foregroundColor(.white)
+                .lineLimit(1)
+
+            Spacer(minLength: 0)
+
+            if group.alerts.count > 1 {
+                Text("+\(group.alerts.count - 1)")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(bannerColor)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(
+                        Capsule().fill(Color.white.opacity(0.9))
+                    )
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(bannerColor)
+                .shadow(color: bannerColor.opacity(0.3), radius: 6, x: 0, y: 3)
+        )
+        .padding(.horizontal, AppTheme.Layout.margin)
     }
 
     // MARK: - Route Alerts Section

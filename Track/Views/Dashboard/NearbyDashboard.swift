@@ -389,9 +389,10 @@ struct GroupedRouteList: View {
             ForEach(Array(groups.enumerated()), id: \.element.id) { index, group in
                 GroupedRouteRow(
                     group: group,
-                    hasAlert: !viewModel.serviceAlerts.matching(
-                        routeId: group.routeId, mode: group.mode
-                    ).isEmpty
+                    hasAlert: group.hasAlert
+                        || !viewModel.serviceAlerts.matching(
+                            routeId: group.routeId, mode: group.mode
+                        ).isEmpty
                         || !viewModel.serviceAlerts.matching(
                             routeId: group.displayName, mode: group.mode
                         ).isEmpty,

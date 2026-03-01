@@ -122,8 +122,10 @@ async def subway_shapes_all() -> AllSubwayLinesResponse:
             shape_buf = shapes_data.get(shape_id)
             if shape_buf:
                 raw = _unpack_coords(shape_buf)
-                # Simplify for the system map (~11 m tolerance, invisible at overview zoom)
-                polylines_raw.append(_simplify_polyline(raw, tolerance=0.0001))
+                # Light simplification for the system map (~5.5 m tolerance).
+                # The iOS client merges + simplifies further based on its own
+                # configurable tolerance, so keep server output reasonably detailed.
+                polylines_raw.append(_simplify_polyline(raw, tolerance=0.00005))
 
         if not polylines_raw:
             continue

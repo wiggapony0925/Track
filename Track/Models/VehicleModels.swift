@@ -13,7 +13,7 @@ import Foundation
 
 /// Represents a live train vehicle position on the map.
 /// Used for subway, LIRR, and Metro-North vehicle tracking.
-struct TrainVehicle: Identifiable, Equatable {
+struct TrainVehicle: Codable, Identifiable, Equatable {
     let id: String
     let tripId: String?
     let routeId: String
@@ -33,6 +33,18 @@ struct TrainVehicle: Identifiable, Equatable {
         let seconds = eta.timeIntervalSinceNow
         guard seconds > -60 else { return nil }
         return max(0, Int(ceil(seconds / 60)))
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case tripId = "trip_id"
+        case routeId = "route_id"
+        case direction
+        case lat
+        case lon
+        case bearing
+        case nextStationName = "next_station_name"
+        case estimatedArrival = "estimated_arrival"
     }
 }
 

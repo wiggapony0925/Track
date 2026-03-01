@@ -448,6 +448,12 @@ struct HomeView: View {
                     } else {
                         recenterOnUser()
                     }
+                },
+                onStopSelected: { coord in
+                    // Update the polyline split anchor so behind/ahead
+                    // coloring follows the stop the user tapped.
+                    // nil = user deselected → clear split (full-color polyline).
+                    viewModel.nearestStopCoordinate = coord
                 }
             )
             

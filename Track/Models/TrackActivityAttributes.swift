@@ -49,7 +49,6 @@ struct TrackActivityAttributes: ActivityAttributes {
             case arrivalTime
             case progress
             case minutesAway
-            case stopsAway
             case nextArrivals
             case walkMinutes
             case isHurryUp
@@ -79,7 +78,6 @@ struct TrackActivityAttributes: ActivityAttributes {
             arrivalTime = try container.decode(Date.self, forKey: .arrivalTime)
             progress = try container.decode(Double.self, forKey: .progress)
             minutesAway = try container.decodeIfPresent(Int.self, forKey: .minutesAway)
-                ?? container.decodeIfPresent(Int.self, forKey: .stopsAway)
             nextArrivals = try container.decode([Int].self, forKey: .nextArrivals)
             walkMinutes = try container.decodeIfPresent(Int.self, forKey: .walkMinutes)
             isHurryUp = try container.decode(Bool.self, forKey: .isHurryUp)

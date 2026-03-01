@@ -204,18 +204,27 @@ struct CommuterRailArrivalRow: View {
             
             // Time info
             VStack(alignment: .trailing, spacing: 2) {
-                HStack(alignment: .firstTextBaseline, spacing: 2) {
-                    Text("\(arrival.minutesAway)")
-                        .font(.custom("Helvetica-Bold", size: 24))
-                        .foregroundColor(AppTheme.Colors.countdown(arrival.minutesAway))
-                    Text("min")
-                        .font(.custom("Helvetica-Bold", size: 12))
-                        .foregroundColor(AppTheme.Colors.textSecondary)
+                if arrival.isCancelled {
+                    Text("Cancelled")
+                        .font(.custom("Helvetica-Bold", size: 14))
+                        .foregroundColor(AppTheme.Colors.alertRed)
+                } else {
+                    HStack(alignment: .firstTextBaseline, spacing: 2) {
+                        Text("\(arrival.minutesAway)")
+                            .font(.custom("Helvetica-Bold", size: 24))
+                            .foregroundColor(AppTheme.Colors.countdown(arrival.minutesAway))
+                        Text("min")
+                            .font(.custom("Helvetica-Bold", size: 12))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
+                    }
                 }
                 
-                Text(arrival.status)
+                Text(arrival.isCancelled ? "Cancelled" : arrival.status)
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(arrival.status.lowercased().contains("on time") ? AppTheme.Colors.successGreen : AppTheme.Colors.textSecondary)
+                    .foregroundColor(
+                        arrival.isCancelled ? AppTheme.Colors.alertRed :
+                        arrival.status.lowercased().contains("on time") ? AppTheme.Colors.successGreen : AppTheme.Colors.textSecondary
+                    )
             }
         }
         .padding(.vertical, 12)

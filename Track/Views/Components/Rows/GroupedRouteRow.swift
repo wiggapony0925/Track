@@ -195,6 +195,7 @@ struct GroupedRouteRow: View {
     // MARK: - Main Row Content
 
     private var mainRowContent: some View {
+        VStack(spacing: 0) {
         HStack(spacing: 14) {
             // ── Route Badge ──
             RouteBadge(
@@ -316,6 +317,28 @@ struct GroupedRouteRow: View {
         }
         .padding(.vertical, 14)
         .padding(.horizontal, AppTheme.Layout.margin)
+
+        // ── Inline alert banner beneath the row ──
+        if let topAlert = group.alerts.first {
+            HStack(spacing: 5) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundColor(topAlert.severity == "severe" ? AppTheme.Colors.alertRed : AppTheme.Colors.warningYellow)
+                Text(topAlert.title)
+                    .font(.custom("Helvetica", size: 11))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+                    .lineLimit(1)
+                Spacer()
+                if group.alerts.count > 1 {
+                    Text("+\(group.alerts.count - 1)")
+                        .font(.custom("Helvetica-Bold", size: 10))
+                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
+                }
+            }
+            .padding(.horizontal, AppTheme.Layout.margin)
+            .padding(.bottom, 6)
+        }
+        } // VStack
         .background(AppTheme.Colors.cardBackground)
         .contentShape(Rectangle())
         .onTapGesture {
@@ -607,7 +630,15 @@ struct GroupedRouteRow: View {
         let isOnTime = status.contains("on time") || status.contains("good")
         let isDelayed = status.contains("delay")
 
-        if isDelayed {
+        if arrival.isCancelled {
+            Text("Cancelled")
+                .font(.custom("Helvetica-Bold", size: 9))
+                .foregroundColor(.white)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(AppTheme.Colors.alertRed)
+                .clipShape(Capsule())
+        } else if isDelayed {
             Text("Delayed")
                 .font(.custom("Helvetica-Bold", size: 9))
                 .foregroundColor(.white)
@@ -615,7 +646,7 @@ struct GroupedRouteRow: View {
                 .padding(.vertical, 2)
                 .background(AppTheme.Colors.alertRed)
                 .clipShape(Capsule())
-        } else if arrival.status == "Scheduled" {
+        } else if arrival.status == "Scheduled" || !arrival.isRealTime {
             HStack(spacing: 2) {
                 Image(systemName: "calendar.badge.clock")
                     .font(.system(size: 7, weight: .bold))
@@ -628,10 +659,15 @@ struct GroupedRouteRow: View {
             .background(AppTheme.Colors.textSecondary.opacity(0.08))
             .clipShape(Capsule())
         } else if isOnTime {
-            // Only show for non-obvious states — "On Time" is the default, keep it minimal
-            Circle()
-                .fill(AppTheme.Colors.successGreen)
-                .frame(width: 6, height: 6)
+            // Live real-time arrival — show green dot + "Live" label
+            HStack(spacing: 3) {
+                Circle()
+                    .fill(AppTheme.Colors.successGreen)
+                    .frame(width: 5, height: 5)
+                Text("Live")
+                    .font(.custom("Helvetica-Bold", size: 9))
+                    .foregroundColor(AppTheme.Colors.successGreen)
+            }
         }
     }
 }

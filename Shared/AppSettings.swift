@@ -206,7 +206,7 @@ struct AppSettings {
             self.showLIRRByDefault = true
             self.showMNRByDefault = true
             self._subwayLineOffsetMeters = 12.0
-            self.polylineSimplificationTolerance = 0.00015
+            self.polylineSimplificationTolerance = 0.00006
             return
         }
 
@@ -260,7 +260,7 @@ struct AppSettings {
         self.showLIRRByDefault = map["show_lirr_by_default"] as? Bool ?? true
         self.showMNRByDefault = map["show_mnr_by_default"] as? Bool ?? true
         self._subwayLineOffsetMeters = map["subway_line_offset_meters"] as? Double ?? 12.0
-        self.polylineSimplificationTolerance = map["polyline_simplification_tolerance"] as? Double ?? 0.00015
+        self.polylineSimplificationTolerance = map["polyline_simplification_tolerance"] as? Double ?? 0.00006
     }
 }
 

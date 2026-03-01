@@ -31,6 +31,11 @@ struct NearbyTransitResponse: Codable, Identifiable, Equatable {
     /// Preferred over client-side CLLocation.distance for sorting/bucketing.
     var distanceM: Double? = nil
 
+    /// True when backed by live GTFS-RT or SIRI data (not purely static GTFS).
+    var isRealTime: Bool = false
+    /// True when GTFS-RT reports this trip/stop as CANCELED or SKIPPED.
+    var isCancelled: Bool = false
+
     var isBus: Bool { mode == "bus" }
     var isLIRR: Bool { mode == "lirr" }
     var isMNR: Bool { mode == "mnr" }
@@ -71,6 +76,8 @@ struct NearbyTransitResponse: Codable, Identifiable, Equatable {
         case tripId = "trip_id"
         case stopId = "stop_id"
         case distanceM = "distance_m"
+        case isRealTime = "is_real_time"
+        case isCancelled = "is_cancelled"
     }
 }
 
@@ -99,6 +106,8 @@ struct DirectionArrivalsResponse: Codable, Identifiable, Equatable {
         return arrivals.filter { arrival in
             // Filter out placeholders
             guard !arrival.isPlaceholder else { return false }
+            // Filter out cancelled trips — GTFS-RT says this stop is skipped.
+            guard !arrival.isCancelled else { return false }
             // Filter out arrivals whose timestamp is more than 90 s in the past.
             // Aligned with ArrivalETAEngine.isPastArrival (90 s) so both layers
             // agree on when an arrival is gone.
@@ -132,6 +141,19 @@ struct DirectionArrivalsResponse: Codable, Identifiable, Equatable {
     }
 }
 
+/// A service alert attached to a grouped route.
+struct InlineAlertResponse: Codable, Equatable {
+    let title: String
+    let severity: String
+    let affectedRoutes: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case title
+        case severity
+        case affectedRoutes = "affected_routes"
+    }
+}
+
 /// Matches the backend's `GroupedNearbyTransit` JSON schema.
 /// One entry per route; directions are swipeable sub-groups.
 struct GroupedNearbyTransitResponse: Codable, Identifiable, Equatable {
@@ -142,6 +164,10 @@ struct GroupedNearbyTransitResponse: Codable, Identifiable, Equatable {
     let mode: String
     let colorHex: String?
     let directions: [DirectionArrivalsResponse]
+    /// Canonical MTA ordering key set by the backend.
+    var sortingKey: String = ""
+    /// Active service alerts for this route.
+    var alerts: [InlineAlertResponse] = []
 
     var isBus: Bool { mode == "bus" }
     var isLIRR: Bool { mode == "lirr" }
@@ -171,12 +197,17 @@ struct GroupedNearbyTransitResponse: Codable, Identifiable, Equatable {
         }
     }
 
+    /// True when at least one direction has a severe or warning alert.
+    var hasAlert: Bool { !alerts.isEmpty }
+
     enum CodingKeys: String, CodingKey {
         case routeId = "route_id"
         case displayName = "display_name"
         case mode
         case colorHex = "color_hex"
         case directions
+        case sortingKey = "sorting_key"
+        case alerts
     }
 }
 

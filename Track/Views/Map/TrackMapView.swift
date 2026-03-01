@@ -218,6 +218,10 @@ struct TrackMapView: View {
                     .onTapGesture {
                         withAnimation {
                             viewModel.selectedStopId = stop.id
+                            // Update the split anchor so the behind/ahead
+                            // polyline coloring follows the tapped stop.
+                            viewModel.nearestStopCoordinate = CLLocationCoordinate2D(
+                                latitude: stop.lat, longitude: stop.lon)
                         }
                     }
                 }
@@ -333,8 +337,6 @@ struct TrackMapView: View {
         let split = viewModel.directionalSplit
 
         // 1) Inactive directions — draw first (behind) at low opacity.
-        //    Shows branches, short-turns, and alternate paths so users
-        //    understand the full route structure.
         ForEach(Array(inactivePolylines.enumerated()), id: \.offset) { _, coords in
             if coords.count >= 2 {
                 polylineStroke(
@@ -347,9 +349,6 @@ struct TrackMapView: View {
 
         // 2) Active direction — full color or two-tone split
         if let split, !split.ahead.isEmpty || !split.behind.isEmpty {
-            // Two-tone rendering: faded "behind" + full-color "ahead"
-            // Each is an array of separate polyline segments to avoid
-            // straight-line artifacts between disconnected route portions.
             ForEach(Array(split.behind.enumerated()), id: \.offset) { _, coords in
                 if coords.count >= 2 {
                     polylineStroke(
@@ -365,7 +364,6 @@ struct TrackMapView: View {
                 }
             }
         } else if !polylines.isEmpty {
-            // No directional split — full color for all segments
             ForEach(Array(polylines.enumerated()), id: \.offset) { _, coords in
                 polylineStroke(
                     coords: coords, color: selectedRouteColor,
@@ -406,10 +404,6 @@ struct TrackMapView: View {
 
     // MARK: - System Map Polylines
 
-    /// Dashed stroke style for commuter rail routes - created once to avoid repeated allocations.
-    private static let commuterRailStrokeStyle = StrokeStyle(
-        lineWidth: 2.5, lineCap: .round, dash: [6, 4])
-
     /// Stations filtered to the visible map viewport.
     /// Avoids rendering hundreds of off-screen annotations, which is one of
     /// the biggest performance drains when stations are visible.
@@ -434,20 +428,45 @@ struct TrackMapView: View {
         }
     }
 
+    /// Stroke style for system-map subway casing — white outline for depth.
+    private var systemMapSubwayCasingStyle: StrokeStyle {
+        StrokeStyle(
+            lineWidth: systemMapSubwayLineWidth + 2,
+            lineCap: .round,
+            lineJoin: .round)
+    }
+
+    /// Stroke style for system-map subway fill — colored inner line.
+    private var systemMapSubwayFillStyle: StrokeStyle {
+        StrokeStyle(
+            lineWidth: systemMapSubwayLineWidth,
+            lineCap: .round,
+            lineJoin: .round)
+    }
+
     @MapContentBuilder
     private var systemMapPolylines: some MapContent {
         if viewModel.routeShape == nil {
-            // Subway lines - single flat ForEach with stable IDs for optimal performance
-            // Line width is driven by the "Line Spread" setting (subway_line_offset_meters).
+            // All transit lines — casing + fill rendered per-polyline in a
+            // single ForEach pass.  This halves the number of SwiftUI diff
+            // passes compared to separate casing/fill ForEach loops and
+            // keeps the draw order correct (casing always behind its fill).
             ForEach(viewModel.flattenedSubwayPolylines) { polyline in
                 MapPolyline(coordinates: polyline.coordinates)
-                    .stroke(polyline.color, lineWidth: systemMapSubwayLineWidth)
+                    .stroke(
+                        .white.opacity(0.9),
+                        style: systemMapSubwayCasingStyle)
+                MapPolyline(coordinates: polyline.coordinates)
+                    .stroke(polyline.color, style: systemMapSubwayFillStyle)
             }
 
-            // Commuter rail lines (LIRR and MNR) - single flat ForEach with stable IDs
             ForEach(viewModel.flattenedCommuterRailPolylines) { polyline in
                 MapPolyline(coordinates: polyline.coordinates)
-                    .stroke(polyline.color, style: Self.commuterRailStrokeStyle)
+                    .stroke(
+                        .white.opacity(0.9),
+                        style: systemMapSubwayCasingStyle)
+                MapPolyline(coordinates: polyline.coordinates)
+                    .stroke(polyline.color, style: systemMapSubwayFillStyle)
             }
 
             // Stations layer (only when zoomed in, filtered to visible viewport)

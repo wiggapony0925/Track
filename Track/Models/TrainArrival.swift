@@ -23,4 +23,6 @@ struct TrainArrival: Identifiable {
     let destination: String?
     let status: String
     let tripId: String?
+    /// True when GTFS-RT reports this trip/stop as cancelled.
+    var isCancelled: Bool = false
 }

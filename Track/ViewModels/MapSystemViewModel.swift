@@ -362,19 +362,23 @@ final class MapSystemViewModel {
 
     /// Pre-computes flattened polyline arrays with stable IDs for efficient MapKit rendering.
     /// This eliminates nested ForEach loops in the View, dramatically improving performance.
-    /// Applies Ramer-Douglas-Peucker simplification to reduce point counts while preserving shape.
+    /// Applies segment merging + Ramer-Douglas-Peucker simplification to reduce both
+    /// overlay count and point counts while preserving shape.
     /// Called once after `cachedOffsetSubwayLines` is populated.
     private func computeFlattenedPolylines() {
         let tolerance = AppSettings.shared.polylineSimplificationTolerance
 
-        // Flatten subway polylines from offset lines
+        // Flatten subway polylines from offset lines.
+        // Merge adjacent segments per route so each route becomes fewer
+        // continuous polylines → fewer MapPolyline overlays on screen.
         var subwayFlat: [FlattenedMapPolyline] = []
         var originalSubwayPoints = 0
         for line in cachedOffsetSubwayLines {
-            for (branchIndex, coords) in line.coordinates.enumerated() {
-                // Skip empty or single-point polylines
-                guard coords.count >= 2 else { continue }
-                originalSubwayPoints += coords.count
+            let validCoords = line.coordinates.filter { $0.count >= 2 }
+            guard !validCoords.isEmpty else { continue }
+            originalSubwayPoints += validCoords.reduce(0) { $0 + $1.count }
+            let merged = mergeAdjacentPolylines(validCoords)
+            for (branchIndex, coords) in merged.enumerated() {
                 let simplified = simplifyPolyline(coords, tolerance: tolerance)
                 subwayFlat.append(
                     FlattenedMapPolyline(
@@ -387,14 +391,15 @@ final class MapSystemViewModel {
         }
         flattenedSubwayPolylines = subwayFlat
 
-        // Flatten commuter rail polylines (LIRR and MNR)
+        // Flatten commuter rail polylines (LIRR and MNR) — same merge + simplify
         var commuterFlat: [FlattenedMapPolyline] = []
         var originalCommuterPoints = 0
         for line in cachedSystemMap where line.mode != .subway {
-            for (branchIndex, coords) in line.coordinates.enumerated() {
-                // Skip empty or single-point polylines
-                guard coords.count >= 2 else { continue }
-                originalCommuterPoints += coords.count
+            let validCoords = line.coordinates.filter { $0.count >= 2 }
+            guard !validCoords.isEmpty else { continue }
+            originalCommuterPoints += validCoords.reduce(0) { $0 + $1.count }
+            let merged = mergeAdjacentPolylines(validCoords)
+            for (branchIndex, coords) in merged.enumerated() {
                 let simplified = simplifyPolyline(coords, tolerance: tolerance)
                 commuterFlat.append(
                     FlattenedMapPolyline(

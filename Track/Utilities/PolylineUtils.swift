@@ -90,6 +90,129 @@ private func encodeValue(_ value: Int32, into result: inout String) {
     result.append(Character(UnicodeScalar(Int(v + 63))!))
 }
 
+// MARK: - Polyline Merging
+
+/// Merges adjacent polyline segments into fewer continuous polylines.
+///
+/// When a route direction has multiple segments whose endpoints are close
+/// together, SwiftUI renders them as separate `MapPolyline` views. This
+/// creates visible seams (especially with casing + fill strokes) and
+/// increases overlay count. This function joins chains greedily using
+/// all four orientations (append, prepend, reversed append, reversed prepend)
+/// so even reversed or out-of-order segments get merged.
+///
+/// - Parameters:
+///   - segments: Arrays of coordinates, each representing one polyline segment.
+///   - gapThreshold: Maximum distance (in degrees, ~111 m per 0.001°) between
+///     endpoints for two segments to be considered joinable.
+///     Default `0.0005` ≈ 55 m at NYC latitude.
+/// - Returns: Merged polyline arrays (typically far fewer than the input).
+func mergeAdjacentPolylines(
+    _ segments: [[CLLocationCoordinate2D]],
+    gapThreshold: Double = 0.0005
+) -> [[CLLocationCoordinate2D]] {
+    guard segments.count > 1 else { return segments }
+
+    // Filter out degenerate segments
+    var remaining = segments.filter { $0.count >= 2 }
+    guard remaining.count > 1 else { return remaining }
+
+    // Squared threshold for fast comparison (avoid sqrt)
+    let threshSq = gapThreshold * gapThreshold
+
+    func distSq(_ a: CLLocationCoordinate2D, _ b: CLLocationCoordinate2D) -> Double {
+        let dx = a.longitude - b.longitude
+        let dy = a.latitude - b.latitude
+        return dx * dx + dy * dy
+    }
+
+    var chains: [[CLLocationCoordinate2D]] = [remaining.removeFirst()]
+
+    while !remaining.isEmpty {
+        var merged = false
+        for i in remaining.indices {
+            let seg = remaining[i]
+            guard let segFirst = seg.first, let segLast = seg.last else { continue }
+
+            // Try to attach to any existing chain
+            for c in chains.indices {
+                guard let chainFirst = chains[c].first, let chainLast = chains[c].last else {
+                    continue
+                }
+
+                if distSq(chainLast, segFirst) <= threshSq {
+                    // Append: chain-end → seg-start
+                    chains[c].append(contentsOf: seg.dropFirst())
+                    remaining.remove(at: i)
+                    merged = true
+                    break
+                } else if distSq(chainFirst, segLast) <= threshSq {
+                    // Prepend: seg-end → chain-start
+                    chains[c] = seg + chains[c].dropFirst()
+                    remaining.remove(at: i)
+                    merged = true
+                    break
+                } else if distSq(chainLast, segLast) <= threshSq {
+                    // Append reversed: chain-end → seg-reversed-start
+                    chains[c].append(contentsOf: seg.reversed().dropFirst())
+                    remaining.remove(at: i)
+                    merged = true
+                    break
+                } else if distSq(chainFirst, segFirst) <= threshSq {
+                    // Prepend reversed: seg-reversed-end → chain-start
+                    chains[c] = seg.reversed() + chains[c].dropFirst()
+                    remaining.remove(at: i)
+                    merged = true
+                    break
+                }
+            }
+            if merged { break }
+        }
+
+        // If no segment could be merged into any chain, start a new chain
+        if !merged {
+            chains.append(remaining.removeFirst())
+        }
+    }
+
+    // Second pass: try to merge chains with each other
+    var merged = true
+    while merged {
+        merged = false
+        outer: for i in 0..<chains.count {
+            for j in (i + 1)..<chains.count {
+                guard let iLast = chains[i].last, let jFirst = chains[j].first,
+                      let iFirst = chains[i].first, let jLast = chains[j].last
+                else { continue }
+
+                if distSq(iLast, jFirst) <= threshSq {
+                    chains[i].append(contentsOf: chains[j].dropFirst())
+                    chains.remove(at: j)
+                    merged = true
+                    break outer
+                } else if distSq(jLast, iFirst) <= threshSq {
+                    chains[i] = chains[j] + chains[i].dropFirst()
+                    chains.remove(at: j)
+                    merged = true
+                    break outer
+                } else if distSq(iLast, jLast) <= threshSq {
+                    chains[i].append(contentsOf: chains[j].reversed().dropFirst())
+                    chains.remove(at: j)
+                    merged = true
+                    break outer
+                } else if distSq(iFirst, jFirst) <= threshSq {
+                    chains[i] = chains[j].reversed() + chains[i].dropFirst()
+                    chains.remove(at: j)
+                    merged = true
+                    break outer
+                }
+            }
+        }
+    }
+
+    return chains.filter { $0.count >= 2 }
+}
+
 // MARK: - Polyline Simplification (Ramer-Douglas-Peucker)
 
 /// Simplifies a polyline by removing points that are within `tolerance`

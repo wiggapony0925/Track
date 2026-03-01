@@ -229,7 +229,7 @@ struct TrackAPI {
     /// - Returns: Array of decoded `TrainArrival` objects.
     static func fetchSubwayArrivals(lineID: String) async throws -> [TrainArrival] {
         let data = try await get(path: "/subway/\(lineID)")
-        return try decoder.decode([SubwayArrivalResponse].self, from: data).map {
+        return try decoder.decode([TransitArrivalResponse].self, from: data).map {
             $0.toTrainArrival()
         }
     }
@@ -580,7 +580,7 @@ struct TrackAPI {
     /// - Returns: Array of decoded `TrainArrival` objects.
     static func fetchLIRRArrivals() async throws -> [TrainArrival] {
         let data = try await get(path: "/lirr")
-        return try decoder.decode([SubwayArrivalResponse].self, from: data).map {
+        return try decoder.decode([TransitArrivalResponse].self, from: data).map {
             $0.toTrainArrival()
         }
     }
@@ -592,7 +592,7 @@ struct TrackAPI {
     /// - Returns: Array of decoded `TrainArrival` objects.
     static func fetchMNRArrivals() async throws -> [TrainArrival] {
         let data = try await get(path: "/mnr")
-        return try decoder.decode([SubwayArrivalResponse].self, from: data).map {
+        return try decoder.decode([TransitArrivalResponse].self, from: data).map {
             $0.toTrainArrival()
         }
     }

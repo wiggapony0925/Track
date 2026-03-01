@@ -1,8 +1,12 @@
 import Foundation
 import CoreLocation
 
+/// Backward-compatible alias — prefer `TransitArrivalResponse` in new code.
+typealias SubwayArrivalResponse = TransitArrivalResponse
+
 /// Matches the backend's `TrackArrival` JSON schema (snake_case).
-struct SubwayArrivalResponse: Codable {
+/// Renamed from `SubwayArrivalResponse` — works for subway, LIRR, and MNR.
+struct TransitArrivalResponse: Codable {
     let routeId: String
     let station: String
     let stationName: String?
@@ -14,6 +18,8 @@ struct SubwayArrivalResponse: Codable {
     let stopLon: Double?
     let tripId: String? // Optional since backend might not send it for older cached data
     let arrivalTs: Int? // Optional timestamp in seconds
+    /// True when GTFS-RT reports this trip as CANCELED or a stop as SKIPPED.
+    var isCancelled: Bool = false
 
     enum CodingKeys: String, CodingKey {
         case routeId = "route_id"
@@ -27,6 +33,7 @@ struct SubwayArrivalResponse: Codable {
         case stopLon = "stop_lon"
         case tripId = "trip_id"
         case arrivalTs = "arrival_ts"
+        case isCancelled = "is_cancelled"
     }
     
     // Helper to map to domain model (TrainArrival defined in TransitRepository.swift)
@@ -52,7 +59,8 @@ struct SubwayArrivalResponse: Codable {
             minutesAway: minutesAway,
             destination: destination,
             status: status,
-            tripId: tripId
+            tripId: tripId,
+            isCancelled: isCancelled
         )
     }
 }

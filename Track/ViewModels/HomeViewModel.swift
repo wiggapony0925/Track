@@ -240,6 +240,10 @@ final class HomeViewModel {
             let rightDistance = distanceCache["\(rhs.routeId)|\(rhs.mode)"] ?? .greatestFiniteMagnitude
             if abs(leftDistance - rightDistance) > epsilon { return leftDistance < rightDistance }
             if lhs.soonestMinutes != rhs.soonestMinutes { return lhs.soonestMinutes < rhs.soonestMinutes }
+            // Use backend's canonical MTA sorting key as tiebreaker
+            if !lhs.sortingKey.isEmpty && !rhs.sortingKey.isEmpty && lhs.sortingKey != rhs.sortingKey {
+                return lhs.sortingKey < rhs.sortingKey
+            }
             let leftName = lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName)
             if leftName != .orderedSame { return leftName == .orderedAscending }
             return lhs.routeId.localizedCaseInsensitiveCompare(rhs.routeId) == .orderedAscending
@@ -340,7 +344,9 @@ final class HomeViewModel {
                             vehicleId: nil,
                             tripId: train.tripId,
                             stopId: train.stationID,
-                            distanceM: dist
+                            distanceM: dist,
+                            isRealTime: !train.isCancelled && train.status != "Scheduled",
+                            isCancelled: train.isCancelled
                         )
                     }
                 return DirectionArrivalsResponse(direction: direction, arrivals: nearbyArrivals)
@@ -662,22 +668,36 @@ final class HomeViewModel {
         }
         let groupDirCount = selectedGroupedRoute?.directions.count ?? 0
         let shouldFilter = !shape.directions.isEmpty && groupDirCount > 1
-        let isBus = selectedGroupedRoute?.isBus == true
 
-        // Simplify active-direction segments to ~8 m tolerance using RDP.
-        // Reduces MapKit coordinate count by 60–80% with zero visible difference
-        // at normal map zoom, dramatically cutting per-frame polyline render cost.
+        // 1) Decode active-direction segments.
         let activeRaw =
             shouldFilter
             ? shape.polylinesForDirection(index: selectedDirectionIndex, name: selectedDirectionName)
             : shape.decodedPolylines
-        cachedRoutePolylines = activeRaw.map { simplifyPolyline($0, tolerance: 0.00007) }
+
+        // 2) Merge adjacent segments into fewer continuous polylines so
+        //    MapKit draws one stroke instead of separate overlapping lines.
+        //    This eliminates the visible seams between segments when
+        //    zoomed in, especially the white casing gap on subway/rail.
+        let merged = mergeAdjacentPolylines(activeRaw)
+
+        // 3) No additional RDP simplification on active polylines.
+        //    The backend already applies RDP at ~5.5 m (subway) and OBA
+        //    polylines (bus) are already compact.  Double-simplifying
+        //    strips curve detail, causing angular V-shapes at bends.
+        //    Merging above already reduced the overlay count — the point
+        //    count within each polyline has negligible perf impact.
+        cachedRoutePolylines = merged.filter { $0.count >= 2 }
 
         // Build inactive polylines from all OTHER directions.
-        // These render at 0.15 opacity so users see branching routes,
-        // short-turns, and the opposite direction's path while knowing
-        // which direction is currently active.
-        if shouldFilter && shape.directions.count > 1 {
+        // For subway/rail: render at 0.15 opacity so users see branches,
+        // short-turns, and alternate paths (routes share trunk segments).
+        // For buses: SKIP inactive directions entirely — opposite directions
+        // run on different sides of the street or take different turns on
+        // different blocks, so showing them creates confusing clutter that
+        // looks like the wrong route is drawn.
+        let isBus = selectedGroupedRoute?.isBus == true
+        if shouldFilter && shape.directions.count > 1 && !isBus {
             // Collect the active direction's polyline encoded strings for dedup
             let activeDir = shape.matchedDirection(index: selectedDirectionIndex, name: selectedDirectionName)
             let activePolylineSet = Set(activeDir?.polylines ?? [])
@@ -698,16 +718,20 @@ final class HomeViewModel {
                     // another inactive direction sharing the same segment)
                     if seenEncodedPolylines.contains(encodedPoly) { continue }
                     seenEncodedPolylines.insert(encodedPoly)
-                    // Simplify inactive segments at ~20 m tolerance — they
-                    // render at 0.15 opacity so reduced point density is
-                    // imperceptible while halving MapKit's overlay load.
-                    let decoded = simplifyPolyline(decodePolyline(encodedPoly), tolerance: 0.00018)
+                    let decoded = decodePolyline(encodedPoly)
                     if decoded.count >= 2 {
                         inactive.append(decoded)
                     }
                 }
             }
-            cachedInactivePolylines = inactive
+            // Merge inactive segments — merging eliminates visible seams.
+            // Light RDP at ~9 m keeps curves smooth while trimming points
+            // slightly (these render at 0.15 opacity so fine detail isn't
+            // critical, but too-aggressive simplification looks jagged).
+            let mergedInactive = mergeAdjacentPolylines(inactive)
+            cachedInactivePolylines = mergedInactive.map {
+                simplifyPolyline($0, tolerance: 0.00008)
+            }
         } else {
             cachedInactivePolylines = []
         }
