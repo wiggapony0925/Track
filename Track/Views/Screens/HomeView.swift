@@ -206,6 +206,13 @@ struct HomeView: View {
     
     private func handleScenePhaseChange(_ newPhase: ScenePhase) {
         if newPhase == .active {
+            // On the very first .active (cold launch), onAppear already
+            // triggers a forced refresh — skip the duplicate network call.
+            guard viewModel.hasLoadedOnce else {
+                startRefreshTimer()
+                return
+            }
+
             // Clear any drag search when returning to the app
             if isDragSearchActive {
                 // dismissDragSearch already calls clearSearchPin + refresh
@@ -633,26 +640,22 @@ struct HomeView: View {
             // Re-center the map on the fresh GPS fix.
             recenterOnUser()
 
-            // If the user has moved significantly from where data was last fetched,
-            // force a new fetch at the real current location.
-            //
-            // This fixes the stale-location bug: when the user backgrounds the app
-            // at home and reopens it at work, handleScenePhaseChange fires before
-            // CoreLocation delivers a new fix — so it refreshes at the stale home
-            // position. When the real GPS fix arrives here moments later and shows
-            // a meaningful distance from the last fetch, we correct it immediately.
-            if let lastLoc = viewModel.lastRefreshLocation {
-                let moved = loc.distance(from: lastLoc)
-                if moved >= AppSettings.shared.significantMovementMeters {
-                    AppLogger.shared.log(
-                        "LOCATION",
-                        message: "📍 GPS fix shows \(Int(moved))m drift from last fetch — re-fetching at current position"
-                    )
-                    Task {
-                        await viewModel.refresh(location: loc, force: true)
-                        lastUpdated = Date()
-                    }
-                }
+            // On cold launch the onAppear already kicked a forced refresh
+            // using the cached location. If the first live GPS fix arrives
+            // within a few seconds and the user hasn't meaningfully moved,
+            // skip the duplicate fetch — it just contends for bandwidth and
+            // re-renders the same data.
+            guard let lastLoc = viewModel.lastRefreshLocation else { return }
+            let moved = loc.distance(from: lastLoc)
+            guard moved >= AppSettings.shared.significantMovementMeters else { return }
+
+            AppLogger.shared.log(
+                "LOCATION",
+                message: "📍 GPS fix shows \(Int(moved))m drift from last fetch — re-fetching at current position"
+            )
+            Task {
+                await viewModel.refresh(location: loc, force: true)
+                lastUpdated = Date()
             }
         }
     }

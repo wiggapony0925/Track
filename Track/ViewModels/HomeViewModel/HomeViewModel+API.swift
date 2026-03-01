@@ -866,6 +866,43 @@ extension HomeViewModel {
     /// Search radius (meters) used for the wider "nearest metro" fallback.
     private static let nearestMetroRadius = AppSettings.shared.nearestMetroFallbackRadiusMeters
 
+    /// Maximum radius we'll ever send to the OBA bus-stops-for-location
+    /// endpoint.  OBA hard-caps results at ~100 stops per request; beyond
+    /// ~2500 m in dense Manhattan, the 100 slots get diluted with far-away
+    /// stops, pushing out the physically nearest ones.
+    private static let busStopsMaxRadius: Int = 2500
+
+    /// Adaptive radius for the OBA bus-stops-for-location call.
+    ///
+    /// **Why adaptive?**  The OBA API returns at most ~100 stops regardless
+    /// of the requested bounding box.  If we use the user's full slider
+    /// radius (up to 8047 m / 5 mi), those 100 slots are spread over the
+    /// entire area — so a physical stop 250 ft away gets displaced by
+    /// stops 3 miles out.  The distance formula then computes against the
+    /// *wrong* stop and displays, say, 1000 ft instead of 250 ft.
+    ///
+    /// **The algorithm:**
+    /// 1. Start with the user's "Farther Away" tier radius (r₂) so every
+    ///    stop in Zone 1 and Zone 2 is covered by precise physical-stop
+    ///    coordinates.
+    /// 2. Cap at `busStopsMaxRadius` (2500 m ≈ 1.55 mi) so the 100 OBA
+    ///    slots stay dense enough for accurate distances.
+    /// 3. Floor at 800 m so even tiny slider settings get a usable set.
+    ///
+    /// Routes in Zone 3 ("Much Farther") naturally fall back to
+    /// `groupMinDistance`, which computes from live-arrival stop coordinates
+    /// — accurate for farther tiers where ±50 m doesn't matter.
+    ///
+    /// This works everywhere in the city:
+    /// - **Dense Midtown**: many stops → cap prevents dilution
+    /// - **Waterfront / coastal**: half the circle is water → fewer stops
+    ///   returned → cap is irrelevant
+    /// - **Sparse outer boroughs**: few stops anyway → cap is irrelevant
+    private static var busStopsNearbyRadius: Int {
+        let r2 = AppSettings.shared.fartherAwayRadiusMeters
+        return max(800, min(Int(r2), busStopsMaxRadius))
+    }
+
     /// Fetches all nearby transit (buses + trains) in one call.
     /// Uses the grouped endpoint to deduplicate routes.
     /// When no results are found within the default radius, fetches
@@ -895,9 +932,33 @@ extension HomeViewModel {
         let lon = location.coordinate.longitude
 
         do {
+            // Fire all location-dependent fetches in parallel so auxiliary
+            // stop metadata (bus stops, stations) is ready BEFORE we set
+            // groupedTransit — eliminating the second SwiftUI render pass
+            // that used to flash stale distance badges.
             async let groupedTask = TrackAPI.fetchNearbyGrouped(lat: lat, lon: lon)
+            // Use a capped radius for bus stops (OBA has a ~100-stop hard
+            // limit per call).  With the full 8047 m radius the 100 slots
+            // are spread over 5 miles, so a physical stop 250 ft away may
+            // be displaced by far-away stops. 1600 m keeps all 100 slots
+            // within ~1 mi, giving dense coverage for the "Near You" tier.
+            // Routes beyond 1 mi fall back to groupMinDistance from live
+            // arrival coordinates, which is accurate for farther tiers.
+            async let busStopsTask = TrackAPI.fetchNearbyBusStops(
+                lat: lat, lon: lon, radius: Self.busStopsNearbyRadius
+            )
+            async let stationsTask = repository.fetchNearbyStations(
+                latitude: lat, longitude: lon
+            )
 
             let newGrouped = try await groupedTask
+
+            // Resolve auxiliary data (best-effort) before publishing groups.
+            let stops = (try? await busStopsTask) ?? nearbyBusStops
+            let stations = (try? await stationsTask) ?? nearbyStations
+            nearbyBusStops = stops
+            nearbyStations = stations
+
             let rawTransit = newGrouped
                 .flatMap(\ .directions)
                 .flatMap(\ .arrivals)
@@ -926,28 +987,6 @@ extension HomeViewModel {
             if !rawTransit.isEmpty {
                 Task {
                     await ArrivalETAEngine.prefetchDelayFactors(for: rawTransit)
-                }
-            }
-
-            // Load auxiliary stop metadata in the background so first transit
-            // rows render immediately. These fields only refine distance display.
-            // Run both fetches in parallel so nearbyStations is populated before
-            // the first SwiftUI render that calls displayDistanceMeters.
-            Task {
-                // Both async let bindings start concurrently.
-                async let busStopsTask = TrackAPI.fetchNearbyBusStops(lat: lat, lon: lon)
-                async let stationsTask = repository.fetchNearbyStations(
-                    latitude: lat, longitude: lon
-                )
-
-                var stops: [BusStop] = []
-                do { stops = try await busStopsTask }
-                catch { AppLogger.shared.logError("fetchNearbyBusStops", error: error) }
-
-                let stations = (try? await stationsTask) ?? nearbyStations
-                await MainActor.run {
-                    nearbyBusStops = stops
-                    nearbyStations = stations
                 }
             }
 
@@ -1090,9 +1129,8 @@ extension HomeViewModel {
         let lat = location.coordinate.latitude
         let lon = location.coordinate.longitude
 
-        // Fire alerts and accessibility in parallel with transit data
-        async let alertsTask: Void = refreshAlerts()
-        async let accessTask: [ElevatorStatus]? = { try? await TrackAPI.fetchAccessibility() }()
+        // Global feeds (alerts, accessibility) — debounced to 1× per 30 s.
+        Task { await refreshGlobalFeedsIfNeeded() }
 
         do {
             async let groupedTask = TrackAPI.fetchNearbyGrouped(lat: lat, lon: lon, mode: "subway")
@@ -1118,10 +1156,6 @@ extension HomeViewModel {
             AppLogger.shared.logError("refreshSubway", error: error)
             errorMessage = (error as? TransitError)?.description ?? error.localizedDescription
         }
-
-        // Await the parallel global feeds
-        _ = await alertsTask
-        if let outages = await accessTask { elevatorOutages = outages }
     }
 
     // MARK: - Bus
@@ -1135,13 +1169,14 @@ extension HomeViewModel {
         let lat = location.coordinate.latitude
         let lon = location.coordinate.longitude
 
-        // Fire alerts and accessibility in parallel with transit data
-        async let alertsTask: Void = refreshAlerts()
-        async let accessTask: [ElevatorStatus]? = { try? await TrackAPI.fetchAccessibility() }()
+        // Global feeds (alerts, accessibility) — debounced to 1× per 30 s.
+        Task { await refreshGlobalFeedsIfNeeded() }
 
         do {
             async let groupedTask = TrackAPI.fetchNearbyGrouped(lat: lat, lon: lon, mode: "bus")
-            async let nearbyBusStopsTask = TrackAPI.fetchNearbyBusStops(lat: lat, lon: lon)
+            async let nearbyBusStopsTask = TrackAPI.fetchNearbyBusStops(
+                lat: lat, lon: lon, radius: Self.busStopsNearbyRadius
+            )
 
             let allGrouped = try await groupedTask
             let filtered = allGrouped.filter { $0.mode == "bus" }
@@ -1163,15 +1198,19 @@ extension HomeViewModel {
 
             updateSelectedRouteFromRefreshedData(nearbyGroupedBusArrivals)
 
-            do { allBusRoutes = try await TrackAPI.fetchBusRoutes() } catch {}
+            // Fetch full route catalog only once — it rarely changes and is
+            // cached for 30 s in the API memoizer.  Fire-and-forget so it
+            // doesn't lengthen the critical bus-tab render path.
+            if allBusRoutes.isEmpty {
+                Task { [weak self] in
+                    guard let routes = try? await TrackAPI.fetchBusRoutes() else { return }
+                    await MainActor.run { self?.allBusRoutes = routes }
+                }
+            }
         } catch {
             AppLogger.shared.logError("refreshBus", error: error)
             errorMessage = (error as? TransitError)?.description ?? error.localizedDescription
         }
-
-        // Await the parallel global feeds
-        _ = await alertsTask
-        if let outages = await accessTask { elevatorOutages = outages }
     }
 
     /// Fetches live bus arrivals for a specific stop.
@@ -1188,9 +1227,8 @@ extension HomeViewModel {
     // MARK: - LIRR
 
     func refreshLIRR(location: CLLocation?) async {
-        // Fire alerts and accessibility in parallel with transit data
-        async let alertsTask: Void = refreshAlerts()
-        async let accessTask: [ElevatorStatus]? = { try? await TrackAPI.fetchAccessibility() }()
+        // Global feeds (alerts, accessibility) — debounced to 1× per 30 s.
+        Task { await refreshGlobalFeedsIfNeeded() }
 
         do {
             lirrArrivals = try await TrackAPI.fetchLIRRArrivals()
@@ -1223,18 +1261,13 @@ extension HomeViewModel {
         }
 
         updateSelectedRouteFromRefreshedData(nearbyGroupedLIRRArrivals)
-
-        // Await the parallel global feeds
-        _ = await alertsTask
-        if let outages = await accessTask { elevatorOutages = outages }
     }
 
     // MARK: - Metro-North
 
     func refreshMNR(location: CLLocation?) async {
-        // Fire alerts and accessibility in parallel with transit data
-        async let alertsTask: Void = refreshAlerts()
-        async let accessTask: [ElevatorStatus]? = { try? await TrackAPI.fetchAccessibility() }()
+        // Global feeds (alerts, accessibility) — debounced to 1× per 30 s.
+        Task { await refreshGlobalFeedsIfNeeded() }
 
         do {
             mnrArrivals = try await TrackAPI.fetchMNRArrivals()
@@ -1267,10 +1300,6 @@ extension HomeViewModel {
         }
 
         updateSelectedRouteFromRefreshedData(nearbyGroupedMNRArrivals)
-
-        // Await the parallel global feeds
-        _ = await alertsTask
-        if let outages = await accessTask { elevatorOutages = outages }
     }
 
     /// Starts tracking a nearby transit arrival via Widget.

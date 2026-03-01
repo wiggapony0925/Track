@@ -15,7 +15,10 @@ import Foundation
 
 /// Singleton logger that writes timestamped entries to a persistent log file.
 /// The log is cleared on each app launch to keep it fresh.
-final class AppLogger {
+///
+/// Marked `@unchecked Sendable` because all mutable state is protected by the
+/// serial `writeQueue` — safe to access from any isolation domain.
+final class AppLogger: @unchecked Sendable {
     static let shared = AppLogger()
 
     private let fileURL: URL
@@ -45,7 +48,7 @@ final class AppLogger {
     /// - Parameters:
     ///   - tag: Category tag (e.g. "API_REQ", "API_RES", "ERROR")
     ///   - message: The log message
-    func log(_ tag: String, message: String) {
+    nonisolated func log(_ tag: String, message: String) {
         let now = Date()
         // Capture the formatter reference once — actual formatting
         // happens on the serial writeQueue to avoid DateFormatter races.
@@ -84,17 +87,17 @@ final class AppLogger {
     }
 
     /// Logs an API request.
-    func logRequest(method: String, url: String) {
+    nonisolated func logRequest(method: String, url: String) {
         log("API_REQ", message: "\(method) \(url)")
     }
 
     /// Logs an API response with the raw JSON body.
-    func logResponse(url: String, statusCode: Int, json: String) {
+    nonisolated func logResponse(url: String, statusCode: Int, json: String) {
         log("API_RES", message: "[\(statusCode)] \(url)\n  → \(json)")
     }
 
     /// Logs an error.
-    func logError(_ context: String, error: Error) {
+    nonisolated func logError(_ context: String, error: Error) {
         log("ERROR", message: "\(context): \(error.localizedDescription)")
     }
 }

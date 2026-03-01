@@ -73,8 +73,9 @@ struct TrackAPI {
         // HomeView fires its first /nearby/grouped request. The former
         // .utility priority let iOS defer this, leaving TLS on the
         // critical path and adding ~1-2s on cellular cold launches.
+        let resolvedBase = baseURL          // read on @MainActor
         Task.detached(priority: .userInitiated) {
-            guard let url = URL(string: baseURL + "/health") else { return }
+            guard let url = URL(string: resolvedBase + "/health") else { return }
             var request = URLRequest(url: url)
             request.timeoutInterval = 5
             _ = try? await session.data(for: request)
@@ -91,6 +92,12 @@ struct TrackAPI {
     static func validateLocalServer() {
         #if DEBUG
         guard UserDefaults.standard.bool(forKey: "dev_use_localhost") else { return }
+        // Read MainActor-isolated values before entering the detached task.
+        let storedIP = UserDefaults.standard.string(forKey: "dev_custom_ip")?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedIP = (storedIP?.isEmpty == false) ? storedIP! : AppSettings.shared.defaultDeviceIP
+        let port = AppSettings.shared.localPort
+        let localURL = "http://\(resolvedIP):\(port)/health"
+        let logger = AppLogger.shared       // capture on caller's actor
         Task.detached(priority: .userInitiated) {
             // Use a plain URLSession — no waitsForConnectivity — so a TCP
             // refused / host-unreachable error comes back in milliseconds.
@@ -98,21 +105,18 @@ struct TrackAPI {
             config.timeoutIntervalForRequest = 1.5
             config.timeoutIntervalForResource = 1.5
             let probe = URLSession(configuration: config)
-            let storedIP = UserDefaults.standard.string(forKey: "dev_custom_ip")?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let resolvedIP = (storedIP?.isEmpty == false) ? storedIP! : AppSettings.shared.defaultDeviceIP
-            let localURL = "http://\(resolvedIP):\(AppSettings.shared.localPort)/health"
             guard let url = URL(string: localURL) else { return }
             do {
                 _ = try await probe.data(from: url)
                 // Server responded — keep the flag as-is
-                AppLogger.shared.log("API_CONFIG", message: "Local server reachable at \(localURL) ✓")
+                logger.log("API_CONFIG", message: "Local server reachable at \(localURL) ✓")
             } catch {
                 // Server unreachable — clear the flag and force prod
-                AppLogger.shared.log("API_CONFIG", message: "Local server unreachable (\(error.localizedDescription)) — falling back to production")
+                logger.log("API_CONFIG", message: "Local server unreachable (\(error.localizedDescription)) — falling back to production")
                 await MainActor.run {
                     UserDefaults.standard.removeObject(forKey: "dev_use_localhost")
+                    invalidateBaseURL()
                 }
-                invalidateBaseURL()
             }
         }
         #endif
@@ -606,7 +610,9 @@ struct TrackAPI {
 
     private static func isStaticCacheablePath(_ path: String) -> Bool {
         switch path {
-        case "/subway/shapes/all", "/lirr/shapes/all", "/mnr/shapes/all", "/subway/stations/all", "/alerts", "/accessibility":
+        case "/subway/shapes/all", "/lirr/shapes/all", "/mnr/shapes/all",
+             "/subway/stations/all", "/alerts", "/accessibility",
+             "/bus/routes":
             return true
         default:
             return false

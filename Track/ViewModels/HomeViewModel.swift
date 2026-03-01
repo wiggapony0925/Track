@@ -475,6 +475,23 @@ final class HomeViewModel {
     var serviceAlerts: [TransitAlert] = []
     var alertsLastUpdated: Date?
     var elevatorOutages: [ElevatorStatus] = []
+    /// Timestamp of the last global-feeds (alerts + accessibility) fetch.
+    /// Used to debounce the per-mode calls — these feeds are location-
+    /// independent and cached server-side, so re-fetching within 30 s
+    /// just wastes bandwidth and MainActor render cycles.
+    private var lastGlobalFeedsDate: Date?
+
+    /// Fetches alerts and accessibility once per 30 s. Mode-specific
+    /// refreshes all call this; the guard prevents redundant network hits.
+    func refreshGlobalFeedsIfNeeded() async {
+        if let last = lastGlobalFeedsDate,
+           Date().timeIntervalSince(last) < 30 { return }
+        lastGlobalFeedsDate = Date()
+        async let alertsTask: Void = refreshAlerts()
+        async let accessTask: [ElevatorStatus]? = { try? await TrackAPI.fetchAccessibility() }()
+        _ = await alertsTask
+        if let outages = await accessTask { elevatorOutages = outages }
+    }
 
     /// Fetch alerts from the API and deliver local notifications for new ones.
     func refreshAlerts() async {
@@ -574,9 +591,22 @@ final class HomeViewModel {
             }
         }
     }
-    var busVehicles: [BusVehicleResponse] = []
+    var busVehicles: [BusVehicleResponse] = [] {
+        didSet { _busVehicleIndex = Dictionary(busVehicles.map { ($0.vehicleId, $0) }, uniquingKeysWith: { $1 }) }
+    }
+    /// O(1) lookup by vehicleId — rebuilt automatically when busVehicles is set.
+    private var _busVehicleIndex: [String: BusVehicleResponse] = [:]
 
-    var trainVehicles: [TrainVehicle] = []
+    var trainVehicles: [TrainVehicle] = [] {
+        didSet {
+            _trainVehicleByTrip = Dictionary(trainVehicles.compactMap { v in v.tripId.map { ($0, v) } }, uniquingKeysWith: { $1 })
+            _trainVehicleById = Dictionary(trainVehicles.map { ($0.id, $0) }, uniquingKeysWith: { $1 })
+        }
+    }
+    /// O(1) lookup by tripId — rebuilt automatically when trainVehicles is set.
+    private var _trainVehicleByTrip: [String: TrainVehicle] = [:]
+    /// O(1) lookup by id — rebuilt automatically when trainVehicles is set.
+    private var _trainVehicleById: [String: TrainVehicle] = [:]
 
     // Smooth bus interpolation state — stores the previous GPS snapshot
     // so we can glide between updates along the route polyline.
@@ -1056,13 +1086,12 @@ final class HomeViewModel {
     /// Returns the coordinate of a tapped vehicle marker (bus or train) by its ID.
     /// Used by HomeView to zoom/center the map on the tapped marker.
     func coordinateForTappedVehicle(_ vehicleId: String) -> CLLocationCoordinate2D? {
-        // Check bus vehicles
-        if let bus = busVehicles.first(where: { $0.vehicleId == vehicleId }) {
+        // Check bus vehicles — O(1)
+        if let bus = _busVehicleIndex[vehicleId] {
             return CLLocationCoordinate2D(latitude: bus.lat, longitude: bus.lon)
         }
-        // Check train vehicles (by tripId or id)
-        if let train = trainVehicles.first(where: { $0.tripId == vehicleId || $0.id == vehicleId })
-        {
+        // Check train vehicles — O(1)
+        if let train = _trainVehicleByTrip[vehicleId] ?? _trainVehicleById[vehicleId] {
             return CLLocationCoordinate2D(latitude: train.lat, longitude: train.lon)
         }
         return nil
@@ -1073,25 +1102,22 @@ final class HomeViewModel {
     /// falls back to the arrival's stop lat/lon if no live vehicle is found.
     /// Works for all modes: subway, bus, LIRR, Metro-North.
     func coordinateForTrackedArrival(_ arrival: NearbyTransitResponse) -> CLLocationCoordinate2D? {
-        // 1. Try to find a live bus vehicle by vehicleId
-        if arrival.isBus, let vid = arrival.vehicleId, !vid.isEmpty {
-            if let vehicle = busVehicles.first(where: { $0.vehicleId == vid }) {
-                return CLLocationCoordinate2D(latitude: vehicle.lat, longitude: vehicle.lon)
-            }
+        // 1. Try to find a live bus vehicle by vehicleId — O(1)
+        if arrival.isBus, let vid = arrival.vehicleId, !vid.isEmpty,
+           let vehicle = _busVehicleIndex[vid] {
+            return CLLocationCoordinate2D(latitude: vehicle.lat, longitude: vehicle.lon)
         }
 
-        // 2. Try to find a live train vehicle by tripId
-        if !arrival.isBus, let tripId = arrival.tripId, !tripId.isEmpty {
-            if let train = trainVehicles.first(where: { $0.tripId == tripId }) {
-                return CLLocationCoordinate2D(latitude: train.lat, longitude: train.lon)
-            }
+        // 2. Try to find a live train vehicle by tripId — O(1)
+        if !arrival.isBus, let tripId = arrival.tripId, !tripId.isEmpty,
+           let train = _trainVehicleByTrip[tripId] {
+            return CLLocationCoordinate2D(latitude: train.lat, longitude: train.lon)
         }
 
-        // 3. Try to find a train vehicle by vehicleId
-        if !arrival.isBus, let vid = arrival.vehicleId, !vid.isEmpty {
-            if let train = trainVehicles.first(where: { $0.id == vid }) {
-                return CLLocationCoordinate2D(latitude: train.lat, longitude: train.lon)
-            }
+        // 3. Try to find a train vehicle by vehicleId — O(1)
+        if !arrival.isBus, let vid = arrival.vehicleId, !vid.isEmpty,
+           let train = _trainVehicleById[vid] {
+            return CLLocationCoordinate2D(latitude: train.lat, longitude: train.lon)
         }
 
         // 4. Fall back to the stop's coordinates
@@ -1109,16 +1135,24 @@ final class HomeViewModel {
     /// so the indicator never lights up for a vehicle going in the OPPOSITE
     /// direction (which would have a marker on the map but for a different
     /// direction tab than the user is viewing).
+    ///
+    /// Note: We use the O(1) dictionaries when possible but still need to
+    /// check against filtered vehicles for direction scoping.
     func isVehicleLiveOnMap(_ arrival: NearbyTransitResponse) -> Bool {
         if arrival.isBus, let vid = arrival.vehicleId, !vid.isEmpty {
+            // O(1) check: is this vehicle in our full index at all?
+            guard _busVehicleIndex[vid] != nil else { return false }
+            // Then confirm it's in the direction-filtered set.
             return filteredBusVehicles.contains(where: { $0.vehicleId == vid })
         }
         if !arrival.isBus {
             if let tripId = arrival.tripId, !tripId.isEmpty {
-                if filteredTrainVehicles.contains(where: { $0.tripId == tripId }) { return true }
+                if _trainVehicleByTrip[tripId] != nil,
+                   filteredTrainVehicles.contains(where: { $0.tripId == tripId }) { return true }
             }
             if let vid = arrival.vehicleId, !vid.isEmpty {
-                if filteredTrainVehicles.contains(where: { $0.id == vid }) { return true }
+                if _trainVehicleById[vid] != nil,
+                   filteredTrainVehicles.contains(where: { $0.id == vid }) { return true }
             }
         }
         return false
@@ -1283,9 +1317,15 @@ final class HomeViewModel {
         }
         errorMessage = nil
 
+        // During drag-to-search the search pin is active — skip global
+        // feeds (alerts, accessibility) since they're location-independent
+        // and were already loaded on the initial refresh.  Saves ~2 network
+        // calls per pan gesture.
+        let skipGlobal = isSearchPinActive
+
         switch selectedMode {
         case .nearby:
-            await refreshNearbyTransit(location: loc, silent: isSilentRefresh)
+            await refreshNearbyTransit(location: loc, skipGlobalFeeds: skipGlobal, silent: isSilentRefresh)
         case .subway:
             await refreshSubway(location: loc)
         case .bus:
