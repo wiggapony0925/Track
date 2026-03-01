@@ -24,6 +24,7 @@ class TrackArrival(BaseModel):
     arrival_ts: int = 0
     status: str = "On Time"
     trip_id: str | None = None
+    is_cancelled: bool = False  # GTFS-RT schedule_relationship == CANCELED
 
 
 class TransitAlert(BaseModel):
@@ -107,6 +108,8 @@ class NearbyTransitArrival(BaseModel):
     vehicle_id: str | None = None
     trip_id: str | None = None
     distance_m: float | None = None  # haversine distance from user to this stop (meters)
+    is_real_time: bool = False  # True when backed by live GTFS-RT or SIRI data
+    is_cancelled: bool = False  # True when GTFS-RT reports CANCELED
 
 
 class DirectionArrivals(BaseModel):
@@ -115,6 +118,14 @@ class DirectionArrivals(BaseModel):
     direction: str
     direction_label: str = ""  # e.g. "Northbound", "Eastbound", or raw destination
     arrivals: list[NearbyTransitArrival]
+
+
+class InlineAlert(BaseModel):
+    """Compact alert embedded in the grouped response (avoids a separate fetch)."""
+
+    title: str
+    severity: str  # "severe" or "warning"
+    affected_routes: list[str] = []
 
 
 class GroupedNearbyTransit(BaseModel):
@@ -126,9 +137,11 @@ class GroupedNearbyTransit(BaseModel):
 
     route_id: str
     display_name: str
-    mode: str  # "subway", "bus", or "lirr"
+    mode: str  # "subway", "bus", "lirr", or "mnr"
     color_hex: str | None = None
     directions: list[DirectionArrivals]
+    sorting_key: str = ""  # MTA canonical sort order (e.g. subway letters: A before B)
+    alerts: list[InlineAlert] = []  # Active service alerts for this route
 
 
 class BusVehicle(BaseModel):

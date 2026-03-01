@@ -47,6 +47,12 @@ async def get_arrivals_for_line(line_id: str) -> list[TrackArrival]:
             continue
         trip = entity.trip_update
         route = trip.trip.route_id  # e.g. "A", "C", "E" from the ACE feed
+
+        # Detect cancelled trips via GTFS-RT schedule_relationship.
+        # Value 3 = CANCELED in gtfs_realtime_pb2.TripDescriptor.ScheduleRelationship.
+        trip_cancelled = False
+        if trip.trip.HasField("schedule_relationship"):
+            trip_cancelled = trip.trip.schedule_relationship == 3
         
         # Determine destination from the last stop in the update
         destination = None
@@ -64,6 +70,13 @@ async def get_arrivals_for_line(line_id: str) -> list[TrackArrival]:
             arrival_time = stu.arrival.time if stu.HasField("arrival") else 0
             if arrival_time == 0:
                 continue
+
+            # Per-stop cancellation: schedule_relationship on stop_time_update
+            # Value 1 = SKIPPED in GTFS-RT StopTimeUpdate.ScheduleRelationship.
+            stop_cancelled = trip_cancelled
+            if not stop_cancelled and stu.HasField("schedule_relationship"):
+                stop_cancelled = stu.schedule_relationship == 1
+
             minutes = _minutes_until(arrival_time)
             direction = "N" if stu.stop_id.endswith("N") else "S"
 
@@ -89,8 +102,9 @@ async def get_arrivals_for_line(line_id: str) -> list[TrackArrival]:
                     destination=destination,
                     minutes_away=minutes,
                     arrival_ts=arrival_time,
-                    status="On Time",
+                    status="Cancelled" if stop_cancelled else "On Time",
                     trip_id=trip.trip.trip_id,
+                    is_cancelled=stop_cancelled,
                 )
             )
 

@@ -27,6 +27,7 @@ from app.models import (
     BusVehicle,
     DirectionArrivals,
     GroupedNearbyTransit,
+    InlineAlert,
     NearbyTransitArrival,
     TrackArrival,
 )
@@ -35,6 +36,7 @@ from app.routers.nearby import (
     _display_name,
     _group_arrivals,
     _soonest_minutes,
+    _sorting_key,
 )
 from app.services.station_lookup import (
     _load_stops,
@@ -673,5 +675,617 @@ class TestLiveDataIntegration:
             assert len(routes_with_two_dirs) > 0, (
                 "No bus routes have 2+ directions — DirectionRef grouping may be broken"
             )
+        finally:
+            loop.close()
+
+
+# ===================================================================
+# 10. is_cancelled / is_real_time FIELD CONTRACT
+# ===================================================================
+
+
+class TestCancellationContract:
+    """Verify is_cancelled flows correctly through TrackArrival and NearbyTransitArrival."""
+
+    def test_track_arrival_defaults_not_cancelled(self):
+        """TrackArrival.is_cancelled defaults to False."""
+        arrival = TrackArrival(
+            station="A28N",
+            direction="N",
+            minutes_away=5,
+        )
+        assert arrival.is_cancelled is False
+
+    def test_track_arrival_cancelled_true(self):
+        """TrackArrival.is_cancelled=True when explicitly set."""
+        arrival = TrackArrival(
+            station="A28N",
+            direction="N",
+            minutes_away=5,
+            status="Cancelled",
+            is_cancelled=True,
+        )
+        assert arrival.is_cancelled is True
+        assert arrival.status == "Cancelled"
+
+    def test_track_arrival_cancelled_serializes(self):
+        """is_cancelled appears in JSON output for iOS decoding."""
+        arrival = TrackArrival(
+            station="A28N",
+            direction="N",
+            minutes_away=5,
+            is_cancelled=True,
+        )
+        data = arrival.model_dump()
+        assert "is_cancelled" in data
+        assert data["is_cancelled"] is True
+
+    def test_nearby_arrival_is_real_time_default(self):
+        """NearbyTransitArrival.is_real_time defaults to False."""
+        arrival = NearbyTransitArrival(
+            route_id="A",
+            stop_name="Test",
+            direction="N",
+            minutes_away=3,
+            mode="subway",
+        )
+        assert arrival.is_real_time is False
+        assert arrival.is_cancelled is False
+
+    def test_nearby_arrival_is_real_time_true(self):
+        """NearbyTransitArrival.is_real_time can be set True for live data."""
+        arrival = NearbyTransitArrival(
+            route_id="A",
+            stop_name="Test",
+            direction="N",
+            minutes_away=3,
+            mode="subway",
+            is_real_time=True,
+        )
+        data = arrival.model_dump()
+        assert data["is_real_time"] is True
+
+    def test_nearby_arrival_cancelled_true(self):
+        """NearbyTransitArrival.is_cancelled flows into grouped JSON."""
+        arrival = NearbyTransitArrival(
+            route_id="A",
+            stop_name="Fulton St",
+            direction="N",
+            minutes_away=5,
+            mode="subway",
+            is_cancelled=True,
+            is_real_time=True,
+        )
+        data = arrival.model_dump()
+        assert data["is_cancelled"] is True
+        assert data["is_real_time"] is True
+
+    def test_bus_arrival_no_is_cancelled(self):
+        """Bus NearbyTransitArrival should default is_cancelled=False (SIRI has no cancellations)."""
+        arrival = NearbyTransitArrival(
+            route_id="Q10",
+            stop_name="Test Stop",
+            direction="0",
+            minutes_away=5,
+            mode="bus",
+            is_real_time=True,
+        )
+        assert arrival.is_cancelled is False
+
+    def test_ios_coding_keys_present(self):
+        """JSON keys must match iOS CodingKeys exactly: is_real_time, is_cancelled."""
+        arrival = NearbyTransitArrival(
+            route_id="L",
+            stop_name="Bedford Ave",
+            direction="N",
+            minutes_away=2,
+            mode="subway",
+            is_real_time=True,
+            is_cancelled=False,
+        )
+        json_data = arrival.model_dump(mode="json")
+        assert "is_real_time" in json_data, "iOS expects CodingKey 'is_real_time'"
+        assert "is_cancelled" in json_data, "iOS expects CodingKey 'is_cancelled'"
+
+
+# ===================================================================
+# 11. SORTING KEY CONTRACT
+# ===================================================================
+
+
+class TestSortingKey:
+    """Verify _sorting_key() produces correct canonical MTA ordering."""
+
+    def test_subway_family_order(self):
+        """Subway lines sort by service family: 123 < 456 < 7 < ACE < BDFM ..."""
+        assert _sorting_key("subway", "1") < _sorting_key("subway", "4")
+        assert _sorting_key("subway", "4") < _sorting_key("subway", "7")
+        assert _sorting_key("subway", "7") < _sorting_key("subway", "A")
+        assert _sorting_key("subway", "A") < _sorting_key("subway", "B")
+        assert _sorting_key("subway", "B") < _sorting_key("subway", "G")
+        assert _sorting_key("subway", "G") < _sorting_key("subway", "J")
+        assert _sorting_key("subway", "J") < _sorting_key("subway", "L")
+        assert _sorting_key("subway", "L") < _sorting_key("subway", "N")
+
+    def test_same_family_order(self):
+        """Within a family: A < C < E."""
+        assert _sorting_key("subway", "A") < _sorting_key("subway", "C")
+        assert _sorting_key("subway", "C") < _sorting_key("subway", "E")
+
+    def test_nqrw_order(self):
+        """N < Q < R < W."""
+        assert _sorting_key("subway", "N") < _sorting_key("subway", "Q")
+        assert _sorting_key("subway", "Q") < _sorting_key("subway", "R")
+        assert _sorting_key("subway", "R") < _sorting_key("subway", "W")
+
+    def test_unknown_subway_sorts_last(self):
+        """Unknown subway route (e.g. special service) sorts after all known lines."""
+        assert _sorting_key("subway", "W") < _sorting_key("subway", "ZZ_SPECIAL")
+
+    def test_subway_before_lirr_before_mnr_before_bus(self):
+        """Subway < LIRR < MNR < Bus in the sort order."""
+        subway_last = _sorting_key("subway", "SI")
+        lirr = _sorting_key("lirr", "Babylon")
+        mnr = _sorting_key("mnr", "Hudson")
+        bus = _sorting_key("bus", "Q10")
+        assert subway_last < lirr
+        assert lirr < mnr
+        assert mnr < bus
+
+    def test_bus_numeric_sort(self):
+        """Bus routes sort numerically: B1 < B10 < B100."""
+        assert _sorting_key("bus", "B1") < _sorting_key("bus", "B10")
+        assert _sorting_key("bus", "B10") < _sorting_key("bus", "B100")
+
+    def test_bus_prefix_groups(self):
+        """Different bus prefixes group: B-routes < M-routes < Q-routes."""
+        assert _sorting_key("bus", "B1") < _sorting_key("bus", "M1")
+        assert _sorting_key("bus", "M1") < _sorting_key("bus", "Q1")
+
+    def test_sorting_key_in_grouped_output(self):
+        """GroupedNearbyTransit.sorting_key appears in serialized JSON."""
+        group = GroupedNearbyTransit(
+            route_id="A",
+            display_name="A",
+            mode="subway",
+            directions=[],
+            sorting_key="040",
+        )
+        data = group.model_dump()
+        assert "sorting_key" in data
+        assert data["sorting_key"] == "040"
+
+    def test_group_arrivals_populates_sorting_key(self):
+        """_group_arrivals() should set sorting_key on each group."""
+        arrivals = [
+            NearbyTransitArrival(
+                route_id="L", stop_name="Bedford Ave", direction="N",
+                minutes_away=3, mode="subway",
+            ),
+            NearbyTransitArrival(
+                route_id="A", stop_name="Fulton St", direction="N",
+                minutes_away=5, mode="subway",
+            ),
+        ]
+        groups = _group_arrivals(arrivals)
+        for g in groups:
+            assert g.sorting_key != "", f"sorting_key empty for {g.display_name}"
+        # A should sort before L
+        a_group = next(g for g in groups if g.display_name == "A")
+        l_group = next(g for g in groups if g.display_name == "L")
+        assert a_group.sorting_key < l_group.sorting_key
+
+    def test_sorting_key_case_insensitive(self):
+        """Lowercase route_id should resolve the same as uppercase."""
+        assert _sorting_key("subway", "a") == _sorting_key("subway", "A")
+
+
+# ===================================================================
+# 12. INLINE ALERTS CONTRACT
+# ===================================================================
+
+
+class TestInlineAlerts:
+    """Verify InlineAlert model and alert embedding in GroupedNearbyTransit."""
+
+    def test_inline_alert_model_fields(self):
+        """InlineAlert has required fields: title, severity, affected_routes."""
+        alert = InlineAlert(
+            title="Delays on A/C/E",
+            severity="severe",
+            affected_routes=["A", "C", "E"],
+        )
+        data = alert.model_dump()
+        assert data["title"] == "Delays on A/C/E"
+        assert data["severity"] == "severe"
+        assert data["affected_routes"] == ["A", "C", "E"]
+
+    def test_inline_alert_ios_keys(self):
+        """InlineAlert JSON keys must match iOS InlineAlertResponse CodingKeys."""
+        alert = InlineAlert(
+            title="Service change",
+            severity="warning",
+            affected_routes=["L"],
+        )
+        json_data = alert.model_dump(mode="json")
+        required = {"title", "severity", "affected_routes"}
+        assert required.issubset(set(json_data.keys()))
+
+    def test_grouped_transit_alerts_default_empty(self):
+        """Alerts list defaults to empty when no alerts exist."""
+        group = GroupedNearbyTransit(
+            route_id="L",
+            display_name="L",
+            mode="subway",
+            directions=[],
+        )
+        assert group.alerts == []
+        data = group.model_dump()
+        assert data["alerts"] == []
+
+    def test_grouped_transit_alerts_populated(self):
+        """Alerts are included when passed to GroupedNearbyTransit."""
+        alert = InlineAlert(
+            title="No service 8pm-5am",
+            severity="severe",
+            affected_routes=["G"],
+        )
+        group = GroupedNearbyTransit(
+            route_id="G",
+            display_name="G",
+            mode="subway",
+            directions=[],
+            alerts=[alert],
+        )
+        data = group.model_dump()
+        assert len(data["alerts"]) == 1
+        assert data["alerts"][0]["title"] == "No service 8pm-5am"
+        assert data["alerts"][0]["severity"] == "severe"
+        assert data["alerts"][0]["affected_routes"] == ["G"]
+
+    def test_group_arrivals_with_alert_index(self):
+        """_group_arrivals() embeds alerts from the alert index."""
+        arrivals = [
+            NearbyTransitArrival(
+                route_id="A", stop_name="Fulton St", direction="N",
+                minutes_away=5, mode="subway",
+            ),
+        ]
+        alert_index = {
+            "A": [InlineAlert(title="Delays", severity="warning", affected_routes=["A"])],
+        }
+        groups = _group_arrivals(arrivals, alert_index=alert_index)
+        a_group = next(g for g in groups if g.display_name == "A")
+        assert len(a_group.alerts) == 1
+        assert a_group.alerts[0].title == "Delays"
+
+    def test_group_arrivals_no_alert_index(self):
+        """_group_arrivals() works with no alert_index (backward compat)."""
+        arrivals = [
+            NearbyTransitArrival(
+                route_id="L", stop_name="Bedford Ave", direction="N",
+                minutes_away=3, mode="subway",
+            ),
+        ]
+        groups = _group_arrivals(arrivals)
+        assert groups[0].alerts == []
+
+    def test_group_arrivals_alert_miss(self):
+        """Routes not in the alert index get empty alerts."""
+        arrivals = [
+            NearbyTransitArrival(
+                route_id="7", stop_name="Times Sq", direction="N",
+                minutes_away=2, mode="subway",
+            ),
+        ]
+        alert_index = {
+            "A": [InlineAlert(title="Delays", severity="severe", affected_routes=["A"])],
+        }
+        groups = _group_arrivals(arrivals, alert_index=alert_index)
+        assert groups[0].alerts == []
+
+
+# ===================================================================
+# 13. FULL GROUPED SCHEMA v2 (all new fields)
+# ===================================================================
+
+
+class TestGroupedSchemaV2:
+    """Verify the complete GroupedNearbyTransit schema matches iOS v2 contract."""
+
+    def test_all_ios_keys_present(self):
+        """All keys expected by iOS GroupedNearbyTransitResponse must be in JSON."""
+        group = GroupedNearbyTransit(
+            route_id="A",
+            display_name="A",
+            mode="subway",
+            color_hex="#0039A6",
+            directions=[
+                DirectionArrivals(
+                    direction="N",
+                    direction_label="Northbound",
+                    arrivals=[
+                        NearbyTransitArrival(
+                            route_id="A", stop_name="Fulton St",
+                            direction="N", destination="Inwood-207 St",
+                            minutes_away=3, arrival_ts=1700000000,
+                            status="On Time", mode="subway",
+                            stop_lat=40.71, stop_lon=-74.0,
+                            stop_id="A28N", trip_id="trip123",
+                            is_real_time=True, is_cancelled=False,
+                        ),
+                    ],
+                ),
+            ],
+            sorting_key="040",
+            alerts=[
+                InlineAlert(title="Delays", severity="warning", affected_routes=["A"]),
+            ],
+        )
+        data = group.model_dump(mode="json")
+
+        # GroupedNearbyTransitResponse CodingKeys
+        grouped_keys = {"route_id", "display_name", "mode", "color_hex",
+                        "directions", "sorting_key", "alerts"}
+        assert grouped_keys.issubset(set(data.keys())), (
+            f"Missing grouped keys: {grouped_keys - set(data.keys())}"
+        )
+
+        # DirectionArrivalsResponse CodingKeys
+        dir_data = data["directions"][0]
+        dir_keys = {"direction", "direction_label", "arrivals"}
+        assert dir_keys.issubset(set(dir_data.keys())), (
+            f"Missing direction keys: {dir_keys - set(dir_data.keys())}"
+        )
+
+        # NearbyTransitResponse CodingKeys
+        arr_data = dir_data["arrivals"][0]
+        arrival_keys = {
+            "route_id", "stop_name", "direction", "destination",
+            "minutes_away", "arrival_ts", "status", "mode",
+            "stop_lat", "stop_lon", "stop_id", "vehicle_id", "trip_id",
+            "distance_m", "is_real_time", "is_cancelled",
+        }
+        assert arrival_keys.issubset(set(arr_data.keys())), (
+            f"Missing arrival keys: {arrival_keys - set(arr_data.keys())}"
+        )
+
+        # InlineAlertResponse CodingKeys
+        alert_data = data["alerts"][0]
+        alert_keys = {"title", "severity", "affected_routes"}
+        assert alert_keys.issubset(set(alert_data.keys())), (
+            f"Missing alert keys: {alert_keys - set(alert_data.keys())}"
+        )
+
+    def test_field_types_match_ios(self):
+        """Verify JSON value types match what Swift Codable expects."""
+        arrival = NearbyTransitArrival(
+            route_id="L", stop_name="Bedford Ave",
+            direction="N", destination="Rockaway Pkwy",
+            minutes_away=2, arrival_ts=1700000000,
+            status="On Time", mode="subway",
+            stop_lat=40.71, stop_lon=-74.0,
+            stop_id="L06N", vehicle_id=None,
+            trip_id="trip456", distance_m=150.5,
+            is_real_time=True, is_cancelled=False,
+        )
+        data = arrival.model_dump(mode="json")
+
+        # Swift String
+        assert isinstance(data["route_id"], str)
+        assert isinstance(data["stop_name"], str)
+        assert isinstance(data["direction"], str)
+        assert isinstance(data["status"], str)
+        assert isinstance(data["mode"], str)
+        # Swift Int
+        assert isinstance(data["minutes_away"], int)
+        assert isinstance(data["arrival_ts"], int)
+        # Swift Double?
+        assert isinstance(data["stop_lat"], (float, int))
+        assert isinstance(data["stop_lon"], (float, int))
+        assert isinstance(data["distance_m"], (float, int))
+        # Swift Bool
+        assert isinstance(data["is_real_time"], bool)
+        assert isinstance(data["is_cancelled"], bool)
+
+    def test_backward_compat_defaults(self):
+        """New fields have defaults so old cached responses still parse on iOS."""
+        # Simulate an "old" response missing the new fields
+        arrival = NearbyTransitArrival(
+            route_id="4",
+            stop_name="Grand Central",
+            direction="N",
+            minutes_away=5,
+            mode="subway",
+        )
+        data = arrival.model_dump(mode="json")
+        # Defaults must be the Swift-matching zero-values
+        assert data["is_real_time"] is False
+        assert data["is_cancelled"] is False
+
+        group = GroupedNearbyTransit(
+            route_id="4",
+            display_name="4",
+            mode="subway",
+            directions=[],
+        )
+        gdata = group.model_dump(mode="json")
+        assert gdata["sorting_key"] == ""
+        assert gdata["alerts"] == []
+
+
+# ===================================================================
+# 14. TrackArrival CONTRACT (subway/LIRR/MNR endpoint responses)
+# ===================================================================
+
+
+class TestTrackArrivalContract:
+    """Verify TrackArrival JSON matches iOS TransitArrivalResponse."""
+
+    def test_all_ios_keys_present(self):
+        """All keys expected by iOS TransitArrivalResponse must be in JSON."""
+        arrival = TrackArrival(
+            route_id="A",
+            station="A28N",
+            station_name="Fulton St",
+            direction="N",
+            destination="Inwood-207 St",
+            minutes_away=3,
+            arrival_ts=1700000000,
+            status="On Time",
+            trip_id="trip123",
+            is_cancelled=False,
+        )
+        data = arrival.model_dump(mode="json")
+        ios_keys = {
+            "route_id", "station", "station_name", "direction",
+            "destination", "minutes_away", "arrival_ts", "status",
+            "trip_id", "is_cancelled",
+        }
+        assert ios_keys.issubset(set(data.keys())), (
+            f"Missing keys: {ios_keys - set(data.keys())}"
+        )
+
+    def test_cancelled_arrival_json(self):
+        """Cancelled arrival serializes correctly for iOS."""
+        arrival = TrackArrival(
+            station="A28N",
+            direction="N",
+            minutes_away=5,
+            status="Cancelled",
+            is_cancelled=True,
+        )
+        data = arrival.model_dump(mode="json")
+        assert data["is_cancelled"] is True
+        assert data["status"] == "Cancelled"
+
+    def test_normal_arrival_not_cancelled(self):
+        """Normal arrival has is_cancelled=False."""
+        arrival = TrackArrival(
+            station="A28N",
+            direction="N",
+            minutes_away=3,
+        )
+        data = arrival.model_dump(mode="json")
+        assert data["is_cancelled"] is False
+        assert data["status"] == "On Time"
+
+
+# ===================================================================
+# 15. LIVE ENDPOINT INTEGRATION (new fields in real API responses)
+# ===================================================================
+
+
+@pytest.mark.integration
+class TestLiveNewFieldsIntegration:
+    """Integration tests verifying new fields appear in live API responses.
+
+    Run with: pytest -m integration tests/test_contract.py -k "LiveNewFields"
+    """
+
+    def test_grouped_has_sorting_key(self):
+        """Live /nearby/grouped response includes sorting_key on each group."""
+        loop = asyncio.new_event_loop()
+        try:
+            from app.routers.nearby import _collect_all, _group_arrivals, _get_inline_alerts
+            flat = loop.run_until_complete(
+                _collect_all(40.7505, -73.9934, 1000)
+            )
+            alert_index = loop.run_until_complete(_get_inline_alerts())
+            groups = _group_arrivals(flat, alert_index=alert_index)
+            assert len(groups) > 0, "No grouped arrivals near Penn Station"
+            for g in groups:
+                assert hasattr(g, "sorting_key"), f"Missing sorting_key on {g.route_id}"
+                assert isinstance(g.sorting_key, str)
+                assert g.sorting_key != "", f"Empty sorting_key for {g.display_name}"
+        finally:
+            loop.close()
+
+    def test_grouped_sorting_order(self):
+        """Groups are sorted by sorting_key (subway before bus)."""
+        loop = asyncio.new_event_loop()
+        try:
+            from app.routers.nearby import _collect_all, _group_arrivals
+            flat = loop.run_until_complete(
+                _collect_all(40.7505, -73.9934, 1000)
+            )
+            groups = _group_arrivals(flat)
+            subway_groups = [g for g in groups if g.mode == "subway"]
+            bus_groups = [g for g in groups if g.mode == "bus"]
+            if subway_groups and bus_groups:
+                last_subway_key = max(g.sorting_key for g in subway_groups)
+                first_bus_key = min(g.sorting_key for g in bus_groups)
+                assert last_subway_key < first_bus_key, (
+                    f"Subway sorting_key ({last_subway_key}) should be < bus ({first_bus_key})"
+                )
+        finally:
+            loop.close()
+
+    def test_grouped_has_alerts_field(self):
+        """Live groups have an alerts list (may be empty)."""
+        loop = asyncio.new_event_loop()
+        try:
+            from app.routers.nearby import _collect_all, _group_arrivals
+            flat = loop.run_until_complete(
+                _collect_all(40.7505, -73.9934, 1000)
+            )
+            groups = _group_arrivals(flat)
+            for g in groups:
+                assert isinstance(g.alerts, list), f"alerts not a list on {g.route_id}"
+
+        finally:
+            loop.close()
+
+    def test_nearby_arrivals_have_is_real_time(self):
+        """Live subway arrivals should have is_real_time=True."""
+        loop = asyncio.new_event_loop()
+        try:
+            from app.routers.nearby import _collect_all
+            flat = loop.run_until_complete(
+                _collect_all(40.7505, -73.9934, 1000)
+            )
+            subway = [a for a in flat if a.mode == "subway"]
+            assert len(subway) > 0, "No subway arrivals near Penn Station"
+            realtime_count = sum(1 for a in subway if a.is_real_time)
+            assert realtime_count > 0, "No subway arrivals have is_real_time=True"
+        finally:
+            loop.close()
+
+    def test_subway_endpoint_has_is_cancelled(self):
+        """Live /subway/{line} response includes is_cancelled field."""
+        loop = asyncio.new_event_loop()
+        try:
+            from app.services.data_cleaner import get_arrivals_for_line
+            arrivals = loop.run_until_complete(get_arrivals_for_line("A"))
+            assert len(arrivals) > 0, "No arrivals from A train feed"
+            for a in arrivals:
+                assert hasattr(a, "is_cancelled"), f"Missing is_cancelled on arrival"
+                assert isinstance(a.is_cancelled, bool)
+        finally:
+            loop.close()
+
+    def test_lirr_endpoint_has_is_cancelled(self):
+        """LIRR arrivals include is_cancelled field."""
+        loop = asyncio.new_event_loop()
+        try:
+            from app.services.rail_client import fetch_rail_arrivals
+            arrivals = loop.run_until_complete(fetch_rail_arrivals("lirr"))
+            assert len(arrivals) > 0, "No LIRR arrivals"
+            for a in arrivals:
+                assert hasattr(a, "is_cancelled"), f"Missing is_cancelled on LIRR arrival"
+                assert isinstance(a.is_cancelled, bool)
+        finally:
+            loop.close()
+
+    def test_mnr_endpoint_has_is_cancelled(self):
+        """MNR arrivals include is_cancelled field."""
+        loop = asyncio.new_event_loop()
+        try:
+            from app.services.rail_client import fetch_rail_arrivals
+            arrivals = loop.run_until_complete(fetch_rail_arrivals("metro_north"))
+            assert len(arrivals) > 0, "No MNR arrivals"
+            for a in arrivals:
+                assert hasattr(a, "is_cancelled"), f"Missing is_cancelled on MNR arrival"
+                assert isinstance(a.is_cancelled, bool)
         finally:
             loop.close()

@@ -31,7 +31,7 @@ from app.cache_config import (
     NEARBY_RESPONSE_STALE_TTL,
 )
 from app.config import get_settings
-from app.models import BusStop, DirectionArrivals, GroupedNearbyTransit, NearbyTransitArrival
+from app.models import BusStop, DirectionArrivals, GroupedNearbyTransit, InlineAlert, NearbyTransitArrival
 from app.services.bus_client import (
     get_nearby_stops,
     get_realtime_arrivals,
@@ -215,7 +215,8 @@ async def _compute_and_cache_grouped(
     import time as _time
 
     flat = await _collect_all(lat, lon, radius, mode_filter=mode)
-    grouped = _group_arrivals(flat)
+    alert_index = await _get_inline_alerts()
+    grouped = _group_arrivals(flat, alert_index=alert_index)
 
     if len(_nearby_resp_cache) >= NEARBY_RESPONSE_MAX_SIZE:
         oldest_key = min(_nearby_resp_cache, key=lambda k: _nearby_resp_cache[k][0])
@@ -600,7 +601,85 @@ def _opposite_direction_key(mode: str, direction: str) -> str | None:
     return None
 
 
-def _group_arrivals(flat: list[NearbyTransitArrival]) -> list[GroupedNearbyTransit]:
+# ── MTA canonical sort order ──────────────────────────────────────────
+# Subway letters are grouped by service family and displayed in the
+# standard MTA order.  Routes not in this map sort alphabetically after
+# all entries that are.
+_MTA_SUBWAY_SORT: dict[str, str] = {
+    "1": "010", "2": "011", "3": "012",
+    "4": "020", "5": "021", "6": "022",
+    "7": "030",
+    "A": "040", "C": "041", "E": "042",
+    "B": "050", "D": "051", "F": "052", "M": "053",
+    "G": "060",
+    "J": "070", "Z": "071",
+    "L": "080",
+    "N": "090", "Q": "091", "R": "092", "W": "093",
+    "S": "100", "SI": "110",
+}
+
+
+def _sorting_key(mode: str, display: str) -> str:
+    """Return a sort key that reproduces the canonical MTA display order."""
+    if mode == "subway":
+        return _MTA_SUBWAY_SORT.get(display.upper(), f"999_{display}")
+    if mode == "lirr":
+        return f"A_LIRR_{display}"
+    if mode == "mnr":
+        return f"B_MNR_{display}"
+    # Bus: sort numerically if possible, then alphabetically
+    digits = "".join(c for c in display if c.isdigit())
+    prefix = "".join(c for c in display if c.isalpha())
+    num_part = digits.zfill(4) if digits else "9999"
+    return f"C_BUS_{prefix}_{num_part}"
+
+
+# ── Inline alert index (refreshed with each grouped call) ────────────
+# Keys are uppercased route display names so "A" matches alert for "A".
+_inline_alert_cache: dict[str, list["InlineAlert"]] = {}
+_inline_alert_ts: float = 0.0
+
+
+async def _get_inline_alerts() -> dict[str, list["InlineAlert"]]:
+    """Return a dict mapping uppercased route display names to InlineAlerts."""
+    global _inline_alert_cache, _inline_alert_ts
+    import time as _t
+    now = _t.time()
+    if now - _inline_alert_ts < 120.0 and _inline_alert_cache:
+        return _inline_alert_cache
+
+    try:
+        from app.services.data_cleaner import get_alerts
+        raw_alerts = await get_alerts()
+        index: dict[str, list[InlineAlert]] = defaultdict(list)
+        for alert in raw_alerts:
+            sev = (alert.severity or "").lower()
+            if sev not in ("severe", "warning"):
+                continue
+            inline = InlineAlert(
+                title=alert.title,
+                severity=sev,
+                affected_routes=alert.affected_routes,
+            )
+            for rid in alert.affected_routes:
+                key = rid.upper().strip()
+                if "_" in key:
+                    key = key.split("_")[-1]
+                index[key].append(inline)
+            if alert.route_id:
+                key = alert.route_id.upper().strip()
+                if "_" in key:
+                    key = key.split("_")[-1]
+                if key not in index or inline not in index[key]:
+                    index[key].append(inline)
+        _inline_alert_cache = dict(index)
+        _inline_alert_ts = now
+    except Exception as exc:
+        TrackLogger.warning(f"Inline alert fetch failed: {exc}")
+    return _inline_alert_cache
+
+
+def _group_arrivals(flat: list[NearbyTransitArrival], alert_index: dict[str, list["InlineAlert"]] | None = None) -> list[GroupedNearbyTransit]:
     """Collapse a flat arrival list into one entry per route.
 
     Each route gets direction buckets (e.g. "N" / "S" for subway,
@@ -786,6 +865,12 @@ def _group_arrivals(flat: list[NearbyTransitArrival]) -> list[GroupedNearbyTrans
         # (prevents transient "Outbound" tabs from becoming the default tab).
         directions.sort(key=_direction_sort_key)
 
+        # Attach inline alerts if available
+        route_alerts: list[InlineAlert] = []
+        if alert_index:
+            key = display.upper().strip()
+            route_alerts = alert_index.get(key, [])
+
         groups.append(
             GroupedNearbyTransit(
                 route_id=route_id,
@@ -793,11 +878,13 @@ def _group_arrivals(flat: list[NearbyTransitArrival]) -> list[GroupedNearbyTrans
                 mode=mode,
                 color_hex=color,
                 directions=directions,
+                sorting_key=_sorting_key(mode, display),
+                alerts=route_alerts,
             )
         )
 
-    # Sort groups by the soonest arrival across all directions
-    groups.sort(key=_soonest_minutes)
+    # Sort groups by canonical MTA order, then by soonest arrival
+    groups.sort(key=lambda g: (g.sorting_key, _soonest_minutes(g)))
 
     if single_direction_after > 0:
         # Real problem: routes that slipped through all backfill phases with only 1 direction.
@@ -932,6 +1019,8 @@ async def _fetch_nearby_subway(
                     stop_lon=stop_lon,
                     stop_id=arrival.station,
                     trip_id=arrival.trip_id,
+                    is_real_time=arrival.status != "Scheduled",
+                    is_cancelled=arrival.is_cancelled,
                 )
             )
 
@@ -1260,6 +1349,7 @@ async def _fetch_nearby_buses(
                     stop_id=stop.id,
                     vehicle_id=arrival.vehicle_id,
                     destination=arrival.destination_name or arrival.status_text,
+                    is_real_time=arrival.is_realtime,
                 )
             )
 
@@ -1966,6 +2056,8 @@ async def _fetch_nearby_rail(
                 stop_lon=stop_info.lon if stop_info else None,
                 stop_id=arrival.station,
                 trip_id=arrival.trip_id,
+                is_real_time=arrival.status != "Scheduled",
+                is_cancelled=arrival.is_cancelled,
             )
         )
 

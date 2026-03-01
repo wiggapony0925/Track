@@ -223,10 +223,14 @@ async def subway_shape(route_id: str) -> RouteShape:
 
     polylines_raw, stop_entries, direction_data = result
 
-    # Google-encode each polyline for transmission
-    encoded_polylines: list[str] = []
-    for coords in polylines_raw:
-        encoded_polylines.append(_encode_polyline(coords))
+    # Merge adjacent polyline segments whose endpoints are within 50 m,
+    # then simplify with RDP to cut point count without visible change.
+    # This produces fewer, longer, cleaner polylines for the detail view.
+    merged_all = _merge_polyline_segments(polylines_raw)
+    encoded_polylines: list[str] = [
+        _encode_polyline(_simplify_polyline(coords, tolerance=0.00005))
+        for coords in merged_all
+    ]
 
     stops = [
         BusStop(
@@ -238,10 +242,14 @@ async def subway_shape(route_id: str) -> RouteShape:
         for entry in stop_entries
     ]
 
-    # Build per-direction shapes
+    # Build per-direction shapes — merge + simplify each direction too
     directions: list[DirectionShape] = []
     for dd in direction_data:
-        dir_encoded = [_encode_polyline(coords) for coords in dd.polylines]
+        merged_dir = _merge_polyline_segments(dd.polylines)
+        dir_encoded = [
+            _encode_polyline(_simplify_polyline(coords, tolerance=0.00005))
+            for coords in merged_dir
+        ]
         dir_stops = [
             BusStop(id=s.stop_id, name=s.name, lat=s.lat, lon=s.lon)
             for s in dd.stops
@@ -293,6 +301,91 @@ async def subway_arrivals(line_id: str, response: Response) -> list[TrackArrival
         )
         response.headers["X-Track-Degraded"] = "subway-arrivals-fallback"
         return []
+
+
+# ---------------------------------------------------------------------------
+# Polyline segment merging
+# ---------------------------------------------------------------------------
+
+
+def _merge_polyline_segments(
+    segments: list[list[tuple[float, float]]],
+    gap_threshold_m: float = 50.0,
+) -> list[list[tuple[float, float]]]:
+    """Merge adjacent polyline segments into continuous lines.
+
+    GTFS shapes often produce multiple fragments per route+direction that
+    are really one continuous line broken at arbitrary points.  This joins
+    segments whose start/end points are within *gap_threshold_m* meters,
+    dramatically reducing the overlay count that MapKit must render.
+
+    **Branch-aware**: if multiple segments share the same endpoint (a fork /
+    junction like the A train at Rockaway Blvd), those endpoints are marked
+    as junctions and are never merged — preserving the visual branch split.
+
+    Returns a new list of coordinate arrays (often shorter than input).
+    """
+    if len(segments) <= 1:
+        return segments
+
+    METERS_PER_DEG = 111_000.0
+
+    def _dist_m(a: tuple[float, float], b: tuple[float, float]) -> float:
+        dlat = (a[0] - b[0]) * METERS_PER_DEG
+        dlon = (a[1] - b[1]) * METERS_PER_DEG * 0.76  # cos(40.7°)
+        return (dlat * dlat + dlon * dlon) ** 0.5
+
+    # --- Detect junction points (endpoints shared by 2+ segments) ---
+    # Collect all start/end points and count how many segments touch each.
+    endpoint_counts: dict[tuple[int, int], int] = {}
+    seg_endpoints: list[tuple[tuple[float, float], tuple[float, float]]] = []
+    for seg in segments:
+        if not seg:
+            continue
+        start, end = seg[0], seg[-1]
+        seg_endpoints.append((start, end))
+        # Round to ~5 m grid to group nearby endpoints as the same junction
+        for pt in (start, end):
+            key = (round(pt[0] * 20000), round(pt[1] * 20000))  # ~5.5 m cells
+            endpoint_counts[key] = endpoint_counts.get(key, 0) + 1
+
+    # An endpoint is a junction if 2+ segments touch it
+    def _is_junction(pt: tuple[float, float]) -> bool:
+        key = (round(pt[0] * 20000), round(pt[1] * 20000))
+        return endpoint_counts.get(key, 0) >= 2
+
+    # --- Merge non-junction segments ---
+    chains: list[list[tuple[float, float]]] = [list(segments[0])]
+
+    for seg in segments[1:]:
+        if not seg:
+            continue
+        merged = False
+        for chain in chains:
+            # Try appending seg to end of chain — but NOT if the join point is a junction
+            if not _is_junction(chain[-1]) and not _is_junction(seg[0]) and _dist_m(chain[-1], seg[0]) < gap_threshold_m:
+                chain.extend(seg[1:])
+                merged = True
+                break
+            # Try prepending seg to start of chain
+            if not _is_junction(chain[0]) and not _is_junction(seg[-1]) and _dist_m(chain[0], seg[-1]) < gap_threshold_m:
+                chain[:0] = seg[:-1]
+                merged = True
+                break
+            # Try appending reversed seg
+            if not _is_junction(chain[-1]) and not _is_junction(seg[-1]) and _dist_m(chain[-1], seg[-1]) < gap_threshold_m:
+                chain.extend(reversed(seg[:-1]))
+                merged = True
+                break
+            # Try prepending reversed seg
+            if not _is_junction(chain[0]) and not _is_junction(seg[0]) and _dist_m(chain[0], seg[0]) < gap_threshold_m:
+                chain[:0] = list(reversed(seg[1:]))
+                merged = True
+                break
+        if not merged:
+            chains.append(list(seg))
+
+    return chains
 
 
 # ---------------------------------------------------------------------------
