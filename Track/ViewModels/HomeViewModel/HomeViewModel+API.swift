@@ -111,6 +111,7 @@ extension HomeViewModel {
                         uniquingKeysWith: { $1 }
                     )
                     let newIds = Set(vehicles.map(\.vehicleId))
+                    let now = Date()
 
                     var merged: [BusVehicleResponse] = []
                     // Keep existing vehicles at their current display positions
@@ -124,6 +125,28 @@ extension HomeViewModel {
                             lat: v.lat, lon: v.lon, timestamp: Date()
                         )
                     }
+
+                    // Grace buffer: keep vehicles that vanished this poll for up to 12 s
+                    // so the chip doesn't flicker from "On Route" to "Scheduled".
+                    for v in self.busVehicles where !newIds.contains(v.vehicleId) {
+                        if self._busGraceBuffer[v.vehicleId] == nil {
+                            self._busGraceBuffer[v.vehicleId] = (vehicle: v, missedAt: now)
+                        }
+                    }
+                    var expiredIds: [String] = []
+                    for (vid, entry) in self._busGraceBuffer {
+                        if newIds.contains(vid) {
+                            expiredIds.append(vid)
+                        } else if now.timeIntervalSince(entry.missedAt) > 12 {
+                            expiredIds.append(vid)
+                            self.previousBusPositions.removeValue(forKey: vid)
+                            self._targetBusGPS.removeValue(forKey: vid)
+                        } else {
+                            merged.append(entry.vehicle)
+                        }
+                    }
+                    for vid in expiredIds { self._busGraceBuffer.removeValue(forKey: vid) }
+
                     self.busVehicles = merged
                 }
 
@@ -626,6 +649,7 @@ extension HomeViewModel {
         _targetBusGPS = [:]
         _previousTrainPositions = [:]
         _trainGraceBuffer = [:]
+        _busGraceBuffer = [:]
         lastBusUpdateTime = .distantPast
         routeShape = nil
         errorMessage = nil
@@ -702,7 +726,8 @@ extension HomeViewModel {
 
         var updated = busVehicles
         var anyMoved = false
-        let moveThreshold: CLLocationDistance = 2.0  // metres — sub-pixel at normal zoom
+        // Low threshold ensures smooth sub-pixel movement at all zoom levels.
+        let moveThreshold: CLLocationDistance = 0.5  // metres
         for i in updated.indices {
             let vid = updated[i].vehicleId
             guard let prev = previousBusPositions[vid] else { continue }
@@ -736,7 +761,9 @@ extension HomeViewModel {
                 coordinate: result.coordinate)
         }
         guard anyMoved else { return }
-        withAnimation(.linear(duration: 1.0)) {
+        // Duration < tick interval (1 s) so the animation completes before
+        // the next tick fires — prevents mid-animation interruption jumps.
+        withAnimation(.easeOut(duration: 0.85)) {
             self.busVehicles = updated
         }
     }
@@ -937,7 +964,9 @@ extension HomeViewModel {
         }
         for id in expiredIds { _trainGraceBuffer.removeValue(forKey: id) }
 
-        withAnimation(.linear(duration: 1.0)) {
+        // Duration < tick interval (1 s) so the animation completes before
+        // the next tick fires — prevents mid-animation interruption jumps.
+        withAnimation(.easeOut(duration: 0.85)) {
             self.trainVehicles = newVehicles
         }
     }

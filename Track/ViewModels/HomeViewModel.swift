@@ -625,6 +625,10 @@ final class HomeViewModel {
     /// Train vehicles that disappeared in the latest poll. Kept for a grace
     /// period (1 poll cycle) to avoid markers vanishing on a single GTFS-RT dropout.
     var _trainGraceBuffer: [String: (vehicle: TrainVehicle, missedAt: Date)] = [:]
+    /// Bus vehicles that disappeared in the latest poll. Kept for a grace
+    /// period (≤12 s) to avoid markers vanishing on a single SIRI dropout,
+    /// which causes the "On Route" → "Scheduled" chip flicker.
+    var _busGraceBuffer: [String: (vehicle: BusVehicleResponse, missedAt: Date)] = [:]
 
     var routeShape: RouteShapeResponse? {
         didSet {
@@ -819,6 +823,8 @@ final class HomeViewModel {
     ///   2. Fall back to `directionRef` == `selectedDirectionIndex` for simple 2-dir routes.
     ///   3. Show all vehicles if nothing matches (missing backend data).
     var filteredBusVehicles: [BusVehicleResponse] {
+        // No route selected → no vehicles on map
+        guard selectedRouteId != nil else { return [] }
         guard let group = selectedGroupedRoute,
             group.directions.count > 1
         else {
@@ -868,6 +874,8 @@ final class HomeViewModel {
     /// checking the direction string of the arrivals in the selected group,
     /// and also map compass codes to ensure GTFS-RT "N"/"S" values match.
     var filteredTrainVehicles: [TrainVehicle] {
+        // No route selected → no vehicles on map
+        guard selectedRouteId != nil else { return [] }
         guard let group = selectedGroupedRoute,
             group.directions.count > 1
         else {

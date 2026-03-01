@@ -25,22 +25,12 @@ struct MNRMarker: MapContent {
                 longitude: train.lon
             )
         ) {
-            Image(systemName: TransportMode.mnr.icon)
-                .font(.system(size: 14, weight: .bold))
-                .foregroundStyle(.white)
-                .frame(width: 28, height: 28)
-                .background(AppTheme.CommuterRailColors.mnrBlue)
-                .clipShape(Circle())
-                .overlay(
-                    Circle()
-                        .stroke(isHighlighted ? Color.white : Color.clear, lineWidth: 3)
-                )
-                .shadow(color: isHighlighted ? AppTheme.CommuterRailColors.mnrBlue.opacity(0.6) : .black.opacity(0.2), radius: isHighlighted ? 6 : 2, y: isHighlighted ? 0 : 1)
-                .scaleEffect(isHighlighted ? 1.3 : 1.0)
-                .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isHighlighted)
-                .onTapGesture {
-                    onTap?()
-                }
+            VehicleMarkerContent(
+                icon: TransportMode.mnr.icon,
+                color: AppTheme.CommuterRailColors.mnrBlue,
+                isHighlighted: isHighlighted,
+                onTap: onTap
+            )
         }
     }
 }
