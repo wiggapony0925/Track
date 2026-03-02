@@ -2005,11 +2005,35 @@ final class HomeViewModel {
 
         // ── Optimal: actual walking route polyline (if fetched) ─────
         if let route = walkingRoute {
-            return MapCameraPresets.fitWalkingRouteAboveSheet(
+            let routeCamera = MapCameraPresets.fitWalkingRouteAboveSheet(
                 route: route,
                 is3D: is3D,
                 sheetFraction: sheetFraction
             )
+            // The MKRoute bounding box can be very tight for short walks.
+            // Enforce a minimum distance that guarantees both the user's
+            // GPS dot and the nearest stop are visible above the sheet.
+            if let nearestCoord = nearestStopCoordinate,
+               let userLoc = refLocation,
+               let routeCam = routeCamera.camera {
+                let endpointsFit = MapCameraPresets.fitTwoPoints(
+                    from: userLoc.coordinate,
+                    to: nearestCoord,
+                    is3D: is3D
+                )
+                if let endpointsCam = endpointsFit.camera,
+                   routeCam.distance < endpointsCam.distance {
+                    // Keep the walking route's center but use the
+                    // more generous distance so both points fit.
+                    return .camera(MapCamera(
+                        centerCoordinate: routeCam.centerCoordinate,
+                        distance: endpointsCam.distance,
+                        heading: routeCam.heading,
+                        pitch: routeCam.pitch
+                    ))
+                }
+            }
+            return routeCamera
         }
 
         // ── Primary: fit user → nearest stop (straight-line fallback) ──────────

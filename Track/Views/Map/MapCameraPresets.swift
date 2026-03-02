@@ -243,13 +243,12 @@ enum MapCameraPresets {
         stop stopCoord: CLLocationCoordinate2D,
         is3D: Bool,
         sheetFraction: Double
-        let baseCamera = fitTwoPoints(from: userCoord, to: stopCoord, is3D: is3D)
-        
-        // TrackMapView already sets `.safeAreaPadding(.bottom, 350)` on the SwiftUI Map.
-        // Returning the base camera directly ensures MapKit automatically and natively 
-        // centers this exact bounding geometry perfectly within the remaining viewable 
-        // area top of the sheet.
-        return baseCamera
+    ) -> MapCameraPosition {
+        // TrackMapView already sets `.safeAreaPadding(.bottom, 350)` on the SwiftUI Map,
+        // so MapKit natively centers geometry in the unobscured top area.
+        // Calling sheetCompensated on top of that shifts the camera twice — causing the
+        // "too far up" issue. Return the base fit directly.
+        return fitTwoPoints(from: userCoord, to: stopCoord, is3D: is3D)
     }
 
     // MARK: - Actual Walking Route Fit

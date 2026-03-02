@@ -62,14 +62,14 @@ struct TrackMapView: View {
         return AppTheme.Colors.mtaBlue
     }
 
-    /// Stroke style for bus route polylines — thick rounded caps like Transit app.
+    /// Stroke style for bus route polylines — rounded caps for smooth joins.
     private var busRouteStrokeStyle: StrokeStyle {
-        StrokeStyle(lineWidth: 9, lineCap: .round, lineJoin: .round)
+        StrokeStyle(lineWidth: 7, lineCap: .round, lineJoin: .round)
     }
 
-    /// Stroke style for subway/rail route polylines — bold with rounded ends.
+    /// Stroke style for subway/rail route polylines — solid with rounded ends.
     private static let subwayRouteStrokeStyle = StrokeStyle(
-        lineWidth: 9, lineCap: .round, lineJoin: .round)
+        lineWidth: 7, lineCap: .round, lineJoin: .round)
 
     var body: some View {
         Map(
@@ -389,22 +389,24 @@ struct TrackMapView: View {
         }
     }
 
-    /// Reusable polyline stroke — Transit-style bold casing + colored inner line.
-    /// Bus: white casing + colored fill (same treatment as rail for consistency).
-    /// Rail: wider white casing for extra depth on the dark muted map.
+    /// Reusable polyline stroke — draws white casing + colored line for subway/rail,
+    /// or a single colored line for bus routes.
     @MapContentBuilder
     private func polylineStroke(
         coords: [CLLocationCoordinate2D], color: Color,
         casingOpacity: Double, isBus: Bool
     ) -> some MapContent {
-        // White casing — wide enough to give the raised 3D look Transit uses
-        MapPolyline(coordinates: coords)
-            .stroke(
-                .white.opacity(casingOpacity),
-                style: StrokeStyle(lineWidth: isBus ? 13 : 15, lineCap: .round, lineJoin: .round))
-        // Colored fill on top
-        MapPolyline(coordinates: coords)
-            .stroke(color, style: isBus ? busRouteStrokeStyle : Self.subwayRouteStrokeStyle)
+        if isBus {
+            MapPolyline(coordinates: coords)
+                .stroke(color, style: busRouteStrokeStyle)
+        } else {
+            MapPolyline(coordinates: coords)
+                .stroke(
+                    .white.opacity(casingOpacity),
+                    style: StrokeStyle(lineWidth: 7, lineCap: .round, lineJoin: .round))
+            MapPolyline(coordinates: coords)
+                .stroke(color, style: Self.subwayRouteStrokeStyle)
+        }
     }
 
     // MARK: - System Map Polylines

@@ -480,7 +480,6 @@ struct GroupedRouteRow: View {
                 .filter { !$0.isPlaceholder && $0.minutesAway >= 0 }
                 .map(\.minutesAway)
                 .min()
-            let otherDirectionsHaveLive = visibleDirections.contains { $0.id != dir.id && !$0.liveArrivals.isEmpty }
             if let mins = soonestScheduled {
                 VStack(spacing: 2) {
                     HStack(alignment: .firstTextBaseline, spacing: 2) {
