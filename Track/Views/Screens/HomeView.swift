@@ -55,6 +55,17 @@ struct HomeView: View {
     /// the user is still panning — the radius circles hide until this is set.
     @State private var dragSearchSettledCenter: CLLocationCoordinate2D?
     
+    // Live walking update state — recalculates nearest stop + walking route
+    // as user walks while a route detail sheet is open.
+    /// Last GPS location used for a walking-state update. Used to debounce
+    /// so we only recalculate when the user moves 20m+.
+    @State private var lastWalkingUpdateLocation: CLLocation?
+    /// Cancellable task for debounced walking route refetch.
+    @State private var walkingUpdateTask: Task<Void, Never>?
+    /// When true, the `.onChange(of: walkingRoute)` handler skips camera
+    /// re-zoom because the update came from a live GPS tick, not a route open.
+    @State private var suppressWalkingRouteZoom = false
+    
     /// Whether a drag-search API call is in-flight.
     /// Derived from the ViewModel's loading state instead of maintaining
     /// a separate flag — reuses the existing loading infrastructure.
@@ -101,7 +112,11 @@ struct HomeView: View {
             .onChange(of: viewModel.routeShape?.polylines.count) { handleRouteShapeLoaded() }
             .onChange(of: viewModel.nearestStopCoordinate?.latitude) { handleNearestStopChanged() }
             .onChange(of: viewModel.walkingRoute) { _, newRoute in 
-                if newRoute != nil { handleNearestStopChanged() } 
+                if newRoute != nil && !suppressWalkingRouteZoom {
+                    handleNearestStopChanged()
+                }
+                // Always clear the suppress flag after processing
+                suppressWalkingRouteZoom = false
             }
             .onChange(of: viewModel.selectedDirectionIndex) { handleDirectionIndexChanged() }
             .onChange(of: viewModel.groupedTransit.count) { attemptDeepLinkNavigation() }
@@ -559,6 +574,12 @@ struct HomeView: View {
         vehiclePollTimer?.invalidate()
         vehiclePollTimer = nil
         
+        // Reset live walking update state for the new route
+        lastWalkingUpdateLocation = nil
+        walkingUpdateTask?.cancel()
+        walkingUpdateTask = nil
+        suppressWalkingRouteZoom = false
+        
         // Hide drag-search overlay when viewing a route — the search pin
         // stays active in the ViewModel so nearestStop / centering still
         // uses the explored area. We'll restore the overlay on dismiss.
@@ -645,6 +666,13 @@ struct HomeView: View {
         } else {
             // Re-center the map on the fresh GPS fix.
             recenterOnUser()
+            
+            // Live walking update: when a route detail is open, recalculate
+            // the walking polyline so it tracks the user's real-time position.
+            // Debounced to 20m to avoid excessive MKDirections calls.
+            if viewModel.selectedRouteId != nil {
+                handleLiveWalkingUpdate(loc)
+            }
 
             // On cold launch the onAppear already kicked a forced refresh
             // using the cached location. If the first live GPS fix arrives
@@ -663,6 +691,37 @@ struct HomeView: View {
                 await viewModel.refresh(location: loc, force: true)
                 lastUpdated = Date()
             }
+        }
+    }
+    
+    // MARK: - Live Walking Update
+    
+    /// Recalculates nearest stop + walking route as the user walks while
+    /// a route detail sheet is open. Debounced to 20m movement so we don't
+    /// spam MKDirections. Does NOT re-zoom the camera unless the nearest
+    /// stop actually changes (handled automatically by .onChange).
+    private func handleLiveWalkingUpdate(_ loc: CLLocation) {
+        // Skip if no route shape loaded yet (still loading)
+        guard viewModel.routeShape != nil else { return }
+        // Skip when search pin is active — distances are from pin, not GPS
+        guard !viewModel.isSearchPinActive else { return }
+        
+        // Debounce: only update if moved 20m+ from last walking update
+        let walkingThreshold: Double = 20
+        if let lastLoc = lastWalkingUpdateLocation {
+            let moved = loc.distance(from: lastLoc)
+            guard moved >= walkingThreshold else { return }
+        }
+        
+        lastWalkingUpdateLocation = loc
+        
+        // Cancel any in-flight walking route request
+        walkingUpdateTask?.cancel()
+        walkingUpdateTask = Task {
+            // Suppress the camera re-zoom when the walking route updates
+            // from a live GPS tick (user is just walking, not opening a route)
+            suppressWalkingRouteZoom = true
+            await viewModel.refreshWalkingState(userLocation: loc)
         }
     }
     

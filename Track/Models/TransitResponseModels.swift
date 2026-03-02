@@ -3,14 +3,18 @@ import CoreLocation
 
 /// Matches the backend's `NearbyTransitArrival` JSON schema.
 struct NearbyTransitResponse: Codable, Identifiable, Equatable {
-    /// Unique identity combining route, stop, ETA, and trip/timestamp
-    /// to avoid collisions when two trains share the same minutesAway.
+    /// Stable identity for SwiftUI diffing — must NOT include volatile fields
+    /// like `minutesAway` that change every poll cycle.  Priority:
+    ///   1. tripId  — unique per GTFS trip, most stable
+    ///   2. vehicleId — unique per vehicle, stable during a trip
+    ///   3. arrivalTs — predicted timestamp, stable for scheduled data
+    ///   4. minutesAway — last-resort fallback only (scheduled w/o timestamp)
     var id: String {
-        let base = "\(routeId)-\(stopName)-\(minutesAway)"
+        let base = "\(routeId)-\(stopName)"
         if let tripId, !tripId.isEmpty { return "\(base)-\(tripId)" }
-        if let ts = arrivalTs { return "\(base)-\(ts)" }
         if let vid = vehicleId, !vid.isEmpty { return "\(base)-\(vid)" }
-        return base
+        if let ts = arrivalTs { return "\(base)-\(ts)" }
+        return "\(base)-\(minutesAway)"
     }
 
     let routeId: String

@@ -664,6 +664,27 @@ extension HomeViewModel {
 
     /// Recalculates the nearest stop and `selectedStopId` for the current direction.
     /// Call when the direction changes or the user's location updates significantly.
+    /// Recalculates the nearest stop and walking route from the user's
+    /// current position. Called on every significant GPS movement (~20m)
+    /// while a route detail sheet is open. Only updates the walking
+    /// polyline — the camera re-zooms only if `nearestStopCoordinate`
+    /// actually changes (SwiftUI .onChange handles that automatically).
+    func refreshWalkingState(userLocation: CLLocation) async {
+        guard selectedRouteId != nil else { return }
+        
+        // Keep lastKnownUserLocation fresh so referenceLocation resolves correctly
+        lastKnownUserLocation = userLocation
+        
+        // Recalculate nearest stop (may or may not change)
+        updateNearestStop(userLocation: userLocation)
+        
+        // Always refetch the walking route from the new GPS position to
+        // the nearest stop so the dotted polyline tracks the user live.
+        if let stopCoord = nearestStopCoordinate {
+            await fetchWalkingRoute(from: userLocation.coordinate, to: stopCoord)
+        }
+    }
+
     func updateNearestStop(userLocation: CLLocation?) {
         let refLocation = effectiveLocation(userLocation: userLocation)
         let dirStops = routeShape?.stopsForDirection(index: selectedDirectionIndex, name: selectedDirectionName) ?? []

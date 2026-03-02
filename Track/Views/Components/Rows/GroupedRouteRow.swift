@@ -11,7 +11,7 @@
 import CoreLocation
 import SwiftUI
 
-struct GroupedRouteRow: View {
+struct  GroupedRouteRow: View {
     let group: GroupedNearbyTransitResponse
     var hasAlert: Bool = false
     var userLocation: CLLocation? = nil
