@@ -21,7 +21,47 @@ final class LiveActivityManager {
     /// Whether a Live Activity is currently running.
     var isTracking: Bool { currentActivityID != nil }
 
-    private init() {}
+    private init() {
+        // Clean up any orphaned Live Activities from previous app sessions.
+        // `currentActivityID` is in-memory only, so after a kill/relaunch
+        // it's nil while stale activities may still be alive on the Lock Screen.
+        cleanupOrphanedActivities()
+    }
+
+    // MARK: - Orphan Cleanup
+
+    /// Ends ALL existing Live Activities that weren't started by this session.
+    /// Called on init to prevent duplicate Lock Screen widgets after an app
+    /// kill/relaunch.
+    private func cleanupOrphanedActivities() {
+        let existing = Activity<TrackActivityAttributes>.activities
+        guard !existing.isEmpty else { return }
+
+        // If there's a saved TrackedRoute, the user is still tracking —
+        // adopt the first matching activity instead of killing it.
+        if let saved = TrackedRoute.load(), let match = existing.first(where: { _ in true }) {
+            currentActivityID = match.id
+            AppLogger.shared.log("LIVE_ACTIVITY", message: "Adopted orphaned activity \(match.id) for \(saved.routeId)")
+            // End any extras beyond the adopted one
+            let extras = existing.filter { $0.id != match.id }
+            if !extras.isEmpty {
+                Task {
+                    for activity in extras {
+                        await activity.end(nil, dismissalPolicy: .immediate)
+                        AppLogger.shared.log("LIVE_ACTIVITY", message: "Ended extra orphan \(activity.id)")
+                    }
+                }
+            }
+        } else {
+            // No tracked route saved — kill all orphans
+            Task {
+                for activity in existing {
+                    await activity.end(nil, dismissalPolicy: .immediate)
+                    AppLogger.shared.log("LIVE_ACTIVITY", message: "Ended orphaned activity \(activity.id)")
+                }
+            }
+        }
+    }
 
     // MARK: - Start
 
@@ -46,8 +86,9 @@ final class LiveActivityManager {
         walkMinutes: Int? = nil,
         isHurryUp: Bool = false
     ) {
-        // End any existing activity first
-        endActivity()
+        // End ALL existing activities first — not just the one we're tracking.
+        // This catches orphans from previous sessions where currentActivityID was lost.
+        endAllActivities()
 
         guard ActivityAuthorizationInfo().areActivitiesEnabled else {
             AppLogger.shared.log("LIVE_ACTIVITY", message: "Live Activities not enabled on this device")
@@ -130,16 +171,17 @@ final class LiveActivityManager {
 
     // MARK: - End
 
-    /// Ends the current Live Activity.
+    /// Ends the current Live Activity (by tracked ID).
     func endActivity() {
-        guard let activityID = currentActivityID else { return }
+        let activityID = currentActivityID
         // Clear immediately so `isTracking` returns false
         // and `startActivity()` won't see a stale ID.
         currentActivityID = nil
-        AppLogger.shared.log("LIVE_ACTIVITY", message: "Ending activity \(activityID)")
 
         Task {
-            for activity in Activity<TrackActivityAttributes>.activities where activity.id == activityID {
+            // End ALL activities — not just the tracked one.
+            // Catches orphans from previous sessions or race conditions.
+            for activity in Activity<TrackActivityAttributes>.activities {
                 let finalState = TrackActivityAttributes.ContentState(
                     statusText: "Arrived",
                     arrivalTime: Date(),
@@ -153,6 +195,28 @@ final class LiveActivityManager {
                     ActivityContent(state: finalState, staleDate: nil),
                     dismissalPolicy: .after(Date.now.addingTimeInterval(AppSettings.shared.liveActivityDismissalSeconds))
                 )
+                AppLogger.shared.log("LIVE_ACTIVITY", message: "Ended activity \(activity.id)")
+            }
+        }
+        if let id = activityID {
+            AppLogger.shared.log("LIVE_ACTIVITY", message: "Ending tracked activity \(id)")
+        }
+    }
+
+    /// Immediately ends ALL Live Activities without the "Arrived" final state.
+    /// Used before starting a new activity to ensure a clean slate.
+    private func endAllActivities() {
+        currentActivityID = nil
+        let existing = Activity<TrackActivityAttributes>.activities
+        guard !existing.isEmpty else { return }
+
+        // Synchronous iteration — `Activity.activities` is a snapshot.
+        // Use `Task` for the async `end()` call but block conceptually
+        // by iterating eagerly before the new Activity.request().
+        Task {
+            for activity in existing {
+                await activity.end(nil, dismissalPolicy: .immediate)
+                AppLogger.shared.log("LIVE_ACTIVITY", message: "Cleared activity \(activity.id) before new start")
             }
         }
     }

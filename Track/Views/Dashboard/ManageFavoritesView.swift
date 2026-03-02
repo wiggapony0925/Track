@@ -297,61 +297,60 @@ struct ManageFavoritesView: View {
         }
     }
 
-    /// One row per unique route. In edit mode a full-width overlay captures taps
-    /// and disables the row's internal gestures to avoid conflicts.
+    /// One row per unique route. In edit mode a selection circle slides in
+    /// beside the content and the whole row becomes tappable for toggling.
     @ViewBuilder
     private func routeRow(routeId: String) -> some View {
         let isSelected = selectedIds.contains(routeId)
         let matchedGroup = groupedTransit.first { $0.routeId == routeId }
         let repFav = filtered.first { $0.routeId == routeId }
 
-        ZStack(alignment: .leading) {
-            // ── Real row content ──
-            if let group = matchedGroup {
-                GroupedRouteRow(
-                    group: group,
-                    hasAlert: false,
-                    userLocation: nil,
-                    onSelect: isEditing ? nil : { directionIndex in
-                        onSelect?(group, directionIndex)
-                    },
-                    onTrack: { directionIndex in
-                        onTrack?(group, directionIndex)
-                    }
-                )
-                // Disable the row's internal tap/swipe entirely in edit mode
-                .allowsHitTesting(!isEditing)
-            } else if let fav = repFav {
-                offlineFavoriteRow(fav: fav)
-                    .allowsHitTesting(!isEditing)
+        HStack(spacing: 0) {
+            // ── Edit-mode selection circle ──
+            if isEditing {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 22))
+                    .foregroundColor(
+                        isSelected
+                            ? AppTheme.Colors.alertRed
+                            : AppTheme.Colors.textSecondary.opacity(0.35)
+                    )
+                    .animation(.easeInOut(duration: 0.15), value: isSelected)
+                    .padding(.leading, AppTheme.Layout.margin)
+                    .padding(.trailing, 8)
+                    .transition(.move(edge: .leading).combined(with: .opacity))
             }
 
-            // ── Edit-mode overlay (selection circle + tap target) ──
-            if isEditing {
-                HStack(spacing: 0) {
-                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                        .font(.system(size: 22))
-                        .foregroundColor(
-                            isSelected
-                                ? AppTheme.Colors.alertRed
-                                : AppTheme.Colors.textSecondary.opacity(0.35)
-                        )
-                        .animation(.easeInOut(duration: 0.15), value: isSelected)
-                        .padding(.leading, AppTheme.Layout.margin)
-                    Spacer()
+            // ── Real row content ──
+            Group {
+                if let group = matchedGroup {
+                    GroupedRouteRow(
+                        group: group,
+                        hasAlert: false,
+                        userLocation: nil,
+                        onSelect: isEditing ? nil : { directionIndex in
+                            onSelect?(group, directionIndex)
+                        },
+                        onTrack: { directionIndex in
+                            onTrack?(group, directionIndex)
+                        }
+                    )
+                } else if let fav = repFav {
+                    offlineFavoriteRow(fav: fav)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .contentShape(Rectangle())
-                .background(
-                    isSelected ? AppTheme.Colors.alertRed.opacity(0.07) : Color.clear
-                )
-                .onTapGesture {
-                    HapticManager.impact(.light)
-                    withAnimation(.easeInOut(duration: 0.15)) {
-                        if selectedIds.contains(routeId) { selectedIds.remove(routeId) }
-                        else { selectedIds.insert(routeId) }
-                    }
-                }
+            }
+            .allowsHitTesting(!isEditing)
+        }
+        .background(
+            isEditing && isSelected ? AppTheme.Colors.alertRed.opacity(0.07) : Color.clear
+        )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            guard isEditing else { return }
+            HapticManager.impact(.light)
+            withAnimation(.easeInOut(duration: 0.15)) {
+                if selectedIds.contains(routeId) { selectedIds.remove(routeId) }
+                else { selectedIds.insert(routeId) }
             }
         }
     }

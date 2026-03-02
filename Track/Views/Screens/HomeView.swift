@@ -61,6 +61,21 @@ struct HomeView: View {
     private var isDragSearching: Bool {
         viewModel.isLoading && viewModel.isSearchPinActive
     }
+
+    /// The fraction of the screen currently covered by the bottom sheet.
+    /// Returns 0 when no route detail is open or when the sheet is fully expanded
+    /// (map barely visible — no compensation needed).
+    private var sheetCoverFraction: Double {
+        guard viewModel.selectedRouteId != nil else { return 0 }
+        if sheetDetent == .large { return 0 }  // map barely visible, skip offset
+        return 0.4  // .fraction(0.4) is the default route-detail detent
+    }
+
+    /// Wraps a camera position with sheet-height compensation so the
+    /// target coordinate appears above the bottom sheet, not behind it.
+    private func aboveSheet(_ position: MapCameraPosition) -> MapCameraPosition {
+        MapCameraPresets.sheetCompensated(position, sheetFraction: sheetCoverFraction)
+    }
     
     // MARK: - Effective Location
 
@@ -85,6 +100,9 @@ struct HomeView: View {
             .onChange(of: currentMapCenter?.latitude) { handleMapCenterChange() }
             .onChange(of: viewModel.routeShape?.polylines.count) { handleRouteShapeLoaded() }
             .onChange(of: viewModel.nearestStopCoordinate?.latitude) { handleNearestStopChanged() }
+            .onChange(of: viewModel.walkingRoute) { _, newRoute in 
+                if newRoute != nil { handleNearestStopChanged() } 
+            }
             .onChange(of: viewModel.selectedDirectionIndex) { handleDirectionIndexChanged() }
             .onChange(of: viewModel.groupedTransit.count) { attemptDeepLinkNavigation() }
             .onChange(of: viewModel.tappedVehicleId) { _, newValue in handleTappedVehicle(newValue) }
@@ -193,9 +211,7 @@ struct HomeView: View {
             if lat != 0 && lon != 0 {
                 hasLoadedInitialData = true
                 let cachedLoc = CLLocation(latitude: lat, longitude: lon)
-                cameraPosition = .camera(
-                    MapCamera(centerCoordinate: cachedLoc.coordinate, distance: AppTheme.MapConfig.userZoomDistance)
-                )
+                cameraPosition = MapCameraPresets.center(on: cachedLoc.coordinate, is3D: false)
                 Task {
                     await viewModel.refresh(location: cachedLoc, force: true)
                     lastUpdated = Date()
@@ -255,30 +271,32 @@ struct HomeView: View {
     }
     
     private func handleRouteShapeLoaded() {
-        if viewModel.selectedRouteId != nil,
-           let fitCamera = viewModel.cameraPositionFittingRoute(
-               userLocation: locationManager.currentLocation,
-               is3D: is3DMode
-           ) {
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                sheetDetent = .fraction(0.4)
-            }
-            withAnimation(.spring(response: 0.8, dampingFraction: 0.8)) {
-                cameraPosition = fitCamera
-            }
+        guard viewModel.selectedRouteId != nil else { return }
+        // Only set the sheet detent here.  The actual camera zoom is
+        // handled by handleNearestStopChanged — at this point
+        // nearestStopCoordinate hasn't been calculated yet, so
+        // cameraPositionFittingRoute would fall back to a generic
+        // user-location zoom that misses the stop entirely.
+        withAnimation(MapCameraPresets.snapAnimation) {
+            sheetDetent = .fraction(0.4)
         }
     }
     
     private func handleNearestStopChanged() {
+        // Pass the sheet fraction directly so
+        // cameraPositionFittingRoute computes zoom AND center
+        // together — guaranteeing both the user and the stop
+        // are comfortably visible above the sheet.
         if let fitCamera = viewModel.cameraPositionFittingRoute(
             userLocation: locationManager.currentLocation,
-            is3D: is3DMode
+            is3D: is3DMode,
+            sheetFraction: sheetCoverFraction
         ) {
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+            withAnimation(MapCameraPresets.snapAnimation) {
                 sheetDetent = .fraction(0.4)
             }
-            withAnimation(.spring(response: 0.8, dampingFraction: 0.8)) {
-                cameraPosition = fitCamera
+            withAnimation(MapCameraPresets.smoothAnimation) {
+                cameraPosition = fitCamera   // already sheet-compensated
             }
         } else if let coordinate = viewModel.nearestStopCoordinate {
             centerMap(on: coordinate)
@@ -302,10 +320,11 @@ struct HomeView: View {
         
         if let fitCamera = viewModel.cameraPositionFittingRoute(
             userLocation: locationManager.currentLocation,
-            is3D: is3DMode
+            is3D: is3DMode,
+            sheetFraction: sheetCoverFraction
         ) {
-            withAnimation(.spring(response: 0.6, dampingFraction: 0.85)) {
-                cameraPosition = fitCamera
+            withAnimation(MapCameraPresets.flyAnimation) {
+                cameraPosition = fitCamera   // already sheet-compensated
             }
         }
     }
@@ -314,19 +333,14 @@ struct HomeView: View {
         guard let tappedId = newValue, !tappedId.isEmpty else { return }
         
         if sheetDetent != .large {
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+            withAnimation(MapCameraPresets.snapAnimation) {
                 sheetDetent = .large
             }
         }
         
         if let coord = viewModel.coordinateForTappedVehicle(tappedId) {
-            withAnimation(.spring(response: 0.6, dampingFraction: 0.85)) {
-                cameraPosition = .camera(MapCamera(
-                    centerCoordinate: coord,
-                    distance: 1500,
-                    heading: 0,
-                    pitch: is3DMode ? 60 : 0
-                ))
+            withAnimation(MapCameraPresets.flyAnimation) {
+                cameraPosition = MapCameraPresets.focusVehicle(at: coord, is3D: is3DMode)
             }
         }
     }
@@ -386,17 +400,13 @@ struct HomeView: View {
                     
                     // Zoom the map to center on the tracked vehicle/stop marker
                     if let coord = viewModel.trackedVehicleCoordinate {
-                        withAnimation(.spring(response: 0.6, dampingFraction: 0.85)) {
-                            cameraPosition = .camera(MapCamera(
-                                centerCoordinate: coord,
-                                distance: 1500,
-                                heading: 0,
-                                pitch: is3DMode ? 60 : 0
-                            ))
+                        withAnimation(MapCameraPresets.flyAnimation) {
+                            cameraPosition = aboveSheet(MapCameraPresets.focusVehicle(at: coord, is3D: is3DMode))
                         }
                     }
                 },
                 isTracking: { viewModel.isTracking($0) },
+                isTrackingAny: viewModel.isTrackingAny,
                 isLiveOnMap: { viewModel.isVehicleLiveOnMap($0) },
                 onClearHighlight: {
                     // Clear the map highlight when the user taps a highlighted row
@@ -411,13 +421,8 @@ struct HomeView: View {
                     }
                     // Zoom to the marker if a key was provided
                     if let key, let coord = viewModel.coordinateForTappedVehicle(key) {
-                        withAnimation(.spring(response: 0.6, dampingFraction: 0.85)) {
-                            cameraPosition = .camera(MapCamera(
-                                centerCoordinate: coord,
-                                distance: 1500,
-                                heading: 0,
-                                pitch: is3DMode ? 60 : 0
-                            ))
+                        withAnimation(MapCameraPresets.flyAnimation) {
+                            cameraPosition = aboveSheet(MapCameraPresets.focusVehicle(at: coord, is3D: is3DMode))
                         }
                     }
                 },
@@ -437,13 +442,8 @@ struct HomeView: View {
                             isDragSearchActive = true
                         }
                         // Fly back to the drag search center
-                        withAnimation(.spring(response: 0.6, dampingFraction: 0.85)) {
-                            cameraPosition = .camera(MapCamera(
-                                centerCoordinate: settled,
-                                distance: AppTheme.MapConfig.userZoomDistance,
-                                heading: 0,
-                                pitch: is3DMode ? 60 : 0
-                            ))
+                        withAnimation(MapCameraPresets.flyAnimation) {
+                            cameraPosition = MapCameraPresets.center(on: settled, is3D: is3DMode)
                         }
                     } else {
                         recenterOnUser()
@@ -791,18 +791,13 @@ struct HomeView: View {
             return
         }
         
-        withAnimation(.spring(response: 0.6, dampingFraction: 0.85)) {
-            cameraPosition = .camera(MapCamera(
-                centerCoordinate: coordinate,
-                distance: AppTheme.MapConfig.userZoomDistance,
-                heading: 0,
-                pitch: is3DMode ? 60 : 0
-            ))
+        withAnimation(MapCameraPresets.flyAnimation) {
+            cameraPosition = MapCameraPresets.center(on: coordinate, is3D: is3DMode)
         }
     }
     
     private func centerMap(on target: CLLocationCoordinate2D? = nil) {
-        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+        withAnimation(MapCameraPresets.snapAnimation) {
             sheetDetent = .fraction(0.4)
         }
         
@@ -811,30 +806,14 @@ struct HomeView: View {
         let refCoord = effectiveCoordinate
         let finalTarget = target ?? refCoord ?? AppTheme.MapConfig.nycCenter
         
-        var center = finalTarget
-        var zoomDistance = AppTheme.MapConfig.userZoomDistance
-        
         if let destination = target, let ref = refCoord {
-            let midLat = (ref.latitude + destination.latitude) / 2
-            let midLon = (ref.longitude + destination.longitude) / 2
-            center = CLLocationCoordinate2D(latitude: midLat, longitude: midLon)
-            
-            let refLoc = CLLocation(latitude: ref.latitude, longitude: ref.longitude)
-            let destLoc = CLLocation(latitude: destination.latitude, longitude: destination.longitude)
-            let distanceMeters = refLoc.distance(from: destLoc)
-            
-            zoomDistance = max(AppSettings.shared.smartZoomMinAltitude,
-                               min(distanceMeters * AppSettings.shared.smartZoomPaddingMultiplier,
-                                   AppSettings.shared.smartZoomMaxAltitude))
-        }
-        
-        withAnimation(.spring(response: 0.8, dampingFraction: 0.8)) {
-            cameraPosition = .camera(MapCamera(
-                centerCoordinate: center,
-                distance: zoomDistance,
-                heading: 0,
-                pitch: is3DMode ? 60 : 0
-            ))
+            withAnimation(MapCameraPresets.smoothAnimation) {
+                cameraPosition = aboveSheet(MapCameraPresets.fitTwoPoints(from: ref, to: destination, is3D: is3DMode))
+            }
+        } else {
+            withAnimation(MapCameraPresets.smoothAnimation) {
+                cameraPosition = aboveSheet(MapCameraPresets.center(on: finalTarget, is3D: is3DMode))
+            }
         }
     }
 

@@ -11,6 +11,8 @@ import SwiftUI
 struct ArrivalRow: View {
     let arrival: TrainArrival
     var isTracking: Bool = false
+    /// True when the user is tracking a DIFFERENT route — shows "Switch" instead of "Track".
+    var isTrackingAnother: Bool = false
     var reliabilityWarning: Int? = nil
     var onTrack: (() -> Void)?
 
@@ -148,15 +150,27 @@ struct ArrivalRow: View {
                         onTrack?()
                     } label: {
                         HStack(spacing: 6) {
-                            Image(systemName: isTracking ? "antenna.radiowaves.left.and.right" : "bell.fill")
+                            Image(systemName: isTracking
+                                ? "antenna.radiowaves.left.and.right"
+                                : isTrackingAnother
+                                    ? "arrow.triangle.2.circlepath"
+                                    : "bell.fill")
                                 .font(.system(size: 12, weight: .bold))
-                            Text(isTracking ? "Tracking" : "Track This Train")
+                            Text(isTracking
+                                ? "Tracking"
+                                : isTrackingAnother
+                                    ? "Switch to This"
+                                    : "Track This Train")
                                 .font(.system(size: 13, weight: .bold))
                         }
                         .foregroundColor(AppTheme.Colors.textOnColor)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 10)
-                        .background(isTracking ? AppTheme.Colors.successGreen : AppTheme.Colors.mtaBlue)
+                        .background(isTracking
+                            ? AppTheme.Colors.successGreen
+                            : isTrackingAnother
+                                ? AppTheme.Colors.warningYellow
+                                : AppTheme.Colors.mtaBlue)
                         .cornerRadius(AppTheme.Layout.cornerRadius)
                     }
                 }

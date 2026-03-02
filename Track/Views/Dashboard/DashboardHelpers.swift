@@ -175,6 +175,8 @@ struct CommuterRailArrivalRow: View {
     let arrival: TrainArrival
     let brandColor: Color
     let isTracking: Bool
+    /// True when the user is tracking a DIFFERENT route — shows swap indicator.
+    var isTrackingAnother: Bool = false
     let onTrack: () -> Void
     
     var body: some View {

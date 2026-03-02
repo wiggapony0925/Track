@@ -157,6 +157,29 @@ struct AppSettings {
     /// ~0.0001° = ~11m, ~0.00015° = ~17m at NYC latitude.
     let polylineSimplificationTolerance: Double
 
+    // MARK: - Camera Preset Settings (used by MapCameraPresets)
+
+    /// Camera altitude for focusing on a vehicle marker.
+    let vehicleFocusDistance: Double
+    /// Multiplier applied to `userZoomDistance` for the "Explore NYC" overview.
+    let explorerDistanceMultiplier: Double
+    /// Minimum camera altitude when fitting user → nearest stop (walking path).
+    let walkingZoomMinAltitude: Double
+    /// Maximum camera altitude for walking path zoom.
+    let walkingZoomMaxAltitude: Double
+    /// Padding multiplier for very close stops (< walkingCloseThresholdMeters).
+    let walkingClosePadding: Double
+    /// Padding multiplier for medium-distance stops.
+    let walkingMediumPadding: Double
+    /// Padding multiplier for farther stops (> walkingMediumThresholdMeters).
+    let walkingFarPadding: Double
+    /// Distance threshold (meters) below which "close" padding applies.
+    let walkingCloseThresholdMeters: Double
+    /// Distance threshold (meters) above which "far" padding applies.
+    let walkingMediumThresholdMeters: Double
+    /// How much to bias the camera center toward the stop (0 = midpoint, 1 = stop).
+    let walkingCenterBias: Double
+
     // MARK: - Init
 
     private init() {
@@ -207,6 +230,16 @@ struct AppSettings {
             self.showMNRByDefault = true
             self._subwayLineOffsetMeters = 12.0
             self.polylineSimplificationTolerance = 0.00006
+            self.vehicleFocusDistance = 1500
+            self.explorerDistanceMultiplier = 1.5
+            self.walkingZoomMinAltitude = 600
+            self.walkingZoomMaxAltitude = 6000
+            self.walkingClosePadding = 3.5
+            self.walkingMediumPadding = 2.8
+            self.walkingFarPadding = 2.2
+            self.walkingCloseThresholdMeters = 200
+            self.walkingMediumThresholdMeters = 800
+            self.walkingCenterBias = 0.15
             return
         }
 
@@ -261,6 +294,16 @@ struct AppSettings {
         self.showMNRByDefault = map["show_mnr_by_default"] as? Bool ?? true
         self._subwayLineOffsetMeters = map["subway_line_offset_meters"] as? Double ?? 12.0
         self.polylineSimplificationTolerance = map["polyline_simplification_tolerance"] as? Double ?? 0.00006
+        self.vehicleFocusDistance = map["vehicle_focus_distance"] as? Double ?? 1500
+        self.explorerDistanceMultiplier = map["explorer_distance_multiplier"] as? Double ?? 1.5
+        self.walkingZoomMinAltitude = map["walking_zoom_min_altitude"] as? Double ?? 600
+        self.walkingZoomMaxAltitude = map["walking_zoom_max_altitude"] as? Double ?? 6000
+        self.walkingClosePadding = map["walking_close_padding"] as? Double ?? 3.5
+        self.walkingMediumPadding = map["walking_medium_padding"] as? Double ?? 2.8
+        self.walkingFarPadding = map["walking_far_padding"] as? Double ?? 2.2
+        self.walkingCloseThresholdMeters = map["walking_close_threshold_meters"] as? Double ?? 200
+        self.walkingMediumThresholdMeters = map["walking_medium_threshold_meters"] as? Double ?? 800
+        self.walkingCenterBias = map["walking_center_bias"] as? Double ?? 0.15
     }
 }
 

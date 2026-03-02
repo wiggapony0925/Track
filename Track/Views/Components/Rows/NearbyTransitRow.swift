@@ -13,6 +13,8 @@ import SwiftUI
 struct NearbyTransitRow: View {
     let arrival: NearbyTransitResponse
     var isTracking: Bool = false
+    /// True when the user is tracking a DIFFERENT route — shows "Switch" instead of "Track".
+    var isTrackingAnother: Bool = false
     var isSelected: Bool = false  // Added for stop selection
     /// Whether this arrival has a live vehicle on the map (bus GPS or train GTFS-RT).
     var isLiveOnMap: Bool = false
@@ -360,13 +362,17 @@ struct NearbyTransitRow: View {
                             Image(
                                 systemName: isTracking
                                     ? "antenna.radiowaves.left.and.right"
-                                    : "location.fill"
+                                    : isTrackingAnother
+                                        ? "arrow.triangle.2.circlepath"
+                                        : "location.fill"
                             )
                             .font(.system(size: 12, weight: .bold))
                             Text(
                                 isTracking
                                     ? "Tracking"
-                                    : "Track Live Route"
+                                    : isTrackingAnother
+                                        ? "Switch to This"
+                                        : "Track Live Route"
                             )
                             .font(.custom("Helvetica-Bold", size: 13))
                         }
@@ -374,7 +380,11 @@ struct NearbyTransitRow: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 10)
                         .background(
-                            isTracking ? AppTheme.Colors.successGreen : AppTheme.Colors.mtaBlue
+                            isTracking
+                                ? AppTheme.Colors.successGreen
+                                : isTrackingAnother
+                                    ? AppTheme.Colors.warningYellow
+                                    : AppTheme.Colors.mtaBlue
                         )
                         .cornerRadius(AppTheme.Layout.cornerRadius)
                     }

@@ -26,6 +26,8 @@ struct RouteDetailSheet: View {
     /// When provided, Route Detail and Home rows use the same ETA source.
     var smartETAProvider: ((NearbyTransitResponse) -> SmartETA)? = nil
     var isTracking: ((NearbyTransitResponse) -> Bool)?
+    /// Whether the user is tracking ANY route (used to show "Switch" on non-tracked rows).
+    var isTrackingAny: Bool = false
     /// Returns true if the arrival has a live vehicle position on the map.
     var isLiveOnMap: ((NearbyTransitResponse) -> Bool)?
     /// Called when the user taps a highlighted row to clear the map highlight.
@@ -156,6 +158,7 @@ struct RouteDetailSheet: View {
         selectedStopId: String? = nil,
         onTrack: ((NearbyTransitResponse) -> Void)? = nil,
         isTracking: ((NearbyTransitResponse) -> Bool)? = nil,
+        isTrackingAny: Bool = false,
         isLiveOnMap: ((NearbyTransitResponse) -> Bool)? = nil,
         onClearHighlight: (() -> Void)? = nil,
         onFocusVehicle: ((String?) -> Void)? = nil,
@@ -176,6 +179,7 @@ struct RouteDetailSheet: View {
         self.elevatorOutages = elevatorOutages
         self.onTrack = onTrack
         self.isTracking = isTracking
+        self.isTrackingAny = isTrackingAny
         self.isLiveOnMap = isLiveOnMap
         self.onClearHighlight = onClearHighlight
         self.onFocusVehicle = onFocusVehicle
@@ -530,13 +534,7 @@ struct RouteDetailSheet: View {
                         withAnimation(.easeInOut(duration: 0.5)) {
                             is3DMode.toggle()
                             if let loc = currentLocation {
-                                cameraPosition = .camera(
-                                    MapCamera(
-                                        centerCoordinate: loc,
-                                        distance: AppTheme.MapConfig.userZoomDistance,
-                                        heading: 0,
-                                        pitch: is3DMode ? 60 : 0
-                                    ))
+                                cameraPosition = MapCameraPresets.center(on: loc, is3D: is3DMode)
                             }
                         }
                     } label: {
@@ -549,14 +547,8 @@ struct RouteDetailSheet: View {
                     // Recenter / Location Button
                     Button {
                         let target = currentLocation ?? AppTheme.MapConfig.nycCenter
-                        withAnimation(.spring(duration: 0.8)) {
-                            cameraPosition = .camera(
-                                MapCamera(
-                                    centerCoordinate: target,
-                                    distance: AppTheme.MapConfig.userZoomDistance,
-                                    heading: 0,
-                                    pitch: is3DMode ? 60 : 0
-                                ))
+                        withAnimation(MapCameraPresets.smoothAnimation) {
+                            cameraPosition = MapCameraPresets.center(on: target, is3D: is3DMode)
                         }
                     } label: {
                         Image(systemName: "location.fill")
@@ -1870,9 +1862,12 @@ struct RouteDetailSheet: View {
             && arrival.stopId == selectedStopId
             && !sortedArrivals.prefix(index).contains(where: { $0.stopId == selectedStopId })
 
+        let thisIsTracking = isTracking?(arrival) ?? false
+
         NearbyTransitRow(
             arrival: arrival,
-            isTracking: isTracking?(arrival) ?? false,
+            isTracking: thisIsTracking,
+            isTrackingAnother: !thisIsTracking && isTrackingAny,
             isSelected: isFirstAtStop,
             isLiveOnMap: isLiveOnMap?(arrival) ?? false,
             tappedVehicleId: tappedVehicleId,

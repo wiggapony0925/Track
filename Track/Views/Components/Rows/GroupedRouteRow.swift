@@ -23,17 +23,9 @@ struct GroupedRouteRow: View {
     var onTrack: ((Int) -> Void)? = nil
 
     @State private var currentDirectionIndex = 0
-    @State private var swipeOffset: CGFloat = 0
     @State private var showTrackingBanner = false
     @State private var trackingBannerText = ""
 
-    /// Locks to horizontal once the initial drag direction is determined.
-    /// Prevents vertical scroll from accidentally triggering the swipe action.
-    @State private var swipeLocked = false
-    @State private var swipeDirectionDecided = false
-
-    /// How far right the user must drag to trigger tracking.
-    private let swipeThreshold: CGFloat = 80
 
     /// Route color derived from group data or theme defaults.
     private var routeColor: Color {
@@ -169,27 +161,15 @@ struct GroupedRouteRow: View {
     }
 
     var body: some View {
-        ZStack(alignment: .leading) {
-            // ── Swipe-to-track background (only visible during swipe) ──
-            if swipeOffset > 0 {
-                swipeTrackBackground
-                    .transition(.opacity)
+        mainRowContent
+            .overlay(alignment: .top) {
+                // ── "Now tracking" confirmation banner ──
+                if showTrackingBanner {
+                    trackingConfirmationBanner
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                        .zIndex(1)
+                }
             }
-
-            // ── Main row content ──
-            mainRowContent
-                .offset(x: swipeOffset)
-                .simultaneousGesture(swipeToTrackGesture)
-        }
-        .clipped()
-        .overlay(alignment: .top) {
-            // ── "Now tracking" confirmation banner ──
-            if showTrackingBanner {
-                trackingConfirmationBanner
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                    .zIndex(1)
-            }
-        }
     }
 
     // MARK: - Main Row Content
@@ -227,18 +207,16 @@ struct GroupedRouteRow: View {
                     .foregroundColor(AppTheme.Colors.textSecondary)
                 Spacer()
             } else {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 3) {
+                    // ── Swipeable direction content (label + stop name) ──
                     TabView(selection: $currentDirectionIndex) {
-                        ForEach(Array(visibleDirections.enumerated()), id: \.element.id) {
-                            index, direction in
-                            // Prefer directionLabel from the backend (contains resolved
-                            // terminal names like "Northbound → Far Rockaway").
-                            // Fall back to first arrival's destination, then compass label.
+                        ForEach(Array(visibleDirections.enumerated()), id: \.element.id) { index, direction in
                             let label =
                                 direction.directionLabel
                                 ?? direction.liveArrivals.first?.destination
                                 ?? direction.arrivals.first?.destination
                                 ?? directionLabel(direction.direction)
+
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(label)
                                     .font(.custom("Helvetica-Bold", size: 15))
@@ -246,31 +224,16 @@ struct GroupedRouteRow: View {
                                     .lineLimit(1)
                                     .minimumScaleFactor(0.85)
 
-                                // Direction terminus (when different from
-                                // the main destination label above)
-                                let terminus =
-                                    direction.directionLabel
-                                    ?? direction.direction
-                                if !terminus.isEmpty,
-                                    terminus.lowercased() != label.lowercased()
-                                {
-                                    Text("To \(terminus)")
-                                        .font(.custom("Helvetica", size: 12))
-                                        .foregroundColor(AppTheme.Colors.textSecondary)
-                                        .lineLimit(1)
-                                }
-
-                                // Walking distance — below the direction text
-                                if let dist = closestStopDistance,
-                                    dist < Double.greatestFiniteMagnitude
-                                {
+                                // Stop name from nearest-stop arrival
+                                if let arrival = countdownArrival(for: direction) {
                                     HStack(spacing: 3) {
-                                        Image(systemName: "figure.walk")
+                                        Image(systemName: "mappin.circle.fill")
                                             .font(.system(size: 9, weight: .semibold))
-                                        Text(formatDistanceImperial(dist))
-                                            .font(.custom("Helvetica-Bold", size: 11))
+                                        Text(arrival.stopName)
+                                            .font(.custom("Helvetica", size: 11))
+                                            .lineLimit(1)
                                     }
-                                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
+                                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
                                 }
                             }
                             .tag(index)
@@ -278,11 +241,24 @@ struct GroupedRouteRow: View {
                         }
                     }
                     .tabViewStyle(.page(indexDisplayMode: .never))
-                    .frame(height: 50)
+                    .frame(height: 38)
 
-                    // Pagination dots
+                    // Walking distance (same for all directions)
+                    if let dist = closestStopDistance,
+                        dist < Double.greatestFiniteMagnitude
+                    {
+                        HStack(spacing: 3) {
+                            Image(systemName: "figure.walk")
+                                .font(.system(size: 9, weight: .semibold))
+                            Text(formatDistanceImperial(dist))
+                                .font(.custom("Helvetica-Bold", size: 11))
+                        }
+                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
+                    }
+
+                    // Pagination dots (tappable to switch direction)
                     if visibleDirections.count > 1 {
-                        HStack(spacing: 4) {
+                        HStack(spacing: 5) {
                             ForEach(0..<visibleDirections.count, id: \.self) { index in
                                 Capsule()
                                     .fill(
@@ -291,16 +267,22 @@ struct GroupedRouteRow: View {
                                             : AppTheme.Colors.textSecondary.opacity(0.2)
                                     )
                                     .frame(
-                                        width: index == currentDirectionIndex ? 12 : 5, height: 5
+                                        width: index == currentDirectionIndex ? 14 : 6, height: 6
                                     )
                                     .animation(
                                         .spring(response: 0.35, dampingFraction: 0.8),
                                         value: currentDirectionIndex)
+                                    .onTapGesture {
+                                        HapticManager.impact(.light)
+                                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                            currentDirectionIndex = index
+                                        }
+                                    }
                             }
                         }
+                        .padding(.top, 1)
                     }
                 }
-                .frame(height: 60)
             }
 
             Spacer(minLength: 4)
@@ -345,6 +327,9 @@ struct GroupedRouteRow: View {
             HapticManager.selection()
             onSelect?(originalDirectionIndex)
         }
+        .onLongPressGesture(minimumDuration: 0.5, perform: {
+            triggerTracking()
+        })
         .onAppear {
             // Restore previously swiped direction for this route row.
             let restoredVisible = visibleIndex(forOriginal: initialDirectionIndex)
@@ -367,106 +352,17 @@ struct GroupedRouteRow: View {
         .accessibilityLabel(
             "\(group.isLIRR ? "LIRR" : group.isMNR ? "Metro-North" : group.isBus ? "Bus" : "Train") \(group.displayName), swipe for directions"
         )
-        .accessibilityHint("Double tap to see details. Swipe right to track.")
+        .accessibilityHint("Double tap to see details. Long press to track.")
         .accessibilityAction(named: "Track this route") {
             triggerTracking()
         }
     }
 
-    // MARK: - Swipe-to-Track Background
 
-    /// Blue background with bell icon revealed when the user swipes right.
-    private var swipeTrackBackground: some View {
-        HStack {
-            VStack(spacing: 4) {
-                Image(systemName: "bell.fill")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundColor(.white)
-                Text("Track")
-                    .font(.custom("Helvetica-Bold", size: 10))
-                    .foregroundColor(.white.opacity(0.9))
-            }
-            .frame(width: swipeThreshold)
-            .opacity(min(1.0, swipeOffset / swipeThreshold))
-            .scaleEffect(min(1.0, swipeOffset / swipeThreshold * 1.1))
-
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(red: 0.25, green: 0.58, blue: 0.96)) // Light blue
-    }
-
-    // MARK: - Swipe Gesture
-
-    /// Drag gesture that reveals the tracking action on right-swipe.
-    /// Ignores vertical drags (scrolling) by locking direction on first movement.
-    private var swipeToTrackGesture: some Gesture {
-        DragGesture(minimumDistance: 30)
-            .onChanged { value in
-                let dx = value.translation.width
-                let dy = value.translation.height
-
-                // First significant movement — decide if this is horizontal or vertical
-                if !swipeDirectionDecided {
-                    // Need enough movement to decide
-                    guard abs(dx) > 10 || abs(dy) > 10 else { return }
-                    swipeDirectionDecided = true
-                    // Lock to horizontal only when clearly swiping right (not vertical scroll)
-                    swipeLocked = dx > 0 && abs(dx) > abs(dy) * 1.5
-                }
-
-                // If locked as vertical (scroll), do nothing
-                guard swipeLocked else { return }
-
-                let translation = max(0, dx)
-                withAnimation(.interactiveSpring()) {
-                    if translation > swipeThreshold {
-                        let overShoot = translation - swipeThreshold
-                        swipeOffset = swipeThreshold + overShoot * 0.3
-                    } else {
-                        swipeOffset = translation
-                    }
-                }
-            }
-            .onEnded { value in
-                defer {
-                    // Reset direction lock for next gesture
-                    swipeLocked = false
-                    swipeDirectionDecided = false
-                }
-
-                guard swipeLocked else {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                        swipeOffset = 0
-                    }
-                    return
-                }
-
-                if value.translation.width > swipeThreshold {
-                    // ── Confirmed track! ──
-                    // Quick overshoot animation then snap back
-                    withAnimation(.spring(response: 0.25, dampingFraction: 0.6)) {
-                        swipeOffset = swipeThreshold + 20
-                    }
-                    // Snap back after a beat
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                            swipeOffset = 0
-                        }
-                    }
-                    triggerTracking()
-                } else {
-                    // Didn't reach threshold — snap back
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                        swipeOffset = 0
-                    }
-                }
-            }
-    }
 
     // MARK: - Tracking Trigger
 
-    /// Called when the swipe threshold is exceeded — triggers tracking and shows banner.
+    /// Called when the long-press completes — triggers tracking and shows banner.
     private func triggerTracking() {
         HapticManager.notification(.success)
         onTrack?(originalDirectionIndex)

@@ -146,13 +146,7 @@ struct NearbyDashboard: View {
                         distanceMeters: viewModel.nearestTransitDistance,
                         onCenter: { coordinate in
                             withAnimation(.easeInOut(duration: 0.6)) {
-                                cameraPosition = .camera(
-                                    MapCamera(
-                                        centerCoordinate: coordinate,
-                                        distance: AppTheme.MapConfig.userZoomDistance,
-                                        heading: 0,
-                                        pitch: is3DMode ? 60 : 0
-                                    ))
+                                cameraPosition = MapCameraPresets.center(on: coordinate, is3D: is3DMode)
                             }
                         }
                     )
@@ -445,9 +439,11 @@ struct FlatTransitList: View {
     var body: some View {
         VStack(spacing: 0) {
             ForEach(Array(arrivals.enumerated()), id: \.element.id) { index, arrival in
+                let thisIsTracking = viewModel.isTracking(arrival)
                 NearbyTransitRow(
                     arrival: arrival,
-                    isTracking: viewModel.isTracking(arrival),
+                    isTracking: thisIsTracking,
+                    isTrackingAnother: !thisIsTracking && viewModel.isTrackingAny,
                     isLiveOnMap: viewModel.isVehicleLiveOnMap(arrival),
                     onTrack: {
                         viewModel.trackNearbyArrival(
@@ -547,13 +543,7 @@ struct OutOfServiceAreaCard: View {
 
             Button {
                 withAnimation(.easeInOut(duration: 1.0)) {
-                    cameraPosition = .camera(
-                        MapCamera(
-                            centerCoordinate: AppTheme.MapConfig.nycCenter,
-                            distance: AppTheme.MapConfig.userZoomDistance * 1.5,
-                            heading: 0,
-                            pitch: is3DMode ? 60 : 0
-                        ))
+                    cameraPosition = MapCameraPresets.explorer(is3D: is3DMode)
                 }
             } label: {
                 Text("Explore New York City")

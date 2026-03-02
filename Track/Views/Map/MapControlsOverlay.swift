@@ -154,18 +154,13 @@ struct MapControlsOverlay: View {
     // MARK: - Actions
     
     private func toggle3DMode() {
-        withAnimation(.easeInOut(duration: 0.8)) {
+        withAnimation(MapCameraPresets.smoothAnimation) {
             is3DMode.toggle()
             
             let center = currentMapCenter ?? locationManager.currentLocation?.coordinate ?? AppTheme.MapConfig.nycCenter
-            let distance = currentMapDistance ?? AppTheme.MapConfig.userZoomDistance
+            let distance = currentMapDistance ?? MapCameraPresets.defaultDistance
             
-            cameraPosition = .camera(MapCamera(
-                centerCoordinate: center,
-                distance: distance,
-                heading: 0,
-                pitch: is3DMode ? 60 : 0
-            ))
+            cameraPosition = MapCameraPresets.center(on: center, distance: distance, is3D: is3DMode)
         }
     }
     
@@ -174,20 +169,15 @@ struct MapControlsOverlay: View {
         onRecenter?()
         
         // Collapse the sheet to half-height to reveal the map
-        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+        withAnimation(MapCameraPresets.snapAnimation) {
             sheetDetent = .fraction(0.4)
         }
         
         let userLocation = locationManager.currentLocation?.coordinate
         let finalTarget = userLocation ?? AppTheme.MapConfig.nycCenter
         
-        withAnimation(.spring(response: 0.8, dampingFraction: 0.8)) {
-            cameraPosition = .camera(MapCamera(
-                centerCoordinate: finalTarget,
-                distance: AppTheme.MapConfig.userZoomDistance,
-                heading: 0,
-                pitch: is3DMode ? 60 : 0
-            ))
+        withAnimation(MapCameraPresets.smoothAnimation) {
+            cameraPosition = MapCameraPresets.center(on: finalTarget, is3D: is3DMode)
         }
     }
     

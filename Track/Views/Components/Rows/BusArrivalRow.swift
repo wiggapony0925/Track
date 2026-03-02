@@ -13,6 +13,8 @@ import SwiftUI
 struct BusArrivalRow: View {
     let arrival: BusArrival
     var isTracking: Bool = false
+    /// True when the user is tracking a DIFFERENT route — shows "Switch" instead of "Track".
+    var isTrackingAnother: Bool = false
     var reliabilityWarning: Int? = nil
     var onTrack: (() -> Void)?
 
@@ -146,17 +148,28 @@ struct BusArrivalRow: View {
                         HStack(spacing: 6) {
                             Image(
                                 systemName: isTracking
-                                    ? "antenna.radiowaves.left.and.right" : "bell.fill"
+                                    ? "antenna.radiowaves.left.and.right"
+                                    : isTrackingAnother
+                                        ? "arrow.triangle.2.circlepath"
+                                        : "bell.fill"
                             )
                             .font(.system(size: 12, weight: .bold))
-                            Text(isTracking ? "Tracking" : "Track This Bus")
+                            Text(isTracking
+                                ? "Tracking"
+                                : isTrackingAnother
+                                    ? "Switch to This"
+                                    : "Track This Bus")
                                 .font(.custom("Helvetica-Bold", size: 13))
                         }
                         .foregroundColor(AppTheme.Colors.textOnColor)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 10)
                         .background(
-                            isTracking ? AppTheme.Colors.successGreen : AppTheme.Colors.mtaBlue
+                            isTracking
+                                ? AppTheme.Colors.successGreen
+                                : isTrackingAnother
+                                    ? AppTheme.Colors.warningYellow
+                                    : AppTheme.Colors.mtaBlue
                         )
                         .cornerRadius(AppTheme.Layout.cornerRadius)
                     }

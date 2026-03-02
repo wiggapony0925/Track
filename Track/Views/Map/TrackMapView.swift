@@ -62,14 +62,14 @@ struct TrackMapView: View {
         return AppTheme.Colors.mtaBlue
     }
 
-    /// Stroke style for bus route polylines — rounded caps for smooth joins.
+    /// Stroke style for bus route polylines — thick rounded caps like Transit app.
     private var busRouteStrokeStyle: StrokeStyle {
-        StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round)
+        StrokeStyle(lineWidth: 9, lineCap: .round, lineJoin: .round)
     }
 
-    /// Stroke style for subway/rail route polylines — solid with rounded ends.
+    /// Stroke style for subway/rail route polylines — bold with rounded ends.
     private static let subwayRouteStrokeStyle = StrokeStyle(
-        lineWidth: 5, lineCap: .round, lineJoin: .round)
+        lineWidth: 9, lineCap: .round, lineJoin: .round)
 
     var body: some View {
         Map(
@@ -285,11 +285,18 @@ struct TrackMapView: View {
     @MapContentBuilder
     private var walkingRoutePolyline: some MapContent {
         if let walkingRoute = viewModel.walkingRoute {
+            // Soft route-colored glow layer underneath for depth
             MapPolyline(walkingRoute.polyline)
                 .stroke(
-                    Color.gray,
+                    selectedRouteColor.opacity(0.35),
                     style: StrokeStyle(
-                        lineWidth: 4, lineCap: .round, lineJoin: .round, dash: [8, 8]))
+                        lineWidth: 8, lineCap: .round, lineJoin: .round, dash: [1, 12]))
+            // White dotted line on top — crisp Transit-style walk indicator
+            MapPolyline(walkingRoute.polyline)
+                .stroke(
+                    Color.white,
+                    style: StrokeStyle(
+                        lineWidth: 4, lineCap: .round, lineJoin: .round, dash: [1, 12]))
         }
     }
 
@@ -382,24 +389,22 @@ struct TrackMapView: View {
         }
     }
 
-    /// Reusable polyline stroke — draws white casing + colored line for subway/rail,
-    /// or a single colored line for bus routes.
+    /// Reusable polyline stroke — Transit-style bold casing + colored inner line.
+    /// Bus: white casing + colored fill (same treatment as rail for consistency).
+    /// Rail: wider white casing for extra depth on the dark muted map.
     @MapContentBuilder
     private func polylineStroke(
         coords: [CLLocationCoordinate2D], color: Color,
         casingOpacity: Double, isBus: Bool
     ) -> some MapContent {
-        if isBus {
-            MapPolyline(coordinates: coords)
-                .stroke(color, style: busRouteStrokeStyle)
-        } else {
-            MapPolyline(coordinates: coords)
-                .stroke(
-                    .white.opacity(casingOpacity),
-                    style: StrokeStyle(lineWidth: 7, lineCap: .round, lineJoin: .round))
-            MapPolyline(coordinates: coords)
-                .stroke(color, style: Self.subwayRouteStrokeStyle)
-        }
+        // White casing — wide enough to give the raised 3D look Transit uses
+        MapPolyline(coordinates: coords)
+            .stroke(
+                .white.opacity(casingOpacity),
+                style: StrokeStyle(lineWidth: isBus ? 13 : 15, lineCap: .round, lineJoin: .round))
+        // Colored fill on top
+        MapPolyline(coordinates: coords)
+            .stroke(color, style: isBus ? busRouteStrokeStyle : Self.subwayRouteStrokeStyle)
     }
 
     // MARK: - System Map Polylines

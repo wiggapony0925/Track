@@ -1070,6 +1070,9 @@ final class HomeViewModel {
 
     // MARK: - Tracking Helpers
 
+    /// Whether ANY route is currently being tracked (regardless of which one).
+    var isTrackingAny: Bool { currentTrackedRoute != nil }
+
     /// Checks if a nearby arrival matches the currently tracked route.
     func isTracking(_ arrival: NearbyTransitResponse) -> Bool {
         guard let tracked = currentTrackedRoute else { return false }
@@ -1533,6 +1536,7 @@ final class HomeViewModel {
     func selectGroupedRoute(
         _ group: GroupedNearbyTransitResponse, directionIndex: Int = 0, userLocation: CLLocation?
     ) async {
+        if let userLocation { self.lastKnownUserLocation = userLocation }
         selectedGroupedRoute = group
         selectedDirectionIndex = directionIndex
         isRouteDetailPresented = true
@@ -1685,6 +1689,10 @@ final class HomeViewModel {
         // Use referenceLocation — single source of truth for pin vs GPS.
         let refLocation = referenceLocation
         let fallbackStops = routeShape?.stopsForDirection(index: selectedDirectionIndex) ?? []
+
+        var targetStopCoord: CLLocationCoordinate2D?
+        var targetStopId: String?
+
         if !fallbackStops.isEmpty, let userLoc = refLocation {
             var closestStop: BusStop?
             var minDistance: CLLocationDistance = .greatestFiniteMagnitude
@@ -1699,39 +1707,41 @@ final class HomeViewModel {
             }
 
             if let closest = closestStop {
-                let closestCoord = CLLocationCoordinate2D(
-                    latitude: closest.lat, longitude: closest.lon)
-                nearestStopCoordinate = closestCoord
-                // Highlight the nearest stop in the arrivals list
-                selectedStopId = closest.id
+                targetStopCoord = CLLocationCoordinate2D(latitude: closest.lat, longitude: closest.lon)
+                targetStopId = closest.id
+                
                 #if DEBUG
                 print("[WALK DIST] \(group.routeId) (\(group.mode))  source=routeShape (\(fallbackStops.count) stops)  nearest stop='\(closest.name)' id=\(closest.id)  (\(String(format: "%.5f", closest.lat)),\(String(format: "%.5f", closest.lon)))  straight-line=\(Int(minDistance))m / \(String(format: "%.2f", minDistance / 1609.34))mi  ← polyline targets this stop")
                 #endif
-
-                // Fetch walking route in background
-                let from = userLoc.coordinate
-                Task { await fetchWalkingRoute(from: from, to: closestCoord) }
             }
-        } else if fallbackStops.isEmpty {
-            // Fallback: zoom to the first arrival's stop coordinates when
-            // route shape data is unavailable (common for buses when the
-            // OBA API is slow or returns empty data).
-            if let first = group.directions.first?.arrivals.first,
+        }
+        
+        // Fallback: zoom to the first arrival's stop coordinates when
+        // route shape data is unavailable or user location is missing.
+        if targetStopCoord == nil {
+            let activeDirection = group.directions.indices.contains(selectedDirectionIndex) ? group.directions[selectedDirectionIndex] : group.directions.first
+            if let first = activeDirection?.arrivals.first,
                 let lat = first.stopLat, let lon = first.stopLon
             {
-                let fallbackCoord = CLLocationCoordinate2D(latitude: lat, longitude: lon)
-                nearestStopCoordinate = fallbackCoord
-                // Highlight the nearest stop in the arrivals list
-                selectedStopId = first.stopId
+                targetStopCoord = CLLocationCoordinate2D(latitude: lat, longitude: lon)
+                targetStopId = first.stopId
 
+                #if DEBUG
                 if let userLoc = refLocation {
-                    #if DEBUG
                     let fallbackDist = userLoc.distance(from: CLLocation(latitude: lat, longitude: lon))
                     print("[WALK DIST] \(group.routeId) (\(group.mode))  source=arrivalFallback (no shape stops)  stop='\(first.stopName)'  (\(String(format: "%.5f", lat)),\(String(format: "%.5f", lon)))  straight-line=\(Int(fallbackDist))m / \(String(format: "%.2f", fallbackDist / 1609.34))mi  ← polyline targets this stop")
-                    #endif
-                    let from = userLoc.coordinate
-                    Task { await fetchWalkingRoute(from: from, to: fallbackCoord) }
                 }
+                #endif
+            }
+        }
+
+        if let targetCoord = targetStopCoord {
+            nearestStopCoordinate = targetCoord
+            selectedStopId = targetStopId
+            
+            if let userLoc = refLocation {
+                let from = userLoc.coordinate
+                Task { await fetchWalkingRoute(from: from, to: targetCoord) }
             }
         }
 
@@ -1965,152 +1975,70 @@ final class HomeViewModel {
         if let first = group.directions.first?.arrivals.first,
             let lat = first.stopLat, let lon = first.stopLon
         {
-            return .camera(
-                MapCamera(
-                    centerCoordinate: CLLocationCoordinate2D(latitude: lat, longitude: lon),
-                    distance: 3000
-                ))
+            return MapCameraPresets.center(
+                on: CLLocationCoordinate2D(latitude: lat, longitude: lon),
+                is3D: false
+            )
         }
         return .automatic
     }
 
-    /// Computes a camera position that fits the entire route shape on screen,
-    /// including the user's location when available. Works for all modes:
-    /// subway, bus, LIRR, and Metro-North.
-    func cameraPositionFittingRoute(userLocation: CLLocation?, is3D: Bool) -> MapCameraPosition? {
-        guard let shape = routeShape else { return nil }
+    /// Computes a camera position that frames the user's walking path
+    /// to the nearest stop. The route polyline is already drawn on the map —
+    /// users can pan to explore it — so we zoom to what matters most:
+    /// seeing yourself and how to get to the station/stop.
+    ///
+    /// When `sheetFraction > 0` the returned camera already accounts for
+    /// the bottom sheet — callers should **not** wrap the result in
+    /// `aboveSheet()` to avoid double-compensation.
+    ///
+    /// Delegates to `MapCameraPresets.fitWalkingPathAboveSheet` when a
+    /// sheet is visible, or `fitWalkingPath` otherwise.
+    func cameraPositionFittingRoute(
+        userLocation: CLLocation?,
+        is3D: Bool,
+        sheetFraction: Double = 0
+    ) -> MapCameraPosition? {
+        guard routeShape != nil else { return nil }
 
-        // Use the effective location (search pin when drag-to-search is active)
-        // so the map fits the route relative to where the user is exploring.
         let refLocation = effectiveLocation(userLocation: userLocation)
 
-        // Collect all coordinates: polyline points + stop locations
-        var allCoords: [CLLocationCoordinate2D] = []
-
-        // Use direction-specific polylines when a direction is selected
-        let group = selectedGroupedRoute
-        let hasDirections = (group?.directions.count ?? 0) > 1
-        let polylines: [[CLLocationCoordinate2D]]
-        if hasDirections, !shape.directions.isEmpty {
-            polylines = shape.polylinesForDirection(index: selectedDirectionIndex)
-        } else {
-            polylines = shape.decodedPolylines
-        }
-
-        for coords in polylines {
-            allCoords.append(contentsOf: coords)
-        }
-
-        // Also include stop coordinates as a fallback anchor
-        let stops = hasDirections ? shape.stopsForDirection(index: selectedDirectionIndex) : shape.stops
-        for stop in stops {
-            allCoords.append(CLLocationCoordinate2D(latitude: stop.lat, longitude: stop.lon))
-        }
-
-        guard !allCoords.isEmpty else { return nil }
-
-        // Compute bounding box of route geometry ONLY (without user location)
-        var minLat = allCoords[0].latitude
-        var maxLat = allCoords[0].latitude
-        var minLon = allCoords[0].longitude
-        var maxLon = allCoords[0].longitude
-
-        for coord in allCoords {
-            minLat = min(minLat, coord.latitude)
-            maxLat = max(maxLat, coord.latitude)
-            minLon = min(minLon, coord.longitude)
-            maxLon = max(maxLon, coord.longitude)
-        }
-
-        // Include effective location so the map shows both you (or your search center) and the route
-        if let loc = refLocation?.coordinate {
-            allCoords.append(loc)
-        }
-
-        // Recompute bounding box WITH user location
-        var fullMinLat = allCoords[0].latitude
-        var fullMaxLat = allCoords[0].latitude
-        var fullMinLon = allCoords[0].longitude
-        var fullMaxLon = allCoords[0].longitude
-
-        for coord in allCoords {
-            fullMinLat = min(fullMinLat, coord.latitude)
-            fullMaxLat = max(fullMaxLat, coord.latitude)
-            fullMinLon = min(fullMinLon, coord.longitude)
-            fullMaxLon = max(fullMaxLon, coord.longitude)
-        }
-
-        // Check if including the user location pushes the span beyond max zoom.
-        // If the full span (route + user) exceeds max altitude but the route-only
-        // span is within limits, center on the nearest stop instead of trying
-        // to fit both user and route endpoints across the city.
-        let fullLatSpan = (fullMaxLat - fullMinLat) * 111_000
-        let fullCenterLat = (fullMinLat + fullMaxLat) / 2
-        let fullLonSpan = (fullMaxLon - fullMinLon) * 111_000 * cos(fullCenterLat * .pi / 180)
-        let fullSpanMeters = max(fullLatSpan, fullLonSpan)
-        let fullPadded = fullSpanMeters * AppSettings.shared.smartZoomPaddingMultiplier
-
-        let routeLatSpan = (maxLat - minLat) * 111_000
-        let routeCenterLat = (minLat + maxLat) / 2
-        let routeLonSpan = (maxLon - minLon) * 111_000 * cos(routeCenterLat * .pi / 180)
-        let routeSpanMeters = max(routeLatSpan, routeLonSpan)
-        let routePadded = routeSpanMeters * AppSettings.shared.smartZoomPaddingMultiplier
-
-        // If the route+user span exceeds max zoom, just fit the route itself.
-        // If even the route alone exceeds max zoom (very long route like LIRR),
-        // center on the nearest stop at max zoom.
-        let useRouteOnly = fullPadded > AppSettings.shared.smartZoomMaxAltitude
-
-        let center: CLLocationCoordinate2D
-        let distance: Double
-
-        if useRouteOnly && routePadded > AppSettings.shared.smartZoomMaxAltitude {
-            // Route itself is too long (e.g. LIRR spanning Manhattan → Montauk).
-            // Center on the nearest stop to the effective location (search pin
-            // when drag-to-search is active, otherwise the user's GPS).
-            if let refLoc = refLocation,
-                let nearest = stops.min(by: {
-                    let d1 = CLLocation(latitude: $0.lat, longitude: $0.lon).distance(from: refLoc)
-                    let d2 = CLLocation(latitude: $1.lat, longitude: $1.lon).distance(from: refLoc)
-                    return d1 < d2
-                })
-            {
-                center = CLLocationCoordinate2D(latitude: nearest.lat, longitude: nearest.lon)
-            } else if let refLoc = refLocation {
-                // No stops available (e.g. commuter rail) — stay near the
-                // user's current location instead of zooming to the geometric
-                // center of a 100-mile route, which would be confusing.
-                center = refLoc.coordinate
-            } else {
-                // No stops AND no user location — don't zoom at all.
-                return nil
-            }
-            distance = AppSettings.shared.smartZoomMaxAltitude
-        } else if useRouteOnly {
-            // Route fits within max zoom but user location is too far away.
-            // Just fit the route without the user location.
-            center = CLLocationCoordinate2D(
-                latitude: routeCenterLat, longitude: (minLon + maxLon) / 2)
-            distance = max(
-                AppSettings.shared.smartZoomMinAltitude,
-                min(routePadded, AppSettings.shared.smartZoomMaxAltitude)
-            )
-        } else {
-            // Everything fits — use the full bounding box including user location.
-            center = CLLocationCoordinate2D(
-                latitude: fullCenterLat, longitude: (fullMinLon + fullMaxLon) / 2)
-            distance = max(
-                AppSettings.shared.smartZoomMinAltitude,
-                min(fullPadded, AppSettings.shared.smartZoomMaxAltitude)
+        // ── Optimal: actual walking route polyline (if fetched) ─────
+        if let route = walkingRoute {
+            return MapCameraPresets.fitWalkingRouteAboveSheet(
+                route: route,
+                is3D: is3D,
+                sheetFraction: sheetFraction
             )
         }
 
-        return .camera(
-            MapCamera(
-                centerCoordinate: center,
-                distance: distance,
-                heading: 0,
-                pitch: is3D ? 60 : 0
-            ))
+        // ── Primary: fit user → nearest stop (straight-line fallback) ──────────
+        if let nearestCoord = nearestStopCoordinate, let userLoc = refLocation {
+            return MapCameraPresets.fitWalkingPathAboveSheet(
+                user: userLoc.coordinate,
+                stop: nearestCoord,
+                is3D: is3D,
+                sheetFraction: sheetFraction
+            )
+        }
+
+        // ── Secondary: nearest stop known but no user location ───────
+        if let nearestCoord = nearestStopCoordinate {
+            let base = MapCameraPresets.center(
+                on: nearestCoord,
+                distance: 1200,
+                is3D: is3D
+            )
+            return sheetFraction > 0.05
+                ? MapCameraPresets.sheetCompensated(base, sheetFraction: sheetFraction)
+                : base
+        }
+
+        // ── Fallback: center on user at a comfortable zoom ──────────
+        if let userLoc = refLocation {
+            return MapCameraPresets.focusVehicle(at: userLoc.coordinate, is3D: is3D)
+        }
+
+        return nil
     }
 }
