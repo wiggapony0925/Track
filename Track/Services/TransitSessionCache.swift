@@ -33,8 +33,19 @@ enum TransitSessionCache {
         let encoder = JSONEncoder()
         guard let data = try? encoder.encode(groups) else { return }
 
+        let count = groups.count
+        let kb = data.count / 1024
         DispatchQueue.global(qos: .utility).async {
-            try? data.write(to: url, options: .atomic)
+            do {
+                try data.write(to: url, options: .atomic)
+                #if DEBUG
+                print("[CACHE] 💾 Saved \(count) route groups (\(kb)KB) to session cache")
+                #endif
+            } catch {
+                #if DEBUG
+                print("[CACHE] ❌ Failed to save session cache: \(error.localizedDescription)")
+                #endif
+            }
         }
     }
 

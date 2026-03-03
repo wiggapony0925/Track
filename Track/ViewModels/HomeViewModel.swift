@@ -94,7 +94,7 @@ final class HomeViewModel {
                 return routeIds.contains { normalizeMTARouteToken($0) == target }
             }
             #if DEBUG
-            if matchingStops.isEmpty {
+            if matchingStops.isEmpty && !nearbyBusStops.isEmpty {
                 print("[DIST] \(group.routeId) bus  ⚠️ NO matching stops (token=\(target), nearbyBusStops=\(nearbyBusStops.count))")
             }
             #endif
@@ -132,7 +132,7 @@ final class HomeViewModel {
                 }
             }
             #if DEBUG
-            if matchingStations.isEmpty {
+            if matchingStations.isEmpty && !nearbyStations.isEmpty {
                 print("[DIST] \(group.routeId) \(group.mode)  ⚠️ NO matching stations (token=\(target), nearbyStations=\(nearbyStations.count))")
             }
             #endif
@@ -1323,9 +1323,12 @@ final class HomeViewModel {
     /// - Returns: `true` when cached data was loaded; `false` otherwise.
     @discardableResult
     func loadSessionCache() -> Bool {
-        guard !hasLoadedOnce,
-              let cached = TransitSessionCache.load(),
-              !cached.isEmpty else {
+        guard !hasLoadedOnce else { return false }
+        guard let cached = TransitSessionCache.load(), !cached.isEmpty else {
+            AppLogger.shared.log(
+                "CACHE",
+                message: "📭 No session cache — showing skeletons for first load"
+            )
             return false
         }
 
@@ -1340,6 +1343,12 @@ final class HomeViewModel {
 
         hasLoadedOnce = true
         isRefreshing = true
+        // Set a recent refresh date so `canSkipRefresh` blocks the
+        // duplicate refresh that `handleScenePhaseChange(.active)` would
+        // otherwise fire (it sees hasLoadedOnce=true and calls refresh).
+        // The forced refresh from onAppearSetup still runs because it
+        // uses force=true which bypasses canSkipRefresh.
+        lastRefreshDate = Date()
         AppLogger.shared.log(
             "CACHE",
             message: "📦 Loaded \(cached.count) cached route groups — skipping skeletons"
