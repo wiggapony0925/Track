@@ -227,6 +227,12 @@ struct HomeView: View {
                 hasLoadedInitialData = true
                 let cachedLoc = CLLocation(latitude: lat, longitude: lon)
                 cameraPosition = MapCameraPresets.center(on: cachedLoc.coordinate, is3D: false)
+
+                // Phase 1: Load cached route cards from previous session (~5ms).
+                // Skips skeleton placeholders entirely — user sees real cards instantly.
+                viewModel.loadSessionCache()
+
+                // Phase 2: Fetch fresh data in background.
                 Task {
                     await viewModel.refresh(location: cachedLoc, force: true)
                     lastUpdated = Date()

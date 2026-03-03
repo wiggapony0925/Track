@@ -28,6 +28,10 @@ final class HomeViewModel {
     /// True after the first successful data load. Prevents skeleton placeholders
     /// from appearing on subsequent refreshes (e.g. return from background).
     var hasLoadedOnce = false
+    /// True while a background refresh is running after cached data has been
+    /// displayed on cold launch.  The UI shows a subtle "Updating…" indicator
+    /// instead of full skeleton placeholders.
+    var isRefreshing = false
     var errorMessage: String?
 
     /// True when `errorMessage` indicates a network/connectivity failure rather
@@ -1304,6 +1308,45 @@ final class HomeViewModel {
         return true
     }
 
+    // MARK: - Session Cache (Two-Phase Loading)
+
+    /// Loads cached transit data from the previous session so route cards
+    /// appear instantly on cold launch (~5ms disk read) instead of showing
+    /// skeleton placeholders for 5+ seconds while the network fetch runs.
+    ///
+    /// Call this **before** the first `refresh()` in `onAppearSetup()`.
+    /// When cache exists:
+    ///   - `groupedTransit` is populated immediately → skeletons never show
+    ///   - `hasLoadedOnce = true` → subsequent `refresh()` runs silently
+    ///   - `isRefreshing = true` → UI shows a subtle "Updating…" indicator
+    ///
+    /// - Returns: `true` when cached data was loaded; `false` otherwise.
+    @discardableResult
+    func loadSessionCache() -> Bool {
+        guard !hasLoadedOnce,
+              let cached = TransitSessionCache.load(),
+              !cached.isEmpty else {
+            return false
+        }
+
+        groupedTransit = cached
+
+        // Populate flat transit array for fallback code paths
+        var seenIDs = Set<String>()
+        nearbyTransit = cached
+            .flatMap(\.directions)
+            .flatMap(\.arrivals)
+            .filter { seenIDs.insert($0.id).inserted }
+
+        hasLoadedOnce = true
+        isRefreshing = true
+        AppLogger.shared.log(
+            "CACHE",
+            message: "📦 Loaded \(cached.count) cached route groups — skipping skeletons"
+        )
+        return true
+    }
+
     /// Refreshes the view based on current location and transport mode.
     /// Uses a "stale-while-revalidate" pattern: if data already exists,
     /// the refresh happens silently in the background so the user keeps
@@ -1322,6 +1365,7 @@ final class HomeViewModel {
         // force=true bypasses this (used by pull-to-refresh / mode switch).
         if !force && canSkipRefresh(for: loc) {
             AppLogger.shared.log("REFRESH", message: "⏭️ Skipped — data still fresh")
+            isRefreshing = false
             return false
         }
 
@@ -1377,6 +1421,7 @@ final class HomeViewModel {
         lastRefreshLocation = loc
         hasLoadedOnce = true
         isLoading = false
+        isRefreshing = false
         return true
     }
 

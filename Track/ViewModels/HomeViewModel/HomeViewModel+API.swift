@@ -1157,6 +1157,9 @@ extension HomeViewModel {
                 existing: groupedTransit
             )
 
+            // Persist for instant display on next cold launch
+            TransitSessionCache.save(groupedTransit)
+
             if !rawTransit.isEmpty || nearbyTransit.isEmpty {
                 // Deduplicate: Keep the first occurrence of each unique ID
                 var seenIDs = Set<String>()

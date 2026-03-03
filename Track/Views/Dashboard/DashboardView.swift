@@ -43,6 +43,21 @@ struct DashboardView: View {
                 lastUpdated: lastUpdated
             )
             
+            // MARK: - Refreshing Indicator (two-phase loading)
+            if viewModel.isRefreshing {
+                HStack(spacing: 6) {
+                    ProgressView()
+                        .scaleEffect(0.65)
+                        .tint(AppTheme.Colors.mtaBlue)
+                    Text("Updating arrivals…")
+                        .font(.custom("Helvetica", size: 12))
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 4)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+
             // MARK: - Scrollable Content
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
