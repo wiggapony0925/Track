@@ -1291,6 +1291,10 @@ extension HomeViewModel {
 
         // Start with all new (fresh) data.
         var merged = deduped
+        // Track uppercased route keys already in merged so the grace
+        // loop doesn't re-add a case-variant that the dedup already kept
+        // (e.g. cache has both "BxM2" and "BXM2" — only keep one).
+        var mergedKeys = Set(merged.map { $0.routeId.uppercased() })
 
         // Keep each old route that's NOT in the new data, up to a limit.
         // After 3 consecutive misses the route is stale (likely the user
@@ -1308,6 +1312,8 @@ extension HomeViewModel {
                 )
                 continue   // drop it from merged
             }
+            // Skip case-duplicate already in merged (e.g. BxM2 when BXM2 is already there)
+            guard mergedKeys.insert(graceKey).inserted else { continue }
             merged.append(oldGroup)
             AppLogger.shared.log(
                 "REFRESH",

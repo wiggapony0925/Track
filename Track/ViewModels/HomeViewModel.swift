@@ -82,6 +82,10 @@ final class HomeViewModel {
     /// Uses the same algorithm as the walking polyline on the map: iterate
     /// every stop coordinate in the group and return the minimum distance
     /// to the reference location — no separate data source, no race.
+    /// Routes whose DIST warning has already been printed this session.
+    /// Prevents the same warning from repeating on every SwiftUI render pass.
+    private static var _loggedDistWarnings: Set<String> = []
+
     func displayDistanceMeters(for group: GroupedNearbyTransitResponse, from location: CLLocation?) -> CLLocationDistance? {
         guard let location else { return nil }
 
@@ -94,8 +98,11 @@ final class HomeViewModel {
                 return routeIds.contains { normalizeMTARouteToken($0) == target }
             }
             #if DEBUG
-            if matchingStops.isEmpty && !nearbyBusStops.isEmpty {
-                print("[DIST] \(group.routeId) bus  ⚠️ NO matching stops (token=\(target), nearbyBusStops=\(nearbyBusStops.count))")
+            do {
+                let warnKey = "\(group.routeId)|bus"
+                if matchingStops.isEmpty && !nearbyBusStops.isEmpty && Self._loggedDistWarnings.insert(warnKey).inserted {
+                    print("[DIST] \(group.routeId) bus  ⚠️ NO matching stops (token=\(target), nearbyBusStops=\(nearbyBusStops.count))")
+                }
             }
             #endif
             // Always take the min of nearbyBusStops distance AND the group's
@@ -132,8 +139,11 @@ final class HomeViewModel {
                 }
             }
             #if DEBUG
-            if matchingStations.isEmpty && !nearbyStations.isEmpty {
-                print("[DIST] \(group.routeId) \(group.mode)  ⚠️ NO matching stations (token=\(target), nearbyStations=\(nearbyStations.count))")
+            do {
+                let warnKey = "\(group.routeId)|\(group.mode)"
+                if matchingStations.isEmpty && !nearbyStations.isEmpty && Self._loggedDistWarnings.insert(warnKey).inserted {
+                    print("[DIST] \(group.routeId) \(group.mode)  ⚠️ NO matching stations (token=\(target), nearbyStations=\(nearbyStations.count))")
+                }
             }
             #endif
             let groupDist = groupMinDistance(for: group, from: location)
