@@ -91,8 +91,19 @@ class ScheduleService:
             route_filter = ""
             route_params: list = []
             if route_id:
-                route_filter = "AND t.route_id = ?"
-                route_params = [route_id]
+                # Match case-insensitively and also check route_short_name
+                # so display names like "Bx12" match GTFS route_id "BX12",
+                # "S79" matches "S79+" via route_id prefix, and
+                # "S79" matches "S79-SBS" via route_short_name prefix.
+                route_filter = (
+                    "AND (t.route_id = ? COLLATE NOCASE"
+                    " OR t.route_id LIKE (? || '%') COLLATE NOCASE"
+                    " OR t.route_id IN"
+                    "   (SELECT route_id FROM routes"
+                    "    WHERE route_short_name = ? COLLATE NOCASE"
+                    "       OR route_short_name LIKE (? || '-%') COLLATE NOCASE))"
+                )
+                route_params = [route_id, route_id, route_id, route_id]
 
             query = """
                 SELECT 

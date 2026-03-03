@@ -1192,12 +1192,15 @@ async def get_nearby_stops(
                     )
                 )
             # Cache successful result (with bounded eviction)
-            _nearby_stops_cache[cache_key] = (_time.monotonic(), results)
-            if len(_nearby_stops_cache) > BUS_NEARBY_STOPS_MAX_SIZE:
-                # Evict oldest entries
-                by_age = sorted(_nearby_stops_cache, key=lambda k: _nearby_stops_cache[k][0])
-                for k in by_age[: max(1, len(by_age) // 4)]:
-                    _nearby_stops_cache.pop(k, None)
+            # Never cache empty results — a transient OBA failure should
+            # not poison subsequent requests for the full TTL window.
+            if results:
+                _nearby_stops_cache[cache_key] = (_time.monotonic(), results)
+                if len(_nearby_stops_cache) > BUS_NEARBY_STOPS_MAX_SIZE:
+                    # Evict oldest entries
+                    by_age = sorted(_nearby_stops_cache, key=lambda k: _nearby_stops_cache[k][0])
+                    for k in by_age[: max(1, len(by_age) // 4)]:
+                        _nearby_stops_cache.pop(k, None)
             return results
         except (httpx.HTTPStatusError, httpx.TimeoutException) as exc:
             last_error = exc

@@ -17,6 +17,14 @@ from pydantic import BaseModel
 
 from app.utils.transit_utils import resolve_subway_feed_key
 
+# ── Auto-load .env from project root ─────────────────────────────────────
+_ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
+try:
+    from dotenv import load_dotenv
+    load_dotenv(_ENV_PATH, override=False)
+except ImportError:  # python-dotenv not installed – env vars must be set externally
+    pass
+
 _SETTINGS_PATH = Path(__file__).resolve().parent.parent / "settings.json"
 
 
