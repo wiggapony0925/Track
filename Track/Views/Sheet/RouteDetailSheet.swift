@@ -609,28 +609,49 @@ struct RouteDetailSheet: View {
         .padding(.horizontal, AppTheme.Layout.margin)
     }
 
-    // MARK: - Countdown Chips
+    // MARK: - Passed-Stop Filter
 
-    /// Primary arrivals source for the Departures board.
+    /// Returns `true` when a live vehicle has physically moved PAST the
+    /// user's stop on the direction polyline — meaning the user can no
+    /// longer catch it.  Only applies to vehicles that are live on the map
+    /// (we have GPS); scheduled / non-map arrivals always return `false`.
     ///
-    /// Ordering strategy — matches the user's mental model of "what's heading
-    /// to my stop, in the order I'd see them arrive":
-    ///
-    ///  1. **Live vehicles first** — arrivals with a marker on the map, sorted
-    ///     by how close the vehicle physically is to the user's stop along the
-    ///     route polyline (closest → farthest).  This is stable across polls
-    ///     because polyline distance changes slowly & monotonically, unlike ETA
-    ///     which can jump when speed estimates change.
-    ///  2. **Non-live real-time arrivals** — have an `arrivalTs` but no map
-    ///     marker yet (e.g. bus just started its trip).  Sorted by ETA.
-    ///  3. **Scheduled arrivals last** — GTFS-static only.  Sorted by ETA.
-    ///  4. Deduplicate by vehicle/trip key throughout.
-    private var prioritizedArrivals: [NearbyTransitResponse] {
-        let direction = safeDirection
-        let liveOnly = direction.liveArrivals
-        guard !liveOnly.isEmpty else { return [] }
+    /// A 150 m grace buffer past the stop accommodates GPS jitter and the
+    /// bus dwelling slightly past the stop marker while doors are open.
+    private func hasVehiclePassedStop(
+        _ arrival: NearbyTransitResponse,
+        stopFraction: Double,
+        polyline: [CLLocationCoordinate2D]
+    ) -> Bool {
+        guard polyline.count >= 2 else { return false }
+        // Only check vehicles that are actually on the map
+        guard isLiveOnMap?(arrival) ?? false else { return false }
 
-        // ── Build the direction polyline (flattened) for distance sorting ──
+        // Get vehicle coordinate
+        let vehicleCoord: CLLocationCoordinate2D?
+        if arrival.isBus, let vid = arrival.vehicleId, !vid.isEmpty,
+           let bus = busVehicles.first(where: { $0.vehicleId == vid }) {
+            vehicleCoord = CLLocationCoordinate2D(latitude: bus.lat, longitude: bus.lon)
+        } else {
+            // TODO: Add train vehicle lookup when trainVehicles binding is available
+            vehicleCoord = nil
+        }
+        guard let vc = vehicleCoord,
+              let snap = VehicleInterpolator.snap(coordinate: vc, to: polyline),
+              snap.distanceFromPolyline < 500  // must be on-route
+        else { return false }
+
+        // How far past the stop (in meters) the vehicle is
+        let totalLength = VehicleInterpolator.polylineLength(polyline)
+        let pastDistance = (snap.fractionAlongPolyline - stopFraction) * totalLength
+
+        // Vehicle is past the stop by more than the grace buffer → gone
+        return pastDistance > 150
+    }
+
+    /// Builds the direction polyline and stop fraction used by the passed-stop
+    /// filter and polyline-distance sort.  Computed once per body evaluation.
+    private var directionPolylineAndStopFraction: (polyline: [CLLocationCoordinate2D], stopFraction: Double?) {
         let polyline: [CLLocationCoordinate2D] = {
             guard let shape = routeShape else { return [] }
             return shape.polylinesForDirection(
@@ -638,8 +659,8 @@ struct RouteDetailSheet: View {
             ).flatMap { $0 }
         }()
 
-        // ── Snap the user's nearest stop to the polyline ──
-        // This is the reference point: vehicles closer to this fraction are arriving sooner.
+        let liveOnly = safeDirection.liveArrivals
+
         let nearestStopKey: String? = {
             if let userStop = inSheetSelectedStopId, !userStop.isEmpty { return userStop }
             if let lockedKey = lockedStopKeyPerDirection[selectedDirectionIndex] {
@@ -663,18 +684,14 @@ struct RouteDetailSheet: View {
             return bestKey
         }()
 
-        // Snap the nearest stop to the polyline to get reference fraction
         let stopFraction: Double? = {
             guard polyline.count >= 2 else { return nil }
-            // Try to get stop coordinate from arrival data or shape
             let stopCoord: CLLocationCoordinate2D? = {
                 if let nk = nearestStopKey {
-                    // From arrival data
                     if let a = liveOnly.first(where: { ($0.stopId ?? $0.stopName) == nk }),
                        let lat = a.stopLat, let lon = a.stopLon {
                         return CLLocationCoordinate2D(latitude: lat, longitude: lon)
                     }
-                    // From route shape
                     if let shape = routeShape {
                         let stops = shape.stopsForDirection(index: selectedDirectionIndex, name: selectedDirectionName)
                         if let s = stops.first(where: { $0.id == nk || $0.name == nk }) {
@@ -688,12 +705,42 @@ struct RouteDetailSheet: View {
             return VehicleInterpolator.snap(coordinate: sc, to: polyline)?.fractionAlongPolyline
         }()
 
+        return (polyline, stopFraction)
+    }
+
+    // MARK: - Countdown Chips
+
+    /// Primary arrivals source for the Departures board.
+    ///
+    /// Ordering strategy — matches the user's mental model of "what's heading
+    /// to my stop, in the order I'd see them arrive":
+    ///
+    ///  1. **Filter out passed vehicles** — any live vehicle whose GPS shows it
+    ///     has physically moved past the user's stop on the polyline is removed.
+    ///  2. **Live vehicles first** — sorted by polyline distance to stop
+    ///     (closest → farthest).  Stable because distance changes monotonically.
+    ///  3. **Non-live real-time arrivals** — sorted by ETA.
+    ///  4. **Scheduled arrivals last** — sorted by ETA.
+    ///  5. Deduplicate by vehicle/trip key throughout.
+    private var prioritizedArrivals: [NearbyTransitResponse] {
+        let direction = safeDirection
+        let liveOnly = direction.liveArrivals
+        guard !liveOnly.isEmpty else { return [] }
+
+        let (polyline, stopFraction) = directionPolylineAndStopFraction
+
+        // ── Pre-filter: remove vehicles that have passed the stop ──
+        let reachable: [NearbyTransitResponse]
+        if let sf = stopFraction {
+            reachable = liveOnly.filter { !hasVehiclePassedStop($0, stopFraction: sf, polyline: polyline) }
+        } else {
+            reachable = liveOnly
+        }
+        guard !reachable.isEmpty else { return [] }
+
         // ── Helper: get vehicle's distance-to-stop along polyline ──
-        // Returns nil if no vehicle position or polyline available.
         func vehicleDistanceToStop(_ arrival: NearbyTransitResponse) -> Double? {
             guard let sf = stopFraction, polyline.count >= 2 else { return nil }
-
-            // Get vehicle coordinate
             let vehicleCoord: CLLocationCoordinate2D?
             if arrival.isBus, let vid = arrival.vehicleId, !vid.isEmpty,
                let bus = busVehicles.first(where: { $0.vehicleId == vid }) {
@@ -701,15 +748,10 @@ struct RouteDetailSheet: View {
             } else {
                 vehicleCoord = nil
             }
-
             guard let vc = vehicleCoord,
                   let snap = VehicleInterpolator.snap(coordinate: vc, to: polyline),
-                  snap.distanceFromPolyline < 500 // vehicle must be on-route
+                  snap.distanceFromPolyline < 500
             else { return nil }
-
-            // Distance along polyline from vehicle to stop.
-            // Positive = vehicle is before the stop (approaching).
-            // We use absolute distance since the vehicle could be slightly past.
             let totalLength = VehicleInterpolator.polylineLength(polyline)
             return abs(snap.fractionAlongPolyline - sf) * totalLength
         }
@@ -719,12 +761,11 @@ struct RouteDetailSheet: View {
         var realtimeNoMap: [NearbyTransitResponse] = []
         var scheduled: [NearbyTransitResponse] = []
 
-        for arrival in liveOnly {
+        for arrival in reachable {
             let onMap = isLiveOnMap?(arrival) ?? false
             if onMap, let dist = vehicleDistanceToStop(arrival) {
                 liveWithDistance.append((arrival, dist))
             } else if onMap || !arrival.isScheduledOnly {
-                // Live on map but no polyline distance, or real-time but not on map yet
                 realtimeNoMap.append(arrival)
             } else {
                 scheduled.append(arrival)
@@ -743,7 +784,7 @@ struct RouteDetailSheet: View {
         var seen = Set<String>()
         return combined.filter { arrival in
             guard let key = arrival.vehicleId ?? arrival.tripId else {
-                return true  // no key → scheduled placeholder, always keep
+                return true
             }
             return seen.insert(key).inserted
         }
@@ -776,7 +817,17 @@ struct RouteDetailSheet: View {
         // by `isLiveOnMap` (actual map marker presence), not the backend
         // status string.  This keeps chips in sync with what the user sees
         // on the route line.
-        let live = safeDirection.liveArrivals
+        let raw = safeDirection.liveArrivals
+        guard !raw.isEmpty else { return [] }
+
+        // ── Pre-filter: remove vehicles that have passed the stop ──
+        let (polyline, stopFraction) = directionPolylineAndStopFraction
+        let live: [NearbyTransitResponse]
+        if let sf = stopFraction {
+            live = raw.filter { !hasVehiclePassedStop($0, stopFraction: sf, polyline: polyline) }
+        } else {
+            live = raw
+        }
         guard !live.isEmpty else { return [] }
 
         // Deduplicate helper (used in multiple branches below)

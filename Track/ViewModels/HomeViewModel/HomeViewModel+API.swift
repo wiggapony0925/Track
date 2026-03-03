@@ -896,7 +896,34 @@ extension HomeViewModel {
 
                     let timeUntilArrival = nextStop.estimatedTime.timeIntervalSinceNow
                     let minutes = timeUntilArrival / 60.0
-                    let travelTime = 3.0
+
+                    // Estimate actual travel time from the schedule.
+                    // If the previous stop in the trip has a known time, use that.
+                    // Otherwise, compute from the inter-station distance at a
+                    // mode-appropriate speed (subway ~30 km/h avg with stops,
+                    // express ~45 km/h).  The old hardcoded 3.0 min caused
+                    // markers to sit at the previous stop for the entire dwell
+                    // and then race to the next.
+                    let travelTime: Double = {
+                        // Try to find the departure time from the previous station
+                        // in this trip's sorted arrivals.
+                        if previousIndex > 0, previousIndex < dirStops.count {
+                            let prevStopIdBase = dirStops[previousIndex].id.prefix(3)
+                            if let prevArrival = sorted.first(where: {
+                                $0.stationID.hasPrefix(prevStopIdBase)
+                            }) {
+                                let gap = nextStop.estimatedTime.timeIntervalSince(prevArrival.estimatedTime) / 60.0
+                                if gap > 0.5 && gap < 20 { return gap }
+                            }
+                        }
+                        // Fallback: estimate from haversine distance
+                        let dist = CLLocation(latitude: prevStop.lat, longitude: prevStop.lon)
+                            .distance(from: CLLocation(latitude: targetStop.lat, longitude: targetStop.lon))
+                        // ~30 km/h = 500 m/min for local, slightly faster for express
+                        let speedMpm: Double = dist > 2000 ? 750 : 500
+                        return max(1.0, dist / speedMpm)
+                    }()
+
                     let t = min(max(minutes / travelTime, 0.0), 1.0)
 
                     // progress: 0.0 at prevStop → 1.0 at targetStop
@@ -938,12 +965,19 @@ extension HomeViewModel {
                 }
 
                 // Smooth from previous display position toward the new target.
-                // This prevents a single-tick jump when the computed target
-                // shifts to a different inter-station segment.
+                // Use a time-aware blend that converges within ~2 seconds
+                // rather than the old asymptotic 0.35 factor that kept the
+                // marker permanently lagging behind the computed position.
                 var finalLat = targetLat
                 var finalLon = targetLon
                 if let prev = _previousTrainPositions[tripId] {
-                    let blendFactor = 0.35  // blend 35% toward target per tick (1 s)
+                    // Distance-adaptive blend: move faster when far away
+                    // (catch up after a next-stop shift), slower when close
+                    // (smooth micro-jitter).  0.55 per tick covers ~90% in
+                    // 3 ticks (3 s) vs old 0.35 which took 6+ ticks.
+                    let distance = CLLocation(latitude: prev.latitude, longitude: prev.longitude)
+                        .distance(from: CLLocation(latitude: targetLat, longitude: targetLon))
+                    let blendFactor = distance > 200 ? 0.7 : 0.55
                     finalLat = prev.latitude + (targetLat - prev.latitude) * blendFactor
                     finalLon = prev.longitude + (targetLon - prev.longitude) * blendFactor
                 }

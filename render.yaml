@@ -24,7 +24,7 @@ services:
     rootDir: TrackBackend
     dockerfilePath: ./Dockerfile
     dockerContext: .
-    healthCheckPath: /config
+    healthCheckPath: /health
     branch: main
     autoDeploy: true      # auto-deploy on every push to main
     numInstances: 1

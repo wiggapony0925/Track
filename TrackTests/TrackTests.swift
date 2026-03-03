@@ -5,12 +5,15 @@
 //  Created by Jeffrey Fernandez on 2/10/26.
 //
 
+import CoreLocation
 import Testing
 @testable import Track
 
+@MainActor
 struct TrackTests {
 
-    // MARK: - DelayCalculator Tests
+    // MARK: - DelayCalculator Tests (disabled — DelayCalculator was removed)
+    #if false
 
     @Test func delayCalculatorReturnsOriginalTimeInClearWeatherOffPeak() async throws {
         let prediction = DelayCalculator.predictLocally(
@@ -89,6 +92,7 @@ struct TrackTests {
         #expect(prediction.adjustedMinutes == 10)
         #expect(prediction.adjustmentReason == nil)
     }
+    #endif
 
     // MARK: - WeatherCondition Tests
 
@@ -326,6 +330,7 @@ struct TrackTests {
     }
 }
 
+@MainActor
 @Suite(.serialized)
 struct DistanceBucketUtilsTests {
     private let nearKey = "near_you_radius_meters"
@@ -606,7 +611,7 @@ struct DistanceBucketUtilsTests {
 
         // nearbyStations are NOT used for distance — only arrival coords matter.
         viewModel.nearbyStations = [
-            (stationID: "A27", name: "Chambers St", distance: 80.0, routeIDs: ["A", "C", "E"])
+            (stationID: "A27", name: "Chambers St", lat: 40.7128, lon: -74.0060, routeIDs: ["A", "C", "E"])
         ]
 
         let group = GroupedNearbyTransitResponse(
@@ -638,7 +643,7 @@ struct DistanceBucketUtilsTests {
 
         // nearbyStations has no station serving the G train.
         viewModel.nearbyStations = [
-            (stationID: "A27", name: "Chambers St", distance: 80.0, routeIDs: ["A", "C", "E"])
+            (stationID: "A27", name: "Chambers St", lat: 40.7128, lon: -74.0060, routeIDs: ["A", "C", "E"])
         ]
 
         let group = GroupedNearbyTransitResponse(
@@ -670,7 +675,7 @@ struct DistanceBucketUtilsTests {
 
         // nearbyStations present but irrelevant — only arrival coords matter.
         viewModel.nearbyStations = [
-            (stationID: "L01", name: "1 Av", distance: 200.0, routeIDs: ["L"])
+            (stationID: "L01", name: "1 Av", lat: 40.7128, lon: -74.0060, routeIDs: ["L"])
         ]
 
         let group = GroupedNearbyTransitResponse(

@@ -164,13 +164,13 @@ enum VehicleInterpolator {
         let startFrac = snapFrom.fractionAlongPolyline
         let endFrac = snapTo.fractionAlongPolyline
 
-        // Guard: if the snap fractions are inverted (end < start) or the
-        // span covers more than half the polyline, the stops snapped to
-        // the wrong parts of a looping/overlapping route.  Fall back to
-        // straight-line lerp to prevent the marker from sweeping across
-        // the entire polyline.
+        // Guard: if the snap fractions are inverted (end < start) the
+        // stops snapped to the wrong parts of a looping/overlapping route.
+        // Fall back to straight-line lerp.  We allow large spans (up to
+        // 0.95) so express routes that skip many stops still follow the
+        // polyline instead of being interpolated through buildings.
         let span = endFrac - startFrac
-        if span <= 0 || span > 0.5 {
+        if span <= 0 || span > 0.95 {
             let coord = lerpCoord(fromStop, toStop, t: progress)
             return (coord, bearingBetween(fromStop, toStop))
         }
