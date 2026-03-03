@@ -403,9 +403,33 @@ final class HomeViewModel {
     /// Tracks how many consecutive refresh cycles each route has been
     /// absent from the API response, keyed by data source ("nearby",
     /// "bus", "subway", "lirr", "mnr"). Routes are retained while
-    /// the location context is stable, and counters are cleared when
+    /// the location context is stable, and counters are expired when
     /// the context changes (search-pin set/clear, significant movement).
     var graceMissCountBySource: [String: [String: Int]] = [:]
+
+    /// Pre-seeds every currently-visible route at the eviction threshold
+    /// so that routes not present at the new location are immediately dropped
+    /// on the very next merge.  Routes that DO reappear have their count reset
+    /// by the merge logic's "reappeared" check.
+    private func expireAllGraceCounters() {
+        let evictionThreshold = 3  // must match maxGraceCycles in mergeGroupedTransit()
+        let sourceArrays: [(String, [GroupedNearbyTransitResponse])] = [
+            ("nearby", groupedTransit),
+            ("subway", nearbyGroupedSubwayArrivals),
+            ("bus", nearbyGroupedBusArrivals),
+            ("lirr", nearbyGroupedLIRRArrivals),
+            ("mnr", nearbyGroupedMNRArrivals),
+        ]
+        for (source, groups) in sourceArrays {
+            var counts = graceMissCountBySource[source] ?? [:]
+            for g in groups {
+                counts[g.routeId.uppercased()] = evictionThreshold
+            }
+            if !counts.isEmpty {
+                graceMissCountBySource[source] = counts
+            }
+        }
+    }
 
     // MARK: - Direction Preference Persistence
 
@@ -1401,12 +1425,12 @@ final class HomeViewModel {
         )
 
         // If the user has moved significantly since the last fetch,
-        // clear the grace period so stale routes from the old position
-        // don't linger in the new location's results.
+        // expire grace counters so stale routes from the old position
+        // are evicted on the very next merge.
         if let loc, let lastLoc = lastRefreshLocation {
             let moved = loc.distance(from: lastLoc)
             if moved >= AppSettings.shared.significantMovementMeters {
-                graceMissCountBySource.removeAll()
+                expireAllGraceCounters()
             }
         }
 
@@ -1556,9 +1580,9 @@ final class HomeViewModel {
         if let userLocation { lastKnownUserLocation = userLocation }
         searchPinCoordinate = coordinate
         isSearchPinActive = true
-        // New location context — clear grace so stale routes from the
-        // previous location don't persist.
-        graceMissCountBySource.removeAll()
+        // New location context — expire grace so stale routes from the
+        // previous location are evicted on the next merge.
+        expireAllGraceCounters()
         // Use the full mode-aware refresh so bus/subway/LIRR/MNR tabs
         // all get correct data at the drag-search location.
         let loc = effectiveLocation(userLocation: userLocation)
@@ -1574,7 +1598,7 @@ final class HomeViewModel {
         if let userLocation { lastKnownUserLocation = userLocation }
         isSearchPinActive = false
         searchPinCoordinate = nil
-        graceMissCountBySource.removeAll()
+        expireAllGraceCounters()
         goMode.walkingRoute = nil
         nearestStopCoordinate = nil
         nearestTransit = nil
