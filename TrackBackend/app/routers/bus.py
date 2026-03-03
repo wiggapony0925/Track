@@ -190,8 +190,8 @@ async def bus_stops(route_id: str, response: Response) -> list[BusStop]:
 @router.get("/nearby", response_model=list[BusStop])
 async def bus_nearby(
     response: Response,
-    lat: float = Query(..., description="Latitude"),
-    lon: float = Query(..., description="Longitude"),
+    lat: float = Query(..., ge=-90, le=90, description="Latitude"),
+    lon: float = Query(..., ge=-180, le=180, description="Longitude"),
     radius: int | None = Query(None, description="Search radius in meters"),
 ) -> list[BusStop]:
     """Return bus stops near a GPS coordinate."""

@@ -1,4 +1,5 @@
 
+import asyncio
 import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -159,8 +160,23 @@ class ScheduleService:
         finally:
             conn.close()
 
+    async def get_scheduled_arrivals_async(
+        self,
+        stop_id: str,
+        route_id: str | None = None,
+        limit: int = 10,
+    ) -> list[TrackArrival]:
+        """Async wrapper that runs the blocking SQLite query off the event loop."""
+        return await asyncio.to_thread(
+            self.get_scheduled_arrivals, stop_id, route_id, limit
+        )
+
     def _calculate_timing(self, gtfs_time: str) -> tuple[int, int]:
-        """Parse GTFS time HH:MM:SS and return (minutes_away, arrival_ts)."""
+        """Parse GTFS time HH:MM:SS and return (minutes_away, arrival_ts).
+
+        Handles GTFS times past midnight (e.g. 25:30:00 = 1:30 AM next day)
+        and correctly detects when a normalized time has already passed today.
+        """
         try:
             h, m, s = map(int, gtfs_time.split(':'))
             days = h // 24
@@ -171,11 +187,15 @@ class ScheduleService:
             if days > 0:
                 arrival_dt += timedelta(days=days)
             
-            ts = int(arrival_dt.timestamp())
+            # If the normalized time is in the past (e.g. "01:30:00" queried
+            # at 02:00 for a trip that started yesterday before midnight), the
+            # trip has already departed — clamp to 0 minutes away.
             diff = arrival_dt - now
+            ts = int(arrival_dt.timestamp())
             mins = max(0, int(diff.total_seconds() // 60))
             return mins, ts
-        except:
+        except (ValueError, TypeError, IndexError) as exc:
+            TrackLogger.warning(f"Bad GTFS time '{gtfs_time}': {exc}", tag="SCHEDULE")
             return 999, 0
 
 # Singleton instance

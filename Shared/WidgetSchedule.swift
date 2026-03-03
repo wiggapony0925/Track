@@ -51,7 +51,9 @@ struct WidgetSchedule: Codable, Identifiable, Equatable {
         do {
             return try JSONDecoder().decode([WidgetSchedule].self, from: data)
         } catch {
+            #if DEBUG
             print("[WidgetSchedule] Failed to decode schedules: \(error)")
+            #endif
             return []
         }
     }
@@ -62,7 +64,9 @@ struct WidgetSchedule: Codable, Identifiable, Equatable {
             let data = try JSONEncoder().encode(schedules)
             defaults.set(data, forKey: storageKey)
         } catch {
+            #if DEBUG
             print("[WidgetSchedule] Failed to encode schedules: \(error)")
+            #endif
         }
     }
     

@@ -107,6 +107,7 @@ struct DirectionArrivalsResponse: Codable, Identifiable, Equatable {
     /// as past — causing ghost "NOW" chips or blank chip sections.
     var liveArrivals: [NearbyTransitResponse] {
         let now = Date.now.timeIntervalSince1970
+        var seen = Set<String>()
         return arrivals.filter { arrival in
             // Filter out placeholders
             guard !arrival.isPlaceholder else { return false }
@@ -128,7 +129,28 @@ struct DirectionArrivalsResponse: Codable, Identifiable, Equatable {
                 && arrival.isScheduledOnly {
                 return false
             }
+            // Deduplicate arrivals that share the same stop + arrival time.
+            // MTA can assign slightly different trip IDs to the same physical
+            // train at the same stop, producing ghost duplicates (especially
+            // for subway where vehicle_id is unavailable).
+            let dedupKey: String
+            if let ts = arrival.arrivalTs {
+                dedupKey = "\(arrival.stopName)-\(ts)"
+            } else if let tid = arrival.tripId, !tid.isEmpty {
+                dedupKey = "\(arrival.stopName)-\(tid)"
+            } else {
+                dedupKey = arrival.id  // fallback to existing id
+            }
+            guard !seen.contains(dedupKey) else { return false }
+            seen.insert(dedupKey)
             return true
+        }
+        // Sort by arrival timestamp so display order is stable even when
+        // SmartETA corrections shift the effective minutes (e.g. raw 11→13m,
+        // raw 15→12m would appear out of order without this sort).
+        .sorted { lhs, rhs in
+            if let lt = lhs.arrivalTs, let rt = rhs.arrivalTs { return lt < rt }
+            return lhs.minutesAway < rhs.minutesAway
         }
     }
 

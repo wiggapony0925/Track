@@ -142,9 +142,9 @@ class TestBusDirectionGrouping:
     def test_same_direction_ref_merges(self):
         """All arrivals from multiple stops with the same DirectionRef merge."""
         arrivals = [
-            _make_bus_arrival(route_id="Q54", direction_ref=0, stop_id="MTA_001", stop_name="Stop A"),
-            _make_bus_arrival(route_id="Q54", direction_ref=0, stop_id="MTA_002", stop_name="Stop B"),
-            _make_bus_arrival(route_id="Q54", direction_ref=1, stop_id="MTA_003", stop_name="Stop C"),
+            _make_bus_arrival(route_id="Q54", direction_ref=0, stop_id="MTA_001", stop_name="Stop A", vehicle_id="MTABC_1111"),
+            _make_bus_arrival(route_id="Q54", direction_ref=0, stop_id="MTA_002", stop_name="Stop B", vehicle_id="MTABC_2222"),
+            _make_bus_arrival(route_id="Q54", direction_ref=1, stop_id="MTA_003", stop_name="Stop C", vehicle_id="MTABC_3333"),
         ]
         groups = _group_arrivals(arrivals)
         dir0 = [d for d in groups[0].directions if d.direction == "0"][0]

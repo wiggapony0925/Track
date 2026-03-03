@@ -203,7 +203,9 @@ struct LoginView: View {
                         isLoading = false
                     } catch {
                         isLoading = false
+                        #if DEBUG
                         print("[LoginView] Supabase sign-in error: \(error)")
+                        #endif
                         errorMessage = "Sign-in error: \(error.localizedDescription)"
                     }
                 }
@@ -219,6 +221,7 @@ struct LoginView: View {
             }
 
             // Dump everything Apple gives us so we can diagnose in Xcode console
+            #if DEBUG
             print("╔══════════════════════════════════════════════")
             print("║ [LoginView] APPLE SIGN-IN FAILED")
             print("║ Domain : \(nsError.domain)")
@@ -229,6 +232,7 @@ struct LoginView: View {
                 print("║ Underlying: domain=\(underlying.domain) code=\(underlying.code) \(underlying.localizedDescription)")
             }
             print("╚══════════════════════════════════════════════")
+            #endif
 
             switch ASAuthorizationError.Code(rawValue: nsError.code) {
             case .unknown:

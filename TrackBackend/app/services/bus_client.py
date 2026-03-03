@@ -307,6 +307,35 @@ _oba_auth_blocked_until: float = 0.0
 # Upstream concurrency guard — values sourced from cache_config.py
 _upstream_semaphore = asyncio.Semaphore(BUS_UPSTREAM_CONCURRENCY)
 
+# ---------------------------------------------------------------------------
+# Shared HTTP client (connection pooling)
+# ---------------------------------------------------------------------------
+
+_bus_shared_client: httpx.AsyncClient | None = None
+_bus_shared_client_loop_id: int | None = None
+
+
+def _get_bus_client() -> httpx.AsyncClient:
+    """Return a module-level shared AsyncClient for connection pooling.
+
+    Lazy-initialised so it's created inside the event loop.  Recreated
+    if the event loop changes (e.g. between test runs).
+    """
+    global _bus_shared_client, _bus_shared_client_loop_id
+    try:
+        current_loop_id = id(asyncio.get_running_loop())
+    except RuntimeError:
+        current_loop_id = None
+
+    if (
+        _bus_shared_client is None
+        or _bus_shared_client.is_closed
+        or _bus_shared_client_loop_id != current_loop_id
+    ):
+        _bus_shared_client = httpx.AsyncClient(timeout=_get_timeout())
+        _bus_shared_client_loop_id = current_loop_id
+    return _bus_shared_client
+
 
 @dataclass
 class _TTLCacheEntry:
@@ -773,37 +802,37 @@ async def _fetch_bus_json(
     _MAX_RETRIES = 2  # 1 initial + 1 retry
     last_exc: Exception | None = None
 
-    async with httpx.AsyncClient(timeout=_get_timeout()) as client:
-        for attempt in range(_MAX_RETRIES):
-            try:
-                async with _upstream_semaphore:
-                    response = await client.get(url, params=params)
-                if response.status_code in (401, 403):
-                    if is_siri:
-                        _record_siri_auth_failure()
-                    else:
-                        _record_oba_auth_failure(url)
-                    response.raise_for_status()
-                if response.status_code >= 500 and attempt < _MAX_RETRIES - 1:
-                    # Transient server error — wait briefly and retry
-                    await asyncio.sleep(0.3)
-                    continue
-                response.raise_for_status()
-                # Successful response — reset consecutive failure counter
+    client = _get_bus_client()
+    for attempt in range(_MAX_RETRIES):
+        try:
+            async with _upstream_semaphore:
+                response = await client.get(url, params=params)
+            if response.status_code in (401, 403):
                 if is_siri:
-                    _reset_siri_auth_failures()
-                data = response.json()
-                if data is None:
-                    return {}
-                return data
-            except httpx.HTTPStatusError:
-                raise
-            except Exception as exc:
-                last_exc = exc
-                if attempt < _MAX_RETRIES - 1:
-                    await asyncio.sleep(0.3)
-                    continue
-                raise
+                    _record_siri_auth_failure()
+                else:
+                    _record_oba_auth_failure(url)
+                response.raise_for_status()
+            if response.status_code >= 500 and attempt < _MAX_RETRIES - 1:
+                # Transient server error — wait briefly and retry
+                await asyncio.sleep(0.3)
+                continue
+            response.raise_for_status()
+            # Successful response — reset consecutive failure counter
+            if is_siri:
+                _reset_siri_auth_failures()
+            data = response.json()
+            if data is None:
+                return {}
+            return data
+        except httpx.HTTPStatusError:
+            raise
+        except Exception as exc:
+            last_exc = exc
+            if attempt < _MAX_RETRIES - 1:
+                await asyncio.sleep(0.3)
+                continue
+            raise
 
     # Should never reach here, but satisfy the type checker
     if last_exc:

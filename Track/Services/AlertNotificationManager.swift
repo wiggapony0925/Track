@@ -90,7 +90,9 @@ final class AlertNotificationManager {
 
         UNUserNotificationCenter.current().add(request) { error in
             if let error {
+                #if DEBUG
                 print("[ALERT_NOTIF] Failed to schedule: \(error.localizedDescription)")
+                #endif
             }
         }
     }

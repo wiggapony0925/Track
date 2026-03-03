@@ -170,8 +170,8 @@ async def subway_stations_all() -> AllSubwayStationsResponse:
 
 @router.get("/subway/stations/nearby", response_model=AllSubwayStationsResponse)
 async def subway_stations_nearby(
-    lat: float = Query(..., description="User latitude"),
-    lon: float = Query(..., description="User longitude"),
+    lat: float = Query(..., ge=-90, le=90, description="User latitude"),
+    lon: float = Query(..., ge=-180, le=180, description="User longitude"),
     radius: int = Query(1600, description="Search radius in meters (default ~1 mile)"),
 ) -> AllSubwayStationsResponse:
     """Return subway stations near the user's location.

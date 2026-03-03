@@ -71,12 +71,26 @@ class SupabaseManager: ObservableObject {
     private let baseURL: URL
     private let apiKey: String
     private var accessToken: String?
+
+    /// Dedicated session with a 15-second timeout (vs URLSession.shared's 60s default).
+    /// Prevents Supabase calls from hanging the UI when the server is slow or unreachable.
+    private let session: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 15
+        config.timeoutIntervalForResource = 30
+        return URLSession(configuration: config)
+    }()
     
     // Keychain keys for sensitive tokens
     private let accessTokenKey = "supabase_access_token"
     private let refreshTokenKey = "supabase_refresh_token"
     // UserDefaults key for non-sensitive user ID
     private let userIdKey = "supabase_user_id"
+
+    /// Coalesces concurrent token-refresh attempts into a single network call.
+    /// When multiple callers `await` this while a refresh is already in flight,
+    /// they all share the same result instead of each firing their own request.
+    private var activeRefreshTask: Task<Bool, Never>?
     
     private var defaults: UserDefaults {
         UserDefaults(suiteName: kAppGroupIdentifier) ?? .standard
@@ -130,8 +144,25 @@ class SupabaseManager: ObservableObject {
     }()
 
     private init() {
-        guard let url = URL(string: SupabaseConfig.url) else {
-            fatalError("[SupabaseManager] Invalid SUPABASE_URL: '\(SupabaseConfig.url)'. Check Info.plist configuration.")
+        // Gracefully handle invalid URLs instead of crashing in release.
+        // If the URL is malformed the app will show network errors rather
+        // than terminating with a fatalError — much better UX for users.
+        let urlString = SupabaseConfig.url
+        guard let url = URL(string: urlString) else {
+            #if DEBUG
+            fatalError("[SupabaseManager] Invalid SUPABASE_URL: '\(urlString)'. Check Info.plist configuration.")
+            #else
+            AppLogger.shared.logError("SupabaseManager.init", error: NSError(
+                domain: "SupabaseManager", code: -1,
+                userInfo: [NSLocalizedDescriptionKey: "Invalid SUPABASE_URL: '\(urlString)'"]
+            ))
+            // Fall back to the production URL so the app doesn't crash.
+            self.baseURL = URL(string: "https://octpebjxadbufiplgjqg.supabase.co")!
+            self.apiKey = SupabaseConfig.anonKey
+            migrateTokensToKeychainIfNeeded()
+            restoreSessionFromStorage()
+            return
+            #endif
         }
         self.baseURL = url
         self.apiKey = SupabaseConfig.anonKey
@@ -266,7 +297,7 @@ class SupabaseManager: ObservableObject {
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
         
         guard let httpResponse = response as? HTTPURLResponse else {
             throw SupabaseError.networkError
@@ -391,7 +422,28 @@ class SupabaseManager: ObservableObject {
 
     /// Attempts to refresh the access token using the stored refresh token.
     /// Returns `true` if the token was successfully refreshed.
+    ///
+    /// Concurrent callers are coalesced: if a refresh is already in flight,
+    /// subsequent callers await the same result instead of firing duplicate
+    /// network requests (which would consume the single-use refresh token).
     private func refreshAccessToken() async -> Bool {
+        // If a refresh is already in flight, piggy-back on it.
+        if let existing = activeRefreshTask {
+            AppLogger.shared.log("AUTH", message: "Token refresh already in flight — coalescing")
+            return await existing.value
+        }
+
+        let task = Task<Bool, Never> {
+            defer { activeRefreshTask = nil }
+            return await performTokenRefresh()
+        }
+        activeRefreshTask = task
+        return await task.value
+    }
+
+    /// The actual network call for token refresh, separated so the
+    /// coalescing wrapper in `refreshAccessToken()` stays clean.
+    private func performTokenRefresh() async -> Bool {
         guard let refreshToken = KeychainHelper.get(refreshTokenKey), !refreshToken.isEmpty else {
             AppLogger.shared.log("AUTH", message: "No refresh token available")
             return false
@@ -417,7 +469,7 @@ class SupabaseManager: ObservableObject {
         }
 
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await session.data(for: request)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
                 AppLogger.shared.log("AUTH", message: "Token refresh returned non-200")
                 return false
@@ -454,7 +506,7 @@ class SupabaseManager: ObservableObject {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
         
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw SupabaseError.networkError
         }
@@ -493,7 +545,7 @@ class SupabaseManager: ObservableObject {
         
         AppLogger.shared.log("SUPABASE", message: "Upsert profile for \(profile.id.uuidString)")
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
             AppLogger.shared.log("SUPABASE", message: "Upsert: no HTTP response")
             throw SupabaseError.upsertFailed
@@ -520,7 +572,7 @@ class SupabaseManager: ObservableObject {
         request.setValue(apiKey, forHTTPHeaderField: "apikey")
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw SupabaseError.networkError
         }
@@ -580,7 +632,7 @@ class SupabaseManager: ObservableObject {
         
         request.httpBody = try supabaseEncoder.encode(profile)
         
-        let (_, response) = try await URLSession.shared.data(for: request)
+        let (_, response) = try await session.data(for: request)
         
         guard let httpResponse = response as? HTTPURLResponse,
               (200...299).contains(httpResponse.statusCode) else {
@@ -701,7 +753,7 @@ class SupabaseManager: ObservableObject {
         
         do {
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
-            let (_, _) = try await URLSession.shared.data(for: request)
+            let (_, _) = try await session.data(for: request)
         } catch {
             AppLogger.shared.logError("Route interaction logging", error: error)
         }
@@ -728,7 +780,7 @@ class SupabaseManager: ObservableObject {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
         
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw SupabaseError.networkError
         }
@@ -772,7 +824,7 @@ class SupabaseManager: ObservableObject {
         
         request.httpBody = try JSONSerialization.data(withJSONObject: payload)
         
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
         
         guard let httpResponse = response as? HTTPURLResponse,
               (200...299).contains(httpResponse.statusCode) else {
@@ -796,7 +848,7 @@ class SupabaseManager: ObservableObject {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
         
-        let (_, response) = try await URLSession.shared.data(for: request)
+        let (_, response) = try await session.data(for: request)
         
         guard let httpResponse = response as? HTTPURLResponse,
               (200...299).contains(httpResponse.statusCode) else {
@@ -824,7 +876,7 @@ class SupabaseManager: ObservableObject {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
         
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw SupabaseError.networkError
         }
@@ -852,7 +904,7 @@ class SupabaseManager: ObservableObject {
         
         request.httpBody = try supabaseEncoder.encode(schedule)
         
-        let (_, response) = try await URLSession.shared.data(for: request)
+        let (_, response) = try await session.data(for: request)
         
         guard let httpResponse = response as? HTTPURLResponse,
               (200...299).contains(httpResponse.statusCode) else {
@@ -874,7 +926,7 @@ class SupabaseManager: ObservableObject {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
         
-        let (_, response) = try await URLSession.shared.data(for: request)
+        let (_, response) = try await session.data(for: request)
         
         guard let httpResponse = response as? HTTPURLResponse,
               (200...299).contains(httpResponse.statusCode) else {
@@ -900,7 +952,7 @@ class SupabaseManager: ObservableObject {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
         
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw SupabaseError.networkError
         }
@@ -931,7 +983,7 @@ class SupabaseManager: ObservableObject {
         
         request.httpBody = try supabaseEncoder.encode(settings)
         
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse,
               (200...299).contains(httpResponse.statusCode) else {
             let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
@@ -987,7 +1039,7 @@ class SupabaseManager: ObservableObject {
         
         request.httpBody = try supabaseEncoder.encode(pattern)
         
-        let (_, response) = try await URLSession.shared.data(for: request)
+        let (_, response) = try await session.data(for: request)
         
         guard let httpResponse = response as? HTTPURLResponse,
               (200...299).contains(httpResponse.statusCode) else {
@@ -1014,7 +1066,7 @@ class SupabaseManager: ObservableObject {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
         
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw SupabaseError.networkError
         }

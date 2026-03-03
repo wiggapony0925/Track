@@ -95,6 +95,20 @@ async def fetch_rail_arrivals(agency: str) -> list[TrackArrival]:
                 continue
                 
             minutes = _minutes_until(arrival_time)
+
+            # Derive delay-based status from GTFS-RT delay fields (seconds).
+            delay_secs = 0
+            if stu.HasField("arrival") and stu.arrival.HasField("delay"):
+                delay_secs = stu.arrival.delay
+            elif stu.HasField("departure") and stu.departure.HasField("delay"):
+                delay_secs = stu.departure.delay
+
+            if delay_secs >= 360:          # ≥ 6 min
+                status = f"Late ({delay_secs // 60}m)"
+            elif delay_secs >= 60:         # 1-5 min
+                status = f"Delayed ({delay_secs // 60}m)"
+            else:
+                status = "On Time"
             
             arrivals.append(
                 TrackArrival(
@@ -105,7 +119,7 @@ async def fetch_rail_arrivals(agency: str) -> list[TrackArrival]:
                     destination=destination,
                     minutes_away=minutes,
                     arrival_ts=arrival_time,
-                    status="On Time",  # TODO: Check delay field
+                    status=status,
                     trip_id=trip_update.trip.trip_id
                 )
             )

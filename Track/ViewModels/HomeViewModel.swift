@@ -100,7 +100,11 @@ final class HomeViewModel {
             #if DEBUG
             do {
                 let warnKey = "\(group.routeId)|bus"
-                if matchingStops.isEmpty && !nearbyBusStops.isEmpty && Self._loggedDistWarnings.insert(warnKey).inserted {
+                // Suppress the warning for graced routes — they're expected
+                // to have no matching nearby stops because they've disappeared
+                // from the fresh API response (e.g. express buses that left the radius).
+                let isGraced = (graceMissCountBySource["bus"]?[group.routeId.uppercased()] ?? 0) > 0
+                if matchingStops.isEmpty && !nearbyBusStops.isEmpty && !isGraced && Self._loggedDistWarnings.insert(warnKey).inserted {
                     print("[DIST] \(group.routeId) bus  ⚠️ NO matching stops (token=\(target), nearbyBusStops=\(nearbyBusStops.count))")
                 }
             }
@@ -1638,6 +1642,7 @@ final class HomeViewModel {
         routeShape = nil
 
         selectedRouteId = group.routeId
+        let loadingRouteId = group.routeId   // capture for staleness checks after await
 
         if group.isBus {
             // Load route shape + vehicles for bus routes
@@ -1646,6 +1651,7 @@ final class HomeViewModel {
 
             do {
                 let vehicles = try await vehiclesTask
+                guard selectedRouteId == loadingRouteId else { return }
                 busVehicles = vehicles
                 // Seed interpolation state so the first updateBusSimulation()
                 // ticks have correct data (no movement until refreshBusVehicles
@@ -1666,7 +1672,11 @@ final class HomeViewModel {
             // Polling handled by HomeView.onChange(of: selectedRouteId)
 
             do {
-                routeShape = try await shapeTask
+                let loadedShape = try await shapeTask
+                // Staleness check: if the user navigated away while the
+                // shape was loading, discard the result.
+                guard selectedRouteId == loadingRouteId else { return }
+                routeShape = loadedShape
                 if let shape = routeShape {
                     // Log decoded polyline details for debugging
                     let decoded = shape.decodedPolylines
@@ -1694,7 +1704,9 @@ final class HomeViewModel {
                 async let shapeTask = TrackAPI.fetchLIRRShape(routeID: group.routeId)
                 async let arrivalsTask = TrackAPI.fetchLIRRArrivals()
 
-                routeShape = try await shapeTask
+                let loadedShape = try await shapeTask
+                guard selectedRouteId == loadingRouteId else { return }
+                routeShape = loadedShape
                 populateStopsFromArrivals(group: group)
                 AppLogger.shared.log(
                     "LIRR_SHAPE",
@@ -1703,6 +1715,7 @@ final class HomeViewModel {
 
                 // Filter arrivals to this specific branch and interpolate
                 let allArrivals = try await arrivalsTask
+                guard selectedRouteId == loadingRouteId else { return }
                 let routeArrivals = allArrivals.filter { arrival in
                     let id = arrival.routeID.lowercased()
                     let target = group.routeId.lowercased()
@@ -1720,7 +1733,9 @@ final class HomeViewModel {
                 async let shapeTask = TrackAPI.fetchMNRShape(routeID: group.routeId)
                 async let arrivalsTask = TrackAPI.fetchMNRArrivals()
 
-                routeShape = try await shapeTask
+                let loadedShape = try await shapeTask
+                guard selectedRouteId == loadingRouteId else { return }
+                routeShape = loadedShape
                 populateStopsFromArrivals(group: group)
                 AppLogger.shared.log(
                     "MNR_SHAPE", message: "Loaded shape for \(group.routeId) (\(group.displayName))"
@@ -1729,6 +1744,7 @@ final class HomeViewModel {
 
                 // Filter arrivals to this specific line and interpolate
                 let allArrivals = try await arrivalsTask
+                guard selectedRouteId == loadingRouteId else { return }
                 let routeArrivals = allArrivals.filter { arrival in
                     let id = arrival.routeID.lowercased()
                     let target = group.routeId.lowercased()
@@ -1746,8 +1762,11 @@ final class HomeViewModel {
                 async let shapeTask = TrackAPI.fetchSubwayShape(routeID: group.displayName)
                 async let arrivalsTask = TrackAPI.fetchSubwayArrivals(lineID: group.displayName)
 
-                routeShape = try await shapeTask
+                let loadedShape = try await shapeTask
+                guard selectedRouteId == loadingRouteId else { return }
+                routeShape = loadedShape
                 let arrivals = try await arrivalsTask
+                guard selectedRouteId == loadingRouteId else { return }
                 updateTrainPositions(arrivals: arrivals)
                 if let shape = routeShape { enrichGroupWithShapeDirections(shape) }
 
@@ -1819,6 +1838,7 @@ final class HomeViewModel {
         // After loading shape and vehicles, check if we need schedule data
         // for directions with no live buses
         if group.isBus {
+            guard selectedRouteId == loadingRouteId else { return }
             await fetchBusScheduleIfNeeded()
         }
 
@@ -1883,6 +1903,30 @@ final class HomeViewModel {
     func enrichGroupWithShapeDirections(_ shape: RouteShapeResponse) {
         guard let group = selectedGroupedRoute, !shape.directions.isEmpty else { return }
 
+        // Guard against race conditions: if the user navigated to a different
+        // route while the shape was loading, the shape's directions belong to
+        // the old route.  Applying them would contaminate the new route's
+        // direction picker (e.g. subway headsigns leaking into bus directions).
+        let shapeRoute = shape.routeId
+            .replacingOccurrences(of: "MTA NYCT_", with: "")
+            .replacingOccurrences(of: "MTABC_", with: "")
+            .uppercased()
+        let groupRoute = group.routeId
+            .replacingOccurrences(of: "MTA NYCT_", with: "")
+            .replacingOccurrences(of: "MTABC_", with: "")
+            .uppercased()
+        // For subway, the shape routeId is the line letter/number (e.g. "7")
+        // while the group displayName carries the same value.
+        let groupDisplay = group.displayName.uppercased()
+        guard shapeRoute == groupRoute || shapeRoute == groupDisplay else {
+            AppLogger.shared.log(
+                "ROUTE_DETAIL",
+                message:
+                    "SKIP enrichment: shape route '\(shape.routeId)' does not match selected route '\(group.routeId)' (display: \(group.displayName))"
+            )
+            return
+        }
+
         let existingCount = group.directions.count
         let previousSelectedDirectionKey: String? = {
             guard group.directions.indices.contains(selectedDirectionIndex) else { return nil }
@@ -1941,18 +1985,29 @@ final class HomeViewModel {
                     guard !usedExistingIndices.contains(idx) else { return false }
                     let dir = group.directions[idx]
                     // Consider it a placeholder if it has no real (non-placeholder) arrivals,
-                    // or its direction key is a generic backfill label
+                    // or its direction key is a generic backfill label.
+                    // Only treat single-char codes ("N","S") and explicit backfill
+                    // labels as generic.  Two-char compass codes like "NW","SE" are
+                    // meaningful direction labels and must NOT be replaced — doing so
+                    // caused cross-route headsign contamination (e.g. subway headsigns
+                    // leaking into bus routes whose shape API returned wrong headsigns).
                     let isGeneric = ["opposite", "n/a", "loop"].contains(dir.direction.lowercased())
-                        || dir.direction.count <= 2  // compass codes like "N", "S", "SW"
-                    return dir.liveArrivals.isEmpty || isGeneric
+                        || dir.direction.count <= 1  // single-char like "N", "S"
+                    return dir.liveArrivals.isEmpty && isGeneric
                 }
 
                 if let pidx = placeholderIdx {
                     // Replace the placeholder with a proper direction entry
-                    // carrying the shape's headsign but keeping any arrivals
+                    // carrying the shape's headsign but keeping any arrivals.
+                    // Guard against cross-mode contamination: reject headsigns
+                    // that reference a different transit mode (e.g. "7 TRAIN"
+                    // from OBA data leaking into a bus route).
                     let existing = group.directions[pidx]
+                    let hsLower = shapeDir.headsign.lowercased()
+                    let isCrossMode = (group.isBus && (hsLower.contains("train") || hsLower.contains("subway")))
+                        || (group.isCommuterRail && hsLower.contains("bus"))
                     let directionString =
-                        shapeDir.headsign.isEmpty
+                        shapeDir.headsign.isEmpty || isCrossMode
                         ? existing.direction
                         : shapeDir.headsign
                     orderedDirections.append(

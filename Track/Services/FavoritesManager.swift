@@ -141,12 +141,16 @@ class FavoritesManager: ObservableObject {
                 favorites = deduplicated(remote)
                 saveToCache()
                 lastRefreshDate = Date()
+                #if DEBUG
                 print("[FavoritesManager] Refreshed \(favorites.count) favorites from cloud")
+                #endif
             } catch SupabaseError.unauthorized {
                 // Session may be in-flight during startup token refresh.
                 // Keep cached favorites and avoid noisy decode/error churn.
             } catch {
+                #if DEBUG
                 print("[FavoritesManager] Failed to refresh: \(error)")
+                #endif
             }
         }
 
@@ -177,7 +181,9 @@ class FavoritesManager: ObservableObject {
         }()
         
         guard let userId else {
+            #if DEBUG
             print("[FavoritesManager] Cannot add favorite - no user ID available")
+            #endif
             return
         }
 
@@ -224,7 +230,9 @@ class FavoritesManager: ObservableObject {
                 )
             }
             saveToCache()
+            #if DEBUG
             print("[FavoritesManager] Failed to add: \(error)")
+            #endif
         }
     }
 
@@ -248,7 +256,9 @@ class FavoritesManager: ObservableObject {
                 try await SupabaseManager.shared.removeFavorite(id: id)
             } catch {
                 await refresh()
+                #if DEBUG
                 print("[FavoritesManager] Failed to remove: \(error)")
+                #endif
                 return
             }
         }
@@ -266,7 +276,9 @@ class FavoritesManager: ObservableObject {
         } catch {
             // Re-fetch to restore
             await refresh()
+            #if DEBUG
             print("[FavoritesManager] Failed to remove: \(error)")
+            #endif
         }
     }
 

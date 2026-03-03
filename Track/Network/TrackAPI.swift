@@ -676,6 +676,8 @@ struct TrackAPI {
                         continue
                     }
                     return data
+                } catch is CancellationError {
+                    throw CancellationError()
                 } catch let error as TrackAPIError {
                     // Propagate non-retriable API errors immediately
                     throw error

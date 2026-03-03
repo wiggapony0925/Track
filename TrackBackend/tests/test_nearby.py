@@ -380,8 +380,10 @@ class TestGroupingLogic:
             ),
         ]
         groups = _group_arrivals(flat)
-        assert groups[0].route_id == "L"
-        assert groups[1].route_id == "A"
+        # Groups are sorted by canonical MTA order first (A=040 < L=080),
+        # then by soonest arrival as tiebreaker within the same sort key.
+        assert groups[0].route_id == "A"
+        assert groups[1].route_id == "L"
 
     def test_directions_sorted_alphabetically(self):
         flat = [
@@ -486,9 +488,9 @@ class TestNearbyGroupedEndpoint:
         assert response.status_code == 200
         data = response.json()
         assert len(data) == 2
-        # Bus should be first (soonest arrival)
-        assert data[0]["mode"] == "bus"
-        assert data[1]["mode"] == "subway"
+        # Canonical MTA order: subway before bus (not pure soonest-arrival)
+        assert data[0]["mode"] == "subway"
+        assert data[1]["mode"] == "bus"
 
 
 # ===================================================================
@@ -710,33 +712,22 @@ class TestPhaseCOppositeDirection:
     """Phase C: routes with only 1 direction after Phases A+B get an
     opposite-direction placeholder so grouped cards always have 2 tabs."""
 
-    @patch("app.routers.nearby.get_realtime_arrivals", new_callable=AsyncMock)
-    @patch("app.routers.nearby.get_nearby_stops", new_callable=AsyncMock)
+    @patch("app.routers.nearby._fetch_nearby_buses", new_callable=AsyncMock)
     @patch("app.routers.nearby._fetch_nearby_subway", new_callable=AsyncMock)
     @patch("app.routers.nearby._fetch_nearby_rail", new_callable=AsyncMock)
     def test_express_bus_gets_opposite_direction(
-        self, mock_rail, mock_subway, mock_stops, mock_arrivals,
+        self, mock_rail, mock_subway, mock_buses,
     ):
         """BxM3 with only MIDTOWN arrivals should still get 2 direction tabs."""
         mock_subway.return_value = []
         mock_rail.return_value = []
-        # Only one stop, facing SW — no opposite-direction stop nearby
-        mock_stops.return_value = [
-            BusStop(
-                id="S1", name="Bx Stop", lat=40.86, lon=-73.90,
-                direction="SW", route_ids=["MTABC_BXM3"],
-            ),
-        ]
-        from datetime import datetime, timezone
-        mock_arrivals.return_value = [
-            __import__("app.models", fromlist=["BusArrival"]).BusArrival(
-                route_id="BXM3",
+        mock_buses.return_value = [
+            NearbyTransitArrival(
+                route_id="BxM3", stop_name="Bx Stop",
+                direction="MIDTOWN", destination="MIDTOWN",
+                minutes_away=5, mode="bus",
+                stop_lat=40.86, stop_lon=-73.90, stop_id="S1",
                 vehicle_id="V1",
-                stop_id="S1",
-                status_text="2 stops away",
-                expected_arrival=datetime.now(timezone.utc),
-                direction_ref=0,
-                destination_name="MIDTOWN",
             ),
         ]
 
@@ -888,7 +879,7 @@ class TestBusRouteIdNormalization:
         assert "PROSPECT PARK" in labels
 
     def test_single_direction_still_works(self):
-        """A route with only one direction should still produce a valid group."""
+        """A route with only one direction should get 2 tabs (live + opposite placeholder)."""
         flat = [
             NearbyTransitArrival(
                 route_id="B63", stop_name="5 AV/9 ST",
@@ -898,8 +889,10 @@ class TestBusRouteIdNormalization:
         ]
         groups = _group_arrivals(flat)
         assert len(groups) == 1
-        assert len(groups[0].directions) == 1
-        assert groups[0].directions[0].direction_label == "BAY RIDGE"
+        # Phase C adds an opposite-direction placeholder so every card has 2 tabs
+        assert len(groups[0].directions) == 2
+        live_dir = [d for d in groups[0].directions if d.direction == "0"][0]
+        assert live_dir.direction_label == "BAY RIDGE"
 
     def test_direction_label_fallback_no_destination(self):
         """When destination is None, direction label falls back to 'Direction A/B'."""
@@ -1219,7 +1212,8 @@ class TestDestinationBasedDirectionKeys:
         assert "Williamsburg" in labels
 
     def test_same_destination_merges_into_one_tab(self):
-        """Multiple buses heading to the same terminal share one direction tab."""
+        """Multiple buses heading to the same terminal share one direction tab,
+        plus Phase C adds an opposite-direction placeholder."""
         flat = [
             NearbyTransitArrival(
                 route_id="B46", stop_name="UTICA AV/CHURCH AV",
@@ -1233,8 +1227,10 @@ class TestDestinationBasedDirectionKeys:
             ),
         ]
         groups = _group_arrivals(flat)
-        assert len(groups[0].directions) == 1, "Same destination → one tab"
-        assert len(groups[0].directions[0].arrivals) == 2
+        # One live direction (KINGS PLAZA) + one Phase C placeholder = 2
+        assert len(groups[0].directions) == 2
+        live_dir = [d for d in groups[0].directions if d.direction == "KINGS PLAZA"][0]
+        assert len(live_dir.arrivals) == 2
 
     def test_direction_label_title_case_all_caps(self):
         """ALL CAPS destination names should be title-cased for display."""

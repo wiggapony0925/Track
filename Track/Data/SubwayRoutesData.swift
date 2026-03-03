@@ -290,7 +290,9 @@ struct SubwayRoutesData {
             }
             return paths
         } catch {
+            #if DEBUG
             print("[SubwayRoutesData] Error decoding GeoJSON: \(error)")
+            #endif
             return [:]
         }
     }

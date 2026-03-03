@@ -107,7 +107,9 @@ class SyncManager: ObservableObject {
         // Only overwrite if we got data from cloud
         if !cloudSchedules.isEmpty {
             WidgetSchedule.saveAll(localSchedules)
+            #if DEBUG
             print("[SyncManager] Synced \(localSchedules.count) schedules from cloud")
+            #endif
         }
     }
     
@@ -115,7 +117,9 @@ class SyncManager: ObservableObject {
     func uploadSchedule(_ schedule: WidgetSchedule) async {
         guard let userIdString = defaults.string(forKey: "supabase_user_id"),
               let userId = UUID(uuidString: userIdString) else {
+            #if DEBUG
             print("[SyncManager] Cannot upload schedule - not authenticated")
+            #endif
             return
         }
         
@@ -135,9 +139,13 @@ class SyncManager: ObservableObject {
         
         do {
             try await SupabaseManager.shared.upsertSchedule(cloudSchedule)
+            #if DEBUG
             print("[SyncManager] Uploaded schedule \(schedule.id)")
+            #endif
         } catch {
+            #if DEBUG
             print("[SyncManager] Failed to upload schedule: \(error)")
+            #endif
         }
     }
     
@@ -145,9 +153,13 @@ class SyncManager: ObservableObject {
     func deleteSchedule(_ scheduleId: UUID) async {
         do {
             try await SupabaseManager.shared.deleteSchedule(id: scheduleId)
+            #if DEBUG
             print("[SyncManager] Deleted schedule \(scheduleId)")
+            #endif
         } catch {
+            #if DEBUG
             print("[SyncManager] Failed to delete schedule: \(error)")
+            #endif
         }
     }
     
@@ -156,7 +168,9 @@ class SyncManager: ObservableObject {
     /// Pull settings from Supabase and write into @AppStorage (UserDefaults)
     func pullUserSettings() async throws {
         guard let settings = try await SupabaseManager.shared.fetchUserSettings() else {
+            #if DEBUG
             print("[SyncManager] No user settings on server yet")
+            #endif
             return
         }
         
@@ -197,7 +211,9 @@ class SyncManager: ObservableObject {
         // a physical device on WiFi can't use another device's local IP.
         // Syncing them caused the app to flip between prod/dev URLs mid-session.
         
+        #if DEBUG
         print("[SyncManager] Pulled user settings from cloud")
+        #endif
     }
     
     /// Push current @AppStorage values to Supabase
@@ -236,9 +252,13 @@ class SyncManager: ObservableObject {
         
         do {
             try await SupabaseManager.shared.saveUserSettings(settings)
+            #if DEBUG
             print("[SyncManager] Pushed user settings to cloud")
+            #endif
         } catch {
+            #if DEBUG
             print("[SyncManager] Failed to push settings: \(error)")
+            #endif
         }
     }
     
@@ -249,14 +269,18 @@ class SyncManager: ObservableObject {
         do {
             let patterns = try await SupabaseManager.shared.fetchCommutePatterns()
             if !patterns.isEmpty {
+                #if DEBUG
                 print("[SyncManager] Pulled \(patterns.count) commute patterns from cloud")
+                #endif
             }
             // Patterns are available for SmartSuggester cross-device use.
             // The local SwiftData store is the primary source and is updated
             // when the user starts a trip; cloud patterns supplement that
             // on fresh installs or new devices.
         } catch {
+            #if DEBUG
             print("[SyncManager] Failed to pull commute patterns: \(error)")
+            #endif
         }
     }
     
@@ -284,9 +308,13 @@ class SyncManager: ObservableObject {
                 dayOfWeek: dayOfWeek,
                 frequency: frequency
             )
+            #if DEBUG
             print("[SyncManager] Synced commute pattern for \(routeId)")
+            #endif
         } catch {
+            #if DEBUG
             print("[SyncManager] Failed to sync commute pattern: \(error)")
+            #endif
         }
     }
     

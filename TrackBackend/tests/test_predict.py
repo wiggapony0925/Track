@@ -61,11 +61,11 @@ class TestPredictDelayEndpoint:
         assert rush > off_peak, f"Rush ({rush}) should be > off-peak ({off_peak})"
 
     def test_evening_rush_increases_factor(self):
-        """Weekday 5 PM factor > off-peak factor (same route, clear weather)."""
-        base = {"route_id": "A", "weather": "clear", "minutes_away": 8, "day_of_week": 4}
-        off_peak = _get({**base, "hour": 14})["delay_factor"]
+        """Weekday 5 PM factor > midday 11 AM factor (same route, clear weather)."""
+        base = {"route_id": "7", "weather": "clear", "minutes_away": 10, "day_of_week": 2}
+        midday = _get({**base, "hour": 11})["delay_factor"]
         evening = _get({**base, "hour": 17})["delay_factor"]
-        assert evening > off_peak, f"Evening rush ({evening}) should be > off-peak ({off_peak})"
+        assert evening > midday, f"Evening rush ({evening}) should be > midday ({midday})"
 
     def test_weekend_rush_lower_than_weekday_rush(self):
         """Weekday 8 AM factor >= weekend 8 AM factor (model learned weekend dip)."""

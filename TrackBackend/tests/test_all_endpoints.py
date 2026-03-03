@@ -222,10 +222,13 @@ class TestSubwayArrivals:
 
     @patch("app.routers.subway.resolve_subway_feed_key", return_value="subway_l")
     @patch("app.routers.subway.get_arrivals_for_line", new_callable=AsyncMock)
-    def test_arrivals_502_on_feed_error(self, mock_arrivals, mock_resolve):
+    def test_arrivals_graceful_fallback_on_feed_error(self, mock_arrivals, mock_resolve):
         mock_arrivals.side_effect = Exception("Feed timeout")
         response = client.get("/subway/L")
-        assert response.status_code == 502
+        # Endpoints now return 200 + empty list on error (graceful degradation)
+        assert response.status_code == 200
+        assert response.json() == []
+        assert response.headers.get("X-Track-Degraded") == "subway-arrivals-fallback"
 
 
 # ===================================================================
@@ -427,10 +430,13 @@ class TestLIRRArrivals:
         assert data[0]["route_id"] == "5"
 
     @patch("app.routers.lirr.fetch_rail_arrivals", new_callable=AsyncMock)
-    def test_arrivals_502_on_error(self, mock_arrivals):
+    def test_arrivals_graceful_fallback_on_error(self, mock_arrivals):
         mock_arrivals.side_effect = Exception("LIRR feed timeout")
         response = client.get("/lirr")
-        assert response.status_code == 502
+        # Endpoints now return 200 + empty list on error (graceful degradation)
+        assert response.status_code == 200
+        assert response.json() == []
+        assert response.headers.get("X-Track-Degraded") == "lirr-arrivals-fallback"
 
 
 # ===================================================================
@@ -515,10 +521,13 @@ class TestMNRArrivals:
         assert data[0]["destination"] == "Poughkeepsie"
 
     @patch("app.routers.mnr.fetch_rail_arrivals", new_callable=AsyncMock)
-    def test_arrivals_502_on_error(self, mock_arrivals):
+    def test_arrivals_graceful_fallback_on_error(self, mock_arrivals):
         mock_arrivals.side_effect = Exception("MNR feed timeout")
         response = client.get("/mnr")
-        assert response.status_code == 502
+        # Endpoints now return 200 + empty list on error (graceful degradation)
+        assert response.status_code == 200
+        assert response.json() == []
+        assert response.headers.get("X-Track-Degraded") == "mnr-arrivals-fallback"
 
 
 # ===================================================================
@@ -660,10 +669,10 @@ class TestNearbyGrouped:
         assert len(data) == 3
         modes = {g["mode"] for g in data}
         assert modes == {"bus", "subway", "lirr"}
-        # Should be sorted: bus (2 min) < subway (5 min) < lirr (10 min)
-        assert data[0]["mode"] == "bus"
-        assert data[1]["mode"] == "subway"
-        assert data[2]["mode"] == "lirr"
+        # Canonical MTA order: subway first, then LIRR, then bus
+        assert data[0]["mode"] == "subway"
+        assert data[1]["mode"] == "lirr"
+        assert data[2]["mode"] == "bus"
 
 
 # ===================================================================
@@ -822,8 +831,10 @@ class TestGroupArrivals:
                                  minutes_away=2, mode="subway"),
         ]
         groups = _group_arrivals(flat)
-        assert groups[0].route_id == "L"
-        assert groups[1].route_id == "A"
+        # Groups are sorted by canonical MTA order first (A=040 < L=080),
+        # then by soonest arrival as tiebreaker within the same sort key.
+        assert groups[0].route_id == "A"
+        assert groups[1].route_id == "L"
 
     def test_empty_input(self):
         assert _group_arrivals([]) == []

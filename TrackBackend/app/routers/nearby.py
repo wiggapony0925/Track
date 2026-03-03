@@ -319,8 +319,8 @@ router = APIRouter(tags=["nearby"])
 )
 async def nearby_transit(
     response: Response,
-    lat: float = Query(..., description="User latitude"),
-    lon: float = Query(..., description="User longitude"),
+    lat: float = Query(..., ge=-90, le=90, description="User latitude"),
+    lon: float = Query(..., ge=-180, le=180, description="User longitude"),
     radius: int | None = Query(None, description="Search radius in meters"),
 ) -> list[NearbyTransitArrival]:
     """Return the nearest buses and trains with live countdowns.
@@ -343,8 +343,8 @@ async def nearby_transit(
 
 @router.get("/nearby/grouped", response_model=list[GroupedNearbyTransit])
 async def nearby_transit_grouped(
-    lat: float = Query(..., description="User latitude"),
-    lon: float = Query(..., description="User longitude"),
+    lat: float = Query(..., ge=-90, le=90, description="User latitude"),
+    lon: float = Query(..., ge=-180, le=180, description="User longitude"),
     radius: int | None = Query(None, description="Search radius in meters"),
     mode: str | None = Query(None, description="Filter by transit mode: subway, bus, lirr, mnr"),
 ) -> list[GroupedNearbyTransit]:

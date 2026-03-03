@@ -2829,7 +2829,7 @@ struct RouteDetailSheet: View {
 
     private var routeInfoFooter: some View {
         let shape = routeShape
-        let hasStops = shape != nil && !shape!.stops.isEmpty
+        let hasStops = shape?.stops.isEmpty == false
         let hasVehicles = liveVehicleCount > 0
         let isShapeLoading = shape == nil
 

@@ -1292,6 +1292,7 @@ extension HomeViewModel {
         // moved away) and its stop coordinates may no longer be accurate,
         // which causes displayDistanceMeters to bucket it incorrectly.
         let maxGraceCycles = 3
+        let nowEpoch = Date.now.timeIntervalSince1970
         for oldGroup in existing where !newRouteIds.contains(oldGroup.routeId.uppercased()) {
             let graceKey = oldGroup.routeId.uppercased()
             let count = (missCounts[graceKey] ?? 0) + 1
@@ -1303,6 +1304,30 @@ extension HomeViewModel {
                 )
                 continue   // drop it from merged
             }
+
+            // Early-evict graced routes whose arrival timestamps have ALL
+            // expired (> 90 s in the past).  Keeping them would show a blank
+            // card ("--") that provides no useful information to the user.
+            let hasAnyFreshArrival = oldGroup.directions.contains { dir in
+                dir.arrivals.contains { arrival in
+                    guard !arrival.isPlaceholder else { return false }
+                    if let ts = arrival.arrivalTs, ts > 0 {
+                        return (nowEpoch - Double(ts)) <= 90
+                    }
+                    // Arrivals with no timestamp but non-placeholder minutes
+                    // are likely schedule-based and still valid.
+                    return arrival.minutesAway > 0 && arrival.minutesAway < 99
+                }
+            }
+            if !hasAnyFreshArrival {
+                AppLogger.shared.log(
+                    "REFRESH",
+                    message: "[\(source)] Early-evicting \(oldGroup.routeId) — all arrivals expired"
+                )
+                missCounts[graceKey] = maxGraceCycles + 1  // prevent re-grace
+                continue
+            }
+
             // Skip case-duplicate already in merged (e.g. BxM2 when BXM2 is already there)
             guard mergedKeys.insert(graceKey).inserted else { continue }
             merged.append(oldGroup)
@@ -1620,13 +1645,15 @@ extension HomeViewModel {
             now: now
         )
 
-        LiveActivityManager.shared.startActivity(
-            lineId: arrival.isBus ? stripMTAPrefix(arrival.routeId) : arrival.routeId,
-            destination: arrival.destination ?? arrival.direction,
-            arrivalTime: eta,
-            isBus: arrival.isBus,
-            nextArrivals: nextArrivals
-        )
+        Task {
+            await LiveActivityManager.shared.startActivity(
+                lineId: arrival.isBus ? stripMTAPrefix(arrival.routeId) : arrival.routeId,
+                destination: arrival.destination ?? arrival.direction,
+                arrivalTime: eta,
+                isBus: arrival.isBus,
+                nextArrivals: nextArrivals
+            )
+        }
     }
 
     /// Starts tracking a subway arrival.
@@ -1672,13 +1699,15 @@ extension HomeViewModel {
             after: eta
         )
 
-        LiveActivityManager.shared.startActivity(
-            lineId: arrival.routeID,
-            destination: arrival.direction,
-            arrivalTime: eta,
-            isBus: false,
-            nextArrivals: nextArrivals
-        )
+        Task {
+            await LiveActivityManager.shared.startActivity(
+                lineId: arrival.routeID,
+                destination: arrival.direction,
+                arrivalTime: eta,
+                isBus: false,
+                nextArrivals: nextArrivals
+            )
+        }
     }
 
     /// Starts tracking a bus arrival.
@@ -1720,13 +1749,15 @@ extension HomeViewModel {
             after: arrivalTime
         )
 
-        LiveActivityManager.shared.startActivity(
-            lineId: stripMTAPrefix(arrival.routeId),
-            destination: "Bus Tracking",
-            arrivalTime: arrivalTime,
-            isBus: true,
-            nextArrivals: nextArrivals
-        )
+        Task {
+            await LiveActivityManager.shared.startActivity(
+                lineId: stripMTAPrefix(arrival.routeId),
+                destination: "Bus Tracking",
+                arrivalTime: arrivalTime,
+                isBus: true,
+                nextArrivals: nextArrivals
+            )
+        }
     }
 
     /// Starts tracking an LIRR arrival.
@@ -1783,13 +1814,15 @@ extension HomeViewModel {
             after: eta
         )
 
-        LiveActivityManager.shared.startActivity(
-            lineId: arrival.routeID,
-            destination: arrival.direction,
-            arrivalTime: eta,
-            isBus: false,
-            nextArrivals: nextArrivals
-        )
+        Task {
+            await LiveActivityManager.shared.startActivity(
+                lineId: arrival.routeID,
+                destination: arrival.direction,
+                arrivalTime: eta,
+                isBus: false,
+                nextArrivals: nextArrivals
+            )
+        }
     }
 
     /// Stops tracking and clears widget tracking.
@@ -1960,6 +1993,7 @@ extension HomeViewModel {
         }
 
         var newStops: [String: BusStop] = [:]  // stops not in OBA response
+        var modifiedExisting = false  // track route_id additions to existing stops
 
         for group in groups where group.isBus {
             for arrival in group.directions.flatMap(\.arrivals) {
@@ -1973,6 +2007,7 @@ extension HomeViewModel {
                         routes.append(group.routeId)
                         existing.routeIds = routes
                         stopMap[key] = existing
+                        modifiedExisting = true
                     }
                 } else if var pending = newStops[key] {
                     // Already queued from a different arrival — add route ID
@@ -1995,7 +2030,7 @@ extension HomeViewModel {
             }
         }
 
-        guard !newStops.isEmpty || stopMap.count != obaStops.count else {
+        guard !newStops.isEmpty || modifiedExisting || stopMap.count != obaStops.count else {
             return obaStops
         }
 

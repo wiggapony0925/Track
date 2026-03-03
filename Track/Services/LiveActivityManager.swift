@@ -85,10 +85,12 @@ final class LiveActivityManager {
         nextArrivals: [Int] = [],
         walkMinutes: Int? = nil,
         isHurryUp: Bool = false
-    ) {
+    ) async {
         // End ALL existing activities first — not just the one we're tracking.
         // This catches orphans from previous sessions where currentActivityID was lost.
-        endAllActivities()
+        // Await to avoid racing: old activities must be fully ended before requesting
+        // a new one, otherwise ActivityKit may reject or show duplicates.
+        await endAllActivities()
 
         guard ActivityAuthorizationInfo().areActivitiesEnabled else {
             AppLogger.shared.log("LIVE_ACTIVITY", message: "Live Activities not enabled on this device")
@@ -205,19 +207,16 @@ final class LiveActivityManager {
 
     /// Immediately ends ALL Live Activities without the "Arrived" final state.
     /// Used before starting a new activity to ensure a clean slate.
-    private func endAllActivities() {
+    /// Now async so callers can `await` it — prevents the race where
+    /// `Activity.request()` fires before old activities have finished ending.
+    private func endAllActivities() async {
         currentActivityID = nil
         let existing = Activity<TrackActivityAttributes>.activities
         guard !existing.isEmpty else { return }
 
-        // Synchronous iteration — `Activity.activities` is a snapshot.
-        // Use `Task` for the async `end()` call but block conceptually
-        // by iterating eagerly before the new Activity.request().
-        Task {
-            for activity in existing {
-                await activity.end(nil, dismissalPolicy: .immediate)
-                AppLogger.shared.log("LIVE_ACTIVITY", message: "Cleared activity \(activity.id) before new start")
-            }
+        for activity in existing {
+            await activity.end(nil, dismissalPolicy: .immediate)
+            AppLogger.shared.log("LIVE_ACTIVITY", message: "Cleared activity \(activity.id) before new start")
         }
     }
 }
