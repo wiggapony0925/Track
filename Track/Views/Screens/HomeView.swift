@@ -230,7 +230,8 @@ struct HomeView: View {
 
                 // Phase 1: Load cached route cards from previous session (~5ms).
                 // Skips skeleton placeholders entirely — user sees real cards instantly.
-                viewModel.loadSessionCache()
+                // Pass the cached GPS so routes are distance-sorted immediately.
+                viewModel.loadSessionCache(cachedLocation: cachedLoc)
 
                 // Phase 2: Fetch fresh data in background.
                 Task {

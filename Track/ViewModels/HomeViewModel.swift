@@ -1322,7 +1322,7 @@ final class HomeViewModel {
     ///
     /// - Returns: `true` when cached data was loaded; `false` otherwise.
     @discardableResult
-    func loadSessionCache() -> Bool {
+    func loadSessionCache(cachedLocation: CLLocation? = nil) -> Bool {
         guard !hasLoadedOnce else { return false }
         guard let cached = TransitSessionCache.load(), !cached.isEmpty else {
             AppLogger.shared.log(
@@ -1333,6 +1333,13 @@ final class HomeViewModel {
         }
 
         groupedTransit = cached
+
+        // Seed the GPS reference so the first render after cache load
+        // can sort routes by distance instead of falling back to
+        // "all in Near You" (referenceLocation was nil without this).
+        if let cachedLocation {
+            lastKnownUserLocation = cachedLocation
+        }
 
         // Populate flat transit array for fallback code paths
         var seenIDs = Set<String>()

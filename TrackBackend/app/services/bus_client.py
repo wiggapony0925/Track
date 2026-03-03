@@ -60,6 +60,10 @@ ROUTE_LOOKUP = {}
 # All agency prefixes found in official route IDs (e.g. "MTA NYCT_", "MTABC_").
 # Built dynamically from the JSON so new agencies are automatically supported.
 BUS_AGENCY_PREFIXES: set[str] = set()
+# Uppercased short name → canonical mixed-case short name from the JSON.
+# Used by _display_name() to normalise casing across feeds
+# (e.g. SIRI gives "BXM2" while OBA gives "BxM2" — both map to "BxM2").
+CANONICAL_BUS_DISPLAY: dict[str, str] = {}
 try:
     # Path relative to this file: ../data/early_2026_buses_tag.json
     base_dir = Path(__file__).parent.parent
@@ -79,6 +83,8 @@ try:
                         # Store no-space match (e.g. "Q 9" -> "Q9")
                         ROUTE_LOOKUP[short_name.replace(" ", "")] = official_id
                         ROUTE_LOOKUP[short_name.lower().replace(" ", "")] = official_id
+                        # Canonical display name (mixed-case from JSON)
+                        CANONICAL_BUS_DISPLAY[short_name.upper()] = short_name
                         # Collect agency prefix (everything up to and including "_")
                         if "_" in official_id:
                             prefix = official_id[: official_id.index("_") + 1]

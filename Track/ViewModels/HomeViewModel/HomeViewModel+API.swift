@@ -1242,13 +1242,46 @@ extension HomeViewModel {
             return existing
         }
 
+        // ── Within-batch dedup ────────────────────────────────────────
+        // Different MTA feeds may return the same route under different
+        // casings (SIRI → "BXM2", OBA → "BxM2").  The backend merge-key
+        // normalises, but belt-and-suspenders: collapse duplicates here
+        // so two cards for the same route never appear simultaneously.
+        let deduped: [GroupedNearbyTransitResponse] = {
+            var seen: [String: Int] = [:]          // uppercased routeId → index
+            var result: [GroupedNearbyTransitResponse] = []
+            for group in new {
+                let key = group.routeId.uppercased()
+                if let existing = seen[key] {
+                    // Merge directions from the duplicate into the first-seen group.
+                    // Keep the entry whose routeId has more mixed-case ("BxM2" > "BXM2")
+                    // since that's the canonical display name.
+                    var winner = result[existing]
+                    let extra = group.directions.filter { newDir in
+                        !winner.directions.contains { $0.direction.uppercased() == newDir.direction.uppercased() }
+                    }
+                    if !extra.isEmpty {
+                        winner.directions.append(contentsOf: extra)
+                        result[existing] = winner
+                    }
+                } else {
+                    seen[key] = result.count
+                    result.append(group)
+                }
+            }
+            return result
+        }()
+
         // First load or previous was empty — nothing to merge.
         guard !existing.isEmpty else {
             graceMissCountBySource[source] = [:]
-            return new
+            return deduped
         }
 
-        let newRouteIds = Set(new.map(\.routeId))
+        // Case-insensitive route ID matching — different MTA feeds can
+        // return different casings for the same route (e.g. SIRI → "BXM2",
+        // OBA/GTFS → "BxM2").  Uppercasing prevents ghost duplicates.
+        let newRouteIds = Set(deduped.map { $0.routeId.uppercased() })
         var missCounts = graceMissCountBySource[source] ?? [:]
 
         // Routes that reappeared — reset their miss counter.
@@ -1257,16 +1290,17 @@ extension HomeViewModel {
         }
 
         // Start with all new (fresh) data.
-        var merged = new
+        var merged = deduped
 
         // Keep each old route that's NOT in the new data, up to a limit.
         // After 3 consecutive misses the route is stale (likely the user
         // moved away) and its stop coordinates may no longer be accurate,
         // which causes displayDistanceMeters to bucket it incorrectly.
         let maxGraceCycles = 3
-        for oldGroup in existing where !newRouteIds.contains(oldGroup.routeId) {
-            let count = (missCounts[oldGroup.routeId] ?? 0) + 1
-            missCounts[oldGroup.routeId] = count
+        for oldGroup in existing where !newRouteIds.contains(oldGroup.routeId.uppercased()) {
+            let graceKey = oldGroup.routeId.uppercased()
+            let count = (missCounts[graceKey] ?? 0) + 1
+            missCounts[graceKey] = count
             if count > maxGraceCycles {
                 AppLogger.shared.log(
                     "REFRESH",
@@ -1887,7 +1921,10 @@ extension HomeViewModel {
         for group in groups where group.isCommuterRail {
             for arrival in group.directions.flatMap(\.arrivals) {
                 guard let lat = arrival.stopLat, let lon = arrival.stopLon else { continue }
-                let key = arrival.stopId ?? "\(lat),\(lon)"
+                // Prefix with mode so LIRR stop_id "118" (Long Island City)
+                // doesn't collide with subway station_id "118" (Cathedral Pkwy).
+                let rawKey = arrival.stopId ?? "\(lat),\(lon)"
+                let key = "\(group.mode)_\(rawKey)"
                 if var existing = crStops[key] {
                     existing.routeIDs.insert(group.routeId)
                     crStops[key] = existing

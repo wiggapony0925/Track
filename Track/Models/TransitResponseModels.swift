@@ -167,7 +167,7 @@ struct GroupedNearbyTransitResponse: Codable, Identifiable, Equatable {
     let displayName: String
     let mode: String
     let colorHex: String?
-    let directions: [DirectionArrivalsResponse]
+    var directions: [DirectionArrivalsResponse]
     /// Canonical MTA ordering key set by the backend.
     var sortingKey: String = ""
     /// Active service alerts for this route.

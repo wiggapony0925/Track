@@ -38,6 +38,7 @@ from app.services.bus_client import (
     get_routes as get_all_bus_routes,
     get_stops as get_bus_route_stops,
     BUS_AGENCY_PREFIXES,
+    CANONICAL_BUS_DISPLAY,
 )
 from app.services.data_cleaner import get_arrivals_for_line
 from app.services.station_lookup import get_nearby_stop_ids, get_stop_info
@@ -527,7 +528,9 @@ def _display_name(route_id: str) -> str:
     # Bus / subway: strip any known agency prefix then normalise zero-padding
     for prefix in BUS_AGENCY_PREFIXES:
         if route_id.startswith(prefix):
-            return _normalize_route_display(route_id[len(prefix):])
+            raw = _normalize_route_display(route_id[len(prefix):])
+            # Normalise to canonical mixed-case (e.g. "BXM2" → "BxM2")
+            return CANONICAL_BUS_DISPLAY.get(raw.upper(), raw)
 
     # LIRR / MNR: resolve numeric branch IDs
     if route_id.startswith("LIRR_"):
@@ -764,7 +767,7 @@ def _group_arrivals(flat: list[NearbyTransitArrival], alert_index: dict[str, lis
 
     for a in flat:
         display = _display_name(a.route_id)          # already normalised
-        merge_key = f"{a.mode}:{display}"
+        merge_key = f"{a.mode}:{display.upper()}"    # case-insensitive grouping
         by_route[merge_key][a.direction].append(a)
         if merge_key not in route_meta:
             # Keep the first-seen raw route_id as the canonical identifier
