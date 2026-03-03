@@ -1130,8 +1130,20 @@ extension HomeViewModel {
             // Resolve auxiliary data (best-effort) before publishing groups.
             let stops = (try? await busStopsTask) ?? nearbyBusStops
             let stations = (try? await stationsTask) ?? nearbyStations
-            nearbyBusStops = stops
-            nearbyStations = stations
+
+            // Augment nearbyStations with LIRR/MNR station data extracted from
+            // grouped arrivals.  The subway-only /stations/nearby endpoint never
+            // returns commuter rail stations, so LIRR/MNR distance matching
+            // always fell back to groupMinDistance.  By injecting arrival stop
+            // coordinates here, the primary matching path works for all modes.
+            nearbyStations = Self.augmentStations(stations, from: newGrouped)
+
+            // Augment nearbyBusStops with stop data from bus arrivals whose
+            // stops weren't returned by the /bus/nearby OBA fetch (smaller
+            // radius or OBA API cap).  This lets distance matching work for
+            // routes like Q7 whose closest stop is within range but wasn't
+            // in the OBA response.
+            nearbyBusStops = Self.augmentBusStops(stops, from: newGrouped)
 
             let rawTransit = newGrouped
                 .flatMap(\ .directions)
@@ -1424,6 +1436,8 @@ extension HomeViewModel {
                     existing: nearbyGroupedLIRRArrivals,
                     source: "lirr"
                 )
+                // Inject LIRR station data so distance matching works
+                nearbyStations = Self.augmentStations(nearbyStations, from: newGrouped)
             } catch {
                 AppLogger.shared.logError("fetchGroupedLIRR", error: error)
                 if nearbyGroupedLIRRArrivals.isEmpty {
@@ -1463,6 +1477,8 @@ extension HomeViewModel {
                     existing: nearbyGroupedMNRArrivals,
                     source: "mnr"
                 )
+                // Inject MNR station data so distance matching works
+                nearbyStations = Self.augmentStations(nearbyStations, from: newGrouped)
             } catch {
                 AppLogger.shared.logError("fetchGroupedMNR", error: error)
                 if nearbyGroupedMNRArrivals.isEmpty {
@@ -1846,5 +1862,107 @@ extension HomeViewModel {
         }) ?? 0
 
         return (group, dirIndex)
+    }
+
+    // MARK: - Station / Stop Augmentation
+
+    /// Augments the subway-only `nearbyStations` with LIRR/MNR station data
+    /// extracted from grouped transit arrivals.
+    ///
+    /// The `/subway/stations/nearby` endpoint only returns subway stations, so
+    /// `displayDistanceMeters` could never match LIRR or MNR groups by station.
+    /// This method extracts unique stop coordinates from commuter-rail arrivals
+    /// and appends them with proper route IDs so the primary matching path works.
+    static func augmentStations(
+        _ subwayStations: [(stationID: String, name: String, lat: Double, lon: Double, routeIDs: [String])],
+        from groups: [GroupedNearbyTransitResponse]
+    ) -> [(stationID: String, name: String, lat: Double, lon: Double, routeIDs: [String])] {
+        // Collect commuter rail stops: keyed by stopId (or lat/lon fallback)
+        // so a station served by multiple branches accumulates all route IDs.
+        var crStops: [String: (name: String, lat: Double, lon: Double, routeIDs: Set<String>)] = [:]
+
+        for group in groups where group.isCommuterRail {
+            for arrival in group.directions.flatMap(\.arrivals) {
+                guard let lat = arrival.stopLat, let lon = arrival.stopLon else { continue }
+                let key = arrival.stopId ?? "\(lat),\(lon)"
+                if var existing = crStops[key] {
+                    existing.routeIDs.insert(group.routeId)
+                    crStops[key] = existing
+                } else {
+                    crStops[key] = (name: arrival.stopName, lat: lat, lon: lon, routeIDs: [group.routeId])
+                }
+            }
+        }
+
+        guard !crStops.isEmpty else { return subwayStations }
+
+        var result = subwayStations
+        let existingIDs = Set(subwayStations.map(\.stationID))
+        for (key, data) in crStops where !existingIDs.contains(key) {
+            result.append((stationID: key, name: data.name, lat: data.lat, lon: data.lon, routeIDs: Array(data.routeIDs)))
+        }
+        return result
+    }
+
+    /// Augments `nearbyBusStops` with stop data extracted from bus arrivals
+    /// in the grouped transit response.
+    ///
+    /// The OBA `/bus/nearby` endpoint may not return every stop that the grouped
+    /// transit response references (different radius, API cap, route coverage).
+    /// This injects missing stops so `displayDistanceMeters` can match them
+    /// by route token instead of falling back to `groupMinDistance`.
+    static func augmentBusStops(
+        _ obaStops: [BusStop],
+        from groups: [GroupedNearbyTransitResponse]
+    ) -> [BusStop] {
+        // Build a dictionary of existing stops keyed by stop ID, so we can
+        // add route IDs to existing stops and insert new ones.
+        var stopMap: [String: BusStop] = [:]
+        for stop in obaStops {
+            stopMap[stop.id] = stop
+        }
+
+        var newStops: [String: BusStop] = [:]  // stops not in OBA response
+
+        for group in groups where group.isBus {
+            for arrival in group.directions.flatMap(\.arrivals) {
+                guard let lat = arrival.stopLat, let lon = arrival.stopLon else { continue }
+                let key = arrival.stopId ?? "\(lat),\(lon)"
+
+                if var existing = stopMap[key] {
+                    // Stop exists in OBA data — ensure it lists this route too
+                    var routes = existing.routeIds ?? []
+                    if !routes.contains(where: { normalizeMTARouteToken($0) == normalizeMTARouteToken(group.routeId) }) {
+                        routes.append(group.routeId)
+                        existing.routeIds = routes
+                        stopMap[key] = existing
+                    }
+                } else if var pending = newStops[key] {
+                    // Already queued from a different arrival — add route ID
+                    var routes = pending.routeIds ?? []
+                    if !routes.contains(where: { normalizeMTARouteToken($0) == normalizeMTARouteToken(group.routeId) }) {
+                        routes.append(group.routeId)
+                        pending.routeIds = routes
+                        newStops[key] = pending
+                    }
+                } else {
+                    newStops[key] = BusStop(
+                        id: key,
+                        name: arrival.stopName,
+                        lat: lat,
+                        lon: lon,
+                        direction: arrival.direction,
+                        routeIds: [group.routeId]
+                    )
+                }
+            }
+        }
+
+        guard !newStops.isEmpty || stopMap.count != obaStops.count else {
+            return obaStops
+        }
+
+        // Merge: updated OBA stops + new stops from arrivals
+        return Array(stopMap.values) + Array(newStops.values)
     }
 }

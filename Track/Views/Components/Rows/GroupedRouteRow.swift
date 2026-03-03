@@ -25,6 +25,12 @@ struct  GroupedRouteRow: View {
     @State private var currentDirectionIndex = 0
     @State private var showTrackingBanner = false
     @State private var trackingBannerText = ""
+    /// True when the direction index is being updated programmatically
+    /// (e.g. parent syncing `initialDirectionIndex`). Prevents firing
+    /// `onDirectionChanged` which would incorrectly persist a
+    /// preference that came from shape enrichment reordering, not a
+    /// user swipe.
+    @State private var _isSyncing = false
 
 
     /// Route color derived from group data or theme defaults.
@@ -170,6 +176,44 @@ struct  GroupedRouteRow: View {
                         .zIndex(1)
                 }
             }
+            .onAppear { debugLogHomeRow() }
+            .onChange(of: group.directions) { _, _ in debugLogHomeRow() }
+    }
+
+    /// Stores the last printed [HOME_ROW] message per route so identical
+    /// lines aren't repeated. Data *changes* still print immediately.
+    @MainActor private static var _lastHomeRowMessage: [String: String] = [:]
+
+    /// Logs what the home row is displaying so the console shows
+    /// route, mode, direction, and the countdown minutesAway.
+    /// Deduplicates by content: identical re-renders are suppressed,
+    /// but any data change (flickering) prints right away.
+    private func debugLogHomeRow() {
+        #if DEBUG
+        let mode = group.isBus ? "BUS" : group.isLIRR ? "LIRR" : group.isMNR ? "MNR" : "SUBWAY"
+        let dir = currentDirection
+        let dirLabel = dir.directionLabel ?? dir.direction
+        let countdown = countdownArrival(for: dir)
+        let countdownMin: String = {
+            if let c = countdown {
+                let eta = resolvedETA(for: c)
+                return "\(eta.minutesRemaining)min (raw=\(c.minutesAway), stop=\(c.stopName))"
+            }
+            return "none"
+        }()
+        let allLive = dir.liveArrivals
+        let allMins = allLive.prefix(6).map { a -> String in
+            let eta = resolvedETA(for: a)
+            let vid = a.vehicleId ?? a.tripId ?? "?"
+            return "\(eta.minutesRemaining)m(raw=\(a.minutesAway),id=\(vid.suffix(6)))"
+        }
+        let msg = "[HOME_ROW] \(mode) \(group.displayName) → \(dirLabel)  countdown=\(countdownMin)  arrivals=[\(allMins.joined(separator: ", "))]"
+        let key = group.id
+        if Self._lastHomeRowMessage[key] != msg {
+            Self._lastHomeRowMessage[key] = msg
+            print(msg)
+        }
+        #endif
     }
 
     // MARK: - Main Row Content
@@ -334,6 +378,7 @@ struct  GroupedRouteRow: View {
             // Restore previously swiped direction for this route row.
             let restoredVisible = visibleIndex(forOriginal: initialDirectionIndex)
             if restoredVisible != currentDirectionIndex {
+                _isSyncing = true
                 currentDirectionIndex = restoredVisible
             }
         }
@@ -341,11 +386,17 @@ struct  GroupedRouteRow: View {
             // Keep row direction in sync when parent updates preferences.
             let restoredVisible = visibleIndex(forOriginal: newValue)
             if restoredVisible != currentDirectionIndex {
+                _isSyncing = true
                 currentDirectionIndex = restoredVisible
             }
         }
         .onChange(of: currentDirectionIndex) { _, _ in
-            // Persist user's swipe choice using original group index.
+            // Only persist when the user actually swiped, not when we
+            // programmatically synced from initialDirectionIndex.
+            if _isSyncing {
+                _isSyncing = false
+                return
+            }
             onDirectionChanged?(originalDirectionIndex)
         }
         .accessibilityElement(children: .combine)

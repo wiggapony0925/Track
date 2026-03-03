@@ -10,6 +10,17 @@ from app.utils.logger import TrackLogger
 
 DB_PATH = Path("app/data/transit_schedule.db")
 
+# Map Python weekday (0=Mon) to GTFS service_id keywords
+_WEEKDAY_KEYWORDS = {
+    0: "Weekday",   # Monday
+    1: "Weekday",   # Tuesday
+    2: "Weekday",   # Wednesday
+    3: "Weekday",   # Thursday
+    4: "Weekday",   # Friday
+    5: "Saturday",
+    6: "Sunday",
+}
+
 class ScheduleService:
     """Service to query static GTFS schedules as a fallback for live data."""
     
@@ -18,6 +29,41 @@ class ScheduleService:
 
     def _get_connection(self):
         return sqlite3.connect(self.db_path)
+
+    def _resolve_active_services(self, cursor, current_date: str) -> list[str]:
+        """
+        Resolve active service_ids for today using two strategies:
+        1. calendar_dates table (exception_type=1 means added, 2 means removed)
+        2. Day-of-week heuristic from service_id naming (e.g. *-Weekday-*, *-Saturday-*)
+        
+        MTA bus GTFS uses a calendar.txt with weekly patterns, but our DB only
+        imported calendar_dates. Named service_ids encode the day-of-week, so we
+        use that as a fallback for routes missing from calendar_dates.
+        """
+        # Strategy 1: Explicitly listed in calendar_dates for today
+        cursor.execute(
+            "SELECT service_id, exception_type FROM calendar_dates WHERE date = ?",
+            (current_date,),
+        )
+        rows = cursor.fetchall()
+        
+        added = {r[0] for r in rows if r[1] == 1}    # explicitly running today
+        removed = {r[0] for r in rows if r[1] == 2}   # explicitly NOT running today
+        
+        # Strategy 2: Match service_ids by day-of-week keyword in the name
+        now = datetime.now()
+        day_keyword = _WEEKDAY_KEYWORDS[now.weekday()]
+        
+        cursor.execute(
+            "SELECT DISTINCT service_id FROM trips WHERE service_id LIKE ?",
+            (f"%{day_keyword}%",),
+        )
+        name_matched = {r[0] for r in cursor.fetchall()}
+        
+        # Merge: union of both sets, minus any explicitly removed
+        active = (added | name_matched) - removed
+        
+        return list(active)
 
     def get_scheduled_arrivals(self, stop_id: str, route_id: str | None = None, limit: int = 10) -> list[TrackArrival]:
         """
@@ -36,14 +82,18 @@ class ScheduleService:
             cursor = conn.cursor()
             
             # 1. Find active service_ids for today
-            # We look in calendar_dates first
-            cursor.execute("SELECT service_id FROM calendar_dates WHERE date = ?", (current_date,))
-            active_services = [row[0] for row in cursor.fetchall()]
+            active_services = self._resolve_active_services(cursor, current_date)
             
             if not active_services:
                 return []
 
             # 2. Query stop_times joined with trips to get route and destination info
+            route_filter = ""
+            route_params: list = []
+            if route_id:
+                route_filter = "AND t.route_id = ?"
+                route_params = [route_id]
+
             query = """
                 SELECT 
                     t.route_id, 
@@ -56,13 +106,14 @@ class ScheduleService:
                 JOIN trips t ON st.trip_id = t.trip_id
                 WHERE st.stop_id = ?
                 AND t.service_id IN ({})
+                {}
                 AND st.arrival_time >= ?
                 GROUP BY t.route_id, st.arrival_time
                 ORDER BY st.arrival_time ASC 
                 LIMIT ?
-            """.format(",".join(["?"] * len(active_services)))
+            """.format(",".join(["?"] * len(active_services)), route_filter)
             
-            params = [stop_id] + active_services + [current_time_str, limit]
+            params = [stop_id] + active_services + route_params + [current_time_str, limit]
             
             cursor.execute(query, params)
             rows = cursor.fetchall()

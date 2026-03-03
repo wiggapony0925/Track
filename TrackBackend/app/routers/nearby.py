@@ -67,7 +67,72 @@ _BUS_DEFAULT_COLOR = "#0039A6"
 # Placeholder minutes_away value — sorts to the bottom within its distance tier
 _PLACEHOLDER_MINUTES = 99
 
+# Max scheduled departures to inject per dormant route (keeps the card concise)
+_MAX_SCHEDULE_PER_DORMANT = 4
+
 _BUS_STATIC_GTFS_ROOT = Path(__file__).resolve().parent.parent / "data" / "bus"
+
+
+def _schedule_arrivals_for_stop(
+    stop_id: str,
+    route_id: str,
+    stop_name: str,
+    stop_lat: float | None,
+    stop_lon: float | None,
+    fallback_direction: str = "N/A",
+    limit: int = _MAX_SCHEDULE_PER_DORMANT,
+) -> list[NearbyTransitArrival]:
+    """Try to get real GTFS scheduled departures for a dormant route at a stop.
+
+    Returns a list of ``NearbyTransitArrival`` with real ``arrival_ts`` and
+    ``minutes_away`` values (status="Scheduled").  If the schedule DB has no
+    data for this stop+route, returns a single bare placeholder so the route
+    still appears in the dashboard.
+    """
+    # GTFS DB stores bare numeric stop IDs; OBA prefixes them with "MTA_"
+    bare_stop = _canonical_bus_stop_id(stop_id)
+    sched = schedule_service.get_scheduled_arrivals(bare_stop, route_id=route_id, limit=limit)
+    if sched:
+        out: list[NearbyTransitArrival] = []
+        for s in sched:
+            # Map GTFS direction_id (0/1 → N/S) — schedule_service already does this
+            direction = s.direction if s.direction and s.direction != "N/A" else fallback_direction
+            out.append(
+                NearbyTransitArrival(
+                    route_id=route_id,
+                    stop_name=stop_name,
+                    arrival_ts=s.arrival_ts,
+                    direction=direction,
+                    minutes_away=s.minutes_away,
+                    status="Scheduled",
+                    mode="bus",
+                    stop_lat=stop_lat,
+                    stop_lon=stop_lon,
+                    stop_id=stop_id,
+                    vehicle_id=None,
+                    destination=s.destination,
+                    trip_id=s.trip_id,
+                )
+            )
+        return out
+
+    # No schedule data — fall back to a single bare placeholder
+    return [
+        NearbyTransitArrival(
+            route_id=route_id,
+            stop_name=stop_name,
+            arrival_ts=None,
+            direction=fallback_direction,
+            minutes_away=_PLACEHOLDER_MINUTES,
+            status="Scheduled",
+            mode="bus",
+            stop_lat=stop_lat,
+            stop_lon=stop_lon,
+            stop_id=stop_id,
+            vehicle_id=None,
+            destination=None,
+        )
+    ]
 
 
 def _canonical_bus_stop_id(stop_id: str) -> str:
@@ -1184,29 +1249,22 @@ async def _fetch_nearby_buses(
 
     def _add_static_only_placeholders(reason: str) -> list[NearbyTransitArrival]:
         static_routes = _nearby_static_bus_routes(lat, lon, effective_radius)
-        placeholders: list[NearbyTransitArrival] = []
+        out: list[NearbyTransitArrival] = []
         for route_id, (stop_name, stop_lat, stop_lon, stop_id) in static_routes.items():
-            placeholders.append(
-                NearbyTransitArrival(
-                    route_id=route_id,
-                    stop_name=stop_name,
-                    arrival_ts=None,
-                    direction="N/A",
-                    minutes_away=_PLACEHOLDER_MINUTES,
-                    status="Scheduled",
-                    mode="bus",
-                    stop_lat=stop_lat,
-                    stop_lon=stop_lon,
-                    stop_id=f"MTA_{stop_id}",
-                    vehicle_id=None,
-                    destination=None,
-                )
+            sched = _schedule_arrivals_for_stop(
+                stop_id=stop_id,
+                route_id=route_id,
+                stop_name=stop_name,
+                stop_lat=stop_lat,
+                stop_lon=stop_lon,
+                fallback_direction="N/A",
             )
+            out.extend(sched)
 
         TrackLogger.bus(
-            f"Bus static fallback: added {len(placeholders)} routes ({reason})"
+            f"Bus static fallback: added {len(out)} arrivals for {len(static_routes)} routes ({reason})"
         )
-        return placeholders
+        return out
 
     import time as _t
     _t_oba = _t.perf_counter()
@@ -1537,56 +1595,50 @@ async def _fetch_nearby_buses(
                 missing_routes[rid] = (stop, direction)
 
     # Inject the absolute nearest stop into the results so iOS distance sorting evaluates the true nearest stop.
+    # For routes with no live data, try to pull real GTFS schedule times
+    # so the iOS app shows actual upcoming departure times instead of "No Service".
+    _sched_injected = 0
     for rid, closest_stop in closest_stops_by_route.items():
         # Check if the closest stop ALREADY has a live arrival for this route
         has_live_at_closest = any(r for r in results if r.route_id == rid and r.stop_id == closest_stop.id)
         if not has_live_at_closest:
             direction = route_primary_direction.get(rid) or closest_stop.direction or "N/A"
-            # It's possible the route isn't completely 'missing', just missing live data at the closest stop.
-            results.append(
-                NearbyTransitArrival(
-                    route_id=rid,
-                    stop_name=closest_stop.name,
-                    arrival_ts=None,
-                    direction=direction,
-                    minutes_away=_PLACEHOLDER_MINUTES,
-                    status="Scheduled",
-                    mode="bus",
-                    stop_lat=closest_stop.lat,
-                    stop_lon=closest_stop.lon,
-                    stop_id=closest_stop.id,
-                    vehicle_id=None,
-                    destination=None,
-                )
+            sched_entries = _schedule_arrivals_for_stop(
+                stop_id=closest_stop.id,
+                route_id=rid,
+                stop_name=closest_stop.name,
+                stop_lat=closest_stop.lat,
+                stop_lon=closest_stop.lon,
+                fallback_direction=direction,
             )
+            results.extend(sched_entries)
+            if sched_entries and sched_entries[0].arrival_ts is not None:
+                _sched_injected += len(sched_entries)
 
     for rid, (stop, direction) in missing_routes.items():
         # Check if we didn't just add it above (in the closest stops backfill)
-        already_added = any(r for r in results if r.route_id == _display_name(rid) and r.stop_id == stop.id)
+        short = _display_name(rid)
+        already_added = any(r for r in results if r.route_id == short and r.stop_id == stop.id)
         if already_added:
             continue
-            
-        results.append(
-            NearbyTransitArrival(
-                route_id=_display_name(rid),
-                stop_name=stop.name,
-                arrival_ts=None,
-                direction=direction,
-                minutes_away=_PLACEHOLDER_MINUTES,
-                status="Scheduled",
-                mode="bus",
-                stop_lat=stop.lat,
-                stop_lon=stop.lon,
-                stop_id=stop.id,
-                vehicle_id=None,
-                destination=None,
-            )
+
+        sched_entries = _schedule_arrivals_for_stop(
+            stop_id=stop.id,
+            route_id=short,
+            stop_name=stop.name,
+            stop_lat=stop.lat,
+            stop_lon=stop.lon,
+            fallback_direction=direction,
         )
+        results.extend(sched_entries)
+        if sched_entries and sched_entries[0].arrival_ts is not None:
+            _sched_injected += len(sched_entries)
 
     if missing_routes:
         TrackLogger.bus(
             f"Backfilled {len(missing_routes)} bus routes with no live data "
-            f"(total {len(results)} bus arrivals from {len(stops)} stops)"
+            f"({_sched_injected} with real schedule times, "
+            f"total {len(results)} bus arrivals from {len(stops)} stops)"
         )
 
     # Phase B: routes with fewer live directions than nearby stops

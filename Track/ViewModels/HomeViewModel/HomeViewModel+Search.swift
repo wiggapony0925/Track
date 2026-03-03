@@ -48,10 +48,13 @@ extension HomeViewModel {
     /// Returns all results when the search text is empty.
     /// Searches route names, directions, current arrival stops, destinations,
     /// AND all stations served by the route.
+    ///
+    /// **All nearby routes are included** even when no live buses are running
+    /// (e.g. Q37 at 2 AM).  Placeholder-only routes are kept so the user
+    /// always sees every route that serves their area, matching what transit
+    /// apps like Transit show around the clock.
     var filteredGroupedTransit: [GroupedNearbyTransitResponse] {
-        // First filter out placeholder-only routes (e.g. QM16 with only 99-min stubs).
-        // These have no real arrival data and would just show "No Service".
-        let base = groupedTransit.filter { $0.hasRealArrivals }
+        let base = groupedTransit
         guard !searchText.isEmpty else { return base }
         let query = searchText.lowercased()
         let stationRoutes = stationRoutesForQuery(query)

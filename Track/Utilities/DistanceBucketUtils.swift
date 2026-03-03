@@ -45,12 +45,14 @@ func sortGroupedByDistance(
     #if DEBUG
     for group in sorted {
         let d = groupMinDistance(for: group, from: location)
-        let feet = d * 3.28084
-        let miles = d / 1609.34
-        let allArrivals = group.directions.flatMap { $0.arrivals }
-        let stop = allArrivals.first?.stopId ?? allArrivals.first?.stopName ?? "?"
-        let src = allArrivals.first(where: { $0.distanceM != nil }) != nil ? "server" : "client"
-        print("[DISTANCE] \(group.displayName) (\(group.mode)) → \(Int(d))m / \(Int(feet))ft / \(String(format: "%.2f", miles))mi  via=\(src)  stop=\(stop)  arrivals=\(allArrivals.count)")
+        if d < 1_000_000 {
+            let feet = d * 3.28084
+            let miles = d / 1609.34
+            let allArrivals = group.directions.flatMap { $0.arrivals }
+            let stop = allArrivals.first?.stopId ?? allArrivals.first?.stopName ?? "?"
+            let src = allArrivals.first(where: { $0.distanceM != nil }) != nil ? "server" : "client"
+            print("[DISTANCE] \(group.displayName) (\(group.mode)) → \(Int(d))m / \(Int(feet))ft / \(String(format: "%.2f", miles))mi  via=\(src)  stop=\(stop)  arrivals=\(allArrivals.count)")
+        }
     }
     #endif
     return sorted
@@ -184,7 +186,8 @@ func separateGroupsByDistance(
         for g in items {
             let d = groupMinDistance(for: g, from: location)
             let hasCoords = g.directions.flatMap(\.arrivals).contains { $0.stopLat != nil && $0.stopLon != nil }
-            AppLogger.shared.log("SORT", message: "\(tier) | \(g.displayName) (\(g.routeId)) → \(Int(d))m  coords=\(hasCoords)")
+            let distLabel = d < 1_000_000 ? "\(Int(d))m" : "∞"
+            AppLogger.shared.log("SORT", message: "\(tier) | \(g.displayName) (\(g.routeId)) → \(distLabel)  coords=\(hasCoords)")
         }
     }
     if !nearYou.isEmpty || !fartherAway.isEmpty || !muchFarther.isEmpty {

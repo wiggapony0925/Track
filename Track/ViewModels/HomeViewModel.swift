@@ -18,6 +18,9 @@ import WidgetKit
 @Observable
 @MainActor
 final class HomeViewModel {
+    /// Dedup key for [BUCKETS] debug log — only prints when content changes.
+    private static var _lastBucketsMessage: String?
+
     var nearbyStations: [(stationID: String, name: String, lat: Double, lon: Double, routeIDs: [String])] =
         []
     var upcomingArrivals: [TrainArrival] = []
@@ -78,14 +81,6 @@ final class HomeViewModel {
     func displayDistanceMeters(for group: GroupedNearbyTransitResponse, from location: CLLocation?) -> CLLocationDistance? {
         guard let location else { return nil }
 
-        #if DEBUG
-        let centerLabel = isSearchPinActive
-            ? "📍 PIN (\(String(format: "%.5f", location.coordinate.latitude)), \(String(format: "%.5f", location.coordinate.longitude)))"
-            : "🔵 GPS (\(String(format: "%.5f", location.coordinate.latitude)), \(String(format: "%.5f", location.coordinate.longitude)))"
-        #endif
-
-        // Resolve the result into a local variable so we can emit one
-        // [DASHBOARD DIST] comparison log before every return.
         let result: CLLocationDistance?
 
         if group.isBus {
@@ -96,12 +91,7 @@ final class HomeViewModel {
             }
             #if DEBUG
             if matchingStops.isEmpty {
-                print("[DIST] \(group.routeId) bus  center=\(centerLabel)  ⚠️ NO matching stops (token=\(target), nearbyBusStops=\(nearbyBusStops.count)) → fallback groupMinDistance")
-            } else {
-                for stop in matchingStops {
-                    let d = location.distance(from: CLLocation(latitude: stop.lat, longitude: stop.lon))
-                    print("[DIST] \(group.routeId) bus  center=\(centerLabel)  stop=\(stop.name)  (\(String(format: "%.5f", stop.lat)),\(String(format: "%.5f", stop.lon)))  d=\(Int(d))m / \(String(format: "%.2f", d * 3.28084 / 5280))mi")
-                }
+                print("[DIST] \(group.routeId) bus  ⚠️ NO matching stops (token=\(target), nearbyBusStops=\(nearbyBusStops.count))")
             }
             #endif
             // Always take the min of nearbyBusStops distance AND the group's
@@ -139,12 +129,7 @@ final class HomeViewModel {
             }
             #if DEBUG
             if matchingStations.isEmpty {
-                print("[DIST] \(group.routeId) \(group.mode)  center=\(centerLabel)  ⚠️ NO matching stations (token=\(target), nearbyStations=\(nearbyStations.count)) → fallback groupMinDistance")
-            } else {
-                for st in matchingStations {
-                    let d = location.distance(from: CLLocation(latitude: st.lat, longitude: st.lon))
-                    print("[DIST] \(group.routeId) \(group.mode)  center=\(centerLabel)  station=\(st.name)  (\(String(format: "%.5f", st.lat)),\(String(format: "%.5f", st.lon)))  d=\(Int(d))m / \(String(format: "%.2f", d * 3.28084 / 5280))mi")
-                }
+                print("[DIST] \(group.routeId) \(group.mode)  ⚠️ NO matching stations (token=\(target), nearbyStations=\(nearbyStations.count))")
             }
             #endif
             let groupDist = groupMinDistance(for: group, from: location)
@@ -155,20 +140,10 @@ final class HomeViewModel {
                 let best = min(nearbyDist, groupDist)
                 result = best.isFinite ? best : nil
             } else {
-                #if DEBUG
-                print("[DIST] \(group.routeId) \(group.mode)  center=\(centerLabel)  ⛔ using groupMinDistance=\(Int(groupDist))m / \(String(format: "%.2f", groupDist * 3.28084 / 5280))mi")
-                #endif
                 result = groupDist.isFinite ? groupDist : nil
             }
         }
 
-        #if DEBUG
-        if let r = result {
-            print("[DASHBOARD DIST] \(group.routeId) (\(group.mode))  center=\(centerLabel)  → \(Int(r))m / \(String(format: "%.2f", r / 1609.34))mi  ← this is what the row badge shows")
-        } else {
-            print("[DASHBOARD DIST] \(group.routeId) (\(group.mode))  center=\(centerLabel)  → nil (hidden)")
-        }
-        #endif
         return result
     }
 
@@ -184,11 +159,18 @@ final class HomeViewModel {
         muchFarther: [GroupedNearbyTransitResponse]
     ) {
         #if DEBUG
-        if let referenceLocation {
-            let src = isSearchPinActive ? "PIN" : "GPS"
-            print("[BUCKETS] center=\(src) (\(String(format: "%.5f", referenceLocation.coordinate.latitude)), \(String(format: "%.5f", referenceLocation.coordinate.longitude)))  groups=\(groups.count)  nearbyBusStops=\(nearbyBusStops.count)  nearbyStations=\(nearbyStations.count)  lastKnownGPS=\(lastKnownUserLocation.map { "(\(String(format: "%.5f", $0.coordinate.latitude)),\(String(format: "%.5f", $0.coordinate.longitude)))" } ?? "nil")")
-        } else {
-            print("[BUCKETS] ⚠️ referenceLocation=nil — sorting without distance  lastKnownGPS=\(lastKnownUserLocation.map { "(\(String(format: "%.5f", $0.coordinate.latitude)),\(String(format: "%.5f", $0.coordinate.longitude)))" } ?? "nil")")
+        do {
+            let bucketsMsg: String
+            if let referenceLocation {
+                let src = isSearchPinActive ? "PIN" : "GPS"
+                bucketsMsg = "[BUCKETS] center=\(src) (\(String(format: "%.5f", referenceLocation.coordinate.latitude)), \(String(format: "%.5f", referenceLocation.coordinate.longitude)))  groups=\(groups.count)  nearbyBusStops=\(nearbyBusStops.count)  nearbyStations=\(nearbyStations.count)  lastKnownGPS=\(lastKnownUserLocation.map { "(\(String(format: "%.5f", $0.coordinate.latitude)),\(String(format: "%.5f", $0.coordinate.longitude)))" } ?? "nil")"
+            } else {
+                bucketsMsg = "[BUCKETS] ⚠️ referenceLocation=nil — sorting without distance  lastKnownGPS=\(lastKnownUserLocation.map { "(\(String(format: "%.5f", $0.coordinate.latitude)),\(String(format: "%.5f", $0.coordinate.longitude)))" } ?? "nil")"
+            }
+            if Self._lastBucketsMessage != bucketsMsg {
+                Self._lastBucketsMessage = bucketsMsg
+                print(bucketsMsg)
+            }
         }
         #endif
         guard let referenceLocation else {
@@ -450,7 +432,14 @@ final class HomeViewModel {
         guard !group.directions.isEmpty else { return }
 
         let clampedIndex = max(0, min(index, group.directions.count - 1))
-        let directionKey = normalizedDirectionKey(group.directions[clampedIndex])
+
+        // Don't store preferences for empty/placeholder directions (e.g.
+        // compass stubs "E", "N" with 0 live arrivals).  This prevents
+        // phantom prefs that flip the user to a blank tab next session.
+        let targetDir = group.directions[clampedIndex]
+        guard !targetDir.liveArrivals.isEmpty else { return }
+
+        let directionKey = normalizedDirectionKey(targetDir)
         let key = directionPreferenceKey(for: group)
         preferredDirectionByRoute[key] = DirectionPreference(
             index: clampedIndex,

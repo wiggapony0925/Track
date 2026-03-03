@@ -541,12 +541,13 @@ struct DistanceBucketUtilsTests {
         let origin = CLLocation(latitude: 40.7128, longitude: -74.0060)
         let viewModel = HomeViewModel()
 
-        // nearbyBusStops are NOT used for distance — only arrival coords matter.
+        // nearbyBusStops matching Q10 exist but are FARTHER than the arrival.
+        // displayDistanceMeters takes min(nearby, arrival) → arrival wins.
         viewModel.nearbyBusStops = [
             BusStop(
-                id: "NEAR",
-                name: "Near Stop",
-                lat: origin.coordinate.latitude + (120.0 / 111_111.0),
+                id: "FAR",
+                name: "Far Stop",
+                lat: origin.coordinate.latitude + (1200.0 / 111_111.0),
                 lon: origin.coordinate.longitude,
                 direction: nil,
                 routeIds: ["MTA NYCT_Q10"]
@@ -571,7 +572,7 @@ struct DistanceBucketUtilsTests {
 
         let result = viewModel.displayDistanceMeters(for: group, from: origin)
         #expect(result != nil)
-        // Uses arrival stop coords (~800 m), not nearbyBusStops.
+        // min(nearbyStop ~1200 m, arrival ~800 m) → uses arrival coords.
         #expect((result ?? 0) > 700)
         #expect((result ?? 0) < 900)
     }
@@ -609,9 +610,13 @@ struct DistanceBucketUtilsTests {
         let origin = CLLocation(latitude: 40.7128, longitude: -74.0060)
         let viewModel = HomeViewModel()
 
-        // nearbyStations are NOT used for distance — only arrival coords matter.
+        // nearbyStations serves A/C/E but is FARTHER than the arrival.
+        // displayDistanceMeters takes min(station, arrival) → arrival wins.
         viewModel.nearbyStations = [
-            (stationID: "A27", name: "Chambers St", lat: 40.7128, lon: -74.0060, routeIDs: ["A", "C", "E"])
+            (stationID: "A27", name: "Chambers St",
+             lat: origin.coordinate.latitude + (500.0 / 111_111.0),
+             lon: origin.coordinate.longitude,
+             routeIDs: ["A", "C", "E"])
         ]
 
         let group = GroupedNearbyTransitResponse(
@@ -632,7 +637,7 @@ struct DistanceBucketUtilsTests {
 
         let result = viewModel.displayDistanceMeters(for: group, from: origin)
         #expect(result != nil)
-        // Uses arrival stop coords (~350 m), not nearbyStations.
+        // min(station ~500 m, arrival ~350 m) → uses arrival coords.
         #expect((result ?? 0) > 300)
         #expect((result ?? 0) < 400)
     }

@@ -624,6 +624,10 @@ struct RouteDetailSheet: View {
         polyline: [CLLocationCoordinate2D]
     ) -> Bool {
         guard polyline.count >= 2 else { return false }
+        // Backend says the vehicle is arriving NOW — never filter it out.
+        // This prevents chips=0 when the bus is physically at the stop but
+        // its polyline fraction is slightly past the stop marker.
+        if arrival.minutesAway <= 0 { return false }
         // Only check vehicles that are actually on the map
         guard isLiveOnMap?(arrival) ?? false else { return false }
 
@@ -824,11 +828,14 @@ struct RouteDetailSheet: View {
         let (polyline, stopFraction) = directionPolylineAndStopFraction
         let live: [NearbyTransitResponse]
         if let sf = stopFraction {
-            live = raw.filter { !hasVehiclePassedStop($0, stopFraction: sf, polyline: polyline) }
+            let filtered = raw.filter { !hasVehiclePassedStop($0, stopFraction: sf, polyline: polyline) }
+            // Safety net: never drop ALL arrivals — if the polyline filter
+            // removed everything, fall back to the unfiltered list so the
+            // user never sees chips=0 when arrivals actually exist.
+            live = filtered.isEmpty ? raw : filtered
         } else {
             live = raw
         }
-        guard !live.isEmpty else { return [] }
 
         // Deduplicate helper (used in multiple branches below)
         func deduped(_ list: [NearbyTransitResponse]) -> [NearbyTransitResponse] {
@@ -1096,6 +1103,23 @@ struct RouteDetailSheet: View {
             message:
                 "reason=\(reason) route=\(group.routeId) dir=\(direction.direction) row=\(rowETA.minutesRemaining)m detail=\(detailETA.minutesRemaining)m delta=\(deltaSeconds)s rowStop=\(rowArrival.stopName) detailStop=\(detailArrival.stopName)"
         )
+
+        // Log the full arrival lists from both sides so discrepancies are visible.
+        // Row side: all live arrivals in the direction (same pool GroupedRouteRow uses)
+        let rowLive = direction.liveArrivals.prefix(6)
+        let rowMins = rowLive.map { a -> String in
+            let eta = smartETA(for: a)
+            let vid = a.vehicleId ?? a.tripId ?? "?"
+            return "\(eta.minutesRemaining)m(raw=\(a.minutesAway),id=\(vid.suffix(6)),stop=\(a.stopName))"
+        }
+        // Detail side: the stable nearest-stop arrivals (what the user sees as chips)
+        let detailChips = stableNearestArrivals.prefix(6)
+        let detailMins = detailChips.map { a -> String in
+            let eta = smartETA(for: a)
+            let vid = a.vehicleId ?? a.tripId ?? "?"
+            return "\(eta.minutesRemaining)m(raw=\(a.minutesAway),id=\(vid.suffix(6)),stop=\(a.stopName))"
+        }
+        print("[DETAIL_ARRIVALS] route=\(group.routeId)  row=[\(rowMins.joined(separator: ", "))]  detail=[\(detailMins.joined(separator: ", "))]")
         #endif
     }
 
@@ -1871,6 +1895,24 @@ struct RouteDetailSheet: View {
             guard let sid = inSheetSelectedStopId else { return nil }
             return baseArrivals.first?.stopName ?? sid
         }()
+
+        // ── DEBUG: log every render of the departures list ──
+        #if DEBUG
+        let _debugArrivals = sortedArrivals
+        let _debugMode = group.isBus ? "BUS" : group.isLIRR ? "LIRR" : group.isMNR ? "MNR" : "SUBWAY"
+        let _debugDir = safeDirection.directionLabel ?? safeDirection.direction
+        let _debugLines = _debugArrivals.enumerated().map { (i, a) -> String in
+            let vid = a.vehicleId ?? a.tripId ?? "?"
+            let status = a.isScheduledOnly ? "SCHED" : "LIVE"
+            let stop = a.stopName
+            return "  #\(i+1) \(a.minutesAway)min  \(status)  id=\(vid.suffix(8))  stop=\(stop)"
+        }
+        let _ = {
+            print("[ROUTE_DETAIL] \(_debugMode) \(group.displayName) → \(_debugDir)  (\(_debugArrivals.count) arrivals)")
+            for line in _debugLines { print(line) }
+            if _debugArrivals.isEmpty { print("  <no arrivals>") }
+        }()
+        #endif
 
         return VStack(alignment: .leading, spacing: 10) {
             // ── Header ───────────────────────────────────────────────────────
