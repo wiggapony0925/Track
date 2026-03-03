@@ -570,6 +570,15 @@ _NUMERIC_DIR_KEYS = {"0", "1", "2", "3"}
 # (requested UX: use Inbound/Outbound terminology, not "Opposite").
 _OPPOSITE_DIRECTION = "Outbound"
 
+# Canonical opposite-direction mapping.  Reused by _opposite_direction_key()
+# and Phase C bus backfill — single source of truth.
+# Values use title-case to match _DIRECTION_LABELS conventions.
+_OPPOSITE_COMPASS: dict[str, str] = {
+    "N": "S", "S": "N", "E": "W", "W": "E",
+    "NE": "SW", "SW": "NE", "NW": "SE", "SE": "NW",
+    "INBOUND": "Outbound", "OUTBOUND": "Inbound",
+}
+
 
 def _is_fallback_direction_key(direction: str) -> bool:
     """True when a direction key is compass/numeric/generic fallback.
@@ -648,15 +657,13 @@ def _opposite_direction_key(mode: str, direction: str) -> str | None:
     """
     upper = direction.upper()
 
-    # Compass and commuter-rail canonical pairs
-    opposite_map = {
-        "N": "S", "S": "N", "E": "W", "W": "E",
-        "NE": "SW", "SW": "NE", "NW": "SE", "SE": "NW",
-        "INBOUND": "Outbound", "OUTBOUND": "Inbound",
-        "0": "1", "1": "0", "2": "3", "3": "2",
-    }
-    if upper in opposite_map:
-        return opposite_map[upper]
+    # Compass and commuter-rail canonical pairs (reuse module constant)
+    if upper in _OPPOSITE_COMPASS:
+        return _OPPOSITE_COMPASS[upper]
+    # Numeric SIRI direction refs
+    _NUMERIC_OPPOSITE = {"0": "1", "1": "0", "2": "3", "3": "2"}
+    if upper in _NUMERIC_OPPOSITE:
+        return _NUMERIC_OPPOSITE[upper]
 
     # Destination-name direction keys (common on bus branches)
     if mode == "bus":
@@ -1747,12 +1754,6 @@ async def _fetch_nearby_buses(
     #     opposite compass ("S").
     #   - If existing key is numeric ("0"), create "1" and vice versa.
     # -----------------------------------------------------------------
-    _OPPOSITE_COMPASS: dict[str, str] = {
-        "N": "S", "S": "N", "E": "W", "W": "E",
-        "NE": "SW", "SW": "NE", "NW": "SE", "SE": "NW",
-        "INBOUND": "OUTBOUND", "OUTBOUND": "INBOUND",
-    }
-
     # Rebuild direction counts after Phase B additions
     final_route_dirs: dict[str, set[str]] = defaultdict(set)
     for r in results:

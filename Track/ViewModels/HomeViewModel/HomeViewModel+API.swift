@@ -485,17 +485,8 @@ extension HomeViewModel {
         // Train arrivals use GTFS-RT direction codes ("N"/"S") while the group's
         // direction keys may be headsigns ("Inwood-207 St") or compass labels
         // ("Northbound") after enrichGroupWithShapeDirections.
-        let compassExpansions: [String: Set<String>] = [
-            "N": ["N", "NORTHBOUND", "UPTOWN"],
-            "S": ["S", "SOUTHBOUND", "DOWNTOWN"],
-            "E": ["E", "EASTBOUND"],
-            "W": ["W", "WESTBOUND"],
-        ]
-        let reverseCompass: [String: String] = [
-            "NORTHBOUND": "N", "UPTOWN": "N",
-            "SOUTHBOUND": "S", "DOWNTOWN": "S",
-            "EASTBOUND": "E", "WESTBOUND": "W",
-        ]
+        let compassExpansions = DirectionConstants.compassExpansions
+        let reverseCompass = DirectionConstants.reverseCompass
 
         // For each existing direction, build a set of all direction strings
         // that should match to it (compass codes, labels, destinations).

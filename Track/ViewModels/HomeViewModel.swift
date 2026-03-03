@@ -944,21 +944,8 @@ final class HomeViewModel {
 
         // Map compass codes ↔ directional labels so GTFS-RT "N"/"S" values
         // match grouped API labels like "Northbound", "Uptown", etc.
-        let compassExpansions: [String: [String]] = [
-            "N": ["NORTHBOUND", "UPTOWN"],
-            "S": ["SOUTHBOUND", "DOWNTOWN"],
-            "E": ["EASTBOUND"],
-            "W": ["WESTBOUND"],
-            "NE": ["NORTHBOUND", "EASTBOUND"],
-            "NW": ["NORTHBOUND", "WESTBOUND"],
-            "SE": ["SOUTHBOUND", "EASTBOUND"],
-            "SW": ["SOUTHBOUND", "WESTBOUND"],
-        ]
-        let reverseCompass: [String: String] = [
-            "NORTHBOUND": "N", "UPTOWN": "N",
-            "SOUTHBOUND": "S", "DOWNTOWN": "S",
-            "EASTBOUND": "E", "WESTBOUND": "W",
-        ]
+        let compassExpansions = DirectionConstants.compassExpansions
+        let reverseCompass = DirectionConstants.reverseCompass
         // Expand existing compass codes and add reverse mappings
         for dir in Array(validDirs) {
             if let expansions = compassExpansions[dir] {
