@@ -133,13 +133,23 @@ async def get_arrivals_for_line(line_id: str) -> list[TrackArrival]:
 
 
 async def _parse_alert_feed(url: str, mode: str) -> list[TransitAlert]:
-    """Parse a single MTA JSON alerts feed and return critical alerts."""
+    """Parse a single MTA JSON alerts feed and return active alerts.
+
+    Implements MTA GTFS-RT Mercury extension fields:
+    - ``active_period.end`` — filter expired alerts (start <= now <= end).
+    - ``display_before_active`` — show before active window starts.
+    - ``sort_order`` — numeric severity rank (higher = more severe).
+    - ``alert_type`` — human-friendly status label (e.g. "Delays").
+    """
+    import time as _t
+
     try:
         data: Any = await fetch_json(url)
     except Exception as exc:
         TrackLogger.error(f"Failed to fetch {mode} alerts: {exc}", tag="ALERTS")
         return []
 
+    now = int(_t.time())
     alerts: list[TransitAlert] = []
     entities = data.get("entity", []) if isinstance(data, dict) else []
     for entity in entities:
@@ -152,6 +162,50 @@ async def _parse_alert_feed(url: str, mode: str) -> list[TransitAlert]:
         if severity_level == "INFO":
             continue
 
+        # ── Mercury extension fields ────────────────────────────────────
+        mercury = alert_data.get("transit_realtime.mercury_alert", {})
+        alert_type: str | None = mercury.get("alert_type")  # e.g. "Delays"
+        display_before_active: int | None = mercury.get("display_before_active")
+
+        # ── Active-period filtering (Gap #1) ────────────────────────────
+        # An alert is visible when ANY active_period bracket contains 'now'
+        # (adjusted for display_before_active).  If the entity has no valid
+        # brackets at all, we still include it (fail-open).
+        active_periods = alert_data.get("active_period", [])
+        updated_at: int | None = None
+        active_period_end: int | None = None
+        visible = False  # at least one bracket must contain "now"
+
+        if active_periods:
+            starts = [int(ap["start"]) for ap in active_periods if ap.get("start")]
+            if starts:
+                updated_at = max(starts)
+
+            for ap in active_periods:
+                ap_start = int(ap["start"]) if ap.get("start") else 0
+                ap_end = int(ap["end"]) if ap.get("end") else None
+
+                # display_before_active: surface the alert N seconds early.
+                effective_start = ap_start
+                if display_before_active is not None and display_before_active > 0:
+                    effective_start = ap_start - display_before_active
+
+                if ap_end is not None:
+                    if effective_start <= now <= ap_end:
+                        visible = True
+                        active_period_end = max(active_period_end or 0, ap_end)
+                else:
+                    # Open-ended period — visible after effective_start
+                    if now >= effective_start:
+                        visible = True
+        else:
+            # No active_period at all — fail-open, show it.
+            visible = True
+
+        if not visible:
+            continue
+
+        # ── Informed entities ───────────────────────────────────────────
         informed = alert_data.get("informed_entity", [])
         route_id = informed[0].get("route_id") if informed else None
 
@@ -162,6 +216,19 @@ async def _parse_alert_feed(url: str, mode: str) -> list[TransitAlert]:
             if rid and rid not in affected_routes:
                 affected_routes.append(rid)
 
+        # ── sort_order (Gap #2) — extract numeric severity rank ─────────
+        # Format: "MTASBWY:N:26" → 26.  Take the MAX across all entities.
+        max_sort_order = 0
+        for ie in informed:
+            mes = ie.get("transit_realtime.mercury_entity_selector", {})
+            so_raw = mes.get("sort_order", "")
+            if ":" in so_raw:
+                try:
+                    max_sort_order = max(max_sort_order, int(so_raw.rsplit(":", 1)[-1]))
+                except (ValueError, IndexError):
+                    pass
+
+        # ── Text fields ─────────────────────────────────────────────────
         header_text = alert_data.get("header_text", {})
         translations = header_text.get("translation", [])
         title = translations[0].get("text", "Service Alert") if translations else "Service Alert"
@@ -169,14 +236,6 @@ async def _parse_alert_feed(url: str, mode: str) -> list[TransitAlert]:
         desc_text = alert_data.get("description_text", {})
         desc_translations = desc_text.get("translation", [])
         description = desc_translations[0].get("text", "") if desc_translations else ""
-
-        # Extract the most recent active_period start as updated_at (epoch seconds)
-        active_periods = alert_data.get("active_period", [])
-        updated_at: int | None = None
-        if active_periods:
-            starts = [int(ap["start"]) for ap in active_periods if ap.get("start")]
-            if starts:
-                updated_at = max(starts)
 
         # Normalize severity for the frontend
         normalized_severity = severity_level.lower() if severity_level else "warning"
@@ -192,6 +251,10 @@ async def _parse_alert_feed(url: str, mode: str) -> list[TransitAlert]:
                 mode=mode,
                 updated_at=updated_at,
                 affected_routes=affected_routes,
+                alert_type=alert_type,
+                sort_order=max_sort_order,
+                display_before_active=display_before_active,
+                active_period_end=active_period_end,
             )
         )
 

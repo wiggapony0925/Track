@@ -745,6 +745,8 @@ async def _get_inline_alerts() -> dict[str, list["InlineAlert"]]:
                 title=alert.title,
                 severity=sev,
                 affected_routes=alert.affected_routes,
+                alert_type=alert.alert_type,
+                sort_order=alert.sort_order,
             )
             for rid in alert.affected_routes:
                 key = rid.upper().strip()

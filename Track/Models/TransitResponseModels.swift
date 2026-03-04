@@ -193,11 +193,32 @@ struct InlineAlertResponse: Codable, Equatable {
     let title: String
     let severity: String
     let affectedRoutes: [String]
+    let alertType: String?    // e.g. "Delays", "Planned - Suspended"
+    let sortOrder: Int        // MTA severity rank (higher = more severe)
 
     enum CodingKeys: String, CodingKey {
         case title
         case severity
         case affectedRoutes = "affected_routes"
+        case alertType = "alert_type"
+        case sortOrder = "sort_order"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        title = try container.decode(String.self, forKey: .title)
+        severity = try container.decode(String.self, forKey: .severity)
+        affectedRoutes = try container.decodeIfPresent([String].self, forKey: .affectedRoutes) ?? []
+        alertType = try container.decodeIfPresent(String.self, forKey: .alertType)
+        sortOrder = try container.decodeIfPresent(Int.self, forKey: .sortOrder) ?? 0
+    }
+
+    init(title: String, severity: String, affectedRoutes: [String] = [], alertType: String? = nil, sortOrder: Int = 0) {
+        self.title = title
+        self.severity = severity
+        self.affectedRoutes = affectedRoutes
+        self.alertType = alertType
+        self.sortOrder = sortOrder
     }
 }
 

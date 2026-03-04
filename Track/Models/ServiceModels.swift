@@ -20,6 +20,12 @@ struct TransitAlert: Identifiable, Codable {
     let updatedAt: Int?           // epoch seconds – active_period start
     let affectedRoutes: [String]  // all route_ids this alert touches
 
+    // MTA Mercury extension fields
+    let alertType: String?              // e.g. "Delays", "Planned - Suspended"
+    let sortOrder: Int                  // MTA severity rank (higher = more severe)
+    let displayBeforeActive: Int?       // seconds before active_period to show (null = don't show in status box)
+    let activePeriodEnd: Int?           // epoch seconds – when the alert expires
+
     enum CodingKeys: String, CodingKey {
         case routeId = "route_id"
         case title
@@ -28,9 +34,13 @@ struct TransitAlert: Identifiable, Codable {
         case mode
         case updatedAt = "updated_at"
         case affectedRoutes = "affected_routes"
+        case alertType = "alert_type"
+        case sortOrder = "sort_order"
+        case displayBeforeActive = "display_before_active"
+        case activePeriodEnd = "active_period_end"
     }
     
-    init(routeId: String? = nil, title: String, description: String, severity: String, mode: String, updatedAt: Int? = nil, affectedRoutes: [String]? = nil) {
+    init(routeId: String? = nil, title: String, description: String, severity: String, mode: String, updatedAt: Int? = nil, affectedRoutes: [String]? = nil, alertType: String? = nil, sortOrder: Int = 0, displayBeforeActive: Int? = nil, activePeriodEnd: Int? = nil) {
         self.routeId = routeId
         self.title = title
         self.description = description
@@ -38,6 +48,10 @@ struct TransitAlert: Identifiable, Codable {
         self.mode = mode
         self.updatedAt = updatedAt
         self.affectedRoutes = affectedRoutes ?? (routeId.map { [$0] } ?? [])
+        self.alertType = alertType
+        self.sortOrder = sortOrder
+        self.displayBeforeActive = displayBeforeActive
+        self.activePeriodEnd = activePeriodEnd
     }
     
     init(from decoder: Decoder) throws {
@@ -49,6 +63,10 @@ struct TransitAlert: Identifiable, Codable {
         mode = try container.decodeIfPresent(String.self, forKey: .mode) ?? "subway"
         updatedAt = try container.decodeIfPresent(Int.self, forKey: .updatedAt)
         affectedRoutes = try container.decodeIfPresent([String].self, forKey: .affectedRoutes) ?? (routeId.map { [$0] } ?? [])
+        alertType = try container.decodeIfPresent(String.self, forKey: .alertType)
+        sortOrder = try container.decodeIfPresent(Int.self, forKey: .sortOrder) ?? 0
+        displayBeforeActive = try container.decodeIfPresent(Int.self, forKey: .displayBeforeActive)
+        activePeriodEnd = try container.decodeIfPresent(Int.self, forKey: .activePeriodEnd)
     }
 
     /// SF Symbol icon matching the app's tab icons.
@@ -137,12 +155,17 @@ extension Array where Element == TransitAlert {
         }
     }
     
-    /// Sort alerts: severe first, then by recency (newest first).
+    /// Sort alerts by MTA sort_order (highest/most severe first), then recency.
+    /// Falls back to severity string when sort_order is unavailable.
     func sortedBySeverityAndTime() -> [TransitAlert] {
         sorted { a, b in
+            // Primary: MTA sort_order (higher = more severe → sort descending)
+            if a.sortOrder != b.sortOrder { return a.sortOrder > b.sortOrder }
+            // Secondary: legacy severity string
             let aSev = a.severity == "severe" ? 0 : 1
             let bSev = b.severity == "severe" ? 0 : 1
             if aSev != bSev { return aSev < bSev }
+            // Tertiary: newest first
             return (a.updatedAt ?? 0) > (b.updatedAt ?? 0)
         }
     }

@@ -37,6 +37,10 @@ class TransitAlert(BaseModel):
     mode: str = "subway"
     updated_at: int | None = None  # epoch seconds – active_period start or transit_realtime timestamp
     affected_routes: list[str] = []  # all route_ids touched by this alert
+    alert_type: str | None = None  # MercuryAlert.alert_type (e.g. "Delays", "Planned - Suspended")
+    sort_order: int = 0  # MTA severity rank (higher = more severe, e.g. Delays=26, Suspended=39)
+    display_before_active: int | None = None  # seconds before active_period to show (null = don't show in status box)
+    active_period_end: int | None = None  # epoch seconds – when the alert expires
 
 
 class ElevatorStatus(BaseModel):
@@ -126,6 +130,8 @@ class InlineAlert(BaseModel):
     title: str
     severity: str  # "severe" or "warning"
     affected_routes: list[str] = []
+    alert_type: str | None = None  # MercuryAlert.alert_type (e.g. "Delays")
+    sort_order: int = 0  # MTA severity rank (higher = more severe)
 
 
 class GroupedNearbyTransit(BaseModel):
