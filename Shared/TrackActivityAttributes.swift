@@ -6,7 +6,9 @@
 //  Used by both the main app (to start/update activities) and
 //  the widget extension (to render the Dynamic Island & Lock Screen).
 //
-//  NOTE: This is a shared copy that must stay in sync with Track/Models/TrackActivityAttributes.swift
+//  ✅ SINGLE SOURCE OF TRUTH — lives in Shared/ so both the Track target
+//  and the TrackWidgetsExtension target compile the same definition.
+//  Do NOT duplicate this file in Track/Models/ or TrackWidgets/Shared/.
 
 import Foundation
 import ActivityKit
@@ -51,7 +53,7 @@ struct TrackActivityAttributes: ActivityAttributes {
             case arrivalTime
             case progress
             case minutesAway
-            case stopsAway
+            case stopsAway   // backward-compat: older payloads may encode minutes as "stopsAway"
             case nextArrivals
             case walkMinutes
             case isHurryUp

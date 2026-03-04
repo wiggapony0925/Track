@@ -1777,6 +1777,14 @@ final class HomeViewModel {
 
         // Find nearest stop and calculate walking route.
         // Use referenceLocation — single source of truth for pin vs GPS.
+        //
+        // CRITICAL: Re-read `selectedGroupedRoute` here — enrichGroupWithShapeDirections
+        // may have reordered directions and updated `selectedDirectionIndex`.  The original
+        // `group` parameter still has the PRE-enrichment order, so using it with the
+        // POST-enrichment index yields the WRONG direction (e.g. a direction with 0
+        // arrivals instead of the one with 7).  This caused the arrival-based fallback
+        // to fail and select a shape stop with no matching arrivals.
+        let currentGroup = selectedGroupedRoute ?? group
         let refLocation = referenceLocation
         let fallbackStops = routeShape?.stopsForDirection(index: selectedDirectionIndex) ?? []
 
@@ -1797,19 +1805,66 @@ final class HomeViewModel {
             }
 
             if let closest = closestStop {
-                targetStopCoord = CLLocationCoordinate2D(latitude: closest.lat, longitude: closest.lon)
-                targetStopId = closest.id
-                
-                #if DEBUG
-                print("[WALK DIST] \(group.routeId) (\(group.mode))  source=routeShape (\(fallbackStops.count) stops)  nearest stop='\(closest.name)' id=\(closest.id)  (\(String(format: "%.5f", closest.lat)),\(String(format: "%.5f", closest.lon)))  straight-line=\(Int(minDistance))m / \(String(format: "%.2f", minDistance / 1609.34))mi  ← polyline targets this stop")
-                #endif
+                // Verify the shape's nearest stop has at least one live
+                // arrival.  SIRI only reports predictions at monitored
+                // timepoint stops — the shape's nearest stop may NOT be
+                // one of them.  When that happens, the polyline filter in
+                // RouteDetailSheet treats approaching buses as "passed"
+                // and hides the very bus the home row shows as "arriving".
+                let activeDir = currentGroup.directions.indices.contains(selectedDirectionIndex)
+                    ? currentGroup.directions[selectedDirectionIndex]
+                    : currentGroup.directions.first
+                let bareShapeId = stripMTAStopPrefix(closest.id)
+                let arrivalHasStop = activeDir?.liveArrivals.contains(where: { arrival in
+                    guard let sid = arrival.stopId else { return false }
+                    return sid == closest.id
+                        || stripMTAStopPrefix(sid) == bareShapeId
+                        || arrival.stopName == closest.name
+                }) ?? false
+
+                if arrivalHasStop {
+                    targetStopCoord = CLLocationCoordinate2D(latitude: closest.lat, longitude: closest.lon)
+                    targetStopId = closest.id
+
+                    #if DEBUG
+                    print("[WALK DIST] \(currentGroup.routeId) (\(currentGroup.mode))  source=routeShape (\(fallbackStops.count) stops)  nearest stop='\(closest.name)' id=\(closest.id)  (\(String(format: "%.5f", closest.lat)),\(String(format: "%.5f", closest.lon)))  straight-line=\(Int(minDistance))m / \(String(format: "%.2f", minDistance / 1609.34))mi  ← polyline targets this stop")
+                    #endif
+                } else {
+                    // Shape stop has no arrivals — find the nearest stop
+                    // FROM the arrivals instead, so chips match the home row.
+                    if let activeDir, let userRef = refLocation {
+                        var bestArrival: NearbyTransitResponse?
+                        var bestDist: CLLocationDistance = .greatestFiniteMagnitude
+                        for arrival in activeDir.liveArrivals {
+                            guard let lat = arrival.stopLat, let lon = arrival.stopLon else { continue }
+                            let dist = userRef.distance(from: CLLocation(latitude: lat, longitude: lon))
+                            if dist < bestDist { bestDist = dist; bestArrival = arrival }
+                        }
+                        if let best = bestArrival, let lat = best.stopLat, let lon = best.stopLon {
+                            targetStopCoord = CLLocationCoordinate2D(latitude: lat, longitude: lon)
+                            targetStopId = best.stopId
+                            #if DEBUG
+                            print("[WALK DIST] \(currentGroup.routeId) (\(currentGroup.mode))  source=arrivalNearest (shape stop '\(closest.name)' had no arrivals)  stop='\(best.stopName)' id=\(best.stopId ?? "?")  straight-line=\(Int(bestDist))m  ← polyline targets this stop")
+                            #endif
+                        }
+                    }
+
+                    // Still use shape stop for walking route if no arrival stop found
+                    if targetStopCoord == nil {
+                        targetStopCoord = CLLocationCoordinate2D(latitude: closest.lat, longitude: closest.lon)
+                        targetStopId = closest.id
+                        #if DEBUG
+                        print("[WALK DIST] \(currentGroup.routeId) (\(currentGroup.mode))  source=routeShape (\(fallbackStops.count) stops)  nearest stop='\(closest.name)' id=\(closest.id)  (\(String(format: "%.5f", closest.lat)),\(String(format: "%.5f", closest.lon)))  straight-line=\(Int(minDistance))m / \(String(format: "%.2f", minDistance / 1609.34))mi  ← polyline targets this stop (no arrival match)")
+                        #endif
+                    }
+                }
             }
         }
         
         // Fallback: zoom to the first arrival's stop coordinates when
         // route shape data is unavailable or user location is missing.
         if targetStopCoord == nil {
-            let activeDirection = group.directions.indices.contains(selectedDirectionIndex) ? group.directions[selectedDirectionIndex] : group.directions.first
+            let activeDirection = currentGroup.directions.indices.contains(selectedDirectionIndex) ? currentGroup.directions[selectedDirectionIndex] : currentGroup.directions.first
             if let first = activeDirection?.arrivals.first,
                 let lat = first.stopLat, let lon = first.stopLon
             {
@@ -1819,7 +1874,7 @@ final class HomeViewModel {
                 #if DEBUG
                 if let userLoc = refLocation {
                     let fallbackDist = userLoc.distance(from: CLLocation(latitude: lat, longitude: lon))
-                    print("[WALK DIST] \(group.routeId) (\(group.mode))  source=arrivalFallback (no shape stops)  stop='\(first.stopName)'  (\(String(format: "%.5f", lat)),\(String(format: "%.5f", lon)))  straight-line=\(Int(fallbackDist))m / \(String(format: "%.2f", fallbackDist / 1609.34))mi  ← polyline targets this stop")
+                    print("[WALK DIST] \(currentGroup.routeId) (\(currentGroup.mode))  source=arrivalFallback (no shape stops)  stop='\(first.stopName)'  (\(String(format: "%.5f", lat)),\(String(format: "%.5f", lon)))  straight-line=\(Int(fallbackDist))m / \(String(format: "%.2f", fallbackDist / 1609.34))mi  ← polyline targets this stop")
                 }
                 #endif
             }
@@ -1907,17 +1962,15 @@ final class HomeViewModel {
         // route while the shape was loading, the shape's directions belong to
         // the old route.  Applying them would contaminate the new route's
         // direction picker (e.g. subway headsigns leaking into bus directions).
-        let shapeRoute = shape.routeId
-            .replacingOccurrences(of: "MTA NYCT_", with: "")
-            .replacingOccurrences(of: "MTABC_", with: "")
-            .uppercased()
-        let groupRoute = group.routeId
-            .replacingOccurrences(of: "MTA NYCT_", with: "")
-            .replacingOccurrences(of: "MTABC_", with: "")
-            .uppercased()
+        //
+        // Use normalizeMTARouteToken so SBS variants match:
+        //   shape "MTA NYCT_M34+"  →  "M34"
+        //   group "M34-SBS"        →  "M34"
+        let shapeRoute = normalizeMTARouteToken(shape.routeId)
+        let groupRoute = normalizeMTARouteToken(group.routeId)
         // For subway, the shape routeId is the line letter/number (e.g. "7")
         // while the group displayName carries the same value.
-        let groupDisplay = group.displayName.uppercased()
+        let groupDisplay = normalizeMTARouteToken(group.displayName)
         guard shapeRoute == groupRoute || shapeRoute == groupDisplay else {
             AppLogger.shared.log(
                 "ROUTE_DETAIL",

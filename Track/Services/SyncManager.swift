@@ -21,9 +21,11 @@ import Combine
 class SyncManager: ObservableObject {
     static let shared = SyncManager()
     
-    @Published var isSyncing = false
-    @Published var lastSyncDate: Date?
-    @Published var syncError: String?
+    /// Internal sync state — not @Published to avoid unnecessary view re-renders.
+    /// Views that need sync status should use dedicated properties.
+    private(set) var isSyncing = false
+    private(set) var lastSyncDate: Date?
+    private(set) var syncError: String?
     
     private let defaults = UserDefaults(suiteName: kAppGroupIdentifier) ?? .standard
     private let lastSyncKey = "last_sync_date"

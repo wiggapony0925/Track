@@ -121,42 +121,6 @@ struct TrackWidgetLiveActivity: Widget {
         .activityBackgroundTint(Color.black)
     }
 
-    // MARK: - Hero Countdown (Lock Screen)
-
-    @ViewBuilder
-    private func heroCountdownLockScreen(context: ActivityViewContext<TrackActivityAttributes>)
-        -> some View
-    {
-        let accentColor =
-            context.attributes.isBus
-            ? AppTheme.Colors.mtaBlue
-            : AppTheme.SubwayColors.color(for: context.attributes.lineId)
-
-        VStack(alignment: .center, spacing: -2) {  // Negative spacing to tighten number and label
-            // Big countdown number
-            Text(context.state.arrivalTime, style: .timer)
-                .font(.system(size: 40, weight: .black, design: .rounded))  // 46 -> 40
-                .monospacedDigit()
-                .foregroundStyle(.white)
-                .contentTransition(.numericText(countsDown: true))
-                .frame(minWidth: 80)  // 90 -> 80
-                .minimumScaleFactor(0.8)
-
-            // "MIN" label with accent bar
-            HStack(spacing: 4) {
-                RoundedRectangle(cornerRadius: 1.5)  // Reduced radius
-                    .fill(accentColor)
-                    .frame(width: 24, height: 3)  // 28x4 -> 24x3
-                Text("MIN")
-                    .font(.system(size: 11, weight: .black, design: .rounded))  // 12 -> 11
-                    .foregroundColor(AppTheme.Colors.textSecondary)
-                RoundedRectangle(cornerRadius: 1.5)
-                    .fill(accentColor)
-                    .frame(width: 24, height: 3)
-            }
-        }
-    }
-
     // MARK: - Hero Countdown (Dynamic Island)
 
     @ViewBuilder

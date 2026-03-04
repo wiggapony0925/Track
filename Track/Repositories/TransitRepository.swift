@@ -82,6 +82,6 @@ final class TransitRepository {
         }
         // Take the leading letter(s) before digits
         let letters = stationID.prefix(while: { $0.isLetter })
-        return letters.isEmpty ? stationID : String(letters.first!)
+        return letters.first.map(String.init) ?? stationID
     }
 }

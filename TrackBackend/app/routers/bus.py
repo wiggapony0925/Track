@@ -146,7 +146,7 @@ async def get_bus_schedule(route_id: str) -> BusScheduleResponse:
                 route_id=route_id,
                 direction=direction,
                 headsign=unique[0].headsign if unique else "",
-                departures=unique[:10],
+                departures=unique[:30],
             ))
 
     return BusScheduleResponse(route_id=route_id, directions=directions)

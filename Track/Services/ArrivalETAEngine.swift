@@ -63,22 +63,6 @@ struct SmartETA {
     }
 }
 
-// MARK: - ETA Context
-
-/// Lightweight bundle of live data needed to compute a position-aware ETA.
-/// Pass this from the ViewModel into NearbyTransitRow so rows outside
-/// RouteDetailSheet can also benefit from vehicle-position ETAs.
-struct ETAContext {
-    /// Live GPS coordinate of the vehicle (bus or train), if known.
-    let vehicleCoord: CLLocationCoordinate2D?
-    /// Coordinate of the destination stop.
-    let stopCoord: CLLocationCoordinate2D?
-    /// Decoded route polyline for measuring distance along the actual path.
-    let polyline: [CLLocationCoordinate2D]?
-    /// Unique vehicle or trip ID used to look up speed history.
-    let vehicleKey: String?
-}
-
 // MARK: - Engine
 
 @MainActor

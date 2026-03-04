@@ -800,116 +800,293 @@ struct SettingsContentView: View {
         }
     }
     
+    // MARK: - About Section (redesigned)
+
     private var aboutSection: some View {
         settingsSection(title: "About", icon: "info.circle.fill", iconColor: AppTheme.Colors.mtaBlue) {
             VStack(spacing: 0) {
-                // App identity card
-                VStack(spacing: 12) {
-                    Image("AppIconImage")
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 72, height: 72)
-                        .clipShape(RoundedRectangle(cornerRadius: 20))
-                        .shadow(color: AppTheme.Colors.subwayBlack.opacity(0.25), radius: 10, y: 4)
-                    
-                    VStack(spacing: 4) {
+
+                // ── Hero identity ──────────────────────────────────
+                VStack(spacing: 14) {
+                    ZStack {
+                        // Soft radial glow behind the icon
+                        Circle()
+                            .fill(
+                                RadialGradient(
+                                    colors: [AppTheme.Colors.mtaBlue.opacity(0.18), Color.clear],
+                                    center: .center,
+                                    startRadius: 20,
+                                    endRadius: 70
+                                )
+                            )
+                            .frame(width: 120, height: 120)
+
+                        Image("AppIconImage")
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 80, height: 80)
+                            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                            .shadow(color: AppTheme.Colors.subwayBlack.opacity(0.2), radius: 12, y: 6)
+                    }
+
+                    VStack(spacing: 3) {
                         Text("Track")
-                            .font(.system(size: 22, weight: .bold, design: .rounded))
+                            .font(.system(size: 26, weight: .heavy, design: .rounded))
                             .foregroundColor(AppTheme.Colors.textPrimary)
-                        
+
                         Text("NYC Transit, Live")
-                            .font(.system(size: 13, weight: .medium))
+                            .font(.system(size: 14, weight: .medium))
                             .foregroundColor(AppTheme.Colors.textSecondary)
                     }
-                    
+
                     if let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
                        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String {
-                        Text("v\(version) (\(build))")
-                            .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        Text("Version \(version)  ·  Build \(build)")
+                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
                             .foregroundColor(AppTheme.Colors.mtaBlue)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 4)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 5)
                             .background(AppTheme.Colors.mtaBlue.opacity(0.1))
                             .clipShape(Capsule())
                     }
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 20)
-                
-                settingsDivider
-                
-                // Transport modes
+                .padding(.top, 24)
+                .padding(.bottom, 20)
+
+                aboutDivider
+
+                // ── Transit modes grid ─────────────────────────────
+                VStack(spacing: 12) {
+                    aboutSectionLabel("SUPPORTED TRANSIT")
+
+                    HStack(spacing: 10) {
+                        transitModeCard(icon: "tram.fill", label: "Subway", color: AppTheme.Colors.mtaBlue)
+                        transitModeCard(icon: "bus.fill", label: "Bus", color: AppTheme.BusColors.localBlue)
+                        transitModeCard(icon: "train.side.front.car", label: "LIRR", color: AppTheme.CommuterRailColors.lirrBlue)
+                        transitModeCard(icon: "train.side.front.car", label: "MNR", color: AppTheme.CommuterRailColors.mnrBlue)
+                    }
+                    .padding(.horizontal, AppTheme.Layout.cardPadding)
+                }
+                .padding(.vertical, 16)
+
+                aboutDivider
+
+                // ── Data sources row ───────────────────────────────
                 VStack(spacing: 10) {
-                    Text("SUPPORTED TRANSIT")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.5))
-                        .tracking(0.6)
-                    
-                    HStack(spacing: 0) {
-                        transitModeBadge("🚇", "Subway", AppTheme.Colors.mtaBlue)
-                        transitModeBadge("🚌", "Bus", Color(red: 0/255, green: 57/255, blue: 166/255))
-                        transitModeBadge("🚂", "LIRR", Color(red: 0/255, green: 115/255, blue: 191/255))
-                        transitModeBadge("🚆", "MNR", Color(red: 0/255, green: 90/255, blue: 140/255))
+                    aboutSectionLabel("POWERED BY")
+
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            dataChip(icon: "antenna.radiowaves.left.and.right", text: "MTA GTFS-RT")
+                            dataChip(icon: "mappin.and.ellipse", text: "Apple Maps")
+                            dataChip(icon: "clock.arrow.circlepath", text: "Real-Time Feeds")
+                        }
+                        .padding(.horizontal, AppTheme.Layout.cardPadding)
                     }
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                
-                settingsDivider
-                
-                // Data sources
-                VStack(spacing: 8) {
-                    Text("POWERED BY")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.5))
-                        .tracking(0.6)
-                    
-                    HStack(spacing: 16) {
-                        dataSourcePill("MTA GTFS")
-                        dataSourcePill("Real-Time Feeds")
-                        dataSourcePill("Apple Maps")
+                .padding(.vertical, 16)
+
+                aboutDivider
+
+                // ── Quick links ────────────────────────────────────
+                VStack(spacing: 0) {
+                    aboutSectionLabel("LINKS")
+                        .padding(.top, 14)
+                        .padding(.bottom, 8)
+
+                    aboutLink(
+                        icon: "star.fill",
+                        iconColor: .orange,
+                        title: "Rate on the App Store",
+                        subtitle: "Your review helps us grow"
+                    ) {
+                        if let url = URL(string: "itms-apps://itunes.apple.com/app/id6743892498?action=write-review") {
+                            UIApplication.shared.open(url)
+                        }
+                    }
+
+                    Divider().padding(.leading, AppTheme.Layout.cardPadding + 42)
+
+                    aboutLink(
+                        icon: "square.and.arrow.up.fill",
+                        iconColor: AppTheme.Colors.mtaBlue,
+                        title: "Share Track",
+                        subtitle: "Tell a friend about the app"
+                    ) {
+                        let url = URL(string: "https://apps.apple.com/app/id6743892498")!
+                        let av = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+                        if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                           let root = scene.windows.first?.rootViewController {
+                            root.present(av, animated: true)
+                        }
+                    }
+
+                    Divider().padding(.leading, AppTheme.Layout.cardPadding + 42)
+
+                    aboutLink(
+                        icon: "hand.raised.fill",
+                        iconColor: .indigo,
+                        title: "Privacy Policy",
+                        subtitle: "How we handle your data"
+                    ) {
+                        if let url = URL(string: "https://tracknyc.app/privacy") {
+                            UIApplication.shared.open(url)
+                        }
+                    }
+
+                    Divider().padding(.leading, AppTheme.Layout.cardPadding + 42)
+
+                    aboutLink(
+                        icon: "doc.text.fill",
+                        iconColor: .teal,
+                        title: "Terms of Service",
+                        subtitle: "Usage terms & conditions"
+                    ) {
+                        if let url = URL(string: "https://tracknyc.app/terms") {
+                            UIApplication.shared.open(url)
+                        }
                     }
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                
-                settingsDivider
-                
-                // Credits
-                VStack(spacing: 6) {
-                    Text("Made with ❤️ in NYC")
-                        .font(.system(size: 13, weight: .medium))
+                .padding(.bottom, 6)
+
+                aboutDivider
+
+                // ── MTA Data Disclaimer ────────────────────────────
+                VStack(spacing: 10) {
+                    aboutSectionLabel("DATA DISCLAIMER")
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(AppTheme.Colors.warningYellow)
+                                .padding(.top, 1)
+
+                            Text("Transit data is obtained from the Metropolitan Transportation Authority (MTA) and redistributed through Track's servers. This app is not licensed by, endorsed by, or affiliated with the MTA.")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: "clock.badge.exclamationmark.fill")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.5))
+                                .padding(.top, 1)
+
+                            Text("Data is provided \"as is\" and may not be accurate, complete, or timely. Arrival times may be delayed due to caching and network conditions. Information shown may not reflect real-time conditions.")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .padding(.horizontal, AppTheme.Layout.cardPadding)
+                }
+                .padding(.vertical, 16)
+
+                aboutDivider
+
+                // ── Footer ─────────────────────────────────────────
+                VStack(spacing: 5) {
+                    Text("Made with ❤️ in New York City")
+                        .font(.system(size: 13, weight: .semibold))
                         .foregroundColor(AppTheme.Colors.textSecondary)
-                    
+
                     Text("© \(Calendar.current.component(.year, from: Date())) Track NYC Transit")
-                        .font(.system(size: 11))
-                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.5))
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.45))
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
+                .padding(.vertical, 18)
             }
         }
     }
-    
-    private func transitModeBadge(_ emoji: String, _ label: String, _ color: Color) -> some View {
-        VStack(spacing: 6) {
-            Text(emoji)
-                .font(.system(size: 26))
+
+    // MARK: - About Helpers
+
+    private var aboutDivider: some View {
+        Rectangle()
+            .fill(AppTheme.Colors.textSecondary.opacity(0.08))
+            .frame(height: 1)
+            .padding(.horizontal, AppTheme.Layout.cardPadding)
+    }
+
+    private func aboutSectionLabel(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 10, weight: .bold))
+            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.45))
+            .tracking(0.8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, AppTheme.Layout.cardPadding)
+    }
+
+    private func transitModeCard(icon: String, label: String, color: Color) -> some View {
+        VStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundColor(color)
+                .frame(width: 42, height: 42)
+                .background(color.opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
             Text(label)
-                .font(.system(size: 10, weight: .semibold))
+                .font(.system(size: 10, weight: .bold))
                 .foregroundColor(color)
         }
         .frame(maxWidth: .infinity)
     }
-    
-    private func dataSourcePill(_ text: String) -> some View {
-        Text(text)
-            .font(.system(size: 10, weight: .semibold))
-            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(AppTheme.Colors.textSecondary.opacity(0.08))
-            .clipShape(Capsule())
+
+    private func dataChip(icon: String, text: String) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon)
+                .font(.system(size: 9, weight: .bold))
+            Text(text)
+                .font(.system(size: 10, weight: .semibold))
+        }
+        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.65))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(AppTheme.Colors.textSecondary.opacity(0.07))
+        .clipShape(Capsule())
+    }
+
+    private func aboutLink(
+        icon: String,
+        iconColor: Color,
+        title: String,
+        subtitle: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(width: 30, height: 30)
+                    .background(iconColor.gradient)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(AppTheme.Colors.textPrimary)
+                    Text(subtitle)
+                        .font(.system(size: 11))
+                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.3))
+            }
+            .padding(.horizontal, AppTheme.Layout.cardPadding)
+            .padding(.vertical, 12)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
     
     // MARK: - Section Builder

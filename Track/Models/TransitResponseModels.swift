@@ -154,6 +154,27 @@ struct DirectionArrivalsResponse: Codable, Identifiable, Equatable {
         }
     }
 
+    /// Number of distinct vehicles (by vehicleId/tripId) in this direction.
+    /// Much cheaper than `liveArrivals.count` because it skips sorting and
+    /// only needs a single pass for dedup.  Used for the direction pill badge.
+    var uniqueVehicleCount: Int {
+        let now = Date.now.timeIntervalSince1970
+        var vehicleKeys = Set<String>()
+        for arrival in arrivals {
+            guard !arrival.isPlaceholder else { continue }
+            guard !arrival.isCancelled else { continue }
+            if let ts = arrival.arrivalTs, ts > 0 {
+                let elapsed = now - Double(ts)
+                if elapsed > 90 { continue }
+            }
+            if arrival.minutesAway <= 0 && arrival.arrivalTs == nil
+                && arrival.isScheduledOnly { continue }
+            let key = arrival.vehicleId ?? arrival.tripId ?? arrival.id
+            vehicleKeys.insert(key)
+        }
+        return vehicleKeys.count
+    }
+
     init(direction: String, directionLabel: String? = nil, arrivals: [NearbyTransitResponse]) {
         self.direction = direction
         self.directionLabel = directionLabel
@@ -236,4 +257,3 @@ struct GroupedNearbyTransitResponse: Codable, Identifiable, Equatable {
         case alerts
     }
 }
-

@@ -290,7 +290,7 @@ extension HomeViewModel {
                     direction: resolvedDirection,
                     destination: call.destinationName,
                     minutesAway: minutes,
-                    status: call.statusText,
+                    status: vehicle.isRealtime ? call.statusText : "Scheduled",
                     mode: "bus",
                     stopLat: stopLat,
                     stopLon: stopLon,
@@ -298,7 +298,8 @@ extension HomeViewModel {
                     vehicleId: vehicle.vehicleId,
                     tripId: nil,
                     stopId: call.stopId,
-                    distanceM: dist
+                    distanceM: dist,
+                    isRealTime: vehicle.isRealtime
                 )
                 newArrivals.append(arrival)
             }
@@ -322,32 +323,40 @@ extension HomeViewModel {
 
         for oldDir in currentGroup.directions {
             let liveArrivals = grouped[oldDir.direction] ?? []
-            // Deduplicate: for each stop, keep only the soonest arrival
-            // (the earliest-arriving vehicle). Multiple buses heading to the
-            // same stop create duplicate entries from onwardCalls — users only
-            // need to see the next arrival at each stop.
-            var seenStops: [String: NearbyTransitResponse] = [:]
-            for arrival in liveArrivals {
-                let key = arrival.stopId ?? arrival.stopName
-                if let existing = seenStops[key] {
-                    if arrival.minutesAway < existing.minutesAway {
-                        seenStops[key] = arrival
-                    }
-                } else {
-                    seenStops[key] = arrival
-                }
+            // Keep ALL arrivals from all vehicles — multiple buses heading to
+            // the same stop are genuinely distinct upcoming arrivals.  The
+            // per-stop dedup here was collapsing 3+ chip arrivals to 1, which
+            // caused the countdown chip strip to change drastically after the
+            // first vehicle sync.  Downstream `nearestStopArrivals` already
+            // deduplicates by vehicleId/tripId and sorts by ETA.
+            let sorted = liveArrivals.sorted { $0.minutesAway < $1.minutesAway }
+
+            // Preserve the old direction's SCHEDULED (non-realtime) arrivals
+            // that came from the nearby API top-off.  SIRI onward calls only
+            // carry live vehicle data, so without this merge the user loses
+            // all scheduled arrivals when the first sync fires.  When they
+            // then tap a different stop, only the one live bus shows up
+            // instead of the full schedule for that stop.
+            let oldScheduled = oldDir.arrivals.filter { !$0.isRealTime }
+            // Avoid dupes: drop old scheduled entries whose stop already has
+            // a live arrival from the same vehicle (meaning the bus went live).
+            let liveVehicleIds = Set(sorted.compactMap(\.vehicleId))
+            let filteredScheduled = oldScheduled.filter { sched in
+                guard let vid = sched.vehicleId else { return true }
+                return !liveVehicleIds.contains(vid)
             }
-            let sorted = seenStops.values.sorted { $0.minutesAway < $1.minutesAway }
+
+            let merged = sorted + filteredScheduled
 
             // Only replace if we got new arrivals; otherwise keep existing to avoid flashing empty
-            if sorted.isEmpty && !oldDir.arrivals.isEmpty {
+            if merged.isEmpty && !oldDir.arrivals.isEmpty {
                 newDirections.append(oldDir)
             } else {
                 newDirections.append(
                     DirectionArrivalsResponse(
                         direction: oldDir.direction,
                         directionLabel: oldDir.directionLabel,
-                        arrivals: sorted
+                        arrivals: merged
                     ))
             }
         }
@@ -487,7 +496,8 @@ extension HomeViewModel {
                     vehicleId: nil,
                     tripId: a.tripId,
                     stopId: a.stationID,
-                    distanceM: dist
+                    distanceM: dist,
+                    isRealTime: a.status.lowercased() != "scheduled"
                 ))
         }
 
@@ -1931,7 +1941,8 @@ extension HomeViewModel {
 
     func debugDirectionSnapshot(_ group: GroupedNearbyTransitResponse) -> String {
         group.directions.enumerated().map { index, direction in
-            "#\(index):\(direction.direction){all:\(direction.arrivals.count),live:\(direction.liveArrivals.count)}"
+            let rtCount = direction.arrivals.filter { $0.isRealTime }.count
+            return "#\(index):\(direction.direction){all:\(direction.arrivals.count),live:\(direction.liveArrivals.count),rt:\(rtCount)}"
         }.joined(separator: " | ")
     }
 

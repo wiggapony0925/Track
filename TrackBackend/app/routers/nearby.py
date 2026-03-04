@@ -68,8 +68,9 @@ _BUS_DEFAULT_COLOR = "#0039A6"
 # Placeholder minutes_away value — sorts to the bottom within its distance tier
 _PLACEHOLDER_MINUTES = 99
 
-# Max scheduled departures to inject per dormant route (keeps the card concise)
-_MAX_SCHEDULE_PER_DORMANT = 4
+# Max scheduled departures to inject per dormant route (keeps the card concise
+# while still populating the Departures board in the route detail sheet)
+_MAX_SCHEDULE_PER_DORMANT = 10
 
 _BUS_STATIC_GTFS_ROOT = Path(__file__).resolve().parent.parent / "data" / "bus"
 
@@ -1467,8 +1468,8 @@ async def _fetch_nearby_buses(
     # never duplicate real-time data.  They are clearly marked "Scheduled"
     # so the iOS app renders them grey and never shows a map marker.
     # -----------------------------------------------------------------
-    _MIN_TOPOFF  = 6   # target total arrivals per (route, stop, direction)
-    _MAX_SCHED   = 8   # max scheduled entries added per direction
+    _MIN_TOPOFF  = 20  # target total arrivals per (route, stop, direction)
+    _MAX_SCHED   = 24  # max scheduled entries added per direction (≈12 h board)
 
     # Group current bus results by (route_id, stop_id, direction)
     _live_by_key: dict[tuple, list] = defaultdict(list)
@@ -1485,8 +1486,12 @@ async def _fetch_nearby_buses(
         _last_mins = max(e.minutes_away for e in _entries)
         _need = min(_MIN_TOPOFF - len(_entries), _MAX_SCHED)
 
+        # Pass route_id so the SQL query filters by route directly.
+        # Previously this fetched ALL routes at the stop (limit=14)
+        # then filtered in Python — at busy stops with 5-10 routes,
+        # most results were for OTHER routes leaving 0-2 for ours.
         _sched_raw = schedule_service.get_scheduled_arrivals(
-            _sid, limit=_MIN_TOPOFF + _MAX_SCHED
+            _sid, route_id=_rid, limit=_need + 8
         )
         _added = 0
         for _s in _sched_raw:
@@ -1494,7 +1499,7 @@ async def _fetch_nearby_buses(
                 break
             _s_rid = _display_name(_s.route_id)
             if _s_rid != _rid:
-                continue
+                continue  # Extra safety — SQL filter is fuzzy
             if _s.minutes_away <= _last_mins:
                 continue  # Earlier than or same as last live — skip
             _dk = (_s_rid, _sid, _s.trip_id or str(_s.minutes_away))

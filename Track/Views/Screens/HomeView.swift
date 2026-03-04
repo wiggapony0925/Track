@@ -423,8 +423,11 @@ struct HomeView: View {
                 onTrack: { arrival in
                     viewModel.trackNearbyArrival(arrival, location: locationManager.currentLocation)
                     
-                    // Zoom the map to center on the tracked vehicle/stop marker
-                    if let coord = viewModel.trackedVehicleCoordinate {
+                    // Only zoom when the vehicle is actually live on the map.
+                    // Falling back to stop coordinates would pan to an empty
+                    // spot with no bus marker — confusing the user.
+                    if viewModel.isVehicleLiveOnMap(arrival),
+                       let coord = viewModel.trackedVehicleCoordinate {
                         withAnimation(MapCameraPresets.flyAnimation) {
                             cameraPosition = aboveSheet(MapCameraPresets.focusVehicle(at: coord, is3D: is3DMode))
                         }

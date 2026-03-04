@@ -91,6 +91,11 @@ struct BusVehicleResponse: Codable, Identifiable, Equatable {
     /// Used to sync the arrivals list with vehicle movement in real-time.
     var onwardCalls: [BusArrival]? = []
 
+    /// MTA SIRI spooking detection: `false` when the vehicle is not actively
+    /// transmitting GPS data and its position is interpolated from the static
+    /// schedule.  The chip UI should show "Scheduled" instead of "Live".
+    var isRealtime: Bool = true
+
     /// Strips "MTA NYCT_" prefix for display.
     var displayRouteName: String {
         stripMTAPrefix(routeId)
@@ -114,6 +119,7 @@ struct BusVehicleResponse: Codable, Identifiable, Equatable {
         case directionRef = "direction_ref"
         case expectedArrival = "expected_arrival"
         case onwardCalls = "onward_calls"
+        case isRealtime = "is_realtime"
     }
 
     /// Returns a copy with an interpolated position for smooth map animation.
@@ -296,8 +302,12 @@ struct BusScheduledDeparture: Codable, Identifiable {
         Date(timeIntervalSince1970: TimeInterval(departureTime))
     }
 
-    /// Minutes until departure from now
+    /// Minutes until departure from now.
+    /// Uses `ceil()` and a -60 s guard to match `BusVehicleResponse.minutesAway`
+    /// and `TrainVehicle.minutesAway` — consistent rounding across all models.
     var minutesAway: Int {
-        Int(departureDate.timeIntervalSinceNow / 60)
+        let seconds = departureDate.timeIntervalSinceNow
+        guard seconds > -60 else { return -1 }
+        return Int(ceil(seconds / 60))
     }
 }

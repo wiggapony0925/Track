@@ -32,10 +32,6 @@ struct NearbyTransitRow: View {
     /// Optional smart ETA provider — when set, uses vehicle-position-aware
     /// countdown instead of raw arrivalTs. Provided by the parent ViewModel.
     var smartETAProvider: ((NearbyTransitResponse) -> SmartETA)? = nil
-    /// Optional pre-resolved ETA context (vehicle coord, stop coord, polyline).
-    /// When set, this takes priority over the bare `smartETAProvider` closure,
-    /// giving any call site vehicle-position awareness without a full closure.
-    var etaContext: ETAContext? = nil
 
     // Hoisted state
     var isExpanded: Bool
@@ -123,7 +119,7 @@ struct NearbyTransitRow: View {
                             .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.4))
                     } else {
                         // Smart countdown: uses vehicle position + polyline when
-                        // a provider or etaContext is set, falls back to arrivalTs → static minutesAway.
+                        // a provider is set, falls back to arrivalTs → static minutesAway.
                         TimelineView(.periodic(from: .now, by: 1.0)) { _ in
                             let eta: SmartETA = resolvedETA(for: arrival)
                             let mins = eta.minutesRemaining
@@ -409,26 +405,9 @@ struct NearbyTransitRow: View {
         formatWalkingDistance(meters)
     }
 
-    /// Resolves the best available ETA for an arrival:
-    /// 1. etaContext (explicit vehicle coord + stop + polyline)
-    /// 2. smartETAProvider closure
-    /// 3. ArrivalETAEngine with arrivalTs / staticMinutes only
+    /// Resolves the best available ETA for an arrival.
+    /// Delegates to `ArrivalHelpers.resolvedETA` — single source of truth.
     private func resolvedETA(for arrival: NearbyTransitResponse) -> SmartETA {
-        if let ctx = etaContext {
-            return ArrivalETAEngine.computeETA(
-                vehicleCoord: ctx.vehicleCoord,
-                vehicleKey: ctx.vehicleKey,
-                stopCoord: ctx.stopCoord,
-                polyline: ctx.polyline,
-                arrivalTs: arrival.arrivalTs,
-                staticMinutes: arrival.minutesAway,
-                mode: arrival.mode)
-        }
-        return smartETAProvider?(arrival)
-            ?? ArrivalETAEngine.computeETA(
-                vehicleCoord: nil, vehicleKey: nil, stopCoord: nil,
-                arrivalTs: arrival.arrivalTs,
-                staticMinutes: arrival.minutesAway,
-                mode: arrival.mode)
+        ArrivalHelpers.resolvedETA(for: arrival, provider: smartETAProvider)
     }
 }

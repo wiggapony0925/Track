@@ -99,71 +99,18 @@ struct  GroupedRouteRow: View {
         return min(original, max(0, visibleDirections.count - 1))
     }
 
-    /// Returns the countdown arrival for a direction, preferring the user's
-    /// nearest stop so the card aligns with the route detail sheet.
-    ///
-    /// Distance resolution priority (mirrors `RouteDetailSheet.nearestStopArrivals`):
-    ///  1. `distanceM` — server-side haversine, most accurate.
-    ///  2. `stopLat`/`stopLon` — client-side CLLocation distance.
-    ///  3. No coordinates at all → treat distance as ∞ (still participates,
-    ///     never silently skipped so the fallback stays deterministic).
+    /// Delegates to `ArrivalHelpers.countdownArrival` — the shared,
+    /// canonical implementation used by both the row and the detail sheet.
     private func countdownArrival(for direction: DirectionArrivalsResponse) -> NearbyTransitResponse? {
-        // Filter out past arrivals the same way the detail sheet does.
-        // This prevents selecting a departed bus as the countdown candidate.
-        let live = direction.liveArrivals.filter { !resolvedETA(for: $0).isPastArrival }
-        guard !live.isEmpty else { return nil }
-
-        if let loc = userLocation {
-            var nearestStopKey: String?
-            var nearestDistance: CLLocationDistance = .greatestFiniteMagnitude
-
-            for arrival in live {
-                // Prefer server-side pre-computed distance (most accurate)
-                let dist: CLLocationDistance
-                if let dm = arrival.distanceM {
-                    dist = dm
-                } else if let lat = arrival.stopLat, let lon = arrival.stopLon {
-                    dist = loc.distance(from: CLLocation(latitude: lat, longitude: lon))
-                } else {
-                    // No coordinates available — assign max distance so coordinate-rich
-                    // arrivals always win, but this arrival still participates in the loop
-                    // (no silent skip that could cause row ↔ detail mismatches).
-                    dist = .greatestFiniteMagnitude
-                }
-                if dist < nearestDistance {
-                    nearestDistance = dist
-                    nearestStopKey = arrival.stopId ?? arrival.stopName
-                }
-            }
-
-            if let key = nearestStopKey {
-                let atNearestStop = live.filter { ($0.stopId ?? $0.stopName) == key }
-                if let first = sortedByETA(atNearestStop).first { return first }
-            }
-        }
-
-        return sortedByETA(live).first
-    }
-
-    private func sortedByETA(_ arrivals: [NearbyTransitResponse]) -> [NearbyTransitResponse] {
-        arrivals.sorted { lhs, rhs in
-            let left = resolvedETA(for: lhs).secondsRemaining
-            let right = resolvedETA(for: rhs).secondsRemaining
-            if left != right { return left < right }
-            return lhs.id < rhs.id
-        }
+        ArrivalHelpers.countdownArrival(
+            for: direction,
+            userLocation: userLocation,
+            provider: smartETAProvider
+        )
     }
 
     private func resolvedETA(for arrival: NearbyTransitResponse) -> SmartETA {
-        smartETAProvider?(arrival)
-            ?? ArrivalETAEngine.computeETA(
-                vehicleCoord: nil,
-                vehicleKey: nil,
-                stopCoord: nil,
-                arrivalTs: arrival.arrivalTs,
-                staticMinutes: arrival.minutesAway,
-                mode: arrival.mode
-            )
+        ArrivalHelpers.resolvedETA(for: arrival, provider: smartETAProvider)
     }
 
     var body: some View {
@@ -255,11 +202,7 @@ struct  GroupedRouteRow: View {
                     // ── Swipeable direction content (label + stop name) ──
                     TabView(selection: $currentDirectionIndex) {
                         ForEach(Array(visibleDirections.enumerated()), id: \.element.id) { index, direction in
-                            let label =
-                                direction.directionLabel
-                                ?? direction.liveArrivals.first?.destination
-                                ?? direction.arrivals.first?.destination
-                                ?? directionLabel(direction.direction)
+                            let label = ArrivalHelpers.resolveDirectionLabel(for: direction)
 
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(label)
@@ -525,12 +468,11 @@ struct  GroupedRouteRow: View {
             }
         } else if hasOnlyPlaceholders {
             // Direction exists but only has scheduled/placeholder arrivals.
-            // Show the soonest scheduled minutes greyed out so the user
-            // knows WHEN the next bus/train is, not just that it's scheduled.
-            let soonestScheduled = dir.arrivals
-                .filter { !$0.isPlaceholder && $0.minutesAway >= 0 }
-                .map(\.minutesAway)
-                .min()
+            // Delegate to ArrivalHelpers — single source of truth for
+            // scheduled ETA resolution (uses arrivalTs, not stale minutesAway).
+            let soonestScheduled = ArrivalHelpers.soonestScheduledMinutes(
+                for: dir, provider: smartETAProvider
+            )
             if let mins = soonestScheduled {
                 VStack(spacing: 2) {
                     HStack(alignment: .firstTextBaseline, spacing: 2) {
@@ -570,10 +512,15 @@ struct  GroupedRouteRow: View {
     }
 
     /// Compact status pill below the countdown number.
+    ///
+    /// Uses `isRealTime` (backend-authoritative) as the single source of truth
+    /// for live vs scheduled.  Previous logic required `status` to contain
+    /// "on time" / "good" — which never matched SIRI bus `PresentableDistance`
+    /// strings like "< 1 stop away" or "En Route", leaving those rows with
+    /// **no pill at all**.
     @ViewBuilder
     private func statusPill(for arrival: NearbyTransitResponse) -> some View {
         let status = arrival.status.lowercased()
-        let isOnTime = status.contains("on time") || status.contains("good")
         let isDelayed = status.contains("delay")
 
         if arrival.isCancelled {
@@ -592,7 +539,19 @@ struct  GroupedRouteRow: View {
                 .padding(.vertical, 2)
                 .background(AppTheme.Colors.alertRed)
                 .clipShape(Capsule())
-        } else if arrival.status == "Scheduled" || !arrival.isRealTime {
+        } else if arrival.isRealTime {
+            // Live real-time arrival (SIRI, GTFS-RT, OBA) — green "Live" pill.
+            // Covers subway "On Time", bus "< 1 stop away", rail "On Time", etc.
+            HStack(spacing: 3) {
+                Circle()
+                    .fill(AppTheme.Colors.successGreen)
+                    .frame(width: 5, height: 5)
+                Text("Live")
+                    .font(.custom("Helvetica-Bold", size: 9))
+                    .foregroundColor(AppTheme.Colors.successGreen)
+            }
+        } else {
+            // Purely static GTFS / backend-flagged as scheduled
             HStack(spacing: 2) {
                 Image(systemName: "calendar.badge.clock")
                     .font(.system(size: 7, weight: .bold))
@@ -604,16 +563,6 @@ struct  GroupedRouteRow: View {
             .padding(.vertical, 2)
             .background(AppTheme.Colors.textSecondary.opacity(0.08))
             .clipShape(Capsule())
-        } else if isOnTime {
-            // Live real-time arrival — show green dot + "Live" label
-            HStack(spacing: 3) {
-                Circle()
-                    .fill(AppTheme.Colors.successGreen)
-                    .frame(width: 5, height: 5)
-                Text("Live")
-                    .font(.custom("Helvetica-Bold", size: 9))
-                    .foregroundColor(AppTheme.Colors.successGreen)
-            }
         }
     }
 }

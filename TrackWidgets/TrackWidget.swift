@@ -34,31 +34,41 @@ struct TrackWidgetProvider: TimelineProvider {
         let schedules = WidgetSchedule.loadAll()
         let isActive = schedules.isEmpty || schedules.hasActiveSchedule()
 
+        #if DEBUG
         print("[TrackWidget] getTimeline called at \(Date())")
         print("[TrackWidget] Loaded \(schedules.count) schedules. isActive: \(isActive)")
+        #endif
 
         if !isActive {
-            let nextActivation = schedules.nextActivation() ?? Calendar.current.date(byAdding: .hour, value: 1, to: Date())!
+            let nextActivation = schedules.nextActivation()
+                ?? Calendar.current.date(byAdding: .hour, value: 1, to: Date())
+                ?? Date().addingTimeInterval(3600)
             
             // To ensure WidgetKit doesn't go to sleep forever if the next activation is days away,
             // we enforce a maximum sleep time of 15 minutes before checking the schedule again.
-            let maxSleep = Calendar.current.date(byAdding: .minute, value: 15, to: Date())!
+            let maxSleep = Calendar.current.date(byAdding: .minute, value: 15, to: Date())
+                ?? Date().addingTimeInterval(900)
             let refreshDate = min(nextActivation, maxSleep)
             
+            #if DEBUG
             print("[TrackWidget] Paused. Next activation estimated: \(nextActivation), actually refreshing at: \(refreshDate)")
+            #endif
 
             let entry = TrackWidgetEntry(date: Date(), arrivals: [], isActive: false)
             completion(Timeline(entries: [entry], policy: .after(refreshDate)))
             return
         }
 
+        #if DEBUG
         print("[TrackWidget] Active! Fetching live entry...")
+        #endif
         fetchLiveEntry { entry in
             var resolvedEntry = entry ?? buildSmartEntry() ?? .placeholder
             resolvedEntry = TrackWidgetEntry(date: resolvedEntry.date, arrivals: resolvedEntry.arrivals, isActive: true)
 
             // Refresh every 5 minutes while active
-            let refreshDate = Calendar.current.date(byAdding: .minute, value: 5, to: Date())!
+            let refreshDate = Calendar.current.date(byAdding: .minute, value: 5, to: Date())
+                ?? Date().addingTimeInterval(300)
             let timeline = Timeline(entries: [resolvedEntry], policy: .after(refreshDate))
             completion(timeline)
         }
