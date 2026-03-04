@@ -580,7 +580,8 @@ class TestBusRouteBackfill:
     def test_backfill_creates_placeholder_for_no_live_routes(
         self, mock_rail, mock_subway, mock_stops, mock_arrivals,
     ):
-        """A stop serves Q10 but SIRI returns no arrivals — Q10 should still appear."""
+        """A stop serves Q10 but SIRI returns no arrivals — Q10 should be
+        filtered out (placeholder-only), while B83 with live data remains."""
         mock_subway.return_value = []
         mock_rail.return_value = []
         mock_stops.return_value = [
@@ -609,7 +610,11 @@ class TestBusRouteBackfill:
 
         route_names = {g["display_name"] for g in data}
         assert "B83" in route_names, f"Live route B83 missing: {route_names}"
-        assert "Q10" in route_names, f"Backfilled route Q10 missing: {route_names}"
+        # Q10 has only placeholder data (no live, no schedule) — it should be
+        # filtered out so the iOS app doesn't show an empty card.
+        assert "Q10" not in route_names, (
+            f"Placeholder-only route Q10 should be filtered out: {route_names}"
+        )
 
     @patch("app.routers.nearby.get_realtime_arrivals", new_callable=AsyncMock)
     @patch("app.routers.nearby.get_nearby_stops", new_callable=AsyncMock)
@@ -618,7 +623,8 @@ class TestBusRouteBackfill:
     def test_backfill_placeholder_has_scheduled_status(
         self, mock_rail, mock_subway, mock_stops, mock_arrivals,
     ):
-        """Placeholder entries should have status='Scheduled' and minutes_away=99."""
+        """Routes with ONLY placeholder data (no live, no schedule) should
+        be filtered out entirely — the iOS app shows them as empty cards."""
         mock_subway.return_value = []
         mock_rail.return_value = []
         mock_stops.return_value = [
@@ -633,15 +639,11 @@ class TestBusRouteBackfill:
         assert response.status_code == 200
         data = response.json()
 
-        assert len(data) == 1
-        group = data[0]
-        assert group["display_name"] == "Q56"
-        assert group["mode"] == "bus"
-        # The placeholder arrival in the direction
-        arrival = group["directions"][0]["arrivals"][0]
-        assert arrival["status"] == "Scheduled"
-        assert arrival["minutes_away"] == 99
-        assert arrival["arrival_ts"] is None
+        # Q56 has only placeholder arrivals — should be filtered out
+        assert len(data) == 0, (
+            f"Placeholder-only route should be excluded, got: "
+            f"{[g['display_name'] for g in data]}"
+        )
 
     @patch("app.routers.nearby.get_realtime_arrivals", new_callable=AsyncMock)
     @patch("app.routers.nearby.get_nearby_stops", new_callable=AsyncMock)
@@ -687,7 +689,7 @@ class TestBusRouteBackfill:
     def test_backfill_uses_stop_coordinates(
         self, mock_rail, mock_subway, mock_stops, mock_arrivals,
     ):
-        """Backfilled placeholders should have the stop's lat/lon for distance bucketing."""
+        """Routes with ONLY placeholder data should be filtered out."""
         mock_subway.return_value = []
         mock_rail.return_value = []
         mock_stops.return_value = [
@@ -702,10 +704,11 @@ class TestBusRouteBackfill:
         assert response.status_code == 200
         data = response.json()
 
-        arrival = data[0]["directions"][0]["arrivals"][0]
-        assert arrival["stop_lat"] == 40.655
-        assert arrival["stop_lon"] == -73.755
-        assert arrival["stop_name"] == "Merrick Blvd"
+        # Q5 has only placeholder arrivals — should be excluded
+        assert len(data) == 0, (
+            f"Placeholder-only route should be excluded, got: "
+            f"{[g['display_name'] for g in data]}"
+        )
 
 
 class TestPhaseCOppositeDirection:
@@ -900,12 +903,12 @@ class TestBusRouteIdNormalization:
             NearbyTransitArrival(
                 route_id="B63", stop_name="5 AV/9 ST",
                 direction="0", destination=None,
-                minutes_away=99, mode="bus",
+                minutes_away=5, mode="bus",
             ),
             NearbyTransitArrival(
                 route_id="B63", stop_name="5 AV/10 ST",
                 direction="1", destination=None,
-                minutes_away=99, mode="bus",
+                minutes_away=8, mode="bus",
             ),
         ]
         groups = _group_arrivals(flat)
@@ -943,17 +946,17 @@ class TestBusRouteIdNormalization:
             NearbyTransitArrival(
                 route_id="Q58", stop_name="S1",
                 direction="0", destination=None,
-                minutes_away=99, mode="bus",
+                minutes_away=3, mode="bus",
             ),
             NearbyTransitArrival(
                 route_id="Q58", stop_name="S2",
                 direction="1", destination=None,
-                minutes_away=99, mode="bus",
+                minutes_away=7, mode="bus",
             ),
             NearbyTransitArrival(
                 route_id="Q58", stop_name="S3",
                 direction="2", destination=None,
-                minutes_away=99, mode="bus",
+                minutes_away=12, mode="bus",
             ),
         ]
         groups = _group_arrivals(flat)
@@ -978,8 +981,9 @@ class TestBusRouteIdNormalization:
         assert len(groups) == 1
         assert len(groups[0].directions) == 2
         labels = {d.direction_label for d in groups[0].directions}
-        assert "Northbound" in labels
-        assert "Southbound" in labels
+        # With destinations available, compass labels include the terminal
+        assert "Northbound → PROSPECT PARK" in labels
+        assert "Southbound → BAY RIDGE" in labels
     """Integration tests: verify /nearby/grouped returns both bus directions
     when nearby stops serve both sides of a route."""
 
@@ -1349,12 +1353,13 @@ class TestSiriCircuitBreakerScope:
                 response = client.get("/nearby/grouped?lat=40.70&lon=-73.90")
                 assert response.status_code == 200
                 data = response.json()
-                # B63 should appear (from backfill) even with SIRI breaker open
-                route_names = {g["display_name"] for g in data}
-                assert "B63" in route_names, (
-                    f"OBA-discovered route B63 should appear even when SIRI "
-                    f"breaker is open. Got: {route_names}"
-                )
+                # OBA discovery still works when SIRI breaker is open.
+                # B63 gets only placeholder data (no live, no schedule)
+                # so it is correctly filtered out by the placeholder-only
+                # filter. The key assertion is that the endpoint succeeds
+                # (200) — OBA calls are NOT blocked by the SIRI breaker.
+                # Note: if B63 had GTFS schedule data, it would appear.
+                mock_stops.assert_called_once()
         finally:
             # Clean up — reset the breaker
             bc._siri_circuit_open = False

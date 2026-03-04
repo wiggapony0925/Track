@@ -409,7 +409,8 @@ class TestDisplayNameAllRoutes:
 
     def test_strips_mta_nyct_prefix(self):
         assert _display_name("MTA NYCT_B63") == "B63"
-        assert _display_name("MTA NYCT_M15+") == "M15+"
+        # SBS routes: M15+ maps to canonical "M15-SBS" via CANONICAL_BUS_DISPLAY
+        assert _display_name("MTA NYCT_M15+") == "M15-SBS"
         assert _display_name("MTA NYCT_Bx1") == "Bx1"
 
     def test_strips_mtabc_prefix(self):

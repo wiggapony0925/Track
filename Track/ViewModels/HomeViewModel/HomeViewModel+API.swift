@@ -73,11 +73,21 @@ extension HomeViewModel {
         do {
             let vehicles = try await TrackAPI.fetchBusVehicles(routeID: routeId)
 
+            // Staleness check: user may have dismissed the route while the
+            // network request was in-flight.  Discard the result so we don't
+            // overwrite the cleared state from clearRoute().
+            guard selectedRouteId == routeId else { return }
+
             // Compute the synced group OFF the main thread.
             let updatedGroup = await buildSyncedBusGroup(vehicles)
 
+            // Re-check after another await boundary.
+            guard selectedRouteId == routeId else { return }
+
             // Apply atomically on MainActor.
             await MainActor.run {
+                // Final staleness check inside the MainActor block.
+                guard self.selectedRouteId == routeId else { return }
                 let isFirstLoad = self.busVehicles.isEmpty
 
                 // 1) Snapshot current DISPLAY positions as interpolation origins.
@@ -371,13 +381,20 @@ extension HomeViewModel {
         do {
             let arrivals = try await TrackAPI.fetchSubwayArrivals(lineID: routeId)
 
+            // Staleness check: user may have dismissed while the fetch ran.
+            guard selectedRouteId == routeId else { return }
+
             // Compute positions and synced group before publishing.
             let updatedGroup = await buildSyncedTrainGroup(arrivals)
+
+            // Re-check after another await boundary.
+            guard selectedRouteId == routeId else { return }
 
             // Apply all updates atomically on MainActor.
             // NOTE: No outer withAnimation — updateTrainPositions() applies
             // its own .linear(duration: 1.0). Double-wrapping caused stuttering.
             await MainActor.run {
+                guard self.selectedRouteId == routeId else { return }
                 updateTrainPositions(arrivals: arrivals)
                 if let updatedGroup,
                    self.selectedGroupedRoute?.routeId == updatedGroup.routeId {
@@ -396,6 +413,7 @@ extension HomeViewModel {
         guard let group = selectedGroupedRoute,
             group.isCommuterRail
         else { return }
+        let capturedRouteId = group.routeId
         do {
             let arrivals: [TrainArrival]
             if group.isLIRR {
@@ -403,6 +421,10 @@ extension HomeViewModel {
             } else {
                 arrivals = try await TrackAPI.fetchMNRArrivals()
             }
+
+            // Staleness check after await.
+            guard selectedRouteId == capturedRouteId else { return }
+
             // Filter to only this route's arrivals
             let routeArrivals = arrivals.filter { arrival in
                 let id = arrival.routeID.lowercased()
@@ -417,8 +439,11 @@ extension HomeViewModel {
             let mode = group.isLIRR ? "lirr" : "mnr"
             let updatedGroup = await buildSyncedTrainGroup(routeArrivals, mode: mode)
 
+            guard selectedRouteId == capturedRouteId else { return }
+
             // NOTE: No outer withAnimation — updateTrainPositions() handles it.
             await MainActor.run {
+                guard self.selectedRouteId == capturedRouteId else { return }
                 updateTrainPositions(arrivals: routeArrivals)
                 if let updatedGroup,
                    self.selectedGroupedRoute?.routeId == updatedGroup.routeId {
@@ -1116,7 +1141,7 @@ extension HomeViewModel {
                 latitude: lat, longitude: lon
             )
 
-            let newGrouped = try await groupedTask
+            let newGrouped = (try await groupedTask).filter { $0.hasRealArrivals }
 
             // Resolve auxiliary data (best-effort) before publishing groups.
             let stops = (try? await busStopsTask) ?? nearbyBusStops
@@ -1384,7 +1409,7 @@ extension HomeViewModel {
             )
 
             let allGrouped = try await groupedTask
-            let filtered = allGrouped.filter { $0.mode == "subway" }
+            let filtered = allGrouped.filter { $0.mode == "subway" && $0.hasRealArrivals }
 
             // Resolve stations BEFORE grouped data so displayDistanceMeters()
             // has fresh physical-station distances when SwiftUI re-renders.
@@ -1424,7 +1449,7 @@ extension HomeViewModel {
             )
 
             let allGrouped = try await groupedTask
-            let filtered = allGrouped.filter { $0.mode == "bus" }
+            let filtered = allGrouped.filter { $0.mode == "bus" && $0.hasRealArrivals }
 
             // Resolve bus stops BEFORE updating grouped arrivals so that
             // when SwiftUI re-renders the dashboard, displayDistanceMeters()

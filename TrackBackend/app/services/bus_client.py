@@ -85,6 +85,14 @@ try:
                         ROUTE_LOOKUP[short_name.lower().replace(" ", "")] = official_id
                         # Canonical display name (mixed-case from JSON)
                         CANONICAL_BUS_DISPLAY[short_name.upper()] = short_name
+                        # SBS routes: the JSON uses "-SBS" suffix (e.g. "M34-SBS")
+                        # but MTA SIRI/OBA feeds use "+" suffix (e.g. "M34+") in
+                        # route IDs.  After agency-prefix stripping, _display_name
+                        # sees "M34+" — register that form so it maps back to the
+                        # canonical "-SBS" display name and merges into one card.
+                        if "-SBS" in short_name.upper() and "+" in official_id:
+                            plus_form = official_id.rsplit("_", 1)[-1]  # e.g. "M34+"
+                            CANONICAL_BUS_DISPLAY[plus_form.upper()] = short_name
                         # Collect agency prefix (everything up to and including "_")
                         if "_" in official_id:
                             prefix = official_id[: official_id.index("_") + 1]

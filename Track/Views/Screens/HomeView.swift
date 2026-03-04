@@ -140,6 +140,9 @@ struct HomeView: View {
             .onChange(of: viewModel.selectedRouteId) { handleRouteSelection() }
             .onChange(of: viewModel.selectedMode) { handleModeChange() }
             .onChange(of: locationManager.currentLocation) { handleLocationUpdate() }
+            .onChange(of: sheetNavigator.currentPage) { oldPage, newPage in
+                handleSheetPageChange(from: oldPage, to: newPage)
+            }
     }
     
     // MARK: - Map & Sheet Content (extracted to reduce body complexity)
@@ -655,6 +658,23 @@ struct HomeView: View {
             await viewModel.refresh(location: effectiveLocation, force: shouldForceRefresh)
             lastUpdated = Date()
         }
+    }
+
+    /// Cleans up route overlay data when the sheet navigates away from route detail.
+    /// This is a safety net: the primary cleanup happens in RouteDetailSheet's
+    /// `onDismiss`, but this handler catches edge cases (e.g., mode switch,
+    /// programmatic navigation, or SwiftUI lifecycle glitches) where onDismiss
+    /// might not fire but the page has already changed.
+    private func handleSheetPageChange(from oldPage: SheetPage, to newPage: SheetPage) {
+        guard case .routeDetail = oldPage else { return }
+        // Navigating from one routeDetail to another (e.g. favorites → different route)
+        // is fine — don't clear in that case.
+        if case .routeDetail = newPage { return }
+        // Only clean up if onDismiss hasn't already done so.
+        guard viewModel.isRouteDetailPresented else { return }
+        viewModel.isRouteDetailPresented = false
+        viewModel.selectedGroupedRoute = nil
+        viewModel.clearRoute()
     }
     
     private func handleLocationUpdate() {

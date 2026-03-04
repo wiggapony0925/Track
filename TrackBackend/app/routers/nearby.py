@@ -96,8 +96,16 @@ def _schedule_arrivals_for_stop(
     if sched:
         out: list[NearbyTransitArrival] = []
         for s in sched:
-            # Map GTFS direction_id (0/1 → N/S) — schedule_service already does this
-            direction = s.direction if s.direction and s.direction != "N/A" else fallback_direction
+            # Prefer the GTFS trip_headsign (destination) as the direction key
+            # so scheduled arrivals merge with live SIRI arrivals that use
+            # DestinationName — avoids creating duplicate compass-key tabs
+            # ("Northbound") alongside real destination tabs ("KINGS PLAZA").
+            if s.destination and s.destination.strip() and s.destination.strip().lower() != "unknown":
+                direction = s.destination.strip()
+            elif s.direction and s.direction != "N/A":
+                direction = s.direction
+            else:
+                direction = fallback_direction
             out.append(
                 NearbyTransitArrival(
                     route_id=route_id,
@@ -638,8 +646,9 @@ def _direction_label(direction: str, arrivals: list[NearbyTransitArrival] | None
     # Known compass / special codes → canonical label
     if upper in _DIRECTION_LABELS:
         base_label = _DIRECTION_LABELS[upper]
-        if mode == "bus":
-            return base_label
+        # Append the terminal destination when available so the user
+        # sees where the bus/train is going (e.g. "Northbound → Inwood-207 St")
+        # instead of bare "Northbound".
         if terminal:
             return f"{base_label} → {terminal}"
         return base_label
@@ -957,6 +966,26 @@ def _group_arrivals(flat: list[NearbyTransitArrival], alert_index: dict[str, lis
                 alerts=route_alerts,
             )
         )
+
+    # Drop groups that consist entirely of backend-generated placeholders
+    # (minutesAway >= 99, no arrival_ts).  These are routes the OBA API lists
+    # as nearby but that have no live SIRI data AND no GTFS schedule matches —
+    # showing them as empty cards in the iOS app is confusing.
+    def _has_any_real(g: GroupedNearbyTransit) -> bool:
+        return any(
+            a.minutes_away < _PLACEHOLDER_MINUTES or a.arrival_ts is not None
+            for d in g.directions
+            for a in d.arrivals
+        )
+
+    placeholder_only = [g for g in groups if not _has_any_real(g)]
+    if placeholder_only:
+        names = [g.display_name for g in placeholder_only]
+        TrackLogger.debug(
+            f"Dropped {len(placeholder_only)} placeholder-only route(s) "
+            f"with no real arrivals: {names}"
+        )
+        groups = [g for g in groups if _has_any_real(g)]
 
     # Sort groups by canonical MTA order, then by soonest arrival
     groups.sort(key=lambda g: (g.sorting_key, _soonest_minutes(g)))
