@@ -216,12 +216,35 @@ struct TrackMapView: View {
                         stopName: stop.name
                     )
                     .onTapGesture {
+                        let stopCoord = CLLocationCoordinate2D(
+                            latitude: stop.lat, longitude: stop.lon)
                         withAnimation {
-                            viewModel.selectedStopId = stop.id
-                            // Update the split anchor so the behind/ahead
-                            // polyline coloring follows the tapped stop.
-                            viewModel.nearestStopCoordinate = CLLocationCoordinate2D(
-                                latitude: stop.lat, longitude: stop.lon)
+                            if viewModel.selectedStopId == stop.id {
+                                // Deselect — revert to auto-nearest
+                                viewModel.selectedStopId = nil
+                                viewModel.isStopManuallySelected = false
+                                if let userLoc = locationManager.currentLocation {
+                                    Task {
+                                        await viewModel.refreshWalkingState(
+                                            userLocation: userLoc)
+                                    }
+                                }
+                            } else {
+                                viewModel.selectedStopId = stop.id
+                                viewModel.isStopManuallySelected = true
+                                // Update the split anchor so the behind/ahead
+                                // polyline coloring follows the tapped stop.
+                                viewModel.nearestStopCoordinate = stopCoord
+                                // Redraw walking polyline to this stop
+                                let origin = viewModel.referenceLocation?.coordinate
+                                             ?? locationManager.currentLocation?.coordinate
+                                if let from = origin {
+                                    Task {
+                                        await viewModel.fetchWalkingRoute(
+                                            from: from, to: stopCoord)
+                                    }
+                                }
+                            }
                         }
                     }
                 }

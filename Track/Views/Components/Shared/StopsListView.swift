@@ -52,12 +52,14 @@ struct StopsListView: View {
                 Spacer()
 
                 if !stops.isEmpty {
-                    Text("\(stops.count)")
-                        .font(.custom("Helvetica-Bold", size: 12))
-                        .foregroundColor(routeColor)
-                    + Text(" stop\(stops.count == 1 ? "" : "s")")
-                        .font(.custom("Helvetica", size: 12))
-                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
+                    HStack(spacing: 0) {
+                        Text("\(stops.count)")
+                            .font(.custom("Helvetica-Bold", size: 12))
+                            .foregroundColor(routeColor)
+                        Text(" stop\(stops.count == 1 ? "" : "s")")
+                            .font(.custom("Helvetica", size: 12))
+                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
+                    }
                 }
             }
             .padding(.horizontal, AppTheme.Layout.margin)

@@ -54,6 +54,10 @@ struct RouteDetailSheet: View {
     /// Used as the reference point for nearest-stop filtering when GPS is unavailable.
     var searchCenter: CLLocationCoordinate2D?
     var selectedStopId: String?
+    /// True when the user explicitly tapped a stop (map dot or stops list).
+    /// When false, `selectedStopId` changes come from auto-nearest GPS
+    /// and should NOT override chip filtering.
+    var isStopManuallySelected: Bool = false
 
     /// Number of live vehicles (buses or trains) filtered by the current direction.
     /// Provided by the ViewModel's `filteredBusVehicles` / `filteredTrainVehicles`
@@ -134,6 +138,11 @@ struct RouteDetailSheet: View {
     /// and scales the chip up slightly.
     @State private var selectedChipId: String?
 
+    /// True when an API poll arrived while a chip was selected and we
+    /// deferred the `stableNearestArrivals` refresh to avoid visual
+    /// disruption.  Cleared when the chip is deselected.
+    @State private var chipRefreshDeferred = false
+
     /// Per-direction stop key lock: [directionIndex: stopId ?? stopName].
     /// Each direction remembers its nearest stop independently so that:
     ///  • Direction changes (including shape-enrichment reorders) never invalidate
@@ -196,6 +205,7 @@ struct RouteDetailSheet: View {
         currentLocation: CLLocationCoordinate2D? = nil,
         searchCenter: CLLocationCoordinate2D? = nil,
         selectedStopId: String? = nil,
+        isStopManuallySelected: Bool = false,
         onTrack: ((NearbyTransitResponse) -> Void)? = nil,
         isTracking: ((NearbyTransitResponse) -> Bool)? = nil,
         isTrackingAny: Bool = false,
@@ -232,6 +242,7 @@ struct RouteDetailSheet: View {
         self.currentLocation = currentLocation
         self.searchCenter = searchCenter
         self.selectedStopId = selectedStopId
+        self.isStopManuallySelected = isStopManuallySelected
     }
 
     /// Route color from the group data or the theme palette.
@@ -370,6 +381,7 @@ struct RouteDetailSheet: View {
             .onChange(of: selectedStopId) { _, newId in handleMapStopTap(newId) }
             .onChange(of: inSheetSelectedStopId) { _, _ in handleStopSelectionChange() }
             .onChange(of: selectedDirectionIndex) { _, _ in handleDirectionChange() }
+            .onChange(of: selectedChipId) { _, newId in handleChipSelectionChange(newId) }
     }
 
     private var bodyWithLifecycle: some View {
@@ -466,6 +478,19 @@ struct RouteDetailSheet: View {
             lockedStopKeyPerDirection[selectedDirectionIndex] = first.stopId ?? first.stopName
         }
 
+        // ── Freeze chips while a chip is selected ──────────────────────
+        // When the user is interacting with a chip (highlighted vehicle
+        // on the map), defer chip-list updates so the strip doesn't
+        // visually shift underneath them.  We catch up as soon as the
+        // chip is deselected (see handleChipSelectionChange).
+        if selectedChipId != nil {
+            chipRefreshDeferred = true
+            #if DEBUG
+            print("[STABLE_CHIPS] ⏸ DEFERRED — chip selected, skipping refresh")
+            #endif
+            return
+        }
+
         if shouldRefreshStableArrivals(fresh) {
             stableNearestArrivals = fresh
             lastStableRefreshDate = .now
@@ -523,7 +548,25 @@ struct RouteDetailSheet: View {
     }
 
     private func handleScheduleChange() {
+        // Don't disrupt chips while user has a chip selected
+        guard selectedChipId == nil else {
+            chipRefreshDeferred = true
+            return
+        }
         stableNearestArrivals = nearestStopArrivals
+    }
+
+    /// Called when `selectedChipId` changes.  When the user deselects a
+    /// chip (value → nil), catch up with any deferred chip refreshes so
+    /// the strip shows the latest data.
+    private func handleChipSelectionChange(_ newId: String?) {
+        guard newId == nil, chipRefreshDeferred else { return }
+        chipRefreshDeferred = false
+        let fresh = nearestStopArrivals
+        if shouldRefreshStableArrivals(fresh) {
+            stableNearestArrivals = fresh
+            lastStableRefreshDate = .now
+        }
     }
 
     private func handleLoadingTimeout() async {
@@ -538,9 +581,18 @@ struct RouteDetailSheet: View {
     }
 
     private func handleMapStopTap(_ newId: String?) {
-        if let sid = newId, !sid.isEmpty {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+        // Only treat this as a user stop selection when the user explicitly
+        // tapped a stop on the map or stops list.  Auto-nearest GPS updates
+        // (isStopManuallySelected == false) should NOT override chip filtering
+        // — they would force chips to show only arrivals at the nearest shape
+        // stop, which for express buses often has NO SIRI predictions, causing
+        // a jarring switch from live chips to schedule-only.
+        guard isStopManuallySelected else { return }
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+            if let sid = newId, !sid.isEmpty {
                 inSheetSelectedStopId = sid
+            } else {
+                inSheetSelectedStopId = nil
             }
         }
     }

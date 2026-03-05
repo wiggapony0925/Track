@@ -20,6 +20,9 @@ struct FavoritesSection: View {
     let userLocation: CLLocation?
     let sheetNavigator: SheetNavigator
     let onSelect: (GroupedNearbyTransitResponse, Int) -> Void
+    /// Shared ETA provider — when supplied, favorites use the same
+    /// vehicle-position + delay-factor enriched ETA as home rows.
+    var smartETAProvider: ((NearbyTransitResponse) -> SmartETA)? = nil
 
     /// Favorites sorted closest-first using the same distance function
     /// as the nearby list (`groupMinDistance`), so the order matches
@@ -104,7 +107,8 @@ struct FavoritesSection: View {
                             FavoriteCard(
                                 favorite: favorite,
                                 matchedGroup: groupedTransit.first { $0.routeId == favorite.routeId },
-                                onTap: onSelect
+                                onTap: onSelect,
+                                smartETAProvider: smartETAProvider
                             )
                         }
                     }
@@ -158,6 +162,8 @@ struct FavoriteCard: View {
     let matchedGroup: GroupedNearbyTransitResponse?
     let onTap: (GroupedNearbyTransitResponse, Int) -> Void
     var isListRow: Bool = false
+    /// Shared ETA provider — matches home row + route detail chip ETAs.
+    var smartETAProvider: ((NearbyTransitResponse) -> SmartETA)? = nil
 
     // MARK: Helpers
 
@@ -253,14 +259,7 @@ struct FavoriteCard: View {
     private var countdownPill: some View {
         if let arrival = nextArrival {
             TimelineView(.periodic(from: .now, by: 1.0)) { _ in
-                let eta = ArrivalETAEngine.computeETA(
-                    vehicleCoord: nil,
-                    vehicleKey: nil,
-                    stopCoord: nil,
-                    arrivalTs: arrival.arrivalTs,
-                    staticMinutes: arrival.minutesAway,
-                    mode: arrival.mode
-                )
+                let eta = resolvedETA(for: arrival)
                 let isNow = eta.isAtStop || eta.secondsRemaining <= 30
                 Text(isNow ? "Now" : "\(eta.minutesRemaining) min")
                     .font(.system(size: 13, weight: .semibold))
@@ -324,19 +323,18 @@ struct FavoriteCard: View {
         .shadow(color: .black.opacity(0.05), radius: 4, y: 2)
     }
 
+    /// Resolve ETA using the shared provider (same computation as home rows)
+    /// or fall back to a basic arrivalTs countdown.
+    private func resolvedETA(for arrival: NearbyTransitResponse) -> SmartETA {
+        ArrivalHelpers.resolvedETA(for: arrival, provider: smartETAProvider)
+    }
+
     @ViewBuilder
     private var countdownLabel: some View {
         if let arrival = nextArrival {
             // Per-second countdown — consistent with all other countdown views
             TimelineView(.periodic(from: .now, by: 1.0)) { _ in
-                let eta = ArrivalETAEngine.computeETA(
-                    vehicleCoord: nil,
-                    vehicleKey: nil,
-                    stopCoord: nil,
-                    arrivalTs: arrival.arrivalTs,
-                    staticMinutes: arrival.minutesAway,
-                    mode: arrival.mode
-                )
+                let eta = resolvedETA(for: arrival)
                 let isNow = eta.isAtStop || eta.secondsRemaining <= 30
                 Text(isNow ? "Now" : "\(eta.minutesRemaining) min")
                     .font(.custom("Helvetica-Bold", size: 14))

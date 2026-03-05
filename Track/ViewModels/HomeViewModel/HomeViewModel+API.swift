@@ -321,6 +321,13 @@ extension HomeViewModel {
         // Preserve existing direction labels/structure
         var newDirections: [DirectionArrivalsResponse] = []
 
+        // Snapshot which stop IDs are covered by the new onward-call data.
+        // Old live arrivals for stops NOT in this set originated from
+        // stop-monitoring (nearby API) and must be carried forward —
+        // otherwise the user-selected stop loses its live data every
+        // time the vehicle-monitoring sync fires.
+        let coveredStopIds: Set<String> = Set(newArrivals.compactMap(\.stopId).filter { !$0.isEmpty })
+
         for oldDir in currentGroup.directions {
             let liveArrivals = grouped[oldDir.direction] ?? []
             // Keep ALL arrivals from all vehicles — multiple buses heading to
@@ -346,7 +353,28 @@ extension HomeViewModel {
                 return !liveVehicleIds.contains(vid)
             }
 
-            let merged = sorted + filteredScheduled
+            // Preserve old LIVE arrivals whose stop is NOT covered by
+            // onward calls.  SIRI vehicle-monitoring truncates the call
+            // list (typically ~30 future stops), so stops further ahead
+            // or those a bus hasn't reached yet may vanish from the new
+            // data.  Keeping these prevents the user-selected stop from
+            // flapping between "7 LIVE" and "0 LIVE" every 10s poll.
+            let oldLiveForUncoveredStops = oldDir.arrivals.filter { arr in
+                guard arr.isRealTime,
+                      let sid = arr.stopId, !sid.isEmpty,
+                      !coveredStopIds.contains(sid) else { return false }
+                // Don't carry forward if the vehicle is already represented
+                // in the new onward-call data (it just doesn't list this stop).
+                if let vid = arr.vehicleId, liveVehicleIds.contains(vid) { return false }
+                // Drop arrivals that have already passed (negative ETA)
+                if let ts = arr.arrivalTs, ts > 0 {
+                    let remaining = TrackingTimeSync.remainingMinutes(until: Date(timeIntervalSince1970: TimeInterval(ts)))
+                    if remaining < -2 { return false }
+                }
+                return true
+            }
+
+            let merged = sorted + oldLiveForUncoveredStops + filteredScheduled
 
             // Only replace if we got new arrivals; otherwise keep existing to avoid flashing empty
             if merged.isEmpty && !oldDir.arrivals.isEmpty {
@@ -721,13 +749,21 @@ extension HomeViewModel {
         // Keep lastKnownUserLocation fresh so referenceLocation resolves correctly
         lastKnownUserLocation = userLocation
         
-        // Recalculate nearest stop (may or may not change)
-        updateNearestStop(userLocation: userLocation)
+        // When the user manually tapped a stop, keep that stop as the
+        // walking-route destination — only update the "from" leg so the
+        // polyline tracks their live GPS position.
+        if !isStopManuallySelected {
+            // Recalculate nearest stop (may or may not change)
+            updateNearestStop(userLocation: userLocation)
+        }
         
-        // Always refetch the walking route from the new GPS position to
+        // Always refetch the walking route from the effective origin to
         // the nearest stop so the dotted polyline tracks the user live.
+        // When a drag-search pin is active, walk from the pin — not GPS.
         if let stopCoord = nearestStopCoordinate {
-            await fetchWalkingRoute(from: userLocation.coordinate, to: stopCoord)
+            let origin = effectiveLocation(userLocation: userLocation)?.coordinate
+                         ?? userLocation.coordinate
+            await fetchWalkingRoute(from: origin, to: stopCoord)
         }
     }
 

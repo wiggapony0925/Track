@@ -371,6 +371,7 @@ struct HomeView: View {
         // for the new direction.  Previously only updateNearestStop was
         // called here, causing the walking polyline to remain stale
         // until the user left and returned to the app.
+        viewModel.isStopManuallySelected = false
         if let loc = locationManager.currentLocation {
             Task {
                 await viewModel.refreshWalkingState(userLocation: loc)
@@ -464,6 +465,7 @@ struct HomeView: View {
                 cameraPosition: $cameraPosition,
                 currentLocation: effectiveCoord,
                 selectedStopId: viewModel.selectedStopId,
+                isStopManuallySelected: viewModel.isStopManuallySelected,
                 onTrack: { arrival in
                     viewModel.trackNearbyArrival(arrival, location: locationManager.currentLocation)
                     
@@ -537,14 +539,21 @@ struct HomeView: View {
                     // nil = user deselected → clear split (full-color polyline).
                     viewModel.nearestStopCoordinate = coord
 
+                    // Track whether the user manually picked a stop so that
+                    // GPS-driven refreshWalkingState doesn't overwrite it.
+                    viewModel.isStopManuallySelected = (coord != nil)
+
                     // Re-fetch the walking route to the newly selected stop
                     // so the dashed walking polyline updates on the map.
-                    if let stopCoord = coord,
-                       let userLoc = locationManager.currentLocation {
-                        suppressWalkingRouteZoom = true
-                        Task {
-                            await viewModel.fetchWalkingRoute(
-                                from: userLoc.coordinate, to: stopCoord)
+                    if let stopCoord = coord {
+                        let origin = viewModel.referenceLocation?.coordinate
+                                     ?? locationManager.currentLocation?.coordinate
+                        if let from = origin {
+                            suppressWalkingRouteZoom = true
+                            Task {
+                                await viewModel.fetchWalkingRoute(
+                                    from: from, to: stopCoord)
+                            }
                         }
                     } else if let userLoc = locationManager.currentLocation {
                         // Deselected — revert to auto-nearest stop & its walking route

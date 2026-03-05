@@ -591,6 +591,11 @@ final class HomeViewModel {
     }
     var selectedStopId: String?
 
+    /// True when the user manually tapped a stop in the stops list.
+    /// Prevents `refreshWalkingState` from overwriting the selection
+    /// back to the auto-nearest stop on the next GPS update.
+    var isStopManuallySelected = false
+
     // Live bus/train tracking on map
     var selectedRouteId: String?
     var highlightedVehicleId: String?
@@ -1150,12 +1155,24 @@ final class HomeViewModel {
 
     /// Returns the coordinate of a tapped vehicle marker (bus or train) by its ID.
     /// Used by HomeView to zoom/center the map on the tapped marker.
+    ///
+    /// Checks **direction-filtered** vehicles first so the zoom only
+    /// targets markers actually visible on the map.  Falls back to the
+    /// full vehicle index for edge cases (e.g. vehicle just switched
+    /// direction and hasn't been re-filtered yet).
     func coordinateForTappedVehicle(_ vehicleId: String) -> CLLocationCoordinate2D? {
-        // Check bus vehicles — O(1)
+        // Check direction-filtered bus vehicles first (visible markers)
+        if let bus = filteredBusVehicles.first(where: { $0.vehicleId == vehicleId }) {
+            return CLLocationCoordinate2D(latitude: bus.lat, longitude: bus.lon)
+        }
+        // Check direction-filtered train vehicles
+        if let train = filteredTrainVehicles.first(where: { $0.tripId == vehicleId || $0.id == vehicleId }) {
+            return CLLocationCoordinate2D(latitude: train.lat, longitude: train.lon)
+        }
+        // Fallback: full index (vehicle may not be filtered yet after a refresh)
         if let bus = _busVehicleIndex[vehicleId] {
             return CLLocationCoordinate2D(latitude: bus.lat, longitude: bus.lon)
         }
-        // Check train vehicles — O(1)
         if let train = _trainVehicleByTrip[vehicleId] ?? _trainVehicleById[vehicleId] {
             return CLLocationCoordinate2D(latitude: train.lat, longitude: train.lon)
         }
@@ -1610,6 +1627,7 @@ final class HomeViewModel {
         expireAllGraceCounters()
         goMode.walkingRoute = nil
         nearestStopCoordinate = nil
+        isStopManuallySelected = false
         nearestTransit = nil
         nearestTransitDistance = nil
     }
@@ -1654,6 +1672,7 @@ final class HomeViewModel {
         // Reset previous route data
         goMode.walkingRoute = nil
         nearestStopCoordinate = nil
+        isStopManuallySelected = false
         busVehicles = []
         trainVehicles = []
         cachedTrainArrivals = []

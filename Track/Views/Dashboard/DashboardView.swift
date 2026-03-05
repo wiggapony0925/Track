@@ -81,7 +81,8 @@ struct DashboardView: View {
                                 Task {
                                     await viewModel.handleRouteSelection(group, directionIndex: directionIndex, userLocation: locationManager.currentLocation)
                                 }
-                            }
+                            },
+                            smartETAProvider: { viewModel.smartETA(for: $0) }
                         )
                         .transition(.opacity.animation(.easeIn(duration: 0.25)))
                     }
