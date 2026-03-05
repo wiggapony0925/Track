@@ -56,16 +56,19 @@ struct  GroupedRouteRow: View {
     /// placeholder minutesAway ≥ 99). Falls back to all directions if
     /// filtering would leave zero.
     private var visibleDirections: [DirectionArrivalsResponse] {
-        if group.isBus && group.directions.count == 2 {
-            return group.directions
-        }
         let real = group.directions.filter { dir in
             // Keep if it has at least one live (non-placeholder) arrival
             if !dir.liveArrivals.isEmpty { return true }
-            // Keep if the direction isn't a backend "Opposite" placeholder
-            if dir.direction.lowercased() != "opposite" { return true }
             // Drop: "Opposite" direction with no live arrivals
-            return false
+            if dir.direction.lowercased() == "opposite" { return false }
+            // Drop compass-code placeholder directions with no live data.
+            // These are backend backfill (Phase C) — e.g. "SW" opposite of
+            // "EAST SIDE YORK AV CROSSTOWN" — and just show "Southwest"
+            // which is unhelpful.  They'll appear once buses start running.
+            if DirectionConstants.isFallbackDirection(dir.direction) && dir.liveArrivals.isEmpty {
+                return false
+            }
+            return true
         }
         return real.isEmpty ? group.directions : real
     }

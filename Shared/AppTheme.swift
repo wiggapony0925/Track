@@ -50,6 +50,10 @@ struct AppTheme {
         /// Large rounded header (Dynamic Type: Large Title).
         static let headerLarge: Font = .custom("Helvetica-Bold", size: 34)
 
+        /// Sheet/detail title — smaller than headerLarge, larger than headerMedium.
+        /// Used for route detail sheet titles where the RouteBadge is the hero element.
+        static let sheetTitle: Font = .custom("Helvetica-Bold", size: 26)
+
         /// Medium header for sheet titles and card headers.
         static let headerMedium: Font = .custom("Helvetica-Bold", size: 18)
 
@@ -91,6 +95,35 @@ struct AppTheme {
         static func helvetica(size: CGFloat, weight: Font.Weight = .regular) -> Font {
             return .custom("Helvetica", size: size).weight(weight)
         }
+    }
+
+    // MARK: - Shadows
+
+    /// Reusable shadow presets for consistent depth across the app.
+    struct Shadows {
+        /// Subtle card shadow — used for card containers and floating sections.
+        static func card(_ content: some View) -> some View {
+            content.shadow(color: .black.opacity(0.05), radius: 6, x: 0, y: 2)
+        }
+
+        /// Elevated shadow — used for active/selected elements.
+        static func elevated(_ content: some View) -> some View {
+            content.shadow(color: .black.opacity(0.08), radius: 8, x: 0, y: 4)
+        }
+    }
+
+    // MARK: - Spacing
+
+    /// Standardized spacing values for consistent vertical rhythm.
+    struct Spacing {
+        /// Small gap within tightly grouped items (4–6pt).
+        static let tight: CGFloat = 6
+        /// Standard inner section spacing (10–12pt).
+        static let inner: CGFloat = 10
+        /// Gap between related sections (16pt).
+        static let section: CGFloat = 16
+        /// Large gap between major content blocks (24pt).
+        static let block: CGFloat = 24
     }
 
     // MARK: - Subway Line Colors

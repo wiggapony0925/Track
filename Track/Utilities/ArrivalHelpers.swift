@@ -107,8 +107,22 @@ enum ArrivalHelpers {
         }
 
         // 3. Backend directionLabel (skipped by detail sheet for subway)
+        //    Also skip when the label is a generic compass/fallback name
+        //    ("Eastbound", "Southwest", etc.) — those don't tell the user
+        //    where the bus actually goes.  We'll try arrival destinations
+        //    or the raw direction string first.
+        //    Handles both plain "Eastbound" and compound "Eastbound → Terminal".
         if !skipBackendLabel, let label = direction.directionLabel, !label.isEmpty {
-            return label
+            let base = label.components(separatedBy: " → ").first ?? label
+            if !DirectionConstants.isFallbackDirection(base) {
+                return label
+            }
+            // If it has a "→ destination" part, use just the destination
+            let parts = label.components(separatedBy: " → ")
+            if parts.count >= 2, let dest = parts.last, !dest.isEmpty {
+                return dest
+            }
+            // Pure compass label like "Eastbound" — skip to next fallback
         }
 
         // 4. First live arrival's destination
@@ -124,10 +138,17 @@ enum ArrivalHelpers {
             return dest
         }
 
-        // 6. Compass fallback
-        return useShortCompass
-            ? shortDirectionLabel(direction.direction)
-            : directionLabel(direction.direction)
+        // 6. Compass or raw-direction fallback
+        //    If the raw direction is a descriptive name (not a compass code),
+        //    title-case it for display.  Otherwise map compass codes to labels.
+        let raw = direction.direction
+        if DirectionConstants.isFallbackDirection(raw) {
+            return useShortCompass
+                ? shortDirectionLabel(raw)
+                : directionLabel(raw)
+        }
+        // Descriptive direction name (e.g. "EAST SIDE YORK AV CROSSTOWN") → title case
+        return raw.localizedCapitalized
     }
 
     // MARK: - Countdown Candidate

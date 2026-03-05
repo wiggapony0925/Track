@@ -66,6 +66,11 @@ struct HomeView: View {
     /// re-zoom because the update came from a live GPS tick, not a route open.
     @State private var suppressWalkingRouteZoom = false
     
+    /// When true, the next `handleTappedVehicle` call was triggered by a chip
+    /// tap inside the route detail sheet — the sheet should collapse (not expand)
+    /// so the user can see the focused vehicle on the map.
+    @State private var focusFromChip = false
+    
     /// Whether a drag-search API call is in-flight.
     /// Derived from the ViewModel's loading state instead of maintaining
     /// a separate flag — reuses the existing loading infrastructure.
@@ -388,6 +393,14 @@ struct HomeView: View {
     private func handleTappedVehicle(_ newValue: String?) {
         guard let tappedId = newValue, !tappedId.isEmpty else { return }
         
+        // If the focus was triggered from a chip tap in the route detail
+        // sheet, the sheet is already being collapsed in onFocusVehicle —
+        // don't expand it here.
+        if focusFromChip {
+            focusFromChip = false
+            return
+        }
+        
         if sheetDetent != .large {
             withAnimation(MapCameraPresets.snapAnimation) {
                 sheetDetent = .large
@@ -474,10 +487,20 @@ struct HomeView: View {
                     }
                 },
                 onFocusVehicle: { key in
-                    // Row expanded/collapsed — highlight the matching marker on the map
+                    // Mark that this focus came from a chip so handleTappedVehicle
+                    // collapses the sheet instead of expanding it.
+                    focusFromChip = true
+                    
+                    // Highlight the matching marker on the map
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                         viewModel.tappedVehicleId = key
                     }
+                    
+                    // Collapse the sheet so the user can see the focused vehicle
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                        sheetDetent = .fraction(0.4)
+                    }
+                    
                     // Zoom to the marker if a key was provided
                     if let key, let coord = viewModel.coordinateForTappedVehicle(key) {
                         withAnimation(MapCameraPresets.flyAnimation) {
@@ -513,6 +536,23 @@ struct HomeView: View {
                     // coloring follows the stop the user tapped.
                     // nil = user deselected → clear split (full-color polyline).
                     viewModel.nearestStopCoordinate = coord
+
+                    // Re-fetch the walking route to the newly selected stop
+                    // so the dashed walking polyline updates on the map.
+                    if let stopCoord = coord,
+                       let userLoc = locationManager.currentLocation {
+                        suppressWalkingRouteZoom = true
+                        Task {
+                            await viewModel.fetchWalkingRoute(
+                                from: userLoc.coordinate, to: stopCoord)
+                        }
+                    } else if let userLoc = locationManager.currentLocation {
+                        // Deselected — revert to auto-nearest stop & its walking route
+                        suppressWalkingRouteZoom = true
+                        Task {
+                            await viewModel.refreshWalkingState(userLocation: userLoc)
+                        }
+                    }
                 }
             )
             

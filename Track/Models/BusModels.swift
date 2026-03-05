@@ -265,7 +265,7 @@ struct RouteShapeResponse: Codable {
 // MARK: - Bus Schedule
 
 /// Response from /bus/schedule/{route_id} — today's upcoming scheduled departures.
-struct BusScheduleResponse: Codable {
+struct BusScheduleResponse: Codable, Equatable {
     let routeId: String
     let directions: [BusScheduleDirection]
 
@@ -275,13 +275,13 @@ struct BusScheduleResponse: Codable {
     }
 }
 
-struct BusScheduleDirection: Codable {
+struct BusScheduleDirection: Codable, Equatable {
     let direction: String
     let headsign: String
     let departures: [BusScheduledDeparture]
 }
 
-struct BusScheduledDeparture: Codable, Identifiable {
+struct BusScheduledDeparture: Codable, Identifiable, Equatable {
     var id: String { tripId + "_\(departureTime)" }
     let stopName: String
     let stopId: String

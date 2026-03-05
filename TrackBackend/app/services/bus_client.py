@@ -2084,6 +2084,11 @@ async def _get_route_shape_impl(route_id: str) -> RouteShape:
 
     stops: list[BusStop] = []
     for s in stops_data:
+        # OBA references.stops provides routeIds as a flat list of route ID
+        # strings (unlike the stops-for-location endpoint which nests full
+        # route objects under "routes").  Extracting these enables the iOS
+        # client to resolve bus-to-bus transfers at each stop.
+        route_ids: list[str] = s.get("routeIds", [])
         stops.append(
             BusStop(
                 id=s.get("id", ""),
@@ -2091,6 +2096,7 @@ async def _get_route_shape_impl(route_id: str) -> RouteShape:
                 lat=s.get("lat", 0.0),
                 lon=s.get("lon", 0.0),
                 direction=s.get("direction"),
+                route_ids=route_ids,
             )
         )
 

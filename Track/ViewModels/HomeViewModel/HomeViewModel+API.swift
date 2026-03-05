@@ -654,13 +654,33 @@ extension HomeViewModel {
 
     /// Fetches the schedule for the currently selected bus route.
     /// Used to show scheduled departures when no live buses are running.
-    func fetchBusScheduleIfNeeded() async {
+    /// - Parameter expectedRouteId: The route ID that was selected when this
+    ///   call was enqueued.  If the user navigated away before the network
+    ///   response arrives, we discard the result to avoid polluting a
+    ///   different route's data.
+    func fetchBusScheduleIfNeeded(expectedRouteId: String? = nil) async {
         guard let group = selectedGroupedRoute, group.isBus else { return }
+        let routeId = group.routeId
         do {
-            busSchedule = try await TrackAPI.fetchBusSchedule(routeID: group.routeId)
+            let schedule = try await TrackAPI.fetchBusSchedule(routeID: routeId)
+            // Staleness guard: only publish if the user is still on the same route.
+            guard selectedRouteId == (expectedRouteId ?? routeId) else {
+                #if DEBUG
+                print("[SCHEDULE] Discarding stale schedule for \(routeId) — user moved to \(selectedRouteId ?? "nil")")
+                #endif
+                return
+            }
+            busSchedule = schedule
+            #if DEBUG
+            let dirSummary = schedule.directions.map { "\($0.direction): \($0.departures.count) deps" }.joined(separator: ", ")
+            print("[SCHEDULE] Loaded schedule for \(routeId): \(schedule.directions.count) dirs [\(dirSummary)]")
+            #endif
         } catch {
-            AppLogger.shared.logError("fetchBusSchedule(\(group.routeId))", error: error)
-            busSchedule = nil
+            AppLogger.shared.logError("fetchBusSchedule(\(routeId))", error: error)
+            // Only nil out if we're still on the same route
+            if selectedRouteId == (expectedRouteId ?? routeId) {
+                busSchedule = nil
+            }
         }
     }
 

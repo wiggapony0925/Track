@@ -1658,11 +1658,19 @@ final class HomeViewModel {
         trainVehicles = []
         cachedTrainArrivals = []
         routeShape = nil
+        busSchedule = nil
 
         selectedRouteId = group.routeId
         let loadingRouteId = group.routeId   // capture for staleness checks after await
 
         if group.isBus {
+            // Fire schedule fetch in parallel — don't wait for shape/vehicles.
+            // The schedule is independent data from OBA and can take several
+            // seconds due to multiple serial OBA HTTP calls on the backend.
+            Task { [weak self] in
+                guard let self else { return }
+                await self.fetchBusScheduleIfNeeded(expectedRouteId: loadingRouteId)
+            }
             // Load route shape + vehicles for bus routes
             async let vehiclesTask = TrackAPI.fetchBusVehicles(routeID: group.routeId)
             async let shapeTask = TrackAPI.fetchRouteShape(routeID: group.routeId)
@@ -1914,12 +1922,8 @@ final class HomeViewModel {
             }
         }
 
-        // After loading shape and vehicles, check if we need schedule data
-        // for directions with no live buses
-        if group.isBus {
-            guard selectedRouteId == loadingRouteId else { return }
-            await fetchBusScheduleIfNeeded()
-        }
+        // Schedule fetch already launched in parallel above for bus routes.
+        // No sequential call needed here.
 
         #if DEBUG
         if let selected = selectedGroupedRoute {
