@@ -438,7 +438,9 @@ def _load_static_bus_route_shape_index() -> dict[str, RouteShape]:
         shapes_path = borough_dir / "shapes.txt"
         stops_path = borough_dir / "stops.txt"
         stop_times_path = borough_dir / "stop_times.txt"
-        if not (routes_path.exists() and trips_path.exists() and shapes_path.exists() and stops_path.exists() and stop_times_path.exists()):
+        # shapes_path is still read as CSV (small); stop_times is now
+        # queried from SQLite so we no longer require the CSV to exist.
+        if not (routes_path.exists() and trips_path.exists() and shapes_path.exists() and stops_path.exists()):
             continue
 
         route_id_to_short: dict[str, str] = {}
@@ -503,18 +505,58 @@ def _load_static_bus_route_shape_index() -> dict[str, RouteShape]:
                 name = (row.get("stop_name") or stop_id).strip()
                 stop_meta[stop_id] = (name, lat, lon)
 
-        route_stop_ids: dict[str, set[str]] = defaultdict(set)
-        with open(stop_times_path, encoding="utf-8") as f:
-            for row in csv.DictReader(f):
-                trip_id = (row.get("trip_id") or "").strip()
-                stop_id = (row.get("stop_id") or "").strip()
-                if not trip_id or not stop_id:
-                    continue
-                meta = trip_to_meta.get(trip_id)
-                if not meta:
-                    continue
-                short, _dir_id, _shape_id = meta
-                route_stop_ids[short].add(stop_id)
+        # Query stop-route mapping from SQLite instead of reading the massive
+        # stop_times.txt CSV (6.5M rows → ~2 GB peak memory).  The schedule DB
+        # already has the same data indexed.
+        _db_path = Path("app/data/transit_schedule.db")
+        route_stop_ordered: dict[str, list[tuple[int, str]]] = defaultdict(list)
+        route_stop_seen: dict[str, set[str]] = defaultdict(set)
+        if _db_path.exists():
+            import sqlite3 as _sqlite3
+            try:
+                _conn = _sqlite3.connect(_db_path)
+                _cur = _conn.cursor()
+                # Fetch stop_id, stop_sequence, and route_short_name for bus routes
+                # that match routes we found in this borough's trips.txt.
+                _route_shorts = set(route_id_to_short.values())
+                if _route_shorts:
+                    placeholders = ",".join("?" for _ in _route_shorts)
+                    _cur.execute(f"""
+                        SELECT DISTINCT st.stop_id, st.stop_sequence, r.route_short_name
+                        FROM stop_times st
+                        JOIN trips t ON t.trip_id = st.trip_id
+                        JOIN routes r ON r.route_id = t.route_id AND r.route_type = 3
+                        WHERE r.route_short_name IN ({placeholders})
+                        ORDER BY r.route_short_name, st.stop_sequence
+                    """, list(_route_shorts))
+                    for _sid, _seq, _short in _cur.fetchall():
+                        if _sid and _short and _sid not in route_stop_seen[_short]:
+                            route_stop_seen[_short].add(_sid)
+                            route_stop_ordered[_short].append((_seq or 0, _sid))
+                _conn.close()
+            except Exception as _exc:
+                TrackLogger.warning(f"Static shape index: SQLite stop query failed: {_exc}", tag="BUS")
+        else:
+            # Absolute fallback: read stop_times CSV (expensive, but shouldn't
+            # reach here on Render where the DB is always built).
+            if stop_times_path.exists():
+                with open(stop_times_path, encoding="utf-8") as f:
+                    for row in csv.DictReader(f):
+                        trip_id = (row.get("trip_id") or "").strip()
+                        stop_id = (row.get("stop_id") or "").strip()
+                        if not trip_id or not stop_id:
+                            continue
+                        meta = trip_to_meta.get(trip_id)
+                        if not meta:
+                            continue
+                        short, _dir_id, _shape_id = meta
+                        if stop_id not in route_stop_seen[short]:
+                            route_stop_seen[short].add(stop_id)
+                            try:
+                                seq = int(row.get("stop_sequence") or 0)
+                            except (ValueError, TypeError):
+                                seq = 0
+                            route_stop_ordered[short].append((seq, stop_id))
 
         for short, by_dir in route_shape_ids_by_dir.items():
             directions: list[DirectionShape] = []
@@ -552,7 +594,10 @@ def _load_static_bus_route_shape_index() -> dict[str, RouteShape]:
                 continue
 
             stops: list[BusStop] = []
-            for stop_id in sorted(route_stop_ids.get(short, set())):
+            ordered_stop_ids = [
+                sid for _, sid in sorted(route_stop_ordered.get(short, []))
+            ]
+            for stop_id in ordered_stop_ids:
                 meta = stop_meta.get(stop_id)
                 if not meta:
                     continue
@@ -2061,15 +2106,18 @@ async def _get_route_shape_impl(route_id: str) -> RouteShape:
                     dir_id = 0
                 headsign = sg.get("name", {}).get("name", "") if isinstance(sg.get("name"), dict) else str(sg.get("name", ""))
 
-                # Extract stop IDs for this direction
-                dir_stop_ids: set[str] = set()
+                # Extract stop IDs for this direction — preserve OBA's
+                # ordering which reflects the route's actual travel sequence.
+                dir_stop_ids: list[str] = []
+                seen_stop_ids: set[str] = set()
                 for ref in sg.get("stopIds", []):
-                    if isinstance(ref, dict):
-                        dir_stop_ids.add(ref.get("id", ""))
-                    elif isinstance(ref, str):
-                        dir_stop_ids.add(ref)
+                    sid = ref.get("id", "") if isinstance(ref, dict) else (ref if isinstance(ref, str) else "")
+                    if sid and sid not in seen_stop_ids:
+                        dir_stop_ids.append(sid)
+                        seen_stop_ids.add(sid)
 
-                dir_stops = [s for s in stops if s.id in dir_stop_ids]
+                stop_lookup = {s.id: s for s in stops}
+                dir_stops = [stop_lookup[sid] for sid in dir_stop_ids if sid in stop_lookup]
 
                 # Use OBA's polylineIds to assign direction-specific polylines.
                 # polylineIds references the "id" field of entry.polylines[].

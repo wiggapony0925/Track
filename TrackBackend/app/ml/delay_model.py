@@ -260,12 +260,11 @@ def predict_factor(
         return _heuristic(route_id, hour, dow, weather, mode), "heuristic"
 
     try:
-        import pandas as pd  # type: ignore[import-untyped]
+        import numpy as np  # type: ignore[import-untyped]
         feats = encode_features(route_id, hour, dow, weather, mode, current_delay_s)
         # Backward compat: older 7-feature models drop the delay_minutes column
         n_expected: int = getattr(model, "n_features_in_", len(feats))
-        names = FEATURE_NAMES[:n_expected]
-        X = pd.DataFrame([feats[:n_expected]], columns=names)
+        X = np.array([feats[:n_expected]], dtype=np.float64)
         raw = float(model.predict(X)[0])
         return round(max(0.90, min(raw, 2.0)), 4), "model"
     except Exception as exc:

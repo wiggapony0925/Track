@@ -118,8 +118,10 @@ REDIS_KEY_PREFIX: str = "track:bus"
 
 NEARBY_RESPONSE_FRESH_TTL: float = _ovr.get("nearby_response_fresh_ttl", 10.0)
 NEARBY_RESPONSE_STALE_TTL: float = _ovr.get("nearby_response_stale_ttl", 20.0)
-NEARBY_RESPONSE_MAX_SIZE: int = _ovr.get("nearby_response_max_size", 200)
-NEARBY_GPS_DECIMALS: int = _ovr.get("nearby_gps_decimals", 3)
+NEARBY_RESPONSE_MAX_SIZE: int = _ovr.get("nearby_response_max_size", 400)
+# 4 decimals ≈ 11m grid cells (was 3 ≈ 111m — too coarse, causing
+# users on cell boundaries to get stops from the wrong neighbourhood).
+NEARBY_GPS_DECIMALS: int = _ovr.get("nearby_gps_decimals", 4)
 
 
 # ┌─────────────────────────────────────────────────────┐
