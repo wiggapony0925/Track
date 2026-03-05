@@ -112,7 +112,16 @@ async def get_bus_schedule(route_id: str) -> BusScheduleResponse:
     )
 
     # ── Query OBA for each sampled stop and collect ALL departures ──────
-    req_token = (route_id.split("_", 1)[-1] if "_" in route_id else route_id).upper()
+    import re as _re
+
+    def _normalize_route_token(raw: str) -> str:
+        """Strip agency prefix, upper-case, and remove leading zeros from the
+        numeric portion so that 'Q07' and 'Q7' compare equal."""
+        token = (raw.split("_", 1)[-1] if "_" in raw else raw).upper()
+        # Strip leading zeros after any letter prefix: Q07 → Q7, B063 → B63
+        return _re.sub(r"(?<=\D)0+(?=\d)", "", token) or token
+
+    req_token = _normalize_route_token(route_id)
     all_departures: list[BusScheduleDeparture] = []
 
     async with _httpx.AsyncClient(timeout=10) as client:
@@ -140,7 +149,7 @@ async def get_bus_schedule(route_id: str) -> BusScheduleResponse:
             entry = data.get("data", {}).get("entry", {})
             for srs in entry.get("stopRouteSchedules", []):
                 srs_route = srs.get("routeId", "")
-                srs_token = (srs_route.split("_", 1)[-1] if "_" in srs_route else srs_route).upper()
+                srs_token = _normalize_route_token(srs_route)
                 if srs_token != req_token:
                     continue
                 for dg in srs.get("stopRouteDirectionSchedules", []):
