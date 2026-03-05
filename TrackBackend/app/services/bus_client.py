@@ -340,7 +340,15 @@ def _get_bus_client() -> httpx.AsyncClient:
         or _bus_shared_client.is_closed
         or _bus_shared_client_loop_id != current_loop_id
     ):
-        _bus_shared_client = httpx.AsyncClient(timeout=_get_timeout())
+        # Raise per-host pool from httpx default (20) to match the upstream
+        # semaphore so 80 concurrent SIRI calls don't serialise into 4 waves.
+        _bus_shared_client = httpx.AsyncClient(
+            timeout=_get_timeout(),
+            limits=httpx.Limits(
+                max_connections=BUS_UPSTREAM_CONCURRENCY + 16,
+                max_keepalive_connections=BUS_UPSTREAM_CONCURRENCY,
+            ),
+        )
         _bus_shared_client_loop_id = current_loop_id
     return _bus_shared_client
 

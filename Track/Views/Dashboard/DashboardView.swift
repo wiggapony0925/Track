@@ -168,7 +168,17 @@ struct DashboardView: View {
         .refreshable {
             // Use referenceLocation (pin when active, GPS otherwise) so
             // pull-to-refresh during drag-to-search fetches from the explored area.
-            await viewModel.refresh(location: viewModel.referenceLocation, force: true)
+            // Prefer live GPS over the cached referenceLocation — it may still
+            // reflect a previous session's coordinates when CoreLocation is slow
+            // to deliver a fresh fix after the app was backgrounded.
+            let loc: CLLocation? = if !viewModel.isSearchPinActive,
+                                      let live = locationManager.currentLocation,
+                                      abs(live.timestamp.timeIntervalSinceNow) < 30 {
+                live
+            } else {
+                viewModel.referenceLocation
+            }
+            await viewModel.refresh(location: loc, force: true)
             lastUpdated = Date()
         }
     }

@@ -261,11 +261,21 @@ def predict_factor(
 
     try:
         import numpy as np  # type: ignore[import-untyped]
+        import warnings
         feats = encode_features(route_id, hour, dow, weather, mode, current_delay_s)
         # Backward compat: older 7-feature models drop the delay_minutes column
         n_expected: int = getattr(model, "n_features_in_", len(feats))
         X = np.array([feats[:n_expected]], dtype=np.float64)
-        raw = float(model.predict(X)[0])
+        # Suppress "X does not have valid feature names" — we deliberately
+        # pass a numpy array (fast) instead of a DataFrame (slow).  The
+        # feature order is guaranteed correct by encode_features().
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message="X does not have valid feature names",
+                category=UserWarning,
+            )
+            raw = float(model.predict(X)[0])
         return round(max(0.90, min(raw, 2.0)), 4), "model"
     except Exception as exc:
         TrackLogger.model_event(

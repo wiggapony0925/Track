@@ -145,7 +145,11 @@ final class HomeViewModel {
             #if DEBUG
             do {
                 let warnKey = "\(group.routeId)|\(group.mode)"
-                if matchingStations.isEmpty && !nearbyStations.isEmpty && Self._loggedDistWarnings.insert(warnKey).inserted {
+                // Suppress the warning for graced routes — they're expected
+                // to have no matching stations because they've disappeared
+                // from the fresh API response (e.g. routes that left the radius).
+                let isGraced = (graceMissCountBySource["nearby"]?[group.routeId.uppercased()] ?? 0) > 0
+                if matchingStations.isEmpty && !nearbyStations.isEmpty && !isGraced && Self._loggedDistWarnings.insert(warnKey).inserted {
                     print("[DIST] \(group.routeId) \(group.mode)  ⚠️ NO matching stations (token=\(target), nearbyStations=\(nearbyStations.count))")
                 }
             }
@@ -1381,6 +1385,12 @@ final class HomeViewModel {
         // The forced refresh from onAppearSetup still runs because it
         // uses force=true which bypasses canSkipRefresh.
         lastRefreshDate = Date()
+
+        // Signal ContentView that critical-path data is available so
+        // performFullSync() can fire immediately instead of waiting.
+        TransitDataReadyFlag.markReady()
+        NotificationCenter.default.post(name: .transitDataLoaded, object: nil)
+
         AppLogger.shared.log(
             "CACHE",
             message: "📦 Loaded \(cached.count) cached route groups — skipping skeletons"
@@ -1460,9 +1470,17 @@ final class HomeViewModel {
         lastRefreshDateByMode[selectedMode] = now
         modesEverRefreshed.insert(selectedMode)
         lastRefreshLocation = loc
+        let wasFirstLoad = !hasLoadedOnce
         hasLoadedOnce = true
         isLoading = false
         isRefreshing = false
+
+        // Signal ContentView that critical-path data has landed so it can
+        // kick off the lower-priority performFullSync() immediately.
+        if wasFirstLoad {
+            TransitDataReadyFlag.markReady()
+            NotificationCenter.default.post(name: .transitDataLoaded, object: nil)
+        }
         return true
     }
 

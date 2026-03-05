@@ -1125,49 +1125,52 @@ async def _fetch_nearby_subway(
     missing_stops = nearby_stops - stops_with_live
     
     if missing_stops:
-        backfill_count = 0
+        # Pre-filter to subway-only stops, then fetch ALL schedules in parallel
+        subway_missing = []
         for stop_id in missing_stops:
-            # Check if this is actually a subway stop (not LIRR/MNR)
             stop_info = get_stop_info(stop_id)
             if stop_info and stop_info.agency in ("lirr", "mnr"):
                 continue  # Skip — handled by _fetch_nearby_rail
+            subway_missing.append(stop_id)
 
-            scheduled = await schedule_service.get_scheduled_arrivals_async(stop_id, limit=4)
-            for s in scheduled:
-                # Extra guard: skip if trip_id hints at commuter rail
-                if s.trip_id and ("GO103" in s.trip_id or "METS" in s.trip_id):
-                    continue
-                # Skip numeric-only route_ids — subway routes are letters/letter-combos
-                # (A, 1, 7, GS, SI, FS) not multi-digit branch numbers like "8", "9"
-                if s.route_id.isdigit() and int(s.route_id) > 7:
-                    continue
+        if subway_missing:
+            # Parallel fetch: all schedule queries at once instead of serial
+            all_scheduled = await asyncio.gather(
+                *(schedule_service.get_scheduled_arrivals_async(sid, limit=4) for sid in subway_missing)
+            )
 
-                sinfo = get_stop_info(s.station)
-                # For subway scheduled arrivals, use compass direction ("N"/"S")
-                # as fallback key; prefer destination when present.
-                sched_dir = s.destination or s.direction
-                corrected_mins = await _ml_corrected(
-                    s.minutes_away, s.route_id, "subway",
-                    stop_id=s.station,
-                )
-                results.append(NearbyTransitArrival(
-                    route_id=s.route_id,
-                    stop_name=sinfo.name if sinfo else s.station,
-                    direction=sched_dir,
-                    destination=s.destination,
-                    minutes_away=corrected_mins,
-                    arrival_ts=s.arrival_ts,
-                    status="Scheduled",
-                    mode="subway",
-                    stop_lat=sinfo.lat if sinfo else None,
-                    stop_lon=sinfo.lon if sinfo else None,
-                    stop_id=s.station,
-                    trip_id=s.trip_id
-                ))
-                backfill_count += 1
+            backfill_count = 0
+            for stop_id, scheduled in zip(subway_missing, all_scheduled):
+                for s in scheduled:
+                    if s.trip_id and ("GO103" in s.trip_id or "METS" in s.trip_id):
+                        continue
+                    if s.route_id.isdigit() and int(s.route_id) > 7:
+                        continue
 
-        if backfill_count:
-            TrackLogger.info(f"Backfilled {backfill_count} subway schedule entries for {len(missing_stops)} stops")
+                    sinfo = get_stop_info(s.station)
+                    sched_dir = s.destination or s.direction
+                    corrected_mins = await _ml_corrected(
+                        s.minutes_away, s.route_id, "subway",
+                        stop_id=s.station,
+                    )
+                    results.append(NearbyTransitArrival(
+                        route_id=s.route_id,
+                        stop_name=sinfo.name if sinfo else s.station,
+                        direction=sched_dir,
+                        destination=s.destination,
+                        minutes_away=corrected_mins,
+                        arrival_ts=s.arrival_ts,
+                        status="Scheduled",
+                        mode="subway",
+                        stop_lat=sinfo.lat if sinfo else None,
+                        stop_lon=sinfo.lon if sinfo else None,
+                        stop_id=s.station,
+                        trip_id=s.trip_id
+                    ))
+                    backfill_count += 1
+
+            if backfill_count:
+                TrackLogger.info(f"Backfilled {backfill_count} subway schedule entries for {len(subway_missing)} stops")
 
     # -----------------------------------------------------------------
     # Nearest-stop anchor (same concept as bus Phase D)
@@ -1267,16 +1270,25 @@ async def _fetch_nearby_buses(
 
     async def _add_static_only_placeholders(reason: str) -> list[NearbyTransitArrival]:
         static_routes = _nearby_static_bus_routes(lat, lon, effective_radius)
-        out: list[NearbyTransitArrival] = []
-        for route_id, (stop_name, stop_lat, stop_lon, stop_id) in static_routes.items():
-            sched = await _schedule_arrivals_for_stop(
-                stop_id=stop_id,
-                route_id=route_id,
-                stop_name=stop_name,
-                stop_lat=stop_lat,
-                stop_lon=stop_lon,
-                fallback_direction="N/A",
+        # Parallel fetch: all static-route schedule queries at once
+        items = list(static_routes.items())
+        if not items:
+            return []
+        all_sched = await asyncio.gather(
+            *(
+                _schedule_arrivals_for_stop(
+                    stop_id=stop_id,
+                    route_id=route_id,
+                    stop_name=stop_name,
+                    stop_lat=stop_lat,
+                    stop_lon=stop_lon,
+                    fallback_direction="N/A",
+                )
+                for route_id, (stop_name, stop_lat, stop_lon, stop_id) in items
             )
+        )
+        out: list[NearbyTransitArrival] = []
+        for sched in all_sched:
             out.extend(sched)
 
         TrackLogger.bus(
@@ -1458,50 +1470,58 @@ async def _fetch_nearby_buses(
     _topoff_added = 0
     _topoff_seen: set[tuple] = set()  # (route, stop, trip_id|minutes) dedup
 
+    # Collect qualifying keys and their metadata, then fetch ALL at once
+    _topoff_tasks: list[tuple[tuple, int, int]] = []  # ((rid,sid,dir), last_mins, need)
     for (_rid, _sid, _dir), _entries in _live_by_key.items():
         if len(_entries) >= _MIN_TOPOFF:
-            continue  # Already enough arrivals
+            continue
         _last_mins = max(e.minutes_away for e in _entries)
         _need = min(_MIN_TOPOFF - len(_entries), _MAX_SCHED)
+        _topoff_tasks.append(((_rid, _sid, _dir), _last_mins, _need))
 
-        # Pass route_id so the SQL query filters by route directly.
-        # Previously this fetched ALL routes at the stop (limit=14)
-        # then filtered in Python — at busy stops with 5-10 routes,
-        # most results were for OTHER routes leaving 0-2 for ours.
-        _sched_raw = await schedule_service.get_scheduled_arrivals_async(
-            _sid, route_id=_rid, limit=_need + 8
+    if _topoff_tasks:
+        # Parallel fetch: all top-off schedule queries at once
+        _all_sched_raw = await asyncio.gather(
+            *(
+                schedule_service.get_scheduled_arrivals_async(
+                    sid, route_id=rid, limit=need + 8
+                )
+                for (rid, sid, _), _, need in _topoff_tasks
+            )
         )
-        _added = 0
-        for _s in _sched_raw:
-            if _added >= _need:
-                break
-            _s_rid = _display_name(_s.route_id)
-            if _s_rid != _rid:
-                continue  # Extra safety — SQL filter is fuzzy
-            if _s.minutes_away <= _last_mins:
-                continue  # Earlier than or same as last live — skip
-            _dk = (_s_rid, _sid, _s.trip_id or str(_s.minutes_away))
-            if _dk in _topoff_seen:
-                continue
-            _topoff_seen.add(_dk)
-            _sinfo = get_stop_info(_sid)
-            results.append(NearbyTransitArrival(
-                route_id=_s_rid,
-                stop_name=_sinfo.name if _sinfo else _sid,
-                direction=_dir,
-                destination=_s.destination,
-                minutes_away=_s.minutes_away,
-                arrival_ts=_s.arrival_ts,
-                status="Scheduled",
-                mode="bus",
-                stop_lat=_sinfo.lat if _sinfo else None,
-                stop_lon=_sinfo.lon if _sinfo else None,
-                stop_id=_sid,
-                vehicle_id=None,
-                trip_id=_s.trip_id,
-            ))
-            _added += 1
-            _topoff_added += 1
+
+        for ((_rid, _sid, _dir), _last_mins, _need), _sched_raw in zip(_topoff_tasks, _all_sched_raw):
+            _added = 0
+            for _s in _sched_raw:
+                if _added >= _need:
+                    break
+                _s_rid = _display_name(_s.route_id)
+                if _s_rid != _rid:
+                    continue
+                if _s.minutes_away <= _last_mins:
+                    continue
+                _dk = (_s_rid, _sid, _s.trip_id or str(_s.minutes_away))
+                if _dk in _topoff_seen:
+                    continue
+                _topoff_seen.add(_dk)
+                _sinfo = get_stop_info(_sid)
+                results.append(NearbyTransitArrival(
+                    route_id=_s_rid,
+                    stop_name=_sinfo.name if _sinfo else _sid,
+                    direction=_dir,
+                    destination=_s.destination,
+                    minutes_away=_s.minutes_away,
+                    arrival_ts=_s.arrival_ts,
+                    status="Scheduled",
+                    mode="bus",
+                    stop_lat=_sinfo.lat if _sinfo else None,
+                    stop_lon=_sinfo.lon if _sinfo else None,
+                    stop_id=_sid,
+                    vehicle_id=None,
+                    trip_id=_s.trip_id,
+                ))
+                _added += 1
+                _topoff_added += 1
 
     if _topoff_added:
         TrackLogger.info(
@@ -1509,55 +1529,94 @@ async def _fetch_nearby_buses(
         )
 
     # -----------------------------------------------------------------
-    # 1b. Populate stop.route_ids from SIRI observations
+    # 1b. Merge SIRI-observed routes into stop.route_ids
     # -----------------------------------------------------------------
-    # OBA's stops-for-location often returns EMPTY routeIds.  Without
-    # them the backfill / anchor phases below (A-D) are completely
-    # inoperative — they iterate `for rid in stop.route_ids` which
-    # yields nothing.  Fix: use the SIRI responses we just collected
-    # to learn which routes actually serve each stop.
+    # OBA's stops-for-location often returns INCOMPLETE routeIds — a stop
+    # might list Q10 and Q80 but omit QM16 and Q30 that also serve it.
+    # Without the full set, Phases A–D below never create anchors for the
+    # missing routes, so they can't be distance-sorted on the client.
+    #
+    # Fix: MERGE SIRI observations into existing route_ids (not just
+    # backfill empty ones).  This ensures every route seen at a stop is
+    # available to closest_stops_by_route and subsequent phases.
     _siri_routes_per_stop: dict[str, set[str]] = defaultdict(set)
     for r in results:
         if r.stop_id:
             _siri_routes_per_stop[r.stop_id].add(r.route_id)
     _siri_backfilled = 0
+    _siri_merged = 0
     for stop in stops:
-        if not stop.route_ids and stop.id in _siri_routes_per_stop:
-            # Re-qualify IDs so _display_name() later still works.
-            # SIRI route_ids in `results` are already display-normalised,
-            # but the backfill loops call _display_name(rid) on them.
-            stop.route_ids = list(_siri_routes_per_stop[stop.id])
+        siri_routes = _siri_routes_per_stop.get(stop.id)
+        if not siri_routes:
+            continue
+        if not stop.route_ids:
+            # Completely empty — replace wholesale
+            stop.route_ids = list(siri_routes)
             _siri_backfilled += 1
-    if _siri_backfilled:
+        else:
+            # Partially populated — merge in any routes OBA omitted.
+            # Normalise both sides so "MTA NYCT_Q10" and "Q10" don't
+            # create duplicates.
+            existing_normalised = {_display_name(rid).upper() for rid in stop.route_ids}
+            new_routes = [
+                rid for rid in siri_routes
+                if _display_name(rid).upper() not in existing_normalised
+            ]
+            if new_routes:
+                stop.route_ids = stop.route_ids + new_routes
+                _siri_merged += 1
+    if _siri_backfilled or _siri_merged:
         TrackLogger.bus(
-            f"Populated route_ids for {_siri_backfilled} stops from SIRI "
-            f"(OBA returned empty routeIds)"
+            f"SIRI route_ids: {_siri_backfilled} stops populated (were empty), "
+            f"{_siri_merged} stops enriched (had partial OBA data)"
         )
 
     # -----------------------------------------------------------------
-    # 1c. Populate stop.route_ids from static schedule DB (bus fallback)
+    # 1c. Enrich stop.route_ids from static schedule DB
     # -----------------------------------------------------------------
-    # Some areas have no live SIRI vehicles at query time and OBA returns
-    # empty routeIds for nearby stops. Use static schedule arrivals to infer
-    # route membership so those routes still appear in /nearby and grouped cards.
+    # Like 1b, but uses the GTFS schedule DB for stops where SIRI
+    # returned no observations.  Also merges into partially-populated
+    # stops so dormant routes (no bus approaching) still get anchors.
     _schedule_backfilled = 0
-    for stop in stops:
-        if stop.route_ids:
-            continue
-        scheduled = await schedule_service.get_scheduled_arrivals_async(stop.id, limit=20)
-        inferred_routes: set[str] = set()
-        for s in scheduled:
-            rid = _display_name(s.route_id)
-            if rid and rid.upper() not in {"N/A", "UNKNOWN"}:
-                inferred_routes.add(rid)
-        if inferred_routes:
-            stop.route_ids = sorted(inferred_routes)
-            _schedule_backfilled += 1
+    _schedule_merged = 0
+    _stops_needing_routes = [stop for stop in stops if not stop.route_ids]
+    # Also enrich stops that already have SOME routes — schedule DB may
+    # know about routes that neither OBA nor SIRI mentioned.
+    _stops_needing_enrichment = [
+        stop for stop in stops
+        if stop.route_ids and stop.id not in _siri_routes_per_stop
+    ]
+    if _stops_needing_routes or _stops_needing_enrichment:
+        # Parallel fetch: all schedule-based route_id lookups at once
+        _all_stops_1c = _stops_needing_routes + _stops_needing_enrichment
+        _all_scheduled = await asyncio.gather(
+            *(schedule_service.get_scheduled_arrivals_async(stop.id, limit=20) for stop in _all_stops_1c)
+        )
+        for stop, scheduled in zip(_all_stops_1c, _all_scheduled):
+            inferred_routes: set[str] = set()
+            for s in scheduled:
+                rid = _display_name(s.route_id)
+                if rid and rid.upper() not in {"N/A", "UNKNOWN"}:
+                    inferred_routes.add(rid)
+            if not inferred_routes:
+                continue
+            if not stop.route_ids:
+                stop.route_ids = sorted(inferred_routes)
+                _schedule_backfilled += 1
+            else:
+                existing_normalised = {_display_name(rid).upper() for rid in stop.route_ids}
+                new_routes = [
+                    rid for rid in sorted(inferred_routes)
+                    if rid.upper() not in existing_normalised
+                ]
+                if new_routes:
+                    stop.route_ids = stop.route_ids + new_routes
+                    _schedule_merged += 1
 
-    if _schedule_backfilled:
+    if _schedule_backfilled or _schedule_merged:
         TrackLogger.bus(
-            f"Populated route_ids for {_schedule_backfilled} stops from schedule DB "
-            f"(no live SIRI + empty OBA routeIds)"
+            f"Schedule DB route_ids: {_schedule_backfilled} stops populated (were empty), "
+            f"{_schedule_merged} stops enriched (had partial data)"
         )
 
     # Log direction distribution per route for debugging
@@ -1620,41 +1679,64 @@ async def _fetch_nearby_buses(
     # For routes with no live data, try to pull real GTFS schedule times
     # so the iOS app shows actual upcoming departure times instead of "No Service".
     _sched_injected = 0
+
+    # Pre-build a set for O(1) "has live at closest" checks instead of O(n) linear scans
+    _existing_route_stop = {(r.route_id, r.stop_id) for r in results}
+
+    # Phase A-1: Gather all closest-stop schedule queries in parallel
+    _closest_tasks: list[tuple[str, BusStop, str]] = []  # (rid, stop, direction)
     for rid, closest_stop in closest_stops_by_route.items():
-        # Check if the closest stop ALREADY has a live arrival for this route
-        has_live_at_closest = any(r for r in results if r.route_id == rid and r.stop_id == closest_stop.id)
-        if not has_live_at_closest:
+        if (rid, closest_stop.id) not in _existing_route_stop:
             direction = route_primary_direction.get(rid) or closest_stop.direction or "N/A"
-            sched_entries = await _schedule_arrivals_for_stop(
-                stop_id=closest_stop.id,
-                route_id=rid,
-                stop_name=closest_stop.name,
-                stop_lat=closest_stop.lat,
-                stop_lon=closest_stop.lon,
-                fallback_direction=direction,
+            _closest_tasks.append((rid, closest_stop, direction))
+
+    if _closest_tasks:
+        _closest_results = await asyncio.gather(
+            *(
+                _schedule_arrivals_for_stop(
+                    stop_id=stop.id,
+                    route_id=rid,
+                    stop_name=stop.name,
+                    stop_lat=stop.lat,
+                    stop_lon=stop.lon,
+                    fallback_direction=direction,
+                )
+                for rid, stop, direction in _closest_tasks
             )
+        )
+        for sched_entries in _closest_results:
             results.extend(sched_entries)
             if sched_entries and sched_entries[0].arrival_ts is not None:
                 _sched_injected += len(sched_entries)
 
-    for rid, (stop, direction) in missing_routes.items():
-        # Check if we didn't just add it above (in the closest stops backfill)
-        short = _display_name(rid)
-        already_added = any(r for r in results if r.route_id == short and r.stop_id == stop.id)
-        if already_added:
-            continue
+    # Rebuild the lookup set after Phase A-1 additions
+    _existing_route_stop = {(r.route_id, r.stop_id) for r in results}
 
-        sched_entries = await _schedule_arrivals_for_stop(
-            stop_id=stop.id,
-            route_id=short,
-            stop_name=stop.name,
-            stop_lat=stop.lat,
-            stop_lon=stop.lon,
-            fallback_direction=direction,
+    # Phase A-2: Gather all missing-route schedule queries in parallel
+    _missing_tasks: list[tuple[str, BusStop, str]] = []  # (short_rid, stop, direction)
+    for rid, (stop, direction) in missing_routes.items():
+        short = _display_name(rid)
+        if (short, stop.id) not in _existing_route_stop:
+            _missing_tasks.append((short, stop, direction))
+
+    if _missing_tasks:
+        _missing_results = await asyncio.gather(
+            *(
+                _schedule_arrivals_for_stop(
+                    stop_id=stop.id,
+                    route_id=short,
+                    stop_name=stop.name,
+                    stop_lat=stop.lat,
+                    stop_lon=stop.lon,
+                    fallback_direction=direction,
+                )
+                for short, stop, direction in _missing_tasks
+            )
         )
-        results.extend(sched_entries)
-        if sched_entries and sched_entries[0].arrival_ts is not None:
-            _sched_injected += len(sched_entries)
+        for sched_entries in _missing_results:
+            results.extend(sched_entries)
+            if sched_entries and sched_entries[0].arrival_ts is not None:
+                _sched_injected += len(sched_entries)
 
     if missing_routes:
         TrackLogger.bus(
@@ -2136,45 +2218,48 @@ async def _fetch_nearby_rail(
     missing_stops = nearby_stops - stops_with_live
 
     if missing_stops:
-        fallback_count = 0
-        for stop_id in missing_stops:
-            stop_info = get_stop_info(stop_id, agency=agency)
-            if stop_info is None:
-                continue
+        # Pre-filter to stops with valid stop_info
+        _rail_valid = [(sid, get_stop_info(sid, agency=agency)) for sid in missing_stops]
+        _rail_valid = [(sid, si) for sid, si in _rail_valid if si is not None]
 
-            scheduled = await schedule_service.get_scheduled_arrivals_async(stop_id, limit=6)
-            for s in scheduled:
-                if not s.route_id:
-                    continue
-
-                # Rail branches are numeric GTFS route IDs in this codepath.
-                if not s.route_id.isdigit():
-                    continue
-
-                prefixed_route_id = f"{prefix}{s.route_id}"
-                results.append(
-                    NearbyTransitArrival(
-                        route_id=prefixed_route_id,
-                        stop_name=stop_info.name,
-                        direction=s.destination or s.direction,
-                        destination=s.destination,
-                        minutes_away=s.minutes_away,
-                        arrival_ts=s.arrival_ts,
-                        status="Scheduled",
-                        mode=agency,
-                        stop_lat=stop_info.lat,
-                        stop_lon=stop_info.lon,
-                        stop_id=stop_id,
-                        trip_id=s.trip_id,
-                    )
-                )
-                fallback_count += 1
-
-        if fallback_count:
-            TrackLogger.info(
-                f"{agency.upper()}: Backfilled {fallback_count} scheduled entries "
-                f"for {len(missing_stops)} nearby stops with no live trains"
+        if _rail_valid:
+            # Parallel fetch: all rail schedule queries at once
+            _rail_scheduled = await asyncio.gather(
+                *(schedule_service.get_scheduled_arrivals_async(sid, limit=6) for sid, _ in _rail_valid)
             )
+
+            fallback_count = 0
+            for (stop_id, stop_info), scheduled in zip(_rail_valid, _rail_scheduled):
+                for s in scheduled:
+                    if not s.route_id:
+                        continue
+                    if not s.route_id.isdigit():
+                        continue
+
+                    prefixed_route_id = f"{prefix}{s.route_id}"
+                    results.append(
+                        NearbyTransitArrival(
+                            route_id=prefixed_route_id,
+                            stop_name=stop_info.name,
+                            direction=s.destination or s.direction,
+                            destination=s.destination,
+                            minutes_away=s.minutes_away,
+                            arrival_ts=s.arrival_ts,
+                            status="Scheduled",
+                            mode=agency,
+                            stop_lat=stop_info.lat,
+                            stop_lon=stop_info.lon,
+                            stop_id=stop_id,
+                            trip_id=s.trip_id,
+                        )
+                    )
+                    fallback_count += 1
+
+            if fallback_count:
+                TrackLogger.info(
+                    f"{agency.upper()}: Backfilled {fallback_count} scheduled entries "
+                    f"for {len(missing_stops)} nearby stops with no live trains"
+                )
         
     return results
 

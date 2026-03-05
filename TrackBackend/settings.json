@@ -39,10 +39,10 @@
     "siri_fail_threshold": 3,
     "siri_circuit_cooldown": 300.0,
     "oba_auth_cooldown": 60.0,
-    "nearby_response_fresh_ttl": 20.0,
-    "nearby_response_stale_ttl": 120.0,
+    "nearby_response_fresh_ttl": 10.0,
+    "nearby_response_stale_ttl": 30.0,
     "nearby_response_max_size": 500,
-    "nearby_gps_decimals": 3
+    "nearby_gps_decimals": 4
   },
   "api_keys": {
     "mta_api_key": "",

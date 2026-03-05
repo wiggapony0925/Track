@@ -3,6 +3,7 @@
 //  Track
 //
 //  Branded splash screen shown while restoring the user session.
+//  Uses AppTheme colors exclusively — no hardcoded values.
 //
 
 import SwiftUI
@@ -19,28 +20,28 @@ struct SplashLoadingView: View {
     @State private var activeDot: Int = 0
     @State private var glowPhase: Bool = false
 
-    /// Subway-line accent colors that cycle beneath the dots.
+    /// MTA subway-line accent colors for the loading dots.
+    /// Pulled from AppTheme.SubwayColors so they match the rest of the app.
     private let lineColors: [Color] = [
-        Color(red: 238/255, green: 53/255, blue: 46/255),   // 1-2-3 Red
-        Color(red: 0/255, green: 147/255, blue: 60/255),    // 4-5-6 Green
-        Color(red: 0/255, green: 57/255, blue: 166/255),    // A-C-E Blue
-        Color(red: 255/255, green: 99/255, blue: 25/255),   // B-D-F-M Orange
+        AppTheme.SubwayColors.color(for: "1"),   // IRT Red
+        AppTheme.SubwayColors.color(for: "4"),   // IRT Green
+        AppTheme.SubwayColors.color(for: "A"),   // IND Blue
+        AppTheme.SubwayColors.color(for: "B"),   // IND Orange
     ]
 
     // MARK: – Body
 
     var body: some View {
         ZStack {
-            // Background
+            // Background — uses the themed AppBackground (light grey / dark near-black)
             AppTheme.Colors.background
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
                 Spacer()
 
-                // App icon with glow
+                // App icon with MTA Blue ambient glow
                 ZStack {
-                    // Ambient glow
                     RoundedRectangle(cornerRadius: 32)
                         .fill(AppTheme.Colors.mtaBlue.opacity(glowPhase ? 0.25 : 0.08))
                         .frame(width: 130, height: 130)
@@ -57,16 +58,17 @@ struct SplashLoadingView: View {
                 .scaleEffect(iconScale)
                 .opacity(iconOpacity)
 
-                // Title
+                // Title — primary text color
                 Text("Track")
-                    .font(.system(size: 38, weight: .bold, design: .rounded))
+                    .font(AppTheme.Typography.headerLarge)
                     .foregroundColor(AppTheme.Colors.textPrimary)
                     .padding(.top, 24)
                     .opacity(titleOpacity)
 
-                // Subtitle
+                // Subtitle — MTA Blue accent
                 Text("NYC Transit, Live")
-                    .font(.system(size: 15, weight: .medium))
+                    .font(AppTheme.Typography.cardSubtitle)
+                    .fontWeight(.medium)
                     .foregroundColor(AppTheme.Colors.mtaBlue)
                     .padding(.top, 6)
                     .opacity(subtitleOpacity)

@@ -338,4 +338,25 @@ extension Notification.Name {
     /// Posted by SettingsContentView after applying radius changes so other
     /// parts of the app can re-fetch transit data with the updated radius.
     static let radiusSettingsChanged = Notification.Name("radiusSettingsChanged")
+
+    /// Posted by HomeViewModel the first time transit data is loaded.
+    /// ContentView listens for this to fire performFullSync() as soon as
+    /// the critical-path /nearby/grouped fetch completes.
+    static let transitDataLoaded = Notification.Name("transitDataLoaded")
+}
+
+// MARK: - Transit Data Ready Flag
+
+/// Thread-safe flag so ContentView can detect if transit data loaded
+/// before the notification observer was registered (avoids a race
+/// condition between HomeView.onAppear and ContentView's async Task).
+///
+/// Uses `OSAllocatedUnfairLock` (Sendable, nonisolated by design) so
+/// it can be read/written from any actor context without warnings.
+import os
+
+enum TransitDataReadyFlag: Sendable {
+    private static let _ready = OSAllocatedUnfairLock(initialState: false)
+    static var isReady: Bool { _ready.withLock { $0 } }
+    static func markReady() { _ready.withLock { $0 = true } }
 }

@@ -6,6 +6,7 @@
 //  Hosts login, onboarding, location gate, and the main dashboard.
 //
 
+@preconcurrency import ObjectiveC
 import SwiftUI
 import CoreLocation
 
@@ -61,14 +62,22 @@ struct ContentView: View {
         .preferredColorScheme(colorScheme)
         .onAppear {
             if supabase.isAuthResolved && isAuth && hasCompletedOnboarding {
-                // Delay the full sync 5 s so the critical-path transit fetch
-                // (/nearby/grouped) has an uncontested network slot first.
-                // performFullSync fires 4 parallel Supabase requests which
-                // would otherwise compete with the first transit load.
-                // 5 s is enough for the grouped endpoint to finish on 4G/LTE
-                // plus any power-saver throttling.
+                // Fire the full sync AFTER the first transit fetch completes.
+                // HomeViewModel posts .transitDataLoaded when hasLoadedOnce
+                // flips to true, so sync starts as soon as the critical-path
+                // /nearby/grouped data lands — on fast WiFi this is <500 ms
+                // instead of a fixed 5 s sleep.  Falls back to 6 s max.
                 Task {
-                    try? await Task.sleep(nanoseconds: 5_000_000_000)
+                    // Wait until transit data is ready, then fire
+                    // the lower-priority sync. Polls every 250 ms
+                    // with a 6 s hard ceiling so we never hang.
+                    if !TransitDataReadyFlag.isReady {
+                        let deadline = ContinuousClock.now + .seconds(6)
+                        while !TransitDataReadyFlag.isReady,
+                              ContinuousClock.now < deadline {
+                            try? await Task.sleep(for: .milliseconds(250))
+                        }
+                    }
                     await SyncManager.shared.performFullSync()
                 }
 

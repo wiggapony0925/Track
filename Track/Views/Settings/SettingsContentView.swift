@@ -213,7 +213,7 @@ struct SettingsContentView: View {
                                         .clipShape(Capsule())
                                 }
                                 
-                                Slider(value: $draftRadius, in: 1600...16093, step: 200)
+                                Slider(value: $draftRadius, in: 2400...16093, step: 200)
                                     .tint(AppTheme.Colors.mtaBlue)
                             }
                             .padding(.horizontal, AppTheme.Layout.cardPadding)
@@ -514,7 +514,8 @@ struct SettingsContentView: View {
     
     /// Load persisted @AppStorage values into draft state.
     private func loadDrafts() {
-        draftRadius = muchFartherAwayRadius
+        // Clamp legacy values below the new minimum (was 1600, now 2400)
+        draftRadius = max(2400, muchFartherAwayRadius)
         draftShowSearchRadius = showSearchRadius
         draftDragToSearch = dragToSearch
         draftSubwayLineOffset = subwayLineOffset

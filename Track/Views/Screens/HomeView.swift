@@ -254,22 +254,47 @@ struct HomeView: View {
                 return
             }
 
+            // Ensure CoreLocation is actively delivering fixes.
+            // After suspension iOS stops delivering updates;
+            // `startUpdating()` restarts the stream immediately.
+            locationManager.startUpdating()
+
             // Clear any drag search when returning to the app
             if isDragSearchActive {
                 // dismissDragSearch already calls clearSearchPin + refresh
                 dismissDragSearch()
             } else {
                 recenterOnUser()
-                // Refresh with the best location available right now.
                 // Prefer the live GPS fix over the stale cached reference
-                // location — if CoreLocation hasn't delivered a fix yet,
-                // handleLocationUpdate will fire shortly and correct it.
-                let refreshLoc = locationManager.currentLocation ?? effectiveLocation
-                Task {
-                    if await viewModel.refresh(location: refreshLoc) {
+                // location.  CLLocation.timestamp tells us how old the fix
+                // is — if it was acquired before the app was suspended it
+                // may still reflect the user's old position (e.g. school).
+                // In that case skip the immediate refresh and let
+                // handleLocationUpdate fire once CoreLocation delivers a
+                // fresh fix (usually within 1-2s).
+                let maxFixAge: TimeInterval = 30
+                if let live = locationManager.currentLocation,
+                   abs(live.timestamp.timeIntervalSinceNow) < maxFixAge {
+                    // Fresh GPS — safe to use
+                    Task {
+                        if await viewModel.refresh(location: live) {
+                            lastUpdated = Date()
+                        }
+                    }
+                } else if let live = locationManager.currentLocation,
+                          let lastRefresh = viewModel.lastRefreshLocation,
+                          live.distance(from: lastRefresh) >= AppSettings.shared.significantMovementMeters {
+                    // GPS is stale but clearly at a different location
+                    // than the last fetch — force refresh now.
+                    Task {
+                        await viewModel.refresh(location: live, force: true)
                         lastUpdated = Date()
                     }
                 }
+                // Otherwise: GPS is stale and at the same spot as the
+                // last fetch (or nil).  Don't refresh with the wrong
+                // coordinates — handleLocationUpdate will fire shortly
+                // with a fresh fix and trigger the correct fetch.
             }
             
             // Always restart the auto-refresh timer — iOS may have
@@ -337,11 +362,17 @@ struct HomeView: View {
             viewModel.previousBusPositions.removeAll()
         }
         
-        // Recalculate the nearest stop for the new direction so the
-        // arrivals list and countdown chips show the closest stop first.
-        viewModel.updateNearestStop(
-            userLocation: locationManager.currentLocation
-        )
+        // Recalculate the nearest stop AND re-fetch the walking route
+        // for the new direction.  Previously only updateNearestStop was
+        // called here, causing the walking polyline to remain stale
+        // until the user left and returned to the app.
+        if let loc = locationManager.currentLocation {
+            Task {
+                await viewModel.refreshWalkingState(userLocation: loc)
+            }
+        } else {
+            viewModel.updateNearestStop(userLocation: nil)
+        }
         
         if let fitCamera = viewModel.cameraPositionFittingRoute(
             userLocation: locationManager.currentLocation,
@@ -694,8 +725,12 @@ struct HomeView: View {
                 lastUpdated = Date()
             }
         } else {
-            // Re-center the map on the fresh GPS fix.
-            recenterOnUser()
+            // Don't recenter if user is exploring via drag-to-search —
+            // the next GPS fix would yank the camera back to their real
+            // location, undoing the drag.
+            if !isDragSearchActive {
+                recenterOnUser()
+            }
             
             // Live walking update: when a route detail is open, recalculate
             // the walking polyline so it tracks the user's real-time position.

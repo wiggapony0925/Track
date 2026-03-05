@@ -1164,13 +1164,6 @@ extension HomeViewModel {
             // coordinates here, the primary matching path works for all modes.
             nearbyStations = Self.augmentStations(stations, from: newGrouped)
 
-            // Augment nearbyBusStops with stop data from bus arrivals whose
-            // stops weren't returned by the /bus/nearby OBA fetch (smaller
-            // radius or OBA API cap).  This lets distance matching work for
-            // routes like Q7 whose closest stop is within range but wasn't
-            // in the OBA response.
-            nearbyBusStops = Self.augmentBusStops(stops, from: newGrouped)
-
             let rawTransit = newGrouped
                 .flatMap(\ .directions)
                 .flatMap(\ .arrivals)
@@ -1182,6 +1175,14 @@ extension HomeViewModel {
                 new: newGrouped,
                 existing: groupedTransit
             )
+
+            // Augment nearbyBusStops with stop data from bus arrivals whose
+            // stops weren't returned by the /bus/nearby OBA fetch (smaller
+            // radius or OBA API cap).  Uses the MERGED groupedTransit so
+            // graced routes (surviving from previous cycles) also contribute
+            // their stop coordinates — otherwise distance matching fails for
+            // routes that dropped from the fresh response but are still visible.
+            nearbyBusStops = Self.augmentBusStops(stops, from: groupedTransit)
 
             // Persist for instant display on next cold launch
             TransitSessionCache.save(groupedTransit)

@@ -359,9 +359,13 @@ struct RouteDetailSheet: View {
             // Seed loading state: if the current direction already has arrivals
             // (e.g. sheet re-opened after data landed), skip the skeleton phase.
             isLoadingArrivals = safeDirection.arrivals.isEmpty
-            // Seed stable arrivals on first appear
+            // Seed stable arrivals on first appear.
+            // Use .distantPast so the next onChange(of: group) in the same
+            // frame isn't blocked by the anti-flap 15 s gate — the enrichment
+            // / reorder that fires immediately after open may change the vehicle
+            // set, and we must allow that correction through.
             stableNearestArrivals = nearestStopArrivals
-            lastStableRefreshDate = .now
+            lastStableRefreshDate = .distantPast
             // Cache direction badge counts so the 1 Hz interpolation tick
             // doesn't recompute them every body evaluation.
             refreshDirectionBadgeCounts()
@@ -482,7 +486,10 @@ struct RouteDetailSheet: View {
             onStopSelected?(nil)
             let freshArrivals = nearestStopArrivals
             stableNearestArrivals = freshArrivals
-            lastStableRefreshDate = .now
+            // Use .distantPast so a group onChange in the same frame (shape
+            // enrichment reorder) can correct the vehicle set immediately
+            // instead of being blocked by the anti-flap 15 s gate.
+            lastStableRefreshDate = .distantPast
             // Rebuild per-stop arrival cache for the new direction's stops tab.
             refreshArrivalByStopCache()
             isFavorited = favoritesManager.isFavorite(routeId: group.routeId, mode: group.mode)
