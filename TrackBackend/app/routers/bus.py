@@ -64,6 +64,10 @@ async def get_bus_schedule(route_id: str) -> BusScheduleResponse:
     """
     Returns today's upcoming scheduled departures for a bus route,
     using the OneBusAway schedule-for-stop API.
+
+    Departures are grouped by **headsign** (the trip's terminal destination)
+    which aligns with the logical route directions the iOS app expects
+    (e.g. "RUSH JFK AIRPORT via LEFFERTS BL" vs "RUSH KEW GARDENS via LEFFERTS BL").
     """
     from datetime import datetime, timezone, timedelta
 
@@ -90,89 +94,101 @@ async def get_bus_schedule(route_id: str) -> BusScheduleResponse:
     if not stop_models:
         return BusScheduleResponse(route_id=route_id, directions=[])
 
-    # Group stops by direction
-    dir_stops: dict[str, list[BusStop]] = {}
-    for stop in stop_models:
-        d = stop.direction or "0"
-        dir_stops.setdefault(d, []).append(stop)
+    # ── Sample a spread of stops across the full route ──────────────────
+    # Pick up to 6 stops evenly spread across all stops regardless of
+    # compass direction.  This ensures we hit both logical directions
+    # (inbound + outbound) without querying dozens of stops.
+    max_sample = 6
+    if len(stop_models) <= max_sample:
+        sample_stops = stop_models
+    else:
+        step = len(stop_models) / max_sample
+        sample_stops = [stop_models[int(i * step)] for i in range(max_sample)]
 
     TrackLogger.info(
-        f"[SCHEDULE] {route_id}: {len(stop_models)} stops, "
-        f"directions={list(dir_stops.keys())} "
-        f"(counts={[len(v) for v in dir_stops.values()]})",
+        f"[SCHEDULE] {route_id}: {len(stop_models)} total stops, "
+        f"sampling {len(sample_stops)} stops",
         tag="BUS",
     )
 
-    directions: list[BusScheduleDirection] = []
-    async with _httpx.AsyncClient(timeout=10) as client:
-        for direction, d_stops in dir_stops.items():
-            sample_stops = d_stops[:5]
-            scheduled_departures: list[BusScheduleDeparture] = []
+    # ── Query OBA for each sampled stop and collect ALL departures ──────
+    req_token = (route_id.split("_", 1)[-1] if "_" in route_id else route_id).upper()
+    all_departures: list[BusScheduleDeparture] = []
 
-            for stop in sample_stops:
-                if not stop.id:
-                    continue
-                try:
-                    url = f"{oba_base}/schedule-for-stop/{stop.id}.json"
-                    params = {"key": api_key, "date": now.strftime("%Y-%m-%d")}
-                    resp = await client.get(url, params=params)
-                    if resp.status_code != 200:
-                        TrackLogger.warning(
-                            f"[SCHEDULE] {route_id} dir={direction} stop={stop.id}: HTTP {resp.status_code}",
-                            tag="BUS",
-                        )
-                        continue
-                    data = resp.json()
-                except Exception as exc:
+    async with _httpx.AsyncClient(timeout=10) as client:
+        for stop in sample_stops:
+            if not stop.id:
+                continue
+            try:
+                url = f"{oba_base}/schedule-for-stop/{stop.id}.json"
+                params = {"key": api_key, "date": now.strftime("%Y-%m-%d")}
+                resp = await client.get(url, params=params)
+                if resp.status_code != 200:
                     TrackLogger.warning(
-                        f"[SCHEDULE] {route_id} dir={direction} stop={stop.id}: {exc}",
+                        f"[SCHEDULE] {route_id} stop={stop.id}: HTTP {resp.status_code}",
                         tag="BUS",
                     )
                     continue
+                data = resp.json()
+            except Exception as exc:
+                TrackLogger.warning(
+                    f"[SCHEDULE] {route_id} stop={stop.id}: {exc}",
+                    tag="BUS",
+                )
+                continue
 
-                entry = data.get("data", {}).get("entry", {})
-                req_token = (route_id.split("_", 1)[-1] if "_" in route_id else route_id).upper()
-                for srs in entry.get("stopRouteSchedules", []):
-                    srs_route = srs.get("routeId", "")
-                    srs_token = (srs_route.split("_", 1)[-1] if "_" in srs_route else srs_route).upper()
-                    if srs_token != req_token:
-                        continue
-                    for dg in srs.get("stopRouteDirectionSchedules", []):
-                        headsign = dg.get("tripHeadsign", "")
-                        for ts in dg.get("scheduleStopTimes", []):
-                            t = ts.get("departureTime", 0) or ts.get("arrivalTime", 0)
-                            if t and t / 1000 > now_epoch:
-                                scheduled_departures.append(BusScheduleDeparture(
-                                    stop_name=stop.name,
-                                    stop_id=stop.id,
-                                    departure_time=t // 1000,
-                                    headsign=headsign,
-                                    trip_id=ts.get("tripId", ""),
-                                ))
-                if scheduled_departures:
-                    break
+            entry = data.get("data", {}).get("entry", {})
+            for srs in entry.get("stopRouteSchedules", []):
+                srs_route = srs.get("routeId", "")
+                srs_token = (srs_route.split("_", 1)[-1] if "_" in srs_route else srs_route).upper()
+                if srs_token != req_token:
+                    continue
+                for dg in srs.get("stopRouteDirectionSchedules", []):
+                    headsign = dg.get("tripHeadsign", "")
+                    for ts in dg.get("scheduleStopTimes", []):
+                        t = ts.get("departureTime", 0) or ts.get("arrivalTime", 0)
+                        if t and t / 1000 > now_epoch:
+                            all_departures.append(BusScheduleDeparture(
+                                stop_name=stop.name,
+                                stop_id=stop.id,
+                                departure_time=t // 1000,
+                                headsign=headsign,
+                                trip_id=ts.get("tripId", ""),
+                            ))
 
-            seen: set[str] = set()
-            unique: list[BusScheduleDeparture] = []
-            for dep in sorted(scheduled_departures, key=lambda x: x.departure_time):
-                if dep.trip_id not in seen:
-                    seen.add(dep.trip_id)
-                    unique.append(dep)
+            # Once we have departures from at least 2 headsigns (both
+            # directions covered), we can stop querying more stops.
+            found_headsigns = set(d.headsign for d in all_departures)
+            if len(found_headsigns) >= 2 and len(all_departures) >= 10:
+                break
 
-            TrackLogger.info(
-                f"[SCHEDULE] {route_id} dir={direction}: "
-                f"sampled {len(sample_stops)} stops, "
-                f"{len(scheduled_departures)} raw deps → {len(unique)} unique "
-                f"(hs='{unique[0].headsign if unique else ''}')",
-                tag="BUS",
-            )
+    # ── Group by headsign (= logical direction) ────────────────────────
+    hs_groups: dict[str, list[BusScheduleDeparture]] = {}
+    for dep in all_departures:
+        hs_groups.setdefault(dep.headsign, []).append(dep)
 
-            directions.append(BusScheduleDirection(
-                route_id=route_id,
-                direction=direction,
-                headsign=unique[0].headsign if unique else "",
-                departures=unique[:30],
-            ))
+    directions: list[BusScheduleDirection] = []
+    for headsign, deps in hs_groups.items():
+        # Deduplicate by trip_id, keep earliest departure per trip
+        seen: set[str] = set()
+        unique: list[BusScheduleDeparture] = []
+        for dep in sorted(deps, key=lambda x: x.departure_time):
+            if dep.trip_id not in seen:
+                seen.add(dep.trip_id)
+                unique.append(dep)
+
+        TrackLogger.info(
+            f"[SCHEDULE] {route_id} hs='{headsign[:50]}': "
+            f"{len(deps)} raw deps → {len(unique)} unique",
+            tag="BUS",
+        )
+
+        directions.append(BusScheduleDirection(
+            route_id=route_id,
+            direction=headsign,   # Use headsign AS the direction —
+            headsign=headsign,    # iOS matches on both fields.
+            departures=unique[:30],
+        ))
 
     return BusScheduleResponse(route_id=route_id, directions=directions)
 
