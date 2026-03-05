@@ -90,10 +90,25 @@ func stripMTAStopPrefix(_ id: String) -> String {
 ///   - "LIRR_9"        -> "9"
 ///   - "mnr_1"         -> "1"
 func normalizeMTARouteToken(_ id: String) -> String {
-    stripMTAAgencyPrefix(id)
+    var result = stripMTAAgencyPrefix(id)
         .replacingOccurrences(of: "-SBS", with: "", options: .caseInsensitive)
         .replacingOccurrences(of: " ", with: "")
         .uppercased()
+
+    // Strip leading zeros from the numeric portion.
+    // GTFS shape data zero-pads some route numbers ("MTABC_Q09" → "Q09")
+    // while the grouped API uses unpadded forms ("Q9").  Normalise both
+    // to the unpadded form so enrichment matching succeeds.
+    if let firstDigit = result.firstIndex(where: \.isNumber) {
+        let alpha = result[result.startIndex..<firstDigit]
+        var numeric = String(result[firstDigit...])
+        while numeric.count > 1 && numeric.first == "0" {
+            numeric.removeFirst()
+        }
+        result = String(alpha) + numeric
+    }
+
+    return result
 }
 
 // MARK: - Stop ID Normalization

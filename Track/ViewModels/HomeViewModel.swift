@@ -1848,8 +1848,18 @@ final class HomeViewModel {
                     print("[WALK DIST] \(currentGroup.routeId) (\(currentGroup.mode))  source=routeShape (\(fallbackStops.count) stops)  nearest stop='\(closest.name)' id=\(closest.id)  (\(String(format: "%.5f", closest.lat)),\(String(format: "%.5f", closest.lon)))  straight-line=\(Int(minDistance))m / \(String(format: "%.2f", minDistance / 1609.34))mi  ← polyline targets this stop")
                     #endif
                 } else {
-                    // Shape stop has no arrivals — find the nearest stop
-                    // FROM the arrivals instead, so chips match the home row.
+                    // Shape stop has no arrivals — SIRI only reports
+                    // predictions at monitored timepoint stops, so the
+                    // physically nearest stop may not have an ETA.
+                    //
+                    // Always use the nearest shape stop for walking
+                    // distance (the user walks to the closest physical
+                    // stop regardless of where the next prediction is).
+                    // But set selectedStopId to the nearest *arrival*
+                    // stop so chip filtering shows the correct ETAs.
+                    targetStopCoord = CLLocationCoordinate2D(latitude: closest.lat, longitude: closest.lon)
+                    targetStopId = closest.id  // default to shape stop
+
                     if let activeDir, let userRef = refLocation {
                         var bestArrival: NearbyTransitResponse?
                         var bestDist: CLLocationDistance = .greatestFiniteMagnitude
@@ -1858,22 +1868,18 @@ final class HomeViewModel {
                             let dist = userRef.distance(from: CLLocation(latitude: lat, longitude: lon))
                             if dist < bestDist { bestDist = dist; bestArrival = arrival }
                         }
-                        if let best = bestArrival, let lat = best.stopLat, let lon = best.stopLon {
-                            targetStopCoord = CLLocationCoordinate2D(latitude: lat, longitude: lon)
+                        if let best = bestArrival {
+                            // Use arrival stop ID for chip matching only —
+                            // walking coordinate stays at the shape stop.
                             targetStopId = best.stopId
                             #if DEBUG
-                            print("[WALK DIST] \(currentGroup.routeId) (\(currentGroup.mode))  source=arrivalNearest (shape stop '\(closest.name)' had no arrivals)  stop='\(best.stopName)' id=\(best.stopId ?? "?")  straight-line=\(Int(bestDist))m  ← polyline targets this stop")
+                            print("[WALK DIST] \(currentGroup.routeId) (\(currentGroup.mode))  source=routeShape (nearest shape stop '\(closest.name)' has no arrivals; chips→'\(best.stopName)')  nearest stop='\(closest.name)' id=\(closest.id)  (\(String(format: "%.5f", closest.lat)),\(String(format: "%.5f", closest.lon)))  straight-line=\(Int(minDistance))m / \(String(format: "%.2f", minDistance / 1609.34))mi  ← polyline targets this stop")
+                            #endif
+                        } else {
+                            #if DEBUG
+                            print("[WALK DIST] \(currentGroup.routeId) (\(currentGroup.mode))  source=routeShape (\(fallbackStops.count) stops)  nearest stop='\(closest.name)' id=\(closest.id)  (\(String(format: "%.5f", closest.lat)),\(String(format: "%.5f", closest.lon)))  straight-line=\(Int(minDistance))m / \(String(format: "%.2f", minDistance / 1609.34))mi  ← polyline targets this stop (no arrival match)")
                             #endif
                         }
-                    }
-
-                    // Still use shape stop for walking route if no arrival stop found
-                    if targetStopCoord == nil {
-                        targetStopCoord = CLLocationCoordinate2D(latitude: closest.lat, longitude: closest.lon)
-                        targetStopId = closest.id
-                        #if DEBUG
-                        print("[WALK DIST] \(currentGroup.routeId) (\(currentGroup.mode))  source=routeShape (\(fallbackStops.count) stops)  nearest stop='\(closest.name)' id=\(closest.id)  (\(String(format: "%.5f", closest.lat)),\(String(format: "%.5f", closest.lon)))  straight-line=\(Int(minDistance))m / \(String(format: "%.2f", minDistance / 1609.34))mi  ← polyline targets this stop (no arrival match)")
-                        #endif
                     }
                 }
             }
@@ -2104,9 +2110,20 @@ final class HomeViewModel {
             }
         }
 
-        // Append any existing directions that didn't match any shape direction
-        // (e.g. backfilled compass directions from the nearby API)
+        // Append any existing directions that didn't match any shape direction,
+        // BUT skip generic compass-code placeholders ("N", "S", "SE", "W", etc.)
+        // that have no live arrivals. These are backfilled by the nearby API
+        // and create confusing extra tabs (e.g. Q10 showing "S", "SE", "W" tabs).
+        let compassCodes: Set<String> = ["n","s","e","w","ne","nw","se","sw"]
         for (idx, dir) in group.directions.enumerated() where !usedExistingIndices.contains(idx) {
+            let isCompass = compassCodes.contains(dir.direction.lowercased())
+            let hasLive = !dir.liveArrivals.isEmpty
+            if isCompass && !hasLive {
+                #if DEBUG
+                print("[ENRICH] Dropping empty compass direction '\(dir.direction)' from \(group.routeId)")
+                #endif
+                continue
+            }
             orderedDirections.append(dir)
         }
 

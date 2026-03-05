@@ -71,10 +71,10 @@ async def get_bus_schedule(route_id: str) -> BusScheduleResponse:
 
     settings = get_settings()
     oba_base = settings.urls.bus_oba_base
-    api_key = settings.api_keys.mta_bus_key
+    api_key = settings.api_keys.mta_bus_key or "test"
 
-    if not oba_base or not api_key:
-        TrackLogger.warning("[SCHEDULE] OBA base URL or API key not configured", tag="BUS")
+    if not oba_base:
+        TrackLogger.warning("[SCHEDULE] OBA base URL not configured", tag="BUS")
         return BusScheduleResponse(route_id=route_id, directions=[])
 
     now = datetime.now(timezone(timedelta(hours=-5)))
@@ -96,29 +96,46 @@ async def get_bus_schedule(route_id: str) -> BusScheduleResponse:
         d = stop.direction or "0"
         dir_stops.setdefault(d, []).append(stop)
 
+    TrackLogger.info(
+        f"[SCHEDULE] {route_id}: {len(stop_models)} stops, "
+        f"directions={list(dir_stops.keys())} "
+        f"(counts={[len(v) for v in dir_stops.values()]})",
+        tag="BUS",
+    )
+
     directions: list[BusScheduleDirection] = []
     async with _httpx.AsyncClient(timeout=10) as client:
         for direction, d_stops in dir_stops.items():
-            sample_stops = d_stops[:3]
+            sample_stops = d_stops[:5]
             scheduled_departures: list[BusScheduleDeparture] = []
 
             for stop in sample_stops:
                 if not stop.id:
                     continue
                 try:
-                    url = f"{oba_base}/api/where/schedule-for-stop/{stop.id}.json"
+                    url = f"{oba_base}/schedule-for-stop/{stop.id}.json"
                     params = {"key": api_key, "date": now.strftime("%Y-%m-%d")}
                     resp = await client.get(url, params=params)
                     if resp.status_code != 200:
+                        TrackLogger.warning(
+                            f"[SCHEDULE] {route_id} dir={direction} stop={stop.id}: HTTP {resp.status_code}",
+                            tag="BUS",
+                        )
                         continue
                     data = resp.json()
-                except Exception:
+                except Exception as exc:
+                    TrackLogger.warning(
+                        f"[SCHEDULE] {route_id} dir={direction} stop={stop.id}: {exc}",
+                        tag="BUS",
+                    )
                     continue
 
                 entry = data.get("data", {}).get("entry", {})
+                req_token = (route_id.split("_", 1)[-1] if "_" in route_id else route_id).upper()
                 for srs in entry.get("stopRouteSchedules", []):
                     srs_route = srs.get("routeId", "")
-                    if route_id.upper() not in srs_route.upper():
+                    srs_token = (srs_route.split("_", 1)[-1] if "_" in srs_route else srs_route).upper()
+                    if srs_token != req_token:
                         continue
                     for dg in srs.get("stopRouteDirectionSchedules", []):
                         headsign = dg.get("tripHeadsign", "")
@@ -141,6 +158,14 @@ async def get_bus_schedule(route_id: str) -> BusScheduleResponse:
                 if dep.trip_id not in seen:
                     seen.add(dep.trip_id)
                     unique.append(dep)
+
+            TrackLogger.info(
+                f"[SCHEDULE] {route_id} dir={direction}: "
+                f"sampled {len(sample_stops)} stops, "
+                f"{len(scheduled_departures)} raw deps → {len(unique)} unique "
+                f"(hs='{unique[0].headsign if unique else ''}')",
+                tag="BUS",
+            )
 
             directions.append(BusScheduleDirection(
                 route_id=route_id,

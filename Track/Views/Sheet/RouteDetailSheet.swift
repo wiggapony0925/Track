@@ -964,10 +964,79 @@ struct RouteDetailSheet: View {
         // handles any count.  Show everything the backend gives us.
         // Fallback: if no arrivals resolved to a nearest stop, show globally-soonest arrivals.
         let nearestChips = deduped(atNearest)
-        if !nearestChips.isEmpty {
-            return nearestChips
+        let baseChips = nearestChips.isEmpty ? deduped(elsewhere) : nearestChips
+
+        // ── Append scheduled departures after live arrivals ─────────────
+        // The user should always see what's coming AFTER the live buses/trains:
+        // "10 min (LIVE) → 25 min (Sched) → 40 min (Sched)".
+        // scheduledDeparturesForCurrentDirection pulls from the full bus
+        // schedule or GTFS timetable and may contain entries the nearby API
+        // didn't include.
+        let existingTripIds = Set(baseChips.compactMap(\.tripId))
+        let existingTimestamps = Set(baseChips.compactMap(\.arrivalTs))
+        let latestLiveTs: TimeInterval = baseChips
+            .filter { $0.isRealTime }
+            .compactMap { a -> TimeInterval? in
+                if let ts = a.arrivalTs { return Double(ts) }
+                return Date().addingTimeInterval(Double(a.minutesAway) * 60).timeIntervalSince1970
+            }
+            .max() ?? Date().timeIntervalSince1970
+
+        let dir = safeDirection
+        let allSchedItems = scheduledDeparturesForCurrentDirection
+        let schedItems = allSchedItems
+            .filter { $0.departureDate.timeIntervalSince1970 > latestLiveTs }
+
+        #if DEBUG
+        if allSchedItems.isEmpty {
+            print("[CHIPS_SCHED] route=\(group.routeId) dir=\(dir.direction.prefix(30))  scheduledDeparturesForCurrentDirection is EMPTY — busSchedule=\(busSchedule != nil ? "loaded" : "nil") cachedTrainArrivals=\(cachedTrainArrivals.count)")
+        } else if schedItems.isEmpty && !allSchedItems.isEmpty {
+            let nextSchedMin = allSchedItems.first.map { "\($0.minutesAway)m" } ?? "?"
+            print("[CHIPS_SCHED] route=\(group.routeId) dir=\(dir.direction.prefix(30))  \(allSchedItems.count) schedule items ALL before latestLiveTs — next sched=\(nextSchedMin)")
         }
-        return deduped(elsewhere)
+        #endif
+
+        var schedChips: [NearbyTransitResponse] = []
+        for item in schedItems {
+            let ts = Int(item.departureDate.timeIntervalSince1970)
+            // Skip if already present (by tripId or timestamp)
+            if existingTripIds.contains(item.id) { continue }
+            if existingTimestamps.contains(ts) { continue }
+            schedChips.append(NearbyTransitResponse(
+                routeId: group.routeId,
+                stopName: item.stopName,
+                direction: dir.direction,
+                destination: item.headsign,
+                minutesAway: item.minutesAway,
+                status: "Scheduled",
+                mode: group.mode,
+                stopLat: nil,
+                stopLon: nil,
+                arrivalTs: ts,
+                vehicleId: nil,
+                tripId: item.id,
+                stopId: nil,
+                isRealTime: false,
+                isCancelled: false
+            ))
+        }
+
+        #if DEBUG
+        let liveCount = baseChips.filter(\.isRealTime).count
+        let apiSchedCount = baseChips.filter { !$0.isRealTime }.count
+        let appendedCount = schedChips.count
+        let totalSched = scheduledDeparturesForCurrentDirection.count
+        if !baseChips.isEmpty || !schedChips.isEmpty {
+            let chipDesc = (baseChips + schedChips).map { a -> String in
+                let tag = a.isRealTime ? "LIVE" : "SCHED"
+                let vid = a.vehicleId ?? a.tripId ?? "?"
+                return "\(a.minutesAway)m(\(tag),\(vid.suffix(12)))"
+            }
+            print("[CHIPS] route=\(group.routeId) dir=\(dir.direction.prefix(30))  live=\(liveCount) apiSched=\(apiSchedCount) appendedSched=\(appendedCount) (of \(totalSched) available)  chips=[\(chipDesc.joined(separator: ", "))]")
+        }
+        #endif
+
+        return baseChips + schedChips
     }
 
     /// Mirrors `GroupedRouteRow.countdownArrival(for:)` exactly by delegating
@@ -1640,16 +1709,42 @@ struct RouteDetailSheet: View {
         // --- Bus schedule ---
         if group.isBus, let schedule = busSchedule {
             let dirLower = direction.direction.lowercased()
+            // Tokenize the direction for flexible matching:
+            // direction="CYPRESS HILLS via ROCKAWAY BL" → tokens=["cypress","hills",...]
+            // headsign="CYPRESS HILLS"                   → tokens=["cypress","hills"]
+            let dirTokens = Set(dirLower.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init))
+                .subtracting(["via", "to", "and", "the"])
+
             let matched =
                 schedule.directions.first { schedDir in
-                    schedDir.direction.lowercased() == dirLower
-                        || schedDir.headsign.lowercased().contains(dirLower)
-                        || dirLower.contains(schedDir.headsign.lowercased())
+                    let schedDirLower = schedDir.direction.lowercased()
+                    let hsLower = schedDir.headsign.lowercased()
+                    // Exact direction match
+                    if schedDirLower == dirLower { return true }
+                    // Substring containment (either way)
+                    if !hsLower.isEmpty && (hsLower.contains(dirLower) || dirLower.contains(hsLower)) { return true }
+                    // Token overlap: if the headsign shares most tokens with the direction
+                    if !hsLower.isEmpty {
+                        let hsTokens = Set(hsLower.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init))
+                            .subtracting(["via", "to", "and", "the"])
+                        let overlap = dirTokens.intersection(hsTokens)
+                        if !hsTokens.isEmpty && overlap.count >= max(1, hsTokens.count - 1) { return true }
+                    }
+                    return false
                 }
                 ?? schedule.directions.first { schedDir in
                     schedule.directions.firstIndex(where: { $0.direction == schedDir.direction })
                         == selectedDirectionIndex
                 }
+
+            #if DEBUG
+            if matched == nil {
+                let availDirs = schedule.directions.map { "dir='\($0.direction)' hs='\($0.headsign)' deps=\($0.departures.count)" }
+                print("[SCHED_MATCH] FAILED route=\(group.routeId) looking for '\(dirLower)' in [\(availDirs.joined(separator: ", "))]")
+            } else if let m = matched {
+                print("[SCHED_MATCH] OK route=\(group.routeId) dir='\(dirLower)' → sched dir='\(m.direction)' hs='\(m.headsign)' deps=\(m.departures.count)")
+            }
+            #endif
 
             guard let matched else { return [] }
             return matched.departures
