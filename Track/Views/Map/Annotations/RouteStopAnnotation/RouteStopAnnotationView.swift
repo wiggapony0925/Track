@@ -12,52 +12,38 @@ struct RouteStopMarker: View {
     var body: some View {
         ZStack {
             if isSelected {
-                // Outer pulsing glow ring — mimics Transit's selection highlight
+                // Subtle selection halo — Apple Maps style
                 Circle()
-                    .fill(routeColor.opacity(0.2))
-                    .frame(width: 36, height: 36)
-
-                Circle()
-                    .fill(routeColor.opacity(0.1))
-                    .frame(width: 46, height: 46)
+                    .fill(routeColor.opacity(0.12))
+                    .frame(width: 26, height: 26)
             }
 
-            // Drop shadow base for depth
-            Circle()
-                .fill(Color.black.opacity(0.18))
-                .frame(
-                    width: isSelected ? 24 : 20,
-                    height: isSelected ? 24 : 20
-                )
-                .blur(radius: 3)
-                .offset(y: 2)
-
-            // Bold route-colored ring — the signature Transit look
+            // Clean white circle with route-colored ring
             Circle()
                 .fill(Color.white)
                 .frame(
-                    width: isSelected ? 22 : 18,
-                    height: isSelected ? 22 : 18
+                    width: isSelected ? 14 : 10,
+                    height: isSelected ? 14 : 10
                 )
                 .overlay {
                     Circle()
                         .stroke(
-                            isSelected ? routeColor : routeColor,
-                            lineWidth: isSelected ? 4.5 : 3.5)
+                            routeColor,
+                            lineWidth: isSelected ? 2.5 : 2)
                 }
-                .shadow(color: .black.opacity(0.3), radius: 3, x: 0, y: 1.5)
+                .shadow(color: .black.opacity(0.15), radius: 2, x: 0, y: 1)
 
-            // Center fill dot — only on selected stop to draw the eye
+            // Center fill dot — only on selected stop
             if isSelected {
                 Circle()
                     .fill(routeColor)
-                    .frame(width: 8, height: 8)
+                    .frame(width: 5, height: 5)
             }
         }
-        .frame(width: 50, height: 50)
+        .frame(width: 30, height: 30)
         .drawingGroup()
-        .scaleEffect(isSelected ? 1.15 : 1.0)
-        .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isSelected)
+        .scaleEffect(isSelected ? 1.1 : 1.0)
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isSelected)
         .accessibilityLabel(stopName)
     }
 }

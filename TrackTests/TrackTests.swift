@@ -843,3 +843,185 @@ struct DistanceBucketUtilsTests {
         )
     }
 }
+
+// MARK: - Polyline Utility Tests
+
+@MainActor
+struct PolylineUtilityTests {
+
+    // MARK: - unifyTrainPolylines Tests
+
+    @Test func unifyDuplicateSegmentsAbsorbed() async throws {
+        // Two identical segments → should unify to 1 line
+        let line: [CLLocationCoordinate2D] = [
+            CLLocationCoordinate2D(latitude: 40.700, longitude: -74.000),
+            CLLocationCoordinate2D(latitude: 40.710, longitude: -74.000),
+            CLLocationCoordinate2D(latitude: 40.720, longitude: -74.000),
+            CLLocationCoordinate2D(latitude: 40.730, longitude: -74.000),
+            CLLocationCoordinate2D(latitude: 40.740, longitude: -74.000),
+        ]
+        let result = unifyTrainPolylines([line, line])
+        // Duplicate has 100% overlap → absorbed. Only 1 output line.
+        #expect(result.count == 1)
+    }
+
+    @Test func unifyPreservesDistinctBranches() async throws {
+        // Trunk going north, branch forking east — no overlap
+        let trunk: [CLLocationCoordinate2D] = [
+            CLLocationCoordinate2D(latitude: 40.700, longitude: -74.000),
+            CLLocationCoordinate2D(latitude: 40.720, longitude: -74.000),
+            CLLocationCoordinate2D(latitude: 40.740, longitude: -74.000),
+        ]
+        let branch: [CLLocationCoordinate2D] = [
+            CLLocationCoordinate2D(latitude: 40.700, longitude: -73.950),
+            CLLocationCoordinate2D(latitude: 40.720, longitude: -73.950),
+            CLLocationCoordinate2D(latitude: 40.740, longitude: -73.950),
+        ]
+        let result = unifyTrainPolylines([trunk, branch])
+        // Branch is fully distinct (<5% overlap) → both kept
+        #expect(result.count >= 2)
+    }
+
+    @Test func unifySingleSegmentPassthrough() async throws {
+        let single: [CLLocationCoordinate2D] = [
+            CLLocationCoordinate2D(latitude: 40.700, longitude: -74.000),
+            CLLocationCoordinate2D(latitude: 40.750, longitude: -74.000),
+        ]
+        let result = unifyTrainPolylines([single])
+        #expect(result.count == 1)
+        #expect(result[0].count == single.count)
+    }
+
+    @Test func unifyPartialOverlapKeepsBranchSegment() async throws {
+        // Trunk: straight north. Branch: shares trunk then forks east.
+        // The new approach keeps the entire branch segment (same color = invisible overlap).
+        var trunk: [CLLocationCoordinate2D] = []
+        for i in 0..<50 {
+            trunk.append(CLLocationCoordinate2D(
+                latitude: 40.700 + Double(i) * 0.001,
+                longitude: -74.000
+            ))
+        }
+        // Branch shares first 40 points, then forks east for 20 points
+        var branch = Array(trunk[0..<40])
+        for i in 0..<20 {
+            branch.append(CLLocationCoordinate2D(
+                latitude: 40.740 + Double(i) * 0.001,
+                longitude: -73.990 - Double(i) * 0.001
+            ))
+        }
+        let result = unifyTrainPolylines([trunk, branch])
+        // Branch has enough unique points to survive the 85% overlap threshold
+        // Total point coverage should be > trunk alone
+        let totalPoints = result.reduce(0) { $0 + $1.count }
+        #expect(totalPoints > trunk.count)
+    }
+
+    // MARK: - smoothPolyline Tests
+
+    @Test func smoothIncreasesPointCount() async throws {
+        let coords: [CLLocationCoordinate2D] = [
+            CLLocationCoordinate2D(latitude: 40.700, longitude: -74.000),
+            CLLocationCoordinate2D(latitude: 40.710, longitude: -73.990),
+            CLLocationCoordinate2D(latitude: 40.720, longitude: -74.000),
+            CLLocationCoordinate2D(latitude: 40.730, longitude: -73.990),
+        ]
+        let smoothed = smoothPolyline(coords, segmentsPerCurve: 4)
+        // With 4 segments per curve and 3 intervals, expect > original count
+        #expect(smoothed.count > coords.count)
+    }
+
+    @Test func smoothShortArrayReturnedUnchanged() async throws {
+        let two: [CLLocationCoordinate2D] = [
+            CLLocationCoordinate2D(latitude: 40.700, longitude: -74.000),
+            CLLocationCoordinate2D(latitude: 40.710, longitude: -74.000),
+        ]
+        let result = smoothPolyline(two)
+        #expect(result.count == two.count)
+
+        let single = [CLLocationCoordinate2D(latitude: 40.700, longitude: -74.000)]
+        #expect(smoothPolyline(single).count == 1)
+
+        #expect(smoothPolyline([]).isEmpty)
+    }
+
+    @Test func smoothOutputStaysWithinBounds() async throws {
+        let coords: [CLLocationCoordinate2D] = [
+            CLLocationCoordinate2D(latitude: 40.700, longitude: -74.000),
+            CLLocationCoordinate2D(latitude: 40.710, longitude: -73.995),
+            CLLocationCoordinate2D(latitude: 40.720, longitude: -74.000),
+            CLLocationCoordinate2D(latitude: 40.730, longitude: -73.995),
+            CLLocationCoordinate2D(latitude: 40.740, longitude: -74.000),
+        ]
+        let smoothed = smoothPolyline(coords, segmentsPerCurve: 4)
+        // All output points should be within a reasonable range of input bounds
+        for pt in smoothed {
+            #expect(pt.latitude >= 40.698 && pt.latitude <= 40.742)
+            #expect(pt.longitude >= -74.002 && pt.longitude <= -73.993)
+        }
+    }
+
+    @Test func smoothHandlesIdenticalPoints() async throws {
+        // Degenerate case: all points identical — should not crash
+        let same = CLLocationCoordinate2D(latitude: 40.700, longitude: -74.000)
+        let coords = [same, same, same, same]
+        let result = smoothPolyline(coords)
+        #expect(!result.isEmpty)
+    }
+
+    // MARK: - mergeAdjacentPolylines Tests
+
+    @Test func mergeJoinsAdjacentSegments() async throws {
+        let seg1: [CLLocationCoordinate2D] = [
+            CLLocationCoordinate2D(latitude: 40.700, longitude: -74.000),
+            CLLocationCoordinate2D(latitude: 40.710, longitude: -74.000),
+        ]
+        // seg2 starts very close to where seg1 ends
+        let seg2: [CLLocationCoordinate2D] = [
+            CLLocationCoordinate2D(latitude: 40.7101, longitude: -74.000),
+            CLLocationCoordinate2D(latitude: 40.720, longitude: -74.000),
+        ]
+        let result = mergeAdjacentPolylines([seg1, seg2])
+        // Should merge into 1 chain
+        #expect(result.count == 1)
+        #expect(result[0].count >= 3)
+    }
+
+    @Test func mergeKeepsDistantSegmentsSeparate() async throws {
+        let seg1: [CLLocationCoordinate2D] = [
+            CLLocationCoordinate2D(latitude: 40.700, longitude: -74.000),
+            CLLocationCoordinate2D(latitude: 40.710, longitude: -74.000),
+        ]
+        // seg2 is far away — should NOT merge
+        let seg2: [CLLocationCoordinate2D] = [
+            CLLocationCoordinate2D(latitude: 41.000, longitude: -73.500),
+            CLLocationCoordinate2D(latitude: 41.010, longitude: -73.500),
+        ]
+        let result = mergeAdjacentPolylines([seg1, seg2])
+        #expect(result.count == 2)
+    }
+
+    @Test func mergeSingleSegmentPassthrough() async throws {
+        let seg: [CLLocationCoordinate2D] = [
+            CLLocationCoordinate2D(latitude: 40.700, longitude: -74.000),
+            CLLocationCoordinate2D(latitude: 40.710, longitude: -74.000),
+        ]
+        let result = mergeAdjacentPolylines([seg])
+        #expect(result.count == 1)
+    }
+
+    @Test func mergeHandlesReversedSegments() async throws {
+        let seg1: [CLLocationCoordinate2D] = [
+            CLLocationCoordinate2D(latitude: 40.700, longitude: -74.000),
+            CLLocationCoordinate2D(latitude: 40.710, longitude: -74.000),
+        ]
+        // seg2 ends near seg1's end (reversed orientation)
+        let seg2: [CLLocationCoordinate2D] = [
+            CLLocationCoordinate2D(latitude: 40.730, longitude: -74.000),
+            CLLocationCoordinate2D(latitude: 40.7101, longitude: -74.000),
+        ]
+        let result = mergeAdjacentPolylines([seg1, seg2])
+        // Should still merge (reversed orientation handled)
+        #expect(result.count == 1)
+    }
+}

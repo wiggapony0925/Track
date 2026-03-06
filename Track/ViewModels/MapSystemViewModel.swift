@@ -24,6 +24,7 @@ final class MapSystemViewModel {
         let flattenedSubway: [FlattenedMapPolyline]
         let flattenedCommuter: [FlattenedMapPolyline]
         let stations: [CachedSubwayStation]
+        let routeLabels: [TrunkRouteLabel]
     }
 
     private static var sharedSnapshot: SharedSnapshot?
@@ -73,6 +74,16 @@ final class MapSystemViewModel {
         let routes: [String]
     }
 
+    /// A route label placed along a trunk polyline showing which trains
+    /// run on that section — the colored circles with route letters
+    /// that Apple Maps shows at intervals along transit lines.
+    struct TrunkRouteLabel: Identifiable {
+        let id: String
+        let coordinate: CLLocationCoordinate2D
+        let routeIds: [String]   // e.g. ["A", "C", "E"]
+        let color: Color
+    }
+
     // MARK: - Properties
 
     var cachedSystemMap: [CachedTransitLine] = []
@@ -84,6 +95,9 @@ final class MapSystemViewModel {
 
     /// Pre-computed flattened commuter rail (LIRR/MNR) polylines for the system map view.
     var flattenedCommuterRailPolylines: [FlattenedMapPolyline] = []
+
+    /// Route labels placed along trunk polylines (Apple Maps–style bullets).
+    var trunkRouteLabels: [TrunkRouteLabel] = []
 
     var cachedStations: [CachedSubwayStation] = []
 
@@ -103,6 +117,7 @@ final class MapSystemViewModel {
             cachedOffsetSubwayLines = snapshot.offsetSubwayLines
             flattenedSubwayPolylines = snapshot.flattenedSubway
             flattenedCommuterRailPolylines = snapshot.flattenedCommuter
+            trunkRouteLabels = snapshot.routeLabels
             cachedStations = snapshot.stations
             return
         }
@@ -117,7 +132,8 @@ final class MapSystemViewModel {
                 offsetSubwayLines: cachedOffsetSubwayLines,
                 flattenedSubway: flattenedSubwayPolylines,
                 flattenedCommuter: flattenedCommuterRailPolylines,
-                stations: cachedStations
+                stations: cachedStations,
+                routeLabels: trunkRouteLabels
             )
         }
     }
@@ -134,6 +150,7 @@ final class MapSystemViewModel {
             cachedOffsetSubwayLines = snapshot.offsetSubwayLines
             flattenedSubwayPolylines = snapshot.flattenedSubway
             flattenedCommuterRailPolylines = snapshot.flattenedCommuter
+            trunkRouteLabels = snapshot.routeLabels
             AppLogger.shared.log("SYSTEM_MAP", message: "Reused shared map snapshot")
             return
         }
@@ -360,53 +377,166 @@ final class MapSystemViewModel {
         computeFlattenedPolylines()
     }
 
+    // MARK: - MTA Trunk Color Groups
+    //
+    // Apple Maps draws ONE polyline per trunk color — not per route.
+    // Routes that share a physical corridor and color are merged into a
+    // single set of polylines (trunk + branch stubs).  This dramatically
+    // reduces the number of MapPolyline overlays and eliminates the
+    // "5 stacked yellow lines" problem.
+
+    /// Each group is a set of route IDs that share one color on the MTA map.
+    /// The first route ID in each group is used as the "representative" for
+    /// color lookup via `SubwayRoutesData.color(for:)`.
+    private static let trunkGroups: [[String]] = [
+        ["1", "2", "3"],               // Red — 7th Ave / Broadway
+        ["4", "5", "6", "6X"],         // Green — Lexington Ave
+        ["7", "7X"],                   // Purple — Flushing
+        ["A", "C", "E"],              // Blue — 8th Ave
+        ["B", "D", "F", "FX", "M"],   // Orange — 6th Ave
+        ["G"],                          // Lime Green — Crosstown
+        ["J", "Z"],                    // Brown — Nassau St
+        ["L"],                          // Gray — 14th St / Canarsie
+        ["N", "Q", "R", "W"],         // Yellow — Broadway BMT
+        ["S"],                          // Shuttle Gray
+        ["SI"],                        // Staten Island Railway
+    ]
+
     /// Pre-computes flattened polyline arrays with stable IDs for efficient MapKit rendering.
-    /// This eliminates nested ForEach loops in the View, dramatically improving performance.
-    /// Applies segment merging + Ramer-Douglas-Peucker simplification to reduce both
-    /// overlay count and point counts while preserving shape.
-    /// Called once after `cachedOffsetSubwayLines` is populated.
+    ///
+    /// **Strategy — Apple Maps style**:
+    /// 1. Routes grouped by MTA trunk color (e.g. N/Q/R/W → yellow).
+    /// 2. All polyline segments for a color group unified into ONE trunk + branches.
+    /// 3. Cross-color corridor offsets applied so parallel lines (e.g. blue + green
+    ///    on Lex Ave) render side-by-side, not stacked.
+    /// 4. Route labels generated at intervals along each trunk.
     private func computeFlattenedPolylines() {
         let tolerance = AppSettings.shared.polylineSimplificationTolerance
 
-        // Flatten subway polylines from offset lines.
-        // Merge adjacent segments per route so each route becomes fewer
-        // continuous polylines → fewer MapPolyline overlays on screen.
-        var subwayFlat: [FlattenedMapPolyline] = []
-        var originalSubwayPoints = 0
+        // Build a lookup: route ID → index into cachedOffsetSubwayLines
+        var linesByRouteId: [String: OffsetSubwayLine] = [:]
         for line in cachedOffsetSubwayLines {
-            let validCoords = line.coordinates.filter { $0.count >= 2 }
-            guard !validCoords.isEmpty else { continue }
-            originalSubwayPoints += validCoords.reduce(0) { $0 + $1.count }
-            let merged = mergeAdjacentPolylines(validCoords)
-            for (branchIndex, coords) in merged.enumerated() {
-                let simplified = simplifyPolyline(coords, tolerance: tolerance)
-                subwayFlat.append(
-                    FlattenedMapPolyline(
-                        id: "\(line.id)_\(branchIndex)",
-                        coordinates: simplified,
-                        color: line.color,
-                        lineWidth: 3
+            linesByRouteId[line.id.uppercased()] = line
+        }
+
+        // ---- Phase 1: Per-color unification + simplification ----
+        // Each entry: (groupIndex, groupRouteIds, color, polylines)
+        struct ColorGroupResult {
+            let groupIndex: Int
+            let routeIds: [String]
+            let color: Color
+            var polylines: [[CLLocationCoordinate2D]]
+        }
+
+        var colorGroupResults: [ColorGroupResult] = []
+        var originalSubwayPoints = 0
+
+        for (groupIndex, group) in Self.trunkGroups.enumerated() {
+            var pooledSegments: [[CLLocationCoordinate2D]] = []
+            for routeId in group {
+                if let line = linesByRouteId[routeId.uppercased()] ?? linesByRouteId[routeId] {
+                    let valid = line.coordinates.filter { $0.count >= 2 }
+                    pooledSegments.append(contentsOf: valid)
+                }
+            }
+
+            guard !pooledSegments.isEmpty else { continue }
+            originalSubwayPoints += pooledSegments.reduce(0) { $0 + $1.count }
+
+            let groupColor = SubwayRoutesData.color(for: group[0])
+
+            // Unify same-color segments into one polyline + branch stubs
+            let unified = unifyTrainPolylines(pooledSegments)
+
+            // Simplify (but don't smooth yet — offsets need accurate geometry)
+            let simplified = unified.compactMap { coords -> [CLLocationCoordinate2D]? in
+                guard coords.count >= 2 else { return nil }
+                return simplifyPolyline(coords, tolerance: tolerance)
+            }
+
+            colorGroupResults.append(ColorGroupResult(
+                groupIndex: groupIndex,
+                routeIds: group.filter { routeId in
+                    // Only include route IDs that had actual segment data
+                    linesByRouteId[routeId.uppercased()] != nil || linesByRouteId[routeId] != nil
+                },
+                color: groupColor,
+                polylines: simplified
+            ))
+        }
+
+        // NOTE: No corridor offsets. Apple Maps overlaps co-located
+        // same-color lines without visible perpendicular offsets at most
+        // zoom levels. The offset computation was expensive and caused lag.
+
+        // ---- Phase 3: Flatten into final polylines ----
+        // NO smoothing on system map — at overview zoom, RDP-simplified
+        // lines are already visually smooth.  Smoothing AFTER corridor
+        // offsets would distort the parallel-lane geometry and create
+        // dense point clusters that trigger MapKit's triangulation crash
+        // ("iterating over too many half edges").  Route detail views
+        // still use Catmull-Rom smoothing where it matters.
+        var subwayFlat: [FlattenedMapPolyline] = []
+        var routeLabels: [TrunkRouteLabel] = []
+
+        for groupResult in colorGroupResults {
+            let groupKey = groupResult.routeIds.joined(separator: "-")
+
+            for (branchIdx, coords) in groupResult.polylines.enumerated() {
+                guard coords.count >= 2 else { continue }
+                subwayFlat.append(FlattenedMapPolyline(
+                    id: "trunk_\(groupKey)_\(branchIdx)",
+                    coordinates: coords,
+                    color: groupResult.color,
+                    lineWidth: 3
+                ))
+
+                // Generate route labels along this polyline.
+                // Place labels every ~60 points (roughly every 1–2 km
+                // after simplification), plus at the terminal.
+                let labelInterval = 60
+                var labelIdx = 0
+                var ptIdx = labelInterval / 2  // start midway
+                while ptIdx < coords.count {
+                    routeLabels.append(TrunkRouteLabel(
+                        id: "label_\(groupKey)_\(branchIdx)_\(labelIdx)",
+                        coordinate: coords[ptIdx],
+                        routeIds: groupResult.routeIds,
+                        color: groupResult.color
                     ))
+                    labelIdx += 1
+                    ptIdx += labelInterval
+                }
+                // Terminal label at the end of each branch
+                if let lastCoord = coords.last {
+                    routeLabels.append(TrunkRouteLabel(
+                        id: "label_\(groupKey)_\(branchIdx)_end",
+                        coordinate: lastCoord,
+                        routeIds: groupResult.routeIds,
+                        color: groupResult.color
+                    ))
+                }
             }
         }
         flattenedSubwayPolylines = subwayFlat
+        trunkRouteLabels = routeLabels
 
-        // Flatten commuter rail polylines (LIRR and MNR) — same merge + simplify
+        // ---- Commuter rail (LIRR / MNR — same unify + simplify, NO smooth) ----
         var commuterFlat: [FlattenedMapPolyline] = []
         var originalCommuterPoints = 0
         for line in cachedSystemMap where line.mode != .subway {
             let validCoords = line.coordinates.filter { $0.count >= 2 }
             guard !validCoords.isEmpty else { continue }
             originalCommuterPoints += validCoords.reduce(0) { $0 + $1.count }
-            let merged = mergeAdjacentPolylines(validCoords)
-            for (branchIndex, coords) in merged.enumerated() {
+            let unified = unifyTrainPolylines(validCoords)
+            for (branchIndex, coords) in unified.enumerated() {
                 let simplified = simplifyPolyline(coords, tolerance: tolerance)
                 commuterFlat.append(
                     FlattenedMapPolyline(
                         id: "\(line.id)_\(branchIndex)",
                         coordinates: simplified,
                         color: line.color,
-                        lineWidth: 2.5
+                        lineWidth: 2
                     ))
             }
         }

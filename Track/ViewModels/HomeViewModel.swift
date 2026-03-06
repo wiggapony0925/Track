@@ -715,19 +715,26 @@ final class HomeViewModel {
             ? shape.polylinesForDirection(index: selectedDirectionIndex, name: selectedDirectionName)
             : shape.decodedPolylines
 
-        // 2) Merge adjacent segments into fewer continuous polylines so
-        //    MapKit draws one stroke instead of separate overlapping lines.
-        //    This eliminates the visible seams between segments when
-        //    zoomed in, especially the white casing gap on subway/rail.
-        let merged = mergeAdjacentPolylines(activeRaw)
+        // 2) Unify polylines into minimal continuous lines.
+        //    For trains: use branch-aware unification that absorbs
+        //    overlapping trunk segments and preserves real branches
+        //    (e.g. A train Far Rockaway vs Lefferts Blvd).
+        //    For buses: simple endpoint merge is sufficient.
+        let isBus = selectedGroupedRoute?.isBus == true
+        let unified: [[CLLocationCoordinate2D]]
+        if isBus {
+            unified = mergeAdjacentPolylines(activeRaw)
+        } else {
+            unified = unifyTrainPolylines(activeRaw)
+        }
 
-        // 3) No additional RDP simplification on active polylines.
-        //    The backend already applies RDP at ~5.5 m (subway) and OBA
-        //    polylines (bus) are already compact.  Double-simplifying
-        //    strips curve detail, causing angular V-shapes at bends.
-        //    Merging above already reduced the overlay count — the point
-        //    count within each polyline has negligible perf impact.
-        cachedRoutePolylines = merged.filter { $0.count >= 2 }
+        // 3) Smooth unified polylines with Catmull-Rom spline interpolation.
+        //    Raw GTFS waypoints produce angular bends at recorded GPS points;
+        //    smoothing creates the clean curvy look Apple Maps achieves.
+        //    No RDP simplification — the backend already applies it.
+        cachedRoutePolylines = unified.filter { $0.count >= 2 }.map {
+            smoothPolyline($0, segmentsPerCurve: 4)
+        }
 
         // Build inactive polylines from all OTHER directions.
         // For subway/rail: render at 0.15 opacity so users see branches,
@@ -736,7 +743,6 @@ final class HomeViewModel {
         // run on different sides of the street or take different turns on
         // different blocks, so showing them creates confusing clutter that
         // looks like the wrong route is drawn.
-        let isBus = selectedGroupedRoute?.isBus == true
         if shouldFilter && shape.directions.count > 1 && !isBus {
             // Collect the active direction's polyline encoded strings for dedup
             let activeDir = shape.matchedDirection(index: selectedDirectionIndex, name: selectedDirectionName)
@@ -764,13 +770,13 @@ final class HomeViewModel {
                     }
                 }
             }
-            // Merge inactive segments — merging eliminates visible seams.
-            // Light RDP at ~9 m keeps curves smooth while trimming points
-            // slightly (these render at 0.15 opacity so fine detail isn't
-            // critical, but too-aggressive simplification looks jagged).
-            let mergedInactive = mergeAdjacentPolylines(inactive)
-            cachedInactivePolylines = mergedInactive.map {
-                simplifyPolyline($0, tolerance: 0.00008)
+            // Unify inactive segments — same trunk-aware merge for trains
+            // to avoid duplicate overlapping trunk lines showing through.
+            // Light RDP at ~9 m keeps curves smooth while trimming points.
+            let unifiedInactive = unifyTrainPolylines(inactive)
+            cachedInactivePolylines = unifiedInactive.map {
+                let simplified = simplifyPolyline($0, tolerance: 0.00008)
+                return smoothPolyline(simplified, segmentsPerCurve: 3)
             }
         } else {
             cachedInactivePolylines = []
@@ -1054,6 +1060,7 @@ final class HomeViewModel {
     typealias CachedSubwayStation = MapSystemViewModel.CachedSubwayStation
     typealias FlattenedMapPolyline = MapSystemViewModel.FlattenedMapPolyline
     typealias CachedTransitLine = MapSystemViewModel.CachedTransitLine
+    typealias TrunkRouteLabel = MapSystemViewModel.TrunkRouteLabel
 
     // MARK: - System Map Forwarding (backward compatibility)
 
@@ -1063,6 +1070,9 @@ final class HomeViewModel {
     }
     var flattenedCommuterRailPolylines: [MapSystemViewModel.FlattenedMapPolyline] {
         mapSystem.flattenedCommuterRailPolylines
+    }
+    var trunkRouteLabels: [MapSystemViewModel.TrunkRouteLabel] {
+        mapSystem.trunkRouteLabels
     }
     var cachedStations: [MapSystemViewModel.CachedSubwayStation] {
         mapSystem.cachedStations

@@ -143,10 +143,20 @@ struct AppSettings {
     let showLIRRByDefault: Bool
     /// Whether to show Metro-North routes on the system map by default.
     let showMNRByDefault: Bool
+    /// Maximum camera distance (meters) at which ANY station markers are visible.
+    /// Beyond this distance, the map shows only colored polylines (Apple Maps
+    /// "generalization" behavior).  User-configurable via Settings.
+    private let _stationMaxZoomOutMeters: Double
+
     /// Perpendicular offset in meters between subway lines sharing the same tunnel.
     /// Higher values spread overlapping lines further apart; lower values keep them tighter.
     private let _subwayLineOffsetMeters: Double
     
+    /// Station max zoom-out distance (user-configurable via Settings, falls back to settings.json).
+    var stationMaxZoomOutMeters: Double {
+        UserDefaults.standard.object(forKey: "station_max_zoom_out_meters") as? Double ?? _stationMaxZoomOutMeters
+    }
+
     /// Subway line offset (user-configurable via Settings, falls back to settings.json value).
     var subwayLineOffsetMeters: Double {
         UserDefaults.standard.object(forKey: "subway_line_offset_meters") as? Double ?? _subwayLineOffsetMeters
@@ -230,6 +240,7 @@ struct AppSettings {
             self.simulationEasingEnabled = true
             self.showLIRRByDefault = true
             self.showMNRByDefault = true
+            self._stationMaxZoomOutMeters = 50_000
             self._subwayLineOffsetMeters = 12.0
             self.polylineSimplificationTolerance = 0.00006
             self.vehicleFocusDistance = 1500
@@ -294,6 +305,7 @@ struct AppSettings {
         self.simulationEasingEnabled = map["simulation_easing_enabled"] as? Bool ?? true
         self.showLIRRByDefault = map["show_lirr_by_default"] as? Bool ?? true
         self.showMNRByDefault = map["show_mnr_by_default"] as? Bool ?? true
+        self._stationMaxZoomOutMeters = map["station_max_zoom_out_meters"] as? Double ?? 50_000
         self._subwayLineOffsetMeters = map["subway_line_offset_meters"] as? Double ?? 12.0
         self.polylineSimplificationTolerance = map["polyline_simplification_tolerance"] as? Double ?? 0.00006
         self.vehicleFocusDistance = map["vehicle_focus_distance"] as? Double ?? 1500

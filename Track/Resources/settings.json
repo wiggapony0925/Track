@@ -51,7 +51,7 @@
     "show_lirr_by_default": true,
     "show_mnr_by_default": true,
     "subway_line_offset_meters": 12.0,
-    "polyline_simplification_tolerance": 0.00015,
+    "polyline_simplification_tolerance": 0.00006,
     "vehicle_focus_distance": 1500,
     "explorer_distance_multiplier": 1.5,
     "walking_zoom_min_altitude": 600,
@@ -61,6 +61,7 @@
     "walking_far_padding": 2.2,
     "walking_close_threshold_meters": 200,
     "walking_medium_threshold_meters": 800,
-    "walking_center_bias": 0.15
+    "walking_center_bias": 0.15,
+    "station_max_zoom_out_meters": 50000
   }
 }

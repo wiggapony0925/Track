@@ -392,7 +392,7 @@ struct SettingsContentView: View {
                                         .clipShape(Capsule())
                                 }
                                 
-                                Slider(value: $draftSubwayLineOffset, in: 4...30, step: 1)
+                                Slider(value: $draftSubwayLineOffset, in: 8...30, step: 1)
                                     .tint(AppTheme.Colors.mtaBlue)
                                 
                                 Text("Controls how thick subway lines appear on the map overview (thinner at low values, bolder at high values)")
@@ -401,6 +401,7 @@ struct SettingsContentView: View {
                             }
                             .padding(.horizontal, AppTheme.Layout.cardPadding)
                             .padding(.vertical, 14)
+                            
                         }
                     }
                     
