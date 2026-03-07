@@ -478,9 +478,26 @@ final class MapSystemViewModel {
             ))
         }
 
-        // NOTE: No corridor offsets. Apple Maps overlaps co-located
-        // same-color lines without visible perpendicular offsets at most
-        // zoom levels. The offset computation was expensive and caused lag.
+        // ---- Phase 2: Cross-color corridor offsets ----
+        // Fan out different-color lines sharing the same physical corridor
+        // so they render as parallel stripes instead of stacking on top of
+        // each other (e.g. ACE blue + BDFM orange on 6th Ave).
+        var allGroupedPolylines: [(groupIndex: Int, coordinates: [CLLocationCoordinate2D])] = []
+        var polylineMapping: [(resultIndex: Int, branchIndex: Int)] = []
+
+        for (resultIndex, groupResult) in colorGroupResults.enumerated() {
+            for (branchIndex, coords) in groupResult.polylines.enumerated() {
+                allGroupedPolylines.append((groupIndex: groupResult.groupIndex, coordinates: coords))
+                polylineMapping.append((resultIndex: resultIndex, branchIndex: branchIndex))
+            }
+        }
+
+        let offsetPolylines = applyCorridorOffsets(allGroupedPolylines)
+
+        for (i, offset) in offsetPolylines.enumerated() {
+            let mapping = polylineMapping[i]
+            colorGroupResults[mapping.resultIndex].polylines[mapping.branchIndex] = offset.coordinates
+        }
 
         // ---- Phase 3: Flatten into final polylines ----
         // NO smoothing on system map — at overview zoom, RDP-simplified

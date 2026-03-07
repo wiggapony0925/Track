@@ -66,6 +66,7 @@ struct TrackMapView: View {
         case close     = 1.3
         case medium    = 1.0
         case far       = 0.7
+        case distant   = 0.4
     }
 
     private static func zoomTier(for distance: Double?) -> ZoomTier {
@@ -73,7 +74,8 @@ struct TrackMapView: View {
         if d < 1_500 { return .veryClose }
         if d < 3_500 { return .close }
         if d < 8_000 { return .medium }
-        return .far
+        if d < 25_000 { return .far }
+        return .distant
     }
 
     // MARK: - Computed Properties
@@ -564,16 +566,29 @@ struct TrackMapView: View {
         }
     }
 
-    /// Stroke style for system-map subway polylines — Apple Maps style.
-    /// Fixed 3 pt fill with rounded joins for clean curves and branch splits.
-    /// No user-configurable width; this matches Apple Maps' thin, crisp lines
-    /// that rely on color contrast rather than thickness.
-    private static let systemMapSubwayFillStyle = StrokeStyle(
-        lineWidth: 3, lineCap: .round, lineJoin: .round)
+    /// Zoom-adaptive line width for system-map subway polylines.
+    /// Thins at far zoom to match Apple Maps: crisp at street level,
+    /// subtle threads at full-system overview.
+    private var systemMapSubwayLineWidth: CGFloat {
+        switch _zoomTier {
+        case .veryClose: return 3.5
+        case .close:     return 3.0
+        case .medium:    return 2.0
+        case .far:       return 1.5
+        case .distant:   return 1.0
+        }
+    }
 
-    /// Stroke style for system-map commuter rail (LIRR / MNR) — slightly thinner.
-    private static let systemMapCommuterFillStyle = StrokeStyle(
-        lineWidth: 2, lineCap: .round, lineJoin: .round)
+    /// Zoom-adaptive line width for commuter rail (LIRR / MNR).
+    private var systemMapCommuterLineWidth: CGFloat {
+        switch _zoomTier {
+        case .veryClose: return 2.5
+        case .close:     return 2.0
+        case .medium:    return 1.5
+        case .far:       return 1.0
+        case .distant:   return 0.75
+        }
+    }
 
     /// Route labels filtered to the visible map viewport.
     /// Computed on camera move (debounced), then cached in `_cachedVisibleLabels`.
@@ -606,14 +621,18 @@ struct TrackMapView: View {
             MapPolyline(coordinates: polyline.coordinates)
                 .stroke(
                     polyline.color.opacity(systemMapSubwayOpacity),
-                    style: Self.systemMapSubwayFillStyle)
+                    style: StrokeStyle(
+                        lineWidth: systemMapSubwayLineWidth,
+                        lineCap: .round, lineJoin: .round))
         }
 
         ForEach(viewModel.flattenedCommuterRailPolylines) { polyline in
             MapPolyline(coordinates: polyline.coordinates)
                 .stroke(
                     polyline.color.opacity(systemMapCommuterOpacity),
-                    style: Self.systemMapCommuterFillStyle)
+                    style: StrokeStyle(
+                        lineWidth: systemMapCommuterLineWidth,
+                        lineCap: .round, lineJoin: .round))
         }
 
         // Labels & stations: only in system-map mode (no route selected)
