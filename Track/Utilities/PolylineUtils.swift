@@ -351,25 +351,41 @@ func applyCorridorOffsets(
     return result
 }
 
-// MARK: - Train Polyline Unification (Branch-Preserving)
+// MARK: - Train Polyline Unification (Branch-Extracting)
 
-/// Unifies train polyline segments by removing near-duplicate shapes while
-/// keeping whole segments — preserving branches naturally.
+/// Unifies train polyline segments by keeping ONE trunk polyline and
+/// extracting only the unique branch stubs from remaining segments.
 ///
-/// **Key insight**: within a same-color trunk group (e.g. A/C/E = blue),
-/// overlapping lines are visually invisible because they're the same color.
-/// So we don't need to extract partial runs — just skip shapes that are
-/// near-identical to an already-kept shape (e.g. direction-1 reverse of
-/// direction-0, or express overlaying local on the same tracks).
+/// **Why this matters**: Within a same-color trunk group (e.g. A/C/E = blue),
+/// overlapping lines are visually identical. The old approach kept *entire*
+/// segments when they had ≥15% unique content — but a segment that's 70%
+/// shared with the trunk still redraws most of the trunk as a second stacked
+/// `MapPolyline`, wasting GPU overlays and creating "3 lines per route."
 ///
-/// This naturally preserves the A train's Far Rockaway vs Lefferts Blvd
-/// branches, the E train's unique Queens/WTC sections, etc. — because
-/// those shapes have significant unique portions that fail the duplicate check.
+/// **Approach**:
+/// 1. The longest segment becomes the trunk baseline.
+/// 2. A spatial grid tracks which map cells are already "covered" by kept points.
+/// 3. Each subsequent segment is checked point-by-point against the grid:
+///    - **>90% covered** → near-duplicate (reverse direction, express overlay) → drop.
+///    - **<15% covered** → mostly unique corridor (e.g. Staten Island) → keep whole.
+///    - **15–90% covered** → partial overlap (branch). Extract only the contiguous
+///      unique runs (the divergent tails) and discard the shared trunk portion.
+/// 4. Extracted stubs are validated with a **wider proximity check** (9×9 grid,
+///    ~550 m radius) at three sample points (start, midpoint, end of the
+///    uncovered run). If all three are near existing kept polylines, the stub
+///    is a corridor variant (express/local parallel tracks that stay in the
+///    same geographic area) and is dropped. Real branches — like Q Brighton
+///    or A Far Rockaway — deviate significantly in the middle even when both
+///    endpoints share junctions with the trunk.
+///
+/// This produces 1 trunk + N short branch stubs instead of N full-length
+/// overlapping polylines — dramatically fewer MapPolyline overlays.
 ///
 /// - Parameters:
 ///   - segments: All decoded polyline segments for a train route/color group.
-///   - overlapThreshold: Proximity radius in degrees. Default 0.001° ≈ 110 m.
-/// - Returns: Deduplicated polylines with all branches preserved.
+///   - overlapThreshold: Spatial grid cell size in degrees. Default 0.001° ≈ 110 m.
+///     The 3×3 neighbor check gives effective radius ≈ 220 m.
+/// - Returns: Deduplicated polylines: one trunk + short branch stubs.
 func unifyTrainPolylines(
     _ segments: [[CLLocationCoordinate2D]],
     overlapThreshold: Double = 0.001
@@ -379,46 +395,141 @@ func unifyTrainPolylines(
     let valid = segments.filter { $0.count >= 2 }
     guard valid.count > 1 else { return valid }
 
-    // Sort by point count descending — longest segment is the trunk
+    // Sort longest first — the trunk baseline
     let sorted = valid.sorted { $0.count > $1.count }
-    let threshSq = overlapThreshold * overlapThreshold
 
+    // ── Spatial grid for O(1) "is this point already covered?" queries ──
+    // Cell size = overlapThreshold (~0.001° ≈ 111 m at equator, ~84 m at NYC).
+    // Checking 3×3 neighborhood gives effective radius ≈ 170–220 m — generous
+    // enough for same-track GPS drift between different GTFS shapes.
+    let cell = overlapThreshold
+
+    // Pack (latCell, lonCell) into a single Int64 for Set efficiency.
+    // Using wrapping arithmetic avoids overflow traps at cell boundaries.
+    func cellKey(_ coord: CLLocationCoordinate2D) -> (Int, Int) {
+        (Int(floor(coord.latitude / cell)), Int(floor(coord.longitude / cell)))
+    }
+
+    func packedKey(_ lc: Int, _ nc: Int) -> Int64 {
+        Int64(lc) &* 10_000_000 &+ Int64(nc)
+    }
+
+    var grid: Set<Int64> = []
+
+    func addPoints(_ coords: [CLLocationCoordinate2D]) {
+        for pt in coords {
+            let (lc, nc) = cellKey(pt)
+            grid.insert(packedKey(lc, nc))
+        }
+    }
+
+    /// Standard coverage check: 3×3 neighborhood (±1 cell ≈ 220 m at NYC).
+    func isCovered(_ pt: CLLocationCoordinate2D) -> Bool {
+        let (lc, nc) = cellKey(pt)
+        for dl in -1...1 {
+            for dn in -1...1 {
+                if grid.contains(packedKey(lc + dl, nc + dn)) { return true }
+            }
+        }
+        return false
+    }
+
+    /// Wider proximity check: 9×9 neighborhood (±4 cells ≈ 550 m at NYC).
+    /// Used to decide if an extracted branch stub is a genuine branch
+    /// (reaches new territory) or a corridor variant (express/local
+    /// parallel tracks that rejoin the trunk).
+    func isNearGrid(_ pt: CLLocationCoordinate2D) -> Bool {
+        let (lc, nc) = cellKey(pt)
+        for dl in -4...4 {
+            for dn in -4...4 {
+                if grid.contains(packedKey(lc + dl, nc + dn)) { return true }
+            }
+        }
+        return false
+    }
+
+    // Seed grid with trunk (longest segment)
     var kept: [[CLLocationCoordinate2D]] = [sorted[0]]
+    addPoints(sorted[0])
 
     for segIdx in 1..<sorted.count {
         let seg = sorted[segIdx]
 
-        // Sample ~20 evenly-spaced points from this segment
-        let sampleCount = min(20, seg.count)
-        let step = max(1, seg.count / sampleCount)
-        var matchCount = 0
-        var totalSamples = 0
-
-        sampleLoop: for i in stride(from: 0, to: seg.count, by: step) {
-            totalSamples += 1
-            let pt = seg[i]
-
-            // Check against sampled points from each kept segment
-            for keptSeg in kept {
-                let kStep = max(1, keptSeg.count / 40)
-                for k in stride(from: 0, to: keptSeg.count, by: kStep) {
-                    let kPt = keptSeg[k]
-                    let dx = pt.longitude - kPt.longitude
-                    let dy = pt.latitude - kPt.latitude
-                    if dx * dx + dy * dy < threshSq {
-                        matchCount += 1
-                        continue sampleLoop
-                    }
-                }
+        // Per-point coverage check against the spatial grid
+        var covered = [Bool](repeating: false, count: seg.count)
+        var coveredCount = 0
+        for i in 0..<seg.count {
+            if isCovered(seg[i]) {
+                covered[i] = true
+                coveredCount += 1
             }
         }
 
-        let overlapRatio = Double(matchCount) / Double(max(1, totalSamples))
+        let ratio = Double(coveredCount) / Double(seg.count)
 
-        // >85% coverage → near-duplicate (reverse direction, express overlay)
-        // ≤85% → has significant unique portion (branch), keep whole segment
-        if overlapRatio <= 0.85 {
+        // >90% covered → near-duplicate (reverse direction, express overlay)
+        if ratio > 0.90 { continue }
+
+        // <15% covered → mostly unique corridor, keep whole segment
+        if ratio < 0.15 {
             kept.append(seg)
+            addPoints(seg)
+            continue
+        }
+
+        // ── Partial overlap: extract only the unique branch stubs ──
+        //
+        // Instead of keeping the entire 200-point segment (which redraws
+        // 140 points of shared trunk as a second stacked MapPolyline),
+        // extract only the contiguous runs of uncovered points — the
+        // divergent branch tails.
+
+        let minRun = 15  // Ignore short fragments — curve-area GPS drift between
+                         // GTFS shapes of the same physical track can produce
+                         // uncovered runs of 5–12 points that are NOT real branches.
+        var runs: [(start: Int, end: Int)] = []
+        var runStart: Int? = nil
+
+        for i in 0..<seg.count {
+            if !covered[i] {
+                if runStart == nil { runStart = i }
+            } else if let s = runStart {
+                if i - s >= minRun {
+                    runs.append((start: s, end: i - 1))
+                }
+                runStart = nil
+            }
+        }
+        // Handle run extending to the end of the segment
+        if let s = runStart, seg.count - s >= minRun {
+            runs.append((start: s, end: seg.count - 1))
+        }
+
+        guard !runs.isEmpty else { continue }
+
+        for (rStart, rEnd) in runs {
+            // ── Branch validation ──
+            // A "corridor variant" (express/local parallel tracks, or a
+            // different service pattern that stays in the same geographic
+            // corridor) has its start, midpoint, AND end all near
+            // existing kept polylines.
+            // A genuine branch (e.g. Q Brighton, A Far Rockaway) deviates
+            // through different territory — its midpoint is far from the
+            // trunk even if both endpoints happen to share junctions.
+            // Use the wider 7×7 grid (~500 m radius) for this check.
+            let runMid = (rStart + rEnd) / 2
+            if isNearGrid(seg[rStart]) && isNearGrid(seg[runMid]) && isNearGrid(seg[rEnd]) {
+                continue  // entire run stays in the trunk corridor — variant
+            }
+
+            // Extend a few points into the covered area so the branch
+            // stub visually connects seamlessly to the trunk polyline.
+            let extStart = max(0, rStart - 5)
+            let extEnd = min(seg.count - 1, rEnd + 5)
+            let stub = Array(seg[extStart...extEnd])
+            guard stub.count >= 2 else { continue }
+            kept.append(stub)
+            addPoints(stub)
         }
     }
 

@@ -10,22 +10,22 @@ from app.utils.transit_utils import get_subway_color
 class TestTransitColors(unittest.TestCase):
     def test_subway_colors(self):
         # 1-2-3 (Red)
-        self.assertEqual(get_subway_color("1"), "#EE352E")
-        self.assertEqual(get_subway_color("2"), "#EE352E")
-        self.assertEqual(get_subway_color("3"), "#EE352E")
+        self.assertEqual(get_subway_color("1"), "#D82233")
+        self.assertEqual(get_subway_color("2"), "#D82233")
+        self.assertEqual(get_subway_color("3"), "#D82233")
         
-        # 4-5-6 (Green)
-        self.assertEqual(get_subway_color("4"), "#00933C")
-        self.assertEqual(get_subway_color("6X"), "#00933C")
+        # 4-5-6 (Dark Green)
+        self.assertEqual(get_subway_color("4"), "#009952")
+        self.assertEqual(get_subway_color("6X"), "#009952")
 
         # 7 (Purple)
-        self.assertEqual(get_subway_color("7"), "#B933AD")
-        self.assertEqual(get_subway_color("7X"), "#B933AD")
+        self.assertEqual(get_subway_color("7"), "#9A38A1")
+        self.assertEqual(get_subway_color("7X"), "#9A38A1")
 
         # A-C-E (Blue)
-        self.assertEqual(get_subway_color("A"), "#0039A6")
-        self.assertEqual(get_subway_color("C"), "#0039A6")
-        self.assertEqual(get_subway_color("E"), "#0039A6")
+        self.assertEqual(get_subway_color("A"), "#0062CF")
+        self.assertEqual(get_subway_color("C"), "#0062CF")
+        self.assertEqual(get_subway_color("E"), "#0062CF")
 
     def test_rail_colors(self):
         # LIRR Branches

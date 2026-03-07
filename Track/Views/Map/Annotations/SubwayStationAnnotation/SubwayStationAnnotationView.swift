@@ -19,12 +19,16 @@ import SwiftUI
 ///
 /// Keeping the view minimal is critical because hundreds of stations
 /// can be visible simultaneously.
-struct SubwayStationMarker: View {
+struct SubwayStationMarker: View, Equatable {
     let station: HomeViewModel.CachedSubwayStation
 
-    /// Current camera distance in meters. Drives the zoom-responsive
-    /// scale factor so markers grow when zoomed in and shrink when zoomed out.
-    var cameraDistance: Double?
+    /// Discrete zoom tier — only changes when crossing a zoom boundary,
+    /// so MapKit skips diffing this view's body during continuous pan/zoom.
+    var zoomTier: TrackMapView.ZoomTier = .medium
+
+    static func == (lhs: SubwayStationMarker, rhs: SubwayStationMarker) -> Bool {
+        lhs.station == rhs.station && lhs.zoomTier == rhs.zoomTier
+    }
 
     /// How many distinct MTA color groups serve this station.
     /// Used to stretch the marker into an oval for multi-group transfers.
@@ -36,27 +40,8 @@ struct SubwayStationMarker: View {
         return max(groups.count, 1)
     }
 
-    /// Scale factor derived from camera distance.
-    /// Close zoom → bigger markers, far zoom → smaller markers.
-    private var zoomScale: CGFloat {
-        guard let d = cameraDistance else { return 1.0 }
-        if d < 1_500 {
-            // Very close — prominent markers
-            return 1.8
-        } else if d < 3_500 {
-            // Neighborhood zoom — slightly larger
-            return 1.8 - CGFloat((d - 1_500) / 2_000) * 0.5  // 1.8 → 1.3
-        } else if d < 8_000 {
-            // Medium zoom — default
-            return 1.3 - CGFloat((d - 3_500) / 4_500) * 0.3  // 1.3 → 1.0
-        } else if d < 20_000 {
-            // Far zoom — shrink
-            return 1.0 - CGFloat((d - 8_000) / 12_000) * 0.3  // 1.0 → 0.7
-        } else {
-            // Very far — major hubs only, tiny dots
-            return 0.7
-        }
-    }
+    /// Scale factor derived from zoom tier.
+    private var zoomScale: CGFloat { zoomTier.rawValue }
 
     var body: some View {
         let count = colorGroupCount

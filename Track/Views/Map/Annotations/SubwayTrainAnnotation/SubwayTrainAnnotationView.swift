@@ -1,20 +1,17 @@
 import SwiftUI
 
 /// A sleek, creative Subway annotation using a glassmorphism pill and the iconic MTA bullet.
-struct TrainAnnotation: View {
+struct TrainAnnotation: View, Equatable {
     let routeId: String
     let direction: String
     var isHighlighted: Bool = false
+
+    static func == (lhs: TrainAnnotation, rhs: TrainAnnotation) -> Bool {
+        lhs.routeId == rhs.routeId && lhs.direction == rhs.direction && lhs.isHighlighted == rhs.isHighlighted
+    }
     
     var body: some View {
         ZStack {
-            // Shadow / Glow
-            Capsule()
-                .fill(AppTheme.SubwayColors.color(for: routeId).opacity(0.3))
-                .frame(width: isHighlighted ? 45 : 35, height: isHighlighted ? 24 : 18)
-                .blur(radius: 4)
-                .offset(y: 2)
-
             // Main Glass Pill
             HStack(spacing: 4) {
                 // The iconic MTA Bullet
@@ -44,9 +41,11 @@ struct TrainAnnotation: View {
                 Capsule()
                     .stroke(Color.white.opacity(0.4), lineWidth: 1)
             }
-            .shadow(color: .black.opacity(0.2), radius: 2)
+            .shadow(color: AppTheme.SubwayColors.color(for: routeId).opacity(0.35), radius: 4, y: 2)
+            .shadow(color: .black.opacity(0.15), radius: 2)
         }
         .scaleEffect(isHighlighted ? 1.3 : 1.0)
         .animation(.spring(response: 0.4, dampingFraction: 0.7), value: isHighlighted)
+        .drawingGroup()
     }
 }

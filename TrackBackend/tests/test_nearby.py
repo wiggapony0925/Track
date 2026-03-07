@@ -325,7 +325,7 @@ class TestGroupedModels:
             route_id="L",
             display_name="L",
             mode="subway",
-            color_hex="#A7A9AC",
+            color_hex="#7C858C",
             directions=[
                 DirectionArrivals(direction="N", arrivals=[]),
                 DirectionArrivals(direction="S", arrivals=[]),
@@ -333,7 +333,7 @@ class TestGroupedModels:
         )
         assert group.route_id == "L"
         assert len(group.directions) == 2
-        assert group.color_hex == "#A7A9AC"
+        assert group.color_hex == "#7C858C"
 
     def test_arrival_with_stop_coords(self):
         arrival = NearbyTransitArrival(
@@ -412,7 +412,7 @@ class TestGroupingLogic:
             ),
         ]
         groups = _group_arrivals(flat)
-        assert groups[0].color_hex == "#A7A9AC"
+        assert groups[0].color_hex == "#7C858C"
 
     def test_bus_default_color(self):
         flat = [

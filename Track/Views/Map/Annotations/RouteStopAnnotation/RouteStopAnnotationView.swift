@@ -3,11 +3,15 @@ import SwiftUI
 /// Visual marker for route stops — Transit app style:
 /// large white filled circle with a bold route-colored ring,
 /// pulsing glow when selected.
-struct RouteStopMarker: View {
+struct RouteStopMarker: View, Equatable {
     let isBusRoute: Bool
     let isSelected: Bool
     let routeColor: Color
     let stopName: String
+
+    static func == (lhs: RouteStopMarker, rhs: RouteStopMarker) -> Bool {
+        lhs.isBusRoute == rhs.isBusRoute && lhs.isSelected == rhs.isSelected && lhs.stopName == rhs.stopName
+    }
 
     var body: some View {
         ZStack {

@@ -6,7 +6,6 @@ struct SettingsView: View {
 
     @AppStorage("appTheme") private var appTheme = "system"
     @AppStorage("distance_unit") private var distanceUnit = "mi"
-    @AppStorage("subway_line_offset_meters") private var subwayLineOffset: Double = AppSettings.shared.subwayLineOffsetMeters
     @AppStorage("dev_use_localhost") private var useLocalhost = false
     @AppStorage("dev_custom_ip") private var customIP = AppSettings.shared.defaultDeviceIP
 
@@ -43,7 +42,6 @@ struct SettingsView: View {
                         profileSection
                         appearanceSection
                         widgetSection
-                        mapSection
                         accountSection
 #if DEBUG
                         developerSection
@@ -66,9 +64,6 @@ struct SettingsView: View {
             }
             // Auto-push settings to cloud when instant-apply values change
             .onChange(of: appTheme) { _, _ in
-                Task { await SyncManager.shared.pushUserSettings() }
-            }
-            .onChange(of: subwayLineOffset) { _, _ in
                 Task { await SyncManager.shared.pushUserSettings() }
             }
             .onChange(of: distanceUnit) { _, _ in
@@ -184,34 +179,6 @@ struct SettingsView: View {
                 .padding(.vertical, 14)
             }
             .buttonStyle(.plain)
-        }
-    }
-
-    private var mapSection: some View {
-        settingsSection(title: "Map", icon: "map.fill", iconColor: .green) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    settingsIcon("arrow.left.and.right", color: AppTheme.Colors.mtaBlue)
-                    Text("Line Offset")
-                        .font(.custom("Helvetica", size: 15))
-                        .foregroundColor(AppTheme.Colors.textPrimary)
-                    Spacer()
-                    Text("\(Int(subwayLineOffset))m")
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
-                        .foregroundColor(AppTheme.Colors.mtaBlue)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(AppTheme.Colors.mtaBlue.opacity(0.12))
-                        .clipShape(Capsule())
-                }
-                Slider(value: $subwayLineOffset, in: 4...30, step: 1)
-                    .tint(AppTheme.Colors.mtaBlue)
-                Text("Controls how far apart subway lines are spread when sharing the same tunnel.")
-                    .font(.system(size: 11))
-                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
-            }
-            .padding(.horizontal, AppTheme.Layout.cardPadding)
-            .padding(.vertical, 14)
         }
     }
 

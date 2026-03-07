@@ -30,13 +30,11 @@ struct SettingsContentView: View {
     @AppStorage("much_farther_away_radius_meters") private var muchFartherAwayRadius: Double = 8047
     @AppStorage("show_search_radius") private var showSearchRadius = false
     @AppStorage("drag_to_search") private var dragToSearch = true
-    @AppStorage("subway_line_offset_meters") private var subwayLineOffset: Double = AppSettings.shared.subwayLineOffsetMeters
     
     // MARK: - Draft state (edited in the UI, committed on Apply)
     @State private var draftRadius: Double = 8047
     @State private var draftShowSearchRadius = false
     @State private var draftDragToSearch = true
-    @State private var draftSubwayLineOffset: Double = 10
     
     /// Tracks whether any draft value differs from the persisted value.
     @State private var hasUnappliedChanges = false
@@ -373,35 +371,6 @@ struct SettingsContentView: View {
                                     .transition(.opacity.combined(with: .move(edge: .top)))
                             }
                             
-                            settingsDivider
-                            
-                            // Subway line offset slider
-                            VStack(alignment: .leading, spacing: 8) {
-                                HStack {
-                                    settingsIcon("arrow.left.and.right", color: AppTheme.Colors.mtaBlue)
-                                    Text("Line Spread")
-                                        .font(.custom("Helvetica", size: 15))
-                                        .foregroundColor(AppTheme.Colors.textPrimary)
-                                    Spacer()
-                                    Text("\(Int(draftSubwayLineOffset))m")
-                                        .font(.system(size: 13, weight: .semibold, design: .rounded))
-                                        .foregroundColor(AppTheme.Colors.mtaBlue)
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 3)
-                                        .background(AppTheme.Colors.mtaBlue.opacity(0.12))
-                                        .clipShape(Capsule())
-                                }
-                                
-                                Slider(value: $draftSubwayLineOffset, in: 8...30, step: 1)
-                                    .tint(AppTheme.Colors.mtaBlue)
-                                
-                                Text("Controls how thick subway lines appear on the map overview (thinner at low values, bolder at high values)")
-                                    .font(.system(size: 11))
-                                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
-                            }
-                            .padding(.horizontal, AppTheme.Layout.cardPadding)
-                            .padding(.vertical, 14)
-                            
                         }
                     }
                     
@@ -474,7 +443,6 @@ struct SettingsContentView: View {
         .onChange(of: draftRadius) { _, _ in checkForChanges() }
         .onChange(of: draftShowSearchRadius) { _, _ in checkForChanges() }
         .onChange(of: draftDragToSearch) { _, _ in checkForChanges() }
-        .onChange(of: draftSubwayLineOffset) { _, _ in checkForChanges() }
         // Auto-push instant-apply settings to cloud when they change
         .onChange(of: appTheme) { _, _ in
             Task { await SyncManager.shared.pushUserSettings() }
@@ -519,7 +487,6 @@ struct SettingsContentView: View {
         draftRadius = max(2400, muchFartherAwayRadius)
         draftShowSearchRadius = showSearchRadius
         draftDragToSearch = dragToSearch
-        draftSubwayLineOffset = subwayLineOffset
     }
     
     /// Check if any draft value differs from the persisted value.
@@ -527,8 +494,7 @@ struct SettingsContentView: View {
         hasUnappliedChanges =
             draftRadius != muchFartherAwayRadius ||
             draftShowSearchRadius != showSearchRadius ||
-            draftDragToSearch != dragToSearch ||
-            draftSubwayLineOffset != subwayLineOffset
+            draftDragToSearch != dragToSearch
     }
     
     /// Commit all drafts to @AppStorage in one shot and sync once.
@@ -541,7 +507,6 @@ struct SettingsContentView: View {
         // Map & Display
         showSearchRadius = draftShowSearchRadius
         dragToSearch = draftDragToSearch
-        subwayLineOffset = draftSubwayLineOffset
         
         hasUnappliedChanges = false
         

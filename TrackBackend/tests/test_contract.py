@@ -999,7 +999,7 @@ class TestGroupedSchemaV2:
             route_id="A",
             display_name="A",
             mode="subway",
-            color_hex="#0039A6",
+            color_hex="#0062CF",
             directions=[
                 DirectionArrivals(
                     direction="N",

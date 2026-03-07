@@ -63,42 +63,42 @@ struct SubwayRoutesData {
         return colors.merging(hardcodedColors) { bundled, _ in bundled }
     }
     
-    /// Hardcoded fallback colors
+    /// Hardcoded fallback colors — official MTA Brand Colors (2025 guide)
     private static let hardcodedColors: [String: Color] = [
         // IRT Lines
-        "1": Color(hex: "EE352E"),  // Red
-        "2": Color(hex: "EE352E"),
-        "3": Color(hex: "EE352E"),
-        "4": Color(hex: "00933C"),  // Green
-        "5": Color(hex: "00933C"),
-        "6": Color(hex: "00933C"),
-        "6X": Color(hex: "00933C"),
-        "7": Color(hex: "B933AD"),  // Purple
-        "7X": Color(hex: "B933AD"),
+        "1": Color(hex: "D82233"),  // Red
+        "2": Color(hex: "D82233"),
+        "3": Color(hex: "D82233"),
+        "4": Color(hex: "009952"),  // Dark Green
+        "5": Color(hex: "009952"),
+        "6": Color(hex: "009952"),
+        "6X": Color(hex: "009952"),
+        "7": Color(hex: "9A38A1"),  // Purple
+        "7X": Color(hex: "9A38A1"),
         
         // IND Lines
-        "A": Color(hex: "0039A6"),  // Blue
-        "C": Color(hex: "0039A6"),
-        "E": Color(hex: "0039A6"),
-        "B": Color(hex: "FF6319"),  // Orange
-        "D": Color(hex: "FF6319"),
-        "F": Color(hex: "FF6319"),
-        "FX": Color(hex: "FF6319"),
-        "M": Color(hex: "FF6319"),
-        "G": Color(hex: "6CBE45"),  // Lime Green
+        "A": Color(hex: "0062CF"),  // Blue
+        "C": Color(hex: "0062CF"),
+        "E": Color(hex: "0062CF"),
+        "B": Color(hex: "EB6800"),  // Orange
+        "D": Color(hex: "EB6800"),
+        "F": Color(hex: "EB6800"),
+        "FX": Color(hex: "EB6800"),
+        "M": Color(hex: "EB6800"),
+        "G": Color(hex: "799534"),  // Light Green
         
         // BMT Lines
-        "J": Color(hex: "996633"),  // Brown
-        "Z": Color(hex: "996633"),
-        "L": Color(hex: "A7A9AC"),  // Gray
-        "N": Color(hex: "FCCC0A"),  // Yellow
-        "Q": Color(hex: "FCCC0A"),
-        "R": Color(hex: "FCCC0A"),
-        "W": Color(hex: "FCCC0A"),
+        "J": Color(hex: "8E5C33"),  // Brown
+        "Z": Color(hex: "8E5C33"),
+        "L": Color(hex: "7C858C"),  // Grey
+        "N": Color(hex: "F6BC26"),  // Yellow
+        "Q": Color(hex: "F6BC26"),
+        "R": Color(hex: "F6BC26"),
+        "W": Color(hex: "F6BC26"),
         
-        // Shuttles
-        "S": Color(hex: "808183"),  // Shuttle Gray
-        "SI": Color(hex: "0039A6"), // Staten Island Railway
+        // Shuttles & SIR
+        "S": Color(hex: "7C858C"),  // Grey
+        "SI": Color(hex: "008EB7"), // Teal
     ]
     
     /// Get color for a route ID (supports LIRR_*, MNR_* prefixes)

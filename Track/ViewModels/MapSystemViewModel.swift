@@ -67,21 +67,29 @@ final class MapSystemViewModel {
     }
 
     // Full subway station list with served lines
-    struct CachedSubwayStation: Identifiable {
+    struct CachedSubwayStation: Identifiable, Equatable {
         let id: String
         let name: String
         let coordinate: CLLocationCoordinate2D
         let routes: [String]
+
+        static func == (lhs: CachedSubwayStation, rhs: CachedSubwayStation) -> Bool {
+            lhs.id == rhs.id && lhs.routes == rhs.routes
+        }
     }
 
     /// A route label placed along a trunk polyline showing which trains
     /// run on that section — the colored circles with route letters
     /// that Apple Maps shows at intervals along transit lines.
-    struct TrunkRouteLabel: Identifiable {
+    struct TrunkRouteLabel: Identifiable, Equatable {
         let id: String
         let coordinate: CLLocationCoordinate2D
         let routeIds: [String]   // e.g. ["A", "C", "E"]
         let color: Color
+
+        static func == (lhs: TrunkRouteLabel, rhs: TrunkRouteLabel) -> Bool {
+            lhs.id == rhs.id && lhs.routeIds == rhs.routeIds
+        }
     }
 
     // MARK: - Properties
@@ -445,7 +453,7 @@ final class MapSystemViewModel {
 
             let groupColor = SubwayRoutesData.color(for: group[0])
 
-            // Unify same-color segments into one polyline + branch stubs
+            // Unify same-color segments into one trunk + branch stubs
             let unified = unifyTrainPolylines(pooledSegments)
 
             // Simplify (but don't smooth yet — offsets need accurate geometry)
@@ -454,12 +462,17 @@ final class MapSystemViewModel {
                 return simplifyPolyline(coords, tolerance: tolerance)
             }
 
+            let activeRoutes = group.filter { routeId in
+                linesByRouteId[routeId.uppercased()] != nil || linesByRouteId[routeId] != nil
+            }
+
+            AppLogger.shared.log(
+                "POLYLINE_UNIFY",
+                message: "[\(activeRoutes.joined(separator: "/"))]: \(pooledSegments.count) segments → \(unified.count) polylines (trunk + branch stubs)")
+
             colorGroupResults.append(ColorGroupResult(
                 groupIndex: groupIndex,
-                routeIds: group.filter { routeId in
-                    // Only include route IDs that had actual segment data
-                    linesByRouteId[routeId.uppercased()] != nil || linesByRouteId[routeId] != nil
-                },
+                routeIds: activeRoutes,
                 color: groupColor,
                 polylines: simplified
             ))

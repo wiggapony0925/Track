@@ -14,9 +14,13 @@ import SwiftUI
 /// At system-map zoom the bullets are tiny (12×12 pt) and arranged in
 /// a tight horizontal stack.  Keeping the view minimal is critical —
 /// hundreds of labels may be visible simultaneously.
-struct TrunkRouteLabelView: View {
+struct TrunkRouteLabelView: View, Equatable {
     let routeIds: [String]
     let color: Color
+
+    static func == (lhs: TrunkRouteLabelView, rhs: TrunkRouteLabelView) -> Bool {
+        lhs.routeIds == rhs.routeIds
+    }
 
     var body: some View {
         HStack(spacing: 1) {
@@ -37,6 +41,7 @@ struct TrunkRouteLabelView: View {
                 .fill(.white)
         )
         .allowsHitTesting(false)
+        .drawingGroup()
     }
 
     /// Yellow lines use black text; all others use white.

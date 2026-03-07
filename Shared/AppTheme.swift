@@ -128,34 +128,34 @@ struct AppTheme {
 
     // MARK: - Subway Line Colors
 
-    /// Official MTA subway line colors. Used by RouteBadge and widget
-    /// transit badges to display the correct color per line.
+    /// Official MTA subway line colors (2025 brand guide).
+    /// Used by RouteBadge and widget transit badges.
     struct SubwayColors {
         static func color(for routeID: String) -> Color {
             switch routeID.uppercased() {
             case "1", "2", "3":
-                return Color(red: 238/255, green: 53/255, blue: 46/255)    // IRT Red
+                return Color(red: 216/255, green: 34/255, blue: 51/255)     // Red #D82233
             case "4", "5", "6":
-                return Color(red: 0/255, green: 147/255, blue: 60/255)     // IRT Green
+                return Color(red: 0/255, green: 153/255, blue: 82/255)      // Dark Green #009952
             case "7":
-                return Color(red: 185/255, green: 51/255, blue: 173/255)   // IRT Purple
+                return Color(red: 154/255, green: 56/255, blue: 161/255)    // Purple #9A38A1
             case "A", "C", "E":
-                return Color(red: 0/255, green: 57/255, blue: 166/255)     // IND Blue
+                return Color(red: 0/255, green: 98/255, blue: 207/255)      // Blue #0062CF
             case "B", "D", "F", "M":
-                return Color(red: 255/255, green: 99/255, blue: 25/255)    // IND Orange
+                return Color(red: 235/255, green: 104/255, blue: 0/255)     // Orange #EB6800
             case "G":
-                return Color(red: 108/255, green: 190/255, blue: 69/255)   // IND Light Green
+                return Color(red: 121/255, green: 149/255, blue: 52/255)    // Light Green #799534
             case "J", "Z":
-                return Color(red: 153/255, green: 102/255, blue: 51/255)   // BMT Brown
+                return Color(red: 142/255, green: 92/255, blue: 51/255)     // Brown #8E5C33
             case "L":
-                return Color(red: 167/255, green: 169/255, blue: 172/255)  // BMT Grey
+                return Color(red: 124/255, green: 133/255, blue: 140/255)   // Grey #7C858C
             case "N", "Q", "R", "W":
-                return Color(red: 252/255, green: 204/255, blue: 10/255)   // BMT Yellow
-            case "S", "SI":
-                return Color(red: 128/255, green: 129/255, blue: 131/255)  // Shuttle Grey
+                return Color(red: 246/255, green: 188/255, blue: 38/255)    // Yellow #F6BC26
+            case "S":
+                return Color(red: 124/255, green: 133/255, blue: 140/255)   // Grey #7C858C
+            case "SI":
+                return Color(red: 0/255, green: 142/255, blue: 183/255)     // Teal #008EB7
             default:
-                // Determine if it's likely a bus (e.g. Bx12, M15, Q32) or just unknown.
-                // MTA buses are generally blue. LIRR is also often blue/yellow but we treat default as MTA blue.
                 return Colors.mtaBlue
             }
         }

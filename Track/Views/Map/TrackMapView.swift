@@ -35,22 +35,48 @@ struct TrackMapView: View {
     @AppStorage("near_you_radius_meters") private var nearYouRadius: Double = 2414
     @AppStorage("farther_away_radius_meters") private var fartherAwayRadius: Double = 4023
     @AppStorage("much_farther_away_radius_meters") private var muchFartherAwayRadius: Double = 8047
-    @AppStorage("subway_line_offset_meters") private var subwayLineSpread: Double = 12
+
+    // MARK: - Viewport Caching
+    //
+    // Instead of recomputing O(n) viewport-filtered arrays on EVERY
+    // camera frame (60 fps during pan/zoom), we cache them and only
+    // recompute when the camera moves a meaningful amount. This is the
+    // single biggest performance win — eliminates per-frame trig on
+    // 400+ stations and 100+ route labels.
+
+    /// Cached stations visible in the current viewport.
+    @State private var _cachedVisibleStations: [HomeViewModel.CachedSubwayStation] = []
+    /// Cached route labels visible in the current viewport.
+    @State private var _cachedVisibleLabels: [HomeViewModel.TrunkRouteLabel] = []
+    /// Cached direction stops visible in the current viewport.
+    @State private var _cachedVisibleStops: [BusStop] = []
+    /// Camera center when the viewport cache was last refreshed.
+    @State private var _lastViewportCenter: CLLocationCoordinate2D?
+    /// Camera distance when the viewport cache was last refreshed.
+    @State private var _lastViewportDistance: Double?
+
+    /// Discrete zoom tier passed to station annotations.
+    /// Changes only when crossing a tier boundary, so station marker
+    /// bodies don't re-evaluate on every pixel of zoom.
+    @State private var _zoomTier: ZoomTier = .medium
+
+    /// Discrete zoom tiers to avoid continuous re-renders of station markers.
+    enum ZoomTier: CGFloat {
+        case veryClose = 1.8
+        case close     = 1.3
+        case medium    = 1.0
+        case far       = 0.7
+    }
+
+    private static func zoomTier(for distance: Double?) -> ZoomTier {
+        guard let d = distance else { return .medium }
+        if d < 1_500 { return .veryClose }
+        if d < 3_500 { return .close }
+        if d < 8_000 { return .medium }
+        return .far
+    }
 
     // MARK: - Computed Properties
-
-    /// Subway line width for the system-map overview, derived from the
-    /// "Line Spread" setting. The slider range is 8–30 m (conceptual spread
-    /// in shared tunnels); we map that linearly to 2.0–5.0 pt on screen.
-    /// Minimum 2pt ensures lines stay visible and curvy even at thinnest.
-    ///
-    /// No zoom scaling — the corridor offset (~9 m) naturally separates
-    /// parallel lines at close zoom and lets them merge at far zoom,
-    /// which is identical to Apple Maps' behavior.
-    private var systemMapSubwayLineWidth: CGFloat {
-        let clamped = min(max(subwayLineSpread, 8), 30)
-        return 2.0 + CGFloat((clamped - 8) / 22.0) * 3.0
-    }
 
     /// Color of the currently selected route, used for polylines and annotations.
     private var selectedRouteColor: Color {
@@ -67,9 +93,8 @@ struct TrackMapView: View {
     }
 
     /// Stroke style for bus route polylines — rounded caps for smooth joins.
-    private var busRouteStrokeStyle: StrokeStyle {
-        StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round)
-    }
+    private static let busRouteStrokeStyle = StrokeStyle(
+        lineWidth: 4, lineCap: .round, lineJoin: .round)
 
     /// Stroke style for subway/rail route polylines — solid with rounded ends.
     private static let subwayRouteStrokeStyle = StrokeStyle(
@@ -167,6 +192,35 @@ struct TrackMapView: View {
             if (d < zoomThreshold) != showStations {
                 showStations = d < zoomThreshold
             }
+
+            // Update discrete zoom tier (only triggers station re-render
+            // when crossing a boundary, not every frame)
+            let newTier = Self.zoomTier(for: d)
+            if newTier != _zoomTier {
+                _zoomTier = newTier
+            }
+
+            // Refresh viewport-cached arrays only when the camera moves
+            // a meaningful amount — avoids O(n) filtering every frame.
+            let center = context.camera.centerCoordinate
+            let needsRefresh: Bool
+            if let lastC = _lastViewportCenter, let lastD = _lastViewportDistance {
+                let latDelta = abs(center.latitude - lastC.latitude)
+                let lonDelta = abs(center.longitude - lastC.longitude)
+                let distRatio = abs(d - lastD) / max(lastD, 1)
+                // Refresh if panned > 0.2% of viewport or zoomed > 10%
+                let panThreshold = (d / 111_000) * 0.002
+                needsRefresh = latDelta > panThreshold || lonDelta > panThreshold || distRatio > 0.10
+            } else {
+                needsRefresh = true
+            }
+            if needsRefresh {
+                _lastViewportCenter = center
+                _lastViewportDistance = d
+                _cachedVisibleStations = computeVisibleStations(center: center, distance: d)
+                _cachedVisibleLabels = computeVisibleRouteLabels(center: center, distance: d)
+                _cachedVisibleStops = computeVisibleDirectionStops(center: center, distance: d)
+            }
         }
         // Push the Apple Maps "Legal" link behind the bottom sheet
         .safeAreaPadding(.bottom, 350)
@@ -183,15 +237,13 @@ struct TrackMapView: View {
     // MARK: - Route Stop Annotations
 
     /// Stops for the active direction filtered to the current map viewport.
-    /// Avoids creating hundreds of off-screen Annotation nodes — each is a
-    /// separate SwiftUI render tree with hit-testing overhead.
-    private var visibleDirectionStops: [BusStop] {
+    /// Computed on demand when the camera moves significantly, then cached.
+    private func computeVisibleDirectionStops(
+        center: CLLocationCoordinate2D, distance: Double
+    ) -> [BusStop] {
         guard let shape = viewModel.routeShape else { return [] }
         let all = shape.stopsForDirection(
             index: viewModel.selectedDirectionIndex, name: viewModel.selectedDirectionName)
-        guard let center = currentMapCenter, let distance = currentMapDistance else {
-            return all
-        }
         let latSpan = (distance / 111_000) * 1.5
         let lonSpan = (distance / (111_000 * cos(center.latitude * .pi / 180))) * 1.5
         return all.filter { stop in
@@ -204,7 +256,7 @@ struct TrackMapView: View {
     private var routeStopAnnotations: some MapContent {
         if viewModel.routeShape != nil {
             let isBusRoute = viewModel.selectedGroupedRoute?.isBus == true
-            let directionStops = visibleDirectionStops
+            let directionStops = _cachedVisibleStops
 
             ForEach(directionStops) { stop in
                 let isSelected = stop.id == viewModel.selectedStopId
@@ -411,7 +463,7 @@ struct TrackMapView: View {
                     CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lon)
                 }
                 MapPolyline(coordinates: stopCoords)
-                    .stroke(selectedRouteColor, style: busRouteStrokeStyle)
+                    .stroke(selectedRouteColor, style: Self.busRouteStrokeStyle)
             }
         }
     }
@@ -430,7 +482,7 @@ struct TrackMapView: View {
                     .white.opacity(casingOpacity * 0.6),
                     style: StrokeStyle(lineWidth: 6, lineCap: .round, lineJoin: .round))
             MapPolyline(coordinates: coords)
-                .stroke(color, style: busRouteStrokeStyle)
+                .stroke(color, style: Self.busRouteStrokeStyle)
         } else {
             MapPolyline(coordinates: coords)
                 .stroke(
@@ -446,24 +498,13 @@ struct TrackMapView: View {
     /// Stations filtered to the visible map viewport AND by zoom-based
     /// importance tier — Apple Maps' "generalization" approach.
     ///
-    /// As you zoom out, Apple Maps systematically hides detail:
-    /// - **> maxZoomOut**: No stations at all — just colored polylines.
-    /// - **maxZoomOut × 0.3 – maxZoomOut**: Major transfer complexes only — 3+ color groups.
-    /// - **maxZoomOut × 0.16 – maxZoomOut × 0.3**: + Transfer stations — 2+ color groups.
-    /// - **< maxZoomOut × 0.16**: All stops visible.
-    /// - **< 3.5 km**: Station NAME labels appear.
-    private var visibleStations: [HomeViewModel.CachedSubwayStation] {
-        guard let center = currentMapCenter, let distance = currentMapDistance else {
-            return viewModel.cachedStations
-        }
-
+    /// Computed on camera move (debounced), then cached in `_cachedVisibleStations`.
+    private func computeVisibleStations(
+        center: CLLocationCoordinate2D, distance: Double
+    ) -> [HomeViewModel.CachedSubwayStation] {
         let maxZoomOut = AppSettings.shared.stationMaxZoomOutMeters
-
-        // At very high zoom-out (> max), hide ALL stations.
-        // Apple Maps hides everything at this level — just colored polylines.
         guard distance < maxZoomOut else { return [] }
 
-        // Viewport bounding box with generous padding
         let latSpan = (distance / 111_000) * 1.5
         let lonSpan = (distance / (111_000 * cos(center.latitude * .pi / 180))) * 1.5
         let minLat = center.latitude - latSpan
@@ -471,22 +512,18 @@ struct TrackMapView: View {
         let minLon = center.longitude - lonSpan
         let maxLon = center.longitude + lonSpan
 
-        // Zoom-based importance thresholds derived from the user's max zoom-out setting
-        let showAllStops = distance < maxZoomOut * 0.16     // ~8 km at default 50 km
-        let showTransfers = distance < maxZoomOut * 0.30    // ~15 km at default 50 km
-        let showMajorHubs = distance < maxZoomOut            // everything below ceiling
+        let showAllStops = distance < maxZoomOut * 0.16
+        let showTransfers = distance < maxZoomOut * 0.30
+        let showMajorHubs = distance < maxZoomOut
 
         return viewModel.cachedStations.filter { station in
-            // 1) Must be in viewport
             guard station.coordinate.latitude >= minLat,
                   station.coordinate.latitude <= maxLat,
                   station.coordinate.longitude >= minLon,
                   station.coordinate.longitude <= maxLon
             else { return false }
 
-            // 2) Importance filter based on zoom
             if showAllStops { return true }
-
             let groupCount = Self.colorGroupCount(for: station)
             if showMajorHubs && groupCount >= 3 { return true }
             if showTransfers && groupCount >= 2 { return true }
@@ -527,29 +564,22 @@ struct TrackMapView: View {
         }
     }
 
-    /// Stroke style for system-map subway casing — white outline for depth.
-    private var systemMapSubwayCasingStyle: StrokeStyle {
-        StrokeStyle(
-            lineWidth: systemMapSubwayLineWidth + 2,
-            lineCap: .round,
-            lineJoin: .round)
-    }
+    /// Stroke style for system-map subway polylines — Apple Maps style.
+    /// Fixed 3 pt fill with rounded joins for clean curves and branch splits.
+    /// No user-configurable width; this matches Apple Maps' thin, crisp lines
+    /// that rely on color contrast rather than thickness.
+    private static let systemMapSubwayFillStyle = StrokeStyle(
+        lineWidth: 3, lineCap: .round, lineJoin: .round)
 
-    /// Stroke style for system-map subway fill — colored inner line.
-    private var systemMapSubwayFillStyle: StrokeStyle {
-        StrokeStyle(
-            lineWidth: systemMapSubwayLineWidth,
-            lineCap: .round,
-            lineJoin: .round)
-    }
+    /// Stroke style for system-map commuter rail (LIRR / MNR) — slightly thinner.
+    private static let systemMapCommuterFillStyle = StrokeStyle(
+        lineWidth: 2, lineCap: .round, lineJoin: .round)
 
     /// Route labels filtered to the visible map viewport.
-    /// Same approach as station viewport filtering — avoids creating
-    /// hundreds of off-screen annotation nodes.
-    private var visibleRouteLabels: [HomeViewModel.TrunkRouteLabel] {
-        guard let center = currentMapCenter, let distance = currentMapDistance else {
-            return viewModel.trunkRouteLabels
-        }
+    /// Computed on camera move (debounced), then cached in `_cachedVisibleLabels`.
+    private func computeVisibleRouteLabels(
+        center: CLLocationCoordinate2D, distance: Double
+    ) -> [HomeViewModel.TrunkRouteLabel] {
         let latSpan = (distance / 111_000) * 1.5
         let lonSpan = (distance / (111_000 * cos(center.latitude * .pi / 180))) * 1.5
         return viewModel.trunkRouteLabels.filter { label in
@@ -558,36 +588,39 @@ struct TrackMapView: View {
         }
     }
 
+    /// Opacity for system-map subway polylines.
+    /// Full color in overview; dimmed to 8% when a route detail is open
+    /// so surrounding lines provide context without competing visually.
+    private var systemMapSubwayOpacity: Double {
+        viewModel.routeShape != nil ? 0.08 : 1.0
+    }
+
+    /// Opacity for system-map commuter rail polylines.
+    private var systemMapCommuterOpacity: Double {
+        viewModel.routeShape != nil ? 0.06 : 0.35
+    }
+
     @MapContentBuilder
     private var systemMapPolylines: some MapContent {
+        ForEach(viewModel.flattenedSubwayPolylines) { polyline in
+            MapPolyline(coordinates: polyline.coordinates)
+                .stroke(
+                    polyline.color.opacity(systemMapSubwayOpacity),
+                    style: Self.systemMapSubwayFillStyle)
+        }
+
+        ForEach(viewModel.flattenedCommuterRailPolylines) { polyline in
+            MapPolyline(coordinates: polyline.coordinates)
+                .stroke(
+                    polyline.color.opacity(systemMapCommuterOpacity),
+                    style: Self.systemMapCommuterFillStyle)
+        }
+
+        // Labels & stations: only in system-map mode (no route selected)
         if viewModel.routeShape == nil {
-            // ── Polylines: ALWAYS visible at every zoom level ──
-            // Single stroke per polyline — no white casing.
-            // Removing casing halves the MapPolyline overlay count,
-            // dramatically improving scroll/zoom responsiveness.
-            ForEach(viewModel.flattenedSubwayPolylines) { polyline in
-                MapPolyline(coordinates: polyline.coordinates)
-                    .stroke(polyline.color, style: systemMapSubwayFillStyle)
-            }
-
-            ForEach(viewModel.flattenedCommuterRailPolylines) { polyline in
-                MapPolyline(coordinates: polyline.coordinates)
-                    .stroke(
-                        polyline.color.opacity(0.35),
-                        style: StrokeStyle(
-                            lineWidth: max(systemMapSubwayLineWidth - 1, 1),
-                            lineCap: .round, lineJoin: .round)
-                    )
-            }
-
-            // ── Route bullet labels: visible at neighborhood zoom ──
-            // These are the colored circles with route letters (A C E, N Q R W)
-            // placed at intervals along the trunk polyline.
-            // Apple Maps shows these at medium zoom — close enough to read the
-            // tiny badges. Viewport-filtered to avoid off-screen annotation cost.
             if let distance = currentMapDistance,
                distance < AppSettings.shared.stationMaxZoomOutMeters * 0.16 {
-                ForEach(visibleRouteLabels) { label in
+                ForEach(_cachedVisibleLabels) { label in
                     Annotation("", coordinate: label.coordinate, anchor: .center) {
                         TrunkRouteLabelView(
                             routeIds: label.routeIds,
@@ -598,18 +631,11 @@ struct TrackMapView: View {
                 }
             }
 
-            // ── Stations: progressive zoom visibility (Apple Maps style) ──
-            // `visibleStations` handles viewport clipping AND importance tiers:
-            //   • > maxZoomOut: NO stations (just polylines)
-            //   • 30–100% of maxZoomOut: major hubs only (3+ color groups)
-            //   • 16–30% of maxZoomOut: + transfer stations (2+ groups)
-            //   • < 16% of maxZoomOut: all stops
-            // Station NAME labels only appear < 3.5 km (via `showStations`).
-            ForEach(visibleStations) { station in
+            ForEach(_cachedVisibleStations) { station in
                 Annotation(station.name, coordinate: station.coordinate) {
                     SubwayStationMarker(
                         station: station,
-                        cameraDistance: currentMapDistance
+                        zoomTier: _zoomTier
                     )
                 }
                 .annotationTitles(showStations ? .automatic : .hidden)

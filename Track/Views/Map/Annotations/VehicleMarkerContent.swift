@@ -36,6 +36,7 @@ struct VehicleMarkerContent: View {
             )
             .scaleEffect(isHighlighted ? 1.3 : 1.0)
             .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isHighlighted)
+            .drawingGroup()
             .onTapGesture { onTap?() }
     }
 }

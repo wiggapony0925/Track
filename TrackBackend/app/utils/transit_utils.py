@@ -80,9 +80,9 @@ def get_subway_color(line_id: str) -> str:
     is_subway_numbered = line_id in {"1", "2", "3", "4", "5", "5X", "6", "6X", "7", "7X"}
     
     if is_subway_numbered:
-        if letter in {"1", "2", "3"}: return "#EE352E" # Red
-        if letter in {"4", "5", "6"}: return "#00933C" # Green
-        return "#B933AD" # Purple (7)
+        if letter in {"1", "2", "3"}: return "#D82233" # Red
+        if letter in {"4", "5", "6"}: return "#009952" # Dark Green
+        return "#9A38A1" # Purple (7)
     
     # 2. Commuter Rail (LIRR & Metro-North)
     # Map Route IDs/Names to official colors
@@ -137,26 +137,28 @@ def get_subway_color(line_id: str) -> str:
     if any(k in line_id for k in {"LIRR", "MNR", "METRO-NORTH", "PATH", "AIRTRAIN"}):
         return "#0039A6" # Generic MTA Blue
     
-    if line_id in {"S", "GS", "FS", "SR", "SI", "H"}: 
-        return "#808183" # Dark Gray
+    if line_id in {"S", "GS", "FS", "SR", "H"}: 
+        return "#7C858C" # Grey
+    if line_id == "SI":
+        return "#008EB7" # Teal
 
     # 3. Lettered Families
     # We only match if it's a single letter or a known express variant
     is_valid_subway = len(line_id) == 1 or line_id.endswith("X")
     
     if not is_valid_subway:
-        return "#808183" # Fallback for buses/unknown
+        return "#7C858C" # Fallback for buses/unknown
 
-    if letter in {"A", "C", "E"}: return "#0039A6" # Blue
-    if letter in {"B", "D", "F", "M"} or line_id == "FX": return "#FF6319" # Orange
-    if letter in {"N", "Q", "R", "W"}: return "#FCCC0A" # Yellow
-    if letter in {"J", "Z"}: return "#996633" # Brown
+    if letter in {"A", "C", "E"}: return "#0062CF" # Blue
+    if letter in {"B", "D", "F", "M"} or line_id == "FX": return "#EB6800" # Orange
+    if letter in {"N", "Q", "R", "W"}: return "#F6BC26" # Yellow
+    if letter in {"J", "Z"}: return "#8E5C33" # Brown
     
     # 4. Individual Lines
-    if line_id == "L": return "#A7A9AC" # Gray (Canarsie)
-    if line_id == "G": return "#6CBE45" # Lime (Crosstown)
+    if line_id == "L": return "#7C858C" # Grey
+    if line_id == "G": return "#799534" # Light Green
     
-    return "#808183" # Fallback
+    return "#7C858C" # Fallback
 
 def get_all_subway_lines() -> list[str]:
     """Returns a clean list of all official subway lines for the system map."""

@@ -544,12 +544,20 @@ final class HomeViewModel {
     }
 
     // Route detail sheet
-    var selectedGroupedRoute: GroupedNearbyTransitResponse?
+    var selectedGroupedRoute: GroupedNearbyTransitResponse? {
+        didSet {
+            _filteredBusVehiclesCache = nil
+            _filteredTrainVehiclesCache = nil
+        }
+    }
     /// Cancelable task for polyline rebuild — cancelled when the user switches
     /// directions rapidly so only the final selection triggers a full rebuild.
     private var _polylineRebuildTask: Task<Void, Never>?
     var selectedDirectionIndex: Int = 0 {
         didSet {
+            // Invalidate vehicle filter caches when direction changes
+            _filteredBusVehiclesCache = nil
+            _filteredTrainVehiclesCache = nil
             // Cancel any in-flight rebuild from a previous tap so rapid direction
             // switching doesn't cascade into multiple simultaneous MapPolyline
             // teardown/rebuild cycles on MapKit's render thread.
@@ -638,7 +646,10 @@ final class HomeViewModel {
         }
     }
     var busVehicles: [BusVehicleResponse] = [] {
-        didSet { _busVehicleIndex = Dictionary(busVehicles.map { ($0.vehicleId, $0) }, uniquingKeysWith: { $1 }) }
+        didSet {
+            _busVehicleIndex = Dictionary(busVehicles.map { ($0.vehicleId, $0) }, uniquingKeysWith: { $1 })
+            _filteredBusVehiclesCache = nil  // invalidate cache
+        }
     }
     /// O(1) lookup by vehicleId — rebuilt automatically when busVehicles is set.
     private var _busVehicleIndex: [String: BusVehicleResponse] = [:]
@@ -647,6 +658,7 @@ final class HomeViewModel {
         didSet {
             _trainVehicleByTrip = Dictionary(trainVehicles.compactMap { v in v.tripId.map { ($0, v) } }, uniquingKeysWith: { $1 })
             _trainVehicleById = Dictionary(trainVehicles.map { ($0.id, $0) }, uniquingKeysWith: { $1 })
+            _filteredTrainVehiclesCache = nil  // invalidate cache
         }
     }
     /// O(1) lookup by tripId — rebuilt automatically when trainVehicles is set.
@@ -706,8 +718,11 @@ final class HomeViewModel {
             cachedInterpolationPolyline = []
             return
         }
-        let groupDirCount = selectedGroupedRoute?.directions.count ?? 0
-        let shouldFilter = !shape.directions.isEmpty && groupDirCount > 1
+        // Use per-direction polylines whenever the shape provides them.
+        // The old guard also required groupDirCount > 1, but that caused
+        // the top-level `polylines` (ALL directions combined) to render
+        // at full opacity — duplicating the same track with reversed geometry.
+        let shouldFilter = !shape.directions.isEmpty
 
         // 1) Decode active-direction segments.
         let activeRaw =
@@ -772,11 +787,12 @@ final class HomeViewModel {
             }
             // Unify inactive segments — same trunk-aware merge for trains
             // to avoid duplicate overlapping trunk lines showing through.
-            // Light RDP at ~9 m keeps curves smooth while trimming points.
+            // No extra RDP — the backend already simplifies, and a second
+            // pass shifts shared trunk geometry away from the active line.
+            // Same smoothing as active so shared corridors align exactly.
             let unifiedInactive = unifyTrainPolylines(inactive)
-            cachedInactivePolylines = unifiedInactive.map {
-                let simplified = simplifyPolyline($0, tolerance: 0.00008)
-                return smoothPolyline(simplified, segmentsPerCurve: 3)
+            cachedInactivePolylines = unifiedInactive.filter { $0.count >= 2 }.map {
+                smoothPolyline($0, segmentsPerCurve: 4)
             }
         } else {
             cachedInactivePolylines = []
@@ -786,8 +802,11 @@ final class HomeViewModel {
         // Uses direction-filtered segments only — falling back to ALL
         // directions would cause markers to interpolate along the wrong
         // direction's path, producing glitching on branching bus routes.
-        let combined = cachedRoutePolylines.flatMap { $0 }
-        cachedInterpolationPolyline = combined.count >= 2 ? combined : []
+        // mergeAdjacentPolylines joins segments whose endpoints are close,
+        // avoiding discontinuities that raw flatMap would create when
+        // independently-smoothed segments don't share exact endpoints.
+        let merged = mergeAdjacentPolylines(cachedRoutePolylines)
+        cachedInterpolationPolyline = merged.first(where: { $0.count >= 2 }) ?? []
     }
 
     /// Cached polyline split at the nearest stop: `ahead` keeps full color, `behind` fades.
@@ -879,15 +898,30 @@ final class HomeViewModel {
         }
     }
 
-    // MARK: - Direction-Filtered Vehicles
+    // MARK: - Direction-Filtered Vehicles (Cached)
+
+    /// Cached result of `filteredBusVehicles`. Invalidated when `busVehicles`,
+    /// `selectedDirectionIndex`, or `selectedGroupedRoute` changes.
+    private var _filteredBusVehiclesCache: [BusVehicleResponse]?
+    /// Cached result of `filteredTrainVehicles`. Invalidated on same triggers.
+    private var _filteredTrainVehiclesCache: [TrainVehicle]?
 
     /// Bus vehicles filtered to the currently selected direction.
+    /// Uses a cache that's invalidated when inputs change, avoiding
+    /// recomputation on every `@Observable` property access.
+    var filteredBusVehicles: [BusVehicleResponse] {
+        if let cached = _filteredBusVehiclesCache { return cached }
+        let result = _computeFilteredBusVehicles()
+        _filteredBusVehiclesCache = result
+        return result
+    }
+
     /// GTFS only defines `directionRef` 0/1, which breaks for routes with 3+ directions
     /// (branches, short-turns). Strategy:
     ///   1. Match by destination name against the selected direction's headsign/arrivals.
     ///   2. Fall back to `directionRef` == `selectedDirectionIndex` for simple 2-dir routes.
     ///   3. Show all vehicles if nothing matches (missing backend data).
-    var filteredBusVehicles: [BusVehicleResponse] {
+    private func _computeFilteredBusVehicles() -> [BusVehicleResponse] {
         // No route selected → no vehicles on map
         guard selectedRouteId != nil else { return [] }
         guard let group = selectedGroupedRoute,
@@ -936,10 +970,18 @@ final class HomeViewModel {
     }
 
     /// Train vehicles filtered to the currently selected direction.
+    /// Uses a cache that's invalidated when inputs change.
+    var filteredTrainVehicles: [TrainVehicle] {
+        if let cached = _filteredTrainVehiclesCache { return cached }
+        let result = _computeFilteredTrainVehicles()
+        _filteredTrainVehiclesCache = result
+        return result
+    }
+
     /// Subway directions use "N"/"S" (or destination names); we match by
     /// checking the direction string of the arrivals in the selected group,
     /// and also map compass codes to ensure GTFS-RT "N"/"S" values match.
-    var filteredTrainVehicles: [TrainVehicle] {
+    private func _computeFilteredTrainVehicles() -> [TrainVehicle] {
         // No route selected → no vehicles on map
         guard selectedRouteId != nil else { return [] }
         guard let group = selectedGroupedRoute,

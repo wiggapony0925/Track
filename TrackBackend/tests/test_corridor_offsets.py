@@ -130,11 +130,11 @@ class TestApplyCorridorOffsets:
         """Offsets should preserve route_id and color_hex."""
         coords = [(40.70, -73.90), (40.71, -73.91)]
         overlays = [
-            SubwayLineOverlay(route_id="G", color_hex="#6CBE45", polylines=[_encode_polyline(coords)]),
+            SubwayLineOverlay(route_id="G", color_hex="#799534", polylines=[_encode_polyline(coords)]),
         ]
         result = _apply_corridor_offsets(overlays)
         assert result[0].route_id == "G"
-        assert result[0].color_hex == "#6CBE45"
+        assert result[0].color_hex == "#799534"
 
     def test_short_polyline_handled(self):
         """Single-point polylines should pass through without error."""

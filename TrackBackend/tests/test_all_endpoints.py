@@ -796,7 +796,7 @@ class TestGroupArrivals:
                                  minutes_away=3, mode="subway"),
         ]
         groups = _group_arrivals(flat)
-        assert groups[0].color_hex == "#A7A9AC"
+        assert groups[0].color_hex == "#7C858C"
 
     def test_bus_gets_default_color(self):
         flat = [

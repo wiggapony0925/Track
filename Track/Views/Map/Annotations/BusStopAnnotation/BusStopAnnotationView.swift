@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// A minimalist, creative bus stop marker.
-struct BusStopAnnotation: View {
+struct BusStopAnnotation: View, Equatable {
     let stopName: String
     var isSelected: Bool = false
 
@@ -24,6 +24,7 @@ struct BusStopAnnotation: View {
         }
         .scaleEffect(isSelected ? 1.2 : 1.0)
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isSelected)
+        .drawingGroup()
         .accessibilityLabel("Bus stop: \(stopName)")
     }
 }
