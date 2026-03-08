@@ -5,9 +5,13 @@ Generate Static Bundle
 Generates a JSON bundle of static GTFS data for the iOS app.
 This bundle is included in the app for offline operation.
 
+After generating, run refine_polylines.py to snap coordinates to
+OpenStreetMap survey-grade track geometry and deduplicate branches.
+
 Usage:
     cd TrackBackend
     python scripts/generate_static_bundle.py
+    python scripts/refine_polylines.py          # OSM alignment + dedup
 """
 
 import sys
@@ -23,7 +27,7 @@ from app.services.gtfs_parser import generate_bundle
 def main():
     print("🚇 Generating static GTFS bundle for iOS...")
     
-    # Generate the bundle
+    # Generate the bundle from GTFS shapes
     bundle = generate_bundle()
     
     # Output paths - changed to Track/Data folder
@@ -42,7 +46,7 @@ def main():
     total_branches = sum(len(branches) for branches in routes.values())
     stats = bundle.get('stats', {})
     
-    print(f"✅ Bundle generated!")
+    print(f"\n✅ Bundle generated!")
     print(f"   Routes: {len(routes)}")
     print(f"   Branches: {total_branches} (multi-terminus routes like A train include all variants)")
     print(f"   Stops: {len(bundle.get('stops', []))}")
