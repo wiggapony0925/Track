@@ -22,6 +22,8 @@ final class MapSystemViewModel {
         let systemMap: [CachedTransitLine]
         let offsetSubwayLines: [OffsetSubwayLine]
         let flattenedSubway: [FlattenedMapPolyline]
+        let flattenedSubwayMid: [FlattenedMapPolyline]
+        let flattenedSubwayFar: [FlattenedMapPolyline]
         let flattenedCommuter: [FlattenedMapPolyline]
         let stations: [CachedSubwayStation]
         let routeLabels: [TrunkRouteLabel]
@@ -99,7 +101,11 @@ final class MapSystemViewModel {
 
     /// Pre-computed flattened subway polylines for the system map view.
     /// Uses stable IDs and avoids nested ForEach for optimal MapKit rendering.
-    var flattenedSubwayPolylines: [FlattenedMapPolyline] = []
+    /// Three tiers with increasing corridor offsets so parallel lines remain
+    /// visually separated at every zoom level — matching Apple Maps.
+    var flattenedSubwayPolylines: [FlattenedMapPolyline] = []     // near (veryClose/close)
+    var flattenedSubwayMidZoom: [FlattenedMapPolyline] = []       // medium zoom
+    var flattenedSubwayFarZoom: [FlattenedMapPolyline] = []       // far/distant zoom
 
     /// Pre-computed flattened commuter rail (LIRR/MNR) polylines for the system map view.
     var flattenedCommuterRailPolylines: [FlattenedMapPolyline] = []
@@ -124,6 +130,8 @@ final class MapSystemViewModel {
             cachedSystemMap = snapshot.systemMap
             cachedOffsetSubwayLines = snapshot.offsetSubwayLines
             flattenedSubwayPolylines = snapshot.flattenedSubway
+            flattenedSubwayMidZoom = snapshot.flattenedSubwayMid
+            flattenedSubwayFarZoom = snapshot.flattenedSubwayFar
             flattenedCommuterRailPolylines = snapshot.flattenedCommuter
             trunkRouteLabels = snapshot.routeLabels
             cachedStations = snapshot.stations
@@ -139,6 +147,8 @@ final class MapSystemViewModel {
                 systemMap: cachedSystemMap,
                 offsetSubwayLines: cachedOffsetSubwayLines,
                 flattenedSubway: flattenedSubwayPolylines,
+                flattenedSubwayMid: flattenedSubwayMidZoom,
+                flattenedSubwayFar: flattenedSubwayFarZoom,
                 flattenedCommuter: flattenedCommuterRailPolylines,
                 stations: cachedStations,
                 routeLabels: trunkRouteLabels
@@ -157,6 +167,8 @@ final class MapSystemViewModel {
             cachedSystemMap = snapshot.systemMap
             cachedOffsetSubwayLines = snapshot.offsetSubwayLines
             flattenedSubwayPolylines = snapshot.flattenedSubway
+            flattenedSubwayMidZoom = snapshot.flattenedSubwayMid
+            flattenedSubwayFarZoom = snapshot.flattenedSubwayFar
             flattenedCommuterRailPolylines = snapshot.flattenedCommuter
             trunkRouteLabels = snapshot.routeLabels
             AppLogger.shared.log("SYSTEM_MAP", message: "Reused shared map snapshot")
@@ -456,10 +468,11 @@ final class MapSystemViewModel {
             // Unify same-color segments into one trunk + branch stubs
             let unified = unifyTrainPolylines(pooledSegments)
 
-            // Simplify (but don't smooth yet — offsets need accurate geometry)
+            // Simplify then lightly smooth for curvy appearance
             let simplified = unified.compactMap { coords -> [CLLocationCoordinate2D]? in
                 guard coords.count >= 2 else { return nil }
-                return simplifyPolyline(coords, tolerance: tolerance)
+                let rdp = simplifyPolyline(coords, tolerance: tolerance)
+                return smoothPolyline(rdp, segmentsPerCurve: 3)
             }
 
             let activeRoutes = group.filter { routeId in
@@ -478,55 +491,76 @@ final class MapSystemViewModel {
             ))
         }
 
-        // ---- Phase 2: Cross-color corridor offsets ----
-        // Fan out different-color lines sharing the same physical corridor
-        // so they render as parallel stripes instead of stacking on top of
-        // each other (e.g. ACE blue + BDFM orange on 6th Ave).
+        // ---- Phase 2: Zoom-adaptive cross-color corridor offsets ----
+        //
+        // Different-color lines sharing a physical corridor (e.g. ACE blue +
+        // BDFM orange on 6th Ave) must render as parallel stripes, not stacked.
+        // A single fixed offset only works at one zoom level — it becomes
+        // sub-pixel when zoomed out.  Pre-compute 3 tiers with increasing
+        // spread so the view can swap sets when the camera distance changes.
+        //
+        // Tier offsets (perpendicular per-lane spacing):
+        //   near  (< 3.5 km camera):  0.0004° ≈  34 m — subtle at street level
+        //   mid   (3.5–8 km):         0.0012° ≈ 101 m — visible at neighborhood
+        //   far   (> 8 km):           0.005°  ≈ 420 m — visible at full overview
+
+        // Build the grouped input once (same for all tiers).
         var allGroupedPolylines: [(groupIndex: Int, coordinates: [CLLocationCoordinate2D])] = []
-        var polylineMapping: [(resultIndex: Int, branchIndex: Int)] = []
+        struct PolylineOrigin { let resultIndex: Int; let branchIndex: Int }
+        var polylineMapping: [PolylineOrigin] = []
 
         for (resultIndex, groupResult) in colorGroupResults.enumerated() {
             for (branchIndex, coords) in groupResult.polylines.enumerated() {
                 allGroupedPolylines.append((groupIndex: groupResult.groupIndex, coordinates: coords))
-                polylineMapping.append((resultIndex: resultIndex, branchIndex: branchIndex))
+                polylineMapping.append(PolylineOrigin(resultIndex: resultIndex, branchIndex: branchIndex))
             }
         }
 
-        let offsetPolylines = applyCorridorOffsets(allGroupedPolylines)
-
-        for (i, offset) in offsetPolylines.enumerated() {
-            let mapping = polylineMapping[i]
-            colorGroupResults[mapping.resultIndex].polylines[mapping.branchIndex] = offset.coordinates
-        }
+        let offsetTiers: [(suffix: String, degrees: Double)] = [
+            ("near", 0.0004),
+            ("mid",  0.0012),
+            ("far",  0.005),
+        ]
 
         // ---- Phase 3: Flatten into final polylines ----
-        // NO smoothing on system map — at overview zoom, RDP-simplified
-        // lines are already visually smooth.  Smoothing AFTER corridor
-        // offsets would distort the parallel-lane geometry and create
-        // dense point clusters that trigger MapKit's triangulation crash
-        // ("iterating over too many half edges").  Route detail views
-        // still use Catmull-Rom smoothing where it matters.
-        var subwayFlat: [FlattenedMapPolyline] = []
-        var routeLabels: [TrunkRouteLabel] = []
+        // Catmull-Rom smoothing is now applied after RDP simplification
+        // in Phase 1 (segmentsPerCurve: 3) for curvy, natural appearance
+        // at all zoom levels.  Route detail views use segmentsPerCurve: 4.
+        var subwayByTier: [[FlattenedMapPolyline]] = []
 
-        for groupResult in colorGroupResults {
-            let groupKey = groupResult.routeIds.joined(separator: "-")
+        for (suffix, offsetDeg) in offsetTiers {
+            let offsetResult = applyCorridorOffsets(allGroupedPolylines, offsetDegrees: offsetDeg)
 
-            for (branchIdx, coords) in groupResult.polylines.enumerated() {
-                guard coords.count >= 2 else { continue }
-                subwayFlat.append(FlattenedMapPolyline(
-                    id: "trunk_\(groupKey)_\(branchIdx)",
-                    coordinates: coords,
+            var flat: [FlattenedMapPolyline] = []
+            for (i, offset) in offsetResult.enumerated() {
+                let origin = polylineMapping[i]
+                let groupResult = colorGroupResults[origin.resultIndex]
+                let groupKey = groupResult.routeIds.joined(separator: "-")
+                guard offset.coordinates.count >= 2 else { continue }
+                flat.append(FlattenedMapPolyline(
+                    id: "trunk_\(groupKey)_\(origin.branchIndex)_\(suffix)",
+                    coordinates: offset.coordinates,
                     color: groupResult.color,
                     lineWidth: 3
                 ))
+            }
+            subwayByTier.append(flat)
+        }
 
-                // Generate route labels along this polyline.
-                // Place labels every ~60 points (roughly every 1–2 km
-                // after simplification), plus at the terminal.
+        flattenedSubwayPolylines = subwayByTier[0]  // near
+        flattenedSubwayMidZoom = subwayByTier[1]     // mid
+        flattenedSubwayFarZoom = subwayByTier[2]     // far
+
+        // Route labels — use base (non-offset) coordinates so they sit
+        // centered on the actual track regardless of offset tier.
+        var routeLabels: [TrunkRouteLabel] = []
+        for groupResult in colorGroupResults {
+            let groupKey = groupResult.routeIds.joined(separator: "-")
+            for (branchIdx, coords) in groupResult.polylines.enumerated() {
+                guard coords.count >= 2 else { continue }
                 let labelInterval = 60
                 var labelIdx = 0
-                var ptIdx = labelInterval / 2  // start midway
+                var ptIdx = labelInterval / 2
                 while ptIdx < coords.count {
                     routeLabels.append(TrunkRouteLabel(
                         id: "label_\(groupKey)_\(branchIdx)_\(labelIdx)",
@@ -537,7 +571,6 @@ final class MapSystemViewModel {
                     labelIdx += 1
                     ptIdx += labelInterval
                 }
-                // Terminal label at the end of each branch
                 if let lastCoord = coords.last {
                     routeLabels.append(TrunkRouteLabel(
                         id: "label_\(groupKey)_\(branchIdx)_end",
@@ -548,7 +581,6 @@ final class MapSystemViewModel {
                 }
             }
         }
-        flattenedSubwayPolylines = subwayFlat
         trunkRouteLabels = routeLabels
 
         // ---- Commuter rail (LIRR / MNR — same unify + simplify, NO smooth) ----
@@ -572,9 +604,10 @@ final class MapSystemViewModel {
         }
         flattenedCommuterRailPolylines = commuterFlat
 
-        let totalPolylines = subwayFlat.count + commuterFlat.count
+        let subwayNearCount = flattenedSubwayPolylines.count
+        let totalPolylines = subwayNearCount + commuterFlat.count
         let simplifiedPoints =
-            subwayFlat.reduce(0) { $0 + $1.coordinates.count }
+            flattenedSubwayPolylines.reduce(0) { $0 + $1.coordinates.count }
             + commuterFlat.reduce(0) { $0 + $1.coordinates.count }
         let originalPoints = originalSubwayPoints + originalCommuterPoints
         let reductionPercent = originalPoints > 0
@@ -583,7 +616,7 @@ final class MapSystemViewModel {
         AppLogger.shared.log(
             "SYSTEM_MAP",
             message:
-                "Flattened \(totalPolylines) polylines (\(subwayFlat.count) subway, \(commuterFlat.count) commuter rail) — \(originalPoints) → \(simplifiedPoints) points (simplified \(reductionPercent)%)"
+                "Flattened \(totalPolylines) polylines (\(subwayNearCount) subway × 3 zoom tiers, \(commuterFlat.count) commuter rail) — \(originalPoints) → \(simplifiedPoints) points (simplified \(reductionPercent)%)"
         )
     }
 

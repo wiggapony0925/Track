@@ -615,9 +615,23 @@ struct TrackMapView: View {
         viewModel.routeShape != nil ? 0.06 : 0.35
     }
 
+    /// Subway polylines for the current zoom tier.
+    /// Swaps between pre-computed offset sets so parallel color groups
+    /// stay visually separated at every zoom level.
+    private var currentSubwayPolylines: [HomeViewModel.FlattenedMapPolyline] {
+        switch _zoomTier {
+        case .veryClose, .close:
+            return viewModel.flattenedSubwayPolylines      // near offset
+        case .medium:
+            return viewModel.flattenedSubwayMidZoom        // mid offset
+        case .far, .distant:
+            return viewModel.flattenedSubwayFarZoom        // far offset
+        }
+    }
+
     @MapContentBuilder
     private var systemMapPolylines: some MapContent {
-        ForEach(viewModel.flattenedSubwayPolylines) { polyline in
+        ForEach(currentSubwayPolylines) { polyline in
             MapPolyline(coordinates: polyline.coordinates)
                 .stroke(
                     polyline.color.opacity(systemMapSubwayOpacity),

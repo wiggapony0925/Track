@@ -1110,6 +1110,12 @@ final class HomeViewModel {
     var flattenedSubwayPolylines: [MapSystemViewModel.FlattenedMapPolyline] {
         mapSystem.flattenedSubwayPolylines
     }
+    var flattenedSubwayMidZoom: [MapSystemViewModel.FlattenedMapPolyline] {
+        mapSystem.flattenedSubwayMidZoom
+    }
+    var flattenedSubwayFarZoom: [MapSystemViewModel.FlattenedMapPolyline] {
+        mapSystem.flattenedSubwayFarZoom
+    }
     var flattenedCommuterRailPolylines: [MapSystemViewModel.FlattenedMapPolyline] {
         mapSystem.flattenedCommuterRailPolylines
     }
