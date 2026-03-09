@@ -184,13 +184,15 @@ class SyncManager: ObservableObject {
         if let unit = settings.distanceUnit {
             store.set(unit, forKey: "distance_unit")
         }
-        if let v = settings.nearYouRadiusMeters {
+        // Guard against 0.0 values — a radius of 0 meters is never valid and
+        // indicates the cloud row was poisoned by a previous push bug.
+        if let v = settings.nearYouRadiusMeters, v > 0 {
             store.set(v, forKey: "near_you_radius_meters")
         }
-        if let v = settings.fartherAwayRadiusMeters {
+        if let v = settings.fartherAwayRadiusMeters, v > 0 {
             store.set(v, forKey: "farther_away_radius_meters")
         }
-        if let v = settings.muchFartherAwayRadiusMeters {
+        if let v = settings.muchFartherAwayRadiusMeters, v > 0 {
             store.set(v, forKey: "much_farther_away_radius_meters")
         }
         if let v = settings.showSystemMap {
@@ -235,15 +237,19 @@ class SyncManager: ObservableObject {
         let devUseLocalhostValue = false
         let devCustomIpValue = ""
         
+        // Use AppSettings computed properties — they fall back to settings.json
+        // defaults when the key hasn't been explicitly set in UserDefaults.
+        // Raw store.double(forKey:) returns 0.0 for absent keys, which would
+        // poison the cloud row and propagate 0-meter radii to all devices.
         let settings = CloudUserSettings(
             userId: userId,
             preferredTheme: store.string(forKey: "appTheme") ?? "system",
             distanceUnit: store.string(forKey: "distance_unit") ?? "mi",
-            nearYouRadiusMeters: store.double(forKey: "near_you_radius_meters"),
-            fartherAwayRadiusMeters: store.double(forKey: "farther_away_radius_meters"),
-            muchFartherAwayRadiusMeters: store.double(forKey: "much_farther_away_radius_meters"),
+            nearYouRadiusMeters: AppSettings.shared.nearYouRadiusMeters,
+            fartherAwayRadiusMeters: AppSettings.shared.fartherAwayRadiusMeters,
+            muchFartherAwayRadiusMeters: AppSettings.shared.muchFartherAwayRadiusMeters,
             showSystemMap: store.object(forKey: "show_system_map") as? Bool ?? true,
-            subwayLineOffsetMeters: store.double(forKey: "subway_line_offset_meters"),
+            subwayLineOffsetMeters: AppSettings.shared.subwayLineOffsetMeters,
             hapticsEnabled: store.object(forKey: "haptics_enabled") as? Bool ?? true,
             autoRefreshEnabled: store.object(forKey: "auto_refresh_enabled") as? Bool ?? true,
             notificationsEnabled: true,

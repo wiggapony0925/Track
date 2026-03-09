@@ -193,6 +193,19 @@ struct AppSettings {
     // MARK: - Init
 
     private init() {
+        // One-time cleanup: remove poisoned 0.0 radius values written by
+        // the old pushUserSettings() bug (store.double returns 0 for absent
+        // keys, which got synced to cloud and pulled back as explicit 0.0).
+        let store = UserDefaults.standard
+        for key in ["near_you_radius_meters", "farther_away_radius_meters", "much_farther_away_radius_meters"] {
+            if store.object(forKey: key) != nil && store.double(forKey: key) <= 0 {
+                store.removeObject(forKey: key)
+                #if DEBUG
+                print("[AppSettings] Removed poisoned 0.0 value for \(key)")
+                #endif
+            }
+        }
+
         guard let url = Bundle.main.url(forResource: "settings", withExtension: "json"),
               let data = try? Data(contentsOf: url),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
