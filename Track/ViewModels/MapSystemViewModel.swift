@@ -22,10 +22,9 @@ final class MapSystemViewModel {
         let systemMap: [CachedTransitLine]
         let offsetSubwayLines: [OffsetSubwayLine]
         let flattenedSubway: [FlattenedMapPolyline]
-        let flattenedSubwayMid: [FlattenedMapPolyline]
-        let flattenedSubwayFar: [FlattenedMapPolyline]
         let flattenedCommuter: [FlattenedMapPolyline]
         let stations: [CachedSubwayStation]
+        let consolidatedStations: [ConsolidatedStation]
         let routeLabels: [TrunkRouteLabel]
     }
 
@@ -66,6 +65,13 @@ final class MapSystemViewModel {
         let coordinates: [CLLocationCoordinate2D]
         let color: Color
         let lineWidth: CGFloat
+        /// Route IDs in this polyline's trunk group (e.g. ["7"] or ["N","W"]).
+        /// Used for alert-driven structure overrides at render time.
+        let routeIds: [String]
+        /// Whether the geographic midpoint of this branch falls in an
+        /// elevated segment (inferred from route + geography).  Used
+        /// for z-ordering: elevated polylines render above subway ones.
+        let isElevated: Bool
     }
 
     // Full subway station list with served lines
@@ -94,6 +100,33 @@ final class MapSystemViewModel {
         }
     }
 
+    /// A group of nearby stations consolidated into a single map marker.
+    ///
+    /// Stations are grouped by **complex ID** (from `StationComplexLookup`)
+    /// then sub-grouped by **physical structure** (subway vs. elevated).
+    /// This means 74 St–Roosevelt Ave produces TWO consolidated stations:
+    ///   - 7 train (elevated) → one capsule
+    ///   - E/F/M/R (subway)   → one capsule
+    /// Both share the same `complexID`, so the renderer can draw a transfer
+    /// indicator connecting them.
+    struct ConsolidatedStation: Identifiable, Equatable {
+        let id: String
+        let name: String
+        let coordinate: CLLocationCoordinate2D
+        let routes: [String]           // All route IDs merged from the group
+        let colorGroupCount: Int       // Distinct MTA trunk-color groups
+        let trackBearing: Double       // Degrees from north (0-180), track direction
+        let structure: StationStructure // Physical structure (subway, elevated, etc.)
+        let complexID: Int             // MTA station complex group
+        /// All GTFS stop IDs that were merged into this consolidated marker.
+        /// Used to match live arrival `stopId` → station for pulse animation.
+        let sourceStopIDs: Set<String>
+
+        static func == (lhs: ConsolidatedStation, rhs: ConsolidatedStation) -> Bool {
+            lhs.id == rhs.id && lhs.routes == rhs.routes
+        }
+    }
+
     // MARK: - Properties
 
     var cachedSystemMap: [CachedTransitLine] = []
@@ -101,19 +134,74 @@ final class MapSystemViewModel {
 
     /// Pre-computed flattened subway polylines for the system map view.
     /// Uses stable IDs and avoids nested ForEach for optimal MapKit rendering.
-    /// Three tiers with increasing corridor offsets so parallel lines remain
-    /// visually separated at every zoom level — matching Apple Maps.
-    var flattenedSubwayPolylines: [FlattenedMapPolyline] = []     // near (veryClose/close)
-    var flattenedSubwayMidZoom: [FlattenedMapPolyline] = []       // medium zoom
-    var flattenedSubwayFarZoom: [FlattenedMapPolyline] = []       // far/distant zoom
+    /// A single fine-detail geometry set is used at ALL zoom levels.
+    /// Zoom adaptation is handled purely by rendering properties (line width,
+    /// opacity) — matching Apple Maps, which never swaps geometry and
+    /// relies on the small corridor offset becoming sub-pixel at far zoom.
+    var flattenedSubwayPolylines: [FlattenedMapPolyline] = []
 
     /// Pre-computed flattened commuter rail (LIRR/MNR) polylines for the system map view.
     var flattenedCommuterRailPolylines: [FlattenedMapPolyline] = []
+
+    /// Route IDs whose service is currently rerouted or suspended,
+    /// according to live MTA alerts.  When a normally-elevated route
+    /// appears in this set, its polylines are demoted to subway-level
+    /// rendering (no casing, drawn below other elevated lines).
+    ///
+    /// Updated by `HomeViewModel.refreshAlerts()` every 30 s.
+    /// The set auto-clears when alerts expire (backend filters by
+    /// `active_period`).
+    var reroutedRouteIDs: Set<String> = []
+
+    /// Station IDs (GTFS stop_id) that have at least one live arrival
+    /// within 1 minute.  Drives the "pulse" animation on station capsules.
+    ///
+    /// Updated by `HomeViewModel` after each nearby-transit refresh.
+    /// Map-keyed as `stopId → routeId` so the pulse ring can use the
+    /// approaching train's route color.
+    var imminentArrivals: [String: String] = [:]  // stopId → routeId
+
+    /// Scans grouped subway arrivals for stops with ≤ 1 minute arrival.
+    /// Only live (non-placeholder, non-cancelled) arrivals qualify.
+    func updateImminentStations(
+        from groups: [GroupedNearbyTransitResponse]
+    ) {
+        var result: [String: String] = [:]  // stopId → routeId
+        for group in groups {
+            guard group.mode == "subway" else { continue }
+            for direction in group.directions {
+                for arrival in direction.arrivals {
+                    guard let stopId = arrival.stopId,
+                          !arrival.isPlaceholder,
+                          !arrival.isCancelled,
+                          arrival.minutesAway <= 1
+                    else { continue }
+                    // First arrival wins (soonest route color)
+                    if result[stopId] == nil {
+                        result[stopId] = group.routeId
+                    }
+                }
+            }
+        }
+        imminentArrivals = result
+    }
+
+    /// Scans alerts for reroute/suspension indicators and updates
+    /// `reroutedRouteIDs`.  Only subway-mode alerts with Mercury
+    /// `alert_type` containing "Reroute" or "Suspended" qualify —
+    /// normal "Delays" alerts do NOT affect structure rendering.
+    func updateReroutedRoutes(from alerts: [TransitAlert]) {
+        reroutedRouteIDs = StationComplexLookup.reroutedRouteIDs(from: alerts)
+    }
 
     /// Route labels placed along trunk polylines (Apple Maps–style bullets).
     var trunkRouteLabels: [TrunkRouteLabel] = []
 
     var cachedStations: [CachedSubwayStation] = []
+
+    /// Stations consolidated by proximity (20 m radius) with merged routes
+    /// and track-aligned bearing.  Used by the map view for capsule markers.
+    var consolidatedStations: [ConsolidatedStation] = []
 
     /// Guards against redundant network fetches when the ViewModel is
     /// re-created (e.g. HomeView structural identity changes).
@@ -130,11 +218,10 @@ final class MapSystemViewModel {
             cachedSystemMap = snapshot.systemMap
             cachedOffsetSubwayLines = snapshot.offsetSubwayLines
             flattenedSubwayPolylines = snapshot.flattenedSubway
-            flattenedSubwayMidZoom = snapshot.flattenedSubwayMid
-            flattenedSubwayFarZoom = snapshot.flattenedSubwayFar
             flattenedCommuterRailPolylines = snapshot.flattenedCommuter
             trunkRouteLabels = snapshot.routeLabels
             cachedStations = snapshot.stations
+            consolidatedStations = snapshot.consolidatedStations
             return
         }
 
@@ -147,10 +234,9 @@ final class MapSystemViewModel {
                 systemMap: cachedSystemMap,
                 offsetSubwayLines: cachedOffsetSubwayLines,
                 flattenedSubway: flattenedSubwayPolylines,
-                flattenedSubwayMid: flattenedSubwayMidZoom,
-                flattenedSubwayFar: flattenedSubwayFarZoom,
                 flattenedCommuter: flattenedCommuterRailPolylines,
                 stations: cachedStations,
+                consolidatedStations: consolidatedStations,
                 routeLabels: trunkRouteLabels
             )
         }
@@ -167,10 +253,9 @@ final class MapSystemViewModel {
             cachedSystemMap = snapshot.systemMap
             cachedOffsetSubwayLines = snapshot.offsetSubwayLines
             flattenedSubwayPolylines = snapshot.flattenedSubway
-            flattenedSubwayMidZoom = snapshot.flattenedSubwayMid
-            flattenedSubwayFarZoom = snapshot.flattenedSubwayFar
             flattenedCommuterRailPolylines = snapshot.flattenedCommuter
             trunkRouteLabels = snapshot.routeLabels
+            consolidatedStations = snapshot.consolidatedStations
             AppLogger.shared.log("SYSTEM_MAP", message: "Reused shared map snapshot")
             return
         }
@@ -465,15 +550,11 @@ final class MapSystemViewModel {
 
             let groupColor = SubwayRoutesData.color(for: group[0])
 
-            // Unify same-color segments into one trunk + branch stubs
+            // Unify same-color segments into one trunk + branch stubs.
+            // Simplification and smoothing are deferred to Phase 2 so each
+            // zoom tier gets its own appropriate level of detail.
             let unified = unifyTrainPolylines(pooledSegments)
-
-            // Simplify then lightly smooth for curvy appearance
-            let simplified = unified.compactMap { coords -> [CLLocationCoordinate2D]? in
-                guard coords.count >= 2 else { return nil }
-                let rdp = simplifyPolyline(coords, tolerance: tolerance)
-                return smoothPolyline(rdp, segmentsPerCurve: 3)
-            }
+                .filter { $0.count >= 2 }
 
             let activeRoutes = group.filter { routeId in
                 linesByRouteId[routeId.uppercased()] != nil || linesByRouteId[routeId] != nil
@@ -487,69 +568,75 @@ final class MapSystemViewModel {
                 groupIndex: groupIndex,
                 routeIds: activeRoutes,
                 color: groupColor,
-                polylines: simplified
+                polylines: unified
             ))
         }
 
-        // ---- Phase 2: Zoom-adaptive cross-color corridor offsets ----
+        // ---- Phase 2+3: Simplification + corridor offsets + flatten ----
         //
-        // Different-color lines sharing a physical corridor (e.g. ACE blue +
-        // BDFM orange on 6th Ave) must render as parallel stripes, not stacked.
-        // A single fixed offset only works at one zoom level — it becomes
-        // sub-pixel when zoomed out.  Pre-compute 3 tiers with increasing
-        // spread so the view can swap sets when the camera distance changes.
+        // A SINGLE fine-detail geometry set is used for ALL zoom levels.
+        // This matches Apple Maps behaviour: the polylines never change
+        // shape when zooming — only their rendered line-width thins out.
+        // The small corridor offset (~10 m) becomes sub-pixel at city
+        // overview, so parallel lines naturally converge into one.
         //
-        // Tier offsets (perpendicular per-lane spacing):
-        //   near  (< 3.5 km camera):  0.0004° ≈  34 m — subtle at street level
-        //   mid   (3.5–8 km):         0.0012° ≈ 101 m — visible at neighborhood
-        //   far   (> 8 km):           0.005°  ≈ 420 m — visible at full overview
+        // Parameters:
+        //   RDP tolerance 0.00006° (~7 m)  — preserves fine detail
+        //   Catmull-Rom 3 segments         — smooth curves
+        //   Corridor offset 0.00012°       — ~10 m street-level separation
+        //   Smooth window 12               — gradual offset transitions
 
-        // Build the grouped input once (same for all tiers).
-        var allGroupedPolylines: [(groupIndex: Int, coordinates: [CLLocationCoordinate2D])] = []
         struct PolylineOrigin { let resultIndex: Int; let branchIndex: Int }
-        var polylineMapping: [PolylineOrigin] = []
+
+        var grouped: [(groupIndex: Int, coordinates: [CLLocationCoordinate2D])] = []
+        var mapping: [PolylineOrigin] = []
 
         for (resultIndex, groupResult) in colorGroupResults.enumerated() {
             for (branchIndex, coords) in groupResult.polylines.enumerated() {
-                allGroupedPolylines.append((groupIndex: groupResult.groupIndex, coordinates: coords))
-                polylineMapping.append(PolylineOrigin(resultIndex: resultIndex, branchIndex: branchIndex))
+                guard coords.count >= 2 else { continue }
+                let rdp = simplifyPolyline(coords, tolerance: 0.00006)
+                let smoothed = smoothPolyline(rdp, segmentsPerCurve: 3)
+                guard smoothed.count >= 2 else { continue }
+                grouped.append((groupIndex: groupResult.groupIndex, coordinates: smoothed))
+                mapping.append(PolylineOrigin(resultIndex: resultIndex, branchIndex: branchIndex))
             }
         }
 
-        let offsetTiers: [(suffix: String, degrees: Double)] = [
-            ("near", 0.0004),
-            ("mid",  0.0012),
-            ("far",  0.005),
-        ]
+        let offsetResult = applyCorridorOffsets(
+            grouped,
+            laneSpacingDegrees: 0.0003,
+            smoothWindow: 16
+        )
 
-        // ---- Phase 3: Flatten into final polylines ----
-        // Catmull-Rom smoothing is now applied after RDP simplification
-        // in Phase 1 (segmentsPerCurve: 3) for curvy, natural appearance
-        // at all zoom levels.  Route detail views use segmentsPerCurve: 4.
-        var subwayByTier: [[FlattenedMapPolyline]] = []
+        var flat: [FlattenedMapPolyline] = []
+        for (i, offset) in offsetResult.enumerated() {
+            let origin = mapping[i]
+            let groupResult = colorGroupResults[origin.resultIndex]
+            let groupKey = groupResult.routeIds.joined(separator: "-")
+            guard offset.coordinates.count >= 2 else { continue }
 
-        for (suffix, offsetDeg) in offsetTiers {
-            let offsetResult = applyCorridorOffsets(allGroupedPolylines, offsetDegrees: offsetDeg)
+            // Determine z-level: use the geographic midpoint of this
+            // specific branch + its route IDs to infer whether this
+            // segment runs on elevated infrastructure.
+            let midIdx = offset.coordinates.count / 2
+            let midCoord = offset.coordinates[midIdx]
+            let branchStructure = StationComplexLookup.inferStructure(
+                routes: groupResult.routeIds,
+                lat: midCoord.latitude,
+                lon: midCoord.longitude
+            )
 
-            var flat: [FlattenedMapPolyline] = []
-            for (i, offset) in offsetResult.enumerated() {
-                let origin = polylineMapping[i]
-                let groupResult = colorGroupResults[origin.resultIndex]
-                let groupKey = groupResult.routeIds.joined(separator: "-")
-                guard offset.coordinates.count >= 2 else { continue }
-                flat.append(FlattenedMapPolyline(
-                    id: "trunk_\(groupKey)_\(origin.branchIndex)_\(suffix)",
-                    coordinates: offset.coordinates,
-                    color: groupResult.color,
-                    lineWidth: 3
-                ))
-            }
-            subwayByTier.append(flat)
+            flat.append(FlattenedMapPolyline(
+                id: "trunk_\(groupKey)_\(origin.branchIndex)",
+                coordinates: offset.coordinates,
+                color: groupResult.color,
+                lineWidth: 3,
+                routeIds: groupResult.routeIds,
+                isElevated: branchStructure == .elevated || branchStructure == .viaduct
+            ))
         }
 
-        flattenedSubwayPolylines = subwayByTier[0]  // near
-        flattenedSubwayMidZoom = subwayByTier[1]     // mid
-        flattenedSubwayFarZoom = subwayByTier[2]     // far
+        flattenedSubwayPolylines = flat
 
         // Route labels — use base (non-offset) coordinates so they sit
         // centered on the actual track regardless of offset tier.
@@ -598,7 +685,7 @@ final class MapSystemViewModel {
                         id: "\(line.id)_\(branchIndex)",
                         coordinates: simplified,
                         color: line.color,
-                        lineWidth: 2
+                        lineWidth: 2,                        routeIds: [line.id],                        isElevated: false
                     ))
             }
         }
@@ -616,7 +703,7 @@ final class MapSystemViewModel {
         AppLogger.shared.log(
             "SYSTEM_MAP",
             message:
-                "Flattened \(totalPolylines) polylines (\(subwayNearCount) subway × 3 zoom tiers, \(commuterFlat.count) commuter rail) — \(originalPoints) → \(simplifiedPoints) points (simplified \(reductionPercent)%)"
+                "Flattened \(totalPolylines) polylines (\(subwayNearCount) subway, \(commuterFlat.count) commuter rail) — \(originalPoints) → \(simplifiedPoints) points (simplified \(reductionPercent)%)"
         )
     }
 
@@ -629,6 +716,7 @@ final class MapSystemViewModel {
 
         if let snapshot = Self.sharedSnapshot, !snapshot.stations.isEmpty {
             cachedStations = snapshot.stations
+            consolidatedStations = snapshot.consolidatedStations
             AppLogger.shared.log("SYSTEM_MAP", message: "Reused shared station snapshot")
             return
         }
@@ -651,6 +739,7 @@ final class MapSystemViewModel {
             }
             await MainActor.run {
                 self.cachedStations = stations
+                self.consolidateStations()
             }
 
             // Cache stations for offline use
@@ -683,6 +772,228 @@ final class MapSystemViewModel {
             )
         }
         self.cachedStations = offlineStations
+        self.consolidateStations()
         AppLogger.shared.log("OFFLINE", message: "Loaded \(offlineStations.count) offline stations")
+    }
+
+    // MARK: - Station Consolidation
+
+    /// Maps a route ID to its MTA trunk-color group index.
+    private static func trunkGroupIndex(for routeId: String) -> Int {
+        let r = routeId.uppercased()
+        switch r {
+        case "1", "2", "3":                return 0
+        case "4", "5", "6", "6X":          return 1
+        case "7", "7X":                    return 2
+        case "A", "C", "E":               return 3
+        case "B", "D", "F", "FX", "M":    return 4
+        case "G":                          return 5
+        case "J", "Z":                    return 6
+        case "L":                          return 7
+        case "N", "Q", "R", "W":          return 8
+        case "S":                          return 9
+        case "SI":                         return 10
+        default:                           return 99
+        }
+    }
+
+    /// Groups stations by **complex ID + structure type** (hierarchical
+    /// clustering), then falls back to proximity-based merge (20 m) for
+    /// stations not in the lookup table.
+    ///
+    /// This produces separate capsule annotations for platforms on different
+    /// physical levels (e.g., elevated 7 vs underground E/F/M/R at 74 St),
+    /// while still merging co-located same-level stops into single capsules.
+    ///
+    /// Stations that share a `complexID` but have different `structure`
+    /// values produce linked markers — the renderer can draw a transfer
+    /// indicator between them.
+    private func consolidateStations() {
+        let stations = cachedStations
+        guard !stations.isEmpty else { return }
+
+        // ── Phase 1: Assign each station a (complexID, structure) key ──
+        //
+        // Stations in StationComplexLookup get their curated complex/structure.
+        // Others get a hash-derived unique complex ID + default .subway.
+        struct GroupKey: Hashable {
+            let complexID: Int
+            let structure: StationStructure
+        }
+
+        var keyForStation: [GroupKey] = []
+        for station in stations {
+            let entry = StationComplexLookup.entry(
+                for: station.id,
+                routes: station.routes,
+                lat: station.coordinate.latitude,
+                lon: station.coordinate.longitude
+            )
+            keyForStation.append(GroupKey(complexID: entry.complexID, structure: entry.structure))
+        }
+
+        // ── Phase 2: Proximity merge within same-structure stations ──
+        //
+        // For stations NOT in the curated lookup (hash-derived complex IDs),
+        // merge co-located same-structure stops within 20 m — same as before.
+        // This catches duplicate stops from the API that aren't in the table.
+        let mergeRadiusDeg = 0.00024  // ~20 m at NYC longitude
+        let mergeRadiusSq = mergeRadiusDeg * mergeRadiusDeg
+
+        var parent = Array(0..<stations.count)
+        func find(_ x: Int) -> Int {
+            var x = x
+            while parent[x] != x {
+                parent[x] = parent[parent[x]]
+                x = parent[x]
+            }
+            return x
+        }
+        func union(_ a: Int, _ b: Int) {
+            let ra = find(a), rb = find(b)
+            if ra != rb { parent[ra] = rb }
+        }
+
+        // Merge stations that either:
+        //   (a) share a curated complexID + structure, OR
+        //   (b) are within 20 m AND have the same structure type
+        for i in 0..<stations.count {
+            for j in (i + 1)..<stations.count {
+                let ki = keyForStation[i], kj = keyForStation[j]
+
+                // Same curated complex + same structure → always merge
+                if ki.complexID == kj.complexID && ki.structure == kj.structure {
+                    union(i, j)
+                    continue
+                }
+
+                // Only proximity-merge if same structure type
+                guard ki.structure == kj.structure else { continue }
+
+                let dx = stations[i].coordinate.longitude - stations[j].coordinate.longitude
+                let dy = stations[i].coordinate.latitude - stations[j].coordinate.latitude
+                if dx * dx + dy * dy <= mergeRadiusSq {
+                    union(i, j)
+                }
+            }
+        }
+
+        // Collect groups
+        var groups: [Int: [Int]] = [:]
+        for i in 0..<stations.count {
+            groups[find(i), default: []].append(i)
+        }
+
+        // ── Phase 3: Build spatial index of polyline tangents for bearing ──
+        let cellSize = 0.001
+        var cellTangents: [Int64: [(Double, Double)]] = [:]
+
+        func tangentCellKey(_ lat: Double, _ lon: Double) -> Int64 {
+            let gx = Int32(lat / cellSize)
+            let gy = Int32(lon / cellSize)
+            return (Int64(gx) << 32) | Int64(gy & 0x7FFF_FFFF)
+        }
+
+        for line in cachedOffsetSubwayLines {
+            for branch in line.coordinates {
+                for i in 0..<(branch.count - 1) {
+                    let a = branch[i], b = branch[i + 1]
+                    let dx = b.longitude - a.longitude
+                    let dy = b.latitude - a.latitude
+                    let len = sqrt(dx * dx + dy * dy)
+                    guard len > 1e-10 else { continue }
+                    let ux = dx / len, uy = dy / len
+                    let keyA = tangentCellKey(a.latitude, a.longitude)
+                    let keyB = tangentCellKey(b.latitude, b.longitude)
+                    cellTangents[keyA, default: []].append((ux, uy))
+                    if keyB != keyA {
+                        cellTangents[keyB, default: []].append((ux, uy))
+                    }
+                }
+            }
+        }
+
+        // ── Phase 4: Build consolidated stations ──
+        var result: [ConsolidatedStation] = []
+
+        for (_, memberIndices) in groups {
+            var latSum = 0.0, lonSum = 0.0
+            var allRoutes = Set<String>()
+            var primaryName = ""
+            var maxRouteCount = 0
+
+            for idx in memberIndices {
+                let s = stations[idx]
+                latSum += s.coordinate.latitude
+                lonSum += s.coordinate.longitude
+                for r in s.routes { allRoutes.insert(r) }
+                if s.routes.count > maxRouteCount {
+                    maxRouteCount = s.routes.count
+                    primaryName = s.name
+                }
+            }
+
+            let avgLat = latSum / Double(memberIndices.count)
+            let avgLon = lonSum / Double(memberIndices.count)
+            let routes = allRoutes.sorted()
+
+            // Color group count
+            var colorGroups = Set<Int>()
+            for r in routes { colorGroups.insert(Self.trunkGroupIndex(for: r)) }
+            let groupCount = max(colorGroups.count, 1)
+
+            // Track bearing from polyline tangents in 3×3 neighborhood
+            let gx = Int32(avgLat / cellSize)
+            let gy = Int32(avgLon / cellSize)
+            var sumUx = 0.0, sumUy = 0.0, tangentCount = 0
+            for dx: Int32 in -1...1 {
+                for dy: Int32 in -1...1 {
+                    let key = (Int64(gx &+ dx) << 32) | Int64((gy &+ dy) & 0x7FFF_FFFF)
+                    if let tangents = cellTangents[key] {
+                        for (ux, uy) in tangents {
+                            if uy < 0 || (uy == 0 && ux < 0) {
+                                sumUx -= ux; sumUy -= uy
+                            } else {
+                                sumUx += ux; sumUy += uy
+                            }
+                            tangentCount += 1
+                        }
+                    }
+                }
+            }
+
+            let bearing: Double
+            if tangentCount > 0 {
+                let rad = atan2(sumUx, sumUy)
+                var deg = rad * 180.0 / .pi
+                if deg < 0 { deg += 360 }
+                if deg >= 180 { deg -= 180 }
+                bearing = deg
+            } else {
+                bearing = 0
+            }
+
+            // Use structure and complexID from the first member
+            let firstKey = keyForStation[memberIndices[0]]
+            let allStopIDs = Set(memberIndices.map { stations[$0].id })
+            let primaryId = allStopIDs.sorted().first ?? ""
+
+            result.append(ConsolidatedStation(
+                id: primaryId,
+                name: primaryName,
+                coordinate: CLLocationCoordinate2D(latitude: avgLat, longitude: avgLon),
+                routes: routes,
+                colorGroupCount: groupCount,
+                trackBearing: bearing,
+                structure: firstKey.structure,
+                complexID: firstKey.complexID,
+                sourceStopIDs: allStopIDs
+            ))
+        }
+
+        self.consolidatedStations = result
+        AppLogger.shared.log(
+            "STATIONS",
+            message: "Consolidated \(stations.count) stations → \(result.count) groups")
     }
 }

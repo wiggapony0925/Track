@@ -1,0 +1,183 @@
+{
+  "version": "1.0",
+  "description": "Multi-level transfer complexes where lines meet at different physical levels. Only entries that GTFS cannot derive — structure for each platform is explicit.",
+  "updated": "2026-03-08",
+  "complexes": [
+    {
+      "id": 601,
+      "name": "74 St–Broadway / Jackson Hts–Roosevelt Av",
+      "stations": [
+        { "stop_id": "710", "structure": "elevated" },
+        { "stop_id": "G14", "structure": "subway" }
+      ]
+    },
+    {
+      "id": 611,
+      "name": "Times Sq–42 St",
+      "stations": [
+        { "stop_id": "127", "structure": "subway" },
+        { "stop_id": "725", "structure": "subway" },
+        { "stop_id": "902", "structure": "subway" },
+        { "stop_id": "R16", "structure": "subway" }
+      ]
+    },
+    {
+      "id": 612,
+      "name": "42 St–Port Authority / Bryant Park",
+      "stations": [
+        { "stop_id": "A27", "structure": "subway" },
+        { "stop_id": "D16", "structure": "subway" }
+      ]
+    },
+    {
+      "id": 621,
+      "name": "Fulton St",
+      "stations": [
+        { "stop_id": "229", "structure": "subway" },
+        { "stop_id": "418", "structure": "subway" },
+        { "stop_id": "A38", "structure": "subway" },
+        { "stop_id": "M22", "structure": "subway" }
+      ]
+    },
+    {
+      "id": 626,
+      "name": "Chambers St / Park Place / City Hall",
+      "stations": [
+        { "stop_id": "137", "structure": "subway" },
+        { "stop_id": "A36", "structure": "subway" },
+        { "stop_id": "228", "structure": "subway" },
+        { "stop_id": "R24", "structure": "subway" }
+      ]
+    },
+    {
+      "id": 627,
+      "name": "WTC / Cortlandt",
+      "stations": [
+        { "stop_id": "138", "structure": "subway" },
+        { "stop_id": "E01", "structure": "subway" },
+        { "stop_id": "R25", "structure": "subway" }
+      ]
+    },
+    {
+      "id": 631,
+      "name": "Atlantic Av–Barclays Ctr",
+      "stations": [
+        { "stop_id": "235", "structure": "subway" },
+        { "stop_id": "D24", "structure": "subway" },
+        { "stop_id": "R31", "structure": "subway" }
+      ]
+    },
+    {
+      "id": 635,
+      "name": "Jay St–MetroTech",
+      "stations": [
+        { "stop_id": "A41", "structure": "subway" },
+        { "stop_id": "R29", "structure": "subway" }
+      ]
+    },
+    {
+      "id": 636,
+      "name": "Borough Hall",
+      "stations": [
+        { "stop_id": "232", "structure": "subway" },
+        { "stop_id": "423", "structure": "subway" },
+        { "stop_id": "R28", "structure": "subway" }
+      ]
+    },
+    {
+      "id": 640,
+      "name": "Canal St",
+      "stations": [
+        { "stop_id": "639", "structure": "subway" },
+        { "stop_id": "M20", "structure": "subway" },
+        { "stop_id": "Q01", "structure": "subway" },
+        { "stop_id": "R23", "structure": "subway" }
+      ]
+    },
+    {
+      "id": 645,
+      "name": "14 St–Union Sq",
+      "stations": [
+        { "stop_id": "635", "structure": "subway" },
+        { "stop_id": "L03", "structure": "subway" },
+        { "stop_id": "R20", "structure": "subway" }
+      ]
+    },
+    {
+      "id": 650,
+      "name": "59 St–Columbus Circle",
+      "stations": [
+        { "stop_id": "125", "structure": "subway" },
+        { "stop_id": "A24", "structure": "subway" }
+      ]
+    },
+    {
+      "id": 651,
+      "name": "Lexington Av / 59 St / 63 St",
+      "stations": [
+        { "stop_id": "629", "structure": "subway" },
+        { "stop_id": "R11", "structure": "subway" },
+        { "stop_id": "B08", "structure": "subway" }
+      ]
+    },
+    {
+      "id": 655,
+      "name": "W 4 St–Washington Sq",
+      "stations": [
+        { "stop_id": "A32", "structure": "subway" },
+        { "stop_id": "D20", "structure": "subway" }
+      ]
+    },
+    {
+      "id": 660,
+      "name": "Herald Sq–34 St",
+      "stations": [
+        { "stop_id": "D17", "structure": "subway" },
+        { "stop_id": "R17", "structure": "subway" }
+      ]
+    },
+    {
+      "id": 665,
+      "name": "Grand Central–42 St",
+      "stations": [
+        { "stop_id": "631", "structure": "subway" },
+        { "stop_id": "723", "structure": "subway" },
+        { "stop_id": "901", "structure": "subway" }
+      ]
+    },
+    {
+      "id": 670,
+      "name": "Queensboro Plaza",
+      "stations": [
+        { "stop_id": "718", "structure": "elevated" },
+        { "stop_id": "R09", "structure": "elevated" }
+      ]
+    },
+    {
+      "id": 671,
+      "name": "Court Sq",
+      "stations": [
+        { "stop_id": "719", "structure": "elevated" },
+        { "stop_id": "F09", "structure": "subway" },
+        { "stop_id": "G22", "structure": "subway" }
+      ]
+    },
+    {
+      "id": 675,
+      "name": "Broadway Junction",
+      "stations": [
+        { "stop_id": "A51", "structure": "elevated" },
+        { "stop_id": "J27", "structure": "elevated" },
+        { "stop_id": "L22", "structure": "subway" }
+      ]
+    },
+    {
+      "id": 680,
+      "name": "DeKalb Av / Nevins St",
+      "stations": [
+        { "stop_id": "234", "structure": "subway" },
+        { "stop_id": "R30", "structure": "subway" }
+      ]
+    }
+  ]
+}

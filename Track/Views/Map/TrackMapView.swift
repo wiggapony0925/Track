@@ -45,7 +45,9 @@ struct TrackMapView: View {
     // 400+ stations and 100+ route labels.
 
     /// Cached stations visible in the current viewport.
-    @State private var _cachedVisibleStations: [HomeViewModel.CachedSubwayStation] = []
+    @State private var _cachedVisibleStations: [MapSystemViewModel.ConsolidatedStation] = []
+    /// Cached transfer connectors between multi-platform complexes.
+    @State private var _cachedTransferConnectors: [TransferConnector] = []
     /// Cached route labels visible in the current viewport.
     @State private var _cachedVisibleLabels: [HomeViewModel.TrunkRouteLabel] = []
     /// Cached direction stops visible in the current viewport.
@@ -220,6 +222,7 @@ struct TrackMapView: View {
                 _lastViewportCenter = center
                 _lastViewportDistance = d
                 _cachedVisibleStations = computeVisibleStations(center: center, distance: d)
+                _cachedTransferConnectors = computeTransferConnectors(from: _cachedVisibleStations)
                 _cachedVisibleLabels = computeVisibleRouteLabels(center: center, distance: d)
                 _cachedVisibleStops = computeVisibleDirectionStops(center: center, distance: d)
             }
@@ -500,10 +503,12 @@ struct TrackMapView: View {
     /// Stations filtered to the visible map viewport AND by zoom-based
     /// importance tier — Apple Maps' "generalization" approach.
     ///
+    /// Uses consolidated (proximity-merged) stations so co-located stops
+    /// like 74 St-Broadway (7/E/F/M/R) appear as a single capsule.
     /// Computed on camera move (debounced), then cached in `_cachedVisibleStations`.
     private func computeVisibleStations(
         center: CLLocationCoordinate2D, distance: Double
-    ) -> [HomeViewModel.CachedSubwayStation] {
+    ) -> [MapSystemViewModel.ConsolidatedStation] {
         let maxZoomOut = AppSettings.shared.stationMaxZoomOutMeters
         guard distance < maxZoomOut else { return [] }
 
@@ -518,7 +523,7 @@ struct TrackMapView: View {
         let showTransfers = distance < maxZoomOut * 0.30
         let showMajorHubs = distance < maxZoomOut
 
-        return viewModel.cachedStations.filter { station in
+        return viewModel.consolidatedStations.filter { station in
             guard station.coordinate.latitude >= minLat,
                   station.coordinate.latitude <= maxLat,
                   station.coordinate.longitude >= minLon,
@@ -526,44 +531,59 @@ struct TrackMapView: View {
             else { return false }
 
             if showAllStops { return true }
-            let groupCount = Self.colorGroupCount(for: station)
+            let groupCount = station.colorGroupCount
             if showMajorHubs && groupCount >= 3 { return true }
             if showTransfers && groupCount >= 2 { return true }
             return false
         }
     }
 
-    /// Counts distinct MTA trunk-color groups for a station.
-    /// Static helper so it can be used in the computed property without
-    /// capturing `self` in a closure.
-    private static func colorGroupCount(
-        for station: HomeViewModel.CachedSubwayStation
-    ) -> Int {
-        var groups = Set<Int>()
-        for route in station.routes {
-            groups.insert(trunkGroupIndex(for: route))
-        }
-        return max(groups.count, 1)
+    // MARK: - Transfer Connectors
+
+    /// A thin grey line connecting two platforms in the same station complex
+    /// that are on different physical levels (e.g., elevated 7 ↔ underground E/F/M/R).
+    struct TransferConnector: Identifiable {
+        let id: String
+        let coordinates: [CLLocationCoordinate2D]
+        /// Straight-line distance in meters from the platform to the
+        /// complex centroid.  Short distances (vertical transfers like
+        /// 74 St) get a thicker, more opaque line; long walking
+        /// transfers get thinner, fainter lines.
+        let distanceMeters: Double
     }
 
-    /// Maps a route ID to its MTA trunk-color group index.
-    /// Must match `MapSystemViewModel.trunkGroups` ordering.
-    private static func trunkGroupIndex(for routeId: String) -> Int {
-        let r = routeId.uppercased()
-        switch r {
-        case "1", "2", "3":                return 0
-        case "4", "5", "6", "6X":          return 1
-        case "7", "7X":                    return 2
-        case "A", "C", "E":               return 3
-        case "B", "D", "F", "FX", "M":    return 4
-        case "G":                          return 5
-        case "J", "Z":                    return 6
-        case "L":                          return 7
-        case "N", "Q", "R", "W":          return 8
-        case "S":                          return 9
-        case "SI":                         return 10
-        default:                           return 99
+    /// Builds transfer connector lines between visible stations that share
+    /// the same `complexID` but have different station IDs (= different platforms).
+    private func computeTransferConnectors(
+        from stations: [MapSystemViewModel.ConsolidatedStation]
+    ) -> [TransferConnector] {
+        // Group visible stations by complexID
+        var byComplex: [Int: [MapSystemViewModel.ConsolidatedStation]] = [:]
+        for station in stations {
+            byComplex[station.complexID, default: []].append(station)
         }
+
+        var connectors: [TransferConnector] = []
+        for (complexID, platforms) in byComplex {
+            guard platforms.count >= 2 else { continue }
+            // Connect all platforms to the centroid with a star pattern
+            let avgLat = platforms.map(\.coordinate.latitude).reduce(0, +) / Double(platforms.count)
+            let avgLon = platforms.map(\.coordinate.longitude).reduce(0, +) / Double(platforms.count)
+            let center = CLLocationCoordinate2D(latitude: avgLat, longitude: avgLon)
+            let centerLoc = CLLocation(latitude: avgLat, longitude: avgLon)
+            for (i, platform) in platforms.enumerated() {
+                let dist = CLLocation(
+                    latitude: platform.coordinate.latitude,
+                    longitude: platform.coordinate.longitude
+                ).distance(from: centerLoc)
+                connectors.append(TransferConnector(
+                    id: "xfer-\(complexID)-\(i)",
+                    coordinates: [platform.coordinate, center],
+                    distanceMeters: dist
+                ))
+            }
+        }
+        return connectors
     }
 
     /// Zoom-adaptive line width for system-map subway polylines.
@@ -615,23 +635,94 @@ struct TrackMapView: View {
         viewModel.routeShape != nil ? 0.06 : 0.35
     }
 
-    /// Subway polylines for the current zoom tier.
-    /// Swaps between pre-computed offset sets so parallel color groups
-    /// stay visually separated at every zoom level.
+    /// Subway polylines — a single pre-computed geometry set used at every
+    /// zoom level.  Zoom adaptation is handled by `systemMapSubwayLineWidth`
+    /// (rendering) rather than geometry swapping, matching Apple Maps.
     private var currentSubwayPolylines: [HomeViewModel.FlattenedMapPolyline] {
-        switch _zoomTier {
-        case .veryClose, .close:
-            return viewModel.flattenedSubwayPolylines      // near offset
-        case .medium:
-            return viewModel.flattenedSubwayMidZoom        // mid offset
-        case .far, .distant:
-            return viewModel.flattenedSubwayFarZoom        // far offset
-        }
+        viewModel.flattenedSubwayPolylines
+    }
+
+    /// Whether a polyline should render as elevated (Layer 2b with casing).
+    ///
+    /// A polyline is "effectively elevated" when:
+    /// 1. `inferStructure` classified it as elevated/viaduct, AND
+    /// 2. NONE of its routes are currently rerouted/suspended.
+    ///
+    /// During an active MTA reroute alert (e.g., "7 train running via
+    /// E/F tunnel"), the polyline drops to subway-level (Layer 2) so
+    /// the visual z-ordering reflects temporary physical reality.
+    private func isEffectivelyElevated(
+        _ polyline: HomeViewModel.FlattenedMapPolyline
+    ) -> Bool {
+        guard polyline.isElevated else { return false }
+        let rerouted = viewModel.mapSystem.reroutedRouteIDs
+        guard !rerouted.isEmpty else { return true }
+        // Demote if ALL routes in this polyline are rerouted.
+        // For mixed groups (rare), keep elevated if any route is operating normally.
+        return !polyline.routeIds.allSatisfy { rerouted.contains($0.uppercased()) }
     }
 
     @MapContentBuilder
     private var systemMapPolylines: some MapContent {
-        ForEach(currentSubwayPolylines) { polyline in
+        // ── Z-ordering (bottom → top) ──
+        // 0. Transfer connectors — grey lines linking multi-platform complexes
+        // 1. Station capsules — white fill peeks out around polylines
+        // 2. Colored subway fills — the actual transit lines
+        // 3. Commuter rail
+        // 4. Route labels (close zoom only)
+        //
+        // No white "knockout" casing layer — MapKit's MapPolyline uses
+        // stable IDs and deduplicates, so a second ForEach over the same
+        // polyline array causes some items to render as white only.
+        // The miter-joined corridor offsets already create a natural gap
+        // between parallel lines (the base map shows through).
+
+        // Layer 0: Transfer connectors (bottom-most)
+        // Grey lines between platforms in the same station complex.
+        // Thickness + opacity scale with distance:
+        //   < 30 m  (vertical, e.g. 74 St)   → thick, opaque
+        //   30–100 m (short walk, e.g. Fulton)→ medium
+        //   > 100 m  (long walk, e.g. Lex/63) → thin, faint
+        if viewModel.routeShape == nil {
+            ForEach(_cachedTransferConnectors) { connector in
+                let d = connector.distanceMeters
+                // Interpolate: 0m → 2.5pt, 120m+ → 1.0pt
+                let widthBase = max(1.0, 2.5 - (d / 120.0) * 1.5)
+                // Opacity: 0m → 0.8, 120m+ → 0.4
+                let opacityBase = max(0.4, 0.8 - (d / 120.0) * 0.4)
+                MapPolyline(coordinates: connector.coordinates)
+                    .stroke(
+                        Color(.systemGray4).opacity(opacityBase),
+                        style: StrokeStyle(
+                            lineWidth: max(1.0, widthBase * _zoomTier.rawValue),
+                            lineCap: .round))
+            }
+        }
+
+        // Layer 1: Station capsules
+        if viewModel.routeShape == nil {
+            let imminent = viewModel.mapSystem.imminentArrivals
+            ForEach(_cachedVisibleStations) { station in
+                // Match any of this station's source GTFS stop IDs
+                // against the imminent arrivals map.
+                let pulseRouteId: String? = imminent.isEmpty ? nil :
+                    station.sourceStopIDs.lazy.compactMap { imminent[$0] }.first
+
+                Annotation(station.name, coordinate: station.coordinate) {
+                    StationCapsuleView(
+                        station: station,
+                        zoomTier: _zoomTier,
+                        imminentRouteId: pulseRouteId
+                    )
+                }
+                .annotationTitles(showStations ? .automatic : .hidden)
+            }
+        }
+
+        // Layer 2: Subway-level fills (underground lines render first)
+        // A normally-elevated polyline is demoted here when ALL of its
+        // routes are currently rerouted/suspended (live alert override).
+        ForEach(currentSubwayPolylines.filter { !isEffectivelyElevated($0) }) { polyline in
             MapPolyline(coordinates: polyline.coordinates)
                 .stroke(
                     polyline.color.opacity(systemMapSubwayOpacity),
@@ -640,6 +731,34 @@ struct TrackMapView: View {
                         lineCap: .round, lineJoin: .round))
         }
 
+        // Layer 2b: Elevated fills (render ON TOP of subway lines)
+        // At crossings (e.g., 7 over E/F/M/R at 74 St), the elevated
+        // polyline visually passes over the underground one.
+        //
+        // Each elevated branch emits two siblings inside one ForEach
+        // iteration: a thin dark casing followed by the colored fill.
+        // This avoids the MapKit ForEach dedup issue (session 8).
+        //
+        // During active reroute/suspension alerts, affected polylines
+        // drop out of this layer (drawn as subway-level in Layer 2).
+        ForEach(currentSubwayPolylines.filter { isEffectivelyElevated($0) }) { polyline in
+            // Casing (dark border — slightly wider)
+            MapPolyline(coordinates: polyline.coordinates)
+                .stroke(
+                    Color.black.opacity(0.25 * systemMapSubwayOpacity),
+                    style: StrokeStyle(
+                        lineWidth: systemMapSubwayLineWidth + 1.0,
+                        lineCap: .round, lineJoin: .round))
+            // Fill (route color)
+            MapPolyline(coordinates: polyline.coordinates)
+                .stroke(
+                    polyline.color.opacity(systemMapSubwayOpacity),
+                    style: StrokeStyle(
+                        lineWidth: systemMapSubwayLineWidth,
+                        lineCap: .round, lineJoin: .round))
+        }
+
+        // Layer 3: Commuter rail
         ForEach(viewModel.flattenedCommuterRailPolylines) { polyline in
             MapPolyline(coordinates: polyline.coordinates)
                 .stroke(
@@ -649,7 +768,7 @@ struct TrackMapView: View {
                         lineCap: .round, lineJoin: .round))
         }
 
-        // Labels & stations: only in system-map mode (no route selected)
+        // Layer 4: Route labels — only in system-map mode at close zoom
         if viewModel.routeShape == nil {
             if let distance = currentMapDistance,
                distance < AppSettings.shared.stationMaxZoomOutMeters * 0.16 {
@@ -662,16 +781,6 @@ struct TrackMapView: View {
                     }
                     .annotationTitles(.hidden)
                 }
-            }
-
-            ForEach(_cachedVisibleStations) { station in
-                Annotation(station.name, coordinate: station.coordinate) {
-                    SubwayStationMarker(
-                        station: station,
-                        zoomTier: _zoomTier
-                    )
-                }
-                .annotationTitles(showStations ? .automatic : .hidden)
             }
         }
     }

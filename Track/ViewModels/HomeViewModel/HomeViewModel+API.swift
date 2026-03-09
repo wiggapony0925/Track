@@ -1232,6 +1232,9 @@ extension HomeViewModel {
                 existing: groupedTransit
             )
 
+            // Update pulse state for station capsules with imminent arrivals
+            mapSystem.updateImminentStations(from: groupedTransit)
+
             // Augment nearbyBusStops with stop data from bus arrivals whose
             // stops weren't returned by the /bus/nearby OBA fetch (smaller
             // radius or OBA API cap).  Uses the MERGED groupedTransit so
@@ -1487,6 +1490,9 @@ extension HomeViewModel {
                 existing: nearbyGroupedSubwayArrivals,
                 source: "subway"
             )
+
+            // Update pulse state for station capsules with imminent arrivals
+            mapSystem.updateImminentStations(from: nearbyGroupedSubwayArrivals)
 
             updateSelectedRouteFromRefreshedData(nearbyGroupedSubwayArrivals)
         } catch {

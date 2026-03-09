@@ -315,7 +315,7 @@ struct PolylineIntegrityTests {
             (0, PolylineFixtures.lexingtonAve),  // e.g. Green (4/5/6)
             (1, PolylineFixtures.lexingtonAve),  // e.g. Blue  (A/C/E)
         ]
-        let result = applyCorridorOffsets(input, offsetDegrees: 0.00012)
+        let result = applyCorridorOffsets(input, laneSpacingDegrees: 0.0003)
         #expect(result.count == 2)
 
         // The two output lines should differ from each other
@@ -333,15 +333,15 @@ struct PolylineIntegrityTests {
             (0, PolylineFixtures.lexingtonAve),
             (1, PolylineFixtures.lexingtonAve),
         ]
-        let result = applyCorridorOffsets(input, offsetDegrees: 0.00012)
+        let result = applyCorridorOffsets(input, laneSpacingDegrees: 0.0003)
 
         for groupResult in result {
             let maxDev = maxDeviationFromOriginal(
                 simplified: groupResult.coordinates,
                 original: PolylineFixtures.lexingtonAve
             )
-            // 0.00012° ≈ 13m; with centering, max offset ≈ 0.00006°
-            #expect(maxDev < 0.001, "Offset line deviated \(maxDev)° from original — too far")
+            // 0.0003° ≈ 25m; with centering, max offset ≈ 0.00015°
+            #expect(maxDev < 0.002, "Offset line deviated \(maxDev)° from original — too far")
         }
     }
 

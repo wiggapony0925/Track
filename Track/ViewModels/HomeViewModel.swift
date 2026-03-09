@@ -535,11 +535,14 @@ final class HomeViewModel {
     }
 
     /// Fetch alerts from the API and deliver local notifications for new ones.
+    /// Also updates the map system's rerouted-route set so elevated
+    /// polylines are demoted to subway-level during active reroutes.
     func refreshAlerts() async {
         do {
             serviceAlerts = try await TrackAPI.fetchAlerts()
             alertsLastUpdated = Date()
             AlertNotificationManager.shared.processAlerts(serviceAlerts)
+            mapSystem.updateReroutedRoutes(from: serviceAlerts)
         } catch {}
     }
 
@@ -1103,18 +1106,13 @@ final class HomeViewModel {
     typealias FlattenedMapPolyline = MapSystemViewModel.FlattenedMapPolyline
     typealias CachedTransitLine = MapSystemViewModel.CachedTransitLine
     typealias TrunkRouteLabel = MapSystemViewModel.TrunkRouteLabel
+    typealias ConsolidatedStation = MapSystemViewModel.ConsolidatedStation
 
     // MARK: - System Map Forwarding (backward compatibility)
 
     /// Forwarding properties so existing views can still use `viewModel.flattenedSubwayPolylines`, etc.
     var flattenedSubwayPolylines: [MapSystemViewModel.FlattenedMapPolyline] {
         mapSystem.flattenedSubwayPolylines
-    }
-    var flattenedSubwayMidZoom: [MapSystemViewModel.FlattenedMapPolyline] {
-        mapSystem.flattenedSubwayMidZoom
-    }
-    var flattenedSubwayFarZoom: [MapSystemViewModel.FlattenedMapPolyline] {
-        mapSystem.flattenedSubwayFarZoom
     }
     var flattenedCommuterRailPolylines: [MapSystemViewModel.FlattenedMapPolyline] {
         mapSystem.flattenedCommuterRailPolylines
@@ -1124,6 +1122,9 @@ final class HomeViewModel {
     }
     var cachedStations: [MapSystemViewModel.CachedSubwayStation] {
         mapSystem.cachedStations
+    }
+    var consolidatedStations: [MapSystemViewModel.ConsolidatedStation] {
+        mapSystem.consolidatedStations
     }
 
     // MARK: - Offline Support
