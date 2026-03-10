@@ -577,14 +577,14 @@ final class MapSystemViewModel {
         // A SINGLE fine-detail geometry set is used for ALL zoom levels.
         // This matches Apple Maps behaviour: the polylines never change
         // shape when zooming — only their rendered line-width thins out.
-        // The small corridor offset (~10 m) becomes sub-pixel at city
+        // The small corridor offset (~13 m) becomes sub-pixel at city
         // overview, so parallel lines naturally converge into one.
         //
         // Parameters:
         //   RDP tolerance 0.00006° (~7 m)  — preserves fine detail
         //   Catmull-Rom 3 segments         — smooth curves
-        //   Corridor offset 0.00012°       — ~10 m street-level separation
-        //   Smooth window 12               — gradual offset transitions
+        //   Corridor offset 0.00015°       — ~13 m street-level separation
+        //   Smooth window 16               — gradual offset transitions
 
         struct PolylineOrigin { let resultIndex: Int; let branchIndex: Int }
 
@@ -594,22 +594,31 @@ final class MapSystemViewModel {
         for (resultIndex, groupResult) in colorGroupResults.enumerated() {
             for (branchIndex, coords) in groupResult.polylines.enumerated() {
                 guard coords.count >= 2 else { continue }
-                let rdp = simplifyPolyline(coords, tolerance: 0.00006)
-                let smoothed = smoothPolyline(rdp, segmentsPerCurve: 3)
-                guard smoothed.count >= 2 else { continue }
-                grouped.append((groupIndex: groupResult.groupIndex, coordinates: smoothed))
+                grouped.append((groupIndex: groupResult.groupIndex, coordinates: coords))
                 mapping.append(PolylineOrigin(resultIndex: resultIndex, branchIndex: branchIndex))
             }
         }
 
-        let offsetResult = applyCorridorOffsets(
+        // Apply offsets to the raw, dense unified polylines FIRST.
+        // This ensures the spatial grid has enough vertices to properly match parallel lines.
+        let offsetGrouped = applyCorridorOffsets(
             grouped,
-            laneSpacingDegrees: 0.0003,
+            laneSpacingDegrees: 0.00015,
             smoothWindow: 16
         )
 
+        // NOW simplify and smooth the offsetted lines
+        var finalOffsetPolylines: [(groupIndex: Int, coordinates: [CLLocationCoordinate2D])] = []
+        for (i, item) in offsetGrouped.enumerated() {
+            let offsetCoords = item.coordinates
+            let rdp = simplifyPolyline(offsetCoords, tolerance: 0.00006)
+            let smoothed = smoothPolyline(rdp, segmentsPerCurve: 3)
+            guard smoothed.count >= 2 else { continue }
+            finalOffsetPolylines.append((groupIndex: item.groupIndex, coordinates: smoothed))
+        }
+
         var flat: [FlattenedMapPolyline] = []
-        for (i, offset) in offsetResult.enumerated() {
+        for (i, offset) in finalOffsetPolylines.enumerated() {
             let origin = mapping[i]
             let groupResult = colorGroupResults[origin.resultIndex]
             let groupKey = groupResult.routeIds.joined(separator: "-")

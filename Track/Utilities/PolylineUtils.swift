@@ -227,56 +227,44 @@ func mergeAdjacentPolylines(
 /// widths don't overlap — leaving a thin gutter (≈ 1 pt) of base map
 /// between adjacent colors.
 ///
-/// The math (at NYC latitude, ~40.7° N):
-///
-///     metersPerDegLon ≈ 84 400 m/°
-///     At 3 500 m camera:  1 pt ≈ 8.6 m  →  laneSpacing 25 m ≈ 2.9 pt
-///         Line width = 3.0 pt  →  gutter = 2.9 - 3.0 ≈ 0 pt (touching)
-///     At 1 500 m camera:  1 pt ≈ 3.7 m  →  laneSpacing 25 m ≈ 6.8 pt
-///         Line width = 3.5 pt  →  gutter ≈ 3.3 pt ✓ (clearly separated)
-///     At 8 000 m camera:  1 pt ≈ 19.7 m →  laneSpacing 25 m ≈ 1.3 pt
-///         Line width = 2.0 pt  →  lines begin merging naturally ✓
-///
-/// This matches Apple Maps behavior: distinct parallel stripes at street
-/// level, gradually converging into a single colored thread at city zoom.
-///
 /// **How it works**:
 /// 1. Builds a spatial grid of all polylines from all color groups using
-///    a 3×3 neighbor expansion for registration (catches parallel tracks).
+///    a 3×3 neighbor expansion for registration. Stores actual coordinates
+///    to compute shared rigid centerlines.
 /// 2. For each polyline point, determines how many OTHER color groups also
 ///    have polylines passing through that neighborhood.
-/// 3. Where multiple groups share a corridor, assigns each group a stable
-///    lane index and applies a perpendicular offset using **miter joins**
-///    at corners so there are no gaps or overlaps between segments.
-/// 4. Smoothly transitions between offset and non-offset segments to
+/// 3. Filters out "crossing paths" using a run-length filter so lines only
+///    offset when they travel parallel, not when they bisect perpendicularly.
+/// 4. Adjusts coordinates dynamically to average out GTFS positional drift,
+///    forming a single unified spine for all routes in the corridor.
+/// 5. Applies a perpendicular offset using **miter joins** at corners on
+///    the unified spine, so parallel lines never wiggle relative to each other.
+/// 6. Smoothly transitions between offset and non-offset segments to
 ///    avoid visual kinks at corridor boundaries.
 ///
 /// - Parameters:
 ///   - groupedPolylines: Array of `(groupIndex, coordinates)` tuples.
 ///   - laneSpacingDegrees: Center-to-center distance between adjacent lanes,
-///     in degrees of longitude.  Default 0.0003° ≈ 25 m at NYC — produces
-///     a ~1 pt gutter at close zoom (3.5 km camera) and merges at medium
-///     zoom (8+ km).  A higher value widens the corridor but pushes outer
-///     lines further from the true track centerline.
+///     in degrees of longitude.  Default 0.00015°.
 ///   - smoothWindow: Moving-average window (in points) that gradually eases
-///     into/out of offset corridors.  Larger = smoother entry/exit ramps
-///     but slower responsiveness to corridor changes.
-/// - Returns: The same polylines with perpendicular offsets applied to
-///   shared corridor segments.
+///     into/out of offset corridors.
+/// - Returns: The same polylines with perpendicular offsets applied.
 func applyCorridorOffsets(
     _ groupedPolylines: [(groupIndex: Int, coordinates: [CLLocationCoordinate2D])],
-    laneSpacingDegrees: Double = 0.0003,
+    laneSpacingDegrees: Double = 0.00015,
     smoothWindow: Int = 16
 ) -> [(groupIndex: Int, coordinates: [CLLocationCoordinate2D])] {
 
-    let gridSize: Double = 0.0005  // ~56 m cells — slightly larger than lane spacing
-                                    // so adjacent-cell queries reliably catch corridors.
+    let gridSize: Double = 0.0005  // ~56 m cells
 
     // ── Step 1: Build spatial index ──
-    // Map each cell to the set of color-group indices whose polylines pass
-    // through it.  A 3×3 neighbor query catches parallel tracks that fall
-    // into adjacent cells.
+    struct GridPoint {
+        let groupIdx: Int
+        let coord: CLLocationCoordinate2D
+    }
+
     var cellGroups: [Int64: Set<Int>] = [:]
+    var cellPoints: [Int64: [GridPoint]] = [:]
 
     func cellKey(_ lat: Double, _ lon: Double) -> Int64 {
         let gx = Int32(lat / gridSize)
@@ -301,10 +289,11 @@ func applyCorridorOffsets(
         for coord in coords {
             let key = cellKey(coord.latitude, coord.longitude)
             cellGroups[key, default: []].insert(groupIdx)
+            cellPoints[key, default: []].append(GridPoint(groupIdx: groupIdx, coord: coord))
         }
     }
 
-    // ── Step 2: Per-polyline offset calculation ──
+    // ── Step 2: Per-polyline offset and centerline calculation ──
     var result: [(groupIndex: Int, coordinates: [CLLocationCoordinate2D])] = []
 
     for (groupIdx, coords) in groupedPolylines {
@@ -313,15 +302,8 @@ func applyCorridorOffsets(
             continue
         }
 
-        // --- 2a: Compute desired lane offset at every vertex ---
-        //
-        // For N active color groups in a corridor:
-        //   Total corridor width = (N - 1) * laneSpacing
-        //   Lane i center        = (i - (N-1)/2) * laneSpacing
-        //
-        // This centers the ribbon on the spine so the middle line (or the
-        // gap between middle lines for even N) sits on the true coordinates.
-        var desiredOffsets = [Double](repeating: 0, count: coords.count)
+        var centerDisplacements = [(lon: Double, lat: Double)](repeating: (0, 0), count: coords.count)
+        var laneOffsets = [Double](repeating: 0, count: coords.count)
 
         for i in 0..<coords.count {
             let coord = coords[i]
@@ -331,80 +313,133 @@ func applyCorridorOffsets(
                 let sortedGroups = groups.sorted()
                 guard let laneIndex = sortedGroups.firstIndex(of: groupIdx) else { continue }
                 let numLanes = sortedGroups.count
-                // Center the lanes: lane 0 is leftmost, lane N-1 is rightmost.
-                desiredOffsets[i] =
-                    (Double(laneIndex) - Double(numLanes - 1) / 2.0) * laneSpacingDegrees
+                
+                laneOffsets[i] = (Double(laneIndex) - Double(numLanes - 1) / 2.0) * laneSpacingDegrees
+                
+                var peers: [CLLocationCoordinate2D] = [coord]
+                let gx = Int32(coord.latitude / gridSize)
+                let gy = Int32(coord.longitude / gridSize)
+                
+                for otherGroup in groups where otherGroup != groupIdx {
+                    var bestDistSq = Double.infinity
+                    var bestPeer: CLLocationCoordinate2D? = nil
+                    for dx: Int32 in -1...1 {
+                        for dy: Int32 in -1...1 {
+                            let key = (Int64(gx &+ dx) << 32) | Int64((gy &+ dy) & 0x7FFF_FFFF)
+                            guard let pts = cellPoints[key] else { continue }
+                            for p in pts where p.groupIdx == otherGroup {
+                                let dlat = p.coord.latitude - coord.latitude
+                                let dlon = p.coord.longitude - coord.longitude
+                                let dsq = dlat * dlat + dlon * dlon
+                                if dsq < bestDistSq {
+                                    bestDistSq = dsq
+                                    bestPeer = p.coord
+                                }
+                            }
+                        }
+                    }
+                    let threshSq = gridSize * gridSize * 4
+                    if let peer = bestPeer, bestDistSq < threshSq {
+                        peers.append(peer)
+                    }
+                }
+                
+                let avgLat = peers.map { $0.latitude }.reduce(0, +) / Double(peers.count)
+                let avgLon = peers.map { $0.longitude }.reduce(0, +) / Double(peers.count)
+                
+                centerDisplacements[i] = (lon: avgLon - coord.longitude, lat: avgLat - coord.latitude)
             }
         }
 
-        // --- 2b: Smooth offset transitions ---
-        // A moving-average window prevents abrupt jumps where a corridor
-        // starts or ends.  This produces the gradual "fan-out / fan-in"
-        // effect you see in Apple Maps when multiple lines merge or split.
-        var smoothedOffsets = desiredOffsets
+        // --- Run-Length Filter for Crossings ---
+        let minRun = 8
+        var runStart: Int? = nil
+        for i in 0..<coords.count {
+            if abs(laneOffsets[i]) > 1e-10 {
+                if runStart == nil { runStart = i }
+            } else if let s = runStart {
+                if i - s < minRun {
+                    for k in s..<i {
+                        laneOffsets[k] = 0
+                        centerDisplacements[k] = (0, 0)
+                    }
+                }
+                runStart = nil
+            }
+        }
+        if let s = runStart, coords.count - s < minRun {
+            for k in s..<coords.count {
+                laneOffsets[k] = 0
+                centerDisplacements[k] = (0, 0)
+            }
+        }
+
+        // --- Smooth transitions ---
+        var smoothedCenter = centerDisplacements
+        var smoothedOffsets = laneOffsets
         for i in 0..<coords.count {
             let halfWin = smoothWindow / 2
             let lo = max(0, i - halfWin)
             let hi = min(coords.count - 1, i + halfWin)
-            let windowSize = hi - lo + 1
-            var sum = 0.0
-            for k in lo...hi { sum += desiredOffsets[k] }
-            smoothedOffsets[i] = sum / Double(windowSize)
+            let windowSize = Double(hi - lo + 1)
+            var sumLon = 0.0, sumLat = 0.0, sumOff = 0.0
+            for k in lo...hi {
+                sumLon += centerDisplacements[k].lon
+                sumLat += centerDisplacements[k].lat
+                sumOff += laneOffsets[k]
+            }
+            smoothedCenter[i] = (sumLon / windowSize, sumLat / windowSize)
+            smoothedOffsets[i] = sumOff / windowSize
         }
 
-        // --- 2c: Compute per-segment unit normals ---
-        let segCount = coords.count - 1
+        // --- Create Base Geometry ---
+        var baseCoords = [CLLocationCoordinate2D](repeating: CLLocationCoordinate2D(latitude: 0, longitude: 0), count: coords.count)
+        for i in 0..<coords.count {
+            baseCoords[i] = CLLocationCoordinate2D(
+                latitude: coords[i].latitude + smoothedCenter[i].lat,
+                longitude: coords[i].longitude + smoothedCenter[i].lon
+            )
+        }
+
+        // --- Compute per-segment unit normals ---
+        let segCount = baseCoords.count - 1
         var segNormals = [(Double, Double)](repeating: (0, 0), count: segCount)
         for s in 0..<segCount {
-            let dx = coords[s + 1].longitude - coords[s].longitude
-            let dy = coords[s + 1].latitude - coords[s].latitude
+            let dx = baseCoords[s + 1].longitude - baseCoords[s].longitude
+            let dy = baseCoords[s + 1].latitude - baseCoords[s].latitude
             let len = sqrt(dx * dx + dy * dy)
             if len > 1e-10 {
-                // Perpendicular: rotate direction 90 deg CCW -> (-dy, dx)
                 segNormals[s] = (-dy / len, dx / len)
             }
         }
 
-        // --- 2d: Apply offsets with miter joins ---
-        //
-        // At interior vertices the offset point is the intersection of the
-        // two adjacent offset edges (the "miter").  This prevents the
-        // "pinwheel" gaps that simple perpendicular displacement creates
-        // at corners — producing one cohesive ribbon.
-        //
-        // The miter scale = 1 / cos(theta/2) where theta is the turn angle.
-        // Clamped to [0.25, 4.0] to avoid extreme spikes at near-U-turns
-        // (the miter limit concept from SVG / PostScript).
+        // --- Apply offsets with miter joins ---
         var offsetCoords: [CLLocationCoordinate2D] = []
         offsetCoords.reserveCapacity(coords.count)
 
-        for i in 0..<coords.count {
+        for i in 0..<baseCoords.count {
             let offset = smoothedOffsets[i]
             if abs(offset) < 1e-10 {
-                offsetCoords.append(coords[i])
+                offsetCoords.append(baseCoords[i])
                 continue
             }
 
             if i == 0 {
-                // First point: perpendicular from first segment
                 let (nLat, nLon) = segNormals[0]
                 offsetCoords.append(CLLocationCoordinate2D(
-                    latitude: coords[i].latitude + nLat * offset,
-                    longitude: coords[i].longitude + nLon * offset
+                    latitude: baseCoords[i].latitude + nLat * offset,
+                    longitude: baseCoords[i].longitude + nLon * offset
                 ))
-            } else if i == coords.count - 1 {
-                // Last point: perpendicular from last segment
+            } else if i == baseCoords.count - 1 {
                 let (nLat, nLon) = segNormals[segCount - 1]
                 offsetCoords.append(CLLocationCoordinate2D(
-                    latitude: coords[i].latitude + nLat * offset,
-                    longitude: coords[i].longitude + nLon * offset
+                    latitude: baseCoords[i].latitude + nLat * offset,
+                    longitude: baseCoords[i].longitude + nLon * offset
                 ))
             } else {
-                // Interior vertex: miter join
-                let (n1Lat, n1Lon) = segNormals[i - 1]  // incoming normal
-                let (n2Lat, n2Lon) = segNormals[i]      // outgoing normal
+                let (n1Lat, n1Lon) = segNormals[i - 1]
+                let (n2Lat, n2Lon) = segNormals[i]
 
-                // Miter direction: average of the two normals, normalized
                 var mLat = n1Lat + n2Lat
                 var mLon = n1Lon + n2Lon
                 let mLen = sqrt(mLat * mLat + mLon * mLon)
@@ -413,26 +448,23 @@ func applyCorridorOffsets(
                     mLat /= mLen
                     mLon /= mLen
 
-                    // Miter scale: 1 / dot(miterDir, segNormal).
-                    // Clamp to [0.25, 4.0] to prevent spikes at sharp turns.
                     let dot = mLat * n1Lat + mLon * n1Lon
                     let miterScale: Double
                     if abs(dot) > 0.25 {
                         miterScale = min(1.0 / dot, 4.0)
                     } else {
-                        miterScale = 4.0  // bevel fallback at extreme angles
+                        miterScale = 4.0
                     }
 
                     offsetCoords.append(CLLocationCoordinate2D(
-                        latitude: coords[i].latitude + mLat * offset * miterScale,
-                        longitude: coords[i].longitude + mLon * offset * miterScale
+                        latitude: baseCoords[i].latitude + mLat * offset * miterScale,
+                        longitude: baseCoords[i].longitude + mLon * offset * miterScale
                     ))
                 } else {
-                    // Degenerate (exact U-turn): fall back to simple perpendicular
                     let (nLat, nLon) = segNormals[i - 1]
                     offsetCoords.append(CLLocationCoordinate2D(
-                        latitude: coords[i].latitude + nLat * offset,
-                        longitude: coords[i].longitude + nLon * offset
+                        latitude: baseCoords[i].latitude + nLat * offset,
+                        longitude: baseCoords[i].longitude + nLon * offset
                     ))
                 }
             }
@@ -617,9 +649,41 @@ func unifyTrainPolylines(
 
             // Extend a few points into the covered area so the branch
             // stub visually connects seamlessly to the trunk polyline.
+            // IMPORTANT: The extension points are snapped to the nearest
+            // point on the trunk (kept[0]) instead of using the segment's
+            // own GPS coordinates. This prevents "double lines" where two
+            // GTFS shapes for the same physical track have slightly offset
+            // coordinates (northbound vs southbound traces, ~10-30 m apart).
             let extStart = max(0, rStart - 5)
             let extEnd = min(seg.count - 1, rEnd + 5)
-            let stub = Array(seg[extStart...extEnd])
+
+            var stub: [CLLocationCoordinate2D] = []
+            stub.reserveCapacity(extEnd - extStart + 1)
+
+            let trunk = kept[0]  // longest segment = trunk baseline
+
+            for j in extStart...extEnd {
+                if covered[j] {
+                    // This point is in the overlapping zone → snap to trunk
+                    let pt = seg[j]
+                    var bestDist = Double.greatestFiniteMagnitude
+                    var bestCoord = pt
+                    for tk in trunk {
+                        let dx = tk.longitude - pt.longitude
+                        let dy = tk.latitude - pt.latitude
+                        let d = dx * dx + dy * dy
+                        if d < bestDist {
+                            bestDist = d
+                            bestCoord = tk
+                        }
+                    }
+                    stub.append(bestCoord)
+                } else {
+                    // Unique branch territory → keep original coordinate
+                    stub.append(seg[j])
+                }
+            }
+
             guard stub.count >= 2 else { continue }
             kept.append(stub)
             addPoints(stub)

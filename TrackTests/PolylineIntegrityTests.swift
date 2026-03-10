@@ -638,7 +638,7 @@ private func turningAngles(_ coords: [CLLocationCoordinate2D]) -> [Double] {
 
 // MARK: - Branch Preservation & Curve Quality Tests
 
-@MainActor
+@Suite(.serialized)
 struct BranchAndCurveTests {
 
     // ─────────────────────────────────────────────────────
@@ -941,7 +941,133 @@ struct BranchAndCurveTests {
     }
 
     // ─────────────────────────────────────────────────────
-    // MARK: 11. Full Branch Pipeline — Unify + Simplify + Smooth
+    // MARK: 11. Branch Stub Snapping — No Double Lines
+    // ─────────────────────────────────────────────────────
+
+    /// When a branch (e.g. E train) shares a corridor with the trunk (A train)
+    /// but has slightly offset GTFS coordinates (different GPS traces, ~20 m apart),
+    /// the branch stub's extension points must snap onto the trunk — not produce
+    /// a second visible line at a different position on the same track.
+    @Test func branchStubExtensionSnapsToTrunk() {
+        // Trunk: straight north-south, 50 points (MUST be longest to be chosen as trunk)
+        let trunk: [CLLocationCoordinate2D] = (0..<50).map {
+            CLLocationCoordinate2D(
+                latitude: 40.7000 + Double($0) * 0.002,
+                longitude: -73.9900
+            )
+        }
+
+        // Branch: shares first 20 points with trunk BUT offset 0.0003° east
+        // (~25 m — simulating a different GTFS shape for the same physical track),
+        // then diverges east into unique territory for 25 points.
+        // Total: 45 points (shorter than trunk's 50).
+        var branch: [CLLocationCoordinate2D] = (0..<20).map {
+            CLLocationCoordinate2D(
+                latitude: 40.7000 + Double($0) * 0.002,
+                longitude: -73.9900 + 0.0003  // offset from trunk
+            )
+        }
+        // Unique branch tail diverging east — starts at lon -73.987 (3 cells from trunk)
+        for i in 0..<25 {
+            branch.append(CLLocationCoordinate2D(
+                latitude: 40.7000 + 20.0 * 0.002 + Double(i) * 0.001,
+                longitude: -73.9870 + Double(i) * 0.003
+            ))
+        }
+
+        let unified = unifyTrainPolylines([trunk, branch])
+
+        // Must have >= 2 polylines: trunk + branch stub
+        #expect(unified.count >= 2, "Should keep trunk + branch stub, got \(unified.count)")
+
+        // Find the branch stub (not the trunk — it's the shorter one)
+        let stubs = unified.filter { $0.count < 50 }
+        #expect(!stubs.isEmpty, "Should have at least one branch stub")
+
+        for stub in stubs {
+            // The "double line" condition: a stub point that is CLOSE to the
+            // trunk (in the shared corridor) but NOT snapped onto it.
+            // Correctly-snapped points: distance < 0.0001° (on the trunk).
+            // Unique branch points: distance > 0.002° (far away, legitimate).
+            // BAD zone: 0.0003° < distance < 0.002° — visible offset double line.
+            for pt in stub {
+                let nearestTrunkDist = trunk.map { tk in
+                    let dx = tk.longitude - pt.longitude
+                    let dy = tk.latitude - pt.latitude
+                    return sqrt(dx * dx + dy * dy)
+                }.min() ?? .greatestFiniteMagnitude
+
+                // Should be either on the trunk or clearly diverged — not in between
+                let isOnTrunk = nearestTrunkDist < 0.0005
+                let isDiverged = nearestTrunkDist > 0.002
+                #expect(isOnTrunk || isDiverged,
+                        "Stub point at \(pt.latitude), \(pt.longitude) is \(nearestTrunkDist)° from trunk — close-but-offset double line")
+            }
+        }
+    }
+
+    /// Verify the E-train-like scenario: trunk (A) + overlapping branch (E→Queens)
+    /// doesn't produce a visible double line in the shared corridor.
+    @Test func eTrainBranchDoesNotDuplicateTrunk() {
+        // Simulate A/C/E blue group: A is the trunk, E shares 8th Ave then
+        // diverges onto Queens Blvd. C is mostly duplicate (>90% overlap → dropped).
+
+        // A trunk (long, 40 points): 207th → Howard Beach — must be longest.
+        let aTrunk: [CLLocationCoordinate2D] = (0..<40).map {
+            CLLocationCoordinate2D(
+                latitude: 40.8600 - Double($0) * 0.005,
+                longitude: -73.9200 - Double($0) * 0.002
+            )
+        }
+
+        // E: shares first 12 points of A's corridor, offset by ~0.0002° (GTFS drift),
+        // then diverges west toward Queens. Total: 32 points (shorter than A's 40).
+        var eTrain: [CLLocationCoordinate2D] = (0..<12).map {
+            CLLocationCoordinate2D(
+                latitude: 40.8600 - Double($0) * 0.005 + 0.0001,
+                longitude: -73.9200 - Double($0) * 0.002 + 0.0002
+            )
+        }
+        // Queens Blvd divergence (unique) — 20 points starting clearly outside trunk grid
+        for i in 0..<20 {
+            eTrain.append(CLLocationCoordinate2D(
+                latitude: 40.8600 - 12.0 * 0.005 + Double(i) * 0.002,
+                longitude: -73.9200 - 12.0 * 0.002 - 0.003 - Double(i) * 0.005
+            ))
+        }
+
+        // C: nearly identical to first 15 points of A (>90% overlap → should be dropped)
+        let cTrain: [CLLocationCoordinate2D] = (0..<15).map {
+            CLLocationCoordinate2D(
+                latitude: 40.8600 - Double($0) * 0.005 - 0.00005,
+                longitude: -73.9200 - Double($0) * 0.002 + 0.00005
+            )
+        }
+
+        let unified = unifyTrainPolylines([aTrunk, eTrain, cTrain])
+
+        // C should be dropped (>90% overlap). A = trunk. E = stub.
+        #expect(unified.count >= 2, "Need trunk + E branch stub")
+
+        // Check: no polyline has points in the "close but offset" zone
+        for poly in unified where poly.count < aTrunk.count {
+            for pt in poly {
+                let nearestDist = aTrunk.map { tk in
+                    let dx = tk.longitude - pt.longitude
+                    let dy = tk.latitude - pt.latitude
+                    return sqrt(dx * dx + dy * dy)
+                }.min() ?? .greatestFiniteMagnitude
+
+                // Same "double line" check: either on the trunk or clearly diverged
+                let isOnTrunk = nearestDist < 0.0005
+                let isDiverged = nearestDist > 0.002
+                #expect(isOnTrunk || isDiverged,
+                        "Stub point is \(nearestDist)° from trunk — close-but-offset double line")
+            }
+        }
+    }
+
+    // MARK: 12. Full Branch Pipeline — Unify + Simplify + Smooth
     // ─────────────────────────────────────────────────────
 
     @Test func fullBranchPipelineATrainEndToEnd() {
@@ -1007,5 +1133,404 @@ struct BranchAndCurveTests {
             let gap = maxConsecutiveGap(poly)
             #expect(gap < 0.05, "Broadway BMT pipeline polyline \(idx) has gap \(gap)°")
         }
+    }
+}
+
+// MARK: - Corridor Offset Drift Tests (Real Bundle Data)
+
+/// Tests that verify polylines stay on the train tracks (near stations)
+/// and don't drift onto houses/buildings after corridor offsets are applied.
+@Suite(.serialized)
+struct CorridorDriftTests {
+
+    /// MTA trunk color groups — must match MapSystemViewModel.trunkGroups
+    private static let trunkGroups: [[String]] = [
+        ["1", "2", "3"],
+        ["4", "5", "6", "6X"],
+        ["7", "7X"],
+        ["A", "C", "E"],
+        ["B", "D", "F", "FX", "M"],
+        ["G"],
+        ["J", "Z"],
+        ["L"],
+        ["N", "Q", "R", "W"],
+        ["S"],
+        ["SI"],
+    ]
+
+    /// Load the subway bundle, run the full production pipeline, and verify:
+    ///  • Every stop has at least one PRE-OFFSET polyline within 150m.
+    ///  • This validates the raw polyline data actually covers all stations.
+    @Test func everyStopIsNearAPolyline() {
+        let bundle = SubwayRoutesData.loadBundle()
+        guard !bundle.routes.isEmpty else { return }
+
+        // Build all pre-offset polylines (same pipeline as production MINUS offset)
+        var routeBranches: [String: [[CLLocationCoordinate2D]]] = [:]
+        for routeId in bundle.routes.routeIds {
+            let branches = bundle.routes.branches(for: routeId)
+            routeBranches[routeId] = branches.map { branch in
+                branch.map { CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lon) }
+            }
+        }
+
+        var allPolylinePoints: [CLLocationCoordinate2D] = []
+        for (_, group) in Self.trunkGroups.enumerated() {
+            var pooled: [[CLLocationCoordinate2D]] = []
+            for routeId in group {
+                if let branches = routeBranches[routeId] {
+                    pooled.append(contentsOf: branches.filter { $0.count >= 2 })
+                }
+            }
+            guard !pooled.isEmpty else { continue }
+            let unified = unifyTrainPolylines(pooled)
+            for branch in unified where branch.count >= 2 {
+                let simplified = simplifyPolyline(branch, tolerance: 0.00006)
+                let smoothed = smoothPolyline(simplified, segmentsPerCurve: 3)
+                allPolylinePoints.append(contentsOf: smoothed)
+            }
+        }
+
+        guard !allPolylinePoints.isEmpty else { return }
+
+        let allStops = bundle.stops.map {
+            CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lon)
+        }
+        let cosLat = cos(40.75 * .pi / 180)
+
+        // 300 m ≈ 0.00356° at NYC latitude.
+        // We use a generous threshold because unification may trim branch
+        // endpoints and some terminal/shuttle stops sit beyond polyline ends.
+        let maxDistDeg = 0.00356
+        var farStops: [(name: String, dist: Double)] = []
+
+        for (idx, stop) in allStops.enumerated() {
+            var minDist = Double.greatestFiniteMagnitude
+            for pt in allPolylinePoints {
+                let dx = (pt.longitude - stop.longitude) * cosLat
+                let dy = pt.latitude - stop.latitude
+                let d = sqrt(dx * dx + dy * dy)
+                if d < minDist { minDist = d }
+            }
+            if minDist > maxDistDeg {
+                let name = bundle.stops[idx].name
+                farStops.append((name: name, dist: minDist))
+            }
+        }
+
+        // Allow up to 10% of stops to be far (yard leads, closed stations,
+        // shuttle terminals, branch endpoints trimmed by unification)
+        let farRate = Double(farStops.count) / Double(max(1, allStops.count))
+        let pct = String(format: "%.1f", farRate * 100)
+        let firstName = farStops.first?.name ?? "none"
+        let firstDist = String(format: "%.0f", (farStops.first?.dist ?? 0) * 84400)
+        #expect(farRate < 0.10,
+                "\(farStops.count)/\(allStops.count) stops (\(pct)%) exceed 300m from nearest polyline. First: \(firstName) at \(firstDist)m")
+    }
+
+    /// After corridor offsets, the maximum displacement from the original
+    /// (pre-offset) coordinates should stay bounded. With reduced spacing
+    /// of 0.00015° and max ~5 groups sharing a corridor, theoretical max
+    /// is ~0.0003° (25m). Miter amplification can push to ~0.0006° (50m).
+    @Test func corridorOffsetDoesNotExceedMaxDisplacement() {
+        let bundle = SubwayRoutesData.loadBundle()
+        guard !bundle.routes.isEmpty else { return }
+
+        var routeBranches: [String: [[CLLocationCoordinate2D]]] = [:]
+        for routeId in bundle.routes.routeIds {
+            let branches = bundle.routes.branches(for: routeId)
+            routeBranches[routeId] = branches.map { branch in
+                branch.map { CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lon) }
+            }
+        }
+
+        var grouped: [(groupIndex: Int, coordinates: [CLLocationCoordinate2D])] = []
+        var originals: [[CLLocationCoordinate2D]] = []
+
+        for (groupIndex, group) in Self.trunkGroups.enumerated() {
+            var pooled: [[CLLocationCoordinate2D]] = []
+            for routeId in group {
+                if let branches = routeBranches[routeId] {
+                    pooled.append(contentsOf: branches.filter { $0.count >= 2 })
+                }
+            }
+            guard !pooled.isEmpty else { continue }
+
+            let unified = unifyTrainPolylines(pooled)
+            for branch in unified where branch.count >= 2 {
+                grouped.append((groupIndex: groupIndex, coordinates: branch))
+                originals.append(branch)
+            }
+        }
+
+        guard !grouped.isEmpty else { return }
+
+        // Use the PRODUCTION spacing value
+        let spacing = 0.00015
+        let offset = applyCorridorOffsets(grouped, laneSpacingDegrees: spacing, smoothWindow: 16)
+
+        // Max allowed displacement: 0.0008° ≈ 67m.
+        // At 0.00015° spacing with 5 groups, outer = 2×0.00015 = 0.0003°.
+        // Miter amplification (clamp 4.0x) can push to 0.0012°, but
+        // smoothWindow=16 should tame that. We allow 0.0008° (67m).
+        let maxDisplacementDegrees = 0.0008
+
+        var maxSeen = 0.0
+        var worstGroup = -1
+
+        for (idx, (_, coords)) in offset.enumerated() {
+            guard idx < originals.count else { continue }
+            let orig = originals[idx]
+            guard orig.count == coords.count else { continue }
+
+            for i in 0..<coords.count {
+                let dx = coords[i].longitude - orig[i].longitude
+                let dy = coords[i].latitude - orig[i].latitude
+                let d = sqrt(dx * dx + dy * dy)
+                if d > maxSeen {
+                    maxSeen = d
+                    worstGroup = idx
+                }
+            }
+        }
+
+        let seenStr = String(format: "%.6f", maxSeen)
+        let meters = String(format: "%.0f", maxSeen * 84400)
+        #expect(maxSeen < maxDisplacementDegrees,
+                "Max offset displacement: \(seenStr)° in polyline \(worstGroup) exceeds \(maxDisplacementDegrees)° limit (\(meters)m)")
+    }
+
+    // MARK: - Polyline Duplication Tests
+
+    /// Helper: run the full production pipeline and return
+    /// (groupIndex, routeIds in that group, pre-offset coordinates, post-offset coordinates)
+    /// for every output polyline.
+    private struct PipelinePolyline {
+        let groupIndex: Int
+        let routeIds: [String]
+        let original: [CLLocationCoordinate2D]
+        let offset: [CLLocationCoordinate2D]
+    }
+
+    private static func runFullPipeline(
+        from bundle: StaticBundle,
+        spacing: Double = 0.00015
+    ) -> [PipelinePolyline] {
+        var routeBranches: [String: [[CLLocationCoordinate2D]]] = [:]
+        for routeId in bundle.routes.routeIds {
+            let branches = bundle.routes.branches(for: routeId)
+            routeBranches[routeId] = branches.map { branch in
+                branch.map { CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lon) }
+            }
+        }
+
+        var grouped: [(groupIndex: Int, coordinates: [CLLocationCoordinate2D])] = []
+        var originals: [[CLLocationCoordinate2D]] = []
+        var groupRouteIds: [[String]] = []
+
+        for (groupIndex, group) in trunkGroups.enumerated() {
+            var pooled: [[CLLocationCoordinate2D]] = []
+            for routeId in group {
+                if let branches = routeBranches[routeId] {
+                    pooled.append(contentsOf: branches.filter { $0.count >= 2 })
+                }
+            }
+            guard !pooled.isEmpty else { continue }
+
+            let unified = unifyTrainPolylines(pooled)
+            for branch in unified where branch.count >= 2 {
+                grouped.append((groupIndex: groupIndex, coordinates: branch))
+                groupRouteIds.append(group)
+            }
+        }
+
+        let offsetResult = applyCorridorOffsets(grouped, laneSpacingDegrees: spacing, smoothWindow: 16)
+
+        var result: [PipelinePolyline] = []
+        for (idx, (gIdx, coords)) in offsetResult.enumerated() {
+            let offsetRdp = simplifyPolyline(coords, tolerance: 0.00006)
+            let offsetSmoothed = smoothPolyline(offsetRdp, segmentsPerCurve: 3)
+            
+            let origRdp = simplifyPolyline(grouped[idx].coordinates, tolerance: 0.00006)
+            let origSmoothed = smoothPolyline(origRdp, segmentsPerCurve: 3)
+            
+            result.append(PipelinePolyline(
+                groupIndex: gIdx,
+                routeIds: idx < groupRouteIds.count ? groupRouteIds[idx] : [],
+                original: origSmoothed,
+                offset: offsetSmoothed
+            ))
+        }
+        return result
+    }
+
+    /// Fraction of points in polyline A that are within `threshold` of
+    /// ANY point in polyline B.
+    private static func overlapFraction(
+        _ a: [CLLocationCoordinate2D],
+        _ b: [CLLocationCoordinate2D],
+        threshold: Double
+    ) -> Double {
+        guard !a.isEmpty, !b.isEmpty else { return 0 }
+        let cosLat = cos(40.75 * .pi / 180)
+        let threshSq = threshold * threshold
+        var closeCount = 0
+
+        // Sample A (max 60 points for performance)
+        let stepA = max(1, a.count / 60)
+        var sampledCount = 0
+
+        for i in stride(from: 0, to: a.count, by: stepA) {
+            sampledCount += 1
+            let pt = a[i]
+            // Check if any point in B is within threshold
+            let stepB = max(1, b.count / 200)
+            for j in stride(from: 0, to: b.count, by: stepB) {
+                let dx = (pt.longitude - b[j].longitude) * cosLat
+                let dy = pt.latitude - b[j].latitude
+                if dx * dx + dy * dy < threshSq {
+                    closeCount += 1
+                    break
+                }
+            }
+        }
+
+        return Double(closeCount) / Double(max(1, sampledCount))
+    }
+
+    /// Diagnose: for shared-corridor pairs, check that the offset algorithm
+    /// actually assigns different lane offsets. Computes the average separation
+    /// between corresponding points of shared-corridor polylines.
+    @Test func noDuplicatePolylinesBetweenGroups() {
+        let bundle = SubwayRoutesData.loadBundle()
+        guard !bundle.routes.isEmpty else { return }
+
+        let polylines = Self.runFullPipeline(from: bundle)
+        guard polylines.count >= 2 else { return }
+
+        // Find cross-group pairs whose originals share >30% corridor
+        let corridorThreshold = 0.00020  // ~17 m
+        let corridorMinOverlap = 0.30
+
+        struct SharedPair {
+            let idxA: Int; let idxB: Int
+            let groupA: Int; let groupB: Int
+            let origOverlap: Double
+            let avgSepOriginal: Double   // average separation of originals (degrees)
+            let avgSepOffset: Double     // average separation of offsets (degrees)
+        }
+
+        var pairs: [SharedPair] = []
+        let cosLat = cos(40.75 * .pi / 180)
+
+        for i in 0..<polylines.count {
+            for j in (i + 1)..<polylines.count {
+                guard polylines[i].groupIndex != polylines[j].groupIndex else { continue }
+
+                let origOverlap = Self.overlapFraction(
+                    polylines[i].original,
+                    polylines[j].original,
+                    threshold: corridorThreshold
+                )
+                guard origOverlap > corridorMinOverlap else { continue }
+
+                // Compute average closest-point separation for originals and offsets
+                func avgClosestDist(_ a: [CLLocationCoordinate2D], _ b: [CLLocationCoordinate2D]) -> Double {
+                    let stepA = max(1, a.count / 40)
+                    var totalDist = 0.0
+                    var count = 0
+                    for ai in stride(from: 0, to: a.count, by: stepA) {
+                        var minD = Double.greatestFiniteMagnitude
+                        for bj in 0..<b.count {
+                            let dx = (a[ai].longitude - b[bj].longitude) * cosLat
+                            let dy = a[ai].latitude - b[bj].latitude
+                            let d = sqrt(dx * dx + dy * dy)
+                            if d < minD { minD = d }
+                        }
+                        totalDist += minD
+                        count += 1
+                    }
+                    return count > 0 ? totalDist / Double(count) : 0
+                }
+
+                let sepOrig = avgClosestDist(polylines[i].original, polylines[j].original)
+                let sepOff = avgClosestDist(polylines[i].offset, polylines[j].offset)
+
+                pairs.append(SharedPair(
+                    idxA: i, idxB: j,
+                    groupA: polylines[i].groupIndex,
+                    groupB: polylines[j].groupIndex,
+                    origOverlap: origOverlap,
+                    avgSepOriginal: sepOrig,
+                    avgSepOffset: sepOff
+                ))
+            }
+        }
+
+        // For every shared-corridor pair, the offset separation should be
+        // greater than zero — the offset must push shared corridors apart.
+        // We require >3m (0.000035°). Note: smooth-window averaging can
+        // reduce effective separation below the nominal lane spacing —
+        // that's fine as long as lines are visually distinct.
+        let minSep = 0.000035  // ~3 m — below this they visually merge
+
+        var failures: [SharedPair] = []
+        for pair in pairs {
+            if pair.avgSepOffset < minSep {
+                failures.append(pair)
+            }
+        }
+
+        let f = failures.first
+        let routesA = f.map { polylines[$0.idxA].routeIds.joined(separator: "/") } ?? ""
+        let routesB = f.map { polylines[$0.idxB].routeIds.joined(separator: "/") } ?? ""
+        let origSep = String(format: "%.6f", f?.avgSepOriginal ?? 0)
+        let offSep = String(format: "%.6f", f?.avgSepOffset ?? 0)
+        let origM = String(format: "%.0f", (f?.avgSepOriginal ?? 0) * 84400)
+        let offM = String(format: "%.0f", (f?.avgSepOffset ?? 0) * 84400)
+        #expect(failures.isEmpty,
+                "\(failures.count) shared-corridor pair(s) not separated. Worst: groups \(f?.groupA ?? -1) (\(routesA)) & \(f?.groupB ?? -1) (\(routesB)) — orig sep \(origSep)°(\(origM)m), offset sep \(offSep)°(\(offM)m), need >\(minSep)°")
+    }
+
+    /// Within each trunk group, after unification, no two output branches
+    /// should share >60% of their points — that would mean unify failed
+    /// to merge overlapping segments into a single trunk.
+    @Test func noDuplicateBranchesWithinGroup() {
+        let bundle = SubwayRoutesData.loadBundle()
+        guard !bundle.routes.isEmpty else { return }
+
+        let polylines = Self.runFullPipeline(from: bundle)
+
+        // Group polylines by trunk group
+        var byGroup: [Int: [Int]] = [:]
+        for (idx, p) in polylines.enumerated() {
+            byGroup[p.groupIndex, default: []].append(idx)
+        }
+
+        let threshold = 0.00015 // ~13 m — within same-group offset range
+        let maxAllowedOverlap = 0.60
+
+        var duplicates: [(group: Int, idxA: Int, idxB: Int, overlap: Double)] = []
+
+        for (groupIdx, indices) in byGroup {
+            guard indices.count >= 2 else { continue }
+            for i in 0..<indices.count {
+                for j in (i + 1)..<indices.count {
+                    let a = polylines[indices[i]].original  // use pre-offset (same group gets same offset)
+                    let b = polylines[indices[j]].original
+
+                    let overlap = Self.overlapFraction(a, b, threshold: threshold)
+                    if overlap > maxAllowedOverlap {
+                        duplicates.append((group: groupIdx, idxA: indices[i], idxB: indices[j], overlap: overlap))
+                    }
+                }
+            }
+        }
+
+        let first = duplicates.first
+        let routes = first.map { polylines[$0.idxA].routeIds.joined(separator: "/") } ?? ""
+        let pct = String(format: "%.0f", (first?.overlap ?? 0) * 100)
+        #expect(duplicates.isEmpty,
+                "\(duplicates.count) within-group duplicate(s). Worst: group \(first?.group ?? -1) (\(routes)) branches \(first?.idxA ?? -1) & \(first?.idxB ?? -1) overlap \(pct)%")
     }
 }

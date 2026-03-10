@@ -591,11 +591,11 @@ struct TrackMapView: View {
     /// subtle threads at full-system overview.
     private var systemMapSubwayLineWidth: CGFloat {
         switch _zoomTier {
-        case .veryClose: return 3.5
-        case .close:     return 3.0
-        case .medium:    return 2.0
-        case .far:       return 1.5
-        case .distant:   return 1.0
+        case .veryClose: return 2.5
+        case .close:     return 2.0
+        case .medium:    return 1.5
+        case .far:       return 1.0
+        case .distant:   return 0.75
         }
     }
 
