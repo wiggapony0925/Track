@@ -46,8 +46,9 @@ from app.utils.polyline_utils import decode_polyline, encode_polyline
 LANE_WIDTH: float = 12.0
 
 # Tolerance for Ramer-Douglas-Peucker simplification (meters).
-# 8 m nukes GPS jitter without losing meaningful geometry.
-RDP_TOLERANCE: float = 8.0
+# 18 m aggressively kills GPS jitter and micro-wobble, producing the
+# clean straight edges needed for the NYC street grid aesthetic.
+RDP_TOLERANCE: float = 18.0
 
 # Snapping tolerance for collapsing near-coincident GTFS shapes into the
 # skeleton graph (meters).  15 m catches northbound/southbound tracks that
@@ -75,6 +76,30 @@ ROUTE_MAP_BUFFER: float = 35.0
 # Minimum fillet radius at junction nodes (meters).
 # Prevents arcs from becoming too tight at very sharp turns.
 MIN_FILLET_RADIUS: float = 20.0
+
+# ── Directive 1: Straight-Line Immunity ──
+# Maximum deflection (radians) below which no arc fillet is applied.
+# 0.26 rad ≈ 15°.  Lines within 15° of straight pass through the
+# node cleanly — no setback, no arc, no "bubble".
+STRAIGHT_DEFLECTION_LIMIT: float = 0.26
+
+# ── Directive 2: Overpass / Underpass Exclusion ──
+# Minimum |dot product| between a route's local direction and a skeleton
+# edge's direction for the route to be considered "running along" the edge.
+# cos(45°) ≈ 0.707.  Routes crossing at steeper angles are classified as
+# overpasses and excluded from the corridor's parallel offset.
+CROSSING_ALIGNMENT_MIN: float = 0.707
+
+# ── Directive 3: Grid Snapping ──
+# Angular tolerance (degrees) for forcing an edge to be perfectly straight.
+# Edges whose overall bearing is within this many degrees of N-S or E-W are
+# replaced with a straight 2-point line from start to end.
+GRID_SNAP_ANGLE_DEG: float = 10.0
+
+# ── Directive 4: Dynamic Setbacks ──
+# Maximum fraction of a segment's length that a setback (trim) may consume.
+# Reduced from 0.8 to 0.4 to prevent loop-de-loops at dense junctions.
+MAX_SETBACK_FRACTION: float = 0.4
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -224,6 +249,12 @@ def _build_skeleton(
     # Filter out micro-stubs
     skeleton_segments = [s for s in skeleton_segments if s.length >= MIN_EDGE_LENGTH]
 
+    # ── Directive 3: Grid snap — straighten near-cardinal edges ──
+    # Edges aligned within GRID_SNAP_ANGLE_DEG of N-S or E-W are forced
+    # to a perfect 2-point straight line, eliminating wobbly avenues.
+    skeleton_segments = [_grid_snap_segment(seg) for seg in skeleton_segments]
+    skeleton_segments = [s for s in skeleton_segments if s.length >= MIN_EDGE_LENGTH]
+
     if not skeleton_segments:
         return nx.Graph(), {}
 
@@ -333,6 +364,9 @@ def _build_skeleton(
                     if (u, v) not in route_edges[route_id]:
                         route_edges[route_id].append((u, v))
 
+    # ── Directive 2: Filter overpasses — remove routes crossing at steep angles ──
+    _filter_crossing_route_mappings(G, route_edges, route_geoms)
+
     # Log route mapping stats
     mapped_count = sum(1 for e_data in G.edges(data=True) if e_data[2].get("routes"))
     TrackLogger.info(
@@ -391,6 +425,113 @@ def _cluster_points(
                 point_to_centroid[pt] = centroid
 
     return point_to_centroid
+
+
+def _grid_snap_segment(seg: LineString) -> LineString:
+    """Directive 3: Force mostly-cardinal edges to be perfectly straight.
+
+    If the overall bearing of a skeleton segment is within
+    ``GRID_SNAP_ANGLE_DEG`` of N-S or E-W, replace all intermediate
+    vertices with a straight 2-point line from start to end.
+    This eliminates GTFS micro-jitter on long avenue / cross-street runs.
+    """
+    coords = list(seg.coords)
+    if len(coords) < 3:
+        return seg  # Already a straight 2-point segment
+
+    start, end = coords[0], coords[-1]
+    dx = end[0] - start[0]
+    dy = end[1] - start[1]
+    length = math.sqrt(dx * dx + dy * dy)
+    if length < 1e-6:
+        return seg
+
+    # Bearing from start to end (degrees from north, 0-360).
+    # atan2(dx, dy) with (x=east, y=north) in EPSG:3857 gives
+    # 0° = north, 90° = east — standard navigational bearing.
+    bearing = math.degrees(math.atan2(dx, dy)) % 360
+
+    threshold = GRID_SNAP_ANGLE_DEG
+    for cardinal in (0.0, 90.0, 180.0, 270.0):
+        angle_diff = abs(bearing - cardinal)
+        if angle_diff > 180:
+            angle_diff = 360 - angle_diff
+        if angle_diff <= threshold:
+            return LineString([start, end])
+
+    return seg
+
+
+def _filter_crossing_route_mappings(
+    G: nx.Graph,
+    route_edges: dict[str, list[tuple[int, int]]],
+    route_geoms: dict[str, list[LineString]],
+) -> None:
+    """Directive 2: Remove route→edge mappings where the route crosses
+    the skeleton edge at a steep angle (overpass / underpass) rather
+    than running along it.
+
+    A route whose local direction at an edge's midpoint differs by more
+    than 45° from the edge's direction is classified as an overpass.
+    The mapping is removed from both ``G`` edge ``routes`` sets and
+    ``route_edges`` — mutates in-place.
+    """
+    for route_id, geoms in route_geoms.items():
+        if not geoms:
+            continue
+
+        edges_to_remove: list[tuple[int, int]] = []
+
+        for u, v in list(route_edges.get(route_id, [])):
+            if not G.has_edge(u, v):
+                continue
+            edge_geom = G[u][v].get("geometry")
+            if edge_geom is None or edge_geom.is_empty or len(edge_geom.coords) < 2:
+                continue
+
+            # Edge direction (unit vector)
+            ec = list(edge_geom.coords)
+            edx = ec[-1][0] - ec[0][0]
+            edy = ec[-1][1] - ec[0][1]
+            elen = math.sqrt(edx * edx + edy * edy)
+            if elen < 1e-6:
+                continue
+            edx /= elen
+            edy /= elen
+
+            # Check if any of the route's GTFS geometries run along this edge
+            best_alignment = 0.0
+            for rgeom in geoms:
+                edge_mid = edge_geom.interpolate(0.5, normalized=True)
+                proj_dist = rgeom.project(edge_mid)
+                nearest_pt = rgeom.interpolate(proj_dist)
+
+                if edge_mid.distance(nearest_pt) > ROUTE_MAP_BUFFER:
+                    continue
+
+                # Local direction of the route near the edge midpoint
+                delta = min(25.0, rgeom.length * 0.1)
+                p1 = rgeom.interpolate(max(0, proj_dist - delta))
+                p2 = rgeom.interpolate(min(rgeom.length, proj_dist + delta))
+                rdx = p2.x - p1.x
+                rdy = p2.y - p1.y
+                rlen = math.sqrt(rdx * rdx + rdy * rdy)
+                if rlen < 1e-6:
+                    continue
+                rdx /= rlen
+                rdy /= rlen
+
+                # Alignment = |dot product| (1.0 = parallel, 0 = perpendicular)
+                alignment = abs(edx * rdx + edy * rdy)
+                best_alignment = max(best_alignment, alignment)
+
+            if best_alignment < CROSSING_ALIGNMENT_MIN:
+                edges_to_remove.append((u, v))
+
+        for eu, ev in edges_to_remove:
+            G[eu][ev]["routes"].discard(route_id)
+            if (eu, ev) in route_edges.get(route_id, []):
+                route_edges[route_id].remove((eu, ev))
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1215,8 +1356,11 @@ def _compute_arc_from_directions(
     alpha = math.acos(cos_alpha)       # angle at the vertex
     deflection = math.pi - alpha       # how much the path turns
 
-    # Skip nearly straight turns (<5°) and near-U-turns (>160°)
-    if deflection < 0.087 or deflection > 2.79:
+    # ── Directive 1: Straight-Line Immunity ──
+    # If the path deflects by less than ~15° it is effectively straight.
+    # Applying an arc here would create the "bubble effect" at
+    # Columbus Circle-style intersections.  Also skip near-U-turns.
+    if deflection < STRAIGHT_DEFLECTION_LIMIT or deflection > 2.79:
         return None
 
     half_alpha = alpha / 2.0
@@ -1237,8 +1381,13 @@ def _compute_arc_from_directions(
     bx /= b_len
     by /= b_len
 
-    # ── Base fillet radius on the skeleton centre-line ──
-    base_radius = max(JUNCTION_SETBACK, MIN_FILLET_RADIUS)
+    # ── Directive 4: Dynamic fillet radius ──
+    # Scale radius inversely with deflection angle so that sharp turns
+    # (Queensboro Plaza) get a tight arc instead of a massive one that
+    # overshoots into a loop-de-loop.
+    deflection_ratio = deflection / math.pi  # 0 = straight, 1 = U-turn
+    base_radius = JUNCTION_SETBACK * (1.0 - 0.6 * deflection_ratio)
+    base_radius = max(base_radius, MIN_FILLET_RADIUS * 0.5)
 
     # Centre distance from vertex along bisector: R / sin(α/2)
     center_dist = base_radius / sin_half
@@ -1265,9 +1414,10 @@ def _compute_arc_from_directions(
     setback_in = r_in / tan_half
     setback_out = r_out / tan_half
 
-    # Cap setbacks so we don't consume too much of the segment
-    max_in = seg_in.length * 0.8
-    max_out = seg_out.length * 0.8
+    # Cap setbacks so we don't consume too much of the segment.
+    # MAX_SETBACK_FRACTION (0.4) prevents loop-de-loops at dense junctions.
+    max_in = seg_in.length * MAX_SETBACK_FRACTION
+    max_out = seg_out.length * MAX_SETBACK_FRACTION
     if setback_in > max_in:
         setback_in = max_in
     if setback_out > max_out:
@@ -1631,6 +1781,78 @@ def _merge_linestrings(
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# Post-processing — Geometry Cleanup & Anti-Loop Sweep
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _postprocess_route_geometries(
+    route_segments: dict[str, list[LineString]],
+) -> dict[str, list[LineString]]:
+    """Directive 4 post-processing sweep: clean geometries, kill loops.
+
+    1. ``make_valid`` on every geometry.
+    2. Extract only ``LineString`` components, discarding ``Polygon``
+       and other artifacts that ``offset_curve`` can produce.
+    3. If a ``LineString`` self-intersects (bowtie from a tight arc
+       fillet), extract the longest non-self-intersecting piece.
+    """
+    cleaned: dict[str, list[LineString]] = {}
+
+    for route_id, segments in route_segments.items():
+        clean_segs: list[LineString] = []
+        for seg in segments:
+            if seg is None or seg.is_empty:
+                continue
+
+            if not seg.is_valid:
+                seg = make_valid(seg)
+
+            if seg.geom_type == "LineString":
+                fixed = _fix_self_intersecting(seg)
+                if fixed and fixed.length >= MIN_EDGE_LENGTH:
+                    clean_segs.append(fixed)
+            elif seg.geom_type == "MultiLineString":
+                for part in seg.geoms:
+                    if part.geom_type == "LineString":
+                        fixed = _fix_self_intersecting(part)
+                        if fixed and fixed.length >= MIN_EDGE_LENGTH:
+                            clean_segs.append(fixed)
+            elif hasattr(seg, "geoms"):
+                for part in seg.geoms:
+                    if part.geom_type == "LineString":
+                        fixed = _fix_self_intersecting(part)
+                        if fixed and fixed.length >= MIN_EDGE_LENGTH:
+                            clean_segs.append(fixed)
+
+        if clean_segs:
+            cleaned[route_id] = clean_segs
+
+    return cleaned
+
+
+def _fix_self_intersecting(line: LineString) -> LineString | None:
+    """If a LineString self-intersects (bowtie / loop), extract the
+    longest non-looping section."""
+    if line.is_simple:
+        return line
+
+    valid = make_valid(line)
+    if valid.geom_type == "LineString":
+        return valid
+
+    candidates: list[LineString] = []
+    if valid.geom_type == "MultiLineString":
+        candidates = [g for g in valid.geoms if g.geom_type == "LineString"]
+    elif hasattr(valid, "geoms"):
+        candidates = [g for g in valid.geoms if g.geom_type == "LineString"]
+
+    if candidates:
+        return max(candidates, key=lambda g: g.length)
+
+    return line
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # Phase 6: Topological Stop Processing
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -1870,6 +2092,12 @@ def apply_topological_offsets(
     except Exception as exc:
         TrackLogger.warning(f"[Pipeline] Phase 4 (Junction rounding) failed: {exc}")
         # Continue with unrounded segments — they're still valid
+
+    # ── Post-processing: geometry cleanup & anti-loop sweep ──
+    try:
+        route_segments = _postprocess_route_geometries(route_segments)
+    except Exception as exc:
+        TrackLogger.warning(f"[Pipeline] Post-processing sweep failed: {exc}")
 
     # ── Phase 6: Snap stops onto offset lines ──
     global _processed_stops_cache
