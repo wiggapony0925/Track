@@ -51,14 +51,15 @@ from app.utils.polyline_utils import decode_polyline, encode_polyline
 LANE_WIDTH: float = 16.0
 
 # Two trunk paths closer than this are considered to share a corridor.
-# 50 m catches both directions of one avenue (~30 m) with margin,
-# without merging adjacent avenues (~250 m apart).
-CORRIDOR_DETECT_DIST: float = 50.0
+# 25 m is tight enough to exclude adjacent streets (Roosevelt Ave vs
+# Queens Blvd = ~30-50 m apart) while catching true shared tunnels where
+# GPS traces of different trunks run within ~10 m of each other.
+CORRIDOR_DETECT_DIST: float = 25.0
 
 # Minimum |dot product| of travel directions for two trunk paths to be
-# considered parallel.  cos(55°) ≈ 0.574.  Lowered from 0.707 to catch
-# more segments in gently curving corridors.
-CORRIDOR_ALIGN_MIN: float = 0.574
+# considered parallel.  cos(45°) ≈ 0.707.  Tightened from 0.574 to
+# reduce false positives from streets that cross at moderate angles.
+CORRIDOR_ALIGN_MIN: float = 0.707
 
 # Maximum number of consecutive zero-offset vertices allowed inside a
 # corridor before gap-filling kicks in.  Closes detection holes where a
@@ -489,13 +490,14 @@ def _compute_corridor_offsets(
             coords = list(path.coords)
             n = len(coords)
             raw_offsets: list[float] = [0.0] * n
+            per_vertex_trunks: dict[int, set[int]] = {}
 
             for i in range(n):
                 pt = Point(coords[i])
                 dir_i = _local_direction(coords, i)
+                nearby_trunks: set[int] = set()
 
                 # Query spatial index for nearby paths
-                nearby_trunks: set[int] = set()
                 candidate_indices = tree.query(
                     pt.buffer(CORRIDOR_DETECT_DIST)
                 )
@@ -517,11 +519,73 @@ def _compute_corridor_offsets(
                         nearby_trunks.add(info.trunk_idx)
 
                 if nearby_trunks:
-                    all_trunks = sorted(nearby_trunks | {trunk_idx})
-                    lane = all_trunks.index(trunk_idx)
-                    n_lanes = len(all_trunks)
-                    centre = (n_lanes - 1) / 2.0
-                    raw_offsets[i] = (lane - centre) * LANE_WIDTH
+                    per_vertex_trunks[i] = nearby_trunks
+
+            # ── Local density filter ──
+            # A vertex is only offset for a neighbour trunk if that trunk
+            # is detected by enough nearby vertices in a sliding window.
+            # This prevents a genuine shared corridor in one part of a path
+            # (e.g. 7 + N/Q/R/W at Queensboro Plaza) from bleeding offsets
+            # into distant vertices where the same trunk happens to pass
+            # within CORRIDOR_DETECT_DIST on a completely separate street
+            # (e.g. N/Q/R/W on Queens Blvd ~23 m from the 7 on Roosevelt Ave).
+            #
+            # Window size: 60 vertices ≈ 3-6 km of path.
+            # Minimum local hits: 8 of 60 (13%).
+            LOCAL_WINDOW = 60
+            LOCAL_MIN_HITS = 8
+
+            # First, build per-trunk detection arrays for efficient windowing
+            detected_trunks_all: set[int] = set()
+            for vtrunks in per_vertex_trunks.values():
+                detected_trunks_all.update(vtrunks)
+
+            # For each candidate trunk, build a boolean array of detections
+            trunk_local_valid: dict[int, list[bool]] = {}
+            for t in detected_trunks_all:
+                detections = [
+                    (t in per_vertex_trunks.get(i, set()))
+                    for i in range(n)
+                ]
+
+                # Sliding window: mark vertex i as locally-valid if
+                # the window centred on i has >= LOCAL_MIN_HITS detections
+                half = LOCAL_WINDOW // 2
+                valid = [False] * n
+
+                # Running sum
+                win_sum = sum(1 for d in detections[:min(half, n)] if d)
+                for i in range(n):
+                    # Expand right edge
+                    right = i + half
+                    if right < n and detections[right]:
+                        win_sum += 1
+                    # Shrink left edge
+                    left = i - half - 1
+                    if left >= 0 and detections[left]:
+                        win_sum -= 1
+                    if win_sum >= LOCAL_MIN_HITS:
+                        valid[i] = True
+
+                trunk_local_valid[t] = valid
+
+            # Compute offsets only using locally-validated neighbor trunks
+            for i in range(n):
+                vtrunks = per_vertex_trunks.get(i)
+                if not vtrunks:
+                    continue
+                # Only keep trunks that are locally dense around this vertex
+                filtered = {
+                    t for t in vtrunks
+                    if trunk_local_valid.get(t, [False] * n)[i]
+                }
+                if not filtered:
+                    continue
+                all_trunks = sorted(filtered | {trunk_idx})
+                lane = all_trunks.index(trunk_idx)
+                n_lanes = len(all_trunks)
+                centre = (n_lanes - 1) / 2.0
+                raw_offsets[i] = (lane - centre) * LANE_WIDTH
 
             # Smooth offset transitions
             filled = _fill_corridor_gaps(raw_offsets)
