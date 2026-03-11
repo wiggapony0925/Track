@@ -16,7 +16,7 @@ from app.utils.transit_utils import get_subway_color
 from app.utils.logger import TrackLogger
 
 # Path to GTFS data directory
-DEFAULT_DATA_DIR = Path(__file__).parent.parent / "data"
+DEFAULT_DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
 
 def parse_shapes(agency_dir: Path) -> Dict[str, List[Dict[str, float]]]:
     """Parse shapes.txt to get route polylines."""
@@ -35,7 +35,8 @@ def parse_shapes(agency_dir: Path) -> Dict[str, List[Dict[str, float]]]:
                 lat = float(row.get('shape_pt_lat', 0))
                 lon = float(row.get('shape_pt_lon', 0))
                 shapes[shape_id].append((sequence, lat, lon))
-            except (ValueError, TypeError):
+            except (ValueError, TypeError) as exc:
+                TrackLogger.debug(f"Skipping malformed shape row {shape_id}: {exc}", tag="DATA")
                 continue
     
     result = {}
@@ -73,7 +74,8 @@ def parse_stops(agency_dir: Path, prefix: str = "") -> List[Dict[str, Any]]:
                         "lat": float(row.get('stop_lat', 0)),
                         "lon": float(row.get('stop_lon', 0))
                     })
-                except ValueError:
+                except ValueError as exc:
+                    TrackLogger.debug(f"Skipping stop with bad coords {stop_id}: {exc}", tag="DATA")
                     continue
     return stops
 

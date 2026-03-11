@@ -230,6 +230,34 @@ class AllSubwayStationsResponse(BaseModel):
     stations: list[SubwayStation]
 
 
+class StopPosition(BaseModel):
+    """A stop snapped onto a specific route's offset line."""
+
+    route_id: str
+    lat: float
+    lon: float
+
+
+class ProcessedStation(BaseModel):
+    """A station with positions snapped onto the offset polylines.
+
+    ``is_transfer`` is True when the station spans ≥ 2 trunk groups.
+    iOS draws a small circle for single-line stops and a white
+    rounded-rect bar connecting dots for transfer stations.
+    """
+
+    station_id: str
+    name: str
+    is_transfer: bool
+    positions: list[StopPosition]
+
+
+class ProcessedStationsResponse(BaseModel):
+    """Processed stations with offset-snapped positions."""
+
+    stations: list[ProcessedStation]
+
+
 class CommuterRailLineOverlay(BaseModel):
     """Lightweight shape for drawing a single commuter rail line on the map."""
 

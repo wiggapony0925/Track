@@ -19,7 +19,7 @@ from typing import NamedTuple
 from app.utils.geo_utils import bounding_box_degrees, haversine_m
 from app.utils.logger import TrackLogger
 
-_DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+_DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
 
 
 class StopInfo(NamedTuple):

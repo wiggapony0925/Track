@@ -14,7 +14,7 @@
 # Can be run:
 #   - At server startup  (await check_and_refresh_gtfs())
 #   - Periodically       (background task every 24 hours)
-#   - Manually           (python -m app.services.gtfs_refresh)
+#   - Manually           (python -m app.services.gtfs.gtfs_refresh)
 #
 
 from __future__ import annotations
@@ -39,7 +39,7 @@ from app.utils.logger import TrackLogger
 # Configuration
 # ---------------------------------------------------------------------------
 
-_DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+_DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
 _META_DIR = _DATA_DIR / ".gtfs_meta"
 
 # MTA GTFS static feed URLs
@@ -322,7 +322,7 @@ def _rebuild_schedule_db() -> bool:
         return True
 
     except Exception as exc:
-        TrackLogger.error(f"[GTFS] Failed to rebuild schedule DB: {exc}", tag="GTFS")
+        TrackLogger.error(f"[GTFS] Failed to rebuild schedule DB: {exc}", tag="GTFS", exc_info=True)
         if db_tmp.exists():
             db_tmp.unlink(missing_ok=True)
         return False
@@ -416,14 +416,14 @@ def _upload_to_supabase(archive_names: set[str]) -> None:
     try:
         # Import from the upload script
         import sys
-        scripts_dir = Path(__file__).resolve().parent.parent.parent / "scripts"
+        scripts_dir = Path(__file__).resolve().parent.parent.parent.parent / "scripts"
         sys.path.insert(0, str(scripts_dir))
 
         # We use a simpler inline approach instead
         import tarfile
         import tempfile
 
-        from app.services.data_loader import (
+        from app.services.gtfs.data_loader import (
             BUCKET_NAME,
             SUPABASE_URL,
             _auth_headers,
@@ -500,7 +500,7 @@ def _upload_to_supabase(archive_names: set[str]) -> None:
                     )
 
     except Exception as exc:
-        TrackLogger.error(f"[GTFS] Supabase upload error: {exc}", tag="GTFS")
+        TrackLogger.error(f"[GTFS] Supabase upload error: {exc}", tag="GTFS", exc_info=True)
 
 
 # ---------------------------------------------------------------------------
@@ -509,7 +509,7 @@ def _upload_to_supabase(archive_names: set[str]) -> None:
 
 def _clear_gtfs_caches() -> None:
     """Clear all @lru_cache'd GTFS data so the running server picks up fresh files."""
-    from app.services.subway_shapes import (
+    from app.services.mapping.subway_shapes import (
         _load_shapes,
         _parse_trips,
         _load_route_shapes,
@@ -518,12 +518,12 @@ def _clear_gtfs_caches() -> None:
         _get_stops_for_shape,
         _load_service_types,
     )
-    from app.services.station_lookup import _load_stops
-    from app.services.commuter_rail_shapes import (
+    from app.services.transit.station_lookup import _load_stops
+    from app.services.mapping.commuter_rail_shapes import (
         _lirr_shapes, _lirr_routes, _lirr_trips,
         _mnr_shapes, _mnr_routes, _mnr_trips,
     )
-    from app.services.gtfs_parser import _get_shape_to_route_map
+    from app.services.gtfs.gtfs_parser import _get_shape_to_route_map
 
     caches = [
         _load_shapes, _parse_trips, _load_route_shapes,

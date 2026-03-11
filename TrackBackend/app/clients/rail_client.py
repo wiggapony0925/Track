@@ -11,8 +11,8 @@ from google.transit import gtfs_realtime_pb2  # type: ignore[import-untyped]
 
 from app.config import get_settings
 from app.models import TrackArrival
-from app.services.mta_client import fetch_protobuf
-from app.services.station_lookup import get_stop_name
+from app.clients.mta_client import fetch_protobuf
+from app.services.transit.station_lookup import get_stop_name
 from app.utils.geo_utils import minutes_until as _minutes_until
 from app.utils.logger import TrackLogger
 

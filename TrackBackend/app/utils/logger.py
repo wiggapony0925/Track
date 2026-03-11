@@ -6,27 +6,32 @@
 #
 # Features:
 #   - Python `logging` module (not print) — proper levels, filtering, handlers
-#   - Colored console output with timestamps
-#   - Rotating file logs (track.log, max 5 MB × 3 backups)
+#   - Colored console output for local dev
+#   - JSON structured output on Render (machine-parseable for Better Stack)
+#   - Rotating file logs in local dev (track.log, 5 MB × 3 backups)
+#   - Configurable log level via LOG_LEVEL env var (default: INFO on Render, DEBUG local)
 #   - Structured context: request timing, feed performance, cache stats
+#   - Full stack traces on error/warning via exc_info support
 #   - Dedicated methods for every subsystem: bus, subway, rail, alerts, cache,
 #     ML (model load · per-prediction · cache hits), perf
 #
 # Usage:
 #   from app.utils.logger import TrackLogger
 #   TrackLogger.info("message")
+#   TrackLogger.error("something broke", exc_info=True)
 #   TrackLogger.ml("[MODEL] LightGBM loaded — 176 trees")
-#   TrackLogger.prediction(route_id="7", minutes_away=5, adjusted=6, factor=1.1,
-#                          source="model", recency_s=45.0)
 #   TrackLogger.request("GET", "/nearby", 200, elapsed_ms=42.3)
 #
 
 from __future__ import annotations
 
 import contextvars
+import json as _json
 import logging
+import os
 import sys
 import time
+import traceback as _tb
 from contextlib import contextmanager
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -37,14 +42,20 @@ from colorama import Fore, Style, init
 init(autoreset=True)
 
 # ---------------------------------------------------------------------------
-# Log directory — sits next to the project root
+# Environment detection
+# ---------------------------------------------------------------------------
+_ON_RENDER = bool(os.environ.get("RENDER"))
+_LOG_LEVEL_STR = os.environ.get("LOG_LEVEL", "INFO" if _ON_RENDER else "DEBUG").upper()
+_LOG_LEVEL = getattr(logging, _LOG_LEVEL_STR, logging.INFO)
+
+# ---------------------------------------------------------------------------
+# Log directory — only used in local dev (Render reads stdout)
 # ---------------------------------------------------------------------------
 _LOG_DIR = Path(__file__).resolve().parent.parent.parent / "logs"
-_LOG_DIR.mkdir(exist_ok=True)
 _LOG_FILE = _LOG_DIR / "track.log"
 
 # ---------------------------------------------------------------------------
-# Custom formatter with colors for console
+# Custom formatters
 # ---------------------------------------------------------------------------
 
 _LEVEL_COLORS = {
@@ -73,20 +84,18 @@ class _UserEmailFilter(logging.Filter):
 
 
 class _ColorFormatter(logging.Formatter):
-    """Console formatter that adds ANSI colors to the level name."""
+    """Console formatter that adds ANSI colors — used in local dev."""
 
     def format(self, record: logging.LogRecord) -> str:
         color = _LEVEL_COLORS.get(record.levelname, "")
         reset = Style.RESET_ALL
-        # Tag (subsystem) is stored in the `tag` extra field
         tag = getattr(record, "tag", "TRACK")
         user_email = getattr(record, "user_email", "-")
         ts = self.formatTime(record, "%H:%M:%S")
         msg = record.getMessage()
         request_id = getattr(record, "request_id", "-")
         rid = f" {Fore.YELLOW}[{request_id}]{reset}" if request_id != "-" else ""
-        # Format: 12:34:56 [INFO] [SUBWAY] [user@email] [rndr-id] message
-        return (
+        line = (
             f"{Fore.CYAN}{ts}{reset} "
             f"{color}[{record.levelname}]{reset} "
             f"{Fore.BLUE}[{tag}]{reset} "
@@ -94,53 +103,96 @@ class _ColorFormatter(logging.Formatter):
             f"{rid} "
             f"{msg}"
         )
+        # Append traceback if present (exc_info was set)
+        if record.exc_info and record.exc_info[1] is not None:
+            line += "\n" + self.formatException(record.exc_info)
+        return line
 
 
-class _FileFormatter(logging.Formatter):
-    """Plain-text formatter for the log file — no ANSI codes.
+class _JSONFormatter(logging.Formatter):
+    """Structured JSON formatter for Render / Better Stack / log aggregators.
 
-    Includes milliseconds so Render log timestamps are precise enough to
-    correlate ML prediction latency with request timings.
+    Each log line is a single JSON object — easy to filter by tag, level,
+    request_id, or user in any log dashboard.
     """
 
     def format(self, record: logging.LogRecord) -> str:
         tag = getattr(record, "tag", "TRACK")
         user_email = getattr(record, "user_email", "-")
         request_id = getattr(record, "request_id", "-")
-        # %f gives microseconds; truncate to ms by slicing [:3]
+        payload: dict = {
+            "ts": self.formatTime(record, "%Y-%m-%dT%H:%M:%S")
+            + f".{int(record.msecs):03d}Z",
+            "level": record.levelname,
+            "tag": tag,
+            "msg": record.getMessage(),
+        }
+        if user_email != "-":
+            payload["user"] = user_email
+        if request_id != "-":
+            payload["rndr_id"] = request_id
+        # Include stack trace for errors
+        if record.exc_info and record.exc_info[1] is not None:
+            payload["exc"] = self.formatException(record.exc_info)
+        return _json.dumps(payload, default=str)
+
+
+class _FileFormatter(logging.Formatter):
+    """Plain-text formatter for the rotating log file — no ANSI codes."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        tag = getattr(record, "tag", "TRACK")
+        user_email = getattr(record, "user_email", "-")
+        request_id = getattr(record, "request_id", "-")
         ts = self.formatTime(record, "%Y-%m-%d %H:%M:%S")
         ms = f".{int(record.msecs):03d}"
-        return f"{ts}{ms} [{record.levelname}] [{tag}] [{user_email}] [{request_id}] {record.getMessage()}"
+        line = f"{ts}{ms} [{record.levelname}] [{tag}] [{user_email}] [{request_id}] {record.getMessage()}"
+        if record.exc_info and record.exc_info[1] is not None:
+            line += "\n" + self.formatException(record.exc_info)
+        return line
 
 
 # ---------------------------------------------------------------------------
-# Configure the root "track" logger once at import time
+# Configure the "track" logger once at import time
 # ---------------------------------------------------------------------------
 
 _logger = logging.getLogger("track")
-_logger.setLevel(logging.DEBUG)
-_logger.propagate = False  # Don't duplicate to root logger
+_logger.setLevel(logging.DEBUG)  # handlers filter; logger captures everything
+_logger.propagate = False
 
 if not _logger.handlers:
-    # Console handler — INFO and above (colorful)
+    _ctx_filter = _UserEmailFilter()
+
+    # ── Console / stdout handler ──────────────────────────────────────
     _console = logging.StreamHandler(sys.stdout)
-    _console.setLevel(logging.DEBUG)
-    _console.addFilter(_UserEmailFilter())
-    _console.setFormatter(_ColorFormatter())
+    _console.setLevel(_LOG_LEVEL)
+    _console.addFilter(_ctx_filter)
+
+    if _ON_RENDER:
+        # Structured JSON on Render — one JSON object per line
+        _console.setFormatter(_JSONFormatter())
+    else:
+        # Colorful human-readable locally
+        _console.setFormatter(_ColorFormatter())
+
     _logger.addHandler(_console)
 
-    # File handler — DEBUG and above, rotating 5 MB × 3 backups
-    try:
-        _file = RotatingFileHandler(
-            _LOG_FILE, maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8",
-        )
-        _file.setLevel(logging.DEBUG)
-        _file.addFilter(_UserEmailFilter())
-        _file.setFormatter(_FileFormatter())
-        _logger.addHandler(_file)
-    except (OSError, PermissionError):
-        # If file logging fails (e.g. Docker read-only FS), keep going
-        pass
+    # ── File handler (local dev only) ─────────────────────────────────
+    if not _ON_RENDER:
+        try:
+            _LOG_DIR.mkdir(exist_ok=True)
+            _file = RotatingFileHandler(
+                _LOG_FILE,
+                maxBytes=5 * 1024 * 1024,
+                backupCount=3,
+                encoding="utf-8",
+            )
+            _file.setLevel(logging.DEBUG)
+            _file.addFilter(_ctx_filter)
+            _file.setFormatter(_FileFormatter())
+            _logger.addHandler(_file)
+        except (OSError, PermissionError):
+            pass
 
 
 # ---------------------------------------------------------------------------
@@ -227,16 +279,16 @@ class TrackLogger:
         _logger.info(msg, extra={"tag": tag})
 
     @staticmethod
-    def warning(msg: str, *, tag: str = "TRACK") -> None:
-        _logger.warning(msg, extra={"tag": tag})
+    def warning(msg: str, *, tag: str = "TRACK", exc_info: bool = False) -> None:
+        _logger.warning(msg, extra={"tag": tag}, exc_info=exc_info)
 
     @staticmethod
-    def error(msg: str, *, tag: str = "TRACK") -> None:
-        _logger.error(msg, extra={"tag": tag})
+    def error(msg: str, *, tag: str = "TRACK", exc_info: bool = False) -> None:
+        _logger.error(msg, extra={"tag": tag}, exc_info=exc_info)
 
     @staticmethod
-    def critical(msg: str, *, tag: str = "TRACK") -> None:
-        _logger.critical(msg, extra={"tag": tag})
+    def critical(msg: str, *, tag: str = "TRACK", exc_info: bool = False) -> None:
+        _logger.critical(msg, extra={"tag": tag}, exc_info=exc_info)
 
     # ------------------------------------------------------------------
     # HTTP request logging (used by middleware in main.py)

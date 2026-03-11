@@ -15,7 +15,7 @@ def main():
 
     # Define the command to run uvicorn
     # Using 'python -m uvicorn' is more reliable than 'uvicorn' as it handles PATH issues better
-    uvicorn_cmd = ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    uvicorn_cmd = ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--no-access-log"]
 
     # Check for virtual environment
     venv_python = None

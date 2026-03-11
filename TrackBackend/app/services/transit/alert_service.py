@@ -86,7 +86,7 @@ async def maybe_refresh() -> None:
 async def _do_refresh() -> None:
     global _boost_by_route, _last_refresh
     try:
-        from app.services.data_cleaner import get_alerts  # avoid circular at module level
+        from app.services.gtfs.data_cleaner import get_alerts  # avoid circular at module level
         alerts = await get_alerts()
         new_index: dict[str, float] = {}
         for alert in alerts:

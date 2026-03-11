@@ -40,6 +40,12 @@ def _load_cache_overrides() -> dict:
         raw = json.loads(_SETTINGS_PATH.read_text(encoding="utf-8"))
         return raw.get("cache", {})
     except Exception:
+        # settings.json missing or malformed — use built-in defaults
+        import logging as _logging
+        _logging.getLogger("track").warning(
+            "Failed to load cache overrides from settings.json, using defaults",
+            extra={"tag": "CONFIG"},
+        )
         return {}
 
 

@@ -34,7 +34,7 @@ def _do_clear():
         pass
 
     try:
-        from app.services.bus_client import clear_bus_cache
+        from app.clients.bus_client import clear_bus_cache
         clear_bus_cache()
     except Exception:
         pass

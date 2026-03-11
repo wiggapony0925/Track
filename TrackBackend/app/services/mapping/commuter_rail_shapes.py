@@ -26,7 +26,7 @@ from app.utils.shape_utils import (
     unpack_point_set as _unpack_point_set,
 )
 
-_DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+_DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
 
 _LIRR_DIR = _DATA_DIR / "lirr" / "gtfslirr"
 _MNR_DIR = _DATA_DIR / "metro_north" / "gtfsmnr"

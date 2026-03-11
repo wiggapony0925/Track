@@ -8,7 +8,6 @@
 
 from __future__ import annotations
 
-import logging
 import traceback
 from datetime import datetime, timezone, timedelta
 
@@ -17,7 +16,7 @@ from fastapi import APIRouter, HTTPException, Query, Response
 
 from app.config import get_settings
 from app.models import BusArrival, BusRoute, BusStop, BusVehicle, RouteShape, BusScheduleResponse, BusScheduleDirection, BusScheduleDeparture
-from app.services.bus_client import (
+from app.clients.bus_client import (
     get_nearby_stops,
     get_realtime_arrivals,
     get_route_shape,
@@ -26,10 +25,9 @@ from app.services.bus_client import (
     get_stops,
     get_vehicle_positions,
 )
-from app.services.schedule_service import schedule_service
+from app.services.transit.schedule_service import schedule_service
 from app.utils.logger import TrackLogger
 
-logger = logging.getLogger("track")
 router = APIRouter(prefix="/bus", tags=["bus"])
 
 
@@ -88,7 +86,7 @@ async def get_bus_schedule(route_id: str) -> BusScheduleResponse:
     try:
         stop_models = await get_stops(route_id)
     except Exception as e:
-        logger.error(f"[SCHEDULE] Failed to get stops for {route_id}: {e}")
+        TrackLogger.error(f"[SCHEDULE] Failed to get stops for {route_id}: {e}", tag="BUS", exc_info=True)
         return BusScheduleResponse(route_id=route_id, directions=[])
 
     if not stop_models:

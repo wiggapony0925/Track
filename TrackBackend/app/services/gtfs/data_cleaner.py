@@ -15,9 +15,9 @@ from google.transit import gtfs_realtime_pb2  # type: ignore[import-untyped]
 
 from app.config import get_feed_url, get_settings
 from app.models import ElevatorStatus, TrackArrival, TransitAlert
-from app.services.mta_client import fetch_json, fetch_protobuf
+from app.clients.mta_client import fetch_json, fetch_protobuf
 from app.ml.recency_model import observe_trip_updates_batch, observe_siri_delays_batch
-from app.services.station_lookup import get_stop_name
+from app.services.transit.station_lookup import get_stop_name
 from app.utils.geo_utils import minutes_until as _minutes_until
 from app.utils.logger import TrackLogger
 
@@ -146,7 +146,7 @@ async def _parse_alert_feed(url: str, mode: str) -> list[TransitAlert]:
     try:
         data: Any = await fetch_json(url)
     except Exception as exc:
-        TrackLogger.error(f"Failed to fetch {mode} alerts: {exc}", tag="ALERTS")
+        TrackLogger.error(f"Failed to fetch {mode} alerts: {exc}", tag="ALERTS", exc_info=True)
         return []
 
     now = int(_t.time())

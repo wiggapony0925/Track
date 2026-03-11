@@ -17,9 +17,9 @@ from fastapi import FastAPI, Request
 
 from app.config import get_settings
 from app.routers import bus, lirr, mnr, nearby, predict, status, subway
-from app.services.bus_client import clear_bus_cache
-from app.services.data_loader import ensure_data_available
-from app.services.gtfs_refresh import rebuild_schedule_db_if_missing
+from app.clients.bus_client import clear_bus_cache
+from app.services.gtfs.data_loader import ensure_data_available
+from app.services.gtfs.gtfs_refresh import rebuild_schedule_db_if_missing
 from app.utils import cache_stats
 from app.utils import redis_client as _redis
 from app.utils.logger import TrackLogger
@@ -89,7 +89,7 @@ async def shutdown_event():
 
 async def _periodic_gtfs_check():
     """Background task: check MTA feeds for updates periodically."""
-    from app.services.gtfs_refresh import check_and_refresh_gtfs
+    from app.services.gtfs.gtfs_refresh import check_and_refresh_gtfs
 
     # Wait 5 minutes after startup before first check (let server warm up)
     await asyncio.sleep(300)
@@ -105,7 +105,7 @@ async def _periodic_gtfs_check():
             break
         except Exception as exc:
             TrackLogger.error(
-                f"[GTFS] Periodic check failed: {exc}", tag="GTFS"
+                f"[GTFS] Periodic check failed: {exc}", tag="GTFS", exc_info=True
             )
         await asyncio.sleep(_GTFS_CHECK_INTERVAL)
 
@@ -117,8 +117,8 @@ async def _warmup_caches():
     very first user request is fast.  Runs in the background — the server
     accepts requests immediately while this completes.
     """
-    from app.services.data_cleaner import get_arrivals_for_line
-    from app.services.bus_client import get_routes as get_bus_routes
+    from app.services.gtfs.data_cleaner import get_arrivals_for_line
+    from app.clients.bus_client import get_routes as get_bus_routes
 
     t0 = time.perf_counter()
     TrackLogger.info("[WARMUP] Priming subway GTFS-RT feeds + bus routes...", tag="WARMUP")
@@ -167,6 +167,18 @@ async def log_requests(request: Request, call_next):
             elapsed_ms=elapsed_ms,
         )
         return response
+    except Exception:
+        # Log unhandled exceptions that crash the request handler — these
+        # would otherwise only appear in uvicorn's default 500 traceback
+        # without our structured context (user, rndr_id, timing, tag).
+        elapsed_ms = (time.perf_counter() - start) * 1000
+        query = f"?{request.url.query}" if request.url.query else ""
+        TrackLogger.error(
+            f"{request.method} {request.url.path}{query} → 500 UNHANDLED ({elapsed_ms:.1f}ms)",
+            tag="HTTP",
+            exc_info=True,
+        )
+        raise
     finally:
         TrackLogger.clear_user_email()
         TrackLogger.clear_request_id()
@@ -188,8 +200,8 @@ async def config() -> dict[str, Any]:
 @app.get("/data/status")
 async def data_status() -> dict[str, Any]:
     """Check which GTFS data groups are available and their freshness."""
-    from app.services.data_loader import check_local_data_status
-    from app.services.gtfs_refresh import get_gtfs_freshness
+    from app.services.gtfs.data_loader import check_local_data_status
+    from app.services.gtfs.gtfs_refresh import get_gtfs_freshness
     return {
         "data_groups": check_local_data_status(),
         "gtfs_feeds": get_gtfs_freshness(),
@@ -204,7 +216,7 @@ async def data_refresh(full: bool = False) -> dict[str, Any]:
         full: If true, check all feeds including bus (slower).
               Default checks only subway/lirr/mnr.
     """
-    from app.services.gtfs_refresh import check_and_refresh_gtfs
+    from app.services.gtfs.gtfs_refresh import check_and_refresh_gtfs
     results = await check_and_refresh_gtfs(full_check=full)
     return {"results": results}
 
@@ -221,7 +233,7 @@ async def clear_all_caches(request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=403, detail="localhost only")
 
     from app.routers.nearby import clear_nearby_cache
-    from app.services.mta_client import clear_mta_cache
+    from app.clients.mta_client import clear_mta_cache
 
     counts = {
         "nearby_response": clear_nearby_cache(),

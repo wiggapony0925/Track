@@ -22,7 +22,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import NamedTuple
 
-from app.services.station_lookup import get_stop_info
+from app.services.transit.station_lookup import get_stop_info
+from app.utils.logger import TrackLogger
 from app.utils.shape_utils import (
     ShapePoint,
     pack_coords as _pack_coords,
@@ -30,7 +31,7 @@ from app.utils.shape_utils import (
     unpack_point_set as _unpack_point_set,
 )
 
-_DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+_DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
 _SHAPES_PATH = _DATA_DIR / "shapes.txt"
 _TRIPS_PATH = _DATA_DIR / "trips.txt"
 _SHAPE_STOPS_PATH = _DATA_DIR / "shape_stops.json"
@@ -86,7 +87,8 @@ def _load_shapes() -> dict[str, bytes]:
                 lat = float(row["shape_pt_lat"])
                 lon = float(row["shape_pt_lon"])
                 seq = int(row["shape_pt_sequence"])
-            except (ValueError, KeyError):
+            except (ValueError, KeyError) as exc:
+                TrackLogger.debug(f"Skipping malformed shape row {shape_id}: {exc}", tag="DATA")
                 continue
             raw[shape_id].append(ShapePoint(lat=lat, lon=lon, sequence=seq))
 
@@ -126,7 +128,8 @@ def _parse_trips() -> tuple[
             headsign = row.get("trip_headsign", "").strip()
             try:
                 direction = int(row.get("direction_id", "0"))
-            except ValueError:
+            except ValueError as exc:
+                TrackLogger.debug(f"Bad direction_id for route {route_id}, defaulting to 0: {exc}", tag="DATA")
                 direction = 0
 
             if route_id and shape_id:

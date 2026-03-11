@@ -10,7 +10,8 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Query
 
 from app.models import ElevatorStatus, TransitAlert
-from app.services.data_cleaner import get_alerts, get_broken_elevators
+from app.services.gtfs.data_cleaner import get_alerts, get_broken_elevators
+from app.utils.logger import TrackLogger
 
 router = APIRouter(tags=["status"])
 
@@ -26,6 +27,7 @@ async def alerts(
     try:
         return await get_alerts(mode=mode)
     except Exception as exc:
+        TrackLogger.error(f"[ALERTS] Failed to fetch alerts (mode={mode}): {exc}", tag="ALERTS", exc_info=True)
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
@@ -35,4 +37,5 @@ async def accessibility() -> list[ElevatorStatus]:
     try:
         return await get_broken_elevators()
     except Exception as exc:
+        TrackLogger.error(f"[ALERTS] Failed to fetch elevator status: {exc}", tag="ALERTS", exc_info=True)
         raise HTTPException(status_code=502, detail=str(exc)) from exc

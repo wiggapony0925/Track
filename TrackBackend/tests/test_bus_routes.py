@@ -27,7 +27,7 @@ import pytest
 
 from app.config import get_settings
 from app.models import BusRoute
-from app.services.bus_client import ROUTE_LOOKUP, get_routes, resolve_bus_id
+from app.clients.bus_client import ROUTE_LOOKUP, get_routes, resolve_bus_id
 from app.routers.nearby import _display_name
 
 # ---------------------------------------------------------------------------
@@ -205,7 +205,7 @@ class TestGetRoutesMultiAgency:
     """Verify get_routes() queries ALL agencies and merges results."""
 
     @pytest.mark.asyncio
-    @patch("app.services.bus_client._fetch_bus_json", new_callable=AsyncMock)
+    @patch("app.clients.bus_client._fetch_bus_json", new_callable=AsyncMock)
     async def test_returns_routes_from_both_agencies(self, mock_fetch):
         """Mock both OBA responses and confirm both sets of routes are returned."""
         mock_fetch.side_effect = [
@@ -219,7 +219,7 @@ class TestGetRoutesMultiAgency:
         assert len(routes) == 5
 
     @pytest.mark.asyncio
-    @patch("app.services.bus_client._fetch_bus_json", new_callable=AsyncMock)
+    @patch("app.clients.bus_client._fetch_bus_json", new_callable=AsyncMock)
     async def test_deduplicates_by_id(self, mock_fetch):
         """If both agencies return the same route ID, keep only one copy."""
         overlap = [("MTA NYCT_B63", "B63", "Atlantic Av / Fulton St")]
@@ -232,7 +232,7 @@ class TestGetRoutesMultiAgency:
         assert b63_count == 1, f"B63 duplicated: appeared {b63_count} times"
 
     @pytest.mark.asyncio
-    @patch("app.services.bus_client._fetch_bus_json", new_callable=AsyncMock)
+    @patch("app.clients.bus_client._fetch_bus_json", new_callable=AsyncMock)
     async def test_survives_one_agency_failure(self, mock_fetch):
         """If one agency fetch fails, the other should still return routes."""
         mock_fetch.side_effect = [
@@ -243,7 +243,7 @@ class TestGetRoutesMultiAgency:
         assert len(routes) == 2, "Should still return MTABC routes when NYCT fails"
 
     @pytest.mark.asyncio
-    @patch("app.services.bus_client._fetch_bus_json", new_callable=AsyncMock)
+    @patch("app.clients.bus_client._fetch_bus_json", new_callable=AsyncMock)
     async def test_returns_empty_when_all_agencies_fail(self, mock_fetch):
         mock_fetch.side_effect = [
             Exception("NYCT down"),
@@ -253,7 +253,7 @@ class TestGetRoutesMultiAgency:
         assert routes == []
 
     @pytest.mark.asyncio
-    @patch("app.services.bus_client._fetch_bus_json", new_callable=AsyncMock)
+    @patch("app.clients.bus_client._fetch_bus_json", new_callable=AsyncMock)
     async def test_calls_fetch_for_each_agency(self, mock_fetch):
         """Confirm _fetch_bus_json is called once per agency in settings."""
         mock_fetch.return_value = _make_oba_response([])

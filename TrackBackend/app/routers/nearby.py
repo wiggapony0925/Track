@@ -32,7 +32,7 @@ from app.cache_config import (
 )
 from app.config import get_settings
 from app.models import BusStop, DirectionArrivals, GroupedNearbyTransit, InlineAlert, NearbyTransitArrival
-from app.services.bus_client import (
+from app.clients.bus_client import (
     get_nearby_stops,
     get_realtime_arrivals,
     get_routes as get_all_bus_routes,
@@ -40,15 +40,15 @@ from app.services.bus_client import (
     BUS_AGENCY_PREFIXES,
     CANONICAL_BUS_DISPLAY,
 )
-from app.services.data_cleaner import get_arrivals_for_line
-from app.services.station_lookup import get_nearby_stop_ids, get_stop_info
+from app.services.gtfs.data_cleaner import get_arrivals_for_line
+from app.services.transit.station_lookup import get_nearby_stop_ids, get_stop_info
 from app.utils.geo_utils import haversine_m
 from app.utils.logger import TrackLogger
 from app.utils.transit_utils import get_subway_color
-from app.services.schedule_service import schedule_service
-from app.services.rail_client import fetch_rail_arrivals
-from app.services.subway_shapes import get_stops_for_route as get_subway_stops_for_route
-from app.services.commuter_rail_shapes import (
+from app.services.transit.schedule_service import schedule_service
+from app.clients.rail_client import fetch_rail_arrivals
+from app.services.mapping.subway_shapes import get_stops_for_route as get_subway_stops_for_route
+from app.services.mapping.commuter_rail_shapes import (
     get_lirr_route_name,
     get_mnr_route_name,
     get_lirr_route_color,
@@ -59,7 +59,7 @@ from app.ml.recency_model import (
     get_weighted_error as _get_weighted_error,
     get_weighted_errors_batch as _get_weighted_errors_batch,
 )
-from app.services.alert_service import get_alert_boost as _get_alert_boost, maybe_refresh as _maybe_refresh_alerts
+from app.services.transit.alert_service import get_alert_boost as _get_alert_boost, maybe_refresh as _maybe_refresh_alerts
 import math as _math
 
 # Default bus color (MTA blue) — used when bus routes don't provide one
@@ -197,7 +197,7 @@ def _load_static_bus_route_stop_index() -> dict[str, tuple[float, float, str, se
 
         conn.close()
     except Exception as exc:
-        TrackLogger.error(f"Static bus fallback DB query failed: {exc}")
+        TrackLogger.error(f"Static bus fallback DB query failed: {exc}", exc_info=True)
         return {}
 
     TrackLogger.bus(f"Static bus fallback index loaded: {len(index)} stops (from SQLite)")
@@ -369,7 +369,7 @@ async def nearby_transit_grouped(
                     try:
                         await _compute_and_cache_grouped(k, k[0], k[1], r, m)
                     except Exception as exc:
-                        TrackLogger.error(f"BG refresh /nearby/grouped failed: {exc}")
+                        TrackLogger.error(f"BG refresh /nearby/grouped failed: {exc}", exc_info=True)
                     finally:
                         _nearby_resp_inflight.pop(k, None)
                 task = asyncio.create_task(_bg_refresh(key, effective_radius, mode))
@@ -710,7 +710,7 @@ async def _get_inline_alerts() -> dict[str, list["InlineAlert"]]:
         return _inline_alert_cache
 
     try:
-        from app.services.data_cleaner import get_alerts
+        from app.services.gtfs.data_cleaner import get_alerts
         raw_alerts = await get_alerts()
         index: dict[str, list[InlineAlert]] = defaultdict(list)
         for alert in raw_alerts:

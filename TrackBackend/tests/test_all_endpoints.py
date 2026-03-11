@@ -36,7 +36,7 @@ from app.models import (
     TransitAlert,
 )
 from app.routers.nearby import _display_name, _group_arrivals, _soonest_minutes
-from app.services.commuter_rail_shapes import (
+from app.services.mapping.commuter_rail_shapes import (
     get_lirr_route_color,
     get_lirr_route_name,
     get_mnr_route_color,
@@ -96,8 +96,8 @@ class TestSubwayShapesAll:
     """GET /subway/shapes/all — full system map overlay."""
 
     @patch("app.routers.subway.get_all_subway_lines", return_value=["A", "L"])
-    @patch("app.services.subway_shapes._load_route_shapes")
-    @patch("app.services.subway_shapes._load_shapes")
+    @patch("app.services.mapping.subway_shapes._load_route_shapes")
+    @patch("app.services.mapping.subway_shapes._load_shapes")
     def test_shapes_all_returns_overlays(self, mock_shapes, mock_route_shapes, mock_lines):
         import struct
 
@@ -154,7 +154,7 @@ class TestSubwayShape:
                 self.lat = lat
                 self.lon = lon
 
-        from app.services.subway_shapes import DirectionData
+        from app.services.mapping.subway_shapes import DirectionData
 
         stops = [FakeStop("L01", "8 Av", 40.74, -74.0), FakeStop("L02", "6 Av", 40.737, -73.997)]
         polylines = [[(40.7, -74.0), (40.71, -74.01)]]

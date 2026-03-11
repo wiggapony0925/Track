@@ -38,7 +38,7 @@ from app.routers.nearby import (
     _soonest_minutes,
     _sorting_key,
 )
-from app.services.station_lookup import (
+from app.services.transit.station_lookup import (
     _load_stops,
     get_nearby_stop_ids,
     get_stop_info,
@@ -555,7 +555,7 @@ class TestLiveDataIntegration:
         """SIRI stop-monitoring (normal detail) must include DirectionRef."""
         loop = asyncio.new_event_loop()
         try:
-            from app.services.bus_client import get_realtime_arrivals
+            from app.clients.bus_client import get_realtime_arrivals
             arrivals = loop.run_until_complete(get_realtime_arrivals("MTA_500249"))
             if arrivals:
                 has_dir = any(a.direction_ref is not None for a in arrivals)
@@ -567,7 +567,7 @@ class TestLiveDataIntegration:
         """SIRI stop-monitoring must include DestinationName."""
         loop = asyncio.new_event_loop()
         try:
-            from app.services.bus_client import get_realtime_arrivals
+            from app.clients.bus_client import get_realtime_arrivals
             arrivals = loop.run_until_complete(get_realtime_arrivals("MTA_500249"))
             if arrivals:
                 has_dest = any(a.destination_name is not None for a in arrivals)
@@ -579,7 +579,7 @@ class TestLiveDataIntegration:
         """LIRR arrivals should have LIRR station names, not MNR."""
         loop = asyncio.new_event_loop()
         try:
-            from app.services.rail_client import fetch_rail_arrivals
+            from app.clients.rail_client import fetch_rail_arrivals
             arrivals = loop.run_until_complete(fetch_rail_arrivals("lirr"))
             
             # Known MNR-only destinations that should NOT appear in LIRR
@@ -603,7 +603,7 @@ class TestLiveDataIntegration:
         """MNR arrivals should have MNR station names, not LIRR."""
         loop = asyncio.new_event_loop()
         try:
-            from app.services.rail_client import fetch_rail_arrivals
+            from app.clients.rail_client import fetch_rail_arrivals
             arrivals = loop.run_until_complete(fetch_rail_arrivals("metro_north"))
             
             # Known LIRR-only destinations that should NOT appear in MNR
@@ -648,7 +648,7 @@ class TestLiveDataIntegration:
         """Nearby bus stops around Jamaica should return stops."""
         loop = asyncio.new_event_loop()
         try:
-            from app.services.bus_client import get_nearby_stops
+            from app.clients.bus_client import get_nearby_stops
             stops = loop.run_until_complete(
                 get_nearby_stops(40.699, -73.808, radius_m=2000)
             )
@@ -1255,7 +1255,7 @@ class TestLiveNewFieldsIntegration:
         """Live /subway/{line} response includes is_cancelled field."""
         loop = asyncio.new_event_loop()
         try:
-            from app.services.data_cleaner import get_arrivals_for_line
+            from app.services.gtfs.data_cleaner import get_arrivals_for_line
             arrivals = loop.run_until_complete(get_arrivals_for_line("A"))
             assert len(arrivals) > 0, "No arrivals from A train feed"
             for a in arrivals:
@@ -1268,7 +1268,7 @@ class TestLiveNewFieldsIntegration:
         """LIRR arrivals include is_cancelled field."""
         loop = asyncio.new_event_loop()
         try:
-            from app.services.rail_client import fetch_rail_arrivals
+            from app.clients.rail_client import fetch_rail_arrivals
             arrivals = loop.run_until_complete(fetch_rail_arrivals("lirr"))
             assert len(arrivals) > 0, "No LIRR arrivals"
             for a in arrivals:
@@ -1281,7 +1281,7 @@ class TestLiveNewFieldsIntegration:
         """MNR arrivals include is_cancelled field."""
         loop = asyncio.new_event_loop()
         try:
-            from app.services.rail_client import fetch_rail_arrivals
+            from app.clients.rail_client import fetch_rail_arrivals
             arrivals = loop.run_until_complete(fetch_rail_arrivals("metro_north"))
             assert len(arrivals) > 0, "No MNR arrivals"
             for a in arrivals:

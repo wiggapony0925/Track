@@ -1329,7 +1329,7 @@ class TestSiriCircuitBreakerScope:
     def test_oba_calls_bypass_circuit_breaker(self):
         """get_nearby_stops (OBA) should succeed even when the SIRI
         circuit breaker is open."""
-        import app.services.bus_client as bc
+        import app.clients.bus_client as bc
 
         # Trip the SIRI circuit breaker
         bc._trip_siri_circuit()
@@ -1372,7 +1372,7 @@ class TestSiriCircuitBreakerScope:
 
         import httpx
 
-        import app.services.bus_client as bc
+        import app.clients.bus_client as bc
 
         bc._trip_siri_circuit()
         assert bc._siri_circuit_is_open()

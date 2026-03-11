@@ -20,4 +20,6 @@ COPY . .
 EXPOSE 8000
 
 # Command to run the app — uses $PORT if set by the cloud provider, defaults to 8000
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# --no-access-log: request logging handled by TrackLogger middleware (richer context)
+# --log-level warning: suppress uvicorn's internal INFO chatter; app logs via TrackLogger
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --no-access-log --log-level warning"]

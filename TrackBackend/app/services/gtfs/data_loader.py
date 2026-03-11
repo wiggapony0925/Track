@@ -34,7 +34,7 @@ from app.utils.logger import TrackLogger
 # Config
 # ---------------------------------------------------------------------------
 
-_DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+_DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
 _METADATA_DIR = _DATA_DIR / ".dl_meta"
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")

@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from app.models import TrackArrival
-from app.services.station_lookup import get_stop_name
+from app.services.transit.station_lookup import get_stop_name
 from app.utils.logger import TrackLogger
 
 DB_PATH = Path("app/data/transit_schedule.db")
@@ -117,7 +117,7 @@ class ScheduleService:
             return arrivals
 
         except Exception as e:
-            TrackLogger.error(f"Schedule query failed: {e}", tag="SCHEDULE")
+            TrackLogger.error(f"Schedule query failed: {e}", tag="SCHEDULE", exc_info=True)
             return []
         finally:
             conn.close()

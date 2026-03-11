@@ -17,8 +17,8 @@ from app.models import (
     RouteShape,
     TrackArrival,
 )
-from app.services.commuter_rail_shapes import get_all_lirr_lines, get_single_lirr_line
-from app.services.rail_client import fetch_rail_arrivals, filter_fresh_arrivals
+from app.services.mapping.commuter_rail_shapes import get_all_lirr_lines, get_single_lirr_line
+from app.clients.rail_client import fetch_rail_arrivals, filter_fresh_arrivals
 from app.utils.logger import TrackLogger
 from app.utils.polyline_utils import encode_polyline as _encode_polyline
 
