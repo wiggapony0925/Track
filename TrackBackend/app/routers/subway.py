@@ -144,11 +144,10 @@ async def subway_shapes_all() -> AllSubwayLinesResponse:
             polylines=encoded,
         ))
 
-    # Corridor offsets removed — the iOS client now deduplicates shared
-    # corridors across routes using a spatial grid, producing one polyline
-    # per physical track segment (Apple Maps style).  Offsets are no longer
-    # needed because co-located lines are merged client-side.
-    # overlays = _apply_corridor_offsets(overlays)
+    # Apply Shapely-based corridor offsets so co-located trunk groups
+    # (e.g. blue A/C/E + green 4/5/6 on Lex Ave) render as parallel
+    # stripes instead of stacking on the same pixel.
+    overlays = _apply_corridor_offsets(overlays)
 
     total_polys = sum(len(o.polylines) for o in overlays)
     TrackLogger.info(f"Subway shapes/all: {len(overlays)} lines, {total_polys} polylines returned")
@@ -397,108 +396,180 @@ def _merge_polyline_segments(
 
     return chains
 
+# ---------------------------------------------------------------------------
+# Corridor offset computation for system map (Shapely-based)
+# ---------------------------------------------------------------------------
 
-# ---------------------------------------------------------------------------
-# Corridor offset computation for system map
-# ---------------------------------------------------------------------------
+# MTA trunk groups: routes sharing the same physical trunk + color.
+# Must match the iOS MapSystemViewModel.trunkGroups for consistency.
+_TRUNK_GROUPS: list[list[str]] = [
+    ["1", "2", "3"],               # Red — 7th Ave / Broadway
+    ["4", "5", "6", "6X"],         # Green — Lexington Ave
+    ["7", "7X"],                   # Purple — Flushing
+    ["A", "C", "E"],              # Blue — 8th Ave
+    ["B", "D", "F", "FX", "M"],   # Orange — 6th Ave
+    ["G"],                          # Lime Green — Crosstown
+    ["J", "Z"],                    # Brown — Nassau St
+    ["L"],                          # Gray — 14th St / Canarsie
+    ["N", "Q", "R", "W"],         # Yellow — Broadway BMT
+    ["S"],                          # Shuttle Gray
+    ["SI"],                        # Staten Island Railway
+]
+
+# Build reverse lookup: route_id → trunk group index
+_ROUTE_TO_TRUNK: dict[str, int] = {}
+for _gi, _group in enumerate(_TRUNK_GROUPS):
+    for _rid in _group:
+        _ROUTE_TO_TRUNK[_rid] = _gi
 
 
 def _apply_corridor_offsets(
     overlays: list[SubwayLineOverlay],
-    offset_meters: float = 22.0,
-    grid_size: float = 0.0003,
+    offset_meters: float = 15.0,
+    corridor_buffer_m: float = 50.0,
 ) -> list[SubwayLineOverlay]:
     """Apply perpendicular offsets to subway lines that share a corridor.
 
-    Co-located lines (e.g. 4/5/6 on Lexington Ave) are fanned out so each
-    line is visible instead of stacking on the same pixel.  This is the
-    server-side equivalent of the old ``computeSubwayOffsets()`` in
-    HomeViewModel.swift.
+    Uses Shapely's ``offset_curve`` for geometrically perfect parallel lines.
+    Co-located trunk groups (e.g. blue A/C/E + green 4/5/6 on Lex Ave) are
+    fanned out so each color is visible as a distinct parallel stripe.
+
+    **Algorithm (segment-level corridor detection)**:
+    1. Group overlays by MTA trunk color.
+    2. For each trunk group, merge all polylines into a single MultiLineString.
+    3. Identify shared corridors by buffering each trunk group's geometry and
+       checking which other trunk groups intersect the buffer.
+    4. For shared corridor segments, apply Shapely ``offset_curve`` to produce
+       geometrically perfect parallel offsets — no grid lookups, no flickering.
 
     Parameters
     ----------
     overlays : list of SubwayLineOverlay with already-encoded polylines.
-    offset_meters : perpendicular distance between neighbouring lines.
-    grid_size : snapping grid in degrees (~33 m at NYC latitude).
+    offset_meters : perpendicular distance between neighbouring trunk groups.
+    corridor_buffer_m : buffer distance for detecting shared corridors (~50m).
     """
+    from shapely.geometry import LineString, MultiLineString
+    from shapely.ops import linemerge, unary_union
+
     METERS_PER_DEG_LAT = 111_000.0
     METERS_PER_DEG_LON = 84_300.0  # at ~40.7°N
 
-    # 1. Decode all polylines and build the grid → route-IDs lookup
-    decoded: dict[str, list[list[tuple[float, float]]]] = {}
-    grid_to_routes: dict[int, set[str]] = {}
+    # Convert meters to degrees for offset calculations
+    offset_deg_lat = offset_meters / METERS_PER_DEG_LAT
+    offset_deg_lon = offset_meters / METERS_PER_DEG_LON
+    # Use average for Shapely (which operates in coordinate space)
+    offset_deg = (offset_deg_lat + offset_deg_lon) / 2.0
 
+    buffer_deg = corridor_buffer_m / ((METERS_PER_DEG_LAT + METERS_PER_DEG_LON) / 2.0)
+
+    # ── Step 1: Decode polylines and group by trunk ──
+    decoded_by_route: dict[str, list[list[tuple[float, float]]]] = {}
     for overlay in overlays:
-        polys = [_decode_polyline(p) for p in overlay.polylines]
-        decoded[overlay.route_id] = polys
-        for coords in polys:
-            step = max(1, min(3, len(coords) // 10))
-            for i in range(0, len(coords), step):
-                lat, lon = coords[i]
-                gx = round(lat / grid_size)
-                gy = round(lon / grid_size)
-                key = (int(gx) << 32) | (int(gy) & 0xFFFFFFFF)
-                if key not in grid_to_routes:
-                    grid_to_routes[key] = set()
-                grid_to_routes[key].add(overlay.route_id)
+        decoded_by_route[overlay.route_id] = [
+            _decode_polyline(p) for p in overlay.polylines
+        ]
 
-    # 2. For cells with multiple routes, compute a stable sort order
-    cell_ordering: dict[int, list[str]] = {}
-    for key, routes in grid_to_routes.items():
-        if len(routes) > 1:
-            cell_ordering[key] = sorted(routes)
+    # Group overlays by trunk index
+    trunk_overlays: dict[int, list[SubwayLineOverlay]] = {}
+    for overlay in overlays:
+        trunk_idx = _ROUTE_TO_TRUNK.get(overlay.route_id, -1)
+        if trunk_idx >= 0:
+            trunk_overlays.setdefault(trunk_idx, []).append(overlay)
 
-    if not cell_ordering:
-        # No shared corridors — return as-is
-        return overlays
+    # ── Step 2: Build Shapely geometries per trunk group ──
+    trunk_geometries: dict[int, MultiLineString] = {}
+    for trunk_idx, trunk_ovls in trunk_overlays.items():
+        lines = []
+        for ovl in trunk_ovls:
+            for coords in decoded_by_route[ovl.route_id]:
+                if len(coords) >= 2:
+                    # Shapely uses (x, y) = (lon, lat)
+                    lines.append(LineString([(lon, lat) for lat, lon in coords]))
+        if lines:
+            trunk_geometries[trunk_idx] = MultiLineString(lines)
 
-    # 3. Offset each coordinate perpendicular to the track direction
+    # ── Step 3: Detect shared corridors between trunk groups ──
+    # For each trunk group, find which OTHER trunk groups share geometry
+    active_trunks = sorted(trunk_geometries.keys())
+    trunk_neighbors: dict[int, set[int]] = {t: set() for t in active_trunks}
+
+    for i, t1 in enumerate(active_trunks):
+        geom1 = trunk_geometries[t1]
+        buf1 = geom1.buffer(buffer_deg)
+        for t2 in active_trunks[i + 1:]:
+            geom2 = trunk_geometries[t2]
+            if buf1.intersects(geom2):
+                # Check that the intersection is substantial (not just a crossing)
+                intersection = buf1.intersection(geom2)
+                if intersection.length > buffer_deg * 5:
+                    trunk_neighbors[t1].add(t2)
+                    trunk_neighbors[t2].add(t1)
+
+    # ── Step 4: Compute per-point offsets for each route ──
+    # For routes in trunk groups that share corridors, apply Shapely offset_curve
     result: list[SubwayLineOverlay] = []
+
     for overlay in overlays:
         route_id = overlay.route_id
-        all_polys = decoded[route_id]
-        offset_polys: list[list[tuple[float, float]]] = []
+        trunk_idx = _ROUTE_TO_TRUNK.get(route_id, -1)
 
-        for coords in all_polys:
+        # If this trunk has no corridor neighbors, pass through unchanged
+        if trunk_idx < 0 or not trunk_neighbors.get(trunk_idx):
+            result.append(overlay)
+            continue
+
+        # Determine this trunk's lane position among its corridor partners
+        # Collect all trunks sharing corridors with this one
+        corridor_trunks = sorted({trunk_idx} | trunk_neighbors[trunk_idx])
+        lane_index = corridor_trunks.index(trunk_idx)
+        num_lanes = len(corridor_trunks)
+        center_offset = (lane_index - (num_lanes - 1) / 2.0) * offset_deg
+
+        if abs(center_offset) < 1e-10:
+            # Center lane — no offset needed
+            result.append(overlay)
+            continue
+
+        offset_polys: list[list[tuple[float, float]]] = []
+        for coords in decoded_by_route[route_id]:
             if len(coords) < 2:
                 offset_polys.append(coords)
                 continue
 
-            offset_coords: list[tuple[float, float]] = []
-            for i, (clat, clon) in enumerate(coords):
-                gx = round(clat / grid_size)
-                gy = round(clon / grid_size)
-                key = (int(gx) << 32) | (int(gy) & 0xFFFFFFFF)
+            try:
+                # Build LineString in (lon, lat) coordinate space
+                line = LineString([(lon, lat) for lat, lon in coords])
 
-                ordering = cell_ordering.get(key)
-                if ordering is None or route_id not in ordering:
-                    offset_coords.append((clat, clon))
+                # Use Shapely's offset_curve for geometrically perfect parallel lines
+                # Positive offset = left side, negative = right side
+                offset_line = line.offset_curve(center_offset)
+
+                if offset_line.is_empty:
+                    offset_polys.append(coords)
                     continue
 
-                slot = ordering.index(route_id)
-                total = len(ordering)
-                center_offset = slot - (total - 1) / 2.0
-
-                # Direction of travel from neighbors
-                prev = coords[i - 1] if i > 0 else coords[i]
-                nxt = coords[i + 1] if i < len(coords) - 1 else coords[i]
-                dx = nxt[1] - prev[1]
-                dy = nxt[0] - prev[0]
-                length = math.sqrt(dx * dx + dy * dy)
-
-                if length < 1e-10:
-                    offset_coords.append((clat, clon))
+                # Extract coordinates, handling both LineString and MultiLineString results
+                if offset_line.geom_type == "MultiLineString":
+                    # offset_curve can produce multiple segments at sharp corners;
+                    # merge them back into one continuous line
+                    merged = linemerge(offset_line)
+                    if merged.geom_type == "LineString":
+                        offset_coords = [(lat, lon) for lon, lat in merged.coords]
+                    else:
+                        # If merge fails, use the longest segment
+                        longest = max(merged.geoms, key=lambda g: g.length)
+                        offset_coords = [(lat, lon) for lon, lat in longest.coords]
+                elif offset_line.geom_type == "LineString":
+                    offset_coords = [(lat, lon) for lon, lat in offset_line.coords]
+                else:
+                    offset_polys.append(coords)
                     continue
 
-                # Perpendicular (90° CW): (dx, -dy) normalized → (perpLat, perpLon)
-                perp_lat = dx / length
-                perp_lon = -dy / length
+                offset_polys.append(offset_coords)
 
-                off_lat = center_offset * offset_meters / METERS_PER_DEG_LAT * perp_lat
-                off_lon = center_offset * offset_meters / METERS_PER_DEG_LON * perp_lon
-                offset_coords.append((clat + off_lat, clon + off_lon))
-
-            offset_polys.append(offset_coords)
+            except Exception:
+                # Fallback: if Shapely fails on degenerate geometry, keep original
+                offset_polys.append(coords)
 
         # Re-encode the offset polylines
         encoded = [_encode_polyline(p) for p in offset_polys]
