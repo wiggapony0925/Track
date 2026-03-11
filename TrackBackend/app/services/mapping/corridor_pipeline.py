@@ -46,21 +46,28 @@ from app.utils.polyline_utils import decode_polyline, encode_polyline
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # Perpendicular distance between adjacent trunk groups in a corridor (meters
-# in EPSG:3857 ≈ 9.1 real meters at NYC latitude 40.7°).
-LANE_WIDTH: float = 12.0
+# in EPSG:3857).  16 EPSG:3857-m ≈ 12.2 real metres at NYC latitude 40.7°.
+# Tuned for clear visual separation without pushing lines off physical tracks.
+LANE_WIDTH: float = 16.0
 
 # Two trunk paths closer than this are considered to share a corridor.
-# 40 m catches both directions of one avenue (~30 m) with margin,
+# 50 m catches both directions of one avenue (~30 m) with margin,
 # without merging adjacent avenues (~250 m apart).
-CORRIDOR_DETECT_DIST: float = 40.0
+CORRIDOR_DETECT_DIST: float = 50.0
 
 # Minimum |dot product| of travel directions for two trunk paths to be
-# considered parallel.  cos(45°) ≈ 0.707.
-CORRIDOR_ALIGN_MIN: float = 0.707
+# considered parallel.  cos(55°) ≈ 0.574.  Lowered from 0.707 to catch
+# more segments in gently curving corridors.
+CORRIDOR_ALIGN_MIN: float = 0.574
+
+# Maximum number of consecutive zero-offset vertices allowed inside a
+# corridor before gap-filling kicks in.  Closes detection holes where a
+# few vertices slip through the proximity / alignment filters.
+CORRIDOR_GAP_MAX: int = 20
 
 # Number of vertices over which to smooth offset transitions at corridor
 # entry/exit points.  Prevents abrupt lateral jumps.
-BLEND_WINDOW: int = 5
+BLEND_WINDOW: int = 8
 
 # Miter join clamp (same as v2).  Prevents spikes at acute corners.
 MITER_CLAMP: float = 2.0
@@ -517,7 +524,8 @@ def _compute_corridor_offsets(
                     raw_offsets[i] = (lane - centre) * LANE_WIDTH
 
             # Smooth offset transitions
-            path_offsets[path_idx] = _smooth_offsets(raw_offsets)
+            filled = _fill_corridor_gaps(raw_offsets)
+            path_offsets[path_idx] = _smooth_offsets(filled)
 
         results[trunk_idx] = path_offsets
 
@@ -533,6 +541,62 @@ def _compute_corridor_offsets(
     )
 
     return results
+
+
+def _fill_corridor_gaps(raw: list[float]) -> list[float]:
+    """Close short zero-offset gaps inside corridors.
+
+    When per-vertex proximity/alignment checks miss a handful of consecutive
+    vertices inside what is clearly a continuous shared corridor, this
+    function fills those gaps with linearly-interpolated offsets so the
+    parallel lines don't snap back together for a few metres then separate
+    again.
+
+    Only gaps of `CORRIDOR_GAP_MAX` or fewer consecutive zero-offset
+    vertices that lie BETWEEN two non-zero-offset runs are filled.
+    """
+    n = len(raw)
+    if n < 3:
+        return list(raw)
+
+    result = list(raw)
+
+    # Identify runs of zero and non-zero offsets
+    i = 0
+    while i < n:
+        # Skip non-zero run
+        if abs(raw[i]) > 0.01:
+            i += 1
+            continue
+
+        # Start of a zero run
+        gap_start = i
+        while i < n and abs(raw[i]) <= 0.01:
+            i += 1
+        gap_end = i  # exclusive
+
+        gap_len = gap_end - gap_start
+
+        # Only fill if gap is short and bordered by non-zero offsets
+        if gap_len > CORRIDOR_GAP_MAX:
+            continue
+        if gap_start == 0 or gap_end >= n:
+            continue
+
+        left_val = raw[gap_start - 1]
+        right_val = raw[gap_end]
+
+        # Only fill if the bordering offsets have the same sign
+        # (= same corridor context, not a corridor transition)
+        if left_val * right_val <= 0:
+            continue
+
+        # Linear interpolation across the gap
+        for j in range(gap_start, gap_end):
+            t = (j - gap_start + 1) / (gap_len + 1)
+            result[j] = left_val * (1.0 - t) + right_val * t
+
+    return result
 
 
 def _smooth_offsets(raw: list[float]) -> list[float]:
