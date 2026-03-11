@@ -46,14 +46,16 @@ from app.utils.polyline_utils import decode_polyline, encode_polyline
 LANE_WIDTH: float = 12.0
 
 # Tolerance for Ramer-Douglas-Peucker simplification (meters).
-# 18 m aggressively kills GPS jitter and micro-wobble, producing the
-# clean straight edges needed for the NYC street grid aesthetic.
-RDP_TOLERANCE: float = 18.0
+# 5 m removes GPS jitter without destroying the natural shape of curves
+# or fusing adjacent avenues (7th Ave ↔ 8th Ave are ~250 m apart, but
+# aggressive RDP can collapse intermediate geometry and let unary_union
+# treat them as one corridor).
+RDP_TOLERANCE: float = 5.0
 
 # Snapping tolerance for collapsing near-coincident GTFS shapes into the
-# skeleton graph (meters).  15 m catches northbound/southbound tracks that
-# are physically ~10 m apart.
-SNAP_TOLERANCE: float = 15.0
+# skeleton graph (meters).  8 m catches northbound/southbound tracks on
+# the SAME avenue without ever merging separate parallel avenues.
+SNAP_TOLERANCE: float = 8.0
 
 # Minimum edge length to keep in the skeleton graph (meters).
 # Tiny stubs from GPS noise get pruned.
@@ -77,29 +79,33 @@ ROUTE_MAP_BUFFER: float = 35.0
 # Prevents arcs from becoming too tight at very sharp turns.
 MIN_FILLET_RADIUS: float = 20.0
 
-# ── Directive 1: Straight-Line Immunity ──
-# Maximum deflection (radians) below which no arc fillet is applied.
-# 0.26 rad ≈ 15°.  Lines within 15° of straight pass through the
-# node cleanly — no setback, no arc, no "bubble".
-STRAIGHT_DEFLECTION_LIMIT: float = 0.26
-
-# ── Directive 2: Overpass / Underpass Exclusion ──
+# ── Overpass / Underpass Exclusion ──
 # Minimum |dot product| between a route's local direction and a skeleton
 # edge's direction for the route to be considered "running along" the edge.
 # cos(45°) ≈ 0.707.  Routes crossing at steeper angles are classified as
 # overpasses and excluded from the corridor's parallel offset.
 CROSSING_ALIGNMENT_MIN: float = 0.707
 
-# ── Directive 3: Grid Snapping ──
-# Angular tolerance (degrees) for forcing an edge to be perfectly straight.
-# Edges whose overall bearing is within this many degrees of N-S or E-W are
-# replaced with a straight 2-point line from start to end.
-GRID_SNAP_ANGLE_DEG: float = 10.0
+# ── Degree-2 Pass-Through ──
+# At Phase 4 junctions: if a route enters a node on one edge and exits
+# on exactly one other edge *with the same lane assignment*, do NOT apply
+# any arc fillet.  The route is simply passing through.
+# This prevents the "Giant Ring" bubbles at Columbus Circle etc.
+#
+# (No tunable constant — the rule is structural, see _apply_junction_rounding.)
 
-# ── Directive 4: Dynamic Setbacks ──
-# Maximum fraction of a segment's length that a setback (trim) may consume.
-# Reduced from 0.8 to 0.4 to prevent loop-de-loops at dense junctions.
-MAX_SETBACK_FRACTION: float = 0.4
+# ── Despike ──
+# After offset, any vertex forming an interior angle sharper than this
+# (degrees) is classified as an offset spike and removed.
+DESPIKE_MIN_ANGLE_DEG: float = 30.0
+
+# Maximum ratio of (vertex excursion from chord) / (chord length) before
+# a vertex is classified as a spike.  Catches vertices that fly off to
+# infinity when offset_curve misbehaves.
+DESPIKE_MAX_EXCURSION: float = 0.5
+
+# Maximum setback fraction of segment length for arc fillets.
+MAX_SETBACK_FRACTION: float = 0.35
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -247,12 +253,6 @@ def _build_skeleton(
         skeleton_segments = [g for g in merged.geoms if g.geom_type == "LineString"]
 
     # Filter out micro-stubs
-    skeleton_segments = [s for s in skeleton_segments if s.length >= MIN_EDGE_LENGTH]
-
-    # ── Directive 3: Grid snap — straighten near-cardinal edges ──
-    # Edges aligned within GRID_SNAP_ANGLE_DEG of N-S or E-W are forced
-    # to a perfect 2-point straight line, eliminating wobbly avenues.
-    skeleton_segments = [_grid_snap_segment(seg) for seg in skeleton_segments]
     skeleton_segments = [s for s in skeleton_segments if s.length >= MIN_EDGE_LENGTH]
 
     if not skeleton_segments:
@@ -425,41 +425,6 @@ def _cluster_points(
                 point_to_centroid[pt] = centroid
 
     return point_to_centroid
-
-
-def _grid_snap_segment(seg: LineString) -> LineString:
-    """Directive 3: Force mostly-cardinal edges to be perfectly straight.
-
-    If the overall bearing of a skeleton segment is within
-    ``GRID_SNAP_ANGLE_DEG`` of N-S or E-W, replace all intermediate
-    vertices with a straight 2-point line from start to end.
-    This eliminates GTFS micro-jitter on long avenue / cross-street runs.
-    """
-    coords = list(seg.coords)
-    if len(coords) < 3:
-        return seg  # Already a straight 2-point segment
-
-    start, end = coords[0], coords[-1]
-    dx = end[0] - start[0]
-    dy = end[1] - start[1]
-    length = math.sqrt(dx * dx + dy * dy)
-    if length < 1e-6:
-        return seg
-
-    # Bearing from start to end (degrees from north, 0-360).
-    # atan2(dx, dy) with (x=east, y=north) in EPSG:3857 gives
-    # 0° = north, 90° = east — standard navigational bearing.
-    bearing = math.degrees(math.atan2(dx, dy)) % 360
-
-    threshold = GRID_SNAP_ANGLE_DEG
-    for cardinal in (0.0, 90.0, 180.0, 270.0):
-        angle_diff = abs(bearing - cardinal)
-        if angle_diff > 180:
-            angle_diff = 360 - angle_diff
-        if angle_diff <= threshold:
-            return LineString([start, end])
-
-    return seg
 
 
 def _filter_crossing_route_mappings(
@@ -1074,27 +1039,22 @@ def _apply_junction_rounding(
 ) -> dict[str, list[LineString]]:
     """Phase 4: Round junctions with concentric circular arc fillets.
 
+    **Degree-2 Pass-Through Rule** (fixes Columbus Circle "Giant Ring"):
+    Before attempting any fillet at a junction node, check whether
+    the route simply passes straight through:
+      - The route enters the node on edge A and exits on edge B,
+        AND no other route-edges meet at this node for this route,
+        AND its lane assignment is the same on A and B.
+    If all conditions hold the route is a *pass-through* — its
+    geometry is stitched as a continuous LineString with NO setback
+    and NO arc.  Arc fillets are only applied when a route genuinely
+    turns onto a new corridor or when lanes merge/split.
+
     Replaces cubic Bézier curves with true circular arcs.  Parallel
     lanes turning the same corner produce concentric arcs (shared centre,
     different radii) so offset lines maintain uniform spacing through
     turns — this is the core geometrical guarantee from the Transit Inc.
     architecture.
-
-    Algorithm:
-    1. Pre-compute skeleton edge directions at every junction node.
-       The arc centre for each turn is placed on the angle bisector of
-       the two skeleton edges, guaranteeing that ALL lanes at the same
-       node share one centre point.
-    2. For each route, order its offset segments into a chain.
-    3. At each consecutive-segment gap (a junction), find the nearest
-       skeleton node and compute a circular arc whose radius equals
-       the distance from the shared centre to the route's offset
-       line tangent point.
-    4. Trim incoming/outgoing segments and splice in the arc.
-
-    Because every lane's arc uses the same centre, the arcs are
-    concentric by construction.  The radius naturally adapts to the
-    lane's offset distance.
     """
     if not route_segments:
         return route_segments
@@ -1107,6 +1067,14 @@ def _apply_junction_rounding(
     jnode_pts: list[tuple[float, float]] = [
         junction_data[nid][0] for nid in jnode_ids
     ]
+
+    # ── Pre-build per-route edge sets for the pass-through check ──
+    # route_id → set of edge keys (canonical, sorted) the route traverses
+    route_edge_sets: dict[str, set[tuple[int, int]]] = defaultdict(set)
+    for (u, v), assignments in edge_lanes.items():
+        ek = (min(u, v), max(u, v))
+        for rid in assignments:
+            route_edge_sets[rid].add(ek)
 
     smoothed_segments: dict[str, list[LineString]] = {}
 
@@ -1141,9 +1109,31 @@ def _apply_junction_rounding(
                         (seg_end[1] + next_start[1]) / 2,
                     )
 
+                    # ── Degree-2 Pass-Through Check ──
+                    # Find the nearest skeleton node to this gap.
+                    # If this route has exactly 2 edges at this node
+                    # (one in, one out) with the same lane, skip the fillet
+                    # entirely — the route is passing straight through.
+                    skip_fillet = False
+                    j_idx = _nearest_point_index(mid, jnode_pts)
+                    if j_idx is not None:
+                        jnid = jnode_ids[j_idx]
+                        jpos = jnode_pts[j_idx]
+                        dist_to_j = _point_dist(mid, jpos)
+
+                        if dist_to_j < JUNCTION_SETBACK * 4:
+                            skip_fillet = _is_pass_through(
+                                route_id, jnid, G, edge_lanes,
+                                route_edge_sets.get(route_id, set()),
+                            )
+
+                    if skip_fillet:
+                        # Stitch segments directly — no arc fillet
+                        final_parts.append(seg)
+                        continue
+
                     # ── Try skeleton-centred arc (guarantees concentricity) ──
                     arc_result: tuple[LineString, float, float] | None = None
-                    j_idx = _nearest_point_index(mid, jnode_pts)
                     if j_idx is not None:
                         jnid = jnode_ids[j_idx]
                         jpos = jnode_pts[j_idx]
@@ -1174,6 +1164,55 @@ def _apply_junction_rounding(
         smoothed_segments[route_id] = final_parts
 
     return smoothed_segments
+
+
+def _is_pass_through(
+    route_id: str,
+    node_id: int,
+    G: nx.Graph,
+    edge_lanes: dict[tuple[int, int], dict[str, int]],
+    route_edges: set[tuple[int, int]],
+) -> bool:
+    """Degree-2 pass-through test.
+
+    Returns True if *route_id* enters *node_id* on exactly one edge and
+    exits on exactly one other edge, with the same lane assignment on
+    both.  In that case no arc fillet should be applied — the route is
+    just passing through and should be a continuous straight line.
+    """
+    # Collect edges at this node that belong to this route
+    incident_route_edges: list[tuple[int, int]] = []
+    for neighbor in G.neighbors(node_id):
+        ek = (min(node_id, neighbor), max(node_id, neighbor))
+        if ek in route_edges:
+            incident_route_edges.append(ek)
+
+    # Degree-2 check: exactly 2 route-edges meet at this node
+    if len(incident_route_edges) != 2:
+        return False
+
+    # Same lane check: route has same lane index on both edges
+    ek1, ek2 = incident_route_edges
+    lane1 = edge_lanes.get(ek1, {}).get(route_id)
+    lane2 = edge_lanes.get(ek2, {}).get(route_id)
+    if lane1 is None or lane2 is None:
+        return False
+
+    # Also check that the total number of lanes is the same —
+    # if one edge has 3 routes and the other has 5, the corridor
+    # is widening and the route IS shifting even if its lane index
+    # hasn't changed.
+    n_lanes1 = len(edge_lanes.get(ek1, {}))
+    n_lanes2 = len(edge_lanes.get(ek2, {}))
+
+    # Compute actual offset distance on each side
+    center1 = (n_lanes1 - 1) / 2.0 if n_lanes1 > 0 else 0.0
+    center2 = (n_lanes2 - 1) / 2.0 if n_lanes2 > 0 else 0.0
+    offset1 = (lane1 - center1) * LANE_WIDTH
+    offset2 = (lane2 - center2) * LANE_WIDTH
+
+    # If the offsets are close (within 1m) the route doesn't shift
+    return abs(offset1 - offset2) < 1.0
 
 
 def _precompute_skeleton_junctions(
@@ -1356,11 +1395,10 @@ def _compute_arc_from_directions(
     alpha = math.acos(cos_alpha)       # angle at the vertex
     deflection = math.pi - alpha       # how much the path turns
 
-    # ── Directive 1: Straight-Line Immunity ──
-    # If the path deflects by less than ~15° it is effectively straight.
-    # Applying an arc here would create the "bubble effect" at
-    # Columbus Circle-style intersections.  Also skip near-U-turns.
-    if deflection < STRAIGHT_DEFLECTION_LIMIT or deflection > 2.79:
+    # ── Straight-line and U-turn rejection ──
+    # Deflection < 10° → the path is effectively straight, no arc needed.
+    # Deflection > 160° → near-U-turn, arc would be degenerate.
+    if deflection < 0.175 or deflection > 2.79:
         return None
 
     half_alpha = alpha / 2.0
@@ -1371,8 +1409,6 @@ def _compute_arc_from_directions(
         return None
 
     # ── Bisector direction (vertex → arc centre) ──
-    # The bisector of the angle between half-lines (−u) and (w) points
-    # into the inscribed arc sector.
     bx = -ux + wx
     by = -uy + wy
     b_len = math.sqrt(bx * bx + by * by)
@@ -1381,13 +1417,14 @@ def _compute_arc_from_directions(
     bx /= b_len
     by /= b_len
 
-    # ── Directive 4: Dynamic fillet radius ──
-    # Scale radius inversely with deflection angle so that sharp turns
-    # (Queensboro Plaza) get a tight arc instead of a massive one that
-    # overshoots into a loop-de-loop.
+    # ── Dynamic fillet radius ──
+    # Scale radius inversely with deflection so sharp turns get tight
+    # arcs and gentle curves get modest ones.  Clamped to a safe
+    # minimum so we never produce a degenerate micro-arc.
     deflection_ratio = deflection / math.pi  # 0 = straight, 1 = U-turn
-    base_radius = JUNCTION_SETBACK * (1.0 - 0.6 * deflection_ratio)
+    base_radius = JUNCTION_SETBACK * (1.0 - 0.55 * deflection_ratio)
     base_radius = max(base_radius, MIN_FILLET_RADIUS * 0.5)
+    base_radius = min(base_radius, JUNCTION_SETBACK * 1.2)
 
     # Centre distance from vertex along bisector: R / sin(α/2)
     center_dist = base_radius / sin_half
@@ -1781,20 +1818,22 @@ def _merge_linestrings(
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Post-processing — Geometry Cleanup & Anti-Loop Sweep
+# Post-processing — Despike, Anti-Bowtie, Geometry Cleanup
 # ═══════════════════════════════════════════════════════════════════════════
 
 
 def _postprocess_route_geometries(
     route_segments: dict[str, list[LineString]],
 ) -> dict[str, list[LineString]]:
-    """Directive 4 post-processing sweep: clean geometries, kill loops.
+    """Post-processing sweep: despike, kill bowties, validate geometry.
 
-    1. ``make_valid`` on every geometry.
-    2. Extract only ``LineString`` components, discarding ``Polygon``
-       and other artifacts that ``offset_curve`` can produce.
-    3. If a ``LineString`` self-intersects (bowtie from a tight arc
-       fillet), extract the longest non-self-intersecting piece.
+    1. **Despike** — remove vertices that form acute switchback spikes
+       (seismograph zigzags) produced by offset_curve explosions.
+    2. **make_valid** on every geometry.
+    3. Extract only ``LineString`` components, discarding ``Polygon``
+       and other artifacts.
+    4. If a ``LineString`` self-intersects (bowtie), extract the longest
+       non-self-intersecting piece.
     """
     cleaned: dict[str, list[LineString]] = {}
 
@@ -1802,6 +1841,11 @@ def _postprocess_route_geometries(
         clean_segs: list[LineString] = []
         for seg in segments:
             if seg is None or seg.is_empty:
+                continue
+
+            # ── Despike first (removes the worst offset artifacts) ──
+            seg = _despike_linestring(seg)
+            if seg is None or seg.is_empty or len(seg.coords) < 2:
                 continue
 
             if not seg.is_valid:
@@ -1828,6 +1872,74 @@ def _postprocess_route_geometries(
             cleaned[route_id] = clean_segs
 
     return cleaned
+
+
+def _despike_linestring(line: LineString) -> LineString | None:
+    """Remove spike vertices from an offset LineString.
+
+    A spike is a vertex where:
+    - The interior angle is very acute (< DESPIKE_MIN_ANGLE_DEG), forming
+      a sharp switchback that looks like an EKG blip.
+    - OR the vertex deviates far from the chord between its neighbours
+      (excursion ratio > DESPIKE_MAX_EXCURSION), indicating a vertex
+      that flew off to infinity during offset_curve.
+
+    Vertices identified as spikes are simply dropped.  If fewer than
+    2 vertices remain, returns None.
+    """
+    coords = list(line.coords)
+    if len(coords) <= 3:
+        return line  # Too few points to have an interior spike
+
+    min_angle_rad = math.radians(DESPIKE_MIN_ANGLE_DEG)
+    keep: list[tuple[float, float]] = [coords[0]]  # Always keep endpoints
+
+    for i in range(1, len(coords) - 1):
+        prev = coords[i - 1]
+        curr = coords[i]
+        nxt = coords[i + 1]
+
+        # Vector from curr → prev and curr → next
+        ax = prev[0] - curr[0]
+        ay = prev[1] - curr[1]
+        bx = nxt[0] - curr[0]
+        by = nxt[1] - curr[1]
+
+        a_len = math.sqrt(ax * ax + ay * ay)
+        b_len = math.sqrt(bx * bx + by * by)
+
+        if a_len < 1e-10 or b_len < 1e-10:
+            # Degenerate — skip this vertex
+            continue
+
+        # Interior angle at curr
+        cos_angle = (ax * bx + ay * by) / (a_len * b_len)
+        cos_angle = max(-1.0, min(1.0, cos_angle))
+        angle = math.acos(cos_angle)
+
+        # Check 1: acute spike (switchback)
+        if angle < min_angle_rad:
+            continue  # Drop this vertex
+
+        # Check 2: excursion from the chord (prev → next)
+        chord_dx = nxt[0] - prev[0]
+        chord_dy = nxt[1] - prev[1]
+        chord_len = math.sqrt(chord_dx * chord_dx + chord_dy * chord_dy)
+        if chord_len > 1e-6:
+            # Perpendicular distance from curr to the chord line
+            # |cross product| / chord_len
+            cross = abs(chord_dx * (prev[1] - curr[1]) - chord_dy * (prev[0] - curr[0]))
+            perp_dist = cross / chord_len
+            if perp_dist / chord_len > DESPIKE_MAX_EXCURSION:
+                continue  # Drop — vertex flew off too far
+
+        keep.append(curr)
+
+    keep.append(coords[-1])  # Always keep last point
+
+    if len(keep) < 2:
+        return None
+    return LineString(keep)
 
 
 def _fix_self_intersecting(line: LineString) -> LineString | None:

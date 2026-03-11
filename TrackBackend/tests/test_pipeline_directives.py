@@ -1,43 +1,172 @@
-"""Smoke tests for the 4 corridor_pipeline directives."""
+"""Smoke tests for corridor_pipeline damage-control rewrite.
+
+Tests cover:
+- Reverted constants (RDP 5m, SNAP 8m)
+- Despike algorithm
+- Degree-2 pass-through rule
+- Arc fillet straight-line immunity (10° threshold)
+- Post-processing sweep
+- Dynamic setback fraction
+"""
 
 import math
 
+import networkx as nx
 import pytest
 from shapely.geometry import LineString
 
 from app.services.mapping.corridor_pipeline import (
     CROSSING_ALIGNMENT_MIN,
-    GRID_SNAP_ANGLE_DEG,
+    DESPIKE_MAX_EXCURSION,
+    DESPIKE_MIN_ANGLE_DEG,
+    LANE_WIDTH,
     MAX_SETBACK_FRACTION,
     RDP_TOLERANCE,
-    STRAIGHT_DEFLECTION_LIMIT,
+    SNAP_TOLERANCE,
     _compute_arc_from_directions,
+    _despike_linestring,
     _fix_self_intersecting,
-    _grid_snap_segment,
+    _is_pass_through,
     _postprocess_route_geometries,
 )
 
 
 # ── Constants ──────────────────────────────────────────────────────────────
 
-class TestConstants:
-    def test_rdp_tolerance_increased(self):
-        assert RDP_TOLERANCE == 18.0
 
-    def test_straight_deflection_limit(self):
-        assert STRAIGHT_DEFLECTION_LIMIT == 0.26
+class TestConstants:
+    def test_rdp_tolerance_conservative(self):
+        assert RDP_TOLERANCE == 5.0
+
+    def test_snap_tolerance_conservative(self):
+        assert SNAP_TOLERANCE == 8.0
 
     def test_crossing_alignment_min(self):
         assert CROSSING_ALIGNMENT_MIN == 0.707
 
-    def test_grid_snap_angle(self):
-        assert GRID_SNAP_ANGLE_DEG == 10.0
-
     def test_max_setback_fraction(self):
-        assert MAX_SETBACK_FRACTION == 0.4
+        assert MAX_SETBACK_FRACTION == 0.35
+
+    def test_despike_min_angle(self):
+        assert DESPIKE_MIN_ANGLE_DEG == 30.0
+
+    def test_despike_max_excursion(self):
+        assert DESPIKE_MAX_EXCURSION == 0.5
 
 
-# ── Directive 1: Straight-Line Immunity ────────────────────────────────────
+# ── Despike Algorithm ──────────────────────────────────────────────────────
+
+
+class TestDespike:
+    def test_clean_line_unchanged(self):
+        """A smooth line should pass through despike untouched."""
+        line = LineString([(0, 0), (50, 50), (100, 100), (150, 150)])
+        result = _despike_linestring(line)
+        assert len(list(result.coords)) == 4
+
+    def test_acute_spike_removed(self):
+        """A vertex forming a ~10° acute spike should be dropped."""
+        # The spike vertex at (100, 200) creates an acute switchback
+        line = LineString([(0, 0), (50, 0), (100, 200), (150, 0), (200, 0)])
+        result = _despike_linestring(line)
+        coords = list(result.coords)
+        # The spike vertex (100, 200) should be removed
+        assert len(coords) < 5
+
+    def test_two_point_line_unchanged(self):
+        """A 2-point line has no interior vertices to spike."""
+        line = LineString([(0, 0), (100, 100)])
+        result = _despike_linestring(line)
+        assert len(list(result.coords)) == 2
+
+    def test_three_point_line_unchanged(self):
+        """A 3-point line (only 1 interior vertex) is kept as-is."""
+        line = LineString([(0, 0), (50, 50), (100, 0)])
+        result = _despike_linestring(line)
+        assert len(list(result.coords)) == 3
+
+    def test_excursion_spike_removed(self):
+        """A vertex that flies far from its neighbours' chord is dropped."""
+        # Chord from (0,0) to (100,0) is 100 units. Vertex at (50, 200)
+        # has perp distance 200, ratio 2.0 >> DESPIKE_MAX_EXCURSION.
+        line = LineString([(0, 0), (25, 0), (50, 200), (75, 0), (100, 0)])
+        result = _despike_linestring(line)
+        coords = list(result.coords)
+        # Should drop (50, 200)
+        for c in coords:
+            assert c[1] < 10  # No vertex near y=200
+
+    def test_endpoints_always_kept(self):
+        """First and last vertices are always preserved."""
+        line = LineString([(0, 0), (50, 200), (100, 0)])
+        result = _despike_linestring(line)
+        coords = list(result.coords)
+        assert coords[0] == (0, 0)
+        assert coords[-1] == (100, 0)
+
+
+# ── Degree-2 Pass-Through ─────────────────────────────────────────────────
+
+
+class TestPassThrough:
+    """Tests for _is_pass_through using real nx.Graph structures."""
+
+    @staticmethod
+    def _make_graph_and_edges(edges_list, lanes_dict):
+        """Build a small nx.Graph and edge_lanes dict.
+
+        edges_list: [(u, v), ...]
+        lanes_dict: {(u, v): {"route_A": lane_idx, ...}, ...}
+        """
+        G = nx.Graph()
+        for u, v in edges_list:
+            G.add_edge(u, v, geometry=LineString([(0, 0), (100, 0)]))
+        return G, lanes_dict
+
+    def test_pass_through_same_offset(self):
+        """Route with 2 edges at same lane → pass-through."""
+        G, el = self._make_graph_and_edges(
+            [(1, 2), (2, 3)],
+            {(1, 2): {"A": 0}, (2, 3): {"A": 0}},
+        )
+        route_edges = {(1, 2), (2, 3)}
+        assert _is_pass_through("A", 2, G, el, route_edges) is True
+
+    def test_not_pass_through_three_edges(self):
+        """Route with 3 edges at a node is NOT pass-through."""
+        G, el = self._make_graph_and_edges(
+            [(1, 2), (2, 3), (2, 4)],
+            {(1, 2): {"A": 0}, (2, 3): {"A": 0}, (2, 4): {"A": 0}},
+        )
+        route_edges = {(1, 2), (2, 3), (2, 4)}
+        assert _is_pass_through("A", 2, G, el, route_edges) is False
+
+    def test_not_pass_through_different_corridor_width(self):
+        """Route edges with different corridor sizes → NOT pass-through."""
+        G, el = self._make_graph_and_edges(
+            [(1, 2), (2, 3)],
+            # Edge (1,2) has 1 route → lane 0, center 0 → offset 0
+            # Edge (2,3) has 3 routes → lane 0, center 1.0 → offset -LANE_WIDTH
+            {(1, 2): {"A": 0}, (2, 3): {"A": 0, "B": 1, "C": 2}},
+        )
+        route_edges = {(1, 2), (2, 3)}
+        # offset1 = 0, offset2 = (0 - 1.0)*LANE_WIDTH = -LANE_WIDTH
+        # If LANE_WIDTH > 1m, these offsets differ by more than 1m
+        if LANE_WIDTH > 1.0:
+            assert _is_pass_through("A", 2, G, el, route_edges) is False
+
+    def test_pass_through_close_offsets(self):
+        """Route with same lane index and same corridor width → pass-through."""
+        G, el = self._make_graph_and_edges(
+            [(1, 2), (2, 3)],
+            {(1, 2): {"A": 0, "B": 1}, (2, 3): {"A": 0, "B": 1}},
+        )
+        route_edges = {(1, 2), (2, 3)}
+        assert _is_pass_through("A", 2, G, el, route_edges) is True
+
+
+# ── Straight-Line Immunity ─────────────────────────────────────────────────
+
 
 class TestStraightLineImmunity:
     def test_near_straight_returns_none(self):
@@ -84,35 +213,8 @@ class TestStraightLineImmunity:
         assert result is None
 
 
-# ── Directive 3: Grid Snapping ─────────────────────────────────────────────
+# ── Post-processing Sweep ──────────────────────────────────────────────────
 
-class TestGridSnapping:
-    def test_near_vertical_straightened(self):
-        """A mostly-north line with micro-jitter becomes 2 points."""
-        wobbly = LineString([(0, 0), (1, 50), (-0.5, 100), (0.8, 150), (0, 200)])
-        snapped = _grid_snap_segment(wobbly)
-        assert len(list(snapped.coords)) == 2
-
-    def test_near_horizontal_straightened(self):
-        """A mostly-east line with jitter becomes 2 points."""
-        wobbly = LineString([(0, 0), (50, 0.5), (100, -0.3), (200, 0.1)])
-        snapped = _grid_snap_segment(wobbly)
-        assert len(list(snapped.coords)) == 2
-
-    def test_diagonal_preserved(self):
-        """A 30° diagonal should keep all its vertices."""
-        diagonal = LineString([(0, 0), (50, 30), (100, 60), (150, 90)])
-        kept = _grid_snap_segment(diagonal)
-        assert len(list(kept.coords)) == 4
-
-    def test_two_point_segment_unchanged(self):
-        """A segment with only 2 points is already straight."""
-        seg = LineString([(0, 0), (100, 100)])
-        result = _grid_snap_segment(seg)
-        assert len(list(result.coords)) == 2
-
-
-# ── Directive 4: Post-processing Sweep ─────────────────────────────────────
 
 class TestPostProcessing:
     def test_empty_segments_dropped(self):
@@ -152,6 +254,7 @@ class TestPostProcessing:
 
 
 # ── Dynamic Setback Fraction ───────────────────────────────────────────────
+
 
 class TestDynamicSetback:
     def test_setback_capped_at_fraction(self):
