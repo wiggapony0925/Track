@@ -122,11 +122,10 @@ async def subway_shapes_all() -> AllSubwayLinesResponse:
             shape_buf = shapes_data.get(shape_id)
             if shape_buf:
                 raw = _unpack_coords(shape_buf)
-                # Simplify first (remove GPS noise), then smooth corners
-                # with Chaikin's algorithm for clean curves.
-                simplified = _simplify_polyline(raw, tolerance=0.00005)
-                smoothed = _chaikin_smooth(simplified, iterations=3)
-                polylines_raw.append(smoothed)
+                # Light simplification for the system map (~5.5 m tolerance).
+                # The offset pipeline applies its own aggressive RDP in
+                # meter space to nuke GPS jitter before offsetting.
+                polylines_raw.append(_simplify_polyline(raw, tolerance=0.00005))
 
         if not polylines_raw:
             continue
@@ -470,42 +469,83 @@ def _apply_corridor_offsets(
     overlays: list[SubwayLineOverlay],
     offset_meters: float = 15.0,
     corridor_buffer_m: float = 50.0,
+    simplify_tolerance_m: float = 5.0,
 ) -> list[SubwayLineOverlay]:
     """Apply perpendicular offsets to subway lines that share a corridor.
 
-    Uses Shapely's ``offset_curve`` for geometrically perfect parallel lines.
-    Co-located trunk groups (e.g. blue A/C/E + green 4/5/6 on Lex Ave) are
-    fanned out so each color is visible as a distinct parallel stripe.
-
-    **Algorithm (segment-level corridor detection)**:
-    1. Group overlays by MTA trunk color.
-    2. For each trunk group, merge all polylines into a single MultiLineString.
-    3. Identify shared corridors by buffering each trunk group's geometry and
-       checking which other trunk groups intersect the buffer.
-    4. For shared corridor segments, apply Shapely ``offset_curve`` to produce
-       geometrically perfect parallel offsets — no grid lookups, no flickering.
+    Proper GIS pipeline:
+    1. Project all coordinates from WGS84 (EPSG:4326) to Web Mercator
+       (EPSG:3857) so all math is done in meters, not degrees.
+    2. Aggressively simplify with RDP (5 m tolerance) to nuke GPS jitter
+       that would otherwise explode into spikes when offset.
+    3. Detect shared corridors via buffered intersection in meter space.
+    4. Apply Shapely ``offset_curve`` in meters with ``join_style='round'``.
+    5. Clean any self-intersection bowties from the result.
+    6. Reproject back to WGS84 before encoding.
 
     Parameters
     ----------
     overlays : list of SubwayLineOverlay with already-encoded polylines.
     offset_meters : perpendicular distance between neighbouring trunk groups.
-    corridor_buffer_m : buffer distance for detecting shared corridors (~50m).
+    corridor_buffer_m : buffer distance for detecting shared corridors.
+    simplify_tolerance_m : RDP simplification tolerance in meters.
     """
+    from pyproj import Transformer
     from shapely.geometry import LineString, MultiLineString
-    from shapely.ops import linemerge, unary_union
+    from shapely.ops import linemerge
+    from shapely.validation import make_valid
 
-    METERS_PER_DEG_LAT = 111_000.0
-    METERS_PER_DEG_LON = 84_300.0  # at ~40.7°N
+    # ── Projectors: WGS84 ↔ Web Mercator ──
+    to_meters = Transformer.from_crs("EPSG:4326", "EPSG:3857", always_xy=True)
+    to_wgs84 = Transformer.from_crs("EPSG:3857", "EPSG:4326", always_xy=True)
 
-    # Convert meters to degrees for offset calculations
-    offset_deg_lat = offset_meters / METERS_PER_DEG_LAT
-    offset_deg_lon = offset_meters / METERS_PER_DEG_LON
-    # Use average for Shapely (which operates in coordinate space)
-    offset_deg = (offset_deg_lat + offset_deg_lon) / 2.0
+    def _project_to_meters(coords: list[tuple[float, float]]) -> list[tuple[float, float]]:
+        """Convert [(lat, lon), ...] → [(x_m, y_m), ...] in EPSG:3857."""
+        return [to_meters.transform(lon, lat) for lat, lon in coords]
 
-    buffer_deg = corridor_buffer_m / ((METERS_PER_DEG_LAT + METERS_PER_DEG_LON) / 2.0)
+    def _project_to_wgs84(coords: list[tuple[float, float]]) -> list[tuple[float, float]]:
+        """Convert [(x_m, y_m), ...] → [(lat, lon), ...] in WGS84."""
+        return [tuple(reversed(to_wgs84.transform(x, y))) for x, y in coords]
 
-    # ── Step 1: Decode polylines and group by trunk ──
+    def _clean_offset_result(geom) -> LineString | None:
+        """Extract the longest clean LineString from an offset result.
+
+        offset_curve can produce MultiLineString with self-intersecting
+        bowties at sharp corners. This cleans the topology and returns
+        the longest continuous segment.
+        """
+        if geom.is_empty:
+            return None
+
+        # Fix any topological invalidity first
+        if not geom.is_valid:
+            geom = make_valid(geom)
+
+        if geom.geom_type == "LineString":
+            return geom if len(geom.coords) >= 2 else None
+
+        if geom.geom_type == "MultiLineString":
+            # Try merging fragments back into one line
+            merged = linemerge(geom)
+            if merged.geom_type == "LineString" and len(merged.coords) >= 2:
+                return merged
+            # If merge produces MultiLineString, take the longest piece
+            if merged.geom_type == "MultiLineString":
+                candidates = [g for g in merged.geoms if len(g.coords) >= 2]
+                if candidates:
+                    return max(candidates, key=lambda g: g.length)
+            return None
+
+        # GeometryCollection or other — try to find any LineString
+        if hasattr(geom, "geoms"):
+            lines = [g for g in geom.geoms
+                     if g.geom_type == "LineString" and len(g.coords) >= 2]
+            if lines:
+                return max(lines, key=lambda g: g.length)
+
+        return None
+
+    # ── Step 1: Decode all polylines ──
     decoded_by_route: dict[str, list[list[tuple[float, float]]]] = {}
     for overlay in overlays:
         decoded_by_route[overlay.route_id] = [
@@ -519,56 +559,61 @@ def _apply_corridor_offsets(
         if trunk_idx >= 0:
             trunk_overlays.setdefault(trunk_idx, []).append(overlay)
 
-    # ── Step 2: Build Shapely geometries per trunk group ──
-    trunk_geometries: dict[int, MultiLineString] = {}
+    # ── Step 2: Build projected + simplified geometries per trunk ──
+    trunk_geometries_m: dict[int, MultiLineString] = {}
     for trunk_idx, trunk_ovls in trunk_overlays.items():
         lines = []
         for ovl in trunk_ovls:
             for coords in decoded_by_route[ovl.route_id]:
                 if len(coords) >= 2:
-                    # Shapely uses (x, y) = (lon, lat)
-                    lines.append(LineString([(lon, lat) for lat, lon in coords]))
+                    projected = _project_to_meters(coords)
+                    line = LineString(projected)
+                    # Aggressive RDP to nuke GPS jitter before any offset math
+                    simplified = line.simplify(simplify_tolerance_m, preserve_topology=True)
+                    if simplified.geom_type == "LineString" and len(simplified.coords) >= 2:
+                        lines.append(simplified)
         if lines:
-            trunk_geometries[trunk_idx] = MultiLineString(lines)
+            trunk_geometries_m[trunk_idx] = MultiLineString(lines)
 
-    # ── Step 3: Detect shared corridors between trunk groups ──
-    # For each trunk group, find which OTHER trunk groups share geometry
-    active_trunks = sorted(trunk_geometries.keys())
+    # ── Step 3: Detect shared corridors in meter space ──
+    active_trunks = sorted(trunk_geometries_m.keys())
     trunk_neighbors: dict[int, set[int]] = {t: set() for t in active_trunks}
 
     for i, t1 in enumerate(active_trunks):
-        geom1 = trunk_geometries[t1]
-        buf1 = geom1.buffer(buffer_deg)
+        geom1 = trunk_geometries_m[t1]
+        buf1 = geom1.buffer(corridor_buffer_m)
         for t2 in active_trunks[i + 1:]:
-            geom2 = trunk_geometries[t2]
+            geom2 = trunk_geometries_m[t2]
             if buf1.intersects(geom2):
-                # Check that the intersection is substantial (not just a crossing)
+                # Require substantial overlap, not just a single crossing
                 intersection = buf1.intersection(geom2)
-                if intersection.length > buffer_deg * 5:
+                # intersection.length is in meters here — require at least
+                # 200 m of shared corridor to avoid false positives at
+                # crossings/transfers.
+                if intersection.length > 200.0:
                     trunk_neighbors[t1].add(t2)
                     trunk_neighbors[t2].add(t1)
 
-    # ── Step 4: Compute per-point offsets for each route ──
-    # For routes in trunk groups that share corridors, apply Shapely offset_curve
+    # ── Step 4: Offset each route's polylines in meter space ──
     result: list[SubwayLineOverlay] = []
 
     for overlay in overlays:
         route_id = overlay.route_id
         trunk_idx = _ROUTE_TO_TRUNK.get(route_id, -1)
 
-        # If this trunk has no corridor neighbors, pass through unchanged
+        # No corridor neighbors → pass through unchanged
         if trunk_idx < 0 or not trunk_neighbors.get(trunk_idx):
             result.append(overlay)
             continue
 
-        # Determine this trunk's lane position among its corridor partners
-        # Collect all trunks sharing corridors with this one
+        # Stable lane assignment: sort trunk indices, find our slot
         corridor_trunks = sorted({trunk_idx} | trunk_neighbors[trunk_idx])
         lane_index = corridor_trunks.index(trunk_idx)
         num_lanes = len(corridor_trunks)
-        center_offset = (lane_index - (num_lanes - 1) / 2.0) * offset_deg
+        # Offset in METERS, centered around zero
+        offset_m = (lane_index - (num_lanes - 1) / 2.0) * offset_meters
 
-        if abs(center_offset) < 1e-10:
+        if abs(offset_m) < 0.5:
             # Center lane — no offset needed
             result.append(overlay)
             continue
@@ -580,46 +625,34 @@ def _apply_corridor_offsets(
                 continue
 
             try:
-                # Smooth the input geometry before offsetting to prevent
-                # jagged artifacts at sharp GTFS corners.
-                smoothed = _chaikin_smooth(coords, iterations=2)
+                # Project to meters
+                projected = _project_to_meters(coords)
+                line_m = LineString(projected)
 
-                # Build LineString in (lon, lat) coordinate space
-                line = LineString([(lon, lat) for lat, lon in smoothed])
+                # Aggressive RDP simplification to remove GPS jitter
+                line_m = line_m.simplify(simplify_tolerance_m, preserve_topology=True)
+                if line_m.is_empty or line_m.geom_type != "LineString" or len(line_m.coords) < 2:
+                    offset_polys.append(coords)
+                    continue
 
-                # Use Shapely's offset_curve with ROUND join style.
-                # Default miter joins create self-intersecting spikes
-                # at sharp corners — round joins produce clean arcs.
-                offset_line = line.offset_curve(
-                    center_offset,
+                # Offset in meters with round joins — no miter spikes
+                offset_geom = line_m.offset_curve(
+                    offset_m,
                     join_style="round",
                 )
 
-                if offset_line.is_empty:
+                # Clean self-intersection bowties
+                clean_line = _clean_offset_result(offset_geom)
+                if clean_line is None:
                     offset_polys.append(coords)
                     continue
 
-                # Extract coordinates, handling both LineString and MultiLineString results
-                if offset_line.geom_type == "MultiLineString":
-                    # offset_curve can produce multiple segments at sharp corners;
-                    # merge them back into one continuous line
-                    merged = linemerge(offset_line)
-                    if merged.geom_type == "LineString":
-                        offset_coords = [(lat, lon) for lon, lat in merged.coords]
-                    else:
-                        # If merge fails, use the longest segment
-                        longest = max(merged.geoms, key=lambda g: g.length)
-                        offset_coords = [(lat, lon) for lon, lat in longest.coords]
-                elif offset_line.geom_type == "LineString":
-                    offset_coords = [(lat, lon) for lon, lat in offset_line.coords]
-                else:
-                    offset_polys.append(coords)
-                    continue
-
-                offset_polys.append(offset_coords)
+                # Project back to WGS84
+                wgs84_coords = _project_to_wgs84(list(clean_line.coords))
+                offset_polys.append(wgs84_coords)
 
             except Exception:
-                # Fallback: if Shapely fails on degenerate geometry, keep original
+                # If anything goes wrong, keep the original geometry
                 offset_polys.append(coords)
 
         # Re-encode the offset polylines
@@ -631,3 +664,4 @@ def _apply_corridor_offsets(
         ))
 
     return result
+
