@@ -123,10 +123,11 @@ async def subway_shapes_all() -> AllSubwayLinesResponse:
             shape_buf = shapes_data.get(shape_id)
             if shape_buf:
                 raw = _unpack_coords(shape_buf)
-                # Light simplification for the system map (~5.5 m tolerance).
-                # The offset pipeline applies its own aggressive RDP in
-                # meter space to nuke GPS jitter before offsetting.
-                polylines_raw.append(_simplify_polyline(raw, tolerance=0.00005))
+                # Pass full-fidelity GTFS geometry to the offset pipeline.
+                # The v3 pipeline works in meter-space and handles the full
+                # point density efficiently.  iOS applies its own RDP at
+                # ~7 m for rendering performance—no server-side pre-simplification needed.
+                polylines_raw.append(raw)
 
         if not polylines_raw:
             continue
