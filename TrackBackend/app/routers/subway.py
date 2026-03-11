@@ -122,10 +122,11 @@ async def subway_shapes_all() -> AllSubwayLinesResponse:
             shape_buf = shapes_data.get(shape_id)
             if shape_buf:
                 raw = _unpack_coords(shape_buf)
-                # Light simplification for the system map (~5.5 m tolerance).
-                # The iOS client merges + simplifies further based on its own
-                # configurable tolerance, so keep server output reasonably detailed.
-                polylines_raw.append(_simplify_polyline(raw, tolerance=0.00005))
+                # Simplify first (remove GPS noise), then smooth corners
+                # with Chaikin's algorithm for clean curves.
+                simplified = _simplify_polyline(raw, tolerance=0.00005)
+                smoothed = _chaikin_smooth(simplified, iterations=3)
+                polylines_raw.append(smoothed)
 
         if not polylines_raw:
             continue
@@ -396,6 +397,48 @@ def _merge_polyline_segments(
 
     return chains
 
+
+# ---------------------------------------------------------------------------
+# Chaikin's corner-cutting algorithm for polyline smoothing
+# ---------------------------------------------------------------------------
+
+
+def _chaikin_smooth(
+    coords: list[tuple[float, float]],
+    iterations: int = 3,
+) -> list[tuple[float, float]]:
+    """Smooth a polyline using Chaikin's corner-cutting algorithm.
+
+    Each iteration replaces every interior edge with two new points at
+    the 25% and 75% positions, progressively rounding sharp corners
+    while preserving the overall path shape.
+
+    The first and last points are always preserved to maintain
+    connectivity with adjacent polyline segments.
+    """
+    if len(coords) <= 2:
+        return coords
+
+    pts = list(coords)
+    for _ in range(iterations):
+        if len(pts) <= 2:
+            break
+        new_pts: list[tuple[float, float]] = [pts[0]]  # preserve start
+        for i in range(len(pts) - 1):
+            p0 = pts[i]
+            p1 = pts[i + 1]
+            # Q = 3/4 * P0 + 1/4 * P1
+            q = (0.75 * p0[0] + 0.25 * p1[0], 0.75 * p0[1] + 0.25 * p1[1])
+            # R = 1/4 * P0 + 3/4 * P1
+            r = (0.25 * p0[0] + 0.75 * p1[0], 0.25 * p0[1] + 0.75 * p1[1])
+            new_pts.append(q)
+            new_pts.append(r)
+        new_pts.append(pts[-1])  # preserve end
+        pts = new_pts
+
+    return pts
+
+
 # ---------------------------------------------------------------------------
 # Corridor offset computation for system map (Shapely-based)
 # ---------------------------------------------------------------------------
@@ -537,12 +580,20 @@ def _apply_corridor_offsets(
                 continue
 
             try:
-                # Build LineString in (lon, lat) coordinate space
-                line = LineString([(lon, lat) for lat, lon in coords])
+                # Smooth the input geometry before offsetting to prevent
+                # jagged artifacts at sharp GTFS corners.
+                smoothed = _chaikin_smooth(coords, iterations=2)
 
-                # Use Shapely's offset_curve for geometrically perfect parallel lines
-                # Positive offset = left side, negative = right side
-                offset_line = line.offset_curve(center_offset)
+                # Build LineString in (lon, lat) coordinate space
+                line = LineString([(lon, lat) for lat, lon in smoothed])
+
+                # Use Shapely's offset_curve with ROUND join style.
+                # Default miter joins create self-intersecting spikes
+                # at sharp corners — round joins produce clean arcs.
+                offset_line = line.offset_curve(
+                    center_offset,
+                    join_style="round",
+                )
 
                 if offset_line.is_empty:
                     offset_polys.append(coords)
