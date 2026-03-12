@@ -860,6 +860,65 @@ def _export_trunk_paths(
     return trunk_encoded
 
 
+def _transfer_offsets_to_route(
+    coords_m: list[tuple[float, float]],
+    rep_paths: list[LineString],
+    offset_map: dict[int, list[float]],
+) -> list[float]:
+    """Transfer corridor offsets from trunk representative paths to a route.
+
+    For each vertex in the route's EPSG:3857 polyline, finds the closest
+    vertex on the trunk representative paths that has a non-zero offset
+    and copies that offset value.  Route vertices far from any non-zero
+    offset receive zero (= no displacement from raw GTFS position).
+
+    This allows the pipeline to detect corridors on merged trunk paths
+    but apply offsets to each route's original GTFS coordinates, preserving
+    geographic accuracy while still producing parallel-lane rendering.
+    """
+    n = len(coords_m)
+    offsets = [0.0] * n
+
+    # Build flat list of (x, y, offset) for all non-zero-offset rep vertices.
+    # Zero-offset vertices can be skipped — the default is already 0.
+    ref_points: list[tuple[float, float, float]] = []
+    for path_idx, rep_path in enumerate(rep_paths):
+        per_vertex = offset_map.get(path_idx, [])
+        if not per_vertex:
+            continue
+        rep_coords = list(rep_path.coords)
+        for vi, (x, y) in enumerate(rep_coords):
+            o = per_vertex[vi] if vi < len(per_vertex) else 0.0
+            if abs(o) > 0.01:
+                ref_points.append((x, y, o))
+
+    if not ref_points:
+        return offsets
+
+    # Maximum distance (squared) to transfer an offset.
+    # Route vertices beyond this from any ref point keep offset = 0.
+    max_transfer_dist_sq = (CORRIDOR_DETECT_DIST * 3) ** 2
+
+    for vi in range(n):
+        x, y = coords_m[vi]
+        best_dist_sq = float("inf")
+        best_offset = 0.0
+
+        for rx, ry, ro in ref_points:
+            dx = x - rx
+            dy = y - ry
+            dist_sq = dx * dx + dy * dy
+            if dist_sq < best_dist_sq:
+                best_dist_sq = dist_sq
+                best_offset = ro
+
+        if best_dist_sq <= max_transfer_dist_sq:
+            offsets[vi] = best_offset
+
+    # Smooth transitions at corridor edges
+    return _smooth_offsets(offsets)
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # Phase 5 — Stop Processing: Snap GTFS stops onto offset lines
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1068,31 +1127,88 @@ def apply_topological_offsets(
         )
         _processed_stops_cache = None
 
-    # ── Phase 4: Export ──
-    trunk_encoded = _export_trunk_paths(trunk_offset_paths)
-
-    # ── Build output overlays ──
-    # Each route gets its trunk group's polylines.  iOS deduplicates
-    # same-colour overlaps via unifyTrainPolylines(), so duplicates
-    # between routes in the same trunk group are harmless.
+    # ── Phase 4: Per-route export with transferred offsets ──
+    #
+    # KEY CHANGE from v3.0 → v3.1 (Transit-app style):
+    #
+    # Previously every route in a trunk group got the SAME set of merged
+    # polylines.  This destroyed per-route geographic accuracy because
+    # the trunk merge replaces coordinates with a single baseline.
+    #
+    # Now each route keeps its OWN raw GTFS polylines.  Corridor offsets
+    # computed on the merged trunk (Phase 1-3) are *transferred* onto
+    # the route's raw vertices via nearest-neighbour lookup.  This
+    # preserves the original GTFS geographic precision while still
+    # producing parallel-lane rendering where different trunk groups
+    # share physical track.
+    #
+    # The iOS client's unifyTrainPolylines() already merges overlapping
+    # same-colour polylines from different routes in the same trunk.
     result: list[SubwayLineOverlay] = []
+
     for overlay in overlays:
         trunk_idx = ROUTE_TO_TRUNK.get(overlay.route_id)
-        if trunk_idx is not None and trunk_idx in trunk_encoded:
-            result.append(SubwayLineOverlay(
-                route_id=overlay.route_id,
-                color_hex=overlay.color_hex,
-                polylines=trunk_encoded[trunk_idx],
-            ))
-        else:
-            # Unknown route or no paths — return original
+        if trunk_idx is None or trunk_idx not in trunk_paths:
             result.append(overlay)
+            continue
 
-    processed_trunks = len(trunk_encoded)
+        rep_paths = trunk_paths[trunk_idx]
+        offset_map = vertex_offsets.get(trunk_idx, {})
+
+        # Fast path: if this trunk has no corridor offsets at all,
+        # return the original polylines untouched (no reprojection loss).
+        has_any_offset = any(
+            any(abs(o) > 0.01 for o in per_v)
+            for per_v in offset_map.values()
+        )
+        if not has_any_offset:
+            result.append(overlay)
+            continue
+
+        encoded_out: list[str] = []
+        for enc in overlay.polylines:
+            coords_wgs = decode_polyline(enc)
+            if len(coords_wgs) < 2:
+                encoded_out.append(enc)
+                continue
+
+            try:
+                coords_m = project_to_meters(coords_wgs)
+            except Exception:
+                encoded_out.append(enc)
+                continue
+
+            route_line = LineString(coords_m)
+            if route_line.length < MIN_PATH_LENGTH:
+                # Short segments pass through unchanged
+                encoded_out.append(enc)
+                continue
+
+            offsets = _transfer_offsets_to_route(coords_m, rep_paths, offset_map)
+            route_has_offset = any(abs(o) > 0.01 for o in offsets)
+
+            if route_has_offset:
+                displaced = _apply_perpendicular_offset(coords_m, offsets)
+                cleaned = _despike_coords(displaced)
+                if len(cleaned) >= 2:
+                    result_wgs = project_to_wgs84(cleaned)
+                    encoded_out.append(encode_polyline(result_wgs))
+                else:
+                    encoded_out.append(enc)
+            else:
+                # No offset for this polyline — keep raw GTFS coords
+                encoded_out.append(enc)
+
+        result.append(SubwayLineOverlay(
+            route_id=overlay.route_id,
+            color_hex=overlay.color_hex,
+            polylines=encoded_out,
+        ))
+
     total_polys = sum(len(o.polylines) for o in result)
     TrackLogger.info(
-        f"[Pipeline] Complete: {processed_trunks}/{len(trunk_paths)} trunks, "
-        f"{total_polys} total polylines"
+        f"[Pipeline] Complete: {len(trunk_paths)} trunks, "
+        f"{total_polys} total polylines (per-route raw GTFS preserved)"
     )
 
     return result
