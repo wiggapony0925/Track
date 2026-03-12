@@ -220,27 +220,28 @@ func mergeAdjacentPolylines(
 /// share a physical corridor, so they render as parallel colored stripes
 /// instead of stacking on top of each other — matching Apple Maps transit.
 ///
-/// **Gutter Model**
-/// Each lane in a shared corridor occupies a center-to-center distance of
-/// `laneSpacingDegrees` from its neighbor.  This spacing must be large
-/// enough that at **close zoom** (camera ≈ 3 500 m) the rendered line
-/// widths don't overlap — leaving a thin gutter (≈ 1 pt) of base map
-/// between adjacent colors.
+/// **Segment-Level Corridor Detection**
+/// Instead of checking corridor membership per-point (which causes lane
+/// order to flicker when GPS drift moves a point between grid cells),
+/// this algorithm identifies **corridor runs** — contiguous stretches of
+/// ≥ minRunLength points where multiple color groups travel together.
+/// The group set and lane ordering are frozen for the entire run,
+/// producing rock-stable parallel lines.
+///
+/// **Rigid Shared Centerline**
+/// All groups in a corridor offset from the SAME centerline — computed
+/// as the average position across all participating groups' nearest
+/// points. This eliminates wiggles caused by independent peer lookups.
 ///
 /// **How it works**:
-/// 1. Builds a spatial grid of all polylines from all color groups using
-///    a 3×3 neighbor expansion for registration. Stores actual coordinates
-///    to compute shared rigid centerlines.
-/// 2. For each polyline point, determines how many OTHER color groups also
-///    have polylines passing through that neighborhood.
-/// 3. Filters out "crossing paths" using a run-length filter so lines only
-///    offset when they travel parallel, not when they bisect perpendicularly.
-/// 4. Adjusts coordinates dynamically to average out GTFS positional drift,
-///    forming a single unified spine for all routes in the corridor.
-/// 5. Applies a perpendicular offset using **miter joins** at corners on
-///    the unified spine, so parallel lines never wiggle relative to each other.
-/// 6. Smoothly transitions between offset and non-offset segments to
-///    avoid visual kinks at corridor boundaries.
+/// 1. Builds a spatial grid of all polylines from all color groups.
+/// 2. For each polyline, computes per-point group sets from the grid.
+/// 3. Identifies corridor runs: contiguous stretches where ≥2 groups
+///    share the neighborhood, using majority-vote within each run.
+/// 4. Freezes lane ordering per run (sorted group index — deterministic).
+/// 5. Computes a shared centerline per point from nearest peers.
+/// 6. Applies perpendicular offset with miter joins on the centerline.
+/// 7. Smoothly transitions at corridor boundaries.
 ///
 /// - Parameters:
 ///   - groupedPolylines: Array of `(groupIndex, coordinates)` tuples.
@@ -293,7 +294,7 @@ func applyCorridorOffsets(
         }
     }
 
-    // ── Step 2: Per-polyline offset and centerline calculation ──
+    // ── Step 2: Per-polyline segment-level corridor detection ──
     var result: [(groupIndex: Int, coordinates: [CLLocationCoordinate2D])] = []
 
     for (groupIdx, coords) in groupedPolylines {
@@ -302,25 +303,93 @@ func applyCorridorOffsets(
             continue
         }
 
+        // 2a. Compute raw per-point group sets
+        var pointGroups = [Set<Int>](repeating: [], count: coords.count)
+        for i in 0..<coords.count {
+            pointGroups[i] = groupsAt(coords[i].latitude, coords[i].longitude)
+        }
+
+        // 2b. Identify corridor runs — contiguous stretches where this
+        //     point sees ≥2 groups.  Short runs (< minRunLength) are
+        //     crossing artifacts and get zeroed out.
+        let minRunLength = 8
+        var isInCorridor = [Bool](repeating: false, count: coords.count)
+        for i in 0..<coords.count {
+            isInCorridor[i] = pointGroups[i].count > 1 && pointGroups[i].contains(groupIdx)
+        }
+
+        // Zero out short runs (crossing filter)
+        var runStart: Int? = nil
+        for i in 0..<coords.count {
+            if isInCorridor[i] {
+                if runStart == nil { runStart = i }
+            } else if let s = runStart {
+                if i - s < minRunLength {
+                    for k in s..<i { isInCorridor[k] = false }
+                }
+                runStart = nil
+            }
+        }
+        if let s = runStart, coords.count - s < minRunLength {
+            for k in s..<coords.count { isInCorridor[k] = false }
+        }
+
+        // 2c. For each corridor run, freeze the group set using majority
+        //     vote — the most common group set across the run's points.
+        //     This prevents point-by-point lane count flickering.
+        struct CorridorRun {
+            let start: Int
+            let end: Int      // inclusive
+            let frozenGroups: [Int]  // sorted, frozen for entire run
+        }
+
+        var corridorRuns: [CorridorRun] = []
+        var rStart: Int? = nil
+        for i in 0...coords.count {
+            let inCorr = i < coords.count && isInCorridor[i]
+            if inCorr {
+                if rStart == nil { rStart = i }
+            } else if let s = rStart {
+                let end = i - 1
+                // Majority vote: count how often each group set appears
+                var setCounts: [Set<Int>: Int] = [:]
+                for k in s...end {
+                    let gs = pointGroups[k]
+                    setCounts[gs, default: 0] += 1
+                }
+                // Pick the group set that appears most often
+                let bestSet = setCounts.max(by: { $0.value < $1.value })?.key ?? []
+                let frozen = bestSet.sorted()
+
+                // Only keep if this group is in the frozen set and ≥2 groups
+                if frozen.count >= 2 && frozen.contains(groupIdx) {
+                    corridorRuns.append(CorridorRun(start: s, end: end, frozenGroups: frozen))
+                }
+                rStart = nil
+            }
+        }
+
+        // 2d. Build per-point lane offsets and centerline displacements
+        //     using frozen corridor assignments.
         var centerDisplacements = [(lon: Double, lat: Double)](repeating: (0, 0), count: coords.count)
         var laneOffsets = [Double](repeating: 0, count: coords.count)
 
-        for i in 0..<coords.count {
-            let coord = coords[i]
-            let groups = groupsAt(coord.latitude, coord.longitude)
+        for run in corridorRuns {
+            let frozenGroups = run.frozenGroups
+            guard let laneIndex = frozenGroups.firstIndex(of: groupIdx) else { continue }
+            let numLanes = frozenGroups.count
+            let laneOffset = (Double(laneIndex) - Double(numLanes - 1) / 2.0) * laneSpacingDegrees
 
-            if groups.count > 1 {
-                let sortedGroups = groups.sorted()
-                guard let laneIndex = sortedGroups.firstIndex(of: groupIdx) else { continue }
-                let numLanes = sortedGroups.count
-                
-                laneOffsets[i] = (Double(laneIndex) - Double(numLanes - 1) / 2.0) * laneSpacingDegrees
-                
+            for i in run.start...run.end {
+                laneOffsets[i] = laneOffset
+
+                // Compute centerline displacement from nearest peers
+                let coord = coords[i]
                 var peers: [CLLocationCoordinate2D] = [coord]
                 let gx = Int32(coord.latitude / gridSize)
                 let gy = Int32(coord.longitude / gridSize)
-                
-                for otherGroup in groups where otherGroup != groupIdx {
+
+                for otherGroup in frozenGroups where otherGroup != groupIdx {
                     var bestDistSq = Double.infinity
                     var bestPeer: CLLocationCoordinate2D? = nil
                     for dx: Int32 in -1...1 {
@@ -343,38 +412,15 @@ func applyCorridorOffsets(
                         peers.append(peer)
                     }
                 }
-                
+
                 let avgLat = peers.map { $0.latitude }.reduce(0, +) / Double(peers.count)
                 let avgLon = peers.map { $0.longitude }.reduce(0, +) / Double(peers.count)
-                
+
                 centerDisplacements[i] = (lon: avgLon - coord.longitude, lat: avgLat - coord.latitude)
             }
         }
 
-        // --- Run-Length Filter for Crossings ---
-        let minRun = 8
-        var runStart: Int? = nil
-        for i in 0..<coords.count {
-            if abs(laneOffsets[i]) > 1e-10 {
-                if runStart == nil { runStart = i }
-            } else if let s = runStart {
-                if i - s < minRun {
-                    for k in s..<i {
-                        laneOffsets[k] = 0
-                        centerDisplacements[k] = (0, 0)
-                    }
-                }
-                runStart = nil
-            }
-        }
-        if let s = runStart, coords.count - s < minRun {
-            for k in s..<coords.count {
-                laneOffsets[k] = 0
-                centerDisplacements[k] = (0, 0)
-            }
-        }
-
-        // --- Smooth transitions ---
+        // ── Step 3: Smooth transitions at corridor boundaries ──
         var smoothedCenter = centerDisplacements
         var smoothedOffsets = laneOffsets
         for i in 0..<coords.count {
@@ -392,7 +438,7 @@ func applyCorridorOffsets(
             smoothedOffsets[i] = sumOff / windowSize
         }
 
-        // --- Create Base Geometry ---
+        // ── Step 4: Create base geometry (snap to centerline) ──
         var baseCoords = [CLLocationCoordinate2D](repeating: CLLocationCoordinate2D(latitude: 0, longitude: 0), count: coords.count)
         for i in 0..<coords.count {
             baseCoords[i] = CLLocationCoordinate2D(
@@ -401,7 +447,7 @@ func applyCorridorOffsets(
             )
         }
 
-        // --- Compute per-segment unit normals ---
+        // ── Step 5: Compute per-segment unit normals ──
         let segCount = baseCoords.count - 1
         var segNormals = [(Double, Double)](repeating: (0, 0), count: segCount)
         for s in 0..<segCount {
@@ -413,7 +459,7 @@ func applyCorridorOffsets(
             }
         }
 
-        // --- Apply offsets with miter joins ---
+        // ── Step 6: Apply offsets with miter joins ──
         var offsetCoords: [CLLocationCoordinate2D] = []
         offsetCoords.reserveCapacity(coords.count)
 

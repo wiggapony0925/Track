@@ -2,12 +2,18 @@ import SwiftUI
 
 /// A track-aligned marker for consolidated subway stations.
 ///
-/// **Shape is a visual flag for physical structure:**
-///   - **Subway / open-cut** → white-filled **capsule** (pill) with dark stroke.
-///     Width stretches with the number of trunk-color groups.
-///   - **Elevated / viaduct** → white-filled **circle** with lighter stroke
-///     and a drop shadow to visually "float" above the map surface.
-///   - **At-grade (SIR)** → small circle, no shadow.
+/// **Shape is a visual flag for the `is_transfer` status:**
+///
+///   - **Non-transfer** (`isTransfer == false`) →
+///     A **colored circle** filled with the route's MTA trunk color
+///     and a **white stroke**. This instantly conveys which line serves
+///     the stop. Elevated stops get a subtle drop shadow.
+///
+///   - **Transfer hub** (`isTransfer == true`) →
+///     A **white pill** (capsule) with a **thick dark outline** that
+///     stretches across the parallel offset lines. Width scales with
+///     the number of trunk-color groups so multi-line hubs like
+///     Times Sq (7 groups) are visually wider than a 2-group stop.
 ///
 /// **Rotation** matches the average bearing of nearby polylines.
 /// **Size** scales with the current discrete zoom tier.
@@ -46,64 +52,91 @@ struct StationCapsuleView: View, Equatable {
         station.structure == .atGrade
     }
 
+    /// Trunk color for non-transfer (single-line) stations.
+    /// Falls back to gray if `routes` is unexpectedly empty.
+    private var primaryColor: Color {
+        guard let firstRoute = station.routes.first else { return .gray }
+        return SubwayRoutesData.color(for: firstRoute)
+    }
+
     var body: some View {
         let scale = zoomScale
 
-        if isElevated || isAtGrade {
-            // ── Elevated / at-grade: circle marker ──
-            let diameter: CGFloat = (isAtGrade ? 4.5 : 5.5) * scale
-            let strokeWidth = max(0.5, 0.75 * scale)
-
-            Circle()
-                .fill(Color.white)
-                .frame(width: diameter, height: diameter)
-                .overlay(
-                    Circle()
-                        .stroke(
-                            isElevated ? Color(.systemGray3) : Color(.systemGray5),
-                            lineWidth: strokeWidth
-                        )
-                )
-                .shadow(
-                    color: isElevated ? Color.black.opacity(0.3) : .clear,
-                    radius: isElevated ? 2.0 * scale : 0,
-                    x: 0,
-                    y: isElevated ? 1.2 * scale : 0
-                )
-                .modifier(PulseRingModifier(
-                    routeId: imminentRouteId,
-                    diameter: diameter
-                ))
-                .accessibilityLabel("Station: \\(station.name)")
+        if station.isTransfer {
+            // ── Transfer hub: white pill with dark outline ──
+            // Width stretches with the number of trunk-color groups so
+            // the pill visually spans the parallel offset lines.
+            transferPill(scale: scale)
         } else {
-            // ── Subway / open-cut: capsule (pill) marker ──
-            let groups = station.colorGroupCount
-            let lineCount = CGFloat(station.routes.count)
-            let baseHeight: CGFloat = min(5 + lineCount * 0.35, 8)
-            let baseWidth: CGFloat = groups <= 1 ? 5 : min(5 + CGFloat(groups) * 3.5, 16)
-            let width = baseWidth * scale
-            let height = baseHeight * scale
-            let strokeWidth = max(0.5, 0.75 * scale)
-
-            Capsule()
-                .fill(Color.white)
-                .frame(width: width, height: height)
-                .overlay(
-                    Capsule()
-                        .stroke(
-                            station.structure == .openCut
-                                ? Color(.systemGray4)
-                                : Color(.darkGray),
-                            lineWidth: strokeWidth
-                        )
-                )
-                .rotationEffect(.degrees(station.trackBearing))
-                .modifier(PulseRingModifier(
-                    routeId: imminentRouteId,
-                    diameter: max(width, height)
-                ))
-                .accessibilityLabel("Station: \\(station.name)")
+            // ── Single-line stop: colored circle with white stroke ──
+            routeDot(scale: scale)
         }
+    }
+
+    // MARK: - Single-line stop (colored dot)
+
+    @ViewBuilder
+    private func routeDot(scale: CGFloat) -> some View {
+        let diameter: CGFloat = (isAtGrade ? 4.5 : isElevated ? 5.5 : 6.0) * scale
+        let strokeWidth = max(0.5, (isElevated ? 0.75 : 1.0) * scale)
+
+        Circle()
+            .fill(primaryColor)
+            .frame(width: diameter, height: diameter)
+            .overlay(
+                Circle()
+                    .stroke(Color.white, lineWidth: strokeWidth)
+            )
+            .shadow(
+                color: isElevated ? Color.black.opacity(0.3) : .clear,
+                radius: isElevated ? 2.0 * scale : 0,
+                x: 0,
+                y: isElevated ? 1.2 * scale : 0
+            )
+            .modifier(PulseRingModifier(
+                routeId: imminentRouteId,
+                diameter: diameter
+            ))
+            .accessibilityLabel("Station: \(station.name)")
+    }
+
+    // MARK: - Transfer hub (white pill)
+
+    @ViewBuilder
+    private func transferPill(scale: CGFloat) -> some View {
+        let groups = station.colorGroupCount
+        let lineCount = CGFloat(station.routes.count)
+        let baseHeight: CGFloat = min(5 + lineCount * 0.35, 8)
+        let baseWidth: CGFloat = max(6, min(5 + CGFloat(groups) * 3.5, 18))
+        let width = baseWidth * scale
+        let height = baseHeight * scale
+        let strokeWidth = max(0.75, 1.25 * scale)
+
+        let strokeColor: Color = isElevated
+            ? Color(.systemGray3)
+            : station.structure == .openCut
+                ? Color(.systemGray4)
+                : Color(.darkGray)
+
+        Capsule()
+            .fill(Color.white)
+            .frame(width: width, height: height)
+            .overlay(
+                Capsule()
+                    .stroke(strokeColor, lineWidth: strokeWidth)
+            )
+            .rotationEffect(.degrees(station.trackBearing))
+            .shadow(
+                color: isElevated ? Color.black.opacity(0.3) : .clear,
+                radius: isElevated ? 2.0 * scale : 0,
+                x: 0,
+                y: isElevated ? 1.2 * scale : 0
+            )
+            .modifier(PulseRingModifier(
+                routeId: imminentRouteId,
+                diameter: max(width, height)
+            ))
+            .accessibilityLabel("Transfer station: \(station.name)")
     }
 }
 

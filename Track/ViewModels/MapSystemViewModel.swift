@@ -121,6 +121,10 @@ final class MapSystemViewModel {
         /// All GTFS stop IDs that were merged into this consolidated marker.
         /// Used to match live arrival `stopId` → station for pulse animation.
         let sourceStopIDs: Set<String>
+        /// True when the station spans ≥ 2 MTA trunk-color groups.
+        /// Non-transfer stops render as a colored route dot; transfers
+        /// render as a white pill with a dark outline.
+        let isTransfer: Bool
 
         static func == (lhs: ConsolidatedStation, rhs: ConsolidatedStation) -> Bool {
             lhs.id == rhs.id && lhs.routes == rhs.routes
@@ -228,8 +232,15 @@ final class MapSystemViewModel {
         guard !Self.hasStartedLoading else { return }
         Self.hasStartedLoading = true
         Task {
+            // Fire subway + stations in parallel so subway lines render
+            // while stations are still loading.  LIRR/MNR are loaded
+            // concurrently with stations after subway is drawn.
             await loadSystemMap()
-            await loadStations()
+
+            // Stations and commuter rail can load in parallel
+            async let stationsTask: Void = loadStations()
+            await stationsTask
+
             Self.sharedSnapshot = SharedSnapshot(
                 systemMap: cachedSystemMap,
                 offsetSubwayLines: cachedOffsetSubwayLines,
@@ -267,8 +278,13 @@ final class MapSystemViewModel {
         }
 
         do {
-            // Fetch subway shapes from API
-            let response = try await TrackAPI.fetchAllSubwayShapes()
+            // Fire all three transit fetches in parallel.
+            // Subway is required; LIRR and MNR are optional (fail silently).
+            async let subwayTask = TrackAPI.fetchAllSubwayShapes()
+            async let lirrTask = try? TrackAPI.fetchAllLIRRShapes()
+            async let mnrTask = try? TrackAPI.fetchAllMNRShapes()
+
+            let response = try await subwayTask
 
             // Pre-decode subway coordinates for the system-map overview.
             // Deduplication and simplification are handled by the backend.
@@ -282,8 +298,14 @@ final class MapSystemViewModel {
                 )
             }
 
-            // Fetch LIRR shapes from API
-            if let lirrResponse = try? await TrackAPI.fetchAllLIRRShapes() {
+            // Show subway lines immediately before commuter rail arrives
+            await MainActor.run {
+                self.cachedSystemMap = decoded
+                self.computeSubwayOffsets()
+            }
+
+            // Now fold in LIRR and MNR results (already fetched in parallel)
+            if let lirrResponse = await lirrTask {
                 let lirrLines: [CachedTransitLine] = lirrResponse.lines.map { line in
                     CachedTransitLine(
                         id: line.routeId,
@@ -293,14 +315,12 @@ final class MapSystemViewModel {
                     )
                 }
                 decoded.append(contentsOf: lirrLines)
-                // Cache for offline use
                 await MainActor.run {
                     OfflineCacheManager.shared.cacheLIRRShapes(lirrResponse)
                 }
             }
 
-            // Fetch MNR shapes from API
-            if let mnrResponse = try? await TrackAPI.fetchAllMNRShapes() {
+            if let mnrResponse = await mnrTask {
                 let mnrLines: [CachedTransitLine] = mnrResponse.lines.map { line in
                     CachedTransitLine(
                         id: line.routeId,
@@ -310,7 +330,6 @@ final class MapSystemViewModel {
                     )
                 }
                 decoded.append(contentsOf: mnrLines)
-                // Cache for offline use
                 await MainActor.run {
                     OfflineCacheManager.shared.cacheMNRShapes(mnrResponse)
                 }
@@ -323,9 +342,11 @@ final class MapSystemViewModel {
             let totalBranches = decoded.reduce(0) { $0 + $1.coordinates.count }
             let totalPoints = decoded.reduce(0) { $0 + $1.coordinates.reduce(0) { $0 + $1.count } }
 
-            await MainActor.run {
-                self.cachedSystemMap = decoded
-                self.computeSubwayOffsets()
+            // Update with commuter rail additions (subway already rendered above)
+            if decoded.count > subwayCount {
+                await MainActor.run {
+                    self.cachedSystemMap = decoded
+                }
             }
 
             AppLogger.shared.log(
@@ -572,19 +593,23 @@ final class MapSystemViewModel {
             ))
         }
 
-        // ---- Phase 2+3: Simplification + corridor offsets + flatten ----
+        // ---- Phase 2+3: Simplification + smoothing + flatten ----
         //
-        // A SINGLE fine-detail geometry set is used for ALL zoom levels.
-        // This matches Apple Maps behaviour: the polylines never change
-        // shape when zooming — only their rendered line-width thins out.
-        // The small corridor offset (~13 m) becomes sub-pixel at city
-        // overview, so parallel lines naturally converge into one.
+        // CORRIDOR OFFSETS ARE APPLIED SERVER-SIDE by corridor_pipeline.py.
+        // The server's 5-phase topological pipeline (skeleton → lane ordering
+        // → perpendicular vertex offsets → junction blending → export) produces
+        // correctly-offset polylines in WGS84.  Applying applyCorridorOffsets()
+        // here AGAIN was the root cause of:
+        //   - EKG zigzag spikes (double miter amplification)
+        //   - Cross-avenue contamination (already-offset lines detected as peers)
+        //   - Columbus Circle bubbles (double arc radii)
+        //
+        // The client now ONLY does RDP simplification + Catmull-Rom smoothing
+        // to polish the server's output for MapKit rendering.
         //
         // Parameters:
         //   RDP tolerance 0.00006° (~7 m)  — preserves fine detail
         //   Catmull-Rom 3 segments         — smooth curves
-        //   Corridor offset 0.00015°       — ~13 m street-level separation
-        //   Smooth window 16               — gradual offset transitions
 
         struct PolylineOrigin { let resultIndex: Int; let branchIndex: Int }
 
@@ -599,19 +624,10 @@ final class MapSystemViewModel {
             }
         }
 
-        // Apply offsets to the raw, dense unified polylines FIRST.
-        // This ensures the spatial grid has enough vertices to properly match parallel lines.
-        let offsetGrouped = applyCorridorOffsets(
-            grouped,
-            laneSpacingDegrees: 0.00015,
-            smoothWindow: 16
-        )
-
-        // NOW simplify and smooth the offsetted lines
+        // Server already applied corridor offsets — only simplify + smooth here.
         var finalOffsetPolylines: [(groupIndex: Int, coordinates: [CLLocationCoordinate2D])] = []
-        for (i, item) in offsetGrouped.enumerated() {
-            let offsetCoords = item.coordinates
-            let rdp = simplifyPolyline(offsetCoords, tolerance: 0.00006)
+        for item in grouped {
+            let rdp = simplifyPolyline(item.coordinates, tolerance: 0.00006)
             let smoothed = smoothPolyline(rdp, segmentsPerCurve: 3)
             guard smoothed.count >= 2 else { continue }
             finalOffsetPolylines.append((groupIndex: item.groupIndex, coordinates: smoothed))
@@ -719,7 +735,11 @@ final class MapSystemViewModel {
     // MARK: - Station Loading
 
     /// Fetches all subway stations and their served lines.
-    /// Falls back to bundled offline data when network is unavailable.
+    ///
+    /// Prefers `/subway/stations/processed` (pipeline-snapped positions) so
+    /// station pills sit exactly on the offset polylines.  Falls back to the
+    /// raw GTFS positions from `/subway/stations/all` if the processed
+    /// endpoint is unavailable (e.g. shapes haven't loaded yet).
     func loadStations() async {
         if !cachedStations.isEmpty { return }
 
@@ -736,6 +756,64 @@ final class MapSystemViewModel {
             return
         }
 
+        do {
+            // ── Try processed (snapped) stations first ──
+            // The pipeline snaps each station onto the offset polylines so
+            // that pills sit directly on their coloured lines instead of
+            // floating at the raw GTFS GPS point.
+            let processed = try await TrackAPI.fetchProcessedStations()
+            let stations: [CachedSubwayStation] = processed.stations.compactMap { ps in
+                let positions = ps.positions
+                guard !positions.isEmpty else { return nil }
+
+                // Average all per-route snapped coordinates → centroid for
+                // the consolidated pill.  This places transfer pills at
+                // the visual centre of the corridor they serve.
+                let avgLat = positions.map(\.lat).reduce(0, +) / Double(positions.count)
+                let avgLon = positions.map(\.lon).reduce(0, +) / Double(positions.count)
+                let routes = Array(Set(positions.map(\.routeId))).sorted()
+
+                return CachedSubwayStation(
+                    id: ps.stationId,
+                    name: ps.name,
+                    coordinate: CLLocationCoordinate2D(latitude: avgLat, longitude: avgLon),
+                    routes: routes
+                )
+            }
+
+            guard !stations.isEmpty else {
+                throw URLError(.cannotParseResponse)
+            }
+
+            await MainActor.run {
+                self.cachedStations = stations
+                self.consolidateStations()
+            }
+
+            // Cache snapped positions for offline use
+            let cached = stations.map { s in
+                CachedStation(
+                    id: s.id,
+                    name: s.name,
+                    latitude: s.coordinate.latitude,
+                    longitude: s.coordinate.longitude,
+                    routes: s.routes
+                )
+            }
+            OfflineCacheManager.shared.cacheStations(cached)
+
+            AppLogger.shared.log("STATIONS", message: "Loaded \(stations.count) processed (snapped) stations")
+
+        } catch {
+            // ── Fallback: raw GTFS stations ──
+            AppLogger.shared.log("STATIONS", message: "Processed stations unavailable (\(error.localizedDescription)), falling back to raw GTFS")
+            await loadRawStations()
+        }
+    }
+
+    /// Fetch raw GTFS station positions (fallback when processed endpoint
+    /// is unavailable or returns empty).
+    private func loadRawStations() async {
         do {
             let response = try await TrackAPI.fetchAllSubwayStations()
             let stations = response.stations.map { s in
@@ -996,7 +1074,8 @@ final class MapSystemViewModel {
                 trackBearing: bearing,
                 structure: firstKey.structure,
                 complexID: firstKey.complexID,
-                sourceStopIDs: allStopIDs
+                sourceStopIDs: allStopIDs,
+                isTransfer: groupCount >= 2
             ))
         }
 

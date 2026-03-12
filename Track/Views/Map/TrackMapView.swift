@@ -486,15 +486,19 @@ struct TrackMapView: View {
                 .stroke(
                     .white.opacity(casingOpacity * 0.6),
                     style: StrokeStyle(lineWidth: 6, lineCap: .round, lineJoin: .round))
+                .mapOverlayLevel(level: .aboveLabels)
             MapPolyline(coordinates: coords)
                 .stroke(color, style: Self.busRouteStrokeStyle)
+                .mapOverlayLevel(level: .aboveLabels)
         } else {
             MapPolyline(coordinates: coords)
                 .stroke(
                     .white.opacity(casingOpacity),
                     style: StrokeStyle(lineWidth: 6, lineCap: .round, lineJoin: .round))
+                .mapOverlayLevel(level: .aboveLabels)
             MapPolyline(coordinates: coords)
                 .stroke(color, style: Self.subwayRouteStrokeStyle)
+                .mapOverlayLevel(level: .aboveLabels)
         }
     }
 
@@ -722,6 +726,8 @@ struct TrackMapView: View {
         // Layer 2: Subway-level fills (underground lines render first)
         // A normally-elevated polyline is demoted here when ALL of its
         // routes are currently rerouted/suspended (live alert override).
+        // `.aboveRoads` keeps underground lines behind map labels for a
+        // clean, integrated appearance.
         ForEach(currentSubwayPolylines.filter { !isEffectivelyElevated($0) }) { polyline in
             MapPolyline(coordinates: polyline.coordinates)
                 .stroke(
@@ -729,6 +735,7 @@ struct TrackMapView: View {
                     style: StrokeStyle(
                         lineWidth: systemMapSubwayLineWidth,
                         lineCap: .round, lineJoin: .round))
+                .mapOverlayLevel(level: .aboveRoads)
         }
 
         // Layer 2b: Elevated fills (render ON TOP of subway lines)
@@ -743,12 +750,16 @@ struct TrackMapView: View {
         // drop out of this layer (drawn as subway-level in Layer 2).
         ForEach(currentSubwayPolylines.filter { isEffectivelyElevated($0) }) { polyline in
             // Casing (dark border — slightly wider)
+            // `.aboveLabels` creates genuine z-separation from underground
+            // lines, so elevated tracks visually cross OVER subway at
+            // intersections like 74 St (7 over E/F/M/R).
             MapPolyline(coordinates: polyline.coordinates)
                 .stroke(
                     Color.black.opacity(0.25 * systemMapSubwayOpacity),
                     style: StrokeStyle(
                         lineWidth: systemMapSubwayLineWidth + 1.0,
                         lineCap: .round, lineJoin: .round))
+                .mapOverlayLevel(level: .aboveLabels)
             // Fill (route color)
             MapPolyline(coordinates: polyline.coordinates)
                 .stroke(
@@ -756,9 +767,10 @@ struct TrackMapView: View {
                     style: StrokeStyle(
                         lineWidth: systemMapSubwayLineWidth,
                         lineCap: .round, lineJoin: .round))
+                .mapOverlayLevel(level: .aboveLabels)
         }
 
-        // Layer 3: Commuter rail
+        // Layer 3: Commuter rail (same ground level as subway)
         ForEach(viewModel.flattenedCommuterRailPolylines) { polyline in
             MapPolyline(coordinates: polyline.coordinates)
                 .stroke(
@@ -766,6 +778,7 @@ struct TrackMapView: View {
                     style: StrokeStyle(
                         lineWidth: systemMapCommuterLineWidth,
                         lineCap: .round, lineJoin: .round))
+                .mapOverlayLevel(level: .aboveRoads)
         }
 
         // Layer 4: Route labels — only in system-map mode at close zoom

@@ -440,6 +440,14 @@ struct TrackAPI {
         return try decoder.decode(AllSubwayStationsResponse.self, from: data)
     }
 
+    /// Fetches processed stations with positions snapped onto offset polylines.
+    /// Must be called after ``fetchAllSubwayShapes()`` so the pipeline cache is populated.
+    /// - Returns: A `ProcessedStationsResponse` with `is_transfer` flags and per-route positions.
+    static func fetchProcessedStations() async throws -> ProcessedStationsResponse {
+        let data = try await get(path: "/subway/stations/processed")
+        return try decoder.decode(ProcessedStationsResponse.self, from: data)
+    }
+
     /// Fetches subway stations near the user's location.
     /// Uses server-side proximity filtering instead of downloading all stations.
     ///

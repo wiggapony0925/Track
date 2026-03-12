@@ -128,3 +128,42 @@ struct SubwayStation: Codable, Identifiable {
 struct AllSubwayStationsResponse: Codable {
     let stations: [SubwayStation]
 }
+
+// MARK: - Processed Stations (offset-snapped positions from pipeline Phase 6)
+
+/// A stop position snapped onto a specific route's offset polyline.
+struct ProcessedStopPosition: Codable {
+    let routeId: String
+    let lat: Double
+    let lon: Double
+
+    enum CodingKeys: String, CodingKey {
+        case routeId = "route_id"
+        case lat
+        case lon
+    }
+}
+
+/// A station with per-route positions snapped onto the offset polylines.
+/// `isTransfer` is true when the station spans ≥ 2 MTA trunk-color groups.
+/// iOS draws a colored dot for single-line stops and a white pill bar
+/// for transfer hubs.
+struct ProcessedStation: Codable, Identifiable {
+    var id: String { stationId }
+    let stationId: String
+    let name: String
+    let isTransfer: Bool
+    let positions: [ProcessedStopPosition]
+
+    enum CodingKeys: String, CodingKey {
+        case stationId = "station_id"
+        case name
+        case isTransfer = "is_transfer"
+        case positions
+    }
+}
+
+/// Response from ``/subway/stations/processed``.
+struct ProcessedStationsResponse: Codable {
+    let stations: [ProcessedStation]
+}
