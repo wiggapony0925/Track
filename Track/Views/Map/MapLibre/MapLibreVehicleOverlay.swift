@@ -40,13 +40,16 @@ struct MapLibreVehicleOverlay: View {
     /// Callback when a vehicle is tapped.
     let onVehicleTap: (String) -> Void
 
+    /// Bumped every camera frame to force SwiftUI re-projection during gestures.
+    let cameraChangeToken: UInt64
+
     var body: some View {
-        GeometryReader { geo in
+        GeometryReader { _ in
             ZStack {
                 // Bus vehicles
                 ForEach(busVehicles) { vehicle in
                     let coord = CLLocationCoordinate2D(latitude: vehicle.lat, longitude: vehicle.lon)
-                    if let point = projectToScreen(coord, in: geo) {
+                    if let point = projectToScreen(coord, mapView: mapView) {
                         VehicleMarkerContent(
                             icon: TransportMode.bus.icon,
                             color: AppTheme.Colors.mtaBlue,
@@ -61,7 +64,7 @@ struct MapLibreVehicleOverlay: View {
                 // Train vehicles
                 ForEach(trainVehicles) { train in
                     let coord = CLLocationCoordinate2D(latitude: train.lat, longitude: train.lon)
-                    if let point = projectToScreen(coord, in: geo) {
+                    if let point = projectToScreen(coord, mapView: mapView) {
                         let rid = train.routeId.lowercased()
                         let vehicleKey = train.tripId ?? train.id
                         let isHighlighted = tappedVehicleId == vehicleKey
@@ -93,26 +96,6 @@ struct MapLibreVehicleOverlay: View {
             }
         }
         .allowsHitTesting(true)
-    }
-
-    // MARK: - Coordinate Projection
-
-    /// Projects a geographic coordinate to a screen point within the overlay.
-    /// Returns `nil` if the coordinate is outside the visible map bounds.
-    ///
-    /// Complexity: O(1) — single matrix multiply via MapLibre's projection.
-    private func projectToScreen(
-        _ coordinate: CLLocationCoordinate2D,
-        in geometry: GeometryProxy
-    ) -> CGPoint? {
-        guard let mapView else { return nil }
-        let point = mapView.convert(coordinate, toPointTo: mapView)
-        // Cull off-screen markers (with margin for marker size)
-        let margin: CGFloat = 40
-        guard point.x > -margin, point.x < mapView.bounds.width + margin,
-              point.y > -margin, point.y < mapView.bounds.height + margin
-        else { return nil }
-        return point
     }
 
     private func toggleVehicle(_ id: String) {

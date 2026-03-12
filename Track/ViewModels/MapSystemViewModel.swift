@@ -136,7 +136,7 @@ final class MapSystemViewModel {
     var cachedOffsetSubwayLines: [OffsetSubwayLine] = []
 
     /// Pre-computed flattened subway polylines for the system map view.
-    /// Uses stable IDs and avoids nested ForEach for optimal MapKit rendering.
+    /// Uses stable IDs and avoids nested ForEach for optimal MapLibre rendering.
     /// A single fine-detail geometry set is used at ALL zoom levels.
     /// Zoom adaptation is handled purely by rendering properties (line width,
     /// opacity) — matching Apple Maps, which never swaps geometry and
@@ -415,6 +415,12 @@ final class MapSystemViewModel {
             // Update with commuter rail additions (subway already rendered above)
             if decoded.count > subwayCount {
                 self.cachedSystemMap = decoded
+                // Flatten commuter rail polylines now that LIRR/MNR data is
+                // in cachedSystemMap. This MUST happen here because
+                // computeSubwayOffsets() fired earlier (for subway) and its
+                // async flattening task reads cachedSystemMap before LIRR/MNR
+                // are folded in — resulting in empty commuter polylines.
+                flattenCommuterRailPolylines()
             }
 
             let refreshTag = isBackgroundRefresh ? "(background refresh)" : ""
@@ -579,6 +585,41 @@ final class MapSystemViewModel {
         }
     }
 
+    /// Flattens commuter rail (LIRR / MNR) polylines from `cachedSystemMap`
+    /// into `flattenedCommuterRailPolylines`.  Extracted as a standalone
+    /// method so it can be called **after** LIRR/MNR data is confirmed in
+    /// `cachedSystemMap` — fixing the race where the main flattening task
+    /// runs before commuter data has arrived from the network.
+    private func flattenCommuterRailPolylines() {
+        let tolerance = AppSettings.shared.polylineSimplificationTolerance
+        var commuterFlat: [FlattenedMapPolyline] = []
+        for line in cachedSystemMap where line.mode != .subway {
+            let validCoords = line.coordinates.filter { $0.count >= 2 }
+            guard !validCoords.isEmpty else { continue }
+            let unified = unifyTrainPolylines(validCoords)
+            for (branchIndex, coords) in unified.enumerated() {
+                let simplified = simplifyPolyline(coords, tolerance: tolerance)
+                commuterFlat.append(
+                    FlattenedMapPolyline(
+                        id: "\(line.id)_\(branchIndex)",
+                        coordinates: simplified,
+                        color: line.color,
+                        lineWidth: 2,
+                        routeIds: [line.id],
+                        isElevated: false
+                    ))
+            }
+        }
+        flattenedCommuterRailPolylines = commuterFlat
+
+        if !commuterFlat.isEmpty {
+            let points = commuterFlat.reduce(0) { $0 + $1.coordinates.count }
+            AppLogger.shared.log(
+                "SYSTEM_MAP",
+                message: "Flattened \(commuterFlat.count) commuter rail polylines (\(points) points)")
+        }
+    }
+
     // MARK: - MTA Trunk Color Groups
     //
     // Apple Maps draws ONE polyline per trunk color — not per route.
@@ -616,7 +657,7 @@ final class MapSystemViewModel {
     /// Runs as an async method so it yields to the run loop between phases,
     /// keeping the UI responsive while heavy CPU work executes.
     private func computeFlattenedPolylinesAsync() async {
-        let tolerance = AppSettings.shared.polylineSimplificationTolerance
+        _ = AppSettings.shared.polylineSimplificationTolerance
 
         // Build a lookup: route ID → index into cachedOffsetSubwayLines
         var linesByRouteId: [String: OffsetSubwayLine] = [:]
@@ -687,7 +728,7 @@ final class MapSystemViewModel {
         //   - Columbus Circle bubbles (double arc radii)
         //
         // The client now ONLY does RDP simplification + Catmull-Rom smoothing
-        // to polish the server's output for MapKit rendering.
+        // to polish the server's output for MapLibre rendering.
         //
         // Parameters:
         //   RDP tolerance 0.00006° (~7 m)  — preserves fine detail
@@ -780,40 +821,26 @@ final class MapSystemViewModel {
         }
         trunkRouteLabels = routeLabels
 
-        // ---- Commuter rail (LIRR / MNR — same unify + simplify, NO smooth) ----
-        var commuterFlat: [FlattenedMapPolyline] = []
-        var originalCommuterPoints = 0
-        for line in cachedSystemMap where line.mode != .subway {
-            let validCoords = line.coordinates.filter { $0.count >= 2 }
-            guard !validCoords.isEmpty else { continue }
-            originalCommuterPoints += validCoords.reduce(0) { $0 + $1.count }
-            let unified = unifyTrainPolylines(validCoords)
-            for (branchIndex, coords) in unified.enumerated() {
-                let simplified = simplifyPolyline(coords, tolerance: tolerance)
-                commuterFlat.append(
-                    FlattenedMapPolyline(
-                        id: "\(line.id)_\(branchIndex)",
-                        coordinates: simplified,
-                        color: line.color,
-                        lineWidth: 2,                        routeIds: [line.id],                        isElevated: false
-                    ))
-            }
-        }
-        flattenedCommuterRailPolylines = commuterFlat
+        // ---- Commuter rail (LIRR / MNR) ----
+        // Delegate to the dedicated method which is also called directly
+        // by fetchAndRenderFromNetwork() after LIRR/MNR data arrives.
+        // This ensures commuter rail is flattened here for the disk-cache
+        // path (where cachedSystemMap already contains LIRR/MNR).
+        flattenCommuterRailPolylines()
 
         let subwayNearCount = flattenedSubwayPolylines.count
-        let totalPolylines = subwayNearCount + commuterFlat.count
+        let commuterCount = flattenedCommuterRailPolylines.count
+        let totalPolylines = subwayNearCount + commuterCount
         let simplifiedPoints =
             flattenedSubwayPolylines.reduce(0) { $0 + $1.coordinates.count }
-            + commuterFlat.reduce(0) { $0 + $1.coordinates.count }
-        let originalPoints = originalSubwayPoints + originalCommuterPoints
-        let reductionPercent = originalPoints > 0
-            ? Int(Double(originalPoints - simplifiedPoints) / Double(originalPoints) * 100)
+            + flattenedCommuterRailPolylines.reduce(0) { $0 + $1.coordinates.count }
+        let reductionPercent = originalSubwayPoints > 0
+            ? Int(Double(originalSubwayPoints - simplifiedPoints) / Double(originalSubwayPoints) * 100)
             : 0
         AppLogger.shared.log(
             "SYSTEM_MAP",
             message:
-                "Flattened \(totalPolylines) polylines (\(subwayNearCount) subway, \(commuterFlat.count) commuter rail) — \(originalPoints) → \(simplifiedPoints) points (simplified \(reductionPercent)%)"
+                "Flattened \(totalPolylines) polylines (\(subwayNearCount) subway, \(commuterCount) commuter rail) — \(simplifiedPoints) points (simplified \(reductionPercent)%)"
         )
     }
 

@@ -6,8 +6,6 @@
 //  is selected. Positions `RouteStopMarker` views using MapLibre's
 //  coordinate → screen point projection.
 //
-//  Mirrors the `routeStopAnnotations` section of the original TrackMapView.
-//
 
 import CoreLocation
 import MapLibre
@@ -34,12 +32,15 @@ struct MapLibreRouteStopOverlay: View {
     /// Callback when a stop is tapped.
     let onStopTap: (BusStop) -> Void
 
+    /// Bumped every camera frame to force SwiftUI re-projection during gestures.
+    let cameraChangeToken: UInt64
+
     var body: some View {
-        GeometryReader { geo in
+        GeometryReader { _ in
             ZStack {
                 ForEach(stops) { stop in
                     let coord = CLLocationCoordinate2D(latitude: stop.lat, longitude: stop.lon)
-                    if let point = projectToScreen(coord, in: geo) {
+                    if let point = projectToScreen(coord, mapView: mapView, margin: 30) {
                         RouteStopMarker(
                             isBusRoute: isBusRoute,
                             isSelected: stop.id == selectedStopId,
@@ -54,21 +55,6 @@ struct MapLibreRouteStopOverlay: View {
         }
         .allowsHitTesting(true)
     }
-
-    // MARK: - Coordinate Projection
-
-    private func projectToScreen(
-        _ coordinate: CLLocationCoordinate2D,
-        in geometry: GeometryProxy
-    ) -> CGPoint? {
-        guard let mapView else { return nil }
-        let point = mapView.convert(coordinate, toPointTo: mapView)
-        let margin: CGFloat = 30
-        guard point.x > -margin, point.x < mapView.bounds.width + margin,
-              point.y > -margin, point.y < mapView.bounds.height + margin
-        else { return nil }
-        return point
-    }
 }
 
 // MARK: - Search Pin Overlay
@@ -81,10 +67,13 @@ struct MapLibreSearchPinOverlay: View {
     let isActive: Bool
     let hasSelectedRoute: Bool
 
+    /// Bumped every camera frame to force SwiftUI re-projection during gestures.
+    let cameraChangeToken: UInt64
+
     var body: some View {
         if isActive, hasSelectedRoute, let coord = coordinate {
-            GeometryReader { geo in
-                if let point = projectToScreen(coord, in: geo) {
+            GeometryReader { _ in
+                if let point = projectToScreen(coord, mapView: mapView, margin: 20) {
                     ZStack {
                         // Accuracy halo
                         Circle()
@@ -105,17 +94,5 @@ struct MapLibreSearchPinOverlay: View {
             }
             .allowsHitTesting(false)
         }
-    }
-
-    private func projectToScreen(
-        _ coordinate: CLLocationCoordinate2D,
-        in geometry: GeometryProxy
-    ) -> CGPoint? {
-        guard let mapView else { return nil }
-        let point = mapView.convert(coordinate, toPointTo: mapView)
-        guard point.x > -20, point.x < mapView.bounds.width + 20,
-              point.y > -20, point.y < mapView.bounds.height + 20
-        else { return nil }
-        return point
     }
 }

@@ -3,8 +3,7 @@
 //  Track
 //
 //  UIViewRepresentable bridge wrapping MapLibre GL Native's `MLNMapView`
-//  for SwiftUI. Uses OpenStreetMap vector tiles via MapTiler for the base
-//  map, replacing Apple MapKit's `Map` view.
+//  for SwiftUI. Uses OpenStreetMap vector tiles via MapTiler for the base map.
 //
 //  Architecture:
 //  ┌──────────────────────────────────────────────┐
@@ -36,7 +35,7 @@ import UIKit
 
 /// SwiftUI wrapper for MapLibre GL Native's `MLNMapView`.
 ///
-/// This is the core bridge that replaces `Map { }` (SwiftUI MapKit).
+/// This is the core bridge for rendering the Track map.
 /// It receives the same data the old `TrackMapView` used — polylines,
 /// stations, vehicles — and renders them using MapLibre's GL pipeline
 /// with OpenStreetMap tiles.
@@ -114,6 +113,11 @@ struct MapLibreMapView: UIViewRepresentable {
     /// so SwiftUI overlays can project coordinates → screen points.
     var onMapViewReady: ((MLNMapView) -> Void)?
 
+    /// Called on every camera frame (pan/zoom/rotate) so SwiftUI overlays
+    /// can re-project coordinates. Without this, overlays only update when
+    /// their data inputs change, causing markers to "stick" to the screen.
+    var onCameraMove: (() -> Void)?
+
     // MARK: - UIViewRepresentable
 
     func makeUIView(context: Context) -> MLNMapView {
@@ -165,6 +169,7 @@ struct MapLibreMapView: UIViewRepresentable {
 
     func updateUIView(_ mapView: MLNMapView, context: Context) {
         let coordinator = context.coordinator
+        coordinator.parent = self   // Keep coordinator in sync with latest struct
 
         // ── Dark mode style switching ──
         // MapTiler provides both light (pastel) and dark (dataviz-dark) styles.
@@ -218,7 +223,7 @@ struct MapLibreMapView: UIViewRepresentable {
     ///
     /// Following Transit app's approach: all transit lines, stations, and routes
     /// are rendered as MapLibre GL style layers (GPU-accelerated) rather than
-    /// SwiftUI overlays or MapKit annotations. This unlocks:
+    /// SwiftUI overlays. This unlocks:
     /// - Zoom-interpolated line widths (smooth scaling via `mgl_interpolate`)
     /// - Per-feature data-driven styling (color from GeoJSON attributes)
     /// - Native GL circle/symbol layers for station dots
@@ -226,13 +231,34 @@ struct MapLibreMapView: UIViewRepresentable {
     /// - Dark mode via MapTiler style switching
     final class Coordinator: NSObject, MLNMapViewDelegate {
 
-        private var parent: MapLibreMapView
+        var parent: MapLibreMapView
         var styleLoaded = false
         var shouldSyncCamera = true
         var currentStyleIsDark: Bool?
 
         /// Tracks created sources — cleared on style reload so layers get recreated.
         var sourcesCreated: Set<String> = []
+
+        // MARK: - Dirty Flags (P0 perf optimization)
+        //
+        // `updateUIView` fires on EVERY SwiftUI re-eval — including 60fps
+        // camera frames. Without dirty flags, `updateAllLayers` rebuilds
+        // all GeoJSON features from scratch every 16ms (thousands of
+        // pointless heap allocations). These hashes let us skip layers
+        // whose input data hasn't changed since the last rebuild.
+
+        private var lastSubwayHash: Int = -1
+        private var lastStationHash: Int = -1
+        private var lastRouteHash: Int = -1
+        private var lastWalkingHash: Int = -1
+        private var lastTransferHash: Int = -1
+        private var lastDarkMode: Bool?
+
+        /// Cached built shapes — avoid rebuilding GeoJSON when data is unchanged.
+        private var cachedSubwayShape: MLNShapeCollectionFeature?
+        private var cachedCommuterShape: MLNShapeCollectionFeature?
+        private var cachedElevatedShape: MLNShapeCollectionFeature?
+        private var cachedStationShape: MLNShapeCollectionFeature?
 
         init(_ parent: MapLibreMapView) {
             self.parent = parent
@@ -243,7 +269,19 @@ struct MapLibreMapView: UIViewRepresentable {
         func mapView(_ mapView: MLNMapView, didFinishLoading style: MLNStyle) {
             styleLoaded = true
             sourcesCreated.removeAll()  // New style = all layers need recreation
+            invalidateAllDirtyFlags()   // Force full rebuild
             updateAllLayers(mapView: mapView, representable: parent)
+        }
+
+        /// Resets all dirty-flag hashes so the next `updateAllLayers` call
+        /// rebuilds every layer. Called on style reload (dark ↔ light switch).
+        private func invalidateAllDirtyFlags() {
+            lastSubwayHash = -1
+            lastStationHash = -1
+            lastRouteHash = -1
+            lastWalkingHash = -1
+            lastTransferHash = -1
+            lastDarkMode = nil
         }
 
         // MARK: - Delegate: Camera Changed
@@ -287,6 +325,9 @@ struct MapLibreMapView: UIViewRepresentable {
                 if shouldShow != self.parent.showStations {
                     self.parent.showStations = shouldShow
                 }
+
+                // Notify parent so overlay projection refreshes every gesture frame
+                self.parent.onCameraMove?()
             }
         }
 
@@ -300,17 +341,64 @@ struct MapLibreMapView: UIViewRepresentable {
         //
         // Called from updateUIView and didFinishLoadingStyle.
         // Renders all transit data as MapLibre GL style layers for
-        // smooth zoom-interpolated rendering — the key advantage
-        // over MapKit's static MKPolyline.
+        // smooth zoom-interpolated rendering.
 
         func updateAllLayers(mapView: MLNMapView, representable: MapLibreMapView) {
             guard let style = mapView.style else { return }
 
-            updateSystemMapLayers(style: style, representable: representable)
-            updateStationDotLayers(style: style, representable: representable)
-            updateRouteLayers(style: style, representable: representable)
-            updateWalkingRouteLayer(style: style, representable: representable)
-            updateTransferConnectors(style: style, representable: representable)
+            let darkChanged = lastDarkMode != representable.isDarkMode
+            lastDarkMode = representable.isDarkMode
+
+            // System map hash: changes when polyline count, active state, or dark mode change.
+            // Polyline data is essentially static per session — only changes on initial load
+            // or dark mode toggle.
+            let subwayHash = representable.subwayPolylines.count
+                ^ (representable.commuterRailPolylines.count &* 31)
+                ^ (representable.hasActiveRoute ? 0x1 : 0x0)
+                ^ (representable.reroutedRouteIDs.count &* 127)
+            if subwayHash != lastSubwayHash || darkChanged {
+                updateSystemMapLayers(style: style, representable: representable)
+                lastSubwayHash = subwayHash
+            }
+
+            // Station dots hash: changes when station count or active route state changes.
+            let stationHash = representable.stations.count
+                ^ (representable.hasActiveRoute ? 0x2 : 0x0)
+            if stationHash != lastStationHash || darkChanged {
+                updateStationDotLayers(style: style, representable: representable)
+                lastStationHash = stationHash
+            }
+
+            // Route layers: change on route selection/deselection, directional split, walking route.
+            // Include the first coordinate of ahead[0] so the hash changes when
+            // the split point shifts (e.g. train approaches next stop).
+            let splitContentHash: Int = {
+                guard let split = representable.directionalSplit,
+                      let firstAhead = split.ahead.first?.first else { return 0 }
+                return Int(firstAhead.latitude * 1e4) ^ Int(firstAhead.longitude * 1e4)
+            }()
+            let routeHash = representable.routePolylines.count
+                ^ (representable.inactivePolylines.count &* 31)
+                ^ (representable.directionalSplit.map { $0.ahead.count ^ $0.behind.count } ?? 0)
+                ^ splitContentHash
+                ^ representable.routeColor.hash
+            if routeHash != lastRouteHash || darkChanged {
+                updateRouteLayers(style: style, representable: representable)
+                lastRouteHash = routeHash
+            }
+
+            let walkingHash = (representable.walkingRouteCoords?.count ?? 0)
+            if walkingHash != lastWalkingHash {
+                updateWalkingRouteLayer(style: style, representable: representable)
+                lastWalkingHash = walkingHash
+            }
+
+            let transferHash = representable.transferConnectors.count
+                ^ (representable.hasActiveRoute ? 0x4 : 0x0)
+            if transferHash != lastTransferHash {
+                updateTransferConnectors(style: style, representable: representable)
+                lastTransferHash = transferHash
+            }
         }
 
         // MARK: - System Map Layers (Subway + Commuter + Elevated)
@@ -320,18 +408,19 @@ struct MapLibreMapView: UIViewRepresentable {
         //   2. Fill layer (narrower, colored) renders on top → colored line
         //   3. Elevated gets an additional shadow layer underneath for depth
         //
-        // All widths use `mgl_interpolate` for buttery-smooth zoom scaling —
-        // the single biggest visual upgrade over MapKit.
+        // All widths use `mgl_interpolate` for buttery-smooth zoom scaling.
 
         func updateSystemMapLayers(style: MLNStyle, representable: MapLibreMapView) {
             let dimmed = representable.hasActiveRoute
-            let subwayOpacity: Double = dimmed ? 0.08 : 1.0
-            let commuterOpacity: Double = dimmed ? 0.06 : 0.35
-            let casingOpacity: Double = dimmed ? 0.04 : 0.6
-            let commuterCasingOpacity: Double = dimmed ? 0.02 : 0.15
+            let subwayOpacity: Double = dimmed ? 0.10 : 1.0
+            let commuterOpacity: Double = dimmed ? 0.08 : 0.65
+            let casingOpacity: Double = dimmed ? 0.05 : 0.45
+            let commuterCasingOpacity: Double = dimmed ? 0.03 : 0.20
             let isDark = representable.isDarkMode
 
             // ── COMMUTER RAIL (below subway) ──
+            // Rendered as dashed lines (like real transit maps) to visually
+            // distinguish commuter rail from heavier subway service.
             let commuterFeatures = buildPolylineFeatures(representable.commuterRailPolylines)
             ensureLineLayer(
                 style: style,
@@ -340,8 +429,9 @@ struct MapLibreMapView: UIViewRepresentable {
                 features: commuterFeatures,
                 width: MapLibreStyleConfig.commuterCasingWidth,
                 opacity: commuterCasingOpacity,
-                color: .constant(isDark ? UIColor.white.withAlphaComponent(0.2) : UIColor.white),
-                cap: "round", join: "round"
+                color: .constant(isDark ? UIColor.white.withAlphaComponent(0.15) : UIColor.white),
+                cap: "butt", join: "round",
+                dashPattern: [3, 2]
             )
             ensureLineLayer(
                 style: style,
@@ -351,7 +441,8 @@ struct MapLibreMapView: UIViewRepresentable {
                 width: MapLibreStyleConfig.commuterFillWidth,
                 opacity: commuterOpacity,
                 color: .dataDriven,
-                cap: "round", join: "round"
+                cap: "butt", join: "round",
+                dashPattern: [3, 2]
             )
 
             // ── SUBWAY (standard underground/surface lines) ──
@@ -360,6 +451,8 @@ struct MapLibreMapView: UIViewRepresentable {
             }
             let subwayFeatures = buildPolylineFeatures(subwayOnly)
 
+            // Soft casing — semi-transparent white gives lines a "floating"
+            // appearance above the base map (Uber/Lyft-grade polish).
             ensureLineLayer(
                 style: style,
                 sourceID: MapLibreStyleConfig.srcSubway,
@@ -367,7 +460,7 @@ struct MapLibreMapView: UIViewRepresentable {
                 features: subwayFeatures,
                 width: MapLibreStyleConfig.subwayCasingWidth,
                 opacity: casingOpacity,
-                color: .constant(isDark ? UIColor.white.withAlphaComponent(0.3) : UIColor.white),
+                color: .constant(isDark ? UIColor.white.withAlphaComponent(0.25) : UIColor.white),
                 cap: "round", join: "round"
             )
             ensureLineLayer(
@@ -387,17 +480,18 @@ struct MapLibreMapView: UIViewRepresentable {
             }
             let elevatedFeatures = buildPolylineFeatures(elevated)
 
-            // Shadow layer (dark, offset down for depth illusion)
+            // Shadow layer — offset down-right for a 3D depth illusion.
+            // Slightly wider and softer than before for a premium look.
             ensureLineLayer(
                 style: style,
                 sourceID: MapLibreStyleConfig.srcElevated,
                 layerID: MapLibreStyleConfig.layerElevatedShadow,
                 features: elevatedFeatures,
                 width: MapLibreStyleConfig.elevatedCasingWidth,
-                opacity: dimmed ? 0.02 : (isDark ? 0.15 : 0.10),
+                opacity: dimmed ? 0.02 : (isDark ? 0.20 : 0.12),
                 color: .constant(UIColor.black),
                 cap: "round", join: "round",
-                translatePixels: CGPoint(x: 1, y: 2)
+                translatePixels: CGPoint(x: 1.5, y: 3)
             )
             ensureLineLayer(
                 style: style,
@@ -406,7 +500,7 @@ struct MapLibreMapView: UIViewRepresentable {
                 features: nil,
                 width: MapLibreStyleConfig.elevatedCasingWidth,
                 opacity: casingOpacity,
-                color: .constant(isDark ? UIColor.white.withAlphaComponent(0.35) : UIColor.white),
+                color: .constant(isDark ? UIColor.white.withAlphaComponent(0.30) : UIColor.white),
                 cap: "round", join: "round"
             )
             ensureLineLayer(
@@ -423,16 +517,17 @@ struct MapLibreMapView: UIViewRepresentable {
 
         // MARK: - GL Station Dot Layers
         //
-        // Instead of SwiftUI overlay capsules (expensive per-frame projection),
-        // render station dots as MapLibre GL circle layers. This means:
-        // - Dots scale smoothly with zoom (no tier-based size jumps)
-        // - Thousands of stations at zero CPU cost (GL batches circles)
-        // - Transfer stations get a white-fill + dark-stroke circle
-        // - Single-line stations get a route-colored dot
+        // Premium station rendering pipeline:
         //
-        // The SwiftUI overlay still handles complex capsule views at
-        // close zoom (labels, multi-color pills). These GL dots show
-        // at overview zooms where individual station labels aren't readable.
+        // Layer stack (bottom to top):
+        //   1. Shadow circles — subtle offset-translated dark circles beneath
+        //      each station dot for a floating/embossed effect
+        //   2. Single-line dots — route-colored fill with crisp white stroke
+        //   3. Transfer dots — white fill with dark stroke (larger radius)
+        //   4. Station labels — semibold text with thick halo for readability
+        //
+        // All properties zoom-interpolated for buttery-smooth transitions.
+        // Thousands of stations rendered at zero CPU cost (GL batches).
 
         func updateStationDotLayers(style: MLNStyle, representable: MapLibreMapView) {
             guard !representable.hasActiveRoute else {
@@ -478,7 +573,28 @@ struct MapLibreMapView: UIViewRepresentable {
                 style.addSource(source)
                 sourcesCreated.insert(sourceID)
 
-                // Single-line station dots — route-colored fill
+                // ── Shadow layer — subtle depth effect beneath all dots ──
+                let shadowLayer = MLNCircleStyleLayer(
+                    identifier: MapLibreStyleConfig.layerStationDotsShadow,
+                    source: source
+                )
+                shadowLayer.circleRadius = MapLibreStyleConfig.transferDotRadius
+                shadowLayer.circleColor = NSExpression(
+                    forConstantValue: UIColor.black.withAlphaComponent(0.0)
+                )
+                shadowLayer.circleBlur = NSExpression(forConstantValue: 0.8)
+                shadowLayer.circleStrokeWidth = NSExpression(forConstantValue: 0)
+                shadowLayer.circleTranslation = NSExpression(
+                    forConstantValue: NSValue(cgVector: CGVector(dx: 0.5, dy: 1.0))
+                )
+                shadowLayer.circleOpacity = NSExpression(
+                    format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'linear', nil, %@)",
+                    [12: 0.0, 13: 0.15, 16: 0.25]
+                )
+                shadowLayer.minimumZoomLevel = 12
+                style.addLayer(shadowLayer)
+
+                // ── Single-line station dots — route-colored fill ──
                 let singleLayer = MLNCircleStyleLayer(
                     identifier: MapLibreStyleConfig.layerStationDotsSingle,
                     source: source
@@ -486,34 +602,41 @@ struct MapLibreMapView: UIViewRepresentable {
                 singleLayer.circleRadius = MapLibreStyleConfig.stationDotRadius
                 singleLayer.circleColor = NSExpression(forKeyPath: "color")
                 singleLayer.circleStrokeColor = NSExpression(
-                    forConstantValue: isDark ? UIColor.white.withAlphaComponent(0.4) : UIColor.white
+                    forConstantValue: isDark ? UIColor.white.withAlphaComponent(0.5) : UIColor.white
                 )
                 singleLayer.circleStrokeWidth = MapLibreStyleConfig.stationDotStrokeWidth
-                // Filter: only non-transfer stations
                 singleLayer.predicate = NSPredicate(format: "isTransfer == NO")
-                // Show at zoom 12+
                 singleLayer.minimumZoomLevel = 12
+                // Fade in smoothly
+                singleLayer.circleOpacity = NSExpression(
+                    format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'linear', nil, %@)",
+                    [12: 0.0, 12.5: 1.0]
+                )
                 style.addLayer(singleLayer)
 
-                // Transfer station dots — white fill + dark stroke
+                // ── Transfer station dots — white fill + dark stroke ──
                 let transferLayer = MLNCircleStyleLayer(
                     identifier: MapLibreStyleConfig.layerStationDotsTransfer,
                     source: source
                 )
                 transferLayer.circleRadius = MapLibreStyleConfig.transferDotRadius
                 transferLayer.circleColor = NSExpression(
-                    forConstantValue: isDark ? UIColor(white: 0.2, alpha: 1) : UIColor.white
+                    forConstantValue: isDark ? UIColor(white: 0.15, alpha: 1) : UIColor.white
                 )
                 transferLayer.circleStrokeColor = NSExpression(
-                    forConstantValue: isDark ? UIColor.white.withAlphaComponent(0.6) : UIColor(white: 0.2, alpha: 1)
+                    forConstantValue: isDark ? UIColor.white.withAlphaComponent(0.7) : UIColor(white: 0.15, alpha: 1)
                 )
                 transferLayer.circleStrokeWidth = MapLibreStyleConfig.stationDotStrokeWidth
-                // Filter: only transfers
                 transferLayer.predicate = NSPredicate(format: "isTransfer == YES")
                 transferLayer.minimumZoomLevel = 11
+                // Fade in smoothly
+                transferLayer.circleOpacity = NSExpression(
+                    format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'linear', nil, %@)",
+                    [11: 0.0, 11.5: 1.0]
+                )
                 style.addLayer(transferLayer)
 
-                // Station labels — text at high zoom
+                // ── Station labels — crisp text with generous halo ──
                 let labelLayer = MLNSymbolStyleLayer(
                     identifier: MapLibreStyleConfig.layerStationLabels,
                     source: source
@@ -521,18 +644,25 @@ struct MapLibreMapView: UIViewRepresentable {
                 labelLayer.text = NSExpression(forKeyPath: "name")
                 labelLayer.textFontSize = MapLibreStyleConfig.stationLabelFontSize
                 labelLayer.textColor = NSExpression(
-                    forConstantValue: isDark ? UIColor.white : UIColor(white: 0.15, alpha: 1)
+                    forConstantValue: isDark ? UIColor.white : UIColor(white: 0.12, alpha: 1)
                 )
                 labelLayer.textHaloColor = NSExpression(
-                    forConstantValue: isDark ? UIColor.black.withAlphaComponent(0.8) : UIColor.white.withAlphaComponent(0.9)
+                    forConstantValue: isDark
+                        ? UIColor.black.withAlphaComponent(0.85)
+                        : UIColor.white.withAlphaComponent(0.95)
                 )
-                labelLayer.textHaloWidth = NSExpression(forConstantValue: 1.5)
-                labelLayer.textOffset = NSExpression(forConstantValue: NSValue(cgVector: CGVector(dx: 0, dy: 1.2)))
+                labelLayer.textHaloWidth = NSExpression(forConstantValue: 2.0)
+                labelLayer.textHaloBlur = NSExpression(forConstantValue: 0.5)
+                labelLayer.textOffset = NSExpression(forConstantValue: NSValue(cgVector: CGVector(dx: 0, dy: 1.3)))
                 labelLayer.textAnchor = NSExpression(forConstantValue: "top")
                 labelLayer.textFontNames = NSExpression(forConstantValue: ["Open Sans Semibold", "Arial Unicode MS Bold"])
-                // Only show labels at close zoom (14+)
+                labelLayer.textLetterSpacing = NSExpression(forConstantValue: 0.02)
                 labelLayer.minimumZoomLevel = 14
-                // Allow text overlap at very close zoom to show all labels
+                // Fade in labels
+                labelLayer.textOpacity = NSExpression(
+                    format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'linear', nil, %@)",
+                    [14: 0.0, 14.5: 1.0]
+                )
                 labelLayer.textAllowsOverlap = NSExpression(
                     format: "mgl_step:from:stops:($zoomLevel, false, %@)",
                     [16: true]
@@ -540,26 +670,28 @@ struct MapLibreMapView: UIViewRepresentable {
                 style.addLayer(labelLayer)
             }
 
-            // Update stroke colors for dark/light mode on existing layers
+            // Update colors for dark/light mode on existing layers
             if let single = style.layer(withIdentifier: MapLibreStyleConfig.layerStationDotsSingle) as? MLNCircleStyleLayer {
                 single.circleStrokeColor = NSExpression(
-                    forConstantValue: isDark ? UIColor.white.withAlphaComponent(0.4) : UIColor.white
+                    forConstantValue: isDark ? UIColor.white.withAlphaComponent(0.5) : UIColor.white
                 )
             }
             if let transfer = style.layer(withIdentifier: MapLibreStyleConfig.layerStationDotsTransfer) as? MLNCircleStyleLayer {
                 transfer.circleColor = NSExpression(
-                    forConstantValue: isDark ? UIColor(white: 0.2, alpha: 1) : UIColor.white
+                    forConstantValue: isDark ? UIColor(white: 0.15, alpha: 1) : UIColor.white
                 )
                 transfer.circleStrokeColor = NSExpression(
-                    forConstantValue: isDark ? UIColor.white.withAlphaComponent(0.6) : UIColor(white: 0.2, alpha: 1)
+                    forConstantValue: isDark ? UIColor.white.withAlphaComponent(0.7) : UIColor(white: 0.15, alpha: 1)
                 )
             }
             if let labels = style.layer(withIdentifier: MapLibreStyleConfig.layerStationLabels) as? MLNSymbolStyleLayer {
                 labels.textColor = NSExpression(
-                    forConstantValue: isDark ? UIColor.white : UIColor(white: 0.15, alpha: 1)
+                    forConstantValue: isDark ? UIColor.white : UIColor(white: 0.12, alpha: 1)
                 )
                 labels.textHaloColor = NSExpression(
-                    forConstantValue: isDark ? UIColor.black.withAlphaComponent(0.8) : UIColor.white.withAlphaComponent(0.9)
+                    forConstantValue: isDark
+                        ? UIColor.black.withAlphaComponent(0.85)
+                        : UIColor.white.withAlphaComponent(0.95)
                 )
             }
         }
@@ -761,7 +893,8 @@ struct MapLibreMapView: UIViewRepresentable {
             color: LineColorMode,
             cap: String,
             join: String,
-            translatePixels: CGPoint? = nil
+            translatePixels: CGPoint? = nil,
+            dashPattern: [NSNumber]? = nil
         ) {
             // Update or create source
             if let features {
@@ -795,6 +928,10 @@ struct MapLibreMapView: UIViewRepresentable {
                     layer.lineTranslation = NSExpression(
                         forConstantValue: NSValue(cgVector: CGVector(dx: translate.x, dy: translate.y))
                     )
+                }
+
+                if let dash = dashPattern {
+                    layer.lineDashPattern = NSExpression(forConstantValue: dash)
                 }
 
                 style.addLayer(layer)

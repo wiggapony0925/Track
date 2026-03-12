@@ -178,9 +178,11 @@ struct HomeView: View {
                     currentMapDistance: currentMapDistance,
                     sheetHeightFraction: 0.42,
                     onRecenter: {
-                        // Dismiss drag-to-search and restore real location
+                        // Dismiss drag-to-search state without camera snap —
+                        // MapControlsOverlay.centerMap() handles camera positioning
+                        // so we avoid competing animations.
                         if isDragSearchActive {
-                            dismissDragSearch()
+                            dismissDragSearchState()
                         }
                     },
                     onAlertsTapped: {
@@ -928,6 +930,15 @@ struct HomeView: View {
     /// Dismisses the drag-search overlay, clears the search pin,
     /// refreshes data for the user's real location, and recenters.
     private func dismissDragSearch() {
+        dismissDragSearchState()
+        // Snap back to user location
+        recenterOnUser()
+    }
+
+    /// Dismisses drag-search UI state and refreshes data without
+    /// touching the camera. Use when the caller handles camera
+    /// positioning separately (e.g. MapControlsOverlay.centerMap).
+    private func dismissDragSearchState() {
         dragSearchDebounce?.cancel()
         
         withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
@@ -944,9 +955,6 @@ struct HomeView: View {
             await viewModel.refresh(location: locationManager.currentLocation, force: true)
             lastUpdated = Date()
         }
-        
-        // Snap back to user location
-        recenterOnUser()
     }
     
     // MARK: - Map Centering

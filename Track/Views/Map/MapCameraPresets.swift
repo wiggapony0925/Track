@@ -12,7 +12,6 @@
 //
 
 import SwiftUI
-import MapKit   // Needed only for MKRoute polyline bounding rect in fitWalkingRouteAboveSheet
 import CoreLocation
 
 enum MapCameraPresets {
@@ -221,32 +220,28 @@ enum MapCameraPresets {
 
     // MARK: - Actual Walking Route Fit
 
-    /// Fits an exact MKRoute polyline bounding rect in the visible map area **above** the bottom sheet.
+    /// Fits a walking route bounding box in the visible map area **above** the bottom sheet.
     /// This provides a perfect fit for the actual walking path (including city block corners)
     /// rather than just drawing a straight line.
+    ///
+    /// - Parameters:
+    ///   - latSpanMeters: North-south span of the route bounding box in meters.
+    ///   - lonSpanMeters: East-west span of the route bounding box in meters.
+    ///   - center: Geographic center of the bounding box.
+    ///   - is3D: Whether 3D perspective is active.
+    ///   - sheetFraction: Fraction of the screen covered by the bottom sheet.
     static func fitWalkingRouteAboveSheet(
-        route: MKRoute,
+        latSpanMeters: Double,
+        lonSpanMeters: Double,
+        center: CLLocationCoordinate2D,
         is3D: Bool,
         sheetFraction: Double
     ) -> TrackCameraPosition {
-        let rect = route.polyline.boundingMapRect
-        
-        let point1 = MKMapPoint(x: rect.midX, y: rect.minY)
-        let point2 = MKMapPoint(x: rect.midX, y: rect.maxY)
-        let latSpanMeters = point1.distance(to: point2)
-        
-        let point3 = MKMapPoint(x: rect.minX, y: rect.midY)
-        let point4 = MKMapPoint(x: rect.maxX, y: rect.midY)
-        let lonSpanMeters = point3.distance(to: point4)
-        
         let maxSpanMeters = max(latSpanMeters, lonSpanMeters)
-        
         let distance = max(walkingMinAltitude, min(maxSpanMeters * 3.2, walkingMaxAltitude))
-        
-        let centerCoord = MKMapPoint(x: rect.midX, y: rect.midY).coordinate
-        
+
         return .camera(TrackCamera(
-            centerCoordinate: centerCoord,
+            centerCoordinate: center,
             distance: distance,
             heading: 0,
             pitch: is3D ? 60 : 0

@@ -2,14 +2,12 @@
 //  MapTypes.swift
 //  Track
 //
-//  Shared types extracted from TrackMapView for use across the
-//  MapLibre GL rendering pipeline. These were originally nested
-//  inside TrackMapView but are now standalone so the old MapKit
-//  file can be removed without breaking MapLibre views.
+//  Shared types and helpers for the MapLibre GL rendering pipeline.
 //
 
 import CoreLocation
 import Foundation
+import MapLibre
 
 // MARK: - ZoomTier
 
@@ -46,4 +44,31 @@ struct TransferConnector: Identifiable {
     /// 74 St) get a thicker, more opaque line; long walking
     /// transfers get thinner, fainter lines.
     let distanceMeters: Double
+}
+
+// MARK: - Coordinate Projection Helper
+
+/// Projects a geographic coordinate to a screen point via MapLibre's
+/// camera matrix. Returns `nil` if the coordinate is outside the
+/// visible bounds (plus `margin` overflow for partially-visible markers).
+///
+/// Complexity: O(1) — single matrix multiply.
+///
+/// - Parameters:
+///   - coordinate: The geographic coordinate to project.
+///   - mapView: The MLNMapView performing the projection.
+///   - margin: Extra pixels beyond the viewport to keep partially-visible markers.
+/// - Returns: The screen point, or `nil` if offscreen.
+@inlinable
+func projectToScreen(
+    _ coordinate: CLLocationCoordinate2D,
+    mapView: MLNMapView?,
+    margin: CGFloat = 40
+) -> CGPoint? {
+    guard let mapView else { return nil }
+    let point = mapView.convert(coordinate, toPointTo: mapView)
+    guard point.x > -margin, point.x < mapView.bounds.width + margin,
+          point.y > -margin, point.y < mapView.bounds.height + margin
+    else { return nil }
+    return point
 }

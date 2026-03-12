@@ -6,14 +6,8 @@
 //  MapLibre GL map. Uses coordinate-to-screen-point projection to
 //  position the existing `StationCapsuleView` components.
 //
-//  This preserves the exact same visual appearance as the MapKit version:
-//  - Transfer stations → white pill with dark outline
-//  - Single-line stations → colored route dot
-//  - Imminent arrival pulse animation
-//  - Zoom-tier-adaptive sizing
-//
 //  Performance: O(n) per frame where n = cached visible stations.
-//  Viewport culling is done upstream (same as MapKit version).
+//  Viewport culling is done upstream.
 //
 
 import CoreLocation
@@ -46,14 +40,16 @@ struct MapLibreStationOverlay: View {
     /// Whether a route is selected (hides system stations).
     let hasActiveRoute: Bool
 
-    var body: some View {
-        if hasActiveRoute { return AnyView(EmptyView()) }
+    /// Bumped every camera frame to force SwiftUI re-projection during gestures.
+    let cameraChangeToken: UInt64
 
-        return AnyView(
-            GeometryReader { geo in
+    @ViewBuilder
+    var body: some View {
+        if !hasActiveRoute {
+            GeometryReader { _ in
                 ZStack {
                     ForEach(stations) { station in
-                        if let point = projectToScreen(station.coordinate, in: geo) {
+                        if let point = projectToScreen(station.coordinate, mapView: mapView, margin: 60) {
                             let pulseRouteId: String? = imminentArrivals.isEmpty ? nil :
                                 station.sourceStopIDs.lazy.compactMap { imminentArrivals[$0] }.first
 
@@ -68,22 +64,7 @@ struct MapLibreStationOverlay: View {
                 }
             }
             .allowsHitTesting(false)
-        )
-    }
-
-    // MARK: - Coordinate Projection
-
-    private func projectToScreen(
-        _ coordinate: CLLocationCoordinate2D,
-        in geometry: GeometryProxy
-    ) -> CGPoint? {
-        guard let mapView else { return nil }
-        let point = mapView.convert(coordinate, toPointTo: mapView)
-        let margin: CGFloat = 60
-        guard point.x > -margin, point.x < mapView.bounds.width + margin,
-              point.y > -margin, point.y < mapView.bounds.height + margin
-        else { return nil }
-        return point
+        }
     }
 }
 
@@ -97,17 +78,19 @@ struct MapLibreRouteLabelOverlay: View {
     let currentDistance: Double?
     let hasActiveRoute: Bool
 
-    var body: some View {
-        if hasActiveRoute { return AnyView(EmptyView()) }
-        guard let distance = currentDistance,
-              distance < AppSettings.shared.stationMaxZoomOutMeters * 0.16
-        else { return AnyView(EmptyView()) }
+    /// Bumped every camera frame to force SwiftUI re-projection during gestures.
+    let cameraChangeToken: UInt64
 
-        return AnyView(
-            GeometryReader { geo in
+    @ViewBuilder
+    var body: some View {
+        if !hasActiveRoute,
+           let distance = currentDistance,
+           distance < AppSettings.shared.stationMaxZoomOutMeters * 0.16
+        {
+            GeometryReader { _ in
                 ZStack {
                     ForEach(labels) { label in
-                        if let point = projectToScreen(label.coordinate, in: geo) {
+                        if let point = projectToScreen(label.coordinate, mapView: mapView) {
                             TrunkRouteLabelView(
                                 routeIds: label.routeIds,
                                 color: label.color
@@ -118,19 +101,6 @@ struct MapLibreRouteLabelOverlay: View {
                 }
             }
             .allowsHitTesting(false)
-        )
-    }
-
-    private func projectToScreen(
-        _ coordinate: CLLocationCoordinate2D,
-        in geometry: GeometryProxy
-    ) -> CGPoint? {
-        guard let mapView else { return nil }
-        let point = mapView.convert(coordinate, toPointTo: mapView)
-        let margin: CGFloat = 40
-        guard point.x > -margin, point.x < mapView.bounds.width + margin,
-              point.y > -margin, point.y < mapView.bounds.height + margin
-        else { return nil }
-        return point
+        }
     }
 }

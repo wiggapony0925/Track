@@ -250,6 +250,11 @@ func mergeAdjacentPolylines(
 ///   - smoothWindow: Moving-average window (in points) that gradually eases
 ///     into/out of offset corridors.
 /// - Returns: The same polylines with perpendicular offsets applied.
+///
+/// - Note: **DEPRECATED** — Corridor offsets are now computed server-side in
+///   `corridor_pipeline.py` (arc-based v3.2). This client-side implementation
+///   is kept only for existing test coverage; do not call from production code.
+@available(*, deprecated, message: "Corridor offsets are computed server-side. Use server pipeline.")
 func applyCorridorOffsets(
     _ groupedPolylines: [(groupIndex: Int, coordinates: [CLLocationCoordinate2D])],
     laneSpacingDegrees: Double = 0.00015,

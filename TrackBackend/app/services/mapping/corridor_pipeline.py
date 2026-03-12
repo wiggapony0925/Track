@@ -1,22 +1,27 @@
 #
-# corridor_pipeline.py  —  v3 trunk‑group parallel offsets
+# corridor_pipeline.py  —  v3.2 arc-based parallel offsets
 # TrackBackend
 #
-# 5‑phase pipeline:
-#   Phase 1 – Trunk Merge:      Pool same‑color routes, unify into continuous paths
+# 5-phase pipeline:
+#   Phase 1 – Trunk Merge:      Pool same-colour routes, unify into continuous paths
 #   Phase 2 – Corridor Detect:  Find where different trunk groups share track
-#   Phase 3 – Offset Compute:   Per‑vertex perpendicular offsets in shared corridors
+#   Phase 3 – Arc Offset:       Densify → arc-offset → despike → RDP-simplify
 #   Phase 4 – Export:           Reproject to WGS84, encode polylines
 #   Phase 5 – Stop Snap:        Snap GTFS stops onto offset paths
 #
 # ═══════════════════════════════════════════════════════════════════════════════
-# ARCHITECTURE CHANGE (v2 → v3)
+# ARCHITECTURE CHANGE (v3.1 → v3.2)
 #
 #   v1  Used Shapely offset_curve() → EKG spikes, bowties, Columbus Circle bubble
 #   v2  Unified skeleton from ALL 23 routes → 1 124 edges, 397 tiny fragments
 #       (avg 5 pts each), catastrophic fragmentation, 361 edges with zero routes.
 #   v3  Trunk-group level offsets → 11 groups, ~25-35 continuous polylines,
 #       each with ~50-350 points.
+#   v3.1 Per-route GTFS preservation — transfer trunk offsets via nearest-neighbour.
+#   v3.2 Arc-based offsets — circular arc segments at bends maintain constant
+#       perpendicular distance.  Lines sharing a corridor never overlap at turns.
+#       Also: vertex densification, cosine-blended corridor transitions,
+#       and post-offset Douglas-Peucker simplification.
 #
 # KEY INSIGHT: the iOS client renders ONE polyline per trunk colour group (not
 # per route).  Routes A/C/E are all blue and get merged into one polyline by
@@ -85,6 +90,27 @@ MERGE_GAP_M: float = 50.0
 
 # Maximum distance for snapping a stop onto an offset path (meters).
 STOP_SNAP_DIST: float = 150.0
+
+# ── Arc-based offset constants (v3.2) ────────────────────────────────────────
+# These replace miter-join offsets with circular arc segments at bends,
+# producing Transit-app-quality parallel lines that never overlap at turns.
+
+# Maximum spacing between vertices before densification (meters).
+# Shorter segments → smoother offset curves at bends.
+DENSIFY_MAX_SPACING: float = 15.0
+
+# Minimum turning angle (degrees) at a vertex before arc subdivision.
+# Below this threshold, a simple averaged normal is used (= near-straight).
+ARC_MIN_ANGLE_DEG: float = 5.0
+
+# Maximum number of arc points to insert at a single bend vertex.
+# Prevents point explosion at very sharp U-turns.
+ARC_MAX_POINTS: int = 8
+
+# Douglas-Peucker tolerance (meters) for post-offset simplification.
+# Removes redundant vertices added by densification + arc subdivision
+# while preserving the smooth curve shape.
+RDP_TOLERANCE: float = 2.0
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -699,10 +725,12 @@ def _fill_corridor_gaps(raw: list[float]) -> list[float]:
         if left_val * right_val <= 0:
             continue
 
-        # Linear interpolation across the gap
+        # Cosine interpolation across the gap (smoother entry/exit
+        # than linear — eliminates abrupt lateral velocity changes)
         for j in range(gap_start, gap_end):
             t = (j - gap_start + 1) / (gap_len + 1)
-            result[j] = left_val * (1.0 - t) + right_val * t
+            s = (1.0 - math.cos(t * math.pi)) / 2.0
+            result[j] = left_val * (1.0 - s) + right_val * s
 
     return result
 
@@ -730,7 +758,202 @@ def _smooth_offsets(raw: list[float]) -> list[float]:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# Phase 3 — Apply Perpendicular Offsets
+# Arc-Based Offset Engine (v3.2)
+#
+# Transit-app-quality parallel lines: circular arc segments at every bend
+# maintain constant perpendicular distance from the reference path.
+#
+# Pipeline:  densify → arc-offset → despike → RDP-simplify
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _densify_with_offsets(
+    coords: list[tuple[float, float]],
+    offsets: list[float],
+    max_spacing: float = DENSIFY_MAX_SPACING,
+) -> tuple[list[tuple[float, float]], list[float]]:
+    """Subdivide long segments, linearly interpolating offsets for new vertices.
+
+    Denser vertices produce smoother arc-based offsets at curves.  Without
+    densification, a single 200 m segment turning 30° would get ONE arc
+    point; after densification into 13 × 15 m segments, the same curve
+    gets 13 gently-angled arc points.
+    """
+    if len(coords) < 2:
+        return list(coords), list(offsets)
+
+    result_c: list[tuple[float, float]] = [coords[0]]
+    result_o: list[float] = [offsets[0] if offsets else 0.0]
+
+    for i in range(1, len(coords)):
+        prev_c = coords[i - 1]
+        curr_c = coords[i]
+        prev_o = offsets[i - 1] if i - 1 < len(offsets) else 0.0
+        curr_o = offsets[i] if i < len(offsets) else 0.0
+
+        dist = _point_dist(prev_c, curr_c)
+
+        if dist > max_spacing:
+            n_sub = int(math.ceil(dist / max_spacing))
+            for j in range(1, n_sub):
+                t = j / n_sub
+                result_c.append((
+                    prev_c[0] + t * (curr_c[0] - prev_c[0]),
+                    prev_c[1] + t * (curr_c[1] - prev_c[1]),
+                ))
+                result_o.append(prev_o + t * (curr_o - prev_o))
+
+        result_c.append(curr_c)
+        result_o.append(curr_o)
+
+    return result_c, result_o
+
+
+def _apply_arc_offset(
+    coords: list[tuple[float, float]],
+    offsets: list[float],
+) -> list[tuple[float, float]]:
+    """Offset each vertex with circular arc interpolation at bends.
+
+    Unlike miter joins (which squeeze parallel lines together at acute
+    angles and need clamping), this inserts circular arc segments at
+    turning points to maintain constant perpendicular distance from the
+    original path.
+
+    On the OUTSIDE of a curve, the offset path is longer — arc points
+    fill in the extra distance.  On the INSIDE, a clamped miter point
+    suffices (the path is shorter).
+
+    This produces Transit-app-quality parallel lines that never overlap
+    at turns.
+    """
+    n = len(coords)
+    if n < 2:
+        return list(coords)
+
+    # Per-segment left-hand unit normals
+    seg_normals: list[tuple[float, float]] = []
+    for i in range(n - 1):
+        seg_normals.append(_unit_normal(coords[i], coords[i + 1]))
+
+    min_angle_rad = math.radians(ARC_MIN_ANGLE_DEG)
+    result: list[tuple[float, float]] = []
+
+    for i in range(n):
+        offset = offsets[i] if i < len(offsets) else 0.0
+
+        if abs(offset) < 0.01:
+            result.append(coords[i])
+            continue
+
+        cx, cy = coords[i]
+
+        # ── Endpoints: simple normal offset ──
+        if i == 0:
+            nx, ny = seg_normals[0]
+            result.append((cx + nx * offset, cy + ny * offset))
+            continue
+        if i == n - 1:
+            nx, ny = seg_normals[-1]
+            result.append((cx + nx * offset, cy + ny * offset))
+            continue
+
+        # ── Interior vertex: compute turning angle ──
+        n1x, n1y = seg_normals[i - 1]   # incoming segment normal
+        n2x, n2y = seg_normals[i]       # outgoing segment normal
+
+        dot = max(-1.0, min(1.0, n1x * n2x + n1y * n2y))
+        cross = n1x * n2y - n1y * n2x
+        angle = math.acos(dot)          # always in [0, π]
+
+        # Small angle → averaged normal (nearly straight segment)
+        if angle < min_angle_rad:
+            mx = n1x + n2x
+            my = n1y + n2y
+            mlen = math.sqrt(mx * mx + my * my)
+            if mlen > 1e-10:
+                mx /= mlen
+                my /= mlen
+            result.append((cx + mx * offset, cy + my * offset))
+            continue
+
+        # Determine if we are on the OUTSIDE of the curve.
+        # cross > 0 → left turn (normals rotate CCW).
+        # offset > 0 → left side.
+        # sign(cross) == sign(offset) → outside of curve.
+        is_outside = (cross * offset) > 0
+
+        if is_outside:
+            # OUTSIDE: insert circular arc points to maintain constant
+            # perpendicular distance.  Arc is centred at the original
+            # vertex with radius = |offset|.
+            angle1 = math.atan2(n1y, n1x)
+            angle2 = math.atan2(n2y, n2x)
+
+            # Angular sweep matching the turn direction
+            sweep = angle2 - angle1
+            if sweep > math.pi:
+                sweep -= 2. * math.pi
+            elif sweep < -math.pi:
+                sweep += 2. * math.pi
+
+            n_arc = min(
+                ARC_MAX_POINTS,
+                max(2, int(math.ceil(abs(sweep) / math.radians(10)))),
+            )
+
+            for j in range(n_arc + 1):
+                t = j / n_arc
+                a = angle1 + t * sweep
+                result.append((
+                    cx + offset * math.cos(a),
+                    cy + offset * math.sin(a),
+                ))
+        else:
+            # INSIDE: clamped miter join (path is shorter on inside).
+            mx = n1x + n2x
+            my = n1y + n2y
+            mlen = math.sqrt(mx * mx + my * my)
+
+            if mlen > 1e-10:
+                mx /= mlen
+                my /= mlen
+                miter_dot = mx * n1x + my * n1y
+                if abs(miter_dot) > 0.01:
+                    scale = min(1.0 / abs(miter_dot), MITER_CLAMP)
+                else:
+                    scale = MITER_CLAMP
+                # Extra safety: don't let the inside offset pull the
+                # point past the original vertex position.
+                scale = min(scale, 1.0 + 0.5 * (1.0 - dot))
+                nx = mx * scale
+                ny = my * scale
+            else:
+                nx, ny = seg_normals[i - 1]
+
+            result.append((cx + nx * offset, cy + ny * offset))
+
+    return result
+
+
+def _rdp_simplify(
+    coords: list[tuple[float, float]],
+    tolerance: float = RDP_TOLERANCE,
+) -> list[tuple[float, float]]:
+    """Douglas-Peucker simplification via Shapely.
+
+    Removes redundant vertices added by densification + arc subdivision
+    while preserving curve shape within *tolerance* metres.
+    """
+    if len(coords) <= 2:
+        return list(coords)
+    line = LineString(coords)
+    simplified = line.simplify(tolerance, preserve_topology=False)
+    out = list(simplified.coords)
+    return out if len(out) >= 2 else list(coords)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Phase 3 — Apply Perpendicular Offsets  (legacy miter-join, kept for reference)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def _apply_perpendicular_offset(
@@ -1085,7 +1308,11 @@ def apply_topological_offsets(
         )
         vertex_offsets = {}
 
-    # ── Phase 3: Apply perpendicular offsets ──
+    # ── Phase 3: Apply arc-based offsets (v3.2) ──
+    #
+    # Pipeline per path: densify → arc-offset → despike → RDP-simplify.
+    # Circular arc segments at bends maintain constant perpendicular
+    # distance — lines that share a corridor never overlap at turns.
     trunk_offset_paths: dict[int, list[LineString]] = {}
 
     for trunk_idx, paths in trunk_paths.items():
@@ -1105,8 +1332,11 @@ def apply_topological_offsets(
             has_offset = any(abs(o) > 0.01 for o in per_vertex)
 
             if has_offset:
-                displaced = _apply_perpendicular_offset(coords, per_vertex)
+                # Densify → arc-offset → despike → simplify
+                dense_c, dense_o = _densify_with_offsets(coords, per_vertex)
+                displaced = _apply_arc_offset(dense_c, dense_o)
                 cleaned = _despike_coords(displaced)
+                cleaned = _rdp_simplify(cleaned)
             else:
                 # No corridor overlap — pass through unmodified
                 cleaned = coords
@@ -1188,8 +1418,11 @@ def apply_topological_offsets(
             route_has_offset = any(abs(o) > 0.01 for o in offsets)
 
             if route_has_offset:
-                displaced = _apply_perpendicular_offset(coords_m, offsets)
+                # Densify → arc-offset → despike → simplify (v3.2)
+                dense_c, dense_o = _densify_with_offsets(coords_m, offsets)
+                displaced = _apply_arc_offset(dense_c, dense_o)
                 cleaned = _despike_coords(displaced)
+                cleaned = _rdp_simplify(cleaned)
                 if len(cleaned) >= 2:
                     result_wgs = project_to_wgs84(cleaned)
                     encoded_out.append(encode_polyline(result_wgs))

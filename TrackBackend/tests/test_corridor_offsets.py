@@ -123,3 +123,77 @@ class TestApplyTopologicalOffsets:
         """Empty overlay list should return empty."""
         result = apply_topological_offsets([])
         assert result == []
+
+
+class TestArcOffset:
+    """Tests for the arc-based offset engine (v3.2)."""
+
+    def test_arc_offset_maintains_distance_at_90_degree_bend(self):
+        """At a 90° bend, arc offset points should maintain constant distance
+        from the original vertex (no miter squeeze)."""
+        from app.services.mapping.corridor_pipeline import _apply_arc_offset
+        import math
+
+        # L-shaped path: east then north (90° left turn at index 1)
+        coords = [(0.0, 0.0), (100.0, 0.0), (100.0, 100.0)]
+        offsets = [10.0, 10.0, 10.0]  # 10 m left offset
+
+        result = _apply_arc_offset(coords, offsets)
+
+        # Should have MORE than 3 points (arc inserted at the bend)
+        assert len(result) > 3, f"Expected arc points at bend, got {len(result)} points"
+
+        # All points near the bend vertex (100, 0) should be ~10 m away
+        bend_cx, bend_cy = 100.0, 0.0
+        for px, py in result:
+            dist_to_bend = math.sqrt((px - bend_cx) ** 2 + (py - bend_cy) ** 2)
+            # Only check points that are clearly arc points (near the bend)
+            if dist_to_bend < 15.0:
+                assert abs(dist_to_bend - 10.0) < 1.0, (
+                    f"Arc point ({px:.1f}, {py:.1f}) is {dist_to_bend:.1f}m from "
+                    f"bend vertex, expected ~10m"
+                )
+
+    def test_arc_offset_no_arc_on_straight_line(self):
+        """A perfectly straight line should NOT get arc points."""
+        from app.services.mapping.corridor_pipeline import _apply_arc_offset
+
+        coords = [(0.0, 0.0), (50.0, 0.0), (100.0, 0.0)]
+        offsets = [10.0, 10.0, 10.0]
+
+        result = _apply_arc_offset(coords, offsets)
+
+        # Straight line: no arcs needed, should stay at 3 points
+        assert len(result) == 3
+
+    def test_densify_adds_vertices(self):
+        """Densify should subdivide segments longer than max_spacing."""
+        from app.services.mapping.corridor_pipeline import _densify_with_offsets
+
+        coords = [(0.0, 0.0), (100.0, 0.0)]  # 100 m segment
+        offsets = [5.0, 10.0]
+
+        dense_c, dense_o = _densify_with_offsets(coords, offsets, max_spacing=15.0)
+
+        # 100 m / 15 m = 7 subdivisions → 8 points
+        assert len(dense_c) >= 7
+        assert len(dense_c) == len(dense_o)
+
+        # Offsets should be linearly interpolated
+        assert abs(dense_o[0] - 5.0) < 0.01
+        assert abs(dense_o[-1] - 10.0) < 0.01
+
+    def test_rdp_simplify_preserves_shape(self):
+        """RDP should remove redundant colinear points but keep corners."""
+        from app.services.mapping.corridor_pipeline import _rdp_simplify
+
+        # L-shape with extra colinear points
+        coords = [
+            (0.0, 0.0), (25.0, 0.0), (50.0, 0.0), (75.0, 0.0), (100.0, 0.0),
+            (100.0, 25.0), (100.0, 50.0), (100.0, 75.0), (100.0, 100.0),
+        ]
+        result = _rdp_simplify(coords, tolerance=1.0)
+
+        # Should reduce to ~3 points (start, corner, end)
+        assert len(result) <= 4
+        assert len(result) >= 3

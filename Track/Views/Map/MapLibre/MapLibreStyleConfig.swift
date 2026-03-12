@@ -145,93 +145,97 @@ enum MapLibreStyleConfig {
 
     // MARK: - Transit-Style Rendering Configuration
     //
-    // Following the Transit app's approach (https://transitapp.com/blog/a-technical-follow-up):
-    // MapLibre's GL pipeline enables zoom-interpolated expressions for buttery-smooth
-    // width/opacity/radius transitions — impossible with MapKit's static MKPolyline.
+    // Premium transit map rendering — bolder than Apple Maps, cleaner than
+    // Transit, smoother than Uber/Lyft.  Every expression is tuned for a
+    // "floating neon" effect: saturated colored fills float above soft
+    // translucent casings, with buttery exponential zoom scaling.
 
-    /// Subway fill line width — smooth exponential scaling with zoom.
-    /// At far zoom (z10), lines are hair-thin; at street level (z18), prominent.
-    /// Exponential base 1.5 gives a natural-feeling acceleration curve.
+    /// Subway fill line width — bold and prominent at every zoom.
+    /// Wider than Transit app for better readability with dense NYC coverage.
+    /// Exponential base 1.6 gives a natural acceleration curve.
     static let subwayFillWidth = NSExpression(
-        format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'exponential', 1.5, %@)",
-        [10: 0.8, 11: 1.0, 12: 1.5, 13: 2.0, 14: 2.5, 15: 3.0, 16: 4.0, 17: 5.0, 18: 6.0]
+        format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'exponential', 1.6, %@)",
+        [10: 1.2, 11: 1.6, 12: 2.2, 13: 2.8, 14: 3.5, 15: 4.2, 16: 5.0, 17: 6.0, 18: 7.0]
     )
 
-    /// Subway casing width — slightly wider than fill for a Transit-style border.
-    /// This is THE signature look: lines float above the map with a subtle outline.
+    /// Subway casing width — soft border that gives lines a floating-above-map feel.
+    /// The casing-to-fill ratio is ~1.6×, creating a subtle halo rather than a harsh edge.
     static let subwayCasingWidth = NSExpression(
-        format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'exponential', 1.5, %@)",
-        [10: 2.0, 11: 2.5, 12: 3.0, 13: 3.5, 14: 4.5, 15: 5.5, 16: 7.0, 17: 8.5, 18: 10.0]
+        format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'exponential', 1.6, %@)",
+        [10: 2.4, 11: 3.0, 12: 4.0, 13: 5.0, 14: 6.0, 15: 7.0, 16: 8.5, 17: 10.0, 18: 12.0]
     )
 
-    /// Elevated line fill width — matches subway, but with offset for depth.
+    /// Elevated line fill width — matches subway for visual consistency.
     static let elevatedFillWidth = subwayFillWidth
 
-    /// Elevated casing width — wider gap for shadow/depth effect.
+    /// Elevated casing width — extra-wide for a pronounced shadow/depth effect
+    /// that distinguishes above-ground structure from tunnels.
     static let elevatedCasingWidth = NSExpression(
-        format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'exponential', 1.5, %@)",
-        [10: 2.5, 11: 3.0, 12: 3.5, 13: 4.5, 14: 5.5, 15: 6.5, 16: 8.0, 17: 10.0, 18: 12.0]
+        format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'exponential', 1.6, %@)",
+        [10: 3.0, 11: 3.5, 12: 4.5, 13: 5.5, 14: 7.0, 15: 8.0, 16: 10.0, 17: 12.0, 18: 14.0]
     )
 
-    /// Commuter rail fill width — thinner than subway to denote secondary service.
+    /// Commuter rail fill width — thinner than subway to establish visual hierarchy.
+    /// Still bold enough to be clearly visible at overview zoom.
     static let commuterFillWidth = NSExpression(
         format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'exponential', 1.5, %@)",
-        [10: 0.5, 12: 0.8, 14: 1.2, 16: 2.0, 18: 3.0]
+        [10: 0.8, 11: 1.0, 12: 1.5, 13: 2.0, 14: 2.5, 16: 3.5, 18: 4.5]
     )
 
-    /// Commuter rail casing width.
+    /// Commuter rail casing width — border for dashed commuter lines.
     static let commuterCasingWidth = NSExpression(
         format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'exponential', 1.5, %@)",
-        [10: 1.5, 12: 2.0, 14: 2.5, 16: 3.5, 18: 5.0]
+        [10: 1.8, 11: 2.2, 12: 3.0, 13: 3.5, 14: 4.5, 16: 6.0, 18: 7.5]
     )
 
-    /// Active route fill width (when a specific route is selected).
+    /// Active route fill width (when a specific route is selected) — extra bold
+    /// so the selected route clearly dominates the dimmed system map.
     static let routeFillWidth = NSExpression(
-        format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'exponential', 1.5, %@)",
-        [10: 2.0, 12: 3.0, 14: 4.0, 16: 5.0, 18: 6.0]
+        format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'exponential', 1.6, %@)",
+        [10: 2.5, 12: 3.5, 14: 5.0, 16: 6.0, 18: 7.5]
     )
 
-    /// Active route casing width.
+    /// Active route casing width — generous border for a premium floating effect.
     static let routeCasingWidth = NSExpression(
-        format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'exponential', 1.5, %@)",
-        [10: 3.5, 12: 5.0, 14: 6.0, 16: 7.5, 18: 9.0]
+        format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'exponential', 1.6, %@)",
+        [10: 4.0, 12: 6.0, 14: 8.0, 16: 9.5, 18: 11.0]
     )
 
-    /// Station circle dot radius (zoom-interpolated).
-    /// Small at overview zoom, grows to visible dots at street level.
+    /// Station circle dot radius — starts visible earlier, grows to prominent dots.
     static let stationDotRadius = NSExpression(
-        format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'linear', nil, %@)",
-        [11: 1.5, 12: 2.0, 13: 2.5, 14: 3.5, 15: 4.5, 16: 5.5, 17: 7.0, 18: 8.0]
+        format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'exponential', 1.4, %@)",
+        [11: 1.8, 12: 2.5, 13: 3.2, 14: 4.0, 15: 5.0, 16: 6.5, 17: 8.0, 18: 9.5]
     )
 
-    /// Transfer station dot radius — larger than single-line stops.
+    /// Transfer station dot radius — noticeably larger than single-line stops
+    /// to highlight important interchange stations.
     static let transferDotRadius = NSExpression(
-        format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'linear', nil, %@)",
-        [11: 2.0, 12: 3.0, 13: 3.5, 14: 4.5, 15: 5.5, 16: 7.0, 17: 8.5, 18: 10.0]
+        format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'exponential', 1.4, %@)",
+        [11: 2.5, 12: 3.5, 13: 4.5, 14: 5.5, 15: 7.0, 16: 8.5, 17: 10.0, 18: 12.0]
     )
 
-    /// Station dot stroke width (zoom-interpolated).
+    /// Station dot stroke width — crisp border at all zoom levels.
     static let stationDotStrokeWidth = NSExpression(
-        format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'linear', nil, %@)",
-        [11: 0.5, 14: 1.0, 16: 1.5, 18: 2.0]
+        format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'exponential', 1.3, %@)",
+        [11: 0.8, 13: 1.2, 15: 1.8, 17: 2.2, 18: 2.5]
     )
 
-    /// Station label font size (zoom-interpolated).
+    /// Station label font size — legible even at zoom 14.
     static let stationLabelFontSize = NSExpression(
         format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'linear', nil, %@)",
-        [14: 8.0, 15: 9.0, 16: 10.0, 17: 11.0, 18: 12.0]
+        [14: 9.0, 15: 10.0, 16: 11.0, 17: 12.0, 18: 13.0]
     )
 
-    /// Walking route width.
+    /// Walking route width — dashed line for pedestrian directions.
     static let walkingRouteWidth = NSExpression(
         format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'exponential', 1.5, %@)",
-        [10: 2.0, 14: 3.0, 16: 4.0, 18: 5.0]
+        [10: 2.5, 14: 3.5, 16: 4.5, 18: 5.5]
     )
 
-    /// Walking route glow width (wider, translucent).
+    /// Walking route glow width (wider, translucent for depth).
     static let walkingRouteGlowWidth = NSExpression(
         format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'exponential', 1.5, %@)",
-        [10: 4.0, 14: 6.0, 16: 8.0, 18: 10.0]
+        [10: 5.0, 14: 7.0, 16: 9.0, 18: 11.0]
     )
 
     // MARK: - Transit Layer IDs (z-ordering)
@@ -257,6 +261,7 @@ enum MapLibreStyleConfig {
     static let layerElevatedCasing = "elevated-casing"
     static let layerElevatedFill = "elevated-fill"
     static let layerTransferConn = "transfer-connectors"
+    static let layerStationDotsShadow = "station-dots-shadow"
     static let layerStationDotsSingle = "station-dots-single"
     static let layerStationDotsTransfer = "station-dots-transfer"
     static let layerStationLabels = "station-labels"

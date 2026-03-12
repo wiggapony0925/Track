@@ -2372,8 +2372,18 @@ final class HomeViewModel {
 
         // ── Optimal: actual walking route polyline (if fetched) ─────
         if let route = walkingRoute {
+            // Extract bounding box from MKRoute polyline
+            let rect = route.polyline.boundingMapRect
+            let latSpan = MKMapPoint(x: rect.midX, y: rect.minY)
+                .distance(to: MKMapPoint(x: rect.midX, y: rect.maxY))
+            let lonSpan = MKMapPoint(x: rect.minX, y: rect.midY)
+                .distance(to: MKMapPoint(x: rect.maxX, y: rect.midY))
+            let center = MKMapPoint(x: rect.midX, y: rect.midY).coordinate
+
             let routeCamera = MapCameraPresets.fitWalkingRouteAboveSheet(
-                route: route,
+                latSpanMeters: latSpan,
+                lonSpanMeters: lonSpan,
+                center: center,
                 is3D: is3D,
                 sheetFraction: sheetFraction
             )

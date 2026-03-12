@@ -78,6 +78,14 @@ struct MapLibreTrackMapView: View {
     /// for coordinate projection. Updated by MapLibreMapView's coordinator.
     @State private var mapViewRef: MLNMapView?
 
+    /// Incremented every camera frame so SwiftUI re-evaluates overlay
+    /// bodies and re-projects lat/lon → screen points during gestures.
+    @State private var cameraChangeToken: UInt64 = 0
+
+    /// Cached walking route coordinates — decoded from MKPolyline once,
+    /// not on every body re-evaluation (which fires 60x/sec during gestures).
+    @State private var cachedWalkingCoords: [CLLocationCoordinate2D]?
+
     // MARK: - Computed Properties
 
     private var selectedRouteColor: Color {
@@ -93,8 +101,8 @@ struct MapLibreTrackMapView: View {
         return AppTheme.Colors.mtaBlue
     }
 
-    private var walkingRouteCoordinates: [CLLocationCoordinate2D]? {
-        guard let polyline = viewModel.walkingRoute?.polyline else { return nil }
+    private static func decodeWalkingRoute(_ route: MKRoute?) -> [CLLocationCoordinate2D]? {
+        guard let polyline = route?.polyline else { return nil }
         let count = polyline.pointCount
         guard count >= 2 else { return nil }
         var coords = [CLLocationCoordinate2D](repeating: kCLLocationCoordinate2DInvalid, count: count)
@@ -121,7 +129,7 @@ struct MapLibreTrackMapView: View {
                 routeColor: UIColor(selectedRouteColor),
                 isBusRoute: viewModel.selectedGroupedRoute?.isBus == true,
                 directionalSplit: viewModel.directionalSplit,
-                walkingRouteCoords: walkingRouteCoordinates,
+                walkingRouteCoords: cachedWalkingCoords,
                 busVehicles: viewModel.filteredBusVehicles,
                 trainVehicles: viewModel.filteredTrainVehicles,
                 transferConnectors: _cachedTransferConnectors,
@@ -130,6 +138,9 @@ struct MapLibreTrackMapView: View {
                 isDarkMode: colorScheme == .dark,
                 onMapViewReady: { mapView in
                     self.mapViewRef = mapView
+                },
+                onCameraMove: {
+                    cameraChangeToken &+= 1
                 }
             )
 
@@ -137,6 +148,12 @@ struct MapLibreTrackMapView: View {
             overlayStack
         }
         .onChange(of: currentMapDistance) { _, _ in refreshViewportCacheIfNeeded() }
+        .onChange(of: viewModel.walkingRoute?.polyline.pointCount) { _, _ in
+            cachedWalkingCoords = Self.decodeWalkingRoute(viewModel.walkingRoute)
+        }
+        .onAppear {
+            cachedWalkingCoords = Self.decodeWalkingRoute(viewModel.walkingRoute)
+        }
         .ignoresSafeArea()
     }
 
@@ -152,7 +169,8 @@ struct MapLibreTrackMapView: View {
             zoomTier: _zoomTier,
             showLabels: showStations,
             imminentArrivals: viewModel.mapSystem.imminentArrivals,
-            hasActiveRoute: viewModel.routeShape != nil
+            hasActiveRoute: viewModel.routeShape != nil,
+            cameraChangeToken: cameraChangeToken
         )
 
         // Route labels
@@ -160,7 +178,8 @@ struct MapLibreTrackMapView: View {
             mapView: mapViewRef,
             labels: _cachedVisibleLabels,
             currentDistance: currentMapDistance,
-            hasActiveRoute: viewModel.routeShape != nil
+            hasActiveRoute: viewModel.routeShape != nil,
+            cameraChangeToken: cameraChangeToken
         )
 
         // Route stops (when a route is selected)
@@ -171,7 +190,8 @@ struct MapLibreTrackMapView: View {
                 isBusRoute: viewModel.selectedGroupedRoute?.isBus == true,
                 selectedStopId: viewModel.selectedStopId,
                 routeColor: selectedRouteColor,
-                onStopTap: handleStopTap
+                onStopTap: handleStopTap,
+                cameraChangeToken: cameraChangeToken
             )
         }
 
@@ -181,7 +201,8 @@ struct MapLibreTrackMapView: View {
             busVehicles: viewModel.filteredBusVehicles,
             trainVehicles: viewModel.filteredTrainVehicles,
             tappedVehicleId: viewModel.tappedVehicleId,
-            onVehicleTap: handleVehicleTap
+            onVehicleTap: handleVehicleTap,
+            cameraChangeToken: cameraChangeToken
         )
 
         // Search pin
@@ -189,7 +210,8 @@ struct MapLibreTrackMapView: View {
             mapView: mapViewRef,
             coordinate: viewModel.searchPinCoordinate,
             isActive: viewModel.isSearchPinActive,
-            hasSelectedRoute: viewModel.selectedRouteId != nil
+            hasSelectedRoute: viewModel.selectedRouteId != nil,
+            cameraChangeToken: cameraChangeToken
         )
     }
 

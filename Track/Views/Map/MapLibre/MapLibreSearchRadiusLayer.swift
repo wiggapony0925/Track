@@ -5,7 +5,7 @@
 //  Renders the three concentric search radius circles on the MapLibre map
 //  using MLNCircleStyleLayer / MLNFillStyleLayer with GeoJSON polygon sources.
 //
-//  Replaces the MapKit `MapCircle` approach from `SearchRadiusOverlay`.
+//  Native GL circle/fill layer for the drag-to-search radius ring.
 //  Uses the same color scheme: green (near), blue (farther), yellow (much farther).
 //
 
@@ -19,7 +19,7 @@ import MapLibre
 ///
 /// Circles are approximated as 64-point polygons in GeoJSON, which
 /// MapLibre renders as fill + stroke layers with the same gradient
-/// appearance as the original MapKit version.
+/// appearance.
 enum MapLibreSearchRadiusManager {
 
     // MARK: - Layer/Source IDs

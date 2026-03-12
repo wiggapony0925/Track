@@ -52,7 +52,7 @@ struct MapControlsOverlay: View {
                             mapControlCluster
                         }
                         .padding(.trailing, 12)
-                        .padding(.top, 52) // Clear the MapKit compass
+                        .padding(.top, 52) // Clear the MapLibre compass
                         Spacer()
                     }
                 }
@@ -176,9 +176,11 @@ struct MapControlsOverlay: View {
         let userLocation = locationManager.currentLocation?.coordinate
         let finalTarget = userLocation ?? AppTheme.MapConfig.nycCenter
         
-        withAnimation(MapCameraPresets.smoothAnimation) {
+        withAnimation(MapCameraPresets.flyAnimation) {
             cameraPosition = MapCameraPresets.center(on: finalTarget, is3D: is3DMode)
         }
+        
+        HapticManager.impact(.light)
     }
     
     // MARK: - Selected Route Banner

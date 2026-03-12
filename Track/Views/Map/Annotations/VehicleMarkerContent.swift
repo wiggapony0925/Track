@@ -9,7 +9,7 @@
 
 import SwiftUI
 
-/// Reusable vehicle marker icon rendered inside a MapKit `Annotation`.
+/// Reusable vehicle marker icon rendered inside a MapLibre overlay.
 /// All four vehicle types share the same circle-icon layout and
 /// highlight/tap behavior — only the icon and color differ.
 struct VehicleMarkerContent: View {
