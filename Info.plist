@@ -73,10 +73,10 @@
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Track needs microphone access to enable voice search.</string>
 	<key>SUPABASE_URL</key>
-	<string>https://octpebjxadbufiplgjqg.supabase.co</string>
+	<string>$(SUPABASE_URL)</string>
 	<key>SUPABASE_ANON_KEY</key>
-	<string>sb_publishable_lAEZ_x8O4vjdGaw-I-QUMg_oS5iWKIn</string>
+	<string>$(SUPABASE_ANON_KEY)</string>
 	<key>MAPTILER_API_KEY</key>
-	<string>YOUR_MAPTILER_KEY</string>
+	<string>$(MAPTILER_API_KEY)</string>
 </dict>
 </plist>

@@ -115,9 +115,17 @@ struct MapLibreMapView: UIViewRepresentable {
     // MARK: - UIViewRepresentable
 
     func makeUIView(context: Context) -> MLNMapView {
+        // Use MapTiler vector tiles if API key is set, otherwise OSM raster fallback
+        let styleURL: URL?
+        if let mapTilerURL = MapLibreStyleConfig.defaultStyleURL {
+            styleURL = mapTilerURL
+        } else {
+            styleURL = MapLibreStyleConfig.osmRasterStyleJSON()
+        }
+
         let mapView = MLNMapView(
             frame: .zero,
-            styleURL: MapLibreStyleConfig.defaultStyleURL
+            styleURL: styleURL
         )
 
         // Core configuration

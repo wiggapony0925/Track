@@ -61,9 +61,11 @@ enum MapLibreStyleConfig {
     }
 
     /// The default style URL used by the app.
-    /// Uses the muted/pastel style to match the previous MapKit `.standard(emphasis: .muted)`.
+    /// Uses MapTiler pastel if a valid API key exists, otherwise nil
+    /// (triggers OSM raster tile fallback in MapLibreMapView).
     static var defaultStyleURL: URL? {
-        mutedStyleURL
+        guard hasAPIKey else { return nil }
+        return mutedStyleURL
     }
 
     // MARK: - Fallback Raster Tiles (no API key needed)
@@ -72,6 +74,44 @@ enum MapLibreStyleConfig {
     /// Used as a fallback if MapTiler API key is not configured.
     /// Note: Must comply with OSM tile usage policy (max 2 req/sec, proper User-Agent).
     static let osmRasterTileURL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+
+    /// Builds a MapLibre style JSON for OSM raster tiles and writes it
+    /// to a temporary file. Returns the file URL that MapLibre can load.
+    /// This is more reliable than data: URIs which some MapLibre versions reject.
+    static func osmRasterStyleJSON() -> URL? {
+        let style: [String: Any] = [
+            "version": 8,
+            "name": "OSM Raster",
+            "sources": [
+                "osm-raster": [
+                    "type": "raster",
+                    "tiles": [osmRasterTileURL],
+                    "tileSize": 256,
+                    "attribution": osmAttribution
+                ] as [String: Any]
+            ],
+            "layers": [
+                [
+                    "id": "osm-raster-layer",
+                    "type": "raster",
+                    "source": "osm-raster",
+                    "minzoom": 0,
+                    "maxzoom": 19
+                ] as [String: Any]
+            ]
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: style, options: .prettyPrinted) else {
+            return nil
+        }
+        let tmpDir = FileManager.default.temporaryDirectory
+        let fileURL = tmpDir.appendingPathComponent("osm_raster_style.json")
+        do {
+            try data.write(to: fileURL, options: .atomic)
+            return fileURL
+        } catch {
+            return nil
+        }
+    }
 
     /// Attribution string required by OSM tile usage policy.
     static let osmAttribution = "© OpenStreetMap contributors"
