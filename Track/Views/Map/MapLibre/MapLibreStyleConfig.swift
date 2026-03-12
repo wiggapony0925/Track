@@ -136,4 +136,135 @@ enum MapLibreStyleConfig {
     static var hasAPIKey: Bool {
         mapTilerAPIKey != "YOUR_MAPTILER_KEY" && !mapTilerAPIKey.isEmpty
     }
+
+    /// Returns the correct style URL based on dark mode preference.
+    static func styleURL(isDarkMode: Bool) -> URL? {
+        guard hasAPIKey else { return nil }
+        return isDarkMode ? darkStyleURL : mutedStyleURL
+    }
+
+    // MARK: - Transit-Style Rendering Configuration
+    //
+    // Following the Transit app's approach (https://transitapp.com/blog/a-technical-follow-up):
+    // MapLibre's GL pipeline enables zoom-interpolated expressions for buttery-smooth
+    // width/opacity/radius transitions — impossible with MapKit's static MKPolyline.
+
+    /// Subway fill line width — smooth exponential scaling with zoom.
+    /// At far zoom (z10), lines are hair-thin; at street level (z18), prominent.
+    /// Exponential base 1.5 gives a natural-feeling acceleration curve.
+    static let subwayFillWidth = NSExpression(
+        format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'exponential', 1.5, %@)",
+        [10: 0.8, 11: 1.0, 12: 1.5, 13: 2.0, 14: 2.5, 15: 3.0, 16: 4.0, 17: 5.0, 18: 6.0]
+    )
+
+    /// Subway casing width — slightly wider than fill for a Transit-style border.
+    /// This is THE signature look: lines float above the map with a subtle outline.
+    static let subwayCasingWidth = NSExpression(
+        format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'exponential', 1.5, %@)",
+        [10: 2.0, 11: 2.5, 12: 3.0, 13: 3.5, 14: 4.5, 15: 5.5, 16: 7.0, 17: 8.5, 18: 10.0]
+    )
+
+    /// Elevated line fill width — matches subway, but with offset for depth.
+    static let elevatedFillWidth = subwayFillWidth
+
+    /// Elevated casing width — wider gap for shadow/depth effect.
+    static let elevatedCasingWidth = NSExpression(
+        format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'exponential', 1.5, %@)",
+        [10: 2.5, 11: 3.0, 12: 3.5, 13: 4.5, 14: 5.5, 15: 6.5, 16: 8.0, 17: 10.0, 18: 12.0]
+    )
+
+    /// Commuter rail fill width — thinner than subway to denote secondary service.
+    static let commuterFillWidth = NSExpression(
+        format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'exponential', 1.5, %@)",
+        [10: 0.5, 12: 0.8, 14: 1.2, 16: 2.0, 18: 3.0]
+    )
+
+    /// Commuter rail casing width.
+    static let commuterCasingWidth = NSExpression(
+        format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'exponential', 1.5, %@)",
+        [10: 1.5, 12: 2.0, 14: 2.5, 16: 3.5, 18: 5.0]
+    )
+
+    /// Active route fill width (when a specific route is selected).
+    static let routeFillWidth = NSExpression(
+        format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'exponential', 1.5, %@)",
+        [10: 2.0, 12: 3.0, 14: 4.0, 16: 5.0, 18: 6.0]
+    )
+
+    /// Active route casing width.
+    static let routeCasingWidth = NSExpression(
+        format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'exponential', 1.5, %@)",
+        [10: 3.5, 12: 5.0, 14: 6.0, 16: 7.5, 18: 9.0]
+    )
+
+    /// Station circle dot radius (zoom-interpolated).
+    /// Small at overview zoom, grows to visible dots at street level.
+    static let stationDotRadius = NSExpression(
+        format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'linear', nil, %@)",
+        [11: 1.5, 12: 2.0, 13: 2.5, 14: 3.5, 15: 4.5, 16: 5.5, 17: 7.0, 18: 8.0]
+    )
+
+    /// Transfer station dot radius — larger than single-line stops.
+    static let transferDotRadius = NSExpression(
+        format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'linear', nil, %@)",
+        [11: 2.0, 12: 3.0, 13: 3.5, 14: 4.5, 15: 5.5, 16: 7.0, 17: 8.5, 18: 10.0]
+    )
+
+    /// Station dot stroke width (zoom-interpolated).
+    static let stationDotStrokeWidth = NSExpression(
+        format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'linear', nil, %@)",
+        [11: 0.5, 14: 1.0, 16: 1.5, 18: 2.0]
+    )
+
+    /// Station label font size (zoom-interpolated).
+    static let stationLabelFontSize = NSExpression(
+        format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'linear', nil, %@)",
+        [14: 8.0, 15: 9.0, 16: 10.0, 17: 11.0, 18: 12.0]
+    )
+
+    /// Walking route width.
+    static let walkingRouteWidth = NSExpression(
+        format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'exponential', 1.5, %@)",
+        [10: 2.0, 14: 3.0, 16: 4.0, 18: 5.0]
+    )
+
+    /// Walking route glow width (wider, translucent).
+    static let walkingRouteGlowWidth = NSExpression(
+        format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'exponential', 1.5, %@)",
+        [10: 4.0, 14: 6.0, 16: 8.0, 18: 10.0]
+    )
+
+    // MARK: - Transit Layer IDs (z-ordering)
+    //
+    // Rendering order (bottom to top), following Transit's parallel-line approach:
+    // 1. Commuter rail casing
+    // 2. Commuter rail fill
+    // 3. Subway casing (white border — Transit signature look)
+    // 4. Subway fill (colored lines)
+    // 5. Elevated casing (wider border + shadow offset)
+    // 6. Elevated fill (colored lines, translated for depth)
+    // 7. Transfer connectors
+    // 8. Station dots (single-line + transfer circles)
+    // 9. Station labels (text at high zoom)
+    // 10. Route layers (selected route on top)
+    // 11. Vehicle markers
+
+    static let layerCommRailCasing = "commuter-casing"
+    static let layerCommRailFill = "commuter-fill"
+    static let layerSubwayCasing = "subway-casing"
+    static let layerSubwayFill = "subway-fill"
+    static let layerElevatedShadow = "elevated-shadow"
+    static let layerElevatedCasing = "elevated-casing"
+    static let layerElevatedFill = "elevated-fill"
+    static let layerTransferConn = "transfer-connectors"
+    static let layerStationDotsSingle = "station-dots-single"
+    static let layerStationDotsTransfer = "station-dots-transfer"
+    static let layerStationLabels = "station-labels"
+
+    // Source IDs
+    static let srcCommRail = "commuter-src"
+    static let srcSubway = "subway-src"
+    static let srcElevated = "elevated-src"
+    static let srcTransferConn = "transfer-conn-src"
+    static let srcStations = "stations-src"
 }

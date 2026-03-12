@@ -51,6 +51,10 @@ struct MapLibreTrackMapView: View {
     /// The settled drag-search coordinate.
     var dragSearchSettledCenter: CLLocationCoordinate2D?
 
+    // MARK: - Environment
+
+    @Environment(\.colorScheme) private var colorScheme
+
     // MARK: - AppStorage (same as TrackMapView)
 
     @AppStorage("show_search_radius") private var showSearchRadius = false
@@ -123,6 +127,7 @@ struct MapLibreTrackMapView: View {
                 transferConnectors: _cachedTransferConnectors,
                 hasActiveRoute: viewModel.routeShape != nil,
                 reroutedRouteIDs: viewModel.mapSystem.reroutedRouteIDs,
+                isDarkMode: colorScheme == .dark,
                 onMapViewReady: { mapView in
                     self.mapViewRef = mapView
                 }
