@@ -156,16 +156,29 @@ struct HomeView: View {
         GeometryReader { geometry in
             ZStack {
                 // MARK: - Map Layer
-                TrackMapView(
-                    cameraPosition: $cameraPosition,
-                    viewModel: viewModel,
-                    locationManager: locationManager,
-                    showStations: $showStations,
-                    currentMapCenter: $currentMapCenter,
-                    currentMapDistance: $currentMapDistance,
-                    isDragSearchActive: isDragSearchActive,
-                    dragSearchSettledCenter: dragSearchSettledCenter
-                )
+                if MapRendererConfig.useMapLibre {
+                    MapLibreTrackMapView(
+                        cameraPosition: $cameraPosition,
+                        viewModel: viewModel,
+                        locationManager: locationManager,
+                        showStations: $showStations,
+                        currentMapCenter: $currentMapCenter,
+                        currentMapDistance: $currentMapDistance,
+                        isDragSearchActive: isDragSearchActive,
+                        dragSearchSettledCenter: dragSearchSettledCenter
+                    )
+                } else {
+                    TrackMapView(
+                        cameraPosition: $cameraPosition,
+                        viewModel: viewModel,
+                        locationManager: locationManager,
+                        showStations: $showStations,
+                        currentMapCenter: $currentMapCenter,
+                        currentMapDistance: $currentMapDistance,
+                        isDragSearchActive: isDragSearchActive,
+                        dragSearchSettledCenter: dragSearchSettledCenter
+                    )
+                }
                 
                 // MARK: - Floating Controls
                 MapControlsOverlay(

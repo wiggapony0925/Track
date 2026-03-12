@@ -71,7 +71,7 @@ struct TrackMapView: View {
         case distant   = 0.4
     }
 
-    private static func zoomTier(for distance: Double?) -> ZoomTier {
+    static func zoomTier(for distance: Double?) -> ZoomTier {
         guard let d = distance else { return .medium }
         if d < 1_500 { return .veryClose }
         if d < 3_500 { return .close }

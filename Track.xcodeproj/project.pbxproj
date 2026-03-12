@@ -192,6 +192,7 @@
 			);
 			name = Track;
 			packageProductDependencies = (
+				25A0ML022F5A0002003F3E86 /* MapLibre */,
 			);
 			productName = Track;
 			productReference = 256475432F3C387B00762B65 /* Track.app */;
@@ -303,6 +304,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				25B06F882F425449003F3E86 /* XCRemoteSwiftPackageReference "supabase-swift" */,
+				25A0ML012F5A0001003F3E86 /* XCRemoteSwiftPackageReference "maplibre-gl-native-distribution" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 256475442F3C387B00762B65 /* Products */;
@@ -790,6 +792,14 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		25A0ML012F5A0001003F3E86 /* XCRemoteSwiftPackageReference "maplibre-gl-native-distribution" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/maplibre/maplibre-gl-native-distribution";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 6.12.0;
+			};
+		};
 		25B06F882F425449003F3E86 /* XCRemoteSwiftPackageReference "supabase-swift" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/supabase-community/supabase-swift";
@@ -799,6 +809,14 @@
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		25A0ML022F5A0002003F3E86 /* MapLibre */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 25A0ML012F5A0001003F3E86 /* XCRemoteSwiftPackageReference "maplibre-gl-native-distribution" */;
+			productName = MapLibre;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 2564753B2F3C387B00762B65 /* Project object */;
 }
