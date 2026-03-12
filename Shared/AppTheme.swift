@@ -9,7 +9,7 @@
 //
 
 import SwiftUI
-import MapKit
+import CoreLocation
 
 struct AppTheme {
 
@@ -229,28 +229,19 @@ struct AppTheme {
     /// The map is bounded so users stay within the MTA service area.
     /// Zoom limits keep context between street-level detail and
     /// the full boroughs + Long Island overview.
-    ///
-    /// References:
-    /// - ``MapCameraBounds`` — https://developer.apple.com/documentation/mapkit/mapcamerabounds
-    /// - ``MKCoordinateRegion`` — https://developer.apple.com/documentation/mapkit/mkcoordinateregion
     struct MapConfig {
         private static let s = AppSettings.shared
 
         /// Center of the NYC 5 boroughs + Long Island bounding box.
         static let boundsCenter = CLLocationCoordinate2D(latitude: s.boundsCenterLat, longitude: s.boundsCenterLon)
 
-        /// Span that covers the 5 boroughs and Long Island with margin.
-        static let boundsSpan = MKCoordinateSpan(latitudeDelta: s.boundsLatDelta, longitudeDelta: s.boundsLonDelta)
+        /// Bounds lat/lon deltas (used by MapLibre for clamping).
+        static let boundsLatDelta: Double = s.boundsLatDelta
+        static let boundsLonDelta: Double = s.boundsLonDelta
 
-        /// The region used to constrain map panning.
-        static let boundsRegion = MKCoordinateRegion(center: boundsCenter, span: boundsSpan)
-
-        /// Camera bounds that restrict panning and zoom.
-        static let cameraBounds = MapCameraBounds(
-            centerCoordinateBounds: boundsRegion,
-            minimumDistance: s.minCameraDistance,
-            maximumDistance: s.maxCameraDistance
-        )
+        /// Minimum / maximum camera distance in meters (used by MapLibre).
+        static let minCameraDistance: Double = s.minCameraDistance
+        static let maxCameraDistance: Double = s.maxCameraDistance
 
         /// Default zoom distance (meters) used when centering on the user.
         static let userZoomDistance: Double = s.userZoomDistance
@@ -258,19 +249,6 @@ struct AppTheme {
         /// Fallback center (Midtown Manhattan) shown before CoreLocation
         /// delivers the first fix.
         static let nycCenter = CLLocationCoordinate2D(latitude: s.nycCenterLat, longitude: s.nycCenterLon)
-
-        /// Fallback region centered on Midtown at a comfortable zoom level.
-        static let fallbackRegion = MKCoordinateRegion(
-            center: nycCenter,
-            latitudinalMeters: userZoomDistance,
-            longitudinalMeters: userZoomDistance
-        )
-
-        /// Initial camera position — follows the user's location.
-        /// Falls back to Midtown Manhattan if location is unavailable.
-        static let initialPosition: MapCameraPosition = .userLocation(
-            fallback: .region(fallbackRegion)
-        )
 
         // MARK: - Service Area Validation
 

@@ -8,7 +8,7 @@
 //  behind this sheet draws the route polylines and live vehicles.
 //
 
-import MapKit
+import CoreLocation
 import SwiftUI
 
 struct RouteDetailSheet: View {
@@ -48,7 +48,7 @@ struct RouteDetailSheet: View {
     // Map controls (shown in header when sheet is expanded)
     var isSheetExpanded: Bool = false
     @Binding var is3DMode: Bool
-    @Binding var cameraPosition: MapCameraPosition
+    @Binding var cameraPosition: TrackCameraPosition
     var currentLocation: CLLocationCoordinate2D?
     /// When the user has dragged the search pin, this is the pin's coordinate.
     /// Used as the reference point for nearest-stop filtering when GPS is unavailable.
@@ -201,7 +201,7 @@ struct RouteDetailSheet: View {
         elevatorOutages: [ElevatorStatus] = [],
         isSheetExpanded: Bool = false,
         is3DMode: Binding<Bool> = .constant(false),
-        cameraPosition: Binding<MapCameraPosition> = .constant(.automatic),
+        cameraPosition: Binding<TrackCameraPosition> = .constant(.automatic),
         currentLocation: CLLocationCoordinate2D? = nil,
         searchCenter: CLLocationCoordinate2D? = nil,
         selectedStopId: String? = nil,

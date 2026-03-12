@@ -28,7 +28,7 @@ struct StationCapsuleView: View, Equatable {
     let station: MapSystemViewModel.ConsolidatedStation
 
     /// Discrete zoom tier — only changes when crossing a zoom boundary.
-    var zoomTier: TrackMapView.ZoomTier = .medium
+    var zoomTier: ZoomTier = .medium
 
     /// Route ID of the train arriving within 1 minute, or `nil`.
     /// Drives the pulse ring color + animation toggle.

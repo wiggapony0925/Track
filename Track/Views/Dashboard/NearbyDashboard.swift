@@ -8,7 +8,6 @@
 //
 
 import CoreLocation
-import MapKit
 import SwiftUI
 
 /// Nearby transit dashboard showing all nearby buses and trains.
@@ -19,7 +18,7 @@ struct NearbyDashboard: View {
     let locationManager: LocationManager
     let sheetNavigator: SheetNavigator
     let lastUpdated: Date?
-    @Binding var cameraPosition: MapCameraPosition
+    @Binding var cameraPosition: TrackCameraPosition
     @Binding var is3DMode: Bool
 
     // MARK: - Computed Properties
@@ -519,7 +518,7 @@ struct OfflineEmptyStateCard: View {
 // MARK: - Out of Service Area Card
 
 struct OutOfServiceAreaCard: View {
-    @Binding var cameraPosition: MapCameraPosition
+    @Binding var cameraPosition: TrackCameraPosition
     @Binding var is3DMode: Bool
 
     var body: some View {

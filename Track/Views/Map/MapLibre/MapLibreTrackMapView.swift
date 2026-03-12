@@ -38,7 +38,7 @@ import SwiftUI
 struct MapLibreTrackMapView: View {
     // MARK: - Dependencies (same as TrackMapView)
 
-    @Binding var cameraPosition: MapCameraPosition
+    @Binding var cameraPosition: TrackCameraPosition
     let viewModel: HomeViewModel
     let locationManager: LocationManager
     @Binding var showStations: Bool
@@ -65,12 +65,12 @@ struct MapLibreTrackMapView: View {
     // MARK: - Viewport Caching (same O(n) optimization as TrackMapView)
 
     @State private var _cachedVisibleStations: [MapSystemViewModel.ConsolidatedStation] = []
-    @State private var _cachedTransferConnectors: [TrackMapView.TransferConnector] = []
+    @State private var _cachedTransferConnectors: [TransferConnector] = []
     @State private var _cachedVisibleLabels: [HomeViewModel.TrunkRouteLabel] = []
     @State private var _cachedVisibleStops: [BusStop] = []
     @State private var _lastViewportCenter: CLLocationCoordinate2D?
     @State private var _lastViewportDistance: Double?
-    @State private var _zoomTier: TrackMapView.ZoomTier = .medium
+    @State private var _zoomTier: ZoomTier = .medium
 
     // MARK: - MapLibre Reference
 
@@ -199,7 +199,7 @@ struct MapLibreTrackMapView: View {
         guard let center = currentMapCenter, let d = currentMapDistance else { return }
 
         // Update zoom tier
-        let newTier = TrackMapView.zoomTier(for: d)
+        let newTier = ZoomTier.tier(for: d)
         if newTier != _zoomTier {
             _zoomTier = newTier
         }
@@ -261,12 +261,12 @@ struct MapLibreTrackMapView: View {
 
     private func computeTransferConnectors(
         from stations: [MapSystemViewModel.ConsolidatedStation]
-    ) -> [TrackMapView.TransferConnector] {
+    ) -> [TransferConnector] {
         var byComplex: [Int: [MapSystemViewModel.ConsolidatedStation]] = [:]
         for station in stations {
             byComplex[station.complexID, default: []].append(station)
         }
-        var connectors: [TrackMapView.TransferConnector] = []
+        var connectors: [TransferConnector] = []
         for (complexID, platforms) in byComplex {
             guard platforms.count >= 2 else { continue }
             let avgLat = platforms.map(\.coordinate.latitude).reduce(0, +) / Double(platforms.count)
@@ -278,7 +278,7 @@ struct MapLibreTrackMapView: View {
                     latitude: platform.coordinate.latitude,
                     longitude: platform.coordinate.longitude
                 ).distance(from: centerLoc)
-                connectors.append(TrackMapView.TransferConnector(
+                connectors.append(TransferConnector(
                     id: "xfer-\(complexID)-\(i)",
                     coordinates: [platform.coordinate, center],
                     distanceMeters: dist
@@ -352,7 +352,7 @@ struct MapLibreTrackMapView: View {
 
 #Preview {
     MapLibreTrackMapView(
-        cameraPosition: .constant(AppTheme.MapConfig.initialPosition),
+        cameraPosition: .constant(.userLocation),
         viewModel: HomeViewModel(),
         locationManager: LocationManager(),
         showStations: .constant(true),

@@ -691,6 +691,44 @@ final class HomeViewModel {
     /// which causes the "On Route" → "Scheduled" chip flicker.
     var _busGraceBuffer: [String: (vehicle: BusVehicleResponse, missedAt: Date)] = [:]
 
+    // MARK: - Route Shape LRU Cache
+    //
+    // Keeps the 10 most-recently-viewed route shapes in memory so re-selecting
+    // a route renders its polyline instantly without a network round-trip.
+    // Entries auto-expire after 5 minutes to avoid stale data.
+
+    private struct CachedShape {
+        let shape: RouteShapeResponse
+        let fetchedAt: Date
+    }
+
+    /// In-memory LRU cache: routeId → (shape, timestamp).
+    private var _routeShapeCache: [String: CachedShape] = [:]
+    private let _routeShapeCacheMaxAge: TimeInterval = 300  // 5 min
+    private let _routeShapeCacheMaxSize = 10
+
+    /// Returns a cached route shape if it exists and is < 5 min old.
+    private func getCachedRouteShape(for routeId: String) -> RouteShapeResponse? {
+        guard let entry = _routeShapeCache[routeId] else { return nil }
+        if Date().timeIntervalSince(entry.fetchedAt) > _routeShapeCacheMaxAge {
+            _routeShapeCache.removeValue(forKey: routeId)
+            return nil
+        }
+        return entry.shape
+    }
+
+    /// Stores a route shape in the LRU cache, evicting oldest if over capacity.
+    private func cacheRouteShape(_ shape: RouteShapeResponse, for routeId: String) {
+        _routeShapeCache[routeId] = CachedShape(shape: shape, fetchedAt: Date())
+        // Evict oldest entries if over capacity
+        if _routeShapeCache.count > _routeShapeCacheMaxSize {
+            let sorted = _routeShapeCache.sorted { $0.value.fetchedAt < $1.value.fetchedAt }
+            for entry in sorted.prefix(_routeShapeCache.count - _routeShapeCacheMaxSize) {
+                _routeShapeCache.removeValue(forKey: entry.key)
+            }
+        }
+    }
+
     var routeShape: RouteShapeResponse? {
         didSet {
             rebuildCachedPolylines()
@@ -1751,7 +1789,12 @@ final class HomeViewModel {
             }
             // Load route shape + vehicles for bus routes
             async let vehiclesTask = TrackAPI.fetchBusVehicles(routeID: group.routeId)
-            async let shapeTask = TrackAPI.fetchRouteShape(routeID: group.routeId)
+
+            // Check shape cache first — avoids network call on re-select
+            let cachedShape = getCachedRouteShape(for: group.routeId)
+            let shapeTask: Task<RouteShapeResponse, Error>? = cachedShape == nil
+                ? Task { try await TrackAPI.fetchRouteShape(routeID: group.routeId) }
+                : nil
 
             do {
                 let vehicles = try await vehiclesTask
@@ -1776,7 +1819,14 @@ final class HomeViewModel {
             // Polling handled by HomeView.onChange(of: selectedRouteId)
 
             do {
-                let loadedShape = try await shapeTask
+                let loadedShape: RouteShapeResponse
+                if let cached = cachedShape {
+                    loadedShape = cached
+                    AppLogger.shared.log("SHAPE_CACHE", message: "HIT \(group.routeId)")
+                } else {
+                    loadedShape = try await shapeTask!.value
+                    cacheRouteShape(loadedShape, for: group.routeId)
+                }
                 // Staleness check: if the user navigated away while the
                 // shape was loading, discard the result.
                 guard selectedRouteId == loadingRouteId else { return }
@@ -1805,10 +1855,17 @@ final class HomeViewModel {
         } else if group.isLIRR {
             // LIRR: fetch the branch-specific polyline + live arrivals
             do {
-                async let shapeTask = TrackAPI.fetchLIRRShape(routeID: group.routeId)
+                let cachedLIRRShape = getCachedRouteShape(for: group.routeId)
                 async let arrivalsTask = TrackAPI.fetchLIRRArrivals()
 
-                let loadedShape = try await shapeTask
+                let loadedShape: RouteShapeResponse
+                if let cached = cachedLIRRShape {
+                    loadedShape = cached
+                    AppLogger.shared.log("SHAPE_CACHE", message: "HIT \(group.routeId)")
+                } else {
+                    loadedShape = try await TrackAPI.fetchLIRRShape(routeID: group.routeId)
+                    cacheRouteShape(loadedShape, for: group.routeId)
+                }
                 guard selectedRouteId == loadingRouteId else { return }
                 routeShape = loadedShape
                 populateStopsFromArrivals(group: group)
@@ -1834,10 +1891,17 @@ final class HomeViewModel {
         } else if group.isMNR {
             // Metro-North: fetch the line-specific polyline + live arrivals
             do {
-                async let shapeTask = TrackAPI.fetchMNRShape(routeID: group.routeId)
+                let cachedMNRShape = getCachedRouteShape(for: group.routeId)
                 async let arrivalsTask = TrackAPI.fetchMNRArrivals()
 
-                let loadedShape = try await shapeTask
+                let loadedShape: RouteShapeResponse
+                if let cached = cachedMNRShape {
+                    loadedShape = cached
+                    AppLogger.shared.log("SHAPE_CACHE", message: "HIT \(group.routeId)")
+                } else {
+                    loadedShape = try await TrackAPI.fetchMNRShape(routeID: group.routeId)
+                    cacheRouteShape(loadedShape, for: group.routeId)
+                }
                 guard selectedRouteId == loadingRouteId else { return }
                 routeShape = loadedShape
                 populateStopsFromArrivals(group: group)
@@ -1863,10 +1927,17 @@ final class HomeViewModel {
         } else {
             // For subway: fetch the full line geometry AND live arrivals from the backend
             do {
-                async let shapeTask = TrackAPI.fetchSubwayShape(routeID: group.displayName)
+                let cachedSubwayShape = getCachedRouteShape(for: group.displayName)
                 async let arrivalsTask = TrackAPI.fetchSubwayArrivals(lineID: group.displayName)
 
-                let loadedShape = try await shapeTask
+                let loadedShape: RouteShapeResponse
+                if let cached = cachedSubwayShape {
+                    loadedShape = cached
+                    AppLogger.shared.log("SHAPE_CACHE", message: "HIT \(group.displayName)")
+                } else {
+                    loadedShape = try await TrackAPI.fetchSubwayShape(routeID: group.displayName)
+                    cacheRouteShape(loadedShape, for: group.displayName)
+                }
                 guard selectedRouteId == loadingRouteId else { return }
                 routeShape = loadedShape
                 let arrivals = try await arrivalsTask
@@ -2267,7 +2338,7 @@ final class HomeViewModel {
     }
 
     /// Returns a camera position centered on the first arrival's stop.
-    func cameraPositionForRoute(_ group: GroupedNearbyTransitResponse) -> MapCameraPosition {
+    func cameraPositionForRoute(_ group: GroupedNearbyTransitResponse) -> TrackCameraPosition {
         if let first = group.directions.first?.arrivals.first,
             let lat = first.stopLat, let lon = first.stopLon
         {
@@ -2294,7 +2365,7 @@ final class HomeViewModel {
         userLocation: CLLocation?,
         is3D: Bool,
         sheetFraction: Double = 0
-    ) -> MapCameraPosition? {
+    ) -> TrackCameraPosition? {
         guard routeShape != nil else { return nil }
 
         let refLocation = effectiveLocation(userLocation: userLocation)
@@ -2321,7 +2392,7 @@ final class HomeViewModel {
                    routeCam.distance < endpointsCam.distance {
                     // Keep the walking route's center but use the
                     // more generous distance so both points fit.
-                    return .camera(MapCamera(
+                    return .camera(TrackCamera(
                         centerCoordinate: routeCam.centerCoordinate,
                         distance: endpointsCam.distance,
                         heading: routeCam.heading,

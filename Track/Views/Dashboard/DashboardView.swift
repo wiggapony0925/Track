@@ -9,7 +9,6 @@
 
 import SwiftUI
 import CoreLocation
-import MapKit
 
 /// Main dashboard content showing transit arrivals based on selected mode.
 struct DashboardView: View {
@@ -19,7 +18,7 @@ struct DashboardView: View {
     let locationManager: LocationManager
     let sheetNavigator: SheetNavigator
     @Binding var lastUpdated: Date?
-    @Binding var cameraPosition: MapCameraPosition
+    @Binding var cameraPosition: TrackCameraPosition
     @Binding var is3DMode: Bool
 
     @ObservedObject private var favoritesManager = FavoritesManager.shared
@@ -206,7 +205,7 @@ struct DashboardView: View {
 
 #Preview {
     @Previewable @State var lastUpdated: Date? = Date()
-    @Previewable @State var cameraPosition: MapCameraPosition = .automatic
+    @Previewable @State var cameraPosition: TrackCameraPosition = .automatic
     @Previewable @State var is3DMode: Bool = false
 
     DashboardView(

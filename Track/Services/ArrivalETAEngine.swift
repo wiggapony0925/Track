@@ -31,7 +31,6 @@
 
 import CoreLocation
 import Foundation
-import MapKit
 
 // MARK: - ETA Result
 
@@ -224,7 +223,8 @@ enum ArrivalETAEngine {
 
         // ── 1. Try vehicle-position-based ETA ──
         if let vCoord = vehicleCoord, let sCoord = stopCoord {
-            let straightLine = MKMapPoint(vCoord).distance(to: MKMapPoint(sCoord))
+            let straightLine = CLLocation(latitude: vCoord.latitude, longitude: vCoord.longitude)
+                .distance(from: CLLocation(latitude: sCoord.latitude, longitude: sCoord.longitude))
 
             // Vehicle is at the stop (within 50 m)
             if straightLine < 50 {
@@ -393,7 +393,8 @@ enum ArrivalETAEngine {
             let dt = curr.timestamp.timeIntervalSince(prev.timestamp)
             guard dt > 0 else { continue }
 
-            let dist = MKMapPoint(prev.coordinate).distance(to: MKMapPoint(curr.coordinate))
+            let dist = CLLocation(latitude: prev.coordinate.latitude, longitude: prev.coordinate.longitude)
+                .distance(from: CLLocation(latitude: curr.coordinate.latitude, longitude: curr.coordinate.longitude))
             let segmentSpeed = dist / dt
             if segmentSpeed.isFinite {
                 segmentSpeeds.append(segmentSpeed)
@@ -651,8 +652,10 @@ enum ArrivalETAEngine {
         let directional = (cosine + 1) / 2
 
         // Distance trend signal: if distance is shrinking, boost confidence.
-        let prevDist = MKMapPoint(prev.coordinate).distance(to: MKMapPoint(stop))
-        let currDist = MKMapPoint(current).distance(to: MKMapPoint(stop))
+        let prevDist = CLLocation(latitude: prev.coordinate.latitude, longitude: prev.coordinate.longitude)
+            .distance(from: CLLocation(latitude: stop.latitude, longitude: stop.longitude))
+        let currDist = CLLocation(latitude: current.latitude, longitude: current.longitude)
+            .distance(from: CLLocation(latitude: stop.latitude, longitude: stop.longitude))
         let trend = prevDist - currDist
         let trendScore = max(0, min(1, 0.5 + trend / 120.0))
 
@@ -663,8 +666,10 @@ enum ArrivalETAEngine {
         from: CLLocationCoordinate2D,
         to: CLLocationCoordinate2D
     ) -> (dx: Double, dy: Double) {
-        let a = MKMapPoint(from)
-        let b = MKMapPoint(to)
-        return (dx: b.x - a.x, dy: b.y - a.y)
+        // Use latitude/longitude deltas scaled to approximate meters
+        // for directional cosine computation (relative scale is sufficient).
+        let dy = (to.latitude - from.latitude) * 111_000
+        let dx = (to.longitude - from.longitude) * 111_000 * cos(from.latitude * .pi / 180)
+        return (dx: dx, dy: dy)
     }
 }

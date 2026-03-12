@@ -32,10 +32,10 @@ struct MapLibreStationOverlay: View {
 
     /// Transfer connectors — thin lines between multi-platform complexes.
     /// Rendered as map layers, not in this overlay.
-    let transferConnectors: [TrackMapView.TransferConnector]
+    let transferConnectors: [TransferConnector]
 
     /// Current zoom tier for size adaptation.
-    let zoomTier: TrackMapView.ZoomTier
+    let zoomTier: ZoomTier
 
     /// Whether station labels should be visible.
     let showLabels: Bool

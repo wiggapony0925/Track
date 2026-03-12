@@ -11,7 +11,6 @@
 import CoreLocation
 import Foundation
 import SwiftData
-import MapKit
 import SwiftUI
 import WidgetKit
 

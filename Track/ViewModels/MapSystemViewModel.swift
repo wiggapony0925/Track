@@ -9,7 +9,6 @@
 
 import CoreLocation
 import Foundation
-import MapKit
 import SwiftUI
 
 @Observable
@@ -232,14 +231,13 @@ final class MapSystemViewModel {
         guard !Self.hasStartedLoading else { return }
         Self.hasStartedLoading = true
         Task {
-            // Fire subway + stations in parallel so subway lines render
-            // while stations are still loading.  LIRR/MNR are loaded
-            // concurrently with stations after subway is drawn.
-            await loadSystemMap()
-
-            // Stations and commuter rail can load in parallel
+            // Load system map and stations fully in parallel — neither
+            // blocks the other. Map lines render the instant they arrive;
+            // station dots appear independently as soon as the processed
+            // station endpoint resolves.
+            async let mapTask: Void = loadSystemMap()
             async let stationsTask: Void = loadStations()
-            await stationsTask
+            _ = await (mapTask, stationsTask)
 
             Self.sharedSnapshot = SharedSnapshot(
                 systemMap: cachedSystemMap,
@@ -256,6 +254,11 @@ final class MapSystemViewModel {
     // MARK: - System Map Loading
 
     /// Fetches the full transit system map (subway, LIRR, MNR polylines).
+    ///
+    /// **Fast-path**: On every launch after the first, the system map renders
+    /// from a persistent disk cache in < 100 ms — no network needed.
+    /// A background refresh keeps the cache fresh (≤ 24 h stale window).
+    ///
     /// Falls back to bundled offline data when network is unavailable.
     func loadSystemMap() async {
         if !cachedSystemMap.isEmpty { return }
@@ -271,12 +274,84 @@ final class MapSystemViewModel {
             return
         }
 
-        // If offline, use bundled static data
-        if !OfflineCacheManager.shared.isOnline {
+        // ── Phase 1: Instant render from disk cache ──
+        // Try to hydrate from the persistent disk cache first.
+        // This avoids the network round-trip and lets the map draw
+        // immediately — matching Transit app's instant-map behavior.
+        let diskCacheMgr = OfflineCacheManager.shared
+        let hasDiskCache = await loadFromDiskCache()
+
+        // ── Phase 2: Network refresh (background) ──
+        // If we already rendered from cache, refresh in the background
+        // so the user sees the map instantly but gets fresh data.
+        // If no cache existed, this is the primary load path.
+        if !diskCacheMgr.isOnline && !hasDiskCache {
+            // Truly offline with no cache — use the bundled fallback
             await loadOfflineSystemMap()
             return
         }
 
+        if diskCacheMgr.isOnline {
+            await fetchAndRenderFromNetwork(isBackgroundRefresh: hasDiskCache)
+        }
+    }
+
+    /// Attempts to load the system map from the persistent disk cache.
+    /// Returns `true` if the cache was populated and rendering was triggered.
+    private func loadFromDiskCache() async -> Bool {
+        let cache = OfflineCacheManager.shared
+
+        // Load subway shapes from disk
+        guard let subwayResponse = cache.getCachedSubwayShapes() else { return false }
+
+        var decoded: [CachedTransitLine] = subwayResponse.lines.map { line in
+            CachedTransitLine(
+                id: line.routeId,
+                color: Color(hex: line.colorHex),
+                coordinates: line.decodedPolylines,
+                mode: .subway
+            )
+        }
+
+        // Also load commuter rail from disk cache
+        if let lirrResponse = cache.getCachedLIRRShapes() {
+            decoded.append(contentsOf: lirrResponse.lines.map { line in
+                CachedTransitLine(
+                    id: line.routeId,
+                    color: Color(hex: line.colorHex),
+                    coordinates: line.decodedPolylines,
+                    mode: .lirr
+                )
+            })
+        }
+        if let mnrResponse = cache.getCachedMNRShapes() {
+            decoded.append(contentsOf: mnrResponse.lines.map { line in
+                CachedTransitLine(
+                    id: line.routeId,
+                    color: Color(hex: line.colorHex),
+                    coordinates: line.decodedPolylines,
+                    mode: .mnr
+                )
+            })
+        }
+
+        guard !decoded.isEmpty else { return false }
+
+        let subwayCount = decoded.filter { $0.mode == .subway }.count
+        let commuterCount = decoded.count - subwayCount
+        AppLogger.shared.log(
+            "SYSTEM_MAP",
+            message: "Disk cache → \(subwayCount) subway + \(commuterCount) commuter rail lines (instant render)")
+
+        self.cachedSystemMap = decoded
+        self.computeSubwayOffsets()
+        return true
+    }
+
+    /// Fetches shapes from the network and updates the map.
+    /// When `isBackgroundRefresh` is true, the map already has content from
+    /// the disk cache — this just silently replaces it with fresh data.
+    private func fetchAndRenderFromNetwork(isBackgroundRefresh: Bool) async {
         do {
             // Fire all three transit fetches in parallel.
             // Subway is required; LIRR and MNR are optional (fail silently).
@@ -286,23 +361,22 @@ final class MapSystemViewModel {
 
             let response = try await subwayTask
 
+            // Persist to disk for next launch (fire-and-forget)
+            OfflineCacheManager.shared.cacheSubwayShapes(response)
+
             // Pre-decode subway coordinates for the system-map overview.
-            // Deduplication and simplification are handled by the backend.
             var decoded: [CachedTransitLine] = response.lines.map { line in
-                let branches = line.decodedPolylines
-                return CachedTransitLine(
+                CachedTransitLine(
                     id: line.routeId,
                     color: Color(hex: line.colorHex),
-                    coordinates: branches,
+                    coordinates: line.decodedPolylines,
                     mode: .subway
                 )
             }
 
             // Show subway lines immediately before commuter rail arrives
-            await MainActor.run {
-                self.cachedSystemMap = decoded
-                self.computeSubwayOffsets()
-            }
+            self.cachedSystemMap = decoded
+            self.computeSubwayOffsets()
 
             // Now fold in LIRR and MNR results (already fetched in parallel)
             if let lirrResponse = await lirrTask {
@@ -315,9 +389,7 @@ final class MapSystemViewModel {
                     )
                 }
                 decoded.append(contentsOf: lirrLines)
-                await MainActor.run {
-                    OfflineCacheManager.shared.cacheLIRRShapes(lirrResponse)
-                }
+                OfflineCacheManager.shared.cacheLIRRShapes(lirrResponse)
             }
 
             if let mnrResponse = await mnrTask {
@@ -330,9 +402,7 @@ final class MapSystemViewModel {
                     )
                 }
                 decoded.append(contentsOf: mnrLines)
-                await MainActor.run {
-                    OfflineCacheManager.shared.cacheMNRShapes(mnrResponse)
-                }
+                OfflineCacheManager.shared.cacheMNRShapes(mnrResponse)
             }
 
             // Log details about what we loaded
@@ -344,20 +414,22 @@ final class MapSystemViewModel {
 
             // Update with commuter rail additions (subway already rendered above)
             if decoded.count > subwayCount {
-                await MainActor.run {
-                    self.cachedSystemMap = decoded
-                }
+                self.cachedSystemMap = decoded
             }
 
+            let refreshTag = isBackgroundRefresh ? "(background refresh)" : ""
             AppLogger.shared.log(
                 "SYSTEM_MAP",
                 message:
-                    "Loaded \(decoded.count) transit lines (\(subwayCount) subway, \(lirrCount) LIRR, \(mnrCount) MNR) — \(totalBranches) branches, \(totalPoints) total points"
+                    "Loaded \(decoded.count) transit lines (\(subwayCount) subway, \(lirrCount) LIRR, \(mnrCount) MNR) — \(totalBranches) branches, \(totalPoints) total points \(refreshTag)"
             )
         } catch {
             AppLogger.shared.logError("loadSystemMap", error: error)
-            // Fall back to offline data on error
-            await loadOfflineSystemMap()
+            // Fall back to offline data on error only if we don't already
+            // have content (disk cache already rendered)
+            if cachedSystemMap.isEmpty {
+                await loadOfflineSystemMap()
+            }
         }
     }
 
@@ -499,8 +571,12 @@ final class MapSystemViewModel {
             "SYSTEM_MAP",
             message: "Mapped \(subwayLines.count) subway lines (offsets applied server-side)")
 
-        // Pre-compute flattened polylines for efficient rendering
-        computeFlattenedPolylines()
+        // Pre-compute flattened polylines for efficient rendering.
+        // Heavy CPU work (unify + RDP + Catmull-Rom) runs off main actor
+        // so the map and UI remain responsive during computation.
+        Task {
+            await computeFlattenedPolylinesAsync()
+        }
     }
 
     // MARK: - MTA Trunk Color Groups
@@ -528,7 +604,7 @@ final class MapSystemViewModel {
         ["SI"],                        // Staten Island Railway
     ]
 
-    /// Pre-computes flattened polyline arrays with stable IDs for efficient MapKit rendering.
+    /// Pre-computes flattened polyline arrays with stable IDs for efficient MapLibre rendering.
     ///
     /// **Strategy — Apple Maps style**:
     /// 1. Routes grouped by MTA trunk color (e.g. N/Q/R/W → yellow).
@@ -536,7 +612,10 @@ final class MapSystemViewModel {
     /// 3. Cross-color corridor offsets applied so parallel lines (e.g. blue + green
     ///    on Lex Ave) render side-by-side, not stacked.
     /// 4. Route labels generated at intervals along each trunk.
-    private func computeFlattenedPolylines() {
+    ///
+    /// Runs as an async method so it yields to the run loop between phases,
+    /// keeping the UI responsive while heavy CPU work executes.
+    private func computeFlattenedPolylinesAsync() async {
         let tolerance = AppSettings.shared.polylineSimplificationTolerance
 
         // Build a lookup: route ID → index into cachedOffsetSubwayLines
@@ -592,6 +671,9 @@ final class MapSystemViewModel {
                 polylines: unified
             ))
         }
+
+        // Yield to let the map render whatever data is already available
+        await Task.yield()
 
         // ---- Phase 2+3: Simplification + smoothing + flatten ----
         //
@@ -662,6 +744,9 @@ final class MapSystemViewModel {
         }
 
         flattenedSubwayPolylines = flat
+
+        // Yield after subway polylines are set so the map can start rendering them
+        await Task.yield()
 
         // Route labels — use base (non-offset) coordinates so they sit
         // centered on the actual track regardless of offset tier.

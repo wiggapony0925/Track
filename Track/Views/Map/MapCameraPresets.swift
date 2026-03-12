@@ -4,7 +4,7 @@
 //
 //  Reusable map camera helpers for the Track NYC Transit App.
 //  Every view that sets `cameraPosition` should use these presets
-//  instead of constructing MapCamera(...) inline.
+//  instead of constructing TrackCamera(...) inline.
 //
 //  Usage:
 //      cameraPosition = MapCameraPresets.center(on: coord, is3D: is3DMode)
@@ -12,7 +12,8 @@
 //
 
 import SwiftUI
-import MapKit
+import MapKit   // Needed only for MKRoute polyline bounding rect in fitWalkingRouteAboveSheet
+import CoreLocation
 
 enum MapCameraPresets {
 
@@ -20,7 +21,7 @@ enum MapCameraPresets {
 
     private static var s: AppSettings { AppSettings.shared }
 
-    // MARK: - Distances (meters → MapCamera altitude)
+    // MARK: - Distances (meters → camera altitude)
 
     /// Comfortable street-level default — the "home" zoom.
     static var defaultDistance: Double { s.userZoomDistance }
@@ -53,8 +54,8 @@ enum MapCameraPresets {
     // MARK: - Camera Constructors
 
     /// Center the map on a coordinate at the standard default zoom.
-    static func center(on coordinate: CLLocationCoordinate2D, is3D: Bool) -> MapCameraPosition {
-        .camera(MapCamera(
+    static func center(on coordinate: CLLocationCoordinate2D, is3D: Bool) -> TrackCameraPosition {
+        .camera(TrackCamera(
             centerCoordinate: coordinate,
             distance: defaultDistance,
             heading: 0,
@@ -63,8 +64,8 @@ enum MapCameraPresets {
     }
 
     /// Center the map on a coordinate at a specific distance.
-    static func center(on coordinate: CLLocationCoordinate2D, distance: Double, is3D: Bool) -> MapCameraPosition {
-        .camera(MapCamera(
+    static func center(on coordinate: CLLocationCoordinate2D, distance: Double, is3D: Bool) -> TrackCameraPosition {
+        .camera(TrackCamera(
             centerCoordinate: coordinate,
             distance: distance,
             heading: 0,
@@ -73,8 +74,8 @@ enum MapCameraPresets {
     }
 
     /// Focus on a vehicle marker — tighter zoom at `vehicleFocusDistance`.
-    static func focusVehicle(at coordinate: CLLocationCoordinate2D, is3D: Bool) -> MapCameraPosition {
-        .camera(MapCamera(
+    static func focusVehicle(at coordinate: CLLocationCoordinate2D, is3D: Bool) -> TrackCameraPosition {
+        .camera(TrackCamera(
             centerCoordinate: coordinate,
             distance: vehicleFocusDistance,
             heading: 0,
@@ -83,8 +84,8 @@ enum MapCameraPresets {
     }
 
     /// Wide overview for exploring NYC (slightly wider than default).
-    static func explorer(is3D: Bool) -> MapCameraPosition {
-        .camera(MapCamera(
+    static func explorer(is3D: Bool) -> TrackCameraPosition {
+        .camera(TrackCamera(
             centerCoordinate: AppTheme.MapConfig.nycCenter,
             distance: explorerDistance,
             heading: 0,
@@ -95,8 +96,6 @@ enum MapCameraPresets {
     // MARK: - Walking Path Geometry (shared computation)
 
     /// Intermediate result of bounding-box + adaptive padding analysis.
-    /// Used by `fitWalkingPath` and `fitWalkingPathAboveSheet` to avoid
-    /// duplicating the same geometry and tier-selection logic.
     private struct WalkingPathGeometry {
         let centerLat: Double
         let centerLon: Double
@@ -146,15 +145,6 @@ enum MapCameraPresets {
 
     /// Computes the southward latitude shift needed to move the camera's
     /// visible center into the unobscured area above the bottom sheet.
-    ///
-    /// Used by both `fitWalkingPathAboveSheet` and `sheetCompensated` so
-    /// the FOV → shift math lives in exactly one place.
-    ///
-    /// Uses a conservative vertical half-FOV of 22.5° (`π/8`) rather than
-    /// 30° — MapKit on tall iPhone screens (19.5:9 aspect) has a noticeably
-    /// narrower vertical FOV than the often-cited 60° total.  Overestimating
-    /// the FOV causes an excessive south-shift that pushes both the user's
-    /// location and the transit stop off the visible area.
     private static func sheetLatitudeShift(
         distance: Double,
         pitch: Double,
@@ -162,7 +152,7 @@ enum MapCameraPresets {
     ) -> Double {
         let pitchRad = pitch * .pi / 180.0
         let altitude = distance * max(cos(pitchRad), 0.3)
-        let halfFOV: Double = .pi / 8.0   // ~22.5° — conservative for tall screens
+        let halfFOV: Double = .pi / 8.0
         let fullSpanDeg = (2.0 * altitude * tan(halfFOV)) / 111_000.0
         return fullSpanDeg * sheetFraction * 0.5
     }
@@ -170,19 +160,11 @@ enum MapCameraPresets {
     // MARK: - Walking Path Fit
 
     /// Fit the user's walking path from their location to the nearest stop.
-    ///
-    /// Adaptive padding based on straight-line distance:
-    /// - Very close (< 200m): 3.5× — tight street view
-    /// - Medium (200–800m): 2.8× — comfortable walking view
-    /// - Farther (> 800m): 2.2× — wider neighborhood view
-    ///
-    /// The center is biased 15% toward the stop so the user's blue dot
-    /// sits in the lower third and the destination is prominent.
     static func fitWalkingPath(
         user userCoord: CLLocationCoordinate2D,
         stop stopCoord: CLLocationCoordinate2D,
         is3D: Bool
-    ) -> MapCameraPosition {
+    ) -> TrackCameraPosition {
         let geo = walkingGeometry(user: userCoord, stop: stopCoord)
         let distance = max(walkingMinAltitude, min(geo.spanMeters * geo.basePadding, walkingMaxAltitude))
 
@@ -190,7 +172,7 @@ enum MapCameraPresets {
         let biasedLat = geo.centerLat + (stopCoord.latitude - geo.centerLat) * bias
         let biasedLon = geo.centerLon + (stopCoord.longitude - geo.centerLon) * bias
 
-        return .camera(MapCamera(
+        return .camera(TrackCamera(
             centerCoordinate: CLLocationCoordinate2D(latitude: biasedLat, longitude: biasedLon),
             distance: distance,
             heading: 0,
@@ -199,12 +181,11 @@ enum MapCameraPresets {
     }
 
     /// Fit two arbitrary points with smart zoom clamping (midpoint center).
-    /// Used by `centerMap(on:)` where we want to show both user and a target.
     static func fitTwoPoints(
         from: CLLocationCoordinate2D,
         to: CLLocationCoordinate2D,
         is3D: Bool
-    ) -> MapCameraPosition {
+    ) -> TrackCameraPosition {
         let midLat = (from.latitude + to.latitude) / 2
         let midLon = (from.longitude + to.longitude) / 2
 
@@ -218,7 +199,7 @@ enum MapCameraPresets {
                 AppSettings.shared.smartZoomMaxAltitude)
         )
 
-        return .camera(MapCamera(
+        return .camera(TrackCamera(
             centerCoordinate: CLLocationCoordinate2D(latitude: midLat, longitude: midLon),
             distance: zoomDistance,
             heading: 0,
@@ -229,25 +210,12 @@ enum MapCameraPresets {
     // MARK: - Walking Path + Sheet Integration
 
     /// Fits user and stop in the visible map area **above** the bottom sheet.
-    ///
-    /// When a sheet covers part of the screen, delegates to the proven
-    /// `fitTwoPoints` zoom (min 2400 m, 4.5× padding) then applies
-    /// `sheetCompensated` to shift the center south.  This is the same
-    /// approach used by `centerMap(on:)` — it works reliably across
-    /// every NYC distance range (50 m at-stop to 3+ km commuter rail)
-    /// without fragile FOV guesswork.
-    ///
-    /// Falls back to `fitWalkingPath` when `sheetFraction ≈ 0`.
     static func fitWalkingPathAboveSheet(
         user userCoord: CLLocationCoordinate2D,
         stop stopCoord: CLLocationCoordinate2D,
         is3D: Bool,
         sheetFraction: Double
-    ) -> MapCameraPosition {
-        // TrackMapView already sets `.safeAreaPadding(.bottom, 350)` on the SwiftUI Map,
-        // so MapKit natively centers geometry in the unobscured top area.
-        // Calling sheetCompensated on top of that shifts the camera twice — causing the
-        // "too far up" issue. Return the base fit directly.
+    ) -> TrackCameraPosition {
         return fitTwoPoints(from: userCoord, to: stopCoord, is3D: is3D)
     }
 
@@ -260,7 +228,7 @@ enum MapCameraPresets {
         route: MKRoute,
         is3D: Bool,
         sheetFraction: Double
-    ) -> MapCameraPosition {
+    ) -> TrackCameraPosition {
         let rect = route.polyline.boundingMapRect
         
         let point1 = MKMapPoint(x: rect.midX, y: rect.minY)
@@ -273,47 +241,26 @@ enum MapCameraPresets {
         
         let maxSpanMeters = max(latSpanMeters, lonSpanMeters)
         
-        // Use a slightly wider padding (3.2x instead of 2.8x) so it's not cutting off at the edges
         let distance = max(walkingMinAltitude, min(maxSpanMeters * 3.2, walkingMaxAltitude))
         
-        // Exact geographic center of the route's bounds
         let centerCoord = MKMapPoint(x: rect.midX, y: rect.midY).coordinate
         
-        let baseCamera = MapCameraPosition.camera(MapCamera(
+        return .camera(TrackCamera(
             centerCoordinate: centerCoord,
             distance: distance,
             heading: 0,
             pitch: is3D ? 60 : 0
         ))
-        
-        // TrackMapView already sets `.safeAreaPadding(.bottom, 350)`.
-        // If we also apply `sheetCompensated`, the camera gets shifted *twice*, 
-        // pushing the actual route out of the center and into the top notch!
-        // Returning the unshifted baseCamera lets SwiftUI Map natively perfectly center it 
-        // in the remaining unobscured top area.
-        return baseCamera
     }
 
     // MARK: - Sheet Compensation
 
     /// Adjusts any camera position so the focal point appears in the visible
     /// area ABOVE the bottom sheet rather than behind it.
-    ///
-    /// Shifts the camera center **southward** by an amount derived from
-    /// `sheetLatitudeShift` so the original target coordinate appears at
-    /// the center of the unobscured map area.
-    ///
-    /// No zoom-out is applied — callers that need integrated zoom+shift
-    /// should use `fitWalkingPathAboveSheet` instead.
-    ///
-    /// - Parameters:
-    ///   - position: The camera position to adjust.
-    ///   - sheetFraction: How much of the screen the sheet covers (0.0–1.0).
-    /// - Returns: A new `MapCameraPosition` with the center shifted south.
     static func sheetCompensated(
-        _ position: MapCameraPosition,
+        _ position: TrackCameraPosition,
         sheetFraction: Double
-    ) -> MapCameraPosition {
+    ) -> TrackCameraPosition {
         guard sheetFraction > 0.05 && sheetFraction < 0.95 else { return position }
         guard let camera = position.camera else { return position }
 
@@ -323,7 +270,7 @@ enum MapCameraPresets {
             sheetFraction: sheetFraction
         )
 
-        return .camera(MapCamera(
+        return .camera(TrackCamera(
             centerCoordinate: CLLocationCoordinate2D(
                 latitude: camera.centerCoordinate.latitude - latShift,
                 longitude: camera.centerCoordinate.longitude

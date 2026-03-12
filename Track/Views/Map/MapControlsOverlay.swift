@@ -6,8 +6,8 @@
 //  recenter button, search pin banner, and selected route banner.
 //
 
+import CoreLocation
 import SwiftUI
-import MapKit
 
 /// Floating controls overlay displayed above the map.
 /// Contains 3D/2D toggle, recenter button, and context banners.
@@ -16,7 +16,7 @@ struct MapControlsOverlay: View {
     
     let viewModel: HomeViewModel
     let locationManager: LocationManager
-    @Binding var cameraPosition: MapCameraPosition
+    @Binding var cameraPosition: TrackCameraPosition
     @Binding var is3DMode: Bool
     @Binding var sheetDetent: PresentationDetent
     let currentMapCenter: CLLocationCoordinate2D?
@@ -260,7 +260,7 @@ struct MapControlsOverlay: View {
         MapControlsOverlay(
             viewModel: HomeViewModel(),
             locationManager: LocationManager(),
-            cameraPosition: .constant(AppTheme.MapConfig.initialPosition),
+            cameraPosition: .constant(.userLocation),
             is3DMode: .constant(false),
             sheetDetent: .constant(.fraction(0.4)),
             currentMapCenter: nil,

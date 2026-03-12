@@ -42,6 +42,8 @@ final class OfflineCacheManager: ObservableObject {
         static let cachedStations = "cached_stations"
         static let lirrShapes = "cached_lirr_shapes"
         static let mnrShapes = "cached_mnr_shapes"
+        static let subwayShapes = "cached_subway_shapes"
+        static let subwayShapesCachedAt = "cached_subway_shapes_timestamp"
     }
     
     // MARK: - Initialization
@@ -150,6 +152,28 @@ final class OfflineCacheManager: ObservableObject {
         return try? JSONDecoder().decode([CachedStation].self, from: data)
     }
     
+    // MARK: - Cache Subway Shapes
+
+    /// Cache subway line shapes for instant system map on next launch.
+    /// Written to UserDefaults after a successful /subway/shapes/all fetch.
+    func cacheSubwayShapes(_ response: AllSubwayLinesResponse) {
+        guard let data = try? JSONEncoder().encode(response) else { return }
+        userDefaults.set(data, forKey: CacheKey.subwayShapes)
+        userDefaults.set(Date(), forKey: CacheKey.subwayShapesCachedAt)
+    }
+
+    /// Get disk-cached subway shapes (nil if never cached).
+    func getCachedSubwayShapes() -> AllSubwayLinesResponse? {
+        guard let data = userDefaults.data(forKey: CacheKey.subwayShapes) else { return nil }
+        return try? JSONDecoder().decode(AllSubwayLinesResponse.self, from: data)
+    }
+
+    /// Whether the subway shapes disk cache is stale (> 24 hours old) or missing.
+    var isSubwayShapesCacheStale: Bool {
+        guard let ts = userDefaults.object(forKey: CacheKey.subwayShapesCachedAt) as? Date else { return true }
+        return Date().timeIntervalSince(ts) > 86_400  // 24 hours
+    }
+
     // MARK: - Cache Commuter Rail Shapes
     
     /// Cache LIRR line shapes for offline map display
@@ -203,6 +227,8 @@ final class OfflineCacheManager: ObservableObject {
         userDefaults.removeObject(forKey: CacheKey.cachedStations)
         userDefaults.removeObject(forKey: CacheKey.lirrShapes)
         userDefaults.removeObject(forKey: CacheKey.mnrShapes)
+        userDefaults.removeObject(forKey: CacheKey.subwayShapes)
+        userDefaults.removeObject(forKey: CacheKey.subwayShapesCachedAt)
         lastFetchTime = nil
     }
 }

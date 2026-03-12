@@ -10,6 +10,7 @@
 		256476532F3C5AB300762B65 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 256476522F3C5AB300762B65 /* WidgetKit.framework */; };
 		256476552F3C5AB300762B65 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 256476542F3C5AB300762B65 /* SwiftUI.framework */; };
 		256476662F3C5AB400762B65 /* TrackWidgetsExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 256476502F3C5AB300762B65 /* TrackWidgetsExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		25FD9F832F62D01F00BBA692 /* MapLibre in Frameworks */ = {isa = PBXBuildFile; productRef = 25A0ML022F5A0002003F3E86 /* MapLibre */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -107,6 +108,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				25FD9F832F62D01F00BBA692 /* MapLibre in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -147,6 +149,7 @@
 				25647AAA2F3C387B00762B65 /* Shared */,
 				256476512F3C5AB300762B65 /* Frameworks */,
 				256475442F3C387B00762B65 /* Products */,
+				25FD9F842F62D01F00BBA692 /* Recovered References */,
 			);
 			sourceTree = "<group>";
 		};
@@ -168,6 +171,14 @@
 				256476542F3C5AB300762B65 /* SwiftUI.framework */,
 			);
 			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		25FD9F842F62D01F00BBA692 /* Recovered References */ = {
+			isa = PBXGroup;
+			children = (
+				25A0SC012F5B0001003F3E86 /* Secrets.xcconfig */,
+			);
+			name = "Recovered References";
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */

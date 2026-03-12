@@ -15,8 +15,8 @@
 //  - DashboardView: Dashboard content with mode-specific views
 //
 
+import CoreLocation
 import SwiftUI
-import MapKit
 import WidgetKit
 
 struct HomeView: View {
@@ -28,7 +28,7 @@ struct HomeView: View {
     var locationManager: LocationManager
     @State private var sheetNavigator = SheetNavigator()
     @State private var sheetDetent: PresentationDetent = .fraction(0.4)
-    @State private var cameraPosition: MapCameraPosition = AppTheme.MapConfig.initialPosition
+    @State private var cameraPosition: TrackCameraPosition = .userLocation
     @State private var lastUpdated: Date?
     @State private var refreshTimer: Timer?
     @State private var vehiclePollTimer: Timer?
@@ -89,7 +89,7 @@ struct HomeView: View {
 
     /// Wraps a camera position with sheet-height compensation so the
     /// target coordinate appears above the bottom sheet, not behind it.
-    private func aboveSheet(_ position: MapCameraPosition) -> MapCameraPosition {
+    private func aboveSheet(_ position: TrackCameraPosition) -> TrackCameraPosition {
         MapCameraPresets.sheetCompensated(position, sheetFraction: sheetCoverFraction)
     }
     
@@ -156,29 +156,16 @@ struct HomeView: View {
         GeometryReader { geometry in
             ZStack {
                 // MARK: - Map Layer
-                if MapRendererConfig.useMapLibre {
-                    MapLibreTrackMapView(
-                        cameraPosition: $cameraPosition,
-                        viewModel: viewModel,
-                        locationManager: locationManager,
-                        showStations: $showStations,
-                        currentMapCenter: $currentMapCenter,
-                        currentMapDistance: $currentMapDistance,
-                        isDragSearchActive: isDragSearchActive,
-                        dragSearchSettledCenter: dragSearchSettledCenter
-                    )
-                } else {
-                    TrackMapView(
-                        cameraPosition: $cameraPosition,
-                        viewModel: viewModel,
-                        locationManager: locationManager,
-                        showStations: $showStations,
-                        currentMapCenter: $currentMapCenter,
-                        currentMapDistance: $currentMapDistance,
-                        isDragSearchActive: isDragSearchActive,
-                        dragSearchSettledCenter: dragSearchSettledCenter
-                    )
-                }
+                MapLibreTrackMapView(
+                    cameraPosition: $cameraPosition,
+                    viewModel: viewModel,
+                    locationManager: locationManager,
+                    showStations: $showStations,
+                    currentMapCenter: $currentMapCenter,
+                    currentMapDistance: $currentMapDistance,
+                    isDragSearchActive: isDragSearchActive,
+                    dragSearchSettledCenter: dragSearchSettledCenter
+                )
                 
                 // MARK: - Floating Controls
                 MapControlsOverlay(
@@ -971,9 +958,9 @@ struct HomeView: View {
         guard viewModel.selectedRouteId == nil else { return }
         
         guard let coordinate = locationManager.currentLocation?.coordinate else {
-            // No location yet — reset to the .userLocation position so MapKit
+            // No location yet — reset to the .userLocation position so the map
             // will auto-center once CoreLocation delivers a fix.
-            cameraPosition = AppTheme.MapConfig.initialPosition
+            cameraPosition = .userLocation
             return
         }
         

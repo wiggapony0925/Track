@@ -24,7 +24,7 @@ struct SubwayStationMarker: View, Equatable {
 
     /// Discrete zoom tier — only changes when crossing a zoom boundary,
     /// so MapKit skips diffing this view's body during continuous pan/zoom.
-    var zoomTier: TrackMapView.ZoomTier = .medium
+    var zoomTier: ZoomTier = .medium
 
     static func == (lhs: SubwayStationMarker, rhs: SubwayStationMarker) -> Bool {
         lhs.station == rhs.station && lhs.zoomTier == rhs.zoomTier

@@ -28,7 +28,6 @@
 //
 
 import CoreLocation
-import MapKit
 import MapLibre
 import SwiftUI
 import UIKit
@@ -47,7 +46,7 @@ struct MapLibreMapView: UIViewRepresentable {
 
     /// Camera position — synced bidirectionally so sheets/dashboards
     /// that read `$cameraPosition` still work.
-    @Binding var cameraPosition: MapCameraPosition
+    @Binding var cameraPosition: TrackCameraPosition
 
     /// Current map center coordinate (reported back on camera move).
     @Binding var currentMapCenter: CLLocationCoordinate2D?
@@ -97,7 +96,7 @@ struct MapLibreMapView: UIViewRepresentable {
     var trainVehicles: [TrainVehicle]
 
     /// Transfer connectors between station complexes.
-    var transferConnectors: [TrackMapView.TransferConnector]
+    var transferConnectors: [TransferConnector]
 
     /// Whether a route is currently selected (dims system map).
     var hasActiveRoute: Bool
@@ -283,7 +282,7 @@ struct MapLibreMapView: UIViewRepresentable {
                     pitch: pitch,
                     bearing: bearing
                 )
-                self.parent.cameraPosition = state.toMapCameraPosition()
+                self.parent.cameraPosition = state.toTrackCameraPosition()
 
                 if shouldShow != self.parent.showStations {
                     self.parent.showStations = shouldShow
@@ -535,8 +534,8 @@ struct MapLibreMapView: UIViewRepresentable {
                 labelLayer.minimumZoomLevel = 14
                 // Allow text overlap at very close zoom to show all labels
                 labelLayer.textAllowsOverlap = NSExpression(
-                    format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'linear', nil, %@)",
-                    [14: false, 16: true]
+                    format: "mgl_step:from:stops:($zoomLevel, false, %@)",
+                    [16: true]
                 )
                 style.addLayer(labelLayer)
             }

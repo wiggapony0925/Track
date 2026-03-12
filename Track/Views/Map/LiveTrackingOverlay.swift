@@ -17,7 +17,6 @@
 //
 
 import SwiftUI
-import MapKit
 
 /// The live tracking overlay shown during GO mode.
 /// Floats above the map as a compact bottom card that progressively
