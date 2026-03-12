@@ -240,30 +240,35 @@ struct MapLibreMapView: UIViewRepresentable {
 
         /// Syncs current MapLibre camera state back to the SwiftUI bindings.
         /// O(1) — just reads camera properties and writes to bindings.
+        /// Deferred to next run loop to avoid "modifying state during view update".
         private func syncCameraToBinding(_ mapView: MLNMapView) {
             shouldSyncCamera = false  // Prevent feedback loop
 
             let center = mapView.centerCoordinate
             let zoom = mapView.zoomLevel
             let distance = MapLibreCameraState.distanceFromZoom(zoom, at: center.latitude)
+            let pitch = Double(mapView.camera.pitch)
+            let bearing = mapView.direction
 
-            parent.currentMapCenter = center
-            parent.currentMapDistance = distance
-
-            // Update camera position binding for downstream consumers
-            let state = MapLibreCameraState(
-                center: center,
-                zoom: zoom,
-                pitch: Double(mapView.camera.pitch),
-                bearing: mapView.direction
-            )
-            parent.cameraPosition = state.toMapCameraPosition()
-
-            // Station visibility based on zoom
             let zoomThreshold = AppSettings.shared.stationVisibilityZoomMeters
             let shouldShow = distance < zoomThreshold
-            if shouldShow != parent.showStations {
-                parent.showStations = shouldShow
+
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.parent.currentMapCenter = center
+                self.parent.currentMapDistance = distance
+
+                let state = MapLibreCameraState(
+                    center: center,
+                    zoom: zoom,
+                    pitch: pitch,
+                    bearing: bearing
+                )
+                self.parent.cameraPosition = state.toMapCameraPosition()
+
+                if shouldShow != self.parent.showStations {
+                    self.parent.showStations = shouldShow
+                }
             }
         }
 
