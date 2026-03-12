@@ -41,6 +41,17 @@ router = APIRouter(tags=["subway"])
 # endpoint, otherwise FastAPI would match literal segments as a line_id.
 
 
+def _haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Great-circle distance in metres between two WGS84 points."""
+    R = 6_371_000.0
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = (math.sin(dlat / 2) ** 2
+         + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2))
+         * math.sin(dlon / 2) ** 2)
+    return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+
 def _simplify_polyline(
     coords: list[tuple[float, float]], tolerance: float = 0.0001
 ) -> list[tuple[float, float]]:
@@ -98,7 +109,7 @@ async def subway_shapes_all() -> AllSubwayLinesResponse:
     - Only direction-0 shapes are returned because northbound and southbound
       trace the same physical tracks — halving the polyline count.
     """
-    from app.services.mapping.subway_shapes import _load_route_shapes, _load_shapes, _unpack_coords
+    from app.services.mapping.subway_shapes import _load_route_shapes, _load_shapes, _unpack_coords, _load_shape_stops
 
     # Routes to skip: express/shuttle duplicates of parent lines
     skip_variants = {"6X", "7X", "FX", "FS", "GS", "SR"}
@@ -108,13 +119,26 @@ async def subway_shapes_all() -> AllSubwayLinesResponse:
 
     route_shapes = _load_route_shapes()
     shapes_data = _load_shapes()
+    shape_stops = _load_shape_stops()
+
+    # Track direction-1 shapes that cover unique stations.
+    # These will be appended AFTER the pipeline to avoid disrupting
+    # the trunk-group merge (adding large overlapping reverse-direction
+    # shapes can corrupt offsets for other routes in the same trunk).
+    def _station_id(sid: str) -> str:
+        """Strip platform suffix (N/S) to get the parent station ID."""
+        return sid[:-1] if sid and sid[-1] in ("N", "S") else sid
+
+    # Per-route: (line, shape_id) pairs from the opposite direction
+    dir1_extras: list[tuple[str, str]] = []
 
     for line in lines:
         direction_shapes = route_shapes.get(line)
         if not direction_shapes:
             continue
 
-        # Use only direction 0 (or whichever exists) — N and S trace the same tracks
+        # Use direction 0 (northbound) as primary — for most routes,
+        # northbound and southbound trace the same physical tracks.
         primary_dir = 0 if 0 in direction_shapes else min(direction_shapes.keys())
         shape_ids = direction_shapes[primary_dir]
 
@@ -123,10 +147,6 @@ async def subway_shapes_all() -> AllSubwayLinesResponse:
             shape_buf = shapes_data.get(shape_id)
             if shape_buf:
                 raw = _unpack_coords(shape_buf)
-                # Pass full-fidelity GTFS geometry to the offset pipeline.
-                # The v3 pipeline works in meter-space and handles the full
-                # point density efficiently.  iOS applies its own RDP at
-                # ~7 m for rendering performance—no server-side pre-simplification needed.
                 polylines_raw.append(raw)
 
         if not polylines_raw:
@@ -146,10 +166,174 @@ async def subway_shapes_all() -> AllSubwayLinesResponse:
             polylines=encoded,
         ))
 
+        # Check direction 1 for shapes covering unique stations
+        covered_stations: set[str] = set()
+        for sid in shape_ids:
+            covered_stations.update(_station_id(s) for s in shape_stops.get(sid, []))
+
+        other_dir = 1 - primary_dir
+        if other_dir in direction_shapes:
+            for sid in direction_shapes[other_dir]:
+                other_stations = {_station_id(s) for s in shape_stops.get(sid, [])}
+                unique = other_stations - covered_stations
+                if len(unique) >= 2:
+                    dir1_extras.append((line, sid))
+                    covered_stations.update(other_stations)
+
     # Apply topological graph pipeline so co-located trunk groups
     # (e.g. blue A/C/E + green 4/5/6 on Lex Ave) render as parallel
     # stripes with proper lane ordering and circular arc fillets.
     overlays = apply_topological_offsets(overlays)
+
+    # ── Post-pipeline: Append direction-1 branch extensions ──
+    # These shapes cover stations not reachable by any direction-0 shape
+    # (e.g. R train south of 36th St to Bay Ridge).  They're added AFTER
+    # the pipeline to avoid disrupting the trunk-group merge.  The shapes
+    # are reversed (southbound → northbound order) and appended as extra
+    # encoded polylines to the relevant route's overlay.
+    if dir1_extras:
+        overlay_map: dict[str, SubwayLineOverlay] = {o.route_id: o for o in overlays}
+        for line, sid in dir1_extras:
+            shape_buf = shapes_data.get(sid)
+            if not shape_buf:
+                continue
+            raw = list(reversed(_unpack_coords(shape_buf)))
+            enc = _encode_polyline(raw)
+            if line in overlay_map:
+                overlay_map[line].polylines.append(enc)
+                TrackLogger.info(f"[Dir1] Added reverse shape {sid} to {line} ({len(raw)} pts)")
+
+    # ── Post-pipeline: Stop-alignment supplemental polylines ──
+    # The trunk-group merge replaces per-route GTFS coordinates with a
+    # merged baseline.  At locations where routes in the same trunk group
+    # follow slightly different physical tracks (e.g. express / local
+    # divergence, junction approaches), the merged baseline can be 30-100 m
+    # from the stop even though the route's raw GTFS shape passes within 1 m.
+    # Fix: for each stop >STOP_ALIGN_THRESHOLD from the output polylines,
+    # extract a short segment from the raw GTFS shape and append it.
+    _STOP_ALIGN_THRESHOLD = 30.0  # metres — trigger supplemental polyline
+    _STOP_RAW_QUALIFY = 10.0       # metres — raw shape must be within this
+    _STOP_EXTRACT_WINDOW = 25      # vertices ± around nearest point on raw shape
+
+    from app.services.mapping.subway_shapes import get_stops_for_route
+    from app.services.transit.station_lookup import get_stop_info
+
+    overlay_map_align: dict[str, SubwayLineOverlay] = {o.route_id: o for o in overlays}
+    align_count = 0
+
+    for ov in overlays:
+        route_id = ov.route_id
+
+        # Collect this route's GTFS stop positions
+        stop_ids = get_stops_for_route(route_id)
+        if not stop_ids:
+            continue
+
+        stop_positions: list[tuple[str, float, float]] = []
+        seen_parents: set[str] = set()
+        for sid in stop_ids:
+            parent = _station_id(sid)
+            if parent in seen_parents:
+                continue
+            seen_parents.add(parent)
+            info = get_stop_info(sid)
+            if info is None:
+                info = get_stop_info(parent)
+            if info is not None:
+                stop_positions.append((sid, info.lat, info.lon))
+
+        if not stop_positions:
+            continue
+
+        # Decode current output polylines for distance checks
+        decoded_polys: list[list[tuple[float, float]]] = [
+            _decode_polyline(e) for e in ov.polylines
+        ]
+
+        # Pre-flatten all output vertices for fast min-distance
+        flat_out: list[tuple[float, float]] = []
+        for poly in decoded_polys:
+            flat_out.extend(poly)
+
+        # Collect all raw shapes for this route (both directions)
+        direction_shapes_r = route_shapes.get(route_id, {})
+        raw_shape_list: list[list[tuple[float, float]]] = []
+        for _dir_id, sids in direction_shapes_r.items():
+            for sid in sids:
+                buf = shapes_data.get(sid)
+                if buf:
+                    raw_shape_list.append(_unpack_coords(buf))
+        if not raw_shape_list:
+            continue
+
+        # Find stops that need supplemental polylines
+        for sid, slat, slon in stop_positions:
+            # Distance to output polylines
+            best_out = float("inf")
+            for olat, olon in flat_out:
+                d = _haversine_m(slat, slon, olat, olon)
+                if d < best_out:
+                    best_out = d
+                if d < 5.0:
+                    break
+            if best_out <= _STOP_ALIGN_THRESHOLD:
+                continue
+
+            # Check raw shapes for this stop
+            best_raw = float("inf")
+            best_raw_shape: list[tuple[float, float]] | None = None
+            best_raw_idx = 0
+            for raw_coords in raw_shape_list:
+                for i, (rlat, rlon) in enumerate(raw_coords):
+                    d = _haversine_m(slat, slon, rlat, rlon)
+                    if d < best_raw:
+                        best_raw = d
+                        best_raw_shape = raw_coords
+                        best_raw_idx = i
+                    if d < 1.0:
+                        break
+                if best_raw < 1.0:
+                    break
+
+            if best_raw > _STOP_RAW_QUALIFY or best_raw_shape is None:
+                # Raw GTFS also doesn't cover this stop closely.
+                # If the shape is within 150 m (truncated terminus or sparse
+                # vertex gap — e.g. 96th St 2nd Ave, Arthur Kill SIR),
+                # synthesize a short connecting polyline from the nearest
+                # raw shape vertex through the stop.
+                _GTFS_GAP_MAX = 150.0
+                if best_raw_shape is not None and best_raw < _GTFS_GAP_MAX:
+                    n = len(best_raw_shape)
+                    seg_start = max(0, best_raw_idx - 3)
+                    seg_end = min(n, best_raw_idx + 4)
+                    segment = list(best_raw_shape[seg_start:seg_end])
+                    # Append/prepend the stop position to extend through it
+                    if best_raw_idx <= 3:
+                        # Stop is near the start → prepend stop
+                        segment.insert(0, (slat, slon))
+                    else:
+                        # Stop is near the end → append stop
+                        segment.append((slat, slon))
+                    if len(segment) >= 2:
+                        ov.polylines.append(_encode_polyline(segment))
+                        align_count += 1
+                continue
+
+            # Extract a segment from the raw shape centred on the stop
+            n = len(best_raw_shape)
+            seg_start = max(0, best_raw_idx - _STOP_EXTRACT_WINDOW)
+            seg_end = min(n, best_raw_idx + _STOP_EXTRACT_WINDOW + 1)
+            segment = best_raw_shape[seg_start:seg_end]
+
+            if len(segment) >= 2:
+                ov.polylines.append(_encode_polyline(segment))
+                align_count += 1
+
+    if align_count:
+        TrackLogger.info(
+            f"[StopAlign] Added {align_count} supplemental polylines "
+            f"for stops >30 m from trunk baseline"
+        )
 
     total_polys = sum(len(o.polylines) for o in overlays)
     TrackLogger.info(f"Subway shapes/all: {len(overlays)} lines, {total_polys} polylines returned")

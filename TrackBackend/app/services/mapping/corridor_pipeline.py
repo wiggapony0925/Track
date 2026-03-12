@@ -215,6 +215,18 @@ _GRID_CELL_M: float = 100.0
 # genuine branch stub.  Short uncovered runs (5-12 pts) are GPS drift.
 _MIN_BRANCH_RUN: int = 8
 
+# Maximum snap distance (meters) when connecting a stub extension point
+# back to the trunk baseline.  Prevents teleporting to a distant trunk
+# point when the nearest trunk coord is actually kilometres away.
+_MAX_SNAP_DIST_M: float = 200.0
+
+# Maximum gap (meters) allowed between consecutive vertices in a branch
+# stub.  Stubs with jumps exceeding this are considered corrupted and
+# discarded.  Set high enough to allow natural GTFS sparsity (tunnels,
+# water crossings can have 1-5 km between encoded points) while still
+# catching teleport artifacts from bad snaps.
+_MAX_STUB_GAP_M: float = 6000.0
+
 
 def _group_and_merge_trunks(
     overlays: list,
@@ -322,17 +334,22 @@ def _unify_via_grid(
         covered_count = sum(covered)
         ratio = covered_count / n
 
-        # >90% covered → near-duplicate, skip
-        if ratio > 0.90:
-            continue
-
         # <15% covered → unique corridor, keep whole
         if ratio < 0.15:
             kept.append(seg_line)
             _add_line(seg_line)
             continue
 
-        # Partial overlap → extract uncovered branch stubs
+        # Partial or high overlap → extract uncovered branch stubs.
+        # NOTE: we do NOT skip >90%-covered lines.  A line can be 93%
+        # covered and still have a genuine 7% branch (e.g. A train's
+        # Lefferts Blvd spur or Rockaway Park branch).  Instead,
+        # we always look for uncovered runs and extract them.
+        #
+        # For high-coverage lines (>85%), require longer minimum runs
+        # to avoid extracting GPS drift as false branches.
+        min_run = _MIN_BRANCH_RUN if ratio <= 0.85 else max(_MIN_BRANCH_RUN, 20)
+
         runs: list[tuple[int, int]] = []
         run_start: int | None = None
 
@@ -342,11 +359,11 @@ def _unify_via_grid(
                     run_start = i
             else:
                 if run_start is not None:
-                    if i - run_start >= _MIN_BRANCH_RUN:
+                    if i - run_start >= min_run:
                         runs.append((run_start, i - 1))
                     run_start = None
 
-        if run_start is not None and n - run_start >= _MIN_BRANCH_RUN:
+        if run_start is not None and n - run_start >= min_run:
             runs.append((run_start, n - 1))
 
         if not runs:
@@ -363,34 +380,61 @@ def _unify_via_grid(
                 continue
 
             # Extend a few points into covered zone for seamless connection.
-            # Snap extension points to nearest trunk coordinate.
+            # Snap extension points to nearest trunk coordinate ONLY if
+            # a trunk point is within _MAX_SNAP_DIST_M.  Otherwise use
+            # the original branch coordinate to avoid teleporting.
             ext_start = max(0, r_start - 5)
             ext_end = min(n - 1, r_end + 5)
+
+            snap_limit_sq = _MAX_SNAP_DIST_M ** 2
 
             stub_coords: list[tuple[float, float]] = []
             for j in range(ext_start, ext_end + 1):
                 if covered[j] and trunk_coords:
-                    # Snap to nearest trunk point
+                    # Distance-bounded snap to nearest trunk point
                     px, py = coords[j]
                     best_dist = float("inf")
-                    best_pt = coords[j]
+                    best_pt: tuple[float, float] | None = None
                     for tx, ty in trunk_coords:
                         d = (tx - px) ** 2 + (ty - py) ** 2
                         if d < best_dist:
                             best_dist = d
                             best_pt = (tx, ty)
-                    stub_coords.append(best_pt)
+                    # Only snap if within range; otherwise keep original
+                    if best_pt is not None and best_dist <= snap_limit_sq:
+                        stub_coords.append(best_pt)
+                    else:
+                        stub_coords.append(coords[j])
                 else:
                     stub_coords.append(coords[j])
 
             if len(stub_coords) >= 2:
                 stub_line = LineString(stub_coords)
                 if stub_line.length >= MIN_PATH_LENGTH:
-                    kept.append(stub_line)
-                    _add_line(stub_line)
+                    # Validate: reject stubs with huge internal jumps
+                    # that indicate a corrupted snap or bad geometry.
+                    valid = _validate_stub(stub_coords)
+                    if valid:
+                        kept.append(stub_line)
+                        _add_line(stub_line)
 
     # Chain-merge nearby endpoints
     return _chain_merge(kept, MERGE_GAP_M)
+
+
+def _validate_stub(coords: list[tuple[float, float]]) -> bool:
+    """Reject branch stubs that contain implausibly large jumps.
+
+    A jump > _MAX_STUB_GAP_M between consecutive vertices indicates that
+    the snap-to-trunk created a teleport or the raw GTFS geometry has a
+    water crossing / tunnel leap that shouldn't appear as a stub.
+    """
+    for i in range(1, len(coords)):
+        dx = coords[i][0] - coords[i - 1][0]
+        dy = coords[i][1] - coords[i - 1][1]
+        if dx * dx + dy * dy > _MAX_STUB_GAP_M ** 2:
+            return False
+    return True
 
 
 def _chain_merge(
