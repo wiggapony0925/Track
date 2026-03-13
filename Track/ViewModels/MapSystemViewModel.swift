@@ -20,6 +20,7 @@ final class MapSystemViewModel {
     private struct SharedSnapshot {
         let systemMap: [CachedTransitLine]
         let offsetSubwayLines: [OffsetSubwayLine]
+        let trunkPolylines: [TrunkGroupPolylines]?
         let flattenedSubway: [FlattenedMapPolyline]
         let flattenedCommuter: [FlattenedMapPolyline]
         let stations: [CachedSubwayStation]
@@ -135,6 +136,12 @@ final class MapSystemViewModel {
     var cachedSystemMap: [CachedTransitLine] = []
     var cachedOffsetSubwayLines: [OffsetSubwayLine] = []
 
+    /// Pre-merged trunk-level polylines from the server's corridor pipeline.
+    /// When present, `computeFlattenedPolylinesAsync()` renders these directly
+    /// instead of re-pooling per-route GTFS shapes — eliminating duplicate
+    /// stacked lines and ensuring polylines align with snapped station dots.
+    var cachedTrunkPolylines: [TrunkGroupPolylines]?
+
     /// Pre-computed flattened subway polylines for the system map view.
     /// Uses stable IDs and avoids nested ForEach for optimal MapLibre rendering.
     /// A single fine-detail geometry set is used at ALL zoom levels.
@@ -220,6 +227,7 @@ final class MapSystemViewModel {
         if let snapshot = Self.sharedSnapshot {
             cachedSystemMap = snapshot.systemMap
             cachedOffsetSubwayLines = snapshot.offsetSubwayLines
+            cachedTrunkPolylines = snapshot.trunkPolylines
             flattenedSubwayPolylines = snapshot.flattenedSubway
             flattenedCommuterRailPolylines = snapshot.flattenedCommuter
             trunkRouteLabels = snapshot.routeLabels
@@ -242,6 +250,7 @@ final class MapSystemViewModel {
             Self.sharedSnapshot = SharedSnapshot(
                 systemMap: cachedSystemMap,
                 offsetSubwayLines: cachedOffsetSubwayLines,
+                trunkPolylines: cachedTrunkPolylines,
                 flattenedSubway: flattenedSubwayPolylines,
                 flattenedCommuter: flattenedCommuterRailPolylines,
                 stations: cachedStations,
@@ -266,6 +275,7 @@ final class MapSystemViewModel {
         if let snapshot = Self.sharedSnapshot, !snapshot.systemMap.isEmpty {
             cachedSystemMap = snapshot.systemMap
             cachedOffsetSubwayLines = snapshot.offsetSubwayLines
+            cachedTrunkPolylines = snapshot.trunkPolylines
             flattenedSubwayPolylines = snapshot.flattenedSubway
             flattenedCommuterRailPolylines = snapshot.flattenedCommuter
             trunkRouteLabels = snapshot.routeLabels
@@ -344,6 +354,7 @@ final class MapSystemViewModel {
             message: "Disk cache → \(subwayCount) subway + \(commuterCount) commuter rail lines (instant render)")
 
         self.cachedSystemMap = decoded
+        self.cachedTrunkPolylines = subwayResponse.trunkPolylines
         self.computeSubwayOffsets()
         return true
     }
@@ -376,6 +387,7 @@ final class MapSystemViewModel {
 
             // Show subway lines immediately before commuter rail arrives
             self.cachedSystemMap = decoded
+            self.cachedTrunkPolylines = response.trunkPolylines
             self.computeSubwayOffsets()
 
             // Now fold in LIRR and MNR results (already fetched in parallel)
@@ -660,6 +672,7 @@ final class MapSystemViewModel {
         _ = AppSettings.shared.polylineSimplificationTolerance
 
         // Build a lookup: route ID → index into cachedOffsetSubwayLines
+        // (used for route-label spatial attribution regardless of trunk path)
         var linesByRouteId: [String: OffsetSubwayLine] = [:]
         for line in cachedOffsetSubwayLines {
             linesByRouteId[line.id.uppercased()] = line
@@ -677,40 +690,66 @@ final class MapSystemViewModel {
         var colorGroupResults: [ColorGroupResult] = []
         var originalSubwayPoints = 0
 
-        for (groupIndex, group) in Self.trunkGroups.enumerated() {
-            var pooledSegments: [[CLLocationCoordinate2D]] = []
-            for routeId in group {
-                if let line = linesByRouteId[routeId.uppercased()] ?? linesByRouteId[routeId] {
-                    let valid = line.coordinates.filter { $0.count >= 2 }
-                    pooledSegments.append(contentsOf: valid)
+        // When the server provides pre-merged trunk polylines, use them
+        // directly — they are the Phase 1+3 output of the corridor pipeline
+        // and are the SAME geometry that station dots were snapped to.
+        // This eliminates overlapping same-colour lines and ensures polylines
+        // pass through station positions.
+        let useTrunkPolylines = cachedTrunkPolylines != nil && !(cachedTrunkPolylines!.isEmpty)
+
+        if useTrunkPolylines, let trunkGroups = cachedTrunkPolylines {
+            for trunk in trunkGroups {
+                let decoded = trunk.decodedPolylines.filter { $0.count >= 2 }
+                guard !decoded.isEmpty else { continue }
+                originalSubwayPoints += decoded.reduce(0) { $0 + $1.count }
+
+                let groupColor = SubwayRoutesData.color(for: trunk.routeIds.first ?? "")
+
+                AppLogger.shared.log(
+                    "POLYLINE_TRUNK",
+                    message: "[\(trunk.routeIds.joined(separator: "/"))]: \(decoded.count) trunk polylines (server-merged)")
+
+                colorGroupResults.append(ColorGroupResult(
+                    groupIndex: trunk.trunkIndex,
+                    routeIds: trunk.routeIds,
+                    color: groupColor,
+                    polylines: decoded
+                ))
+            }
+        } else {
+            // Fallback: pool per-route GTFS shapes and unify client-side
+            for (groupIndex, group) in Self.trunkGroups.enumerated() {
+                var pooledSegments: [[CLLocationCoordinate2D]] = []
+                for routeId in group {
+                    if let line = linesByRouteId[routeId.uppercased()] ?? linesByRouteId[routeId] {
+                        let valid = line.coordinates.filter { $0.count >= 2 }
+                        pooledSegments.append(contentsOf: valid)
+                    }
                 }
+
+                guard !pooledSegments.isEmpty else { continue }
+                originalSubwayPoints += pooledSegments.reduce(0) { $0 + $1.count }
+
+                let groupColor = SubwayRoutesData.color(for: group[0])
+
+                let unified = unifyTrainPolylines(pooledSegments)
+                    .filter { $0.count >= 2 }
+
+                let activeRoutes = group.filter { routeId in
+                    linesByRouteId[routeId.uppercased()] != nil || linesByRouteId[routeId] != nil
+                }
+
+                AppLogger.shared.log(
+                    "POLYLINE_UNIFY",
+                    message: "[\(activeRoutes.joined(separator: "/"))]: \(pooledSegments.count) segments → \(unified.count) polylines (trunk + branch stubs)")
+
+                colorGroupResults.append(ColorGroupResult(
+                    groupIndex: groupIndex,
+                    routeIds: activeRoutes,
+                    color: groupColor,
+                    polylines: unified
+                ))
             }
-
-            guard !pooledSegments.isEmpty else { continue }
-            originalSubwayPoints += pooledSegments.reduce(0) { $0 + $1.count }
-
-            let groupColor = SubwayRoutesData.color(for: group[0])
-
-            // Unify same-color segments into one trunk + branch stubs.
-            // Simplification and smoothing are deferred to Phase 2 so each
-            // zoom tier gets its own appropriate level of detail.
-            let unified = unifyTrainPolylines(pooledSegments)
-                .filter { $0.count >= 2 }
-
-            let activeRoutes = group.filter { routeId in
-                linesByRouteId[routeId.uppercased()] != nil || linesByRouteId[routeId] != nil
-            }
-
-            AppLogger.shared.log(
-                "POLYLINE_UNIFY",
-                message: "[\(activeRoutes.joined(separator: "/"))]: \(pooledSegments.count) segments → \(unified.count) polylines (trunk + branch stubs)")
-
-            colorGroupResults.append(ColorGroupResult(
-                groupIndex: groupIndex,
-                routeIds: activeRoutes,
-                color: groupColor,
-                polylines: unified
-            ))
         }
 
         // Yield to let the map render whatever data is already available

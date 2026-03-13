@@ -87,6 +87,37 @@ struct SubwayLineOverlay: Codable, Identifiable {
 /// Response containing all subway lines for the system map.
 struct AllSubwayLinesResponse: Codable {
     let lines: [SubwayLineOverlay]
+    /// Pre-merged trunk-level polylines from the corridor pipeline.
+    /// When present, the client renders these directly instead of pooling
+    /// per-route GTFS shapes — eliminating duplicate stacked lines and
+    /// ensuring polylines pass through snapped station positions.
+    let trunkPolylines: [TrunkGroupPolylines]?
+
+    enum CodingKeys: String, CodingKey {
+        case lines
+        case trunkPolylines = "trunk_polylines"
+    }
+}
+
+/// Pre-merged polylines for one MTA trunk colour group.
+/// Produced by the corridor pipeline's Phase 1 (merge) + Phase 3 (offset).
+struct TrunkGroupPolylines: Codable {
+    let trunkIndex: Int
+    let colorHex: String
+    let routeIds: [String]
+    let polylines: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case trunkIndex = "trunk_index"
+        case colorHex = "color_hex"
+        case routeIds = "route_ids"
+        case polylines
+    }
+
+    /// Decodes polylines on demand.
+    var decodedPolylines: [[CLLocationCoordinate2D]] {
+        polylines.map { decodePolyline($0) }
+    }
 }
 
 /// Lightweight overlay for drawing a single commuter rail line on the map.

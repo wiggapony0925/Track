@@ -1147,11 +1147,58 @@ def _transfer_offsets_to_route(
 # ═══════════════════════════════════════════════════════════════════════════════
 
 _processed_stops_cache: list[dict] | None = None
+_trunk_offset_paths_cache: dict[int, list[LineString]] | None = None
 
 
 def get_processed_stops() -> list[dict]:
     """Return the most recently computed snapped stop positions."""
     return _processed_stops_cache or []
+
+
+def get_trunk_polylines() -> list[dict]:
+    """Export trunk-level merged+offset polylines for the system map.
+
+    Returns a list of dicts, one per trunk group that has geometry:
+      { "trunk_index": int, "color_hex": str, "route_ids": [str], "polylines": [str] }
+
+    These are the authoritative polylines for the system map — each trunk
+    group produces ONE set of continuous polylines (trunk + branch stubs)
+    with corridor offsets already applied.  The client should render these
+    directly rather than pooling per-route GTFS shapes.
+    """
+    from app.routers.subway import get_subway_color
+
+    paths = _trunk_offset_paths_cache
+    if not paths:
+        return []
+
+    result: list[dict] = []
+    for trunk_idx, line_strings in paths.items():
+        if trunk_idx < 0 or trunk_idx >= len(TRUNK_GROUPS):
+            continue
+        group = TRUNK_GROUPS[trunk_idx]
+        color = get_subway_color(group[0])
+
+        encoded: list[str] = []
+        for ls in line_strings:
+            coords_m = list(ls.coords)
+            if len(coords_m) < 2:
+                continue
+            try:
+                coords_wgs = project_to_wgs84(coords_m)
+                encoded.append(encode_polyline(coords_wgs))
+            except Exception:
+                continue
+
+        if encoded:
+            result.append({
+                "trunk_index": trunk_idx,
+                "color_hex": color,
+                "route_ids": group,
+                "polylines": encoded,
+            })
+
+    return result
 
 
 def _process_stop_positions(
@@ -1348,7 +1395,8 @@ def apply_topological_offsets(
             trunk_offset_paths[trunk_idx] = offset_paths
 
     # ── Phase 5: Stop processing ──
-    global _processed_stops_cache
+    global _processed_stops_cache, _trunk_offset_paths_cache
+    _trunk_offset_paths_cache = trunk_offset_paths
     try:
         _processed_stops_cache = _process_stop_positions(trunk_offset_paths)
     except Exception as exc:

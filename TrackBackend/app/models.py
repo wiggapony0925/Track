@@ -208,10 +208,27 @@ class SubwayLineOverlay(BaseModel):
     polylines: list[str]
 
 
+class TrunkGroupPolylines(BaseModel):
+    """Pre-merged polylines for one MTA trunk colour group.
+
+    Produced by the corridor pipeline's Phase 1 (merge) + Phase 3 (offset).
+    These are the authoritative geometry for the system map — one set of
+    continuous polylines per colour group (e.g. one blue trunk + branch stubs
+    for A/C/E).  The iOS client renders these directly, avoiding the need to
+    re-merge overlapping per-route GTFS polylines.
+    """
+
+    trunk_index: int          # 0-10 matching TRUNK_GROUPS order
+    color_hex: str
+    route_ids: list[str]      # All routes in this trunk group
+    polylines: list[str]      # Encoded polylines (merged trunk + branches)
+
+
 class AllSubwayLinesResponse(BaseModel):
     """All subway line overlays for drawing the full system map."""
 
     lines: list[SubwayLineOverlay]
+    trunk_polylines: list[TrunkGroupPolylines] = []  # Pre-merged trunk geometry
 
 
 class SubwayStation(BaseModel):

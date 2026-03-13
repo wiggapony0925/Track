@@ -21,13 +21,14 @@ from app.models import (
     SubwayLineOverlay,
     SubwayStation,
     TrackArrival,
+    TrunkGroupPolylines,
 )
 from app.services.gtfs.data_cleaner import get_arrivals_for_line
 from app.services.mapping.subway_shapes import get_all_subway_stations, get_subway_route_shape, get_subway_service_type
 from app.services.transit.station_lookup import get_nearby_stop_ids, get_stop_info
 from app.utils.logger import TrackLogger
 from app.utils.polyline_utils import decode_polyline as _decode_polyline, encode_polyline as _encode_polyline, densify_wgs84 as _densify_wgs84
-from app.services.mapping.corridor_pipeline import apply_topological_offsets, get_processed_stops
+from app.services.mapping.corridor_pipeline import apply_topological_offsets, get_processed_stops, get_trunk_polylines, ROUTE_TO_TRUNK
 from app.utils.transit_utils import (
     clean_route_id,
     get_all_subway_lines,
@@ -174,14 +175,26 @@ async def subway_shapes_all() -> AllSubwayLinesResponse:
     # stripes with proper lane ordering and circular arc fillets.
     overlays = apply_topological_offsets(overlays)
 
+    # ── Export trunk-level merged polylines ──
+    # These are the Phase 1+3 output: one set of continuous polylines
+    # per trunk colour group with corridor offsets applied.  The client
+    # uses these directly for rendering, avoiding double-stacked lines
+    # from per-route GTFS shapes with slightly different GPS traces.
+    trunk_polys_raw = get_trunk_polylines()
+
     # ── Post-pipeline: Append direction-1 branch extensions ──
     # These shapes cover stations not reachable by any direction-0 shape
     # (e.g. R train south of 36th St to Bay Ridge).  They're added AFTER
     # the pipeline to avoid disrupting the trunk-group merge.  The shapes
     # are reversed (southbound → northbound order) and appended as extra
-    # encoded polylines to the relevant route's overlay.
+    # encoded polylines to the relevant route's overlay AND to the trunk
+    # polylines so the client gets the complete geometry.
     if dir1_extras:
         overlay_map: dict[str, SubwayLineOverlay] = {o.route_id: o for o in overlays}
+        # Build a mutable lookup for trunk polylines
+        trunk_poly_map: dict[int, list[str]] = {
+            tp["trunk_index"]: list(tp["polylines"]) for tp in trunk_polys_raw
+        }
         for line, sid in dir1_extras:
             shape_buf = shapes_data.get(sid)
             if not shape_buf:
@@ -191,10 +204,29 @@ async def subway_shapes_all() -> AllSubwayLinesResponse:
             if line in overlay_map:
                 overlay_map[line].polylines.append(enc)
                 TrackLogger.info(f"[Dir1] Added reverse shape {sid} to {line} ({len(raw)} pts)")
+            # Also append to trunk polylines
+            trunk_idx = ROUTE_TO_TRUNK.get(line)
+            if trunk_idx is not None:
+                if trunk_idx not in trunk_poly_map:
+                    trunk_poly_map[trunk_idx] = []
+                trunk_poly_map[trunk_idx].append(enc)
+        # Update the raw trunk polys with dir-1 additions
+        for tp in trunk_polys_raw:
+            ti = tp["trunk_index"]
+            if ti in trunk_poly_map:
+                tp["polylines"] = trunk_poly_map[ti]
+
+    trunk_polylines = [
+        TrunkGroupPolylines(**tp) for tp in trunk_polys_raw
+    ]
 
     total_polys = sum(len(o.polylines) for o in overlays)
-    TrackLogger.info(f"Subway shapes/all: {len(overlays)} lines, {total_polys} polylines returned")
-    return AllSubwayLinesResponse(lines=overlays)
+    total_trunk = sum(len(tp.polylines) for tp in trunk_polylines)
+    TrackLogger.info(
+        f"Subway shapes/all: {len(overlays)} lines, {total_polys} per-route polylines, "
+        f"{len(trunk_polylines)} trunk groups, {total_trunk} trunk polylines"
+    )
+    return AllSubwayLinesResponse(lines=overlays, trunk_polylines=trunk_polylines)
 
 
 @router.get("/subway/stations/all", response_model=AllSubwayStationsResponse)
