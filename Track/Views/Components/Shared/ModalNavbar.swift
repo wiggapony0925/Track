@@ -99,31 +99,35 @@ struct ModeFilterStrip: View {
     var body: some View {
         HStack(spacing: 0) {
             ForEach(TransportMode.allCases, id: \.self) { mode in
-                Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                        selectedMode = mode
-                    }
-                    HapticManager.impact(.light)
-                } label: {
-                    Image(systemName: mode.icon)
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(selectedMode == mode ? .white : AppTheme.Colors.textSecondary)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 34)
-                        .background(
-                            selectedMode == mode
-                                ? modeColor(for: mode)
-                                : Color.clear
-                        )
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                }
-                .accessibilityLabel(mode.label)
-                .accessibilityAddTraits(selectedMode == mode ? .isSelected : [])
+                modeButton(for: mode)
             }
         }
         .padding(4)
         .background(AppTheme.Colors.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func modeButton(for mode: TransportMode) -> some View {
+        let isActive: Bool = selectedMode == mode
+        let fgColor: Color = isActive ? .white : AppTheme.Colors.textSecondary
+        let bgColor: Color = isActive ? modeColor(for: mode) : Color.clear
+        let traits: AccessibilityTraits = isActive ? .isSelected : []
+        return Button {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                selectedMode = mode
+            }
+            HapticManager.impact(.light)
+        } label: {
+            Image(systemName: mode.icon)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundColor(fgColor)
+                .frame(maxWidth: .infinity)
+                .frame(height: 34)
+                .background(bgColor)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .accessibilityLabel(mode.label)
+        .accessibilityAddTraits(traits)
     }
     
     private func modeColor(for mode: TransportMode) -> Color {

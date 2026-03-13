@@ -45,231 +45,35 @@ struct NearbyTransitRow: View {
         return false
     }
 
+    private var rowBackgroundColor: Color {
+        if isMapHighlighted { return AppTheme.Colors.mtaBlue.opacity(0.15) }
+        if isSelected { return AppTheme.Colors.mtaBlue.opacity(0.1) }
+        return AppTheme.Colors.cardBackground
+    }
+
+    private var rowBorderColor: Color {
+        if isMapHighlighted { return AppTheme.Colors.mtaBlue }
+        if isSelected { return AppTheme.Colors.mtaBlue }
+        return Color.clear
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 14) {
-                // MARK: Route Badge (Larger & More Prominent)
-                RouteBadge(
-                    routeID: arrival.displayName,
-                    size: .custom(54, 22),
-                    isBus: arrival.isBus,
-                    mode: arrival.mode
-                )
-                .shadow(color: .black.opacity(0.15), radius: 3, x: 0, y: 2)
-                .accessibilityHidden(true)
-
-                // MARK: Station & Destination Info
-                VStack(alignment: .leading, spacing: 4) {
-                    // Station name
-                    Text(arrival.stopName)
-                        .font(.custom("Helvetica-Bold", size: 17))
-                        .foregroundColor(AppTheme.Colors.textPrimary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
-
-                    // Direction with arrow
-                    HStack(spacing: 4) {
-                        Image(systemName: "arrow.right")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(AppTheme.Colors.textSecondary)
-
-                        Text(shortDirectionLabel(arrival.destination ?? arrival.direction))
-                            .font(.custom("Helvetica-Bold", size: 14))
-                            .foregroundColor(AppTheme.Colors.textSecondary)
-                            .lineLimit(1)
-                    }
-
-                    // Distance (if available) or mode type
-                    if let stopLat = arrival.stopLat, let stopLon = arrival.stopLon {
-                        if let userLocation = userLocation {
-                            let distance = userLocation.distance(
-                                from: CLLocation(latitude: stopLat, longitude: stopLon)
-                            )
-                            HStack(spacing: 4) {
-                                Image(systemName: "figure.walk")
-                                    .font(.system(size: 10, weight: .medium))
-                                Text(formatDistance(distance))
-                                    .font(.system(size: 12, weight: .medium))
-                            }
-                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.8))
-                        }
-                    } else {
-                        Text(
-                            arrival.isLIRR
-                                ? "LIRR"
-                                : arrival.isMNR ? "Metro-North" : arrival.isBus ? "Bus" : "Subway"
-                        )
-                        .font(.system(size: 11, weight: .semibold))
-                        .textCase(.uppercase)
-                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
-                    }
-                }
+                leftBadgeAndInfo
 
                 Spacer(minLength: 8)
 
                 // MARK: Right Side (Time + Status)
-                VStack(alignment: .trailing, spacing: 6) {
-                    // Minutes countdown
-                    if arrival.isPlaceholder {
-                        // Backend backfill placeholder — should not normally
-                        // render (filtered by RouteDetailSheet) but guard
-                        // against it leaking through.
-                        Image(systemName: "clock")
-                            .font(.system(size: 20, weight: .medium))
-                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.4))
-                    } else {
-                        // Smart countdown: uses vehicle position + polyline when
-                        // a provider is set, falls back to arrivalTs → static minutesAway.
-                        TimelineView(.periodic(from: .now, by: 1.0)) { _ in
-                            let eta: SmartETA = resolvedETA(for: arrival)
-                            let mins = eta.minutesRemaining
-                            // Never show "Now" for a trip that's only scheduled
-                            // (GTFS-static, vehicle still at terminal).
-                            let isNow = !arrival.isScheduledOnly
-                                && (eta.isAtStop || eta.secondsRemaining <= 30)
-
-                            HStack(alignment: .firstTextBaseline, spacing: 3) {
-                                Text(isNow ? "Now" : "\(mins)")
-                                    .font(.custom("Helvetica-Bold", size: isNow ? 22 : 32))
-                                    // Grey for scheduled (not yet in service); normal
-                                    // urgency color (red/green/black) once on route.
-                                    .foregroundColor(
-                                        arrival.isScheduledOnly
-                                            ? AppTheme.Colors.textSecondary.opacity(0.55)
-                                            : AppTheme.Colors.countdown(mins)
-                                    )
-
-                                if !isNow {
-                                    Text("min")
-                                        .font(.custom("Helvetica-Bold", size: 13))
-                                        .foregroundColor(AppTheme.Colors.textSecondary)
-                                        .offset(y: -2)
-                                }
-                            }
-                        }
-                    }
-
-                    // Status pill
-                    HStack(spacing: 4) {
-                        Circle()
-                            .fill(transitStatusColor(for: arrival.status))
-                            .frame(width: 6, height: 6)
-
-                        Text(arrival.status)
-                            .font(.custom("Helvetica-Bold", size: 11))
-                            .textCase(.uppercase)
-                    }
-                    .foregroundColor(transitStatusColor(for: arrival.status))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(transitStatusColor(for: arrival.status).opacity(0.12))
-                    .clipShape(Capsule())
-
-                    // "In Route" live indicator — shows when this vehicle
-                    // has a live GPS/GTFS-RT position on the map.
-                    // Tapping it focuses the map on this vehicle's marker.
-                    if isLiveOnMap && !arrival.isScheduledOnly {
-                        HStack(spacing: 4) {
-                            Circle()
-                                .fill(AppTheme.Colors.successGreen)
-                                .frame(width: 5, height: 5)
-                                .shadow(color: AppTheme.Colors.successGreen.opacity(0.6), radius: 3)
-                            Text("In Route")
-                                .font(.custom("Helvetica-Bold", size: 9))
-                                .textCase(.uppercase)
-                        }
-                        .foregroundColor(AppTheme.Colors.successGreen)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 3)
-                        .background(AppTheme.Colors.successGreen.opacity(0.1))
-                        .clipShape(Capsule())
-                        .onTapGesture {
-                            let key = arrival.vehicleId ?? arrival.tripId
-                            onFocusVehicle?(key)
-                        }
-                    } else {
-                        // Vehicle is NOT live on the map (no GPS marker matched).
-                        if arrival.isScheduledOnly {
-                            // GTFS-static only — trip hasn't departed its first stop yet.
-                            // Show a clear "Scheduled" badge so users know it's not in service.
-                            HStack(spacing: 4) {
-                                Image(systemName: "calendar.badge.clock")
-                                    .font(.system(size: 8, weight: .semibold))
-                                Text("Scheduled")
-                                    .font(.custom("Helvetica-Bold", size: 9))
-                                    .textCase(.uppercase)
-                            }
-                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 3)
-                            .background(AppTheme.Colors.textSecondary.opacity(0.06))
-                            .clipShape(Capsule())
-                        } else if let ts = arrival.arrivalTs {
-                            // Has an arrival timestamp — show the clock time.
-                            let arrivalDate = Date(timeIntervalSince1970: Double(ts))
-                            HStack(spacing: 4) {
-                                Image(systemName: "calendar.badge.clock")
-                                    .font(.system(size: 8, weight: .semibold))
-                                Text(arrivalDate, style: .time)
-                                    .font(.custom("Helvetica-Bold", size: 9))
-                            }
-                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 3)
-                            .background(AppTheme.Colors.textSecondary.opacity(0.08))
-                            .clipShape(Capsule())
-                        } else if arrival.vehicleId != nil || arrival.tripId != nil {
-                            // Real GTFS-RT arrival (has vehicleId/tripId) but no
-                            // arrivalTs and no live marker on the map yet.
-                            // This is NOT a schedule-only row — the feed confirms
-                            // a vehicle exists; it just lacks a precise ETA or GPS.
-                            HStack(spacing: 4) {
-                                Image(systemName: "bus.fill")
-                                    .font(.system(size: 8, weight: .semibold))
-                                Text("En Route")
-                                    .font(.custom("Helvetica-Bold", size: 9))
-                                    .textCase(.uppercase)
-                            }
-                            .foregroundColor(AppTheme.Colors.mtaBlue.opacity(0.7))
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 3)
-                            .background(AppTheme.Colors.mtaBlue.opacity(0.08))
-                            .clipShape(Capsule())
-                        } else {
-                            // Truly static / schedule-only arrival — no vehicle
-                            // or trip info from any real-time feed.
-                            HStack(spacing: 4) {
-                                Image(systemName: "clock")
-                                    .font(.system(size: 8, weight: .semibold))
-                                Text("Scheduled")
-                                    .font(.custom("Helvetica-Bold", size: 9))
-                                    .textCase(.uppercase)
-                            }
-                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 3)
-                            .background(AppTheme.Colors.textSecondary.opacity(0.06))
-                            .clipShape(Capsule())
-                        }
-                    }
-                }
+                rightSideContent
             }
             .padding(.vertical, 16)
             .padding(.horizontal, AppTheme.Layout.margin)
-            .background(
-                isMapHighlighted
-                    ? AppTheme.Colors.mtaBlue.opacity(0.15)
-                    : isSelected
-                        ? AppTheme.Colors.mtaBlue.opacity(0.1) : AppTheme.Colors.cardBackground
-            )
+            .background(rowBackgroundColor)
             .cornerRadius(AppTheme.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius)
-                    .stroke(
-                        isMapHighlighted
-                            ? AppTheme.Colors.mtaBlue
-                            : isSelected ? AppTheme.Colors.mtaBlue : Color.clear,
-                        lineWidth: isMapHighlighted ? 2.5 : 2)
+                    .stroke(rowBorderColor, lineWidth: isMapHighlighted ? 2.5 : 2)
             )
             .contentShape(Rectangle())
             .onTapGesture {
@@ -284,110 +88,7 @@ struct NearbyTransitRow: View {
 
             // Expanded detail section
             if isExpanded {
-                VStack(alignment: .leading, spacing: 8) {
-                    Divider()
-
-                    // Next arrival details
-                    HStack(spacing: 10) {
-                        Image(systemName: arrival.isBus ? "bus.fill" : "tram.fill")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(AppTheme.Colors.mtaBlue)
-                            .frame(width: 20)
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Next Arrival")
-                                .font(.custom("Helvetica-Bold", size: 11))
-                                .foregroundColor(AppTheme.Colors.textSecondary)
-                                .textCase(.uppercase)
-                            // Smart ETA for expanded detail — consistent with main countdown
-                            TimelineView(.periodic(from: .now, by: 1.0)) { _ in
-                                let eta: SmartETA = resolvedETA(for: arrival)
-                                let mins = eta.minutesRemaining
-                                let isNow = eta.isAtStop || eta.secondsRemaining <= 30
-                                let timeStr: String = {
-                                    if let ts = arrival.arrivalTs {
-                                        return Date(timeIntervalSince1970: Double(ts))
-                                            .formatted(date: .omitted, time: .shortened)
-                                    }
-                                    return ""
-                                }()
-                                Text(isNow || mins <= 0
-                                    ? "Arriving now"
-                                    : "In \(mins) min" + (timeStr.isEmpty ? "" : " — \(timeStr)"))
-                                    .font(.custom("Helvetica-Bold", size: 14))
-                                    .foregroundColor(AppTheme.Colors.textPrimary)
-                            }
-                        }
-
-                        Spacer()
-
-                        // Status pill
-                        Text(arrival.status)
-                            .font(.custom("Helvetica-Bold", size: 11))
-                            .foregroundColor(AppTheme.Colors.textOnColor)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(transitStatusColor(for: arrival.status))
-                            .clipShape(Capsule())
-                    }
-
-                    // Direction info
-                    HStack(spacing: 10) {
-                        Image(systemName: "arrow.right")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(AppTheme.Colors.mtaBlue)
-                            .frame(width: 20)
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Direction")
-                                .font(.custom("Helvetica-Bold", size: 11))
-                                .foregroundColor(AppTheme.Colors.textSecondary)
-                                .textCase(.uppercase)
-                            Text(arrival.direction)
-                                .font(.custom("Helvetica", size: 14))
-                                .foregroundColor(AppTheme.Colors.textPrimary)
-                                .lineLimit(1)
-                        }
-                    }
-
-                    // Track button
-                    Button {
-                        onTrack?()
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(
-                                systemName: isTracking
-                                    ? "antenna.radiowaves.left.and.right"
-                                    : isTrackingAnother
-                                        ? "arrow.triangle.2.circlepath"
-                                        : "location.fill"
-                            )
-                            .font(.system(size: 12, weight: .bold))
-                            Text(
-                                isTracking
-                                    ? "Tracking"
-                                    : isTrackingAnother
-                                        ? "Switch to This"
-                                        : "Track Live Route"
-                            )
-                            .font(.custom("Helvetica-Bold", size: 13))
-                        }
-                        .foregroundColor(AppTheme.Colors.textOnColor)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background(
-                            isTracking
-                                ? AppTheme.Colors.successGreen
-                                : isTrackingAnother
-                                    ? AppTheme.Colors.warningYellow
-                                    : AppTheme.Colors.mtaBlue
-                        )
-                        .cornerRadius(AppTheme.Layout.cornerRadius)
-                    }
-                }
-                .padding(.horizontal, AppTheme.Layout.margin)
-                .padding(.bottom, 10)
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                expandedDetailSection
             }
         }
         .accessibilityElement(children: .combine)
@@ -396,6 +97,316 @@ struct NearbyTransitRow: View {
         )
         .accessibilityHint(
             isExpanded ? "Expanded. Shows arrival details." : "Tap to see arrival details")
+    }
+
+    // MARK: - Expanded Detail Section
+
+    private var expandedDetailSection: some View {
+        let trackIcon: String = isTracking
+            ? "antenna.radiowaves.left.and.right"
+            : isTrackingAnother
+                ? "arrow.triangle.2.circlepath" : "location.fill"
+        let trackLabel: String = isTracking
+            ? "Tracking"
+            : isTrackingAnother
+                ? "Switch to This" : "Track Live Route"
+        let trackBg: Color = isTracking
+            ? AppTheme.Colors.successGreen
+            : isTrackingAnother
+                ? AppTheme.Colors.warningYellow
+                : AppTheme.Colors.mtaBlue
+
+        return VStack(alignment: .leading, spacing: 8) {
+            Divider()
+
+            // Next arrival details
+            expandedArrivalDetail
+
+            // Direction info
+            HStack(spacing: 10) {
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(AppTheme.Colors.mtaBlue)
+                    .frame(width: 20)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Direction")
+                        .font(.custom("Helvetica-Bold", size: 11))
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+                        .textCase(.uppercase)
+                    Text(arrival.direction)
+                        .font(.custom("Helvetica", size: 14))
+                        .foregroundColor(AppTheme.Colors.textPrimary)
+                        .lineLimit(1)
+                }
+            }
+
+            // Track button
+            Button {
+                onTrack?()
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: trackIcon)
+                        .font(.system(size: 12, weight: .bold))
+                    Text(trackLabel)
+                        .font(.custom("Helvetica-Bold", size: 13))
+                }
+                .foregroundColor(AppTheme.Colors.textOnColor)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .background(trackBg)
+                .cornerRadius(AppTheme.Layout.cornerRadius)
+            }
+        }
+        .padding(.horizontal, AppTheme.Layout.margin)
+        .padding(.bottom, 10)
+        .transition(.opacity.combined(with: .move(edge: .top)))
+    }
+
+    private var expandedArrivalDetail: some View {
+        HStack(spacing: 10) {
+            Image(systemName: arrival.isBus ? "bus.fill" : "tram.fill")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(AppTheme.Colors.mtaBlue)
+                .frame(width: 20)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Next Arrival")
+                    .font(.custom("Helvetica-Bold", size: 11))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+                    .textCase(.uppercase)
+                // Smart ETA for expanded detail — consistent with main countdown
+                TimelineView(.periodic(from: .now, by: 1.0)) { _ in
+                    let eta: SmartETA = resolvedETA(for: arrival)
+                    let mins: Int = eta.minutesRemaining
+                    let isNow: Bool = eta.isAtStop || eta.secondsRemaining <= 30
+                    let timeStr: String = {
+                        if let ts = arrival.arrivalTs {
+                            return Date(timeIntervalSince1970: Double(ts))
+                                .formatted(date: .omitted, time: .shortened)
+                        }
+                        return ""
+                    }()
+                    Text(isNow || mins <= 0
+                        ? "Arriving now"
+                        : "In \(mins) min" + (timeStr.isEmpty ? "" : " — \(timeStr)"))
+                        .font(.custom("Helvetica-Bold", size: 14))
+                        .foregroundColor(AppTheme.Colors.textPrimary)
+                }
+            }
+
+            Spacer()
+
+            // Status pill
+            Text(arrival.status)
+                .font(.custom("Helvetica-Bold", size: 11))
+                .foregroundColor(AppTheme.Colors.textOnColor)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(transitStatusColor(for: arrival.status))
+                .clipShape(Capsule())
+        }
+    }
+
+    // MARK: - Left Side (Badge + Station Info)
+
+    private var leftBadgeAndInfo: some View {
+        HStack(spacing: 14) {
+            RouteBadge(
+                routeID: arrival.displayName,
+                size: .custom(54, 22),
+                isBus: arrival.isBus,
+                mode: arrival.mode
+            )
+            .shadow(color: .black.opacity(0.15), radius: 3, x: 0, y: 2)
+            .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(arrival.stopName)
+                    .font(.custom("Helvetica-Bold", size: 17))
+                    .foregroundColor(AppTheme.Colors.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+
+                    Text(shortDirectionLabel(arrival.destination ?? arrival.direction))
+                        .font(.custom("Helvetica-Bold", size: 14))
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+                        .lineLimit(1)
+                }
+
+                distanceOrModeLabel
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var distanceOrModeLabel: some View {
+        if let stopLat: Double = arrival.stopLat, let stopLon: Double = arrival.stopLon {
+            if let userLocation: CLLocation = userLocation {
+                let stopLoc: CLLocation = CLLocation(latitude: stopLat, longitude: stopLon)
+                let distance: Double = userLocation.distance(from: stopLoc)
+                HStack(spacing: 4) {
+                    Image(systemName: "figure.walk")
+                        .font(.system(size: 10, weight: .medium))
+                    Text(formatDistance(distance))
+                        .font(.system(size: 12, weight: .medium))
+                }
+                .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.8))
+            }
+        } else {
+            let modeLabel: String = arrival.isLIRR
+                ? "LIRR"
+                : arrival.isMNR ? "Metro-North" : arrival.isBus ? "Bus" : "Subway"
+            Text(modeLabel)
+                .font(.system(size: 11, weight: .semibold))
+                .textCase(.uppercase)
+                .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
+        }
+    }
+
+    // MARK: - Right Side Content (extracted to reduce body type-check)
+
+    private var rightSideContent: some View {
+        VStack(alignment: .trailing, spacing: 6) {
+            countdownContent
+            statusPillContent
+            liveIndicatorContent
+        }
+    }
+
+    @ViewBuilder
+    private var countdownContent: some View {
+        if arrival.isPlaceholder {
+            Image(systemName: "clock")
+                .font(.system(size: 20, weight: .medium))
+                .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.4))
+        } else {
+            TimelineView(.periodic(from: .now, by: 1.0)) { _ in
+                let eta: SmartETA = resolvedETA(for: arrival)
+                let mins: Int = eta.minutesRemaining
+                let isNow: Bool = !arrival.isScheduledOnly
+                    && (eta.isAtStop || eta.secondsRemaining <= 30)
+                let countdownColor: Color = arrival.isScheduledOnly
+                    ? AppTheme.Colors.textSecondary.opacity(0.55)
+                    : AppTheme.Colors.countdown(mins)
+
+                HStack(alignment: .firstTextBaseline, spacing: 3) {
+                    Text(isNow ? "Now" : "\(mins)")
+                        .font(.custom("Helvetica-Bold", size: isNow ? 22 : 32))
+                        .foregroundColor(countdownColor)
+
+                    if !isNow {
+                        Text("min")
+                            .font(.custom("Helvetica-Bold", size: 13))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
+                            .offset(y: -2)
+                    }
+                }
+            }
+        }
+    }
+
+    private var statusPillContent: some View {
+        let pillColor: Color = transitStatusColor(for: arrival.status)
+        return HStack(spacing: 4) {
+            Circle()
+                .fill(pillColor)
+                .frame(width: 6, height: 6)
+            Text(arrival.status)
+                .font(.custom("Helvetica-Bold", size: 11))
+                .textCase(.uppercase)
+        }
+        .foregroundColor(pillColor)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(pillColor.opacity(0.12))
+        .clipShape(Capsule())
+    }
+
+    @ViewBuilder
+    private var liveIndicatorContent: some View {
+        if isLiveOnMap && !arrival.isScheduledOnly {
+            liveOnMapPill
+        } else if arrival.isScheduledOnly {
+            scheduledPill
+        } else if let ts = arrival.arrivalTs {
+            arrivalTimePill(ts: ts)
+        } else if arrival.vehicleId != nil || arrival.tripId != nil {
+            enRoutePill
+        } else {
+            scheduledPill
+        }
+    }
+
+    private var liveOnMapPill: some View {
+        HStack(spacing: 4) {
+            Circle()
+                .fill(AppTheme.Colors.successGreen)
+                .frame(width: 5, height: 5)
+                .shadow(color: AppTheme.Colors.successGreen.opacity(0.6), radius: 3)
+            Text("In Route")
+                .font(.custom("Helvetica-Bold", size: 9))
+                .textCase(.uppercase)
+        }
+        .foregroundColor(AppTheme.Colors.successGreen)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 3)
+        .background(AppTheme.Colors.successGreen.opacity(0.1))
+        .clipShape(Capsule())
+        .onTapGesture {
+            let key: String? = arrival.vehicleId ?? arrival.tripId
+            onFocusVehicle?(key)
+        }
+    }
+
+    private var scheduledPill: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "calendar.badge.clock")
+                .font(.system(size: 8, weight: .semibold))
+            Text("Scheduled")
+                .font(.custom("Helvetica-Bold", size: 9))
+                .textCase(.uppercase)
+        }
+        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
+        .padding(.horizontal, 6)
+        .padding(.vertical, 3)
+        .background(AppTheme.Colors.textSecondary.opacity(0.06))
+        .clipShape(Capsule())
+    }
+
+    private func arrivalTimePill(ts: Int) -> some View {
+        let arrivalDate: Date = Date(timeIntervalSince1970: Double(ts))
+        return HStack(spacing: 4) {
+            Image(systemName: "calendar.badge.clock")
+                .font(.system(size: 8, weight: .semibold))
+            Text(arrivalDate, style: .time)
+                .font(.custom("Helvetica-Bold", size: 9))
+        }
+        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
+        .padding(.horizontal, 6)
+        .padding(.vertical, 3)
+        .background(AppTheme.Colors.textSecondary.opacity(0.08))
+        .clipShape(Capsule())
+    }
+
+    private var enRoutePill: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "bus.fill")
+                .font(.system(size: 8, weight: .semibold))
+            Text("En Route")
+                .font(.custom("Helvetica-Bold", size: 9))
+                .textCase(.uppercase)
+        }
+        .foregroundColor(AppTheme.Colors.mtaBlue.opacity(0.7))
+        .padding(.horizontal, 6)
+        .padding(.vertical, 3)
+        .background(AppTheme.Colors.mtaBlue.opacity(0.08))
+        .clipShape(Capsule())
     }
 
     // MARK: - Helper Functions

@@ -701,22 +701,23 @@ final class MapSystemViewModel {
         }
 
         var colorGroupResults: [ColorGroupResult] = []
-        var originalSubwayPoints = 0
+        var originalSubwayPoints: Int = 0
 
         // When the server provides pre-merged trunk polylines, use them
         // directly — they are the Phase 1+3 output of the corridor pipeline
         // and are the SAME geometry that station dots were snapped to.
         // This eliminates overlapping same-colour lines and ensures polylines
         // pass through station positions.
-        let useTrunkPolylines = cachedTrunkPolylines != nil && !(cachedTrunkPolylines!.isEmpty)
+        let useTrunkPolylines: Bool = cachedTrunkPolylines != nil && !(cachedTrunkPolylines!.isEmpty)
 
         if useTrunkPolylines, let trunkGroups = cachedTrunkPolylines {
             for trunk in trunkGroups {
-                let decoded = trunk.decodedPolylines.filter { $0.count >= 2 }
+                let decoded: [[CLLocationCoordinate2D]] = trunk.decodedPolylines.filter { $0.count >= 2 }
                 guard !decoded.isEmpty else { continue }
-                originalSubwayPoints += decoded.reduce(0) { $0 + $1.count }
+                let decodedCount: Int = decoded.reduce(0) { $0 + $1.count }
+                originalSubwayPoints += decodedCount
 
-                let groupColor = SubwayRoutesData.color(for: trunk.routeIds.first ?? "")
+                let groupColor: Color = SubwayRoutesData.color(for: trunk.routeIds.first ?? "")
 
                 AppLogger.shared.log(
                     "POLYLINE_TRUNK",
@@ -742,9 +743,10 @@ final class MapSystemViewModel {
                 }
 
                 guard !pooledSegments.isEmpty else { continue }
-                originalSubwayPoints += pooledSegments.reduce(0) { $0 + $1.count }
+                let pooledCount: Int = pooledSegments.reduce(0) { $0 + $1.count }
+                originalSubwayPoints += pooledCount
 
-                let groupColor = SubwayRoutesData.color(for: group[0])
+                let groupColor: Color = SubwayRoutesData.color(for: group[0])
 
                 let unified = unifyTrainPolylines(pooledSegments)
                     .filter { $0.count >= 2 }
@@ -814,27 +816,29 @@ final class MapSystemViewModel {
         for (i, offset) in finalOffsetPolylines.enumerated() {
             let origin = mapping[i]
             let groupResult = colorGroupResults[origin.resultIndex]
-            let groupKey = groupResult.routeIds.joined(separator: "-")
+            let groupKey: String = groupResult.routeIds.joined(separator: "-")
             guard offset.coordinates.count >= 2 else { continue }
 
             // Determine z-level: use the geographic midpoint of this
             // specific branch + its route IDs to infer whether this
             // segment runs on elevated infrastructure.
-            let midIdx = offset.coordinates.count / 2
-            let midCoord = offset.coordinates[midIdx]
-            let branchStructure = StationComplexLookup.inferStructure(
+            let midIdx: Int = offset.coordinates.count / 2
+            let midCoord: CLLocationCoordinate2D = offset.coordinates[midIdx]
+            let branchStructure: StationStructure = StationComplexLookup.inferStructure(
                 routes: groupResult.routeIds,
                 lat: midCoord.latitude,
                 lon: midCoord.longitude
             )
+            let isElevated: Bool = branchStructure == .elevated || branchStructure == .viaduct
+            let polylineId: String = "trunk_\(groupKey)_\(origin.branchIndex)"
 
             flat.append(FlattenedMapPolyline(
-                id: "trunk_\(groupKey)_\(origin.branchIndex)",
+                id: polylineId,
                 coordinates: offset.coordinates,
                 color: groupResult.color,
                 lineWidth: 3,
                 routeIds: groupResult.routeIds,
-                isElevated: branchStructure == .elevated || branchStructure == .viaduct,
+                isElevated: isElevated,
                 trunkIndex: groupResult.groupIndex,
                 laneOffset: groupResult.laneOffset
             ))
@@ -1173,8 +1177,8 @@ final class MapSystemViewModel {
         // For stations NOT in the curated lookup (hash-derived complex IDs),
         // merge co-located same-structure stops within 20 m — same as before.
         // This catches duplicate stops from the API that aren't in the table.
-        let mergeRadiusDeg = 0.00024  // ~20 m at NYC longitude
-        let mergeRadiusSq = mergeRadiusDeg * mergeRadiusDeg
+        let mergeRadiusDeg: Double = 0.00024  // ~20 m at NYC longitude
+        let mergeRadiusSq: Double = mergeRadiusDeg * mergeRadiusDeg
 
         var parent = Array(0..<stations.count)
         func find(_ x: Int) -> Int {
@@ -1206,8 +1210,8 @@ final class MapSystemViewModel {
                 // Only proximity-merge if same structure type
                 guard ki.structure == kj.structure else { continue }
 
-                let dx = stations[i].coordinate.longitude - stations[j].coordinate.longitude
-                let dy = stations[i].coordinate.latitude - stations[j].coordinate.latitude
+                let dx: Double = stations[i].coordinate.longitude - stations[j].coordinate.longitude
+                let dy: Double = stations[i].coordinate.latitude - stations[j].coordinate.latitude
                 if dx * dx + dy * dy <= mergeRadiusSq {
                     union(i, j)
                 }
@@ -1221,26 +1225,29 @@ final class MapSystemViewModel {
         }
 
         // ── Phase 3: Build spatial index of polyline tangents for bearing ──
-        let cellSize = 0.001
+        let cellSize: Double = 0.001
         var cellTangents: [Int64: [(Double, Double)]] = [:]
 
         func tangentCellKey(_ lat: Double, _ lon: Double) -> Int64 {
-            let gx = Int32(lat / cellSize)
-            let gy = Int32(lon / cellSize)
-            return (Int64(gx) << 32) | Int64(gy & 0x7FFF_FFFF)
+            let gx: Int32 = Int32(lat / cellSize)
+            let gy: Int32 = Int32(lon / cellSize)
+            let hi: Int64 = Int64(gx) << 32
+            let lo: Int64 = Int64(gy & 0x7FFF_FFFF)
+            return hi | lo
         }
 
         for line in cachedOffsetSubwayLines {
             for branch in line.coordinates {
                 for i in 0..<(branch.count - 1) {
                     let a = branch[i], b = branch[i + 1]
-                    let dx = b.longitude - a.longitude
-                    let dy = b.latitude - a.latitude
-                    let len = sqrt(dx * dx + dy * dy)
+                    let dx: Double = b.longitude - a.longitude
+                    let dy: Double = b.latitude - a.latitude
+                    let len: Double = sqrt(dx * dx + dy * dy)
                     guard len > 1e-10 else { continue }
-                    let ux = dx / len, uy = dy / len
-                    let keyA = tangentCellKey(a.latitude, a.longitude)
-                    let keyB = tangentCellKey(b.latitude, b.longitude)
+                    let ux: Double = dx / len
+                    let uy: Double = dy / len
+                    let keyA: Int64 = tangentCellKey(a.latitude, a.longitude)
+                    let keyB: Int64 = tangentCellKey(b.latitude, b.longitude)
                     cellTangents[keyA, default: []].append((ux, uy))
                     if keyB != keyA {
                         cellTangents[keyB, default: []].append((ux, uy))
@@ -1253,10 +1260,11 @@ final class MapSystemViewModel {
         var result: [ConsolidatedStation] = []
 
         for (_, memberIndices) in groups {
-            var latSum = 0.0, lonSum = 0.0
-            var allRoutes = Set<String>()
-            var primaryName = ""
-            var maxRouteCount = 0
+            var latSum: Double = 0.0
+            var lonSum: Double = 0.0
+            var allRoutes: Set<String> = []
+            var primaryName: String = ""
+            var maxRouteCount: Int = 0
 
             for idx in memberIndices {
                 let s = stations[idx]
@@ -1269,22 +1277,26 @@ final class MapSystemViewModel {
                 }
             }
 
-            let avgLat = latSum / Double(memberIndices.count)
-            let avgLon = lonSum / Double(memberIndices.count)
-            let routes = allRoutes.sorted()
+            let avgLat: Double = latSum / Double(memberIndices.count)
+            let avgLon: Double = lonSum / Double(memberIndices.count)
+            let routes: [String] = allRoutes.sorted()
 
             // Color group count
-            var colorGroups = Set<Int>()
+            var colorGroups: Set<Int> = []
             for r in routes { colorGroups.insert(Self.trunkGroupIndex(for: r)) }
-            let groupCount = max(colorGroups.count, 1)
+            let groupCount: Int = max(colorGroups.count, 1)
 
             // Track bearing from polyline tangents in 3×3 neighborhood
-            let gx = Int32(avgLat / cellSize)
-            let gy = Int32(avgLon / cellSize)
-            var sumUx = 0.0, sumUy = 0.0, tangentCount = 0
+            let gx: Int32 = Int32(avgLat / cellSize)
+            let gy: Int32 = Int32(avgLon / cellSize)
+            var sumUx: Double = 0.0
+            var sumUy: Double = 0.0
+            var tangentCount: Int = 0
             for dx: Int32 in -1...1 {
                 for dy: Int32 in -1...1 {
-                    let key = (Int64(gx &+ dx) << 32) | Int64((gy &+ dy) & 0x7FFF_FFFF)
+                    let hi: Int64 = Int64(gx &+ dx) << 32
+                    let lo: Int64 = Int64((gy &+ dy) & 0x7FFF_FFFF)
+                    let key: Int64 = hi | lo
                     if let tangents = cellTangents[key] {
                         for (ux, uy) in tangents {
                             if uy < 0 || (uy == 0 && ux < 0) {
@@ -1300,8 +1312,8 @@ final class MapSystemViewModel {
 
             let bearing: Double
             if tangentCount > 0 {
-                let rad = atan2(sumUx, sumUy)
-                var deg = rad * 180.0 / .pi
+                let rad: Double = atan2(sumUx, sumUy)
+                var deg: Double = rad * 180.0 / .pi
                 if deg < 0 { deg += 360 }
                 if deg >= 180 { deg -= 180 }
                 bearing = deg
@@ -1310,9 +1322,9 @@ final class MapSystemViewModel {
             }
 
             // Use structure and complexID from the first member
-            let firstKey = keyForStation[memberIndices[0]]
-            let allStopIDs = Set(memberIndices.map { stations[$0].id })
-            let primaryId = allStopIDs.sorted().first ?? ""
+            let firstKey: GroupKey = keyForStation[memberIndices[0]]
+            let allStopIDs: Set<String> = Set(memberIndices.map { stations[$0].id })
+            let primaryId: String = allStopIDs.sorted().first ?? ""
 
             result.append(ConsolidatedStation(
                 id: primaryId,

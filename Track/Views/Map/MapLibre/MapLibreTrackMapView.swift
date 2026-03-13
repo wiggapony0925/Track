@@ -236,19 +236,22 @@ struct MapLibreTrackMapView: View {
         center: CLLocationCoordinate2D,
         distance: Double
     ) -> [TransferConnector] {
-        let maxZoomOut = AppSettings.shared.stationMaxZoomOutMeters
+        let maxZoomOut: Double = AppSettings.shared.stationMaxZoomOutMeters
         guard distance < maxZoomOut * 0.30 else { return [] }
 
-        let latSpan = (distance / 111_000) * 1.5
-        let lonSpan = (distance / (111_000 * cos(center.latitude * .pi / 180))) * 1.5
-        let minLat = center.latitude - latSpan
-        let maxLat = center.latitude + latSpan
-        let minLon = center.longitude - lonSpan
-        let maxLon = center.longitude + lonSpan
+        let metersPerDeg: Double = 111_000.0
+        let latSpan: Double = (distance / metersPerDeg) * 1.5
+        let cosLat: Double = cos(center.latitude * Double.pi / 180.0)
+        let lonSpan: Double = (distance / (metersPerDeg * cosLat)) * 1.5
+        let minLat: Double = center.latitude - latSpan
+        let maxLat: Double = center.latitude + latSpan
+        let minLon: Double = center.longitude - lonSpan
+        let maxLon: Double = center.longitude + lonSpan
 
         let stations = allStations.filter { s in
-            s.coordinate.latitude >= minLat && s.coordinate.latitude <= maxLat
-            && s.coordinate.longitude >= minLon && s.coordinate.longitude <= maxLon
+            let lat: Double = s.coordinate.latitude
+            let lon: Double = s.coordinate.longitude
+            return lat >= minLat && lat <= maxLat && lon >= minLon && lon <= maxLon
         }
 
         var byComplex: [Int: [MapSystemViewModel.ConsolidatedStation]] = [:]
@@ -258,18 +261,21 @@ struct MapLibreTrackMapView: View {
         var connectors: [TransferConnector] = []
         for (complexID, platforms) in byComplex {
             guard platforms.count >= 2 else { continue }
-            let avgLat = platforms.map(\.coordinate.latitude).reduce(0, +) / Double(platforms.count)
-            let avgLon = platforms.map(\.coordinate.longitude).reduce(0, +) / Double(platforms.count)
-            let center = CLLocationCoordinate2D(latitude: avgLat, longitude: avgLon)
-            let centerLoc = CLLocation(latitude: avgLat, longitude: avgLon)
+            let count: Double = Double(platforms.count)
+            let avgLat: Double = platforms.map(\.coordinate.latitude).reduce(0.0, +) / count
+            let avgLon: Double = platforms.map(\.coordinate.longitude).reduce(0.0, +) / count
+            let centerCoord: CLLocationCoordinate2D = CLLocationCoordinate2D(latitude: avgLat, longitude: avgLon)
+            let centerLoc: CLLocation = CLLocation(latitude: avgLat, longitude: avgLon)
             for (i, platform) in platforms.enumerated() {
-                let dist = CLLocation(
+                let platformLoc: CLLocation = CLLocation(
                     latitude: platform.coordinate.latitude,
                     longitude: platform.coordinate.longitude
-                ).distance(from: centerLoc)
+                )
+                let dist: Double = platformLoc.distance(from: centerLoc)
+                let connectorId: String = "xfer-\(complexID)-\(i)"
                 connectors.append(TransferConnector(
-                    id: "xfer-\(complexID)-\(i)",
-                    coordinates: [platform.coordinate, center],
+                    id: connectorId,
+                    coordinates: [platform.coordinate, centerCoord],
                     distanceMeters: dist
                 ))
             }
@@ -280,8 +286,10 @@ struct MapLibreTrackMapView: View {
     private func computeVisibleRouteLabels(
         center: CLLocationCoordinate2D, distance: Double
     ) -> [HomeViewModel.TrunkRouteLabel] {
-        let latSpan = (distance / 111_000) * 1.5
-        let lonSpan = (distance / (111_000 * cos(center.latitude * .pi / 180))) * 1.5
+        let metersPerDeg: Double = 111_000.0
+        let latSpan: Double = (distance / metersPerDeg) * 1.5
+        let cosLat: Double = cos(center.latitude * Double.pi / 180.0)
+        let lonSpan: Double = (distance / (metersPerDeg * cosLat)) * 1.5
         return viewModel.trunkRouteLabels.filter { label in
             abs(label.coordinate.latitude - center.latitude) <= latSpan
                 && abs(label.coordinate.longitude - center.longitude) <= lonSpan

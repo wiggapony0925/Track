@@ -112,18 +112,22 @@ struct HomeView: View {
     /// Second modifier group: map/route data observers + notifications.
     /// Split from body to keep each expression under the type-checker limit.
     private var dataObservedContent: some View {
-        lifecycleObservedContent
+        notificationObservedContent
             .onChange(of: currentMapCenter?.latitude) { handleMapCenterChange() }
             .onChange(of: viewModel.routeShape?.polylines.count) { handleRouteShapeLoaded() }
             .onChange(of: viewModel.nearestStopCoordinate?.latitude) { handleNearestStopChanged() }
+            .onChange(of: viewModel.selectedDirectionIndex) { handleDirectionIndexChanged() }
+    }
+
+    /// Third modifier group: remaining data observers.
+    private var notificationObservedContent: some View {
+        lifecycleObservedContent
             .onChange(of: viewModel.walkingRoute) { _, newRoute in 
                 if newRoute != nil && !suppressWalkingRouteZoom {
                     handleNearestStopChanged()
                 }
-                // Always clear the suppress flag after processing
                 suppressWalkingRouteZoom = false
             }
-            .onChange(of: viewModel.selectedDirectionIndex) { handleDirectionIndexChanged() }
             .onChange(of: viewModel.groupedTransit.count) { attemptDeepLinkNavigation() }
             .onChange(of: viewModel.tappedVehicleId) { _, newValue in handleTappedVehicle(newValue) }
             .onReceive(NotificationCenter.default.publisher(for: .radiusSettingsChanged)) { _ in
@@ -452,7 +456,12 @@ struct HomeView: View {
             
             RouteDetailSheet(
                 group: enrichedGroup,
-                busVehicles: $viewModel.busVehicles,
+                vehicleCoordinateLookup: { vid in
+                    if let bus = viewModel.busVehicles.first(where: { $0.vehicleId == vid }) {
+                        return CLLocationCoordinate2D(latitude: bus.lat, longitude: bus.lon)
+                    }
+                    return nil
+                },
                 trainVehicles: viewModel.filteredTrainVehicles,
                 routeShape: $viewModel.routeShape,
                 selectedDirectionIndex: $viewModel.selectedDirectionIndex,

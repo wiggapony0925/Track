@@ -188,19 +188,20 @@ struct MapLibreMapView: UIViewRepresentable {
         // ── Camera sync (only if externally changed) ──
         if coordinator.shouldSyncCamera {
             let state = MapLibreCameraState(from: cameraPosition)
-            let currentZoom = mapView.zoomLevel
-            let currentCenter = mapView.centerCoordinate
-            let needsUpdate =
-                abs(state.zoom - currentZoom) > 0.1
-                || abs(state.center.latitude - currentCenter.latitude) > 1e-5
-                || abs(state.center.longitude - currentCenter.longitude) > 1e-5
+            let currentZoom: Double = mapView.zoomLevel
+            let currentCenter: CLLocationCoordinate2D = mapView.centerCoordinate
+            let zoomDiff: Double = abs(state.zoom - currentZoom)
+            let latDiff: Double = abs(state.center.latitude - currentCenter.latitude)
+            let lonDiff: Double = abs(state.center.longitude - currentCenter.longitude)
+            let needsUpdate: Bool = zoomDiff > 0.1 || latDiff > 1e-5 || lonDiff > 1e-5
 
             if needsUpdate {
                 // Mark programmatic animation in flight so syncCameraToBinding
                 // doesn't overwrite cameraPosition with intermediate frames.
                 coordinator.programmaticCameraInFlight = true
                 mapView.setCenter(state.center, zoomLevel: state.zoom, direction: state.bearing, animated: true)
-                if abs(state.pitch - Double(mapView.camera.pitch)) > 1 {
+                let pitchDiff: Double = abs(state.pitch - Double(mapView.camera.pitch))
+                if pitchDiff > 1.0 {
                     let camera = mapView.camera
                     camera.pitch = CGFloat(state.pitch)
                     mapView.setCamera(camera, animated: true)
@@ -388,7 +389,7 @@ struct MapLibreMapView: UIViewRepresentable {
         func updateAllLayers(mapView: MLNMapView, representable: MapLibreMapView) {
             guard let style = mapView.style else { return }
 
-            let darkChanged = lastDarkMode != representable.isDarkMode
+            let darkChanged: Bool = lastDarkMode != representable.isDarkMode
             lastDarkMode = representable.isDarkMode
 
             // Update 3D building colors on dark mode switch
@@ -396,52 +397,72 @@ struct MapLibreMapView: UIViewRepresentable {
                 setup3DBuildings(style: style, isDarkMode: representable.isDarkMode)
             }
 
-            // System map hash: changes when polyline count, active state, or dark mode change.
-            // Polyline data is essentially static per session — only changes on initial load
-            // or dark mode toggle.
-            let subwayHash = representable.subwayPolylines.count
-                ^ (representable.commuterRailPolylines.count &* 31)
-                ^ (representable.hasActiveRoute ? 0x1 : 0x0)
-                ^ (representable.reroutedRouteIDs.count &* 127)
+            updateSystemMapIfNeeded(style: style, representable: representable, darkChanged: darkChanged)
+            updateStationDotsIfNeeded(style: style, representable: representable, darkChanged: darkChanged)
+            updateRouteIfNeeded(style: style, representable: representable, darkChanged: darkChanged)
+            updateWalkingIfNeeded(style: style, representable: representable)
+            updateTransferIfNeeded(style: style, representable: representable)
+        }
+
+        // MARK: - Hash-gated layer update helpers
+        // Split out of updateAllLayers to keep each expression under the type-checker limit.
+
+        private func updateSystemMapIfNeeded(style: MLNStyle, representable: MapLibreMapView, darkChanged: Bool) {
+            let a: Int = representable.subwayPolylines.count
+            let b: Int = representable.commuterRailPolylines.count &* 31
+            let c: Int = representable.hasActiveRoute ? 0x1 : 0x0
+            let d: Int = representable.reroutedRouteIDs.count &* 127
+            let subwayHash: Int = a ^ b ^ c ^ d
             if subwayHash != lastSubwayHash || darkChanged {
                 updateSystemMapLayers(style: style, representable: representable)
                 lastSubwayHash = subwayHash
             }
+        }
 
-            // Station dots hash: changes when station count or active route state changes.
-            let stationHash = representable.stations.count
-                ^ (representable.hasActiveRoute ? 0x2 : 0x0)
+        private func updateStationDotsIfNeeded(style: MLNStyle, representable: MapLibreMapView, darkChanged: Bool) {
+            let stationCount: Int = representable.stations.count
+            let activeFlag: Int = representable.hasActiveRoute ? 0x2 : 0x0
+            let stationHash: Int = stationCount ^ activeFlag
             if stationHash != lastStationHash || darkChanged {
                 updateStationDotLayers(style: style, representable: representable)
                 lastStationHash = stationHash
             }
+        }
 
-            // Route layers: change on route selection/deselection, directional split, walking route.
-            // Include the first coordinate of ahead[0] so the hash changes when
-            // the split point shifts (e.g. train approaches next stop).
-            let splitContentHash: Int = {
-                guard let split = representable.directionalSplit,
-                      let firstAhead = split.ahead.first?.first else { return 0 }
-                return Int(firstAhead.latitude * 1e4) ^ Int(firstAhead.longitude * 1e4)
-            }()
-            let routeHash = representable.routePolylines.count
+        private func updateRouteIfNeeded(style: MLNStyle, representable: MapLibreMapView, darkChanged: Bool) {
+            let splitContentHash: Int = computeSplitContentHash(representable)
+            let splitDirHash: Int = representable.directionalSplit.map { $0.ahead.count ^ $0.behind.count } ?? 0
+            let routeHash: Int = representable.routePolylines.count
                 ^ (representable.inactivePolylines.count &* 31)
-                ^ (representable.directionalSplit.map { $0.ahead.count ^ $0.behind.count } ?? 0)
+                ^ splitDirHash
                 ^ splitContentHash
                 ^ representable.routeColor.hash
             if routeHash != lastRouteHash || darkChanged {
                 updateRouteLayers(style: style, representable: representable)
                 lastRouteHash = routeHash
             }
+        }
 
-            let walkingHash = (representable.walkingRouteCoords?.count ?? 0)
+        private func computeSplitContentHash(_ representable: MapLibreMapView) -> Int {
+            guard let split = representable.directionalSplit,
+                  let firstAhead = split.ahead.first?.first else { return 0 }
+            let latHash: Int = Int(firstAhead.latitude * 1e4)
+            let lonHash: Int = Int(firstAhead.longitude * 1e4)
+            return latHash ^ lonHash
+        }
+
+        private func updateWalkingIfNeeded(style: MLNStyle, representable: MapLibreMapView) {
+            let walkingHash: Int = representable.walkingRouteCoords?.count ?? 0
             if walkingHash != lastWalkingHash {
                 updateWalkingRouteLayer(style: style, representable: representable)
                 lastWalkingHash = walkingHash
             }
+        }
 
-            let transferHash = representable.transferConnectors.count
-                ^ (representable.hasActiveRoute ? 0x4 : 0x0)
+        private func updateTransferIfNeeded(style: MLNStyle, representable: MapLibreMapView) {
+            let connCount: Int = representable.transferConnectors.count
+            let activeFlag: Int = representable.hasActiveRoute ? 0x4 : 0x0
+            let transferHash: Int = connCount ^ activeFlag
             if transferHash != lastTransferHash {
                 updateTransferConnectors(style: style, representable: representable)
                 lastTransferHash = transferHash

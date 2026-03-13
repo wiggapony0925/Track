@@ -94,94 +94,103 @@ struct ArrivalRow: View {
 
             // Expanded detail section
             if isExpanded {
-                VStack(alignment: .leading, spacing: 8) {
-                    Divider()
-
-                    // Estimated arrival time
-                    HStack(spacing: 10) {
-                        Image(systemName: "clock.fill")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(AppTheme.Colors.mtaBlue)
-                            .frame(width: 20)
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Estimated Arrival")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundColor(AppTheme.Colors.textSecondary)
-                                .textCase(.uppercase)
-                            Text(arrivalTimeDescription)
-                                .font(.system(size: 14, weight: .semibold, design: .rounded))
-                                .foregroundColor(AppTheme.Colors.textPrimary)
-                        }
-
-                        Spacer()
-
-                        // Status pill
-                        Text(statusText)
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(AppTheme.Colors.textOnColor)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(arrival.status == "Scheduled" ? Color.gray.opacity(0.6) : (arrival.minutesAway <= 2 ? AppTheme.Colors.alertRed : AppTheme.Colors.successGreen))
-                            .clipShape(Capsule())
-                    }
-
-                    // Direction info
-                    HStack(spacing: 10) {
-                        Image(systemName: "arrow.right")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(AppTheme.Colors.mtaBlue)
-                            .frame(width: 20)
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Direction")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundColor(AppTheme.Colors.textSecondary)
-                                .textCase(.uppercase)
-                            Text(arrival.direction)
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundColor(AppTheme.Colors.textPrimary)
-                                .lineLimit(1)
-                        }
-                    }
-
-                    // Track button
-                    Button {
-                        onTrack?()
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: isTracking
-                                ? "antenna.radiowaves.left.and.right"
-                                : isTrackingAnother
-                                    ? "arrow.triangle.2.circlepath"
-                                    : "bell.fill")
-                                .font(.system(size: 12, weight: .bold))
-                            Text(isTracking
-                                ? "Tracking"
-                                : isTrackingAnother
-                                    ? "Switch to This"
-                                    : "Track This Train")
-                                .font(.system(size: 13, weight: .bold))
-                        }
-                        .foregroundColor(AppTheme.Colors.textOnColor)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background(isTracking
-                            ? AppTheme.Colors.successGreen
-                            : isTrackingAnother
-                                ? AppTheme.Colors.warningYellow
-                                : AppTheme.Colors.mtaBlue)
-                        .cornerRadius(AppTheme.Layout.cornerRadius)
-                    }
-                }
-                .padding(.horizontal, AppTheme.Layout.margin)
-                .padding(.bottom, 10)
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                expandedDetailSection
             }
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(arrival.routeID) train, \(arrival.direction), \(arrival.minutesAway) minutes away")
         .accessibilityHint(isExpanded ? "Expanded. Shows arrival details." : "Tap to see arrival details")
+    }
+
+    // MARK: - Expanded Detail
+
+    private var expandedDetailSection: some View {
+        let statusColor: Color = arrival.status == "Scheduled"
+            ? Color.gray.opacity(0.6)
+            : (arrival.minutesAway <= 2 ? AppTheme.Colors.alertRed : AppTheme.Colors.successGreen)
+        let iconName: String = isTracking
+            ? "antenna.radiowaves.left.and.right"
+            : isTrackingAnother
+                ? "arrow.triangle.2.circlepath" : "bell.fill"
+        let buttonLabel: String = isTracking
+            ? "Tracking"
+            : isTrackingAnother
+                ? "Switch to This" : "Track This Train"
+        let buttonBg: Color = isTracking
+            ? AppTheme.Colors.successGreen
+            : isTrackingAnother
+                ? AppTheme.Colors.warningYellow : AppTheme.Colors.mtaBlue
+
+        return VStack(alignment: .leading, spacing: 8) {
+            Divider()
+
+            // Estimated arrival time
+            HStack(spacing: 10) {
+                Image(systemName: "clock.fill")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(AppTheme.Colors.mtaBlue)
+                    .frame(width: 20)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Estimated Arrival")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+                        .textCase(.uppercase)
+                    Text(arrivalTimeDescription)
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .foregroundColor(AppTheme.Colors.textPrimary)
+                }
+
+                Spacer()
+
+                Text(statusText)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(AppTheme.Colors.textOnColor)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(statusColor)
+                    .clipShape(Capsule())
+            }
+
+            // Direction info
+            HStack(spacing: 10) {
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(AppTheme.Colors.mtaBlue)
+                    .frame(width: 20)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Direction")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+                        .textCase(.uppercase)
+                    Text(arrival.direction)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(AppTheme.Colors.textPrimary)
+                        .lineLimit(1)
+                }
+            }
+
+            // Track button
+            Button {
+                onTrack?()
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: iconName)
+                        .font(.system(size: 12, weight: .bold))
+                    Text(buttonLabel)
+                        .font(.system(size: 13, weight: .bold))
+                }
+                .foregroundColor(AppTheme.Colors.textOnColor)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .background(buttonBg)
+                .cornerRadius(AppTheme.Layout.cornerRadius)
+            }
+        }
+        .padding(.horizontal, AppTheme.Layout.margin)
+        .padding(.bottom, 10)
+        .transition(.opacity.combined(with: .move(edge: .top)))
     }
 
     private var arrivalTimeDescription: String {

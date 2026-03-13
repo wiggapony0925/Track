@@ -294,17 +294,21 @@ enum MapLibreStyleConfig {
     /// `$zoomLevel` inside `multiply:by:` is disallowed.
     static let laneOffsetExpression: NSExpression = {
         // Style-spec JSON: ["interpolate", ["linear"], ["zoom"],
-        //   10, ["*", ["get","lane_offset"], 2.5],
-        //   11, ["*", ["get","lane_offset"], 2.0],
-        //   12, ["*", ["get","lane_offset"], 1.5],
-        //   13, ["*", ["get","lane_offset"], 0.75],
+        //   10, ["*", ["get","lane_offset"], 3.5],
+        //   11, ["*", ["get","lane_offset"], 3.0],
+        //   12, ["*", ["get","lane_offset"], 2.0],
+        //   13, ["*", ["get","lane_offset"], 1.0],
         //   14, 0, 15, 0 ]
+        //
+        // Bump from v1 (2.5/2.0/1.5/0.75) → v2 (3.5/3.0/2.0/1.0) to
+        // produce visible separation between parallel trunk groups even
+        // at city-wide zooms where geographic offsets collapse to <1 px.
         let json: [Any] = [
             "interpolate", ["linear"], ["zoom"],
-            10, ["*", ["get", "lane_offset"], 2.5],
-            11, ["*", ["get", "lane_offset"], 2.0],
-            12, ["*", ["get", "lane_offset"], 1.5],
-            13, ["*", ["get", "lane_offset"], 0.75],
+            10, ["*", ["get", "lane_offset"], 3.5],
+            11, ["*", ["get", "lane_offset"], 3.0],
+            12, ["*", ["get", "lane_offset"], 2.0],
+            13, ["*", ["get", "lane_offset"], 1.0],
             14, 0,
             15, 0,
         ]

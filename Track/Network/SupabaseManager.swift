@@ -649,54 +649,21 @@ class SupabaseManager: ObservableObject {
         authUser: AuthUser,
         userId: UUID
     ) async throws {
-        let existingProfile: UserProfile?
-        if let currentUser, currentUser.id == userId {
-            existingProfile = currentUser
-        } else {
-            existingProfile = try? await fetchProfile(userId: userId)
-        }
-
-        let appleFullName = credentials.fullName?.formatted().trimmingCharacters(in: .whitespacesAndNewlines)
-        let resolvedFullName = (appleFullName?.isEmpty == false ? appleFullName : nil)
-
-        let resolvedEmail = (
-            credentials.email
-            ?? tokenClaims?.email
-            ?? authUser.email
-            ?? existingProfile?.email
-        )?.lowercased()
-
-        let resolvedGivenName = credentials.fullName?.givenName
-            ?? tokenClaims?.givenName
-            ?? authUser.userMetadata?.givenName
-            ?? existingProfile?.givenName
-
-        let resolvedFamilyName = credentials.fullName?.familyName
-            ?? tokenClaims?.familyName
-            ?? authUser.userMetadata?.familyName
-            ?? existingProfile?.familyName
-
-        let combinedNameFromParts: String? = {
-            let parts = [resolvedGivenName, resolvedFamilyName].compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
-            guard !parts.isEmpty else { return nil }
-            return parts.joined(separator: " ")
-        }()
-
-        let resolvedAppleUserId = credentials.userId.isEmpty
-            ? (tokenClaims?.sub ?? existingProfile?.appleUserId)
-            : credentials.userId
+        let existingProfile: UserProfile? = await resolveExistingProfile(userId: userId)
+        let resolved: ResolvedAppleProfile = resolveAppleFields(
+            credentials: credentials,
+            tokenClaims: tokenClaims,
+            authUser: authUser,
+            existingProfile: existingProfile
+        )
 
         let profile = UserProfile(
             id: userId,
-            appleUserId: resolvedAppleUserId,
-            email: resolvedEmail,
-            fullName: resolvedFullName
-                ?? tokenClaims?.name
-                ?? authUser.userMetadata?.fullName
-                ?? combinedNameFromParts
-                ?? existingProfile?.fullName,
-            givenName: resolvedGivenName,
-            familyName: resolvedFamilyName,
+            appleUserId: resolved.appleUserId,
+            email: resolved.email,
+            fullName: resolved.fullName,
+            givenName: resolved.givenName,
+            familyName: resolved.familyName,
             username: existingProfile?.username,
             avatarUrl: existingProfile?.avatarUrl,
             preferredTheme: existingProfile?.preferredTheme,
@@ -705,8 +672,80 @@ class SupabaseManager: ObservableObject {
             updatedAt: existingProfile?.updatedAt,
             lastLoginAt: Date()
         )
-        
+
         try await upsertProfile(profile)
+    }
+
+    private func resolveExistingProfile(userId: UUID) async -> UserProfile? {
+        if let currentUser, currentUser.id == userId {
+            return currentUser
+        }
+        return try? await fetchProfile(userId: userId)
+    }
+
+    /// Pure resolution of Apple Sign-In fields with nil-coalescing fallback chains.
+    /// Extracted to reduce type-checker pressure on `updateProfileWithAppleData`.
+    private struct ResolvedAppleProfile {
+        let email: String?
+        let givenName: String?
+        let familyName: String?
+        let fullName: String?
+        let appleUserId: String?
+    }
+
+    private func resolveAppleFields(
+        credentials: AppleSignInCredentials,
+        tokenClaims: AppleIDTokenClaims?,
+        authUser: AuthUser,
+        existingProfile: UserProfile?
+    ) -> ResolvedAppleProfile {
+        let appleFullName: String? = credentials.fullName?.formatted().trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedFullName: String? = (appleFullName?.isEmpty == false ? appleFullName : nil)
+
+        // Break email chain into explicit steps to reduce type-checker load
+        let credEmail: String? = credentials.email
+        let claimEmail: String? = tokenClaims?.email
+        let authEmail: String? = authUser.email
+        let profileEmail: String? = existingProfile?.email
+        let email: String? = (credEmail ?? claimEmail ?? authEmail ?? profileEmail)?.lowercased()
+
+        // Break givenName chain
+        let credGiven: String? = credentials.fullName?.givenName
+        let claimGiven: String? = tokenClaims?.givenName
+        let metaGiven: String? = authUser.userMetadata?.givenName
+        let profileGiven: String? = existingProfile?.givenName
+        let givenName: String? = credGiven ?? claimGiven ?? metaGiven ?? profileGiven
+
+        // Break familyName chain
+        let credFamily: String? = credentials.fullName?.familyName
+        let claimFamily: String? = tokenClaims?.familyName
+        let metaFamily: String? = authUser.userMetadata?.familyName
+        let profileFamily: String? = existingProfile?.familyName
+        let familyName: String? = credFamily ?? claimFamily ?? metaFamily ?? profileFamily
+
+        let combinedNameFromParts: String? = {
+            let parts: [String] = [givenName, familyName].compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            guard !parts.isEmpty else { return nil }
+            return parts.joined(separator: " ")
+        }()
+
+        let appleUserId: String? = credentials.userId.isEmpty
+            ? (tokenClaims?.sub ?? existingProfile?.appleUserId)
+            : credentials.userId
+
+        // Break fullName chain
+        let claimName: String? = tokenClaims?.name
+        let metaName: String? = authUser.userMetadata?.fullName
+        let profileName: String? = existingProfile?.fullName
+        let finalFullName: String? = resolvedFullName ?? claimName ?? metaName ?? combinedNameFromParts ?? profileName
+
+        return ResolvedAppleProfile(
+            email: email,
+            givenName: givenName,
+            familyName: familyName,
+            fullName: finalFullName,
+            appleUserId: appleUserId
+        )
     }
     
     // MARK: - Analytics

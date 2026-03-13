@@ -8,6 +8,7 @@
 //
 
 import SwiftUI
+import CoreLocation
 
 /// Subway-specific dashboard showing nearby arrivals and stations.
 struct SubwayDashboard: View {
@@ -31,16 +32,23 @@ struct SubwayDashboard: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            let refLocation = viewModel.effectiveLocation(userLocation: locationManager.currentLocation)
+            let refLocation: CLLocation? = viewModel.effectiveLocation(userLocation: locationManager.currentLocation)
             
             if !groupedArrivals.isEmpty {
-                // Separate into 3 tiers using shared nearest→farthest ordering.
+                bucketedContent(referenceLocation: refLocation)
+            } else if !viewModel.isLoading {
+                subwayEmptyState
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func bucketedContent(referenceLocation refLocation: CLLocation?) -> some View {
                 let (nearYou, fartherAway, muchFarther) = viewModel.groupedDisplayBuckets(
                     from: groupedArrivals,
                     referenceLocation: refLocation
                 )
                 
-                // "Near You" section (~1.5 mi)
                 if !nearYou.isEmpty {
                     NearYouSectionHeader(radiusMeters: nearYouRadius, updated: lastUpdated)
                     GroupedRouteList(
@@ -55,7 +63,6 @@ struct SubwayDashboard: View {
                     EmptyTierHint()
                 }
                 
-                // "A Little Farther Away" section (~2.5 mi)
                 if !fartherAway.isEmpty {
                     FartherAwaySectionHeader(radiusMeters: fartherAwayRadius)
                     GroupedRouteList(
@@ -70,7 +77,6 @@ struct SubwayDashboard: View {
                     EmptyTierHint()
                 }
                 
-                // "Much Farther Away" section (~5 mi)
                 if !muchFarther.isEmpty {
                     MuchFartherAwaySectionHeader(radiusMeters: muchFartherAwayRadius)
                     GroupedRouteList(
@@ -85,16 +91,16 @@ struct SubwayDashboard: View {
                     EmptyTierHint()
                 }
                 
-                // Empty after search filter
                 if nearYou.isEmpty && fartherAway.isEmpty && muchFarther.isEmpty && !viewModel.searchText.isEmpty {
                     EmptyStateView(
                         icon: "magnifyingglass",
                         message: "No subway results for \"\(viewModel.searchText)\""
                     )
                 }
-                
-            } else if !viewModel.isLoading {
-                // Only show empty state if data has actually loaded
+    }
+
+    @ViewBuilder
+    private var subwayEmptyState: some View {
                 if !viewModel.searchText.isEmpty {
                     EmptyStateView(
                         icon: "magnifyingglass",
@@ -108,17 +114,19 @@ struct SubwayDashboard: View {
                         brandColor: AppTheme.Colors.mtaBlue
                     )
                 }
-            }
-        }
     }
     
 }
 
 #Preview {
+    let vm: HomeViewModel = HomeViewModel()
+    let lm: LocationManager = LocationManager()
+    let sn: SheetNavigator = SheetNavigator()
+    let date: Date = Date()
     SubwayDashboard(
-        viewModel: HomeViewModel(),
-        locationManager: LocationManager(),
-        sheetNavigator: SheetNavigator(),
-        lastUpdated: Date()
+        viewModel: vm,
+        locationManager: lm,
+        sheetNavigator: sn,
+        lastUpdated: date
     )
 }

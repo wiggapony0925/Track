@@ -108,7 +108,19 @@ _HTTP_CACHE = AsyncTTLCache()
 _INFLIGHT_FETCHES: dict[str, asyncio.Task[Any]] = {}
 
 # Keep outbound MTA concurrency bounded.
-_upstream_semaphore = asyncio.Semaphore(MTA_UPSTREAM_CONCURRENCY)
+# Lazily created inside the running event loop to avoid the
+# "Semaphore is bound to a different event loop" error on reload.
+_upstream_semaphore: asyncio.Semaphore | None = None
+_upstream_semaphore_loop_id: int | None = None
+
+
+def _get_upstream_semaphore() -> asyncio.Semaphore:
+    global _upstream_semaphore, _upstream_semaphore_loop_id
+    loop_id = id(asyncio.get_running_loop())
+    if _upstream_semaphore is None or _upstream_semaphore_loop_id != loop_id:
+        _upstream_semaphore = asyncio.Semaphore(MTA_UPSTREAM_CONCURRENCY)
+        _upstream_semaphore_loop_id = loop_id
+    return _upstream_semaphore
 
 
 # ---------------------------------------------------------------------------
@@ -154,7 +166,7 @@ def _build_mta_headers() -> dict[str, str]:
 
 async def _fetch_from_upstream(url: str, *, parse_json: bool) -> Any:
     client = _get_client()
-    async with _upstream_semaphore:
+    async with _get_upstream_semaphore():
         response = await client.get(url, headers=_build_mta_headers())
     response.raise_for_status()
     return response.json() if parse_json else response.content

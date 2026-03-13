@@ -9,6 +9,7 @@
 //
 
 import SwiftUI
+import CoreLocation
 
 /// Bus-specific dashboard showing grouped bus arrivals.
 struct BusDashboard: View {
@@ -32,17 +33,23 @@ struct BusDashboard: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            let refLocation = viewModel.effectiveLocation(userLocation: locationManager.currentLocation)
+            let refLocation: CLLocation? = viewModel.effectiveLocation(userLocation: locationManager.currentLocation)
             
             if !groupedArrivals.isEmpty {
-                // Separate using shared display-distance source so categories
-                // and row distance are based on the same nearest-stop logic.
+                bucketedContent(referenceLocation: refLocation)
+            } else if !viewModel.isLoading {
+                busEmptyState
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func bucketedContent(referenceLocation refLocation: CLLocation?) -> some View {
                 let (nearYou, fartherAway, muchFarther) = viewModel.groupedDisplayBuckets(
                     from: groupedArrivals,
                     referenceLocation: refLocation
                 )
                 
-                // "Near You" section (~1.5 mi)
                 if !nearYou.isEmpty {
                     NearYouSectionHeader(radiusMeters: nearYouRadius, updated: lastUpdated)
                     GroupedRouteList(
@@ -57,7 +64,6 @@ struct BusDashboard: View {
                     EmptyTierHint()
                 }
                 
-                // "A Little Farther Away" section (~2.5 mi)
                 if !fartherAway.isEmpty {
                     FartherAwaySectionHeader(radiusMeters: fartherAwayRadius)
                     GroupedRouteList(
@@ -72,7 +78,6 @@ struct BusDashboard: View {
                     EmptyTierHint()
                 }
                 
-                // "Much Farther Away" section (~5 mi)
                 if !muchFarther.isEmpty {
                     MuchFartherAwaySectionHeader(radiusMeters: muchFartherAwayRadius)
                     GroupedRouteList(
@@ -87,15 +92,16 @@ struct BusDashboard: View {
                     EmptyTierHint()
                 }
                 
-                // Empty after search filter
                 if nearYou.isEmpty && fartherAway.isEmpty && muchFarther.isEmpty && !viewModel.searchText.isEmpty {
                     EmptyStateView(
                         icon: "magnifyingglass",
                         message: "No bus results for \"\(viewModel.searchText)\""
                     )
                 }
-                
-            } else if !viewModel.isLoading {
+    }
+
+    @ViewBuilder
+    private var busEmptyState: some View {
                 if !viewModel.searchText.isEmpty {
                     EmptyStateView(
                         icon: "magnifyingglass",
@@ -109,17 +115,19 @@ struct BusDashboard: View {
                         brandColor: AppTheme.Colors.mtaBlue
                     )
                 }
-            }
-        }
     }
     
 }
 
 #Preview {
+    let vm: HomeViewModel = HomeViewModel()
+    let lm: LocationManager = LocationManager()
+    let sn: SheetNavigator = SheetNavigator()
+    let date: Date = Date()
     BusDashboard(
-        viewModel: HomeViewModel(),
-        locationManager: LocationManager(),
-        sheetNavigator: SheetNavigator(),
-        lastUpdated: Date()
+        viewModel: vm,
+        locationManager: lm,
+        sheetNavigator: sn,
+        lastUpdated: date
     )
 }

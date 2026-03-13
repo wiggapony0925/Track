@@ -13,7 +13,10 @@ import SwiftUI
 
 struct RouteDetailSheet: View {
     let group: GroupedNearbyTransitResponse
-    @Binding var busVehicles: [BusVehicleResponse]
+    /// Closure that returns the live coordinate for a vehicle ID, if available.
+    /// Replaces the old `@Binding var busVehicles` to avoid 1 Hz full-body
+    /// re-evaluations from bus interpolation ticks.
+    var vehicleCoordinateLookup: ((String) -> CLLocationCoordinate2D?)?
     var trainVehicles: [TrainVehicle] = []
     @Binding var routeShape: RouteShapeResponse?
     var serviceAlerts: [TransitAlert] = []
@@ -136,6 +139,11 @@ struct RouteDetailSheet: View {
     /// Avoids calling the expensive `prioritizedArrivals` on every body evaluation.
     @State private var cachedDepartureCount: Int = 0
 
+    /// Cached decoded direction polyline.
+    /// Rebuilt only when `routeShape` or `selectedDirectionIndex` changes — avoids
+    /// re-decoding all Google-encoded polyline strings on every body evaluation.
+    @State private var cachedDirectionPolyline: [CLLocationCoordinate2D] = []
+
     /// ID of the chip the user tapped to highlight on the map.
     /// Tapping the same chip again deselects it.  Only live (non-scheduled)
     /// chips can be selected — this zooms the map to the vehicle marker
@@ -193,7 +201,7 @@ struct RouteDetailSheet: View {
 
     init(
         group: GroupedNearbyTransitResponse,
-        busVehicles: Binding<[BusVehicleResponse]>,
+        vehicleCoordinateLookup: ((String) -> CLLocationCoordinate2D?)? = nil,
         trainVehicles: [TrainVehicle] = [],
         routeShape: Binding<RouteShapeResponse?>,
         selectedDirectionIndex: Binding<Int>,
@@ -223,7 +231,7 @@ struct RouteDetailSheet: View {
         onRecenter: (() -> Void)? = nil
     ) {
         self.group = group
-        self._busVehicles = busVehicles
+        self.vehicleCoordinateLookup = vehicleCoordinateLookup
         self.trainVehicles = trainVehicles
         self._routeShape = routeShape
         self._selectedDirectionIndex = selectedDirectionIndex
@@ -390,6 +398,7 @@ struct RouteDetailSheet: View {
             .onChange(of: inSheetSelectedStopId) { _, _ in handleStopSelectionChange() }
             .onChange(of: selectedDirectionIndex) { _, _ in handleDirectionChange() }
             .onChange(of: selectedChipId) { _, newId in handleChipSelectionChange(newId) }
+            .onChange(of: routeShape?.routeId) { _, _ in rebuildCachedPolyline() }
     }
 
     private var bodyWithLifecycle: some View {
@@ -442,7 +451,22 @@ struct RouteDetailSheet: View {
 
     // MARK: - Lifecycle Handlers
 
+    /// Rebuilds the cached decoded direction polyline from the current `routeShape`
+    /// and `selectedDirectionIndex`.  Called when shape or direction changes — NOT
+    /// on every body evaluation.  This avoids re-decoding Google-encoded polylines
+    /// (O(total_encoded_chars)) on every 1 Hz tick.
+    private func rebuildCachedPolyline() {
+        guard let shape = routeShape else {
+            cachedDirectionPolyline = []
+            return
+        }
+        cachedDirectionPolyline = shape.polylinesForDirection(
+            index: selectedDirectionIndex, name: selectedDirectionName
+        ).flatMap { $0 }
+    }
+
     private func handleOnAppear() {
+        rebuildCachedPolyline()
         isFavorited = favoritesManager.isFavorite(routeId: group.routeId, mode: group.mode)
         isLoadingArrivals = safeDirection.arrivals.isEmpty
         stableNearestArrivals = nearestStopArrivals
@@ -539,6 +563,7 @@ struct RouteDetailSheet: View {
         selectedChipId = nil
         onFocusVehicle?(nil)
         onStopSelected?(nil)
+        rebuildCachedPolyline()
         let freshArrivals = nearestStopArrivals
         stableNearestArrivals = freshArrivals
         lastStableRefreshDate = .distantPast
@@ -791,14 +816,10 @@ struct RouteDetailSheet: View {
     }
 
     /// Builds the direction polyline and stop fraction used by the passed-stop
-    /// filter and polyline-distance sort.  Computed once per body evaluation.
+    /// filter and polyline-distance sort.  Uses `cachedDirectionPolyline` to
+    /// avoid re-decoding Google-encoded polylines on every body evaluation.
     private var directionPolylineAndStopFraction: (polyline: [CLLocationCoordinate2D], stopFraction: Double?) {
-        let polyline: [CLLocationCoordinate2D] = {
-            guard let shape = routeShape else { return [] }
-            return shape.polylinesForDirection(
-                index: selectedDirectionIndex, name: selectedDirectionName
-            ).flatMap { $0 }
-        }()
+        let polyline: [CLLocationCoordinate2D] = cachedDirectionPolyline
 
         let liveOnly = safeDirection.liveArrivals
 
@@ -1435,14 +1456,12 @@ struct RouteDetailSheet: View {
 
     // MARK: - Vehicle Coordinate Lookup
 
-    /// Unified vehicle coordinate lookup — checks busVehicles for buses,
+    /// Unified vehicle coordinate lookup — uses vehicleCoordinateLookup closure for buses,
     /// trainVehicles for subway/LIRR/MNR. Returns nil for scheduled-only arrivals.
     private func vehicleCoordinate(for arrival: NearbyTransitResponse) -> CLLocationCoordinate2D? {
         guard let vid = arrival.vehicleId, !vid.isEmpty else { return nil }
         if arrival.isBus {
-            if let bus = busVehicles.first(where: { $0.vehicleId == vid }) {
-                return CLLocationCoordinate2D(latitude: bus.lat, longitude: bus.lon)
-            }
+            return vehicleCoordinateLookup?(vid)
         } else {
             // Match train by vehicleId or tripId
             if let train = trainVehicles.first(where: { $0.id == vid || $0.tripId == vid }) {
@@ -1484,11 +1503,8 @@ struct RouteDetailSheet: View {
         }()
 
         let polyline: [CLLocationCoordinate2D]? = {
-            guard let shape = routeShape else { return nil }
-            let decoded = shape.polylinesForDirection(
-                index: selectedDirectionIndex, name: selectedDirectionName
-            ).flatMap { $0 }
-            return decoded.count >= 2 ? decoded : nil
+            let cached = cachedDirectionPolyline
+            return cached.count >= 2 ? cached : nil
         }()
 
         return ArrivalETAEngine.computeETA(
@@ -1760,55 +1776,7 @@ struct RouteDetailSheet: View {
 
         // --- Bus schedule ---
         if group.isBus, let schedule = busSchedule {
-            let dirLower = direction.direction.lowercased()
-            // Tokenize the direction for flexible matching:
-            // direction="CYPRESS HILLS via ROCKAWAY BL" → tokens=["cypress","hills",...]
-            // headsign="CYPRESS HILLS"                   → tokens=["cypress","hills"]
-            let dirTokens = Set(dirLower.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init))
-                .subtracting(["via", "to", "and", "the"])
-
-            let matched =
-                schedule.directions.first { schedDir in
-                    let schedDirLower = schedDir.direction.lowercased()
-                    let hsLower = schedDir.headsign.lowercased()
-                    // Exact direction match
-                    if schedDirLower == dirLower { return true }
-                    // Substring containment (either way)
-                    if !hsLower.isEmpty && (hsLower.contains(dirLower) || dirLower.contains(hsLower)) { return true }
-                    // Token overlap: if the headsign shares most tokens with the direction
-                    if !hsLower.isEmpty {
-                        let hsTokens = Set(hsLower.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init))
-                            .subtracting(["via", "to", "and", "the"])
-                        let overlap = dirTokens.intersection(hsTokens)
-                        if !hsTokens.isEmpty && overlap.count >= max(1, hsTokens.count - 1) { return true }
-                    }
-                    return false
-                }
-                ?? schedule.directions.first { schedDir in
-                    schedule.directions.firstIndex(where: { $0.direction == schedDir.direction })
-                        == selectedDirectionIndex
-                }
-
-            #if DEBUG
-            do {
-                let matchKey = "\(group.routeId)_\(dirLower)_\(matched?.direction ?? "nil")_\(matched?.departures.count ?? -1)"
-                if matchKey != Self._lastSchedMatchLog {
-                    Self._lastSchedMatchLog = matchKey
-                    if matched == nil {
-                        let availDirs = schedule.directions.map { "dir='\($0.direction)' hs='\($0.headsign)' deps=\($0.departures.count)" }
-                        print("[SCHED_MATCH] FAILED route=\(group.routeId) looking for '\(dirLower)' in [\(availDirs.joined(separator: ", "))]")
-                    } else if let m = matched {
-                        print("[SCHED_MATCH] OK route=\(group.routeId) dir='\(dirLower)' → sched dir='\(m.direction)' hs='\(m.headsign)' deps=\(m.departures.count)")
-                    }
-                }
-            }
-            #endif
-
-            guard let matched else { return [] }
-            return matched.departures
-                .filter { $0.minutesAway >= 0 }
-                .sorted { $0.departureTime < $1.departureTime }
-                .map { ScheduledItem.from($0) }
+            return busScheduledDepartures(schedule: schedule, direction: direction)
         }
 
         // --- Train (subway / LIRR / MNR) schedule from cached GTFS arrivals ---
@@ -1836,6 +1804,68 @@ struct RouteDetailSheet: View {
     /// View showing upcoming scheduled departures when no live vehicles are running.
     private var scheduledDeparturesView: some View {
         ScheduledChipStrip(departures: scheduledDeparturesForCurrentDirection)
+    }
+
+    /// Match a bus schedule direction to the currently-selected direction.
+    /// Extracted from `scheduledDeparturesForCurrentDirection` to reduce
+    /// type-checker pressure on the computed property.
+    private func busScheduledDepartures(
+        schedule: BusScheduleResponse,
+        direction: DirectionArrivalsResponse
+    ) -> [ScheduledItem] {
+        let dirLower: String = direction.direction.lowercased()
+        let stopWords: Set<String> = ["via", "to", "and", "the"]
+        let dirTokens: Set<String> = Set(
+            dirLower.split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+                .map(String.init)
+        ).subtracting(stopWords)
+
+        // Primary: flexible text match
+        let matched: BusScheduleDirection? =
+            schedule.directions.first { (schedDir: BusScheduleDirection) -> Bool in
+                let schedDirLower: String = schedDir.direction.lowercased()
+                let hsLower: String = schedDir.headsign.lowercased()
+                if schedDirLower == dirLower { return true }
+                if !hsLower.isEmpty && (hsLower.contains(dirLower) || dirLower.contains(hsLower)) { return true }
+                if !hsLower.isEmpty {
+                    let hsTokens: Set<String> = Set(
+                        hsLower.split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+                            .map(String.init)
+                    ).subtracting(stopWords)
+                    let overlap: Set<String> = dirTokens.intersection(hsTokens)
+                    if !hsTokens.isEmpty && overlap.count >= max(1, hsTokens.count - 1) { return true }
+                }
+                return false
+            }
+            // Fallback: positional index match
+            ?? schedule.directions.first { (schedDir: BusScheduleDirection) -> Bool in
+                let idx: Int? = schedule.directions.firstIndex(where: { $0.direction == schedDir.direction })
+                return idx == selectedDirectionIndex
+            }
+
+        #if DEBUG
+        do {
+            let depCount: Int = matched?.departures.count ?? -1
+            let matchKey: String = "\(group.routeId)_\(dirLower)_\(matched?.direction ?? "nil")_\(depCount)"
+            if matchKey != Self._lastSchedMatchLog {
+                Self._lastSchedMatchLog = matchKey
+                if matched == nil {
+                    let availDirs: [String] = schedule.directions.map {
+                        "dir='\($0.direction)' hs='\($0.headsign)' deps=\($0.departures.count)"
+                    }
+                    print("[SCHED_MATCH] FAILED route=\(group.routeId) looking for '\(dirLower)' in [\(availDirs.joined(separator: ", "))]")
+                } else if let m = matched {
+                    print("[SCHED_MATCH] OK route=\(group.routeId) dir='\(dirLower)' → sched dir='\(m.direction)' hs='\(m.headsign)' deps=\(m.departures.count)")
+                }
+            }
+        }
+        #endif
+
+        guard let matched else { return [] }
+        return matched.departures
+            .filter { $0.minutesAway >= 0 }
+            .sorted { $0.departureTime < $1.departureTime }
+            .map { ScheduledItem.from($0) }
     }
 
     // MARK: - Direction Picker
@@ -2399,7 +2429,7 @@ struct RouteDetailSheet: View {
                 ),
             ]
         ),
-        busVehicles: .constant([]),
+        vehicleCoordinateLookup: { _ in nil },
         trainVehicles: [],
         routeShape: .constant(nil),
         selectedDirectionIndex: .constant(0)

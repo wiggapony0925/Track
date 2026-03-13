@@ -22,6 +22,22 @@ struct BusArrivalRow: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            collapsedRow
+
+            // Expanded detail section
+            if isExpanded {
+                expandedDetail
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Bus \(shortRouteName), \(arrival.statusText)")
+        .accessibilityHint(
+            isExpanded ? "Expanded. Shows arrival details." : "Tap to see arrival details")
+    }
+
+    // MARK: - Collapsed Row (extracted to reduce body type-check)
+
+    private var collapsedRow: some View {
             HStack(spacing: 12) {
                 // Bus route badge (pill shape with bus styling)
                 RouteBadge(routeID: shortRouteName, size: .medium, isBus: true)
@@ -83,9 +99,11 @@ struct BusArrivalRow: View {
                     isExpanded.toggle()
                 }
             }
+    }
 
-            // Expanded detail section
-            if isExpanded {
+    // MARK: - Expanded Detail (extracted to reduce body type-check)
+
+    private var expandedDetail: some View {
                 VStack(alignment: .leading, spacing: 8) {
                     Divider()
 
@@ -109,15 +127,14 @@ struct BusArrivalRow: View {
                         Spacer()
 
                         // Status pill
+                        let pillBg: Color = arrival.status == "Scheduled"
+                            ? Color.gray.opacity(0.6) : statusColor
                         Text(arrival.statusText)
                             .font(.custom("Helvetica-Bold", size: 11))
                             .foregroundColor(AppTheme.Colors.textOnColor)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
-                            .background(
-                                arrival.status == "Scheduled"
-                                    ? Color.gray.opacity(0.6) : statusColor
-                            )
+                            .background(pillBg)
                             .clipShape(Capsule())
                     }
 
@@ -142,47 +159,38 @@ struct BusArrivalRow: View {
                     }
 
                     // Track button
+                    let iconName: String = isTracking
+                        ? "antenna.radiowaves.left.and.right"
+                        : isTrackingAnother
+                            ? "arrow.triangle.2.circlepath" : "bell.fill"
+                    let buttonLabel: String = isTracking
+                        ? "Tracking"
+                        : isTrackingAnother
+                            ? "Switch to This" : "Track This Bus"
+                    let buttonBg: Color = isTracking
+                        ? AppTheme.Colors.successGreen
+                        : isTrackingAnother
+                            ? AppTheme.Colors.warningYellow
+                            : AppTheme.Colors.mtaBlue
                     Button {
                         onTrack?()
                     } label: {
                         HStack(spacing: 6) {
-                            Image(
-                                systemName: isTracking
-                                    ? "antenna.radiowaves.left.and.right"
-                                    : isTrackingAnother
-                                        ? "arrow.triangle.2.circlepath"
-                                        : "bell.fill"
-                            )
-                            .font(.system(size: 12, weight: .bold))
-                            Text(isTracking
-                                ? "Tracking"
-                                : isTrackingAnother
-                                    ? "Switch to This"
-                                    : "Track This Bus")
+                            Image(systemName: iconName)
+                                .font(.system(size: 12, weight: .bold))
+                            Text(buttonLabel)
                                 .font(.custom("Helvetica-Bold", size: 13))
                         }
                         .foregroundColor(AppTheme.Colors.textOnColor)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 10)
-                        .background(
-                            isTracking
-                                ? AppTheme.Colors.successGreen
-                                : isTrackingAnother
-                                    ? AppTheme.Colors.warningYellow
-                                    : AppTheme.Colors.mtaBlue
-                        )
+                        .background(buttonBg)
                         .cornerRadius(AppTheme.Layout.cornerRadius)
                     }
                 }
                 .padding(.horizontal, AppTheme.Layout.margin)
                 .padding(.bottom, 10)
                 .transition(.opacity.combined(with: .move(edge: .top)))
-            }
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Bus \(shortRouteName), \(arrival.statusText)")
-        .accessibilityHint(
-            isExpanded ? "Expanded. Shows arrival details." : "Tap to see arrival details")
     }
 
     /// Strips the "MTA NYCT_" prefix for display.

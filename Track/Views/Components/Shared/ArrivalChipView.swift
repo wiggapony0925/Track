@@ -147,11 +147,19 @@ struct ArrivalChipView: View {
 
     @ViewBuilder
     private var secondaryLabel: some View {
+        let foreColor: Color = isSched
+            ? AppTheme.Colors.textSecondary.opacity(0.45)
+            : chipAccent.opacity(0.8)
+        let bgColor: Color = isSched
+            ? AppTheme.Colors.textSecondary.opacity(0.06)
+            : chipAccent.opacity(0.1)
+
         Group {
             if chip.minutesRemaining > 75 {
                 Text("in \(chip.minutesRemaining) min")
             } else if let ts = chip.arrivalTimestamp {
-                Text(Date(timeIntervalSince1970: Double(ts)), style: .time)
+                let date: Date = Date(timeIntervalSince1970: Double(ts))
+                Text(date, style: .time)
             } else if isSched {
                 Text(chip.departureDate, style: .time)
             } else {
@@ -161,20 +169,11 @@ struct ArrivalChipView: View {
         .font(.system(size: 9.5, weight: .semibold, design: .rounded))
         .lineLimit(1)
         .minimumScaleFactor(0.75)
-        .foregroundStyle(
-            isSched
-                ? AppTheme.Colors.textSecondary.opacity(0.45)
-                : chipAccent.opacity(0.8)
-        )
+        .foregroundStyle(foreColor)
         .padding(.horizontal, 8)
         .padding(.vertical, 3.5)
         .background(
-            Capsule()
-                .fill(
-                    isSched
-                        ? AppTheme.Colors.textSecondary.opacity(0.06)
-                        : chipAccent.opacity(0.1)
-                )
+            Capsule().fill(bgColor)
         )
         .padding(.bottom, 12)
         .dynamicTypeSize(...DynamicTypeSize.large)
@@ -290,74 +289,12 @@ struct ScheduledChipView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Accent bar
-            RoundedRectangle(cornerRadius: 2)
-                .fill(AppTheme.Colors.textSecondary.opacity(0.18))
-                .frame(width: 28, height: 3)
-                .padding(.top, 10)
-
-            // Status label
-            HStack(spacing: 3) {
-                Image(systemName: "calendar.circle")
-                    .font(.system(size: 7, weight: .semibold))
-                Text("Sched")
-                    .font(.system(size: 8, weight: .bold, design: .rounded))
-                    .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
-            }
-            .foregroundStyle(AppTheme.Colors.textSecondary.opacity(0.45))
-            .padding(.top, 6)
-            .dynamicTypeSize(...DynamicTypeSize.large)
-
+            accentBar
+            statusLabel
             Spacer(minLength: 4)
-
-            // Primary ETA
-            if departure.minutesAway > 75 {
-                Text(departure.departureDate, format: .dateTime.hour().minute())
-                    .font(.system(size: 17, weight: .heavy, design: .rounded))
-                    .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
-                    .minimumScaleFactor(0.65)
-                    .foregroundStyle(AppTheme.Colors.textSecondary.opacity(0.4))
-                    .dynamicTypeSize(...DynamicTypeSize.large)
-            } else {
-                VStack(spacing: 2) {
-                    Text("\(departure.minutesAway)")
-                        .font(.system(size: 30, weight: .heavy, design: .rounded))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                        .foregroundStyle(AppTheme.Colors.textSecondary.opacity(0.4))
-                    Text("MIN")
-                        .font(.system(size: 10, weight: .semibold, design: .rounded))
-                        .lineLimit(1)
-                        .foregroundStyle(AppTheme.Colors.textSecondary.opacity(0.3))
-                        .tracking(0.5)
-                }
-                .dynamicTypeSize(...DynamicTypeSize.large)
-            }
-
+            primaryETA
             Spacer(minLength: 4)
-
-            // Secondary capsule
-            Group {
-                if departure.minutesAway > 75 {
-                    Text("in \(departure.minutesAway) min")
-                } else {
-                    Text(departure.formattedTime)
-                }
-            }
-            .font(.system(size: 9.5, weight: .semibold, design: .rounded))
-            .lineLimit(1)
-            .minimumScaleFactor(0.75)
-            .foregroundStyle(AppTheme.Colors.textSecondary.opacity(0.4))
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3.5)
-            .background(
-                Capsule()
-                    .fill(AppTheme.Colors.textSecondary.opacity(0.06))
-            )
-            .padding(.bottom, 12)
-            .dynamicTypeSize(...DynamicTypeSize.large)
+            secondaryCapsule
         }
         .monospacedDigit()
         .frame(width: 78)
@@ -373,6 +310,75 @@ struct ScheduledChipView: View {
                     lineWidth: 0.8
                 )
         }
+    }
+
+    // MARK: - Sub-views (extracted to reduce body type-check)
+
+    private var accentBar: some View {
+        RoundedRectangle(cornerRadius: 2)
+            .fill(AppTheme.Colors.textSecondary.opacity(0.18))
+            .frame(width: 28, height: 3)
+            .padding(.top, 10)
+    }
+
+    private var statusLabel: some View {
+        HStack(spacing: 3) {
+            Image(systemName: "calendar.circle")
+                .font(.system(size: 7, weight: .semibold))
+            Text("Sched")
+                .font(.system(size: 8, weight: .bold, design: .rounded))
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+        }
+        .foregroundStyle(AppTheme.Colors.textSecondary.opacity(0.45))
+        .padding(.top, 6)
+        .dynamicTypeSize(...DynamicTypeSize.large)
+    }
+
+    @ViewBuilder
+    private var primaryETA: some View {
+        let mins: Int = departure.minutesAway
+        if mins > 75 {
+            Text(departure.departureDate, format: .dateTime.hour().minute())
+                .font(.system(size: 17, weight: .heavy, design: .rounded))
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+                .minimumScaleFactor(0.65)
+                .foregroundStyle(AppTheme.Colors.textSecondary.opacity(0.4))
+                .dynamicTypeSize(...DynamicTypeSize.large)
+        } else {
+            VStack(spacing: 2) {
+                Text("\(mins)")
+                    .font(.system(size: 30, weight: .heavy, design: .rounded))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .foregroundStyle(AppTheme.Colors.textSecondary.opacity(0.4))
+                Text("MIN")
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .lineLimit(1)
+                    .foregroundStyle(AppTheme.Colors.textSecondary.opacity(0.3))
+                    .tracking(0.5)
+            }
+            .dynamicTypeSize(...DynamicTypeSize.large)
+        }
+    }
+
+    private var secondaryCapsule: some View {
+        let mins: Int = departure.minutesAway
+        let text: String = mins > 75 ? "in \(mins) min" : departure.formattedTime
+        return Text(text)
+            .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+            .lineLimit(1)
+            .minimumScaleFactor(0.75)
+            .foregroundStyle(AppTheme.Colors.textSecondary.opacity(0.4))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3.5)
+            .background(
+                Capsule()
+                    .fill(AppTheme.Colors.textSecondary.opacity(0.06))
+            )
+            .padding(.bottom, 12)
+            .dynamicTypeSize(...DynamicTypeSize.large)
     }
 }
 

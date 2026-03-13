@@ -313,7 +313,19 @@ _siri_circuit_opened_at: float = 0.0
 _oba_auth_blocked_until: float = 0.0
 
 # Upstream concurrency guard — values sourced from cache_config.py
-_upstream_semaphore = asyncio.Semaphore(BUS_UPSTREAM_CONCURRENCY)
+# Lazily created inside the running event loop to avoid the
+# "Semaphore is bound to a different event loop" error on reload.
+_upstream_semaphore: asyncio.Semaphore | None = None
+_upstream_semaphore_loop_id: int | None = None
+
+
+def _get_upstream_semaphore() -> asyncio.Semaphore:
+    global _upstream_semaphore, _upstream_semaphore_loop_id
+    loop_id = id(asyncio.get_running_loop())
+    if _upstream_semaphore is None or _upstream_semaphore_loop_id != loop_id:
+        _upstream_semaphore = asyncio.Semaphore(BUS_UPSTREAM_CONCURRENCY)
+        _upstream_semaphore_loop_id = loop_id
+    return _upstream_semaphore
 
 # ---------------------------------------------------------------------------
 # Shared HTTP client (connection pooling)
@@ -866,7 +878,7 @@ async def _fetch_bus_json(
     client = _get_bus_client()
     for attempt in range(_MAX_RETRIES):
         try:
-            async with _upstream_semaphore:
+            async with _get_upstream_semaphore():
                 response = await client.get(url, params=params)
             if response.status_code in (401, 403):
                 if is_siri:

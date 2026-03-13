@@ -185,27 +185,109 @@ async def subway_shapes_all() -> AllSubwayLinesResponse:
     # ── Post-pipeline: Append direction-1 branch extensions ──
     # These shapes cover stations not reachable by any direction-0 shape
     # (e.g. R train south of 36th St to Bay Ridge).  They're added AFTER
-    # the pipeline to avoid disrupting the trunk-group merge.  The shapes
-    # are reversed (southbound → northbound order) and appended as extra
-    # encoded polylines to the relevant route's overlay AND to the trunk
-    # polylines so the client gets the complete geometry.
+    # the pipeline to avoid disrupting the trunk-group merge.
+    #
+    # IMPORTANT: We clip each dir-1 shape to only the portion that
+    # diverges from the existing trunk geometry.  Without clipping, the
+    # full reverse-direction polyline (which overlaps the trunk for most
+    # of its length) would render as a second un-offset line on top of
+    # the corridor-offset trunk — producing a visually doubled line.
     if dir1_extras:
         overlay_map: dict[str, SubwayLineOverlay] = {o.route_id: o for o in overlays}
         # Build a mutable lookup for trunk polylines
         trunk_poly_map: dict[int, list[str]] = {
             tp["trunk_index"]: list(tp["polylines"]) for tp in trunk_polys_raw
         }
+
+        # Decode existing trunk polylines into coordinate lists for
+        # proximity testing.  We'll check each dir-1 vertex against
+        # these to find where the branch diverges from the trunk.
+        METERS_PER_DEG: float = 111_000.0
+        COS_NYC: float = 0.76  # cos(40.7°)
+
+        def _trunk_coords(trunk_idx: int) -> list[list[tuple[float, float]]]:
+            """Decode all existing trunk polylines for a trunk group."""
+            enc_list: list[str] = trunk_poly_map.get(trunk_idx, [])
+            result: list[list[tuple[float, float]]] = []
+            for enc in enc_list:
+                try:
+                    result.append(_decode_polyline(enc))
+                except Exception:
+                    pass
+            return result
+
+        def _min_dist_to_trunk(
+            pt: tuple[float, float],
+            trunk_lines: list[list[tuple[float, float]]],
+        ) -> float:
+            """Minimum approximate distance (meters) from pt to any trunk polyline vertex."""
+            best: float = float("inf")
+            plat, plon = pt
+            for line in trunk_lines:
+                for tlat, tlon in line:
+                    dlat = (plat - tlat) * METERS_PER_DEG
+                    dlon = (plon - tlon) * METERS_PER_DEG * COS_NYC
+                    d = (dlat * dlat + dlon * dlon) ** 0.5
+                    if d < best:
+                        best = d
+                        if d < 30:  # early exit — clearly on trunk
+                            return d
+            return best
+
+        # Threshold: if a vertex is within 60m of any existing trunk
+        # vertex, it is still on the trunk.  Only vertices beyond this
+        # are part of the unique branch extension.
+        DIVERGE_DIST_M: float = 60.0
+        # Keep a small overlap (3 vertices) at the divergence point so
+        # the branch extension connects visually to the trunk.
+        OVERLAP_VERTS: int = 3
+
         for line, sid in dir1_extras:
             shape_buf = shapes_data.get(sid)
             if not shape_buf:
                 continue
             raw = list(reversed(_unpack_coords(shape_buf)))
+
+            # ── Clip to the unique branch portion ──
+            trunk_idx = ROUTE_TO_TRUNK.get(line)
+            trunk_lines = _trunk_coords(trunk_idx) if trunk_idx is not None else []
+
+            if trunk_lines and len(raw) > 5:
+                # Walk from the START of the shape (which is the terminus
+                # end after reversal) to find where it first enters the
+                # trunk.  We want to keep everything BEFORE that point.
+                # Walk from the END (trunk side) backwards to find the
+                # divergence point.
+                diverge_idx: int = len(raw)
+                for i in range(len(raw) - 1, -1, -1):
+                    d = _min_dist_to_trunk(raw[i], trunk_lines)
+                    if d > DIVERGE_DIST_M:
+                        diverge_idx = i + 1
+                        break
+                else:
+                    # Every vertex is far from trunk — keep all
+                    diverge_idx = len(raw)
+
+                # Add a few overlap vertices for visual connection
+                clip_end = min(len(raw), diverge_idx + OVERLAP_VERTS)
+
+                if clip_end < len(raw) - 5:
+                    # Significant clipping — only keep the branch portion
+                    clipped = raw[:clip_end]
+                    TrackLogger.info(
+                        f"[Dir1] Clipped {line} shape {sid}: {len(raw)} → {len(clipped)} pts "
+                        f"(diverges at idx {diverge_idx})"
+                    )
+                    raw = clipped
+
+            if len(raw) < 2:
+                continue
+
             enc = _encode_polyline(_densify_wgs84(raw))
             if line in overlay_map:
                 overlay_map[line].polylines.append(enc)
                 TrackLogger.info(f"[Dir1] Added reverse shape {sid} to {line} ({len(raw)} pts)")
             # Also append to trunk polylines
-            trunk_idx = ROUTE_TO_TRUNK.get(line)
             if trunk_idx is not None:
                 if trunk_idx not in trunk_poly_map:
                     trunk_poly_map[trunk_idx] = []

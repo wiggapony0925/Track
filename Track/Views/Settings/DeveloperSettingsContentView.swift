@@ -8,6 +8,7 @@
 
 import SwiftUI
 
+#if DEBUG
 struct DeveloperSettingsContentView: View {
     @AppStorage("dev_use_localhost") private var useLocalhost = false
     @AppStorage("dev_custom_ip") private var customIP = AppSettings.shared.defaultDeviceIP
@@ -21,112 +22,127 @@ struct DeveloperSettingsContentView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-
-            ScrollView {
-                VStack(spacing: 24) {
-                    section(title: "Local Backend", icon: "network", iconColor: .orange) {
-                        VStack(spacing: 0) {
-                            row(icon: "desktopcomputer", iconColor: .mint, title: "Use Local Server") {
-                                Toggle("", isOn: $useLocalhost)
-                                    .tint(AppTheme.Colors.mtaBlue)
-                                    .onChange(of: useLocalhost) { _, _ in
-                                        TrackAPI.invalidateBaseURL()
-                                    }
-                            }
-
-                            if useLocalhost {
-                                divider
-
-                                HStack {
-                                    Text("http://")
-                                        .font(.system(size: 13, design: .monospaced))
-                                        .foregroundColor(AppTheme.Colors.textSecondary)
-                                    TextField("192.168.1.X", text: $customIP)
-                                        .font(.system(size: 13, design: .monospaced))
-                                        .foregroundColor(AppTheme.Colors.textPrimary)
-                                        .keyboardType(.numbersAndPunctuation)
-                                        .onChange(of: customIP) { _, _ in
-                                            TrackAPI.invalidateBaseURL()
-                                        }
-                                    Text(":8000")
-                                        .font(.system(size: 13, design: .monospaced))
-                                        .foregroundColor(AppTheme.Colors.textSecondary)
-                                }
-                                .padding(.horizontal, AppTheme.Layout.cardPadding)
-                                .padding(.vertical, 12)
-                            }
-
-                            divider
-
-                            HStack {
-                                Image(systemName: "link")
-                                    .font(.system(size: 11))
-                                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.5))
-                                Text(useLocalhost
-                                    ? "http://\(customIP.isEmpty ? "127.0.0.1" : customIP):8000"
-                                    : AppSettings.shared.prodBaseURL)
-                                    .font(.system(size: 10, weight: .regular, design: .monospaced))
-                                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.5))
-                                    .lineLimit(1)
-                                Spacer()
-                            }
-                            .padding(.horizontal, AppTheme.Layout.cardPadding)
-                            .padding(.vertical, 8)
-
-                            divider
-
-                            HStack(spacing: 10) {
-                                Circle()
-                                    .fill(
-                                        backendPingIsHealthy == nil
-                                            ? AppTheme.Colors.textSecondary.opacity(0.4)
-                                            : (backendPingIsHealthy == true
-                                                ? AppTheme.Colors.successGreen
-                                                : AppTheme.Colors.alertRed)
-                                    )
-                                    .frame(width: 8, height: 8)
-
-                                Text(backendPingText)
-                                    .font(.system(size: 11, weight: .medium, design: .monospaced))
-                                    .foregroundColor(AppTheme.Colors.textSecondary)
-                                    .lineLimit(1)
-
-                                Spacer()
-
-                                Button {
-                                    Task {
-                                        await pingBackend()
-                                    }
-                                } label: {
-                                    if isPingingBackend {
-                                        ProgressView()
-                                            .controlSize(.small)
-                                    } else {
-                                        Text("Ping")
-                                            .font(.system(size: 11, weight: .semibold))
-                                    }
-                                }
-                                .disabled(isPingingBackend)
-                            }
-                            .padding(.horizontal, AppTheme.Layout.cardPadding)
-                            .padding(.vertical, 10)
-
-                            if !useLocalhost {
-                                Text("Connected to production server")
-                                    .font(.caption2)
-                                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.4))
-                                    .padding(.bottom, 8)
-                            }
-                        }
-                    }
-
-                    Spacer()
-                        .frame(height: 40)
-                }
-                .padding(.top, 12)
-            }
+            developerScrollContent
         }
         .background(AppTheme.Colors.background)
+    }
+
+    private var developerScrollContent: some View {
+        ScrollView {
+            VStack(spacing: 24) {
+                localBackendSection
+
+                Spacer()
+                    .frame(height: 40)
+            }
+            .padding(.top, 12)
+        }
+    }
+
+    private var localBackendSection: some View {
+        section(title: "Local Backend", icon: "server.rack", iconColor: .blue) {
+            VStack(spacing: 0) {
+                row(icon: "desktopcomputer", iconColor: .mint, title: "Use Local Server") {
+                    Toggle("", isOn: $useLocalhost)
+                        .tint(AppTheme.Colors.mtaBlue)
+                        .onChange(of: useLocalhost) { _, _ in
+                            TrackAPI.invalidateBaseURL()
+                        }
+                }
+
+                if useLocalhost {
+                    divider
+
+                    HStack {
+                        Text("http://")
+                            .font(.system(size: 13, design: .monospaced))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
+                        TextField("192.168.1.X", text: $customIP)
+                            .font(.system(size: 13, design: .monospaced))
+                            .foregroundColor(AppTheme.Colors.textPrimary)
+                            .keyboardType(.numbersAndPunctuation)
+                            .onChange(of: customIP) { _, _ in
+                                TrackAPI.invalidateBaseURL()
+                            }
+                        Text(":8000")
+                            .font(.system(size: 13, design: .monospaced))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
+                    }
+                    .padding(.horizontal, AppTheme.Layout.cardPadding)
+                    .padding(.vertical, 12)
+                }
+
+                divider
+
+                localBackendURLRow
+
+                divider
+
+                localBackendPingRow
+
+                if !useLocalhost {
+                    Text("Connected to production server")
+                        .font(.caption2)
+                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.4))
+                        .padding(.bottom, 8)
+                }
+            }
+        }
+    }
+
+    private var localBackendURLRow: some View {
+        HStack {
+            Image(systemName: "link")
+                .font(.system(size: 11))
+                .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.5))
+            Text(useLocalhost
+                ? "http://\(customIP.isEmpty ? "127.0.0.1" : customIP):8000"
+                : AppSettings.shared.prodBaseURL)
+                .font(.system(size: 10, weight: .regular, design: .monospaced))
+                .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.5))
+                .lineLimit(1)
+            Spacer()
+        }
+        .padding(.horizontal, AppTheme.Layout.cardPadding)
+        .padding(.vertical, 8)
+    }
+
+    private var localBackendPingRow: some View {
+        HStack(spacing: 10) {
+            Circle()
+                .fill(
+                    backendPingIsHealthy == nil
+                        ? AppTheme.Colors.textSecondary.opacity(0.4)
+                        : (backendPingIsHealthy == true
+                            ? AppTheme.Colors.successGreen
+                            : AppTheme.Colors.alertRed)
+                )
+                .frame(width: 8, height: 8)
+
+            Text(backendPingText)
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .foregroundColor(AppTheme.Colors.textSecondary)
+                .lineLimit(1)
+
+            Spacer()
+
+            Button {
+                Task {
+                    await pingBackend()
+                }
+            } label: {
+                if isPingingBackend {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Text("Ping")
+                        .font(.system(size: 11, weight: .semibold))
+                }
+            }
+            .disabled(isPingingBackend)
+        }
+        .padding(.horizontal, AppTheme.Layout.cardPadding)
+        .padding(.vertical, 10)
     }
 
     private func pingBackend() async {
@@ -244,3 +260,4 @@ struct DeveloperSettingsContentView: View {
 #Preview {
     DeveloperSettingsContentView(sheetNavigator: SheetNavigator())
 }
+#endif

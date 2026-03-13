@@ -307,108 +307,7 @@ struct SingleRouteWidgetView: View {
         Group {
             switch entry.state {
             case .tracking(let route, let arrivals):
-                VStack(alignment: .leading, spacing: 0) {
-                    // Enhanced header
-                    HStack(spacing: 12) {
-                        ZStack {
-                            Circle()
-                                .fill(AppTheme.Colors.mtaBlue.opacity(0.15))
-                                .frame(width: 44, height: 44)
-                            Image(systemName: "star.fill")
-                                .font(.system(size: 20, weight: .bold))
-                                .foregroundColor(AppTheme.Colors.mtaBlue)
-                        }
-
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text("Tracking Active")
-                                .font(.system(size: 17, weight: .bold))
-                                .foregroundColor(AppTheme.Colors.textPrimary)
-                            Text("\(route.stopName)")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(AppTheme.Colors.textSecondary)
-                                .lineLimit(1)
-                        }
-
-                        Spacer()
-
-                        VStack(alignment: .trailing, spacing: 1) {
-                            Text(entry.date, style: .time)
-                                .font(.system(size: 13, weight: .bold))
-                                .foregroundColor(AppTheme.Colors.textPrimary)
-                            HStack(spacing: 4) {
-                                Circle()
-                                    .fill(AppTheme.Colors.successGreen)
-                                    .frame(width: 5, height: 5)
-                                Text("LIVE")
-                                    .font(.system(size: 9, weight: .black))
-                                    .foregroundColor(AppTheme.Colors.successGreen)
-                            }
-                        }
-                    }
-                    .padding(.bottom, 24)
-
-                    // Hero Card
-                    if let first = arrivals.first {
-                        HStack(spacing: 16) {
-                            transitBadge(route: route, size: 64)
-                                .shadow(color: (route.isBus ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: route.cleanDisplayName)).opacity(0.4), radius: 10, x: 0, y: 5)
-                            
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(route.direction)
-                                    .font(.system(size: 20, weight: .heavy, design: .rounded))
-                                    .foregroundColor(AppTheme.Colors.textPrimary)
-                                    .lineLimit(1)
-                                
-                                Text(first.status)
-                                    .font(.system(size: 12, weight: .black))
-                                    .foregroundColor(statusTextColor(first.status))
-                            }
-                            
-                            Spacer()
-                            
-                            HStack(alignment: .firstTextBaseline, spacing: 2) {
-                                Text(first.arrivalTime, style: .timer)
-                                    .font(.system(size: 42, weight: .bold, design: .rounded))
-                                    .foregroundColor(AppTheme.Colors.countdown(TrackingTimeSync.remainingMinutes(until: first.arrivalTime)))
-                                    .monospacedDigit()
-                            }
-                        }
-                        .padding(16)
-                        .background(Color.white.opacity(0.05))
-                        .cornerRadius(20)
-                        .padding(.bottom, 20)
-                    }
-
-                    // Secondary Arrivals
-                    VStack(spacing: 12) {
-                        ForEach(Array(arrivals.dropFirst().prefix(3).enumerated()), id: \.offset) { _, arrival in
-                            HStack {
-                                Text("Following Arrival")
-                                    .font(.system(size: 13, weight: .bold))
-                                    .foregroundColor(AppTheme.Colors.textSecondary)
-                                Spacer()
-                                Text(arrival.arrivalTime, style: .timer)
-                                    .font(.system(size: 15, weight: .bold, design: .rounded))
-                                    .foregroundColor(AppTheme.Colors.textPrimary)
-                                    .monospacedDigit()
-                            }
-                            .padding(.horizontal, 8)
-                            Divider()
-                        }
-                    }
-
-                    Spacer()
-
-                    HStack {
-                        Image(systemName: "info.circle.fill")
-                            .font(.system(size: 10))
-                        Text("This widget updates live using system countdowns")
-                            .font(.system(size: 10, weight: .medium))
-                    }
-                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
-                }
-                .padding(16)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                largeTrackingView(route: route, arrivals: arrivals)
 
             case .noData(let route):
                 noDataView(route: route)
@@ -419,6 +318,121 @@ struct SingleRouteWidgetView: View {
         }
         .containerBackground(for: .widget) {
             dynamicBackground
+        }
+    }
+
+    // MARK: - Large Tracking View (extracted)
+
+    private func largeTrackingView(route: TrackedRoute, arrivals: [NearbyArrival]) -> some View {
+        let badgeShadowColor: Color = (route.isBus
+            ? AppTheme.Colors.mtaBlue
+            : AppTheme.SubwayColors.color(for: route.cleanDisplayName)).opacity(0.4)
+
+        return VStack(alignment: .leading, spacing: 0) {
+            // Enhanced header
+            largeHeaderRow(route: route)
+                .padding(.bottom, 24)
+
+            // Hero Card
+            if let first: NearbyArrival = arrivals.first {
+                let remainingMins: Int = TrackingTimeSync.remainingMinutes(until: first.arrivalTime)
+                HStack(spacing: 16) {
+                    transitBadge(route: route, size: 64)
+                        .shadow(color: badgeShadowColor, radius: 10, x: 0, y: 5)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(route.direction)
+                            .font(.system(size: 20, weight: .heavy, design: .rounded))
+                            .foregroundColor(AppTheme.Colors.textPrimary)
+                            .lineLimit(1)
+
+                        Text(first.status)
+                            .font(.system(size: 12, weight: .black))
+                            .foregroundColor(statusTextColor(first.status))
+                    }
+
+                    Spacer()
+
+                    Text(first.arrivalTime, style: .timer)
+                        .font(.system(size: 42, weight: .bold, design: .rounded))
+                        .foregroundColor(AppTheme.Colors.countdown(remainingMins))
+                        .monospacedDigit()
+                }
+                .padding(16)
+                .background(Color.white.opacity(0.05))
+                .cornerRadius(20)
+                .padding(.bottom, 20)
+            }
+
+            // Secondary Arrivals
+            let secondary: [NearbyArrival] = Array(arrivals.dropFirst().prefix(3))
+            VStack(spacing: 12) {
+                ForEach(Array(secondary.enumerated()), id: \.offset) { _, arrival in
+                    HStack {
+                        Text("Following Arrival")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
+                        Spacer()
+                        Text(arrival.arrivalTime, style: .timer)
+                            .font(.system(size: 15, weight: .bold, design: .rounded))
+                            .foregroundColor(AppTheme.Colors.textPrimary)
+                            .monospacedDigit()
+                    }
+                    .padding(.horizontal, 8)
+                    Divider()
+                }
+            }
+
+            Spacer()
+
+            HStack {
+                Image(systemName: "info.circle.fill")
+                    .font(.system(size: 10))
+                Text("This widget updates live using system countdowns")
+                    .font(.system(size: 10, weight: .medium))
+            }
+            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    private func largeHeaderRow(route: TrackedRoute) -> some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(AppTheme.Colors.mtaBlue.opacity(0.15))
+                    .frame(width: 44, height: 44)
+                Image(systemName: "star.fill")
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundColor(AppTheme.Colors.mtaBlue)
+            }
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Tracking Active")
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundColor(AppTheme.Colors.textPrimary)
+                Text("\(route.stopName)")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: 1) {
+                Text(entry.date, style: .time)
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(AppTheme.Colors.textPrimary)
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(AppTheme.Colors.successGreen)
+                        .frame(width: 5, height: 5)
+                    Text("LIVE")
+                        .font(.system(size: 9, weight: .black))
+                        .foregroundColor(AppTheme.Colors.successGreen)
+                }
+            }
         }
     }
 

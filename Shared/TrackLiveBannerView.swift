@@ -33,127 +33,129 @@ struct TrackLiveBannerView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Top Section: Route Badge + Countdown
-            HStack(alignment: .top, spacing: 12) {
-                // Left: Route + Destination
-                HStack(alignment: .center, spacing: 10) {
-                    if let walk = data.walkMinutes {
-                        // Walking indicator
-                        ZStack {
-                            Circle()
-                                .fill(
-                                    data.isHurryUp
-                                        ? AppTheme.Colors.alertRed.opacity(0.15)
-                                        : Color.white.opacity(0.1)
-                                )
-                                .frame(width: 44, height: 44)
+            topSection
+            middleProgressSection
+            if showActionButton {
+                actionButton
+            }
+        }
+        .background { bannerBackground }
+    }
 
-                            Image(systemName: walk <= 2 ? "figure.run" : "figure.walk")
-                                .font(.system(size: 22, weight: .bold))
-                                .foregroundColor(
-                                    data.isHurryUp ? AppTheme.Colors.alertRed : .white)
-                        }
-                    } else {
-                        lineBadge(size: 44)
-                    }
+    private var bannerBackground: some View {
+        ZStack {
+            Color.black
+            let accentColor: Color = data.isBus
+                ? AppTheme.Colors.mtaBlue
+                : AppTheme.SubwayColors.color(for: data.lineId)
+            LinearGradient(
+                colors: [accentColor.opacity(0.12), Color.clear],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            if data.isHurryUp {
+                AppTheme.Colors.alertRed.opacity(0.1)
+            }
+        }
+    }
 
-                    VStack(alignment: .leading, spacing: 0) {
-                        if data.isHurryUp {
-                            Text("Hurry up!")
-                                .font(.system(size: 17, weight: .black, design: .rounded))
-                                .foregroundColor(AppTheme.Colors.alertRed)
-                        } else if data.walkMinutes != nil {
-                            Text("Time to walk")
-                                .font(.system(size: 17, weight: .bold, design: .rounded))
-                                .foregroundColor(.white)
-                        } else {
-                            Text(data.destination)
-                                .font(.system(size: 18, weight: .bold, design: .rounded))
-                                .foregroundColor(.white)
-                                .lineLimit(2)
-                                .minimumScaleFactor(0.65)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
+    private var topSection: some View {
+        HStack(alignment: .top, spacing: 12) {
+            leftRouteContent
+            Spacer()
+            heroCountdownLockScreen()
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 14)
+        .padding(.bottom, 10)
+    }
 
-                        Text(data.proximityText)
-                            .font(.system(size: 13, weight: .medium, design: .rounded))
-                            .foregroundColor(
-                                data.minutesAway == 1
-                                    ? AppTheme.Colors.alertRed : AppTheme.Colors.textSecondary
-                            )
+    private var leftRouteContent: some View {
+        HStack(alignment: .center, spacing: 10) {
+            leftBadgeOrWalkIcon
+            VStack(alignment: .leading, spacing: 0) {
+                bannerTitleContent
+                let proximityColor: Color = data.minutesAway == 1
+                    ? AppTheme.Colors.alertRed : AppTheme.Colors.textSecondary
+                Text(data.proximityText)
+                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .foregroundColor(proximityColor)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var leftBadgeOrWalkIcon: some View {
+        if let walk = data.walkMinutes {
+            let bgColor: Color = data.isHurryUp
+                ? AppTheme.Colors.alertRed.opacity(0.15)
+                : Color.white.opacity(0.1)
+            let iconName: String = walk <= 2 ? "figure.run" : "figure.walk"
+            let iconColor: Color = data.isHurryUp ? AppTheme.Colors.alertRed : .white
+            ZStack {
+                Circle().fill(bgColor).frame(width: 44, height: 44)
+                Image(systemName: iconName)
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundColor(iconColor)
+            }
+        } else {
+            lineBadge(size: 44)
+        }
+    }
+
+    @ViewBuilder
+    private var bannerTitleContent: some View {
+        if data.isHurryUp {
+            Text("Hurry up!")
+                .font(.system(size: 17, weight: .black, design: .rounded))
+                .foregroundColor(AppTheme.Colors.alertRed)
+        } else if data.walkMinutes != nil {
+            Text("Time to walk")
+                .font(.system(size: 17, weight: .bold, design: .rounded))
+                .foregroundColor(.white)
+        } else {
+            Text(data.destination)
+                .font(.system(size: 18, weight: .bold, design: .rounded))
+                .foregroundColor(.white)
+                .lineLimit(2)
+                .minimumScaleFactor(0.65)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var middleProgressSection: some View {
+        VStack(spacing: 6) {
+            progressSlider(progress: data.progress)
+
+            HStack {
+                if let walkMins = data.walkMinutes {
+                    Label("\(walkMins) min walk", systemImage: "figure.walk")
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+                } else {
+                    HStack(spacing: 4) {
+                        lineBadge(size: 14, compact: true)
+                        Text("to " + data.destination)
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
                             .lineLimit(1)
-                            .minimumScaleFactor(0.8)
                     }
                 }
 
                 Spacer()
 
-                // Right: Hero countdown
-                heroCountdownLockScreen()
-            }
-            .padding(.horizontal, 20)
-            .padding(.top, 14)
-            .padding(.bottom, 10)
-
-            // Middle: Progress Slider
-            VStack(spacing: 6) {
-                progressSlider(progress: data.progress)
-
-                HStack {
-                    if let walkMins = data.walkMinutes {
-                        Label("\(walkMins) min walk", systemImage: "figure.walk")
-                            .font(.system(size: 11, weight: .semibold, design: .rounded))
-                            .foregroundColor(AppTheme.Colors.textSecondary)
-                    } else {
-                        HStack(spacing: 4) {
-                            lineBadge(size: 14, compact: true)
-                            Text("to " + data.destination)
-                                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                                .foregroundColor(AppTheme.Colors.textSecondary)
-                                .lineLimit(1)
-                        }
-                    }
-
-                    Spacer()
-
-                    // Show next train if available
-                    if let next = data.nextArrivals.first {
-                        Text("Next: \(next) min")
-                            .font(.system(size: 11, weight: .medium, design: .rounded))
-                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.8))
-                    }
-                }
-                .padding(.horizontal, 2)
-            }
-            .padding(.horizontal, 20)
-            .padding(.bottom, showActionButton ? 10 : 14)
-
-            // Bottom: "I made it!" Action Button (Only show if requested, generally Activity only)
-            if showActionButton {
-                actionButton
-            }
-        }
-        .background {
-            ZStack {
-                // Main dark background
-                Color.black
-
-                // Subtle gradient accent from the route color
-                let accentColor = data.isBus
-                    ? AppTheme.Colors.mtaBlue
-                    : AppTheme.SubwayColors.color(for: data.lineId)
-                
-                LinearGradient(
-                    colors: [accentColor.opacity(0.12), Color.clear],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-
-                if data.isHurryUp {
-                    AppTheme.Colors.alertRed.opacity(0.1)
+                if let next = data.nextArrivals.first {
+                    Text("Next: \(next) min")
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.8))
                 }
             }
+            .padding(.horizontal, 2)
         }
+        .padding(.horizontal, 20)
+        .padding(.bottom, showActionButton ? 10 : 14)
     }
 
     // MARK: - Subcomponents

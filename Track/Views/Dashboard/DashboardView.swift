@@ -23,41 +23,63 @@ struct DashboardView: View {
 
     @ObservedObject private var favoritesManager = FavoritesManager.shared
 
+    private var searchTextBinding: Binding<String> {
+        Binding(get: { viewModel.searchText }, set: { viewModel.searchText = $0 })
+    }
+    private var showSettingsBinding: Binding<Bool> {
+        Binding(get: { false }, set: { _ in sheetNavigator.navigate(to: .settings) })
+    }
+    private var selectedModeBinding: Binding<TransportMode> {
+        Binding(get: { viewModel.selectedMode }, set: { viewModel.selectedMode = $0 })
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             // MARK: - Navbar (Fixed Header)
             ModalNavbar(
-                searchText: Binding(
-                    get: { viewModel.searchText },
-                    set: { viewModel.searchText = $0 }
-                ),
-                showSettings: Binding(
-                    get: { false },
-                    set: { _ in sheetNavigator.navigate(to: .settings) }
-                ),
-                selectedMode: Binding(
-                    get: { viewModel.selectedMode },
-                    set: { viewModel.selectedMode = $0 }
-                ),
+                searchText: searchTextBinding,
+                showSettings: showSettingsBinding,
+                selectedMode: selectedModeBinding,
                 lastUpdated: lastUpdated
             )
             
             // MARK: - Refreshing Indicator (two-phase loading)
             if viewModel.isRefreshing {
-                HStack(spacing: 6) {
-                    ProgressView()
-                        .scaleEffect(0.65)
-                        .tint(AppTheme.Colors.mtaBlue)
-                    Text("Updating arrivals…")
-                        .font(.custom("Helvetica", size: 12))
-                        .foregroundColor(AppTheme.Colors.textSecondary)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 4)
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                refreshingIndicator
             }
 
             // MARK: - Scrollable Content
+            scrollableContent
+        }
+        .background(AppTheme.Colors.background)
+        .refreshable {
+            let loc: CLLocation? = if !viewModel.isSearchPinActive,
+                                      let live = locationManager.currentLocation,
+                                      abs(live.timestamp.timeIntervalSinceNow) < 30 {
+                live
+            } else {
+                viewModel.referenceLocation
+            }
+            await viewModel.refresh(location: loc, force: true)
+            lastUpdated = Date()
+        }
+    }
+
+    private var refreshingIndicator: some View {
+        HStack(spacing: 6) {
+            ProgressView()
+                .scaleEffect(0.65)
+                .tint(AppTheme.Colors.mtaBlue)
+            Text("Updating arrivals…")
+                .font(.custom("Helvetica", size: 12))
+                .foregroundColor(AppTheme.Colors.textSecondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 4)
+        .transition(.opacity.combined(with: .move(edge: .top)))
+    }
+
+    private var scrollableContent: some View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     let initialLoad = !viewModel.hasLoadedOnce && viewModel.isLoading
@@ -163,24 +185,6 @@ struct DashboardView: View {
                 .animation(.easeInOut(duration: 0.3), value: favoritesManager.isLoading)
                 .padding(.top, 4)
             }
-        }
-        .background(AppTheme.Colors.background)
-        .refreshable {
-            // Use referenceLocation (pin when active, GPS otherwise) so
-            // pull-to-refresh during drag-to-search fetches from the explored area.
-            // Prefer live GPS over the cached referenceLocation — it may still
-            // reflect a previous session's coordinates when CoreLocation is slow
-            // to deliver a fresh fix after the app was backgrounded.
-            let loc: CLLocation? = if !viewModel.isSearchPinActive,
-                                      let live = locationManager.currentLocation,
-                                      abs(live.timestamp.timeIntervalSinceNow) < 30 {
-                live
-            } else {
-                viewModel.referenceLocation
-            }
-            await viewModel.refresh(location: loc, force: true)
-            lastUpdated = Date()
-        }
     }
     
     // MARK: - Helpers
@@ -207,11 +211,14 @@ struct DashboardView: View {
     @Previewable @State var lastUpdated: Date? = Date()
     @Previewable @State var cameraPosition: TrackCameraPosition = .automatic
     @Previewable @State var is3DMode: Bool = false
+    let vm: HomeViewModel = HomeViewModel()
+    let lm: LocationManager = LocationManager()
+    let sn: SheetNavigator = SheetNavigator()
 
     DashboardView(
-        viewModel: HomeViewModel(),
-        locationManager: LocationManager(),
-        sheetNavigator: SheetNavigator(),
+        viewModel: vm,
+        locationManager: lm,
+        sheetNavigator: sn,
         lastUpdated: $lastUpdated,
         cameraPosition: $cameraPosition,
         is3DMode: $is3DMode

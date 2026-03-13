@@ -62,14 +62,70 @@ struct SettingsContentView: View {
     }
     
     var body: some View {
+        settingsBaseContent
+            .onAppear { loadDrafts() }
+            .onChange(of: draftRadius) { _, _ in checkForChanges() }
+            .onChange(of: draftShowSearchRadius) { _, _ in checkForChanges() }
+            .onChange(of: draftDragToSearch) { _, _ in checkForChanges() }
+            .onChange(of: appTheme) { _, _ in
+                Task { await SyncManager.shared.pushUserSettings() }
+            }
+            .onChange(of: hapticsEnabled) { _, _ in
+                Task { await SyncManager.shared.pushUserSettings() }
+            }
+            .onChange(of: distanceUnit) { _, _ in
+                Task { await SyncManager.shared.pushUserSettings() }
+            }
+            .overlay(alignment: .bottom) { settingsOverlayContent }
+            .animation(.spring(response: 0.35, dampingFraction: 0.8), value: hasUnappliedChanges)
+            .animation(.spring(response: 0.3, dampingFraction: 0.85), value: showAppliedConfirmation)
+    }
+
+    private var settingsBaseContent: some View {
         VStack(spacing: 0) {
-            // MARK: - Header with Back Button
             sheetHeader
-            
-            // MARK: - Scrollable Content
-            ScrollView {
-                VStack(spacing: 24) {
-                    settingsSection(title: "Profile", icon: "person.crop.circle.fill", iconColor: AppTheme.Colors.mtaBlue) {
+            settingsScrollContent
+        }
+        .background(AppTheme.Colors.background)
+    }
+
+    @ViewBuilder
+    private var settingsOverlayContent: some View {
+        if hasUnappliedChanges {
+            applyButton
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+        }
+        if showAppliedConfirmation {
+            appliedConfirmation
+                .transition(.scale.combined(with: .opacity))
+        }
+    }
+
+    // MARK: - Scroll Content (extracted to reduce body type-check)
+
+    private var settingsScrollContent: some View {
+        ScrollView {
+            VStack(spacing: 24) {
+                profileSection
+                appearanceSection
+                widgetsSection
+                searchRadiusSection
+                mapDisplaySection
+                accountSection
+                #if DEBUG
+                developerSection
+                #endif
+                aboutSection
+                Spacer().frame(height: 40)
+            }
+            .padding(.top, 12)
+        }
+    }
+
+    // MARK: - Profile Section
+
+    private var profileSection: some View {
+        settingsSection(title: "Profile", icon: "person.crop.circle.fill", iconColor: AppTheme.Colors.mtaBlue) {
                         VStack(spacing: 0) {
                             HStack(spacing: 10) {
                                 ZStack {
@@ -124,8 +180,11 @@ struct SettingsContentView: View {
                             .buttonStyle(.plain)
                         }
                     }
+    }
 
-                    // Appearance Section
+    // MARK: - Appearance Section
+
+    private var appearanceSection: some View {
                     settingsSection(title: "Appearance", icon: "paintbrush.fill", iconColor: .purple) {
                         VStack(spacing: 0) {
                             // Theme picker
@@ -160,8 +219,11 @@ struct SettingsContentView: View {
                             }
                         }
                     }
+    }
                     
-                    // Widgets Section — quick access
+    // MARK: - Widgets Section
+    
+    private var widgetsSection: some View {
                     settingsSection(title: "Widgets", icon: "rectangle.3.group.fill", iconColor: .cyan) {
                         VStack(spacing: 0) {
                             Button {
@@ -189,9 +251,11 @@ struct SettingsContentView: View {
                             .buttonStyle(.plain)
                         }
                     }
+    }
                     
-                    
-                    // Transit Preferences Section — single search radius
+    // MARK: - Search Radius Section
+
+    private var searchRadiusSection: some View {
                     settingsSection(title: "Search Radius", icon: "scope", iconColor: AppTheme.Colors.mtaBlue) {
                         VStack(spacing: 0) {
                             // Main radius slider
@@ -324,8 +388,11 @@ struct SettingsContentView: View {
                             .padding(.vertical, 10)
                         }
                     }
+    }
                     
-                    // Map & Display Section
+    // MARK: - Map & Display Section
+    
+    private var mapDisplaySection: some View {
                     settingsSection(title: "Map & Display", icon: "map.fill", iconColor: .green) {
                         VStack(spacing: 0) {
                             // Show search radius circles on map
@@ -373,9 +440,11 @@ struct SettingsContentView: View {
                             
                         }
                     }
+    }
                     
-                    
-                    // Account Section
+    // MARK: - Account Section
+
+    private var accountSection: some View {
                     settingsSection(title: "Account", icon: "person.crop.circle.fill", iconColor: AppTheme.Colors.mtaBlue) {
                         VStack(spacing: 0) {
                             Button {
@@ -395,9 +464,12 @@ struct SettingsContentView: View {
                             .buttonStyle(.plain)
                         }
                     }
+    }
+
+    // MARK: - Developer Section
 
 #if DEBUG
-                    // Developer Navigation (debug only)
+    private var developerSection: some View {
                     settingsSection(title: "Developer", icon: "hammer.fill", iconColor: .orange) {
                         Button {
                             sheetNavigator.navigate(to: .developerSettings)
@@ -423,50 +495,8 @@ struct SettingsContentView: View {
                         }
                         .buttonStyle(.plain)
                     }
-#endif
-                    
-                    // About Section
-                    aboutSection
-                    
-                    Spacer()
-                        .frame(height: 40)
-                }
-                .padding(.top, 12)
-            }
-        }
-        .background(AppTheme.Colors.background)
-        // Initialize drafts from persisted values on appear
-        .onAppear {
-            loadDrafts()
-        }
-        // Track whether any draft differs from the persisted value
-        .onChange(of: draftRadius) { _, _ in checkForChanges() }
-        .onChange(of: draftShowSearchRadius) { _, _ in checkForChanges() }
-        .onChange(of: draftDragToSearch) { _, _ in checkForChanges() }
-        // Auto-push instant-apply settings to cloud when they change
-        .onChange(of: appTheme) { _, _ in
-            Task { await SyncManager.shared.pushUserSettings() }
-        }
-        .onChange(of: hapticsEnabled) { _, _ in
-            Task { await SyncManager.shared.pushUserSettings() }
-        }
-        .onChange(of: distanceUnit) { _, _ in
-            Task { await SyncManager.shared.pushUserSettings() }
-        }
-        // Floating Apply button
-        .overlay(alignment: .bottom) {
-            if hasUnappliedChanges {
-                applyButton
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
-            if showAppliedConfirmation {
-                appliedConfirmation
-                    .transition(.scale.combined(with: .opacity))
-            }
-        }
-        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: hasUnappliedChanges)
-        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: showAppliedConfirmation)
     }
+#endif
     
     // MARK: - Draft Helpers
     

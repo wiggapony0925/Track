@@ -53,14 +53,37 @@ _MAX_ERROR_SECS   = 600      # ±10 min — discard garbage (cancelled trips)
 # response (169+ stops) can't exhaust the pool (typically 20 connections) by
 # firing all get_weighted_error calls simultaneously.
 # 8 concurrent queries is plenty — each query takes ~1-2ms.
-_QUERY_SEMAPHORE = asyncio.Semaphore(8)
+#
+# Lazily created inside the running event loop to avoid the
+# "Semaphore is bound to a different event loop" error on reload.
+_QUERY_SEMAPHORE: asyncio.Semaphore | None = None
+_QUERY_SEMAPHORE_LOOP_ID: int | None = None
 
 # Semaphore: cap concurrent OBSERVE operations (write pipelines).
 # On Render's Redis plans maxclients is very low (10–20).  Multiple concurrent
 # /nearby requests each fire ensure_future(observe_siri_delays_batch(…)) at
 # the same moment.  Limiting to 2 concurrent write pipelines keeps us well
 # under the server limit while still writing observations fast enough.
-_OBSERVE_SEMAPHORE = asyncio.Semaphore(2)
+_OBSERVE_SEMAPHORE: asyncio.Semaphore | None = None
+_OBSERVE_SEMAPHORE_LOOP_ID: int | None = None
+
+
+def _get_query_semaphore() -> asyncio.Semaphore:
+    global _QUERY_SEMAPHORE, _QUERY_SEMAPHORE_LOOP_ID
+    loop_id = id(asyncio.get_running_loop())
+    if _QUERY_SEMAPHORE is None or _QUERY_SEMAPHORE_LOOP_ID != loop_id:
+        _QUERY_SEMAPHORE = asyncio.Semaphore(8)
+        _QUERY_SEMAPHORE_LOOP_ID = loop_id
+    return _QUERY_SEMAPHORE
+
+
+def _get_observe_semaphore() -> asyncio.Semaphore:
+    global _OBSERVE_SEMAPHORE, _OBSERVE_SEMAPHORE_LOOP_ID
+    loop_id = id(asyncio.get_running_loop())
+    if _OBSERVE_SEMAPHORE is None or _OBSERVE_SEMAPHORE_LOOP_ID != loop_id:
+        _OBSERVE_SEMAPHORE = asyncio.Semaphore(2)
+        _OBSERVE_SEMAPHORE_LOOP_ID = loop_id
+    return _OBSERVE_SEMAPHORE
 
 
 def _snap_key(trip_id: str) -> str:
@@ -152,7 +175,7 @@ async def observe_siri_delay(
         hour = dt.hour
 
         obs_key = _obs_key(route_id, stop_id, dow, hour)
-        async with _OBSERVE_SEMAPHORE:
+        async with _get_observe_semaphore():
             pipe = client.pipeline(transaction=False)
             pipe.zadd(obs_key, {str(round(deviation_s, 2)): now})
             pipe.zremrangebyrank(obs_key, 0, -(MAX_OBS_PER_KEY + 1))
@@ -200,7 +223,7 @@ async def observe_siri_delays_batch(
         return
 
     try:
-        async with _OBSERVE_SEMAPHORE:
+        async with _get_observe_semaphore():
             pipe = client.pipeline(transaction=False)
             for route_id, stop_id, deviation_s in valid:
                 obs_key = _obs_key(route_id, stop_id, dow, hour)
@@ -268,7 +291,7 @@ async def observe_trip_updates_batch(
             else:
                 write_pipe.delete(snap_key)
 
-        async with _OBSERVE_SEMAPHORE:
+        async with _get_observe_semaphore():
             await write_pipe.execute()
 
     except Exception as exc:
@@ -363,7 +386,7 @@ async def get_weighted_error(
     if client is None:
         return None
 
-    async with _QUERY_SEMAPHORE:
+    async with _get_query_semaphore():
         try:
             now = _time.time()
             cutoff = now - (MAX_AGE_HOURS * 3600)

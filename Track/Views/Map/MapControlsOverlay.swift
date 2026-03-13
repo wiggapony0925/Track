@@ -271,18 +271,26 @@ struct MapControlsOverlay: View {
 }
 
 #Preview {
+    let vm: HomeViewModel = HomeViewModel()
+    let lm: LocationManager = LocationManager()
+    let camPos: TrackCameraPosition = .userLocation
+    let cameraBinding: Binding<TrackCameraPosition> = .constant(camPos)
+    let is3DBinding: Binding<Bool> = .constant(false)
+    let fraction: PresentationDetent = .fraction(0.4)
+    let detentBinding: Binding<PresentationDetent> = .constant(fraction)
+    let alertsClosure: () -> Void = {}
     ZStack {
         Color.gray.opacity(0.3)
         MapControlsOverlay(
-            viewModel: HomeViewModel(),
-            locationManager: LocationManager(),
-            cameraPosition: .constant(.userLocation),
-            is3DMode: .constant(false),
-            sheetDetent: .constant(.fraction(0.4)),
+            viewModel: vm,
+            locationManager: lm,
+            cameraPosition: cameraBinding,
+            is3DMode: is3DBinding,
+            sheetDetent: detentBinding,
             currentMapCenter: nil,
             currentMapDistance: nil,
             sheetHeightFraction: 0.42,
-            onAlertsTapped: {}
+            onAlertsTapped: alertsClosure
         )
     }
 }

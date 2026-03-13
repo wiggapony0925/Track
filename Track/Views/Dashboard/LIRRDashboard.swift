@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import CoreLocation
 
 /// LIRR-specific dashboard showing rail departures.
 struct LIRRDashboard: View {
@@ -52,7 +53,7 @@ struct LIRRDashboard: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            let refLocation = viewModel.effectiveLocation(userLocation: locationManager.currentLocation)
+            let refLocation: CLLocation? = viewModel.effectiveLocation(userLocation: locationManager.currentLocation)
 
             if !groupedArrivals.isEmpty {
                 // MARK: - Far From Service Hero
@@ -131,10 +132,14 @@ struct LIRRDashboard: View {
 }
 
 #Preview {
+    let vm: HomeViewModel = HomeViewModel()
+    let lm: LocationManager = LocationManager()
+    let sn: SheetNavigator = SheetNavigator()
+    let date: Date = Date()
     LIRRDashboard(
-        viewModel: HomeViewModel(),
-        locationManager: LocationManager(),
-        sheetNavigator: SheetNavigator(),
-        lastUpdated: Date()
+        viewModel: vm,
+        locationManager: lm,
+        sheetNavigator: sn,
+        lastUpdated: date
     )
 }

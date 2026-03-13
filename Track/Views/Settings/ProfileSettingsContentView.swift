@@ -34,7 +34,25 @@ struct ProfileSettingsContentView: View {
 
             ScrollView {
                 VStack(spacing: 24) {
-                    section(title: "Profile", icon: "person.fill", iconColor: AppTheme.Colors.mtaBlue) {
+                    profileSection
+                    saveButton
+                    saveMessageView
+                    Spacer()
+                        .frame(height: 40)
+                }
+                .padding(.top, 12)
+            }
+        }
+        .background(AppTheme.Colors.background)
+        .onAppear {
+            hydrateDrafts()
+        }
+    }
+
+    // MARK: - Profile Section (extracted to reduce body type-check)
+
+    private var profileSection: some View {
+        section(title: "Profile", icon: "person.fill", iconColor: AppTheme.Colors.mtaBlue) {
                         VStack(spacing: 0) {
                             row(icon: "hand.wave.fill", iconColor: .orange, title: "Welcome") {
                                 Text(fallbackDisplayName)
@@ -72,7 +90,9 @@ struct ProfileSettingsContentView: View {
                             }
                         }
                     }
+    }
 
+    private var saveButton: some View {
                     Button {
                         Task {
                             await saveProfile()
@@ -98,24 +118,17 @@ struct ProfileSettingsContentView: View {
                     }
                     .disabled(isSaving || currentProfile == nil)
                     .padding(.horizontal, AppTheme.Layout.margin)
+    }
 
+    @ViewBuilder
+    private var saveMessageView: some View {
                     if let saveMessage {
+                        let messageColor: Color = saveMessageIsError ? AppTheme.Colors.alertRed : AppTheme.Colors.successGreen
                         Text(saveMessage)
                             .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(saveMessageIsError ? AppTheme.Colors.alertRed : AppTheme.Colors.successGreen)
+                            .foregroundColor(messageColor)
                             .padding(.horizontal, AppTheme.Layout.margin)
                     }
-
-                    Spacer()
-                        .frame(height: 40)
-                }
-                .padding(.top, 12)
-            }
-        }
-        .background(AppTheme.Colors.background)
-        .onAppear {
-            hydrateDrafts()
-        }
     }
 
     private func hydrateDrafts() {

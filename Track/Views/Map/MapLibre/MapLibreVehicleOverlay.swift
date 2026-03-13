@@ -46,56 +46,70 @@ struct MapLibreVehicleOverlay: View {
     var body: some View {
         GeometryReader { _ in
             ZStack {
-                // Bus vehicles
-                ForEach(busVehicles) { vehicle in
-                    let coord = CLLocationCoordinate2D(latitude: vehicle.lat, longitude: vehicle.lon)
-                    if let point = projectToScreen(coord, mapView: mapView) {
-                        VehicleMarkerContent(
-                            icon: TransportMode.bus.icon,
-                            color: AppTheme.Colors.mtaBlue,
-                            isHighlighted: tappedVehicleId == vehicle.vehicleId
-                        ) {
-                            toggleVehicle(vehicle.vehicleId)
-                        }
-                        .position(point)
-                    }
-                }
-
-                // Train vehicles
-                ForEach(trainVehicles) { train in
-                    let coord = CLLocationCoordinate2D(latitude: train.lat, longitude: train.lon)
-                    if let point = projectToScreen(coord, mapView: mapView) {
-                        let rid = train.routeId.lowercased()
-                        let vehicleKey = train.tripId ?? train.id
-                        let isHighlighted = tappedVehicleId == vehicleKey
-
-                        if rid.contains("lirr") || rid.contains("lir") {
-                            VehicleMarkerContent(
-                                icon: TransportMode.lirr.icon,
-                                color: UIColor(AppTheme.CommuterRailColors.lirrBlue),
-                                isHighlighted: isHighlighted
-                            ) { toggleVehicle(vehicleKey) }
-                            .position(point)
-                        } else if rid.contains("mnr") || rid.contains("metro") {
-                            VehicleMarkerContent(
-                                icon: TransportMode.mnr.icon,
-                                color: UIColor(AppTheme.CommuterRailColors.mnrBlue),
-                                isHighlighted: isHighlighted
-                            ) { toggleVehicle(vehicleKey) }
-                            .position(point)
-                        } else {
-                            VehicleMarkerContent(
-                                icon: TransportMode.subway.icon,
-                                color: UIColor(AppTheme.SubwayColors.color(for: train.routeId)),
-                                isHighlighted: isHighlighted
-                            ) { toggleVehicle(vehicleKey) }
-                            .position(point)
-                        }
-                    }
-                }
+                busVehicleMarkers
+                trainVehicleMarkers
             }
         }
         .allowsHitTesting(true)
+    }
+
+    // MARK: - Bus Markers (extracted to reduce body type-check)
+
+    private var busVehicleMarkers: some View {
+        ForEach(busVehicles) { vehicle in
+            let coord: CLLocationCoordinate2D = CLLocationCoordinate2D(latitude: vehicle.lat, longitude: vehicle.lon)
+            let isHighlighted: Bool = tappedVehicleId == vehicle.vehicleId
+            if let point: CGPoint = projectToScreen(coord, mapView: mapView) {
+                VehicleMarkerContent(
+                    icon: TransportMode.bus.icon,
+                    color: AppTheme.Colors.mtaBlue,
+                    isHighlighted: isHighlighted
+                ) {
+                    toggleVehicle(vehicle.vehicleId)
+                }
+                .position(point)
+            }
+        }
+    }
+
+    // MARK: - Train Markers (extracted to reduce body type-check)
+
+    private var trainVehicleMarkers: some View {
+        ForEach(trainVehicles) { train in
+            let coord = CLLocationCoordinate2D(latitude: train.lat, longitude: train.lon)
+            if let point = projectToScreen(coord, mapView: mapView) {
+                trainMarkerContent(for: train)
+                    .position(point)
+            }
+        }
+    }
+
+    private func trainMarkerContent(for train: TrainVehicle) -> some View {
+        let rid: String = train.routeId.lowercased()
+        let vehicleKey: String = train.tripId ?? train.id
+        let isHighlighted: Bool = tappedVehicleId == vehicleKey
+
+        return Group {
+            if rid.contains("lirr") || rid.contains("lir") {
+                VehicleMarkerContent(
+                    icon: TransportMode.lirr.icon,
+                    color: UIColor(AppTheme.CommuterRailColors.lirrBlue),
+                    isHighlighted: isHighlighted
+                ) { toggleVehicle(vehicleKey) }
+            } else if rid.contains("mnr") || rid.contains("metro") {
+                VehicleMarkerContent(
+                    icon: TransportMode.mnr.icon,
+                    color: UIColor(AppTheme.CommuterRailColors.mnrBlue),
+                    isHighlighted: isHighlighted
+                ) { toggleVehicle(vehicleKey) }
+            } else {
+                VehicleMarkerContent(
+                    icon: TransportMode.subway.icon,
+                    color: UIColor(AppTheme.SubwayColors.color(for: train.routeId)),
+                    isHighlighted: isHighlighted
+                ) { toggleVehicle(vehicleKey) }
+            }
+        }
     }
 
     private func toggleVehicle(_ id: String) {

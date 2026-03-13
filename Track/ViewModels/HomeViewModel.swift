@@ -1777,7 +1777,7 @@ final class HomeViewModel {
         busSchedule = nil
 
         selectedRouteId = group.routeId
-        let loadingRouteId = group.routeId   // capture for staleness checks after await
+        let loadingRouteId: String = group.routeId   // capture for staleness checks after await
 
         if group.isBus {
             // Fire schedule fetch in parallel — don't wait for shape/vehicles.
@@ -1791,13 +1791,13 @@ final class HomeViewModel {
             async let vehiclesTask = TrackAPI.fetchBusVehicles(routeID: group.routeId)
 
             // Check shape cache first — avoids network call on re-select
-            let cachedShape = getCachedRouteShape(for: group.routeId)
+            let cachedShape: RouteShapeResponse? = getCachedRouteShape(for: group.routeId)
             let shapeTask: Task<RouteShapeResponse, Error>? = cachedShape == nil
                 ? Task { try await TrackAPI.fetchRouteShape(routeID: group.routeId) }
                 : nil
 
             do {
-                let vehicles = try await vehiclesTask
+                let vehicles: [BusVehicleResponse] = try await vehiclesTask
                 guard selectedRouteId == loadingRouteId else { return }
                 busVehicles = vehicles
                 // Seed interpolation state so the first updateBusSimulation()
@@ -1833,8 +1833,8 @@ final class HomeViewModel {
                 routeShape = loadedShape
                 if let shape = routeShape {
                     // Log decoded polyline details for debugging
-                    let decoded = shape.decodedPolylines
-                    let totalPoints = decoded.reduce(0) { $0 + $1.count }
+                    let decoded: [[CLLocationCoordinate2D]] = shape.decodedPolylines
+                    let totalPoints: Int = decoded.reduce(0) { $0 + $1.count }
                     AppLogger.shared.log(
                         "BUS_SHAPE",
                         message:
@@ -1855,7 +1855,7 @@ final class HomeViewModel {
         } else if group.isLIRR {
             // LIRR: fetch the branch-specific polyline + live arrivals
             do {
-                let cachedLIRRShape = getCachedRouteShape(for: group.routeId)
+                let cachedLIRRShape: RouteShapeResponse? = getCachedRouteShape(for: group.routeId)
                 async let arrivalsTask = TrackAPI.fetchLIRRArrivals()
 
                 let loadedShape: RouteShapeResponse
@@ -1891,7 +1891,7 @@ final class HomeViewModel {
         } else if group.isMNR {
             // Metro-North: fetch the line-specific polyline + live arrivals
             do {
-                let cachedMNRShape = getCachedRouteShape(for: group.routeId)
+                let cachedMNRShape: RouteShapeResponse? = getCachedRouteShape(for: group.routeId)
                 async let arrivalsTask = TrackAPI.fetchMNRArrivals()
 
                 let loadedShape: RouteShapeResponse

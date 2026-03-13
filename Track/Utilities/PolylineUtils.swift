@@ -273,18 +273,22 @@ func applyCorridorOffsets(
     var cellPoints: [Int64: [GridPoint]] = [:]
 
     func cellKey(_ lat: Double, _ lon: Double) -> Int64 {
-        let gx = Int32(lat / gridSize)
-        let gy = Int32(lon / gridSize)
-        return (Int64(gx) << 32) | Int64(gy & 0x7FFF_FFFF)
+        let gx: Int32 = Int32(lat / gridSize)
+        let gy: Int32 = Int32(lon / gridSize)
+        let hi: Int64 = Int64(gx) << 32
+        let lo: Int64 = Int64(gy & 0x7FFF_FFFF)
+        return hi | lo
     }
 
     func groupsAt(_ lat: Double, _ lon: Double) -> Set<Int> {
-        let gx = Int32(lat / gridSize)
-        let gy = Int32(lon / gridSize)
-        var groups = Set<Int>()
+        let gx: Int32 = Int32(lat / gridSize)
+        let gy: Int32 = Int32(lon / gridSize)
+        var groups: Set<Int> = []
         for dx: Int32 in -1...1 {
             for dy: Int32 in -1...1 {
-                let key = (Int64(gx &+ dx) << 32) | Int64((gy &+ dy) & 0x7FFF_FFFF)
+                let hi: Int64 = Int64(gx &+ dx) << 32
+                let lo: Int64 = Int64((gy &+ dy) & 0x7FFF_FFFF)
+                let key: Int64 = hi | lo
                 if let g = cellGroups[key] { groups.formUnion(g) }
             }
         }
@@ -293,7 +297,7 @@ func applyCorridorOffsets(
 
     for (groupIdx, coords) in groupedPolylines {
         for coord in coords {
-            let key = cellKey(coord.latitude, coord.longitude)
+            let key: Int64 = cellKey(coord.latitude, coord.longitude)
             cellGroups[key, default: []].insert(groupIdx)
             cellPoints[key, default: []].append(GridPoint(groupIdx: groupIdx, coord: coord))
         }
@@ -359,12 +363,12 @@ func applyCorridorOffsets(
                 // Majority vote: count how often each group set appears
                 var setCounts: [Set<Int>: Int] = [:]
                 for k in s...end {
-                    let gs = pointGroups[k]
+                    let gs: Set<Int> = pointGroups[k]
                     setCounts[gs, default: 0] += 1
                 }
                 // Pick the group set that appears most often
-                let bestSet = setCounts.max(by: { $0.value < $1.value })?.key ?? []
-                let frozen = bestSet.sorted()
+                let bestSet: Set<Int> = setCounts.max(by: { $0.value < $1.value })?.key ?? []
+                let frozen: [Int] = bestSet.sorted()
 
                 // Only keep if this group is in the frozen set and ≥2 groups
                 if frozen.count >= 2 && frozen.contains(groupIdx) {
@@ -382,8 +386,8 @@ func applyCorridorOffsets(
         for run in corridorRuns {
             let frozenGroups = run.frozenGroups
             guard let laneIndex = frozenGroups.firstIndex(of: groupIdx) else { continue }
-            let numLanes = frozenGroups.count
-            let laneOffset = (Double(laneIndex) - Double(numLanes - 1) / 2.0) * laneSpacingDegrees
+            let numLanes: Int = frozenGroups.count
+            let laneOffset: Double = (Double(laneIndex) - Double(numLanes - 1) / 2.0) * laneSpacingDegrees
 
             for i in run.start...run.end {
                 laneOffsets[i] = laneOffset
@@ -391,15 +395,17 @@ func applyCorridorOffsets(
                 // Compute centerline displacement from nearest peers
                 let coord = coords[i]
                 var peers: [CLLocationCoordinate2D] = [coord]
-                let gx = Int32(coord.latitude / gridSize)
-                let gy = Int32(coord.longitude / gridSize)
+                let gx: Int32 = Int32(coord.latitude / gridSize)
+                let gy: Int32 = Int32(coord.longitude / gridSize)
 
                 for otherGroup in frozenGroups where otherGroup != groupIdx {
-                    var bestDistSq = Double.infinity
+                    var bestDistSq: Double = Double.infinity
                     var bestPeer: CLLocationCoordinate2D? = nil
                     for dx: Int32 in -1...1 {
                         for dy: Int32 in -1...1 {
-                            let key = (Int64(gx &+ dx) << 32) | Int64((gy &+ dy) & 0x7FFF_FFFF)
+                            let hi: Int64 = Int64(gx &+ dx) << 32
+                            let lo: Int64 = Int64((gy &+ dy) & 0x7FFF_FFFF)
+                            let key: Int64 = hi | lo
                             guard let pts = cellPoints[key] else { continue }
                             for p in pts where p.groupIdx == otherGroup {
                                 let dlat = p.coord.latitude - coord.latitude
@@ -412,14 +418,14 @@ func applyCorridorOffsets(
                             }
                         }
                     }
-                    let threshSq = gridSize * gridSize * 4
+                    let threshSq: Double = gridSize * gridSize * 4.0
                     if let peer = bestPeer, bestDistSq < threshSq {
                         peers.append(peer)
                     }
                 }
 
-                let avgLat = peers.map { $0.latitude }.reduce(0, +) / Double(peers.count)
-                let avgLon = peers.map { $0.longitude }.reduce(0, +) / Double(peers.count)
+                let avgLat: Double = peers.map { $0.latitude }.reduce(0.0, +) / Double(peers.count)
+                let avgLon: Double = peers.map { $0.longitude }.reduce(0.0, +) / Double(peers.count)
 
                 centerDisplacements[i] = (lon: avgLon - coord.longitude, lat: avgLat - coord.latitude)
             }
@@ -429,11 +435,13 @@ func applyCorridorOffsets(
         var smoothedCenter = centerDisplacements
         var smoothedOffsets = laneOffsets
         for i in 0..<coords.count {
-            let halfWin = smoothWindow / 2
-            let lo = max(0, i - halfWin)
-            let hi = min(coords.count - 1, i + halfWin)
-            let windowSize = Double(hi - lo + 1)
-            var sumLon = 0.0, sumLat = 0.0, sumOff = 0.0
+            let halfWin: Int = smoothWindow / 2
+            let lo: Int = max(0, i - halfWin)
+            let hi: Int = min(coords.count - 1, i + halfWin)
+            let windowSize: Double = Double(hi - lo + 1)
+            var sumLon: Double = 0.0
+            var sumLat: Double = 0.0
+            var sumOff: Double = 0.0
             for k in lo...hi {
                 sumLon += centerDisplacements[k].lon
                 sumLat += centerDisplacements[k].lat

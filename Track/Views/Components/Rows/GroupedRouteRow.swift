@@ -170,147 +170,12 @@ struct  GroupedRouteRow: View {
 
     private var mainRowContent: some View {
         VStack(spacing: 0) {
-        HStack(spacing: 14) {
-            // ── Route Badge ──
-            RouteBadge(
-                routeID: group.displayName,
-                size: .medium,
-                isBus: group.isBus,
-                hexColor: group.colorHex,
-                mode: group.mode
-            )
-            .accessibilityHidden(true)
-            .overlay(alignment: .topTrailing) {
-                if hasAlert {
-                    ZStack {
-                        Circle()
-                            .fill(AppTheme.Colors.cardBackground)
-                            .frame(width: 18, height: 18)
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(AppTheme.Colors.warningYellow)
-                    }
-                    .offset(x: 6, y: -6)
-                }
-            }
+            mainRowHStack
+                .padding(.vertical, 14)
+                .padding(.horizontal, AppTheme.Layout.margin)
 
-            // ── Destination + Station info ──
-            if visibleDirections.isEmpty {
-                Text("No active service")
-                    .font(.custom("Helvetica-Bold", size: 15))
-                    .foregroundColor(AppTheme.Colors.textSecondary)
-                Spacer()
-            } else {
-                VStack(alignment: .leading, spacing: 3) {
-                    // ── Swipeable direction content (label + stop name) ──
-                    TabView(selection: $currentDirectionIndex) {
-                        ForEach(Array(visibleDirections.enumerated()), id: \.element.id) { index, direction in
-                            let label = ArrivalHelpers.resolveDirectionLabel(for: direction)
-
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(label)
-                                    .font(.custom("Helvetica-Bold", size: 15))
-                                    .foregroundColor(AppTheme.Colors.textPrimary)
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.85)
-
-                                // Stop name from nearest-stop arrival
-                                if let arrival = countdownArrival(for: direction) {
-                                    HStack(spacing: 3) {
-                                        Image(systemName: "mappin.circle.fill")
-                                            .font(.system(size: 9, weight: .semibold))
-                                        Text(arrival.stopName)
-                                            .font(.custom("Helvetica", size: 11))
-                                            .lineLimit(1)
-                                    }
-                                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
-                                }
-                            }
-                            .tag(index)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                    }
-                    .tabViewStyle(.page(indexDisplayMode: .never))
-                    .frame(height: 38)
-
-                    // Walking distance (same for all directions)
-                    if let dist = closestStopDistance,
-                        dist < Double.greatestFiniteMagnitude
-                    {
-                        HStack(spacing: 3) {
-                            Image(systemName: "figure.walk")
-                                .font(.system(size: 9, weight: .semibold))
-                            Text(formatDistanceImperial(dist))
-                                .font(.custom("Helvetica-Bold", size: 11))
-                        }
-                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
-                    }
-
-                    // Pagination dots (tappable to switch direction)
-                    if visibleDirections.count > 1 {
-                        HStack(spacing: 5) {
-                            ForEach(0..<visibleDirections.count, id: \.self) { index in
-                                Capsule()
-                                    .fill(
-                                        index == currentDirectionIndex
-                                            ? routeColor
-                                            : AppTheme.Colors.textSecondary.opacity(0.2)
-                                    )
-                                    .frame(
-                                        width: index == currentDirectionIndex ? 14 : 6, height: 6
-                                    )
-                                    .animation(
-                                        .spring(response: 0.35, dampingFraction: 0.8),
-                                        value: currentDirectionIndex)
-                                    .onTapGesture {
-                                        HapticManager.impact(.light)
-                                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                            currentDirectionIndex = index
-                                        }
-                                    }
-                            }
-                        }
-                        .padding(.top, 1)
-                    }
-                }
-            }
-
-            Spacer(minLength: 4)
-
-            // ── Countdown / Scheduled Time ──
-            if !visibleDirections.isEmpty {
-                countdownView
-            }
-
-            // Chevron
-            Image(systemName: "chevron.right")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.4))
+            alertBannerRow
         }
-        .padding(.vertical, 14)
-        .padding(.horizontal, AppTheme.Layout.margin)
-
-        // ── Inline alert banner beneath the row ──
-        if let topAlert = group.alerts.first {
-            HStack(spacing: 5) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundColor(topAlert.severity == "severe" ? AppTheme.Colors.alertRed : AppTheme.Colors.warningYellow)
-                Text(topAlert.title)
-                    .font(.custom("Helvetica", size: 11))
-                    .foregroundColor(AppTheme.Colors.textSecondary)
-                    .lineLimit(1)
-                Spacer()
-                if group.alerts.count > 1 {
-                    Text("+\(group.alerts.count - 1)")
-                        .font(.custom("Helvetica-Bold", size: 10))
-                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
-                }
-            }
-            .padding(.horizontal, AppTheme.Layout.margin)
-            .padding(.bottom, 6)
-        }
-        } // VStack
         .background(AppTheme.Colors.cardBackground)
         .contentShape(Rectangle())
         .onTapGesture {
@@ -321,24 +186,20 @@ struct  GroupedRouteRow: View {
             triggerTracking()
         })
         .onAppear {
-            // Restore previously swiped direction for this route row.
-            let restoredVisible = visibleIndex(forOriginal: initialDirectionIndex)
+            let restoredVisible: Int = visibleIndex(forOriginal: initialDirectionIndex)
             if restoredVisible != currentDirectionIndex {
                 _isSyncing = true
                 currentDirectionIndex = restoredVisible
             }
         }
         .onChange(of: initialDirectionIndex) { _, newValue in
-            // Keep row direction in sync when parent updates preferences.
-            let restoredVisible = visibleIndex(forOriginal: newValue)
+            let restoredVisible: Int = visibleIndex(forOriginal: newValue)
             if restoredVisible != currentDirectionIndex {
                 _isSyncing = true
                 currentDirectionIndex = restoredVisible
             }
         }
         .onChange(of: currentDirectionIndex) { _, _ in
-            // Only persist when the user actually swiped, not when we
-            // programmatically synced from initialDirectionIndex.
             if _isSyncing {
                 _isSyncing = false
                 return
@@ -346,12 +207,172 @@ struct  GroupedRouteRow: View {
             onDirectionChanged?(originalDirectionIndex)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(
-            "\(group.isLIRR ? "LIRR" : group.isMNR ? "Metro-North" : group.isBus ? "Bus" : "Train") \(group.displayName), swipe for directions"
-        )
+        .accessibilityLabel(mainRowAccessibilityLabel)
         .accessibilityHint("Double tap to see details. Long press to track.")
         .accessibilityAction(named: "Track this route") {
             triggerTracking()
+        }
+    }
+
+    private var mainRowAccessibilityLabel: String {
+        let mode: String = group.isLIRR ? "LIRR" : group.isMNR ? "Metro-North" : group.isBus ? "Bus" : "Train"
+        return "\(mode) \(group.displayName), swipe for directions"
+    }
+
+    private var mainRowHStack: some View {
+        HStack(spacing: 14) {
+            routeBadgeView
+
+            if visibleDirections.isEmpty {
+                Text("No active service")
+                    .font(.custom("Helvetica-Bold", size: 15))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+                Spacer()
+            } else {
+                directionInfoColumn
+            }
+
+            Spacer(minLength: 4)
+
+            if !visibleDirections.isEmpty {
+                countdownView
+            }
+
+            Image(systemName: "chevron.right")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.4))
+        }
+    }
+
+    private var routeBadgeView: some View {
+        RouteBadge(
+            routeID: group.displayName,
+            size: .medium,
+            isBus: group.isBus,
+            hexColor: group.colorHex,
+            mode: group.mode
+        )
+        .accessibilityHidden(true)
+        .overlay(alignment: .topTrailing) {
+            if hasAlert {
+                ZStack {
+                    Circle()
+                        .fill(AppTheme.Colors.cardBackground)
+                        .frame(width: 18, height: 18)
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(AppTheme.Colors.warningYellow)
+                }
+                .offset(x: 6, y: -6)
+            }
+        }
+    }
+
+    private var directionInfoColumn: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            directionTabView
+            walkingDistanceLabel
+            paginationDots
+        }
+    }
+
+    private var directionTabView: some View {
+        TabView(selection: $currentDirectionIndex) {
+            ForEach(Array(visibleDirections.enumerated()), id: \.element.id) { index, direction in
+                let label: String = ArrivalHelpers.resolveDirectionLabel(for: direction)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(label)
+                        .font(.custom("Helvetica-Bold", size: 15))
+                        .foregroundColor(AppTheme.Colors.textPrimary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+
+                    if let arrival = countdownArrival(for: direction) {
+                        HStack(spacing: 3) {
+                            Image(systemName: "mappin.circle.fill")
+                                .font(.system(size: 9, weight: .semibold))
+                            Text(arrival.stopName)
+                                .font(.custom("Helvetica", size: 11))
+                                .lineLimit(1)
+                        }
+                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
+                    }
+                }
+                .tag(index)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .tabViewStyle(.page(indexDisplayMode: .never))
+        .frame(height: 38)
+    }
+
+    @ViewBuilder
+    private var walkingDistanceLabel: some View {
+        if let dist = closestStopDistance,
+            dist < Double.greatestFiniteMagnitude
+        {
+            HStack(spacing: 3) {
+                Image(systemName: "figure.walk")
+                    .font(.system(size: 9, weight: .semibold))
+                Text(formatDistanceImperial(dist))
+                    .font(.custom("Helvetica-Bold", size: 11))
+            }
+            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
+        }
+    }
+
+    @ViewBuilder
+    private var paginationDots: some View {
+        let dirCount: Int = visibleDirections.count
+        if dirCount > 1 {
+            HStack(spacing: 5) {
+                ForEach(0..<dirCount, id: \.self) { index in
+                    let isSelected: Bool = index == currentDirectionIndex
+                    Capsule()
+                        .fill(
+                            isSelected
+                                ? routeColor
+                                : AppTheme.Colors.textSecondary.opacity(0.2)
+                        )
+                        .frame(width: isSelected ? 14 : 6, height: 6)
+                        .animation(
+                            .spring(response: 0.35, dampingFraction: 0.8),
+                            value: currentDirectionIndex)
+                        .onTapGesture {
+                            HapticManager.impact(.light)
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                currentDirectionIndex = index
+                            }
+                        }
+                }
+            }
+            .padding(.top, 1)
+        }
+    }
+
+    @ViewBuilder
+    private var alertBannerRow: some View {
+        if let topAlert = group.alerts.first {
+            let severityColor: Color = topAlert.severity == "severe" ? AppTheme.Colors.alertRed : AppTheme.Colors.warningYellow
+            let extraCount: Int = group.alerts.count - 1
+            HStack(spacing: 5) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundColor(severityColor)
+                Text(topAlert.title)
+                    .font(.custom("Helvetica", size: 11))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+                    .lineLimit(1)
+                Spacer()
+                if extraCount > 0 {
+                    Text("+\(extraCount)")
+                        .font(.custom("Helvetica-Bold", size: 10))
+                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
+                }
+            }
+            .padding(.horizontal, AppTheme.Layout.margin)
+            .padding(.bottom, 6)
         }
     }
 
