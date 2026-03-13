@@ -277,7 +277,8 @@ enum MapLibreStyleConfig {
     // MapLibre's `lineOffset` paint property pushes the line perpendicular
     // to its draw direction, in screen points — exactly what we need.
 
-    /// Compound expression: `lane_offset * interpolate(zoom, 10→2.5, 12→1.5, 14→0)`.
+    /// Composite expression: top-level zoom interpolation where each stop
+    /// multiplies the feature's `lane_offset` by a zoom-dependent factor.
     ///
     /// At zoom 10 each lane_offset unit produces 2.5 pt of perpendicular
     /// shift.  A typical corridor trunk has lane_offset ≈ ±1.5, giving
@@ -286,25 +287,28 @@ enum MapLibreStyleConfig {
     ///
     /// By zoom 14 the factor reaches 0 and the server's geographic offset
     /// (40 EPSG:3857-m) provides ≈ 4-5 pt of natural separation.
+    ///
+    /// Built via `NSExpression(mglJSONObject:)` (raw MapLibre GL style-spec
+    /// expression) because the `forMLNInterpolating` convenience puts the
+    /// zoom variable at the top level — MapLibre requires this; nesting
+    /// `$zoomLevel` inside `multiply:by:` is disallowed.
     static let laneOffsetExpression: NSExpression = {
-        let zoomFactor = NSExpression(
-            forMLNInterpolating: .zoomLevelVariable,
-            curveType: .linear,
-            parameters: nil,
-            stops: NSExpression(forConstantValue: [
-                10: 2.5,
-                11: 2.0,
-                12: 1.5,
-                13: 0.75,
-                14: 0.0,
-                15: 0.0,
-            ])
-        )
-        let featureOffset = NSExpression(forKeyPath: "lane_offset")
-        return NSExpression(
-            forFunction: "multiply:by:",
-            arguments: [featureOffset, zoomFactor]
-        )
+        // Style-spec JSON: ["interpolate", ["linear"], ["zoom"],
+        //   10, ["*", ["get","lane_offset"], 2.5],
+        //   11, ["*", ["get","lane_offset"], 2.0],
+        //   12, ["*", ["get","lane_offset"], 1.5],
+        //   13, ["*", ["get","lane_offset"], 0.75],
+        //   14, 0, 15, 0 ]
+        let json: [Any] = [
+            "interpolate", ["linear"], ["zoom"],
+            10, ["*", ["get", "lane_offset"], 2.5],
+            11, ["*", ["get", "lane_offset"], 2.0],
+            12, ["*", ["get", "lane_offset"], 1.5],
+            13, ["*", ["get", "lane_offset"], 0.75],
+            14, 0,
+            15, 0,
+        ]
+        return NSExpression(mglJSONObject: json)
     }()
 
     // MARK: - Transit Layer IDs (z-ordering)
