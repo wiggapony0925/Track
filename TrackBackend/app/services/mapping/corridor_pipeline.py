@@ -51,9 +51,10 @@ from app.utils.polyline_utils import decode_polyline, encode_polyline
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # Perpendicular distance between adjacent trunk groups in a corridor (meters
-# in EPSG:3857).  16 EPSG:3857-m ≈ 12.2 real metres at NYC latitude 40.7°.
-# Tuned for clear visual separation without pushing lines off physical tracks.
-LANE_WIDTH: float = 16.0
+# in EPSG:3857).  40 EPSG:3857-m ≈ 30.5 real metres at NYC latitude 40.7°.
+# Tuned so parallel lines are visually distinct from zoom 13 upwards;
+# at zoom 10-12 the iOS client supplements with pixel-space lineOffset.
+LANE_WIDTH: float = 40.0
 
 # Two trunk paths closer than this are considered to share a corridor.
 # 25 m is tight enough to exclude adjacent streets (Roosevelt Ave vs
@@ -90,6 +91,12 @@ MERGE_GAP_M: float = 50.0
 
 # Maximum distance for snapping a stop onto an offset path (meters).
 STOP_SNAP_DIST: float = 150.0
+
+# Maximum distance (meters) for snapping a trunk polyline vertex
+# onto a station node.  If the nearest point on the polyline is
+# within this radius, a vertex is inserted/moved to route the
+# polyline through the station coordinate.
+STATION_SNAP_DIST: float = 250.0
 
 # ── Arc-based offset constants (v3.2) ────────────────────────────────────────
 # These replace miter-join offsets with circular arc segments at bends,
@@ -252,6 +259,170 @@ _MAX_SNAP_DIST_M: float = 200.0
 # water crossings can have 1-5 km between encoded points) while still
 # catching teleport artifacts from bad snaps.
 _MAX_STUB_GAP_M: float = 6000.0
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Phase 1.5 — Topological Station Snapping
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# Forces trunk polylines to route through their associated station
+# coordinates.  Raw GTFS shapes are simplified geometric traces that
+# may approximate but not precisely intersect station positions;
+# this step "attracts" the nearest polyline vertex (or inserts one)
+# so that the rendered track visually passes through every stop.
+# Without this, routes like the 7 train can appear to bypass their
+# own stations on the map.
+
+
+def _snap_paths_to_stations(
+    trunk_paths: dict[int, list[LineString]],
+) -> dict[int, list[LineString]]:
+    """Snap trunk polylines through their associated station coordinates.
+
+    For each trunk group:
+    1. Collect all stations whose routes belong to this trunk.
+    2. Project station coords to EPSG:3857.
+    3. For each station, find the nearest point on the trunk's LineStrings.
+    4. If within STATION_SNAP_DIST, insert a vertex at the station's
+       projected position so the polyline routes cleanly through the stop.
+
+    Returns a new dict with the same structure as *trunk_paths* but with
+    station-snapped geometries.
+    """
+    from app.services.mapping.subway_shapes import get_all_subway_stations
+
+    raw_stations = get_all_subway_stations()
+    if not raw_stations:
+        return trunk_paths
+
+    # Build trunk_idx → list of (x_m, y_m) station positions
+    trunk_stations: dict[int, list[tuple[float, float]]] = defaultdict(list)
+    for station in raw_stations:
+        routes = station.get("routes", [])
+        lat, lon = station["lat"], station["lon"]
+        try:
+            x, y = _to_meters.transform(lon, lat)
+        except Exception:
+            continue
+        seen_trunks: set[int] = set()
+        for rid in routes:
+            tidx = ROUTE_TO_TRUNK.get(rid)
+            if tidx is not None and tidx not in seen_trunks:
+                trunk_stations[tidx].append((x, y))
+                seen_trunks.add(tidx)
+
+    result: dict[int, list[LineString]] = {}
+    total_snapped = 0
+
+    for trunk_idx, paths in trunk_paths.items():
+        stations_m = trunk_stations.get(trunk_idx, [])
+        if not stations_m:
+            result[trunk_idx] = paths
+            continue
+
+        snapped_paths: list[LineString] = []
+        for path in paths:
+            coords = list(path.coords)
+            # For each station, find the closest segment on this path and
+            # insert the station coordinate as a new vertex.
+            snap_insertions: list[tuple[float, float, float]] = []
+            #   (linear_position_along_path, station_x, station_y)
+
+            for sx, sy in stations_m:
+                spt = Point(sx, sy)
+                dist = path.distance(spt)
+                if dist > STATION_SNAP_DIST:
+                    continue
+                # Linear position along the path where the station projects
+                proj_dist = path.project(spt)
+                snap_insertions.append((proj_dist, sx, sy))
+
+            if not snap_insertions:
+                snapped_paths.append(path)
+                continue
+
+            # Sort insertions by position along the path
+            snap_insertions.sort(key=lambda t: t[0])
+
+            # Rebuild the coordinate list, inserting station vertices
+            # at the correct linear positions.
+            new_coords: list[tuple[float, float]] = []
+            cum_dist = 0.0
+            snap_idx = 0  # pointer into snap_insertions
+
+            for i in range(len(coords)):
+                # Distance from start to this vertex
+                if i > 0:
+                    cum_dist += _point_dist(coords[i - 1], coords[i])
+
+                # Insert any station vertices that fall between the
+                # previous vertex and this one.
+                while snap_idx < len(snap_insertions):
+                    s_dist, sx, sy = snap_insertions[snap_idx]
+                    if s_dist <= cum_dist + 1e-3:
+                        # Avoid duplicating if very close to an existing vertex
+                        if not new_coords or _point_dist(new_coords[-1], (sx, sy)) > 2.0:
+                            new_coords.append((sx, sy))
+                            total_snapped += 1
+                        snap_idx += 1
+                    else:
+                        break
+
+                new_coords.append(coords[i])
+
+            # Append any remaining stations past the last vertex
+            while snap_idx < len(snap_insertions):
+                _, sx, sy = snap_insertions[snap_idx]
+                if _point_dist(new_coords[-1], (sx, sy)) > 2.0:
+                    new_coords.append((sx, sy))
+                    total_snapped += 1
+                snap_idx += 1
+
+            if len(new_coords) >= 2:
+                snapped_paths.append(LineString(new_coords))
+            else:
+                snapped_paths.append(path)
+
+        result[trunk_idx] = snapped_paths
+
+    TrackLogger.info(
+        f"[StationSnap] Inserted {total_snapped} station vertices across "
+        f"{len(trunk_paths)} trunk groups"
+    )
+    return result
+
+
+def _normalize_path_direction(path: LineString) -> LineString:
+    """Ensure a polyline runs south→north (or west→east for E-W lines).
+
+    This guarantees that MapLibre's ``lineOffset`` (perpendicular to draw
+    direction) pushes parallel trunk lines in consistent geographic
+    directions across all trunk groups sharing a corridor.
+    """
+    coords = list(path.coords)
+    if len(coords) < 2:
+        return path
+
+    # Use WGS84 endpoints to decide orientation
+    try:
+        start_lon, start_lat = _to_wgs84.transform(coords[0][0], coords[0][1])
+        end_lon, end_lat = _to_wgs84.transform(coords[-1][0], coords[-1][1])
+    except Exception:
+        return path
+
+    lat_span = abs(end_lat - start_lat)
+    lon_span = abs(end_lon - start_lon)
+
+    if lat_span >= lon_span:
+        # Predominantly north-south: ensure south→north (start_lat < end_lat)
+        if start_lat > end_lat:
+            return LineString(list(reversed(coords)))
+    else:
+        # Predominantly east-west: ensure west→east (start_lon < end_lon)
+        if start_lon > end_lon:
+            return LineString(list(reversed(coords)))
+
+    return path
 
 
 def _group_and_merge_trunks(
@@ -1148,6 +1319,7 @@ def _transfer_offsets_to_route(
 
 _processed_stops_cache: list[dict] | None = None
 _trunk_offset_paths_cache: dict[int, list[LineString]] | None = None
+_vertex_offsets_cache: dict[int, dict[int, list[float]]] | None = None
 
 
 def get_processed_stops() -> list[dict]:
@@ -1155,11 +1327,52 @@ def get_processed_stops() -> list[dict]:
     return _processed_stops_cache or []
 
 
+def _compute_trunk_lane_offset(trunk_idx: int) -> float:
+    """Compute a per-trunk lane offset factor for low-zoom pixel separation.
+
+    Uses the cached per-vertex corridor offsets to determine the average
+    perpendicular displacement sign & magnitude for this trunk group.
+    Returns a float in the range [-2.5, +2.5] that the iOS client
+    multiplies by a zoom-dependent factor for ``lineOffset``.
+
+    Trunks with no corridor participation get 0.0 (no pixel offset needed).
+    """
+    offsets = _vertex_offsets_cache
+    if not offsets or trunk_idx not in offsets:
+        return 0.0
+
+    path_offsets = offsets[trunk_idx]
+    total = 0.0
+    count = 0
+    for per_vertex in path_offsets.values():
+        for o in per_vertex:
+            if abs(o) > 0.01:
+                total += o
+                count += 1
+
+    if count == 0:
+        return 0.0
+
+    # Normalise average offset to a -2.5..+2.5 range.
+    avg = total / count
+    # LANE_WIDTH is the physical offset unit; map avg to ±2.5 pixel units
+    normalised = (avg / LANE_WIDTH) * 2.5
+    return max(-2.5, min(2.5, normalised))
+
+
 def get_trunk_polylines() -> list[dict]:
     """Export trunk-level merged+offset polylines for the system map.
 
     Returns a list of dicts, one per trunk group that has geometry:
-      { "trunk_index": int, "color_hex": str, "route_ids": [str], "polylines": [str] }
+      { "trunk_index": int, "color_hex": str, "route_ids": [str],
+        "polylines": [str], "lane_offset": float }
+
+    ``lane_offset`` is a signed float indicating the trunk's perpendicular
+    offset direction for pixel-space separation at low zoom levels.  The
+    iOS client multiplies this by a zoom-interpolated factor and passes it
+    to MapLibre's ``lineOffset`` paint property so parallel trunk groups
+    remain visually distinct even when the geographic offset (metres) is
+    sub-pixel.
 
     These are the authoritative polylines for the system map — each trunk
     group produces ONE set of continuous polylines (trunk + branch stubs)
@@ -1196,6 +1409,7 @@ def get_trunk_polylines() -> list[dict]:
                 "color_hex": color,
                 "route_ids": group,
                 "polylines": encoded,
+                "lane_offset": _compute_trunk_lane_offset(trunk_idx),
             })
 
     return result
@@ -1346,6 +1560,23 @@ def apply_topological_offsets(
         f"{total_paths} paths, {total_pts} total vertices"
     )
 
+    # ── Phase 1.5: Topological station snapping ──
+    # Force trunk polylines through station coordinate nodes so
+    # rendered tracks visually pass through every associated stop.
+    try:
+        trunk_paths = _snap_paths_to_stations(trunk_paths)
+    except Exception as exc:
+        TrackLogger.warning(
+            f"[Pipeline] Phase 1.5 (Station snap) failed: {exc}"
+        )
+
+    # Normalize polyline direction (south→north / west→east) so that
+    # MapLibre lineOffset pushes parallel trunks in consistent directions.
+    for trunk_idx in list(trunk_paths.keys()):
+        trunk_paths[trunk_idx] = [
+            _normalize_path_direction(p) for p in trunk_paths[trunk_idx]
+        ]
+
     # ── Phase 2: Detect corridors and compute per-vertex offsets ──
     try:
         vertex_offsets = _compute_corridor_offsets(trunk_paths)
@@ -1395,8 +1626,9 @@ def apply_topological_offsets(
             trunk_offset_paths[trunk_idx] = offset_paths
 
     # ── Phase 5: Stop processing ──
-    global _processed_stops_cache, _trunk_offset_paths_cache
+    global _processed_stops_cache, _trunk_offset_paths_cache, _vertex_offsets_cache
     _trunk_offset_paths_cache = trunk_offset_paths
+    _vertex_offsets_cache = vertex_offsets
     try:
         _processed_stops_cache = _process_stop_positions(trunk_offset_paths)
     except Exception as exc:

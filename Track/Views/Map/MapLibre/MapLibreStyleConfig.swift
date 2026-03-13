@@ -261,6 +261,52 @@ enum MapLibreStyleConfig {
         stops: [10: 5.0, 14: 7.0, 16: 9.0, 18: 11.0]
     )
 
+    // MARK: - Dynamic Corridor Lane Offset
+    //
+    // At low zoom levels (10-13), the geographic perpendicular offset
+    // applied by the server corridor pipeline (40 EPSG:3857-m ≈ 30 m)
+    // collapses to sub-pixel separation — parallel trunk groups like
+    // orange (B/D/F/M) and yellow (N/Q/R/W) stack on top of each other.
+    //
+    // To fix this, each polyline feature carries a `lane_offset` attribute
+    // (signed float from the server, typically ±1-2.5).  We multiply it by
+    // a zoom-interpolated factor that is large at low zoom (adding pixel-
+    // space separation) and tapers to 0 at zoom 14+ where the geographic
+    // offset is sufficient.
+    //
+    // MapLibre's `lineOffset` paint property pushes the line perpendicular
+    // to its draw direction, in screen points — exactly what we need.
+
+    /// Compound expression: `lane_offset * interpolate(zoom, 10→2.5, 12→1.5, 14→0)`.
+    ///
+    /// At zoom 10 each lane_offset unit produces 2.5 pt of perpendicular
+    /// shift.  A typical corridor trunk has lane_offset ≈ ±1.5, giving
+    /// ≈ 3.75 pt separation per side (7.5 pt total gap) — enough to
+    /// distinguish the coloured lines at city-wide zoom.
+    ///
+    /// By zoom 14 the factor reaches 0 and the server's geographic offset
+    /// (40 EPSG:3857-m) provides ≈ 4-5 pt of natural separation.
+    static let laneOffsetExpression: NSExpression = {
+        let zoomFactor = NSExpression(
+            forMLNInterpolating: .zoomLevelVariable,
+            curveType: .linear,
+            parameters: nil,
+            stops: NSExpression(forConstantValue: [
+                10: 2.5,
+                11: 2.0,
+                12: 1.5,
+                13: 0.75,
+                14: 0.0,
+                15: 0.0,
+            ])
+        )
+        let featureOffset = NSExpression(forKeyPath: "lane_offset")
+        return NSExpression(
+            forFunction: "multiply:by:",
+            arguments: [featureOffset, zoomFactor]
+        )
+    }()
+
     // MARK: - Transit Layer IDs (z-ordering)
     //
     // Rendering order (bottom to top), following Transit's parallel-line approach:

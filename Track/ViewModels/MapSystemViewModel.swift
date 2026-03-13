@@ -72,6 +72,15 @@ final class MapSystemViewModel {
         /// elevated segment (inferred from route + geography).  Used
         /// for z-ordering: elevated polylines render above subway ones.
         let isElevated: Bool
+        /// Index into `trunkGroups` (0-10).  Passed through as a feature
+        /// attribute so MapLibre layers can filter or offset per trunk.
+        let trunkIndex: Int
+        /// Signed perpendicular offset for pixel-space separation of
+        /// parallel trunk groups at low zoom levels.  At zoom 14+ the
+        /// geographic corridor offset is sufficient; below zoom 14 this
+        /// value is multiplied by a zoom factor and fed to MapLibre's
+        /// ``lineOffset`` paint property.
+        let laneOffset: CGFloat
     }
 
     // Full subway station list with served lines
@@ -618,7 +627,9 @@ final class MapSystemViewModel {
                         color: line.color,
                         lineWidth: 2,
                         routeIds: [line.id],
-                        isElevated: false
+                        isElevated: false,
+                        trunkIndex: -1,
+                        laneOffset: 0
                     ))
             }
         }
@@ -679,12 +690,14 @@ final class MapSystemViewModel {
         }
 
         // ---- Phase 1: Per-color unification + simplification ----
-        // Each entry: (groupIndex, groupRouteIds, color, polylines)
+        // Each entry: (groupIndex, groupRouteIds, color, polylines, laneOffset)
         struct ColorGroupResult {
             let groupIndex: Int
             let routeIds: [String]
             let color: Color
             var polylines: [[CLLocationCoordinate2D]]
+            /// Signed perpendicular offset from the server corridor pipeline.
+            let laneOffset: CGFloat
         }
 
         var colorGroupResults: [ColorGroupResult] = []
@@ -713,7 +726,8 @@ final class MapSystemViewModel {
                     groupIndex: trunk.trunkIndex,
                     routeIds: trunk.routeIds,
                     color: groupColor,
-                    polylines: decoded
+                    polylines: decoded,
+                    laneOffset: trunk.laneOffset
                 ))
             }
         } else {
@@ -747,7 +761,8 @@ final class MapSystemViewModel {
                     groupIndex: groupIndex,
                     routeIds: activeRoutes,
                     color: groupColor,
-                    polylines: unified
+                    polylines: unified,
+                    laneOffset: 0  // No server corridor data in offline fallback
                 ))
             }
         }
@@ -819,7 +834,9 @@ final class MapSystemViewModel {
                 color: groupResult.color,
                 lineWidth: 3,
                 routeIds: groupResult.routeIds,
-                isElevated: branchStructure == .elevated || branchStructure == .viaduct
+                isElevated: branchStructure == .elevated || branchStructure == .viaduct,
+                trunkIndex: groupResult.groupIndex,
+                laneOffset: groupResult.laneOffset
             ))
         }
 

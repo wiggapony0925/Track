@@ -508,7 +508,8 @@ struct MapLibreMapView: UIViewRepresentable {
                 width: MapLibreStyleConfig.subwayCasingWidth,
                 opacity: casingOpacity,
                 color: .constant(isDark ? UIColor.white.withAlphaComponent(0.25) : UIColor.white),
-                cap: "round", join: "round"
+                cap: "round", join: "round",
+                applyLaneOffset: true
             )
             ensureLineLayer(
                 style: style,
@@ -518,7 +519,8 @@ struct MapLibreMapView: UIViewRepresentable {
                 width: MapLibreStyleConfig.subwayFillWidth,
                 opacity: subwayOpacity,
                 color: .dataDriven,
-                cap: "round", join: "round"
+                cap: "round", join: "round",
+                applyLaneOffset: true
             )
 
             // ── ELEVATED (above subway, with shadow for depth) ──
@@ -548,7 +550,8 @@ struct MapLibreMapView: UIViewRepresentable {
                 width: MapLibreStyleConfig.elevatedCasingWidth,
                 opacity: casingOpacity,
                 color: .constant(isDark ? UIColor.white.withAlphaComponent(0.30) : UIColor.white),
-                cap: "round", join: "round"
+                cap: "round", join: "round",
+                applyLaneOffset: true
             )
             ensureLineLayer(
                 style: style,
@@ -558,7 +561,8 @@ struct MapLibreMapView: UIViewRepresentable {
                 width: MapLibreStyleConfig.elevatedFillWidth,
                 opacity: subwayOpacity,
                 color: .dataDriven,
-                cap: "round", join: "round"
+                cap: "round", join: "round",
+                applyLaneOffset: true
             )
         }
 
@@ -992,7 +996,7 @@ struct MapLibreMapView: UIViewRepresentable {
 
         // MARK: - Helpers: Feature Building
 
-        /// Builds GeoJSON polyline features with per-feature `color` attribute.
+        /// Builds GeoJSON polyline features with per-feature `color` and `lane_offset` attributes.
         private func buildPolylineFeatures(
             _ polylines: [MapSystemViewModel.FlattenedMapPolyline]
         ) -> [MLNPolylineFeature] {
@@ -1002,7 +1006,11 @@ struct MapLibreMapView: UIViewRepresentable {
                 guard polyline.coordinates.count >= 2 else { continue }
                 var coords = polyline.coordinates
                 let feature = MLNPolylineFeature(coordinates: &coords, count: UInt(coords.count))
-                feature.attributes = ["color": polyline.color.toHex()]
+                feature.attributes = [
+                    "color": polyline.color.toHex(),
+                    "trunk_index": NSNumber(value: polyline.trunkIndex),
+                    "lane_offset": NSNumber(value: Float(polyline.laneOffset)),
+                ]
                 features.append(feature)
             }
             return features
@@ -1029,7 +1037,8 @@ struct MapLibreMapView: UIViewRepresentable {
             cap: String,
             join: String,
             translatePixels: CGPoint? = nil,
-            dashPattern: [NSNumber]? = nil
+            dashPattern: [NSNumber]? = nil,
+            applyLaneOffset: Bool = false
         ) {
             // Update or create source
             if let features {
@@ -1067,6 +1076,15 @@ struct MapLibreMapView: UIViewRepresentable {
 
                 if let dash = dashPattern {
                     layer.lineDashPattern = NSExpression(forConstantValue: dash)
+                }
+
+                // Dynamic parallel offset: multiply each feature's lane_offset
+                // by a zoom factor that tapers from 2.5 px at zoom 10 to 0 at
+                // zoom 14+.  This keeps parallel trunks (e.g. orange + yellow)
+                // visually separated at city-wide zoom where the geographic
+                // corridor offset is sub-pixel.
+                if applyLaneOffset {
+                    layer.lineOffset = MapLibreStyleConfig.laneOffsetExpression
                 }
 
                 style.addLayer(layer)

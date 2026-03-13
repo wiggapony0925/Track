@@ -106,12 +106,27 @@ struct TrunkGroupPolylines: Codable {
     let colorHex: String
     let routeIds: [String]
     let polylines: [String]
+    /// Signed perpendicular offset for low-zoom pixel-space separation.
+    /// The iOS client multiplies this by a zoom-interpolated factor and
+    /// feeds it to MapLibre's ``lineOffset`` paint property so parallel
+    /// trunk groups remain visually distinct at city-wide zoom levels.
+    let laneOffset: CGFloat
 
     enum CodingKeys: String, CodingKey {
         case trunkIndex = "trunk_index"
         case colorHex = "color_hex"
         case routeIds = "route_ids"
         case polylines
+        case laneOffset = "lane_offset"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        trunkIndex = try container.decode(Int.self, forKey: .trunkIndex)
+        colorHex = try container.decode(String.self, forKey: .colorHex)
+        routeIds = try container.decode([String].self, forKey: .routeIds)
+        polylines = try container.decode([String].self, forKey: .polylines)
+        laneOffset = try container.decodeIfPresent(CGFloat.self, forKey: .laneOffset) ?? 0.0
     }
 
     /// Decodes polylines on demand.
