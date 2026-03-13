@@ -17,6 +17,7 @@
 //
 
 import Foundation
+import MapLibre
 import UIKit
 
 // MARK: - MapLibre Style Configuration
@@ -24,6 +25,27 @@ import UIKit
 /// Centralized configuration for MapLibre GL tile sources and style URLs.
 /// All OSM/MapTiler configuration lives here — no magic strings elsewhere.
 enum MapLibreStyleConfig {
+
+    // MARK: - Typed Expression Helpers
+
+    /// Convenience: zoom-interpolated expression (exponential curve).
+    /// Avoids the deprecated `mgl_interpolate:withCurveType:parameters:stops:`
+    /// NSPredicate format string that triggers "forbidden" warnings on iOS 17+.
+    private static func zoomInterpolate(
+        base: Double,
+        stops: [Double: Double]
+    ) -> NSExpression {
+        NSExpression(
+            forMLNInterpolating: .zoomLevelVariable,
+            curveType: base == 1.0
+                ? .linear
+                : .exponential,
+            parameters: base == 1.0
+                ? nil
+                : NSExpression(forConstantValue: base),
+            stops: NSExpression(forConstantValue: stops)
+        )
+    }
 
     // MARK: - API Key
 
@@ -154,16 +176,16 @@ enum MapLibreStyleConfig {
     /// Subway fill line width — bold and prominent at every zoom.
     /// Wider than Transit app for better readability with dense NYC coverage.
     /// Exponential base 1.6 gives a natural acceleration curve.
-    static let subwayFillWidth = NSExpression(
-        format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'exponential', 1.6, %@)",
-        [10: 1.2, 11: 1.6, 12: 2.2, 13: 2.8, 14: 3.5, 15: 4.2, 16: 5.0, 17: 6.0, 18: 7.0]
+    static let subwayFillWidth = zoomInterpolate(
+        base: 1.6,
+        stops: [10: 1.2, 11: 1.6, 12: 2.2, 13: 2.8, 14: 3.5, 15: 4.2, 16: 5.0, 17: 6.0, 18: 7.0]
     )
 
     /// Subway casing width — soft border that gives lines a floating-above-map feel.
     /// The casing-to-fill ratio is ~1.6×, creating a subtle halo rather than a harsh edge.
-    static let subwayCasingWidth = NSExpression(
-        format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'exponential', 1.6, %@)",
-        [10: 2.4, 11: 3.0, 12: 4.0, 13: 5.0, 14: 6.0, 15: 7.0, 16: 8.5, 17: 10.0, 18: 12.0]
+    static let subwayCasingWidth = zoomInterpolate(
+        base: 1.6,
+        stops: [10: 2.4, 11: 3.0, 12: 4.0, 13: 5.0, 14: 6.0, 15: 7.0, 16: 8.5, 17: 10.0, 18: 12.0]
     )
 
     /// Elevated line fill width — matches subway for visual consistency.
@@ -171,72 +193,72 @@ enum MapLibreStyleConfig {
 
     /// Elevated casing width — extra-wide for a pronounced shadow/depth effect
     /// that distinguishes above-ground structure from tunnels.
-    static let elevatedCasingWidth = NSExpression(
-        format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'exponential', 1.6, %@)",
-        [10: 3.0, 11: 3.5, 12: 4.5, 13: 5.5, 14: 7.0, 15: 8.0, 16: 10.0, 17: 12.0, 18: 14.0]
+    static let elevatedCasingWidth = zoomInterpolate(
+        base: 1.6,
+        stops: [10: 3.0, 11: 3.5, 12: 4.5, 13: 5.5, 14: 7.0, 15: 8.0, 16: 10.0, 17: 12.0, 18: 14.0]
     )
 
     /// Commuter rail fill width — thinner than subway to establish visual hierarchy.
     /// Still bold enough to be clearly visible at overview zoom.
-    static let commuterFillWidth = NSExpression(
-        format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'exponential', 1.5, %@)",
-        [10: 0.8, 11: 1.0, 12: 1.5, 13: 2.0, 14: 2.5, 16: 3.5, 18: 4.5]
+    static let commuterFillWidth = zoomInterpolate(
+        base: 1.5,
+        stops: [10: 0.8, 11: 1.0, 12: 1.5, 13: 2.0, 14: 2.5, 16: 3.5, 18: 4.5]
     )
 
     /// Commuter rail casing width — border for dashed commuter lines.
-    static let commuterCasingWidth = NSExpression(
-        format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'exponential', 1.5, %@)",
-        [10: 1.8, 11: 2.2, 12: 3.0, 13: 3.5, 14: 4.5, 16: 6.0, 18: 7.5]
+    static let commuterCasingWidth = zoomInterpolate(
+        base: 1.5,
+        stops: [10: 1.8, 11: 2.2, 12: 3.0, 13: 3.5, 14: 4.5, 16: 6.0, 18: 7.5]
     )
 
     /// Active route fill width (when a specific route is selected) — extra bold
     /// so the selected route clearly dominates the dimmed system map.
-    static let routeFillWidth = NSExpression(
-        format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'exponential', 1.6, %@)",
-        [10: 2.5, 12: 3.5, 14: 5.0, 16: 6.0, 18: 7.5]
+    static let routeFillWidth = zoomInterpolate(
+        base: 1.6,
+        stops: [10: 2.5, 12: 3.5, 14: 5.0, 16: 6.0, 18: 7.5]
     )
 
     /// Active route casing width — generous border for a premium floating effect.
-    static let routeCasingWidth = NSExpression(
-        format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'exponential', 1.6, %@)",
-        [10: 4.0, 12: 6.0, 14: 8.0, 16: 9.5, 18: 11.0]
+    static let routeCasingWidth = zoomInterpolate(
+        base: 1.6,
+        stops: [10: 4.0, 12: 6.0, 14: 8.0, 16: 9.5, 18: 11.0]
     )
 
     /// Station circle dot radius — starts visible earlier, grows to prominent dots.
-    static let stationDotRadius = NSExpression(
-        format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'exponential', 1.4, %@)",
-        [11: 1.8, 12: 2.5, 13: 3.2, 14: 4.0, 15: 5.0, 16: 6.5, 17: 8.0, 18: 9.5]
+    static let stationDotRadius = zoomInterpolate(
+        base: 1.4,
+        stops: [11: 1.8, 12: 2.5, 13: 3.2, 14: 4.0, 15: 5.0, 16: 6.5, 17: 8.0, 18: 9.5]
     )
 
     /// Transfer station dot radius — noticeably larger than single-line stops
     /// to highlight important interchange stations.
-    static let transferDotRadius = NSExpression(
-        format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'exponential', 1.4, %@)",
-        [11: 2.5, 12: 3.5, 13: 4.5, 14: 5.5, 15: 7.0, 16: 8.5, 17: 10.0, 18: 12.0]
+    static let transferDotRadius = zoomInterpolate(
+        base: 1.4,
+        stops: [11: 2.5, 12: 3.5, 13: 4.5, 14: 5.5, 15: 7.0, 16: 8.5, 17: 10.0, 18: 12.0]
     )
 
     /// Station dot stroke width — crisp border at all zoom levels.
-    static let stationDotStrokeWidth = NSExpression(
-        format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'exponential', 1.3, %@)",
-        [11: 0.8, 13: 1.2, 15: 1.8, 17: 2.2, 18: 2.5]
+    static let stationDotStrokeWidth = zoomInterpolate(
+        base: 1.3,
+        stops: [11: 0.8, 13: 1.2, 15: 1.8, 17: 2.2, 18: 2.5]
     )
 
     /// Station label font size — legible even at zoom 14.
-    static let stationLabelFontSize = NSExpression(
-        format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'linear', nil, %@)",
-        [14: 9.0, 15: 10.0, 16: 11.0, 17: 12.0, 18: 13.0]
+    static let stationLabelFontSize = zoomInterpolate(
+        base: 1.0,
+        stops: [14: 9.0, 15: 10.0, 16: 11.0, 17: 12.0, 18: 13.0]
     )
 
     /// Walking route width — dashed line for pedestrian directions.
-    static let walkingRouteWidth = NSExpression(
-        format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'exponential', 1.5, %@)",
-        [10: 2.5, 14: 3.5, 16: 4.5, 18: 5.5]
+    static let walkingRouteWidth = zoomInterpolate(
+        base: 1.5,
+        stops: [10: 2.5, 14: 3.5, 16: 4.5, 18: 5.5]
     )
 
     /// Walking route glow width (wider, translucent for depth).
-    static let walkingRouteGlowWidth = NSExpression(
-        format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'exponential', 1.5, %@)",
-        [10: 5.0, 14: 7.0, 16: 9.0, 18: 11.0]
+    static let walkingRouteGlowWidth = zoomInterpolate(
+        base: 1.5,
+        stops: [10: 5.0, 14: 7.0, 16: 9.0, 18: 11.0]
     )
 
     // MARK: - Transit Layer IDs (z-ordering)
@@ -292,14 +314,14 @@ enum MapLibreStyleConfig {
     static let buildingColorDark = UIColor(red: 0.22, green: 0.24, blue: 0.28, alpha: 1.0)
 
     /// Building extrusion opacity — fades in smoothly from minZoom to z16.
-    static let buildingOpacity = NSExpression(
-        format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'linear', nil, %@)",
-        [14.5: 0.0, 15: 0.35, 16: 0.55, 17: 0.65, 18: 0.7]
+    static let buildingOpacity = zoomInterpolate(
+        base: 1.0,
+        stops: [14.5: 0.0, 15: 0.35, 16: 0.55, 17: 0.65, 18: 0.7]
     )
 
     /// Building extrusion opacity (dark mode) — slightly lower for subtlety.
-    static let buildingOpacityDark = NSExpression(
-        format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'linear', nil, %@)",
-        [14.5: 0.0, 15: 0.25, 16: 0.45, 17: 0.55, 18: 0.6]
+    static let buildingOpacityDark = zoomInterpolate(
+        base: 1.0,
+        stops: [14.5: 0.0, 15: 0.25, 16: 0.45, 17: 0.55, 18: 0.6]
     )
 }

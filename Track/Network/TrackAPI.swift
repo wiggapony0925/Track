@@ -54,10 +54,20 @@ struct TrackAPI {
         let config = URLSessionConfiguration.default
         config.waitsForConnectivity = true
         config.timeoutIntervalForRequest = 15
-        config.timeoutIntervalForResource = 30
+        config.timeoutIntervalForResource = 60
         config.httpMaximumConnectionsPerHost = 4
         return URLSession(configuration: config)
     }()
+
+    // MARK: - Cold-Start State
+
+    /// Whether at least one backend response has succeeded this session.
+    /// Before this becomes `true`, HTTP timeouts are extended to 45 s to
+    /// survive Render's container cold-start (which can take 30-40 s to
+    /// boot the Docker image, load GTFS, and process the first heavy
+    /// endpoint like /nearby/grouped).
+    /// Reset automatically on each app launch (static var, not persisted).
+    nonisolated(unsafe) private(set) static var serverWarmedUp = false
 
     // MARK: - Connection Warm-Up
 
@@ -658,7 +668,11 @@ struct TrackAPI {
 
         let task = Task<Data, Error> {
             var lastError: Error = TrackAPIError.networkError
-            for attempt in 0..<3 {
+            // During cold-start use fewer retries with a much longer
+            // timeout so a single attempt can survive Render's 30-40 s
+            // boot time + the endpoint's own processing time.
+            let maxAttempts = serverWarmedUp ? 3 : 2
+            for attempt in 0..<maxAttempts {
                 if attempt > 0 {
                     // Exponential backoff: 0.5 s, 1.0 s
                     let delay = UInt64(0.5 * Double(attempt) * 1_000_000_000)
@@ -666,6 +680,11 @@ struct TrackAPI {
                 }
                 do {
                     var request = URLRequest(url: url)
+                    // Extend per-request timeout during cold-start so the
+                    // retry doesn't burn all attempts before the server boots.
+                    if !serverWarmedUp {
+                        request.timeoutInterval = 45
+                    }
                     if let email = cachedUserEmail, !email.isEmpty {
                         request.setValue(email, forHTTPHeaderField: "x-user-email")
                     }
@@ -683,6 +702,7 @@ struct TrackAPI {
                         lastError = serverErr
                         continue
                     }
+                    serverWarmedUp = true
                     return data
                 } catch is CancellationError {
                     throw CancellationError()

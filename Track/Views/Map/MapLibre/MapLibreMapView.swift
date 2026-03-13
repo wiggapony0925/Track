@@ -196,6 +196,9 @@ struct MapLibreMapView: UIViewRepresentable {
                 || abs(state.center.longitude - currentCenter.longitude) > 1e-5
 
             if needsUpdate {
+                // Mark programmatic animation in flight so syncCameraToBinding
+                // doesn't overwrite cameraPosition with intermediate frames.
+                coordinator.programmaticCameraInFlight = true
                 mapView.setCenter(state.center, zoomLevel: state.zoom, direction: state.bearing, animated: true)
                 if abs(state.pitch - Double(mapView.camera.pitch)) > 1 {
                     let camera = mapView.camera
@@ -235,6 +238,12 @@ struct MapLibreMapView: UIViewRepresentable {
         var styleLoaded = false
         var shouldSyncCamera = true
         var currentStyleIsDark: Bool?
+
+        /// When true, a code-driven camera animation is in flight.
+        /// `syncCameraToBinding` skips binding writes while this flag is set
+        /// so intermediate animation frames don't overwrite the requested
+        /// destination and cause the "triple-tap to center" bug.
+        var programmaticCameraInFlight = false
 
         /// Tracks created sources — cleared on style reload so layers get recreated.
         var sourcesCreated: Set<String> = []
@@ -300,6 +309,11 @@ struct MapLibreMapView: UIViewRepresentable {
         }
 
         func mapView(_ mapView: MLNMapView, regionDidChangeAnimated animated: Bool) {
+            // When a code-driven camera finishes, clear the in-flight flag
+            // and do one final sync so bindings reflect the final position.
+            if programmaticCameraInFlight {
+                programmaticCameraInFlight = false
+            }
             syncCameraToBinding(mapView)
         }
 
@@ -310,6 +324,12 @@ struct MapLibreMapView: UIViewRepresentable {
         /// "setting value during update" AttributeGraph crashes.
         private func syncCameraToBinding(_ mapView: MLNMapView) {
             shouldSyncCamera = false  // Prevent feedback loop
+
+            // During code-driven animations (fly-to-center, fit-route, etc.)
+            // skip binding writes so intermediate frames don't overwrite the
+            // requested destination. We still read visible state for station
+            // visibility etc. but DON'T touch cameraPosition.
+            let isCodeDriven = programmaticCameraInFlight
 
             let center = mapView.centerCoordinate
             let zoom = mapView.zoomLevel
@@ -328,13 +348,19 @@ struct MapLibreMapView: UIViewRepresentable {
                 self.parent.currentMapCenter = center
                 self.parent.currentMapDistance = distance
 
-                let state = MapLibreCameraState(
-                    center: center,
-                    zoom: zoom,
-                    pitch: pitch,
-                    bearing: bearing
-                )
-                self.parent.cameraPosition = state.toTrackCameraPosition()
+                // Only update the camera binding when the user is physically
+                // interacting with the map (gestures). Programmatic camera
+                // animations write intermediate positions that fight the
+                // target, causing "tap center 3 times" bugs.
+                if !isCodeDriven {
+                    let state = MapLibreCameraState(
+                        center: center,
+                        zoom: zoom,
+                        pitch: pitch,
+                        bearing: bearing
+                    )
+                    self.parent.cameraPosition = state.toTrackCameraPosition()
+                }
 
                 if shouldShow != self.parent.showStations {
                     self.parent.showStations = shouldShow
@@ -609,8 +635,10 @@ struct MapLibreMapView: UIViewRepresentable {
                     forConstantValue: NSValue(cgVector: CGVector(dx: 0.5, dy: 1.0))
                 )
                 shadowLayer.circleOpacity = NSExpression(
-                    format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'linear', nil, %@)",
-                    [12: 0.0, 13: 0.15, 16: 0.25]
+                    forMLNInterpolating: .zoomLevelVariable,
+                    curveType: .linear,
+                    parameters: nil,
+                    stops: NSExpression(forConstantValue: [12: 0.0, 13: 0.15, 16: 0.25])
                 )
                 shadowLayer.minimumZoomLevel = 12
                 style.addLayer(shadowLayer)
@@ -630,8 +658,10 @@ struct MapLibreMapView: UIViewRepresentable {
                 singleLayer.minimumZoomLevel = 12
                 // Fade in smoothly
                 singleLayer.circleOpacity = NSExpression(
-                    format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'linear', nil, %@)",
-                    [12: 0.0, 12.5: 1.0]
+                    forMLNInterpolating: .zoomLevelVariable,
+                    curveType: .linear,
+                    parameters: nil,
+                    stops: NSExpression(forConstantValue: [12: 0.0, 12.5: 1.0])
                 )
                 style.addLayer(singleLayer)
 
@@ -652,8 +682,10 @@ struct MapLibreMapView: UIViewRepresentable {
                 transferLayer.minimumZoomLevel = 11
                 // Fade in smoothly
                 transferLayer.circleOpacity = NSExpression(
-                    format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'linear', nil, %@)",
-                    [11: 0.0, 11.5: 1.0]
+                    forMLNInterpolating: .zoomLevelVariable,
+                    curveType: .linear,
+                    parameters: nil,
+                    stops: NSExpression(forConstantValue: [11: 0.0, 11.5: 1.0])
                 )
                 style.addLayer(transferLayer)
 
@@ -681,12 +713,15 @@ struct MapLibreMapView: UIViewRepresentable {
                 labelLayer.minimumZoomLevel = 14
                 // Fade in labels
                 labelLayer.textOpacity = NSExpression(
-                    format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'linear', nil, %@)",
-                    [14: 0.0, 14.5: 1.0]
+                    forMLNInterpolating: .zoomLevelVariable,
+                    curveType: .linear,
+                    parameters: nil,
+                    stops: NSExpression(forConstantValue: [14: 0.0, 14.5: 1.0])
                 )
                 labelLayer.textAllowsOverlap = NSExpression(
-                    format: "mgl_step:from:stops:($zoomLevel, false, %@)",
-                    [16: true]
+                    forMLNStepping: .zoomLevelVariable,
+                    from: NSExpression(forConstantValue: false),
+                    stops: NSExpression(forConstantValue: [16: true])
                 )
                 style.addLayer(labelLayer)
             }

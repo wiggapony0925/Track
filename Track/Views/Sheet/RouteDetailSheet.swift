@@ -45,6 +45,9 @@ struct RouteDetailSheet: View {
     /// nearestStopCoordinate and rebuild the behind/ahead polyline split.
     /// Pass nil to reset to auto-detected nearest stop.
     var onStopSelected: ((CLLocationCoordinate2D?) -> Void)?
+    /// Called when the user taps the center button — HomeView provides
+    /// the route-fitting camera that shows both user + nearest stop.
+    var onRecenter: (() -> Void)?
 
     // Map controls (shown in header when sheet is expanded)
     var isSheetExpanded: Bool = false
@@ -216,7 +219,8 @@ struct RouteDetailSheet: View {
         onFocusVehicle: ((String?) -> Void)? = nil,
         tappedVehicleId: String? = nil,
         onDismiss: (() -> Void)? = nil,
-        onStopSelected: ((CLLocationCoordinate2D?) -> Void)? = nil
+        onStopSelected: ((CLLocationCoordinate2D?) -> Void)? = nil,
+        onRecenter: (() -> Void)? = nil
     ) {
         self.group = group
         self._busVehicles = busVehicles
@@ -239,6 +243,7 @@ struct RouteDetailSheet: View {
         self.tappedVehicleId = tappedVehicleId
         self.onDismiss = onDismiss
         self.onStopSelected = onStopSelected
+        self.onRecenter = onRecenter
         self.isSheetExpanded = isSheetExpanded
         self._is3DMode = is3DMode
         self._cameraPosition = cameraPosition
@@ -680,10 +685,7 @@ struct RouteDetailSheet: View {
 
                     // Recenter / Location Button
                     Button {
-                        let target = currentLocation ?? AppTheme.MapConfig.nycCenter
-                        withAnimation(MapCameraPresets.smoothAnimation) {
-                            cameraPosition = MapCameraPresets.center(on: target, is3D: is3DMode)
-                        }
+                        onRecenter?()
                     } label: {
                         Image(systemName: "location.fill")
                             .font(.system(size: 14, weight: .bold))

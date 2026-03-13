@@ -564,6 +564,30 @@ struct HomeView: View {
                             await viewModel.refreshWalkingState(userLocation: userLoc)
                         }
                     }
+                },
+                onRecenter: {
+                    // Re-invoke the route-fitting camera that shows both
+                    // user location and the nearest stop — same logic as
+                    // the initial route-open zoom.
+                    if let fitCamera = viewModel.cameraPositionFittingRoute(
+                        userLocation: locationManager.currentLocation,
+                        is3D: is3DMode,
+                        sheetFraction: sheetCoverFraction
+                    ) {
+                        withAnimation(MapCameraPresets.snapAnimation) {
+                            sheetDetent = .fraction(0.4)
+                        }
+                        withAnimation(MapCameraPresets.flyAnimation) {
+                            cameraPosition = fitCamera
+                        }
+                    } else {
+                        // No route context — fall back to user location
+                        let target = effectiveCoordinate ?? AppTheme.MapConfig.nycCenter
+                        withAnimation(MapCameraPresets.flyAnimation) {
+                            cameraPosition = MapCameraPresets.center(on: target, is3D: is3DMode)
+                        }
+                    }
+                    HapticManager.impact(.light)
                 }
             )
             

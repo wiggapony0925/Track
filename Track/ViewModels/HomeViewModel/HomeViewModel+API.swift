@@ -1294,6 +1294,27 @@ extension HomeViewModel {
         } catch {
             AppLogger.shared.logError("fetchNearbyTransit", error: error)
             errorMessage = (error as? TransitError)?.description ?? error.localizedDescription
+
+            // ── Cold-start auto-retry ──────────────────────────────────
+            // If the very first fetch failed (groupedTransit still showing
+            // stale session cache) and the server hasn't warmed up yet,
+            // schedule a quick retry instead of making the user wait for
+            // the full 30 s refresh timer.  Once the server responds to
+            // *any* request (shapes, stations…) `serverWarmedUp` flips
+            // and the extended 45 s timeout kicks in for the retry.
+            if !TrackAPI.serverWarmedUp {
+                AppLogger.shared.log("REFRESH", message: "⏳ Cold-start retry scheduled (5 s)")
+                let retryLocation = location
+                Task { @MainActor [weak self] in
+                    try? await Task.sleep(nanoseconds: 5_000_000_000)
+                    guard let self else { return }
+                    await self.refreshNearbyTransit(
+                        location: retryLocation,
+                        skipGlobalFeeds: skipGlobalFeeds,
+                        silent: true
+                    )
+                }
+            }
         }
 
         // If no nearby transit found, search a wider radius for a recommendation

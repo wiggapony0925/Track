@@ -172,12 +172,26 @@ struct MapControlsOverlay: View {
         withAnimation(MapCameraPresets.snapAnimation) {
             sheetDetent = .fraction(0.4)
         }
-        
-        let userLocation = locationManager.currentLocation?.coordinate
-        let finalTarget = userLocation ?? AppTheme.MapConfig.nycCenter
-        
-        withAnimation(MapCameraPresets.flyAnimation) {
-            cameraPosition = MapCameraPresets.center(on: finalTarget, is3D: is3DMode)
+
+        // If a route is currently selected, re-invoke the fit algorithm
+        // that shows both the user's location and the nearest stop — this
+        // is the same camera that was applied on route-open.
+        if viewModel.selectedRouteId != nil,
+           let fitCamera = viewModel.cameraPositionFittingRoute(
+               userLocation: locationManager.currentLocation,
+               is3D: is3DMode,
+               sheetFraction: sheetHeightFraction
+           ) {
+            withAnimation(MapCameraPresets.flyAnimation) {
+                cameraPosition = fitCamera
+            }
+        } else {
+            let userLocation = locationManager.currentLocation?.coordinate
+            let finalTarget = userLocation ?? AppTheme.MapConfig.nycCenter
+            
+            withAnimation(MapCameraPresets.flyAnimation) {
+                cameraPosition = MapCameraPresets.center(on: finalTarget, is3D: is3DMode)
+            }
         }
         
         HapticManager.impact(.light)
