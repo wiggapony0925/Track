@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import csv
 from collections import defaultdict
-from functools import lru_cache
 from pathlib import Path
 from typing import NamedTuple
 
@@ -27,6 +26,51 @@ from app.utils.shape_utils import (
 )
 
 _DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
+
+
+# ---------------------------------------------------------------------------
+# Cache decorator that skips caching empty results.  When GTFS files are
+# missing (e.g. Render disk wipe), the underlying parsers return {} or
+# ({}, {}, {}).  Standard @lru_cache would permanently cache that empty
+# result, making the server blind to data appearing later.  This decorator
+# only stores the first *non-empty* result and retries on subsequent calls
+# until the data is actually available.
+# ---------------------------------------------------------------------------
+
+def _cache_nonempty(fn):
+    """Like ``@lru_cache(maxsize=1)`` but only caches non-empty results.
+
+    "Empty" is defined as a falsy value *or* a tuple whose first element is
+    falsy (handles the ``_parse_trips_combined`` return of ``({}, {}, {})``,
+    which is truthy as a tuple but semantically empty).
+
+    Exposes a ``.cache_clear()`` method for compatibility with
+    ``_clear_gtfs_caches()`` in ``gtfs_refresh.py``.
+    """
+    _sentinel = object()
+    _cached = _sentinel
+
+    def wrapper():
+        nonlocal _cached
+        if _cached is not _sentinel:
+            return _cached
+        result = fn()
+        # Determine if the result is "populated"
+        is_populated = bool(result)
+        if is_populated and isinstance(result, tuple) and len(result) > 0:
+            is_populated = bool(result[0])
+        if is_populated:
+            _cached = result
+        return result
+
+    def cache_clear():
+        nonlocal _cached
+        _cached = _sentinel
+
+    wrapper.cache_clear = cache_clear
+    wrapper.__name__ = fn.__name__
+    wrapper.__qualname__ = fn.__qualname__
+    return wrapper
 
 _LIRR_DIR = _DATA_DIR / "lirr" / "gtfslirr"
 _MNR_DIR = _DATA_DIR / "metro_north" / "gtfsmnr"
@@ -272,22 +316,22 @@ def _build_shape_stop_map(
     return shape_best
 
 
-@lru_cache(maxsize=1)
+@_cache_nonempty
 def _lirr_stops() -> dict[str, CommuterStop]:
     return _parse_stops_file(_LIRR_DIR / "stops.txt")
 
 
-@lru_cache(maxsize=1)
+@_cache_nonempty
 def _lirr_shape_stop_map() -> dict[str, list[str]]:
     return _build_shape_stop_map(_LIRR_DIR / "stop_times.txt", _LIRR_DIR / "trips.txt")
 
 
-@lru_cache(maxsize=1)
+@_cache_nonempty
 def _mnr_stops() -> dict[str, CommuterStop]:
     return _parse_stops_file(_MNR_DIR / "stops.txt")
 
 
-@lru_cache(maxsize=1)
+@_cache_nonempty
 def _mnr_shape_stop_map() -> dict[str, list[str]]:
     return _build_shape_stop_map(_MNR_DIR / "stop_times.txt", _MNR_DIR / "trips.txt")
 
@@ -315,17 +359,17 @@ def _resolve_stops_for_shapes(
 # LIRR
 # ---------------------------------------------------------------------------
 
-@lru_cache(maxsize=1)
+@_cache_nonempty
 def _lirr_shapes() -> dict[str, bytes]:
     return _parse_shapes(_LIRR_DIR / "shapes.txt")
 
 
-@lru_cache(maxsize=1)
+@_cache_nonempty
 def _lirr_routes() -> dict[str, CommuterRoute]:
     return _parse_routes(_LIRR_DIR / "routes.txt")
 
 
-@lru_cache(maxsize=1)
+@_cache_nonempty
 def _lirr_trips() -> tuple[dict[str, set[str]], dict[str, dict[int, set[str]]], dict[str, dict[int, str]]]:
     return _parse_trips_combined(_LIRR_DIR / "trips.txt")
 
@@ -381,17 +425,17 @@ def get_all_lirr_lines() -> list[dict]:
 # Metro-North
 # ---------------------------------------------------------------------------
 
-@lru_cache(maxsize=1)
+@_cache_nonempty
 def _mnr_shapes() -> dict[str, bytes]:
     return _parse_shapes(_MNR_DIR / "shapes.txt")
 
 
-@lru_cache(maxsize=1)
+@_cache_nonempty
 def _mnr_routes() -> dict[str, CommuterRoute]:
     return _parse_routes(_MNR_DIR / "routes.txt")
 
 
-@lru_cache(maxsize=1)
+@_cache_nonempty
 def _mnr_trips() -> tuple[dict[str, set[str]], dict[str, dict[int, set[str]]], dict[str, dict[int, str]]]:
     return _parse_trips_combined(_MNR_DIR / "trips.txt")
 

@@ -521,7 +521,9 @@ def _clear_gtfs_caches() -> None:
     from app.services.transit.station_lookup import _load_stops
     from app.services.mapping.commuter_rail_shapes import (
         _lirr_shapes, _lirr_routes, _lirr_trips,
+        _lirr_stops, _lirr_shape_stop_map,
         _mnr_shapes, _mnr_routes, _mnr_trips,
+        _mnr_stops, _mnr_shape_stop_map,
     )
     from app.services.gtfs.gtfs_parser import _get_shape_to_route_map
 
@@ -531,7 +533,9 @@ def _clear_gtfs_caches() -> None:
         _get_stops_for_shape, _load_service_types,
         _load_stops,
         _lirr_shapes, _lirr_routes, _lirr_trips,
+        _lirr_stops, _lirr_shape_stop_map,
         _mnr_shapes, _mnr_routes, _mnr_trips,
+        _mnr_stops, _mnr_shape_stop_map,
         _get_shape_to_route_map,
     ]
 

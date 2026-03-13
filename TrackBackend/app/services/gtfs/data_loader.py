@@ -179,6 +179,13 @@ def _write_local_etag(object_name: str, etag: str) -> None:
     _etag_path(object_name).write_text(etag)
 
 
+def _clear_local_etag(object_name: str) -> None:
+    """Remove the saved ETag so the next request forces a full download."""
+    p = _etag_path(object_name)
+    if p.exists():
+        p.unlink()
+
+
 def _extract_tar_archive(tmp_path: str, extract_to: Path) -> None:
     """Extract a .tar.gz archive into *extract_to* with path safety checks."""
     extract_to.mkdir(parents=True, exist_ok=True)
@@ -298,10 +305,23 @@ def _download_and_extract(
         t0 = time.monotonic()
         with client.stream("GET", url, headers=headers) as resp:
             if resp.status_code == 304:
-                TrackLogger.info(
-                    f"[DATA] {desc}: up-to-date (ETag match)", tag="DATA"
-                )
-                return True, True
+                # ETag matched — but verify the extracted files still exist.
+                # A Render disk wipe can delete data while ETag metadata
+                # survives, causing the server to think data is available.
+                if _has_required_files(entry):
+                    TrackLogger.info(
+                        f"[DATA] {desc}: up-to-date (ETag match)", tag="DATA"
+                    )
+                    return True, True
+                else:
+                    TrackLogger.warning(
+                        f"[DATA] {desc}: ETag matched but local files missing — "
+                        "clearing ETag and re-downloading",
+                        tag="DATA",
+                    )
+                    _clear_local_etag(obj)
+                    # Re-request without ETag to force a full download
+                    return _download_and_extract(client, entry)
 
             if resp.status_code >= 400:
                 # Read the first 400 bytes of the error body for diagnostics.
