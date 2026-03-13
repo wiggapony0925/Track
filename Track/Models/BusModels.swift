@@ -10,7 +10,7 @@ import CoreLocation
 import Foundation
 
 /// A bus stop returned by the backend (from the OBA API).
-struct BusStop: Identifiable, Codable {
+struct BusStop: Identifiable, Codable, Sendable {
     let id: String
     let name: String
     let lat: Double
@@ -133,7 +133,7 @@ struct BusVehicleResponse: Codable, Identifiable, Equatable {
 }
 
 /// Polylines and stops for one direction of a route.
-struct DirectionShapeResponse: Codable, Identifiable {
+struct DirectionShapeResponse: Codable, Identifiable, Sendable {
     /// Stable identity that handles multiple branches sharing the same GTFS `directionId`.
     /// Combines `directionId` with `headsign` so routes with 3+ directions
     /// (e.g. subway branches, bus short-turns) never collide in SwiftUI `ForEach`.
@@ -154,13 +154,13 @@ struct DirectionShapeResponse: Codable, Identifiable {
     }
 
     /// Decodes all Google-encoded polylines for this direction.
-    var decodedPolylines: [[CLLocationCoordinate2D]] {
+    nonisolated var decodedPolylines: [[CLLocationCoordinate2D]] {
         polylines.map { decodePolyline($0) }
     }
 }
 
 /// Matches the backend's `RouteShape` JSON schema.
-struct RouteShapeResponse: Codable {
+struct RouteShapeResponse: Codable, Sendable {
     let routeId: String
     let polylines: [String]
     var stops: [BusStop]
@@ -176,20 +176,20 @@ struct RouteShapeResponse: Codable {
     }
 
     /// Decodes all Google-encoded polylines into coordinate arrays (combined).
-    var decodedPolylines: [[CLLocationCoordinate2D]] {
+    nonisolated var decodedPolylines: [[CLLocationCoordinate2D]] {
         polylines.map { decodePolyline($0) }
     }
 
     /// Returns decoded polylines for a specific direction index.
     /// Matches by `name` against `headsign` first, then `directionId` (falling back to array position).
     /// Falls back to the combined polylines if no direction data exists.
-    func polylinesForDirection(index: Int, name: String? = nil) -> [[CLLocationCoordinate2D]] {
+    nonisolated func polylinesForDirection(index: Int, name: String? = nil) -> [[CLLocationCoordinate2D]] {
         matchedDirection(index: index, name: name)?.decodedPolylines ?? decodedPolylines
     }
 
     /// Returns the `DirectionShapeResponse` that matches the given index/name.
     /// Used by `polylinesForDirection` and by the ViewModel to identify inactive directions.
-    func matchedDirection(index: Int, name: String? = nil) -> DirectionShapeResponse? {
+    nonisolated func matchedDirection(index: Int, name: String? = nil) -> DirectionShapeResponse? {
         guard !directions.isEmpty else { return nil }
         
         // Prefer matching by name to headsign — but only when the name is
@@ -228,7 +228,7 @@ struct RouteShapeResponse: Codable {
     /// Returns stops for a specific direction index.
     /// Matches by `name` against `headsign` first, then `directionId` (falling back to array position).
     /// Falls back to the combined stops if no direction data exists.
-    func stopsForDirection(index: Int, name: String? = nil) -> [BusStop] {
+    nonisolated func stopsForDirection(index: Int, name: String? = nil) -> [BusStop] {
         guard !directions.isEmpty else { return stops }
         
         // Prefer matching by name to headsign — same guard as matchedDirection

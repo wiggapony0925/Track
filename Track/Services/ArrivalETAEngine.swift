@@ -357,7 +357,8 @@ enum ArrivalETAEngine {
               snapTo.distanceFromPolyline < 500
         else { return nil }
 
-        let totalLength = VehicleInterpolator.polylineLength(polyline)
+        // Use totalPolylineLength from snap result — avoids redundant O(N) pass
+        let totalLength = snapFrom.totalPolylineLength
         let fromDist = snapFrom.fractionAlongPolyline * totalLength
         let toDist = snapTo.fractionAlongPolyline * totalLength
 

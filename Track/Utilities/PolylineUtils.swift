@@ -10,7 +10,8 @@
 import CoreLocation
 
 /// Decodes a Google-encoded polyline string into an array of coordinates.
-func decodePolyline(_ encoded: String) -> [CLLocationCoordinate2D] {
+/// `nonisolated` — pure computation safe for background threads.
+nonisolated func decodePolyline(_ encoded: String) -> [CLLocationCoordinate2D] {
     var coordinates: [CLLocationCoordinate2D] = []
     var index = encoded.startIndex
     var lat: Int32 = 0
@@ -60,7 +61,7 @@ func decodePolyline(_ encoded: String) -> [CLLocationCoordinate2D] {
 /// Encodes an array of coordinates into a Google-encoded polyline string.
 /// This is the inverse of `decodePolyline` — used to build polyline strings
 /// from known stop coordinates (e.g. subway station locations).
-func encodePolyline(_ coordinates: [CLLocationCoordinate2D]) -> String {
+nonisolated func encodePolyline(_ coordinates: [CLLocationCoordinate2D]) -> String {
     var encoded = ""
     var prevLat: Int32 = 0
     var prevLon: Int32 = 0
@@ -80,7 +81,7 @@ func encodePolyline(_ coordinates: [CLLocationCoordinate2D]) -> String {
 }
 
 /// Encodes a single signed value into the Google polyline encoding format.
-private func encodeValue(_ value: Int32, into result: inout String) {
+private nonisolated func encodeValue(_ value: Int32, into result: inout String) {
     var v = value < 0 ? ~(value << 1) : (value << 1)
     while v >= 0x20 {
         let chunk = Int32((v & 0x1F) | 0x20) + 63
@@ -108,7 +109,7 @@ private func encodeValue(_ value: Int32, into result: inout String) {
 ///     Default `0.002` ≈ 220 m at NYC latitude — generous enough to bridge
 ///     GTFS shape gaps at transfer points and diverge/converge sections.
 /// - Returns: Merged polyline arrays (typically far fewer than the input).
-func mergeAdjacentPolylines(
+nonisolated func mergeAdjacentPolylines(
     _ segments: [[CLLocationCoordinate2D]],
     gapThreshold: Double = 0.002
 ) -> [[CLLocationCoordinate2D]] {
@@ -255,7 +256,7 @@ func mergeAdjacentPolylines(
 ///   `corridor_pipeline.py` (arc-based v3.2). This client-side implementation
 ///   is kept only for existing test coverage; do not call from production code.
 @available(*, deprecated, message: "Corridor offsets are computed server-side. Use server pipeline.")
-func applyCorridorOffsets(
+nonisolated func applyCorridorOffsets(
     _ groupedPolylines: [(groupIndex: Int, coordinates: [CLLocationCoordinate2D])],
     laneSpacingDegrees: Double = 0.00015,
     smoothWindow: Int = 16
@@ -570,7 +571,7 @@ func applyCorridorOffsets(
 ///   - overlapThreshold: Spatial grid cell size in degrees. Default 0.001° ≈ 110 m.
 ///     The 3×3 neighbor check gives effective radius ≈ 220 m.
 /// - Returns: Deduplicated polylines: one trunk + short branch stubs.
-func unifyTrainPolylines(
+nonisolated func unifyTrainPolylines(
     _ segments: [[CLLocationCoordinate2D]],
     overlapThreshold: Double = 0.001
 ) -> [[CLLocationCoordinate2D]] {
@@ -767,7 +768,7 @@ func unifyTrainPolylines(
 ///     city transit network. ~0.00015° ≈ 17 m at NYC latitude (40.7°N).
 /// - Returns: A simplified coordinate array. Returns the original array
 ///   unchanged if it has fewer than 3 points.
-func simplifyPolyline(
+nonisolated func simplifyPolyline(
     _ coordinates: [CLLocationCoordinate2D],
     tolerance: Double
 ) -> [CLLocationCoordinate2D] {
@@ -776,7 +777,7 @@ func simplifyPolyline(
 }
 
 /// Recursive Ramer-Douglas-Peucker implementation.
-private func rdpSimplify(
+private nonisolated func rdpSimplify(
     _ points: [CLLocationCoordinate2D],
     tolerance: Double
 ) -> [CLLocationCoordinate2D] {
@@ -806,7 +807,7 @@ private func rdpSimplify(
 }
 
 /// Perpendicular distance from a point to a line segment (in degrees).
-private func perpendicularDistance(
+private nonisolated func perpendicularDistance(
     _ point: CLLocationCoordinate2D,
     lineStart: CLLocationCoordinate2D,
     lineEnd: CLLocationCoordinate2D
@@ -851,7 +852,7 @@ private func perpendicularDistance(
 ///     1.0 = chordal). Default **0.5** (centripetal) avoids cusps and
 ///     self-intersections — the standard for map rendering.
 /// - Returns: A smoothed coordinate array. Returns the original if < 3 points.
-func smoothPolyline(
+nonisolated func smoothPolyline(
     _ coordinates: [CLLocationCoordinate2D],
     segmentsPerCurve: Int = 4,
     alpha: Double = 0.5
@@ -909,7 +910,7 @@ func smoothPolyline(
 
 /// Computes a single Catmull-Rom interpolated point given 4 control points
 /// and knot values.
-private func catmullRomPoint(
+private nonisolated func catmullRomPoint(
     p0: (Double, Double), p1: (Double, Double),
     p2: (Double, Double), p3: (Double, Double),
     t: Double, t0: Double, t1: Double, t2: Double, t3: Double
@@ -939,7 +940,7 @@ private func catmullRomPoint(
 }
 
 /// Knot distance for centripetal Catmull-Rom parameterization.
-private func knotDistance(
+private nonisolated func knotDistance(
     _ a: CLLocationCoordinate2D,
     _ b: CLLocationCoordinate2D,
     alpha: Double

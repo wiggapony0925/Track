@@ -564,13 +564,8 @@ final class HomeViewModel {
             // Cancel any in-flight rebuild from a previous tap so rapid direction
             // switching doesn't cascade into multiple simultaneous MapPolyline
             // teardown/rebuild cycles on MapKit's render thread.
-            _polylineRebuildTask?.cancel()
-            _polylineRebuildTask = Task { @MainActor [weak self] in
-                guard let self, !Task.isCancelled else { return }
-                self.rebuildCachedPolylines()
-                guard !Task.isCancelled else { return }
-                self.rebuildDirectionalSplit()
-            }
+            // Use the async path to avoid main-thread blocking.
+            schedulePolylineRebuild()
         }
     }
     var selectedDirectionName: String? {
@@ -731,7 +726,7 @@ final class HomeViewModel {
 
     var routeShape: RouteShapeResponse? {
         didSet {
-            rebuildCachedPolylines()
+            schedulePolylineRebuild()
             rebuildDirectionalSplit()
         }
     }
@@ -751,103 +746,98 @@ final class HomeViewModel {
     /// Invalidated and rebuilt alongside `cachedRoutePolylines`.
     private(set) var cachedInterpolationPolyline: [CLLocationCoordinate2D] = []
 
-    /// Rebuilds the cached decoded polylines from the current route shape and direction.
-    private func rebuildCachedPolylines() {
+    /// Schedules an async polyline rebuild on a background thread.
+    /// Heavy decode → unify → smooth work runs off MainActor to avoid blocking
+    /// the UI — prevents the "incredible long for the polyline to show" freeze.
+    /// Cancels any in-flight rebuild so rapid direction switches don't pile up.
+    private func schedulePolylineRebuild() {
         guard let shape = routeShape else {
             cachedRoutePolylines = []
             cachedInactivePolylines = []
             cachedInterpolationPolyline = []
             return
         }
-        // Use per-direction polylines whenever the shape provides them.
-        // The old guard also required groupDirCount > 1, but that caused
-        // the top-level `polylines` (ALL directions combined) to render
-        // at full opacity — duplicating the same track with reversed geometry.
+
+        // Capture all values needed for the computation so the heavy
+        // work can run outside @MainActor.
+        let dirIndex = selectedDirectionIndex
+        let dirName = selectedDirectionName
+        let isBus = selectedGroupedRoute?.isBus == true
         let shouldFilter = !shape.directions.isEmpty
 
-        // 1) Decode active-direction segments.
-        let activeRaw =
-            shouldFilter
-            ? shape.polylinesForDirection(index: selectedDirectionIndex, name: selectedDirectionName)
-            : shape.decodedPolylines
+        // Clear stale polylines immediately so the map doesn't briefly
+        // render the previous route's geometry with the new route's data.
+        cachedRoutePolylines = []
+        cachedInactivePolylines = []
+        cachedInterpolationPolyline = []
 
-        // 2) Unify polylines into minimal continuous lines.
-        //    For trains: use branch-aware unification that absorbs
-        //    overlapping trunk segments and preserves real branches
-        //    (e.g. A train Far Rockaway vs Lefferts Blvd).
-        //    For buses: simple endpoint merge is sufficient.
-        let isBus = selectedGroupedRoute?.isBus == true
-        let unified: [[CLLocationCoordinate2D]]
-        if isBus {
-            unified = mergeAdjacentPolylines(activeRaw)
-        } else {
-            unified = unifyTrainPolylines(activeRaw)
-        }
+        _polylineRebuildTask?.cancel()
+        _polylineRebuildTask = Task { [weak self] in
+            // Jump off the main actor for heavy decode → unify → smooth work.
+            let result = await Task.detached(priority: .userInitiated) {
+                () -> ([[CLLocationCoordinate2D]], [[CLLocationCoordinate2D]], [CLLocationCoordinate2D]) in
 
-        // 3) Smooth unified polylines with Catmull-Rom spline interpolation.
-        //    Raw GTFS waypoints produce angular bends at recorded GPS points;
-        //    smoothing creates the clean curvy look Apple Maps achieves.
-        //    No RDP simplification — the backend already applies it.
-        cachedRoutePolylines = unified.filter { $0.count >= 2 }.map {
-            smoothPolyline($0, segmentsPerCurve: 4)
-        }
+                // 1) Decode active-direction segments.
+                let activeRaw = shouldFilter
+                    ? shape.polylinesForDirection(index: dirIndex, name: dirName)
+                    : shape.decodedPolylines
 
-        // Build inactive polylines from all OTHER directions.
-        // For subway/rail: render at 0.15 opacity so users see branches,
-        // short-turns, and alternate paths (routes share trunk segments).
-        // For buses: SKIP inactive directions entirely — opposite directions
-        // run on different sides of the street or take different turns on
-        // different blocks, so showing them creates confusing clutter that
-        // looks like the wrong route is drawn.
-        if shouldFilter && shape.directions.count > 1 && !isBus {
-            // Collect the active direction's polyline encoded strings for dedup
-            let activeDir = shape.matchedDirection(index: selectedDirectionIndex, name: selectedDirectionName)
-            let activePolylineSet = Set(activeDir?.polylines ?? [])
-
-            // Track all encoded strings we've already decoded to avoid
-            // rendering the same segment twice when multiple inactive
-            // directions share trunk/branch polylines (common with 3+ dirs).
-            var seenEncodedPolylines = activePolylineSet
-            var inactive: [[CLLocationCoordinate2D]] = []
-            for dir in shape.directions {
-                // Skip the active direction entirely
-                if let active = activeDir, dir.directionId == active.directionId,
-                   dir.headsign == active.headsign {
-                    continue
+                // 2) Unify polylines into minimal continuous lines.
+                let unified: [[CLLocationCoordinate2D]]
+                if isBus {
+                    unified = mergeAdjacentPolylines(activeRaw)
+                } else {
+                    unified = unifyTrainPolylines(activeRaw)
                 }
-                for encodedPoly in dir.polylines {
-                    // Skip polylines already seen (active direction OR
-                    // another inactive direction sharing the same segment)
-                    if seenEncodedPolylines.contains(encodedPoly) { continue }
-                    seenEncodedPolylines.insert(encodedPoly)
-                    let decoded = decodePolyline(encodedPoly)
-                    if decoded.count >= 2 {
-                        inactive.append(decoded)
+
+                // 3) Smooth unified polylines with Catmull-Rom spline interpolation.
+                let routePolys = unified.filter { $0.count >= 2 }.map {
+                    smoothPolyline($0, segmentsPerCurve: 4)
+                }
+
+                // 4) Build inactive polylines from all OTHER directions.
+                var inactivePolys: [[CLLocationCoordinate2D]] = []
+                if shouldFilter && shape.directions.count > 1 && !isBus {
+                    let activeDir = shape.matchedDirection(index: dirIndex, name: dirName)
+                    let activePolylineSet = Set(activeDir?.polylines ?? [])
+                    var seenEncodedPolylines = activePolylineSet
+                    var inactive: [[CLLocationCoordinate2D]] = []
+                    for dir in shape.directions {
+                        if let active = activeDir, dir.directionId == active.directionId,
+                           dir.headsign == active.headsign { continue }
+                        for encodedPoly in dir.polylines {
+                            if seenEncodedPolylines.contains(encodedPoly) { continue }
+                            seenEncodedPolylines.insert(encodedPoly)
+                            let decoded = decodePolyline(encodedPoly)
+                            if decoded.count >= 2 { inactive.append(decoded) }
+                        }
+                    }
+                    let unifiedInactive = unifyTrainPolylines(inactive)
+                    inactivePolys = unifiedInactive.filter { $0.count >= 2 }.map {
+                        smoothPolyline($0, segmentsPerCurve: 4)
                     }
                 }
-            }
-            // Unify inactive segments — same trunk-aware merge for trains
-            // to avoid duplicate overlapping trunk lines showing through.
-            // No extra RDP — the backend already simplifies, and a second
-            // pass shifts shared trunk geometry away from the active line.
-            // Same smoothing as active so shared corridors align exactly.
-            let unifiedInactive = unifyTrainPolylines(inactive)
-            cachedInactivePolylines = unifiedInactive.filter { $0.count >= 2 }.map {
-                smoothPolyline($0, segmentsPerCurve: 4)
-            }
-        } else {
-            cachedInactivePolylines = []
-        }
 
-        // Build a single continuous polyline for vehicle interpolation.
-        // Uses direction-filtered segments only — falling back to ALL
-        // directions would cause markers to interpolate along the wrong
-        // direction's path, producing glitching on branching bus routes.
-        // mergeAdjacentPolylines joins segments whose endpoints are close,
-        // avoiding discontinuities that raw flatMap would create when
-        // independently-smoothed segments don't share exact endpoints.
-        let merged = mergeAdjacentPolylines(cachedRoutePolylines)
-        cachedInterpolationPolyline = merged.first(where: { $0.count >= 2 }) ?? []
+                // 5) Build interpolation polyline from raw (pre-smooth) unified segments.
+                //    Snap/interpolation doesn't need visual smoothing — using the raw
+                //    polyline avoids 4× point inflation for every O(N) snap call.
+                let rawFiltered = unified.filter { $0.count >= 2 }
+                let interpMerged = mergeAdjacentPolylines(rawFiltered)
+                let interpPolyline = interpMerged.first(where: { $0.count >= 2 }) ?? []
+
+                return (routePolys, inactivePolys, interpPolyline)
+            }.value
+
+            guard !Task.isCancelled else { return }
+
+            // Bounce results back to MainActor (we're already there since
+            // the outer Task inherits @MainActor from the enclosing class).
+            self?.cachedRoutePolylines = result.0
+            self?.cachedInactivePolylines = result.1
+            self?.cachedInterpolationPolyline = result.2
+            // Rebuild directional split now that polylines are available.
+            self?.rebuildDirectionalSplit()
+        }
     }
 
     /// Cached polyline split at the nearest stop: `ahead` keeps full color, `behind` fades.

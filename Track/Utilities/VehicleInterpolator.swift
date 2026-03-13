@@ -30,6 +30,8 @@ enum VehicleInterpolator {
         let fractionAlongPolyline: Double
         /// Distance in meters from the input point to the snapped point.
         let distanceFromPolyline: Double
+        /// Total length of the polyline in meters (cached from the snap computation).
+        let totalPolylineLength: Double
     }
 
     /// Snaps a coordinate to the nearest point on the polyline.
@@ -61,7 +63,8 @@ enum VehicleInterpolator {
         guard totalLength > 0 else {
             return SnapResult(
                 coordinate: bestSnap, segmentIndex: bestSegment,
-                fractionAlongPolyline: 0, distanceFromPolyline: bestDist)
+                fractionAlongPolyline: 0, distanceFromPolyline: bestDist,
+                totalPolylineLength: 0)
         }
         var cumulative: Double = 0
         for i in 0..<bestSegment {
@@ -73,7 +76,8 @@ enum VehicleInterpolator {
 
         return SnapResult(
             coordinate: bestSnap, segmentIndex: bestSegment,
-            fractionAlongPolyline: fraction, distanceFromPolyline: bestDist)
+            fractionAlongPolyline: fraction, distanceFromPolyline: bestDist,
+            totalPolylineLength: totalLength)
     }
 
     // MARK: - Interpolate Along Polyline

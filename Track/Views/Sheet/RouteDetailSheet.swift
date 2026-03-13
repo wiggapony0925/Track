@@ -808,8 +808,8 @@ struct RouteDetailSheet: View {
         else { return false }
 
         // How far past the stop (in meters) the vehicle is
-        let totalLength = VehicleInterpolator.polylineLength(polyline)
-        let pastDistance = (snap.fractionAlongPolyline - stopFraction) * totalLength
+        // Use totalPolylineLength from snap result — avoids redundant O(N) pass
+        let pastDistance = (snap.fractionAlongPolyline - stopFraction) * snap.totalPolylineLength
 
         // Vehicle is past the stop by more than the grace buffer → gone
         return pastDistance > 150
@@ -908,8 +908,8 @@ struct RouteDetailSheet: View {
                   let snap = VehicleInterpolator.snap(coordinate: vc, to: polyline),
                   snap.distanceFromPolyline < 500
             else { return nil }
-            let totalLength = VehicleInterpolator.polylineLength(polyline)
-            return abs(snap.fractionAlongPolyline - sf) * totalLength
+            // Use totalPolylineLength from snap result — avoids redundant O(N) pass
+            return abs(snap.fractionAlongPolyline - sf) * snap.totalPolylineLength
         }
 
         // ── Partition into three tiers ──
