@@ -239,6 +239,14 @@ struct MapLibreMapView: UIViewRepresentable {
         /// Tracks created sources — cleared on style reload so layers get recreated.
         var sourcesCreated: Set<String> = []
 
+        // MARK: - Camera Sync Throttle
+        //
+        // `mapViewRegionIsChanging` fires every gesture frame (~60fps).
+        // Writing 4 @Binding values per frame floods SwiftUI's attribute
+        // graph and triggers "setting value during update" crashes.
+        // Throttle to at most one sync per display frame (~16ms).
+        private var pendingCameraSync: DispatchWorkItem?
+
         // MARK: - Dirty Flags (P0 perf optimization)
         //
         // `updateUIView` fires on EVERY SwiftUI re-eval — including 60fps
@@ -297,7 +305,9 @@ struct MapLibreMapView: UIViewRepresentable {
 
         /// Syncs current MapLibre camera state back to the SwiftUI bindings.
         /// O(1) — just reads camera properties and writes to bindings.
-        /// Deferred to next run loop to avoid "modifying state during view update".
+        /// Throttled: coalesces rapid gesture frames so SwiftUI processes
+        /// at most one binding update per ~16ms display frame, preventing
+        /// "setting value during update" AttributeGraph crashes.
         private func syncCameraToBinding(_ mapView: MLNMapView) {
             shouldSyncCamera = false  // Prevent feedback loop
 
@@ -310,7 +320,10 @@ struct MapLibreMapView: UIViewRepresentable {
             let zoomThreshold = AppSettings.shared.stationVisibilityZoomMeters
             let shouldShow = distance < zoomThreshold
 
-            DispatchQueue.main.async { [weak self] in
+            // Cancel any pending (not yet fired) sync — only the latest wins.
+            pendingCameraSync?.cancel()
+
+            let work = DispatchWorkItem { [weak self] in
                 guard let self else { return }
                 self.parent.currentMapCenter = center
                 self.parent.currentMapDistance = distance
@@ -330,6 +343,8 @@ struct MapLibreMapView: UIViewRepresentable {
                 // Notify parent so overlay projection refreshes every gesture frame
                 self.parent.onCameraMove?()
             }
+            pendingCameraSync = work
+            DispatchQueue.main.async(execute: work)
         }
 
         // MARK: - Delegate: Annotation Handling

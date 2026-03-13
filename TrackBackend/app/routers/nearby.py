@@ -1055,7 +1055,9 @@ async def _fetch_nearby_subway(
     total_kept = 0
     for line, arrivals in zip(feed_lines, feed_results):
         if isinstance(arrivals, Exception):
-            TrackLogger.error(f"Subway feed '{line}' failed: {arrivals}")
+            TrackLogger.error(
+                f"Subway feed '{line}' failed: {type(arrivals).__name__}: {arrivals}"
+            )
             continue
         if not isinstance(arrivals, list):
             continue

@@ -485,8 +485,7 @@ struct HomeView: View {
                 isTracking: { viewModel.isTracking($0) },
                 isTrackingAny: viewModel.isTrackingAny,
                 isLiveOnMap: { viewModel.isVehicleLiveOnMap($0) },
-                onClearHighlight: {
-                    // Clear the map highlight when the user taps a highlighted row
+                onClearHighlight: {   // the user taps a highlighted row
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                         viewModel.tappedVehicleId = nil
                     }

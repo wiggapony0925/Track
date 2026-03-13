@@ -95,14 +95,22 @@ DOWNLOAD_MANIFEST: list[dict[str, Any]] = [
         "object": "lirr.tar.gz",
         "extract_to": "lirr/gtfslirr",
         "description": "LIRR GTFS static feed",
-        "required_files": ["lirr/gtfslirr/shapes.txt", "lirr/gtfslirr/trips.txt"],
+        "required_files": [
+            "lirr/gtfslirr/routes.txt",
+            "lirr/gtfslirr/shapes.txt",
+            "lirr/gtfslirr/trips.txt",
+        ],
         "critical": True,
     },
     {
         "object": "mnr.tar.gz",
         "extract_to": "metro_north/gtfsmnr",
         "description": "Metro-North GTFS static feed",
-        "required_files": ["metro_north/gtfsmnr/shapes.txt", "metro_north/gtfsmnr/trips.txt"],
+        "required_files": [
+            "metro_north/gtfsmnr/routes.txt",
+            "metro_north/gtfsmnr/shapes.txt",
+            "metro_north/gtfsmnr/trips.txt",
+        ],
         "critical": True,
     },
     {
