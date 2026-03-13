@@ -1030,13 +1030,18 @@ struct RouteDetailSheet: View {
         }
 
         // ── Fall back to distance-based nearest stop ───────────────────────
+        // Resolve from `raw` (unfiltered) so the nearest-stop key matches
+        // `ArrivalHelpers.countdownArrival` used by the home row.  The
+        // polyline pass-filter (`live`) may have removed vehicles at the
+        // closest stop, causing a different stop to win the distance race
+        // and producing an ETA_PARITY mismatch.
         if nearestStopKey == nil {
             let refLoc: CLLocation? = (currentLocation ?? searchCenter).map {
                 CLLocation(latitude: $0.latitude, longitude: $0.longitude)
             }
             var nearestDist: CLLocationDistance = .greatestFiniteMagnitude
 
-            for arrival in live {
+            for arrival in raw {
                 let dist: CLLocationDistance
                 if let dm = arrival.distanceM {
                     dist = dm

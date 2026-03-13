@@ -796,6 +796,9 @@ extension HomeViewModel {
         }
 
         if let closest = closestStop {
+            // Skip redundant updates — multiple triggers (direction change,
+            // GPS callback, walking refresh) can fire within the same frame.
+            guard closest.id != selectedStopId else { return }
             nearestStopCoordinate = CLLocationCoordinate2D(latitude: closest.lat, longitude: closest.lon)
             selectedStopId = closest.id
             #if DEBUG

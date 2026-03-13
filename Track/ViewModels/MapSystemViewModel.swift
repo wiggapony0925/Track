@@ -931,6 +931,24 @@ final class MapSystemViewModel {
             return
         }
 
+        // ── Fast-path: show previous-session stations instantly while
+        // the API request is in flight.  On second+ launch this means
+        // station pills appear in <100ms instead of waiting 5-15s for
+        // the server (especially on Render cold-start).
+        if let cached = OfflineCacheManager.shared.getCachedStations(), !cached.isEmpty {
+            let restored = cached.map { s in
+                CachedSubwayStation(
+                    id: s.id,
+                    name: s.name,
+                    coordinate: CLLocationCoordinate2D(latitude: s.latitude, longitude: s.longitude),
+                    routes: s.routes
+                )
+            }
+            self.cachedStations = restored
+            self.consolidateStations()
+            AppLogger.shared.log("STATIONS", message: "Restored \(restored.count) stations from disk cache (instant)")
+        }
+
         do {
             // ── Try processed (snapped) stations first ──
             // The pipeline snaps each station onto the offset polylines so

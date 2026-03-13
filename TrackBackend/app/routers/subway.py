@@ -26,7 +26,7 @@ from app.services.gtfs.data_cleaner import get_arrivals_for_line
 from app.services.mapping.subway_shapes import get_all_subway_stations, get_subway_route_shape, get_subway_service_type
 from app.services.transit.station_lookup import get_nearby_stop_ids, get_stop_info
 from app.utils.logger import TrackLogger
-from app.utils.polyline_utils import decode_polyline as _decode_polyline, encode_polyline as _encode_polyline
+from app.utils.polyline_utils import decode_polyline as _decode_polyline, encode_polyline as _encode_polyline, densify_wgs84 as _densify_wgs84
 from app.services.mapping.corridor_pipeline import apply_topological_offsets, get_processed_stops
 from app.utils.transit_utils import (
     clean_route_id,
@@ -147,7 +147,7 @@ async def subway_shapes_all() -> AllSubwayLinesResponse:
         # The old geometric 70% overlap dedup was killing branch polylines
         # because branches share a trunk with the main line.
 
-        encoded = [_encode_polyline(coords) for coords in polylines_raw]
+        encoded = [_encode_polyline(_densify_wgs84(coords)) for coords in polylines_raw]
         color = get_subway_color(line)
         overlays.append(SubwayLineOverlay(
             route_id=line,
@@ -187,7 +187,7 @@ async def subway_shapes_all() -> AllSubwayLinesResponse:
             if not shape_buf:
                 continue
             raw = list(reversed(_unpack_coords(shape_buf)))
-            enc = _encode_polyline(raw)
+            enc = _encode_polyline(_densify_wgs84(raw))
             if line in overlay_map:
                 overlay_map[line].polylines.append(enc)
                 TrackLogger.info(f"[Dir1] Added reverse shape {sid} to {line} ({len(raw)} pts)")
