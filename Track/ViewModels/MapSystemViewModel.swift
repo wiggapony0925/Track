@@ -791,29 +791,92 @@ final class MapSystemViewModel {
 
         // Route labels — use base (non-offset) coordinates so they sit
         // centered on the actual track regardless of offset tier.
+        //
+        // Per-label route attribution: instead of stamping the full trunk
+        // group (e.g. "A C E") on every label, build a spatial grid per
+        // individual route and only include routes whose polylines actually
+        // pass near each label coordinate.  This prevents labels like
+        // "A C E" appearing on the E-only Jamaica/Archer Av branch.
+        //
+        // IMPORTANT: The corridor pipeline applies perpendicular offsets up
+        // to ~350 m, which can push route polylines into grid cells 2 away
+        // from the original track centre.  Use ±2 cell search to compensate.
+        let routeGridCell = 0.002  // ~220 m at NYC latitude
+        func routeGridKey(lat: Double, lon: Double) -> Int64 {
+            let latCell = Int64(floor(lat / routeGridCell))
+            let lonCell = Int64(floor(lon / routeGridCell))
+            return latCell &* 10_000_000 &+ lonCell
+        }
+
         var routeLabels: [TrunkRouteLabel] = []
         for groupResult in colorGroupResults {
             let groupKey = groupResult.routeIds.joined(separator: "-")
+
+            // Build per-route spatial grid for this color group
+            var perRouteGrid: [String: Set<Int64>] = [:]
+            for routeId in groupResult.routeIds {
+                guard let line = linesByRouteId[routeId.uppercased()] ?? linesByRouteId[routeId] else { continue }
+                var grid = Set<Int64>()
+                for branch in line.coordinates {
+                    for pt in branch {
+                        grid.insert(routeGridKey(lat: pt.latitude, lon: pt.longitude))
+                    }
+                }
+                perRouteGrid[routeId] = grid
+            }
+
+            /// Returns the subset of `groupResult.routeIds` whose offset
+            /// polylines pass within ±2 grid cells (~440 m) of `coord`.
+            /// The wider radius accounts for corridor pipeline perpendicular
+            /// offsets (up to ~350 m at dense trunk corridors).
+            /// Returns `nil` when NO route can be attributed — caller skips
+            /// the label entirely instead of showing the wrong trunk group.
+            func routesNear(_ coord: CLLocationCoordinate2D) -> [String]? {
+                let latCell = Int64(floor(coord.latitude / routeGridCell))
+                let lonCell = Int64(floor(coord.longitude / routeGridCell))
+                let nearby = groupResult.routeIds.filter { routeId in
+                    guard let grid = perRouteGrid[routeId] else { return false }
+                    // ±2 cells ≈ 440 m — covers corridor offsets up to ~350 m
+                    for dl: Int64 in -2...2 {
+                        for dn: Int64 in -2...2 {
+                            if grid.contains((latCell + dl) &* 10_000_000 &+ (lonCell + dn)) {
+                                return true
+                            }
+                        }
+                    }
+                    return false
+                }
+                // No fallback — if attribution finds nothing, skip the label.
+                // The old fallback (`nearby.isEmpty ? groupResult.routeIds : nearby`)
+                // caused "A C E" labels on E-only branches when the corridor
+                // pipeline offset pushed E's polyline outside the ±1 grid range.
+                return nearby.isEmpty ? nil : nearby
+            }
+
             for (branchIdx, coords) in groupResult.polylines.enumerated() {
                 guard coords.count >= 2 else { continue }
                 let labelInterval = 60
                 var labelIdx = 0
                 var ptIdx = labelInterval / 2
                 while ptIdx < coords.count {
-                    routeLabels.append(TrunkRouteLabel(
-                        id: "label_\(groupKey)_\(branchIdx)_\(labelIdx)",
-                        coordinate: coords[ptIdx],
-                        routeIds: groupResult.routeIds,
-                        color: groupResult.color
-                    ))
+                    let labelCoord = coords[ptIdx]
+                    if let labelRoutes = routesNear(labelCoord) {
+                        routeLabels.append(TrunkRouteLabel(
+                            id: "label_\(groupKey)_\(branchIdx)_\(labelIdx)",
+                            coordinate: labelCoord,
+                            routeIds: labelRoutes,
+                            color: groupResult.color
+                        ))
+                    }
                     labelIdx += 1
                     ptIdx += labelInterval
                 }
-                if let lastCoord = coords.last {
+                if let lastCoord = coords.last,
+                   let endRoutes = routesNear(lastCoord) {
                     routeLabels.append(TrunkRouteLabel(
                         id: "label_\(groupKey)_\(branchIdx)_end",
                         coordinate: lastCoord,
-                        routeIds: groupResult.routeIds,
+                        routeIds: endRoutes,
                         color: groupResult.color
                     ))
                 }

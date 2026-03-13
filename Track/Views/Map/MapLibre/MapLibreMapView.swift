@@ -270,6 +270,7 @@ struct MapLibreMapView: UIViewRepresentable {
             styleLoaded = true
             sourcesCreated.removeAll()  // New style = all layers need recreation
             invalidateAllDirtyFlags()   // Force full rebuild
+            setup3DBuildings(style: style, isDarkMode: parent.isDarkMode)
             updateAllLayers(mapView: mapView, representable: parent)
         }
 
@@ -348,6 +349,11 @@ struct MapLibreMapView: UIViewRepresentable {
 
             let darkChanged = lastDarkMode != representable.isDarkMode
             lastDarkMode = representable.isDarkMode
+
+            // Update 3D building colors on dark mode switch
+            if darkChanged {
+                setup3DBuildings(style: style, isDarkMode: representable.isDarkMode)
+            }
 
             // System map hash: changes when polyline count, active state, or dark mode change.
             // Polyline data is essentially static per session — only changes on initial load
@@ -755,7 +761,7 @@ struct MapLibreMapView: UIViewRepresentable {
                 fillLayerID: "route-inactive-fill",
                 coordinates: representable.inactivePolylines,
                 color: routeColor.withAlphaComponent(0.15),
-                casingColor: (isDark ? UIColor.white : UIColor.white).withAlphaComponent(0.15 * (isBus ? 0.6 : 1.0)),
+                casingColor: (isDark ? UIColor(white: 0.7, alpha: 1) : UIColor.white).withAlphaComponent(0.15 * (isBus ? 0.6 : 1.0)),
                 fillWidth: MapLibreStyleConfig.routeFillWidth,
                 casingWidth: MapLibreStyleConfig.routeCasingWidth
             )
@@ -769,7 +775,7 @@ struct MapLibreMapView: UIViewRepresentable {
                     fillLayerID: "route-behind-fill",
                     coordinates: split.behind,
                     color: routeColor.withAlphaComponent(0.25),
-                    casingColor: (isDark ? UIColor.white : UIColor.white).withAlphaComponent(0.3 * (isBus ? 0.6 : 1.0)),
+                    casingColor: (isDark ? UIColor(white: 0.7, alpha: 1) : UIColor.white).withAlphaComponent(0.3 * (isBus ? 0.6 : 1.0)),
                     fillWidth: MapLibreStyleConfig.routeFillWidth,
                     casingWidth: MapLibreStyleConfig.routeCasingWidth
                 )
@@ -780,7 +786,7 @@ struct MapLibreMapView: UIViewRepresentable {
                     fillLayerID: "route-ahead-fill",
                     coordinates: split.ahead,
                     color: routeColor,
-                    casingColor: (isDark ? UIColor.white : UIColor.white).withAlphaComponent(0.8 * (isBus ? 0.6 : 1.0)),
+                    casingColor: (isDark ? UIColor(white: 0.7, alpha: 1) : UIColor.white).withAlphaComponent(0.8 * (isBus ? 0.6 : 1.0)),
                     fillWidth: MapLibreStyleConfig.routeFillWidth,
                     casingWidth: MapLibreStyleConfig.routeCasingWidth
                 )
@@ -792,7 +798,7 @@ struct MapLibreMapView: UIViewRepresentable {
                     fillLayerID: "route-active-fill",
                     coordinates: representable.routePolylines,
                     color: routeColor,
-                    casingColor: (isDark ? UIColor.white : UIColor.white).withAlphaComponent(0.8 * (isBus ? 0.6 : 1.0)),
+                    casingColor: (isDark ? UIColor(white: 0.7, alpha: 1) : UIColor.white).withAlphaComponent(0.8 * (isBus ? 0.6 : 1.0)),
                     fillWidth: MapLibreStyleConfig.routeFillWidth,
                     casingWidth: MapLibreStyleConfig.routeCasingWidth
                 )
@@ -853,6 +859,85 @@ struct MapLibreMapView: UIViewRepresentable {
             guard polyline.isElevated else { return false }
             guard !reroutedRouteIDs.isEmpty else { return true }
             return !polyline.routeIds.allSatisfy { reroutedRouteIDs.contains($0.uppercased()) }
+        }
+
+        // MARK: - 3D Building Extrusions
+        //
+        // MapTiler vector tiles include a "building" source layer with
+        // `render_height` and `render_min_height` attributes (meters).
+        // We add an MLNFillExtrusionStyleLayer that reads those to
+        // render extruded 3D buildings when the camera is pitched.
+        // Placed below all transit layers so buildings never occlude routes.
+
+        /// Whether 3D buildings have been added to the current style.
+        private var buildings3DAdded = false
+
+        /// Adds a 3D building extrusion layer using the MapTiler vector tile
+        /// `building` source layer. Only needs to run once per style load.
+        func setup3DBuildings(style: MLNStyle, isDarkMode: Bool) {
+            // Remove existing layer if present (e.g. dark/light mode switch)
+            if let existing = style.layer(withIdentifier: MapLibreStyleConfig.layerBuilding3D) {
+                style.removeLayer(existing)
+            }
+
+            // MapTiler vector tiles expose "openmaptiles" as the source identifier.
+            // The building footprints live in the "building" source-layer within it.
+            guard let source = style.source(withIdentifier: "openmaptiles") else {
+                // Fallback: try "maptiler_planet" (some MapTiler styles use this name)
+                guard let altSource = style.source(withIdentifier: "maptiler_planet") else {
+                    return  // Raster tile fallback — no vector building data available
+                }
+                addBuildingExtrusionLayer(style: style, source: altSource, isDarkMode: isDarkMode)
+                return
+            }
+            addBuildingExtrusionLayer(style: style, source: source, isDarkMode: isDarkMode)
+        }
+
+        private func addBuildingExtrusionLayer(
+            style: MLNStyle,
+            source: MLNSource,
+            isDarkMode: Bool
+        ) {
+            let layer = MLNFillExtrusionStyleLayer(
+                identifier: MapLibreStyleConfig.layerBuilding3D,
+                source: source
+            )
+            layer.sourceLayerIdentifier = "building"
+
+            // Only extrude features that have height data
+            layer.predicate = NSPredicate(format: "render_height > 0")
+
+            // Heights from OSM building tags (in meters)
+            layer.fillExtrusionHeight = NSExpression(forKeyPath: "render_height")
+            layer.fillExtrusionBase = NSExpression(forKeyPath: "render_min_height")
+
+            // Color & opacity — subtle enough to not compete with transit overlays
+            let color = isDarkMode
+                ? MapLibreStyleConfig.buildingColorDark
+                : MapLibreStyleConfig.buildingColorLight
+            layer.fillExtrusionColor = NSExpression(forConstantValue: color)
+            layer.fillExtrusionOpacity = isDarkMode
+                ? MapLibreStyleConfig.buildingOpacityDark
+                : MapLibreStyleConfig.buildingOpacity
+
+            // Slight translation for ambient shadow direction (sunlight from top-left)
+            layer.fillExtrusionTranslation = NSExpression(
+                forConstantValue: NSValue(cgVector: CGVector(dx: 0.5, dy: 1.0))
+            )
+
+            // Minimum zoom — no point rendering at city-wide zoom
+            layer.minimumZoomLevel = Float(MapLibreStyleConfig.building3DMinZoom)
+
+            // Insert below our transit layers — find the lowest transit layer
+            // (commuter casing) and insert buildings right before it.
+            if let commuterLayer = style.layer(withIdentifier: MapLibreStyleConfig.layerCommRailCasing) {
+                style.insertLayer(layer, below: commuterLayer)
+            } else {
+                // Transit layers not yet added — just add; they'll be placed above later
+                style.addLayer(layer)
+            }
+
+            buildings3DAdded = true
         }
 
         // MARK: - Helpers: Feature Building

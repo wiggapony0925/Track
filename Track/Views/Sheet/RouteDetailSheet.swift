@@ -14,6 +14,7 @@ import SwiftUI
 struct RouteDetailSheet: View {
     let group: GroupedNearbyTransitResponse
     @Binding var busVehicles: [BusVehicleResponse]
+    var trainVehicles: [TrainVehicle] = []
     @Binding var routeShape: RouteShapeResponse?
     var serviceAlerts: [TransitAlert] = []
     var busSchedule: BusScheduleResponse?
@@ -190,6 +191,7 @@ struct RouteDetailSheet: View {
     init(
         group: GroupedNearbyTransitResponse,
         busVehicles: Binding<[BusVehicleResponse]>,
+        trainVehicles: [TrainVehicle] = [],
         routeShape: Binding<RouteShapeResponse?>,
         selectedDirectionIndex: Binding<Int>,
         serviceAlerts: [TransitAlert] = [],
@@ -218,6 +220,7 @@ struct RouteDetailSheet: View {
     ) {
         self.group = group
         self._busVehicles = busVehicles
+        self.trainVehicles = trainVehicles
         self._routeShape = routeShape
         self._selectedDirectionIndex = selectedDirectionIndex
         self.serviceAlerts = serviceAlerts
@@ -771,14 +774,7 @@ struct RouteDetailSheet: View {
         guard isLiveOnMap?(arrival) ?? false else { return false }
 
         // Get vehicle coordinate
-        let vehicleCoord: CLLocationCoordinate2D?
-        if arrival.isBus, let vid = arrival.vehicleId, !vid.isEmpty,
-           let bus = busVehicles.first(where: { $0.vehicleId == vid }) {
-            vehicleCoord = CLLocationCoordinate2D(latitude: bus.lat, longitude: bus.lon)
-        } else {
-            // TODO: Add train vehicle lookup when trainVehicles binding is available
-            vehicleCoord = nil
-        }
+        let vehicleCoord: CLLocationCoordinate2D? = vehicleCoordinate(for: arrival)
         guard let vc = vehicleCoord,
               let snap = VehicleInterpolator.snap(coordinate: vc, to: polyline),
               snap.distanceFromPolyline < 500  // must be on-route
@@ -884,13 +880,7 @@ struct RouteDetailSheet: View {
         // ── Helper: get vehicle's distance-to-stop along polyline ──
         func vehicleDistanceToStop(_ arrival: NearbyTransitResponse) -> Double? {
             guard let sf = stopFraction, polyline.count >= 2 else { return nil }
-            let vehicleCoord: CLLocationCoordinate2D?
-            if arrival.isBus, let vid = arrival.vehicleId, !vid.isEmpty,
-               let bus = busVehicles.first(where: { $0.vehicleId == vid }) {
-                vehicleCoord = CLLocationCoordinate2D(latitude: bus.lat, longitude: bus.lon)
-            } else {
-                vehicleCoord = nil
-            }
+            let vehicleCoord = vehicleCoordinate(for: arrival)
             guard let vc = vehicleCoord,
                   let snap = VehicleInterpolator.snap(coordinate: vc, to: polyline),
                   snap.distanceFromPolyline < 500
@@ -1219,12 +1209,11 @@ struct RouteDetailSheet: View {
                     return "~" + fmt.string(from: approx)
                 }()
 
-                // GPS coordinates: look up the matching vehicle in the busVehicles binding
+                // GPS coordinates: look up the matching vehicle
                 let coords: String = {
                     guard !a.isScheduledOnly else { return "" }
-                    if let vid = a.vehicleId,
-                       let bus = busVehicles.first(where: { $0.vehicleId == vid }) {
-                        return String(format: " 📍%.5f,%.5f", bus.lat, bus.lon)
+                    if let coord = vehicleCoordinate(for: a) {
+                        return String(format: " 📍%.5f,%.5f", coord.latitude, coord.longitude)
                     }
                     return " (no GPS match)"
                 }()
@@ -1437,6 +1426,25 @@ struct RouteDetailSheet: View {
         ArrivalHelpers.sortedByETA(arrivals, provider: smartETA)
     }
 
+    // MARK: - Vehicle Coordinate Lookup
+
+    /// Unified vehicle coordinate lookup — checks busVehicles for buses,
+    /// trainVehicles for subway/LIRR/MNR. Returns nil for scheduled-only arrivals.
+    private func vehicleCoordinate(for arrival: NearbyTransitResponse) -> CLLocationCoordinate2D? {
+        guard let vid = arrival.vehicleId, !vid.isEmpty else { return nil }
+        if arrival.isBus {
+            if let bus = busVehicles.first(where: { $0.vehicleId == vid }) {
+                return CLLocationCoordinate2D(latitude: bus.lat, longitude: bus.lon)
+            }
+        } else {
+            // Match train by vehicleId or tripId
+            if let train = trainVehicles.first(where: { $0.id == vid || $0.tripId == vid }) {
+                return CLLocationCoordinate2D(latitude: train.lat, longitude: train.lon)
+            }
+        }
+        return nil
+    }
+
     // MARK: - Smart ETA
 
     /// Computes a smart ETA for an arrival using live vehicle position + polyline.
@@ -1446,17 +1454,8 @@ struct RouteDetailSheet: View {
             return shared(arrival)
         }
 
-        // Find the vehicle's live coordinate from busVehicles binding
-        let vehicleCoord: CLLocationCoordinate2D? = {
-            if arrival.isBus, let vid = arrival.vehicleId, !vid.isEmpty,
-               let bus = busVehicles.first(where: { $0.vehicleId == vid }) {
-                return CLLocationCoordinate2D(latitude: bus.lat, longitude: bus.lon)
-            }
-            // For trains, check isLiveOnMap callback — if true, vehicle is on the map
-            // but we don't have direct access to trainVehicles here.
-            // The engine will fall back to arrivalTs in that case.
-            return nil
-        }()
+        // Find the vehicle's live coordinate
+        let vehicleCoord = vehicleCoordinate(for: arrival)
 
         let stopCoord: CLLocationCoordinate2D? = {
             if let lat = arrival.stopLat, let lon = arrival.stopLon {
@@ -2394,6 +2393,7 @@ struct RouteDetailSheet: View {
             ]
         ),
         busVehicles: .constant([]),
+        trainVehicles: [],
         routeShape: .constant(nil),
         selectedDirectionIndex: .constant(0)
     )

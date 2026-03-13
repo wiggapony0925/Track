@@ -12,7 +12,6 @@
 //  │  ├── MapLibreMapView (UIViewRepresentable)          │
 //  │  │   └── MLNMapView (GPU-accelerated OSM tiles)     │
 //  │  ├── MapLibreVehicleOverlay (bus/train markers)     │
-//  │  ├── MapLibreStationOverlay (station capsules)      │
 //  │  ├── MapLibreRouteStopOverlay (route stop markers)  │
 //  │  ├── MapLibreRouteLabelOverlay (trunk labels)       │
 //  │  └── MapLibreSearchPinOverlay (drag-search dot)     │
@@ -64,13 +63,12 @@ struct MapLibreTrackMapView: View {
 
     // MARK: - Viewport Caching (same O(n) optimization as TrackMapView)
 
-    @State private var _cachedVisibleStations: [MapSystemViewModel.ConsolidatedStation] = []
     @State private var _cachedTransferConnectors: [TransferConnector] = []
     @State private var _cachedVisibleLabels: [HomeViewModel.TrunkRouteLabel] = []
     @State private var _cachedVisibleStops: [BusStop] = []
     @State private var _lastViewportCenter: CLLocationCoordinate2D?
     @State private var _lastViewportDistance: Double?
-    @State private var _zoomTier: ZoomTier = .medium
+
 
     // MARK: - MapLibre Reference
 
@@ -161,18 +159,6 @@ struct MapLibreTrackMapView: View {
 
     @ViewBuilder
     private var overlayStack: some View {
-        // Station capsules
-        MapLibreStationOverlay(
-            mapView: mapViewRef,
-            stations: _cachedVisibleStations,
-            transferConnectors: _cachedTransferConnectors,
-            zoomTier: _zoomTier,
-            showLabels: showStations,
-            imminentArrivals: viewModel.mapSystem.imminentArrivals,
-            hasActiveRoute: viewModel.routeShape != nil,
-            cameraChangeToken: cameraChangeToken
-        )
-
         // Route labels
         MapLibreRouteLabelOverlay(
             mapView: mapViewRef,
@@ -220,12 +206,6 @@ struct MapLibreTrackMapView: View {
     private func refreshViewportCacheIfNeeded() {
         guard let center = currentMapCenter, let d = currentMapDistance else { return }
 
-        // Update zoom tier
-        let newTier = ZoomTier.tier(for: d)
-        if newTier != _zoomTier {
-            _zoomTier = newTier
-        }
-
         // Check if cache needs refresh
         let needsRefresh: Bool
         if let lastC = _lastViewportCenter, let lastD = _lastViewportDistance {
@@ -241,20 +221,23 @@ struct MapLibreTrackMapView: View {
         if needsRefresh {
             _lastViewportCenter = center
             _lastViewportDistance = d
-            _cachedVisibleStations = computeVisibleStations(center: center, distance: d)
-            _cachedTransferConnectors = computeTransferConnectors(from: _cachedVisibleStations)
+            _cachedTransferConnectors = computeTransferConnectors(
+                from: viewModel.consolidatedStations, center: center, distance: d
+            )
             _cachedVisibleLabels = computeVisibleRouteLabels(center: center, distance: d)
             _cachedVisibleStops = computeVisibleDirectionStops(center: center, distance: d)
         }
     }
 
-    // MARK: - Viewport Computation (copied from TrackMapView — same O(n) logic)
+    // MARK: - Viewport Computation
 
-    private func computeVisibleStations(
-        center: CLLocationCoordinate2D, distance: Double
-    ) -> [MapSystemViewModel.ConsolidatedStation] {
+    private func computeTransferConnectors(
+        from allStations: [MapSystemViewModel.ConsolidatedStation],
+        center: CLLocationCoordinate2D,
+        distance: Double
+    ) -> [TransferConnector] {
         let maxZoomOut = AppSettings.shared.stationMaxZoomOutMeters
-        guard distance < maxZoomOut else { return [] }
+        guard distance < maxZoomOut * 0.30 else { return [] }
 
         let latSpan = (distance / 111_000) * 1.5
         let lonSpan = (distance / (111_000 * cos(center.latitude * .pi / 180))) * 1.5
@@ -263,27 +246,11 @@ struct MapLibreTrackMapView: View {
         let minLon = center.longitude - lonSpan
         let maxLon = center.longitude + lonSpan
 
-        let showAllStops = distance < maxZoomOut * 0.16
-        let showTransfers = distance < maxZoomOut * 0.30
-        let showMajorHubs = distance < maxZoomOut
-
-        return viewModel.consolidatedStations.filter { station in
-            guard station.coordinate.latitude >= minLat,
-                  station.coordinate.latitude <= maxLat,
-                  station.coordinate.longitude >= minLon,
-                  station.coordinate.longitude <= maxLon
-            else { return false }
-            if showAllStops { return true }
-            let groupCount = station.colorGroupCount
-            if showMajorHubs && groupCount >= 3 { return true }
-            if showTransfers && groupCount >= 2 { return true }
-            return false
+        let stations = allStations.filter { s in
+            s.coordinate.latitude >= minLat && s.coordinate.latitude <= maxLat
+            && s.coordinate.longitude >= minLon && s.coordinate.longitude <= maxLon
         }
-    }
 
-    private func computeTransferConnectors(
-        from stations: [MapSystemViewModel.ConsolidatedStation]
-    ) -> [TransferConnector] {
         var byComplex: [Int: [MapSystemViewModel.ConsolidatedStation]] = [:]
         for station in stations {
             byComplex[station.complexID, default: []].append(station)

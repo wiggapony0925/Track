@@ -453,6 +453,7 @@ struct HomeView: View {
             RouteDetailSheet(
                 group: enrichedGroup,
                 busVehicles: $viewModel.busVehicles,
+                trainVehicles: viewModel.filteredTrainVehicles,
                 routeShape: $viewModel.routeShape,
                 selectedDirectionIndex: $viewModel.selectedDirectionIndex,
                 serviceAlerts: viewModel.serviceAlerts,

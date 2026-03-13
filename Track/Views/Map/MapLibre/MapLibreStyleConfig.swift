@@ -17,6 +17,7 @@
 //
 
 import Foundation
+import UIKit
 
 // MARK: - MapLibre Style Configuration
 
@@ -266,10 +267,39 @@ enum MapLibreStyleConfig {
     static let layerStationDotsTransfer = "station-dots-transfer"
     static let layerStationLabels = "station-labels"
 
+    // 3D Building Layer
+    static let layerBuilding3D = "building-3d-extrusion"
+
     // Source IDs
     static let srcCommRail = "commuter-src"
     static let srcSubway = "subway-src"
     static let srcElevated = "elevated-src"
     static let srcTransferConn = "transfer-conn-src"
     static let srcStations = "stations-src"
+
+    // MARK: - 3D Buildings
+
+    /// Minimum zoom level at which 3D building extrusions become visible.
+    /// Below this zoom, buildings are too small to be meaningful.
+    static let building3DMinZoom: Double = 14.5
+
+    /// Building fill color (light mode) — subtle warm gray so buildings
+    /// add depth without competing with transit overlays.
+    static let buildingColorLight = UIColor(red: 0.85, green: 0.83, blue: 0.80, alpha: 1.0)
+
+    /// Building fill color (dark mode) — muted blue-gray for contrast against
+    /// the dark base map without being distracting.
+    static let buildingColorDark = UIColor(red: 0.22, green: 0.24, blue: 0.28, alpha: 1.0)
+
+    /// Building extrusion opacity — fades in smoothly from minZoom to z16.
+    static let buildingOpacity = NSExpression(
+        format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'linear', nil, %@)",
+        [14.5: 0.0, 15: 0.35, 16: 0.55, 17: 0.65, 18: 0.7]
+    )
+
+    /// Building extrusion opacity (dark mode) — slightly lower for subtlety.
+    static let buildingOpacityDark = NSExpression(
+        format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'linear', nil, %@)",
+        [14.5: 0.0, 15: 0.25, 16: 0.45, 17: 0.55, 18: 0.6]
+    )
 }
