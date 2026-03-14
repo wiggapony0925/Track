@@ -842,6 +842,43 @@ private nonisolated func perpendicularDistance(
 /// This produces the clean, curvy look that Apple Maps uses. Raw GTFS
 /// waypoints have sharp angular bends; Catmull-Rom generates smooth curves
 /// that pass through every original control point while looking natural.
+/// Removes near-duplicate consecutive vertices that are closer than
+/// `minSpacing` degrees.  These tiny segments (often injected by station
+/// snap) cause Catmull-Rom to overshoot and produce visible loops.
+///
+/// Always preserves the first and last points.
+///
+/// - Parameters:
+///   - coordinates: Original polyline points.
+///   - minSpacing: Minimum Euclidean distance in degrees between kept
+///     consecutive points. `0.0001°` ≈ 11 m at NYC latitude.
+/// - Returns: Filtered coordinate array with near-duplicates removed.
+nonisolated func removeNearDuplicates(
+    _ coordinates: [CLLocationCoordinate2D],
+    minSpacing: Double = 0.0001
+) -> [CLLocationCoordinate2D] {
+    guard coordinates.count >= 2 else { return coordinates }
+
+    var result: [CLLocationCoordinate2D] = [coordinates[0]]
+    let thresholdSq = minSpacing * minSpacing
+
+    for i in 1..<(coordinates.count - 1) {
+        let prev = result.last!
+        let cur = coordinates[i]
+        let dx = cur.longitude - prev.longitude
+        let dy = cur.latitude - prev.latitude
+        if (dx * dx + dy * dy) >= thresholdSq {
+            result.append(cur)
+        }
+    }
+
+    // Always keep the last point
+    result.append(coordinates.last!)
+    return result
+}
+
+// MARK: - Catmull-Rom Smoothing
+
 ///
 /// - Parameters:
 ///   - coordinates: Original polyline points (must have ≥ 2 points).

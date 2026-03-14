@@ -267,78 +267,74 @@ enum MapLibreStyleConfig {
     // float from the server, typically ±1-2.5).  We multiply it by a
     // zoom-interpolated factor to push parallel trunk groups apart.
     //
-    // v4: the server now sends NON-OFFSET polylines that pass through
-    // station positions.  ALL corridor separation is handled here via
-    // MapLibre's pixel-space `lineOffset` paint property, which pushes
-    // lines perpendicular to their draw direction in screen points.
-    // This guarantees polylines always touch their station dots.
+    // The server sends non-offset polylines that pass through station
+    // positions (no Catmull-Rom smoothing — MapLibre renders smooth
+    // round joins natively).  Pixel-space `lineOffset` provides corridor
+    // separation at EVERY zoom level (does not taper to 0) so parallel
+    // trunk groups always remain visually separated.
+    //
+    // Because we no longer apply Catmull-Rom (which shifts coordinates
+    // off station positions), the raw polyline geometry goes exactly
+    // through each station even with the pixel offset applied.
 
     /// Composite expression: top-level zoom interpolation where each stop
     /// multiplies the feature's `lane_offset` by a zoom-dependent factor.
     ///
     /// At zoom 10 each lane_offset unit produces 3.5 pt of perpendicular
     /// shift.  A typical corridor trunk has lane_offset ≈ ±1.5, giving
-    /// ≈ 5.25 pt separation per side (10.5 pt total gap) — enough to
-    /// distinguish the coloured lines at city-wide zoom.
+    /// ≈ 5.25 pt separation per side — enough to distinguish lines at
+    /// city-wide zoom.
     ///
-    /// v4: pixel offset now extends through ALL zoom levels (never drops
-    /// to 0).  The server exports non-offset polylines that pass through
-    /// station dots, so all corridor separation is purely visual.
+    /// At high zoom the multiplier scales down proportionally because the
+    /// line width grows and natural geographic track spacing provides some
+    /// visual breathing room.  The offset never reaches 0 so parallel
+    /// trunks stay distinct at every zoom level.
     ///
     /// Built via `NSExpression(mglJSONObject:)` (raw MapLibre GL style-spec
     /// expression) because the `forMLNInterpolating` convenience puts the
     /// zoom variable at the top level — MapLibre requires this; nesting
     /// `$zoomLevel` inside `multiply:by:` is disallowed.
     static let laneOffsetExpression: NSExpression = {
-        // Style-spec JSON — v4: full-range pixel offset (no geographic offset).
+        // Style-spec JSON — v5: full-range pixel offset (never 0).
         //
-        // Server now exports NON-OFFSET polylines (coordinates pass through
-        // station dots).  All visual corridor separation is handled here via
-        // MapLibre ``lineOffset``.  The multiplier scales with line width so
-        // parallel trunks maintain proportional separation at every zoom.
-        //
-        // The multiplier tapers from large at low zoom (lines are thin,
-        // need more px separation) to smaller at high zoom (lines are
-        // thicker, less px needed because the geographic track spacing
-        // provides natural separation between corridors).
+        // Without Catmull-Rom smoothing, raw polyline vertices sit exactly
+        // on station coordinates.  pixel lineOffset is purely visual and
+        // doesn't affect hit-testing or station snapping, so it's safe to
+        // keep a non-zero offset at all zoom levels.
         let json: [Any] = [
             "interpolate", ["linear"], ["zoom"],
             10,   ["*", ["get", "lane_offset"], 3.5],
             11,   ["*", ["get", "lane_offset"], 3.0],
             12,   ["*", ["get", "lane_offset"], 2.5],
-            13,   ["*", ["get", "lane_offset"], 2.0],
-            14,   ["*", ["get", "lane_offset"], 1.8],
-            15,   ["*", ["get", "lane_offset"], 1.5],
-            16,   ["*", ["get", "lane_offset"], 1.2],
-            17,   ["*", ["get", "lane_offset"], 1.0],
-            18,   ["*", ["get", "lane_offset"], 0.8],
+            13,   ["*", ["get", "lane_offset"], 2.2],
+            14,   ["*", ["get", "lane_offset"], 2.0],
+            15,   ["*", ["get", "lane_offset"], 1.8],
+            16,   ["*", ["get", "lane_offset"], 1.5],
+            17,   ["*", ["get", "lane_offset"], 1.2],
+            18,   ["*", ["get", "lane_offset"], 1.0],
         ]
         return NSExpression(mglJSONObject: json)
     }()
 
     // MARK: - Transit Layer IDs (z-ordering)
     //
-    // Rendering order (bottom to top), Transit App–style per-trunk layering:
-    //
-    // 1.  Commuter rail casing
-    // 2.  Commuter rail fill
-    // 3.  Subway trunk 0 (Red 1/2/3) casing → fill
-    // 4.  Subway trunk 1 (Green 4/5/6) casing → fill
-    //     … (one casing + fill pair per trunk group, 11 total)
-    // 5.  Elevated trunk 0 shadow → casing → fill
-    //     … (one shadow + casing + fill triple per trunk, 11 total)
-    // 6.  Transfer connectors
-    // 7.  Station dots (single-line + transfer circles)
-    // 8.  Station labels (text at high zoom)
-    // 9.  Route layers (selected route on top)
-    // 10. Vehicle markers
-    //
-    // Per-trunk layering prevents cross-trunk z-ordering issues:
-    // each trunk's casing only appears below its own fill, and
-    // trunk fills never occlude each other within the same GL draw call.
+    // Rendering order (bottom to top):
+    // 1. Commuter rail casing + fill
+    // 2. Subway casing + fill (shared source, lineOffset for corridors)
+    // 3. Elevated shadow + casing + fill (shared source)
+    // 4. Transfer connectors
+    // 5. Station dots (single-line + transfer circles)
+    // 6. Station labels (text at high zoom)
+    // 7. Route layers (selected route on top)
+    // 8. Vehicle markers
 
     static let layerCommRailCasing = "commuter-casing"
     static let layerCommRailFill = "commuter-fill"
+    static let layerSubwayCasing = "subway-casing"
+    static let layerSubwayFill = "subway-fill"
+    static let layerElevatedShadow = "elevated-shadow"
+    static let layerElevatedCasing = "elevated-casing"
+    static let layerElevatedFill = "elevated-fill"
     static let layerTransferConn = "transfer-connectors"
     static let layerStationDotsShadow = "station-dots-shadow"
     static let layerStationDotsSingle = "station-dots-single"
@@ -350,46 +346,10 @@ enum MapLibreStyleConfig {
 
     // Source IDs
     static let srcCommRail = "commuter-src"
+    static let srcSubway = "subway-src"
+    static let srcElevated = "elevated-src"
     static let srcTransferConn = "transfer-conn-src"
     static let srcStations = "stations-src"
-
-    // MARK: - Per-Trunk Layer IDs (Transit App–style separation)
-    //
-    // Instead of putting all subway polylines into a single shared layer
-    // (which causes same-layer z-ordering issues — later features draw
-    // over earlier ones with no per-feature z-index control), we split
-    // each trunk group into its own source + casing + fill layers.
-    //
-    // This eliminates cross-trunk overlap: each trunk's casing sits
-    // below only its own fill, and trunk fills never occlude each other.
-    // Transit App uses the same per-line layer approach for clean
-    // parallel rendering in corridors.
-
-    /// Number of trunk groups (must match TRUNK_GROUPS in both
-    /// MapSystemViewModel and the backend corridor_pipeline.py).
-    static let subwayTrunkCount = 11
-
-    static func subwayTrunkSourceID(_ index: Int) -> String {
-        "subway-trunk-\(index)-src"
-    }
-    static func subwayTrunkCasingLayerID(_ index: Int) -> String {
-        "subway-trunk-\(index)-casing"
-    }
-    static func subwayTrunkFillLayerID(_ index: Int) -> String {
-        "subway-trunk-\(index)-fill"
-    }
-    static func elevatedTrunkSourceID(_ index: Int) -> String {
-        "elevated-trunk-\(index)-src"
-    }
-    static func elevatedTrunkShadowLayerID(_ index: Int) -> String {
-        "elevated-trunk-\(index)-shadow"
-    }
-    static func elevatedTrunkCasingLayerID(_ index: Int) -> String {
-        "elevated-trunk-\(index)-casing"
-    }
-    static func elevatedTrunkFillLayerID(_ index: Int) -> String {
-        "elevated-trunk-\(index)-fill"
-    }
 
     // MARK: - 3D Buildings
 

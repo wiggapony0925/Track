@@ -783,12 +783,17 @@ final class MapSystemViewModel {
         //   - Cross-avenue contamination (already-offset lines detected as peers)
         //   - Columbus Circle bubbles (double arc radii)
         //
-        // The client now ONLY does RDP simplification + Catmull-Rom smoothing
-        // to polish the server's output for MapLibre rendering.
+        // The client applies only RDP simplification — NO Catmull-Rom.
+        //
+        // MapLibre's `line-join: round` and `line-cap: round` already
+        // produce GPU-accelerated smooth rendering.  Client-side
+        // Catmull-Rom was over-processing:
+        //   - 3× more vertices (GPU + memory cost)
+        //   - Shifted polylines off station coordinates (visible at z14+)
+        //   - Created "roller coaster" loops at station-snap kinks
         //
         // Parameters:
-        //   RDP tolerance 0.00006° (~7 m)  — preserves fine detail
-        //   Catmull-Rom 3 segments         — smooth curves
+        //   RDP tolerance 0.00008° (~9 m)  — preserves fine detail
 
         struct PolylineOrigin { let resultIndex: Int; let branchIndex: Int }
 
@@ -803,13 +808,13 @@ final class MapSystemViewModel {
             }
         }
 
-        // Server already applied corridor offsets — only simplify + smooth here.
+        // Server polylines pass through station coordinates — only simplify.
+        // No Catmull-Rom: MapLibre renders smooth round joins natively.
         var finalOffsetPolylines: [(groupIndex: Int, coordinates: [CLLocationCoordinate2D])] = []
         for item in grouped {
-            let rdp = simplifyPolyline(item.coordinates, tolerance: 0.00006)
-            let smoothed = smoothPolyline(rdp, segmentsPerCurve: 3)
-            guard smoothed.count >= 2 else { continue }
-            finalOffsetPolylines.append((groupIndex: item.groupIndex, coordinates: smoothed))
+            let rdp = simplifyPolyline(item.coordinates, tolerance: 0.00008)
+            guard rdp.count >= 2 else { continue }
+            finalOffsetPolylines.append((groupIndex: item.groupIndex, coordinates: rdp))
         }
 
         var flat: [FlattenedMapPolyline] = []
