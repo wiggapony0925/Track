@@ -40,11 +40,17 @@ final class OfflineCacheManager: ObservableObject {
         static let lirrArrivals = "cached_lirr_arrivals"
         static let lastFetchTime = "cached_last_fetch_time"
         static let cachedStations = "cached_stations"
+        static let stationCacheVersion = "cached_stations_version"
         static let lirrShapes = "cached_lirr_shapes"
         static let mnrShapes = "cached_mnr_shapes"
         static let subwayShapes = "cached_subway_shapes"
         static let subwayShapesCachedAt = "cached_subway_shapes_timestamp"
     }
+
+    /// Bump this whenever the station consolidation logic or hash
+    /// algorithm changes.  On mismatch the stale cache is discarded
+    /// so users never see leftover wrong-coordinate centroids.
+    private static let currentStationCacheVersion = 2
     
     // MARK: - Initialization
     
@@ -144,10 +150,20 @@ final class OfflineCacheManager: ObservableObject {
     func cacheStations(_ stations: [CachedStation]) {
         guard let data = try? JSONEncoder().encode(stations) else { return }
         userDefaults.set(data, forKey: CacheKey.cachedStations)
+        userDefaults.set(Self.currentStationCacheVersion, forKey: CacheKey.stationCacheVersion)
     }
     
-    /// Get cached stations
+    /// Get cached stations — returns nil when the cache was written by
+    /// an older version (different hash / consolidation logic) so that
+    /// stale wrong-coordinate centroids are never shown.
     func getCachedStations() -> [CachedStation]? {
+        let stored = userDefaults.integer(forKey: CacheKey.stationCacheVersion)
+        guard stored == Self.currentStationCacheVersion else {
+            // Wipe stale cache so it's never read again
+            userDefaults.removeObject(forKey: CacheKey.cachedStations)
+            userDefaults.removeObject(forKey: CacheKey.stationCacheVersion)
+            return nil
+        }
         guard let data = userDefaults.data(forKey: CacheKey.cachedStations) else { return nil }
         return try? JSONDecoder().decode([CachedStation].self, from: data)
     }

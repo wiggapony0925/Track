@@ -1336,15 +1336,27 @@ final class MapSystemViewModel {
         }
 
         // Merge stations that either:
-        //   (a) share a curated complexID + structure, OR
+        //   (a) share a curated complexID + structure AND are within 500 m, OR
         //   (b) are within 20 m AND have the same structure type
+        //
+        // The 500 m cap on (a) is a safety net: if two distant stations
+        // ever share a complex ID due to hash collision or JSON error,
+        // we refuse to merge them rather than averaging their coordinates
+        // into the East River.  No real NYC complex spans more than ~350 m.
+        let complexMergeRadiusDeg: Double = 0.006   // ~500 m at NYC latitude
+        let complexMergeRadiusSq: Double = complexMergeRadiusDeg * complexMergeRadiusDeg
+
         for i in 0..<stations.count {
             for j in (i + 1)..<stations.count {
                 let ki = keyForStation[i], kj = keyForStation[j]
 
-                // Same curated complex + same structure → always merge
+                // Same complex + same structure → merge only if close enough
                 if ki.complexID == kj.complexID && ki.structure == kj.structure {
-                    union(i, j)
+                    let dx: Double = stations[i].coordinate.longitude - stations[j].coordinate.longitude
+                    let dy: Double = stations[i].coordinate.latitude - stations[j].coordinate.latitude
+                    if dx * dx + dy * dy <= complexMergeRadiusSq {
+                        union(i, j)
+                    }
                     continue
                 }
 
