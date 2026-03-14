@@ -41,6 +41,7 @@ from typing import NamedTuple
 from pyproj import Transformer
 from shapely.geometry import LineString, Point
 from shapely import STRtree
+from shapely.ops import substring
 
 from app.utils.logger import TrackLogger
 from app.utils.polyline_utils import decode_polyline, encode_polyline
@@ -259,6 +260,16 @@ _MAX_SNAP_DIST_M: float = 200.0
 # water crossings can have 1-5 km between encoded points) while still
 # catching teleport artifacts from bad snaps.
 _MAX_STUB_GAP_M: float = 6000.0
+
+# ── Branch stem injection ──
+# Length (meters) of trunk baseline to prepend/append at branch junctions
+# so that branch stubs visually overlap the trunk and appear connected.
+_STEM_LENGTH_M: float = 1500.0
+
+# Maximum distance (meters) from a branch endpoint to the trunk baseline
+# for stem injection to activate.  If the branch end is farther than this,
+# it's not a junction — it's the branch's free terminal.
+_STEM_SNAP_DIST_M: float = 500.0
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -615,8 +626,108 @@ def _unify_via_grid(
                         kept.append(stub_line)
                         _add_line(stub_line)
 
-    # Chain-merge nearby endpoints
-    return _chain_merge(kept, MERGE_GAP_M)
+    # Chain-merge nearby endpoints first (naturally-connected segments)
+    merged = _chain_merge(kept, MERGE_GAP_M)
+
+    # Inject trunk stems at branch junctions for visual connectivity
+    # (runs AFTER chain-merge so the extended baseline is used)
+    return _inject_trunk_stems(merged)
+
+
+def _inject_trunk_stems(
+    segments: list[LineString],
+) -> list[LineString]:
+    """Ensure every branch stub visually connects to the trunk baseline.
+
+    Branch stubs fork from the *middle* of the trunk path, so their
+    endpoints are far from the trunk's endpoints.  MapLibre draws each
+    polyline independently — without geometric overlap at the junction,
+    branches appear as floating disconnected lines.
+
+    For each non-baseline segment, this function:
+    1. Checks each endpoint against the trunk baseline.
+    2. If within ``_STEM_SNAP_DIST_M``, extracts a stretch of the trunk
+       baseline (``_STEM_LENGTH_M``) leading *toward* the junction.
+    3. Prepends/appends those trunk coordinates so the branch overlaps
+       the trunk at the junction — same colour, same lineOffset,
+       drawn on top of each other → seamless visual join.
+    """
+    if len(segments) <= 1:
+        return segments
+
+    baseline = segments[0]
+    result: list[LineString] = [baseline]
+    stems_injected = 0
+
+    for stub in segments[1:]:
+        stub_coords = list(stub.coords)
+        if len(stub_coords) < 2:
+            result.append(stub)
+            continue
+
+        start_pt = Point(stub_coords[0])
+        end_pt = Point(stub_coords[-1])
+        start_dist = baseline.distance(start_pt)
+        end_dist = baseline.distance(end_pt)
+
+        # Determine which end(s) are near the trunk (junction end).
+        prepend_stem: list[tuple[float, float]] = []
+        append_stem: list[tuple[float, float]] = []
+
+        if start_dist < _STEM_SNAP_DIST_M:
+            # Branch start is near trunk → prepend trunk stem
+            proj = baseline.project(start_pt)
+            stem_start = max(0.0, proj - _STEM_LENGTH_M)
+            try:
+                seg = substring(baseline, stem_start, proj)
+                seg_coords = list(seg.coords)
+                if len(seg_coords) >= 2:
+                    # Snap the stub's first coordinate to the baseline
+                    # projection point for seamless geometric join.
+                    snap_pt = baseline.interpolate(proj)
+                    stub_coords[0] = (snap_pt.x, snap_pt.y)
+                    prepend_stem = seg_coords
+            except Exception as exc:
+                TrackLogger.warning(f"[BranchStem] Prepend failed: {exc}")
+
+        if end_dist < _STEM_SNAP_DIST_M:
+            # Branch end is near trunk → append trunk stem
+            proj = baseline.project(end_pt)
+            stem_end = min(baseline.length, proj + _STEM_LENGTH_M)
+            try:
+                seg = substring(baseline, proj, stem_end)
+                seg_coords = list(seg.coords)
+                if len(seg_coords) >= 2:
+                    # Snap the stub's last coordinate to the baseline
+                    # projection point for seamless geometric join.
+                    snap_pt = baseline.interpolate(proj)
+                    stub_coords[-1] = (snap_pt.x, snap_pt.y)
+                    append_stem = seg_coords
+            except Exception as exc:
+                TrackLogger.warning(f"[BranchStem] Append failed: {exc}")
+
+        # Build the connected branch
+        connected_coords = prepend_stem + stub_coords + append_stem
+
+        if prepend_stem or append_stem:
+            stems_injected += 1
+
+        # Remove near-duplicate consecutive vertices from splicing
+        deduped: list[tuple[float, float]] = [connected_coords[0]]
+        for c in connected_coords[1:]:
+            if _point_dist(deduped[-1], c) > 2.0:
+                deduped.append(c)
+        if len(deduped) >= 2:
+            result.append(LineString(deduped))
+        else:
+            result.append(stub)
+
+    if stems_injected:
+        TrackLogger.info(
+            f"[BranchStem] Injected trunk stems for {stems_injected}/{len(segments)-1} branch stubs"
+        )
+
+    return result
 
 
 def _validate_stub(coords: list[tuple[float, float]]) -> bool:
@@ -696,6 +807,9 @@ def _compute_corridor_offsets(
 ) -> dict[int, dict[int, list[float]]]:
     """Detect shared corridors and compute per-vertex perpendicular offsets.
 
+    Also populates ``_corridor_neighbors_cache`` — a dict mapping each
+    trunk index to the set of trunk indices it shares a corridor with.
+
     Algorithm:
     1. Index all trunk paths in a spatial tree.
     2. For each vertex of each trunk path, query the tree for nearby paths
@@ -721,6 +835,10 @@ def _compute_corridor_offsets(
         return {}
 
     tree = STRtree(all_geoms)
+
+    # Reset corridor-neighbor graph — rebuilt below from validated detections.
+    global _corridor_neighbors_cache
+    _corridor_neighbors_cache = {}
 
     results: dict[int, dict[int, list[float]]] = {}
 
@@ -822,6 +940,10 @@ def _compute_corridor_offsets(
                 }
                 if not filtered:
                     continue
+                # Track corridor neighbor relationships (bidirectional)
+                _corridor_neighbors_cache.setdefault(trunk_idx, set()).update(filtered)
+                for ft in filtered:
+                    _corridor_neighbors_cache.setdefault(ft, set()).add(trunk_idx)
                 all_trunks = sorted(filtered | {trunk_idx})
                 lane = all_trunks.index(trunk_idx)
                 n_lanes = len(all_trunks)
@@ -1321,6 +1443,8 @@ _processed_stops_cache: list[dict] | None = None
 _trunk_offset_paths_cache: dict[int, list[LineString]] | None = None
 _trunk_raw_paths_cache: dict[int, list[LineString]] | None = None
 _vertex_offsets_cache: dict[int, dict[int, list[float]]] | None = None
+_corridor_neighbors_cache: dict[int, set[int]] = {}
+_all_trunk_lane_offsets_cache: dict[int, float] | None = None
 
 
 def get_processed_stops() -> list[dict]:
@@ -1328,8 +1452,8 @@ def get_processed_stops() -> list[dict]:
     return _processed_stops_cache or []
 
 
-def _compute_trunk_lane_offset(trunk_idx: int) -> float:
-    """Compute a per-trunk lane offset factor for low-zoom pixel separation.
+def _compute_trunk_lane_offset_raw(trunk_idx: int) -> float:
+    """Compute a raw per-trunk lane offset factor (before separation enforcement).
 
     Uses the cached per-vertex corridor offsets to determine the average
     perpendicular displacement sign & magnitude for this trunk group.
@@ -1359,6 +1483,78 @@ def _compute_trunk_lane_offset(trunk_idx: int) -> float:
     # LANE_WIDTH is the physical offset unit; map avg to ±2.5 pixel units
     normalised = (avg / LANE_WIDTH) * 2.5
     return max(-2.5, min(2.5, normalised))
+
+
+def _compute_all_trunk_lane_offsets() -> dict[int, float]:
+    """Compute lane_offset for every trunk with minimum-separation enforcement.
+
+    1. Compute raw averaged offsets for each trunk (via _compute_trunk_lane_offset_raw).
+    2. Sort trunks by raw offset.
+    3. Greedy forward pass: for each trunk, if any preceding corridor-neighbor
+       is closer than MIN_TRUNK_DELTA, push this trunk right.
+    4. Re-centre around 0 and clamp to ±2.5.
+
+    This guarantees that any two trunks sharing a corridor segment differ by
+    at least MIN_TRUNK_DELTA in the final offset, preventing visual overlap
+    at maximum zoom regardless of how many lines share a corridor (3–5+).
+    """
+    MIN_TRUNK_DELTA = 1.0  # min offset gap between corridor neighbors
+
+    offsets = _vertex_offsets_cache
+    if not offsets:
+        return {}
+
+    # Step 1: raw offsets
+    raw: dict[int, float] = {}
+    for trunk_idx in offsets:
+        raw[trunk_idx] = _compute_trunk_lane_offset_raw(trunk_idx)
+
+    neighbors = _corridor_neighbors_cache
+
+    # Step 2: sort by raw offset (ascending)
+    sorted_trunks = sorted(raw.keys(), key=lambda t: raw[t])
+
+    # Step 3: greedy forward pass — enforce minimum separation
+    placed: dict[int, float] = {}
+    for ti in sorted_trunks:
+        val = raw[ti]
+        ti_nbrs = neighbors.get(ti, set())
+        # Find the highest placed offset among corridor neighbors
+        max_nbr_offset: float | None = None
+        for prev_t, prev_val in placed.items():
+            if prev_t in ti_nbrs:
+                if max_nbr_offset is None or prev_val > max_nbr_offset:
+                    max_nbr_offset = prev_val
+        if max_nbr_offset is not None:
+            min_required = max_nbr_offset + MIN_TRUNK_DELTA
+            if val < min_required:
+                val = min_required
+        placed[ti] = val
+
+    # Step 4: re-centre around 0
+    if placed:
+        vals = list(placed.values())
+        centre = (min(vals) + max(vals)) / 2.0
+        for t in placed:
+            placed[t] -= centre
+
+    # Step 5: scale to fit within ±2.5 if needed
+    if placed:
+        max_abs = max(abs(v) for v in placed.values()) or 1.0
+        if max_abs > 2.5:
+            scale = 2.5 / max_abs
+            for t in placed:
+                placed[t] *= scale
+
+    TrackLogger.info(
+        f"[LaneOffset] Separated offsets (min Δ={MIN_TRUNK_DELTA}): "
+        + ", ".join(
+            f"{'/'.join(TRUNK_GROUPS[t])}={placed[t]:+.3f}"
+            for t in sorted(placed, key=lambda x: placed[x])
+        )
+    )
+
+    return placed
 
 
 def get_trunk_polylines() -> list[dict]:
@@ -1392,6 +1588,11 @@ def get_trunk_polylines() -> list[dict]:
     if not paths:
         return []
 
+    # Pre-compute all trunk offsets with minimum-separation enforcement.
+    global _all_trunk_lane_offsets_cache
+    _all_trunk_lane_offsets_cache = _compute_all_trunk_lane_offsets()
+    separated_offsets = _all_trunk_lane_offsets_cache
+
     result: list[dict] = []
     for trunk_idx, line_strings in paths.items():
         if trunk_idx < 0 or trunk_idx >= len(TRUNK_GROUPS):
@@ -1416,7 +1617,7 @@ def get_trunk_polylines() -> list[dict]:
                 "color_hex": color,
                 "route_ids": group,
                 "polylines": encoded,
-                "lane_offset": _compute_trunk_lane_offset(trunk_idx),
+                "lane_offset": separated_offsets.get(trunk_idx, 0.0),
             })
 
     return result
@@ -1633,10 +1834,11 @@ def apply_topological_offsets(
             trunk_offset_paths[trunk_idx] = offset_paths
 
     # ── Phase 5: Stop processing ──
-    global _processed_stops_cache, _trunk_offset_paths_cache, _trunk_raw_paths_cache, _vertex_offsets_cache
+    global _processed_stops_cache, _trunk_offset_paths_cache, _trunk_raw_paths_cache, _vertex_offsets_cache, _all_trunk_lane_offsets_cache
     _trunk_offset_paths_cache = trunk_offset_paths
     _trunk_raw_paths_cache = trunk_paths  # Pre-offset geometry (passes through stations)
     _vertex_offsets_cache = vertex_offsets
+    _all_trunk_lane_offsets_cache = None  # Reset — will be computed on first call to get_trunk_polylines
     try:
         _processed_stops_cache = _process_stop_positions(trunk_offset_paths)
     except Exception as exc:
