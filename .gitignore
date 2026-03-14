@@ -61,5 +61,11 @@ TrackBackend/logs/
 TrackBackend/app/data/.dl_meta/
 TrackBackend/app/data/.gtfs_meta/
 
+# Temp DB files
+*.db.tmp
+
+# Diagnostic scripts (local dev only)
+TrackBackend/scripts/diag_*.py
+
 # Supabase CLI temp files
 supabase/.temp/
