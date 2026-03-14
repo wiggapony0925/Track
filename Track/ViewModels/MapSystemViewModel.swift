@@ -230,6 +230,14 @@ final class MapSystemViewModel {
     /// fresh flag = false and kicks off a duplicate load task.
     private static var hasStartedLoading = false
 
+    /// Guards specifically against double-loading subway stations.
+    /// We cannot use `cachedStations.isEmpty` as a guard because
+    /// `loadFromDiskCache()` (inside `loadSystemMap()`) appends commuter-rail
+    /// stops to `cachedStations` BEFORE `loadStations()` gets a chance to run.
+    /// That made `cachedStations.isEmpty` return false, causing
+    /// `loadStations()` to return immediately — with zero subway stations.
+    private static var hasStartedStationLoad = false
+
     // MARK: - Init
 
     init() {
@@ -1076,7 +1084,8 @@ final class MapSystemViewModel {
     /// raw GTFS positions from `/subway/stations/all` if the processed
     /// endpoint is unavailable (e.g. shapes haven't loaded yet).
     func loadStations() async {
-        if !cachedStations.isEmpty { return }
+        if Self.hasStartedStationLoad { return }
+        Self.hasStartedStationLoad = true
 
         if let snapshot = Self.sharedSnapshot, !snapshot.stations.isEmpty {
             cachedStations = snapshot.stations
