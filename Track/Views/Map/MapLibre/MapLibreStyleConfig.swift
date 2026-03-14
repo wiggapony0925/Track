@@ -224,23 +224,30 @@ enum MapLibreStyleConfig {
         stops: [10: 4.0, 12: 6.0, 14: 8.0, 16: 9.5, 18: 11.0]
     )
 
-    /// Station circle dot radius — starts visible earlier, grows to prominent dots.
+    /// Station circle dot radius — visible from zoom 10, grows to prominent dots.
     static let stationDotRadius = zoomInterpolate(
         base: 1.4,
-        stops: [11: 1.8, 12: 2.5, 13: 3.2, 14: 4.0, 15: 5.0, 16: 6.5, 17: 8.0, 18: 9.5]
+        stops: [10: 1.5, 11: 2.2, 12: 3.0, 13: 3.8, 14: 4.5, 15: 5.5, 16: 7.0, 17: 8.5, 18: 10.0]
     )
 
     /// Transfer station dot radius — noticeably larger than single-line stops
     /// to highlight important interchange stations.
     static let transferDotRadius = zoomInterpolate(
         base: 1.4,
-        stops: [11: 2.5, 12: 3.5, 13: 4.5, 14: 5.5, 15: 7.0, 16: 8.5, 17: 10.0, 18: 12.0]
+        stops: [10: 2.0, 11: 3.0, 12: 4.0, 13: 5.0, 14: 6.0, 15: 7.5, 16: 9.0, 17: 10.5, 18: 12.5]
     )
 
     /// Station dot stroke width — crisp border at all zoom levels.
     static let stationDotStrokeWidth = zoomInterpolate(
         base: 1.3,
-        stops: [11: 0.8, 13: 1.2, 15: 1.8, 17: 2.2, 18: 2.5]
+        stops: [10: 0.6, 11: 0.9, 13: 1.3, 15: 1.8, 17: 2.2, 18: 2.5]
+    )
+
+    /// Transfer station stroke width — bold dark outline (Transit-app style)
+    /// to clearly frame the white transfer dot against the colored lines.
+    static let transferDotStrokeWidth = zoomInterpolate(
+        base: 1.3,
+        stops: [10: 0.8, 11: 1.0, 13: 1.5, 15: 2.0, 17: 2.5, 18: 3.0]
     )
 
     /// Station label font size — legible even at zoom 14.
