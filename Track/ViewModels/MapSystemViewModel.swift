@@ -264,6 +264,12 @@ final class MapSystemViewModel {
             async let stationsTask: Void = loadStations()
             _ = await (mapTask, stationsTask)
 
+            // Both tasks ran in parallel so stations may have been
+            // consolidated before offset polylines were ready.
+            // Re-consolidate once to guarantee transfer-intersection
+            // placement has access to cachedOffsetSubwayLines.
+            self.consolidateStations()
+
             Self.sharedSnapshot = SharedSnapshot(
                 systemMap: cachedSystemMap,
                 offsetSubwayLines: cachedOffsetSubwayLines,
@@ -1394,12 +1400,21 @@ final class MapSystemViewModel {
             }
         }
 
-        // Use intersection if within ~300m of centroid
+        // Use intersection if within ~300m of centroid.
+        // The 0.003° threshold in degree-space ≈ 300m at NYC latitude.
+        // Beyond that, the intersection is likely from a distant crossing
+        // of the same trunk groups (e.g. two lines that cross in both
+        // midtown and downtown — we only want the nearest crossing).
         if let inter = bestIntersection, bestIntDist < 0.003 * 0.003 {
             return CLLocationCoordinate2D(latitude: inter.lat, longitude: inter.lon)
         }
 
         // ── Strategy 2: Average nearest projections per trunk group ──
+        // Only include projections that are within ~300m of the centroid.
+        // If a trunk group has no nearby polyline segments (e.g. the branch
+        // was pruned or the polyline doesn't reach this area), skip it
+        // rather than projecting onto a distant path in a different area.
+        let maxProjDistSq: Double = 0.003 * 0.003  // ~300m in degree-space
         var projLats: [Double] = []
         var projLons: [Double] = []
 
@@ -1419,14 +1434,32 @@ final class MapSystemViewModel {
                     bestLon = pLon
                 }
             }
-            projLats.append(bestLat)
-            projLons.append(bestLon)
+
+            // Only include this trunk's projection if it's close enough.
+            // A distant projection means the polyline doesn't serve this
+            // area — using it would pull the marker off-station.
+            if bestDistSq < maxProjDistSq {
+                projLats.append(bestLat)
+                projLons.append(bestLon)
+            }
         }
 
-        guard !projLats.isEmpty else { return nil }
+        // Need at least 2 valid projections to improve on the centroid.
+        // With only 1 projection, the centroid is a better default since
+        // it already incorporates all member stations' coordinates.
+        guard projLats.count >= 2 else { return nil }
 
         let avgLat2: Double = projLats.reduce(0, +) / Double(projLats.count)
         let avgLon2: Double = projLons.reduce(0, +) / Double(projLons.count)
+
+        // Final sanity check: the averaged projection should be closer to
+        // the centroid than ~500m.  If it's farther, something went wrong
+        // (e.g., projections landed on the wrong side of an intersection).
+        let finalDLat: Double = avgLat2 - centroid.latitude
+        let finalDLon: Double = (avgLon2 - centroid.longitude) * 0.76
+        let finalDistSq: Double = finalDLat * finalDLat + finalDLon * finalDLon
+        guard finalDistSq < 0.005 * 0.005 else { return nil }  // ~500m
+
         return CLLocationCoordinate2D(latitude: avgLat2, longitude: avgLon2)
     }
 
