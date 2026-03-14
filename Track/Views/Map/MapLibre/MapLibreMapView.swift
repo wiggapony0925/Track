@@ -591,11 +591,13 @@ struct MapLibreMapView: UIViewRepresentable {
         // Premium station rendering pipeline:
         //
         // Layer stack (bottom to top):
-        //   1. Shadow circles — subtle offset-translated dark circles beneath
-        //      each station dot for a floating/embossed effect
-        //   2. Single-line dots — route-colored fill with crisp white stroke
-        //   3. Transfer dots — white fill with dark stroke (larger radius)
-        //   4. Station labels — semibold text with thick halo for readability
+        //   1. Single-line dots — route-colored fill with crisp white stroke
+        //      (visible only from zoom 12+, stays unobtrusive)
+        //   2. Transfer pills — white capsule icons with dark outline that
+        //      visually span across all lines sharing a station. Rotated
+        //      perpendicular to the track bearing so the pill crosses the
+        //      colored lines. Width scales with colorGroupCount.
+        //   3. Station labels — semibold text with thick halo for readability
         //
         // All properties zoom-interpolated for buttery-smooth transitions.
         // Thousands of stations rendered at zero CPU cost (GL batches).
@@ -610,6 +612,7 @@ struct MapLibreMapView: UIViewRepresentable {
             }
 
             let stations = representable.stations
+            let isDark = representable.isDarkMode
             var singleFeatures: [MLNPointFeature] = []
             var transferFeatures: [MLNPointFeature] = []
             singleFeatures.reserveCapacity(stations.count)
@@ -617,25 +620,36 @@ struct MapLibreMapView: UIViewRepresentable {
             for station in stations {
                 let feature = MLNPointFeature()
                 feature.coordinate = station.coordinate
-                feature.attributes = [
-                    "name": station.name,
-                    "color": station.routes.first.map {
-                        UIColor(AppTheme.SubwayColors.color(for: $0)).toHex()
-                    } ?? "#999999",
-                    "isTransfer": station.isTransfer,
-                    "colorGroupCount": station.colorGroupCount,
-                ]
                 if station.isTransfer {
+                    feature.attributes = [
+                        "name": station.name,
+                        "pillIcon": MapLibreStyleConfig.transferPillImageName(
+                            colorGroupCount: station.colorGroupCount
+                        ),
+                        "bearing": station.trackBearing,
+                        "isTransfer": true,
+                        "colorGroupCount": station.colorGroupCount,
+                    ]
                     transferFeatures.append(feature)
                 } else {
+                    feature.attributes = [
+                        "name": station.name,
+                        "color": station.routes.first.map {
+                            UIColor(AppTheme.SubwayColors.color(for: $0)).toHex()
+                        } ?? "#999999",
+                        "isTransfer": false,
+                        "colorGroupCount": 1,
+                    ]
                     singleFeatures.append(feature)
                 }
             }
 
-            let isDark = representable.isDarkMode
             let allFeatures = singleFeatures + transferFeatures
             let shape = MLNShapeCollectionFeature(shapes: allFeatures)
             let sourceID = MapLibreStyleConfig.srcStations
+
+            // Register pill images (re-registers on dark mode change too)
+            MapLibreStyleConfig.registerTransferPillImages(style: style, isDark: isDark)
 
             if let existing = style.source(withIdentifier: sourceID) as? MLNShapeSource {
                 existing.shape = shape
@@ -644,30 +658,7 @@ struct MapLibreMapView: UIViewRepresentable {
                 style.addSource(source)
                 sourcesCreated.insert(sourceID)
 
-                // ── Shadow layer — subtle depth effect beneath all dots ──
-                let shadowLayer = MLNCircleStyleLayer(
-                    identifier: MapLibreStyleConfig.layerStationDotsShadow,
-                    source: source
-                )
-                shadowLayer.circleRadius = MapLibreStyleConfig.transferDotRadius
-                shadowLayer.circleColor = NSExpression(
-                    forConstantValue: UIColor.black.withAlphaComponent(0.0)
-                )
-                shadowLayer.circleBlur = NSExpression(forConstantValue: 0.8)
-                shadowLayer.circleStrokeWidth = NSExpression(forConstantValue: 0)
-                shadowLayer.circleTranslation = NSExpression(
-                    forConstantValue: NSValue(cgVector: CGVector(dx: 0.5, dy: 1.0))
-                )
-                shadowLayer.circleOpacity = NSExpression(
-                    forMLNInterpolating: .zoomLevelVariable,
-                    curveType: .linear,
-                    parameters: nil,
-                    stops: NSExpression(forConstantValue: [10: 0.0, 11: 0.08, 13: 0.15, 16: 0.25])
-                )
-                shadowLayer.minimumZoomLevel = 10
-                style.addLayer(shadowLayer)
-
-                // ── Single-line station dots — route-colored fill ──
+                // ── Single-line station dots — small route-colored circles ──
                 let singleLayer = MLNCircleStyleLayer(
                     identifier: MapLibreStyleConfig.layerStationDotsSingle,
                     source: source
@@ -675,43 +666,45 @@ struct MapLibreMapView: UIViewRepresentable {
                 singleLayer.circleRadius = MapLibreStyleConfig.stationDotRadius
                 singleLayer.circleColor = NSExpression(forKeyPath: "color")
                 singleLayer.circleStrokeColor = NSExpression(
-                    forConstantValue: isDark ? UIColor.white.withAlphaComponent(0.5) : UIColor.white
+                    forConstantValue: isDark ? UIColor.white.withAlphaComponent(0.45) : UIColor.white
                 )
                 singleLayer.circleStrokeWidth = MapLibreStyleConfig.stationDotStrokeWidth
                 singleLayer.predicate = NSPredicate(format: "isTransfer == NO")
-                singleLayer.minimumZoomLevel = 10
-                // Fade in smoothly from zoom 10
+                singleLayer.minimumZoomLevel = 12
+                // Fade in smoothly from zoom 12
                 singleLayer.circleOpacity = NSExpression(
                     forMLNInterpolating: .zoomLevelVariable,
                     curveType: .linear,
                     parameters: nil,
-                    stops: NSExpression(forConstantValue: [10: 0.0, 10.5: 0.6, 11: 0.85, 12: 1.0])
+                    stops: NSExpression(forConstantValue: [12: 0.0, 12.5: 0.6, 13: 1.0])
                 )
-                style.addLayer(singleLayer)
-
-                // ── Transfer station dots — white fill + dark outline ──
-                // Transit-app style: white bar/dot with dark outline that
-                // spans across all lines for clear interchange indication.
-                let transferLayer = MLNCircleStyleLayer(
-                    identifier: MapLibreStyleConfig.layerStationDotsTransfer,
-                    source: source
-                )
-                transferLayer.circleRadius = MapLibreStyleConfig.transferDotRadius
-                transferLayer.circleColor = NSExpression(
-                    forConstantValue: isDark ? UIColor(white: 0.15, alpha: 1) : UIColor.white
-                )
-                transferLayer.circleStrokeColor = NSExpression(
-                    forConstantValue: isDark ? UIColor.white.withAlphaComponent(0.7) : UIColor(white: 0.12, alpha: 1)
-                )
-                transferLayer.circleStrokeWidth = MapLibreStyleConfig.transferDotStrokeWidth
-                transferLayer.predicate = NSPredicate(format: "isTransfer == YES")
-                transferLayer.minimumZoomLevel = 10
-                // Fade in smoothly from zoom 10
-                transferLayer.circleOpacity = NSExpression(
+                singleLayer.circleStrokeOpacity = NSExpression(
                     forMLNInterpolating: .zoomLevelVariable,
                     curveType: .linear,
                     parameters: nil,
-                    stops: NSExpression(forConstantValue: [10: 0.0, 10.5: 0.6, 11: 0.85, 12: 1.0])
+                    stops: NSExpression(forConstantValue: [12: 0.0, 12.5: 0.6, 13: 1.0])
+                )
+                style.addLayer(singleLayer)
+
+                // ── Transfer station pills — capsule icons ──
+                let transferLayer = MLNSymbolStyleLayer(
+                    identifier: MapLibreStyleConfig.layerStationDotsTransfer,
+                    source: source
+                )
+                transferLayer.iconImageName = NSExpression(forKeyPath: "pillIcon")
+                transferLayer.iconScale = MapLibreStyleConfig.transferPillIconSize
+                transferLayer.iconRotation = NSExpression(forKeyPath: "bearing")
+                transferLayer.iconRotationAlignment = NSExpression(forConstantValue: "map")
+                transferLayer.iconAllowsOverlap = NSExpression(forConstantValue: true)
+                transferLayer.iconIgnoresPlacement = NSExpression(forConstantValue: true)
+                transferLayer.predicate = NSPredicate(format: "isTransfer == YES")
+                transferLayer.minimumZoomLevel = 11
+                // Fade in smoothly from zoom 11
+                transferLayer.iconOpacity = NSExpression(
+                    forMLNInterpolating: .zoomLevelVariable,
+                    curveType: .linear,
+                    parameters: nil,
+                    stops: NSExpression(forConstantValue: [11: 0.0, 11.5: 0.5, 12: 0.85, 13: 1.0])
                 )
                 style.addLayer(transferLayer)
 
@@ -755,15 +748,7 @@ struct MapLibreMapView: UIViewRepresentable {
             // Update colors for dark/light mode on existing layers
             if let single = style.layer(withIdentifier: MapLibreStyleConfig.layerStationDotsSingle) as? MLNCircleStyleLayer {
                 single.circleStrokeColor = NSExpression(
-                    forConstantValue: isDark ? UIColor.white.withAlphaComponent(0.5) : UIColor.white
-                )
-            }
-            if let transfer = style.layer(withIdentifier: MapLibreStyleConfig.layerStationDotsTransfer) as? MLNCircleStyleLayer {
-                transfer.circleColor = NSExpression(
-                    forConstantValue: isDark ? UIColor(white: 0.15, alpha: 1) : UIColor.white
-                )
-                transfer.circleStrokeColor = NSExpression(
-                    forConstantValue: isDark ? UIColor.white.withAlphaComponent(0.7) : UIColor(white: 0.12, alpha: 1)
+                    forConstantValue: isDark ? UIColor.white.withAlphaComponent(0.45) : UIColor.white
                 )
             }
             if let labels = style.layer(withIdentifier: MapLibreStyleConfig.layerStationLabels) as? MLNSymbolStyleLayer {

@@ -224,37 +224,44 @@ enum MapLibreStyleConfig {
         stops: [10: 4.0, 12: 6.0, 14: 8.0, 16: 9.5, 18: 11.0]
     )
 
-    /// Station circle dot radius — visible from zoom 10, grows to prominent dots.
+    /// Station circle dot radius — single-line stops only, visible from zoom 12.
     static let stationDotRadius = zoomInterpolate(
         base: 1.4,
-        stops: [10: 1.5, 11: 2.2, 12: 3.0, 13: 3.8, 14: 4.5, 15: 5.5, 16: 7.0, 17: 8.5, 18: 10.0]
+        stops: [12: 1.8, 13: 2.5, 14: 3.2, 15: 4.0, 16: 5.5, 17: 7.0, 18: 8.5]
     )
 
-    /// Transfer station dot radius — noticeably larger than single-line stops
-    /// to highlight important interchange stations.
-    static let transferDotRadius = zoomInterpolate(
-        base: 1.4,
-        stops: [10: 2.0, 11: 3.0, 12: 4.0, 13: 5.0, 14: 6.0, 15: 7.5, 16: 9.0, 17: 10.5, 18: 12.5]
-    )
-
-    /// Station dot stroke width — crisp border at all zoom levels.
+    /// Station dot stroke width — thin crisp border.
     static let stationDotStrokeWidth = zoomInterpolate(
         base: 1.3,
-        stops: [10: 0.6, 11: 0.9, 13: 1.3, 15: 1.8, 17: 2.2, 18: 2.5]
+        stops: [12: 0.5, 13: 0.7, 15: 1.0, 17: 1.5, 18: 1.8]
     )
 
-    /// Transfer station stroke width — bold dark outline (Transit-app style)
-    /// to clearly frame the white transfer dot against the colored lines.
-    static let transferDotStrokeWidth = zoomInterpolate(
-        base: 1.3,
-        stops: [10: 0.8, 11: 1.0, 13: 1.5, 15: 2.0, 17: 2.5, 18: 3.0]
+    /// Transfer pill icon size — zoom-interpolated scale factor applied to
+    /// the runtime-generated capsule image.
+    static let transferPillIconSize = zoomInterpolate(
+        base: 1.4,
+        stops: [10: 0.25, 11: 0.38, 12: 0.52, 13: 0.65, 14: 0.8, 15: 1.0, 16: 1.3, 17: 1.6, 18: 2.0]
     )
 
-    /// Station label font size — legible even at zoom 14.
+    /// Station label font size — legible from zoom 14.
     static let stationLabelFontSize = zoomInterpolate(
         base: 1.0,
         stops: [14: 9.0, 15: 10.0, 16: 11.0, 17: 12.0, 18: 13.0]
     )
+
+    // MARK: - Transfer Pill Image Generation
+
+    /// Base pill height in points (short axis of the capsule).
+    static let transferPillHeight: CGFloat = 12
+    /// Border thickness for pill images.
+    static let transferPillStroke: CGFloat = 1.5
+    /// Pill widths keyed by colorGroupCount (number of distinct trunk-color groups).
+    static let transferPillWidths: [Int: CGFloat] = [
+        2: 20,
+        3: 26,
+        4: 32,
+        5: 38,
+    ]
 
     /// Walking route width — dashed line for pedestrian directions.
     static let walkingRouteWidth = zoomInterpolate(
@@ -332,7 +339,7 @@ enum MapLibreStyleConfig {
     // 2. Subway casing + fill (shared source, lineOffset for corridors)
     // 3. Elevated shadow + casing + fill (shared source)
     // 4. Transfer connectors
-    // 5. Station dots (single-line + transfer circles)
+    // 5. Station dots (single-line circles) + transfer pills (capsule icons)
     // 6. Station labels (text at high zoom)
     // 7. Route layers (selected route on top)
     // 8. Vehicle markers
@@ -345,7 +352,6 @@ enum MapLibreStyleConfig {
     static let layerElevatedCasing = "elevated-casing"
     static let layerElevatedFill = "elevated-fill"
     static let layerTransferConn = "transfer-connectors"
-    static let layerStationDotsShadow = "station-dots-shadow"
     static let layerStationDotsSingle = "station-dots-single"
     static let layerStationDotsTransfer = "station-dots-transfer"
     static let layerStationLabels = "station-labels"
@@ -385,4 +391,66 @@ enum MapLibreStyleConfig {
         base: 1.0,
         stops: [14.5: 0.0, 15: 0.25, 16: 0.45, 17: 0.55, 18: 0.6]
     )
+
+    // MARK: - Transfer Pill Image Factory
+
+    /// Generates a capsule/pill `UIImage` for transfer station markers.
+    ///
+    /// The image is horizontal (wider than tall) so MapLibre's
+    /// `iconRotation` can orient it perpendicular to the track.
+    ///
+    /// - Parameters:
+    ///   - colorGroupCount: Number of distinct trunk-color groups (determines width).
+    ///   - isDark: Whether to render for dark mode.
+    /// - Returns: A `UIImage` suitable for `style.setImage(_:forName:)`.
+    static func transferPillImage(colorGroupCount: Int, isDark: Bool) -> UIImage {
+        let clamped = min(max(colorGroupCount, 2), 5)
+        let w = transferPillWidths[clamped] ?? 20
+        let h = transferPillHeight
+        let sw = transferPillStroke
+        let scale = UIScreen.main.scale
+
+        let renderer = UIGraphicsImageRenderer(
+            size: CGSize(width: w, height: h),
+            format: {
+                let f = UIGraphicsImageRendererFormat()
+                f.scale = scale
+                return f
+            }()
+        )
+
+        return renderer.image { _ in
+            let rect = CGRect(x: sw / 2, y: sw / 2,
+                              width: w - sw, height: h - sw)
+            let path = UIBezierPath(roundedRect: rect, cornerRadius: h / 2)
+
+            let fill: UIColor = isDark
+                ? UIColor(white: 0.18, alpha: 1)
+                : .white
+            let stroke: UIColor = isDark
+                ? UIColor(white: 0.85, alpha: 1)
+                : UIColor(white: 0.12, alpha: 1)
+
+            fill.setFill()
+            path.fill()
+            stroke.setStroke()
+            path.lineWidth = sw
+            path.stroke()
+        }
+    }
+
+    /// Style-image name for a given transfer pill variant.
+    static func transferPillImageName(colorGroupCount: Int) -> String {
+        "transfer-pill-\(min(max(colorGroupCount, 2), 5))"
+    }
+
+    /// Registers all transfer pill images into the given MapLibre style.
+    /// Call once on first setup, and again when dark mode changes.
+    static func registerTransferPillImages(style: MLNStyle, isDark: Bool) {
+        for count in 2...5 {
+            let name = transferPillImageName(colorGroupCount: count)
+            let img = transferPillImage(colorGroupCount: count, isDark: isDark)
+            style.setImage(img, forName: name)
+        }
+    }
 }
