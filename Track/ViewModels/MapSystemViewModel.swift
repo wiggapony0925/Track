@@ -426,11 +426,11 @@ final class MapSystemViewModel {
             async let subwayTask = TrackAPI.fetchAllSubwayShapes()
             async let lirrTask: AllCommuterRailLinesResponse? = {
                 do { return try await TrackAPI.fetchAllLIRRShapes() }
-                catch { AppLogger.shared.logError("LIRR shapes failed", error: error); return nil }
+                catch { await MainActor.run { AppLogger.shared.logError("LIRR shapes failed", error: error) }; return nil }
             }()
             async let mnrTask: AllCommuterRailLinesResponse? = {
                 do { return try await TrackAPI.fetchAllMNRShapes() }
-                catch { AppLogger.shared.logError("MNR shapes failed", error: error); return nil }
+                catch { await MainActor.run { AppLogger.shared.logError("MNR shapes failed", error: error) }; return nil }
             }()
 
             let response = try await subwayTask
