@@ -234,13 +234,7 @@ async def subway_shapes_all() -> AllSubwayLinesResponse:
                             return d
             return best
 
-        # Threshold: if a vertex is within 60m of any existing trunk
-        # vertex, it is still on the trunk.  Only vertices beyond this
-        # are part of the unique branch extension.
         DIVERGE_DIST_M: float = 60.0
-        # Keep a small overlap (3 vertices) at the divergence point so
-        # the branch extension connects visually to the trunk.
-        OVERLAP_VERTS: int = 3
 
         for line, sid in dir1_extras:
             shape_buf = shapes_data.get(sid)
@@ -268,12 +262,39 @@ async def subway_shapes_all() -> AllSubwayLinesResponse:
                     # Every vertex is far from trunk — keep all
                     diverge_idx = len(raw)
 
-                # Add a few overlap vertices for visual connection
+                # Add a few overlap vertices for visual connection.
+                # Use 5 instead of 3 — ensures enough geometric overlap
+                # for MapLibre's round join to seamlessly blend the
+                # branch into the trunk at the junction point.
+                OVERLAP_VERTS: int = 5
                 clip_end = min(len(raw), diverge_idx + OVERLAP_VERTS)
 
                 if clip_end < len(raw) - 5:
-                    # Significant clipping — only keep the branch portion
+                    # Significant clipping — only keep the branch portion.
+                    # Also trim any overlap vertices that run parallel to
+                    # the trunk within 40m — these create a visible
+                    # double-line effect since they have slightly different
+                    # GPS traces.
                     clipped = raw[:clip_end]
+
+                    # Trim parallel tail: if the last N overlap vertices
+                    # are all within 40m of the trunk, remove them except
+                    # the last one (which serves as the connection point).
+                    PARALLEL_TRIM_M: float = 40.0
+                    trim_from = clip_end
+                    for i in range(clip_end - 1, max(diverge_idx, 0) - 1, -1):
+                        if i <= 0:
+                            break
+                        d = _min_dist_to_trunk(clipped[i], trunk_lines)
+                        if d > PARALLEL_TRIM_M:
+                            break
+                        trim_from = i
+
+                    if trim_from < clip_end - 1:
+                        # Keep everything up to the first parallel vertex,
+                        # plus the very last vertex as the join point.
+                        clipped = clipped[:trim_from] + [clipped[-1]]
+
                     TrackLogger.info(
                         f"[Dir1] Clipped {line} shape {sid}: {len(raw)} → {len(clipped)} pts "
                         f"(diverges at idx {diverge_idx})"

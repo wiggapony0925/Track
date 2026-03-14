@@ -282,7 +282,15 @@ _STEM_LENGTH_M: float = 1500.0
 # Maximum distance (meters) from a branch endpoint to the trunk baseline
 # for stem injection to activate.  If the branch end is farther than this,
 # it's not a junction — it's the branch's free terminal.
-_STEM_SNAP_DIST_M: float = 500.0
+# Raised from 500 → 800 to catch stubs (like Lefferts Blvd) that are
+# 395-800m from the baseline after distance-based extension.
+_STEM_SNAP_DIST_M: float = 800.0
+
+# Fallback: if raw Euclidean distance exceeds _STEM_SNAP_DIST_M but the
+# *projected* distance along the baseline is within this threshold, still
+# inject a stem.  Handles curved baselines where geometric distance is
+# large but the actual track proximity is small.
+_STEM_PROJ_FALLBACK_M: float = 200.0
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -784,7 +792,20 @@ def _inject_trunk_stems(
         prepend_stem: list[tuple[float, float]] = []
         append_stem: list[tuple[float, float]] = []
 
-        if start_dist < _STEM_SNAP_DIST_M:
+        def _should_inject_stem(dist: float, pt: Point) -> bool:
+            """Check if stem injection should activate for this endpoint."""
+            if dist < _STEM_SNAP_DIST_M:
+                return True
+            # Fallback: check projected distance along baseline.
+            # On curved baselines, the Euclidean distance can exceed
+            # the snap threshold even though the point is close to the
+            # baseline's projection.  Use the projection distance as
+            # a secondary check.
+            proj_pt = baseline.interpolate(baseline.project(pt))
+            proj_dist = pt.distance(proj_pt)
+            return proj_dist < _STEM_PROJ_FALLBACK_M
+
+        if _should_inject_stem(start_dist, start_pt):
             # Branch start is near trunk → prepend trunk stem
             proj = baseline.project(start_pt)
             stem_start = max(0.0, proj - _STEM_LENGTH_M)
@@ -800,7 +821,7 @@ def _inject_trunk_stems(
             except Exception as exc:
                 TrackLogger.warning(f"[BranchStem] Prepend failed: {exc}")
 
-        if end_dist < _STEM_SNAP_DIST_M:
+        if _should_inject_stem(end_dist, end_pt):
             # Branch end is near trunk → append trunk stem
             proj = baseline.project(end_pt)
             stem_end = min(baseline.length, proj + _STEM_LENGTH_M)
@@ -1420,12 +1441,19 @@ def _apply_perpendicular_offset(
 
 def _despike_coords(
     coords: list[tuple[float, float]],
+    min_angle_deg: float | None = None,
 ) -> list[tuple[float, float]]:
-    """Remove spike vertices (switchbacks and excursions)."""
+    """Remove spike vertices (switchbacks and excursions).
+
+    Args:
+        coords: List of (x, y) coordinate tuples.
+        min_angle_deg: Override for the minimum angle threshold (degrees).
+            Uses DESPIKE_MIN_ANGLE_DEG (25°) when None.
+    """
     if len(coords) <= 3:
         return coords
 
-    min_angle_rad = math.radians(DESPIKE_MIN_ANGLE_DEG)
+    min_angle_rad = math.radians(min_angle_deg if min_angle_deg is not None else DESPIKE_MIN_ANGLE_DEG)
     keep: list[tuple[float, float]] = [coords[0]]
 
     for i in range(1, len(coords) - 1):
@@ -1756,10 +1784,13 @@ def get_trunk_polylines() -> list[dict]:
 
             # Clean up spikes / bowties from stem injection, branch
             # extraction snapping, or noisy GTFS geometry.  This runs
-            # on the raw paths (no arc offset) so station-snapped
-            # vertices may create gentle detours — the 25° despike
-            # threshold preserves those while removing acute switchbacks.
-            coords_m = _despike_coords(coords_m)
+            # on the raw paths (no arc offset) so we use a tighter
+            # threshold (15°) than the standard 25° — stem injection
+            # creates acute geometry at junction points that the
+            # standard filter misses.  This is safe because raw paths
+            # don't have arc-offset curves that need wide-angle
+            # preservation.
+            coords_m = _despike_coords(coords_m, min_angle_deg=15.0)
             if len(coords_m) < 2:
                 continue
 
