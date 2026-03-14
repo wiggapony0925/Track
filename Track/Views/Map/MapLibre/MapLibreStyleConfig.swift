@@ -408,15 +408,10 @@ enum MapLibreStyleConfig {
         let w = transferPillWidths[clamped] ?? 20
         let h = transferPillHeight
         let sw = transferPillStroke
-        let scale = UIScreen.main.scale
 
         let renderer = UIGraphicsImageRenderer(
             size: CGSize(width: w, height: h),
-            format: {
-                let f = UIGraphicsImageRendererFormat()
-                f.scale = scale
-                return f
-            }()
+            format: UIGraphicsImageRendererFormat.preferred()
         )
 
         return renderer.image { _ in
