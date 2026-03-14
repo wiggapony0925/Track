@@ -1248,11 +1248,7 @@ extension HomeViewModel {
             // Persist for instant display on next cold launch.
             // Include the fetch location so the next launch can detect
             // if the user has moved significantly since this data was saved.
-            let fetchLocation: CLLocation? = {
-                if let loc = location { return loc }
-                if let known = lastKnownUserLocation { return known }
-                return nil
-            }()
+            let fetchLocation: CLLocation = lastKnownUserLocation ?? location
             TransitSessionCache.save(groupedTransit, location: fetchLocation)
 
             if !rawTransit.isEmpty || nearbyTransit.isEmpty {
