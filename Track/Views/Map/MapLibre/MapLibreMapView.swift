@@ -513,78 +513,106 @@ struct MapLibreMapView: UIViewRepresentable {
                 dashPattern: [3, 2]
             )
 
-            // ── SUBWAY (standard underground/surface lines) ──
+            // ── SUBWAY: Per-trunk layers (Transit App–style) ──
+            //
+            // Instead of one shared `subway-fill` layer (where later features
+            // in the array silently draw over earlier ones — no per-feature
+            // z-index control in MapLibre), each trunk group gets its own
+            // source + casing + fill layer pair.
+            //
+            // Benefits:
+            //   • Each trunk's casing sits below ONLY its own fill (no
+            //     cross-trunk casing bleed where trunk A's wide casing
+            //     partially occludes trunk B's narrow fill).
+            //   • Trunk fills never overlap within the same GL draw call —
+            //     parallel lines in corridors are always both fully visible.
+            //   • Deterministic z-order between trunk groups (trunk 0 at
+            //     bottom, trunk 10 at top — consistent across zoom levels).
+
             let subwayOnly = representable.subwayPolylines.filter {
                 !isEffectivelyElevated($0, reroutedRouteIDs: representable.reroutedRouteIDs)
             }
-            let subwayFeatures = buildPolylineFeatures(subwayOnly)
+            let subwayByTrunk = Dictionary(grouping: subwayOnly, by: \.trunkIndex)
 
-            // Soft casing — semi-transparent white gives lines a "floating"
-            // appearance above the base map (Uber/Lyft-grade polish).
-            ensureLineLayer(
-                style: style,
-                sourceID: MapLibreStyleConfig.srcSubway,
-                layerID: MapLibreStyleConfig.layerSubwayCasing,
-                features: subwayFeatures,
-                width: MapLibreStyleConfig.subwayCasingWidth,
-                opacity: casingOpacity,
-                color: .constant(isDark ? UIColor.white.withAlphaComponent(0.25) : UIColor.white),
-                cap: "round", join: "round",
-                applyLaneOffset: true
-            )
-            ensureLineLayer(
-                style: style,
-                sourceID: MapLibreStyleConfig.srcSubway,
-                layerID: MapLibreStyleConfig.layerSubwayFill,
-                features: nil,  // reuse source
-                width: MapLibreStyleConfig.subwayFillWidth,
-                opacity: subwayOpacity,
-                color: .dataDriven,
-                cap: "round", join: "round",
-                applyLaneOffset: true
-            )
+            for trunkIdx in 0..<MapLibreStyleConfig.subwayTrunkCount {
+                let trunkPolylines = subwayByTrunk[trunkIdx] ?? []
+                let features = buildPolylineFeatures(trunkPolylines)
+                let trunkFillOpacity = trunkPolylines.isEmpty ? 0.0 : subwayOpacity
+                let trunkCasingOpacity = trunkPolylines.isEmpty ? 0.0 : casingOpacity
 
-            // ── ELEVATED (above subway, with shadow for depth) ──
+                ensureLineLayer(
+                    style: style,
+                    sourceID: MapLibreStyleConfig.subwayTrunkSourceID(trunkIdx),
+                    layerID: MapLibreStyleConfig.subwayTrunkCasingLayerID(trunkIdx),
+                    features: features,
+                    width: MapLibreStyleConfig.subwayCasingWidth,
+                    opacity: trunkCasingOpacity,
+                    color: .constant(isDark ? UIColor.white.withAlphaComponent(0.25) : UIColor.white),
+                    cap: "round", join: "round",
+                    applyLaneOffset: true
+                )
+                ensureLineLayer(
+                    style: style,
+                    sourceID: MapLibreStyleConfig.subwayTrunkSourceID(trunkIdx),
+                    layerID: MapLibreStyleConfig.subwayTrunkFillLayerID(trunkIdx),
+                    features: nil,  // reuse trunk source
+                    width: MapLibreStyleConfig.subwayFillWidth,
+                    opacity: trunkFillOpacity,
+                    color: .dataDriven,
+                    cap: "round", join: "round",
+                    applyLaneOffset: true
+                )
+            }
+
+            // ── ELEVATED: Per-trunk layers with shadow ──
+            //
+            // Same per-trunk split as subway, plus a shadow layer per trunk
+            // for the 3D depth illusion on above-ground structures.
+
             let elevated = representable.subwayPolylines.filter {
                 isEffectivelyElevated($0, reroutedRouteIDs: representable.reroutedRouteIDs)
             }
-            let elevatedFeatures = buildPolylineFeatures(elevated)
+            let elevatedByTrunk = Dictionary(grouping: elevated, by: \.trunkIndex)
 
-            // Shadow layer — offset down-right for a 3D depth illusion.
-            // Slightly wider and softer than before for a premium look.
-            ensureLineLayer(
-                style: style,
-                sourceID: MapLibreStyleConfig.srcElevated,
-                layerID: MapLibreStyleConfig.layerElevatedShadow,
-                features: elevatedFeatures,
-                width: MapLibreStyleConfig.elevatedCasingWidth,
-                opacity: dimmed ? 0.02 : (isDark ? 0.20 : 0.12),
-                color: .constant(UIColor.black),
-                cap: "round", join: "round",
-                translatePixels: CGPoint(x: 1.5, y: 3)
-            )
-            ensureLineLayer(
-                style: style,
-                sourceID: MapLibreStyleConfig.srcElevated,
-                layerID: MapLibreStyleConfig.layerElevatedCasing,
-                features: nil,
-                width: MapLibreStyleConfig.elevatedCasingWidth,
-                opacity: casingOpacity,
-                color: .constant(isDark ? UIColor.white.withAlphaComponent(0.30) : UIColor.white),
-                cap: "round", join: "round",
-                applyLaneOffset: true
-            )
-            ensureLineLayer(
-                style: style,
-                sourceID: MapLibreStyleConfig.srcElevated,
-                layerID: MapLibreStyleConfig.layerElevatedFill,
-                features: nil,
-                width: MapLibreStyleConfig.elevatedFillWidth,
-                opacity: subwayOpacity,
-                color: .dataDriven,
-                cap: "round", join: "round",
-                applyLaneOffset: true
-            )
+            for trunkIdx in 0..<MapLibreStyleConfig.subwayTrunkCount {
+                let trunkPolylines = elevatedByTrunk[trunkIdx] ?? []
+                let features = buildPolylineFeatures(trunkPolylines)
+                let isEmpty = trunkPolylines.isEmpty
+
+                ensureLineLayer(
+                    style: style,
+                    sourceID: MapLibreStyleConfig.elevatedTrunkSourceID(trunkIdx),
+                    layerID: MapLibreStyleConfig.elevatedTrunkShadowLayerID(trunkIdx),
+                    features: features,
+                    width: MapLibreStyleConfig.elevatedCasingWidth,
+                    opacity: isEmpty ? 0 : (dimmed ? 0.02 : (isDark ? 0.20 : 0.12)),
+                    color: .constant(UIColor.black),
+                    cap: "round", join: "round",
+                    translatePixels: CGPoint(x: 1.5, y: 3)
+                )
+                ensureLineLayer(
+                    style: style,
+                    sourceID: MapLibreStyleConfig.elevatedTrunkSourceID(trunkIdx),
+                    layerID: MapLibreStyleConfig.elevatedTrunkCasingLayerID(trunkIdx),
+                    features: nil,
+                    width: MapLibreStyleConfig.elevatedCasingWidth,
+                    opacity: isEmpty ? 0 : casingOpacity,
+                    color: .constant(isDark ? UIColor.white.withAlphaComponent(0.30) : UIColor.white),
+                    cap: "round", join: "round",
+                    applyLaneOffset: true
+                )
+                ensureLineLayer(
+                    style: style,
+                    sourceID: MapLibreStyleConfig.elevatedTrunkSourceID(trunkIdx),
+                    layerID: MapLibreStyleConfig.elevatedTrunkFillLayerID(trunkIdx),
+                    features: nil,
+                    width: MapLibreStyleConfig.elevatedFillWidth,
+                    opacity: isEmpty ? 0 : subwayOpacity,
+                    color: .dataDriven,
+                    cap: "round", join: "round",
+                    applyLaneOffset: true
+                )
+            }
         }
 
         // MARK: - GL Station Dot Layers
