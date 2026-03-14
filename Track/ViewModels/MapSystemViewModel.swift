@@ -422,10 +422,16 @@ final class MapSystemViewModel {
     private func fetchAndRenderFromNetwork(isBackgroundRefresh: Bool) async {
         do {
             // Fire all three transit fetches in parallel.
-            // Subway is required; LIRR and MNR are optional (fail silently).
+            // Subway is required; LIRR and MNR are optional (logged on failure).
             async let subwayTask = TrackAPI.fetchAllSubwayShapes()
-            async let lirrTask = try? TrackAPI.fetchAllLIRRShapes()
-            async let mnrTask = try? TrackAPI.fetchAllMNRShapes()
+            async let lirrTask: AllCommuterRailLinesResponse? = {
+                do { return try await TrackAPI.fetchAllLIRRShapes() }
+                catch { AppLogger.shared.logError("LIRR shapes failed", error: error); return nil }
+            }()
+            async let mnrTask: AllCommuterRailLinesResponse? = {
+                do { return try await TrackAPI.fetchAllMNRShapes() }
+                catch { AppLogger.shared.logError("MNR shapes failed", error: error); return nil }
+            }()
 
             let response = try await subwayTask
 
@@ -474,6 +480,7 @@ final class MapSystemViewModel {
                         ))
                     }
                 }
+                AppLogger.shared.log("SYSTEM_MAP", message: "LIRR: \(lirrLines.count) lines loaded")
             }
 
             if let mnrResponse = await mnrTask {
@@ -499,6 +506,7 @@ final class MapSystemViewModel {
                         ))
                     }
                 }
+                AppLogger.shared.log("SYSTEM_MAP", message: "MNR: \(mnrLines.count) lines loaded")
             }
 
             // Merge commuter-rail stops into the station list so they
@@ -1113,7 +1121,11 @@ final class MapSystemViewModel {
                     routes: s.routes
                 )
             }
-            self.cachedStations = restored
+            // Keep any commuter-rail stops already added by loadSystemMap()
+            let commuterStops = self.cachedStations.filter { s in
+                s.routes.contains(where: { $0.hasPrefix("LIRR") || $0.hasPrefix("MNR") })
+            }
+            self.cachedStations = restored + commuterStops
             self.consolidateStations()
             AppLogger.shared.log("STATIONS", message: "Restored \(restored.count) stations from disk cache (instant)")
         }
@@ -1148,7 +1160,13 @@ final class MapSystemViewModel {
             }
 
             await MainActor.run {
-                self.cachedStations = stations
+                // Merge subway stations with any commuter-rail stops already
+                // loaded by loadSystemMap() — never overwrite the full array,
+                // or commuter-rail dots lose their matching polylines.
+                let commuterStops = self.cachedStations.filter { s in
+                    s.routes.contains(where: { $0.hasPrefix("LIRR") || $0.hasPrefix("MNR") })
+                }
+                self.cachedStations = stations + commuterStops
                 self.consolidateStations()
             }
 
@@ -1187,7 +1205,12 @@ final class MapSystemViewModel {
                 )
             }
             await MainActor.run {
-                self.cachedStations = stations
+                // Merge subway stations with any commuter-rail stops already
+                // loaded by loadSystemMap() — never overwrite the full array.
+                let commuterStops = self.cachedStations.filter { s in
+                    s.routes.contains(where: { $0.hasPrefix("LIRR") || $0.hasPrefix("MNR") })
+                }
+                self.cachedStations = stations + commuterStops
                 self.consolidateStations()
             }
 
@@ -1220,7 +1243,11 @@ final class MapSystemViewModel {
                 routes: station.routes
             )
         }
-        self.cachedStations = offlineStations
+        // Keep any commuter-rail stops already added by loadSystemMap()
+        let commuterStops = self.cachedStations.filter { s in
+            s.routes.contains(where: { $0.hasPrefix("LIRR") || $0.hasPrefix("MNR") })
+        }
+        self.cachedStations = offlineStations + commuterStops
         self.consolidateStations()
         AppLogger.shared.log("OFFLINE", message: "Loaded \(offlineStations.count) offline stations")
     }
