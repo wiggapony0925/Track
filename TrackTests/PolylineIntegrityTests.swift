@@ -1534,3 +1534,116 @@ struct CorridorDriftTests {
                 "\(duplicates.count) within-group duplicate(s). Worst: group \(first?.group ?? -1) (\(routes)) branches \(first?.idxA ?? -1) & \(first?.idxB ?? -1) overlap \(pct)%")
     }
 }
+
+// MARK: - Zoom-Level Parallel Spacing Tests
+
+/// Verifies that the lane-offset multiplier tracks the subway fill width
+/// at every zoom level so parallel corridor lines maintain a consistent
+/// visual ratio — never overlapping and never spreading excessively.
+///
+/// The core invariant:
+///
+///     offsetMultiplier / subwayFillWidth ∈ [minRatio, maxRatio]
+///
+/// when this holds at every zoom level, adjacent polylines (lane_offset
+/// delta = 1.0) are always between `minRatio` and `maxRatio` fill-widths
+/// apart, producing a constant "just touching" look regardless of zoom.
+@Suite("Parallel lane-offset spacing")
+struct LaneOffsetSpacingTests {
+
+    // ── Reference values — must match MapLibreStyleConfig ──
+
+    /// Subway fill width stops (base 1.6 exponential).
+    private static let fillWidthStops: [(zoom: Double, width: Double)] = [
+        (10, 1.2), (11, 1.6), (12, 2.2), (13, 2.8),
+        (14, 3.5), (15, 4.2), (16, 5.0), (17, 6.0), (18, 7.0),
+    ]
+
+    /// Lane-offset multiplier stops (base 1.6 exponential).
+    /// Each value = fillWidth × 1.15 (rounded to 1 decimal).
+    private static let offsetMultiplierStops: [(zoom: Double, mult: Double)] = [
+        (10, 1.4), (11, 1.8), (12, 2.5), (13, 3.2),
+        (14, 4.0), (15, 4.8), (16, 5.8), (17, 6.9), (18, 8.1),
+    ]
+
+    /// Target ratio of offsetMultiplier / fillWidth.
+    /// 1.15 means adjacent fills have a 15% gap (just barely separated).
+    private static let targetRatio = 1.15
+
+    /// Allowed deviation from the target ratio (accounts for rounding).
+    private static let tolerance = 0.06
+
+    // ── Tests ──
+
+    @Test("Offset multiplier ≥ fill width at every zoom (no overlap)")
+    func offsetNeverLessThanFillWidth() {
+        for i in 0..<Self.fillWidthStops.count {
+            let zoom = Self.fillWidthStops[i].zoom
+            let fill = Self.fillWidthStops[i].width
+            let mult = Self.offsetMultiplierStops[i].mult
+            #expect(mult >= fill,
+                    "z\(Int(zoom)): offset multiplier \(mult) < fill width \(fill) — fills would overlap")
+        }
+    }
+
+    @Test("Offset multiplier ≤ 2× fill width at every zoom (not too spread)")
+    func offsetNeverExceedsTwiceFillWidth() {
+        for i in 0..<Self.fillWidthStops.count {
+            let zoom = Self.fillWidthStops[i].zoom
+            let fill = Self.fillWidthStops[i].width
+            let mult = Self.offsetMultiplierStops[i].mult
+            #expect(mult <= fill * 2.0,
+                    "z\(Int(zoom)): offset multiplier \(mult) > 2× fill width \(fill * 2.0) — lines too spread")
+        }
+    }
+
+    @Test("Offset/fill ratio is consistent across zoom levels (within tolerance)")
+    func ratioIsConsistent() {
+        for i in 0..<Self.fillWidthStops.count {
+            let zoom = Self.fillWidthStops[i].zoom
+            let fill = Self.fillWidthStops[i].width
+            let mult = Self.offsetMultiplierStops[i].mult
+            let ratio = mult / fill
+            let deviation = abs(ratio - Self.targetRatio)
+            #expect(deviation <= Self.tolerance,
+                    "z\(Int(zoom)): ratio \(String(format: "%.3f", ratio)) deviates from target \(Self.targetRatio) by \(String(format: "%.3f", deviation)) (max \(Self.tolerance))")
+        }
+    }
+
+    @Test("Stop count matches between fill width and offset multiplier")
+    func stopCountsMatch() {
+        #expect(Self.fillWidthStops.count == Self.offsetMultiplierStops.count,
+                "Fill width has \(Self.fillWidthStops.count) stops but offset has \(Self.offsetMultiplierStops.count)")
+    }
+
+    @Test("Zoom levels match between fill width and offset multiplier")
+    func zoomLevelsMatch() {
+        for i in 0..<Self.fillWidthStops.count {
+            #expect(Self.fillWidthStops[i].zoom == Self.offsetMultiplierStops[i].zoom,
+                    "Stop \(i): fill zoom \(Self.fillWidthStops[i].zoom) ≠ offset zoom \(Self.offsetMultiplierStops[i].zoom)")
+        }
+    }
+
+    @Test("4-line corridor total spread stays under half the screen at z10")
+    func corridorSpreadReasonableAtLowZoom() {
+        // Worst case: 4 parallel lines with offsets -1.5, -0.5, +0.5, +1.5
+        // Total center-to-center span = 3.0 × multiplier
+        // Total visual width = span + fillWidth (half-width on each side)
+        let z10Fill = Self.fillWidthStops[0].width   // 1.2
+        let z10Mult = Self.offsetMultiplierStops[0].mult  // 1.4
+        let span = 3.0 * z10Mult + z10Fill  // center-to-center + line edges
+        // At z10 a phone screen is ~350-400 pt → corridor should be << 50 pt
+        #expect(span < 30.0,
+                "4-line corridor at z10 spans \(String(format: "%.1f", span))pt — too wide for overview zoom")
+    }
+
+    @Test("Offset multiplier at z18 prevents fill overlap for lane_offset delta=1")
+    func noOverlapAtMaxZoom() {
+        let z18Fill = Self.fillWidthStops.last!.width   // 7.0
+        let z18Mult = Self.offsetMultiplierStops.last!.mult  // 8.1
+        // Pixel gap between adjacent fill edges = mult - fillWidth
+        let gap = z18Mult - z18Fill
+        #expect(gap > 0,
+                "z18: adjacent fills overlap by \(String(format: "%.1f", -gap))pt")
+    }
+}

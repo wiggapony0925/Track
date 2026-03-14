@@ -267,51 +267,53 @@ enum MapLibreStyleConfig {
     // float from the server, typically ±1-2.5).  We multiply it by a
     // zoom-interpolated factor to push parallel trunk groups apart.
     //
-    // The server sends non-offset polylines that pass through station
-    // positions (no Catmull-Rom smoothing — MapLibre renders smooth
-    // round joins natively).  Pixel-space `lineOffset` provides corridor
-    // separation at EVERY zoom level (does not taper to 0) so parallel
-    // trunk groups always remain visually separated.
+    // The multiplier tracks the subway fill width × 1.15 at every zoom
+    // stop, so that adjacent lines (lane_offset delta = 1.0) sit exactly
+    // 1.15× one fill-width apart — a tiny 15% gap that keeps fills from
+    // bleeding into each other while looking "touching".
     //
-    // Because we no longer apply Catmull-Rom (which shifts coordinates
-    // off station positions), the raw polyline geometry goes exactly
-    // through each station even with the pixel offset applied.
+    // Both the fill width and the offset use the **same exponential
+    // base 1.6**, so the ratio stays constant between zoom stops too.
+    // This eliminates the old problem where lines spread massively at
+    // low zoom (multiplier >> fill width) and overlapped at high zoom
+    // (multiplier << fill width).
+    //
+    // Because raw polyline geometry passes through station coordinates
+    // and pixel lineOffset is purely visual, station dots still sit at
+    // the geographic centroid of the corridor.
 
     /// Composite expression: top-level zoom interpolation where each stop
     /// multiplies the feature's `lane_offset` by a zoom-dependent factor.
     ///
-    /// At zoom 10 each lane_offset unit produces 3.5 pt of perpendicular
-    /// shift.  A typical corridor trunk has lane_offset ≈ ±1.5, giving
-    /// ≈ 5.25 pt separation per side — enough to distinguish lines at
-    /// city-wide zoom.
+    /// The multiplier at each zoom stop = subway fill width × 1.15:
     ///
-    /// At high zoom the multiplier scales down proportionally because the
-    /// line width grows and natural geographic track spacing provides some
-    /// visual breathing room.  The offset never reaches 0 so parallel
-    /// trunks stay distinct at every zoom level.
+    ///   z10: 1.2×1.15 = 1.4    z14: 3.5×1.15 = 4.0
+    ///   z11: 1.6×1.15 = 1.8    z15: 4.2×1.15 = 4.8
+    ///   z12: 2.2×1.15 = 2.5    z16: 5.0×1.15 = 5.8
+    ///   z13: 2.8×1.15 = 3.2    z17: 6.0×1.15 = 6.9
+    ///                           z18: 7.0×1.15 = 8.1
     ///
     /// Built via `NSExpression(mglJSONObject:)` (raw MapLibre GL style-spec
     /// expression) because the `forMLNInterpolating` convenience puts the
     /// zoom variable at the top level — MapLibre requires this; nesting
     /// `$zoomLevel` inside `multiply:by:` is disallowed.
     static let laneOffsetExpression: NSExpression = {
-        // Style-spec JSON — v5: full-range pixel offset (never 0).
+        // Style-spec JSON — v6: width-proportional offset.
         //
-        // Without Catmull-Rom smoothing, raw polyline vertices sit exactly
-        // on station coordinates.  pixel lineOffset is purely visual and
-        // doesn't affect hit-testing or station snapping, so it's safe to
-        // keep a non-zero offset at all zoom levels.
+        // Multiplier = fillWidth × 1.15 at each stop.  Exponential base
+        // 1.6 matches subwayFillWidth's ramp so the ratio is constant
+        // between stops.
         let json: [Any] = [
-            "interpolate", ["linear"], ["zoom"],
-            10,   ["*", ["get", "lane_offset"], 3.5],
-            11,   ["*", ["get", "lane_offset"], 3.0],
+            "interpolate", ["exponential", 1.6], ["zoom"],
+            10,   ["*", ["get", "lane_offset"], 1.4],
+            11,   ["*", ["get", "lane_offset"], 1.8],
             12,   ["*", ["get", "lane_offset"], 2.5],
-            13,   ["*", ["get", "lane_offset"], 2.2],
-            14,   ["*", ["get", "lane_offset"], 2.0],
-            15,   ["*", ["get", "lane_offset"], 1.8],
-            16,   ["*", ["get", "lane_offset"], 1.5],
-            17,   ["*", ["get", "lane_offset"], 1.2],
-            18,   ["*", ["get", "lane_offset"], 1.0],
+            13,   ["*", ["get", "lane_offset"], 3.2],
+            14,   ["*", ["get", "lane_offset"], 4.0],
+            15,   ["*", ["get", "lane_offset"], 4.8],
+            16,   ["*", ["get", "lane_offset"], 5.8],
+            17,   ["*", ["get", "lane_offset"], 6.9],
+            18,   ["*", ["get", "lane_offset"], 8.1],
         ]
         return NSExpression(mglJSONObject: json)
     }()
