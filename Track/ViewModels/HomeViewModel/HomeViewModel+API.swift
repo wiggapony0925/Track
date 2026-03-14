@@ -1245,8 +1245,15 @@ extension HomeViewModel {
             // routes that dropped from the fresh response but are still visible.
             nearbyBusStops = Self.augmentBusStops(stops, from: groupedTransit)
 
-            // Persist for instant display on next cold launch
-            TransitSessionCache.save(groupedTransit)
+            // Persist for instant display on next cold launch.
+            // Include the fetch location so the next launch can detect
+            // if the user has moved significantly since this data was saved.
+            let fetchLocation: CLLocation? = {
+                if let loc = location { return loc }
+                if let known = lastKnownUserLocation { return known }
+                return nil
+            }()
+            TransitSessionCache.save(groupedTransit, location: fetchLocation)
 
             if !rawTransit.isEmpty || nearbyTransit.isEmpty {
                 // Deduplicate: Keep the first occurrence of each unique ID

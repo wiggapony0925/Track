@@ -139,7 +139,65 @@ async def _warmup_caches():
     )
 
 
-# Middleware to log every request with color, query params, and timing
+# ---------------------------------------------------------------------------
+# HTTP Cache-Control policy map
+# ---------------------------------------------------------------------------
+# Maps URL path prefixes → Cache-Control header values.  Tuned to each
+# endpoint's data volatility so iOS URLCache (and any future CDN) can
+# serve responses without hitting the network when data is still fresh.
+#
+# References:
+#   - "API Caching Best Practices" — client-side caching layer
+#   - stale-while-revalidate lets URLCache serve a stale copy instantly
+#     while revalidating in the background (supported by URLSession on
+#     iOS 15+ and all modern CDN/proxy caches).
+#   - stale-if-error lets the client use a cached copy when the server
+#     returns 5xx — improves resilience during deploys / outages.
+
+_CACHE_CONTROL_RULES: list[tuple[str, str]] = [
+    # ── Static / semi-static geometry (changes on deploy, not per-request) ──
+    ("/subway/shapes/all",  "public, max-age=3600, stale-while-revalidate=86400, stale-if-error=604800"),
+    ("/subway/stations/all", "public, max-age=3600, stale-while-revalidate=86400, stale-if-error=604800"),
+    ("/subway/stations/processed", "public, max-age=3600, stale-while-revalidate=86400, stale-if-error=604800"),
+    ("/subway/shape/",      "public, max-age=3600, stale-while-revalidate=86400, stale-if-error=604800"),
+    ("/lirr/shapes/all",    "public, max-age=3600, stale-while-revalidate=86400, stale-if-error=604800"),
+    ("/lirr/shape/",        "public, max-age=3600, stale-while-revalidate=86400, stale-if-error=604800"),
+    ("/mnr/shapes/all",     "public, max-age=3600, stale-while-revalidate=86400, stale-if-error=604800"),
+    ("/mnr/shape/",         "public, max-age=3600, stale-while-revalidate=86400, stale-if-error=604800"),
+    # Bus routes list and route shapes (already partially covered in bus.py)
+    ("/bus/routes",         "public, max-age=3600, stale-while-revalidate=86400, stale-if-error=604800"),
+    ("/bus/route-shape/",   "public, max-age=3600, stale-while-revalidate=86400, stale-if-error=604800"),
+    # Bus stops per route — semi-static
+    ("/bus/stops/",         "public, max-age=600, stale-while-revalidate=86400, stale-if-error=604800"),
+    # ── Real-time transit data (seconds-level freshness) ──
+    ("/nearby/grouped",     "private, max-age=5, stale-while-revalidate=15, stale-if-error=60"),
+    ("/subway/",            "private, max-age=8, stale-while-revalidate=20, stale-if-error=60"),
+    ("/lirr",               "private, max-age=8, stale-while-revalidate=20, stale-if-error=60"),
+    ("/mnr",                "private, max-age=8, stale-while-revalidate=20, stale-if-error=60"),
+    ("/bus/live/",          "private, max-age=8, stale-while-revalidate=20, stale-if-error=60"),
+    ("/bus/vehicles/",      "public, max-age=5, stale-while-revalidate=30, stale-if-error=120"),
+    ("/bus/nearby",         "private, max-age=60, stale-while-revalidate=300, stale-if-error=600"),
+    # ── Alerts & accessibility (moderate refresh) ──
+    ("/alerts",             "public, max-age=30, stale-while-revalidate=120, stale-if-error=600"),
+    ("/accessibility",      "public, max-age=60, stale-while-revalidate=300, stale-if-error=600"),
+    # ── ML predictions (stable for minutes) ──
+    ("/predict/delay",      "private, max-age=60, stale-while-revalidate=300, stale-if-error=600"),
+    # ── Config / health (short or no cache) ──
+    ("/config",             "public, max-age=300, stale-while-revalidate=600"),
+    ("/health",             "no-store"),
+]
+
+
+def _resolve_cache_control(path: str) -> str | None:
+    """Find the best-matching Cache-Control value for a request path."""
+    for prefix, value in _CACHE_CONTROL_RULES:
+        if path == prefix or path.startswith(prefix):
+            return value
+    return None
+
+
+# Middleware to log every request with color, query params, and timing,
+# AND inject Cache-Control headers based on the policy map above.
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     start = time.perf_counter()
@@ -166,6 +224,17 @@ async def log_requests(request: Request, call_next):
             response.status_code,
             elapsed_ms=elapsed_ms,
         )
+        # Inject Cache-Control if the endpoint hasn't already set one.
+        # Endpoint-level headers (e.g. bus.py vehicles) take precedence.
+        if "cache-control" not in response.headers:
+            cc = _resolve_cache_control(request.url.path)
+            if cc:
+                response.headers["Cache-Control"] = cc
+        # Vary header: real-time endpoints use lat/lon query params, so
+        # each (lat,lon,radius,mode) combo is a distinct cacheable resource.
+        # This tells any intermediate cache to key on the full query string.
+        if request.url.query and "cache-control" in response.headers:
+            response.headers.setdefault("Vary", "Accept-Encoding")
         return response
     except Exception:
         # Log unhandled exceptions that crash the request handler — these

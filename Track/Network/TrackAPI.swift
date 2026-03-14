@@ -50,12 +50,31 @@ struct TrackAPI {
     ///   (~1.5 s) when the radio hasn't finished waking on app cold-start.
     /// - 15 s request timeout → fail faster than the URLSession.shared default (60 s)
     ///   so the user sees an error sooner when the server is actually unreachable.
+    /// - 10 MB URLCache → enables automatic HTTP-level caching driven by
+    ///   Cache-Control headers from the backend.  Static geometry endpoints
+    ///   (shapes, stations) send `max-age=3600` so subsequent fetches within
+    ///   the hour resolve from disk in <1 ms.  Real-time endpoints send
+    ///   `stale-while-revalidate` so URLSession can serve a cached copy
+    ///   while revalidating in the background.
     private static let session: URLSession = {
         let config = URLSessionConfiguration.default
         config.waitsForConnectivity = true
         config.timeoutIntervalForRequest = 15
         config.timeoutIntervalForResource = 60
         config.httpMaximumConnectionsPerHost = 4
+        // 10 MB memory / 50 MB disk cache for HTTP responses.
+        // Keyed by full URL (including query params like lat/lon) so
+        // each unique location/endpoint combo is cached independently.
+        config.urlCache = URLCache(
+            memoryCapacity: 10 * 1024 * 1024,   // 10 MB RAM
+            diskCapacity:   50 * 1024 * 1024,    // 50 MB disk
+            directory: FileManager.default
+                .containerURL(forSecurityApplicationGroupIdentifier: kAppGroupIdentifier)?
+                .appendingPathComponent("URLCache")
+        )
+        // Use the protocol's cache policy (honors Cache-Control headers).
+        // This is the default, but explicit is better than implicit.
+        config.requestCachePolicy = .useProtocolCachePolicy
         return URLSession(configuration: config)
     }()
 

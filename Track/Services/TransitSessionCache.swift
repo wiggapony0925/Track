@@ -12,11 +12,44 @@
 //    3. ViewModel sets hasLoadedOnce = true → skeletons never appear
 //    4. Background network fetch silently replaces stale data
 //
+//  Location awareness:
+//    The cache envelope stores the GPS coordinates and timestamp of the
+//    data.  On load, the caller can compare the cached location against
+//    the current GPS fix.  If the user has moved significantly (e.g.
+//    phone was off, commuted home), the cache is still returned for
+//    instant display but flagged so the caller knows to force-refresh.
+//
 
+import CoreLocation
 import Foundation
 
 enum TransitSessionCache {
-    private static let fileName = "session_grouped_transit.json"
+    private static let fileName = "session_grouped_transit_v2.json"
+
+    /// Lightweight envelope that wraps the transit data with provenance
+    /// metadata so we can detect stale-location caches on load.
+    private struct CacheEnvelope: Codable {
+        let latitude: Double
+        let longitude: Double
+        let savedAt: Date
+        let groups: [GroupedNearbyTransitResponse]
+    }
+
+    /// Result returned by ``load(near:significantDistance:maxAge:)`` that
+    /// tells the caller whether the cached data matches the current location.
+    struct LoadResult {
+        let groups: [GroupedNearbyTransitResponse]
+        /// Approximate distance in meters between the cached location and
+        /// the provided reference location.  `nil` if no reference given.
+        let distanceFromCurrent: Double?
+        /// Whether the data was captured at a significantly different
+        /// location from the current GPS fix — caller should force-refresh.
+        let isLocationStale: Bool
+        /// Age of the cached data in seconds.
+        let age: TimeInterval
+        /// The GPS location where this data was captured.
+        let cachedLocation: CLLocation
+    }
 
     private static var fileURL: URL? {
         FileManager.default
@@ -28,10 +61,23 @@ enum TransitSessionCache {
 
     /// Persist grouped transit data to disk after a successful API fetch.
     /// Encoding + write runs on a background queue to avoid blocking the main thread.
-    static func save(_ groups: [GroupedNearbyTransitResponse]) {
+    ///
+    /// - Parameters:
+    ///   - groups: The transit groups from the API.
+    ///   - location: The GPS coordinate used for the fetch.
+    static func save(_ groups: [GroupedNearbyTransitResponse], location: CLLocation? = nil) {
         guard let url = fileURL else { return }
+        let lat = location?.coordinate.latitude ?? 0
+        let lon = location?.coordinate.longitude ?? 0
+        let envelope = CacheEnvelope(
+            latitude: lat,
+            longitude: lon,
+            savedAt: Date(),
+            groups: groups
+        )
         let encoder = JSONEncoder()
-        guard let data = try? encoder.encode(groups) else { return }
+        encoder.dateEncodingStrategy = .secondsSince1970
+        guard let data = try? encoder.encode(envelope) else { return }
 
         let count = groups.count
         let kb = data.count / 1024
@@ -39,7 +85,7 @@ enum TransitSessionCache {
             do {
                 try data.write(to: url, options: .atomic)
                 #if DEBUG
-                print("[CACHE] 💾 Saved \(count) route groups (\(kb)KB) to session cache")
+                print("[CACHE] 💾 Saved \(count) route groups (\(kb)KB) at (\(String(format: "%.4f", lat)), \(String(format: "%.4f", lon))) to session cache")
                 #endif
             } catch {
                 #if DEBUG
@@ -51,15 +97,76 @@ enum TransitSessionCache {
 
     // MARK: - Load
 
-    /// Load cached grouped transit from disk.
-    /// Synchronous read (~1-5ms for typical 100-route payloads) — safe to call
-    /// on the main thread during app init for instant display.
-    static func load() -> [GroupedNearbyTransitResponse]? {
+    /// Load cached grouped transit from disk with location + age awareness.
+    ///
+    /// - Parameters:
+    ///   - currentLocation: The user's current GPS fix (if available).
+    ///   - significantDistance: Distance in meters beyond which the cache
+    ///     is considered location-stale.  Defaults to 400m (≈3 long blocks).
+    ///   - maxAge: Maximum age in seconds before the cache is discarded
+    ///     entirely.  Defaults to 30 minutes.
+    ///
+    /// - Returns: A ``LoadResult`` with the groups and staleness flags,
+    ///   or `nil` if the cache file is missing, corrupt, or too old.
+    static func load(
+        near currentLocation: CLLocation? = nil,
+        significantDistance: Double = 400,
+        maxAge: TimeInterval = 1800
+    ) -> LoadResult? {
         guard let url = fileURL,
               FileManager.default.fileExists(atPath: url.path),
               let data = try? Data(contentsOf: url),
               !data.isEmpty else { return nil }
-        return try? JSONDecoder().decode([GroupedNearbyTransitResponse].self, from: data)
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .secondsSince1970
+
+        // Try the v2 envelope first
+        if let envelope = try? decoder.decode(CacheEnvelope.self, from: data) {
+            let age = Date().timeIntervalSince(envelope.savedAt)
+            // Discard entirely stale data (e.g. from yesterday)
+            guard age < maxAge else {
+                #if DEBUG
+                print("[CACHE] 🗑️ Session cache too old (\(Int(age))s > \(Int(maxAge))s) — discarding")
+                #endif
+                return nil
+            }
+            let cachedLoc = CLLocation(latitude: envelope.latitude, longitude: envelope.longitude)
+            var distance: Double? = nil
+            var locationStale = false
+            if let current = currentLocation, envelope.latitude != 0 {
+                distance = current.distance(from: cachedLoc)
+                locationStale = distance! >= significantDistance
+            }
+            return LoadResult(
+                groups: envelope.groups,
+                distanceFromCurrent: distance,
+                isLocationStale: locationStale,
+                age: age,
+                cachedLocation: cachedLoc
+            )
+        }
+
+        // Fall back to legacy format (plain [GroupedNearbyTransitResponse])
+        if let groups = try? JSONDecoder().decode([GroupedNearbyTransitResponse].self, from: data),
+           !groups.isEmpty {
+            // Legacy data has no location/time — assume stale-location
+            let fallbackLoc = CLLocation(latitude: 0, longitude: 0)
+            return LoadResult(
+                groups: groups,
+                distanceFromCurrent: nil,
+                isLocationStale: true,
+                age: .infinity,
+                cachedLocation: fallbackLoc
+            )
+        }
+
+        return nil
+    }
+
+    /// Simple load returning just the groups (backward-compat convenience).
+    static func loadGroups() -> [GroupedNearbyTransitResponse]? {
+        return load()?.groups
     }
 
     // MARK: - Clear
@@ -68,5 +175,11 @@ enum TransitSessionCache {
     static func clear() {
         guard let url = fileURL else { return }
         try? FileManager.default.removeItem(at: url)
+        // Also clean up legacy file
+        if let legacyURL = FileManager.default
+            .containerURL(forSecurityApplicationGroupIdentifier: kAppGroupIdentifier)?
+            .appendingPathComponent("session_grouped_transit.json") {
+            try? FileManager.default.removeItem(at: legacyURL)
+        }
     }
 }

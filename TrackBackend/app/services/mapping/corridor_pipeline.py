@@ -1840,7 +1840,11 @@ def apply_topological_offsets(
     _vertex_offsets_cache = vertex_offsets
     _all_trunk_lane_offsets_cache = None  # Reset — will be computed on first call to get_trunk_polylines
     try:
-        _processed_stops_cache = _process_stop_positions(trunk_offset_paths)
+        # v4 fix: snap stop positions onto the RAW (pre-offset) trunk paths
+        # — the same geometry exported by get_trunk_polylines().  Previously
+        # this used trunk_offset_paths which are displaced 30-40 m by corridor
+        # lane offsets, causing station dots to float off the rendered lines.
+        _processed_stops_cache = _process_stop_positions(trunk_paths)
     except Exception as exc:
         TrackLogger.warning(
             f"[Pipeline] Phase 5 (Stop snap) failed: {exc}"

@@ -230,6 +230,10 @@ struct HomeView: View {
             viewModel.pendingDeepLink = true
         }
 
+        // Request an immediate GPS fix with no distance filter so
+        // CoreLocation delivers the very first fix ASAP.
+        locationManager.requestImmediateFix()
+
         // Immediately kick off the first fetch using the cached location
         // from the previous session (stored in App Group by LocationManager).
         // This shaves ~1-2s off startup by not waiting for a fresh GPS fix.
@@ -242,12 +246,16 @@ struct HomeView: View {
                 let cachedLoc = CLLocation(latitude: lat, longitude: lon)
                 cameraPosition = MapCameraPresets.center(on: cachedLoc.coordinate, is3D: false)
 
-                // Phase 1: Load cached route cards from previous session (~5ms).
-                // Skips skeleton placeholders entirely — user sees real cards instantly.
-                // Pass the cached GPS so routes are distance-sorted immediately.
+                // Phase 1: Load cached route cards with location awareness.
+                // If the user moved significantly since last session, the
+                // cache is still loaded for instant display but flagged
+                // so we know the first network fetch is critical.
                 viewModel.loadSessionCache(cachedLocation: cachedLoc)
 
                 // Phase 2: Fetch fresh data in background.
+                // If the session cache indicates the user is at (roughly)
+                // the same spot, a normal refresh suffices.  If the cache
+                // was location-stale or missing, force-refresh.
                 Task {
                     await viewModel.refresh(location: cachedLoc, force: true)
                     lastUpdated = Date()
@@ -265,10 +273,12 @@ struct HomeView: View {
                 return
             }
 
-            // Ensure CoreLocation is actively delivering fixes.
-            // After suspension iOS stops delivering updates;
-            // `startUpdating()` restarts the stream immediately.
-            locationManager.startUpdating()
+            // Request an immediate high-accuracy GPS fix with no
+            // distance filter.  After the phone was suspended for
+            // minutes/hours, the normal 50m filter may take 1-5s to
+            // trigger — requestImmediateFix() drops it temporarily
+            // so the very first fix is delivered ASAP.
+            locationManager.requestImmediateFix()
 
             // Clear any drag search when returning to the app
             if isDragSearchActive {
@@ -823,18 +833,27 @@ struct HomeView: View {
                 handleLiveWalkingUpdate(loc)
             }
 
-            // On cold launch the onAppear already kicked a forced refresh
-            // using the cached location. If the first live GPS fix arrives
-            // within a few seconds and the user hasn't meaningfully moved,
-            // skip the duplicate fetch — it just contends for bandwidth and
-            // re-renders the same data.
+            // Skip duplicate fetch if user hasn't moved significantly.
+            // Use a lower threshold when the cached GPS was stale (fix age
+            // > 30s means the user just returned from suspension — their
+            // first "accurate" fix may still be coarsely near the old spot).
             guard let lastLoc = viewModel.lastRefreshLocation else { return }
             let moved = loc.distance(from: lastLoc)
-            guard moved >= AppSettings.shared.significantMovementMeters else { return }
+            
+            // After a long suspension the first fix is critical even if
+            // the distance filter says "only 50m".  Use the configured
+            // significantMovementMeters (150m) for normal refreshes, but
+            // if the refreshLocation was set from a stale cache, force on
+            // any detectable movement (> 50m).
+            let fixAge = abs(loc.timestamp.timeIntervalSinceNow)
+            let threshold: Double = fixAge < 5 
+                ? AppSettings.shared.significantMovementMeters
+                : max(50, AppSettings.shared.distanceFilterMeters)
+            guard moved >= threshold else { return }
 
             AppLogger.shared.log(
                 "LOCATION",
-                message: "📍 GPS fix shows \(Int(moved))m drift from last fetch — re-fetching at current position"
+                message: "📍 GPS fix shows \(Int(moved))m drift from last fetch (threshold=\(Int(threshold))m, fixAge=\(String(format: "%.1f", fixAge))s) — re-fetching"
             )
             Task {
                 await viewModel.refresh(location: loc, force: true)

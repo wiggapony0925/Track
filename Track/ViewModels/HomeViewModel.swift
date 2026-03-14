@@ -1453,11 +1453,18 @@ final class HomeViewModel {
     ///   - `hasLoadedOnce = true` → subsequent `refresh()` runs silently
     ///   - `isRefreshing = true` → UI shows a subtle "Updating…" indicator
     ///
+    /// The v2 cache envelope stores the GPS location where data was saved.
+    /// If the user's current location is significantly different (> 400m),
+    /// the cache is still shown immediately but the ``isRefreshing`` flag
+    /// makes the "Updating…" indicator more prominent, and the return
+    /// value signals the caller to force-refresh without delay.
+    ///
     /// - Returns: `true` when cached data was loaded; `false` otherwise.
     @discardableResult
     func loadSessionCache(cachedLocation: CLLocation? = nil) -> Bool {
         guard !hasLoadedOnce else { return false }
-        guard let cached = TransitSessionCache.load(), !cached.isEmpty else {
+        guard let result = TransitSessionCache.load(near: cachedLocation),
+              !result.groups.isEmpty else {
             AppLogger.shared.log(
                 "CACHE",
                 message: "📭 No session cache — showing skeletons for first load"
@@ -1465,7 +1472,7 @@ final class HomeViewModel {
             return false
         }
 
-        groupedTransit = cached
+        groupedTransit = result.groups
 
         // Seed the GPS reference so the first render after cache load
         // can sort routes by distance instead of falling back to
@@ -1476,7 +1483,7 @@ final class HomeViewModel {
 
         // Populate flat transit array for fallback code paths
         var seenIDs = Set<String>()
-        nearbyTransit = cached
+        nearbyTransit = result.groups
             .flatMap(\.directions)
             .flatMap(\.arrivals)
             .filter { seenIDs.insert($0.id).inserted }
@@ -1495,10 +1502,18 @@ final class HomeViewModel {
         TransitDataReadyFlag.markReady()
         NotificationCenter.default.post(name: .transitDataLoaded, object: nil)
 
-        AppLogger.shared.log(
-            "CACHE",
-            message: "📦 Loaded \(cached.count) cached route groups — skipping skeletons"
-        )
+        if result.isLocationStale {
+            let distStr = result.distanceFromCurrent.map { "\(Int($0))m away" } ?? "unknown distance"
+            AppLogger.shared.log(
+                "CACHE",
+                message: "⚠️ Loaded \(result.groups.count) cached groups but location is stale (\(distStr), \(Int(result.age))s old) — force refresh needed"
+            )
+        } else {
+            AppLogger.shared.log(
+                "CACHE",
+                message: "📦 Loaded \(result.groups.count) cached route groups (\(Int(result.age))s old, same area) — skipping skeletons"
+            )
+        }
         return true
     }
 

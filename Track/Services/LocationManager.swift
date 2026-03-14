@@ -42,6 +42,29 @@ final class LocationManager: NSObject, CLLocationManagerDelegate {
         manager.startUpdatingLocation()
     }
 
+    /// Request an immediate high-accuracy GPS fix.
+    ///
+    /// CoreLocation's `distanceFilter = 50m` means after the phone wakes
+    /// from suspension it may take several seconds before the next fix
+    /// exceeds the filter threshold — especially if the user hasn't
+    /// moved much at the new location.  Temporarily dropping the filter
+    /// to `kCLDistanceFilterNone` forces an immediate delivery, then
+    /// restores the normal filter after the first fix arrives.
+    ///
+    /// Call this when the app returns to the foreground after a long
+    /// suspension so the UI can refresh with the correct location ASAP.
+    func requestImmediateFix() {
+        manager.distanceFilter = kCLDistanceFilterNone
+        manager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
+        manager.startUpdatingLocation()
+        // Restore normal filter after a brief window (enough for 1-2 fixes)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
+            guard let self else { return }
+            self.manager.distanceFilter = AppSettings.shared.distanceFilterMeters
+            self.manager.desiredAccuracy = kCLLocationAccuracyBest
+        }
+    }
+
     func stopUpdating() {
         manager.stopUpdatingLocation()
     }
