@@ -254,6 +254,19 @@ _MIN_BRANCH_RUN: int = 8
 # point when the nearest trunk coord is actually kilometres away.
 _MAX_SNAP_DIST_M: float = 200.0
 
+# When extending a branch run into the "covered" zone, keep extending
+# as long as the branch coordinate is farther than this from the actual
+# trunk LineString.  This captures the convergence zone where grid cells
+# overlap but the physical paths haven't yet merged (e.g. Lefferts Blvd
+# branch running parallel to Far Rockaway within 200m grid proximity but
+# serving different stations 300-500m apart).
+_BRANCH_MERGE_DIST_M: float = 50.0
+
+# Maximum number of extra vertices to include beyond the uncovered run
+# when doing distance-based extension.  Prevents runaway extension on
+# shapes that never truly merge with the trunk.
+_BRANCH_EXTEND_MAX: int = 200
+
 # Maximum gap (meters) allowed between consecutive vertices in a branch
 # stub.  Stubs with jumps exceeding this are considered corrupted and
 # discarded.  Set high enough to allow natural GTFS sparsity (tunnels,
@@ -517,19 +530,67 @@ def _unify_via_grid(
         return False
 
     def _is_near(x: float, y: float) -> bool:
-        """Wider check (±4 cells ≈ 400 m) for branch validation."""
+        """Wider check (±2 cells ≈ 200 m) for branch validation.
+
+        Reduced from ±4 (~400 m) to avoid falsely rejecting genuine
+        branches that run parallel to the trunk within a few hundred
+        metres (e.g. A-train Lefferts Blvd spur alongside Far Rockaway).
+        """
         cx, cy = _cell(x, y)
-        for dx in range(-4, 5):
-            for dy in range(-4, 5):
+        for dx in range(-2, 3):
+            for dy in range(-2, 3):
                 if (cx + dx, cy + dy) in grid:
                     return True
         return False
+
+    def _run_diverges_from_trunk(
+        coords: list[tuple[float, float]],
+        r_start: int,
+        r_end: int,
+        baseline: LineString,
+    ) -> bool:
+        """Return True if the uncovered run heads in a significantly
+        different direction than the trunk at the branch point.
+
+        A genuine branch diverges by > 30° from the trunk direction.
+        An express/local corridor variant runs in roughly the same direction.
+        """
+        run_len = r_end - r_start + 1
+        if run_len < 4:
+            return False
+
+        # Run heading: from start to a point ~25% into the run
+        quarter = max(1, run_len // 4)
+        sx, sy = coords[r_start]
+        qx, qy = coords[r_start + quarter]
+        rdx, rdy = qx - sx, qy - sy
+        run_mag = math.sqrt(rdx * rdx + rdy * rdy)
+        if run_mag < 10.0:
+            return False
+
+        # Trunk heading at the branch point
+        proj_dist = baseline.project(Point(sx, sy))
+        epsilon = min(200.0, baseline.length * 0.05)
+        p1 = baseline.interpolate(max(0.0, proj_dist - epsilon))
+        p2 = baseline.interpolate(min(baseline.length, proj_dist + epsilon))
+        tdx, tdy = p2.x - p1.x, p2.y - p1.y
+        trunk_mag = math.sqrt(tdx * tdx + tdy * tdy)
+        if trunk_mag < 10.0:
+            return False
+
+        # Cosine of angle between run and trunk headings
+        dot = (rdx * tdx + rdy * tdy) / (run_mag * trunk_mag)
+        dot = max(-1.0, min(1.0, dot))
+        # > cos(30°) ≈ 0.866 → nearly parallel → corridor variant
+        # We also accept anti-parallel (|dot| check) as diverging
+        return abs(dot) < 0.866
 
     # Seed with the longest polyline (trunk baseline)
     kept: list[LineString] = [sorted_lines[0]]
     _add_line(sorted_lines[0])
 
     trunk_coords = list(sorted_lines[0].coords)
+    trunk_baseline = sorted_lines[0]
 
     for seg_line in sorted_lines[1:]:
         coords = list(seg_line.coords)
@@ -578,40 +639,89 @@ def _unify_via_grid(
             continue
 
         for r_start, r_end in runs:
-            # Branch validation: if start, mid, and end are all near the
-            # existing grid, it's a corridor variant (express/local
-            # parallel), not a genuine branch.
+            # Branch validation: reject corridor variants (express/local
+            # parallels) but keep genuine branches (diverging spurs).
+            #
+            # A run is a "corridor variant" if:
+            #   1. Its start, middle, AND end are all near the existing
+            #      grid (within ±200 m), AND
+            #   2. Its heading does NOT diverge > 30° from the trunk at
+            #      the branch point.
+            #
+            # If the run diverges in direction, it's a genuine branch
+            # even if it runs nearby (e.g. Lefferts Blvd A train spur
+            # parallel to Far Rockaway within 250 m).
             r_mid = (r_start + r_end) // 2
-            if (_is_near(*coords[r_start]) and
-                _is_near(*coords[r_mid]) and
-                _is_near(*coords[r_end])):
-                continue
+            all_near = (_is_near(*coords[r_start]) and
+                        _is_near(*coords[r_mid]) and
+                        _is_near(*coords[r_end]))
+            if all_near:
+                # Additional check: does the run diverge in direction?
+                if not _run_diverges_from_trunk(coords, r_start, r_end, trunk_baseline):
+                    continue  # corridor variant — skip
 
-            # Extend a few points into covered zone for seamless connection.
-            # Snap extension points to nearest trunk coordinate ONLY if
-            # a trunk point is within _MAX_SNAP_DIST_M.  Otherwise use
-            # the original branch coordinate to avoid teleporting.
-            ext_start = max(0, r_start - 5)
-            ext_end = min(n - 1, r_end + 5)
+            # Extend into covered zone using distance-based approach.
+            # Instead of a fixed ±5 vertices, keep extending along the
+            # original shape as long as the actual distance to the trunk
+            # baseline is > _BRANCH_MERGE_DIST_M.  This captures the
+            # convergence zone where grid cells overlap but the physical
+            # paths haven't merged yet (e.g. Lefferts running parallel
+            # to Far Rockaway within grid proximity but 300-500m apart
+            # at the station level).
+            ext_start = r_start
+            ext_end = r_end
+
+            # Extend backward (toward-trunk direction at run start)
+            extend_count = 0
+            while ext_start > 0 and extend_count < _BRANCH_EXTEND_MAX:
+                prev = ext_start - 1
+                d = trunk_baseline.distance(Point(coords[prev]))
+                if d < _BRANCH_MERGE_DIST_M:
+                    break
+                ext_start = prev
+                extend_count += 1
+
+            # Extend forward (toward-trunk direction at run end)
+            extend_count = 0
+            while ext_end < n - 1 and extend_count < _BRANCH_EXTEND_MAX:
+                nxt = ext_end + 1
+                d = trunk_baseline.distance(Point(coords[nxt]))
+                if d < _BRANCH_MERGE_DIST_M:
+                    break
+                ext_end = nxt
+                extend_count += 1
+
+            # Always include a few trunk-overlap vertices at each end
+            # so the stem injection has a clean junction point.
+            ext_start = max(0, ext_start - 3)
+            ext_end = min(n - 1, ext_end + 3)
 
             snap_limit_sq = _MAX_SNAP_DIST_M ** 2
 
             stub_coords: list[tuple[float, float]] = []
             for j in range(ext_start, ext_end + 1):
                 if covered[j] and trunk_coords:
-                    # Distance-bounded snap to nearest trunk point
-                    px, py = coords[j]
-                    best_dist = float("inf")
-                    best_pt: tuple[float, float] | None = None
-                    for tx, ty in trunk_coords:
-                        d = (tx - px) ** 2 + (ty - py) ** 2
-                        if d < best_dist:
-                            best_dist = d
-                            best_pt = (tx, ty)
-                    # Only snap if within range; otherwise keep original
-                    if best_pt is not None and best_dist <= snap_limit_sq:
-                        stub_coords.append(best_pt)
+                    # In the extension zone, snap only the LAST few
+                    # vertices (closest to trunk) to ensure a clean
+                    # junction.  The rest use original branch coordinates
+                    # to avoid zigzag bowties from trunk snapping.
+                    if j <= ext_start + 2 or j >= ext_end - 2:
+                        # Near the boundaries: distance-bounded snap
+                        px, py = coords[j]
+                        best_dist = float("inf")
+                        best_pt: tuple[float, float] | None = None
+                        for tx, ty in trunk_coords:
+                            d = (tx - px) ** 2 + (ty - py) ** 2
+                            if d < best_dist:
+                                best_dist = d
+                                best_pt = (tx, ty)
+                        if best_pt is not None and best_dist <= snap_limit_sq:
+                            stub_coords.append(best_pt)
+                        else:
+                            stub_coords.append(coords[j])
                     else:
+                        # Interior covered vertices: use original branch
+                        # coordinates to preserve the branch's actual path
                         stub_coords.append(coords[j])
                 else:
                     stub_coords.append(coords[j])
@@ -1643,6 +1753,16 @@ def get_trunk_polylines() -> list[dict]:
             coords_m = list(ls.coords)
             if len(coords_m) < 2:
                 continue
+
+            # Clean up spikes / bowties from stem injection, branch
+            # extraction snapping, or noisy GTFS geometry.  This runs
+            # on the raw paths (no arc offset) so station-snapped
+            # vertices may create gentle detours — the 25° despike
+            # threshold preserves those while removing acute switchbacks.
+            coords_m = _despike_coords(coords_m)
+            if len(coords_m) < 2:
+                continue
+
             try:
                 coords_wgs = project_to_wgs84(coords_m)
                 encoded.append(encode_polyline(coords_wgs))

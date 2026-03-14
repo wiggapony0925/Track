@@ -1254,6 +1254,182 @@ final class MapSystemViewModel {
 
     // MARK: - Station Consolidation
 
+    // ── Transfer stop placement helpers ──────────────────────────────────
+    //
+    // Transfer stations (≥ 2 trunk color groups) are placed at the
+    // geometric intersection of serving polylines, rather than at the
+    // simple average of GTFS stop coordinates.  This positions the white
+    // capsule marker exactly where trunk polylines cross on the map,
+    // producing a cleaner visual — especially at major junctions like
+    // Times Square, Atlantic Ave, or Fulton St.
+
+    /// Project a point onto a line segment, returning the foot of the
+    /// perpendicular and the squared distance in degree-space (lon scaled
+    /// by cos(40.7°) for NYC).
+    private static func projectOntoSegment(
+        lat: Double, lon: Double,
+        aLat: Double, aLon: Double,
+        bLat: Double, bLon: Double
+    ) -> (projLat: Double, projLon: Double, distSq: Double) {
+        let cosNYC: Double = 0.76  // cos(40.7°)
+        let dx: Double = (bLon - aLon) * cosNYC
+        let dy: Double = bLat - aLat
+        let px: Double = (lon - aLon) * cosNYC
+        let py: Double = lat - aLat
+        let lenSq: Double = dx * dx + dy * dy
+
+        if lenSq < 1e-20 {
+            return (aLat, aLon, px * px + py * py)
+        }
+
+        let t: Double = max(0, min(1, (px * dx + py * dy) / lenSq))
+        let projLat: Double = aLat + t * (bLat - aLat)
+        let projLon: Double = aLon + t * (bLon - aLon)
+        let eLat: Double = lat - projLat
+        let eLon: Double = (lon - projLon) * cosNYC
+        return (projLat, projLon, eLat * eLat + eLon * eLon)
+    }
+
+    /// Find the intersection point of two line segments (if any).
+    /// Returns nil if segments don't intersect or are nearly parallel.
+    private static func segmentIntersection(
+        a1Lat: Double, a1Lon: Double, a2Lat: Double, a2Lon: Double,
+        b1Lat: Double, b1Lon: Double, b2Lat: Double, b2Lon: Double
+    ) -> (lat: Double, lon: Double)? {
+        let d1Lat: Double = a2Lat - a1Lat
+        let d1Lon: Double = a2Lon - a1Lon
+        let d2Lat: Double = b2Lat - b1Lat
+        let d2Lon: Double = b2Lon - b1Lon
+
+        let denom: Double = d1Lon * d2Lat - d1Lat * d2Lon
+        if abs(denom) < 1e-15 { return nil }  // parallel / degenerate
+
+        let diffLat: Double = b1Lat - a1Lat
+        let diffLon: Double = b1Lon - a1Lon
+        let t: Double = (diffLon * d2Lat - diffLat * d2Lon) / denom
+        let u: Double = (diffLon * d1Lat - diffLat * d1Lon) / denom
+
+        // Allow slight overshoot (0.05) to catch near-intersections
+        guard t >= -0.05 && t <= 1.05 && u >= -0.05 && u <= 1.05 else { return nil }
+
+        return (a1Lat + t * d1Lat, a1Lon + t * d1Lon)
+    }
+
+    /// Compute a better placement for a transfer station by finding where
+    /// polylines from its serving trunk groups cross or are closest.
+    ///
+    /// **Strategy:**
+    /// 1. Try segment-segment intersection between nearby segments of
+    ///    different trunk groups → exact crossing point.
+    /// 2. Fallback: project centroid onto nearest segment of each trunk
+    ///    group and average the projection points.
+    private func transferPolylinePosition(
+        centroid: CLLocationCoordinate2D,
+        trunkGroups: Set<Int>
+    ) -> CLLocationCoordinate2D? {
+        guard trunkGroups.count >= 2, !cachedOffsetSubwayLines.isEmpty else { return nil }
+
+        // Degree-space search radius (~500 m)
+        let searchRadius: Double = 0.005
+
+        // ── Collect nearby segments per trunk group ──
+        struct Seg {
+            let aLat: Double; let aLon: Double
+            let bLat: Double; let bLon: Double
+        }
+        var trunkSegs: [Int: [Seg]] = [:]
+
+        for line in cachedOffsetSubwayLines {
+            let tidx: Int = Self.trunkGroupIndex(for: line.id)
+            guard trunkGroups.contains(tidx) else { continue }
+
+            for branch in line.coordinates {
+                for i in 0..<(branch.count - 1) {
+                    let a = branch[i], b = branch[i + 1]
+                    // Bounding box filter
+                    let minLat: Double = min(a.latitude, b.latitude) - searchRadius
+                    let maxLat: Double = max(a.latitude, b.latitude) + searchRadius
+                    let minLon: Double = min(a.longitude, b.longitude) - searchRadius
+                    let maxLon: Double = max(a.longitude, b.longitude) + searchRadius
+                    guard centroid.latitude >= minLat && centroid.latitude <= maxLat &&
+                          centroid.longitude >= minLon && centroid.longitude <= maxLon else { continue }
+
+                    trunkSegs[tidx, default: []].append(
+                        Seg(aLat: a.latitude, aLon: a.longitude,
+                            bLat: b.latitude, bLon: b.longitude))
+                }
+            }
+        }
+
+        let servingTrunks: [Int] = Array(trunkSegs.keys)
+        guard servingTrunks.count >= 2 else { return nil }
+
+        // ── Strategy 1: Find segment-segment intersection ──
+        var bestIntersection: (lat: Double, lon: Double)? = nil
+        var bestIntDist: Double = .infinity
+
+        for i in 0..<servingTrunks.count {
+            for j in (i + 1)..<servingTrunks.count {
+                let segsA: [Seg] = trunkSegs[servingTrunks[i]] ?? []
+                let segsB: [Seg] = trunkSegs[servingTrunks[j]] ?? []
+                for sa in segsA {
+                    for sb in segsB {
+                        if let inter = Self.segmentIntersection(
+                            a1Lat: sa.aLat, a1Lon: sa.aLon,
+                            a2Lat: sa.bLat, a2Lon: sa.bLon,
+                            b1Lat: sb.aLat, b1Lon: sb.aLon,
+                            b2Lat: sb.bLat, b2Lon: sb.bLon
+                        ) {
+                            let cosNYC: Double = 0.76
+                            let dLat: Double = inter.lat - centroid.latitude
+                            let dLon: Double = (inter.lon - centroid.longitude) * cosNYC
+                            let d: Double = dLat * dLat + dLon * dLon
+                            if d < bestIntDist {
+                                bestIntDist = d
+                                bestIntersection = inter
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Use intersection if within ~300m of centroid
+        if let inter = bestIntersection, bestIntDist < 0.003 * 0.003 {
+            return CLLocationCoordinate2D(latitude: inter.lat, longitude: inter.lon)
+        }
+
+        // ── Strategy 2: Average nearest projections per trunk group ──
+        var projLats: [Double] = []
+        var projLons: [Double] = []
+
+        for tidx in servingTrunks {
+            var bestDistSq: Double = .infinity
+            var bestLat: Double = centroid.latitude
+            var bestLon: Double = centroid.longitude
+
+            for seg in (trunkSegs[tidx] ?? []) {
+                let (pLat, pLon, dSq) = Self.projectOntoSegment(
+                    lat: centroid.latitude, lon: centroid.longitude,
+                    aLat: seg.aLat, aLon: seg.aLon,
+                    bLat: seg.bLat, bLon: seg.bLon)
+                if dSq < bestDistSq {
+                    bestDistSq = dSq
+                    bestLat = pLat
+                    bestLon = pLon
+                }
+            }
+            projLats.append(bestLat)
+            projLons.append(bestLon)
+        }
+
+        guard !projLats.isEmpty else { return nil }
+
+        let avgLat2: Double = projLats.reduce(0, +) / Double(projLats.count)
+        let avgLon2: Double = projLons.reduce(0, +) / Double(projLons.count)
+        return CLLocationCoordinate2D(latitude: avgLat2, longitude: avgLon2)
+    }
+
     /// Maps a route ID to its MTA trunk-color group index.
     private static func trunkGroupIndex(for routeId: String) -> Int {
         let r = routeId.uppercased()
@@ -1430,14 +1606,28 @@ final class MapSystemViewModel {
                 }
             }
 
-            let avgLat: Double = latSum / Double(memberIndices.count)
-            let avgLon: Double = lonSum / Double(memberIndices.count)
+            var avgLat: Double = latSum / Double(memberIndices.count)
+            var avgLon: Double = lonSum / Double(memberIndices.count)
             let routes: [String] = allRoutes.sorted()
 
             // Color group count
             var colorGroups: Set<Int> = []
             for r in routes { colorGroups.insert(Self.trunkGroupIndex(for: r)) }
             let groupCount: Int = max(colorGroups.count, 1)
+
+            // ── Transfer stop: snap to polyline intersection/projection ──
+            // For stops served by ≥ 2 trunk color groups, position the
+            // marker at the geometric intersection of their polylines
+            // (or the average of nearest projections if no intersection).
+            if groupCount >= 2 {
+                if let betterPos = transferPolylinePosition(
+                    centroid: CLLocationCoordinate2D(latitude: avgLat, longitude: avgLon),
+                    trunkGroups: colorGroups
+                ) {
+                    avgLat = betterPos.latitude
+                    avgLon = betterPos.longitude
+                }
+            }
 
             // Track bearing from polyline tangents in 3×3 neighborhood
             let gx: Int32 = Int32(avgLat / cellSize)
