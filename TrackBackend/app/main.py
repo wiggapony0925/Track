@@ -290,6 +290,159 @@ async def data_refresh(full: bool = False) -> dict[str, Any]:
     return {"results": results}
 
 
+@app.get("/admin/cache/inspect")
+async def inspect_caches(request: Request) -> dict[str, Any]:
+    """Return a snapshot of every cache layer: sizes, keys, ages, hit rates.
+
+    Works both locally and on Render — hit your Render URL at
+    ``/admin/cache/inspect`` to see production cache state.
+    """
+    import time as _t
+
+    from app.clients.mta_client import _HTTP_CACHE
+    from app.clients.bus_client import (
+        _arrivals_cache, _vehicle_cache, _stops_cache,
+        _routes_cache, _route_shape_cache, _nearby_stops_cache,
+    )
+    from app.routers.nearby import _nearby_resp_cache
+
+    now = _t.time()
+    now_mono = _t.monotonic()
+
+    def _summarise_ttl_dict(
+        cache: dict, time_field_index: int = 0, mono: bool = False
+    ) -> dict[str, Any]:
+        """Summarise a { key: (timestamp, value) } style cache dict."""
+        if not cache:
+            return {"entries": 0, "keys": []}
+        ages = []
+        keys_info = []
+        ref = now_mono if mono else now
+        for k, v in cache.items():
+            ts = v[time_field_index] if isinstance(v, tuple) else 0
+            age = ref - ts
+            key_str = str(k) if not isinstance(k, str) else k
+            keys_info.append({"key": key_str[:120], "age_s": round(age, 1)})
+            ages.append(age)
+        return {
+            "entries": len(cache),
+            "oldest_age_s": round(max(ages), 1) if ages else 0,
+            "newest_age_s": round(min(ages), 1) if ages else 0,
+            "keys": sorted(keys_info, key=lambda x: x["age_s"]),
+        }
+
+    def _summarise_entry_dict(
+        cache: dict, mono: bool = True
+    ) -> dict[str, Any]:
+        """Summarise a { key: _TTLCacheEntry } dict (bus caches).
+
+        Auto-detects whether timestamps are monotonic (~222k range on a
+        machine with 2.5 days uptime) or epoch (~1.77B).  Uses the
+        appropriate reference clock.
+        """
+        if not cache:
+            return {"entries": 0, "keys": []}
+        ages = []
+        keys_info = []
+        for k, entry in cache.items():
+            ts = entry.ts
+            # Heuristic: epoch timestamps are > 1 billion, monotonic < 1 million
+            ref = now if ts > 1_000_000_000 else now_mono
+            age = max(0, ref - ts)
+            keys_info.append({"key": str(k)[:120], "age_s": round(age, 1)})
+            ages.append(age)
+        return {
+            "entries": len(cache),
+            "oldest_age_s": round(max(ages), 1) if ages else 0,
+            "newest_age_s": round(min(ages), 1) if ages else 0,
+            "keys": sorted(keys_info, key=lambda x: x["age_s"]),
+        }
+
+    # ── MTA feed cache (AsyncTTLCache) ──
+    mta_entries = {}
+    for k, (ts, _) in _HTTP_CACHE._cache.items():
+        age = now - ts
+        short_key = k.split("?")[0] if "?" in k else k
+        mta_entries[short_key[:100]] = {"age_s": round(age, 1), "fresh": age < _HTTP_CACHE.ttl}
+    mta_stats = cache_stats._stats.get("mta.feed")
+
+    # ── Bus caches (_TTLCacheEntry uses monotonic timestamps) ──
+    bus = {
+        "arrivals": _summarise_entry_dict(_arrivals_cache),
+        "vehicles": _summarise_entry_dict(_vehicle_cache),
+        "stops": _summarise_entry_dict(_stops_cache),
+        "routes": _summarise_entry_dict(_routes_cache),
+        "route_shapes": _summarise_entry_dict(_route_shape_cache),
+        "nearby_stops": {
+            "entries": len(_nearby_stops_cache),
+            "keys": [
+                {
+                    "key": str(k),
+                    "age_s": round(
+                        max(0, (now if v[0] > 1_000_000_000 else now_mono) - v[0]), 1
+                    ),
+                }
+                for k, v in _nearby_stops_cache.items()
+            ][:50],
+        },
+    }
+
+    # ── Nearby response cache ──
+    nearby = _summarise_ttl_dict(_nearby_resp_cache)
+
+    # ── Redis (L3) ──
+    redis_info: dict[str, Any] = {"connected": False}
+    rc = _redis.get_client()
+    if rc:
+        try:
+            info = await rc.info("memory")
+            db_size = await rc.dbsize()
+            redis_info = {
+                "connected": True,
+                "db_size_keys": db_size,
+                "used_memory_human": info.get("used_memory_human", "?"),
+                "used_memory_peak_human": info.get("used_memory_peak_human", "?"),
+                "maxmemory_human": info.get("maxmemory_human", "?"),
+                "eviction_policy": info.get("maxmemory_policy", "?"),
+            }
+            # Sample some keys to show what's stored
+            sample_keys = []
+            cursor, keys = await rc.scan(cursor=0, count=50)
+            for raw_key in keys[:50]:
+                key_str = raw_key.decode() if isinstance(raw_key, bytes) else str(raw_key)
+                ttl = await rc.ttl(key_str)
+                sample_keys.append({"key": key_str[:120], "ttl_s": ttl})
+            redis_info["sample_keys"] = sorted(sample_keys, key=lambda x: x["key"])
+        except Exception as exc:
+            redis_info["error"] = str(exc)
+
+    # ── Cache stats (hit/miss counters) ──
+    stats_snapshot = {}
+    for kind, s in sorted(cache_stats._stats.items()):
+        stats_snapshot[kind] = {
+            "gets": s.total_gets,
+            "fresh": s.fresh,
+            "stale": s.stale,
+            "miss": s.miss,
+            "sets": s.sets,
+            "hit_pct": round(s.hit_pct, 1),
+            "errors": s.errors,
+        }
+
+    return {
+        "mta_feed_cache": {
+            "entries": len(_HTTP_CACHE._cache),
+            "ttl_s": _HTTP_CACHE.ttl,
+            "max_size": _HTTP_CACHE.max_size,
+            "feeds": mta_entries,
+        },
+        "bus_caches": bus,
+        "nearby_response_cache": nearby,
+        "redis": redis_info,
+        "cache_stats": stats_snapshot,
+    }
+
+
 @app.post("/admin/cache/clear")
 async def clear_all_caches(request: Request) -> dict[str, Any]:
     """Clear all in-memory caches. Localhost only — used by speed tests.
