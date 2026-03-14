@@ -1448,8 +1448,46 @@ _all_trunk_lane_offsets_cache: dict[int, float] | None = None
 
 
 def get_processed_stops() -> list[dict]:
-    """Return the most recently computed snapped stop positions."""
-    return _processed_stops_cache or []
+    """Return the most recently computed snapped stop positions.
+
+    If the corridor pipeline hasn't run yet (cache empty), fall back to
+    raw GTFS positions so the ``/subway/stations/processed`` endpoint
+    always returns usable data regardless of call order.
+    """
+    if _processed_stops_cache:
+        return _processed_stops_cache
+
+    # ── Fallback: raw GTFS positions (no snapping) ──
+    from app.services.mapping.subway_shapes import get_all_subway_stations
+
+    raw_stations = get_all_subway_stations()
+    if not raw_stations:
+        return []
+
+    results: list[dict] = []
+    for station in raw_stations:
+        routes = station.get("routes", [])
+        lat = station["lat"]
+        lon = station["lon"]
+        trunk_groups: set[int] = set()
+        positions: list[dict] = []
+        for rid in routes:
+            positions.append({"route_id": rid, "lat": lat, "lon": lon})
+            trunk = ROUTE_TO_TRUNK.get(rid)
+            if trunk is not None:
+                trunk_groups.add(trunk)
+        if not positions:
+            positions.append({"route_id": routes[0] if routes else "", "lat": lat, "lon": lon})
+        results.append({
+            "station_id": station["id"],
+            "name": station["name"],
+            "is_transfer": len(trunk_groups) >= 2,
+            "positions": positions,
+        })
+    TrackLogger.info(
+        f"[StopSnap] Cache empty — returned {len(results)} raw GTFS positions"
+    )
+    return results
 
 
 def _compute_trunk_lane_offset_raw(trunk_idx: int) -> float:
