@@ -281,7 +281,19 @@ enum StationComplexLookup {
 
     /// Generates a stable unique complex ID for stations not in the
     /// curated complex registry.
+    ///
+    /// Uses FNV-1a 64-bit hash for deterministic, collision-resistant
+    /// IDs.  Swift's `String.hashValue` is randomized per process,
+    /// which caused different stations to collide on every launch —
+    /// merging e.g. Bedford Av + 238 St and placing the centroid in
+    /// the East River.  FNV-1a with a 2-billion-bucket range makes
+    /// collisions statistically impossible for ~500 stations.
     private static func defaultComplexID(for stationID: String) -> Int {
-        return 10_000 + abs(stationID.hashValue % 90_000)
+        var hash: UInt64 = 14_695_981_039_346_656_037          // FNV offset basis
+        for byte in stationID.utf8 {
+            hash ^= UInt64(byte)
+            hash &*= 1_099_511_628_211                          // FNV prime
+        }
+        return 10_000 + Int(hash & 0x7FFF_FFFF)                // ~2.1 billion buckets
     }
 }
