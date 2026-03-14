@@ -276,6 +276,15 @@ class ProcessedStationsResponse(BaseModel):
     stations: list[ProcessedStation]
 
 
+class CommuterRailStop(BaseModel):
+    """A single commuter rail stop (station) with coordinates."""
+
+    stop_id: str
+    name: str
+    lat: float
+    lon: float
+
+
 class CommuterRailLineOverlay(BaseModel):
     """Lightweight shape for drawing a single commuter rail line on the map."""
 
@@ -284,6 +293,7 @@ class CommuterRailLineOverlay(BaseModel):
     color_hex: str
     polylines: list[str]
     mode: str  # "lirr" or "mnr"
+    stops: list[CommuterRailStop] = []
 
 
 class AllCommuterRailLinesResponse(BaseModel):

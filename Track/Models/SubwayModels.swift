@@ -135,6 +135,21 @@ struct TrunkGroupPolylines: Codable {
     }
 }
 
+/// A single commuter-rail stop within a line overlay.
+struct CommuterRailStopOverlay: Codable {
+    let stopId: String
+    let name: String
+    let lat: Double
+    let lon: Double
+
+    enum CodingKeys: String, CodingKey {
+        case stopId = "stop_id"
+        case name
+        case lat
+        case lon
+    }
+}
+
 /// Lightweight overlay for drawing a single commuter rail line on the map.
 struct CommuterRailLineOverlay: Codable, Identifiable {
     var id: String { routeId }
@@ -143,6 +158,7 @@ struct CommuterRailLineOverlay: Codable, Identifiable {
     let colorHex: String
     let polylines: [String]
     let mode: String  // "lirr" or "mnr"
+    let stops: [CommuterRailStopOverlay]
 
     enum CodingKeys: String, CodingKey {
         case routeId = "route_id"
@@ -150,6 +166,17 @@ struct CommuterRailLineOverlay: Codable, Identifiable {
         case colorHex = "color_hex"
         case polylines
         case mode
+        case stops
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        routeId = try container.decode(String.self, forKey: .routeId)
+        name = try container.decode(String.self, forKey: .name)
+        colorHex = try container.decode(String.self, forKey: .colorHex)
+        polylines = try container.decode([String].self, forKey: .polylines)
+        mode = try container.decode(String.self, forKey: .mode)
+        stops = try container.decodeIfPresent([CommuterRailStopOverlay].self, forKey: .stops) ?? []
     }
 
     /// Decodes polylines on demand.

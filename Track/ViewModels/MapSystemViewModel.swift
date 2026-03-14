@@ -333,6 +333,8 @@ final class MapSystemViewModel {
         }
 
         // Also load commuter rail from disk cache
+        var commuterStops: [CachedSubwayStation] = []
+
         if let lirrResponse = cache.getCachedLIRRShapes() {
             decoded.append(contentsOf: lirrResponse.lines.map { line in
                 CachedTransitLine(
@@ -342,6 +344,16 @@ final class MapSystemViewModel {
                     mode: .lirr
                 )
             })
+            for line in lirrResponse.lines {
+                for stop in line.stops {
+                    commuterStops.append(CachedSubwayStation(
+                        id: stop.stopId,
+                        name: stop.name,
+                        coordinate: CLLocationCoordinate2D(latitude: stop.lat, longitude: stop.lon),
+                        routes: [line.routeId]
+                    ))
+                }
+            }
         }
         if let mnrResponse = cache.getCachedMNRShapes() {
             decoded.append(contentsOf: mnrResponse.lines.map { line in
@@ -352,6 +364,34 @@ final class MapSystemViewModel {
                     mode: .mnr
                 )
             })
+            for line in mnrResponse.lines {
+                for stop in line.stops {
+                    commuterStops.append(CachedSubwayStation(
+                        id: stop.stopId,
+                        name: stop.name,
+                        coordinate: CLLocationCoordinate2D(latitude: stop.lat, longitude: stop.lon),
+                        routes: [line.routeId]
+                    ))
+                }
+            }
+        }
+
+        // Merge commuter-rail stops into the station list (dedup by ID)
+        if !commuterStops.isEmpty {
+            var stopMap: [String: CachedSubwayStation] = [:]
+            for s in commuterStops {
+                if var existing = stopMap[s.id] {
+                    let merged = Array(Set(existing.routes + s.routes)).sorted()
+                    existing = CachedSubwayStation(
+                        id: existing.id, name: existing.name,
+                        coordinate: existing.coordinate, routes: merged
+                    )
+                    stopMap[s.id] = existing
+                } else {
+                    stopMap[s.id] = s
+                }
+            }
+            cachedStations.append(contentsOf: stopMap.values)
         }
 
         guard !decoded.isEmpty else { return false }
@@ -400,6 +440,9 @@ final class MapSystemViewModel {
             self.computeSubwayOffsets()
 
             // Now fold in LIRR and MNR results (already fetched in parallel)
+            // Also extract commuter-rail stops so they appear as station dots.
+            var commuterStops: [CachedSubwayStation] = []
+
             if let lirrResponse = await lirrTask {
                 let lirrLines: [CachedTransitLine] = lirrResponse.lines.map { line in
                     CachedTransitLine(
@@ -411,6 +454,18 @@ final class MapSystemViewModel {
                 }
                 decoded.append(contentsOf: lirrLines)
                 OfflineCacheManager.shared.cacheLIRRShapes(lirrResponse)
+
+                // Collect LIRR stops
+                for line in lirrResponse.lines {
+                    for stop in line.stops {
+                        commuterStops.append(CachedSubwayStation(
+                            id: stop.stopId,
+                            name: stop.name,
+                            coordinate: CLLocationCoordinate2D(latitude: stop.lat, longitude: stop.lon),
+                            routes: [line.routeId]
+                        ))
+                    }
+                }
             }
 
             if let mnrResponse = await mnrTask {
@@ -424,6 +479,46 @@ final class MapSystemViewModel {
                 }
                 decoded.append(contentsOf: mnrLines)
                 OfflineCacheManager.shared.cacheMNRShapes(mnrResponse)
+
+                // Collect MNR stops
+                for line in mnrResponse.lines {
+                    for stop in line.stops {
+                        commuterStops.append(CachedSubwayStation(
+                            id: stop.stopId,
+                            name: stop.name,
+                            coordinate: CLLocationCoordinate2D(latitude: stop.lat, longitude: stop.lon),
+                            routes: [line.routeId]
+                        ))
+                    }
+                }
+            }
+
+            // Merge commuter-rail stops into the station list so they
+            // appear as dots on the system map alongside subway stations.
+            if !commuterStops.isEmpty {
+                // Deduplicate by stop ID — a stop shared by multiple
+                // branches keeps all its route IDs.
+                var stopMap: [String: CachedSubwayStation] = [:]
+                for s in commuterStops {
+                    if var existing = stopMap[s.id] {
+                        let merged = Array(Set(existing.routes + s.routes)).sorted()
+                        existing = CachedSubwayStation(
+                            id: existing.id,
+                            name: existing.name,
+                            coordinate: existing.coordinate,
+                            routes: merged
+                        )
+                        stopMap[s.id] = existing
+                    } else {
+                        stopMap[s.id] = s
+                    }
+                }
+                let dedupedStops = Array(stopMap.values)
+                self.cachedStations.append(contentsOf: dedupedStops)
+                self.consolidateStations()
+                AppLogger.shared.log(
+                    "STATIONS",
+                    message: "Added \(dedupedStops.count) commuter-rail stops (\(commuterStops.count) raw)")
             }
 
             // Log details about what we loaded
@@ -1138,7 +1233,12 @@ final class MapSystemViewModel {
         case "N", "Q", "R", "W":          return 8
         case "S":                          return 9
         case "SI":                         return 10
-        default:                           return 99
+        default:
+            // Commuter rail: each agency gets its own group so that
+            // commuter-rail stations never merge with subway stations.
+            if r.hasPrefix("LIRR") { return 11 }
+            if r.hasPrefix("MNR")  { return 12 }
+            return 99
         }
     }
 

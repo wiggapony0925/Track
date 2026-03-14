@@ -13,6 +13,7 @@ from app.models import (
     AllCommuterRailLinesResponse,
     BusStop,
     CommuterRailLineOverlay,
+    CommuterRailStop,
     DirectionShape,
     RouteShape,
     TrackArrival,
@@ -35,12 +36,17 @@ async def mnr_shapes_all() -> AllCommuterRailLinesResponse:
     overlays: list[CommuterRailLineOverlay] = []
     for line in lines_data:
         encoded = [_encode_polyline(coords) for coords in line["polylines"]]
+        stops = [
+            CommuterRailStop(stop_id=s.stop_id, name=s.name, lat=s.lat, lon=s.lon)
+            for s in line.get("stops", [])
+        ]
         overlays.append(CommuterRailLineOverlay(
             route_id=line["route_id"],
             name=line["name"],
             color_hex=line["color_hex"],
             polylines=encoded,
             mode="mnr",
+            stops=stops,
         ))
     return AllCommuterRailLinesResponse(lines=overlays)
 

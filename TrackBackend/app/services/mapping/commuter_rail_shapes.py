@@ -410,11 +410,13 @@ def get_all_lirr_lines() -> list[dict]:
                 polylines.append(_unpack_coords(buf))
 
         if polylines:
+            all_stops = _resolve_stops_for_shapes(unique_sids, _lirr_shape_stop_map(), _lirr_stops())
             results.append({
                 "route_id": f"LIRR_{route_id}",
                 "name": route.name,
                 "color_hex": route.color_hex,
                 "polylines": polylines,
+                "stops": all_stops,
             })
 
     TrackLogger.info(f"LIRR shapes: {len(results)} branches loaded")
@@ -476,11 +478,13 @@ def get_all_mnr_lines() -> list[dict]:
                 polylines.append(_unpack_coords(buf))
 
         if polylines:
+            all_stops = _resolve_stops_for_shapes(unique_sids, _mnr_shape_stop_map(), _mnr_stops())
             results.append({
                 "route_id": f"MNR_{route_id}",
                 "name": route.name,
                 "color_hex": route.color_hex,
                 "polylines": polylines,
+                "stops": all_stops,
             })
 
     TrackLogger.info(f"MNR shapes: {len(results)} branches loaded")
