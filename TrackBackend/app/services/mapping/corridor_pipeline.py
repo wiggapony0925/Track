@@ -1951,6 +1951,15 @@ def _quantise_visual_lane_offset(offset_m: float) -> float:
     return round(visual / _EXPORT_LANE_OFFSET_STEP) * _EXPORT_LANE_OFFSET_STEP
 
 
+def _is_visual_transition_offset_value(offset: float) -> bool:
+    magnitude = abs(offset)
+    if magnitude < 1e-9:
+        return False
+    is_quarter_multiple = abs(round(magnitude * 4.0) - (magnitude * 4.0)) < 1e-9
+    is_whole_lane_multiple = abs(round(magnitude) - magnitude) < 1e-9
+    return is_quarter_multiple and not is_whole_lane_multiple
+
+
 def _build_visual_offset_runs(offsets: list[float]) -> list[_VisualOffsetRun]:
     if not offsets:
         return []
@@ -2013,6 +2022,104 @@ def _is_visual_y_transition(prev_offset: float, current_offset: float, next_offs
     return is_half_lane_multiple and not is_whole_lane_multiple
 
 
+def _transition_chain_length(
+    runs: list[_VisualOffsetRun],
+    center_idx: int,
+) -> int:
+    """Return the length of the monotonic same-sign offset chain around a run."""
+    if center_idx < 0 or center_idx >= len(runs):
+        return 0
+
+    current = runs[center_idx]
+    if abs(current.offset) < 1e-9:
+        return 0
+
+    sign = 1 if current.offset > 0 else -1
+    chain_length = 1
+
+    last_abs = abs(current.offset)
+    for idx in range(center_idx - 1, -1, -1):
+        candidate = runs[idx]
+        if abs(candidate.offset) > 1e-9:
+            candidate_sign = 1 if candidate.offset > 0 else -1
+            if candidate_sign != sign:
+                break
+        candidate_abs = abs(candidate.offset)
+        if candidate_abs >= last_abs - 1e-9:
+            break
+        if last_abs - candidate_abs > 0.5 + 1e-9:
+            break
+        chain_length += 1
+        last_abs = candidate_abs
+
+    last_abs = abs(current.offset)
+    for idx in range(center_idx + 1, len(runs)):
+        candidate = runs[idx]
+        if abs(candidate.offset) > 1e-9:
+            candidate_sign = 1 if candidate.offset > 0 else -1
+            if candidate_sign != sign:
+                break
+        candidate_abs = abs(candidate.offset)
+        if candidate_abs <= last_abs + 1e-9:
+            break
+        if candidate_abs - last_abs > 0.5 + 1e-9:
+            break
+        chain_length += 1
+        last_abs = candidate_abs
+
+    return chain_length
+
+
+def _should_preserve_visual_transition_run(
+    runs: list[_VisualOffsetRun],
+    idx: int,
+) -> bool:
+    if idx <= 0 or idx >= len(runs) - 1:
+        return False
+
+    prev_run = runs[idx - 1]
+    current_run = runs[idx]
+    next_run = runs[idx + 1]
+
+    if not _is_visual_y_transition(
+        prev_run.offset,
+        current_run.offset,
+        next_run.offset,
+    ):
+        current_abs = abs(current_run.offset)
+        if abs(current_run.offset) < 1e-9:
+            return False
+
+        non_zero_signs = {
+            1 if value > 0 else -1
+            for value in (prev_run.offset, current_run.offset, next_run.offset)
+            if abs(value) > 1e-9
+        }
+        if len(non_zero_signs) > 1:
+            return False
+
+        prev_abs = abs(prev_run.offset)
+        next_abs = abs(next_run.offset)
+        abs_monotonic = (
+            prev_abs < current_abs < next_abs
+            or prev_abs > current_abs > next_abs
+        )
+        if not abs_monotonic:
+            return False
+
+        doubled = current_abs * 2.0
+        quadrupled = current_abs * 4.0
+        is_half_lane_multiple = abs(round(doubled) - doubled) < 1e-9
+        is_quarter_multiple = abs(round(quadrupled) - quadrupled) < 1e-9
+        is_whole_lane_multiple = abs(round(current_abs) - current_abs) < 1e-9
+        if is_whole_lane_multiple or not is_quarter_multiple or is_half_lane_multiple:
+            return False
+
+        return _transition_chain_length(runs, idx) >= 4
+
+    return True
+
+
 def _expand_visual_y_transition_runs(visual_offsets: list[float]) -> list[float]:
     """Give Y-split fan-out runs enough vertices to render as a visible taper."""
     if len(visual_offsets) < 5:
@@ -2029,11 +2136,7 @@ def _expand_visual_y_transition_runs(visual_offsets: list[float]) -> list[float]
             current_run = runs[idx]
             next_run = runs[idx + 1]
 
-            if not _is_visual_y_transition(
-                prev_run.offset,
-                current_run.offset,
-                next_run.offset,
-            ):
+            if not _should_preserve_visual_transition_run(runs, idx):
                 continue
 
             point_count = current_run.end - current_run.start
@@ -2105,11 +2208,7 @@ def _stabilize_visual_lane_offsets(
             ):
                 continue
 
-            if _is_visual_y_transition(
-                prev_run.offset,
-                current_run.offset,
-                next_run.offset,
-            ):
+            if _should_preserve_visual_transition_run(runs, idx):
                 continue
 
             offsets = (prev_run.offset, current_run.offset, next_run.offset)
@@ -2190,7 +2289,12 @@ def _segment_export_path_by_lane_offset(
         prev_coords, prev_offset = merged[-1]
         # Smooth tiny transition runs back into the neighbouring segment so
         # the client doesn't render dozens of one-hop offset features.
-        if len(coords) <= 3 and abs(prev_offset - lane_offset) <= _EXPORT_LANE_OFFSET_STEP:
+        if (
+            len(coords) <= 3
+            and abs(prev_offset - lane_offset) <= _EXPORT_LANE_OFFSET_STEP
+            and not _is_visual_transition_offset_value(prev_offset)
+            and not _is_visual_transition_offset_value(lane_offset)
+        ):
             merged[-1] = (prev_coords + coords[1:], prev_offset)
             continue
 

@@ -47,3 +47,13 @@ def test_segment_export_expands_short_y_split_transition_for_visibility():
 
     assert lane_offsets == [0.0, 0.5, 1.0]
     assert len(segments[1][0]) >= 5
+
+
+def test_segment_export_preserves_quarter_step_inside_long_fanout_ramp():
+    coords = _straight_path(10)
+    offsets_m = [0.0, 0.0, 10.0, 10.0, 20.0, 20.0, 30.0, 30.0, 40.0, 40.0]
+
+    segments = _segment_export_path_by_lane_offset(coords, offsets_m)
+    lane_offsets = [lane_offset for _, lane_offset in segments]
+
+    assert lane_offsets == [0.0, 0.25, 0.5, 0.75, 1.0]
