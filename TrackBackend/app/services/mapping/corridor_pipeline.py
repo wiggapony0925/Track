@@ -2095,9 +2095,40 @@ def get_trunk_polylines() -> list[dict]:
 
     # Use raw (non-offset) trunk paths so lines pass through stations.
     # Fall back to offset paths if raw cache isn't populated yet.
-    paths = _trunk_raw_paths_cache or _trunk_offset_paths_cache
+    raw_paths = _trunk_raw_paths_cache
+    paths = raw_paths or _trunk_offset_paths_cache
     if not paths:
         return []
+
+    # Export cleanup should not undo station attachment. Despiking the raw
+    # geometry is still useful, but a few near-terminal station vertices can
+    # be removed as "nearly colinear" unless we snap the cleaned result back
+    # through station nodes before encoding.
+    export_paths: dict[int, list[LineString]] = {}
+    for trunk_idx, line_strings in paths.items():
+        cleaned_lines: list[LineString] = []
+        for ls in line_strings:
+            coords_m = list(ls.coords)
+            if len(coords_m) < 2:
+                continue
+
+            if raw_paths is not None:
+                coords_m = _despike_coords(coords_m, min_angle_deg=15.0)
+                if len(coords_m) < 2:
+                    continue
+
+            cleaned_lines.append(LineString(coords_m))
+
+        if cleaned_lines:
+            export_paths[trunk_idx] = cleaned_lines
+
+    if raw_paths is not None and export_paths:
+        try:
+            export_paths = _snap_paths_to_stations(export_paths)
+        except Exception as exc:
+            TrackLogger.warning(
+                f"[TrunkExport] Station re-snap failed after cleanup: {exc}"
+            )
 
     # Pre-compute all trunk offsets with minimum-separation enforcement.
     global _all_trunk_lane_offsets_cache
@@ -2105,7 +2136,7 @@ def get_trunk_polylines() -> list[dict]:
     separated_offsets = _all_trunk_lane_offsets_cache
 
     result: list[dict] = []
-    for trunk_idx, line_strings in paths.items():
+    for trunk_idx, line_strings in export_paths.items():
         if trunk_idx < 0 or trunk_idx >= len(TRUNK_GROUPS):
             continue
         group = TRUNK_GROUPS[trunk_idx]
@@ -2114,18 +2145,6 @@ def get_trunk_polylines() -> list[dict]:
         encoded: list[str] = []
         for ls in line_strings:
             coords_m = list(ls.coords)
-            if len(coords_m) < 2:
-                continue
-
-            # Clean up spikes / bowties from stem injection, branch
-            # extraction snapping, or noisy GTFS geometry.  This runs
-            # on the raw paths (no arc offset) so we use a tighter
-            # threshold (15°) than the standard 25° — stem injection
-            # creates acute geometry at junction points that the
-            # standard filter misses.  This is safe because raw paths
-            # don't have arc-offset curves that need wide-angle
-            # preservation.
-            coords_m = _despike_coords(coords_m, min_angle_deg=15.0)
             if len(coords_m) < 2:
                 continue
 
