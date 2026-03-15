@@ -211,10 +211,11 @@ def _nearby_static_bus_routes(lat: float, lon: float, radius_m: int) -> dict[str
     if not index:
         return {}
 
-    _METERS_PER_DEG_LAT = 111_000
-    _METERS_PER_DEG_LON_NYC = 85_000
-    lat_span = radius_m / _METERS_PER_DEG_LAT
-    lon_span = radius_m / _METERS_PER_DEG_LON_NYC
+    from app.providers import get_provider as _get_provider
+    _prov = _get_provider()
+
+    lat_span = radius_m / _prov.meters_per_deg_lat
+    lon_span = radius_m / _prov.meters_per_deg_lon
 
     best_by_route: dict[str, tuple[float, tuple[str, float, float, str]]] = {}
     for stop_id, (s_lat, s_lon, s_name, routes) in index.items():

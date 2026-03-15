@@ -41,7 +41,7 @@ from app.models import BusArrival, BusRoute, BusStop, BusVehicle, DirectionShape
 from app.utils.geo_utils import haversine_m
 from app.utils import cache_stats
 from app.utils.logger import TrackLogger
-from app.utils.polyline_utils import decode_polyline, encode_polyline
+from app.utils.polyline_utils import decode_polyline, encode_polyline, densify_wgs84, simplify_polyline
 from app.ml.recency_model import observe_siri_delay, observe_siri_delays_batch
 
 # Python 3.14 no longer creates an implicit main-thread event loop.
@@ -294,6 +294,27 @@ def _merge_polyline_segments(encoded_segments: list[str], gap_threshold_m: float
             chains.append(seg)
 
     return [encode_polyline(chain) for chain in chains]
+
+
+def _densify_bus_polylines(encoded_segments: list[str]) -> list[str]:
+    """Densify + simplify encoded polylines — same pipeline as subway.
+
+    Bus OBA polylines have sparse vertices (100-500 m gaps) that look
+    jagged when drawn on a map.  Densification inserts interpolated
+    points so curves follow streets smoothly, then RDP simplification
+    removes redundant collinear points on straight segments to keep
+    the payload small.  Matches the subway route-detail quality.
+    """
+    result: list[str] = []
+    for seg in encoded_segments:
+        coords = decode_polyline(seg)
+        if not coords:
+            result.append(seg)
+            continue
+        densified = densify_wgs84(coords)
+        simplified = simplify_polyline(densified, tolerance=0.00005)
+        result.append(encode_polyline(simplified))
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -1253,11 +1274,11 @@ async def get_nearby_stops(
         return []
 
     # Convert meters → degrees.
-    _METERS_PER_DEG_LAT = 111_000
-    _METERS_PER_DEG_LON_NYC = 85_000
+    from app.providers import get_provider as _get_provider
+    _prov = _get_provider()
 
-    lat_span = max(0.005, effective_radius / _METERS_PER_DEG_LAT)
-    lon_span = max(0.005, effective_radius / _METERS_PER_DEG_LON_NYC)
+    lat_span = max(0.005, effective_radius / _prov.meters_per_deg_lat)
+    lon_span = max(0.005, effective_radius / _prov.meters_per_deg_lon)
 
     url = settings.urls.bus_oba_base + eps.stops_near_location
     params = {
@@ -2183,9 +2204,10 @@ async def _get_route_shape_impl(route_id: str) -> RouteShape:
 
     # Merge adjacent polyline segments to eliminate gaps between short segments.
     # OBA returns many tiny fragments; merging produces continuous lines.
-    merged_polylines = _merge_polyline_segments(polylines)
+    # Then densify to ~1 m vertex spacing so curves look smooth on the map.
+    merged_polylines = _densify_bus_polylines(_merge_polyline_segments(polylines))
     for d in directions:
-        d.polylines = _merge_polyline_segments(d.polylines)
+        d.polylines = _densify_bus_polylines(_merge_polyline_segments(d.polylines))
 
     TrackLogger.bus(f"Shape for {route_id}: {len(merged_polylines)} merged polylines (from {len(polylines)} raw), "
           f"{len(stops)} stops, {len(directions)} directions"

@@ -98,12 +98,12 @@ enum ArrivalHelpers {
     ) -> String {
         // 1. GTFS headsign (most reliable when available)
         if let hs = shapeHeadsign, !hs.isEmpty {
-            return hs
+            return cleanBusHeadsign(hs)
         }
 
         // 2. Last stop in route shape
         if let name = shapeLastStopName, !name.isEmpty {
-            return name
+            return cleanBusHeadsign(name)
         }
 
         // 3. Backend directionLabel (skipped by detail sheet for subway)
@@ -235,5 +235,51 @@ enum ArrivalHelpers {
                 return mins >= 0 ? mins : nil
             }
             .min()
+    }
+
+    // MARK: - Bus Headsign Cleaning
+
+    /// Cleans OBA / GTFS bus headsigns for display in direction pills.
+    ///
+    /// MTA bus headsigns carry scheduling cruft that's meaningless to riders:
+    ///   "RUSH JFK AIRPORT via LEFFERTS BL via 130 ST"
+    ///     → strips "RUSH " prefix (rush-hour/limited service designator)
+    ///     → strips " via ..." suffixes (routing detail, not destination)
+    ///     → title-cases for readability
+    ///   Result: "Jfk Airport"
+    ///
+    /// Also handles:
+    ///   "LTD …" (Limited service prefix)
+    ///   ALL-CAPS OBA names → Title Case
+    static func cleanBusHeadsign(_ raw: String) -> String {
+        var s = raw.trimmingCharacters(in: .whitespaces)
+        guard !s.isEmpty else { return s }
+
+        // Strip MTA scheduling prefixes (case-insensitive)
+        let prefixes = ["RUSH ", "LTD ", "LIMITED "]
+        for prefix in prefixes {
+            if s.uppercased().hasPrefix(prefix) {
+                s = String(s.dropFirst(prefix.count))
+            }
+        }
+
+        // Strip " via ..." suffixes (keeps destination only)
+        if let viaRange = s.range(of: " via ", options: .caseInsensitive) {
+            s = String(s[s.startIndex..<viaRange.lowerBound])
+        }
+
+        // Also strip " VIA " (all caps variant)
+        if let viaRange = s.range(of: " VIA ", options: .literal) {
+            s = String(s[s.startIndex..<viaRange.lowerBound])
+        }
+
+        s = s.trimmingCharacters(in: .whitespaces)
+
+        // Title-case if ALL-CAPS (common for OBA data)
+        if s == s.uppercased(), s.count > 2 {
+            s = s.localizedCapitalized
+        }
+
+        return s
     }
 }

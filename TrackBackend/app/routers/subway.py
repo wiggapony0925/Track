@@ -27,7 +27,7 @@ from app.services.gtfs.data_cleaner import get_arrivals_for_line
 from app.services.mapping.subway_shapes import get_all_subway_stations, get_subway_route_shape, get_subway_service_type
 from app.services.transit.station_lookup import get_nearby_stop_ids, get_stop_info
 from app.utils.logger import TrackLogger
-from app.utils.polyline_utils import decode_polyline as _decode_polyline, encode_polyline as _encode_polyline, densify_wgs84 as _densify_wgs84
+from app.utils.polyline_utils import decode_polyline as _decode_polyline, encode_polyline as _encode_polyline, densify_wgs84 as _densify_wgs84, simplify_polyline as _simplify_polyline
 from app.services.mapping.corridor_pipeline import apply_topological_offsets, get_processed_stops, get_trunk_polylines, ROUTE_TO_TRUNK
 from app.utils.transit_utils import (
     clean_route_id,
@@ -40,49 +40,6 @@ router = APIRouter(tags=["subway"])
 
 # NOTE: Static path endpoints MUST be declared before the wildcard /{line_id}
 # endpoint, otherwise FastAPI would match literal segments as a line_id.
-
-
-def _simplify_polyline(
-    coords: list[tuple[float, float]], tolerance: float = 0.0001
-) -> list[tuple[float, float]]:
-    """Ramer-Douglas-Peucker polyline simplification.
-
-    Removes intermediate points that lie within *tolerance* degrees of the
-    line segment between their neighbours.  A tolerance of 0.0001° ≈ 11 m
-    at NYC latitude — visually identical on the system-map zoom level but
-    cuts the point count by 40-60 %.
-    """
-    if len(coords) <= 2:
-        return coords
-
-    # Find the point with the maximum distance from the line (first, last)
-    first = coords[0]
-    last = coords[-1]
-    max_dist = 0.0
-    max_idx = 0
-
-    dx = last[1] - first[1]
-    dy = last[0] - first[0]
-    line_len_sq = dx * dx + dy * dy
-
-    for i in range(1, len(coords) - 1):
-        if line_len_sq == 0:
-            dist = ((coords[i][0] - first[0]) ** 2 + (coords[i][1] - first[1]) ** 2) ** 0.5
-        else:
-            t = max(0, min(1, ((coords[i][1] - first[1]) * dx + (coords[i][0] - first[0]) * dy) / line_len_sq))
-            proj_lat = first[0] + t * dy
-            proj_lon = first[1] + t * dx
-            dist = ((coords[i][0] - proj_lat) ** 2 + (coords[i][1] - proj_lon) ** 2) ** 0.5
-        if dist > max_dist:
-            max_dist = dist
-            max_idx = i
-
-    if max_dist > tolerance:
-        left = _simplify_polyline(coords[: max_idx + 1], tolerance)
-        right = _simplify_polyline(coords[max_idx:], tolerance)
-        return left[:-1] + right
-    else:
-        return [first, last]
 
 
 @router.get("/subway/shapes/all", response_model=AllSubwayLinesResponse)
@@ -202,8 +159,10 @@ async def subway_shapes_all() -> AllSubwayLinesResponse:
         # Decode existing trunk polylines into coordinate lists for
         # proximity testing.  We'll check each dir-1 vertex against
         # these to find where the branch diverges from the trunk.
-        METERS_PER_DEG: float = 111_000.0
-        COS_NYC: float = 0.76  # cos(40.7°)
+        from app.providers import get_provider as _get_provider
+        _prov = _get_provider()
+        METERS_PER_DEG: float = _prov.meters_per_deg_lat
+        COS_LAT: float = _prov.cos_lat
 
         def _trunk_coords(trunk_idx: int) -> list[list[tuple[float, float]]]:
             """Decode all existing trunk polylines for a trunk group."""
@@ -226,7 +185,7 @@ async def subway_shapes_all() -> AllSubwayLinesResponse:
             for line in trunk_lines:
                 for tlat, tlon in line:
                     dlat = (plat - tlat) * METERS_PER_DEG
-                    dlon = (plon - tlon) * METERS_PER_DEG * COS_NYC
+                    dlon = (plon - tlon) * METERS_PER_DEG * COS_LAT
                     d = (dlat * dlat + dlon * dlon) ** 0.5
                     if d < best:
                         best = d
@@ -525,11 +484,13 @@ def _merge_polyline_segments(
     if len(segments) <= 1:
         return segments
 
-    METERS_PER_DEG = 111_000.0
+    from app.providers import get_provider as _get_provider
+    _prov = _get_provider()
+    METERS_PER_DEG = _prov.meters_per_deg_lat
 
     def _dist_m(a: tuple[float, float], b: tuple[float, float]) -> float:
         dlat = (a[0] - b[0]) * METERS_PER_DEG
-        dlon = (a[1] - b[1]) * METERS_PER_DEG * 0.76  # cos(40.7°)
+        dlon = (a[1] - b[1]) * METERS_PER_DEG * _prov.cos_lat
         return (dlat * dlat + dlon * dlon) ** 0.5
 
     chains: list[list[tuple[float, float]]] = [list(segments[0])]

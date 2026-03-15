@@ -12,9 +12,20 @@ from __future__ import annotations
 import math
 import time as _time
 
-# NYC-specific constants
 METERS_PER_DEG_LAT = 111_000.0
-METERS_PER_DEG_LON_NYC = 85_000.0  # at ~40.7°N
+
+
+def meters_per_deg_lon(lat: float) -> float:
+    """Metres per degree of longitude at the given *lat*.
+
+    Works for any latitude — not tied to a specific region.
+    """
+    return 111_320.0 * math.cos(math.radians(lat))
+
+
+# Backward-compatible alias (NYC ~40.76°N).  New code should call
+# ``meters_per_deg_lon(lat)`` or use the provider's ``meters_per_deg_lon``.
+METERS_PER_DEG_LON_NYC = meters_per_deg_lon(40.758)  # ≈ 84_370
 
 
 def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -33,13 +44,17 @@ def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
-def bounding_box_degrees(radius_m: float) -> tuple[float, float]:
-    """Return (lat_delta, lon_delta) in degrees for a bounding box around NYC.
+def bounding_box_degrees(
+    radius_m: float, center_lat: float = 40.758
+) -> tuple[float, float]:
+    """Return (lat_delta, lon_delta) in degrees for a bounding box.
 
-    Used as a fast O(1) pre-filter before expensive haversine calculations.
+    *center_lat* determines the longitude scaling.  Defaults to NYC
+    for backward compatibility — new callers should pass an explicit
+    latitude (or use ``provider.region_center_lat``).
     """
     lat_delta = radius_m / METERS_PER_DEG_LAT
-    lon_delta = radius_m / METERS_PER_DEG_LON_NYC
+    lon_delta = radius_m / meters_per_deg_lon(center_lat)
     return lat_delta, lon_delta
 
 

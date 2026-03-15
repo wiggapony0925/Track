@@ -1802,71 +1802,63 @@ final class HomeViewModel {
                 guard let self else { return }
                 await self.fetchBusScheduleIfNeeded(expectedRouteId: loadingRouteId)
             }
-            // Load route shape + vehicles for bus routes
-            async let vehiclesTask = TrackAPI.fetchBusVehicles(routeID: group.routeId)
 
             // Check shape cache first — avoids network call on re-select
             let cachedShape: RouteShapeResponse? = getCachedRouteShape(for: group.routeId)
-            let shapeTask: Task<RouteShapeResponse, Error>? = cachedShape == nil
-                ? Task { try await TrackAPI.fetchRouteShape(routeID: group.routeId) }
-                : nil
 
-            do {
-                let vehicles: [BusVehicleResponse] = try await vehiclesTask
-                guard selectedRouteId == loadingRouteId else { return }
-                busVehicles = vehicles
-                // Seed interpolation state so the first updateBusSimulation()
-                // ticks have correct data (no movement until refreshBusVehicles
-                // provides a second GPS reading, but the bookkeeping is ready).
-                _targetBusGPS = Dictionary(
-                    vehicles.map { ($0.vehicleId, $0) },
-                    uniquingKeysWith: { $1 }
-                )
-                for v in vehicles {
-                    previousBusPositions[v.vehicleId] = BusSnapshot(
-                        lat: v.lat, lon: v.lon, timestamp: Date()
-                    )
+            // Fetch shape + vehicles truly in parallel and process each
+            // result the instant it arrives (no sequential bottleneck).
+            await withTaskGroup(of: Void.self) { taskGroup in
+                // — Vehicle fetch —
+                taskGroup.addTask { @MainActor [weak self] in
+                    guard let self else { return }
+                    do {
+                        let vehicles = try await TrackAPI.fetchBusVehicles(routeID: group.routeId)
+                        guard self.selectedRouteId == loadingRouteId else { return }
+                        self.busVehicles = vehicles
+                        self._targetBusGPS = Dictionary(
+                            vehicles.map { ($0.vehicleId, $0) },
+                            uniquingKeysWith: { $1 }
+                        )
+                        for v in vehicles {
+                            self.previousBusPositions[v.vehicleId] = BusSnapshot(
+                                lat: v.lat, lon: v.lon, timestamp: Date()
+                            )
+                        }
+                        self.lastBusUpdateTime = Date()
+                    } catch {
+                        AppLogger.shared.logError("fetchBusVehicles(\(group.routeId))", error: error)
+                    }
                 }
-                lastBusUpdateTime = Date()
-            } catch {
-                AppLogger.shared.logError("fetchBusVehicles(\(group.routeId))", error: error)
+
+                // — Shape fetch —
+                taskGroup.addTask { @MainActor [weak self] in
+                    guard let self else { return }
+                    do {
+                        let loadedShape: RouteShapeResponse
+                        if let cached = cachedShape {
+                            loadedShape = cached
+                            AppLogger.shared.log("SHAPE_CACHE", message: "HIT \(group.routeId)")
+                        } else {
+                            loadedShape = try await TrackAPI.fetchRouteShape(routeID: group.routeId)
+                            self.cacheRouteShape(loadedShape, for: group.routeId)
+                        }
+                        guard self.selectedRouteId == loadingRouteId else { return }
+                        self.routeShape = loadedShape
+                        let decoded: [[CLLocationCoordinate2D]] = loadedShape.decodedPolylines
+                        let totalPoints: Int = decoded.reduce(0) { $0 + $1.count }
+                        AppLogger.shared.log(
+                            "BUS_SHAPE",
+                            message:
+                                "Loaded shape for \(group.routeId): \(loadedShape.polylines.count) polylines (\(totalPoints) total points), \(loadedShape.stops.count) stops"
+                        )
+                        self.enrichGroupWithShapeDirections(loadedShape)
+                    } catch {
+                        AppLogger.shared.logError("fetchRouteShape(\(group.routeId))", error: error)
+                    }
+                }
             }
             // Polling handled by HomeView.onChange(of: selectedRouteId)
-
-            do {
-                let loadedShape: RouteShapeResponse
-                if let cached = cachedShape {
-                    loadedShape = cached
-                    AppLogger.shared.log("SHAPE_CACHE", message: "HIT \(group.routeId)")
-                } else {
-                    loadedShape = try await shapeTask!.value
-                    cacheRouteShape(loadedShape, for: group.routeId)
-                }
-                // Staleness check: if the user navigated away while the
-                // shape was loading, discard the result.
-                guard selectedRouteId == loadingRouteId else { return }
-                routeShape = loadedShape
-                if let shape = routeShape {
-                    // Log decoded polyline details for debugging
-                    let decoded: [[CLLocationCoordinate2D]] = shape.decodedPolylines
-                    let totalPoints: Int = decoded.reduce(0) { $0 + $1.count }
-                    AppLogger.shared.log(
-                        "BUS_SHAPE",
-                        message:
-                            "Loaded shape for \(group.routeId): \(shape.polylines.count) polylines (\(totalPoints) total points), \(shape.stops.count) stops"
-                    )
-
-                    // Enrich the grouped route with any missing directions from the shape.
-                    // The nearby API only returns directions for stops near the user,
-                    // but the route shape knows ALL directions (e.g. both inbound & outbound).
-                    enrichGroupWithShapeDirections(shape)
-                } else {
-                    AppLogger.shared.log(
-                        "BUS_SHAPE", message: "No shape returned for \(group.routeId)")
-                }
-            } catch {
-                AppLogger.shared.logError("fetchRouteShape(\(group.routeId))", error: error)
-            }
         } else if group.isLIRR {
             // LIRR: fetch the branch-specific polyline + live arrivals
             do {
