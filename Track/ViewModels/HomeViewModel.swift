@@ -802,8 +802,10 @@ final class HomeViewModel {
                 }
 
                 // 4) Build inactive polylines from all OTHER directions.
+                //    Now includes bus routes so users can visually distinguish
+                //    the selected direction from alternate paths (dimmed).
                 var inactivePolys: [[CLLocationCoordinate2D]] = []
-                if shouldFilter && shape.directions.count > 1 && !isBus {
+                if shouldFilter && shape.directions.count > 1 {
                     let activeDir = shape.matchedDirection(index: dirIndex, name: dirName)
                     let activePolylineSet = Set(activeDir?.polylines ?? [])
                     var seenEncodedPolylines = activePolylineSet
@@ -818,7 +820,9 @@ final class HomeViewModel {
                             if decoded.count >= 2 { inactive.append(decoded) }
                         }
                     }
-                    let unifiedInactive = unifyTrainPolylines(inactive)
+                    let unifiedInactive = isBus
+                        ? mergeAdjacentPolylines(inactive)
+                        : unifyTrainPolylines(inactive)
                     inactivePolys = unifiedInactive.filter { $0.count >= 2 }.map {
                         smoothPolyline($0, segmentsPerCurve: 4)
                     }

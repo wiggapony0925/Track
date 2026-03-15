@@ -931,14 +931,18 @@ struct MapLibreMapView: UIViewRepresentable {
 
             // ── Active direction ──
             if let split = representable.directionalSplit {
+                // Bus behind segments get softer dimming so the route stays
+                // readable — bus lines are thinner and less prominent than subway.
+                let behindAlpha: CGFloat = isBus ? 0.35 : 0.25
+                let behindCasingAlpha: CGFloat = isBus ? 0.25 : 0.30
                 buildRoutePolylineLayer(
                     style: style,
                     sourceID: "route-behind-source",
                     casingLayerID: "route-behind-casing",
                     fillLayerID: "route-behind-fill",
                     coordinates: split.behind,
-                    color: routeColor.withAlphaComponent(0.25),
-                    casingColor: (isDark ? UIColor(white: 0.7, alpha: 1) : UIColor.white).withAlphaComponent(0.3 * (isBus ? 0.6 : 1.0)),
+                    color: routeColor.withAlphaComponent(behindAlpha),
+                    casingColor: (isDark ? UIColor(white: 0.7, alpha: 1) : UIColor.white).withAlphaComponent(behindCasingAlpha * (isBus ? 0.6 : 1.0)),
                     fillWidth: MapLibreStyleConfig.routeFillWidth,
                     casingWidth: MapLibreStyleConfig.routeCasingWidth
                 )
@@ -984,6 +988,17 @@ struct MapLibreMapView: UIViewRepresentable {
                 return
             }
 
+            let routeColor = representable.routeColor
+            let isDark = representable.isDarkMode
+            // Tight round dots with a soft shadow glow — visible on both
+            // light and dark tiles without overpowering the route line.
+            let dotColor = isDark
+                ? UIColor.white
+                : routeColor.withAlphaComponent(0.85)
+            let glowColor = isDark
+                ? routeColor.withAlphaComponent(0.30)
+                : UIColor.black.withAlphaComponent(0.12)
+
             var mutableCoords = coords
             let feature = MLNPolylineFeature(coordinates: &mutableCoords, count: UInt(mutableCoords.count))
             let shape = MLNShapeCollectionFeature(shapes: [feature])
@@ -996,20 +1011,28 @@ struct MapLibreMapView: UIViewRepresentable {
                 sourcesCreated.insert(sourceID)
 
                 let glow = MLNLineStyleLayer(identifier: glowLayerID, source: source)
-                glow.lineColor = NSExpression(forConstantValue: representable.routeColor.withAlphaComponent(0.25))
+                glow.lineColor = NSExpression(forConstantValue: glowColor)
                 glow.lineWidth = MapLibreStyleConfig.walkingRouteGlowWidth
                 glow.lineCap = NSExpression(forConstantValue: "round")
                 glow.lineJoin = NSExpression(forConstantValue: "round")
-                glow.lineDashPattern = NSExpression(forConstantValue: [1, 10])
+                glow.lineDashPattern = NSExpression(forConstantValue: [0, 3])
                 style.addLayer(glow)
 
                 let dash = MLNLineStyleLayer(identifier: dashLayerID, source: source)
-                dash.lineColor = NSExpression(forConstantValue: UIColor.white)
+                dash.lineColor = NSExpression(forConstantValue: dotColor)
                 dash.lineWidth = MapLibreStyleConfig.walkingRouteWidth
                 dash.lineCap = NSExpression(forConstantValue: "round")
                 dash.lineJoin = NSExpression(forConstantValue: "round")
-                dash.lineDashPattern = NSExpression(forConstantValue: [1, 10])
+                dash.lineDashPattern = NSExpression(forConstantValue: [0, 3])
                 style.addLayer(dash)
+            }
+
+            // Update colors on source change (route switch, dark mode toggle)
+            if let glow = style.layer(withIdentifier: glowLayerID) as? MLNLineStyleLayer {
+                glow.lineColor = NSExpression(forConstantValue: glowColor)
+            }
+            if let dash = style.layer(withIdentifier: dashLayerID) as? MLNLineStyleLayer {
+                dash.lineColor = NSExpression(forConstantValue: dotColor)
             }
         }
 
