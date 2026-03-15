@@ -263,9 +263,13 @@ _MAX_SNAP_DIST_M: float = 200.0
 _BRANCH_MERGE_DIST_M: float = 50.0
 
 # Maximum number of extra vertices to include beyond the uncovered run
-# when doing distance-based extension.  Prevents runaway extension on
-# shapes that never truly merge with the trunk.
-_BRANCH_EXTEND_MAX: int = 200
+# when doing distance-based extension.  Must be large enough that the
+# backward extension can reach the junction where a branch diverges from
+# the shared trunk.  E.g. the E train diverges from the 8th Ave trunk
+# at 42nd St — the uncovered run starts ~500 vertices later in Queens,
+# so we need ≥500 vertices of backward extension.  2000 covers ~60 km
+# of GTFS geometry at typical density, far more than any NYC branch.
+_BRANCH_EXTEND_MAX: int = 2000
 
 # Maximum gap (meters) allowed between consecutive vertices in a branch
 # stub.  Stubs with jumps exceeding this are considered corrupted and
@@ -744,12 +748,22 @@ def _unify_via_grid(
                         kept.append(stub_line)
                         _add_line(stub_line)
 
-    # Chain-merge nearby endpoints first (naturally-connected segments)
-    merged = _chain_merge(kept, MERGE_GAP_M)
+    # Inject trunk stems FIRST — each branch's junction endpoint is
+    # connected to the baseline (or another already-connected branch)
+    # before chain-merge runs.
+    #
+    # Critical ordering: if chain-merge runs first, it can join two
+    # branch stubs (e.g. C + E) at their Manhattan junction endpoints,
+    # creating a single long path whose terminal endpoints are both in
+    # the outer boroughs — far from the baseline.  Stem injection then
+    # fails because neither endpoint is close to anything connected.
+    # By stemming first, each stub gets its junction wired to the
+    # baseline individually.
+    stemmed = _inject_trunk_stems(kept)
 
-    # Inject trunk stems at branch junctions for visual connectivity
-    # (runs AFTER chain-merge so the extended baseline is used)
-    return _inject_trunk_stems(merged)
+    # Chain-merge nearby endpoints for cleanup (naturally-connected
+    # segments whose stems overlap or whose endpoints touch).
+    return _chain_merge(stemmed, MERGE_GAP_M)
 
 
 def _inject_trunk_stems(
@@ -762,103 +776,219 @@ def _inject_trunk_stems(
     polyline independently — without geometric overlap at the junction,
     branches appear as floating disconnected lines.
 
-    For each non-baseline segment, this function:
-    1. Checks each endpoint against the trunk baseline.
-    2. If within ``_STEM_SNAP_DIST_M``, extracts a stretch of the trunk
-       baseline (``_STEM_LENGTH_M``) leading *toward* the junction.
-    3. Prepends/appends those trunk coordinates so the branch overlaps
-       the trunk at the junction — same colour, same lineOffset,
-       drawn on top of each other → seamless visual join.
+    **Iterative multi-target approach** (v2, 2026-03):
+    Instead of only checking each branch against the baseline, we process
+    branches nearest-first and check against ALL already-connected
+    segments.  This builds a tree rather than a star — branches can
+    connect through other branches, not just the root baseline.
+
+    This is critical for trunk groups like A/C/E where the C and E
+    branches diverge from the shared 8th Ave trunk but their extracted
+    stubs might connect to each other or to an intermediate branch
+    rather than directly to the A-train baseline.
     """
     if len(segments) <= 1:
         return segments
 
-    baseline = segments[0]
-    result: list[LineString] = [baseline]
+    # Build list of connected reference lines and pending branches.
+    connected: list[LineString] = [segments[0]]  # baseline always connected
+    pending: list[LineString] = []
+    for seg in segments[1:]:
+        if len(seg.coords) >= 2:
+            pending.append(seg)
+
+    def _find_best_anchor(
+        pt: Point,
+    ) -> tuple[LineString | None, float]:
+        """Find the closest connected segment to a point."""
+        best_line: LineString | None = None
+        best_dist = float("inf")
+        for ref in connected:
+            d = ref.distance(pt)
+            if d < best_dist:
+                best_dist = d
+                best_line = ref
+        return best_line, best_dist
+
+    def _should_inject(dist: float, pt: Point, anchor: LineString) -> bool:
+        if dist < _STEM_SNAP_DIST_M:
+            return True
+        proj_pt = anchor.interpolate(anchor.project(pt))
+        return pt.distance(proj_pt) < _STEM_PROJ_FALLBACK_M
+
     stems_injected = 0
+    max_passes = len(pending) + 1  # safety bound
 
-    for stub in segments[1:]:
-        stub_coords = list(stub.coords)
-        if len(stub_coords) < 2:
-            result.append(stub)
-            continue
+    for _pass in range(max_passes):
+        if not pending:
+            break
 
-        start_pt = Point(stub_coords[0])
-        end_pt = Point(stub_coords[-1])
-        start_dist = baseline.distance(start_pt)
-        end_dist = baseline.distance(end_pt)
+        # Sort pending by closest distance to ANY connected segment
+        # (nearest-first processing builds the tree outward).
+        scored: list[tuple[float, int, LineString]] = []
+        for idx, stub in enumerate(pending):
+            start_pt = Point(stub.coords[0])
+            end_pt = Point(stub.coords[-1])
+            _, d_start = _find_best_anchor(start_pt)
+            _, d_end = _find_best_anchor(end_pt)
+            scored.append((min(d_start, d_end), idx, stub))
+        scored.sort(key=lambda t: t[0])
 
-        # Determine which end(s) are near the trunk (junction end).
-        prepend_stem: list[tuple[float, float]] = []
-        append_stem: list[tuple[float, float]] = []
+        made_progress = False
+        still_pending: list[LineString] = []
 
-        def _should_inject_stem(dist: float, pt: Point) -> bool:
-            """Check if stem injection should activate for this endpoint."""
-            if dist < _STEM_SNAP_DIST_M:
-                return True
-            # Fallback: check projected distance along baseline.
-            # On curved baselines, the Euclidean distance can exceed
-            # the snap threshold even though the point is close to the
-            # baseline's projection.  Use the projection distance as
-            # a secondary check.
-            proj_pt = baseline.interpolate(baseline.project(pt))
-            proj_dist = pt.distance(proj_pt)
-            return proj_dist < _STEM_PROJ_FALLBACK_M
+        for _, _, stub in scored:
+            stub_coords = list(stub.coords)
+            start_pt = Point(stub_coords[0])
+            end_pt = Point(stub_coords[-1])
 
-        if _should_inject_stem(start_dist, start_pt):
-            # Branch start is near trunk → prepend trunk stem
-            proj = baseline.project(start_pt)
-            stem_start = max(0.0, proj - _STEM_LENGTH_M)
-            try:
-                seg = substring(baseline, stem_start, proj)
-                seg_coords = list(seg.coords)
-                if len(seg_coords) >= 2:
-                    # Snap the stub's first coordinate to the baseline
-                    # projection point for seamless geometric join.
-                    snap_pt = baseline.interpolate(proj)
-                    stub_coords[0] = (snap_pt.x, snap_pt.y)
-                    prepend_stem = seg_coords
-            except Exception as exc:
-                TrackLogger.warning(f"[BranchStem] Prepend failed: {exc}")
+            anchor_start, d_start = _find_best_anchor(start_pt)
+            anchor_end, d_end = _find_best_anchor(end_pt)
 
-        if _should_inject_stem(end_dist, end_pt):
-            # Branch end is near trunk → append trunk stem
-            proj = baseline.project(end_pt)
-            stem_end = min(baseline.length, proj + _STEM_LENGTH_M)
-            try:
-                seg = substring(baseline, proj, stem_end)
-                seg_coords = list(seg.coords)
-                if len(seg_coords) >= 2:
-                    # Snap the stub's last coordinate to the baseline
-                    # projection point for seamless geometric join.
-                    snap_pt = baseline.interpolate(proj)
-                    stub_coords[-1] = (snap_pt.x, snap_pt.y)
-                    append_stem = seg_coords
-            except Exception as exc:
-                TrackLogger.warning(f"[BranchStem] Append failed: {exc}")
+            prepend_stem: list[tuple[float, float]] = []
+            append_stem: list[tuple[float, float]] = []
 
-        # Build the connected branch
-        connected_coords = prepend_stem + stub_coords + append_stem
+            if anchor_start and _should_inject(d_start, start_pt, anchor_start):
+                proj = anchor_start.project(start_pt)
+                stem_begin = max(0.0, proj - _STEM_LENGTH_M)
+                try:
+                    seg = substring(anchor_start, stem_begin, proj)
+                    seg_coords = list(seg.coords)
+                    if len(seg_coords) >= 2:
+                        snap_pt = anchor_start.interpolate(proj)
+                        stub_coords[0] = (snap_pt.x, snap_pt.y)
+                        prepend_stem = seg_coords
+                except Exception as exc:
+                    TrackLogger.warning(f"[BranchStem] Prepend failed: {exc}")
 
-        if prepend_stem or append_stem:
-            stems_injected += 1
+            if anchor_end and _should_inject(d_end, end_pt, anchor_end):
+                proj = anchor_end.project(end_pt)
+                stem_finish = min(anchor_end.length, proj + _STEM_LENGTH_M)
+                try:
+                    seg = substring(anchor_end, proj, stem_finish)
+                    seg_coords = list(seg.coords)
+                    if len(seg_coords) >= 2:
+                        snap_pt = anchor_end.interpolate(proj)
+                        stub_coords[-1] = (snap_pt.x, snap_pt.y)
+                        append_stem = seg_coords
+                except Exception as exc:
+                    TrackLogger.warning(f"[BranchStem] Append failed: {exc}")
 
-        # Remove near-duplicate consecutive vertices from splicing
-        deduped: list[tuple[float, float]] = [connected_coords[0]]
-        for c in connected_coords[1:]:
-            if _point_dist(deduped[-1], c) > 2.0:
-                deduped.append(c)
-        if len(deduped) >= 2:
-            result.append(LineString(deduped))
-        else:
-            result.append(stub)
+            # Build the connected branch
+            final_coords = prepend_stem + stub_coords + append_stem
+
+            # Remove near-duplicate consecutive vertices from splicing
+            deduped: list[tuple[float, float]] = [final_coords[0]]
+            for c in final_coords[1:]:
+                if _point_dist(deduped[-1], c) > 2.0:
+                    deduped.append(c)
+
+            if prepend_stem or append_stem:
+                stems_injected += 1
+                made_progress = True
+                if len(deduped) >= 2:
+                    new_line = LineString(deduped)
+                    connected.append(new_line)
+                else:
+                    connected.append(stub)
+            else:
+                # ── Interior-crossing detection ──
+                # When NEITHER endpoint is near a connected segment, the
+                # path may still cross through the baseline in its interior
+                # (e.g. the merged C+E stub traverses the 8th Ave trunk
+                # in Midtown while both endpoints are in the outer
+                # boroughs).  Find the closest interior vertex and split.
+                best_interior_d = float("inf")
+                best_interior_idx = -1
+                best_interior_anchor: LineString | None = None
+                for vi in range(1, len(stub_coords) - 1):
+                    vpt = Point(stub_coords[vi])
+                    for ref in connected:
+                        d = ref.distance(vpt)
+                        if d < best_interior_d:
+                            best_interior_d = d
+                            best_interior_idx = vi
+                            best_interior_anchor = ref
+
+                if (
+                    best_interior_anchor is not None
+                    and best_interior_d < _STEM_SNAP_DIST_M
+                ):
+                    # Split into two halves at the interior crossing
+                    split_pt = Point(stub_coords[best_interior_idx])
+                    proj = best_interior_anchor.project(split_pt)
+                    snap_pt = best_interior_anchor.interpolate(proj)
+                    snap_coord = (snap_pt.x, snap_pt.y)
+
+                    half_a = stub_coords[: best_interior_idx + 1]
+                    half_b = stub_coords[best_interior_idx:]
+                    # Snap the split vertex to the baseline projection
+                    half_a[-1] = snap_coord
+                    half_b[0] = snap_coord
+
+                    # Create short stem segments at the split point
+                    stem_before = max(0.0, proj - _STEM_LENGTH_M)
+                    stem_after = min(
+                        best_interior_anchor.length, proj + _STEM_LENGTH_M
+                    )
+
+                    for half in (half_a, half_b):
+                        if len(half) < 2:
+                            continue
+                        # Determine which end is the split end
+                        # (first vertex of half_b, last vertex of half_a)
+                        h_prepend: list[tuple[float, float]] = []
+                        h_append: list[tuple[float, float]] = []
+                        try:
+                            if half is half_a:
+                                seg = substring(
+                                    best_interior_anchor, proj, stem_after
+                                )
+                                seg_c = list(seg.coords)
+                                if len(seg_c) >= 2:
+                                    h_append = seg_c
+                            else:
+                                seg = substring(
+                                    best_interior_anchor, stem_before, proj
+                                )
+                                seg_c = list(seg.coords)
+                                if len(seg_c) >= 2:
+                                    h_prepend = seg_c
+                        except Exception:
+                            pass
+
+                        final = h_prepend + half + h_append
+                        dd: list[tuple[float, float]] = [final[0]]
+                        for c in final[1:]:
+                            if _point_dist(dd[-1], c) > 2.0:
+                                dd.append(c)
+                        if len(dd) >= 2:
+                            connected.append(LineString(dd))
+
+                    stems_injected += 1
+                    made_progress = True
+                else:
+                    # Truly disconnected — keep for next iteration
+                    still_pending.append(stub)
+
+        pending = still_pending
+        if not made_progress:
+            break  # no new connections, stop iterating
+
+    # Any remaining disconnected stubs are kept as-is (their geometry
+    # is still valid, just not visually joined to the trunk).
+    if pending:
+        TrackLogger.warning(
+            f"[BranchStem] {len(pending)} branch stubs remain disconnected"
+        )
+        connected.extend(pending)
 
     if stems_injected:
         TrackLogger.info(
             f"[BranchStem] Injected trunk stems for {stems_injected}/{len(segments)-1} branch stubs"
         )
 
-    return result
+    return connected
 
 
 def _validate_stub(coords: list[tuple[float, float]]) -> bool:
