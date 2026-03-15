@@ -1923,6 +1923,8 @@ _EXPORT_LANE_OFFSET_STEP: float = 0.25
 _EXPORT_LANE_OFFSET_EPSILON: float = 0.12
 _EXPORT_TRANSITION_MAX_POINTS: int = 6
 _EXPORT_TRANSITION_MAX_LENGTH_M: float = 90.0
+_EXPORT_Y_TRANSITION_MIN_POINTS: int = 5
+_EXPORT_RUN_LENDER_MIN_POINTS: int = 3
 
 
 class _VisualOffsetRun(NamedTuple):
@@ -1981,6 +1983,101 @@ def _visual_offset_run_length_m(
     return length
 
 
+def _is_visual_y_transition(prev_offset: float, current_offset: float, next_offset: float) -> bool:
+    """True when a run is the visible half-lane fan-out step in a Y split."""
+    if abs(current_offset) < 1e-9:
+        return False
+
+    non_zero_signs = {
+        1 if value > 0 else -1
+        for value in (prev_offset, current_offset, next_offset)
+        if abs(value) > 1e-9
+    }
+    if len(non_zero_signs) > 1:
+        return False
+
+    prev_abs = abs(prev_offset)
+    current_abs = abs(current_offset)
+    next_abs = abs(next_offset)
+    abs_monotonic = (
+        prev_abs < current_abs < next_abs
+        or prev_abs > current_abs > next_abs
+    )
+    if not abs_monotonic:
+        return False
+
+    # Preserve only the meaningful half-lane transition steps (0.5, 1.5, …).
+    doubled = current_abs * 2.0
+    is_half_lane_multiple = abs(round(doubled) - doubled) < 1e-9
+    is_whole_lane_multiple = abs(round(current_abs) - current_abs) < 1e-9
+    return is_half_lane_multiple and not is_whole_lane_multiple
+
+
+def _expand_visual_y_transition_runs(visual_offsets: list[float]) -> list[float]:
+    """Give Y-split fan-out runs enough vertices to render as a visible taper."""
+    if len(visual_offsets) < 5:
+        return list(visual_offsets)
+
+    expanded = list(visual_offsets)
+
+    while True:
+        runs = _build_visual_offset_runs(expanded)
+        changed = False
+
+        for idx in range(1, len(runs) - 1):
+            prev_run = runs[idx - 1]
+            current_run = runs[idx]
+            next_run = runs[idx + 1]
+
+            if not _is_visual_y_transition(
+                prev_run.offset,
+                current_run.offset,
+                next_run.offset,
+            ):
+                continue
+
+            point_count = current_run.end - current_run.start
+            if point_count >= _EXPORT_Y_TRANSITION_MIN_POINTS:
+                continue
+
+            left_available = max(
+                0,
+                (current_run.start - prev_run.start) - _EXPORT_RUN_LENDER_MIN_POINTS,
+            )
+            right_available = max(
+                0,
+                (next_run.end - current_run.end) - _EXPORT_RUN_LENDER_MIN_POINTS,
+            )
+            if left_available <= 0 and right_available <= 0:
+                continue
+
+            needed_points = _EXPORT_Y_TRANSITION_MIN_POINTS - point_count
+            left_take = min(left_available, (needed_points + 1) // 2)
+            right_take = min(right_available, needed_points - left_take)
+
+            remaining = needed_points - left_take - right_take
+            if remaining > 0 and left_available > left_take:
+                extra_left = min(left_available - left_take, remaining)
+                left_take += extra_left
+                remaining -= extra_left
+            if remaining > 0 and right_available > right_take:
+                right_take += min(right_available - right_take, remaining)
+
+            if left_take <= 0 and right_take <= 0:
+                continue
+
+            for vertex_idx in range(current_run.start - left_take, current_run.start):
+                expanded[vertex_idx] = current_run.offset
+            for vertex_idx in range(current_run.end, current_run.end + right_take):
+                expanded[vertex_idx] = current_run.offset
+
+            changed = True
+            break
+
+        if not changed:
+            return expanded
+
+
 def _stabilize_visual_lane_offsets(
     coords_m: list[tuple[float, float]],
     visual_offsets: list[float],
@@ -2005,6 +2102,13 @@ def _stabilize_visual_lane_offsets(
             if (
                 point_count > _EXPORT_TRANSITION_MAX_POINTS
                 and run_length_m > _EXPORT_TRANSITION_MAX_LENGTH_M
+            ):
+                continue
+
+            if _is_visual_y_transition(
+                prev_run.offset,
+                current_run.offset,
+                next_run.offset,
             ):
                 continue
 
@@ -2051,6 +2155,7 @@ def _segment_export_path_by_lane_offset(
         offsets_m = offsets_m[: len(coords_m)]
 
     visual_offsets = [_quantise_visual_lane_offset(value) for value in offsets_m]
+    visual_offsets = _expand_visual_y_transition_runs(visual_offsets)
     visual_offsets = _stabilize_visual_lane_offsets(coords_m, visual_offsets)
     segments: list[tuple[list[tuple[float, float]], float]] = []
 

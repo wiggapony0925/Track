@@ -106,7 +106,7 @@ struct ModeFilterStrip: View {
 
     private func modeButton(for mode: TransportMode) -> some View {
         let isActive: Bool = selectedMode == mode
-        let fgColor: Color = isActive ? .white : AppTheme.Colors.textSecondary
+        let fgColor: Color = isActive ? .white : AppTheme.Colors.mtaBlue
         let traits: AccessibilityTraits = isActive ? .isSelected : []
         return Button {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
@@ -114,16 +114,28 @@ struct ModeFilterStrip: View {
             }
             HapticManager.impact(.light)
         } label: {
-                Image(systemName: mode.icon)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(fgColor)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 38)
-                    .background {
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(AppTheme.Gradients.accent)
-                            .opacity(isActive ? 1 : 0)
-                    }
+            Image(systemName: mode.icon)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundColor(fgColor)
+                .frame(maxWidth: .infinity)
+                .frame(height: 40)
+                .background {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(
+                            isActive
+                                ? AnyShapeStyle(AppTheme.Gradients.accent)
+                                : AnyShapeStyle(AppTheme.Colors.accentTint.opacity(0.55))
+                        )
+                }
+                .overlay {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(
+                            isActive
+                                ? AppTheme.Colors.textOnColor.opacity(0.12)
+                                : AppTheme.Colors.borderStrong.opacity(0.5),
+                            lineWidth: 1
+                        )
+                }
         }
         .accessibilityLabel(mode.label)
         .accessibilityAddTraits(traits)

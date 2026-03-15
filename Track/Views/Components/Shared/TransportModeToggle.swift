@@ -24,7 +24,7 @@ struct TransportModeToggle: View {
     /// Individual mode button — extracted to reduce body type-check time.
     private func modeButton(_ mode: TransportMode) -> some View {
         let isSelected: Bool = selectedMode == mode
-        let fgColor: Color = isSelected ? AppTheme.Colors.textOnColor : AppTheme.Colors.textPrimary
+        let fgColor: Color = isSelected ? AppTheme.Colors.textOnColor : AppTheme.Colors.mtaBlue
 
         return Button {
             withAnimation(.easeInOut(duration: 0.2)) {
@@ -44,8 +44,20 @@ struct TransportModeToggle: View {
             .foregroundColor(fgColor)
             .background {
                 Capsule()
-                    .fill(AppTheme.Gradients.accent)
-                    .opacity(isSelected ? 1 : 0)
+                    .fill(
+                        isSelected
+                            ? AnyShapeStyle(AppTheme.Gradients.accent)
+                            : AnyShapeStyle(AppTheme.Colors.accentTint.opacity(0.50))
+                    )
+            }
+            .overlay {
+                Capsule()
+                    .stroke(
+                        isSelected
+                            ? AppTheme.Colors.textOnColor.opacity(0.12)
+                            : AppTheme.Colors.borderStrong.opacity(0.45),
+                        lineWidth: 1
+                    )
             }
         }
         .accessibilityLabel("\(mode.label) mode")

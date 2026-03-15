@@ -11,6 +11,11 @@
 import CoreLocation
 import SwiftUI
 
+enum GroupedRouteRowPresentation {
+    case standard
+    case favorite
+}
+
 struct  GroupedRouteRow: View {
     let group: GroupedNearbyTransitResponse
     var hasAlert: Bool = false
@@ -21,6 +26,7 @@ struct  GroupedRouteRow: View {
     var onDirectionChanged: ((Int) -> Void)? = nil
     var onSelect: ((Int) -> Void)? = nil
     var onTrack: ((Int) -> Void)? = nil
+    var presentation: GroupedRouteRowPresentation = .standard
 
     @State private var currentDirectionIndex = 0
     @State private var showTrackingBanner = false
@@ -42,6 +48,22 @@ struct  GroupedRouteRow: View {
         if group.isMNR { return AppTheme.CommuterRailColors.mnrBlue }
         return group.isBus
             ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: group.displayName)
+    }
+
+    private var isFavoritePresentation: Bool {
+        presentation == .favorite
+    }
+
+    private var containerCornerRadius: CGFloat {
+        isFavoritePresentation ? 24 : AppTheme.Layout.cornerRadius
+    }
+
+    private var rowHorizontalPadding: CGFloat {
+        isFavoritePresentation ? 18 : AppTheme.Layout.margin
+    }
+
+    private var rowVerticalPadding: CGFloat {
+        isFavoritePresentation ? 16 : 14
     }
 
     /// Distance from user to the closest stop in this group (meters).
@@ -171,13 +193,13 @@ struct  GroupedRouteRow: View {
     private var mainRowContent: some View {
         VStack(spacing: 0) {
             mainRowHStack
-                .padding(.vertical, 14)
-                .padding(.horizontal, AppTheme.Layout.margin)
+                .padding(.vertical, rowVerticalPadding)
+                .padding(.horizontal, rowHorizontalPadding)
 
             alertBannerRow
         }
-        .background(AppTheme.Colors.cardBackground)
-        .contentShape(Rectangle())
+        .background { rowBackground }
+        .contentShape(RoundedRectangle(cornerRadius: containerCornerRadius, style: .continuous))
         .onTapGesture {
             HapticManager.selection()
             onSelect?(originalDirectionIndex)
@@ -211,6 +233,29 @@ struct  GroupedRouteRow: View {
         .accessibilityHint("Double tap to see details. Long press to track.")
         .accessibilityAction(named: "Track this route") {
             triggerTracking()
+        }
+    }
+
+    @ViewBuilder
+    private var rowBackground: some View {
+        let shape = RoundedRectangle(cornerRadius: containerCornerRadius, style: .continuous)
+        if isFavoritePresentation {
+            shape
+                .fill(AppTheme.Gradients.floating)
+                .overlay {
+                    shape.stroke(routeColor.opacity(0.18), lineWidth: 1)
+                }
+                .overlay(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(routeColor)
+                        .frame(width: 5)
+                        .padding(.vertical, 16)
+                        .padding(.leading, 10)
+                }
+                .shadow(color: AppTheme.Colors.shadow.opacity(0.18), radius: 14, x: 0, y: 8)
+                .shadow(color: routeColor.opacity(0.10), radius: 18, x: 0, y: 6)
+        } else {
+            shape.fill(AppTheme.Colors.cardBackground)
         }
     }
 
@@ -318,7 +363,11 @@ struct  GroupedRouteRow: View {
                 Text(formatDistanceImperial(dist))
                     .font(.custom("Helvetica-Bold", size: 11))
             }
-            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
+            .foregroundColor(
+                isFavoritePresentation
+                    ? routeColor.opacity(0.82)
+                    : AppTheme.Colors.textSecondary.opacity(0.7)
+            )
         }
     }
 
@@ -372,7 +421,7 @@ struct  GroupedRouteRow: View {
                 }
             }
             .padding(.horizontal, AppTheme.Layout.margin)
-            .padding(.bottom, 6)
+            .padding(.bottom, isFavoritePresentation ? 10 : 6)
         }
     }
 
@@ -423,17 +472,8 @@ struct  GroupedRouteRow: View {
         .padding(.vertical, 8)
         .background(
             Capsule()
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color(red: 0.22, green: 0.52, blue: 0.90),
-                            Color(red: 0.30, green: 0.62, blue: 1.0),
-                        ],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
-                .shadow(color: Color(red: 0.25, green: 0.58, blue: 0.96).opacity(0.4), radius: 10, x: 0, y: 4)
+                .fill(AppTheme.Gradients.accent)
+                .shadow(color: AppTheme.Colors.accentGlow.opacity(0.55), radius: 12, x: 0, y: 4)
         )
     }
 

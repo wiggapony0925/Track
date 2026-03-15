@@ -93,6 +93,10 @@ struct FavoritesSection: View {
                     }
                     .font(.system(size: 13, weight: .medium))
                     .foregroundColor(AppTheme.Colors.mtaBlue)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(AppTheme.Colors.accentTint.opacity(0.55))
+                    .clipShape(Capsule())
                 }
             }
             .padding(.horizontal, AppTheme.Layout.margin)
@@ -140,12 +144,15 @@ private struct FavoritesEmptyCard: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
-        .background(AppTheme.Colors.cardBackground)
-        .cornerRadius(AppTheme.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius)
-                .strokeBorder(Color.red.opacity(0.15), lineWidth: 1)
-        )
+        .background {
+            RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius, style: .continuous)
+                .fill(AppTheme.Gradients.floating)
+                .overlay {
+                    RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius, style: .continuous)
+                        .strokeBorder(Color.red.opacity(0.18), lineWidth: 1)
+                }
+                .shadow(color: AppTheme.Colors.shadow.opacity(0.15), radius: 10, x: 0, y: 6)
+        }
     }
 }
 
@@ -263,14 +270,17 @@ struct FavoriteCard: View {
                 let isNow = eta.isAtStop || eta.secondsRemaining <= 30
                 Text(isNow ? "Now" : "\(eta.minutesRemaining) min")
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(eta.minutesRemaining <= 2 ? .white : AppTheme.Colors.textPrimary)
+                    .foregroundColor(eta.minutesRemaining <= 2 ? .white : AppTheme.Colors.mtaBlue)
                     .padding(.horizontal, 9)
                     .padding(.vertical, 4)
-                    .background(
-                        eta.minutesRemaining <= 2
-                            ? AppTheme.Colors.alertRed
-                            : AppTheme.Colors.cardBackground
-                    )
+                    .background {
+                        Capsule()
+                            .fill(
+                                eta.minutesRemaining <= 2
+                                    ? AnyShapeStyle(AppTheme.Colors.alertRed)
+                                    : AnyShapeStyle(AppTheme.Colors.accentTint.opacity(0.72))
+                            )
+                    }
                     .clipShape(Capsule())
             }
         } else {
@@ -279,7 +289,7 @@ struct FavoriteCard: View {
                 .foregroundColor(AppTheme.Colors.textSecondary)
                 .padding(.horizontal, 9)
                 .padding(.vertical, 4)
-                .background(AppTheme.Colors.cardBackground)
+                .background(AppTheme.Colors.accentTint.opacity(0.45))
                 .clipShape(Capsule())
         }
     }
@@ -295,32 +305,34 @@ struct FavoriteCard: View {
                     hexColor: matchedGroup?.colorHex,
                     mode: favorite.mode
                 )
-                countdownLabel
+                Spacer(minLength: 4)
+                countdownChip
             }
 
-            // Stop name
             Text(favorite.stopName)
-                .font(.custom("Helvetica", size: 12))
-                .foregroundColor(AppTheme.Colors.textSecondary)
+                .font(.custom("Helvetica-Bold", size: 13))
+                .foregroundColor(AppTheme.Colors.textPrimary)
                 .lineLimit(1)
 
             // Direction / destination
             if let direction = favorite.direction {
                 Text("→ \(favorite.destination ?? direction)")
-                    .font(.custom("Helvetica", size: 11))
-                    .foregroundColor(routeColor.opacity(0.8))
-                    .lineLimit(1)
+                .font(.custom("Helvetica", size: 11))
+                .foregroundColor(routeColor.opacity(0.8))
+                .lineLimit(1)
             }
+
+            HStack(spacing: 5) {
+                Image(systemName: favoriteModeIcon)
+                    .font(.system(size: 9, weight: .semibold))
+                Text(favorite.mode.uppercased())
+                    .font(.system(size: 10, weight: .bold))
+            }
+            .foregroundColor(routeColor.opacity(0.78))
         }
-        .padding(12)
-        .frame(minWidth: 130)
-        .background(AppTheme.Colors.cardBackground)
-        .cornerRadius(AppTheme.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius)
-                .strokeBorder(routeColor.opacity(0.2), lineWidth: 1)
-        )
-        .shadow(color: .black.opacity(0.05), radius: 4, y: 2)
+        .padding(14)
+        .frame(minWidth: 156, alignment: .leading)
+        .background { cardChrome }
     }
 
     /// Resolve ETA using the shared provider (same computation as home rows)
@@ -350,5 +362,65 @@ struct FavoriteCard: View {
                 .foregroundColor(AppTheme.Colors.textSecondary)
         }
     }
-}
 
+    @ViewBuilder
+    private var countdownChip: some View {
+        if let arrival = nextArrival {
+            TimelineView(.periodic(from: .now, by: 1.0)) { _ in
+                let eta = resolvedETA(for: arrival)
+                let isNow = eta.isAtStop || eta.secondsRemaining <= 30
+                Text(isNow ? "Now" : "\(eta.minutesRemaining) min")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(eta.minutesRemaining <= 2 ? .white : AppTheme.Colors.mtaBlue)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4)
+                    .background {
+                        Capsule()
+                            .fill(
+                                eta.minutesRemaining <= 2
+                                    ? AnyShapeStyle(AppTheme.Colors.alertRed)
+                                    : AnyShapeStyle(AppTheme.Colors.accentTint.opacity(0.72))
+                            )
+                    }
+            }
+        } else {
+            Text("Offline")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundColor(AppTheme.Colors.textSecondary)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 4)
+                .background(AppTheme.Colors.accentTint.opacity(0.45))
+                .clipShape(Capsule())
+        }
+    }
+
+    private var cardChrome: some View {
+        RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius, style: .continuous)
+            .fill(AppTheme.Gradients.floating)
+            .overlay {
+                RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius, style: .continuous)
+                    .strokeBorder(routeColor.opacity(0.18), lineWidth: 1)
+            }
+            .overlay(alignment: .leading) {
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .fill(routeColor)
+                    .frame(width: 4)
+                    .padding(.vertical, 12)
+                    .padding(.leading, 10)
+            }
+            .shadow(color: AppTheme.Colors.shadow.opacity(0.16), radius: 10, x: 0, y: 6)
+    }
+
+    private var favoriteModeIcon: String {
+        switch favorite.mode {
+        case "bus":
+            return "bus.fill"
+        case "lirr":
+            return "train.side.front.car"
+        case "mnr":
+            return "train.side.rear.car"
+        default:
+            return "tram.fill"
+        }
+    }
+}

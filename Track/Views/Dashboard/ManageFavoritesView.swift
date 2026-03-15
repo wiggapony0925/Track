@@ -96,7 +96,10 @@ struct ManageFavoritesView: View {
 
             searchAndFilters
 
-            Divider()
+            Rectangle()
+                .fill(AppTheme.Colors.borderSubtle)
+                .frame(height: 1)
+                .padding(.horizontal, AppTheme.Layout.margin)
 
             if favoritesManager.isLoading && favoritesManager.favorites.isEmpty {
                 skeletonList
@@ -110,7 +113,7 @@ struct ManageFavoritesView: View {
                 removeBar
             }
         }
-        .background(AppTheme.Colors.background)
+        .trackScreenBackground()
     }
 
     // MARK: - Header
@@ -131,9 +134,14 @@ struct ManageFavoritesView: View {
 
             Spacer()
 
-            Text("My Favorites")
-                .font(.custom("Helvetica-Bold", size: 17))
-                .foregroundColor(AppTheme.Colors.textPrimary)
+            VStack(spacing: 2) {
+                Text("My Favorites")
+                    .font(.custom("Helvetica-Bold", size: 17))
+                    .foregroundColor(AppTheme.Colors.textPrimary)
+                Text("\(filtered.count) saved route\(filtered.count == 1 ? "" : "s")")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+            }
 
             Spacer()
 
@@ -178,8 +186,7 @@ struct ManageFavoritesView: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 9)
-            .background(AppTheme.Colors.cardBackground)
-            .cornerRadius(AppTheme.Layout.cornerRadius)
+            .trackFloatingChrome(cornerRadius: AppTheme.Layout.cornerRadius)
             .padding(.horizontal, AppTheme.Layout.margin)
 
             // Mode filter chips
@@ -209,11 +216,26 @@ struct ManageFavoritesView: View {
                 Text(mode.label)
                     .font(.system(size: 13, weight: .semibold))
             }
-            .foregroundColor(isSelected ? .white : AppTheme.Colors.textSecondary)
+            .foregroundColor(isSelected ? .white : AppTheme.Colors.mtaBlue)
             .padding(.horizontal, 12)
             .padding(.vertical, 7)
-            .background(isSelected ? AppTheme.Colors.mtaBlue : AppTheme.Colors.cardBackground)
-            .clipShape(Capsule())
+            .background {
+                Capsule()
+                    .fill(
+                        isSelected
+                            ? AnyShapeStyle(AppTheme.Gradients.accent)
+                            : AnyShapeStyle(AppTheme.Colors.accentTint.opacity(0.52))
+                    )
+            }
+            .overlay {
+                Capsule()
+                    .stroke(
+                        isSelected
+                            ? AppTheme.Colors.textOnColor.opacity(0.12)
+                            : AppTheme.Colors.borderStrong.opacity(0.45),
+                        lineWidth: 1
+                    )
+            }
         }
         .buttonStyle(.plain)
     }
@@ -226,31 +248,30 @@ struct ManageFavoritesView: View {
 
     private var skeletonList: some View {
         ScrollView {
-            VStack(spacing: 0) {
+            VStack(spacing: 12) {
                 ForEach(0..<6, id: \.self) { i in
                     let widths = Self.skeletonWidths[i]
-                    VStack(spacing: 0) {
-                        HStack(spacing: 12) {
-                            SkeletonBar(
-                                width: AppTheme.Layout.badgeSizeMedium,
-                                height: AppTheme.Layout.badgeSizeMedium
-                            )
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                            VStack(alignment: .leading, spacing: 6) {
-                                SkeletonBar(width: widths.0, height: 13, opacity: 0.09)
-                                SkeletonBar(width: widths.1, height: 11, opacity: 0.07)
-                            }
-                            Spacer()
-                            SkeletonBar(width: 48, height: 26, opacity: 0.07)
-                                .clipShape(Capsule())
+                    HStack(spacing: 12) {
+                        SkeletonBar(
+                            width: AppTheme.Layout.badgeSizeMedium,
+                            height: AppTheme.Layout.badgeSizeMedium
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        VStack(alignment: .leading, spacing: 6) {
+                            SkeletonBar(width: widths.0, height: 13, opacity: 0.09)
+                            SkeletonBar(width: widths.1, height: 11, opacity: 0.07)
                         }
-                        .padding(.vertical, 13)
-                        .padding(.horizontal, 4)
-                        if i < 5 { Divider().padding(.leading, AppTheme.Layout.margin) }
+                        Spacer()
+                        SkeletonBar(width: 48, height: 26, opacity: 0.07)
+                            .clipShape(Capsule())
                     }
+                    .padding(.vertical, 16)
+                    .padding(.horizontal, 16)
+                    .trackFloatingChrome(cornerRadius: 24)
                 }
             }
             .padding(.horizontal, AppTheme.Layout.margin)
+            .padding(.vertical, 8)
         }
         .shimmer()
         .disabled(true)
@@ -262,7 +283,7 @@ struct ManageFavoritesView: View {
         VStack(spacing: 8) {
             Image(systemName: searchText.isEmpty ? "heart.slash" : "magnifyingglass")
                 .font(.system(size: 32, weight: .light))
-                .foregroundColor(AppTheme.Colors.textSecondary)
+                .foregroundColor(AppTheme.Colors.mtaBlue)
             Text(
                 searchText.isEmpty
                     ? (modeFilter == "all"
@@ -275,25 +296,23 @@ struct ManageFavoritesView: View {
             .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.horizontal, AppTheme.Layout.margin)
         .padding(.vertical, 48)
+        .trackCardBackground(cornerRadius: 24)
     }
 
     // MARK: - Favorites List
 
     private var favoritesList: some View {
         ScrollView {
-            LazyVStack(spacing: 0) {
-                ForEach(Array(uniqueFilteredRouteIds.enumerated()), id: \.element) { index, routeId in
-                    VStack(spacing: 0) {
-                        routeRow(routeId: routeId)
-                        if index < uniqueFilteredRouteIds.count - 1 {
-                            Divider()
-                                .padding(.leading, AppTheme.Layout.margin)
-                        }
-                    }
+            LazyVStack(spacing: 12) {
+                ForEach(uniqueFilteredRouteIds, id: \.self) { routeId in
+                    routeRow(routeId: routeId)
                 }
             }
             .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isEditing)
+            .padding(.horizontal, AppTheme.Layout.margin)
+            .padding(.vertical, 8)
         }
     }
 
@@ -326,14 +345,15 @@ struct ManageFavoritesView: View {
                 if let group = matchedGroup {
                     GroupedRouteRow(
                         group: group,
-                        hasAlert: false,
-                        userLocation: nil,
+                        hasAlert: !group.alerts.isEmpty,
+                        userLocation: userLocation,
                         onSelect: isEditing ? nil : { directionIndex in
                             onSelect?(group, directionIndex)
                         },
                         onTrack: { directionIndex in
                             onTrack?(group, directionIndex)
-                        }
+                        },
+                        presentation: .favorite
                     )
                 } else if let fav = repFav {
                     offlineFavoriteRow(fav: fav)
@@ -342,8 +362,18 @@ struct ManageFavoritesView: View {
             .allowsHitTesting(!isEditing)
         }
         .background(
-            isEditing && isSelected ? AppTheme.Colors.alertRed.opacity(0.07) : Color.clear
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .fill(isEditing && isSelected ? AppTheme.Colors.alertRed.opacity(0.08) : Color.clear)
         )
+        .overlay {
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .stroke(
+                    isEditing && isSelected
+                        ? AppTheme.Colors.alertRed.opacity(0.45)
+                        : Color.clear,
+                    lineWidth: 1.5
+                )
+        }
         .contentShape(Rectangle())
         .onTapGesture {
             guard isEditing else { return }
@@ -357,7 +387,9 @@ struct ManageFavoritesView: View {
 
     /// Compact row for a favorite that isn't currently in the nearby radius.
     private func offlineFavoriteRow(fav: CloudFavorite) -> some View {
-        HStack(spacing: 12) {
+        let routeColor = favoriteRouteColor(for: fav)
+
+        return HStack(spacing: 12) {
             RouteBadge(
                 routeID: fav.routeDisplayName,
                 size: .medium,
@@ -374,28 +406,49 @@ struct ManageFavoritesView: View {
                     .font(.system(size: 13, weight: .regular))
                     .foregroundColor(AppTheme.Colors.textSecondary)
                     .lineLimit(1)
+                if let destination = fav.destination ?? fav.direction {
+                    Text(destination)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(routeColor.opacity(0.82))
+                        .lineLimit(1)
+                }
             }
             Spacer()
             Text("Not nearby")
                 .font(.system(size: 11, weight: .medium))
-                .foregroundColor(AppTheme.Colors.textSecondary)
+                .foregroundColor(routeColor)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
-                .background(AppTheme.Colors.textSecondary.opacity(0.1))
+                .background(routeColor.opacity(0.12))
                 .clipShape(Capsule())
             Image(systemName: "chevron.right")
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.35))
         }
-        .padding(.vertical, 14)
-        .padding(.horizontal, AppTheme.Layout.margin)
+        .padding(.vertical, 16)
+        .padding(.horizontal, 18)
+        .background {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .fill(AppTheme.Gradients.floating)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .stroke(routeColor.opacity(0.18), lineWidth: 1)
+                }
+                .overlay(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(routeColor)
+                        .frame(width: 5)
+                        .padding(.vertical, 16)
+                        .padding(.leading, 10)
+                }
+                .shadow(color: AppTheme.Colors.shadow.opacity(0.18), radius: 14, x: 0, y: 8)
+        }
     }
 
     // MARK: - Remove Bar
 
     private var removeBar: some View {
         VStack(spacing: 0) {
-            Divider()
             Button(action: removeSelected) {
                 HStack(spacing: 8) {
                     if isRemoving {
@@ -415,11 +468,32 @@ struct ManageFavoritesView: View {
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 15)
-                .background(AppTheme.Colors.alertRed)
+                .background(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .fill(AppTheme.Colors.alertRed)
+                        .shadow(color: AppTheme.Colors.alertRed.opacity(0.28), radius: 12, x: 0, y: 6)
+                )
             }
             .disabled(isRemoving)
+            .padding(.horizontal, AppTheme.Layout.margin)
+            .padding(.top, 8)
+            .padding(.bottom, 20)
         }
+        .background(AppTheme.Gradients.screen)
         .transition(.move(edge: .bottom).combined(with: .opacity))
+    }
+
+    private func favoriteRouteColor(for favorite: CloudFavorite) -> Color {
+        switch favorite.mode {
+        case "lirr":
+            return AppTheme.CommuterRailColors.lirrBlue
+        case "mnr":
+            return AppTheme.CommuterRailColors.mnrBlue
+        case "bus":
+            return AppTheme.Colors.mtaBlue
+        default:
+            return AppTheme.SubwayColors.color(for: favorite.routeDisplayName)
+        }
     }
 
     // MARK: - Actions

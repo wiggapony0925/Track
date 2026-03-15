@@ -26,3 +26,24 @@ def test_segment_export_preserves_sign_change_corridor_switch():
 
     assert any(offset < 0.0 for offset in lane_offsets)
     assert any(offset > 0.0 for offset in lane_offsets)
+
+
+def test_segment_export_keeps_visible_y_split_transition_step():
+    coords = _straight_path(8)
+    offsets_m = [0.0, 0.0, 20.0, 20.0, 40.0, 40.0, 40.0, 40.0]
+
+    segments = _segment_export_path_by_lane_offset(coords, offsets_m)
+    lane_offsets = [lane_offset for _, lane_offset in segments]
+
+    assert lane_offsets == [0.0, 0.5, 1.0]
+
+
+def test_segment_export_expands_short_y_split_transition_for_visibility():
+    coords = _straight_path(8)
+    offsets_m = [0.0, 0.0, 20.0, 40.0, 40.0, 40.0, 40.0, 40.0]
+
+    segments = _segment_export_path_by_lane_offset(coords, offsets_m)
+    lane_offsets = [lane_offset for _, lane_offset in segments]
+
+    assert lane_offsets == [0.0, 0.5, 1.0]
+    assert len(segments[1][0]) >= 5
