@@ -125,6 +125,15 @@ final class MapSystemViewModel {
         let routes: [String]           // All route IDs merged from the group
         let colorGroupCount: Int       // Distinct MTA trunk-color groups
         let trackBearing: Double       // Degrees from north (0-180), track direction
+        /// Direction-preserving tangent heading from the nearest rendered
+        /// trunk segment. Used so station dots can inherit the same visual
+        /// lane offset direction as the MapLibre line layer.
+        let laneHeading: Double?
+        /// Signed pixel-lane offset for single-group stations. This matches
+        /// the trunk feature's `lane_offset` attribute so station dots can
+        /// move with the shared corridor at low zoom without collapsing the
+        /// rendered parallel lines.
+        let laneOffset: CGFloat
         let structure: StationStructure // Physical structure (subway, elevated, etc.)
         let complexID: Int             // MTA station complex group
         /// All GTFS stop IDs that were merged into this consolidated marker.
@@ -1331,9 +1340,10 @@ final class MapSystemViewModel {
     ///    group and average the projection points.
     private func transferPolylinePosition(
         centroid: CLLocationCoordinate2D,
-        trunkGroups: Set<Int>
+        trunkGroups: Set<Int>,
+        referencePolylinesByGroup: [Int: [[CLLocationCoordinate2D]]]
     ) -> CLLocationCoordinate2D? {
-        guard trunkGroups.count >= 2, !cachedOffsetSubwayLines.isEmpty else { return nil }
+        guard trunkGroups.count >= 2, !referencePolylinesByGroup.isEmpty else { return nil }
 
         // Degree-space search radius (~500 m)
         let searchRadius: Double = 0.005
@@ -1345,11 +1355,10 @@ final class MapSystemViewModel {
         }
         var trunkSegs: [Int: [Seg]] = [:]
 
-        for line in cachedOffsetSubwayLines {
-            let tidx: Int = Self.trunkGroupIndex(for: line.id)
+        for (tidx, branches) in referencePolylinesByGroup {
             guard trunkGroups.contains(tidx) else { continue }
 
-            for branch in line.coordinates {
+            for branch in branches {
                 for i in 0..<(branch.count - 1) {
                     let a = branch[i], b = branch[i + 1]
                     // Bounding box filter
@@ -1463,6 +1472,88 @@ final class MapSystemViewModel {
         return CLLocationCoordinate2D(latitude: avgLat2, longitude: avgLon2)
     }
 
+    /// Returns the rendered trunk geometry keyed by trunk group index.
+    ///
+    /// When server-provided trunk polylines are available, these are the
+    /// exact branches MapLibre draws. Otherwise, we fall back to the
+    /// per-route offset lines grouped by trunk colour.
+    private func stationReferencePolylinesByGroup() -> [Int: [[CLLocationCoordinate2D]]] {
+        if let trunkPolylines = cachedTrunkPolylines, !trunkPolylines.isEmpty {
+            var result: [Int: [[CLLocationCoordinate2D]]] = [:]
+            for trunk in trunkPolylines {
+                let decoded = trunk.decodedPolylines.filter { $0.count >= 2 }
+                guard !decoded.isEmpty else { continue }
+                result[trunk.trunkIndex, default: []].append(contentsOf: decoded)
+            }
+            if !result.isEmpty {
+                return result
+            }
+        }
+
+        var result: [Int: [[CLLocationCoordinate2D]]] = [:]
+        for line in cachedOffsetSubwayLines {
+            let trunkIndex = Self.trunkGroupIndex(for: line.id)
+            let valid = line.coordinates.filter { $0.count >= 2 }
+            guard !valid.isEmpty else { continue }
+            result[trunkIndex, default: []].append(contentsOf: valid)
+        }
+        return result
+    }
+
+    /// Returns low-zoom corridor lane offsets keyed by trunk group index.
+    private func stationReferenceLaneOffsetsByGroup() -> [Int: CGFloat] {
+        guard let trunkPolylines = cachedTrunkPolylines, !trunkPolylines.isEmpty else {
+            return [:]
+        }
+
+        var result: [Int: CGFloat] = [:]
+        for trunk in trunkPolylines {
+            result[trunk.trunkIndex] = trunk.laneOffset
+        }
+        return result
+    }
+
+    /// Finds the direction-preserving heading of the nearest segment in the
+    /// rendered trunk geometry. The heading preserves the encoded segment
+    /// direction, which is important because positive/negative `lineOffset`
+    /// values are applied relative to that direction.
+    private static func nearestSegmentHeading(
+        near coordinate: CLLocationCoordinate2D,
+        branches: [[CLLocationCoordinate2D]]
+    ) -> Double? {
+        var bestHeading: Double?
+        var bestDistSq: Double = .infinity
+
+        for branch in branches {
+            guard branch.count >= 2 else { continue }
+            for i in 0..<(branch.count - 1) {
+                let a = branch[i]
+                let b = branch[i + 1]
+                let (_, _, distSq) = projectOntoSegment(
+                    lat: coordinate.latitude,
+                    lon: coordinate.longitude,
+                    aLat: a.latitude,
+                    aLon: a.longitude,
+                    bLat: b.latitude,
+                    bLon: b.longitude
+                )
+                guard distSq < bestDistSq else { continue }
+
+                let cosNYC: Double = 0.76
+                let dx: Double = (b.longitude - a.longitude) * cosNYC
+                let dy: Double = b.latitude - a.latitude
+                guard dx * dx + dy * dy > 1e-12 else { continue }
+
+                var heading: Double = atan2(dx, dy) * 180.0 / .pi
+                if heading < 0 { heading += 360.0 }
+                bestDistSq = distSq
+                bestHeading = heading
+            }
+        }
+
+        return bestHeading
+    }
+
     /// Maps a route ID to its MTA trunk-color group index.
     private static func trunkGroupIndex(for routeId: String) -> Int {
         let r = routeId.uppercased()
@@ -1501,6 +1592,8 @@ final class MapSystemViewModel {
     private func consolidateStations() {
         let stations = cachedStations
         guard !stations.isEmpty else { return }
+        let referencePolylinesByGroup = stationReferencePolylinesByGroup()
+        let referenceLaneOffsetsByGroup = stationReferenceLaneOffsetsByGroup()
 
         // ── Phase 1: Assign each station a (complexID, structure) key ──
         //
@@ -1598,8 +1691,8 @@ final class MapSystemViewModel {
             return hi | lo
         }
 
-        for line in cachedOffsetSubwayLines {
-            for branch in line.coordinates {
+        for branches in referencePolylinesByGroup.values {
+            for branch in branches {
                 for i in 0..<(branch.count - 1) {
                     let a = branch[i], b = branch[i + 1]
                     let dx: Double = b.longitude - a.longitude
@@ -1647,6 +1740,11 @@ final class MapSystemViewModel {
             var colorGroups: Set<Int> = []
             for r in routes { colorGroups.insert(Self.trunkGroupIndex(for: r)) }
             let groupCount: Int = max(colorGroups.count, 1)
+            let sortedColorGroups = colorGroups.sorted()
+            let stationLaneOffset: CGFloat = {
+                guard groupCount == 1, let trunkGroup = sortedColorGroups.first else { return 0 }
+                return referenceLaneOffsetsByGroup[trunkGroup] ?? 0
+            }()
 
             // ── Transfer stop: snap to polyline intersection/projection ──
             // For stops served by ≥ 2 trunk color groups, position the
@@ -1655,12 +1753,20 @@ final class MapSystemViewModel {
             if groupCount >= 2 {
                 if let betterPos = transferPolylinePosition(
                     centroid: CLLocationCoordinate2D(latitude: avgLat, longitude: avgLon),
-                    trunkGroups: colorGroups
+                    trunkGroups: colorGroups,
+                    referencePolylinesByGroup: referencePolylinesByGroup
                 ) {
                     avgLat = betterPos.latitude
                     avgLon = betterPos.longitude
                 }
             }
+
+            let stationCoordinate = CLLocationCoordinate2D(latitude: avgLat, longitude: avgLon)
+            let laneHeading: Double? = {
+                guard groupCount == 1, let trunkGroup = sortedColorGroups.first else { return nil }
+                guard let branches = referencePolylinesByGroup[trunkGroup] else { return nil }
+                return Self.nearestSegmentHeading(near: stationCoordinate, branches: branches)
+            }()
 
             // Track bearing from polyline tangents in 3×3 neighborhood
             let gx: Int32 = Int32(avgLat / cellSize)
@@ -1705,10 +1811,12 @@ final class MapSystemViewModel {
             result.append(ConsolidatedStation(
                 id: primaryId,
                 name: primaryName,
-                coordinate: CLLocationCoordinate2D(latitude: avgLat, longitude: avgLon),
+                coordinate: stationCoordinate,
                 routes: routes,
                 colorGroupCount: groupCount,
                 trackBearing: bearing,
+                laneHeading: laneHeading,
+                laneOffset: stationLaneOffset,
                 structure: firstKey.structure,
                 complexID: firstKey.complexID,
                 sourceStopIDs: allStopIDs,

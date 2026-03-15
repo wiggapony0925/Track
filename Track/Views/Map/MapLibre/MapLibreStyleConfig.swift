@@ -278,57 +278,56 @@ enum MapLibreStyleConfig {
     // MARK: - Dynamic Corridor Lane Offset
     //
     // Each polyline feature carries a `lane_offset` attribute (signed
-    // float from the server, typically ±1-2.5).  We multiply it by a
-    // zoom-interpolated factor to push parallel trunk groups apart.
+    // float from the server, typically ±1-2.5). We use it only as a
+    // visual aid to keep parallel trunks readable when a shared corridor
+    // collapses toward a single screen-space path.
     //
-    // The multiplier tracks the subway fill width × 1.15 at every zoom
-    // stop, so that adjacent lines (lane_offset delta = 1.0) sit exactly
-    // 1.15× one fill-width apart — a tiny 15% gap that keeps fills from
-    // bleeding into each other while looking "touching".
-    //
-    // Both the fill width and the offset use the **same exponential
-    // base 1.6**, so the ratio stays constant between zoom stops too.
-    // This eliminates the old problem where lines spread massively at
-    // low zoom (multiplier >> fill width) and overlapped at high zoom
-    // (multiplier << fill width).
-    //
-    // Because raw polyline geometry passes through station coordinates
-    // and pixel lineOffset is purely visual, station dots still sit at
-    // the geographic centroid of the corridor.
+    // We still taper the multiplier down as you zoom in, but we no longer
+    // collapse it fully to zero. Station markers now inherit the same
+    // screen-space shift, so close-zoom shared corridors can remain
+    // legibly parallel without the old "floating off the stop" mismatch.
+
+    private static let laneOffsetStops: [(zoom: Double, multiplier: Double)] = [
+        (10, 2.0),
+        (11, 1.8),
+        (12, 1.6),
+        (13, 1.35),
+        (14, 1.1),
+        (15, 0.9),
+        (16, 0.75),
+        (17, 0.65),
+        (18, 0.55),
+    ]
+
+    static func laneOffsetMultiplier(at zoom: Double) -> Double {
+        guard let first = laneOffsetStops.first else { return 0 }
+        if zoom <= first.zoom { return first.multiplier }
+
+        for idx in 1..<laneOffsetStops.count {
+            let prev = laneOffsetStops[idx - 1]
+            let next = laneOffsetStops[idx]
+            if zoom <= next.zoom {
+                let span = next.zoom - prev.zoom
+                guard span > 0 else { return next.multiplier }
+                let t = (zoom - prev.zoom) / span
+                return prev.multiplier + (next.multiplier - prev.multiplier) * t
+            }
+        }
+
+        return laneOffsetStops.last?.multiplier ?? 0
+    }
 
     /// Composite expression: top-level zoom interpolation where each stop
     /// multiplies the feature's `lane_offset` by a zoom-dependent factor.
     ///
-    /// The multiplier at each zoom stop = subway fill width × 1.15:
-    ///
-    ///   z10: 1.2×1.15 = 1.4    z14: 3.5×1.15 = 4.0
-    ///   z11: 1.6×1.15 = 1.8    z15: 4.2×1.15 = 4.8
-    ///   z12: 2.2×1.15 = 2.5    z16: 5.0×1.15 = 5.8
-    ///   z13: 2.8×1.15 = 3.2    z17: 6.0×1.15 = 6.9
-    ///                           z18: 7.0×1.15 = 8.1
-    ///
-    /// Built via `NSExpression(mglJSONObject:)` (raw MapLibre GL style-spec
-    /// expression) because the `forMLNInterpolating` convenience puts the
-    /// zoom variable at the top level — MapLibre requires this; nesting
-    /// `$zoomLevel` inside `multiply:by:` is disallowed.
+    /// Strongest at city scale, then tapers to a smaller but still-visible
+    /// close-zoom separation so shared trunks never fully collapse.
     static let laneOffsetExpression: NSExpression = {
-        // Style-spec JSON — v6: width-proportional offset.
-        //
-        // Multiplier = fillWidth × 1.15 at each stop.  Exponential base
-        // 1.6 matches subwayFillWidth's ramp so the ratio is constant
-        // between stops.
-        let json: [Any] = [
-            "interpolate", ["exponential", 1.6], ["zoom"],
-            10,   ["*", ["get", "lane_offset"], 1.4],
-            11,   ["*", ["get", "lane_offset"], 1.8],
-            12,   ["*", ["get", "lane_offset"], 2.5],
-            13,   ["*", ["get", "lane_offset"], 3.2],
-            14,   ["*", ["get", "lane_offset"], 4.0],
-            15,   ["*", ["get", "lane_offset"], 4.8],
-            16,   ["*", ["get", "lane_offset"], 5.8],
-            17,   ["*", ["get", "lane_offset"], 6.9],
-            18,   ["*", ["get", "lane_offset"], 8.1],
-        ]
+        var json: [Any] = ["interpolate", ["linear"], ["zoom"]]
+        for stop in laneOffsetStops {
+            json.append(stop.zoom)
+            json.append(["*", ["get", "lane_offset"], stop.multiplier])
+        }
         return NSExpression(mglJSONObject: json)
     }()
 

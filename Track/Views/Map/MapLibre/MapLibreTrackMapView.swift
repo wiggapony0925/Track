@@ -65,7 +65,7 @@ struct MapLibreTrackMapView: View {
 
     @State private var _cachedTransferConnectors: [TransferConnector] = []
     @State private var _cachedVisibleLabels: [HomeViewModel.TrunkRouteLabel] = []
-    @State private var _cachedVisibleStops: [BusStop] = []
+    @State private var _cachedVisibleStops: [DisplayedRouteStop] = []
     @State private var _lastViewportCenter: CLLocationCoordinate2D?
     @State private var _lastViewportDistance: Double?
 
@@ -298,15 +298,36 @@ struct MapLibreTrackMapView: View {
 
     private func computeVisibleDirectionStops(
         center: CLLocationCoordinate2D, distance: Double
-    ) -> [BusStop] {
+    ) -> [DisplayedRouteStop] {
         guard let shape = viewModel.routeShape else { return [] }
-        let all = shape.stopsForDirection(
+        let allStops = shape.stopsForDirection(
+            index: viewModel.selectedDirectionIndex, name: viewModel.selectedDirectionName)
+        let directionPolylines = shape.polylinesForDirection(
             index: viewModel.selectedDirectionIndex, name: viewModel.selectedDirectionName)
         let latSpan = (distance / 111_000) * 1.5
         let lonSpan = (distance / (111_000 * cos(center.latitude * .pi / 180))) * 1.5
-        return all.filter { stop in
+        let visibleStops = allStops.filter { stop in
             abs(stop.lat - center.latitude) <= latSpan
                 && abs(stop.lon - center.longitude) <= lonSpan
+        }
+
+        let maxDisplaySnapDistance: Double =
+            viewModel.selectedGroupedRoute?.isBus == true ? 100.0 : 160.0
+
+        return visibleStops.map { stop in
+            let rawCoordinate = CLLocationCoordinate2D(latitude: stop.lat, longitude: stop.lon)
+            let displayCoordinate = VehicleInterpolator
+                .snap(
+                    coordinate: rawCoordinate,
+                    to: directionPolylines,
+                    maxDistance: maxDisplaySnapDistance
+                )?
+                .coordinate ?? rawCoordinate
+
+            return DisplayedRouteStop(
+                stop: stop,
+                displayCoordinate: displayCoordinate
+            )
         }
     }
 

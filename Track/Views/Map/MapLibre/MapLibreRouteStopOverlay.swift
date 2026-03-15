@@ -13,12 +13,24 @@ import SwiftUI
 
 // MARK: - Route Stop Overlay
 
+/// A route stop plus the coordinate it should use for on-map display.
+///
+/// The raw `BusStop` coordinate is preserved for tap handling and walking
+/// directions, while `displayCoordinate` can be snapped onto the rendered
+/// polyline so the marker sits cleanly on the route.
+struct DisplayedRouteStop: Identifiable {
+    let stop: BusStop
+    let displayCoordinate: CLLocationCoordinate2D
+
+    var id: String { stop.id }
+}
+
 /// Renders stop markers along a selected route on top of MapLibre GL.
 struct MapLibreRouteStopOverlay: View {
     let mapView: MLNMapView?
 
     /// Direction stops filtered to the current viewport.
-    let stops: [BusStop]
+    let stops: [DisplayedRouteStop]
 
     /// Whether the selected route is a bus route.
     let isBusRoute: Bool
@@ -38,8 +50,9 @@ struct MapLibreRouteStopOverlay: View {
     var body: some View {
         GeometryReader { _ in
             ZStack {
-                ForEach(stops) { stop in
-                    let coord = CLLocationCoordinate2D(latitude: stop.lat, longitude: stop.lon)
+                ForEach(stops) { displayedStop in
+                    let stop = displayedStop.stop
+                    let coord = displayedStop.displayCoordinate
                     if let point = projectToScreen(coord, mapView: mapView, margin: 30) {
                         RouteStopMarker(
                             isBusRoute: isBusRoute,

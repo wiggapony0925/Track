@@ -197,3 +197,58 @@ class TestArcOffset:
         # Should reduce to ~3 points (start, corner, end)
         assert len(result) <= 4
         assert len(result) >= 3
+
+
+class TestLaneOrdering:
+    """Tests for the backend shared-corridor lane ordering solver."""
+
+    def test_lane_order_solver_prefers_pairwise_preferences(self):
+        from app.services.mapping.corridor_pipeline import (
+            _compute_lane_order_scores,
+            _solve_lane_order,
+        )
+
+        pairwise_preferences = {
+            8: {1: 8.0, 3: 8.0},
+            1: {3: 5.0},
+        }
+        scores = _compute_lane_order_scores(pairwise_preferences, {1, 3, 8})
+
+        assert _solve_lane_order({1, 3, 8}, pairwise_preferences, scores) == (8, 1, 3)
+        assert _solve_lane_order({1, 8}, pairwise_preferences, scores) == (8, 1)
+
+    def test_compute_corridor_offsets_follows_physical_left_right_order(self):
+        from shapely.geometry import LineString
+
+        from app.services.mapping.corridor_pipeline import (
+            LANE_WIDTH,
+            _compute_corridor_offsets,
+        )
+
+        def make_path(y: float) -> LineString:
+            return LineString([(i * 5.0, y) for i in range(80)])
+
+        # Physical order is north→south = left→right for an eastbound path.
+        # The trunk ids are intentionally out of order so the test proves we
+        # are not falling back to canonical trunk sorting.
+        trunk_paths = {
+            8: [make_path(8.0)],
+            1: [make_path(0.0)],
+            3: [make_path(-8.0)],
+        }
+
+        offsets = _compute_corridor_offsets(trunk_paths)
+
+        def average_core_offset(values: list[float]) -> float:
+            core = values[10:-10] if len(values) > 20 else values
+            return sum(core) / len(core)
+
+        averages = {
+            trunk_idx: average_core_offset(offsets[trunk_idx][0])
+            for trunk_idx in trunk_paths
+        }
+
+        assert averages[8] < averages[1] < averages[3]
+        assert averages[8] < -0.4 * LANE_WIDTH
+        assert abs(averages[1]) < 0.25 * LANE_WIDTH
+        assert averages[3] > 0.4 * LANE_WIDTH

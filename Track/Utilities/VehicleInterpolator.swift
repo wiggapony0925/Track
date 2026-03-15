@@ -80,6 +80,35 @@ enum VehicleInterpolator {
             totalPolylineLength: totalLength)
     }
 
+    /// Snaps a coordinate to the nearest point across multiple candidate polylines.
+    ///
+    /// Useful for visually anchoring stop markers to the exact path being
+    /// rendered, while still keeping the stop's raw curb/platform coordinate
+    /// available elsewhere for walking directions and proximity checks.
+    static func snap(
+        coordinate: CLLocationCoordinate2D,
+        to polylines: [[CLLocationCoordinate2D]],
+        maxDistance: Double
+    ) -> SnapResult? {
+        var best: SnapResult?
+        var bestDistance = Double.greatestFiniteMagnitude
+
+        for polyline in polylines {
+            guard let candidate = snap(coordinate: coordinate, to: polyline) else {
+                continue
+            }
+            if candidate.distanceFromPolyline < bestDistance {
+                best = candidate
+                bestDistance = candidate.distanceFromPolyline
+            }
+        }
+
+        guard let best, best.distanceFromPolyline <= maxDistance else {
+            return nil
+        }
+        return best
+    }
+
     // MARK: - Interpolate Along Polyline
 
     /// Given a polyline and a fractional distance (0.0 – 1.0), returns

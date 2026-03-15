@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import math
 from collections import defaultdict
+from itertools import permutations
 from typing import NamedTuple
 
 from pyproj import Transformer
@@ -67,6 +68,17 @@ CORRIDOR_DETECT_DIST: float = 25.0
 # considered parallel.  cos(45°) ≈ 0.707.  Tightened from 0.574 to
 # reduce false positives from streets that cross at moderate angles.
 CORRIDOR_ALIGN_MIN: float = 0.707
+
+# Ignore tiny side-to-side differences when inferring lane ordering.
+# GTFS / agency shapes on the same corridor often wobble by 1-2 m even
+# when the trains are really co-located, so we only accept stronger
+# lateral evidence when deciding which trunk should stay left/right.
+LANE_ORDER_SIGNIFICANCE: float = 2.0
+
+# Exhaustive ordering search stays cheap for typical NYC shared-corridor
+# sets (2-5 trunks).  Fall back to the global score ordering for larger
+# sets to avoid factorial blowups.
+MAX_LANE_ORDER_SOLVER_SIZE: int = 7
 
 # Maximum number of consecutive zero-offset vertices allowed inside a
 # corridor before gap-filling kicks in.  Closes detection holes where a
@@ -1063,6 +1075,190 @@ class _TrunkPathInfo(NamedTuple):
     path: LineString
 
 
+class _NeighborObservation(NamedTuple):
+    trunk_idx: int
+    distance: float
+    signed_lateral: float
+
+
+def _collect_neighbor_observations(
+    pt: Point,
+    dir_i: tuple[float, float],
+    trunk_idx: int,
+    tree: STRtree,
+    all_infos: list[_TrunkPathInfo],
+) -> dict[int, _NeighborObservation]:
+    """Collect best nearby corridor candidates for a single vertex.
+
+    Returns one observation per neighboring trunk, keeping the closest
+    matching path fragment and the signed lateral displacement of that
+    fragment relative to the current path direction.
+    """
+    observations: dict[int, _NeighborObservation] = {}
+    left_normal = (-dir_i[1], dir_i[0])
+
+    candidate_indices = tree.query(pt.buffer(CORRIDOR_DETECT_DIST))
+    for ci in candidate_indices:
+        info = all_infos[ci]
+        if info.trunk_idx == trunk_idx:
+            continue
+
+        dist_to_path = info.path.distance(pt)
+        if dist_to_path >= CORRIDOR_DETECT_DIST:
+            continue
+
+        proj = info.path.project(pt)
+        dir_j = _direction_at_distance(info.path, proj)
+        dot = abs(dir_i[0] * dir_j[0] + dir_i[1] * dir_j[1])
+        if dot < CORRIDOR_ALIGN_MIN:
+            continue
+
+        nearest = info.path.interpolate(proj)
+        vx = nearest.x - pt.x
+        vy = nearest.y - pt.y
+        signed_lateral = vx * left_normal[0] + vy * left_normal[1]
+
+        best = observations.get(info.trunk_idx)
+        if best is None or dist_to_path < best.distance or (
+            abs(dist_to_path - best.distance) < 1e-6
+            and abs(signed_lateral) > abs(best.signed_lateral)
+        ):
+            observations[info.trunk_idx] = _NeighborObservation(
+                trunk_idx=info.trunk_idx,
+                distance=dist_to_path,
+                signed_lateral=signed_lateral,
+            )
+
+    return observations
+
+
+def _compute_lane_order_preferences(
+    validated_neighbors: dict[int, dict[int, dict[int, dict[int, _NeighborObservation]]]],
+) -> dict[int, dict[int, float]]:
+    """Aggregate pairwise left/right preferences from corridor observations."""
+    pairwise: defaultdict[int, defaultdict[int, float]] = defaultdict(
+        lambda: defaultdict(float)
+    )
+    evidence_count = 0
+
+    for trunk_idx, path_data in validated_neighbors.items():
+        for vertex_data in path_data.values():
+            for neighbors in vertex_data.values():
+                for neighbor_idx, observation in neighbors.items():
+                    signed = observation.signed_lateral
+                    if abs(signed) < LANE_ORDER_SIGNIFICANCE:
+                        continue
+
+                    # Reward clearer geometric separation a bit more than
+                    # barely-above-threshold votes, but keep all weights in
+                    # the same rough range so long corridors dominate.
+                    weight = 1.0 + min(abs(signed), CORRIDOR_DETECT_DIST) / CORRIDOR_DETECT_DIST
+                    if signed > 0.0:
+                        pairwise[neighbor_idx][trunk_idx] += weight
+                    else:
+                        pairwise[trunk_idx][neighbor_idx] += weight
+                    evidence_count += 1
+
+    if evidence_count:
+        TrackLogger.info(
+            f"[LaneOrder] Collected {evidence_count} pairwise side observations"
+        )
+
+    return {
+        trunk: dict(targets)
+        for trunk, targets in pairwise.items()
+    }
+
+
+def _compute_lane_order_scores(
+    pairwise_preferences: dict[int, dict[int, float]],
+    trunks: set[int] | None = None,
+) -> dict[int, float]:
+    """Collapse pairwise preferences into a deterministic global left/right score."""
+    members = set(trunks or ())
+    members.update(pairwise_preferences.keys())
+    for targets in pairwise_preferences.values():
+        members.update(targets.keys())
+
+    scores: dict[int, float] = {}
+    for trunk_idx in members:
+        left_votes = sum(pairwise_preferences.get(trunk_idx, {}).values())
+        right_votes = 0.0
+        for targets in pairwise_preferences.values():
+            right_votes += targets.get(trunk_idx, 0.0)
+        scores[trunk_idx] = left_votes - right_votes
+
+    return scores
+
+
+def _lane_order_penalty(
+    order: tuple[int, ...],
+    pairwise_preferences: dict[int, dict[int, float]],
+) -> float:
+    """Penalty for a candidate left→right order.
+
+    Any preference saying "B should be left of A" becomes a penalty if the
+    candidate order places A before B.
+    """
+    penalty = 0.0
+    for idx, left_trunk in enumerate(order):
+        for right_trunk in order[idx + 1:]:
+            penalty += pairwise_preferences.get(right_trunk, {}).get(left_trunk, 0.0)
+    return penalty
+
+
+def _solve_lane_order(
+    trunks: set[int],
+    pairwise_preferences: dict[int, dict[int, float]],
+    global_scores: dict[int, float],
+    cache: dict[tuple[int, ...], tuple[int, ...]] | None = None,
+) -> tuple[int, ...]:
+    """Find the best deterministic left→right order for a shared corridor set."""
+    key = tuple(sorted(trunks))
+    if cache is not None and key in cache:
+        return cache[key]
+
+    if len(key) <= 1:
+        if cache is not None:
+            cache[key] = key
+        return key
+
+    baseline = tuple(sorted(key, key=lambda t: (-global_scores.get(t, 0.0), t)))
+    if len(key) > MAX_LANE_ORDER_SOLVER_SIZE:
+        if cache is not None:
+            cache[key] = baseline
+        return baseline
+
+    baseline_rank = {trunk_idx: idx for idx, trunk_idx in enumerate(baseline)}
+    best_order = baseline
+    best_penalty = _lane_order_penalty(best_order, pairwise_preferences)
+    best_deviation = 0
+
+    for perm in permutations(baseline):
+        penalty = _lane_order_penalty(perm, pairwise_preferences)
+        deviation = sum(
+            abs(idx - baseline_rank[trunk_idx])
+            for idx, trunk_idx in enumerate(perm)
+        )
+
+        if penalty < best_penalty - 1e-6:
+            best_order = perm
+            best_penalty = penalty
+            best_deviation = deviation
+            continue
+
+        if abs(penalty - best_penalty) <= 1e-6:
+            if deviation < best_deviation or (
+                deviation == best_deviation and perm < best_order
+            ):
+                best_order = perm
+                best_deviation = deviation
+
+    if cache is not None:
+        cache[key] = best_order
+    return best_order
+
+
 def _compute_corridor_offsets(
     trunk_paths: dict[int, list[LineString]],
 ) -> dict[int, dict[int, list[float]]]:
@@ -1077,7 +1273,8 @@ def _compute_corridor_offsets(
        from *other* trunk groups.
     3. If another trunk path is within CORRIDOR_DETECT_DIST and running in the
        same direction (alignment > 0.707), this vertex is in a shared corridor.
-    4. Assign a lane position based on canonical trunk order.
+    4. Use locally-validated side-of-track evidence to solve a stable
+       left→right lane order for each shared corridor set.
     5. Compute offset = (lane − centre) × LANE_WIDTH.
     6. Smooth the per-vertex offsets with a moving-average window to eliminate
        jitter from marginal proximity detections.
@@ -1101,113 +1298,116 @@ def _compute_corridor_offsets(
     global _corridor_neighbors_cache
     _corridor_neighbors_cache = {}
 
-    results: dict[int, dict[int, list[float]]] = {}
+    validated_neighbors: dict[int, dict[int, dict[int, dict[int, _NeighborObservation]]]] = {}
+    path_lengths: dict[int, dict[int, int]] = {}
 
+    # Pass 1: detect nearby trunks and keep the best lateral observation
+    # for each neighboring trunk at each vertex.
     for trunk_idx, paths in trunk_paths.items():
-        path_offsets: dict[int, list[float]] = {}
+        per_path_validated: dict[int, dict[int, dict[int, _NeighborObservation]]] = {}
+        per_path_lengths: dict[int, int] = {}
 
         for path_idx, path in enumerate(paths):
             coords = list(path.coords)
             n = len(coords)
-            raw_offsets: list[float] = [0.0] * n
-            per_vertex_trunks: dict[int, set[int]] = {}
+            per_path_lengths[path_idx] = n
+            per_vertex_neighbors: dict[int, dict[int, _NeighborObservation]] = {}
 
             for i in range(n):
                 pt = Point(coords[i])
                 dir_i = _local_direction(coords, i)
-                nearby_trunks: set[int] = set()
-
-                # Query spatial index for nearby paths
-                candidate_indices = tree.query(
-                    pt.buffer(CORRIDOR_DETECT_DIST)
+                observations = _collect_neighbor_observations(
+                    pt=pt,
+                    dir_i=dir_i,
+                    trunk_idx=trunk_idx,
+                    tree=tree,
+                    all_infos=all_infos,
                 )
+                if observations:
+                    per_vertex_neighbors[i] = observations
 
-                for ci in candidate_indices:
-                    info = all_infos[ci]
-                    if info.trunk_idx == trunk_idx:
-                        continue  # Skip own trunk group
-
-                    dist_to_path = info.path.distance(pt)
-                    if dist_to_path >= CORRIDOR_DETECT_DIST:
-                        continue
-
-                    # Check direction alignment
-                    proj = info.path.project(pt)
-                    dir_j = _direction_at_distance(info.path, proj)
-                    dot = abs(dir_i[0] * dir_j[0] + dir_i[1] * dir_j[1])
-                    if dot >= CORRIDOR_ALIGN_MIN:
-                        nearby_trunks.add(info.trunk_idx)
-
-                if nearby_trunks:
-                    per_vertex_trunks[i] = nearby_trunks
-
-            # ── Local density filter ──
-            # A vertex is only offset for a neighbour trunk if that trunk
-            # is detected by enough nearby vertices in a sliding window.
-            # This prevents a genuine shared corridor in one part of a path
-            # (e.g. 7 + N/Q/R/W at Queensboro Plaza) from bleeding offsets
-            # into distant vertices where the same trunk happens to pass
-            # within CORRIDOR_DETECT_DIST on a completely separate street
-            # (e.g. N/Q/R/W on Queens Blvd ~23 m from the 7 on Roosevelt Ave).
-            #
-            # Window size: 60 vertices ≈ 3-6 km of path.
-            # Minimum local hits: 8 of 60 (13%).
+            # Local density filter: only keep neighbors that are present in
+            # enough nearby vertices to represent a real shared corridor.
             LOCAL_WINDOW = 60
             LOCAL_MIN_HITS = 8
 
-            # First, build per-trunk detection arrays for efficient windowing
             detected_trunks_all: set[int] = set()
-            for vtrunks in per_vertex_trunks.values():
-                detected_trunks_all.update(vtrunks)
+            for vneighbors in per_vertex_neighbors.values():
+                detected_trunks_all.update(vneighbors.keys())
 
-            # For each candidate trunk, build a boolean array of detections
             trunk_local_valid: dict[int, list[bool]] = {}
-            for t in detected_trunks_all:
+            for neighbor_trunk in detected_trunks_all:
                 detections = [
-                    (t in per_vertex_trunks.get(i, set()))
+                    neighbor_trunk in per_vertex_neighbors.get(i, {})
                     for i in range(n)
                 ]
 
-                # Sliding window: mark vertex i as locally-valid if
-                # the window centred on i has >= LOCAL_MIN_HITS detections
                 half = LOCAL_WINDOW // 2
                 valid = [False] * n
-
-                # Running sum
                 win_sum = sum(1 for d in detections[:min(half, n)] if d)
                 for i in range(n):
-                    # Expand right edge
                     right = i + half
                     if right < n and detections[right]:
                         win_sum += 1
-                    # Shrink left edge
                     left = i - half - 1
                     if left >= 0 and detections[left]:
                         win_sum -= 1
                     if win_sum >= LOCAL_MIN_HITS:
                         valid[i] = True
 
-                trunk_local_valid[t] = valid
+                trunk_local_valid[neighbor_trunk] = valid
 
-            # Compute offsets only using locally-validated neighbor trunks
-            for i in range(n):
-                vtrunks = per_vertex_trunks.get(i)
-                if not vtrunks:
-                    continue
-                # Only keep trunks that are locally dense around this vertex
-                filtered = {
-                    t for t in vtrunks
-                    if trunk_local_valid.get(t, [False] * n)[i]
+            validated_vertex_neighbors: dict[int, dict[int, _NeighborObservation]] = {}
+            for i, neighbors in per_vertex_neighbors.items():
+                filtered_neighbors = {
+                    neighbor_trunk: observation
+                    for neighbor_trunk, observation in neighbors.items()
+                    if trunk_local_valid.get(neighbor_trunk, [False] * n)[i]
                 }
-                if not filtered:
+                if filtered_neighbors:
+                    validated_vertex_neighbors[i] = filtered_neighbors
+
+            per_path_validated[path_idx] = validated_vertex_neighbors
+
+        validated_neighbors[trunk_idx] = per_path_validated
+        path_lengths[trunk_idx] = per_path_lengths
+
+    pairwise_preferences = _compute_lane_order_preferences(validated_neighbors)
+    global_scores = _compute_lane_order_scores(
+        pairwise_preferences,
+        set(trunk_paths.keys()),
+    )
+    lane_order_cache: dict[tuple[int, ...], tuple[int, ...]] = {}
+
+    results: dict[int, dict[int, list[float]]] = {}
+
+    # Pass 2: solve per-corridor lane orders and assign per-vertex offsets.
+    for trunk_idx, paths in trunk_paths.items():
+        path_offsets: dict[int, list[float]] = {}
+
+        for path_idx, path in enumerate(paths):
+            n = path_lengths.get(trunk_idx, {}).get(path_idx, len(path.coords))
+            raw_offsets: list[float] = [0.0] * n
+            vertex_neighbors = validated_neighbors.get(trunk_idx, {}).get(path_idx, {})
+
+            for i, neighbors in vertex_neighbors.items():
+                corridor_trunks = set(neighbors.keys())
+                if not corridor_trunks:
                     continue
+
                 # Track corridor neighbor relationships (bidirectional)
-                _corridor_neighbors_cache.setdefault(trunk_idx, set()).update(filtered)
-                for ft in filtered:
+                _corridor_neighbors_cache.setdefault(trunk_idx, set()).update(corridor_trunks)
+                for ft in corridor_trunks:
                     _corridor_neighbors_cache.setdefault(ft, set()).add(trunk_idx)
-                all_trunks = sorted(filtered | {trunk_idx})
-                lane = all_trunks.index(trunk_idx)
-                n_lanes = len(all_trunks)
+
+                ordered_trunks = _solve_lane_order(
+                    corridor_trunks | {trunk_idx},
+                    pairwise_preferences,
+                    global_scores,
+                    cache=lane_order_cache,
+                )
+                lane = ordered_trunks.index(trunk_idx)
+                n_lanes = len(ordered_trunks)
                 centre = (n_lanes - 1) / 2.0
                 raw_offsets[i] = (lane - centre) * LANE_WIDTH
 
@@ -1216,6 +1416,11 @@ def _compute_corridor_offsets(
             path_offsets[path_idx] = _smooth_offsets(filled)
 
         results[trunk_idx] = path_offsets
+
+    if lane_order_cache:
+        TrackLogger.info(
+            f"[LaneOrder] Solved {len(lane_order_cache)} shared corridor order sets"
+        )
 
     # Log summary
     corridors_found = 0

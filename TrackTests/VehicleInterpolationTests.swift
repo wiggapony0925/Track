@@ -125,6 +125,32 @@ struct VehicleInterpolatorCoreTests {
         #expect(result == nil)
     }
 
+    @Test func snapAcrossMultiplePolylinesChoosesNearestLine() {
+        let nearby = NYCFixtures.busRoute
+        let distant = NYCFixtures.seventhAvenue
+        let offRoute = CLLocationCoordinate2D(latitude: 40.6921, longitude: -73.9835)
+
+        let result = VehicleInterpolator.snap(
+            coordinate: offRoute,
+            to: [distant, nearby],
+            maxDistance: 120
+        )
+
+        #expect(result != nil)
+        #expect(result!.distanceFromPolyline < 40)
+        #expect(abs(result!.coordinate.latitude - 40.6920) < 0.0002)
+    }
+
+    @Test func snapAcrossMultiplePolylinesHonorsDistanceLimit() {
+        let result = VehicleInterpolator.snap(
+            coordinate: CLLocationCoordinate2D(latitude: 40.8000, longitude: -73.9500),
+            to: [NYCFixtures.busRoute],
+            maxDistance: 50
+        )
+
+        #expect(result == nil)
+    }
+
     // MARK: interpolate(along:fraction:)
 
     @Test func interpolateAtZeroReturnsStart() {

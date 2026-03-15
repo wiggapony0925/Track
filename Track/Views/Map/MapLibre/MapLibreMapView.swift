@@ -398,7 +398,12 @@ struct MapLibreMapView: UIViewRepresentable {
             }
 
             updateSystemMapIfNeeded(style: style, representable: representable, darkChanged: darkChanged)
-            updateStationDotsIfNeeded(style: style, representable: representable, darkChanged: darkChanged)
+            updateStationDotsIfNeeded(
+                mapView: mapView,
+                style: style,
+                representable: representable,
+                darkChanged: darkChanged
+            )
             updateRouteIfNeeded(style: style, representable: representable, darkChanged: darkChanged)
             updateWalkingIfNeeded(style: style, representable: representable)
             updateTransferIfNeeded(style: style, representable: representable)
@@ -419,12 +424,28 @@ struct MapLibreMapView: UIViewRepresentable {
             }
         }
 
-        private func updateStationDotsIfNeeded(style: MLNStyle, representable: MapLibreMapView, darkChanged: Bool) {
+        private func updateStationDotsIfNeeded(
+            mapView: MLNMapView,
+            style: MLNStyle,
+            representable: MapLibreMapView,
+            darkChanged: Bool
+        ) {
             let stationCount: Int = representable.stations.count
             let activeFlag: Int = representable.hasActiveRoute ? 0x2 : 0x0
-            let stationHash: Int = stationCount ^ activeFlag
+            let zoomBucket: Int = Int((mapView.zoomLevel * 12.0).rounded())
+            let bearingBucket: Int = Int((mapView.direction * 2.0).rounded())
+            let pitchBucket: Int = Int((mapView.camera.pitch * 2.0).rounded())
+            let stationHash: Int = stationCount
+                ^ activeFlag
+                ^ (zoomBucket &* 131)
+                ^ (bearingBucket &* 257)
+                ^ (pitchBucket &* 389)
             if stationHash != lastStationHash || darkChanged {
-                updateStationDotLayers(style: style, representable: representable)
+                updateStationDotLayers(
+                    mapView: mapView,
+                    style: style,
+                    representable: representable
+                )
                 lastStationHash = stationHash
             }
         }
@@ -515,8 +536,10 @@ struct MapLibreMapView: UIViewRepresentable {
             //
             // All subway polylines go into a single source with trunk_index
             // sorted features.  Parallel corridor separation is handled by
-            // MapLibre's lineOffset (pixel-space).  At high zoom (z14+) the
-            // offset tapers to 0 so lines sit directly on their station dots.
+            // MapLibre's lineOffset (pixel-space). The multiplier tapers
+            // down at close zoom, but no longer collapses to zero; station
+            // markers inherit the same camera-aware shift so shared trunks
+            // stay parallel without visually separating from their stops.
             let subwayOnly = representable.subwayPolylines.filter {
                 !isEffectivelyElevated($0, reroutedRouteIDs: representable.reroutedRouteIDs)
             }
@@ -602,7 +625,89 @@ struct MapLibreMapView: UIViewRepresentable {
         // All properties zoom-interpolated for buttery-smooth transitions.
         // Thousands of stations rendered at zero CPU cost (GL batches).
 
-        func updateStationDotLayers(style: MLNStyle, representable: MapLibreMapView) {
+        private func displayedStationCoordinate(
+            for station: MapSystemViewModel.ConsolidatedStation,
+            on mapView: MLNMapView
+        ) -> CLLocationCoordinate2D {
+            guard !station.isTransfer,
+                  let laneHeading = station.laneHeading
+            else {
+                return station.coordinate
+            }
+
+            let multiplier = MapLibreStyleConfig.laneOffsetMultiplier(at: mapView.zoomLevel)
+            let pixelOffset = CGFloat(Double(station.laneOffset) * multiplier)
+            guard abs(pixelOffset) > 0.01 else { return station.coordinate }
+
+            guard let normal = stationScreenLeftNormal(
+                coordinate: station.coordinate,
+                heading: laneHeading,
+                mapView: mapView
+            ) else {
+                return station.coordinate
+            }
+
+            let anchor = mapView.convert(station.coordinate, toPointTo: mapView)
+            let shifted = CGPoint(
+                x: anchor.x + normal.dx * pixelOffset,
+                y: anchor.y + normal.dy * pixelOffset
+            )
+            let shiftedCoordinate = mapView.convert(shifted, toCoordinateFrom: mapView)
+            return CLLocationCoordinate2DIsValid(shiftedCoordinate) ? shiftedCoordinate : station.coordinate
+        }
+
+        private func stationScreenLeftNormal(
+            coordinate: CLLocationCoordinate2D,
+            heading: Double,
+            mapView: MLNMapView
+        ) -> CGVector? {
+            let sampleMeters: CLLocationDistance = 18
+            let backward = Self.coordinate(
+                from: coordinate,
+                distanceMeters: sampleMeters,
+                bearingDegrees: heading + 180
+            )
+            let forward = Self.coordinate(
+                from: coordinate,
+                distanceMeters: sampleMeters,
+                bearingDegrees: heading
+            )
+
+            let p0 = mapView.convert(backward, toPointTo: mapView)
+            let p1 = mapView.convert(forward, toPointTo: mapView)
+            let dx = p1.x - p0.x
+            let dy = p1.y - p0.y
+            let length = sqrt(dx * dx + dy * dy)
+            guard length > 0.001 else { return nil }
+
+            // Screen-space left normal for a tangent in iOS coordinates
+            // (x right, y down). Positive lineOffset values follow this side.
+            return CGVector(dx: dy / length, dy: -dx / length)
+        }
+
+        private static func coordinate(
+            from coordinate: CLLocationCoordinate2D,
+            distanceMeters: CLLocationDistance,
+            bearingDegrees: Double
+        ) -> CLLocationCoordinate2D {
+            let bearing = bearingDegrees * .pi / 180.0
+            let metersPerDegreeLat: Double = 111_132.0
+            let metersPerDegreeLon: Double =
+                max(cos(coordinate.latitude * .pi / 180.0) * 111_320.0, 1.0)
+
+            let dLat = cos(bearing) * distanceMeters / metersPerDegreeLat
+            let dLon = sin(bearing) * distanceMeters / metersPerDegreeLon
+            return CLLocationCoordinate2D(
+                latitude: coordinate.latitude + dLat,
+                longitude: coordinate.longitude + dLon
+            )
+        }
+
+        func updateStationDotLayers(
+            mapView: MLNMapView,
+            style: MLNStyle,
+            representable: MapLibreMapView
+        ) {
             guard !representable.hasActiveRoute else {
                 // Hide system station dots when a route is selected
                 if let src = style.source(withIdentifier: MapLibreStyleConfig.srcStations) as? MLNShapeSource {
@@ -619,7 +724,7 @@ struct MapLibreMapView: UIViewRepresentable {
 
             for station in stations {
                 let feature = MLNPointFeature()
-                feature.coordinate = station.coordinate
+                feature.coordinate = displayedStationCoordinate(for: station, on: mapView)
                 if station.isTransfer {
                     feature.attributes = [
                         "name": station.name,
