@@ -23,10 +23,34 @@ from app.models import (
     RouteShape,
     TrackArrival,
 )
-from app.routers.nearby import _group_arrivals
-from app.routers.nearby import _direction_label
+from app.routers import nearby as nearby_router
+from app.routers.nearby import _direction_label, _group_arrivals
 
 client = TestClient(app)
+
+
+def _cached_group(route_id: str = "A") -> GroupedNearbyTransit:
+    return GroupedNearbyTransit(
+        route_id=route_id,
+        display_name=route_id,
+        mode="subway",
+        color_hex="#0039A6",
+        directions=[
+            DirectionArrivals(
+                direction="Northbound",
+                arrivals=[
+                    NearbyTransitArrival(
+                        route_id=route_id,
+                        stop_name="Test Stop",
+                        direction="Northbound",
+                        minutes_away=3,
+                        status="On Time",
+                        mode="subway",
+                    )
+                ],
+            )
+        ],
+    )
 
 
 class TestNearbyTransitArrivalModel:
@@ -491,6 +515,38 @@ class TestNearbyGroupedEndpoint:
         # Canonical MTA order: subway before bus (not pure soonest-arrival)
         assert data[0]["mode"] == "subway"
         assert data[1]["mode"] == "bus"
+
+    @patch("app.routers.nearby._compute_and_cache_grouped", new_callable=AsyncMock)
+    def test_grouped_uses_neighbor_cell_cache_on_gps_jitter(self, mock_compute):
+        cached_group = _cached_group("A")
+        cached_key = nearby_router._nearby_cache_key(40.7000, -73.9000, 1000, None)
+        jitter_key = nearby_router._nearby_cache_key(40.70009, -73.9000, 1000, None)
+        assert jitter_key != cached_key
+
+        nearby_router._nearby_resp_cache[cached_key] = (0.0, [cached_group])
+
+        with patch("time.time", return_value=5.0):
+            response = client.get("/nearby/grouped?lat=40.70009&lon=-73.9000&radius=1000")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 1
+        assert data[0]["route_id"] == "A"
+
+    @patch("app.routers.nearby._compute_and_cache_grouped", new_callable=AsyncMock)
+    def test_grouped_serves_cached_response_when_refresh_errors(self, mock_compute):
+        cached_group = _cached_group("L")
+        cache_key = nearby_router._nearby_cache_key(40.7000, -73.9000, 1000, None)
+        nearby_router._nearby_resp_cache[cache_key] = (25.0, [cached_group])
+        mock_compute.side_effect = RuntimeError("upstream unavailable")
+
+        with patch("time.time", return_value=80.0):
+            response = client.get("/nearby/grouped?lat=40.7000&lon=-73.9000&radius=1000")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 1
+        assert data[0]["route_id"] == "L"
 
 
 # ===================================================================

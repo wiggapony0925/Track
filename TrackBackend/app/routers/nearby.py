@@ -26,6 +26,7 @@ from fastapi import APIRouter, Query, Response
 from app.cache_config import (
     BUS_MAX_SIRI_STOPS,
     NEARBY_GPS_DECIMALS,
+    NEARBY_RESPONSE_ERROR_TTL,
     NEARBY_RESPONSE_FRESH_TTL,
     NEARBY_RESPONSE_MAX_SIZE,
     NEARBY_RESPONSE_STALE_TTL,
@@ -256,6 +257,14 @@ _nearby_resp_cache: dict[
 _nearby_resp_inflight: dict[tuple, asyncio.Task] = {}
 
 
+def _describe_exception(exc: BaseException) -> str:
+    """Return a log-friendly exception string even when str(exc) is empty."""
+    detail = str(exc).strip()
+    if detail:
+        return f"{type(exc).__name__}: {detail}"
+    return type(exc).__name__
+
+
 async def _compute_and_cache_grouped(
     key: tuple[float, float, int, str | None],
     lat: float,
@@ -291,6 +300,56 @@ def _nearby_cache_key(
     """Round GPS to ~111m grid cells for cache bucketing."""
     factor = 10 ** NEARBY_GPS_DECIMALS
     return (round(lat * factor) / factor, round(lon * factor) / factor, radius, mode)
+
+
+def _find_cached_grouped_fallback(
+    key: tuple[float, float, int, str | None],
+    now: float,
+    *,
+    max_age: float,
+    include_neighbor_cells: bool,
+) -> tuple[tuple[float, float, int, str | None], list["GroupedNearbyTransit"], float] | None:
+    """Find the freshest compatible cached response for this location key.
+
+    Exact-key matches are always considered. When ``include_neighbor_cells`` is
+    true, adjacent rounded GPS cells for the same radius/mode are also eligible.
+    This keeps small GPS jitter from blowing away nearby/grouped cache hits.
+    """
+    factor = 10 ** NEARBY_GPS_DECIMALS
+    cell_span = 1 / factor
+    req_lat, req_lon, req_radius, req_mode = key
+
+    best: tuple[
+        tuple[float, float],
+        tuple[float, float, int, str | None],
+        list["GroupedNearbyTransit"],
+    ] | None = None
+    for candidate_key, (ts, data) in _nearby_resp_cache.items():
+        cand_lat, cand_lon, cand_radius, cand_mode = candidate_key
+        if cand_radius != req_radius or cand_mode != req_mode:
+            continue
+
+        lat_ok = abs(cand_lat - req_lat) < 1e-12
+        lon_ok = abs(cand_lon - req_lon) < 1e-12
+        if not (lat_ok and lon_ok):
+            if not include_neighbor_cells:
+                continue
+            if abs(cand_lat - req_lat) > cell_span or abs(cand_lon - req_lon) > cell_span:
+                continue
+
+        age = now - ts
+        if age > max_age:
+            continue
+
+        score = (abs(cand_lat - req_lat) + abs(cand_lon - req_lon), age)
+        if best is None or score < best[0]:
+            best = (score, candidate_key, data)
+
+    if best is None:
+        return None
+    score, candidate_key, data = best
+    age = score[1]
+    return candidate_key, data, age
 
 
 router = APIRouter(tags=["nearby"])
@@ -369,12 +428,38 @@ async def nearby_transit_grouped(
                     try:
                         await _compute_and_cache_grouped(k, k[0], k[1], r, m)
                     except Exception as exc:
-                        TrackLogger.error(f"BG refresh /nearby/grouped failed: {exc}", exc_info=True)
+                        TrackLogger.error(
+                            f"BG refresh /nearby/grouped failed: {_describe_exception(exc)}",
+                            exc_info=True,
+                        )
                     finally:
                         _nearby_resp_inflight.pop(k, None)
                 task = asyncio.create_task(_bg_refresh(key, effective_radius, mode))
                 _nearby_resp_inflight[key] = task
             return data
+
+    nearby_fallback = _find_cached_grouped_fallback(
+        key, now, max_age=NEARBY_RESPONSE_STALE_TTL, include_neighbor_cells=True
+    )
+    if nearby_fallback is not None:
+        fallback_key, fallback_data, fallback_age = nearby_fallback
+        fallback_kind = "exact" if fallback_key == key else "neighbor-cell"
+        TrackLogger.cache(f"RESP HIT ({fallback_kind} stale {fallback_age:.1f}s) /nearby/grouped")
+        if key not in _nearby_resp_inflight:
+            async def _bg_refresh_exact(k: tuple, req_lat: float, req_lon: float, r: int, m: str | None) -> None:
+                try:
+                    await _compute_and_cache_grouped(k, req_lat, req_lon, r, m)
+                except Exception as exc:
+                    TrackLogger.error(
+                        f"BG refresh /nearby/grouped failed: {_describe_exception(exc)}",
+                        exc_info=True,
+                    )
+                finally:
+                    _nearby_resp_inflight.pop(k, None)
+
+            task = asyncio.create_task(_bg_refresh_exact(key, lat, lon, effective_radius, mode))
+            _nearby_resp_inflight[key] = task
+        return fallback_data
 
     # 2. Cache miss — coalesce concurrent requests for same key
     inflight = _nearby_resp_inflight.get(key)
@@ -385,6 +470,22 @@ async def nearby_transit_grouped(
     async def _miss_compute() -> list[GroupedNearbyTransit]:
         try:
             return await _compute_and_cache_grouped(key, lat, lon, effective_radius, mode)
+        except Exception as exc:
+            fallback = _find_cached_grouped_fallback(
+                key,
+                now,
+                max_age=NEARBY_RESPONSE_ERROR_TTL,
+                include_neighbor_cells=True,
+            )
+            if fallback is not None:
+                fallback_key, fallback_data, fallback_age = fallback
+                TrackLogger.warning(
+                    f"RESP STALE-IF-ERROR /nearby/grouped age={fallback_age:.1f}s "
+                    f"exact={fallback_key == key} because {_describe_exception(exc)}",
+                    tag="CACHE",
+                )
+                return fallback_data
+            raise
         finally:
             _nearby_resp_inflight.pop(key, None)
 
@@ -434,7 +535,9 @@ async def _collect_all(
             results.extend(result)
             _mode_times[label] = f"{len(result)} items"
         elif isinstance(result, Exception):
-            TrackLogger.error(f"{label.upper()} feed failed: {result}")
+            TrackLogger.error(
+                f"{label.upper()} feed failed: {_describe_exception(result)}"
+            )
             _mode_times[label] = f"FAILED"
     
     TrackLogger.info(
@@ -1056,7 +1159,7 @@ async def _fetch_nearby_subway(
     for line, arrivals in zip(feed_lines, feed_results):
         if isinstance(arrivals, Exception):
             TrackLogger.error(
-                f"Subway feed '{line}' failed: {type(arrivals).__name__}: {arrivals}"
+                f"Subway feed '{line}' failed: {_describe_exception(arrivals)}"
             )
             continue
         if not isinstance(arrivals, list):
@@ -2176,7 +2279,7 @@ async def _fetch_nearby_rail(
     try:
         arrivals = await fetch_rail_arrivals(feed_agency)
     except Exception as exc:
-        TrackLogger.error(f"{agency.upper()} feed failed: {exc}")
+        TrackLogger.error(f"{agency.upper()} feed failed: {_describe_exception(exc)}")
         return results
 
     for arrival in arrivals:

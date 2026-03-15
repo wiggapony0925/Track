@@ -31,6 +31,7 @@ _SETTINGS_PATH = Path(__file__).resolve().parent.parent / "settings.json"
 class AppSettings(BaseModel):
     search_radius_meters: int = 800  # Radius (meters) to search for nearby stops
     refresh_interval_seconds: int = 30  # How often to fetch fresh data from MTA
+    refresh_cooldown_seconds: int = 20  # Min seconds before another nearby refresh is needed
     nearest_metro_fallback_radius_meters: int = 5000  # Fallback radius if nothing found nearby
     max_nearby_results: int = 20  # Max results to return in /nearby endpoint
     max_arrivals_per_feed: int = 10  # Limit arrivals processed per GTFS feed

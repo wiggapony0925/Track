@@ -1190,10 +1190,9 @@ extension HomeViewModel {
         let lon = location.coordinate.longitude
 
         do {
-            // Fire all location-dependent fetches in parallel so auxiliary
-            // stop metadata (bus stops, stations) is ready BEFORE we set
-            // groupedTransit — eliminating the second SwiftUI render pass
-            // that used to flash stale distance badges.
+            // Fire all location-dependent fetches in parallel. Publish the
+            // grouped rows as soon as they arrive, then let the slower stop
+            // metadata refine distance badges afterward.
             async let groupedTask = TrackAPI.fetchNearbyGrouped(lat: lat, lon: lon)
             // Use a capped radius for bus stops (OBA has a ~100-stop hard
             // limit per call).  With the full 8047 m radius the 100 slots
@@ -1211,17 +1210,6 @@ extension HomeViewModel {
 
             let newGrouped = (try await groupedTask).filter { $0.hasRealArrivals }
 
-            // Resolve auxiliary data (best-effort) before publishing groups.
-            let stops = (try? await busStopsTask) ?? nearbyBusStops
-            let stations = (try? await stationsTask) ?? nearbyStations
-
-            // Augment nearbyStations with LIRR/MNR station data extracted from
-            // grouped arrivals.  The subway-only /stations/nearby endpoint never
-            // returns commuter rail stations, so LIRR/MNR distance matching
-            // always fell back to groupMinDistance.  By injecting arrival stop
-            // coordinates here, the primary matching path works for all modes.
-            nearbyStations = Self.augmentStations(stations, from: newGrouped)
-
             let rawTransit = newGrouped
                 .flatMap(\ .directions)
                 .flatMap(\ .arrivals)
@@ -1236,14 +1224,6 @@ extension HomeViewModel {
 
             // Update pulse state for station capsules with imminent arrivals
             mapSystem.updateImminentStations(from: groupedTransit)
-
-            // Augment nearbyBusStops with stop data from bus arrivals whose
-            // stops weren't returned by the /bus/nearby OBA fetch (smaller
-            // radius or OBA API cap).  Uses the MERGED groupedTransit so
-            // graced routes (surviving from previous cycles) also contribute
-            // their stop coordinates — otherwise distance matching fails for
-            // routes that dropped from the fresh response but are still visible.
-            nearbyBusStops = Self.augmentBusStops(stops, from: groupedTransit)
 
             // Persist for instant display on next cold launch.
             // Include the fetch location so the next launch can detect
@@ -1293,6 +1273,18 @@ extension HomeViewModel {
 
             // Sync the selected route if it's currently open
             updateSelectedRouteFromRefreshedData(groupedTransit)
+
+            let stations = (try? await stationsTask) ?? nearbyStations
+            // Augment nearbyStations with LIRR/MNR station data extracted from
+            // grouped arrivals. The subway-only /stations/nearby endpoint never
+            // returns commuter rail stations, so this keeps the primary
+            // station-matching path working for all modes.
+            nearbyStations = Self.augmentStations(stations, from: groupedTransit)
+
+            let stops = (try? await busStopsTask) ?? nearbyBusStops
+            // Uses the MERGED groupedTransit so graced routes (surviving from
+            // previous cycles) still contribute their stop coordinates.
+            nearbyBusStops = Self.augmentBusStops(stops, from: groupedTransit)
 
         } catch {
             AppLogger.shared.logError("fetchNearbyTransit", error: error)
@@ -1507,10 +1499,6 @@ extension HomeViewModel {
             let allGrouped = try await groupedTask
             let filtered = allGrouped.filter { $0.mode == "subway" && $0.hasRealArrivals }
 
-            // Resolve stations BEFORE grouped data so displayDistanceMeters()
-            // has fresh physical-station distances when SwiftUI re-renders.
-            nearbyStations = (try? await stationsTask) ?? nearbyStations
-
             nearbyGroupedSubwayArrivals = mergeGroupedTransit(
                 new: filtered,
                 existing: nearbyGroupedSubwayArrivals,
@@ -1521,6 +1509,9 @@ extension HomeViewModel {
             mapSystem.updateImminentStations(from: nearbyGroupedSubwayArrivals)
 
             updateSelectedRouteFromRefreshedData(nearbyGroupedSubwayArrivals)
+
+            let stations = (try? await stationsTask) ?? nearbyStations
+            nearbyStations = Self.augmentStations(stations, from: nearbyGroupedSubwayArrivals)
         } catch {
             AppLogger.shared.logError("refreshSubway", error: error)
             errorMessage = (error as? TransitError)?.description ?? error.localizedDescription
@@ -1550,15 +1541,6 @@ extension HomeViewModel {
             let allGrouped = try await groupedTask
             let filtered = allGrouped.filter { $0.mode == "bus" && $0.hasRealArrivals }
 
-            // Resolve bus stops BEFORE updating grouped arrivals so that
-            // when SwiftUI re-renders the dashboard, displayDistanceMeters()
-            // already has fresh nearbyBusStops to match against.
-            do {
-                nearbyBusStops = try await nearbyBusStopsTask
-            } catch {
-                AppLogger.shared.logError("fetchNearbyBusStops", error: error)
-            }
-
             nearbyGroupedBusArrivals = mergeGroupedTransit(
                 new: filtered,
                 existing: nearbyGroupedBusArrivals,
@@ -1566,6 +1548,15 @@ extension HomeViewModel {
             )
 
             updateSelectedRouteFromRefreshedData(nearbyGroupedBusArrivals)
+
+            let stops: [BusStop]
+            do {
+                stops = try await nearbyBusStopsTask
+            } catch {
+                AppLogger.shared.logError("fetchNearbyBusStops", error: error)
+                stops = nearbyBusStops
+            }
+            nearbyBusStops = Self.augmentBusStops(stops, from: nearbyGroupedBusArrivals)
 
             // Fetch full route catalog only once — it rarely changes and is
             // cached for 30 s in the API memoizer.  Fire-and-forget so it

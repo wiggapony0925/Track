@@ -32,7 +32,15 @@ struct AppSettings {
     }
     /// Minimum seconds before a background-return triggers a new fetch.
     /// If the user comes back within this window, the previous data is reused.
-    let refreshCooldownSeconds: Int
+    private let _refreshCooldownSeconds: Int
+    var refreshCooldownSeconds: Int {
+        let configured =
+            UserDefaults.standard.object(forKey: "rc_refresh_cooldown_seconds") as? Int
+            ?? _refreshCooldownSeconds
+        // Never let the cooldown exceed the poll interval, otherwise the
+        // scheduled refresh timer quietly suppresses every other fetch.
+        return max(5, min(configured, refreshIntervalSeconds))
+    }
     /// Minimum distance (meters) the user must move before nearby-route
     /// discovery is re-triggered on a background return.
     let significantMovementMeters: Double
@@ -216,7 +224,7 @@ struct AppSettings {
             self.defaultSearchRadiusMeters = 8047
             self.nearestMetroFallbackRadiusMeters = 8047
             self._refreshIntervalSeconds = 30
-            self.refreshCooldownSeconds = 30
+            self._refreshCooldownSeconds = 20
             self.significantMovementMeters = 150
             self.prodBaseURL = "https://track-vkrr.onrender.com"
             self.localBaseURL = "http://127.0.0.1:8000"
@@ -277,7 +285,7 @@ struct AppSettings {
         self.defaultSearchRadiusMeters = api["default_search_radius_meters"] as? Int ?? 8047
         self.nearestMetroFallbackRadiusMeters = api["nearest_metro_fallback_radius_meters"] as? Int ?? 8047
         self._refreshIntervalSeconds = api["refresh_interval_seconds"] as? Int ?? 30
-        self.refreshCooldownSeconds = api["refresh_cooldown_seconds"] as? Int ?? 30
+        self._refreshCooldownSeconds = api["refresh_cooldown_seconds"] as? Int ?? 20
         self.significantMovementMeters = api["significant_movement_meters"] as? Double ?? 150
         self.prodBaseURL = api["prod_base_url"] as? String ?? "https://track-vkrr.onrender.com"
         self.localBaseURL = api["local_base_url"] as? String ?? "http://127.0.0.1:8000"
@@ -344,6 +352,9 @@ extension AppSettings {
         let store = UserDefaults.standard
         if let interval = config["refresh_interval_seconds"] as? Int, interval >= 10 {
             store.set(interval, forKey: "rc_refresh_interval_seconds")
+        }
+        if let cooldown = config["refresh_cooldown_seconds"] as? Int, cooldown >= 5 {
+            store.set(cooldown, forKey: "rc_refresh_cooldown_seconds")
         }
         if let showGhosts = config["show_ghost_trains"] as? Bool {
             store.set(showGhosts, forKey: "rc_show_ghost_trains")

@@ -1,7 +1,8 @@
 {
   "app_settings": {
     "search_radius_meters": 8047,
-    "refresh_interval_seconds": 30,
+    "refresh_interval_seconds": 20,
+    "refresh_cooldown_seconds": 20,
     "nearest_metro_fallback_radius_meters": 5000,
     "max_nearby_results": 40,
     "max_arrivals_per_feed": 10,
@@ -15,6 +16,7 @@
   },
   "cache": {
     "mta_feed_ttl": 20.0,
+    "mta_feed_stale_ttl": 60.0,
     "mta_cache_max_size": 128,
     "mta_upstream_concurrency": 32,
     "bus_arrivals_fresh_ttl": 20.0,
@@ -41,6 +43,7 @@
     "oba_auth_cooldown": 60.0,
     "nearby_response_fresh_ttl": 10.0,
     "nearby_response_stale_ttl": 30.0,
+    "nearby_response_error_ttl": 60.0,
     "nearby_response_max_size": 500,
     "nearby_gps_decimals": 4
   },

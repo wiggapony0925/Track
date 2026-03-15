@@ -17,7 +17,12 @@ from typing import Any
 
 import httpx
 
-from app.cache_config import MTA_CACHE_MAX_SIZE, MTA_FEED_TTL_SECONDS, MTA_UPSTREAM_CONCURRENCY
+from app.cache_config import (
+    MTA_CACHE_MAX_SIZE,
+    MTA_FEED_STALE_TTL_SECONDS,
+    MTA_FEED_TTL_SECONDS,
+    MTA_UPSTREAM_CONCURRENCY,
+)
 from app.config import get_settings
 from app.utils import cache_stats
 from app.utils import redis_client as _redis
@@ -26,6 +31,7 @@ from app.utils.logger import TrackLogger
 # Cache-stats kind label used for all MTA feeds (subway / LIRR / MNR).
 # The URL itself is the unique key within this kind.
 _FEED_KIND = "mta.feed"
+_RETRYABLE_STATUS_CODES = {408, 425, 429, 500, 502, 503, 504}
 
 
 def _get_timeout() -> httpx.Timeout:
@@ -35,6 +41,14 @@ def _get_timeout() -> httpx.Timeout:
         settings.app_settings.http_timeout_seconds,
         connect=settings.app_settings.http_connect_timeout_seconds,
     )
+
+
+def _describe_exception(exc: BaseException) -> str:
+    """Return a log-friendly exception string even when str(exc) is empty."""
+    detail = str(exc).strip()
+    if detail:
+        return f"{type(exc).__name__}: {detail}"
+    return type(exc).__name__
 
 
 # ---------------------------------------------------------------------------
@@ -50,28 +64,40 @@ class AsyncTTLCache:
       If still over limit, drops the oldest 25%.
     """
 
-    def __init__(self, ttl: float = MTA_FEED_TTL_SECONDS, max_size: int = MTA_CACHE_MAX_SIZE):
-        self.ttl = ttl
+    def __init__(
+        self,
+        fresh_ttl: float = MTA_FEED_TTL_SECONDS,
+        stale_ttl: float = MTA_FEED_STALE_TTL_SECONDS,
+        max_size: int = MTA_CACHE_MAX_SIZE,
+    ):
+        self.fresh_ttl = fresh_ttl
+        self.stale_ttl = stale_ttl
         self.max_size = max_size
         self._cache: dict[str, tuple[float, Any]] = {}
 
-    def get(self, key: str) -> Any | None:
+    def get_state(self, key: str) -> tuple[Any | None, str | None]:
         entry = self._cache.get(key)
         if entry is None:
             cache_stats.bucket("mta.feed").miss += 1
             cache_stats.tick()
-            return None
+            return None, None
         ts, value = entry
-        if time.time() - ts < self.ttl:
+        age = time.time() - ts
+        if age < self.fresh_ttl:
             TrackLogger.cache(f"HIT  {key[:80]}")
             cache_stats.bucket("mta.feed").fresh += 1
             cache_stats.tick()
-            return value
+            return value, "fresh"
+        if age < self.stale_ttl:
+            TrackLogger.cache(f"STALE  {key[:80]}")
+            cache_stats.bucket("mta.feed").stale += 1
+            cache_stats.tick()
+            return value, "stale"
         del self._cache[key]
         TrackLogger.cache(f"EXPIRED  {key[:80]}")
-        cache_stats.bucket("mta.feed").stale += 1
+        cache_stats.bucket("mta.feed").miss += 1
         cache_stats.tick()
-        return None
+        return None, None
 
     def set(self, key: str, value: Any) -> None:
         if len(self._cache) >= self.max_size:
@@ -82,7 +108,10 @@ class AsyncTTLCache:
         s.sets += 1
         if not s._first_set_logged:
             s._first_set_logged = True
-            TrackLogger.redis(f"[MTA CACHE] ✓ First SET  key={key[:100]}  ttl={int(self.ttl)}s")
+            TrackLogger.redis(
+                f"[MTA CACHE] ✓ First SET  key={key[:100]}  "
+                f"fresh={int(self.fresh_ttl)}s stale={int(self.stale_ttl)}s"
+            )
         cache_stats.tick()
 
     def _evict(self) -> None:
@@ -91,7 +120,7 @@ class AsyncTTLCache:
         # Remove all expired
         self._cache = {
             k: (ts, v) for k, (ts, v) in self._cache.items()
-            if now - ts < self.ttl
+            if now - ts < self.stale_ttl
         }
         # If still at capacity, drop oldest quarter
         if len(self._cache) >= self.max_size:
@@ -150,7 +179,13 @@ def _get_client() -> httpx.AsyncClient:
         or _shared_client.is_closed
         or _shared_client_loop_id != current_loop_id
     ):
-        _shared_client = httpx.AsyncClient(timeout=_get_timeout())
+        _shared_client = httpx.AsyncClient(
+            timeout=_get_timeout(),
+            limits=httpx.Limits(
+                max_connections=MTA_UPSTREAM_CONCURRENCY,
+                max_keepalive_connections=min(16, MTA_UPSTREAM_CONCURRENCY),
+            ),
+        )
         _shared_client_loop_id = current_loop_id
         TrackLogger.debug("Created new shared httpx.AsyncClient", tag="HTTP")
     return _shared_client
@@ -166,40 +201,103 @@ def _build_mta_headers() -> dict[str, str]:
 
 async def _fetch_from_upstream(url: str, *, parse_json: bool) -> Any:
     client = _get_client()
-    async with _get_upstream_semaphore():
-        response = await client.get(url, headers=_build_mta_headers())
-    response.raise_for_status()
-    return response.json() if parse_json else response.content
+    settings = get_settings()
+    max_retries = settings.app_settings.http_max_retries
+    retry_delay = settings.app_settings.http_retry_delay_seconds
+
+    for attempt in range(max_retries + 1):
+        try:
+            async with _get_upstream_semaphore():
+                response = await client.get(url, headers=_build_mta_headers())
+            response.raise_for_status()
+            return response.json() if parse_json else response.content
+        except httpx.HTTPStatusError as exc:
+            status = exc.response.status_code
+            retryable = status in _RETRYABLE_STATUS_CODES
+            if retryable and attempt < max_retries:
+                TrackLogger.retry(
+                    f"[MTA_FEED] Retry {attempt + 1}/{max_retries} for {url[:100]} "
+                    f"(HTTP {status})"
+                )
+                await asyncio.sleep(retry_delay)
+                continue
+            raise
+        except (httpx.TimeoutException, httpx.ConnectError) as exc:
+            if attempt < max_retries:
+                TrackLogger.retry(
+                    f"[MTA_FEED] Retry {attempt + 1}/{max_retries} for {url[:100]} "
+                    f"({_describe_exception(exc)})"
+                )
+                await asyncio.sleep(retry_delay)
+                continue
+            raise
 
 
 async def _fetch_with_cache(url: str, *, parse_json: bool) -> Any:
-    # 1. Redis first — survives deploys and is shared across all Render instances.
-    #    If a sibling instance or a recent process already fetched this feed,
-    #    we get the result instantly without hitting MTA upstream.
-    redis_hit = await _redis.feed_get(
-        _FEED_KIND, url, ttl=_HTTP_CACHE.ttl, is_bytes=not parse_json
+    async def _run_fetch() -> Any:
+        data = await _fetch_from_upstream(url, parse_json=parse_json)
+        _HTTP_CACHE.set(url, data)
+        await _redis.feed_set(
+            _FEED_KIND, url, data, stale_ttl=_HTTP_CACHE.stale_ttl, is_bytes=not parse_json
+        )
+        return data
+
+    def _stale_candidate(
+        local_value: Any | None,
+        local_state: str | None,
+        redis_value: Any | None,
+        redis_state: str | None,
+    ) -> Any | None:
+        if local_state == "stale":
+            return local_value
+        if redis_state == "stale":
+            return redis_value
+        return None
+
+    def _start_background_refresh() -> None:
+        if url in _INFLIGHT_FETCHES:
+            return
+
+        async def _refresh() -> None:
+            try:
+                await _run_fetch()
+            except Exception as exc:
+                TrackLogger.warning(
+                    f"[MTA_FEED] Background refresh failed for {url[:100]} "
+                    f"({_describe_exception(exc)})",
+                    tag="TRACK",
+                )
+            finally:
+                if _INFLIGHT_FETCHES.get(url) is task:
+                    _INFLIGHT_FETCHES.pop(url, None)
+
+        task = asyncio.create_task(_refresh())
+        _INFLIGHT_FETCHES[url] = task
+
+    local_value, local_state = _HTTP_CACHE.get_state(url)
+    if local_state == "fresh":
+        return local_value
+
+    redis_value, redis_state = await _redis.feed_get(
+        _FEED_KIND,
+        url,
+        fresh_ttl=_HTTP_CACHE.fresh_ttl,
+        stale_ttl=_HTTP_CACHE.stale_ttl,
+        is_bytes=not parse_json,
     )
-    if redis_hit is not None:
-        return redis_hit
+    if redis_state == "fresh":
+        _HTTP_CACHE.set(url, redis_value)
+        return redis_value
 
-    # 2. In-process TTL cache — zero-latency for same-instance repeat calls.
-    cached = _HTTP_CACHE.get(url)
-    if cached is not None:
-        return cached
+    stale_value = _stale_candidate(local_value, local_state, redis_value, redis_state)
+    if stale_value is not None:
+        TrackLogger.cache(f"STALE HIT  {url[:80]} — serving while refresh runs")
+        _start_background_refresh()
+        return stale_value
 
-    # 3. Deduplicate burst requests for the same URL within this instance.
     inflight = _INFLIGHT_FETCHES.get(url)
     if inflight is not None:
         return await inflight
-
-    async def _run_fetch() -> Any:
-        data = await _fetch_from_upstream(url, parse_json=parse_json)
-        # Populate both caches so every path benefits.
-        _HTTP_CACHE.set(url, data)
-        await _redis.feed_set(
-            _FEED_KIND, url, data, ttl=_HTTP_CACHE.ttl, is_bytes=not parse_json
-        )
-        return data
 
     task = asyncio.create_task(_run_fetch())
     _INFLIGHT_FETCHES[url] = task

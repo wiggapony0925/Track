@@ -28,7 +28,11 @@ class TestSettingsLoaded:
 
     def test_refresh_interval_seconds(self):
         settings = get_settings()
-        assert settings.app_settings.refresh_interval_seconds == 30
+        assert settings.app_settings.refresh_interval_seconds == 20
+
+    def test_refresh_cooldown_seconds(self):
+        settings = get_settings()
+        assert settings.app_settings.refresh_cooldown_seconds == 20
 
     def test_nearest_metro_fallback_radius(self):
         settings = get_settings()
@@ -75,7 +79,8 @@ class TestConfigEndpoint:
         assert response.status_code == 200
         data = response.json()
         assert data["search_radius_meters"] == 8047
-        assert data["refresh_interval_seconds"] == 30
+        assert data["refresh_interval_seconds"] == 20
+        assert data["refresh_cooldown_seconds"] == 20
         assert data["nearest_metro_fallback_radius_meters"] == 5000
         assert data["max_nearby_results"] == 40
         assert data["max_arrivals_per_feed"] == 10

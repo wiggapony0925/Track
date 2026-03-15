@@ -12,8 +12,8 @@
 #   get_client()            — returns live redis client or None
 #   cache_get(prefix, kind, identifier, ...)  — structured GET (bus-style)
 #   cache_set(prefix, kind, identifier, ...)  — structured SET (bus-style)
-#   feed_get(kind, url, ttl, is_bytes)        — MTA feed GET (subway/LIRR/MNR)
-#   feed_set(kind, url, data, ttl, is_bytes)  — MTA feed SET
+#   feed_get(kind, url, ...)                  — MTA feed GET (subway/LIRR/MNR)
+#   feed_set(kind, url, data, ...)            — MTA feed SET
 #
 
 from __future__ import annotations
@@ -237,14 +237,22 @@ def _feed_key(kind: str, url: str) -> str:
     return f"{_MTA_PREFIX}:{kind}:{url}"
 
 
-async def feed_get(kind: str, url: str, *, ttl: float, is_bytes: bool) -> bytes | Any | None:
+async def feed_get(
+    kind: str,
+    url: str,
+    *,
+    fresh_ttl: float,
+    stale_ttl: float,
+    is_bytes: bool,
+) -> tuple[bytes | Any | None, str | None]:
     """GET an MTA feed from Redis.
 
-    Returns decoded bytes (protobuf) or parsed object (JSON), or None on miss.
-    Entries older than *ttl* seconds are treated as expired (miss).
+    Returns (value, "fresh") when age <= fresh_ttl,
+            (value, "stale") when age <= stale_ttl,
+            (None, None) on miss/error/expiry.
     """
     if _redis_client is None:
-        return None
+        return None, None
     key = _feed_key(kind, url)
     s = cache_stats.bucket(kind)
     try:
@@ -252,29 +260,41 @@ async def feed_get(kind: str, url: str, *, ttl: float, is_bytes: bool) -> bytes 
         if not raw:
             s.miss += 1
             cache_stats.tick()
-            return None
+            return None, None
         payload = json.loads(raw)
         age = _time.time() - float(payload.get("fetched_at", 0.0))
-        if age > ttl:
-            # Expired — treat same as miss; Redis TTL will clean it up shortly.
+        if age <= fresh_ttl:
+            s.fresh += 1
+            cache_stats.tick()
+            data = payload["data"]
+            return (base64.b64decode(data) if is_bytes else data), "fresh"
+        if age <= stale_ttl:
             s.stale += 1
             cache_stats.tick()
-            return None
-        s.fresh += 1
+            data = payload["data"]
+            return (base64.b64decode(data) if is_bytes else data), "stale"
+        s.miss += 1
         cache_stats.tick()
-        data = payload["data"]
-        return base64.b64decode(data) if is_bytes else data
+        return None, None
     except Exception as exc:
         s.errors += 1
         cache_stats.tick()
         TrackLogger.warning(f"[REDIS] feed GET error  kind={kind}: {exc}", tag="REDIS")
-        return None
+        return None, None
 
 
-async def feed_set(kind: str, url: str, data: bytes | Any, *, ttl: float, is_bytes: bool) -> None:
+async def feed_set(
+    kind: str,
+    url: str,
+    data: bytes | Any,
+    *,
+    stale_ttl: float,
+    is_bytes: bool,
+) -> None:
     """SET an MTA feed to Redis.
 
-    Stores with Redis TTL = ttl seconds so entries auto-expire naturally.
+    Stores with Redis TTL = stale_ttl seconds so stale-if-error callers can
+    still recover recent data after the fresh window expires.
     """
     if _redis_client is None:
         return
@@ -284,13 +304,13 @@ async def feed_set(kind: str, url: str, data: bytes | Any, *, ttl: float, is_byt
     s = cache_stats.bucket(kind)
     try:
         serialized = json.dumps(payload)
-        await _redis_client.set(key, serialized, ex=max(1, int(ttl)))
+        await _redis_client.set(key, serialized, ex=max(1, int(stale_ttl)))
         s.sets += 1
         if not s._first_set_logged:
             s._first_set_logged = True
             size_kb = len(serialized) / 1024
             TrackLogger.redis(
-                f"[REDIS] ✓ First SET  kind={kind}  ttl={int(ttl)}s  size={size_kb:.1f}KB"
+                f"[REDIS] ✓ First SET  kind={kind}  ttl={int(stale_ttl)}s  size={size_kb:.1f}KB"
             )
         cache_stats.tick()
     except Exception as exc:
