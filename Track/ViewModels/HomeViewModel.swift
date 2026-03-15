@@ -751,6 +751,13 @@ final class HomeViewModel {
     /// the UI — prevents the "incredible long for the polyline to show" freeze.
     /// Cancels any in-flight rebuild so rapid direction switches don't pile up.
     private func schedulePolylineRebuild() {
+        // Always cancel any in-flight rebuild first — if the user dismisses
+        // while a previous decode/smooth task is still running, that stale
+        // task would otherwise complete and write old polylines back into
+        // the cached arrays, causing the dismissed route to reappear.
+        _polylineRebuildTask?.cancel()
+        _polylineRebuildTask = nil
+
         guard let shape = routeShape else {
             cachedRoutePolylines = []
             cachedInactivePolylines = []
@@ -771,7 +778,6 @@ final class HomeViewModel {
         cachedInactivePolylines = []
         cachedInterpolationPolyline = []
 
-        _polylineRebuildTask?.cancel()
         _polylineRebuildTask = Task { [weak self] in
             // Jump off the main actor for heavy decode → unify → smooth work.
             let result = await Task.detached(priority: .userInitiated) {
@@ -828,15 +834,15 @@ final class HomeViewModel {
                 return (routePolys, inactivePolys, interpPolyline)
             }.value
 
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, let self, self.routeShape != nil else { return }
 
             // Bounce results back to MainActor (we're already there since
             // the outer Task inherits @MainActor from the enclosing class).
-            self?.cachedRoutePolylines = result.0
-            self?.cachedInactivePolylines = result.1
-            self?.cachedInterpolationPolyline = result.2
+            self.cachedRoutePolylines = result.0
+            self.cachedInactivePolylines = result.1
+            self.cachedInterpolationPolyline = result.2
             // Rebuild directional split now that polylines are available.
-            self?.rebuildDirectionalSplit()
+            self.rebuildDirectionalSplit()
         }
     }
 

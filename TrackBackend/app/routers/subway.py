@@ -418,11 +418,13 @@ async def subway_shape(route_id: str) -> RouteShape:
     polylines_raw, stop_entries, direction_data = result
 
     # Merge adjacent polyline segments whose endpoints are within 50 m,
+    # densify curves (same 1 m resolution as the system-map polylines),
     # then simplify with RDP to cut point count without visible change.
-    # This produces fewer, longer, cleaner polylines for the detail view.
+    # Densification first ensures curves follow the real track geometry;
+    # simplification then trims redundant collinear points.
     merged_all = _merge_polyline_segments(polylines_raw)
     encoded_polylines: list[str] = [
-        _encode_polyline(_simplify_polyline(coords, tolerance=0.00005))
+        _encode_polyline(_simplify_polyline(_densify_wgs84(coords), tolerance=0.00005))
         for coords in merged_all
     ]
 
@@ -436,12 +438,12 @@ async def subway_shape(route_id: str) -> RouteShape:
         for entry in stop_entries
     ]
 
-    # Build per-direction shapes — merge + simplify each direction too
+    # Build per-direction shapes — merge + densify + simplify each direction
     directions: list[DirectionShape] = []
     for dd in direction_data:
         merged_dir = _merge_polyline_segments(dd.polylines)
         dir_encoded = [
-            _encode_polyline(_simplify_polyline(coords, tolerance=0.00005))
+            _encode_polyline(_simplify_polyline(_densify_wgs84(coords), tolerance=0.00005))
             for coords in merged_dir
         ]
         dir_stops = [
