@@ -1924,7 +1924,7 @@ _EXPORT_LANE_OFFSET_EPSILON: float = 0.12
 _EXPORT_TRANSITION_MAX_POINTS: int = 6
 _EXPORT_TRANSITION_MAX_LENGTH_M: float = 90.0
 _EXPORT_Y_TRANSITION_MIN_POINTS: int = 5
-_EXPORT_RUN_LENDER_MIN_POINTS: int = 3
+_EXPORT_RUN_LENDER_MIN_POINTS: int = 2
 
 
 class _VisualOffsetRun(NamedTuple):
@@ -2157,6 +2157,7 @@ def _segment_export_path_by_lane_offset(
     visual_offsets = [_quantise_visual_lane_offset(value) for value in offsets_m]
     visual_offsets = _expand_visual_y_transition_runs(visual_offsets)
     visual_offsets = _stabilize_visual_lane_offsets(coords_m, visual_offsets)
+    visual_offsets = _expand_visual_y_transition_runs(visual_offsets)
     segments: list[tuple[list[tuple[float, float]], float]] = []
 
     start_idx = 0
