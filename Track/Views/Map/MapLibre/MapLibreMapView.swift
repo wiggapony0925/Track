@@ -641,7 +641,7 @@ struct MapLibreMapView: UIViewRepresentable {
             )
             guard abs(pixelOffset) > 0.01 else { return station.coordinate }
 
-            guard let normal = stationScreenLeftNormal(
+            guard let normal = stationScreenOffsetNormal(
                 coordinate: station.coordinate,
                 heading: laneHeading,
                 mapView: mapView
@@ -658,7 +658,7 @@ struct MapLibreMapView: UIViewRepresentable {
             return CLLocationCoordinate2DIsValid(shiftedCoordinate) ? shiftedCoordinate : station.coordinate
         }
 
-        private func stationScreenLeftNormal(
+        private func stationScreenOffsetNormal(
             coordinate: CLLocationCoordinate2D,
             heading: Double,
             mapView: MLNMapView
@@ -666,7 +666,8 @@ struct MapLibreMapView: UIViewRepresentable {
             // A tiny fixed sample works up close, but at overview zoom the
             // projected screen span can collapse toward 0 px and produce an
             // unstable normal. Grow the sample until we have a reliable on-
-            // screen tangent, then derive the same left-normal lineOffset uses.
+            // screen tangent, then derive the same screen-space side MapLibre
+            // uses for positive lineOffset so dots sit on the rendered lane.
             let sampleDistances: [CLLocationDistance] = [18, 30, 48, 72, 108, 162, 243, 364]
             let preferredScreenSpan: CGFloat = 8.0
             let minimumReliableSpan: CGFloat = 1.5
@@ -693,7 +694,7 @@ struct MapLibreMapView: UIViewRepresentable {
                 let length = sqrt(dx * dx + dy * dy)
                 guard length > 0.001 else { continue }
 
-                let normal = CGVector(dx: dy / length, dy: -dx / length)
+                let normal = CGVector(dx: -dy / length, dy: dx / length)
                 if length > bestSpan {
                     bestSpan = length
                     bestNormal = normal
