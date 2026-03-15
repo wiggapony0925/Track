@@ -1919,6 +1919,82 @@ _vertex_offsets_cache: dict[int, dict[int, list[float]]] | None = None
 _corridor_neighbors_cache: dict[int, set[int]] = {}
 _all_trunk_lane_offsets_cache: dict[int, float] | None = None
 
+_EXPORT_LANE_OFFSET_STEP: float = 0.25
+_EXPORT_LANE_OFFSET_EPSILON: float = 0.12
+
+
+def _quantise_visual_lane_offset(offset_m: float) -> float:
+    """Map a local physical corridor offset into client lineOffset units.
+
+    A one-lane separation should differ by ~1.0 in client space so adjacent
+    rendered fills stay touching without collapsing. Raw corridor offsets are
+    multiples of ``LANE_WIDTH / 2`` or ``LANE_WIDTH`` depending on corridor
+    width, so dividing by ``LANE_WIDTH`` yields the correct lane-step scale:
+
+      2 trunks  -> -0.5 / +0.5
+      3 trunks  -> -1.0 / 0.0 / +1.0
+      4 trunks  -> -1.5 / -0.5 / +0.5 / +1.5
+    """
+    visual = offset_m / LANE_WIDTH
+    if abs(visual) < _EXPORT_LANE_OFFSET_EPSILON:
+        return 0.0
+    return round(visual / _EXPORT_LANE_OFFSET_STEP) * _EXPORT_LANE_OFFSET_STEP
+
+
+def _segment_export_path_by_lane_offset(
+    coords_m: list[tuple[float, float]],
+    offsets_m: list[float],
+) -> list[tuple[list[tuple[float, float]], float]]:
+    """Split a raw trunk path into local-offset segments for client rendering."""
+    if len(coords_m) < 2:
+        return []
+
+    if len(offsets_m) < len(coords_m):
+        offsets_m = offsets_m + [0.0] * (len(coords_m) - len(offsets_m))
+    elif len(offsets_m) > len(coords_m):
+        offsets_m = offsets_m[: len(coords_m)]
+
+    visual_offsets = [_quantise_visual_lane_offset(value) for value in offsets_m]
+    segments: list[tuple[list[tuple[float, float]], float]] = []
+
+    start_idx = 0
+    current_offset = visual_offsets[0]
+
+    for idx in range(1, len(coords_m)):
+        next_offset = visual_offsets[idx]
+        if next_offset == current_offset:
+            continue
+
+        segment_coords = coords_m[start_idx:idx + 1]
+        if len(segment_coords) >= 2:
+            segments.append((segment_coords, current_offset))
+        start_idx = idx
+        current_offset = next_offset
+
+    final_coords = coords_m[start_idx:]
+    if len(final_coords) >= 2:
+        segments.append((final_coords, current_offset))
+
+    if not segments:
+        return [(coords_m, 0.0)]
+
+    merged: list[tuple[list[tuple[float, float]], float]] = []
+    for coords, lane_offset in segments:
+        if not merged:
+            merged.append((coords, lane_offset))
+            continue
+
+        prev_coords, prev_offset = merged[-1]
+        # Smooth tiny transition runs back into the neighbouring segment so
+        # the client doesn't render dozens of one-hop offset features.
+        if len(coords) <= 3 and abs(prev_offset - lane_offset) <= _EXPORT_LANE_OFFSET_STEP:
+            merged[-1] = (prev_coords + coords[1:], prev_offset)
+            continue
+
+        merged.append((coords, lane_offset))
+
+    return merged
+
 
 def get_processed_stops() -> list[dict]:
     """Return the most recently computed snapped stop positions.
@@ -2104,27 +2180,44 @@ def get_trunk_polylines() -> list[dict]:
     # geometry is still useful, but a few near-terminal station vertices can
     # be removed as "nearly colinear" unless we snap the cleaned result back
     # through station nodes before encoding.
-    export_paths: dict[int, list[LineString]] = {}
-    for trunk_idx, line_strings in paths.items():
-        cleaned_lines: list[LineString] = []
-        for ls in line_strings:
-            coords_m = list(ls.coords)
-            if len(coords_m) < 2:
-                continue
+    export_paths: dict[int, list[tuple[LineString, float]]] = {}
 
-            if raw_paths is not None:
-                coords_m = _despike_coords(coords_m, min_angle_deg=15.0)
+    if raw_paths is not None:
+        for trunk_idx, line_strings in raw_paths.items():
+            segmented_lines: list[tuple[LineString, float]] = []
+            offset_map = (_vertex_offsets_cache or {}).get(trunk_idx, {})
+            for path_idx, ls in enumerate(line_strings):
+                coords_m = list(ls.coords)
                 if len(coords_m) < 2:
                     continue
+                offsets_m = offset_map.get(path_idx, [0.0] * len(coords_m))
+                for segment_coords, lane_offset in _segment_export_path_by_lane_offset(coords_m, offsets_m):
+                    if len(segment_coords) < 2:
+                        continue
+                    segmented_lines.append((LineString(segment_coords), lane_offset))
 
-            cleaned_lines.append(LineString(coords_m))
-
-        if cleaned_lines:
-            export_paths[trunk_idx] = cleaned_lines
+            if segmented_lines:
+                export_paths[trunk_idx] = segmented_lines
+    else:
+        for trunk_idx, line_strings in paths.items():
+            export_paths[trunk_idx] = [(ls, 0.0) for ls in line_strings if len(ls.coords) >= 2]
 
     if raw_paths is not None and export_paths:
         try:
-            export_paths = _snap_paths_to_stations(export_paths)
+            snap_inputs = {
+                trunk_idx: [line for line, _ in items]
+                for trunk_idx, items in export_paths.items()
+            }
+            snapped = _snap_paths_to_stations(snap_inputs)
+            for trunk_idx, items in list(export_paths.items()):
+                snapped_lines = snapped.get(trunk_idx, [])
+                if len(snapped_lines) != len(items):
+                    continue
+                export_paths[trunk_idx] = [
+                    (snapped_line, lane_offset)
+                    for snapped_line, (_, lane_offset) in zip(snapped_lines, items)
+                    if len(snapped_line.coords) >= 2
+                ]
         except Exception as exc:
             TrackLogger.warning(
                 f"[TrunkExport] Station re-snap failed after cleanup: {exc}"
@@ -2143,7 +2236,8 @@ def get_trunk_polylines() -> list[dict]:
         color = get_subway_color(group[0])
 
         encoded: list[str] = []
-        for ls in line_strings:
+        polyline_lane_offsets: list[float] = []
+        for ls, local_lane_offset in line_strings:
             coords_m = list(ls.coords)
             if len(coords_m) < 2:
                 continue
@@ -2151,6 +2245,7 @@ def get_trunk_polylines() -> list[dict]:
             try:
                 coords_wgs = project_to_wgs84(coords_m)
                 encoded.append(encode_polyline(coords_wgs))
+                polyline_lane_offsets.append(local_lane_offset)
             except Exception:
                 continue
 
@@ -2161,6 +2256,7 @@ def get_trunk_polylines() -> list[dict]:
                 "route_ids": group,
                 "polylines": encoded,
                 "lane_offset": separated_offsets.get(trunk_idx, 0.0),
+                "polyline_lane_offsets": polyline_lane_offsets,
             })
 
     return result
@@ -2169,23 +2265,18 @@ def get_trunk_polylines() -> list[dict]:
 def _process_stop_positions(
     trunk_offset_paths: dict[int, list[LineString]],
 ) -> list[dict]:
-    """Snap GTFS stops onto the offset trunk paths.
+    """Build stop position data using raw MTA station coordinates.
 
-    For each subway station, projects to EPSG:3857 and snaps onto the
-    nearest path of its trunk group.  Classifies transfer hubs.
+    Station coordinates are ground truth from the MTA — they never move.
+    The polyline is responsible for routing through stations (handled by
+    Phase 1.5 ``_snap_paths_to_stations``).  This function only classifies
+    transfer hubs based on which trunk groups serve each station.
     """
     from app.services.mapping.subway_shapes import get_all_subway_stations
 
     raw_stations = get_all_subway_stations()
     if not raw_stations:
         return []
-
-    # Build trunk → spatial-indexed paths
-    trunk_geoms: dict[int, list[LineString]] = {}
-    for trunk_idx, paths in trunk_offset_paths.items():
-        valid = [p for p in paths if p.length >= MIN_PATH_LENGTH]
-        if valid:
-            trunk_geoms[trunk_idx] = valid
 
     results: list[dict] = []
 
@@ -2196,60 +2287,15 @@ def _process_stop_positions(
         lat: float = station["lat"]
         lon: float = station["lon"]
 
-        try:
-            stop_m = _to_meters.transform(lon, lat)
-        except Exception:
-            continue
-
-        stop_pt = Point(stop_m)
         positions: list[dict] = []
         trunk_groups_seen: set[int] = set()
 
-        # Group station routes by trunk
-        route_trunks: dict[int, list[str]] = defaultdict(list)
         for rid in routes:
             trunk = ROUTE_TO_TRUNK.get(rid)
             if trunk is not None:
-                route_trunks[trunk].append(rid)
-
-        for trunk_idx, trunk_routes in route_trunks.items():
-            paths = trunk_geoms.get(trunk_idx, [])
-            if not paths:
-                # Fallback: use original position
-                for rid in trunk_routes:
-                    positions.append({"route_id": rid, "lat": lat, "lon": lon})
-                continue
-
-            # Find closest path in this trunk
-            best_dist = float("inf")
-            best_path: LineString | None = None
-            for p in paths:
-                d = p.distance(stop_pt)
-                if d < best_dist:
-                    best_dist = d
-                    best_path = p
-
-            if best_path is None or best_dist > STOP_SNAP_DIST:
-                for rid in trunk_routes:
-                    positions.append({"route_id": rid, "lat": lat, "lon": lon})
-                continue
-
-            proj = best_path.project(stop_pt)
-            snapped = best_path.interpolate(proj)
-
-            try:
-                snap_lon, snap_lat = _to_wgs84.transform(snapped.x, snapped.y)
-            except Exception:
-                snap_lat, snap_lon = lat, lon
-
-            for rid in trunk_routes:
-                positions.append({
-                    "route_id": rid,
-                    "lat": snap_lat,
-                    "lon": snap_lon,
-                })
-
-            trunk_groups_seen.add(trunk_idx)
+                trunk_groups_seen.add(trunk)
+            # Always use the exact MTA-provided coordinate.
+            positions.append({"route_id": rid, "lat": lat, "lon": lon})
 
         if not positions:
             positions.append({
@@ -2266,8 +2312,9 @@ def _process_stop_positions(
         })
 
     TrackLogger.info(
-        f"[StopSnap] Processed {len(results)} stations, "
-        f"{sum(1 for r in results if r['is_transfer'])} transfer hubs"
+        f"[StopProcess] Processed {len(results)} stations "
+        f"({sum(1 for r in results if r['is_transfer'])} transfer hubs) "
+        f"— all positions use raw MTA coordinates"
     )
     return results
 

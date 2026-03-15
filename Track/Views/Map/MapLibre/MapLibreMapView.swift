@@ -629,33 +629,7 @@ struct MapLibreMapView: UIViewRepresentable {
             for station: MapSystemViewModel.ConsolidatedStation,
             on mapView: MLNMapView
         ) -> CLLocationCoordinate2D {
-            guard !station.isTransfer,
-                  let laneHeading = station.laneHeading
-            else {
-                return station.coordinate
-            }
-
-            let pixelOffset = MapLibreStyleConfig.laneOffsetPixels(
-                for: station.laneOffset,
-                at: mapView.zoomLevel
-            )
-            guard abs(pixelOffset) > 0.01 else { return station.coordinate }
-
-            guard let normal = stationScreenOffsetNormal(
-                coordinate: station.coordinate,
-                heading: laneHeading,
-                mapView: mapView
-            ) else {
-                return station.coordinate
-            }
-
-            let anchor = mapView.convert(station.coordinate, toPointTo: mapView)
-            let shifted = CGPoint(
-                x: anchor.x + normal.dx * pixelOffset,
-                y: anchor.y + normal.dy * pixelOffset
-            )
-            let shiftedCoordinate = mapView.convert(shifted, toCoordinateFrom: mapView)
-            return CLLocationCoordinate2DIsValid(shiftedCoordinate) ? shiftedCoordinate : station.coordinate
+            station.coordinate
         }
 
         private func stationScreenOffsetNormal(

@@ -223,6 +223,7 @@ class TrunkGroupPolylines(BaseModel):
     route_ids: list[str]      # All routes in this trunk group
     polylines: list[str]      # Encoded polylines (merged trunk + branches)
     lane_offset: float = 0.0  # Signed perpendicular offset for low-zoom pixel separation
+    polyline_lane_offsets: list[float] = []  # Per-polyline local lane offsets for zoom rendering
 
 
 class AllSubwayLinesResponse(BaseModel):
@@ -326,4 +327,3 @@ class BusScheduleResponse(BaseModel):
 
     route_id: str
     directions: list[BusScheduleDirection]
-

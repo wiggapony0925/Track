@@ -854,7 +854,7 @@ final class MapSystemViewModel {
                     routeIds: trunk.routeIds,
                     color: groupColor,
                     polylines: decoded,
-                    laneOffset: trunk.laneOffset
+                    laneOffset: 0
                 ))
             }
         } else {
@@ -949,6 +949,18 @@ final class MapSystemViewModel {
             let groupResult = colorGroupResults[origin.resultIndex]
             let groupKey: String = groupResult.routeIds.joined(separator: "-")
             guard offset.coordinates.count >= 2 else { continue }
+            let localLaneOffset: CGFloat = {
+                guard let trunkPolylines = cachedTrunkPolylines,
+                      origin.resultIndex < trunkPolylines.count
+                else {
+                    return groupResult.laneOffset
+                }
+                let trunk = trunkPolylines[origin.resultIndex]
+                guard origin.branchIndex < trunk.polylineLaneOffsets.count else {
+                    return trunk.laneOffset
+                }
+                return trunk.polylineLaneOffsets[origin.branchIndex]
+            }()
 
             // Determine z-level: use the geographic midpoint of this
             // specific branch + its route IDs to infer whether this
@@ -971,7 +983,7 @@ final class MapSystemViewModel {
                 routeIds: groupResult.routeIds,
                 isElevated: isElevated,
                 trunkIndex: groupResult.groupIndex,
-                laneOffset: groupResult.laneOffset
+                laneOffset: localLaneOffset
             ))
         }
 
@@ -1102,10 +1114,9 @@ final class MapSystemViewModel {
 
     /// Fetches all subway stations and their served lines.
     ///
-    /// Prefers `/subway/stations/processed` (pipeline-snapped positions) so
-    /// station pills sit exactly on the offset polylines.  Falls back to the
-    /// raw GTFS positions from `/subway/stations/all` if the processed
-    /// endpoint is unavailable (e.g. shapes haven't loaded yet).
+    /// Raw MTA stop coordinates are the source of truth. The system-map
+    /// polylines move locally in shared corridors; the station coordinates
+    /// themselves should stay at the exact spots the MTA published.
     func loadStations() async {
         if Self.hasStartedStationLoad { return }
         Self.hasStartedStationLoad = true
@@ -1123,87 +1134,11 @@ final class MapSystemViewModel {
             return
         }
 
-        // ── Fast-path: show previous-session stations instantly while
-        // the API request is in flight.  On second+ launch this means
-        // station pills appear in <100ms instead of waiting 5-15s for
-        // the server (especially on Render cold-start).
-        if let cached = OfflineCacheManager.shared.getCachedStations(), !cached.isEmpty {
-            let restored = cached.map { s in
-                CachedSubwayStation(
-                    id: s.id,
-                    name: s.name,
-                    coordinate: CLLocationCoordinate2D(latitude: s.latitude, longitude: s.longitude),
-                    routes: s.routes
-                )
-            }
-            // Keep any commuter-rail stops already added by loadSystemMap()
-            let commuterStops = self.cachedStations.filter { s in
-                s.routes.contains(where: { $0.hasPrefix("LIRR") || $0.hasPrefix("MNR") })
-            }
-            self.cachedStations = restored + commuterStops
-            self.consolidateStations()
-            AppLogger.shared.log("STATIONS", message: "Restored \(restored.count) stations from disk cache (instant)")
-        }
-
-        do {
-            // ── Try processed (snapped) stations first ──
-            // The pipeline snaps each station onto the offset polylines so
-            // that pills sit directly on their coloured lines instead of
-            // floating at the raw GTFS GPS point.
-            let processed = try await TrackAPI.fetchProcessedStations()
-            let stations: [CachedSubwayStation] = processed.stations.compactMap { ps in
-                let positions = ps.positions
-                guard !positions.isEmpty else { return nil }
-
-                // Average all per-route snapped coordinates → centroid for
-                // the consolidated pill.  This places transfer pills at
-                // the visual centre of the corridor they serve.
-                let avgLat = positions.map(\.lat).reduce(0, +) / Double(positions.count)
-                let avgLon = positions.map(\.lon).reduce(0, +) / Double(positions.count)
-                let routes = Array(Set(positions.map(\.routeId))).sorted()
-
-                return CachedSubwayStation(
-                    id: ps.stationId,
-                    name: ps.name,
-                    coordinate: CLLocationCoordinate2D(latitude: avgLat, longitude: avgLon),
-                    routes: routes
-                )
-            }
-
-            guard !stations.isEmpty else {
-                throw URLError(.cannotParseResponse)
-            }
-
-            await MainActor.run {
-                // Merge subway stations with any commuter-rail stops already
-                // loaded by loadSystemMap() — never overwrite the full array,
-                // or commuter-rail dots lose their matching polylines.
-                let commuterStops = self.cachedStations.filter { s in
-                    s.routes.contains(where: { $0.hasPrefix("LIRR") || $0.hasPrefix("MNR") })
-                }
-                self.cachedStations = stations + commuterStops
-                self.consolidateStations()
-            }
-
-            // Cache snapped positions for offline use
-            let cached = stations.map { s in
-                CachedStation(
-                    id: s.id,
-                    name: s.name,
-                    latitude: s.coordinate.latitude,
-                    longitude: s.coordinate.longitude,
-                    routes: s.routes
-                )
-            }
-            OfflineCacheManager.shared.cacheStations(cached)
-
-            AppLogger.shared.log("STATIONS", message: "Loaded \(stations.count) processed (snapped) stations")
-
-        } catch {
-            // ── Fallback: raw GTFS stations ──
-            AppLogger.shared.log("STATIONS", message: "Processed stations unavailable (\(error.localizedDescription)), falling back to raw GTFS")
-            await loadRawStations()
-        }
+        // Do not restore cached subway coordinates here. Older builds cached
+        // processed/snapped positions, which can be visually wrong once the
+        // line renderer changes. Always fetch raw GTFS station coordinates
+        // fresh when online so the dots remain authoritative.
+        await loadRawStations()
     }
 
     /// Fetch raw GTFS station positions (fallback when processed endpoint

@@ -111,6 +111,10 @@ struct TrunkGroupPolylines: Codable {
     /// feeds it to MapLibre's ``lineOffset`` paint property so parallel
     /// trunk groups remain visually distinct at city-wide zoom levels.
     let laneOffset: CGFloat
+    /// Local lane offsets aligned 1:1 with ``polylines``. These let the
+    /// renderer move only the shared corridor segments instead of shoving
+    /// an entire trunk sideways away from raw MTA stop coordinates.
+    let polylineLaneOffsets: [CGFloat]
 
     enum CodingKeys: String, CodingKey {
         case trunkIndex = "trunk_index"
@@ -118,6 +122,7 @@ struct TrunkGroupPolylines: Codable {
         case routeIds = "route_ids"
         case polylines
         case laneOffset = "lane_offset"
+        case polylineLaneOffsets = "polyline_lane_offsets"
     }
 
     init(from decoder: Decoder) throws {
@@ -127,6 +132,7 @@ struct TrunkGroupPolylines: Codable {
         routeIds = try container.decode([String].self, forKey: .routeIds)
         polylines = try container.decode([String].self, forKey: .polylines)
         laneOffset = try container.decodeIfPresent(CGFloat.self, forKey: .laneOffset) ?? 0.0
+        polylineLaneOffsets = try container.decodeIfPresent([CGFloat].self, forKey: .polylineLaneOffsets) ?? []
     }
 
     /// Decodes polylines on demand.
