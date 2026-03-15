@@ -635,8 +635,10 @@ struct MapLibreMapView: UIViewRepresentable {
                 return station.coordinate
             }
 
-            let multiplier = MapLibreStyleConfig.laneOffsetMultiplier(at: mapView.zoomLevel)
-            let pixelOffset = CGFloat(Double(station.laneOffset) * multiplier)
+            let pixelOffset = MapLibreStyleConfig.laneOffsetPixels(
+                for: station.laneOffset,
+                at: mapView.zoomLevel
+            )
             guard abs(pixelOffset) > 0.01 else { return station.coordinate }
 
             guard let normal = stationScreenLeftNormal(
@@ -661,28 +663,48 @@ struct MapLibreMapView: UIViewRepresentable {
             heading: Double,
             mapView: MLNMapView
         ) -> CGVector? {
-            let sampleMeters: CLLocationDistance = 18
-            let backward = Self.coordinate(
-                from: coordinate,
-                distanceMeters: sampleMeters,
-                bearingDegrees: heading + 180
-            )
-            let forward = Self.coordinate(
-                from: coordinate,
-                distanceMeters: sampleMeters,
-                bearingDegrees: heading
-            )
+            // A tiny fixed sample works up close, but at overview zoom the
+            // projected screen span can collapse toward 0 px and produce an
+            // unstable normal. Grow the sample until we have a reliable on-
+            // screen tangent, then derive the same left-normal lineOffset uses.
+            let sampleDistances: [CLLocationDistance] = [18, 30, 48, 72, 108, 162, 243, 364]
+            let preferredScreenSpan: CGFloat = 8.0
+            let minimumReliableSpan: CGFloat = 1.5
 
-            let p0 = mapView.convert(backward, toPointTo: mapView)
-            let p1 = mapView.convert(forward, toPointTo: mapView)
-            let dx = p1.x - p0.x
-            let dy = p1.y - p0.y
-            let length = sqrt(dx * dx + dy * dy)
-            guard length > 0.001 else { return nil }
+            var bestNormal: CGVector?
+            var bestSpan: CGFloat = 0
 
-            // Screen-space left normal for a tangent in iOS coordinates
-            // (x right, y down). Positive lineOffset values follow this side.
-            return CGVector(dx: dy / length, dy: -dx / length)
+            for sampleMeters in sampleDistances {
+                let backward = Self.coordinate(
+                    from: coordinate,
+                    distanceMeters: sampleMeters,
+                    bearingDegrees: heading + 180
+                )
+                let forward = Self.coordinate(
+                    from: coordinate,
+                    distanceMeters: sampleMeters,
+                    bearingDegrees: heading
+                )
+
+                let p0 = mapView.convert(backward, toPointTo: mapView)
+                let p1 = mapView.convert(forward, toPointTo: mapView)
+                let dx = p1.x - p0.x
+                let dy = p1.y - p0.y
+                let length = sqrt(dx * dx + dy * dy)
+                guard length > 0.001 else { continue }
+
+                let normal = CGVector(dx: dy / length, dy: -dx / length)
+                if length > bestSpan {
+                    bestSpan = length
+                    bestNormal = normal
+                }
+                if length >= preferredScreenSpan {
+                    return normal
+                }
+            }
+
+            guard bestSpan >= minimumReliableSpan else { return nil }
+            return bestNormal
         }
 
         private static func coordinate(
@@ -1190,11 +1212,9 @@ struct MapLibreMapView: UIViewRepresentable {
                     layer.lineDashPattern = NSExpression(forConstantValue: dash)
                 }
 
-                // Dynamic parallel offset: multiply each feature's lane_offset
-                // by a zoom factor that tapers from 2.5 px at zoom 10 to 0 at
-                // zoom 14+.  This keeps parallel trunks (e.g. orange + yellow)
-                // visually separated at city-wide zoom where the geographic
-                // corridor offset is sub-pixel.
+                // Dynamic parallel offset: keep each shared corridor lane
+                // roughly one fill-width apart so the colored fills stay
+                // parallel and touching instead of collapsing or gapping.
                 if applyLaneOffset {
                     layer.lineOffset = MapLibreStyleConfig.laneOffsetExpression
                 }

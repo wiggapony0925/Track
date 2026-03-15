@@ -26,6 +26,11 @@ import UIKit
 /// All OSM/MapTiler configuration lives here — no magic strings elsewhere.
 enum MapLibreStyleConfig {
 
+    /// Shared exponential base for subway line-width interpolation.
+    /// Lane offsets reuse the same curve so spacing tracks the live
+    /// rendered fill width between zoom stops instead of only at them.
+    static let subwayLineInterpolationBase: Double = 1.6
+
     // MARK: - Typed Expression Helpers
 
     /// Convenience: zoom-interpolated expression (exponential curve).
@@ -45,6 +50,38 @@ enum MapLibreStyleConfig {
                 : NSExpression(forConstantValue: base),
             stops: NSExpression(forConstantValue: stops)
         )
+    }
+
+    /// Mirrors MapLibre's exponential stop interpolation for a single value.
+    /// Used by station-dot screen-space offsets so they track the line layer.
+    private static func interpolatedStopValue(
+        at zoom: Double,
+        base: Double,
+        stops: [(zoom: Double, value: Double)]
+    ) -> Double {
+        guard let first = stops.first else { return 0 }
+        if zoom <= first.zoom { return first.value }
+
+        for idx in 1..<stops.count {
+            let prev = stops[idx - 1]
+            let next = stops[idx]
+            if zoom <= next.zoom {
+                let span = next.zoom - prev.zoom
+                guard span > 0 else { return next.value }
+                let progress = max(0.0, min(zoom - prev.zoom, span))
+                let t: Double
+                if abs(base - 1.0) < 1e-9 {
+                    t = progress / span
+                } else {
+                    let numerator = pow(base, progress) - 1.0
+                    let denominator = pow(base, span) - 1.0
+                    t = denominator == 0 ? 0 : numerator / denominator
+                }
+                return prev.value + (next.value - prev.value) * t
+            }
+        }
+
+        return stops.last?.value ?? 0
     }
 
     // MARK: - API Key
@@ -176,15 +213,27 @@ enum MapLibreStyleConfig {
     /// Subway fill line width — bold and prominent at every zoom.
     /// Wider than Transit app for better readability with dense NYC coverage.
     /// Exponential base 1.6 gives a natural acceleration curve.
+    static let subwayFillWidthStops: [(zoom: Double, width: Double)] = [
+        (10, 1.2),
+        (11, 1.6),
+        (12, 2.2),
+        (13, 2.8),
+        (14, 3.5),
+        (15, 4.2),
+        (16, 5.0),
+        (17, 6.0),
+        (18, 7.0),
+    ]
+
     static let subwayFillWidth = zoomInterpolate(
-        base: 1.6,
-        stops: [10: 1.2, 11: 1.6, 12: 2.2, 13: 2.8, 14: 3.5, 15: 4.2, 16: 5.0, 17: 6.0, 18: 7.0]
+        base: subwayLineInterpolationBase,
+        stops: Dictionary(uniqueKeysWithValues: subwayFillWidthStops.map { ($0.zoom, $0.width) })
     )
 
     /// Subway casing width — soft border that gives lines a floating-above-map feel.
     /// The casing-to-fill ratio is ~1.6×, creating a subtle halo rather than a harsh edge.
     static let subwayCasingWidth = zoomInterpolate(
-        base: 1.6,
+        base: subwayLineInterpolationBase,
         stops: [10: 2.4, 11: 3.0, 12: 4.0, 13: 5.0, 14: 6.0, 15: 7.0, 16: 8.5, 17: 10.0, 18: 12.0]
     )
 
@@ -282,48 +331,39 @@ enum MapLibreStyleConfig {
     // visual aid to keep parallel trunks readable when a shared corridor
     // collapses toward a single screen-space path.
     //
-    // We still taper the multiplier down as you zoom in, but we no longer
-    // collapse it fully to zero. Station markers now inherit the same
-    // screen-space shift, so close-zoom shared corridors can remain
-    // legibly parallel without the old "floating off the stop" mismatch.
+    // To keep adjacent lanes visually touching, the centerline spacing
+    // should be almost exactly one fill-width. We stay 2% under the fill
+    // width to avoid hairline gaps from fractional-pixel antialiasing.
+    static let laneOffsetTouchRatio: Double = 0.98
 
-    private static let laneOffsetStops: [(zoom: Double, multiplier: Double)] = [
-        (10, 2.0),
-        (11, 1.8),
-        (12, 1.6),
-        (13, 1.35),
-        (14, 1.1),
-        (15, 0.9),
-        (16, 0.75),
-        (17, 0.65),
-        (18, 0.55),
-    ]
-
-    static func laneOffsetMultiplier(at zoom: Double) -> Double {
-        guard let first = laneOffsetStops.first else { return 0 }
-        if zoom <= first.zoom { return first.multiplier }
-
-        for idx in 1..<laneOffsetStops.count {
-            let prev = laneOffsetStops[idx - 1]
-            let next = laneOffsetStops[idx]
-            if zoom <= next.zoom {
-                let span = next.zoom - prev.zoom
-                guard span > 0 else { return next.multiplier }
-                let t = (zoom - prev.zoom) / span
-                return prev.multiplier + (next.multiplier - prev.multiplier) * t
-            }
+    static let laneOffsetStops: [(zoom: Double, multiplier: Double)] =
+        subwayFillWidthStops.map { stop in
+            (zoom: stop.zoom, multiplier: stop.width * laneOffsetTouchRatio)
         }
 
-        return laneOffsetStops.last?.multiplier ?? 0
+    static func laneOffsetMultiplier(at zoom: Double) -> Double {
+        interpolatedStopValue(
+            at: zoom,
+            base: subwayLineInterpolationBase,
+            stops: laneOffsetStops.map { (zoom: $0.zoom, value: $0.multiplier) }
+        )
+    }
+
+    static func laneOffsetPixels(for laneOffset: CGFloat, at zoom: Double) -> CGFloat {
+        CGFloat(Double(laneOffset) * laneOffsetMultiplier(at: zoom))
     }
 
     /// Composite expression: top-level zoom interpolation where each stop
     /// multiplies the feature's `lane_offset` by a zoom-dependent factor.
     ///
-    /// Strongest at city scale, then tapers to a smaller but still-visible
-    /// close-zoom separation so shared trunks never fully collapse.
+    /// Tracks the rendered subway fill width so adjacent corridors stay
+    /// visibly parallel while still touching edge-to-edge at close zoom.
     static let laneOffsetExpression: NSExpression = {
-        var json: [Any] = ["interpolate", ["linear"], ["zoom"]]
+        var json: [Any] = [
+            "interpolate",
+            ["exponential", subwayLineInterpolationBase],
+            ["zoom"],
+        ]
         for stop in laneOffsetStops {
             json.append(stop.zoom)
             json.append(["*", ["get", "lane_offset"], stop.multiplier])
