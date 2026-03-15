@@ -17,7 +17,10 @@ struct LoginView: View {
 
     var body: some View {
         ZStack {
-            AppTheme.Colors.background
+            ZStack {
+                AppTheme.Gradients.screen
+                AppTheme.Gradients.screenGlow
+            }
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
@@ -56,14 +59,20 @@ struct LoginView: View {
 
     private var appHeader: some View {
         VStack(spacing: 20) {
-            // App icon
-            Image("AppIconImage")
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .frame(width: 110, height: 110)
-                .clipShape(RoundedRectangle(cornerRadius: 28))
-                .shadow(color: AppTheme.Colors.subwayBlack.opacity(0.3), radius: 16, y: 8)
-                .accessibilityHidden(true)
+            ZStack {
+                Circle()
+                    .fill(AppTheme.Colors.accentGlow)
+                    .frame(width: 156, height: 156)
+                    .blur(radius: 24)
+
+                Image("AppIconImage")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 110, height: 110)
+                    .clipShape(RoundedRectangle(cornerRadius: 28))
+                    .shadow(color: AppTheme.Colors.shadow.opacity(0.4), radius: 16, y: 8)
+                    .accessibilityHidden(true)
+            }
 
             VStack(spacing: 8) {
                 Text("Track")
@@ -85,6 +94,8 @@ struct LoginView: View {
             featureRow(icon: "bell.badge.fill", color: AppTheme.Colors.warningYellow, text: "Live service alerts & delay notifications")
             featureRow(icon: "map.fill", color: AppTheme.Colors.successGreen, text: "Transit map with live vehicle tracking")
         }
+        .padding(18)
+        .trackCardBackground(cornerRadius: 24)
         .padding(.horizontal, 8)
     }
 
@@ -99,7 +110,7 @@ struct LoginView: View {
             
             Text(text)
                 .font(.system(size: 14, weight: .medium))
-                .foregroundColor(AppTheme.Colors.textSecondary)
+                .foregroundColor(AppTheme.Colors.textPrimary)
             
             Spacer()
         }
@@ -144,7 +155,7 @@ struct LoginView: View {
                 .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
             Text("Sign in to sync across devices.")
                 .font(.system(size: 12, weight: .regular))
-                .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.5))
+                .foregroundColor(AppTheme.Colors.textTertiary)
         }
         .multilineTextAlignment(.center)
         .padding(.bottom, 32)

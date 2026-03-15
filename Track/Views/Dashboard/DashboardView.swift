@@ -51,7 +51,7 @@ struct DashboardView: View {
             // MARK: - Scrollable Content
             scrollableContent
         }
-        .background(AppTheme.Colors.background)
+        .trackScreenBackground()
         .refreshable {
             let loc: CLLocation? = if !viewModel.isSearchPinActive,
                                       let live = locationManager.currentLocation,
@@ -75,7 +75,11 @@ struct DashboardView: View {
                 .foregroundColor(AppTheme.Colors.textSecondary)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 4)
+        .padding(.horizontal, AppTheme.Layout.cardPadding)
+        .padding(.vertical, 8)
+        .padding(.horizontal, AppTheme.Layout.margin)
+        .padding(.bottom, 6)
+        .trackFloatingChrome(cornerRadius: 14)
         .transition(.opacity.combined(with: .move(edge: .top)))
     }
 

@@ -109,9 +109,7 @@ struct MapControlsOverlay: View {
             .accessibilityLabel("Recenter on my location")
         }
         .padding(.top, 4)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .shadow(color: .black.opacity(0.12), radius: 6, x: 0, y: 3)
+        .trackFloatingChrome(cornerRadius: 16)
         // Badge rendered OUTSIDE the clip shape so it's fully visible
         .overlay(alignment: .topTrailing) {
             if !viewModel.serviceAlerts.isEmpty {
@@ -265,8 +263,7 @@ struct MapControlsOverlay: View {
         }
         .padding(.horizontal, AppTheme.Layout.cardPadding)
         .padding(.vertical, 8)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius))
+        .trackFloatingChrome(cornerRadius: AppTheme.Layout.cornerRadius)
     }
 }
 

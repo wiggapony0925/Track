@@ -35,7 +35,7 @@ struct LiveTrackingOverlay: View {
         VStack(spacing: 0) {
             // Drag indicator
             Capsule()
-                .fill(Color.secondary.opacity(0.4))
+                .fill(AppTheme.Colors.borderSubtle)
                 .frame(width: 36, height: 4)
                 .padding(.top, 8)
 
@@ -147,9 +147,14 @@ struct LiveTrackingOverlay: View {
             .padding(.bottom, 16)
         }
         .background(
-            RoundedRectangle(cornerRadius: 20)
-                .fill(.ultraThinMaterial)
-                .shadow(color: .black.opacity(0.15), radius: 10, y: -4)
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .fill(AppTheme.Gradients.floating)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .stroke(AppTheme.Colors.borderStrong, lineWidth: 1)
+                )
+                .shadow(color: AppTheme.Colors.shadow.opacity(0.24), radius: 18, y: -4)
+                .shadow(color: AppTheme.Colors.accentGlow.opacity(0.14), radius: 22, y: -2)
         )
         .onAppear {
             // Continuous pulse animation for the radar ping effect

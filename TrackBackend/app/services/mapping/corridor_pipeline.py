@@ -1921,6 +1921,14 @@ _all_trunk_lane_offsets_cache: dict[int, float] | None = None
 
 _EXPORT_LANE_OFFSET_STEP: float = 0.25
 _EXPORT_LANE_OFFSET_EPSILON: float = 0.12
+_EXPORT_TRANSITION_MAX_POINTS: int = 6
+_EXPORT_TRANSITION_MAX_LENGTH_M: float = 90.0
+
+
+class _VisualOffsetRun(NamedTuple):
+    start: int
+    end: int
+    offset: float
 
 
 def _quantise_visual_lane_offset(offset_m: float) -> float:
@@ -1941,6 +1949,94 @@ def _quantise_visual_lane_offset(offset_m: float) -> float:
     return round(visual / _EXPORT_LANE_OFFSET_STEP) * _EXPORT_LANE_OFFSET_STEP
 
 
+def _build_visual_offset_runs(offsets: list[float]) -> list[_VisualOffsetRun]:
+    if not offsets:
+        return []
+
+    runs: list[_VisualOffsetRun] = []
+    start_idx = 0
+    current = offsets[0]
+
+    for idx in range(1, len(offsets)):
+        if offsets[idx] == current:
+            continue
+        runs.append(_VisualOffsetRun(start=start_idx, end=idx, offset=current))
+        start_idx = idx
+        current = offsets[idx]
+
+    runs.append(_VisualOffsetRun(start=start_idx, end=len(offsets), offset=current))
+    return runs
+
+
+def _visual_offset_run_length_m(
+    coords_m: list[tuple[float, float]],
+    run: _VisualOffsetRun,
+) -> float:
+    if run.end - run.start <= 1:
+        return 0.0
+
+    length = 0.0
+    for idx in range(run.start + 1, min(run.end, len(coords_m))):
+        length += _point_dist(coords_m[idx - 1], coords_m[idx])
+    return length
+
+
+def _stabilize_visual_lane_offsets(
+    coords_m: list[tuple[float, float]],
+    visual_offsets: list[float],
+) -> list[float]:
+    """Absorb very short offset runs so client lineOffset changes stay readable."""
+    if len(visual_offsets) < 4:
+        return list(visual_offsets)
+
+    stabilized = list(visual_offsets)
+
+    while True:
+        runs = _build_visual_offset_runs(stabilized)
+        changed = False
+
+        for idx in range(1, len(runs) - 1):
+            prev_run = runs[idx - 1]
+            current_run = runs[idx]
+            next_run = runs[idx + 1]
+
+            point_count = current_run.end - current_run.start
+            run_length_m = _visual_offset_run_length_m(coords_m, current_run)
+            if (
+                point_count > _EXPORT_TRANSITION_MAX_POINTS
+                and run_length_m > _EXPORT_TRANSITION_MAX_LENGTH_M
+            ):
+                continue
+
+            offsets = (prev_run.offset, current_run.offset, next_run.offset)
+            if min(offsets) < 0.0 < max(offsets):
+                continue
+
+            prev_length = _visual_offset_run_length_m(coords_m, prev_run)
+            next_length = _visual_offset_run_length_m(coords_m, next_run)
+            replacement = min(
+                (prev_run.offset, next_run.offset),
+                key=lambda candidate: (
+                    abs(candidate - current_run.offset),
+                    -(
+                        prev_length if candidate == prev_run.offset else next_length
+                    ),
+                    -abs(candidate),
+                ),
+            )
+
+            if abs(replacement - current_run.offset) < 1e-9:
+                continue
+
+            for vertex_idx in range(current_run.start, current_run.end):
+                stabilized[vertex_idx] = replacement
+            changed = True
+            break
+
+        if not changed:
+            return stabilized
+
+
 def _segment_export_path_by_lane_offset(
     coords_m: list[tuple[float, float]],
     offsets_m: list[float],
@@ -1955,6 +2051,7 @@ def _segment_export_path_by_lane_offset(
         offsets_m = offsets_m[: len(coords_m)]
 
     visual_offsets = [_quantise_visual_lane_offset(value) for value in offsets_m]
+    visual_offsets = _stabilize_visual_lane_offsets(coords_m, visual_offsets)
     segments: list[tuple[list[tuple[float, float]], float]] = []
 
     start_idx = 0

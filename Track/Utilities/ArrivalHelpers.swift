@@ -113,14 +113,15 @@ enum ArrivalHelpers {
         //    or the raw direction string first.
         //    Handles both plain "Eastbound" and compound "Eastbound → Terminal".
         if !skipBackendLabel, let label = direction.directionLabel, !label.isEmpty {
-            let base = label.components(separatedBy: " → ").first ?? label
+            let cleaned = cleanBusHeadsign(label)
+            let base = cleaned.components(separatedBy: " → ").first ?? cleaned
             if !DirectionConstants.isFallbackDirection(base) {
-                return label
+                return cleaned
             }
             // If it has a "→ destination" part, use just the destination
-            let parts = label.components(separatedBy: " → ")
+            let parts = cleaned.components(separatedBy: " → ")
             if parts.count >= 2, let dest = parts.last, !dest.isEmpty {
-                return dest
+                return cleanBusHeadsign(dest)
             }
             // Pure compass label like "Eastbound" — skip to next fallback
         }
@@ -245,12 +246,12 @@ enum ArrivalHelpers {
     ///   "RUSH JFK AIRPORT via LEFFERTS BL via 130 ST"
     ///     → strips "RUSH " prefix (rush-hour/limited service designator)
     ///     → strips " via ..." suffixes (routing detail, not destination)
-    ///     → title-cases for readability
-    ///   Result: "Jfk Airport"
+    ///     → smart title-cases while preserving transit acronyms
+    ///   Result: "JFK Airport"
     ///
     /// Also handles:
     ///   "LTD …" (Limited service prefix)
-    ///   ALL-CAPS OBA names → Title Case
+    ///   ALL-CAPS OBA names → Title Case (with acronym preservation)
     static func cleanBusHeadsign(_ raw: String) -> String {
         var s = raw.trimmingCharacters(in: .whitespaces)
         guard !s.isEmpty else { return s }
@@ -275,11 +276,42 @@ enum ArrivalHelpers {
 
         s = s.trimmingCharacters(in: .whitespaces)
 
-        // Title-case if ALL-CAPS (common for OBA data)
+        // Smart title-case if ALL-CAPS: preserves known transit acronyms
+        // ("JFK", "SBS", "LIRR") while lowercasing normal words.
         if s == s.uppercased(), s.count > 2 {
-            s = s.localizedCapitalized
+            s = smartTitleCase(s)
         }
 
         return s
+    }
+
+    // MARK: - Smart Title Case
+
+    /// Known transit / geographic acronyms that should stay uppercased
+    /// when title-casing ALL-CAPS headsigns.
+    private static let preservedAcronyms: Set<String> = [
+        "JFK", "SBS", "LIRR", "MNR", "NJ", "NY", "NYC",
+        "LGA", "EWR", "PABT", "GCT", "WTC", "MTA",
+        "AV", "AVE", "BL", "BLVD", "ST", "PL", "DR",
+        "RD", "CT", "HWY", "FWY", "PKWY", "TPK", "TPKE",
+        "NW", "NE", "SW", "SE",
+        "II", "III", "IV",
+    ]
+
+    /// Title-cases a string while preserving known acronyms.
+    ///   "JFK AIRPORT" → "JFK Airport"
+    ///   "WOODHAVEN BLVD" → "Woodhaven Blvd"
+    private static func smartTitleCase(_ input: String) -> String {
+        input.split(separator: " ").map { word in
+            let upper = word.uppercased()
+            if preservedAcronyms.contains(upper) {
+                return upper
+            }
+            // Preserve numbers and number+suffix combos ("130", "130TH")
+            if word.first?.isNumber == true {
+                return String(word)
+            }
+            return word.capitalized
+        }.joined(separator: " ")
     }
 }

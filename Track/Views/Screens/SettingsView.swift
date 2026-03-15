@@ -34,7 +34,10 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                AppTheme.Colors.background
+                ZStack {
+                    AppTheme.Gradients.screen
+                    AppTheme.Gradients.screenGlow
+                }
                     .ignoresSafeArea()
 
                 ScrollView {
@@ -459,15 +462,14 @@ struct SettingsView: View {
                     .foregroundColor(iconColor.opacity(0.7))
                 Text(title.uppercased())
                     .font(.system(size: 12, weight: .bold, design: .rounded))
-                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
+                    .foregroundColor(AppTheme.Colors.textTertiary)
                     .tracking(0.5)
             }
             .padding(.horizontal, AppTheme.Layout.margin)
 
             content()
-                .background(AppTheme.Colors.cardBackground)
-                .cornerRadius(AppTheme.Layout.cornerRadius)
                 .padding(.horizontal, AppTheme.Layout.margin)
+                .trackCardBackground()
         }
     }
 }

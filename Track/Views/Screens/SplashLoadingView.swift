@@ -34,7 +34,10 @@ struct SplashLoadingView: View {
     var body: some View {
         ZStack {
             // Background — uses the themed AppBackground (light grey / dark near-black)
-            AppTheme.Colors.background
+            ZStack {
+                AppTheme.Gradients.screen
+                AppTheme.Gradients.screenGlow
+            }
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
@@ -43,7 +46,7 @@ struct SplashLoadingView: View {
                 // App icon with MTA Blue ambient glow
                 ZStack {
                     RoundedRectangle(cornerRadius: 32)
-                        .fill(AppTheme.Colors.mtaBlue.opacity(glowPhase ? 0.25 : 0.08))
+                        .fill(AppTheme.Colors.accentGlow.opacity(glowPhase ? 1.0 : 0.4))
                         .frame(width: 130, height: 130)
                         .blur(radius: 30)
 

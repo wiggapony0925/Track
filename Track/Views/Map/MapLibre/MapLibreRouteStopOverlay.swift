@@ -90,16 +90,16 @@ struct MapLibreSearchPinOverlay: View {
                     ZStack {
                         // Accuracy halo
                         Circle()
-                            .fill(Color(red: 0.0, green: 0.48, blue: 1.0).opacity(0.12))
+                            .fill(AppTheme.Colors.mtaBlue.opacity(0.12))
                             .frame(width: 36, height: 36)
                         // White border
                         Circle()
-                            .fill(.white)
+                            .fill(AppTheme.Colors.cardBackground)
                             .frame(width: 18, height: 18)
-                            .shadow(color: .black.opacity(0.15), radius: 2, y: 1)
+                            .shadow(color: AppTheme.Colors.shadow.opacity(0.25), radius: 2, y: 1)
                         // Blue fill
                         Circle()
-                            .fill(Color(red: 0.0, green: 0.48, blue: 1.0))
+                            .fill(AppTheme.Colors.mtaBlue)
                             .frame(width: 12, height: 12)
                     }
                     .position(point)

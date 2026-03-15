@@ -16,7 +16,10 @@ struct OnboardingView: View {
 
     var body: some View {
         ZStack {
-            AppTheme.Colors.background
+            ZStack {
+                AppTheme.Gradients.screen
+                AppTheme.Gradients.screenGlow
+            }
                 .ignoresSafeArea()
 
             TabView(selection: $currentPage) {
@@ -60,8 +63,7 @@ struct OnboardingView: View {
                     .foregroundColor(AppTheme.Colors.textOnColor)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
-                    .background(AppTheme.Colors.mtaBlue)
-                    .cornerRadius(AppTheme.Layout.cornerRadius)
+                    .trackAccentBackground()
             }
             .padding(.horizontal, 40)
 
@@ -99,8 +101,7 @@ struct OnboardingView: View {
                     .foregroundColor(AppTheme.Colors.textOnColor)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
-                    .background(AppTheme.Colors.successGreen)
-                    .cornerRadius(AppTheme.Layout.cornerRadius)
+                    .trackAccentBackground()
             }
             .padding(.horizontal, 40)
 
@@ -137,8 +138,7 @@ struct OnboardingView: View {
                     .foregroundColor(AppTheme.Colors.textOnColor)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
-                    .background(AppTheme.Colors.mtaBlue)
-                    .cornerRadius(AppTheme.Layout.cornerRadius)
+                    .trackAccentBackground()
             }
             .padding(.horizontal, 40)
 

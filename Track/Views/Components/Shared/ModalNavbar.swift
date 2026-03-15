@@ -56,8 +56,7 @@ struct ModalNavbar: View {
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 10)
-                .background(AppTheme.Colors.cardBackground)
-                .cornerRadius(AppTheme.Layout.searchBarCornerRadius)
+                .trackFloatingChrome(cornerRadius: AppTheme.Layout.searchBarCornerRadius)
                 
                 // Settings button
                 Button {
@@ -67,9 +66,8 @@ struct ModalNavbar: View {
                         .font(.system(size: 17, weight: .medium))
                         .foregroundColor(AppTheme.Colors.textSecondary)
                         .frame(width: 36, height: 36)
-                        .background(AppTheme.Colors.cardBackground)
-                        .clipShape(Circle())
                 }
+                .trackFloatingChrome(cornerRadius: 18)
                 .accessibilityLabel("Settings")
             }
             .padding(.horizontal, AppTheme.Layout.margin)
@@ -81,7 +79,7 @@ struct ModalNavbar: View {
                 .padding(.horizontal, AppTheme.Layout.margin)
                 .padding(.bottom, 12)
         }
-        .background(AppTheme.Colors.background)
+        .trackScreenBackground()
         .onAppear {
             speechManager.onTranscription = { text in
                 searchText = text
@@ -103,14 +101,12 @@ struct ModeFilterStrip: View {
             }
         }
         .padding(4)
-        .background(AppTheme.Colors.cardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .trackFloatingChrome(cornerRadius: 16)
     }
 
     private func modeButton(for mode: TransportMode) -> some View {
         let isActive: Bool = selectedMode == mode
         let fgColor: Color = isActive ? .white : AppTheme.Colors.textSecondary
-        let bgColor: Color = isActive ? modeColor(for: mode) : Color.clear
         let traits: AccessibilityTraits = isActive ? .isSelected : []
         return Button {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
@@ -118,26 +114,19 @@ struct ModeFilterStrip: View {
             }
             HapticManager.impact(.light)
         } label: {
-            Image(systemName: mode.icon)
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundColor(fgColor)
-                .frame(maxWidth: .infinity)
-                .frame(height: 34)
-                .background(bgColor)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                Image(systemName: mode.icon)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(fgColor)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 38)
+                    .background {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(AppTheme.Gradients.accent)
+                            .opacity(isActive ? 1 : 0)
+                    }
         }
         .accessibilityLabel(mode.label)
         .accessibilityAddTraits(traits)
-    }
-    
-    private func modeColor(for mode: TransportMode) -> Color {
-        switch mode {
-        case .nearby: return AppTheme.Colors.successGreen
-        case .subway: return AppTheme.Colors.subwayBlack
-        case .bus: return AppTheme.Colors.mtaBlue
-        case .lirr: return AppTheme.CommuterRailColors.lirrBlue
-        case .mnr: return AppTheme.CommuterRailColors.mnrBlue
-        }
     }
 }
 

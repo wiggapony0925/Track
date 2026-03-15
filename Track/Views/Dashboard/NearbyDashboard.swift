@@ -422,8 +422,7 @@ struct GroupedRouteList: View {
             }
         }
         .padding(.vertical, 8)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius, style: .continuous))
+        .trackFloatingChrome(cornerRadius: AppTheme.Layout.cornerRadius)
         .padding(.horizontal, AppTheme.Layout.margin)
     }
 }
@@ -470,8 +469,7 @@ struct FlatTransitList: View {
             }
         }
         .padding(.vertical, 8)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius, style: .continuous))
+        .trackFloatingChrome(cornerRadius: AppTheme.Layout.cornerRadius)
         .padding(.horizontal, AppTheme.Layout.margin)
     }
 }

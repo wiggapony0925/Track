@@ -86,7 +86,7 @@ struct SettingsContentView: View {
             sheetHeader
             settingsScrollContent
         }
-        .background(AppTheme.Colors.background)
+        .trackScreenBackground()
     }
 
     @ViewBuilder
@@ -576,9 +576,7 @@ struct SettingsContentView: View {
             .foregroundColor(.white)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
-            .background(AppTheme.Colors.mtaBlue)
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .shadow(color: AppTheme.Colors.mtaBlue.opacity(0.4), radius: 8, y: 4)
+            .trackAccentBackground(cornerRadius: 16)
         }
         .padding(.horizontal, AppTheme.Layout.margin)
         .padding(.bottom, 24)
@@ -637,14 +635,16 @@ struct SettingsContentView: View {
         }
         .padding(.horizontal, AppTheme.Layout.margin)
         .padding(.vertical, 16)
-        .background(AppTheme.Colors.background)
+        .background(AppTheme.Gradients.screen)
     }
     
     // MARK: - Reusable Components
     
     /// Standard divider aligned with text content
     private var settingsDivider: some View {
-        Divider()
+        Rectangle()
+            .fill(AppTheme.Colors.borderSubtle)
+            .frame(height: 1)
             .padding(.leading, AppTheme.Layout.cardPadding + 36)
     }
     
@@ -1103,15 +1103,14 @@ struct SettingsContentView: View {
                 }
                 Text(title.uppercased())
                     .font(.system(size: 12, weight: .bold, design: .rounded))
-                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
+                    .foregroundColor(AppTheme.Colors.textTertiary)
                     .tracking(0.5)
             }
             .padding(.horizontal, AppTheme.Layout.margin)
             
             content()
-                .background(AppTheme.Colors.cardBackground)
-                .cornerRadius(AppTheme.Layout.cornerRadius)
                 .padding(.horizontal, AppTheme.Layout.margin)
+                .trackCardBackground()
         }
     }
 }

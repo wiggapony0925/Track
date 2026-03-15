@@ -36,7 +36,7 @@ struct DragSearchOverlay: View {
                 // ── Persistent dim outside the search area ──
                 // Shows a subtle overlay while drag search is active:
                 // slightly stronger while panning, lighter when settled.
-                Color.black.opacity(isPanning ? 0.12 : 0.06)
+                AppTheme.Colors.mapScrim.opacity(isPanning ? 1.0 : 0.7)
                     .ignoresSafeArea()
                     .allowsHitTesting(false)
                     .animation(.easeInOut(duration: 0.2), value: isPanning)
@@ -79,7 +79,7 @@ struct DragSearchOverlay: View {
             // Outer ripple ring — pulses outward while searching
             if isSearching {
                 Circle()
-                    .stroke(Color(red: 0.0, green: 0.48, blue: 1.0).opacity(0.3), lineWidth: 2)
+                    .stroke(AppTheme.Colors.mtaBlue.opacity(0.35), lineWidth: 2)
                     .frame(width: 44, height: 44)
                     .scaleEffect(rippleActive ? 1.6 : 1.0)
                     .opacity(rippleActive ? 0.0 : 0.5)
@@ -93,18 +93,18 @@ struct DragSearchOverlay: View {
             
             // Soft accuracy halo
             Circle()
-                .fill(Color(red: 0.0, green: 0.48, blue: 1.0).opacity(isPanning ? 0.15 : 0.10))
+                .fill(AppTheme.Colors.mtaBlue.opacity(isPanning ? 0.18 : 0.12))
                 .frame(width: 44, height: 44)
             
             // White border
             Circle()
-                .fill(.white)
+                .fill(AppTheme.Colors.cardBackground)
                 .frame(width: 22, height: 22)
-                .shadow(color: .black.opacity(0.18), radius: 2.5, y: 1)
+                .shadow(color: AppTheme.Colors.shadow.opacity(0.28), radius: 3, y: 1)
             
             // Blue fill — pulses while searching
             Circle()
-                .fill(Color(red: 0.0, green: 0.48, blue: 1.0))
+                .fill(AppTheme.Colors.mtaBlue)
                 .frame(width: 16, height: 16)
                 .scaleEffect(isSearching ? 1.15 : 1.0)
                 .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: isSearching)
@@ -118,20 +118,20 @@ struct DragSearchOverlay: View {
             if isSearching {
                 ProgressView()
                     .scaleEffect(0.65)
-                    .tint(Color(red: 0.0, green: 0.48, blue: 1.0))
+                    .tint(AppTheme.Colors.mtaBlue)
             } else if isPanning {
                 Image(systemName: "hand.draw.fill")
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Color(red: 0.0, green: 0.48, blue: 1.0))
+                    .foregroundStyle(AppTheme.Colors.mtaBlue)
             } else {
                 Circle()
-                    .fill(Color(red: 0.0, green: 0.48, blue: 1.0))
+                    .fill(AppTheme.Colors.mtaBlue)
                     .frame(width: 7, height: 7)
             }
             
             Text(statusText)
                 .font(.system(size: 13, weight: .medium, design: .rounded))
-                .foregroundStyle(.primary)
+                .foregroundStyle(AppTheme.Colors.textPrimary)
             
             Button {
                 onDismiss()
@@ -139,13 +139,12 @@ struct DragSearchOverlay: View {
                 Image(systemName: "xmark.circle.fill")
                     .font(.system(size: 16))
                     .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppTheme.Colors.textSecondary)
             }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
-        .background(.ultraThinMaterial, in: Capsule())
-        .shadow(color: .black.opacity(0.06), radius: 4, y: 2)
+        .trackFloatingChrome(cornerRadius: 999)
         .animation(.easeInOut(duration: 0.2), value: statusText)
     }
     

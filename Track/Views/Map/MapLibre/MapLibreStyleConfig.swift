@@ -413,11 +413,11 @@ enum MapLibreStyleConfig {
 
     /// Building fill color (light mode) — subtle warm gray so buildings
     /// add depth without competing with transit overlays.
-    static let buildingColorLight = UIColor(red: 0.85, green: 0.83, blue: 0.80, alpha: 1.0)
+    static let buildingColorLight = UIColor(red: 0.84, green: 0.82, blue: 0.88, alpha: 1.0)
 
     /// Building fill color (dark mode) — muted blue-gray for contrast against
     /// the dark base map without being distracting.
-    static let buildingColorDark = UIColor(red: 0.22, green: 0.24, blue: 0.28, alpha: 1.0)
+    static let buildingColorDark = UIColor(red: 0.12, green: 0.15, blue: 0.21, alpha: 1.0)
 
     /// Building extrusion opacity — fades in smoothly from minZoom to z16.
     static let buildingOpacity = zoomInterpolate(

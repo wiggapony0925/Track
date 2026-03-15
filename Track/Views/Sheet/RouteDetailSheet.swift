@@ -460,9 +460,20 @@ struct RouteDetailSheet: View {
             cachedDirectionPolyline = []
             return
         }
-        cachedDirectionPolyline = shape.polylinesForDirection(
+        let segments = shape.polylinesForDirection(
             index: selectedDirectionIndex, name: selectedDirectionName
-        ).flatMap { $0 }
+        )
+        // Bus routes can have loops/branches — keep segments merged but
+        // don't force-consolidate into a single line.  Trains benefit
+        // from consolidation for seamless vehicle interpolation.
+        if group.isBus {
+            let merged = mergeAdjacentPolylines(segments)
+            cachedDirectionPolyline = merged.flatMap { $0 }
+        } else if segments.count > 1 {
+            cachedDirectionPolyline = consolidateIntoSinglePolyline(segments)
+        } else {
+            cachedDirectionPolyline = segments.flatMap { $0 }
+        }
     }
 
     private func handleOnAppear() {
@@ -1783,7 +1794,21 @@ struct RouteDetailSheet: View {
         if !group.isBus && !cachedTrainArrivals.isEmpty {
             let dirLower = direction.direction.lowercased()
 
+            // Route filter — cachedTrainArrivals may contain sister lines
+            // from the same GTFS feed (e.g. A/C/E).  Only show *this*
+            // route's schedules.
+            let routeUpper = group.routeId.uppercased()
+            let displayUpper = group.displayName.uppercased()
+
             let matching = cachedTrainArrivals.filter { arrival in
+                // ── Route gate ──
+                let arrRoute = arrival.routeID.uppercased()
+                guard arrRoute == routeUpper
+                        || arrRoute == displayUpper
+                        || routeUpper.hasSuffix("_\(arrRoute)")
+                else { return false }
+
+                // ── Direction gate (existing logic) ──
                 let arrDir = arrival.direction.lowercased()
                 let arrDest = arrival.destination?.lowercased() ?? ""
                 return arrDir == dirLower

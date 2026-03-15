@@ -60,6 +60,7 @@ struct ContentView: View {
             }
         }
         .preferredColorScheme(colorScheme)
+        .tint(AppTheme.Colors.mtaBlue)
         .onAppear {
             if supabase.isAuthResolved && isAuth && hasCompletedOnboarding {
                 // Fire the full sync AFTER the first transit fetch completes.

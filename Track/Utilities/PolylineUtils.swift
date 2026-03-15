@@ -91,6 +91,151 @@ private nonisolated func encodeValue(_ value: Int32, into result: inout String) 
     result.append(Character(UnicodeScalar(Int(v + 63))!))
 }
 
+// MARK: - Polyline Consolidation
+
+/// Greedily connects multiple polyline chains into a single continuous line.
+///
+/// After `mergeAdjacentPolylines` or `unifyTrainPolylines` there may still
+/// be multiple separate chains for a single route direction — e.g. when
+/// GTFS shape fragments have gaps wider than the merge threshold.  This
+/// function bridges those gaps by repeatedly attaching the nearest
+/// unconnected chain (checking all four endpoint orientations) until
+/// every chain is part of one continuous polyline.
+///
+/// The result is a single array suitable for drawing one `MLNPolylineFeature`
+/// on the map, avoiding visible seams between direction segments.
+///
+/// - Parameter chains: Arrays of coordinates, each a separate polyline chain.
+/// - Returns: A single coordinate array forming one continuous line.
+nonisolated func consolidateIntoSinglePolyline(
+    _ chains: [[CLLocationCoordinate2D]]
+) -> [CLLocationCoordinate2D] {
+    let valid = chains.filter { $0.count >= 2 }
+    guard valid.count > 1 else { return valid.first ?? [] }
+
+    func distSq(_ a: CLLocationCoordinate2D, _ b: CLLocationCoordinate2D) -> Double {
+        let dx = a.longitude - b.longitude
+        let dy = a.latitude - b.latitude
+        return dx * dx + dy * dy
+    }
+
+    // Skip near-duplicate points at the join seam  (≤ ~15 m at NYC lat).
+    let overlapSq: Double = 0.00015 * 0.00015
+
+    var result = valid[0]
+    var remaining = Array(valid.dropFirst())
+
+    while !remaining.isEmpty {
+        var bestIdx = 0
+        var bestDist = Double.greatestFiniteMagnitude
+        var bestReverse = false
+        var bestPrepend = false
+
+        guard let rLast = result.last, let rFirst = result.first else { break }
+
+        for i in remaining.indices {
+            guard let sFirst = remaining[i].first, let sLast = remaining[i].last else { continue }
+
+            // result.last → seg.first  (append, normal order)
+            let d1 = distSq(rLast, sFirst)
+            if d1 < bestDist { bestDist = d1; bestIdx = i; bestReverse = false; bestPrepend = false }
+
+            // result.last → seg.last   (append, reversed)
+            let d2 = distSq(rLast, sLast)
+            if d2 < bestDist { bestDist = d2; bestIdx = i; bestReverse = true; bestPrepend = false }
+
+            // seg.last → result.first  (prepend, normal order)
+            let d3 = distSq(sLast, rFirst)
+            if d3 < bestDist { bestDist = d3; bestIdx = i; bestReverse = false; bestPrepend = true }
+
+            // seg.first → result.first (prepend, reversed)
+            let d4 = distSq(sFirst, rFirst)
+            if d4 < bestDist { bestDist = d4; bestIdx = i; bestReverse = true; bestPrepend = true }
+        }
+
+        var next = bestReverse ? Array(remaining[bestIdx].reversed()) : remaining[bestIdx]
+
+        // Drop overlapping head/tail points at the seam so Catmull-Rom
+        // doesn't create a micro-zigzag at the junction.
+        if bestPrepend {
+            while next.count > 1, let nl = next.last, let rf = result.first,
+                  distSq(nl, rf) < overlapSq {
+                next.removeLast()
+            }
+            result = next + result
+        } else {
+            while next.count > 1, let nf = next.first, let rl = result.last,
+                  distSq(rl, nf) < overlapSq {
+                next.removeFirst()
+            }
+            result.append(contentsOf: next)
+        }
+        remaining.remove(at: bestIdx)
+    }
+
+    return result
+}
+
+// MARK: - Duplicate Segment Removal
+
+/// Removes near-duplicate polyline segments that overlap >85% with
+/// already-kept segments.
+///
+/// Lighter than `unifyTrainPolylines` — does NOT extract branch stubs.
+/// Designed for single-direction pipes where duplicate GTFS variants
+/// (express/local, short-turn) should simply be dropped to avoid
+/// stacking two identical visual lines.
+///
+/// - Parameters:
+///   - segments: Arrays of coordinates, each a polyline segment.
+///   - cellSize: Spatial grid cell size in degrees for coverage checks.
+///     Default `0.001` ≈ 84 m at NYC latitude.
+/// - Returns: Segments with near-duplicates removed (longest first).
+nonisolated func removeDuplicateSegments(
+    _ segments: [[CLLocationCoordinate2D]],
+    cellSize: Double = 0.001
+) -> [[CLLocationCoordinate2D]] {
+    guard segments.count > 1 else { return segments }
+    let valid = segments.filter { $0.count >= 2 }
+    guard valid.count > 1 else { return valid }
+
+    // Sort longest first so the primary path is kept as baseline.
+    let sorted = valid.sorted { $0.count > $1.count }
+
+    func cellKey(_ coord: CLLocationCoordinate2D) -> Int64 {
+        let lc = Int64(floor(coord.latitude / cellSize))
+        let nc = Int64(floor(coord.longitude / cellSize))
+        return lc &* 10_000_000 &+ nc
+    }
+
+    var grid: Set<Int64> = []
+
+    func isCovered(_ pt: CLLocationCoordinate2D) -> Bool {
+        let lc = Int(floor(pt.latitude / cellSize))
+        let nc = Int(floor(pt.longitude / cellSize))
+        for dl in -1...1 {
+            for dn in -1...1 {
+                if grid.contains(Int64(lc + dl) &* 10_000_000 &+ Int64(nc + dn)) { return true }
+            }
+        }
+        return false
+    }
+
+    var kept: [[CLLocationCoordinate2D]] = [sorted[0]]
+    for pt in sorted[0] { grid.insert(cellKey(pt)) }
+
+    for i in 1..<sorted.count {
+        let seg = sorted[i]
+        let coveredCount = seg.reduce(0) { $0 + (isCovered($1) ? 1 : 0) }
+        let ratio = Double(coveredCount) / Double(seg.count)
+        if ratio > 0.85 { continue }       // near-duplicate → drop
+        kept.append(seg)
+        for pt in seg { grid.insert(cellKey(pt)) }
+    }
+
+    return kept
+}
+
 // MARK: - Polyline Merging
 
 /// Merges adjacent polyline segments into fewer continuous polylines.

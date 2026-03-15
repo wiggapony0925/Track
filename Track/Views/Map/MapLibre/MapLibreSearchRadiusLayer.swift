@@ -87,8 +87,8 @@ enum MapLibreSearchRadiusManager {
             strokeLayerID: fartherStrokeID,
             center: center,
             radiusMeters: fartherRadius,
-            fillColor: UIColor(red: 0.0, green: 0.48, blue: 1.0, alpha: 0.07),
-            strokeColor: UIColor(red: 0.0, green: 0.48, blue: 1.0, alpha: 0.45),
+            fillColor: UIColor(red: 214/255, green: 116/255, blue: 255/255, alpha: 0.08),
+            strokeColor: UIColor(red: 214/255, green: 116/255, blue: 255/255, alpha: 0.50),
             strokeWidth: 1.5,
             dashPattern: [8, 6]
         )

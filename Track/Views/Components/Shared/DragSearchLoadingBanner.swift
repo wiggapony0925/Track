@@ -39,14 +39,7 @@ struct DragSearchLoadingBanner: View {
         }
         .padding(.horizontal, AppTheme.Layout.cardPadding)
         .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(AppTheme.Colors.mtaBlue.opacity(0.15), lineWidth: 1)
-                )
-        )
+        .trackFloatingChrome(cornerRadius: 14)
         .padding(.horizontal, AppTheme.Layout.margin)
         .padding(.top, 4)
         .onAppear {

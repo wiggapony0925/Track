@@ -24,28 +24,10 @@ struct LocationPermissionView: View {
 
     var body: some View {
         ZStack {
-            // MARK: - Animated gradient background
-            LinearGradient(
-                colors: [
-                    Color(red: 0.04, green: 0.06, blue: 0.16),
-                    Color(red: 0.06, green: 0.11, blue: 0.28),
-                    Color(red: 0.02, green: 0.08, blue: 0.20),
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
-
-            // Subtle radial glow behind the icon
-            RadialGradient(
-                colors: [
-                    AppTheme.Colors.mtaBlue.opacity(0.35),
-                    Color.clear
-                ],
-                center: .init(x: 0.5, y: 0.32),
-                startRadius: 10,
-                endRadius: 280
-            )
+            ZStack {
+                AppTheme.Gradients.screen
+                AppTheme.Gradients.screenGlow
+            }
             .ignoresSafeArea()
 
             VStack(spacing: 0) {
@@ -55,7 +37,7 @@ struct LocationPermissionView: View {
                 ZStack {
                     // Outer glow ring (pulsing)
                     Circle()
-                        .fill(AppTheme.Colors.mtaBlue.opacity(0.18))
+                        .fill(AppTheme.Colors.accentGlow.opacity(0.65))
                         .frame(width: iconPulse ? 180 : 160, height: iconPulse ? 180 : 160)
                         .animation(
                             .easeInOut(duration: 1.8).repeatForever(autoreverses: true),
@@ -64,12 +46,12 @@ struct LocationPermissionView: View {
 
                     // Inner circle
                     Circle()
-                        .fill(AppTheme.Colors.mtaBlue.opacity(0.25))
+                        .fill(AppTheme.Colors.accentTint)
                         .frame(width: 120, height: 120)
 
                     Image(systemName: isDenied ? "location.slash.fill" : "location.fill")
                         .font(.system(size: 52, weight: .semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(AppTheme.Colors.mtaBlue)
                         .symbolEffect(.pulse, isActive: !isDenied)
                 }
                 .scaleEffect(iconScale)
@@ -78,7 +60,7 @@ struct LocationPermissionView: View {
                 // MARK: - Headline
                 Text(isDenied ? "Location Access Needed" : "Track Needs Your Location")
                     .font(.system(size: 30, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(AppTheme.Colors.textPrimary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 32)
 
@@ -88,7 +70,7 @@ struct LocationPermissionView: View {
                         : "To show real-time arrivals and your nearest stops, Track needs to know where you are. Your location never leaves your device."
                 )
                 .font(.system(size: 16, weight: .regular))
-                .foregroundStyle(Color.white.opacity(0.65))
+                .foregroundStyle(AppTheme.Colors.textSecondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 36)
                 .padding(.top, 14)
@@ -112,31 +94,27 @@ struct LocationPermissionView: View {
                         Button(action: openSettings) {
                             Label("Open Settings", systemImage: "gear")
                                 .font(.system(size: 17, weight: .bold))
-                                .foregroundStyle(.white)
+                                .foregroundStyle(AppTheme.Colors.textOnColor)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 18)
-                                .background(AppTheme.Colors.mtaBlue)
-                                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                                .shadow(color: AppTheme.Colors.mtaBlue.opacity(0.5), radius: 12, y: 6)
+                                .trackAccentBackground(cornerRadius: 18)
                         }
                         .buttonStyle(.plain)
                     } else {
                         Button(action: onRequestPermission) {
                             Label("Share My Location", systemImage: "location.fill")
                                 .font(.system(size: 17, weight: .bold))
-                                .foregroundStyle(.white)
+                                .foregroundStyle(AppTheme.Colors.textOnColor)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 18)
-                                .background(AppTheme.Colors.mtaBlue)
-                                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                                .shadow(color: AppTheme.Colors.mtaBlue.opacity(0.5), radius: 12, y: 6)
+                                .trackAccentBackground(cornerRadius: 18)
                         }
                         .buttonStyle(.plain)
                     }
 
                     Text("Only used while the app is open")
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(Color.white.opacity(0.4))
+                        .foregroundStyle(AppTheme.Colors.textTertiary)
                 }
                 .padding(.horizontal, 32)
                 .padding(.bottom, 52)
@@ -161,12 +139,12 @@ struct LocationPermissionView: View {
             Text(label)
                 .font(.system(size: 12, weight: .semibold))
         }
-        .foregroundStyle(.white.opacity(0.85))
+        .foregroundStyle(AppTheme.Colors.textPrimary)
         .padding(.horizontal, 12)
         .padding(.vertical, 7)
-        .background(Color.white.opacity(0.1))
+        .background(AppTheme.Colors.cardFloating)
         .clipShape(Capsule())
-        .overlay(Capsule().stroke(Color.white.opacity(0.15), lineWidth: 1))
+        .overlay(Capsule().stroke(AppTheme.Colors.borderStrong, lineWidth: 1))
     }
 
     private func openSettings() {

@@ -58,7 +58,7 @@ struct UniversalBottomSheet<Content: View>: View {
             .presentationDetents([.fraction(0.4), .large], selection: $sheetDetent)
             .presentationDragIndicator(.visible)
             .presentationBackgroundInteraction(.enabled)
-            .presentationBackground(AppTheme.Colors.background)
+            .presentationBackground(AppTheme.Gradients.screen)
             .interactiveDismissDisabled()
             .preferredColorScheme(colorScheme)
     }

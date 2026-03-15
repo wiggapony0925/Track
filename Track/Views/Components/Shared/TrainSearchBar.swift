@@ -56,8 +56,7 @@ struct TrainSearchBar: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .background(AppTheme.Colors.cardBackground)
-        .cornerRadius(AppTheme.Layout.cornerRadius)
+        .trackFloatingChrome(cornerRadius: AppTheme.Layout.searchBarCornerRadius)
         .padding(.horizontal, AppTheme.Layout.margin)
         .onAppear {
             speechManager.onTranscription = { text in

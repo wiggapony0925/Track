@@ -824,6 +824,8 @@ final class MapSystemViewModel {
             var polylines: [[CLLocationCoordinate2D]]
             /// Signed perpendicular offset from the server corridor pipeline.
             let laneOffset: CGFloat
+            /// Per-branch local line offsets from the server corridor pipeline.
+            let polylineLaneOffsets: [CGFloat]
         }
 
         var colorGroupResults: [ColorGroupResult] = []
@@ -854,7 +856,8 @@ final class MapSystemViewModel {
                     routeIds: trunk.routeIds,
                     color: groupColor,
                     polylines: decoded,
-                    laneOffset: 0
+                    laneOffset: trunk.laneOffset,
+                    polylineLaneOffsets: trunk.polylineLaneOffsets
                 ))
             }
         } else {
@@ -890,7 +893,8 @@ final class MapSystemViewModel {
                     routeIds: activeRoutes,
                     color: groupColor,
                     polylines: unified,
-                    laneOffset: 0  // No server corridor data in offline fallback
+                    laneOffset: 0,  // No server corridor data in offline fallback
+                    polylineLaneOffsets: []
                 ))
             }
         }
@@ -936,37 +940,68 @@ final class MapSystemViewModel {
 
         // Server polylines pass through station coordinates — only simplify.
         // No Catmull-Rom: MapLibre renders smooth round joins natively.
-        var finalOffsetPolylines: [(groupIndex: Int, coordinates: [CLLocationCoordinate2D])] = []
-        for item in grouped {
-            let rdp = simplifyPolyline(item.coordinates, tolerance: 0.00008)
-            guard rdp.count >= 2 else { continue }
-            finalOffsetPolylines.append((groupIndex: item.groupIndex, coordinates: rdp))
+        func localLaneOffset(
+            for groupResult: ColorGroupResult,
+            branchIndex: Int
+        ) -> CGFloat {
+            guard branchIndex < groupResult.polylineLaneOffsets.count else {
+                return groupResult.laneOffset
+            }
+            return groupResult.polylineLaneOffsets[branchIndex]
+        }
+
+        struct PreparedPolyline {
+            let origin: PolylineOrigin
+            let groupIndex: Int
+            let coordinates: [CLLocationCoordinate2D]
+            let localLaneOffset: CGFloat
+        }
+
+        var finalOffsetPolylines: [PreparedPolyline] = []
+        for index in grouped.indices {
+            let item = grouped[index]
+            let origin = mapping[index]
+            let groupResult = colorGroupResults[origin.resultIndex]
+            let localLaneOffset = localLaneOffset(
+                for: groupResult,
+                branchIndex: origin.branchIndex
+            )
+
+            // Locally offset corridor segments carry the extra geometry that
+            // makes dense junctions look rail-like instead of flattened.
+            let simplified: [CLLocationCoordinate2D]
+            if abs(localLaneOffset) > 0.01 {
+                if item.coordinates.count <= 16 {
+                    simplified = item.coordinates
+                } else {
+                    simplified = simplifyPolyline(item.coordinates, tolerance: 0.00002)
+                }
+            } else {
+                simplified = simplifyPolyline(item.coordinates, tolerance: 0.00008)
+            }
+
+            guard simplified.count >= 2 else { continue }
+            finalOffsetPolylines.append(PreparedPolyline(
+                origin: origin,
+                groupIndex: item.groupIndex,
+                coordinates: simplified,
+                localLaneOffset: localLaneOffset
+            ))
         }
 
         var flat: [FlattenedMapPolyline] = []
-        for (i, offset) in finalOffsetPolylines.enumerated() {
-            let origin = mapping[i]
+        for prepared in finalOffsetPolylines {
+            let origin = prepared.origin
             let groupResult = colorGroupResults[origin.resultIndex]
             let groupKey: String = groupResult.routeIds.joined(separator: "-")
-            guard offset.coordinates.count >= 2 else { continue }
-            let localLaneOffset: CGFloat = {
-                guard let trunkPolylines = cachedTrunkPolylines,
-                      origin.resultIndex < trunkPolylines.count
-                else {
-                    return groupResult.laneOffset
-                }
-                let trunk = trunkPolylines[origin.resultIndex]
-                guard origin.branchIndex < trunk.polylineLaneOffsets.count else {
-                    return trunk.laneOffset
-                }
-                return trunk.polylineLaneOffsets[origin.branchIndex]
-            }()
+            guard prepared.coordinates.count >= 2 else { continue }
+            let localLaneOffset = prepared.localLaneOffset
 
             // Determine z-level: use the geographic midpoint of this
             // specific branch + its route IDs to infer whether this
             // segment runs on elevated infrastructure.
-            let midIdx: Int = offset.coordinates.count / 2
-            let midCoord: CLLocationCoordinate2D = offset.coordinates[midIdx]
+            let midIdx: Int = prepared.coordinates.count / 2
+            let midCoord: CLLocationCoordinate2D = prepared.coordinates[midIdx]
             let branchStructure: StationStructure = StationComplexLookup.inferStructure(
                 routes: groupResult.routeIds,
                 lat: midCoord.latitude,
@@ -977,12 +1012,12 @@ final class MapSystemViewModel {
 
             flat.append(FlattenedMapPolyline(
                 id: polylineId,
-                coordinates: offset.coordinates,
+                coordinates: prepared.coordinates,
                 color: groupResult.color,
                 lineWidth: 3,
                 routeIds: groupResult.routeIds,
                 isElevated: isElevated,
-                trunkIndex: groupResult.groupIndex,
+                trunkIndex: prepared.groupIndex,
                 laneOffset: localLaneOffset
             ))
         }

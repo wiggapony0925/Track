@@ -788,20 +788,60 @@ final class HomeViewModel {
                     ? shape.polylinesForDirection(index: dirIndex, name: dirName)
                     : shape.decodedPolylines
 
-                // 2) Unify polylines into minimal continuous lines.
-                let unified: [[CLLocationCoordinate2D]]
+                // 2) Process polylines differently for bus vs train.
+                //
+                //    TRAINS: Drop near-duplicate segments (express/local
+                //    overlaps), merge into chains, consolidate into one
+                //    continuous path, then Catmull-Rom smooth at 8 segments
+                //    per curve — subway turns should look fluid even at
+                //    maximum zoom.
+                //
+                //    BUSES: Bus routes follow street grids with legitimate
+                //    sharp right-angle turns.  We only merge adjacent
+                //    fragments and apply light smoothing (4 segments per
+                //    curve) to avoid rounding street corners.  No dedup
+                //    or consolidation — buses can have loops/branches that
+                //    would be destroyed by those algorithms.
+                let routePolys: [[CLLocationCoordinate2D]]
+
                 if isBus {
-                    unified = mergeAdjacentPolylines(activeRaw)
+                    // Bus pipeline: merge only + light smoothing
+                    let merged = mergeAdjacentPolylines(activeRaw)
+                    routePolys = merged.filter { $0.count >= 2 }.map {
+                        smoothPolyline($0, segmentsPerCurve: 4)
+                    }
                 } else {
-                    unified = unifyTrainPolylines(activeRaw)
+                    // Train pipeline: dedup → merge → consolidate → heavy smooth
+                    let deduped = removeDuplicateSegments(activeRaw)
+                    let merged = mergeAdjacentPolylines(deduped)
+
+                    let unified: [[CLLocationCoordinate2D]]
+                    if merged.count > 1 {
+                        let single = consolidateIntoSinglePolyline(merged)
+                        unified = single.count >= 2 ? [single] : merged
+                    } else {
+                        unified = merged
+                    }
+
+                    routePolys = unified.filter { $0.count >= 2 }.map {
+                        smoothPolyline($0, segmentsPerCurve: 8)
+                    }
                 }
 
-                // 3) Smooth unified polylines with Catmull-Rom spline interpolation.
-                let routePolys = unified.filter { $0.count >= 2 }.map {
-                    smoothPolyline($0, segmentsPerCurve: 4)
-                }
+                // For interpolation we need the pre-smoothed unified segments.
+                let unified = isBus
+                    ? mergeAdjacentPolylines(activeRaw)
+                    : {
+                        let d = removeDuplicateSegments(activeRaw)
+                        let m = mergeAdjacentPolylines(d)
+                        if m.count > 1 {
+                            let s = consolidateIntoSinglePolyline(m)
+                            return s.count >= 2 ? [s] : m
+                        }
+                        return m
+                    }()
 
-                // 4) Build inactive polylines from all OTHER directions.
+                // 5) Build inactive polylines from all OTHER directions.
                 //    Now includes bus routes so users can visually distinguish
                 //    the selected direction from alternate paths (dimmed).
                 var inactivePolys: [[CLLocationCoordinate2D]] = []
@@ -820,20 +860,27 @@ final class HomeViewModel {
                             if decoded.count >= 2 { inactive.append(decoded) }
                         }
                     }
+                    // Inactive directions: merge + deduplicate but keep
+                    // separate per-direction lines (multiple visual lines OK).
+                    let mergedInactive = mergeAdjacentPolylines(inactive)
                     let unifiedInactive = isBus
-                        ? mergeAdjacentPolylines(inactive)
-                        : unifyTrainPolylines(inactive)
+                        ? mergedInactive
+                        : unifyTrainPolylines(mergedInactive)
                     inactivePolys = unifiedInactive.filter { $0.count >= 2 }.map {
-                        smoothPolyline($0, segmentsPerCurve: 4)
+                        smoothPolyline($0, segmentsPerCurve: isBus ? 4 : 8)
                     }
                 }
 
-                // 5) Build interpolation polyline from raw (pre-smooth) unified segments.
+                // 6) Build interpolation polyline from raw (pre-smooth) unified segments.
                 //    Snap/interpolation doesn't need visual smoothing — using the raw
                 //    polyline avoids 4× point inflation for every O(N) snap call.
-                let rawFiltered = unified.filter { $0.count >= 2 }
-                let interpMerged = mergeAdjacentPolylines(rawFiltered)
-                let interpPolyline = interpMerged.first(where: { $0.count >= 2 }) ?? []
+                let interpPolyline = unified.count == 1
+                    ? (unified[0].count >= 2 ? unified[0] : [])
+                    : {
+                        let rawFiltered = unified.filter { $0.count >= 2 }
+                        let interpMerged = mergeAdjacentPolylines(rawFiltered)
+                        return interpMerged.first(where: { $0.count >= 2 }) ?? []
+                    }()
 
                 return (routePolys, inactivePolys, interpPolyline)
             }.value
@@ -2302,39 +2349,54 @@ final class HomeViewModel {
                 colorHex: group.colorHex,
                 directions: orderedDirections
             )
-            selectedGroupedRoute = updatedGroup
 
-            // Preserve the user's selected direction when shape enrichment
-            // reorders or backfills direction entries.
+            // ── Resolve the correct direction index BEFORE publishing the
+            //    new group.  Setting selectedDirectionIndex after
+            //    selectedGroupedRoute would mutate a @Binding while SwiftUI
+            //    is already re-evaluating the view for the group change,
+            //    triggering "precondition failure: setting value during
+            //    update" (AttributeGraph crash).
+            //
+            //    Also skip the assignment entirely when the value is
+            //    unchanged to avoid redundant DIR_CHANGE / flip-flopping.
             if let key = previousSelectedDirectionKey,
                let resolvedIndex = updatedGroup.directions.firstIndex(where: {
                    normalizedDirectionKey($0) == key
                }) {
-                let previousIndex = selectedDirectionIndex
-                selectedDirectionIndex = resolvedIndex
+                if resolvedIndex != selectedDirectionIndex {
+                    let previousIndex = selectedDirectionIndex
+                    selectedDirectionIndex = resolvedIndex
 
-                #if DEBUG
-                AppLogger.shared.log(
-                    "DIR_PREF",
-                    message:
-                        "RESTORE route=\(updatedGroup.routeId) mode=\(updatedGroup.mode) oldIdx=\(previousIndex) newIdx=\(resolvedIndex) oldKey=\(key) newDir=\(updatedGroup.directions[resolvedIndex].direction)"
-                )
-                #endif
+                    #if DEBUG
+                    AppLogger.shared.log(
+                        "DIR_PREF",
+                        message:
+                            "RESTORE route=\(updatedGroup.routeId) mode=\(updatedGroup.mode) oldIdx=\(previousIndex) newIdx=\(resolvedIndex) oldKey=\(key) newDir=\(updatedGroup.directions[resolvedIndex].direction)"
+                    )
+                    #endif
+                }
             } else {
-                let previousIndex = selectedDirectionIndex
-                selectedDirectionIndex = max(
+                let clamped = max(
                     0,
                     min(selectedDirectionIndex, max(0, updatedGroup.directions.count - 1))
                 )
+                if clamped != selectedDirectionIndex {
+                    let previousIndex = selectedDirectionIndex
+                    selectedDirectionIndex = clamped
 
-                #if DEBUG
-                AppLogger.shared.log(
-                    "DIR_PREF",
-                    message:
-                        "RESTORE_FALLBACK route=\(updatedGroup.routeId) mode=\(updatedGroup.mode) oldIdx=\(previousIndex) newIdx=\(selectedDirectionIndex) reason=no-key-match"
-                )
-                #endif
+                    #if DEBUG
+                    AppLogger.shared.log(
+                        "DIR_PREF",
+                        message:
+                            "RESTORE_FALLBACK route=\(updatedGroup.routeId) mode=\(updatedGroup.mode) oldIdx=\(previousIndex) newIdx=\(clamped) reason=no-key-match"
+                    )
+                    #endif
+                }
             }
+
+            // Now publish the group — view re-render will see the already-
+            // correct selectedDirectionIndex.
+            selectedGroupedRoute = updatedGroup
 
             AppLogger.shared.log(
                 "ROUTE_DETAIL",

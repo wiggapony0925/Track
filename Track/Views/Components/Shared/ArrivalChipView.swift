@@ -181,12 +181,16 @@ struct ArrivalChipView: View {
 
     private var cardBackground: some View {
         RoundedRectangle(cornerRadius: cornerR, style: .continuous)
-            .fill(.ultraThinMaterial)
+            .fill(AppTheme.Gradients.floating)
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerR, style: .continuous)
+                    .stroke(AppTheme.Colors.borderSubtle, lineWidth: 1)
+            )
             .shadow(
                 color: isSched
                     ? .clear
-                    : chipAccent.opacity(isFirst && !isSelected ? 0.12 : 0.06),
-                radius: isFirst ? 10 : 6, x: 0, y: 4
+                    : chipAccent.opacity(isFirst && !isSelected ? 0.14 : 0.08),
+                radius: isFirst ? 14 : 8, x: 0, y: 6
             )
     }
 
@@ -301,7 +305,11 @@ struct ScheduledChipView: View {
         .frame(minHeight: 122)
         .background {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(.ultraThinMaterial)
+                .fill(AppTheme.Gradients.floating)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .stroke(AppTheme.Colors.borderSubtle, lineWidth: 1)
+                )
         }
         .overlay {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
