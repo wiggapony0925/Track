@@ -53,14 +53,33 @@ struct PillTabPicker: View {
     // MARK: - Pill label
 
     private func pillLabel(tab: PillTab, isActive: Bool) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: tab.icon)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(isActive ? .white : accentColor)
+        HStack(spacing: 8) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .fill(
+                        isActive
+                            ? AnyShapeStyle(AppTheme.Gradients.accent)
+                            : AnyShapeStyle(AppTheme.Gradients.controlSurface)
+                    )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 9, style: .continuous)
+                            .stroke(
+                                isActive
+                                    ? AppTheme.Colors.textOnColor.opacity(0.18)
+                                    : AppTheme.Colors.borderSubtle,
+                                lineWidth: 1
+                            )
+                    }
+
+                Image(systemName: tab.icon)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(isActive ? .white : AppTheme.Colors.textSecondary)
+            }
+            .frame(width: 28, height: 28)
 
             Text(tab.label)
                 .font(.custom("Helvetica-Bold", size: 13))
-                .foregroundColor(isActive ? .white : AppTheme.Colors.textPrimary)
+                .foregroundColor(isActive ? AppTheme.Colors.textPrimary : AppTheme.Colors.textSecondary)
                 .lineLimit(1)
 
             if tab.badgeCount > 0 {
@@ -68,22 +87,26 @@ struct PillTabPicker: View {
             }
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.vertical, 8)
         .background(
             RoundedRectangle(cornerRadius: 12)
-                .fill(isActive ? accentColor : AppTheme.Colors.cardBackground)
+                .fill(
+                    isActive
+                        ? AppTheme.Colors.glassHighlight.opacity(0.07)
+                        : AppTheme.Colors.cardBackground
+                )
         )
         .overlay(
             RoundedRectangle(cornerRadius: 12)
                 .stroke(
-                    isActive ? Color.clear : accentColor.opacity(0.25),
+                    isActive ? AppTheme.Colors.borderSubtle : accentColor.opacity(0.10),
                     lineWidth: 1
                 )
         )
         .shadow(
-            color: isActive ? accentColor.opacity(0.3) : .black.opacity(0.04),
-            radius: isActive ? 4 : 2,
-            x: 0, y: isActive ? 2 : 1
+            color: isActive ? accentColor.opacity(0.12) : .black.opacity(0.03),
+            radius: isActive ? 8 : 3,
+            x: 0, y: isActive ? 4 : 2
         )
     }
 
@@ -93,10 +116,14 @@ struct PillTabPicker: View {
         let label = count > 99 ? "99+" : "\(count)"
         return Text(label)
             .font(.custom("Helvetica-Bold", size: 11))
-            .foregroundColor(isActive ? accentColor : .white)
+            .foregroundColor(isActive ? accentColor : AppTheme.Colors.textSecondary)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
-            .background(isActive ? Color.white.opacity(0.9) : accentColor)
+            .background(
+                isActive
+                    ? AnyShapeStyle(accentColor.opacity(0.14))
+                    : AnyShapeStyle(AppTheme.Gradients.controlSurface)
+            )
             .clipShape(Capsule())
     }
 }

@@ -70,16 +70,13 @@ struct NearestMetroCard: View {
                     .foregroundColor(AppTheme.Colors.textOnColor)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
-                    .background(AppTheme.Colors.mtaBlue)
-                    .cornerRadius(AppTheme.Layout.cornerRadius)
+                    .trackAccentBackground(cornerRadius: AppTheme.Layout.cornerRadius)
                 }
                 .accessibilityHint("Centers the map on \(arrival.stopName)")
             }
         }
         .padding(AppTheme.Layout.cardPadding)
-        .background(AppTheme.Colors.cardBackground)
-        .cornerRadius(AppTheme.Layout.cornerRadius)
-        .shadow(radius: AppTheme.Layout.shadowRadius)
+        .trackCardBackground(cornerRadius: AppTheme.Layout.cornerRadius)
         .padding(.horizontal, AppTheme.Layout.margin)
     }
 

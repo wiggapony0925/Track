@@ -76,15 +76,12 @@ struct SmartSuggestionCard: View {
                 .foregroundColor(AppTheme.Colors.textOnColor)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
-                .background(AppTheme.Colors.mtaBlue)
-                .cornerRadius(AppTheme.Layout.cornerRadius)
+                .trackAccentBackground(cornerRadius: AppTheme.Layout.cornerRadius)
             }
             .accessibilityHint("Track the \(suggestion.routeID) train arrival")
         }
         .padding(AppTheme.Layout.margin)
-        .background(AppTheme.Colors.cardBackground)
-        .cornerRadius(AppTheme.Layout.cornerRadius)
-        .shadow(radius: AppTheme.Layout.shadowRadius)
+        .trackCardBackground(cornerRadius: AppTheme.Layout.cornerRadius)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Predicted route: \(suggestion.routeID) train to \(suggestion.destinationName), \(minutesAway) minutes away")
     }
@@ -115,9 +112,7 @@ struct SmartSuggestionCard: View {
         }
         .padding(AppTheme.Layout.margin)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(AppTheme.Colors.cardBackground)
-        .cornerRadius(AppTheme.Layout.cornerRadius)
-        .shadow(radius: AppTheme.Layout.shadowRadius)
+        .trackCardBackground(cornerRadius: AppTheme.Layout.cornerRadius)
     }
 }
 

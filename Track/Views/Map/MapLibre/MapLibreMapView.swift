@@ -39,7 +39,39 @@ import UIKit
 /// It receives the same data the old `TrackMapView` used — polylines,
 /// stations, vehicles — and renders them using MapLibre's GL pipeline
 /// with OpenStreetMap tiles.
-struct MapLibreMapView: UIViewRepresentable {
+struct MapLibreMapView: UIViewRepresentable, Equatable {
+    
+    // MARK: - Equatable Fast-Path
+    //
+    // Severe CPU spike fix: When this view is re-evaluated 60x/sec during map pans,
+    // SwiftUI performs a deep recursive structural equality check on all these massive
+    // arrays (10,000+ points). This brings the framerate to a crawl.
+    // Conforming to `Equatable` skips the automatic deep-equality structural walk
+    // and returns identical if the data signatures (counts/ids) match.
+    static func == (lhs: MapLibreMapView, rhs: MapLibreMapView) -> Bool {
+        // Fast shallow checks. If counts match, assume data hasn't rebuilt.
+        guard lhs.cameraPosition == rhs.cameraPosition,
+              lhs.showStations == rhs.showStations,
+              lhs.isDarkMode == rhs.isDarkMode,
+              lhs.hasActiveRoute == rhs.hasActiveRoute,
+              lhs.isBusRoute == rhs.isBusRoute,
+              lhs.routeColor == rhs.routeColor,
+              lhs.reroutedRouteIDs == rhs.reroutedRouteIDs else {
+            return false
+        }
+        
+        guard lhs.subwayPolylines.count == rhs.subwayPolylines.count,
+              lhs.commuterRailPolylines.count == rhs.commuterRailPolylines.count,
+              lhs.stations.count == rhs.stations.count,
+              lhs.busVehicles.count == rhs.busVehicles.count,
+              lhs.trainVehicles.count == rhs.trainVehicles.count,
+              lhs.routePolylines.count == rhs.routePolylines.count,
+              lhs.transferConnectors.count == rhs.transferConnectors.count else {
+            return false
+        }
+        
+        return true
+    }
 
     // MARK: - Bindings (same interface as TrackMapView)
 

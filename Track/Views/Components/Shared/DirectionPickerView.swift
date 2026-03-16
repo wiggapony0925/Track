@@ -79,7 +79,7 @@ struct DirectionPickerView: View {
                     .foregroundColor(dir.isActive ? routeColor : .white)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(dir.isActive ? Color.white.opacity(0.9) : routeColor)
+                    .background(dir.isActive ? AppTheme.Colors.cardFloating.opacity(0.9) : routeColor)
                     .clipShape(Capsule())
             }
         }
@@ -96,7 +96,7 @@ struct DirectionPickerView: View {
                     lineWidth: 1)
         )
         .shadow(
-            color: dir.isActive ? routeColor.opacity(0.3) : .black.opacity(0.04),
+            color: dir.isActive ? routeColor.opacity(0.3) : AppTheme.Colors.shadow.opacity(0.08),
             radius: dir.isActive ? 4 : 2,
             x: 0, y: dir.isActive ? 2 : 1
         )
@@ -126,7 +126,7 @@ struct DirectionPickerView: View {
             .foregroundColor(badgeColor)
             .padding(.horizontal, 5)
             .padding(.vertical, 2)
-            .background(isActive ? Color.white.opacity(0.85) : badgeColor.opacity(0.12))
+            .background(isActive ? AppTheme.Colors.cardFloating.opacity(0.85) : badgeColor.opacity(0.12))
             .clipShape(Capsule())
     }
 

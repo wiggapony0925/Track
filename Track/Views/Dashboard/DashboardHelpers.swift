@@ -106,8 +106,7 @@ struct ElevatorOutagesSection: View {
                         }
                     }
                 }
-                .background(AppTheme.Colors.cardBackground)
-                .cornerRadius(AppTheme.Layout.cornerRadius)
+                .trackCardBackground(cornerRadius: AppTheme.Layout.cornerRadius)
                 .padding(.horizontal, AppTheme.Layout.margin)
             }
         }
@@ -265,10 +264,13 @@ struct OutOfAreaNoticeView: View {
         }
         .padding(.horizontal, AppTheme.Layout.cardPadding)
         .padding(.vertical, 12)
-        .background(AppTheme.Colors.warningYellow.opacity(0.1))
-        .overlay(
+        .background(
             RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius)
-                .stroke(AppTheme.Colors.warningYellow.opacity(0.3), lineWidth: 1)
+                .fill(AppTheme.Gradients.tintWash(AppTheme.Colors.warningYellow, intensity: 0.14))
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius)
+                        .strokeBorder(AppTheme.Colors.warningYellow.opacity(0.3), lineWidth: 1)
+                )
         )
         .cornerRadius(AppTheme.Layout.cornerRadius)
         .padding(.horizontal, AppTheme.Layout.margin)
@@ -292,12 +294,12 @@ struct FarFromTransitView: View {
             ZStack {
                 // Outer pulse ring
                 Circle()
-                    .fill(accentColor.opacity(0.06))
+                    .fill(AppTheme.Gradients.tintWash(accentColor, intensity: 0.12))
                     .frame(width: 88, height: 88)
                 
                 // Inner circle
                 Circle()
-                    .fill(accentColor.opacity(0.12))
+                    .fill(AppTheme.Gradients.tintWash(accentColor, intensity: 0.22))
                     .frame(width: 64, height: 64)
                 
                 // Icon
@@ -332,7 +334,7 @@ struct FarFromTransitView: View {
         .padding(.vertical, 24)
         .background(
             RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius)
-                .fill(accentColor.opacity(0.04))
+                .fill(AppTheme.Gradients.tintWash(accentColor, intensity: 0.08))
                 .overlay(
                     RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius)
                         .strokeBorder(accentColor.opacity(0.12), lineWidth: 1)
@@ -356,7 +358,7 @@ struct NoServiceEmptyState: View {
             // Icon in circle
             ZStack {
                 Circle()
-                    .fill(brandColor.opacity(0.1))
+                    .fill(AppTheme.Gradients.tintWash(brandColor, intensity: 0.18))
                     .frame(width: 64, height: 64)
                 
                 Image(systemName: icon)

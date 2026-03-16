@@ -55,15 +55,15 @@ struct  GroupedRouteRow: View {
     }
 
     private var containerCornerRadius: CGFloat {
-        isFavoritePresentation ? 24 : AppTheme.Layout.cornerRadius
+        isFavoritePresentation ? 26 : 24
     }
 
     private var rowHorizontalPadding: CGFloat {
-        isFavoritePresentation ? 18 : AppTheme.Layout.margin
+        isFavoritePresentation ? 18 : 18
     }
 
     private var rowVerticalPadding: CGFloat {
-        isFavoritePresentation ? 16 : 14
+        isFavoritePresentation ? 18 : 16
     }
 
     /// Distance from user to the closest stop in this group (meters).
@@ -239,24 +239,31 @@ struct  GroupedRouteRow: View {
     @ViewBuilder
     private var rowBackground: some View {
         let shape = RoundedRectangle(cornerRadius: containerCornerRadius, style: .continuous)
-        if isFavoritePresentation {
-            shape
-                .fill(AppTheme.Gradients.floating)
-                .overlay {
-                    shape.stroke(routeColor.opacity(0.18), lineWidth: 1)
-                }
-                .overlay(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .fill(routeColor)
-                        .frame(width: 5)
-                        .padding(.vertical, 16)
-                        .padding(.leading, 10)
-                }
-                .shadow(color: AppTheme.Colors.shadow.opacity(0.18), radius: 14, x: 0, y: 8)
-                .shadow(color: routeColor.opacity(0.10), radius: 18, x: 0, y: 6)
-        } else {
-            shape.fill(AppTheme.Colors.cardBackground)
-        }
+        shape
+            .fill(AppTheme.Colors.cardBackground)
+            .overlay {
+                shape.fill(
+                    AppTheme.Gradients.tintWash(
+                        routeColor,
+                        intensity: isFavoritePresentation ? 0.08 : 0.03
+                    )
+                )
+            }
+            .overlay {
+                shape.stroke(AppTheme.Colors.borderSubtle, lineWidth: 0.5)
+            }
+            .shadow(
+                color: AppTheme.Colors.shadow.opacity(isFavoritePresentation ? 0.06 : 0.04),
+                radius: isFavoritePresentation ? 12 : 8,
+                x: 0,
+                y: 6
+            )
+            .shadow(
+                color: AppTheme.Colors.shadowStrong.opacity(isFavoritePresentation ? 0.03 : 0.02),
+                radius: isFavoritePresentation ? 20 : 16,
+                x: 0,
+                y: 10
+            )
     }
 
     private var mainRowAccessibilityLabel: String {
@@ -269,23 +276,26 @@ struct  GroupedRouteRow: View {
             routeBadgeView
 
             if visibleDirections.isEmpty {
-                Text("No active service")
-                    .font(.custom("Helvetica-Bold", size: 15))
-                    .foregroundColor(AppTheme.Colors.textSecondary)
-                Spacer()
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("No active service")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(AppTheme.Colors.textPrimary)
+                    Text("Check again soon for the next trip.")
+                        .font(.custom("Helvetica", size: 12))
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             } else {
                 directionInfoColumn
             }
 
-            Spacer(minLength: 4)
+            Spacer(minLength: 10)
 
             if !visibleDirections.isEmpty {
-                countdownView
+                countdownPanel
             }
 
-            Image(systemName: "chevron.right")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.4))
+            chevronPill
         }
     }
 
@@ -297,59 +307,75 @@ struct  GroupedRouteRow: View {
             hexColor: group.colorHex,
             mode: group.mode
         )
+        .padding(.horizontal, group.isCommuterRail ? 6 : 8)
+        .padding(.vertical, 8)
         .accessibilityHidden(true)
         .overlay(alignment: .topTrailing) {
             if hasAlert {
                 ZStack {
                     Circle()
                         .fill(AppTheme.Colors.cardBackground)
-                        .frame(width: 18, height: 18)
+                        .frame(width: 20, height: 20)
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.system(size: 10, weight: .bold))
                         .foregroundColor(AppTheme.Colors.warningYellow)
                 }
-                .offset(x: 6, y: -6)
+                .offset(x: 7, y: -7)
             }
         }
     }
 
     private var directionInfoColumn: some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: 8) {
             directionTabView
-            walkingDistanceLabel
-            paginationDots
+            HStack(spacing: 8) {
+                walkingDistanceLabel
+                paginationDots
+            }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var directionTabView: some View {
-        TabView(selection: $currentDirectionIndex) {
-            ForEach(Array(visibleDirections.enumerated()), id: \.element.id) { index, direction in
-                let label: String = ArrivalHelpers.resolveDirectionLabel(for: direction)
+        ScrollView(.horizontal, showsIndicators: false) {
+            LazyHStack(spacing: 0) {
+                ForEach(Array(visibleDirections.enumerated()), id: \.element.id) { index, direction in
+                    let label: String = ArrivalHelpers.resolveDirectionLabel(for: direction)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(label)
-                        .font(.custom("Helvetica-Bold", size: 15))
-                        .foregroundColor(AppTheme.Colors.textPrimary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(label)
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundColor(AppTheme.Colors.textPrimary)
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.6)
+                            .fixedSize(horizontal: false, vertical: true)
 
-                    if let arrival = countdownArrival(for: direction) {
-                        HStack(spacing: 3) {
-                            Image(systemName: "mappin.circle.fill")
-                                .font(.system(size: 9, weight: .semibold))
-                            Text(arrival.stopName)
-                                .font(.custom("Helvetica", size: 11))
-                                .lineLimit(1)
+                        if let arrival = countdownArrival(for: direction) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "mappin.circle.fill")
+                                    .font(.system(size: 11, weight: .semibold))
+                                Text(arrival.stopName)
+                                    .font(.system(size: 11))
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.6)
+                            }
+                            .foregroundColor(AppTheme.Colors.textSecondary)
+                            .padding(.top, 2)
                         }
-                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
                     }
+                    .id(index) // Essential for scrollPosition binding
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .containerRelativeFrame(.horizontal) // Force full width of ScrollView
                 }
-                .tag(index)
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .scrollTargetLayout()
         }
-        .tabViewStyle(.page(indexDisplayMode: .never))
-        .frame(height: 38)
+        .scrollTargetBehavior(.paging)
+        .scrollPosition(id: Binding<Int?>(
+            get: { currentDirectionIndex },
+            set: { if let newValue = $0 { currentDirectionIndex = newValue } }
+        ))
+        .frame(height: 68)
     }
 
     @ViewBuilder
@@ -357,17 +383,14 @@ struct  GroupedRouteRow: View {
         if let dist = closestStopDistance,
             dist < Double.greatestFiniteMagnitude
         {
-            HStack(spacing: 3) {
+            HStack(spacing: 4) {
                 Image(systemName: "figure.walk")
-                    .font(.system(size: 9, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold))
                 Text(formatDistanceImperial(dist))
-                    .font(.custom("Helvetica-Bold", size: 11))
+                    .font(.custom("Helvetica", size: 13))
             }
-            .foregroundColor(
-                isFavoritePresentation
-                    ? routeColor.opacity(0.82)
-                    : AppTheme.Colors.textSecondary.opacity(0.7)
-            )
+            .foregroundColor(AppTheme.Colors.textSecondary)
+            .padding(.trailing, 4)
         }
     }
 
@@ -381,7 +404,7 @@ struct  GroupedRouteRow: View {
                     Capsule()
                         .fill(
                             isSelected
-                                ? routeColor
+                                ? AppTheme.Colors.textPrimary.opacity(0.8)
                                 : AppTheme.Colors.textSecondary.opacity(0.2)
                         )
                         .frame(width: isSelected ? 14 : 6, height: 6)
@@ -396,8 +419,24 @@ struct  GroupedRouteRow: View {
                         }
                 }
             }
-            .padding(.top, 1)
+            .padding(.horizontal, 4)
+            .padding(.vertical, 5)
         }
+    }
+
+    private var countdownPanel: some View {
+        VStack(alignment: .trailing, spacing: 0) {
+            countdownView
+        }
+        .frame(minWidth: isFavoritePresentation ? 60 : 70, alignment: .trailing)
+        .padding(.trailing, 4)
+    }
+
+    private var chevronPill: some View {
+        Image(systemName: "chevron.right")
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.35))
+            .padding(.trailing, 6)
     }
 
     @ViewBuilder
@@ -405,23 +444,36 @@ struct  GroupedRouteRow: View {
         if let topAlert = group.alerts.first {
             let severityColor: Color = topAlert.severity == "severe" ? AppTheme.Colors.alertRed : AppTheme.Colors.warningYellow
             let extraCount: Int = group.alerts.count - 1
-            HStack(spacing: 5) {
+            HStack(spacing: 8) {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.system(size: 11, weight: .bold))
                     .foregroundColor(severityColor)
+
                 Text(topAlert.title)
-                    .font(.custom("Helvetica", size: 11))
-                    .foregroundColor(AppTheme.Colors.textSecondary)
+                    .font(.custom("Helvetica-Bold", size: 11))
+                    .foregroundColor(AppTheme.Colors.textPrimary)
                     .lineLimit(1)
-                Spacer()
+
+                Spacer(minLength: 8)
+
                 if extraCount > 0 {
                     Text("+\(extraCount)")
                         .font(.custom("Helvetica-Bold", size: 10))
-                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
+                        .foregroundColor(severityColor)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 4)
+                        .background(severityColor.opacity(0.14))
+                        .clipShape(Capsule())
                 }
             }
-            .padding(.horizontal, AppTheme.Layout.margin)
-            .padding(.bottom, isFavoritePresentation ? 10 : 6)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(severityColor.opacity(0.12))
+            }
+            .padding(.horizontal, rowHorizontalPadding)
+            .padding(.bottom, rowVerticalPadding)
         }
     }
 
@@ -507,7 +559,7 @@ struct  GroupedRouteRow: View {
                         // Bus departed — show "--" until the next backend poll
                         // replaces this arrival with a newer one.
                         Text("--")
-                            .font(.custom("Helvetica-Bold", size: 20))
+                            .font(.system(size: 20, weight: .heavy, design: .rounded))
                             .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.4))
                     } else {
                         let mins = eta.minutesRemaining
@@ -516,13 +568,13 @@ struct  GroupedRouteRow: View {
 
                         HStack(alignment: .firstTextBaseline, spacing: 2) {
                             Text(isNow ? "Now" : "\(mins)")
-                                .font(.custom("Helvetica-Bold", size: isNow ? 20 : 26))
+                                .font(.system(size: isNow ? 20 : 24, weight: .heavy, design: .rounded))
                                 .foregroundColor(isSched ? AppTheme.Colors.textSecondary.opacity(0.45) : AppTheme.Colors.countdown(mins))
                                 .contentTransition(.numericText())
 
                             if !isNow {
                                 Text("min")
-                                    .font(.custom("Helvetica", size: 12))
+                                    .font(.system(size: 11, weight: .bold))
                                     .foregroundColor(isSched ? AppTheme.Colors.textSecondary.opacity(0.35) : AppTheme.Colors.textSecondary)
                             }
                         }
@@ -541,18 +593,18 @@ struct  GroupedRouteRow: View {
                 VStack(spacing: 2) {
                     HStack(alignment: .firstTextBaseline, spacing: 2) {
                         Text("\(mins)")
-                            .font(.custom("Helvetica-Bold", size: 26))
+                            .font(.system(size: 26, weight: .heavy, design: .rounded))
                             .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.45))
                             .contentTransition(.numericText())
                         Text("min")
-                            .font(.custom("Helvetica", size: 12))
+                            .font(.system(size: 12, weight: .bold))
                             .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.35))
                     }
                     HStack(spacing: 2) {
                         Image(systemName: "calendar.badge.clock")
                             .font(.system(size: 7, weight: .bold))
                         Text("Sched")
-                            .font(.custom("Helvetica-Bold", size: 9))
+                            .font(.system(size: 9, weight: .heavy))
                     }
                     .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
                     .padding(.horizontal, 6)
@@ -563,14 +615,14 @@ struct  GroupedRouteRow: View {
             } else {
                 VStack(spacing: 3) {
                     Text("No Service")
-                        .font(.custom("Helvetica-Bold", size: 10))
+                        .font(.system(size: 10, weight: .semibold))
                         .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.4))
                 }
             }
         } else {
             // No arrivals at all
             Text("--")
-                .font(.custom("Helvetica-Bold", size: 20))
+                .font(.system(size: 20, weight: .heavy, design: .rounded))
                 .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.4))
         }
     }
@@ -616,17 +668,13 @@ struct  GroupedRouteRow: View {
             }
         } else {
             // Purely static GTFS / backend-flagged as scheduled
-            HStack(spacing: 2) {
+            HStack(spacing: 3) {
                 Image(systemName: "calendar.badge.clock")
-                    .font(.system(size: 7, weight: .bold))
+                    .font(.system(size: 8, weight: .semibold))
                 Text("Sched")
-                    .font(.custom("Helvetica-Bold", size: 9))
+                    .font(.custom("Helvetica", size: 10))
             }
-            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(AppTheme.Colors.textSecondary.opacity(0.08))
-            .clipShape(Capsule())
+            .foregroundColor(AppTheme.Colors.textSecondary)
         }
     }
 }

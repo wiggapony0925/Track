@@ -72,7 +72,7 @@ struct RouteAlertBanner: View {
                     .foregroundColor(color)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(Capsule().fill(Color.white.opacity(0.9)))
+                    .background(Capsule().fill(AppTheme.Colors.cardFloating.opacity(0.92)))
             }
         }
         .padding(.horizontal, 12)
@@ -117,7 +117,7 @@ struct InlineAlertBannerView: View {
                     .foregroundColor(bannerColor)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(Capsule().fill(Color.white.opacity(0.9)))
+                    .background(Capsule().fill(AppTheme.Colors.cardFloating.opacity(0.92)))
             }
         }
         .padding(.horizontal, 12)
@@ -200,9 +200,7 @@ struct RouteAlertsSection: View {
                     }
                 }
             }
-            .background(AppTheme.Colors.cardBackground)
-            .cornerRadius(AppTheme.Layout.cornerRadius)
-            .shadow(color: .black.opacity(0.06), radius: 4, y: 2)
+            .trackCardBackground(cornerRadius: AppTheme.Layout.cornerRadius)
             .padding(.horizontal, AppTheme.Layout.margin)
         }
     }

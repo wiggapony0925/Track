@@ -24,9 +24,7 @@ struct ModalNavbar: View {
             HStack(spacing: 8) {
                 // Search bar
                 HStack(spacing: 8) {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(AppTheme.Colors.textSecondary)
+                    searchGlyph
                     
                     TextField("Search trains, buses, stations…", text: $searchText)
                         .font(AppTheme.Typography.searchInput)
@@ -39,35 +37,36 @@ struct ModalNavbar: View {
                         Button {
                             searchText = ""
                         } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 15, weight: .medium))
-                                .foregroundColor(AppTheme.Colors.textSecondary)
+                            clearGlyph
                         }
                     }
                     
                     // Mic button (inside search bar)
-                    Button {
-                        speechManager.toggle()
-                    } label: {
-                        Image(systemName: speechManager.isRecording ? "mic.fill" : "mic")
-                            .font(.system(size: 15, weight: .medium))
-                            .foregroundColor(speechManager.isRecording ? AppTheme.Colors.alertRed : AppTheme.Colors.textSecondary)
-                    }
+                    micGlyph
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 11)
                 .trackFloatingChrome(cornerRadius: AppTheme.Layout.searchBarCornerRadius)
                 
                 // Settings button
                 Button {
                     showSettings = true
                 } label: {
-                    Image(systemName: "gearshape.fill")
-                        .font(.system(size: 17, weight: .medium))
-                        .foregroundColor(AppTheme.Colors.textSecondary)
-                        .frame(width: 36, height: 36)
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(AppTheme.Gradients.controlSurface)
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .stroke(AppTheme.Colors.borderSubtle, lineWidth: 1)
+                            }
+
+                        Image(systemName: "gearshape.fill")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(AppTheme.Colors.mtaBlue)
+                    }
+                    .frame(width: 40, height: 40)
                 }
-                .trackFloatingChrome(cornerRadius: 18)
+                .trackInsetBackground(cornerRadius: 18)
                 .accessibilityLabel("Settings")
             }
             .padding(.horizontal, AppTheme.Layout.margin)
@@ -78,13 +77,70 @@ struct ModalNavbar: View {
             ModeFilterStrip(selectedMode: $selectedMode)
                 .padding(.horizontal, AppTheme.Layout.margin)
                 .padding(.bottom, 12)
+
+            if let lastUpdated {
+                updateBadge(for: lastUpdated)
+                    .padding(.horizontal, AppTheme.Layout.margin)
+                    .padding(.bottom, 12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
-        .trackScreenBackground()
         .onAppear {
             speechManager.onTranscription = { text in
                 searchText = text
             }
         }
+    }
+
+    private var searchGlyph: some View {
+        Image(systemName: "magnifyingglass")
+            .font(.system(size: 16, weight: .semibold))
+            .foregroundColor(AppTheme.Colors.mtaBlue)
+            .padding(.leading, 2)
+    }
+
+    private var clearGlyph: some View {
+        ZStack {
+            Circle()
+                .fill(AppTheme.Gradients.controlSurface)
+                .overlay {
+                    Circle()
+                        .stroke(AppTheme.Colors.borderSubtle, lineWidth: 1)
+                }
+
+            Image(systemName: "xmark")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundColor(AppTheme.Colors.textSecondary)
+        }
+        .frame(width: 28, height: 28)
+    }
+
+    private var micGlyph: some View {
+        let isRecording = speechManager.isRecording
+
+        return Button {
+            speechManager.toggle()
+        } label: {
+            Image(systemName: isRecording ? "mic.fill" : "mic")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundColor(isRecording ? AppTheme.Colors.alertRed : AppTheme.Colors.mtaBlue)
+                .padding(.trailing, 2)
+        }
+    }
+
+    private func updateBadge(for date: Date) -> some View {
+        HStack(spacing: 7) {
+            Circle()
+                .fill(AppTheme.Colors.successGreen)
+                .frame(width: 7, height: 7)
+
+            Text("Updated \(RelativeDateTimeFormatter().localizedString(for: date, relativeTo: .now))")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(AppTheme.Colors.textSecondary)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .trackInsetBackground(cornerRadius: 999)
     }
 }
 
@@ -95,18 +151,17 @@ struct ModeFilterStrip: View {
     @Binding var selectedMode: TransportMode
     
     var body: some View {
-        HStack(spacing: 0) {
+        HStack(spacing: 6) {
             ForEach(TransportMode.allCases, id: \.self) { mode in
                 modeButton(for: mode)
             }
         }
-        .padding(4)
-        .trackFloatingChrome(cornerRadius: 16)
+        .padding(6)
+        .trackFloatingChrome(cornerRadius: 18)
     }
 
     private func modeButton(for mode: TransportMode) -> some View {
         let isActive: Bool = selectedMode == mode
-        let fgColor: Color = isActive ? .white : AppTheme.Colors.mtaBlue
         let traits: AccessibilityTraits = isActive ? .isSelected : []
         return Button {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
@@ -114,28 +169,28 @@ struct ModeFilterStrip: View {
             }
             HapticManager.impact(.light)
         } label: {
-            Image(systemName: mode.icon)
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundColor(fgColor)
-                .frame(maxWidth: .infinity)
-                .frame(height: 40)
-                .background {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(
-                            isActive
-                                ? AnyShapeStyle(AppTheme.Gradients.accent)
-                                : AnyShapeStyle(AppTheme.Colors.accentTint.opacity(0.55))
+            ZStack {
+                if isActive {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(AppTheme.Gradients.accent)
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .stroke(AppTheme.Colors.textOnColor.opacity(0.18), lineWidth: 1)
+                        }
+                        .shadow(
+                            color: AppTheme.Colors.accentGlow.opacity(0.26),
+                            radius: 10,
+                            x: 0,
+                            y: 4
                         )
                 }
-                .overlay {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .stroke(
-                            isActive
-                                ? AppTheme.Colors.textOnColor.opacity(0.12)
-                                : AppTheme.Colors.borderStrong.opacity(0.5),
-                            lineWidth: 1
-                        )
-                }
+
+                Image(systemName: mode.icon)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(isActive ? .white : AppTheme.Colors.accent)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 42)
         }
         .accessibilityLabel(mode.label)
         .accessibilityAddTraits(traits)

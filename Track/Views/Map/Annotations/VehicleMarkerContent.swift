@@ -30,7 +30,7 @@ struct VehicleMarkerContent: View {
                     .stroke(isHighlighted ? Color.white : Color.clear, lineWidth: 3)
             )
             .shadow(
-                color: isHighlighted ? color.opacity(0.6) : .black.opacity(0.2),
+                color: isHighlighted ? color.opacity(0.6) : AppTheme.Colors.shadow.opacity(0.22),
                 radius: isHighlighted ? 6 : 2,
                 y: isHighlighted ? 0 : 1
             )

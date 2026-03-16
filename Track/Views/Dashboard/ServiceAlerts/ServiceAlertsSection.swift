@@ -206,9 +206,7 @@ struct ServiceAlertModeGroup: View {
                 }
             }
         }
-        .background(AppTheme.Colors.cardBackground)
-        .cornerRadius(AppTheme.Layout.cornerRadius)
-        .shadow(color: .black.opacity(0.06), radius: 4, y: 2)
+        .trackCardBackground(cornerRadius: AppTheme.Layout.cornerRadius)
         .padding(.horizontal, AppTheme.Layout.margin)
     }
 }

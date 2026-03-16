@@ -52,24 +52,24 @@ struct DashboardView: View {
             scrollableContent
         }
         .trackScreenBackground()
-        .refreshable {
-            let loc: CLLocation? = if !viewModel.isSearchPinActive,
-                                      let live = locationManager.currentLocation,
-                                      abs(live.timestamp.timeIntervalSinceNow) < 30 {
-                live
-            } else {
-                viewModel.referenceLocation
-            }
-            await viewModel.refresh(location: loc, force: true)
-            lastUpdated = Date()
-        }
     }
 
     private var refreshingIndicator: some View {
         HStack(spacing: 6) {
-            ProgressView()
-                .scaleEffect(0.65)
-                .tint(AppTheme.Colors.mtaBlue)
+            ZStack {
+                Circle()
+                    .fill(AppTheme.Gradients.accentSurface)
+                    .overlay {
+                        Circle()
+                            .stroke(AppTheme.Colors.borderAccent.opacity(0.45), lineWidth: 1)
+                    }
+
+                ProgressView()
+                    .scaleEffect(0.62)
+                    .tint(AppTheme.Colors.mtaBlue)
+            }
+            .frame(width: 24, height: 24)
+
             Text("Updating arrivals…")
                 .font(.custom("Helvetica", size: 12))
                 .foregroundColor(AppTheme.Colors.textSecondary)
@@ -79,7 +79,7 @@ struct DashboardView: View {
         .padding(.vertical, 8)
         .padding(.horizontal, AppTheme.Layout.margin)
         .padding(.bottom, 6)
-        .trackFloatingChrome(cornerRadius: 14)
+        .trackTintedChrome(tint: AppTheme.Colors.mtaBlue, cornerRadius: 14)
         .transition(.opacity.combined(with: .move(edge: .top)))
     }
 
@@ -188,6 +188,17 @@ struct DashboardView: View {
                 .animation(.easeInOut(duration: 0.3), value: viewModel.isLoading)
                 .animation(.easeInOut(duration: 0.3), value: favoritesManager.isLoading)
                 .padding(.top, 4)
+            }
+            .refreshable {
+                let loc: CLLocation? = if !viewModel.isSearchPinActive,
+                                          let live = locationManager.currentLocation,
+                                          abs(live.timestamp.timeIntervalSinceNow) < 30 {
+                    live
+                } else {
+                    viewModel.referenceLocation
+                }
+                await viewModel.refresh(location: loc, force: true)
+                lastUpdated = Date()
             }
     }
     

@@ -378,8 +378,8 @@ struct GroupedRouteList: View {
         // LazyVStack: rows are only built when they scroll into view.
         // Critical for busy stops with 10+ routes — plain VStack eagerly
         // renders every GroupedRouteRow, including all their arrival chips.
-        LazyVStack(spacing: 0) {
-            ForEach(Array(groups.enumerated()), id: \.element.id) { index, group in
+        LazyVStack(spacing: 12) {
+            ForEach(groups) { group in
                 GroupedRouteRow(
                     group: group,
                     hasAlert: group.hasAlert
@@ -414,15 +414,9 @@ struct GroupedRouteList: View {
                             arrival, location: locationManager.currentLocation)
                     }
                 )
-                if index < groups.count - 1 {
-                    Divider()
-                        .padding(
-                            .leading, AppTheme.Layout.margin + AppTheme.Layout.badgeSizeMedium + 12)
-                }
             }
         }
-        .padding(.vertical, 8)
-        .trackFloatingChrome(cornerRadius: AppTheme.Layout.cornerRadius)
+        .padding(.vertical, 4)
         .padding(.horizontal, AppTheme.Layout.margin)
     }
 }
@@ -503,8 +497,7 @@ struct OfflineEmptyStateCard: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(AppTheme.Layout.cardPadding)
-        .background(AppTheme.Colors.cardBackground)
-        .cornerRadius(AppTheme.Layout.cornerRadius)
+        .trackCardBackground(cornerRadius: AppTheme.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius)
                 .strokeBorder(AppTheme.Colors.alertRed.opacity(0.25), lineWidth: 1)
@@ -545,17 +538,15 @@ struct OutOfServiceAreaCard: View {
             } label: {
                 Text("Explore New York City")
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(.white)
+                    .foregroundColor(AppTheme.Colors.textOnColor)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
-                    .background(AppTheme.Colors.mtaBlue)
-                    .cornerRadius(10)
+                    .trackAccentBackground(cornerRadius: 10)
             }
             .padding(.top, 4)
         }
         .padding(AppTheme.Layout.cardPadding)
-        .background(AppTheme.Colors.cardBackground)
-        .cornerRadius(AppTheme.Layout.cornerRadius)
+        .trackCardBackground(cornerRadius: AppTheme.Layout.cornerRadius)
         .padding(.horizontal, AppTheme.Layout.margin)
     }
 }

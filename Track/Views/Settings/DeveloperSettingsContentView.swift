@@ -24,7 +24,7 @@ struct DeveloperSettingsContentView: View {
             header
             developerScrollContent
         }
-        .background(AppTheme.Colors.background)
+        .background(AppTheme.Gradients.screen)
     }
 
     private var developerScrollContent: some View {
@@ -196,7 +196,7 @@ struct DeveloperSettingsContentView: View {
         }
         .padding(.horizontal, AppTheme.Layout.margin)
         .padding(.vertical, 16)
-        .background(AppTheme.Colors.background)
+        .background(AppTheme.Gradients.floating)
     }
 
     private var divider: some View {
@@ -250,8 +250,7 @@ struct DeveloperSettingsContentView: View {
             .padding(.horizontal, AppTheme.Layout.margin)
 
             content()
-                .background(AppTheme.Colors.cardBackground)
-                .cornerRadius(AppTheme.Layout.cornerRadius)
+                .trackCardBackground(cornerRadius: AppTheme.Layout.cornerRadius)
                 .padding(.horizontal, AppTheme.Layout.margin)
         }
     }

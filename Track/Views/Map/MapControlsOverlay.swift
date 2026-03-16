@@ -65,51 +65,37 @@ struct MapControlsOverlay: View {
     /// Unified control pill: alert indicator, 3D toggle, and recenter
     /// grouped inside a single frosted-glass capsule for a clean look.
     private var mapControlCluster: some View {
-        VStack(spacing: 0) {
-            // Service Alerts Button
-            Button {
+        VStack(spacing: 8) {
+            mapControlButton(
+                icon: "exclamationmark.triangle.fill",
+                foregroundColor: viewModel.serviceAlerts.isEmpty
+                    ? AppTheme.Colors.textPrimary
+                    : AppTheme.Colors.warningYellow,
+                accessibilityLabel: "Service alerts, \(viewModel.serviceAlerts.count) active"
+            ) {
                 onAlertsTapped?()
                 HapticManager.impact(.medium)
-            } label: {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundColor(
-                        viewModel.serviceAlerts.isEmpty
-                            ? AppTheme.Colors.textPrimary
-                            : AppTheme.Colors.warningYellow
-                    )
-                    .frame(width: 48, height: 48)
             }
-            .accessibilityLabel("Service alerts, \(viewModel.serviceAlerts.count) active")
-            
-            controlDivider
-            
-            // 3D / 2D Toggle
-            Button {
+
+            mapControlButton(
+                icon: is3DMode ? "view.2d" : "view.3d",
+                foregroundColor: is3DMode ? AppTheme.Colors.textPrimary : AppTheme.Colors.textPrimary, // Changed color logic to match since background is gone
+                accessibilityLabel: is3DMode ? "Switch to 2D" : "Switch to 3D"
+            ) {
                 toggle3DMode()
-            } label: {
-                Image(systemName: is3DMode ? "view.2d" : "view.3d")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundColor(is3DMode ? AppTheme.Colors.mtaBlue : AppTheme.Colors.textPrimary)
-                    .frame(width: 48, height: 48)
             }
-            .accessibilityLabel(is3DMode ? "Switch to 2D" : "Switch to 3D")
-            
-            controlDivider
-            
-            // Recenter / Location Button
-            Button {
+
+            mapControlButton(
+                icon: "location.fill",
+                foregroundColor: AppTheme.Colors.mtaBlue,
+                accessibilityLabel: "Recenter on my location"
+            ) {
                 centerMap()
-            } label: {
-                Image(systemName: "location.fill")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundColor(AppTheme.Colors.mtaBlue)
-                    .frame(width: 48, height: 48)
             }
-            .accessibilityLabel("Recenter on my location")
         }
-        .padding(.top, 4)
-        .trackFloatingChrome(cornerRadius: 16)
+        .padding(.vertical, 12)
+        .padding(.horizontal, 6)
+        .trackTintedChrome(tint: AppTheme.Colors.mtaBlue, cornerRadius: 18)
         // Badge rendered OUTSIDE the clip shape so it's fully visible
         .overlay(alignment: .topTrailing) {
             if !viewModel.serviceAlerts.isEmpty {
@@ -128,12 +114,20 @@ struct MapControlsOverlay: View {
             }
         }
     }
-    
-    /// Thin divider between buttons inside the control cluster.
-    private var controlDivider: some View {
-        Rectangle()
-            .fill(AppTheme.Colors.textSecondary.opacity(0.2))
-            .frame(width: 30, height: 0.5)
+
+    private func mapControlButton(
+        icon: String,
+        foregroundColor: Color,
+        accessibilityLabel: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundColor(foregroundColor)
+                .frame(width: 44, height: 44)
+        }
+        .accessibilityLabel(accessibilityLabel)
     }
     
     // MARK: - Computed Properties
@@ -212,9 +206,10 @@ struct MapControlsOverlay: View {
             ZStack {
                 Circle()
                     .fill(selectedRouteColor)
-                    .frame(width: 24, height: 24)
+                    .frame(width: 28, height: 28)
+                    .shadow(color: selectedRouteColor.opacity(0.30), radius: 10, x: 0, y: 4)
                 Image(systemName: iconName)
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.system(size: 12, weight: .bold))
                     .foregroundColor(AppTheme.Colors.textOnColor)
             }
             
@@ -226,17 +221,24 @@ struct MapControlsOverlay: View {
                     }
                     return stripMTAPrefix(routeId)
                 }()
-                
-                if let firstStop = viewModel.routeShape?.stops.first?.name,
-                   let lastStop = viewModel.routeShape?.stops.last?.name {
-                    Text("\(name) — \(firstStop) to \(lastStop)")
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(name)
                         .font(.custom("Helvetica-Bold", size: 13))
                         .foregroundColor(AppTheme.Colors.textPrimary)
-                } else {
-                    let stopsCount = viewModel.routeShape?.stops.count ?? 0
-                    Text("\(name) — \(stopsCount) stops")
-                        .font(.custom("Helvetica-Bold", size: 13))
-                        .foregroundColor(AppTheme.Colors.textPrimary)
+
+                    if let firstStop = viewModel.routeShape?.stops.first?.name,
+                       let lastStop = viewModel.routeShape?.stops.last?.name {
+                        Text("\(firstStop) to \(lastStop)")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(selectedRouteColor.opacity(0.84))
+                            .lineLimit(1)
+                    } else {
+                        let stopsCount = viewModel.routeShape?.stops.count ?? 0
+                        Text("\(stopsCount) stops live on map")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(selectedRouteColor.opacity(0.84))
+                    }
                 }
             }
             
@@ -246,9 +248,18 @@ struct MapControlsOverlay: View {
                 Button {
                     Task { await viewModel.refreshBusVehicles() }
                 } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(selectedRouteColor)
+                    Circle()
+                        .fill(AppTheme.Gradients.controlSurface)
+                        .overlay {
+                            Circle()
+                                .stroke(selectedRouteColor.opacity(0.22), lineWidth: 1)
+                        }
+                        .overlay {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(selectedRouteColor)
+                        }
+                        .frame(width: 30, height: 30)
                 }
                 .accessibilityLabel("Refresh bus positions")
             }
@@ -256,14 +267,24 @@ struct MapControlsOverlay: View {
             Button {
                 viewModel.clearRoute()
             } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .foregroundColor(AppTheme.Colors.textSecondary)
+                Circle()
+                    .fill(AppTheme.Gradients.controlSurface)
+                    .overlay {
+                        Circle()
+                            .stroke(AppTheme.Colors.borderSubtle, lineWidth: 1)
+                    }
+                    .overlay {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
+                    }
+                    .frame(width: 30, height: 30)
             }
             .accessibilityLabel("Close route view")
         }
         .padding(.horizontal, AppTheme.Layout.cardPadding)
-        .padding(.vertical, 8)
-        .trackFloatingChrome(cornerRadius: AppTheme.Layout.cornerRadius)
+        .padding(.vertical, 10)
+        .trackTintedChrome(tint: selectedRouteColor, cornerRadius: AppTheme.Layout.cornerRadius)
     }
 }
 

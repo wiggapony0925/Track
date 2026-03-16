@@ -2,139 +2,60 @@
 //  AppTheme.swift
 //  Shared
 //
-//  Central design system for the Track NYC Transit App.
-//  All styling, colors, and typography must reference this file.
-//  Every view, widget, and component should pull values from here —
-//  never hardcode colors, fonts, or layout constants.
+//  Central public design system for the Track NYC Transit App.
+//  Views should reference AppTheme tokens instead of hardcoding colors,
+//  gradients, spacing, or typography.
 //
 
-import SwiftUI
 import CoreLocation
-import UIKit
+import SwiftUI
 
-struct AppTheme {
-    private static func rgba(
-        _ red: CGFloat,
-        _ green: CGFloat,
-        _ blue: CGFloat,
-        alpha: CGFloat = 1.0
-    ) -> UIColor {
-        UIColor(
-            red: red / 255.0,
-            green: green / 255.0,
-            blue: blue / 255.0,
-            alpha: alpha
-        )
-    }
-
-    private static func adaptiveColor(light: UIColor, dark: UIColor) -> Color {
-        Color(
-            uiColor: UIColor { traits in
-                traits.userInterfaceStyle == .dark ? dark : light
-            }
-        )
-    }
+enum AppTheme {
 
     // MARK: - Colors
 
     struct Colors {
         // NYC Identity
-        static let subwayBlack = AppTheme.adaptiveColor(
-            light: AppTheme.rgba(17, 17, 17),
-            dark: AppTheme.rgba(28, 32, 40)
-        )
+        static let subwayBlack = AppThemeUtilities.adaptiveColor(\.subwayBlack)
+        static let accent = AppThemeUtilities.adaptiveColor(\.accent)
 
-        /// Legacy name kept so existing views inherit the new transit-purple
+        /// Legacy name kept so existing views inherit the transit-purple
         /// accent without touching every call site in the app.
-        static let mtaBlue = AppTheme.adaptiveColor(
-            light: AppTheme.rgba(163, 82, 242),
-            dark: AppTheme.rgba(214, 116, 255)
-        )
-        static let accent = mtaBlue
-        static let accentSecondary = AppTheme.adaptiveColor(
-            light: AppTheme.rgba(243, 103, 205),
-            dark: AppTheme.rgba(255, 136, 223)
-        )
-        static let accentDeep = AppTheme.adaptiveColor(
-            light: AppTheme.rgba(109, 46, 187),
-            dark: AppTheme.rgba(152, 77, 229)
-        )
-        static let accentTint = AppTheme.adaptiveColor(
-            light: AppTheme.rgba(244, 236, 255),
-            dark: AppTheme.rgba(56, 32, 76)
-        )
-        static let alertRed = AppTheme.adaptiveColor(
-            light: AppTheme.rgba(238, 53, 46),
-            dark: AppTheme.rgba(255, 95, 95)
-        )
-        static let successGreen = AppTheme.adaptiveColor(
-            light: AppTheme.rgba(0, 147, 60),
-            dark: AppTheme.rgba(61, 214, 116)
-        )
-        static let warningYellow = AppTheme.adaptiveColor(
-            light: AppTheme.rgba(252, 204, 10),
-            dark: AppTheme.rgba(255, 212, 74)
-        )
+        static var mtaBlue: Color { accent }
+
+        static let accentSecondary = AppThemeUtilities.adaptiveColor(\.accentSecondary)
+        static let accentDeep = AppThemeUtilities.adaptiveColor(\.accentDeep)
+        static let accentTint = AppThemeUtilities.adaptiveColor(\.accentTint)
+        static let accentMuted = AppThemeUtilities.adaptiveColor(\.accentMuted)
+        static let alertRed = AppThemeUtilities.adaptiveColor(\.alertRed)
+        static let successGreen = AppThemeUtilities.adaptiveColor(\.successGreen)
+        static let warningYellow = AppThemeUtilities.adaptiveColor(\.warningYellow)
 
         // UI Semantics
-        static let background = AppTheme.adaptiveColor(
-            light: AppTheme.rgba(245, 244, 250),
-            dark: AppTheme.rgba(7, 11, 21)
-        )
-        static let backgroundSecondary = AppTheme.adaptiveColor(
-            light: AppTheme.rgba(236, 234, 245),
-            dark: AppTheme.rgba(11, 18, 31)
-        )
-        static let cardBackground = AppTheme.adaptiveColor(
-            light: AppTheme.rgba(255, 255, 255),
-            dark: AppTheme.rgba(16, 23, 37)
-        )
-        static let cardElevated = AppTheme.adaptiveColor(
-            light: AppTheme.rgba(250, 248, 255),
-            dark: AppTheme.rgba(21, 30, 49)
-        )
-        static let cardFloating = AppTheme.adaptiveColor(
-            light: AppTheme.rgba(252, 250, 255, alpha: 0.94),
-            dark: AppTheme.rgba(18, 27, 43, alpha: 0.94)
-        )
-        static let textPrimary = AppTheme.adaptiveColor(
-            light: AppTheme.rgba(18, 21, 33),
-            dark: AppTheme.rgba(246, 245, 255)
-        )
-        static let textSecondary = AppTheme.adaptiveColor(
-            light: AppTheme.rgba(107, 112, 130),
-            dark: AppTheme.rgba(155, 163, 192)
-        )
-        static let textTertiary = AppTheme.adaptiveColor(
-            light: AppTheme.rgba(143, 148, 168),
-            dark: AppTheme.rgba(103, 112, 140)
-        )
-        static let borderSubtle = AppTheme.adaptiveColor(
-            light: AppTheme.rgba(107, 112, 130, alpha: 0.10),
-            dark: AppTheme.rgba(214, 116, 255, alpha: 0.12)
-        )
-        static let borderStrong = AppTheme.adaptiveColor(
-            light: AppTheme.rgba(163, 82, 242, alpha: 0.18),
-            dark: AppTheme.rgba(214, 116, 255, alpha: 0.26)
-        )
-        static let shadow = AppTheme.adaptiveColor(
-            light: AppTheme.rgba(24, 27, 42, alpha: 0.10),
-            dark: AppTheme.rgba(0, 0, 0, alpha: 0.48)
-        )
-        static let accentGlow = AppTheme.adaptiveColor(
-            light: AppTheme.rgba(163, 82, 242, alpha: 0.22),
-            dark: AppTheme.rgba(214, 116, 255, alpha: 0.42)
-        )
-        static let mapScrim = AppTheme.adaptiveColor(
-            light: AppTheme.rgba(18, 21, 33, alpha: 0.08),
-            dark: AppTheme.rgba(0, 0, 0, alpha: 0.18)
-        )
+        static let background = AppThemeUtilities.adaptiveColor(\.background)
+        static let backgroundSecondary = AppThemeUtilities.adaptiveColor(\.backgroundSecondary)
+        static let backgroundTertiary = AppThemeUtilities.adaptiveColor(\.backgroundTertiary)
+        static let cardBackground = AppThemeUtilities.adaptiveColor(\.cardBackground)
+        static let cardElevated = AppThemeUtilities.adaptiveColor(\.cardElevated)
+        static let cardFloating = AppThemeUtilities.adaptiveColor(\.cardFloating)
+        static let cardInset = AppThemeUtilities.adaptiveColor(\.cardInset)
+        static let textPrimary = AppThemeUtilities.adaptiveColor(\.textPrimary)
+        static let textSecondary = AppThemeUtilities.adaptiveColor(\.textSecondary)
+        static let textTertiary = AppThemeUtilities.adaptiveColor(\.textTertiary)
+        static let borderSubtle = AppThemeUtilities.adaptiveColor(\.borderSubtle)
+        static let borderStrong = AppThemeUtilities.adaptiveColor(\.borderStrong)
+        static let borderAccent = AppThemeUtilities.adaptiveColor(\.borderAccent)
+        static let shadow = AppThemeUtilities.adaptiveColor(\.shadow)
+        static let shadowStrong = AppThemeUtilities.adaptiveColor(\.shadowStrong)
+        static let accentGlow = AppThemeUtilities.adaptiveColor(\.accentGlow)
+        static let glassHighlight = AppThemeUtilities.adaptiveColor(\.glassHighlight)
+        static let mapScrim = AppThemeUtilities.adaptiveColor(\.mapScrim)
 
         /// White text used on colored badges, buttons, and banners.
         static let textOnColor = Color.white
 
         /// Pulsing "GO" mode accent — a vivid green for the live tracking state.
-        static let goGreen = Color(red: 52/255, green: 199/255, blue: 89/255)
+        static let goGreen = Color(red: 52 / 255, green: 199 / 255, blue: 89 / 255)
 
         /// Returns the appropriate countdown color for a given minutes value.
         /// Red ≤ 2 min, green ≤ 5 min, primary otherwise.
@@ -149,61 +70,116 @@ struct AppTheme {
 
     struct Gradients {
         static let screen = LinearGradient(
-            colors: [
-                Colors.background,
-                Colors.backgroundSecondary
+            stops: [
+                .init(color: Colors.background, location: 0.00),
+                .init(color: Colors.backgroundSecondary, location: 0.52),
+                .init(color: Colors.backgroundTertiary, location: 1.00),
             ],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
         )
 
-        static let screenGlow = RadialGradient(
-            colors: [
-                Colors.accentGlow,
-                Color.clear
+        static let screenSheen = LinearGradient(
+            stops: [
+                .init(color: Colors.glassHighlight.opacity(0.14), location: 0.00),
+                .init(color: Color.clear, location: 0.36),
+                .init(color: Colors.accentGlow.opacity(0.06), location: 1.00),
             ],
-            center: .topTrailing,
-            startRadius: 18,
-            endRadius: 360
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
         )
 
-        static let heroGlow = RadialGradient(
-            colors: [
-                Colors.accentGlow.opacity(0.9),
-                Color.clear
+        static let screenGlow = LinearGradient(
+            stops: [
+                .init(color: Colors.accentGlow.opacity(0.15), location: 0.00),
+                .init(color: Color.clear, location: 1.00),
             ],
-            center: .center,
-            startRadius: 10,
-            endRadius: 240
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+
+        static let heroGlow = LinearGradient(
+            stops: [
+                .init(color: Colors.accentSecondary.opacity(0.10), location: 0.00),
+                .init(color: Color.clear, location: 1.00),
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
         )
 
         static let surface = LinearGradient(
-            colors: [
-                Colors.cardElevated,
-                Colors.cardBackground
+            stops: [
+                .init(color: Colors.cardElevated, location: 0.00),
+                .init(color: Colors.cardBackground, location: 1.00),
             ],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
         )
 
         static let floating = LinearGradient(
-            colors: [
-                Colors.cardFloating,
-                Colors.cardElevated
+            stops: [
+                .init(color: Colors.cardFloating, location: 0.00),
+                .init(color: Colors.cardElevated, location: 1.00),
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+
+        static let controlSurface = LinearGradient(
+            stops: [
+                .init(color: Colors.cardInset, location: 0.00),
+                .init(color: Colors.cardBackground, location: 1.00),
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+
+        static let accentSurface = LinearGradient(
+            stops: [
+                .init(color: Colors.accentTint.opacity(0.8), location: 0.00),
+                .init(color: Colors.accentTint.opacity(0.5), location: 1.00),
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+
+        static let inset = LinearGradient(
+            stops: [
+                .init(color: Colors.cardInset, location: 0.00),
+                .init(color: Colors.cardBackground, location: 1.00),
+            ],
+            startPoint: .topTrailing,
+            endPoint: .bottomLeading
+        )
+
+        static let chromeHighlight = LinearGradient(
+            stops: [
+                .init(color: Colors.glassHighlight.opacity(0.15), location: 0.00),
+                .init(color: Color.clear, location: 1.00),
             ],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
         )
 
         static let accent = LinearGradient(
-            colors: [
-                Colors.accentSecondary,
-                Colors.mtaBlue,
-                Colors.accentDeep
+            stops: [
+                .init(color: Colors.accent, location: 0.00),
+                .init(color: Colors.accentDeep, location: 1.00),
             ],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
         )
+
+        static func tintWash(_ tint: Color, intensity: Double = 0.18) -> LinearGradient {
+            LinearGradient(
+                stops: [
+                    .init(color: tint.opacity(intensity), location: 0.00),
+                    .init(color: tint.opacity(intensity * 0.3), location: 1.00),
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
     }
 
     // MARK: - Typography
@@ -253,9 +229,9 @@ struct AppTheme {
         /// Settings row description.
         static let settingsDescription: Font = .custom("Helvetica", size: 13)
 
-        /// Helper to get Helvetica with specific weight/size
+        /// Helper to get Helvetica with specific weight/size.
         static func helvetica(size: CGFloat, weight: Font.Weight = .regular) -> Font {
-            return .custom("Helvetica", size: size).weight(weight)
+            .custom("Helvetica", size: size).weight(weight)
         }
     }
 
@@ -265,14 +241,16 @@ struct AppTheme {
     struct Shadows {
         /// Subtle card shadow — used for card containers and floating sections.
         static func card(_ content: some View) -> some View {
-            content.shadow(color: Colors.shadow.opacity(0.18), radius: 14, x: 0, y: 8)
+            content
+                .shadow(color: Colors.shadow.opacity(0.06), radius: 8, x: 0, y: 4)
+                .shadow(color: Colors.shadowStrong.opacity(0.03), radius: 16, x: 0, y: 8)
         }
 
         /// Elevated shadow — used for active/selected elements.
         static func elevated(_ content: some View) -> some View {
             content
-                .shadow(color: Colors.shadow.opacity(0.24), radius: 18, x: 0, y: 10)
-                .shadow(color: Colors.accentGlow.opacity(0.16), radius: 22, x: 0, y: 6)
+                .shadow(color: Colors.shadow.opacity(0.12), radius: 10, x: 0, y: 5)
+                .shadow(color: Colors.shadowStrong.opacity(0.06), radius: 20, x: 0, y: 10)
         }
     }
 
@@ -298,27 +276,27 @@ struct AppTheme {
         static func color(for routeID: String) -> Color {
             switch routeID.uppercased() {
             case "1", "2", "3":
-                return Color(red: 216/255, green: 34/255, blue: 51/255)     // Red #D82233
+                return Color(red: 216 / 255, green: 34 / 255, blue: 51 / 255)     // Red #D82233
             case "4", "5", "6":
-                return Color(red: 0/255, green: 153/255, blue: 82/255)      // Dark Green #009952
+                return Color(red: 0 / 255, green: 153 / 255, blue: 82 / 255)      // Dark Green #009952
             case "7":
-                return Color(red: 154/255, green: 56/255, blue: 161/255)    // Purple #9A38A1
+                return Color(red: 154 / 255, green: 56 / 255, blue: 161 / 255)    // Purple #9A38A1
             case "A", "C", "E":
-                return Color(red: 0/255, green: 98/255, blue: 207/255)      // Blue #0062CF
+                return Color(red: 0 / 255, green: 98 / 255, blue: 207 / 255)      // Blue #0062CF
             case "B", "D", "F", "M":
-                return Color(red: 235/255, green: 104/255, blue: 0/255)     // Orange #EB6800
+                return Color(red: 235 / 255, green: 104 / 255, blue: 0 / 255)     // Orange #EB6800
             case "G":
-                return Color(red: 121/255, green: 149/255, blue: 52/255)    // Light Green #799534
+                return Color(red: 121 / 255, green: 149 / 255, blue: 52 / 255)    // Light Green #799534
             case "J", "Z":
-                return Color(red: 142/255, green: 92/255, blue: 51/255)     // Brown #8E5C33
+                return Color(red: 142 / 255, green: 92 / 255, blue: 51 / 255)     // Brown #8E5C33
             case "L":
-                return Color(red: 124/255, green: 133/255, blue: 140/255)   // Grey #7C858C
+                return Color(red: 124 / 255, green: 133 / 255, blue: 140 / 255)   // Grey #7C858C
             case "N", "Q", "R", "W":
-                return Color(red: 246/255, green: 188/255, blue: 38/255)    // Yellow #F6BC26
+                return Color(red: 246 / 255, green: 188 / 255, blue: 38 / 255)    // Yellow #F6BC26
             case "S":
-                return Color(red: 124/255, green: 133/255, blue: 140/255)   // Grey #7C858C
+                return Color(red: 124 / 255, green: 133 / 255, blue: 140 / 255)   // Grey #7C858C
             case "SI":
-                return Color(red: 0/255, green: 142/255, blue: 183/255)     // Teal #008EB7
+                return Color(red: 0 / 255, green: 142 / 255, blue: 183 / 255)     // Teal #008EB7
             default:
                 return Colors.mtaBlue
             }
@@ -328,50 +306,48 @@ struct AppTheme {
         static func textColor(for routeID: String) -> Color {
             switch routeID.uppercased() {
             case "N", "Q", "R", "W":
-                // Standard yellow lines use black text.
                 return .black
             default:
-                // All others (Red, Green, Blue, Orange, Grey, Purple, Buses) use white.
                 return .white
             }
         }
     }
-    
+
     // MARK: - Bus Colors
-    
+
     /// Bus route colors for visual distinction from subway routes.
     struct BusColors {
-        /// Standard local bus color (MTA Blue)
-        static let localBlue = Color(red: 0/255, green: 57/255, blue: 166/255)
-        
-        /// Select Bus Service (SBS) purple color
-        static let sbsPurple = Color(red: 128/255, green: 0/255, blue: 128/255)
+        /// Standard local bus color (MTA Blue).
+        static let localBlue = Color(red: 0 / 255, green: 57 / 255, blue: 166 / 255)
+
+        /// Select Bus Service (SBS) purple color.
+        static let sbsPurple = Color(red: 128 / 255, green: 0 / 255, blue: 128 / 255)
     }
-    
+
     // MARK: - Commuter Rail Colors
-    
+
     /// Commuter rail colors for LIRR and Metro-North.
     struct CommuterRailColors {
-        /// Long Island Rail Road brand blue
-        static let lirrBlue = Color(red: 0/255, green: 115/255, blue: 191/255)
-        
-        /// Metro-North Railroad brand blue (darker)
-        static let mnrBlue = Color(red: 0/255, green: 90/255, blue: 140/255)
+        /// Long Island Rail Road brand blue.
+        static let lirrBlue = Color(red: 0 / 255, green: 115 / 255, blue: 191 / 255)
+
+        /// Metro-North Railroad brand blue (darker).
+        static let mnrBlue = Color(red: 0 / 255, green: 90 / 255, blue: 140 / 255)
     }
 
     // MARK: - Layout
 
     struct Layout {
         static let margin: CGFloat = 16.0
-        static let cornerRadius: CGFloat = 20.0 // Larger, softer corners like Apple Maps
+        static let cornerRadius: CGFloat = 20.0
         static let shadowRadius: CGFloat = 4.0
 
         /// Inner padding for card-style containers.
-        static let cardPadding: CGFloat = 16.0 // More breathing room
+        static let cardPadding: CGFloat = 16.0
 
         // Reusable badge sizes
         static let badgeSizeSmall: CGFloat = 26.0
-        static let badgeSizeMedium: CGFloat = 36.0 // Bigger icons
+        static let badgeSizeMedium: CGFloat = 36.0
         static let badgeSizeLarge: CGFloat = 44.0
 
         // Font sizes for badges
@@ -418,8 +394,8 @@ struct AppTheme {
 
         /// Returns `true` if the coordinate is within the NYC metro service area.
         static func isInServiceArea(_ coordinate: CLLocationCoordinate2D) -> Bool {
-            coordinate.latitude  >= s.serviceAreaMinLat &&
-            coordinate.latitude  <= s.serviceAreaMaxLat &&
+            coordinate.latitude >= s.serviceAreaMinLat &&
+            coordinate.latitude <= s.serviceAreaMaxLat &&
             coordinate.longitude >= s.serviceAreaMinLon &&
             coordinate.longitude <= s.serviceAreaMaxLon
         }

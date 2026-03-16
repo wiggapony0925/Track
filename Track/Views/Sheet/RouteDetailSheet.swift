@@ -650,6 +650,7 @@ struct RouteDetailSheet: View {
                 routeID: group.displayName, size: .large, hexColor: group.colorHex, mode: group.mode
             )
             .shadow(color: routeColor.opacity(0.35), radius: 8, x: 0, y: 4)
+            .shadow(color: AppTheme.Colors.shadowStrong.opacity(0.10), radius: 12, x: 0, y: 6)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(group.displayName)
@@ -709,13 +710,17 @@ struct RouteDetailSheet: View {
                             }
                         }
                     } label: {
+                        ZStack {
+                        Circle()
+                            .fill(AppTheme.Gradients.controlSurface)
+                            .overlay { Circle().stroke(AppTheme.Colors.borderSubtle, lineWidth: 1) }
                         Image(systemName: is3DMode ? "view.2d" : "view.3d")
                             .font(.system(size: 15, weight: .bold))
                             .foregroundColor(AppTheme.Colors.textSecondary)
-                            .frame(width: 34, height: 34)
-                            .background(AppTheme.Colors.cardBackground)
-                            .clipShape(Circle())
-                            .shadow(color: .black.opacity(0.06), radius: 3, y: 1)
+                    }
+                    .frame(width: 34, height: 34)
+                    .shadow(color: AppTheme.Colors.shadow.opacity(0.16), radius: 6, y: 2)
+                    .shadow(color: AppTheme.Colors.shadowStrong.opacity(0.08), radius: 2, y: 1)
                     }
                     .accessibilityLabel(is3DMode ? "Switch to 2D" : "Switch to 3D")
 
@@ -723,13 +728,17 @@ struct RouteDetailSheet: View {
                     Button {
                         onRecenter?()
                     } label: {
+                        ZStack {
+                        Circle()
+                            .fill(AppTheme.Gradients.accentSurface)
+                            .overlay { Circle().stroke(AppTheme.Colors.borderAccent.opacity(0.42), lineWidth: 1) }
                         Image(systemName: "location.fill")
                             .font(.system(size: 14, weight: .bold))
                             .foregroundColor(AppTheme.Colors.mtaBlue)
-                            .frame(width: 34, height: 34)
-                            .background(AppTheme.Colors.cardBackground)
-                            .clipShape(Circle())
-                            .shadow(color: .black.opacity(0.06), radius: 3, y: 1)
+                    }
+                    .frame(width: 34, height: 34)
+                    .shadow(color: AppTheme.Colors.shadow.opacity(0.16), radius: 6, y: 2)
+                    .shadow(color: AppTheme.Colors.mtaBlue.opacity(0.12), radius: 4, y: 2)
                     }
                     .accessibilityLabel("Recenter on my location")
                 }
@@ -760,14 +769,27 @@ struct RouteDetailSheet: View {
                         HapticManager.notification(isFavorited ? .success : .warning)
                     }
                 } label: {
-                    Image(systemName: isFavorited ? "heart.fill" : "heart")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(isFavorited ? .red : AppTheme.Colors.textSecondary)
-                        .symbolEffect(.bounce, value: isFavorited)
-                        .frame(width: 34, height: 34)
-                        .background(isFavorited ? Color.red.opacity(0.1) : AppTheme.Colors.cardBackground)
-                        .clipShape(Circle())
-                        .shadow(color: .black.opacity(0.06), radius: 3, y: 1)
+                    ZStack {
+                        Circle()
+                            .fill(
+                                isFavorited
+                                    ? AnyShapeStyle(AppTheme.Gradients.tintWash(.red, intensity: 0.22))
+                                    : AnyShapeStyle(AppTheme.Gradients.controlSurface)
+                            )
+                            .overlay {
+                                Circle().stroke(
+                                    isFavorited ? Color.red.opacity(0.28) : AppTheme.Colors.borderSubtle,
+                                    lineWidth: 1
+                                )
+                            }
+                        Image(systemName: isFavorited ? "heart.fill" : "heart")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(isFavorited ? .red : AppTheme.Colors.textSecondary)
+                            .symbolEffect(.bounce, value: isFavorited)
+                    }
+                    .frame(width: 34, height: 34)
+                    .shadow(color: AppTheme.Colors.shadow.opacity(0.16), radius: 6, y: 2)
+                    .shadow(color: AppTheme.Colors.shadowStrong.opacity(0.08), radius: 2, y: 1)
                 }
                 .accessibilityLabel(isFavorited ? "Remove from favorites" : "Add to favorites")
 
@@ -775,13 +797,17 @@ struct RouteDetailSheet: View {
                 Button {
                     onDismiss?()
                 } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(AppTheme.Colors.textSecondary)
-                        .frame(width: 34, height: 34)
-                        .background(AppTheme.Colors.cardBackground)
-                        .clipShape(Circle())
-                        .shadow(color: .black.opacity(0.06), radius: 3, y: 1)
+                    ZStack {
+                        Circle()
+                            .fill(AppTheme.Gradients.controlSurface)
+                            .overlay { Circle().stroke(AppTheme.Colors.borderSubtle, lineWidth: 1) }
+                        Image(systemName: "xmark")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
+                    }
+                    .frame(width: 34, height: 34)
+                    .shadow(color: AppTheme.Colors.shadow.opacity(0.16), radius: 6, y: 2)
+                    .shadow(color: AppTheme.Colors.shadowStrong.opacity(0.08), radius: 2, y: 1)
                 }
                 .accessibilityLabel("Close")
             }
@@ -2065,9 +2091,7 @@ struct RouteDetailSheet: View {
             }
         )
         .id(arrival.id)
-        .background(AppTheme.Colors.cardBackground)
-        .cornerRadius(16)
-        .shadow(color: .black.opacity(0.04), radius: 4, x: 0, y: 2)
+        .trackCardBackground(cornerRadius: 16)
         .padding(.horizontal, AppTheme.Layout.margin)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(arrivalAccessibilityLabel(for: arrival))

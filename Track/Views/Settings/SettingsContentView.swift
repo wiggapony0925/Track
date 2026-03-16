@@ -130,7 +130,7 @@ struct SettingsContentView: View {
                             HStack(spacing: 10) {
                                 ZStack {
                                     Circle()
-                                        .fill(AppTheme.Colors.mtaBlue.opacity(0.14))
+                                        .fill(AppTheme.Gradients.tintWash(AppTheme.Colors.mtaBlue, intensity: 0.22))
                                         .frame(width: 38, height: 38)
                                     Image(systemName: "person.fill")
                                         .font(.system(size: 16, weight: .bold))
@@ -271,7 +271,7 @@ struct SettingsContentView: View {
                                         .foregroundColor(AppTheme.Colors.mtaBlue)
                                         .padding(.horizontal, 8)
                                         .padding(.vertical, 3)
-                                        .background(AppTheme.Colors.mtaBlue.opacity(0.12))
+                                        .background(AppTheme.Gradients.tintWash(AppTheme.Colors.mtaBlue, intensity: 0.18))
                                         .clipShape(Capsule())
                                 }
                                 
@@ -594,7 +594,7 @@ struct SettingsContentView: View {
         .padding(.vertical, 10)
         .background(AppTheme.Colors.successGreen)
         .clipShape(Capsule())
-        .shadow(radius: 6, y: 2)
+        .shadow(color: AppTheme.Colors.shadow.opacity(0.16), radius: 6, y: 2)
         .padding(.bottom, 24)
     }
     
@@ -823,7 +823,8 @@ struct SettingsContentView: View {
                             .aspectRatio(contentMode: .fit)
                             .frame(width: 80, height: 80)
                             .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-                            .shadow(color: AppTheme.Colors.subwayBlack.opacity(0.2), radius: 12, y: 6)
+                            .shadow(color: AppTheme.Colors.shadow.opacity(0.20), radius: 12, y: 6)
+                            .shadow(color: AppTheme.Colors.shadowStrong.opacity(0.10), radius: 4, y: 2)
                     }
 
                     VStack(spacing: 3) {

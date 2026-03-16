@@ -51,6 +51,14 @@ struct UniversalBottomSheet<Content: View>: View {
         // Page content with transitions
         content(navigator.currentPage)
             .id(navigator.currentPage.id)
+            .background {
+                ZStack {
+                    AppTheme.Gradients.screen
+                    AppTheme.Gradients.screenSheen
+                    AppTheme.Gradients.screenGlow.opacity(0.72)
+                }
+                .ignoresSafeArea()
+            }
             .transition(.asymmetric(
                 insertion: .move(edge: .trailing).combined(with: .opacity),
                 removal: .move(edge: .leading).combined(with: .opacity)
@@ -58,7 +66,8 @@ struct UniversalBottomSheet<Content: View>: View {
             .presentationDetents([.fraction(0.4), .large], selection: $sheetDetent)
             .presentationDragIndicator(.visible)
             .presentationBackgroundInteraction(.enabled)
-            .presentationBackground(AppTheme.Gradients.screen)
+            .presentationBackground(AppTheme.Gradients.floating)
+            .presentationCornerRadius(32)
             .interactiveDismissDisabled()
             .preferredColorScheme(colorScheme)
     }

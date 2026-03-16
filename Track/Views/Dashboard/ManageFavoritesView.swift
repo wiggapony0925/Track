@@ -224,15 +224,15 @@ struct ManageFavoritesView: View {
                     .fill(
                         isSelected
                             ? AnyShapeStyle(AppTheme.Gradients.accent)
-                            : AnyShapeStyle(AppTheme.Colors.accentTint.opacity(0.52))
+                            : AnyShapeStyle(AppTheme.Gradients.accentSurface)
                     )
             }
             .overlay {
                 Capsule()
                     .stroke(
                         isSelected
-                            ? AppTheme.Colors.textOnColor.opacity(0.12)
-                            : AppTheme.Colors.borderStrong.opacity(0.45),
+                            ? AppTheme.Colors.textOnColor.opacity(0.18)
+                            : AppTheme.Colors.borderAccent.opacity(0.56),
                         lineWidth: 1
                     )
             }

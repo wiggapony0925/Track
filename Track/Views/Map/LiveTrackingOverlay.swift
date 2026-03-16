@@ -187,11 +187,11 @@ private struct StopChecklistItem: View {
                     .frame(width: 60, height: 3)
 
                 Circle()
-                    .fill(isPassed ? Color.gray.opacity(0.4) : .white)
+                    .fill(isPassed ? AppTheme.Colors.textSecondary.opacity(0.35) : AppTheme.Colors.cardFloating)
                     .frame(width: 10, height: 10)
                     .overlay(
                         Circle()
-                            .stroke(isPassed ? Color.gray.opacity(0.3) : routeColor, lineWidth: 2)
+                            .stroke(isPassed ? AppTheme.Colors.textSecondary.opacity(0.3) : routeColor, lineWidth: 2)
                     )
             }
 

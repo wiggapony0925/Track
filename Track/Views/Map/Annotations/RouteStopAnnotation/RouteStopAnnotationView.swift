@@ -24,7 +24,7 @@ struct RouteStopMarker: View, Equatable {
 
             // Clean white circle with route-colored ring
             Circle()
-                .fill(Color.white)
+                .fill(AppTheme.Colors.cardFloating)
                 .frame(
                     width: isSelected ? 14 : 10,
                     height: isSelected ? 14 : 10
@@ -35,7 +35,7 @@ struct RouteStopMarker: View, Equatable {
                             routeColor,
                             lineWidth: isSelected ? 2.5 : 2)
                 }
-                .shadow(color: .black.opacity(0.15), radius: 2, x: 0, y: 1)
+                .shadow(color: AppTheme.Colors.shadow.opacity(0.18), radius: 2, x: 0, y: 1)
 
             // Center fill dot — only on selected stop
             if isSelected {

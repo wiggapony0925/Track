@@ -43,7 +43,7 @@ struct ProfileSettingsContentView: View {
                 .padding(.top, 12)
             }
         }
-        .background(AppTheme.Colors.background)
+        .background(AppTheme.Gradients.screen)
         .onAppear {
             hydrateDrafts()
         }
@@ -113,8 +113,7 @@ struct ProfileSettingsContentView: View {
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
-                        .background(AppTheme.Colors.mtaBlue)
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .trackAccentBackground(cornerRadius: 14)
                     }
                     .disabled(isSaving || currentProfile == nil)
                     .padding(.horizontal, AppTheme.Layout.margin)
@@ -198,7 +197,7 @@ struct ProfileSettingsContentView: View {
         }
         .padding(.horizontal, AppTheme.Layout.margin)
         .padding(.vertical, 16)
-        .background(AppTheme.Colors.background)
+        .background(AppTheme.Gradients.floating)
     }
 
     private var divider: some View {
@@ -277,8 +276,7 @@ struct ProfileSettingsContentView: View {
             .padding(.horizontal, AppTheme.Layout.margin)
 
             content()
-                .background(AppTheme.Colors.cardBackground)
-                .cornerRadius(AppTheme.Layout.cornerRadius)
+                .trackCardBackground(cornerRadius: AppTheme.Layout.cornerRadius)
                 .padding(.horizontal, AppTheme.Layout.margin)
         }
     }

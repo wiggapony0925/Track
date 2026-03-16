@@ -115,8 +115,9 @@ struct ScheduledDepartureRow: View {
         .padding(.vertical, 10)
         .background(
             RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius)
-                .fill(AppTheme.Colors.cardBackground)
-                .shadow(color: .black.opacity(0.04), radius: 4, x: 0, y: 2)
+                .fill(AppTheme.Gradients.surface)
+                .shadow(color: AppTheme.Colors.shadow.opacity(0.12), radius: 6, x: 0, y: 2)
+                .shadow(color: AppTheme.Colors.shadowStrong.opacity(0.06), radius: 2, x: 0, y: 1)
         )
         .overlay(
             RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius)

@@ -141,6 +141,7 @@ struct MapLibreTrackMapView: View {
                     cameraChangeToken &+= 1
                 }
             )
+            .equatable() // Bypass deep structural array equality check
 
             // SwiftUI overlays positioned via coordinate projection
             overlayStack

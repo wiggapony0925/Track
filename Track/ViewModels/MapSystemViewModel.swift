@@ -950,13 +950,13 @@ final class MapSystemViewModel {
             return groupResult.polylineLaneOffsets[branchIndex]
         }
 
-        func isHalfLaneTransitionOffset(_ value: CGFloat) -> Bool {
+        func isTransitionRampOffset(_ value: CGFloat) -> Bool {
             let magnitude = Double(abs(value))
             guard magnitude > 0.01 else { return false }
-            let doubled = magnitude * 2.0
-            let isHalfLaneMultiple = abs(doubled.rounded() - doubled) < 0.01
+            let quadrupled = magnitude * 4.0
+            let isQuarterMultiple = abs(quadrupled.rounded() - quadrupled) < 0.01
             let isWholeLaneMultiple = abs(magnitude.rounded() - magnitude) < 0.01
-            return isHalfLaneMultiple && !isWholeLaneMultiple
+            return isQuarterMultiple && !isWholeLaneMultiple
         }
 
         struct PreparedPolyline {
@@ -980,7 +980,7 @@ final class MapSystemViewModel {
             // makes dense junctions look rail-like instead of flattened.
             let simplified: [CLLocationCoordinate2D]
             if abs(localLaneOffset) > 0.01 {
-                let preserveFanOutShape = isHalfLaneTransitionOffset(localLaneOffset)
+                let preserveFanOutShape = isTransitionRampOffset(localLaneOffset)
                 if preserveFanOutShape && item.coordinates.count <= 96 {
                     simplified = item.coordinates
                 } else if item.coordinates.count <= 24 {

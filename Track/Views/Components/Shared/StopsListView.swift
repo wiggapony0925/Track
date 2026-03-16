@@ -125,9 +125,7 @@ struct StopsListView: View {
             }
         }
         .padding(.vertical, 6)
-        .background(AppTheme.Colors.cardBackground)
-        .cornerRadius(AppTheme.Layout.cornerRadius)
-        .shadow(color: .black.opacity(0.05), radius: 6, y: 2)
+        .trackCardBackground(cornerRadius: AppTheme.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius)
                 .strokeBorder(routeColor.opacity(0.06), lineWidth: 1)
@@ -179,7 +177,7 @@ struct StopRowView: View {
                         )
                     if stop.isCurrent {
                         Circle()
-                            .fill(Color.white)
+                            .fill(AppTheme.Colors.cardFloating)
                             .frame(width: 6, height: 6)
                     }
                 }

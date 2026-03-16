@@ -49,8 +49,7 @@ struct WidgetSchedulesContentView: View {
                                 }
                             }
                         }
-                        .background(AppTheme.Colors.cardBackground)
-                        .cornerRadius(AppTheme.Layout.cornerRadius)
+                        .trackCardBackground(cornerRadius: AppTheme.Layout.cornerRadius)
                         .padding(.horizontal, AppTheme.Layout.margin)
                     }
                     
@@ -60,7 +59,7 @@ struct WidgetSchedulesContentView: View {
                 .padding(.top, 12)
             }
         }
-        .background(AppTheme.Colors.background)
+        .background(AppTheme.Gradients.screen)
         .onAppear {
             loadSchedules()
         }
@@ -103,7 +102,7 @@ struct WidgetSchedulesContentView: View {
         }
         .padding(.horizontal, AppTheme.Layout.margin)
         .padding(.vertical, 16)
-        .background(AppTheme.Colors.background)
+        .background(AppTheme.Gradients.floating)
     }
 
     // MARK: - Widget Preview
@@ -144,8 +143,7 @@ struct WidgetSchedulesContentView: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(AppTheme.Layout.cardPadding)
-        .background(AppTheme.Colors.cardBackground)
-        .cornerRadius(AppTheme.Layout.cornerRadius)
+        .trackCardBackground(cornerRadius: AppTheme.Layout.cornerRadius)
         .padding(.horizontal, AppTheme.Layout.margin)
     }
 
@@ -156,9 +154,10 @@ struct WidgetSchedulesContentView: View {
             .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+                    .strokeBorder(AppTheme.Colors.glassHighlight.opacity(0.18), lineWidth: 1)
             )
-            .shadow(color: .black.opacity(0.2), radius: 14, x: 0, y: 6)
+            .shadow(color: AppTheme.Colors.shadow.opacity(0.20), radius: 14, x: 0, y: 6)
+            .shadow(color: AppTheme.Colors.shadowStrong.opacity(0.10), radius: 4, x: 0, y: 2)
     }
 
     
@@ -168,7 +167,7 @@ struct WidgetSchedulesContentView: View {
         HStack(spacing: 14) {
             ZStack {
                 Circle()
-                    .fill(AppTheme.Colors.mtaBlue.opacity(0.15))
+                    .fill(AppTheme.Gradients.tintWash(AppTheme.Colors.mtaBlue, intensity: 0.22))
                     .frame(width: AppTheme.Layout.iconCircleSize, height: AppTheme.Layout.iconCircleSize)
                 Image(systemName: "clock.badge.checkmark.fill")
                     .font(.system(size: 20, weight: .semibold))
@@ -186,8 +185,7 @@ struct WidgetSchedulesContentView: View {
             }
         }
         .padding(AppTheme.Layout.cardPadding)
-        .background(AppTheme.Colors.cardBackground)
-        .cornerRadius(AppTheme.Layout.cornerRadius)
+        .trackCardBackground(cornerRadius: AppTheme.Layout.cornerRadius)
         .padding(.horizontal, AppTheme.Layout.margin)
     }
     
@@ -197,7 +195,7 @@ struct WidgetSchedulesContentView: View {
         VStack(spacing: 16) {
             ZStack {
                 Circle()
-                    .fill(AppTheme.Colors.mtaBlue.opacity(0.1))
+                    .fill(AppTheme.Gradients.tintWash(AppTheme.Colors.mtaBlue, intensity: 0.16))
                     .frame(width: 80, height: 80)
                 Image(systemName: "calendar.badge.plus")
                     .font(.system(size: 36, weight: .light))
@@ -226,8 +224,7 @@ struct WidgetSchedulesContentView: View {
                 .foregroundColor(.white)
                 .padding(.horizontal, 24)
                 .padding(.vertical, 14)
-                .background(AppTheme.Colors.mtaBlue)
-                .cornerRadius(AppTheme.Layout.searchBarCornerRadius)
+                .trackAccentBackground(cornerRadius: AppTheme.Layout.searchBarCornerRadius)
             }
             .padding(.top, 8)
         }
@@ -242,7 +239,7 @@ struct WidgetSchedulesContentView: View {
             // Time indicator
             ZStack {
                 Circle()
-                    .fill(schedule.enabled ? AppTheme.Colors.mtaBlue.opacity(0.15) : AppTheme.Colors.textSecondary.opacity(0.1))
+                    .fill(schedule.enabled ? AppTheme.Gradients.tintWash(AppTheme.Colors.mtaBlue, intensity: 0.22) : AppTheme.Gradients.tintWash(AppTheme.Colors.textSecondary, intensity: 0.12))
                     .frame(width: AppTheme.Layout.iconCircleSize, height: AppTheme.Layout.iconCircleSize)
                 Image(systemName: "clock.fill")
                     .font(.system(size: 18, weight: .semibold))

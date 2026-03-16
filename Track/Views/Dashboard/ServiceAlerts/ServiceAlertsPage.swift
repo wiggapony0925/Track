@@ -73,7 +73,7 @@ struct ServiceAlertsPage: View {
                 }
             }
         }
-        .background(AppTheme.Colors.background)
+        .background(AppTheme.Gradients.screen)
     }
 
     // MARK: - Header
@@ -116,7 +116,7 @@ struct ServiceAlertsPage: View {
         }
         .padding(.horizontal, AppTheme.Layout.margin)
         .padding(.vertical, 14)
-        .background(AppTheme.Colors.background)
+        .background(AppTheme.Gradients.floating)
     }
 
     // MARK: - Severity Summary Strip
@@ -212,7 +212,7 @@ struct ServiceAlertsPage: View {
         VStack(spacing: 20) {
             ZStack {
                 Circle()
-                    .fill(AppTheme.Colors.successGreen.opacity(0.12))
+                    .fill(AppTheme.Gradients.tintWash(AppTheme.Colors.successGreen, intensity: 0.18))
                     .frame(width: 96, height: 96)
 
                 Image(systemName: "checkmark.circle.fill")
@@ -252,7 +252,7 @@ struct ServiceAlertsPage: View {
         VStack(spacing: 20) {
             ZStack {
                 Circle()
-                    .fill(AppTheme.Colors.textSecondary.opacity(0.08))
+                    .fill(AppTheme.Gradients.tintWash(AppTheme.Colors.textSecondary, intensity: 0.12))
                     .frame(width: 96, height: 96)
 
                 Image(systemName: "wifi.slash")
