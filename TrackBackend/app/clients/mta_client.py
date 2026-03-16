@@ -258,15 +258,16 @@ async def _fetch_with_cache(url: str, *, parse_json: bool) -> Any:
         if url in _INFLIGHT_FETCHES:
             return
 
-        async def _refresh() -> None:
+        async def _refresh() -> Any:
             try:
-                await _run_fetch()
+                return await _run_fetch()
             except Exception as exc:
                 TrackLogger.warning(
                     f"[MTA_FEED] Background refresh failed for {url[:100]} "
                     f"({_describe_exception(exc)})",
                     tag="TRACK",
                 )
+                return None
             finally:
                 if _INFLIGHT_FETCHES.get(url) is task:
                     _INFLIGHT_FETCHES.pop(url, None)
@@ -297,7 +298,10 @@ async def _fetch_with_cache(url: str, *, parse_json: bool) -> Any:
 
     inflight = _INFLIGHT_FETCHES.get(url)
     if inflight is not None:
-        return await inflight
+        result = await inflight
+        if result is not None:
+            return result
+        # Background refresh returned None (failed) — fall through to fresh fetch
 
     task = asyncio.create_task(_run_fetch())
     _INFLIGHT_FETCHES[url] = task
@@ -325,6 +329,8 @@ async def fetch_protobuf(url: str) -> bytes:
     """Fetch a GTFS-Realtime Protobuf feed and return raw bytes."""
     TrackLogger.feed(f"Fetching protobuf: {url[:100]}")
     data = await _fetch_with_cache(url, parse_json=False)
+    if data is None:
+        raise ValueError(f"No data returned for {url[:100]}")
     TrackLogger.feed(f"Protobuf OK ({len(data)} bytes): {url[:100]}")
     return data
 

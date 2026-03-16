@@ -134,6 +134,7 @@ struct MapLibreTrackMapView: View {
                 hasActiveRoute: viewModel.routeShape != nil,
                 reroutedRouteIDs: viewModel.mapSystem.reroutedRouteIDs,
                 isDarkMode: colorScheme == .dark,
+                selectedMode: viewModel.selectedMode,
                 onMapViewReady: { mapView in
                     self.mapViewRef = mapView
                 },

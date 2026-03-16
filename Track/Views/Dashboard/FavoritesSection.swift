@@ -20,6 +20,7 @@ struct FavoritesSection: View {
     let userLocation: CLLocation?
     let sheetNavigator: SheetNavigator
     let onSelect: (GroupedNearbyTransitResponse, Int) -> Void
+    let selectedMode: TransportMode
     /// Shared ETA provider — when supplied, favorites use the same
     /// vehicle-position + delay-factor enriched ETA as home rows.
     var smartETAProvider: ((NearbyTransitResponse) -> SmartETA)? = nil
@@ -39,7 +40,12 @@ struct FavoritesSection: View {
             uniqueKeysWithValues: groupedTransit.map { ($0.routeId, $0) }
         )
 
-        return favoritesManager.favorites.sorted { a, b in
+        let allFavorites = favoritesManager.favorites
+        let filteredFavorites = selectedMode == .nearby 
+            ? allFavorites 
+            : allFavorites.filter { $0.mode == selectedMode.rawValue }
+
+        return filteredFavorites.sorted { a, b in
             let aGroup = groupLookup[a.routeId]
             let bGroup = groupLookup[b.routeId]
 
@@ -87,7 +93,7 @@ struct FavoritesSection: View {
                     .textCase(.uppercase)
                     .lineLimit(1)
                 Spacer()
-                if !favoritesManager.favorites.isEmpty {
+                if !sortedFavorites.isEmpty || selectedMode != .nearby {
                     Button("Manage") {
                         sheetNavigator.navigate(to: .manageFavorites)
                     }
@@ -108,8 +114,8 @@ struct FavoritesSection: View {
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
-                    if favoritesManager.favorites.isEmpty {
-                        FavoritesEmptyCard()
+                    if sortedFavorites.isEmpty {
+                        FavoritesEmptyCard(mode: selectedMode)
                     } else {
                         ForEach(sortedFavorites) { favorite in
                             FavoriteCard(
@@ -127,35 +133,98 @@ struct FavoritesSection: View {
     }
 }
 
-// MARK: - Empty Card
+// MARK: - Empty Favorites Nudge
 
-/// Shown when the user hasn't favorited anything yet.
+/// A friendly floating nudge shown when the user has no favorites for
+/// the active transport mode. Uses mode-specific iconography, color
+/// tinting, and playful copy ("Why not favorite…?") to encourage the
+/// user to try the feature.
 private struct FavoritesEmptyCard: View {
+    let mode: TransportMode
+
+    @State private var pulse = false
+
+    private var modeIcon: String { mode.icon }
+
+    private var accentColor: Color {
+        switch mode {
+        case .nearby:  return .red.opacity(0.75)
+        case .subway:  return AppTheme.Colors.mtaBlue
+        case .lirr:    return AppTheme.CommuterRailColors.lirrBlue
+        case .mnr:     return AppTheme.CommuterRailColors.mnrBlue
+        case .bus:     return AppTheme.Colors.mtaBlue
+        }
+    }
+
+    private var nudgeText: String {
+        switch mode {
+        case .nearby:  return "Why not favorite a route?"
+        case .subway:  return "Why not favorite a subway line?"
+        case .lirr:    return "Why not favorite an LIRR train?"
+        case .mnr:     return "Why not favorite a Metro-North train?"
+        case .bus:     return "Why not favorite a bus route?"
+        }
+    }
+
+    private var hint: String {
+        switch mode {
+        case .nearby:  return "Tap the heart on any route to pin it here"
+        case .subway:  return "Your favorited trains will show up right here"
+        case .lirr:    return "Save your commute for a quick glance"
+        case .mnr:     return "Save your commute for a quick glance"
+        case .bus:     return "Your favorited buses will show up right here"
+        }
+    }
+
     var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "heart.fill")
-                .font(.system(size: 20, weight: .semibold))
-                .foregroundColor(.red.opacity(0.7))
+        HStack(spacing: 12) {
+            // Mode icon with a pulsing heart badge
+            ZStack(alignment: .bottomTrailing) {
+                Image(systemName: modeIcon)
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundColor(accentColor)
+                    .frame(width: 36, height: 36)
+
+                Image(systemName: "heart.fill")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(.red)
+                    .scaleEffect(pulse ? 1.2 : 1.0)
+                    .offset(x: 4, y: 4)
+            }
 
             VStack(alignment: .leading, spacing: 3) {
-                Text("No favorites yet")
-                    .font(.custom("Helvetica-Bold", size: 13))
+                Text(nudgeText)
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
                     .foregroundColor(AppTheme.Colors.textPrimary)
-                Text("Try favoriting a route! ♥")
-                    .font(.custom("Helvetica", size: 12))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+
+                Text(hint)
+                    .font(.system(size: 11.5, weight: .medium))
                     .foregroundColor(AppTheme.Colors.textSecondary)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.85)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 12)
+        .padding(.vertical, 13)
         .background {
             RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius, style: .continuous)
                 .fill(AppTheme.Gradients.floating)
                 .overlay {
                     RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius, style: .continuous)
-                        .strokeBorder(Color.red.opacity(0.18), lineWidth: 1)
+                        .strokeBorder(accentColor.opacity(0.22), lineWidth: 1)
                 }
-                .shadow(color: AppTheme.Colors.shadow.opacity(0.15), radius: 10, x: 0, y: 6)
+                .shadow(color: accentColor.opacity(0.10), radius: 12, x: 0, y: 6)
+        }
+        .onAppear {
+            withAnimation(
+                .easeInOut(duration: 1.0)
+                .repeatForever(autoreverses: true)
+            ) {
+                pulse = true
+            }
         }
     }
 }

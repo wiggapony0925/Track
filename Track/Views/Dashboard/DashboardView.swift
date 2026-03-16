@@ -43,46 +43,11 @@ struct DashboardView: View {
                 lastUpdated: lastUpdated
             )
             
-            // MARK: - Refreshing Indicator (two-phase loading)
-            if viewModel.isRefreshing {
-                refreshingIndicator
-            }
-
             // MARK: - Scrollable Content
             scrollableContent
         }
         .trackScreenBackground()
     }
-
-    private var refreshingIndicator: some View {
-        HStack(spacing: 6) {
-            ZStack {
-                Circle()
-                    .fill(AppTheme.Gradients.accentSurface)
-                    .overlay {
-                        Circle()
-                            .stroke(AppTheme.Colors.borderAccent.opacity(0.45), lineWidth: 1)
-                    }
-
-                ProgressView()
-                    .scaleEffect(0.62)
-                    .tint(AppTheme.Colors.mtaBlue)
-            }
-            .frame(width: 24, height: 24)
-
-            Text("Updating arrivals…")
-                .font(.custom("Helvetica", size: 12))
-                .foregroundColor(AppTheme.Colors.textSecondary)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.horizontal, AppTheme.Layout.cardPadding)
-        .padding(.vertical, 8)
-        .padding(.horizontal, AppTheme.Layout.margin)
-        .padding(.bottom, 6)
-        .trackTintedChrome(tint: AppTheme.Colors.mtaBlue, cornerRadius: 14)
-        .transition(.opacity.combined(with: .move(edge: .top)))
-    }
-
     private var scrollableContent: some View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
@@ -107,6 +72,7 @@ struct DashboardView: View {
                                     await viewModel.handleRouteSelection(group, directionIndex: directionIndex, userLocation: locationManager.currentLocation)
                                 }
                             },
+                            selectedMode: viewModel.selectedMode,
                             smartETAProvider: { viewModel.smartETA(for: $0) }
                         )
                         .transition(.opacity.animation(.easeIn(duration: 0.25)))

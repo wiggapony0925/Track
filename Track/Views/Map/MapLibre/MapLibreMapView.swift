@@ -56,7 +56,8 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
               lhs.hasActiveRoute == rhs.hasActiveRoute,
               lhs.isBusRoute == rhs.isBusRoute,
               lhs.routeColor == rhs.routeColor,
-              lhs.reroutedRouteIDs == rhs.reroutedRouteIDs else {
+              lhs.reroutedRouteIDs == rhs.reroutedRouteIDs,
+              lhs.selectedMode == rhs.selectedMode else {
             return false
         }
         
@@ -139,7 +140,10 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
     var showUserLocation: Bool = true
 
     /// Whether the system is in dark mode (drives MapTiler style selection).
-    var isDarkMode: Bool = false
+    var isDarkMode: Bool
+    
+    /// Global transport mode filter (dims polylines that don't match the dashboard mode).
+    var selectedMode: TransportMode
 
     /// Callback to pass the MLNMapView reference back to the parent
     /// so SwiftUI overlays can project coordinates → screen points.
@@ -449,7 +453,8 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             let b: Int = representable.commuterRailPolylines.count &* 31
             let c: Int = representable.hasActiveRoute ? 0x1 : 0x0
             let d: Int = representable.reroutedRouteIDs.count &* 127
-            let subwayHash: Int = a ^ b ^ c ^ d
+            let e: Int = representable.selectedMode.hashValue
+            let subwayHash: Int = a ^ b ^ c ^ d ^ e
             if subwayHash != lastSubwayHash || darkChanged {
                 updateSystemMapLayers(style: style, representable: representable)
                 lastSubwayHash = subwayHash
@@ -533,13 +538,60 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
 
         func updateSystemMapLayers(style: MLNStyle, representable: MapLibreMapView) {
             let dimmed = representable.hasActiveRoute
-            let subwayOpacity: Double = dimmed ? 0.10 : 1.0
-            let commuterOpacity: Double = dimmed ? 0.08 : 0.65
-            let casingOpacity: Double = dimmed ? 0.05 : 0.45
-            let commuterCasingOpacity: Double = dimmed ? 0.03 : 0.20
-            let isDark = representable.isDarkMode
+            let mode = representable.selectedMode
 
-            // ── COMMUTER RAIL (below subway) ──
+            // Default base opacities depending on dimmed state (active route selected)
+            var subwayOpacity: NSExpression = NSExpression(forConstantValue: dimmed ? 0.10 : 1.0)
+            var subwayCasingOpacity: NSExpression = NSExpression(forConstantValue: dimmed ? 0.05 : 0.45)
+            
+            let isDark = representable.isDarkMode
+            var elevatedShadowOpacity: NSExpression = NSExpression(forConstantValue: dimmed ? 0.02 : (isDark ? 0.20 : 0.12))
+            
+            var commuterOpacity: NSExpression = NSExpression(forConstantValue: dimmed ? 0.08 : 0.65)
+            var commuterCasingOpacity: NSExpression = NSExpression(forConstantValue: dimmed ? 0.03 : 0.20)
+
+            // Override with global mode filtering if no route is actively selected
+            if !dimmed {
+                switch mode {
+                case .subway:
+                    commuterOpacity = NSExpression(forConstantValue: 0.08)
+                    commuterCasingOpacity = NSExpression(forConstantValue: 0.03)
+                case .lirr:
+                    subwayOpacity = NSExpression(forConstantValue: 0.10)
+                    subwayCasingOpacity = NSExpression(forConstantValue: 0.05)
+                    elevatedShadowOpacity = NSExpression(forConstantValue: 0.02)
+                    
+                    commuterOpacity = NSExpression(
+                        forConditional: NSPredicate(format: "isLIRR == YES"),
+                        trueExpression: NSExpression(forConstantValue: 0.65),
+                        falseExpression: NSExpression(forConstantValue: 0.08)
+                    )
+                    commuterCasingOpacity = NSExpression(
+                        forConditional: NSPredicate(format: "isLIRR == YES"),
+                        trueExpression: NSExpression(forConstantValue: 0.20),
+                        falseExpression: NSExpression(forConstantValue: 0.03)
+                    )
+                case .mnr:
+                    subwayOpacity = NSExpression(forConstantValue: 0.10)
+                    subwayCasingOpacity = NSExpression(forConstantValue: 0.05)
+                    elevatedShadowOpacity = NSExpression(forConstantValue: 0.02)
+                    
+                    commuterOpacity = NSExpression(
+                        forConditional: NSPredicate(format: "isMNR == YES"),
+                        trueExpression: NSExpression(forConstantValue: 0.65),
+                        falseExpression: NSExpression(forConstantValue: 0.08)
+                    )
+                    commuterCasingOpacity = NSExpression(
+                        forConditional: NSPredicate(format: "isMNR == YES"),
+                        trueExpression: NSExpression(forConstantValue: 0.20),
+                        falseExpression: NSExpression(forConstantValue: 0.03)
+                    )
+                case .nearby, .bus:
+                    break // Keep default opacities
+                }
+            }
+
+        // ── COMMUTER RAIL (below subway) ──
             let commuterFeatures = buildPolylineFeatures(representable.commuterRailPolylines)
             ensureLineLayer(
                 style: style,
@@ -583,7 +635,7 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 layerID: MapLibreStyleConfig.layerSubwayCasing,
                 features: subwayFeatures,
                 width: MapLibreStyleConfig.subwayCasingWidth,
-                opacity: casingOpacity,
+                opacity: subwayCasingOpacity,
                 color: .constant(isDark ? UIColor.white.withAlphaComponent(0.25) : UIColor.white),
                 cap: "round", join: "round",
                 applyLaneOffset: true
@@ -612,7 +664,7 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 layerID: MapLibreStyleConfig.layerElevatedShadow,
                 features: elevatedFeatures,
                 width: MapLibreStyleConfig.elevatedCasingWidth,
-                opacity: dimmed ? 0.02 : (isDark ? 0.20 : 0.12),
+                opacity: elevatedShadowOpacity,
                 color: .constant(UIColor.black),
                 cap: "round", join: "round",
                 translatePixels: CGPoint(x: 1.5, y: 3)
@@ -623,7 +675,7 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 layerID: MapLibreStyleConfig.layerElevatedCasing,
                 features: nil,
                 width: MapLibreStyleConfig.elevatedCasingWidth,
-                opacity: casingOpacity,
+                opacity: subwayCasingOpacity,
                 color: .constant(isDark ? UIColor.white.withAlphaComponent(0.30) : UIColor.white),
                 cap: "round", join: "round",
                 applyLaneOffset: true
@@ -1170,10 +1222,16 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 guard polyline.coordinates.count >= 2 else { continue }
                 var coords = polyline.coordinates
                 let feature = MLNPolylineFeature(coordinates: &coords, count: UInt(coords.count))
+                
+                let isLIRR = polyline.routeIds.contains(where: { $0.uppercased().hasPrefix("LIRR") })
+                let isMNR = polyline.routeIds.contains(where: { $0.uppercased().hasPrefix("MNR") })
+                
                 feature.attributes = [
                     "color": polyline.color.toHex(),
                     "trunk_index": NSNumber(value: polyline.trunkIndex),
                     "lane_offset": NSNumber(value: Float(polyline.laneOffset)),
+                    "isLIRR": NSNumber(value: isLIRR),
+                    "isMNR": NSNumber(value: isMNR)
                 ]
                 features.append(feature)
             }
@@ -1196,7 +1254,7 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             layerID: String,
             features: [MLNPolylineFeature]?,
             width: NSExpression,
-            opacity: Double,
+            opacity: NSExpression,
             color: LineColorMode,
             cap: String,
             join: String,
@@ -1221,7 +1279,7 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 guard let source = style.source(withIdentifier: sourceID) else { return }
                 let layer = MLNLineStyleLayer(identifier: layerID, source: source)
                 layer.lineWidth = width
-                layer.lineOpacity = NSExpression(forConstantValue: NSNumber(value: Float(opacity)))
+                layer.lineOpacity = opacity
                 layer.lineCap = NSExpression(forConstantValue: cap)
                 layer.lineJoin = NSExpression(forConstantValue: join)
 
@@ -1254,7 +1312,7 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
 
             // Update dynamic properties (opacity changes when route is selected/deselected)
             if let layer = style.layer(withIdentifier: layerID) as? MLNLineStyleLayer {
-                layer.lineOpacity = NSExpression(forConstantValue: NSNumber(value: Float(opacity)))
+                layer.lineOpacity = opacity
                 // Update constant colors (needed for dark mode switching)
                 if case .constant(let uiColor) = color {
                     layer.lineColor = NSExpression(forConstantValue: uiColor)

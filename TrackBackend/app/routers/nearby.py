@@ -425,14 +425,15 @@ async def nearby_transit_grouped(
             TrackLogger.cache(f"RESP HIT (stale {age:.1f}s) /nearby/grouped — bg refresh")
             # Kick background refresh if not already in-flight
             if key not in _nearby_resp_inflight:
-                async def _bg_refresh(k: tuple, r: int, m: str | None) -> None:
+                async def _bg_refresh(k: tuple, r: int, m: str | None) -> list[GroupedNearbyTransit] | None:
                     try:
-                        await _compute_and_cache_grouped(k, k[0], k[1], r, m)
+                        return await _compute_and_cache_grouped(k, k[0], k[1], r, m)
                     except Exception as exc:
                         TrackLogger.error(
                             f"BG refresh /nearby/grouped failed: {_describe_exception(exc)}",
                             exc_info=True,
                         )
+                        return None
                     finally:
                         _nearby_resp_inflight.pop(k, None)
                 task = asyncio.create_task(_bg_refresh(key, effective_radius, mode))
@@ -447,14 +448,15 @@ async def nearby_transit_grouped(
         fallback_kind = "exact" if fallback_key == key else "neighbor-cell"
         TrackLogger.cache(f"RESP HIT ({fallback_kind} stale {fallback_age:.1f}s) /nearby/grouped")
         if key not in _nearby_resp_inflight:
-            async def _bg_refresh_exact(k: tuple, req_lat: float, req_lon: float, r: int, m: str | None) -> None:
+            async def _bg_refresh_exact(k: tuple, req_lat: float, req_lon: float, r: int, m: str | None) -> list[GroupedNearbyTransit] | None:
                 try:
-                    await _compute_and_cache_grouped(k, req_lat, req_lon, r, m)
+                    return await _compute_and_cache_grouped(k, req_lat, req_lon, r, m)
                 except Exception as exc:
                     TrackLogger.error(
                         f"BG refresh /nearby/grouped failed: {_describe_exception(exc)}",
                         exc_info=True,
                     )
+                    return None
                 finally:
                     _nearby_resp_inflight.pop(k, None)
 
@@ -466,7 +468,10 @@ async def nearby_transit_grouped(
     inflight = _nearby_resp_inflight.get(key)
     if inflight is not None:
         TrackLogger.cache("RESP MISS coalesced /nearby/grouped")
-        return await inflight
+        result = await inflight
+        if result is not None:
+            return result
+        # Background refresh returned None (failed) — fall through to fresh compute
 
     async def _miss_compute() -> list[GroupedNearbyTransit]:
         try:
