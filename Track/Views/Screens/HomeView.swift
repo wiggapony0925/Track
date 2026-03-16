@@ -446,7 +446,7 @@ struct HomeView: View {
                 is3DMode: $is3DMode
             )
             
-        case .routeDetail(let group, _):
+        case .routeDetail(let group, _, let initialTab):
             // Pass the effective location (search pin center when drag-to-search
             // is active, otherwise the real GPS location) so that distance display,
             // walking directions, and map centering all work from the explored area.
@@ -482,6 +482,7 @@ struct HomeView: View {
                 smartETAProvider: { viewModel.smartETA(for: $0) },
                 liveVehicleCount: vehicleCount,
                 elevatorOutages: viewModel.elevatorOutages,
+                initialTab: initialTab,
                 isSheetExpanded: sheetDetent == .large,
                 is3DMode: $is3DMode,
                 cameraPosition: $cameraPosition,
@@ -794,10 +795,12 @@ struct HomeView: View {
     /// programmatic navigation, or SwiftUI lifecycle glitches) where onDismiss
     /// might not fire but the page has already changed.
     private func handleSheetPageChange(from oldPage: SheetPage, to newPage: SheetPage) {
-        guard case .routeDetail = oldPage else { return }
+        guard case .routeDetail(_, _, _) = oldPage else { return }
+        
+        // If the new page is also routeDetail, do not animate out
         // Navigating from one routeDetail to another (e.g. favorites → different route)
         // is fine — don't clear in that case.
-        if case .routeDetail = newPage { return }
+        if case .routeDetail(_, _, _) = newPage { return }
         // Only clean up if onDismiss hasn't already done so.
         guard viewModel.isRouteDetailPresented else { return }
         viewModel.isRouteDetailPresented = false

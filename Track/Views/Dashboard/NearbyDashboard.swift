@@ -412,6 +412,10 @@ struct GroupedRouteList: View {
                         guard let arrival = dir.liveArrivals.first else { return }
                         viewModel.trackNearbyArrival(
                             arrival, location: locationManager.currentLocation)
+                    },
+                    onAlertTapped: {
+                        let directionIndex = viewModel.preferredDirectionIndex(for: group)
+                        sheetNavigator.navigate(to: .routeDetail(group: group, directionIndex: directionIndex, initialTab: .alerts))
                     }
                 )
             }

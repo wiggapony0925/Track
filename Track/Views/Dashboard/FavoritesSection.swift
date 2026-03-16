@@ -318,7 +318,7 @@ struct FavoriteCard: View {
             // Bottom row: Text Info
             VStack(alignment: .leading, spacing: 2) {
                 Text(favorite.stopName)
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.system(size: 13, weight: .heavy, design: .rounded))
                     .foregroundColor(AppTheme.Colors.textPrimary)
                     .lineLimit(2)
                     .minimumScaleFactor(0.7)
@@ -354,7 +354,7 @@ struct FavoriteCard: View {
                 let eta = resolvedETA(for: arrival)
                 let isNow = eta.isAtStop || eta.secondsRemaining <= 30
                 Text(isNow ? "Now" : "\(eta.minutesRemaining) min")
-                    .font(.custom("Helvetica-Bold", size: 14))
+                    .font(.system(size: 14, weight: .heavy, design: .rounded))
                     .foregroundColor(
                         eta.minutesRemaining <= 2
                             ? AppTheme.Colors.alertRed
@@ -363,7 +363,7 @@ struct FavoriteCard: View {
             }
         } else {
             Text("—")
-                .font(.custom("Helvetica-Bold", size: 14))
+                .font(.system(size: 14, weight: .heavy, design: .rounded))
                 .foregroundColor(AppTheme.Colors.textSecondary)
         }
     }

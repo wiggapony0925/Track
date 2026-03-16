@@ -106,7 +106,7 @@ struct RouteBadge: View {
     
     private var subwayBadge: some View {
         Text(routeID)
-            .font(.custom("Helvetica-Bold", size: size.fontSize))
+            .font(.system(size: size.fontSize, weight: .heavy, design: .rounded))
             .foregroundColor(AppTheme.SubwayColors.textColor(for: routeID))
             .minimumScaleFactor(0.4)
             .lineLimit(1)

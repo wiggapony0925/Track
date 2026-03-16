@@ -212,6 +212,7 @@ struct RouteDetailSheet: View {
         smartETAProvider: ((NearbyTransitResponse) -> SmartETA)? = nil,
         liveVehicleCount: Int = 0,
         elevatorOutages: [ElevatorStatus] = [],
+        initialTab: RouteDetailTab? = nil,
         isSheetExpanded: Bool = false,
         is3DMode: Binding<Bool> = .constant(false),
         cameraPosition: Binding<TrackCameraPosition> = .constant(.automatic),
@@ -242,6 +243,7 @@ struct RouteDetailSheet: View {
         self.smartETAProvider = smartETAProvider
         self.liveVehicleCount = liveVehicleCount
         self.elevatorOutages = elevatorOutages
+        self._selectedTab = State(initialValue: initialTab ?? .stops)
         self.onTrack = onTrack
         self.isTracking = isTracking
         self.isTrackingAny = isTrackingAny
@@ -323,18 +325,39 @@ struct RouteDetailSheet: View {
         return group.directions[idx]
     }
 
-    /// Alerts that match this route (by routeId or displayName), filtered to the same mode.
     private var routeAlerts: [TransitAlert] {
         let byId = serviceAlerts.matching(routeId: group.routeId, mode: group.mode)
         let byName = serviceAlerts.matching(routeId: group.displayName, mode: group.mode)
-        // Merge without duplicates
+        
         var seen = Set<String>()
         var result: [TransitAlert] = []
+        
+        // 1. Gather full alerts from the global serviceAlerts feed
         for alert in byId + byName {
             if seen.insert(alert.id).inserted {
                 result.append(alert)
             }
         }
+        
+        // 2. Synthesize and append any inline alerts attached directly by the backend response
+        // Deduplicate by title to prevent showing the exact same alert twice.
+        let existingTitles = Set(result.map { $0.title })
+        for inline in group.alerts {
+            if !existingTitles.contains(inline.title) {
+                let synthetic = TransitAlert(
+                    routeId: group.routeId,
+                    title: inline.title,
+                    description: "", // Inline alerts don't provide a full body
+                    severity: inline.severity,
+                    mode: group.mode,
+                    affectedRoutes: inline.affectedRoutes,
+                    alertType: inline.alertType,
+                    sortOrder: inline.sortOrder
+                )
+                result.append(synthetic)
+            }
+        }
+        
         return result.sortedBySeverityAndTime()
     }
 

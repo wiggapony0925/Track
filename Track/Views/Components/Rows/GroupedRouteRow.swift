@@ -26,6 +26,7 @@ struct  GroupedRouteRow: View {
     var onDirectionChanged: ((Int) -> Void)? = nil
     var onSelect: ((Int) -> Void)? = nil
     var onTrack: ((Int) -> Void)? = nil
+    var onAlertTapped: (() -> Void)? = nil
     var presentation: GroupedRouteRowPresentation = .standard
 
     @State private var currentDirectionIndex = 0
@@ -272,7 +273,7 @@ struct  GroupedRouteRow: View {
     }
 
     private var mainRowHStack: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 12) {
             routeBadgeView
 
             if visibleDirections.isEmpty {
@@ -294,8 +295,6 @@ struct  GroupedRouteRow: View {
             if !visibleDirections.isEmpty {
                 countdownPanel
             }
-
-            chevronPill
         }
     }
 
@@ -344,11 +343,12 @@ struct  GroupedRouteRow: View {
 
                     VStack(alignment: .leading, spacing: 6) {
                         Text(label)
-                            .font(.system(size: 15, weight: .bold))
+                            .font(.system(size: 15, weight: .bold, design: .rounded))
                             .foregroundColor(AppTheme.Colors.textPrimary)
                             .lineLimit(2)
-                            .minimumScaleFactor(0.6)
+                            .minimumScaleFactor(0.4)
                             .fixedSize(horizontal: false, vertical: true)
+                            .padding(.vertical, 2)
 
                         if let arrival = countdownArrival(for: direction) {
                             HStack(spacing: 4) {
@@ -375,7 +375,6 @@ struct  GroupedRouteRow: View {
             get: { currentDirectionIndex },
             set: { if let newValue = $0 { currentDirectionIndex = newValue } }
         ))
-        .frame(height: 68)
     }
 
     @ViewBuilder
@@ -428,7 +427,6 @@ struct  GroupedRouteRow: View {
         VStack(alignment: .trailing, spacing: 0) {
             countdownView
         }
-        .frame(minWidth: isFavoritePresentation ? 60 : 70, alignment: .trailing)
         .padding(.trailing, 4)
     }
 
@@ -444,34 +442,40 @@ struct  GroupedRouteRow: View {
         if let topAlert = group.alerts.first {
             let severityColor: Color = topAlert.severity == "severe" ? AppTheme.Colors.alertRed : AppTheme.Colors.warningYellow
             let extraCount: Int = group.alerts.count - 1
-            HStack(spacing: 8) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(severityColor)
-
-                Text(topAlert.title)
-                    .font(.custom("Helvetica-Bold", size: 11))
-                    .foregroundColor(AppTheme.Colors.textPrimary)
-                    .lineLimit(1)
-
-                Spacer(minLength: 8)
-
-                if extraCount > 0 {
-                    Text("+\(extraCount)")
-                        .font(.custom("Helvetica-Bold", size: 10))
+            Button {
+                HapticManager.selection()
+                onAlertTapped?()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 11, weight: .bold))
                         .foregroundColor(severityColor)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 4)
-                        .background(severityColor.opacity(0.14))
-                        .clipShape(Capsule())
+
+                    Text(topAlert.title)
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .foregroundColor(AppTheme.Colors.textPrimary)
+                        .lineLimit(1)
+
+                    Spacer(minLength: 8)
+
+                    if extraCount > 0 {
+                        Text("+\(extraCount)")
+                            .font(.custom("Helvetica-Bold", size: 10))
+                            .foregroundColor(severityColor)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 4)
+                            .background(severityColor.opacity(0.14))
+                            .clipShape(Capsule())
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(severityColor.opacity(0.12))
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(severityColor.opacity(0.12))
-            }
+            .buttonStyle(.plain)
             .padding(.horizontal, rowHorizontalPadding)
             .padding(.bottom, rowVerticalPadding)
         }
@@ -545,37 +549,32 @@ struct  GroupedRouteRow: View {
         let countdownFirst = countdownArrival(for: dir)
 
         if let first = countdownFirst {
-            // ── Live data — smart countdown using ArrivalETAEngine ──
-            VStack(spacing: 2) {
+            // ── Live data — smart coun
+            let isSched = first.status == "Scheduled"
+            
+            // ETA IGLOO CARD
+            VStack(alignment: .trailing, spacing: 2) {
                 TimelineView(.periodic(from: .now, by: 1.0)) { _ in
                     let eta = resolvedETA(for: first)
 
-                    // Same isPastArrival guard that RouteDetailSheet uses in its
-                    // TimelineView — prevents the row showing a ghost "Now" for
-                    // a bus that already left while the sheet has already removed
-                    // its chip.  Without this, the 90s liveArrivals window and
-                    // the real-time isPastArrival check were out of sync.
                     if eta.isPastArrival {
-                        // Bus departed — show "--" until the next backend poll
-                        // replaces this arrival with a newer one.
                         Text("--")
                             .font(.system(size: 20, weight: .heavy, design: .rounded))
                             .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.4))
                     } else {
                         let mins = eta.minutesRemaining
                         let isNow = eta.isAtStop || eta.secondsRemaining <= 30
-                        let isSched = first.status == "Scheduled"
 
                         HStack(alignment: .firstTextBaseline, spacing: 2) {
                             Text(isNow ? "Now" : "\(mins)")
                                 .font(.system(size: isNow ? 20 : 24, weight: .heavy, design: .rounded))
-                                .foregroundColor(isSched ? AppTheme.Colors.textSecondary.opacity(0.45) : AppTheme.Colors.countdown(mins))
+                                .foregroundColor(isSched ? AppTheme.Colors.textSecondary.opacity(0.6) : AppTheme.Colors.textPrimary)
                                 .contentTransition(.numericText())
 
                             if !isNow {
                                 Text("min")
                                     .font(.system(size: 11, weight: .bold))
-                                    .foregroundColor(isSched ? AppTheme.Colors.textSecondary.opacity(0.35) : AppTheme.Colors.textSecondary)
+                                    .foregroundColor(isSched ? AppTheme.Colors.textSecondary.opacity(0.5) : AppTheme.Colors.textSecondary)
                             }
                         }
                     }
@@ -590,26 +589,27 @@ struct  GroupedRouteRow: View {
                 for: dir, provider: smartETAProvider
             )
             if let mins = soonestScheduled {
-                VStack(spacing: 2) {
+                // SCHEDULED IGLOO CARD
+                VStack(alignment: .trailing, spacing: 2) {
                     HStack(alignment: .firstTextBaseline, spacing: 2) {
                         Text("\(mins)")
-                            .font(.system(size: 26, weight: .heavy, design: .rounded))
-                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.45))
+                            .font(.system(size: 24, weight: .heavy, design: .rounded))
+                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
                             .contentTransition(.numericText())
                         Text("min")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.35))
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.5))
                     }
-                    HStack(spacing: 2) {
+                    HStack(spacing: 3) {
                         Image(systemName: "calendar.badge.clock")
-                            .font(.system(size: 7, weight: .bold))
+                            .font(.system(size: 9, weight: .bold))
                         Text("Sched")
-                            .font(.system(size: 9, weight: .heavy))
+                            .font(.system(size: 10, weight: .heavy, design: .rounded))
                     }
-                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
+                    .foregroundColor(AppTheme.Colors.textPrimary)
                     .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(AppTheme.Colors.textSecondary.opacity(0.08))
+                    .padding(.vertical, 3)
+                    .background(AppTheme.Colors.textSecondary.opacity(0.15))
                     .clipShape(Capsule())
                 }
             } else {
@@ -641,40 +641,47 @@ struct  GroupedRouteRow: View {
 
         if arrival.isCancelled {
             Text("Cancelled")
-                .font(.custom("Helvetica-Bold", size: 9))
+                .font(.system(size: 10, weight: .heavy, design: .rounded))
                 .foregroundColor(.white)
                 .padding(.horizontal, 6)
-                .padding(.vertical, 2)
+                .padding(.vertical, 3)
                 .background(AppTheme.Colors.alertRed)
                 .clipShape(Capsule())
         } else if isDelayed {
             Text("Delayed")
-                .font(.custom("Helvetica-Bold", size: 9))
+                .font(.system(size: 10, weight: .heavy, design: .rounded))
                 .foregroundColor(.white)
                 .padding(.horizontal, 6)
-                .padding(.vertical, 2)
+                .padding(.vertical, 3)
                 .background(AppTheme.Colors.alertRed)
                 .clipShape(Capsule())
         } else if arrival.isRealTime {
-            // Live real-time arrival (SIRI, GTFS-RT, OBA) — green "Live" pill.
-            // Covers subway "On Time", bus "< 1 stop away", rail "On Time", etc.
+            // Live real-time arrival — solid bright green pill (Transit 6.0 aesthetic)
             HStack(spacing: 3) {
                 Circle()
-                    .fill(AppTheme.Colors.successGreen)
+                    .fill(.white)
                     .frame(width: 5, height: 5)
                 Text("Live")
-                    .font(.custom("Helvetica-Bold", size: 9))
-                    .foregroundColor(AppTheme.Colors.successGreen)
+                    .font(.system(size: 10, weight: .heavy, design: .rounded))
+                    .foregroundColor(.white)
             }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(AppTheme.Colors.successGreen)
+            .clipShape(Capsule())
         } else {
-            // Purely static GTFS / backend-flagged as scheduled
+            // Purely static GTFS / Scheduled — solid grey pill
             HStack(spacing: 3) {
                 Image(systemName: "calendar.badge.clock")
-                    .font(.system(size: 8, weight: .semibold))
+                    .font(.system(size: 9, weight: .bold))
                 Text("Sched")
-                    .font(.custom("Helvetica", size: 10))
+                    .font(.system(size: 10, weight: .heavy, design: .rounded))
             }
-            .foregroundColor(AppTheme.Colors.textSecondary)
+            .foregroundColor(AppTheme.Colors.textPrimary)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(AppTheme.Colors.textSecondary.opacity(0.15))
+            .clipShape(Capsule())
         }
     }
 }

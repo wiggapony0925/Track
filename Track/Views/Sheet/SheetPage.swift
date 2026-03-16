@@ -16,7 +16,7 @@ enum SheetPage: Equatable, Identifiable {
     case dashboard
     
     /// Route detail view for a specific transit route
-    case routeDetail(group: GroupedNearbyTransitResponse, directionIndex: Int)
+    case routeDetail(group: GroupedNearbyTransitResponse, directionIndex: Int, initialTab: RouteDetailSheet.RouteDetailTab? = nil)
     
     /// Settings and preferences
     case settings
@@ -47,7 +47,7 @@ enum SheetPage: Equatable, Identifiable {
         switch self {
         case .dashboard:
             return "dashboard"
-        case .routeDetail(let group, _):
+        case .routeDetail(let group, _, _):
             return "routeDetail-\(group.routeId)"
         case .settings:
             return "settings"
@@ -74,8 +74,8 @@ enum SheetPage: Equatable, Identifiable {
         switch (lhs, rhs) {
         case (.dashboard, .dashboard):
             return true
-        case (.routeDetail(let g1, let d1), .routeDetail(let g2, let d2)):
-            return g1.routeId == g2.routeId && d1 == d2
+        case (.routeDetail(let g1, let d1, let tab1), .routeDetail(let g2, let d2, let tab2)):
+            return g1.routeId == g2.routeId && d1 == d2 && tab1 == tab2
         case (.settings, .settings):
             return true
         case (.profileSettings, .profileSettings):

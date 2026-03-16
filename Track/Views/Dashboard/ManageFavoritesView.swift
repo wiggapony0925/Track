@@ -353,6 +353,9 @@ struct ManageFavoritesView: View {
                         onTrack: { directionIndex in
                             onTrack?(group, directionIndex)
                         },
+                        onAlertTapped: isEditing ? nil : {
+                            sheetNavigator.navigate(to: .routeDetail(group: group, directionIndex: 0, initialTab: .alerts))
+                        },
                         presentation: .favorite
                     )
                 } else if let fav = repFav {
