@@ -182,15 +182,35 @@ async def _periodic_feed_refresh():
         await asyncio.sleep(_FEED_REFRESH_INTERVAL)
         try:
             t0 = time.perf_counter()
-            results = await asyncio.gather(
-                *[get_arrivals_for_line(line) for line in feed_lines],
-                fetch_rail_arrivals("lirr"),
-                fetch_rail_arrivals("metro_north"),
-                return_exceptions=True,
-            )
+            ok = 0
+            total = len(feed_lines) + 2  # subway feeds + LIRR + MNR
+
+            # ── Process feeds ONE AT A TIME ──
+            # On a 0.5-CPU Render Starter instance, launching all 11
+            # feeds concurrently causes massive GIL contention:
+            #   9 thread-pool workers × pure-Python entity iteration
+            #   → GIL monopolised → event-loop main thread starved
+            #   → health checks spike to 20+ seconds.
+            # Running sequentially means only ONE thread holds the GIL
+            # at any time, and the event loop can service health checks
+            # and user requests between feeds (during the network await).
+            for line in feed_lines:
+                try:
+                    await get_arrivals_for_line(line)
+                    ok += 1
+                except Exception:
+                    pass
+                await asyncio.sleep(0)  # yield to event loop
+
+            for rail in ("lirr", "metro_north"):
+                try:
+                    await fetch_rail_arrivals(rail)
+                    ok += 1
+                except Exception:
+                    pass
+                await asyncio.sleep(0)
+
             elapsed = time.perf_counter() - t0
-            ok = sum(1 for r in results if not isinstance(r, Exception))
-            total = len(results)
             if elapsed > 5.0 or ok < total:
                 TrackLogger.warning(
                     f"[FEED_REFRESH] {ok}/{total} feeds OK in {elapsed:.1f}s",

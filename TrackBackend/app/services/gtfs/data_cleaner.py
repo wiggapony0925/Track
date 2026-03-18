@@ -22,6 +22,25 @@ from app.utils.geo_utils import minutes_until as _minutes_until
 from app.utils.logger import TrackLogger
 
 
+# ---------------------------------------------------------------------------
+# Parsed-arrivals cache — avoid re-parsing protobuf entities on cache hits.
+#
+# The HTTP-level feed cache (_HTTP_CACHE in mta_client) stores raw bytes
+# with a 12-second fresh TTL.  Without this second cache, every call to
+# get_arrivals_for_line() runs _parse_feed_sync in the thread pool even
+# when the underlying bytes haven't changed — wasting CPU and causing GIL
+# contention when 9 feeds parse simultaneously during the background
+# refresh loop.
+#
+# With this cache, the second+ call within the TTL returns the pre-parsed
+# list in <1 µs — zero thread pool, zero CPU, zero GIL pressure.
+# ---------------------------------------------------------------------------
+import time as _time
+
+_PARSED_CACHE: dict[str, tuple[float, list, list, int]] = {}  # url → (ts, arrivals, siri_obs, entity_count)
+_PARSED_CACHE_TTL = 12.0  # match MTA_FEED_TTL_SECONDS
+
+
 def _parse_feed_sync(
     raw: bytes, line_id: str,
 ) -> tuple[list["TrackArrival"], list[tuple[str, str, float]], int]:
@@ -104,25 +123,39 @@ async def get_arrivals_for_line(line_id: str) -> list[TrackArrival]:
     Each feed covers a family of lines (e.g. ACE, BDFM).  We return
     ALL routes found in the feed — not just the representative letter —
     so the caller gets every train from that feed.
+
+    Performance: If the feed was parsed within the last 12 seconds
+    (by the background refresh loop or a prior request), returns the
+    cached result immediately — zero thread pool, zero CPU.
     """
     url = get_feed_url(line_id)
     if url is None:
         TrackLogger.warning(f"No feed URL for line_id={line_id}", tag="SUBWAY")
         return []
 
+    # ── Fast path: return cached parsed arrivals if still fresh ──
+    cached = _PARSED_CACHE.get(url)
+    if cached is not None:
+        ts, cached_arrivals, cached_siri_obs, cached_entity_count = cached
+        if _time.time() - ts < _PARSED_CACHE_TTL:
+            TrackLogger.cache(f"PARSED HIT {line_id}")
+            return list(cached_arrivals)  # shallow copy — caller may sort/filter
+
     raw = await fetch_protobuf(url)
 
     # Offload ALL CPU-bound work (protobuf parsing + entity iteration +
     # object creation) to the thread-pool so the event loop stays
     # responsive for health checks and other concurrent requests.
-    # The protobuf C extension releases the GIL during ParseFromString,
-    # and the entity iteration is pure CPU — neither needs the event loop.
     loop = asyncio.get_running_loop()
     arrivals, siri_obs, entity_count = await loop.run_in_executor(
         None, _parse_feed_sync, raw, line_id
     )
 
     arrivals.sort(key=lambda a: a.minutes_away)
+
+    # Cache the parsed result so subsequent calls skip all CPU work
+    _PARSED_CACHE[url] = (_time.time(), arrivals, siri_obs, entity_count)
+
     TrackLogger.subway(f"Feed {line_id}: {len(arrivals)} arrivals from {entity_count} entities")
 
     # ── Fire-and-forget recency observations ────────────────────────────

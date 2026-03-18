@@ -15,6 +15,13 @@ from app.clients.mta_client import fetch_protobuf
 from app.services.transit.station_lookup import get_stop_name
 from app.utils.geo_utils import minutes_until as _minutes_until
 from app.utils.logger import TrackLogger
+import time as _time
+
+# ── Parsed-arrivals cache ────────────────────────────────────────
+# Keyed by feed URL.  Background refresh populates it; user requests
+# return the cached list in < 1 µs — zero thread pool, zero CPU.
+_RAIL_PARSED_CACHE: dict[str, tuple[float, list, int]] = {}
+_RAIL_PARSED_CACHE_TTL = 12.0  # seconds — matches MTA_FEED_FRESH_TTL
 
 # Known terminal stop_ids for direction inference when direction_id is absent.
 # MNR: Grand Central = "1"; LIRR: Penn Station = "237", Atlantic Terminal = "12"
@@ -124,6 +131,14 @@ async def fetch_rail_arrivals(agency: str) -> list[TrackArrival]:
         TrackLogger.warning(f"Unknown rail agency: {agency}", tag="RAIL")
         return []
 
+    # ── Fast path: return cached parsed arrivals if still fresh ──
+    cached = _RAIL_PARSED_CACHE.get(url)
+    if cached is not None:
+        ts, cached_arrivals, _cnt = cached
+        if _time.time() - ts < _RAIL_PARSED_CACHE_TTL:
+            TrackLogger.cache(f"PARSED HIT rail/{agency}")
+            return list(cached_arrivals)
+
     raw = await fetch_protobuf(url)
 
     # Offload ALL CPU-bound work (protobuf parsing + entity iteration)
@@ -136,5 +151,9 @@ async def fetch_rail_arrivals(agency: str) -> list[TrackArrival]:
     )
 
     arrivals.sort(key=lambda a: a.arrival_ts)
+
+    # Cache the parsed result so subsequent calls skip all CPU work
+    _RAIL_PARSED_CACHE[url] = (_time.time(), arrivals, entity_count)
+
     TrackLogger.rail(f"{agency}: {len(arrivals)} arrivals from {entity_count} entities")
     return arrivals
