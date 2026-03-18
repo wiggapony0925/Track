@@ -246,14 +246,23 @@ def _route_prefix(route_id: str) -> str:
 # ---------------------------------------------------------------------------
 # Response-level cache for /nearby/grouped
 # ---------------------------------------------------------------------------
-# Caches the final assembled list[GroupedNearbyTransit] so that repeat
-# requests from the same ~111m GPS grid cell skip ALL upstream calls
-# and processing.  Uses stale-while-revalidate: serve stale instantly
-# and kick a background refresh so the next request gets fresh data.
+# Caches the final assembled list[GroupedNearbyTransit] **plus the pre-
+# serialised JSON bytes** so that repeat requests skip ALL upstream calls,
+# processing, AND Pydantic→JSON serialisation.  On a 0.5-CPU Render
+# instance, serialising 500 KB of Pydantic objects costs 3-6 seconds
+# when GIL-contending with background feed parsing.  Returning raw bytes
+# via ``Response(content=...)`` bypasses all of that.
+#
+# Uses stale-while-revalidate: serve stale bytes instantly and kick a
+# background refresh so the next request gets fresh data.
+
+from pydantic import TypeAdapter as _TypeAdapter
+
+_grouped_ta = _TypeAdapter(list[GroupedNearbyTransit])
 
 _nearby_resp_cache: dict[
     tuple[float, float, int, str | None],  # (rounded_lat, rounded_lon, radius, mode)
-    tuple[float, list["GroupedNearbyTransit"]],  # (timestamp, result)
+    tuple[float, list["GroupedNearbyTransit"], bytes],  # (timestamp, result, json_bytes)
 ] = {}
 _nearby_resp_inflight: dict[tuple, asyncio.Task] = {}
 
@@ -279,11 +288,14 @@ async def _compute_and_cache_grouped(
     alert_index = await _get_inline_alerts()
     grouped = _group_arrivals(flat, alert_index=alert_index)
 
+    # Pre-serialise so cache hits return raw bytes (zero Pydantic overhead)
+    json_bytes = _grouped_ta.dump_json(grouped)
+
     if len(_nearby_resp_cache) >= NEARBY_RESPONSE_MAX_SIZE:
         oldest_key = min(_nearby_resp_cache, key=lambda k: _nearby_resp_cache[k][0])
         del _nearby_resp_cache[oldest_key]
 
-    _nearby_resp_cache[key] = (_time.time(), grouped)
+    _nearby_resp_cache[key] = (_time.time(), grouped, json_bytes)
     return grouped
 
 
@@ -324,8 +336,9 @@ def _find_cached_grouped_fallback(
         tuple[float, float],
         tuple[float, float, int, str | None],
         list["GroupedNearbyTransit"],
+        bytes,
     ] | None = None
-    for candidate_key, (ts, data) in _nearby_resp_cache.items():
+    for candidate_key, (ts, data, jb) in _nearby_resp_cache.items():
         cand_lat, cand_lon, cand_radius, cand_mode = candidate_key
         if cand_radius != req_radius or cand_mode != req_mode:
             continue
@@ -344,13 +357,13 @@ def _find_cached_grouped_fallback(
 
         score = (abs(cand_lat - req_lat) + abs(cand_lon - req_lon), age)
         if best is None or score < best[0]:
-            best = (score, candidate_key, data)
+            best = (score, candidate_key, data, jb)
 
     if best is None:
         return None
-    score, candidate_key, data = best
+    score, candidate_key, data, json_bytes = best
     age = score[1]
-    return candidate_key, data, age
+    return candidate_key, data, age, json_bytes
 
 
 router = APIRouter(tags=["nearby"])
@@ -416,11 +429,11 @@ async def nearby_transit_grouped(
     # 1. Check cache
     cached = _nearby_resp_cache.get(key)
     if cached is not None:
-        ts, data = cached
+        ts, data, json_bytes = cached
         age = now - ts
         if age < NEARBY_RESPONSE_FRESH_TTL:
             TrackLogger.cache(f"RESP HIT (fresh {age:.1f}s) /nearby/grouped")
-            return data
+            return Response(content=json_bytes, media_type="application/json")
         if age < NEARBY_RESPONSE_STALE_TTL:
             TrackLogger.cache(f"RESP HIT (stale {age:.1f}s) /nearby/grouped — bg refresh")
             # Kick background refresh if not already in-flight
@@ -438,13 +451,13 @@ async def nearby_transit_grouped(
                         _nearby_resp_inflight.pop(k, None)
                 task = asyncio.create_task(_bg_refresh(key, effective_radius, mode))
                 _nearby_resp_inflight[key] = task
-            return data
+            return Response(content=json_bytes, media_type="application/json")
 
     nearby_fallback = _find_cached_grouped_fallback(
         key, now, max_age=NEARBY_RESPONSE_STALE_TTL, include_neighbor_cells=True
     )
     if nearby_fallback is not None:
-        fallback_key, fallback_data, fallback_age = nearby_fallback
+        fallback_key, fallback_data, fallback_age, fallback_json = nearby_fallback
         fallback_kind = "exact" if fallback_key == key else "neighbor-cell"
         TrackLogger.cache(f"RESP HIT ({fallback_kind} stale {fallback_age:.1f}s) /nearby/grouped")
         if key not in _nearby_resp_inflight:
@@ -462,7 +475,7 @@ async def nearby_transit_grouped(
 
             task = asyncio.create_task(_bg_refresh_exact(key, lat, lon, effective_radius, mode))
             _nearby_resp_inflight[key] = task
-        return fallback_data
+        return Response(content=fallback_json, media_type="application/json")
 
     # 2. Cache miss — coalesce concurrent requests for same key
     inflight = _nearby_resp_inflight.get(key)
@@ -484,7 +497,7 @@ async def nearby_transit_grouped(
                 include_neighbor_cells=True,
             )
             if fallback is not None:
-                fallback_key, fallback_data, fallback_age = fallback
+                fallback_key, fallback_data, fallback_age, _fb_json = fallback
                 TrackLogger.warning(
                     f"RESP STALE-IF-ERROR /nearby/grouped age={fallback_age:.1f}s "
                     f"exact={fallback_key == key} because {_describe_exception(exc)}",

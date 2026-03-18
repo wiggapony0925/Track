@@ -21,7 +21,7 @@ import time as _time
 # Keyed by feed URL.  Background refresh populates it; user requests
 # return the cached list in < 1 µs — zero thread pool, zero CPU.
 _RAIL_PARSED_CACHE: dict[str, tuple[float, list, int]] = {}
-_RAIL_PARSED_CACHE_TTL = 30.0  # must outlive background refresh cycle (~15-20s)
+_RAIL_PARSED_CACHE_TTL = 60.0  # must outlive bg refresh cycle + interval (~30s)
 
 # Known terminal stop_ids for direction inference when direction_id is absent.
 # MNR: Grand Central = "1"; LIRR: Penn Station = "237", Atlantic Terminal = "12"

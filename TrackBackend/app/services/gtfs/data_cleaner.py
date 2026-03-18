@@ -38,7 +38,7 @@ from app.utils.logger import TrackLogger
 import time as _time
 
 _PARSED_CACHE: dict[str, tuple[float, list, list, int]] = {}  # url → (ts, arrivals, siri_obs, entity_count)
-_PARSED_CACHE_TTL = 30.0  # must outlive background refresh cycle (~15-20s)
+_PARSED_CACHE_TTL = 60.0  # must outlive bg refresh cycle + interval (~30s)
 
 
 def _parse_feed_sync(
