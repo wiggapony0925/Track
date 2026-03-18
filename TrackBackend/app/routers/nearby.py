@@ -434,7 +434,7 @@ async def nearby_transit_grouped(
         if age < NEARBY_RESPONSE_FRESH_TTL:
             TrackLogger.cache(f"RESP HIT (fresh {age:.1f}s) /nearby/grouped")
             r = Response(content=json_bytes, media_type="application/json")
-            r.headers["X-Cache"] = f"HIT-FRESH age={age:.1f}s"
+            r.headers["X-Track-Cache"] = f"HIT-FRESH age={age:.1f}s"
             return r
         if age < NEARBY_RESPONSE_STALE_TTL:
             TrackLogger.cache(f"RESP HIT (stale {age:.1f}s) /nearby/grouped — bg refresh")
@@ -454,7 +454,7 @@ async def nearby_transit_grouped(
                 task = asyncio.create_task(_bg_refresh(key, effective_radius, mode))
                 _nearby_resp_inflight[key] = task
             resp = Response(content=json_bytes, media_type="application/json")
-            resp.headers["X-Cache"] = f"HIT-STALE age={age:.1f}s"
+            resp.headers["X-Track-Cache"] = f"HIT-STALE age={age:.1f}s"
             return resp
         # Fall through — entry exists but is too old
         TrackLogger.cache(f"RESP EXPIRED age={age:.1f}s > stale_ttl={NEARBY_RESPONSE_STALE_TTL}s")
