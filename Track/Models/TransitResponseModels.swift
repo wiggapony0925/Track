@@ -265,6 +265,22 @@ struct GroupedNearbyTransitResponse: Codable, Identifiable, Equatable {
         }
     }
 
+    /// True when at least one direction has a non-expired, non-placeholder
+    /// arrival.  Unlike ``hasRealArrivals`` (which only checks decode-time
+    /// data), this evaluates against the current wall-clock time so stale
+    /// cache / SWR entries that have passed are correctly detected.
+    var hasLiveArrivals: Bool {
+        directions.contains { !$0.liveArrivals.isEmpty }
+    }
+
+    /// True when the group had real arrivals at one point but they have ALL
+    /// expired (arrivalTs > 90 s in the past).  Placeholder-only groups
+    /// return false (they represent routes with no live data at all, not
+    /// expired data, and are intentionally kept visible around the clock).
+    var isExpired: Bool {
+        hasRealArrivals && !hasLiveArrivals
+    }
+
     /// True when at least one direction has a severe or warning alert.
     var hasAlert: Bool { !alerts.isEmpty }
 

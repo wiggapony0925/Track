@@ -461,7 +461,9 @@ struct GroupedRouteList: View {
                         viewModel.setPreferredDirectionIndex(directionIndex, for: group)
                         let dir = group.directions[
                             min(directionIndex, group.directions.count - 1)]
-                        guard let arrival = dir.liveArrivals.first else { return }
+                        guard let arrival = ArrivalHelpers.countdownArrival(
+                            for: dir, userLocation: locationManager.currentLocation, provider: { viewModel.smartETA(for: $0) }
+                        ) else { return }
                         viewModel.trackNearbyArrival(
                             arrival, location: locationManager.currentLocation)
                     },

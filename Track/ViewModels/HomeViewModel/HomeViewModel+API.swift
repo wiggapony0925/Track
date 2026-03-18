@@ -1420,7 +1420,6 @@ extension HomeViewModel {
         // moved away) and its stop coordinates may no longer be accurate,
         // which causes displayDistanceMeters to bucket it incorrectly.
         let maxGraceCycles = 3
-        let nowEpoch = Date.now.timeIntervalSince1970
         for oldGroup in existing where !newRouteIds.contains(oldGroup.routeId.uppercased()) {
             let graceKey = oldGroup.routeId.uppercased()
             let count = (missCounts[graceKey] ?? 0) + 1
@@ -1434,20 +1433,10 @@ extension HomeViewModel {
             }
 
             // Early-evict graced routes whose arrival timestamps have ALL
-            // expired (> 90 s in the past).  Keeping them would show a blank
-            // card ("--") that provides no useful information to the user.
-            let hasAnyFreshArrival = oldGroup.directions.contains { dir in
-                dir.arrivals.contains { arrival in
-                    guard !arrival.isPlaceholder else { return false }
-                    if let ts = arrival.arrivalTs, ts > 0 {
-                        return (nowEpoch - Double(ts)) <= 90
-                    }
-                    // Arrivals with no timestamp but non-placeholder minutes
-                    // are likely schedule-based and still valid.
-                    return arrival.minutesAway > 0 && arrival.minutesAway < 99
-                }
-            }
-            if !hasAnyFreshArrival {
+            // expired (> 90 s in the past).  Uses the model's `isExpired`
+            // property — same check as `liveArrivals` and `visibleDirections`
+            // — so all layers agree on when data is stale.
+            if oldGroup.isExpired {
                 AppLogger.shared.log(
                     "REFRESH",
                     message: "[\(source)] Early-evicting \(oldGroup.routeId) — all arrivals expired"

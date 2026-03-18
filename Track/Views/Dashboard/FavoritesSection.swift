@@ -125,6 +125,7 @@ struct FavoritesSection: View {
                                 favorite: favorite,
                                 matchedGroup: groupedTransit.first { $0.routeId == favorite.routeId },
                                 onTap: onSelect,
+                                userLocation: userLocation,
                                 smartETAProvider: smartETAProvider
                             )
                         }
@@ -245,6 +246,10 @@ struct FavoriteCard: View {
     let matchedGroup: GroupedNearbyTransitResponse?
     let onTap: (GroupedNearbyTransitResponse, Int) -> Void
     var isListRow: Bool = false
+    /// User's current location — used to pick the nearest stop for the
+    /// countdown, matching the same stop-selection logic as GroupedRouteRow
+    /// and RouteDetailSheet (via `ArrivalHelpers.countdownArrival`).
+    var userLocation: CLLocation? = nil
     /// Shared ETA provider — matches home row + route detail chip ETAs.
     var smartETAProvider: ((NearbyTransitResponse) -> SmartETA)? = nil
 
@@ -260,13 +265,20 @@ struct FavoriteCard: View {
         }
     }
 
-    /// First live arrival for the matched direction.
+    /// Next live arrival for the matched direction, picking the soonest
+    /// bus at the user's **nearest stop** — same algorithm as the nearby
+    /// row and detail sheet so all three always show the same number.
     private var nextArrival: NearbyTransitResponse? {
         guard let group = matchedGroup else { return nil }
         let dir = group.directions.first {
             $0.direction.lowercased() == (favorite.direction ?? "").lowercased()
         } ?? group.directions.first
-        return dir?.liveArrivals.first
+        guard let dir else { return nil }
+        return ArrivalHelpers.countdownArrival(
+            for: dir,
+            userLocation: userLocation,
+            provider: smartETAProvider
+        )
     }
 
     private var directionIndex: Int {

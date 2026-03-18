@@ -1583,7 +1583,26 @@ final class HomeViewModel {
             return false
         }
 
-        groupedTransit = result.groups
+        // Strip groups whose real arrivals have ALL expired since the cache
+        // was written.  This prevents a flash of "--" cards on app reopen
+        // when the disk cache is minutes old and buses have already passed.
+        // Placeholder-only groups (no live data at all) are preserved so
+        // routes that serve the area are always visible.
+        let freshGroups = result.groups.filter { !$0.isExpired }
+
+        // If filtering removed everything, treat this as a cache miss —
+        // all data was too stale.  Show skeletons and let the network
+        // refresh provide fresh data.
+        guard !freshGroups.isEmpty else {
+            let expiredCount = result.groups.count
+            AppLogger.shared.log(
+                "CACHE",
+                message: "📭 Session cache had \(expiredCount) groups but ALL expired (\(Int(result.age))s old) — showing skeletons"
+            )
+            return false
+        }
+
+        groupedTransit = freshGroups
 
         // Seed the GPS reference so the first render after cache load
         // can sort routes by distance instead of falling back to
@@ -1594,7 +1613,7 @@ final class HomeViewModel {
 
         // Populate flat transit array for fallback code paths
         var seenIDs = Set<String>()
-        nearbyTransit = result.groups
+        nearbyTransit = freshGroups
             .flatMap(\.directions)
             .flatMap(\.arrivals)
             .filter { seenIDs.insert($0.id).inserted }
@@ -1615,14 +1634,16 @@ final class HomeViewModel {
 
         if result.isLocationStale {
             let distStr = result.distanceFromCurrent.map { "\(Int($0))m away" } ?? "unknown distance"
+            let expiredCount = result.groups.count - freshGroups.count
             AppLogger.shared.log(
                 "CACHE",
-                message: "⚠️ Loaded \(result.groups.count) cached groups but location is stale (\(distStr), \(Int(result.age))s old) — force refresh needed"
+                message: "⚠️ Loaded \(result.groups.count) cached groups (\(expiredCount) expired, \(freshGroups.count) live) but location is stale (\(distStr), \(Int(result.age))s old) — force refresh needed"
             )
         } else {
+            let expiredCount = result.groups.count - freshGroups.count
             AppLogger.shared.log(
                 "CACHE",
-                message: "📦 Loaded \(result.groups.count) cached route groups (\(Int(result.age))s old, same area) — skipping skeletons"
+                message: "📦 Loaded \(freshGroups.count) live route groups from \(result.groups.count) cached (\(expiredCount) expired, \(Int(result.age))s old, same area) — skipping skeletons"
             )
         }
         return true

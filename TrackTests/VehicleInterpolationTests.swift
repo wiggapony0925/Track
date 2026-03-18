@@ -781,6 +781,7 @@ struct LiveArrivalsFilteringTests {
 
     @Test func mixedArrivalsBatchFiltering() {
         let futureTs = Int(Date.now.timeIntervalSince1970) + 300
+        let futureTs2 = futureTs + 180  // distinct ts to avoid dedup
         let oldTs = Int(Date.now.timeIntervalSince1970) - 200
 
         let arrivals = [
@@ -788,7 +789,7 @@ struct LiveArrivalsFilteringTests {
             arrival(minutesAway: 99, vehicleId: nil, tripId: nil),      // placeholder → drop
             arrival(minutesAway: 3, arrivalTs: oldTs, vehicleId: "V2", tripId: "T2"),          // old ts → drop
             arrival(minutesAway: 0, status: "scheduled", arrivalTs: nil, vehicleId: "V3", tripId: "T3"),  // sched 0 → drop
-            arrival(minutesAway: 8, arrivalTs: futureTs, vehicleId: "V4", tripId: "T4"),       // keep
+            arrival(minutesAway: 8, arrivalTs: futureTs2, vehicleId: "V4", tripId: "T4"),      // keep
         ]
         let direction = makeDirection(arrivals: arrivals)
         #expect(direction.liveArrivals.count == 2)

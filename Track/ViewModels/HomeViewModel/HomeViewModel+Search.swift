@@ -49,12 +49,12 @@ extension HomeViewModel {
     /// Searches route names, directions, current arrival stops, destinations,
     /// AND all stations served by the route.
     ///
-    /// **All nearby routes are included** even when no live buses are running
-    /// (e.g. Q37 at 2 AM).  Placeholder-only routes are kept so the user
-    /// always sees every route that serves their area, matching what transit
-    /// apps like Transit show around the clock.
+    /// Groups whose real arrivals have ALL expired (arrivalTs > 90 s past)
+    /// are stripped so stale "--" cards never appear.  Placeholder-only
+    /// routes (no live data at all) are preserved so the user always sees
+    /// every route that serves their area.
     var filteredGroupedTransit: [GroupedNearbyTransitResponse] {
-        let base = groupedTransit
+        let base = groupedTransit.filter { !$0.isExpired }
         guard !searchText.isEmpty else { return base }
         let query = searchText.lowercased()
         let stationRoutes = stationRoutesForQuery(query)
@@ -129,9 +129,10 @@ extension HomeViewModel {
 
     /// Grouped bus arrivals filtered by search text (from the nearby/grouped API).
     var filteredNearbyGroupedBusArrivals: [GroupedNearbyTransitResponse] {
-        let source = nearbyGroupedBusArrivals.isEmpty
+        let source = (nearbyGroupedBusArrivals.isEmpty
             ? groupedTransit.filter { $0.mode == "bus" }
             : nearbyGroupedBusArrivals
+        ).filter { !$0.isExpired }
         guard !searchText.isEmpty else { return source }
         let query = searchText.lowercased()
         let stationRoutes = stationRoutesForQuery(query)
@@ -142,9 +143,10 @@ extension HomeViewModel {
 
     /// Grouped subway arrivals filtered by search text (from the nearby/grouped API).
     var filteredNearbyGroupedSubwayArrivals: [GroupedNearbyTransitResponse] {
-        let source = nearbyGroupedSubwayArrivals.isEmpty
+        let source = (nearbyGroupedSubwayArrivals.isEmpty
             ? groupedTransit.filter { $0.mode == "subway" }
             : nearbyGroupedSubwayArrivals
+        ).filter { !$0.isExpired }
         guard !searchText.isEmpty else { return source }
         let query = searchText.lowercased()
         let stationRoutes = stationRoutesForQuery(query)
@@ -155,9 +157,10 @@ extension HomeViewModel {
 
     /// Grouped LIRR arrivals filtered by search text (from nearby/grouped API).
     var filteredNearbyGroupedLIRRArrivals: [GroupedNearbyTransitResponse] {
-        let source = nearbyGroupedLIRRArrivals.isEmpty
+        let source = (nearbyGroupedLIRRArrivals.isEmpty
             ? groupedTransit.filter { $0.mode == "lirr" }
             : nearbyGroupedLIRRArrivals
+        ).filter { !$0.isExpired }
         guard !searchText.isEmpty else { return source }
         let query = searchText.lowercased()
         let stationRoutes = stationRoutesForQuery(query)
@@ -168,9 +171,10 @@ extension HomeViewModel {
 
     /// Grouped Metro-North arrivals filtered by search text (from nearby/grouped API).
     var filteredNearbyGroupedMNRArrivals: [GroupedNearbyTransitResponse] {
-        let source = nearbyGroupedMNRArrivals.isEmpty
+        let source = (nearbyGroupedMNRArrivals.isEmpty
             ? groupedTransit.filter { $0.mode == "mnr" }
             : nearbyGroupedMNRArrivals
+        ).filter { !$0.isExpired }
         guard !searchText.isEmpty else { return source }
         let query = searchText.lowercased()
         let stationRoutes = stationRoutesForQuery(query)

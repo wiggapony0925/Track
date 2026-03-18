@@ -76,21 +76,29 @@ struct  GroupedRouteRow: View {
 
     /// Directions that have real data — filters out backend placeholder-only tabs
     /// (e.g., Phase C "Opposite Direction" with no live arrivals and all
-    /// placeholder minutesAway ≥ 99). Falls back to all directions if
-    /// filtering would leave zero.
+    /// placeholder minutesAway ≥ 99) **and** directions whose real arrivals
+    /// have ALL expired (arrivalTs > 90 s in the past).  Falls back to all
+    /// directions only when filtering would leave zero.
     private var visibleDirections: [DirectionArrivalsResponse] {
         let real = group.directions.filter { dir in
-            // Keep if it has at least one live (non-placeholder) arrival
+            // Keep if it has at least one live (non-placeholder, non-expired) arrival
             if !dir.liveArrivals.isEmpty { return true }
+
+            // Direction had real (non-placeholder) arrivals but they ALL
+            // expired (liveArrivals filtered them out) → hide it.
+            // Prevents stale "--" cards when cache/SWR data ages past
+            // the actual arrival time.
+            if dir.arrivals.contains(where: { !$0.isPlaceholder }) {
+                return false
+            }
+
             // Drop: "Opposite" direction with no live arrivals
             if dir.direction.lowercased() == "opposite" { return false }
             // Drop compass-code placeholder directions with no live data.
             // These are backend backfill (Phase C) — e.g. "SW" opposite of
             // "EAST SIDE YORK AV CROSSTOWN" — and just show "Southwest"
             // which is unhelpful.  They'll appear once buses start running.
-            if DirectionConstants.isFallbackDirection(dir.direction) && dir.liveArrivals.isEmpty {
-                return false
-            }
+            if DirectionConstants.isFallbackDirection(dir.direction) { return false }
             return true
         }
         return real.isEmpty ? group.directions : real
