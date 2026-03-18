@@ -22,50 +22,40 @@ from app.utils.geo_utils import minutes_until as _minutes_until
 from app.utils.logger import TrackLogger
 
 
-async def get_arrivals_for_line(line_id: str) -> list[TrackArrival]:
-    """Fetch & decode GTFS-RT Protobuf for *line_id*, returning clean arrivals.
+def _parse_feed_sync(
+    raw: bytes, line_id: str,
+) -> tuple[list["TrackArrival"], list[tuple[str, str, float]], int]:
+    """Parse a GTFS-RT protobuf feed and extract arrivals — **runs in a thread**.
 
-    Each feed covers a family of lines (e.g. ACE, BDFM).  We return
-    ALL routes found in the feed — not just the representative letter —
-    so the caller gets every train from that feed.
+    This is the CPU-heavy function that was previously blocking the event
+    loop.  Everything here is synchronous: protobuf deserialization,
+    entity iteration, string comparisons, Pydantic model creation.
+    Running it via ``run_in_executor`` keeps the async event loop free.
+
+    Returns (arrivals, siri_observations, entity_count).
     """
-    url = get_feed_url(line_id)
-    if url is None:
-        TrackLogger.warning(f"No feed URL for line_id={line_id}", tag="SUBWAY")
-        return []
-
-    raw = await fetch_protobuf(url)
-
-    # Offload CPU-bound protobuf parsing to the thread-pool so the
-    # event loop stays responsive for health checks and other requests.
-    loop = asyncio.get_running_loop()
     feed = gtfs_realtime_pb2.FeedMessage()
-    await loop.run_in_executor(None, feed.ParseFromString, raw)
+    feed.ParseFromString(raw)
 
     arrivals: list[TrackArrival] = []
-    siri_obs: list[tuple[str, str, float]] = []  # (route_id, stop_id, deviation_s)
+    siri_obs: list[tuple[str, str, float]] = []
 
     for entity in feed.entity:
         if not entity.HasField("trip_update"):
             continue
         trip = entity.trip_update
-        route = trip.trip.route_id  # e.g. "A", "C", "E" from the ACE feed
+        route = trip.trip.route_id
 
-        # Detect cancelled trips via GTFS-RT schedule_relationship.
-        # Value 3 = CANCELED in gtfs_realtime_pb2.TripDescriptor.ScheduleRelationship.
         trip_cancelled = False
         if trip.trip.HasField("schedule_relationship"):
             trip_cancelled = trip.trip.schedule_relationship == 3
-        
-        # Determine destination from the last stop in the update
+
         destination = None
         if trip.stop_time_update:
             last_stop_id = trip.stop_time_update[-1].stop_id
             destination = get_stop_name(last_stop_id)
-            # If default lookup failed (returned "Unknown"), try parent ID
             if destination == "Unknown" and len(last_stop_id) > 1 and last_stop_id[-1] in "NS":
                 destination = get_stop_name(last_stop_id[:-1])
-            
             if destination == "Unknown":
                 destination = None
 
@@ -74,8 +64,6 @@ async def get_arrivals_for_line(line_id: str) -> list[TrackArrival]:
             if arrival_time == 0:
                 continue
 
-            # Per-stop cancellation: schedule_relationship on stop_time_update
-            # Value 1 = SKIPPED in GTFS-RT StopTimeUpdate.ScheduleRelationship.
             stop_cancelled = trip_cancelled
             if not stop_cancelled and stu.HasField("schedule_relationship"):
                 stop_cancelled = stu.schedule_relationship == 1
@@ -83,15 +71,11 @@ async def get_arrivals_for_line(line_id: str) -> list[TrackArrival]:
             minutes = _minutes_until(arrival_time)
             direction = "N" if stu.stop_id.endswith("N") else "S"
 
-            # GTFS-RT delay field: signed integer in seconds (+ve = late).
-            # MTA populates this when it has real-time tracking on the trip.
             gtfs_delay_s: int | None = None
             if stu.HasField("arrival") and stu.arrival.delay != 0:
                 gtfs_delay_s = stu.arrival.delay
-                # Collect for batch observe — avoids per-stop Redis futures.
                 siri_obs.append((route, stu.stop_id, float(stu.arrival.delay)))
 
-            # Resolve station name: try full ID first, then strip N/S suffix
             resolved_name = get_stop_name(stu.stop_id)
             if resolved_name == stu.stop_id and len(stu.stop_id) > 1 and stu.stop_id[-1] in "NS":
                 resolved_name = get_stop_name(stu.stop_id[:-1])
@@ -111,8 +95,35 @@ async def get_arrivals_for_line(line_id: str) -> list[TrackArrival]:
                 )
             )
 
+    return arrivals, siri_obs, len(feed.entity)
+
+
+async def get_arrivals_for_line(line_id: str) -> list[TrackArrival]:
+    """Fetch & decode GTFS-RT Protobuf for *line_id*, returning clean arrivals.
+
+    Each feed covers a family of lines (e.g. ACE, BDFM).  We return
+    ALL routes found in the feed — not just the representative letter —
+    so the caller gets every train from that feed.
+    """
+    url = get_feed_url(line_id)
+    if url is None:
+        TrackLogger.warning(f"No feed URL for line_id={line_id}", tag="SUBWAY")
+        return []
+
+    raw = await fetch_protobuf(url)
+
+    # Offload ALL CPU-bound work (protobuf parsing + entity iteration +
+    # object creation) to the thread-pool so the event loop stays
+    # responsive for health checks and other concurrent requests.
+    # The protobuf C extension releases the GIL during ParseFromString,
+    # and the entity iteration is pure CPU — neither needs the event loop.
+    loop = asyncio.get_running_loop()
+    arrivals, siri_obs, entity_count = await loop.run_in_executor(
+        None, _parse_feed_sync, raw, line_id
+    )
+
     arrivals.sort(key=lambda a: a.minutes_away)
-    TrackLogger.subway(f"Feed {line_id}: {len(arrivals)} arrivals from {len(feed.entity)} entities")
+    TrackLogger.subway(f"Feed {line_id}: {len(arrivals)} arrivals from {entity_count} entities")
 
     # ── Fire-and-forget recency observations ────────────────────────────
     # Collect all SIRI delay observations and trip snapshots, then write

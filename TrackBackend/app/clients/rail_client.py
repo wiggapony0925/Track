@@ -35,47 +35,30 @@ def filter_fresh_arrivals(arrivals: list) -> list:
     return fresh
 
 
-async def fetch_rail_arrivals(agency: str) -> list[TrackArrival]:
-    """Fetch & clean arrivals for a rail agency ('lirr' or 'metro_north')."""
-    settings = get_settings()
+def _parse_rail_feed_sync(
+    raw: bytes, agency: str, lookup_agency: str,
+) -> tuple[list["TrackArrival"], int]:
+    """Parse a rail GTFS-RT feed — **runs in a thread**.
 
-    if agency == "lirr":
-        url = settings.urls.lirr
-    elif agency == "metro_north":
-        url = settings.urls.metro_north
-    else:
-        TrackLogger.warning(f"Unknown rail agency: {agency}", tag="RAIL")
-        return []
-
-    raw = await fetch_protobuf(url)
-
-    # Offload CPU-bound protobuf parsing to the thread-pool so the
-    # event loop stays responsive for health checks and other requests.
-    import asyncio as _asyncio
-    loop = _asyncio.get_running_loop()
+    Returns (arrivals, entity_count).
+    """
     feed = gtfs_realtime_pb2.FeedMessage()
-    await loop.run_in_executor(None, feed.ParseFromString, raw)
+    feed.ParseFromString(raw)
 
     arrivals: list[TrackArrival] = []
 
-    # Map feed agency name to station_lookup agency key
-    lookup_agency = "mnr" if agency == "metro_north" else agency
-    
     for entity in feed.entity:
         if not entity.HasField("trip_update"):
             continue
-            
+
         trip_update = entity.trip_update
         route_id = trip_update.trip.route_id
-        
-        # Determine destination from the last stop in the trip update
+
         destination = "Unknown"
         if trip_update.stop_time_update:
             last_stop_id = trip_update.stop_time_update[-1].stop_id
             destination = get_stop_name(last_stop_id, agency=lookup_agency)
 
-        # Determine direction — prefer GTFS direction_id, infer from
-        # terminal stop_ids when it's absent (e.g. Metro-North feeds).
         direction = "N/A"
         if trip_update.trip.HasField("direction_id"):
             direction = "Outbound" if trip_update.trip.direction_id == 1 else "Inbound"
@@ -88,32 +71,30 @@ async def fetch_rail_arrivals(agency: str) -> list[TrackArrival]:
                 direction = "Inbound"
 
         for stu in trip_update.stop_time_update:
-            # We want future arrivals
             arrival_time = 0
             if stu.HasField("arrival"):
                 arrival_time = stu.arrival.time
             elif stu.HasField("departure"):
                 arrival_time = stu.departure.time
-                
+
             if arrival_time == 0:
                 continue
-                
+
             minutes = _minutes_until(arrival_time)
 
-            # Derive delay-based status from GTFS-RT delay fields (seconds).
             delay_secs = 0
             if stu.HasField("arrival") and stu.arrival.HasField("delay"):
                 delay_secs = stu.arrival.delay
             elif stu.HasField("departure") and stu.departure.HasField("delay"):
                 delay_secs = stu.departure.delay
 
-            if delay_secs >= 360:          # ≥ 6 min
+            if delay_secs >= 360:
                 status = f"Late ({delay_secs // 60}m)"
-            elif delay_secs >= 60:         # 1-5 min
+            elif delay_secs >= 60:
                 status = f"Delayed ({delay_secs // 60}m)"
             else:
                 status = "On Time"
-            
+
             arrivals.append(
                 TrackArrival(
                     route_id=route_id,
@@ -128,7 +109,32 @@ async def fetch_rail_arrivals(agency: str) -> list[TrackArrival]:
                 )
             )
 
-    # Sort by arrival time
+    return arrivals, len(feed.entity)
+
+
+async def fetch_rail_arrivals(agency: str) -> list[TrackArrival]:
+    """Fetch & clean arrivals for a rail agency ('lirr' or 'metro_north')."""
+    settings = get_settings()
+
+    if agency == "lirr":
+        url = settings.urls.lirr
+    elif agency == "metro_north":
+        url = settings.urls.metro_north
+    else:
+        TrackLogger.warning(f"Unknown rail agency: {agency}", tag="RAIL")
+        return []
+
+    raw = await fetch_protobuf(url)
+
+    # Offload ALL CPU-bound work (protobuf parsing + entity iteration)
+    # to the thread-pool so the event loop stays responsive.
+    import asyncio as _asyncio
+    lookup_agency = "mnr" if agency == "metro_north" else agency
+    loop = _asyncio.get_running_loop()
+    arrivals, entity_count = await loop.run_in_executor(
+        None, _parse_rail_feed_sync, raw, agency, lookup_agency
+    )
+
     arrivals.sort(key=lambda a: a.arrival_ts)
-    TrackLogger.rail(f"{agency}: {len(arrivals)} arrivals from {len(feed.entity)} entities")
+    TrackLogger.rail(f"{agency}: {len(arrivals)} arrivals from {entity_count} entities")
     return arrivals
