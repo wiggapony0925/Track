@@ -9,7 +9,7 @@
 import Foundation
 
 /// Error types for transit data fetching.
-enum TransitError: Error, CustomStringConvertible {
+enum TransitError: Error, LocalizedError, CustomStringConvertible {
     case networkUnavailable
     case feedParsingFailed
     case signalLost
@@ -27,4 +27,6 @@ enum TransitError: Error, CustomStringConvertible {
             return error.localizedDescription
         }
     }
+
+    var errorDescription: String? { description }
 }

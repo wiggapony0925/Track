@@ -56,99 +56,115 @@ struct ScheduleEditorView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                // Days Selection
-                Section {
-                    LazyVGrid(columns: [
-                        GridItem(.flexible()),
-                        GridItem(.flexible()),
-                        GridItem(.flexible()),
-                        GridItem(.flexible()),
-                        GridItem(.flexible()),
-                        GridItem(.flexible()),
-                        GridItem(.flexible())
-                    ], spacing: 8) {
-                        ForEach([0, 1, 2, 3, 4, 5, 6], id: \.self) { day in
-                            dayButton(day: day)
-                        }
-                    }
-                    .padding(.vertical, 8)
-                } header: {
-                    Text("Active Days")
-                } footer: {
-                    Text("Select which days this schedule should be active.")
+            scheduleForm
+        }
+    }
+
+    // MARK: - Extracted Sub-Views
+
+    private var scheduleForm: some View {
+        let title: String = schedule == nil ? "New Schedule" : "Edit Schedule"
+        return Form {
+            daysSelectionSection
+            startTimeSection
+            durationSection
+            schedulePreviewSection
+        }
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Cancel") {
+                    dismiss()
                 }
-
-                // Start Time
-                Section {
-                    DatePicker("Time", selection: $startTime, displayedComponents: .hourAndMinute)
-                        .datePickerStyle(.compact)
-                } header: {
-                    Text("Start Time")
-                } footer: {
-                    Text("Widget will activate at this time on selected days.")
+                .foregroundColor(AppTheme.Colors.mtaBlue)
+            }
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Save") {
+                    saveSchedule()
                 }
+                .foregroundColor(AppTheme.Colors.mtaBlue)
+                .disabled(selectedDays.isEmpty)
+            }
+        }
+    }
 
-                // Duration
-                Section {
-                    Picker("Duration", selection: $duration) {
-                        Text("5 minutes").tag(5)
-                        Text("10 minutes").tag(10)
-                        Text("15 minutes").tag(15)
-                        Text("20 minutes").tag(20)
-                        Text("30 minutes").tag(30)
-                        Text("45 minutes").tag(45)
-                        Text("60 minutes").tag(60)
-                    }
-                } header: {
-                    Text("Duration")
-                } footer: {
-                    Text("How long the widget should stay active.")
-                }
-
-                // Preview
-                Section {
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Image(systemName: "calendar")
-                                .foregroundColor(AppTheme.Colors.mtaBlue)
-                            Text(previewText)
-                                .font(.custom("Helvetica", size: 14))
-                                .foregroundColor(AppTheme.Colors.textPrimary)
-                        }
-
-                        if let nextActivation = calculateNextActivation() {
-                            HStack {
-                                Image(systemName: "clock")
-                                    .foregroundColor(AppTheme.Colors.mtaBlue)
-                                Text("Next activation: \(nextActivation, style: .relative)")
-                                    .font(.custom("Helvetica", size: 13))
-                                    .foregroundColor(AppTheme.Colors.textSecondary)
-                            }
-                        }
-                    }
-                    .padding(.vertical, 4)
-                } header: {
-                    Text("Preview")
+    private var daysSelectionSection: some View {
+        Section {
+            LazyVGrid(columns: [
+                GridItem(.flexible()),
+                GridItem(.flexible()),
+                GridItem(.flexible()),
+                GridItem(.flexible()),
+                GridItem(.flexible()),
+                GridItem(.flexible()),
+                GridItem(.flexible())
+            ], spacing: 8) {
+                ForEach([0, 1, 2, 3, 4, 5, 6], id: \.self) { day in
+                    dayButton(day: day)
                 }
             }
-            .navigationTitle(schedule == nil ? "New Schedule" : "Edit Schedule")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                    .foregroundColor(AppTheme.Colors.mtaBlue)
+            .padding(.vertical, 8)
+        } header: {
+            Text("Active Days")
+        } footer: {
+            Text("Select which days this schedule should be active.")
+        }
+    }
+
+    private var startTimeSection: some View {
+        Section {
+            DatePicker("Time", selection: $startTime, displayedComponents: .hourAndMinute)
+                .datePickerStyle(.compact)
+        } header: {
+            Text("Start Time")
+        } footer: {
+            Text("Widget will activate at this time on selected days.")
+        }
+    }
+
+    private var durationSection: some View {
+        Section {
+            Picker("Duration", selection: $duration) {
+                Text("5 minutes").tag(5)
+                Text("10 minutes").tag(10)
+                Text("15 minutes").tag(15)
+                Text("20 minutes").tag(20)
+                Text("30 minutes").tag(30)
+                Text("45 minutes").tag(45)
+                Text("60 minutes").tag(60)
+            }
+        } header: {
+            Text("Duration")
+        } footer: {
+            Text("How long the widget should stay active.")
+        }
+    }
+
+    private var schedulePreviewSection: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Image(systemName: "calendar")
+                        .foregroundColor(AppTheme.Colors.mtaBlue)
+                    Text(previewText)
+                        .font(.custom("Helvetica", size: 14))
+                        .foregroundColor(AppTheme.Colors.textPrimary)
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        saveSchedule()
+
+                if let nextActivation = calculateNextActivation() {
+                    HStack {
+                        Image(systemName: "clock")
+                            .foregroundColor(AppTheme.Colors.mtaBlue)
+                        Text("Next activation: \(nextActivation, style: .relative)")
+                            .font(.custom("Helvetica", size: 13))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
                     }
-                    .foregroundColor(AppTheme.Colors.mtaBlue)
-                    .disabled(selectedDays.isEmpty)
                 }
             }
+            .padding(.vertical, 4)
+        } header: {
+            Text("Preview")
         }
     }
 

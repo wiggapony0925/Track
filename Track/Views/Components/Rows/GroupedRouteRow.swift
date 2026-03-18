@@ -246,7 +246,17 @@ struct  GroupedRouteRow: View {
                 shape.fill(
                     AppTheme.Gradients.tintWash(
                         routeColor,
-                        intensity: isFavoritePresentation ? 0.08 : 0.03
+                        intensity: isFavoritePresentation ? 0.10 : 0.04
+                    )
+                )
+            }
+            .overlay {
+                // Top-left chrome highlight for glass depth
+                shape.fill(
+                    LinearGradient(
+                        colors: [AppTheme.Colors.glassHighlight.opacity(0.08), Color.clear],
+                        startPoint: .topLeading,
+                        endPoint: .center
                     )
                 )
             }
@@ -254,14 +264,14 @@ struct  GroupedRouteRow: View {
                 shape.stroke(AppTheme.Colors.borderSubtle, lineWidth: 0.5)
             }
             .shadow(
-                color: AppTheme.Colors.shadow.opacity(isFavoritePresentation ? 0.06 : 0.04),
-                radius: isFavoritePresentation ? 12 : 8,
+                color: AppTheme.Colors.shadow.opacity(isFavoritePresentation ? 0.08 : 0.05),
+                radius: isFavoritePresentation ? 14 : 10,
                 x: 0,
-                y: 6
+                y: 5
             )
             .shadow(
-                color: AppTheme.Colors.shadowStrong.opacity(isFavoritePresentation ? 0.03 : 0.02),
-                radius: isFavoritePresentation ? 20 : 16,
+                color: routeColor.opacity(isFavoritePresentation ? 0.06 : 0.03),
+                radius: isFavoritePresentation ? 24 : 18,
                 x: 0,
                 y: 10
             )
@@ -282,7 +292,7 @@ struct  GroupedRouteRow: View {
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundColor(AppTheme.Colors.textPrimary)
                     Text("Check again soon for the next trip.")
-                        .font(.custom("Helvetica", size: 12))
+                        .font(.system(size: 12, weight: .regular, design: .default))
                         .foregroundColor(AppTheme.Colors.textSecondary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -341,7 +351,7 @@ struct  GroupedRouteRow: View {
                 ForEach(Array(visibleDirections.enumerated()), id: \.element.id) { index, direction in
                     let label: String = ArrivalHelpers.resolveDirectionLabel(for: direction)
 
-                    VStack(alignment: .leading, spacing: 6) {
+                    VStack(alignment: .leading, spacing: 5) {
                         Text(label)
                             .font(.system(size: 15, weight: .bold, design: .rounded))
                             .foregroundColor(AppTheme.Colors.textPrimary)
@@ -353,14 +363,14 @@ struct  GroupedRouteRow: View {
                         if let arrival = countdownArrival(for: direction) {
                             HStack(spacing: 4) {
                                 Image(systemName: "mappin.circle.fill")
-                                    .font(.system(size: 11, weight: .semibold))
+                                    .font(.system(size: 10, weight: .semibold))
                                 Text(arrival.stopName)
-                                    .font(.system(size: 11))
+                                    .font(.system(size: 11, weight: .medium))
                                     .lineLimit(1)
                                     .minimumScaleFactor(0.6)
                             }
-                            .foregroundColor(AppTheme.Colors.textSecondary)
-                            .padding(.top, 2)
+                            .foregroundColor(AppTheme.Colors.textTertiary)
+                            .padding(.top, 1)
                         }
                     }
                     .id(index) // Essential for scrollPosition binding
@@ -382,13 +392,13 @@ struct  GroupedRouteRow: View {
         if let dist = closestStopDistance,
             dist < Double.greatestFiniteMagnitude
         {
-            HStack(spacing: 4) {
+            HStack(spacing: 3) {
                 Image(systemName: "figure.walk")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: 11, weight: .semibold))
                 Text(formatDistanceImperial(dist))
-                    .font(.custom("Helvetica", size: 13))
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
             }
-            .foregroundColor(AppTheme.Colors.textSecondary)
+            .foregroundColor(AppTheme.Colors.textTertiary)
             .padding(.trailing, 4)
         }
     }
@@ -397,18 +407,18 @@ struct  GroupedRouteRow: View {
     private var paginationDots: some View {
         let dirCount: Int = visibleDirections.count
         if dirCount > 1 {
-            HStack(spacing: 5) {
+            HStack(spacing: 4) {
                 ForEach(0..<dirCount, id: \.self) { index in
                     let isSelected: Bool = index == currentDirectionIndex
                     Capsule()
                         .fill(
                             isSelected
-                                ? AppTheme.Colors.textPrimary.opacity(0.8)
-                                : AppTheme.Colors.textSecondary.opacity(0.2)
+                                ? routeColor.opacity(0.9)
+                                : AppTheme.Colors.textTertiary.opacity(0.20)
                         )
-                        .frame(width: isSelected ? 14 : 6, height: 6)
+                        .frame(width: isSelected ? 16 : 6, height: 5)
                         .animation(
-                            .spring(response: 0.35, dampingFraction: 0.8),
+                            .spring(response: 0.3, dampingFraction: 0.8),
                             value: currentDirectionIndex)
                         .onTapGesture {
                             HapticManager.impact(.light)
@@ -419,7 +429,7 @@ struct  GroupedRouteRow: View {
                 }
             }
             .padding(.horizontal, 4)
-            .padding(.vertical, 5)
+            .padding(.vertical, 4)
         }
     }
 
@@ -460,7 +470,7 @@ struct  GroupedRouteRow: View {
 
                     if extraCount > 0 {
                         Text("+\(extraCount)")
-                            .font(.custom("Helvetica-Bold", size: 10))
+                            .font(.system(size: 10, weight: .bold, design: .rounded))
                             .foregroundColor(severityColor)
                             .padding(.horizontal, 7)
                             .padding(.vertical, 4)
@@ -520,7 +530,7 @@ struct  GroupedRouteRow: View {
                 .foregroundColor(.white)
 
             Text(trackingBannerText)
-                .font(.custom("Helvetica-Bold", size: 12))
+                .font(.system(size: 12, weight: .bold, design: .rounded))
                 .foregroundColor(.white)
                 .lineLimit(1)
         }
@@ -553,28 +563,29 @@ struct  GroupedRouteRow: View {
             let isSched = first.status == "Scheduled"
             
             // ETA IGLOO CARD
-            VStack(alignment: .trailing, spacing: 2) {
+            VStack(alignment: .trailing, spacing: 3) {
                 TimelineView(.periodic(from: .now, by: 1.0)) { _ in
                     let eta = resolvedETA(for: first)
 
                     if eta.isPastArrival {
                         Text("--")
                             .font(.system(size: 20, weight: .heavy, design: .rounded))
-                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.4))
+                            .foregroundColor(AppTheme.Colors.textTertiary.opacity(0.4))
                     } else {
                         let mins = eta.minutesRemaining
                         let isNow = eta.isAtStop || eta.secondsRemaining <= 30
 
-                        HStack(alignment: .firstTextBaseline, spacing: 2) {
+                        HStack(alignment: .firstTextBaseline, spacing: 1) {
                             Text(isNow ? "Now" : "\(mins)")
-                                .font(.system(size: isNow ? 20 : 24, weight: .heavy, design: .rounded))
-                                .foregroundColor(isSched ? AppTheme.Colors.textSecondary.opacity(0.6) : AppTheme.Colors.textPrimary)
+                                .font(.system(size: isNow ? 20 : 26, weight: .heavy, design: .rounded))
+                                .foregroundColor(isSched ? AppTheme.Colors.textSecondary.opacity(0.55) : AppTheme.Colors.textPrimary)
                                 .contentTransition(.numericText())
 
                             if !isNow {
                                 Text("min")
-                                    .font(.system(size: 11, weight: .bold))
-                                    .foregroundColor(isSched ? AppTheme.Colors.textSecondary.opacity(0.5) : AppTheme.Colors.textSecondary)
+                                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                                    .foregroundColor(isSched ? AppTheme.Colors.textTertiary.opacity(0.5) : AppTheme.Colors.textTertiary)
+                                    .padding(.leading, 1)
                             }
                         }
                     }
@@ -640,47 +651,59 @@ struct  GroupedRouteRow: View {
         let isDelayed = status.contains("delay")
 
         if arrival.isCancelled {
-            Text("Cancelled")
-                .font(.system(size: 10, weight: .heavy, design: .rounded))
-                .foregroundColor(.white)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 3)
-                .background(AppTheme.Colors.alertRed)
-                .clipShape(Capsule())
+            HStack(spacing: 3) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 8, weight: .bold))
+                Text("Cancelled")
+                    .font(.system(size: 10, weight: .heavy, design: .rounded))
+            }
+            .foregroundColor(.white)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(AppTheme.Colors.alertRed)
+            .clipShape(Capsule())
         } else if isDelayed {
-            Text("Delayed")
-                .font(.system(size: 10, weight: .heavy, design: .rounded))
-                .foregroundColor(.white)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 3)
-                .background(AppTheme.Colors.alertRed)
-                .clipShape(Capsule())
+            HStack(spacing: 3) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 8, weight: .bold))
+                Text("Delayed")
+                    .font(.system(size: 10, weight: .heavy, design: .rounded))
+            }
+            .foregroundColor(.white)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(AppTheme.Colors.alertRed)
+            .clipShape(Capsule())
         } else if arrival.isRealTime {
-            // Live real-time arrival — solid bright green pill (Transit 6.0 aesthetic)
+            // Live real-time arrival — vibrant green pill
             HStack(spacing: 3) {
                 Circle()
                     .fill(.white)
-                    .frame(width: 5, height: 5)
+                    .frame(width: 4, height: 4)
                 Text("Live")
                     .font(.system(size: 10, weight: .heavy, design: .rounded))
                     .foregroundColor(.white)
             }
-            .padding(.horizontal, 6)
+            .padding(.horizontal, 7)
             .padding(.vertical, 3)
-            .background(AppTheme.Colors.successGreen)
+            .background {
+                Capsule()
+                    .fill(AppTheme.Colors.successGreen)
+                    .shadow(color: AppTheme.Colors.successGreen.opacity(0.3), radius: 4, x: 0, y: 1)
+            }
             .clipShape(Capsule())
         } else {
-            // Purely static GTFS / Scheduled — solid grey pill
+            // Purely static GTFS / Scheduled — muted pill
             HStack(spacing: 3) {
                 Image(systemName: "calendar.badge.clock")
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.system(size: 8, weight: .bold))
                 Text("Sched")
                     .font(.system(size: 10, weight: .heavy, design: .rounded))
             }
-            .foregroundColor(AppTheme.Colors.textPrimary)
-            .padding(.horizontal, 6)
+            .foregroundColor(AppTheme.Colors.textSecondary)
+            .padding(.horizontal, 7)
             .padding(.vertical, 3)
-            .background(AppTheme.Colors.textSecondary.opacity(0.15))
+            .background(AppTheme.Colors.textTertiary.opacity(0.12))
             .clipShape(Capsule())
         }
     }

@@ -45,10 +45,13 @@ struct BusDashboard: View {
 
     @ViewBuilder
     private func bucketedContent(referenceLocation refLocation: CLLocation?) -> some View {
-                let (nearYou, fartherAway, muchFarther) = viewModel.groupedDisplayBuckets(
+                let buckets: ([GroupedNearbyTransitResponse], [GroupedNearbyTransitResponse], [GroupedNearbyTransitResponse]) = viewModel.groupedDisplayBuckets(
                     from: groupedArrivals,
                     referenceLocation: refLocation
                 )
+                let nearYou: [GroupedNearbyTransitResponse] = buckets.0
+                let fartherAway: [GroupedNearbyTransitResponse] = buckets.1
+                let muchFarther: [GroupedNearbyTransitResponse] = buckets.2
                 
                 if !nearYou.isEmpty {
                     NearYouSectionHeader(radiusMeters: nearYouRadius, updated: lastUpdated)
@@ -108,11 +111,14 @@ struct BusDashboard: View {
                         message: "No bus results for \"\(viewModel.searchText)\""
                     )
                 } else {
-                    NoServiceEmptyState(
-                        icon: "bus.fill",
-                        title: "No Buses Nearby",
-                        message: "We couldn't find any bus arrivals within your search radius. Try expanding your radius in Settings.",
-                        brandColor: AppTheme.Colors.mtaBlue
+                    ErrorStateCard(
+                        .noService(
+                            icon: "bus.fill",
+                            title: "No Buses Nearby",
+                            message: "We couldn't find any bus arrivals within your search radius. Try expanding your radius in Settings.",
+                            brandColor: AppTheme.Colors.mtaBlue
+                        ),
+                        compact: true
                     )
                 }
     }

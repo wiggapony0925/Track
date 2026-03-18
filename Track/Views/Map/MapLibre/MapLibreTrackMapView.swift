@@ -76,9 +76,16 @@ struct MapLibreTrackMapView: View {
     /// for coordinate projection. Updated by MapLibreMapView's coordinator.
     @State private var mapViewRef: MLNMapView?
 
-    /// Incremented every camera frame so SwiftUI re-evaluates overlay
-    /// bodies and re-projects lat/lon → screen points during gestures.
+    /// Incremented on throttled camera frames (~30fps) so SwiftUI
+    /// re-evaluates overlay bodies and re-projects lat/lon → screen
+    /// points during gestures.  Throttled to avoid 60fps SwiftUI body
+    /// re-evaluation which causes frame drops.
     @State private var cameraChangeToken: UInt64 = 0
+
+    /// Tracks the last time we actually bumped `cameraChangeToken`.
+    /// Camera frames arriving within 33ms of the last bump are skipped,
+    /// effectively throttling overlay projection to ~30fps.
+    @State private var _lastCameraTokenTime: CFAbsoluteTime = 0
 
     /// Cached walking route coordinates — decoded from MKPolyline once,
     /// not on every body re-evaluation (which fires 60x/sec during gestures).
@@ -139,7 +146,15 @@ struct MapLibreTrackMapView: View {
                     self.mapViewRef = mapView
                 },
                 onCameraMove: {
-                    cameraChangeToken &+= 1
+                    // Throttle overlay projection to ~30fps (every 33ms).
+                    // The underlying MLNMapView still renders at 60fps for
+                    // smooth tile/polyline drawing — only SwiftUI overlay
+                    // body re-evaluation is throttled.
+                    let now = CFAbsoluteTimeGetCurrent()
+                    if now - _lastCameraTokenTime >= 0.033 {
+                        _lastCameraTokenTime = now
+                        cameraChangeToken &+= 1
+                    }
                 }
             )
             .equatable() // Bypass deep structural array equality check

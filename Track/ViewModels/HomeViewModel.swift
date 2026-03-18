@@ -32,6 +32,24 @@ final class HomeViewModel {
     /// displayed on cold launch.  The UI shows a subtle "Updating…" indicator
     /// instead of full skeleton placeholders.
     var isRefreshing = false
+    /// True while `refresh()` is executing. Used to prevent the 20s timer from
+    /// stacking duplicate refresh calls when the backend is slow (cold-start
+    /// can take 30-60s, causing 1-3 extra timer fires before the first fetch
+    /// returns). Without this, each tick spawns a new `refresh()` that passes
+    /// the `canSkipRefresh` gate (hasLoadedOnce is still false), creating a
+    /// retry storm.
+    private var _refreshInFlight = false
+
+    /// Tracks the single cold-start retry chain. When non-nil, a retry is
+    /// already scheduled — new retry requests are ignored to prevent
+    /// geometric growth (each failed fetch was scheduling a *new* 5s retry,
+    /// and each of those failures scheduled another, creating O(2^n) fetches).
+    var _coldStartRetryTask: Task<Void, Never>?
+    /// Current attempt counter for exponential backoff (5s → 10s → 20s → 40s).
+    var _coldStartRetryAttempt: Int = 0
+    /// Maximum number of cold-start retry attempts before giving up and
+    /// letting the normal 30s timer handle subsequent refreshes.
+    static let maxColdStartRetries = 5
     var errorMessage: String?
 
     /// True when `errorMessage` indicates a network/connectivity failure rather
@@ -41,6 +59,23 @@ final class HomeViewModel {
         return msg.contains("network") || msg.contains("offline")
             || msg.contains("internet") || msg.contains("connection")
             || msg.contains("timed out") || msg.contains("not connected")
+    }
+
+    /// True when `errorMessage` indicates a backend/server problem (5xx, timeout)
+    /// as opposed to a client-side network outage.
+    var isBackendError: Bool {
+        guard let msg = errorMessage?.lowercased() else { return false }
+        return msg.contains("server error") || msg.contains("502")
+            || msg.contains("503") || msg.contains("504")
+            || msg.contains("500") || msg.contains("couldn't be completed")
+    }
+
+    /// True when the user's real GPS location is outside the NYC metro service area.
+    /// The app still fetches data (using a Midtown fallback), but the UI can show
+    /// an "unsupported region" message instead of the generic empty state.
+    var isOutsideServiceArea: Bool {
+        guard let loc = lastKnownUserLocation else { return false }
+        return !AppTheme.MapConfig.isInServiceArea(loc.coordinate) && !isSearchPinActive
     }
 
     /// Timestamp of the last successful data refresh.
@@ -555,7 +590,7 @@ final class HomeViewModel {
     }
     /// Cancelable task for polyline rebuild — cancelled when the user switches
     /// directions rapidly so only the final selection triggers a full rebuild.
-    private var _polylineRebuildTask: Task<Void, Never>?
+    @ObservationIgnored private var _polylineRebuildTask: Task<Void, Never>?
     var selectedDirectionIndex: Int = 0 {
         didSet {
             // Invalidate vehicle filter caches when direction changes
@@ -585,7 +620,7 @@ final class HomeViewModel {
     // Walking route to the nearest station (forwarded from goMode)
     /// Cancelable task for directional split rebuild — debounces rapid GPS
     /// updates so the O(n×m) point-search only runs when location settles.
-    private var _splitRebuildTask: Task<Void, Never>?
+    @ObservationIgnored private var _splitRebuildTask: Task<Void, Never>?
     var nearestStopCoordinate: CLLocationCoordinate2D? {
         didSet {
             _splitRebuildTask?.cancel()
@@ -617,16 +652,22 @@ final class HomeViewModel {
     /// Validates the vehicle ID currently selected on the map.
     var tappedVehicleId: String? {
         didSet {
-            // When map selection changes, auto-expand the corresponding row
+            // When map selection changes, auto-expand the corresponding row.
+            // Deferred to the next run-loop tick so the mutation doesn't nest
+            // inside the @Observable registrar's `withMutation` for this property,
+            // which would re-enter observation tracking and SIGABRT.
             guard let id = tappedVehicleId else { return }
 
-            // Find the best matching arrival to expand
-            // prioritize exact vehicle ID match
-            if let match = nearbyTransit.first(where: { $0.vehicleId == id || $0.tripId == id }) {
-                // Only change if not already selected to avoid animation glitches
-                if selectedExpandedArrivalID != match.id {
-                    withAnimation {
-                        selectedExpandedArrivalID = match.id
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                // Find the best matching arrival to expand
+                // prioritize exact vehicle ID match
+                if let match = self.nearbyTransit.first(where: { $0.vehicleId == id || $0.tripId == id }) {
+                    // Only change if not already selected to avoid animation glitches
+                    if self.selectedExpandedArrivalID != match.id {
+                        withAnimation {
+                            self.selectedExpandedArrivalID = match.id
+                        }
                     }
                 }
             }
@@ -646,45 +687,58 @@ final class HomeViewModel {
     var busVehicles: [BusVehicleResponse] = [] {
         didSet {
             _busVehicleIndex = Dictionary(busVehicles.map { ($0.vehicleId, $0) }, uniquingKeysWith: { $1 })
-            _filteredBusVehiclesCache = nil  // invalidate cache
+            // Only invalidate filter cache when vehicle IDs change (new vehicles
+            // appeared or old ones disappeared), NOT on every position update.
+            // The filter only depends on route/direction/destination — positions
+            // don't affect which vehicles pass the filter.
+            let newIds = Set(busVehicles.map(\.vehicleId))
+            let oldIds = Set(oldValue.map(\.vehicleId))
+            if newIds != oldIds {
+                _filteredBusVehiclesCache = nil
+            }
         }
     }
     /// O(1) lookup by vehicleId — rebuilt automatically when busVehicles is set.
-    private var _busVehicleIndex: [String: BusVehicleResponse] = [:]
+    @ObservationIgnored private var _busVehicleIndex: [String: BusVehicleResponse] = [:]
 
     var trainVehicles: [TrainVehicle] = [] {
         didSet {
             _trainVehicleByTrip = Dictionary(trainVehicles.compactMap { v in v.tripId.map { ($0, v) } }, uniquingKeysWith: { $1 })
             _trainVehicleById = Dictionary(trainVehicles.map { ($0.id, $0) }, uniquingKeysWith: { $1 })
-            _filteredTrainVehiclesCache = nil  // invalidate cache
+            // Only invalidate filter cache when vehicle set membership changes.
+            let newIds = Set(trainVehicles.map(\.id))
+            let oldIds = Set(oldValue.map(\.id))
+            if newIds != oldIds {
+                _filteredTrainVehiclesCache = nil
+            }
         }
     }
     /// O(1) lookup by tripId — rebuilt automatically when trainVehicles is set.
-    private var _trainVehicleByTrip: [String: TrainVehicle] = [:]
+    @ObservationIgnored private var _trainVehicleByTrip: [String: TrainVehicle] = [:]
     /// O(1) lookup by id — rebuilt automatically when trainVehicles is set.
-    private var _trainVehicleById: [String: TrainVehicle] = [:]
+    @ObservationIgnored private var _trainVehicleById: [String: TrainVehicle] = [:]
 
     // Smooth bus interpolation state — stores the previous GPS snapshot
     // so we can glide between updates along the route polyline.
     /// Previous GPS positions keyed by vehicle ID for smooth interpolation.
-    var previousBusPositions: [String: BusSnapshot] = [:]
+    @ObservationIgnored var previousBusPositions: [String: BusSnapshot] = [:]
     /// When the last bus GPS batch arrived (for elapsed-time calculation).
-    var lastBusUpdateTime: Date = .distantPast
+    @ObservationIgnored var lastBusUpdateTime: Date = .distantPast
     /// Target GPS positions from the latest API response. The simulation
     /// interpolates `busVehicles` display positions toward these targets
     /// each tick, eliminating the snap-forward → jump-back flicker.
-    var _targetBusGPS: [String: BusVehicleResponse] = [:]
+    @ObservationIgnored var _targetBusGPS: [String: BusVehicleResponse] = [:]
 
     /// Previous train display positions for smooth cross-tick interpolation.
     /// Keyed by trip ID (same as TrainVehicle.id).
-    var _previousTrainPositions: [String: CLLocationCoordinate2D] = [:]
+    @ObservationIgnored var _previousTrainPositions: [String: CLLocationCoordinate2D] = [:]
     /// Train vehicles that disappeared in the latest poll. Kept for a grace
     /// period (1 poll cycle) to avoid markers vanishing on a single GTFS-RT dropout.
-    var _trainGraceBuffer: [String: (vehicle: TrainVehicle, missedAt: Date)] = [:]
+    @ObservationIgnored var _trainGraceBuffer: [String: (vehicle: TrainVehicle, missedAt: Date)] = [:]
     /// Bus vehicles that disappeared in the latest poll. Kept for a grace
     /// period (≤12 s) to avoid markers vanishing on a single SIRI dropout,
     /// which causes the "On Route" → "Scheduled" chip flicker.
-    var _busGraceBuffer: [String: (vehicle: BusVehicleResponse, missedAt: Date)] = [:]
+    @ObservationIgnored var _busGraceBuffer: [String: (vehicle: BusVehicleResponse, missedAt: Date)] = [:]
 
     // MARK: - Route Shape LRU Cache
     //
@@ -698,7 +752,7 @@ final class HomeViewModel {
     }
 
     /// In-memory LRU cache: routeId → (shape, timestamp).
-    private var _routeShapeCache: [String: CachedShape] = [:]
+    @ObservationIgnored private var _routeShapeCache: [String: CachedShape] = [:]
     private let _routeShapeCacheMaxAge: TimeInterval = 300  // 5 min
     private let _routeShapeCacheMaxSize = 10
 
@@ -990,9 +1044,9 @@ final class HomeViewModel {
 
     /// Cached result of `filteredBusVehicles`. Invalidated when `busVehicles`,
     /// `selectedDirectionIndex`, or `selectedGroupedRoute` changes.
-    private var _filteredBusVehiclesCache: [BusVehicleResponse]?
+    @ObservationIgnored private var _filteredBusVehiclesCache: [BusVehicleResponse]?
     /// Cached result of `filteredTrainVehicles`. Invalidated on same triggers.
-    private var _filteredTrainVehiclesCache: [TrainVehicle]?
+    @ObservationIgnored private var _filteredTrainVehiclesCache: [TrainVehicle]?
 
     /// Bus vehicles filtered to the currently selected direction.
     /// Uses a cache that's invalidated when inputs change, avoiding
@@ -1588,6 +1642,16 @@ final class HomeViewModel {
         if let location { lastKnownUserLocation = location }
         let loc = effectiveLocation(userLocation: location)
 
+        // Guard: if a refresh is already in-flight, don't stack another.
+        // The timer fires every 20s but a cold-start fetch can take 30-60s.
+        // Without this guard, each timer tick spawns a new refresh() call
+        // that never gets blocked by canSkipRefresh (hasLoadedOnce is still
+        // false), creating a pile-up of coalesced-but-redundant work.
+        if _refreshInFlight && !force {
+            AppLogger.shared.log("REFRESH", message: "⏭️ Skipped — refresh already in flight")
+            return false
+        }
+
         // Skip if data is still fresh and user hasn't moved far.
         // force=true bypasses this (used by pull-to-refresh / mode switch).
         if !force && canSkipRefresh(for: loc) {
@@ -1595,6 +1659,9 @@ final class HomeViewModel {
             isRefreshing = false
             return false
         }
+
+        _refreshInFlight = true
+        defer { _refreshInFlight = false }
 
         AppLogger.shared.log(
             "REFRESH",
@@ -1855,56 +1922,56 @@ final class HomeViewModel {
 
             // Fetch shape + vehicles truly in parallel and process each
             // result the instant it arrives (no sequential bottleneck).
-            await withTaskGroup(of: Void.self) { taskGroup in
-                // — Vehicle fetch —
-                taskGroup.addTask { @MainActor [weak self] in
-                    guard let self else { return }
-                    do {
-                        let vehicles = try await TrackAPI.fetchBusVehicles(routeID: group.routeId)
-                        guard self.selectedRouteId == loadingRouteId else { return }
-                        self.busVehicles = vehicles
-                        self._targetBusGPS = Dictionary(
-                            vehicles.map { ($0.vehicleId, $0) },
-                            uniquingKeysWith: { $1 }
+            // Using parallel Tasks instead of withTaskGroup to avoid
+            // `sending` closure warnings with @MainActor-isolated self.
+            let vehicleTask = Task { @MainActor [weak self] in
+                guard let self else { return }
+                do {
+                    let vehicles = try await TrackAPI.fetchBusVehicles(routeID: loadingRouteId)
+                    guard self.selectedRouteId == loadingRouteId else { return }
+                    self.busVehicles = vehicles
+                    self._targetBusGPS = Dictionary(
+                        vehicles.map { ($0.vehicleId, $0) },
+                        uniquingKeysWith: { $1 }
+                    )
+                    for v in vehicles {
+                        self.previousBusPositions[v.vehicleId] = BusSnapshot(
+                            lat: v.lat, lon: v.lon, timestamp: Date()
                         )
-                        for v in vehicles {
-                            self.previousBusPositions[v.vehicleId] = BusSnapshot(
-                                lat: v.lat, lon: v.lon, timestamp: Date()
-                            )
-                        }
-                        self.lastBusUpdateTime = Date()
-                    } catch {
-                        AppLogger.shared.logError("fetchBusVehicles(\(group.routeId))", error: error)
                     }
-                }
-
-                // — Shape fetch —
-                taskGroup.addTask { @MainActor [weak self] in
-                    guard let self else { return }
-                    do {
-                        let loadedShape: RouteShapeResponse
-                        if let cached = cachedShape {
-                            loadedShape = cached
-                            AppLogger.shared.log("SHAPE_CACHE", message: "HIT \(group.routeId)")
-                        } else {
-                            loadedShape = try await TrackAPI.fetchRouteShape(routeID: group.routeId)
-                            self.cacheRouteShape(loadedShape, for: group.routeId)
-                        }
-                        guard self.selectedRouteId == loadingRouteId else { return }
-                        self.routeShape = loadedShape
-                        let decoded: [[CLLocationCoordinate2D]] = loadedShape.decodedPolylines
-                        let totalPoints: Int = decoded.reduce(0) { $0 + $1.count }
-                        AppLogger.shared.log(
-                            "BUS_SHAPE",
-                            message:
-                                "Loaded shape for \(group.routeId): \(loadedShape.polylines.count) polylines (\(totalPoints) total points), \(loadedShape.stops.count) stops"
-                        )
-                        self.enrichGroupWithShapeDirections(loadedShape)
-                    } catch {
-                        AppLogger.shared.logError("fetchRouteShape(\(group.routeId))", error: error)
-                    }
+                    self.lastBusUpdateTime = Date()
+                } catch {
+                    AppLogger.shared.logError("fetchBusVehicles(\(loadingRouteId))", error: error)
                 }
             }
+
+            let shapeTask = Task { @MainActor [weak self] in
+                guard let self else { return }
+                do {
+                    let loadedShape: RouteShapeResponse
+                    if let cached = cachedShape {
+                        loadedShape = cached
+                        AppLogger.shared.log("SHAPE_CACHE", message: "HIT \(loadingRouteId)")
+                    } else {
+                        loadedShape = try await TrackAPI.fetchRouteShape(routeID: loadingRouteId)
+                        self.cacheRouteShape(loadedShape, for: loadingRouteId)
+                    }
+                    guard self.selectedRouteId == loadingRouteId else { return }
+                    self.routeShape = loadedShape
+                    let decoded: [[CLLocationCoordinate2D]] = loadedShape.decodedPolylines
+                    let totalPoints: Int = decoded.reduce(0) { $0 + $1.count }
+                    AppLogger.shared.log(
+                        "BUS_SHAPE",
+                        message:
+                            "Loaded shape for \(loadingRouteId): \(loadedShape.polylines.count) polylines (\(totalPoints) total points), \(loadedShape.stops.count) stops"
+                    )
+                    self.enrichGroupWithShapeDirections(loadedShape)
+                } catch {
+                    AppLogger.shared.logError("fetchRouteShape(\(loadingRouteId))", error: error)
+                }
+            }
+            _ = await vehicleTask.value
+            _ = await shapeTask.value
             // Polling handled by HomeView.onChange(of: selectedRouteId)
         } else if group.isLIRR {
             // LIRR: fetch the branch-specific polyline + live arrivals

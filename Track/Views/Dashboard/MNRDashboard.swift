@@ -117,12 +117,14 @@ struct MNRDashboard: View {
                         message: "No Metro-North results for \"\(viewModel.searchText)\""
                     )
                 } else {
-                    // Complete empty state - no data at all
-                    NoServiceEmptyState(
-                        icon: "train.side.rear.car",
-                        title: "No Metro-North Service",
-                        message: "We couldn't find any Metro-North departures right now. Try searching for a specific station or check back later.",
-                        brandColor: AppTheme.CommuterRailColors.mnrBlue
+                    ErrorStateCard(
+                        .noService(
+                            icon: "train.side.rear.car",
+                            title: "No Metro-North Service",
+                            message: "We couldn't find any Metro-North departures right now. Try searching for a specific station or check back later.",
+                            brandColor: AppTheme.CommuterRailColors.mnrBlue
+                        ),
+                        compact: true
                     )
                 }
             }

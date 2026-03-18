@@ -50,7 +50,7 @@ struct DashboardView: View {
     }
     private var scrollableContent: some View {
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 18) {
                     let initialLoad = !viewModel.hasLoadedOnce && viewModel.isLoading
                     let showTransitSkeleton = initialLoad && !hasTransitData
 

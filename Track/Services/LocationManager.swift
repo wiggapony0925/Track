@@ -21,6 +21,10 @@ final class LocationManager: NSObject, CLLocationManagerDelegate {
         manager.delegate = self
         manager.desiredAccuracy = kCLLocationAccuracyBest
         manager.distanceFilter = AppSettings.shared.distanceFilterMeters
+        // Hint to CoreLocation that the user is on foot / using transit.
+        // iOS can power-gate the GPS chip more aggressively between fixes.
+        manager.activityType = .otherNavigation
+        manager.pausesLocationUpdatesAutomatically = true
     }
 
     func requestPermission() {
@@ -57,8 +61,10 @@ final class LocationManager: NSObject, CLLocationManagerDelegate {
         manager.distanceFilter = kCLDistanceFilterNone
         manager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
         manager.startUpdatingLocation()
-        // Restore normal filter after a brief window (enough for 1-2 fixes)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
+        // Restore normal filter after a brief window (enough for 1-2 fixes).
+        // Reduced from 3s → 1s to avoid rapid-fire GPS callbacks that trigger
+        // cascading refresh cycles and waste energy.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
             guard let self else { return }
             self.manager.distanceFilter = AppSettings.shared.distanceFilterMeters
             self.manager.desiredAccuracy = kCLLocationAccuracyBest
@@ -86,11 +92,13 @@ final class LocationManager: NSObject, CLLocationManagerDelegate {
     }
 
     nonisolated func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
+        // Start location updates outside the Task so that the non-Sendable
+        // CLLocationManager parameter is not captured across isolation boundaries.
+        if status == .authorizedWhenInUse || status == .authorizedAlways {
+            manager.startUpdatingLocation()
+        }
         Task { @MainActor in
             authorizationStatus = status
-            if status == .authorizedWhenInUse || status == .authorizedAlways {
-                manager.startUpdatingLocation()
-            }
         }
     }
 

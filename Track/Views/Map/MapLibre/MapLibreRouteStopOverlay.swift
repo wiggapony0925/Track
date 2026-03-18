@@ -51,22 +51,28 @@ struct MapLibreRouteStopOverlay: View {
         GeometryReader { _ in
             ZStack {
                 ForEach(stops) { displayedStop in
-                    let stop = displayedStop.stop
-                    let coord = displayedStop.displayCoordinate
-                    if let point = projectToScreen(coord, mapView: mapView, margin: 30) {
-                        RouteStopMarker(
-                            isBusRoute: isBusRoute,
-                            isSelected: stop.id == selectedStopId,
-                            routeColor: routeColor,
-                            stopName: stop.name
-                        )
-                        .position(point)
-                        .onTapGesture { onStopTap(stop) }
-                    }
+                    stopMarkerView(for: displayedStop)
                 }
             }
         }
         .allowsHitTesting(true)
+    }
+
+    @ViewBuilder
+    private func stopMarkerView(for displayedStop: DisplayedRouteStop) -> some View {
+        let stop: BusStop = displayedStop.stop
+        let coord: CLLocationCoordinate2D = displayedStop.displayCoordinate
+        let isSelected: Bool = stop.id == selectedStopId
+        if let point: CGPoint = projectToScreen(coord, mapView: mapView, margin: 30) {
+            RouteStopMarker(
+                isBusRoute: isBusRoute,
+                isSelected: isSelected,
+                routeColor: routeColor,
+                stopName: stop.name
+            )
+            .position(point)
+            .onTapGesture { onStopTap(stop) }
+        }
     }
 }
 

@@ -3,7 +3,7 @@
 //  Track
 //
 //  Branded splash screen shown while restoring the user session.
-//  Uses AppTheme colors exclusively — no hardcoded values.
+//  Transit 6.0–inspired: cinematic glow, refined typography, smooth entrance.
 //
 
 import SwiftUI
@@ -12,16 +12,17 @@ struct SplashLoadingView: View {
 
     // MARK: – Animation State
 
-    @State private var iconScale: CGFloat = 0.6
+    @State private var iconScale: CGFloat = 0.7
     @State private var iconOpacity: Double = 0
+    @State private var titleOffset: CGFloat = 12
     @State private var titleOpacity: Double = 0
     @State private var subtitleOpacity: Double = 0
     @State private var dotsOpacity: Double = 0
     @State private var activeDot: Int = 0
     @State private var glowPhase: Bool = false
+    @State private var glowRadius: CGFloat = 25
 
     /// MTA subway-line accent colors for the loading dots.
-    /// Pulled from AppTheme.SubwayColors so they match the rest of the app.
     private let lineColors: [Color] = [
         AppTheme.SubwayColors.color(for: "1"),   // IRT Red
         AppTheme.SubwayColors.color(for: "4"),   // IRT Green
@@ -33,93 +34,150 @@ struct SplashLoadingView: View {
 
     var body: some View {
         ZStack {
-            // Background — uses the themed AppBackground (light grey / dark near-black)
-            ZStack {
-                AppTheme.Gradients.screen
-                AppTheme.Gradients.screenGlow
-            }
-                .ignoresSafeArea()
+            splashBackground
+            splashContent
+        }
+        .onAppear(perform: runEntranceAnimations)
+    }
 
-            VStack(spacing: 0) {
-                Spacer()
+    // MARK: – Extracted Subviews
 
-                // App icon with MTA Blue ambient glow
-                ZStack {
-                    RoundedRectangle(cornerRadius: 32)
-                        .fill(AppTheme.Colors.accentGlow.opacity(glowPhase ? 1.0 : 0.4))
-                        .frame(width: 130, height: 130)
-                        .blur(radius: 30)
+    private var splashBackground: some View {
+        ZStack {
+            AppTheme.Gradients.screen
+            AppTheme.Gradients.screenGlow
+                .opacity(glowPhase ? 1.0 : 0.6)
 
-                    Image("AppIconImage")
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 110, height: 110)
-                        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-                        .shadow(color: AppTheme.Colors.subwayBlack.opacity(0.35),
-                                radius: 20, y: 10)
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [
+                            AppTheme.Colors.accent.opacity(glowPhase ? 0.18 : 0.08),
+                            AppTheme.Colors.accentSecondary.opacity(0.04),
+                            Color.clear,
+                        ],
+                        center: .center,
+                        startRadius: 40,
+                        endRadius: 200
+                    )
+                )
+                .frame(width: 400, height: 400)
+                .offset(y: -40)
+                .blur(radius: 30)
+        }
+        .ignoresSafeArea()
+    }
+
+    private var splashContent: some View {
+        VStack(spacing: 0) {
+            Spacer()
+            appIconGlow
+            titleSection
+            loadingDots
+            Spacer()
+            Spacer()
+        }
+    }
+
+    private var appIconGlow: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 36)
+                .fill(AppTheme.Colors.accentGlow.opacity(glowPhase ? 0.7 : 0.25))
+                .frame(width: 140, height: 140)
+                .blur(radius: glowRadius)
+
+            RoundedRectangle(cornerRadius: 30)
+                .fill(AppTheme.Colors.accent.opacity(glowPhase ? 0.25 : 0.10))
+                .frame(width: 120, height: 120)
+                .blur(radius: 18)
+
+            Image("AppIconImage")
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 100, height: 100)
+                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .stroke(
+                            LinearGradient(
+                                colors: [
+                                    Color.white.opacity(0.20),
+                                    Color.white.opacity(0.05),
+                                    Color.clear,
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 0.5
+                        )
                 }
-                .scaleEffect(iconScale)
-                .opacity(iconOpacity)
+                .shadow(color: AppTheme.Colors.shadow.opacity(0.30), radius: 24, y: 12)
+        }
+        .scaleEffect(iconScale)
+        .opacity(iconOpacity)
+    }
 
-                // Title — primary text color
-                Text("Track")
-                    .font(AppTheme.Typography.headerLarge)
-                    .foregroundColor(AppTheme.Colors.textPrimary)
-                    .padding(.top, 24)
-                    .opacity(titleOpacity)
+    private var titleSection: some View {
+        VStack(spacing: 0) {
+            Text("Track")
+                .font(.system(size: 38, weight: .bold, design: .rounded))
+                .foregroundColor(AppTheme.Colors.textPrimary)
+                .padding(.top, 28)
+                .opacity(titleOpacity)
+                .offset(y: titleOffset)
 
-                // Subtitle — MTA Blue accent
-                Text("NYC Transit, Live")
-                    .font(AppTheme.Typography.cardSubtitle)
-                    .fontWeight(.medium)
-                    .foregroundColor(AppTheme.Colors.mtaBlue)
-                    .padding(.top, 6)
-                    .opacity(subtitleOpacity)
+            Text("NYC Transit, Live")
+                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                .foregroundColor(AppTheme.Colors.accent)
+                .tracking(0.8)
+                .padding(.top, 8)
+                .opacity(subtitleOpacity)
+        }
+    }
 
-                // Animated subway-colored loading dots
-                HStack(spacing: 10) {
-                    ForEach(0..<4, id: \.self) { index in
-                        Circle()
-                            .fill(lineColors[index])
-                            .frame(width: 8, height: 8)
-                            .scaleEffect(activeDot == index ? 1.5 : 1.0)
-                            .opacity(activeDot == index ? 1.0 : 0.35)
-                            .animation(
-                                .easeInOut(duration: 0.35),
-                                value: activeDot
-                            )
-                    }
-                }
-                .padding(.top, 32)
-                .opacity(dotsOpacity)
-
-                Spacer()
-                Spacer()
+    private var loadingDots: some View {
+        HStack(spacing: 8) {
+            ForEach(0..<4, id: \.self) { index in
+                Circle()
+                    .fill(lineColors[index])
+                    .frame(width: 7, height: 7)
+                    .scaleEffect(activeDot == index ? 1.6 : 1.0)
+                    .opacity(activeDot == index ? 1.0 : 0.30)
+                    .animation(
+                        .spring(response: 0.35, dampingFraction: 0.6),
+                        value: activeDot
+                    )
             }
         }
-        .onAppear {
-            // Staggered entrance
-            withAnimation(.easeOut(duration: 0.5)) {
-                iconScale = 1.0
-                iconOpacity = 1.0
-            }
-            withAnimation(.easeOut(duration: 0.5).delay(0.2)) {
-                titleOpacity = 1.0
-            }
-            withAnimation(.easeOut(duration: 0.5).delay(0.35)) {
-                subtitleOpacity = 1.0
-            }
-            withAnimation(.easeOut(duration: 0.4).delay(0.5)) {
-                dotsOpacity = 1.0
-            }
+        .padding(.top, 36)
+        .opacity(dotsOpacity)
+    }
 
-            // Icon ambient glow pulse
-            withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true).delay(0.6)) {
-                glowPhase = true
-            }
+    // MARK: – Animations
 
-            // Cycling loading dots
-            Timer.scheduledTimer(withTimeInterval: 0.4, repeats: true) { _ in
+    private func runEntranceAnimations() {
+        withAnimation(.spring(response: 0.6, dampingFraction: 0.7)) {
+            iconScale = 1.0
+            iconOpacity = 1.0
+        }
+        withAnimation(.easeOut(duration: 0.5).delay(0.15)) {
+            titleOpacity = 1.0
+            titleOffset = 0
+        }
+        withAnimation(.easeOut(duration: 0.5).delay(0.30)) {
+            subtitleOpacity = 1.0
+        }
+        withAnimation(.easeOut(duration: 0.4).delay(0.45)) {
+            dotsOpacity = 1.0
+        }
+
+        withAnimation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true).delay(0.5)) {
+            glowPhase = true
+            glowRadius = 40
+        }
+
+        Timer.scheduledTimer(withTimeInterval: 0.35, repeats: true) { _ in
+            MainActor.assumeIsolated {
                 withAnimation {
                     activeDot = (activeDot + 1) % 4
                 }

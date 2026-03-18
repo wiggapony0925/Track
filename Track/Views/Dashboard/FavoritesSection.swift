@@ -84,33 +84,36 @@ struct FavoritesSection: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             // Custom header row: FAVORITES title + Manage button
             HStack {
                 Text("Favorites")
-                    .font(AppTheme.Typography.sectionHeader)
-                    .foregroundColor(AppTheme.Colors.textSecondary)
+                    .font(.system(size: 13, weight: .heavy, design: .rounded))
+                    .foregroundColor(AppTheme.Colors.textTertiary)
                     .textCase(.uppercase)
+                    .tracking(0.6)
                     .lineLimit(1)
                 Spacer()
                 if !sortedFavorites.isEmpty || selectedMode != .nearby {
                     Button("Manage") {
                         sheetNavigator.navigate(to: .manageFavorites)
                     }
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(AppTheme.Colors.mtaBlue)
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundColor(AppTheme.Colors.accent)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
-                    .background(AppTheme.Gradients.controlSurface)
-                    .clipShape(Capsule())
-                    .overlay {
+                    .background {
                         Capsule()
-                            .stroke(AppTheme.Colors.borderSubtle, lineWidth: 1)
+                            .fill(AppTheme.Colors.accentTint)
+                            .overlay {
+                                Capsule()
+                                    .stroke(AppTheme.Colors.borderSubtle, lineWidth: 0.5)
+                            }
                     }
                 }
             }
             .padding(.horizontal, AppTheme.Layout.margin)
-            .padding(.top, 8)
+            .padding(.top, 10)
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
@@ -306,16 +309,16 @@ struct FavoriteCard: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(favorite.routeDisplayName)
-                    .font(.custom("Helvetica-Bold", size: 15))
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
                     .foregroundColor(AppTheme.Colors.textPrimary)
                     .lineLimit(1)
                 Text(favorite.stopName)
-                    .font(.custom("Helvetica", size: 12))
+                    .font(.system(size: 12, weight: .regular))
                     .foregroundColor(AppTheme.Colors.textSecondary)
                     .lineLimit(1)
                 if let dest = favorite.destination ?? favorite.direction {
                     Text("→ \(dest)")
-                        .font(.custom("Helvetica", size: 11))
+                        .font(.system(size: 11, weight: .medium))
                         .foregroundColor(routeColor.opacity(0.8))
                         .lineLimit(1)
                 }
@@ -467,9 +470,27 @@ struct FavoriteCard: View {
     }
 
     private var cardChrome: some View {
-        RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius, style: .continuous)
-            .fill(AppTheme.Gradients.floating)
-            .shadow(color: AppTheme.Colors.shadow.opacity(0.08), radius: 12, x: 0, y: 4)
+        let shape = RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius, style: .continuous)
+        return ZStack {
+            shape
+                .fill(AppTheme.Colors.cardBackground)
+            shape
+                .fill(
+                    AppTheme.Gradients.tintWash(routeColor, intensity: 0.06)
+                )
+            shape
+                .fill(
+                    LinearGradient(
+                        colors: [AppTheme.Colors.glassHighlight.opacity(0.08), Color.clear],
+                        startPoint: .topLeading,
+                        endPoint: .center
+                    )
+                )
+            shape
+                .stroke(AppTheme.Colors.borderSubtle, lineWidth: 0.5)
+        }
+        .shadow(color: AppTheme.Colors.shadow.opacity(0.08), radius: 12, x: 0, y: 5)
+        .shadow(color: routeColor.opacity(0.04), radius: 16, x: 0, y: 6)
     }
 
     private var favoriteModeIcon: String {

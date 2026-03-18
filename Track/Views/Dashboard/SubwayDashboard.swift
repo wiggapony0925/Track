@@ -107,11 +107,14 @@ struct SubwayDashboard: View {
                         message: "No subway results for \"\(viewModel.searchText)\""
                     )
                 } else {
-                    NoServiceEmptyState(
-                        icon: "tram.fill",
-                        title: "No Subway Nearby",
-                        message: "We couldn't find any subway arrivals within your search radius. Try expanding your radius in Settings.",
-                        brandColor: AppTheme.Colors.mtaBlue
+                    ErrorStateCard(
+                        .noService(
+                            icon: "tram.fill",
+                            title: "No Subway Nearby",
+                            message: "We couldn't find any subway arrivals within your search radius. Try expanding your radius in Settings.",
+                            brandColor: AppTheme.Colors.mtaBlue
+                        ),
+                        compact: true
                     )
                 }
     }

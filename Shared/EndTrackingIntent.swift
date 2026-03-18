@@ -12,8 +12,8 @@ import Foundation
 import WidgetKit
 
 struct EndTrackingIntent: LiveActivityIntent {
-    static var title: LocalizedStringResource = "End Tracking"
-    static var description = IntentDescription("Ends the current trip tracking session.")
+    static let title: LocalizedStringResource = "End Tracking"
+    static let description: IntentDescription = IntentDescription("Ends the current trip tracking session.")
 
     @MainActor
     func perform() async throws -> some IntentResult {

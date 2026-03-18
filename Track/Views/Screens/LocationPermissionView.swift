@@ -19,7 +19,8 @@ struct LocationPermissionView: View {
     @State private var iconPulse = false
 
     private var isDenied: Bool {
-        authorizationStatus == .denied || authorizationStatus == .restricted
+        let status: CLAuthorizationStatus = authorizationStatus
+        return status == .denied || status == .restricted
     }
 
     var body: some View {

@@ -19,52 +19,9 @@ struct ProfileSettingsView: View {
 
             ScrollView {
                 VStack(spacing: 24) {
-                    settingsSection(title: "Profile", icon: "person.fill", iconColor: AppTheme.Colors.mtaBlue) {
-                        VStack(spacing: 0) {
-                            rowLabel(icon: "envelope.fill", iconColor: .mint, title: "Email", value: currentProfile?.email ?? "Not available")
-
-                            settingsDivider
-
-                            editableField(icon: "textformat", iconColor: .purple, title: "Full Name", placeholder: "Add your full name", text: $fullNameDraft, capitalization: .words)
-
-                            settingsDivider
-
-                            editableField(icon: "at", iconColor: .indigo, title: "Username", placeholder: "Optional display username", text: $usernameDraft, capitalization: .none)
-                        }
-                    }
-
-                    Button {
-                        Task { await saveProfile() }
-                    } label: {
-                        HStack(spacing: 8) {
-                            if isSaving {
-                                ProgressView()
-                                    .controlSize(.small)
-                                    .tint(.white)
-                            } else {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .font(.system(size: 14, weight: .bold))
-                            }
-                            Text(isSaving ? "Saving..." : "Save Profile")
-                                .font(.system(size: 15, weight: .bold))
-                        }
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(AppTheme.Colors.mtaBlue)
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        .shadow(color: AppTheme.Colors.mtaBlue.opacity(0.35), radius: 8, y: 4)
-                    }
-                    .disabled(isSaving || currentProfile == nil)
-                    .padding(.horizontal, AppTheme.Layout.margin)
-
-                    if let saveMessage {
-                        Text(saveMessage)
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(saveMessageIsError ? AppTheme.Colors.alertRed : AppTheme.Colors.successGreen)
-                            .padding(.horizontal, AppTheme.Layout.margin)
-                    }
-
+                    profileFieldsSection
+                    saveProfileButton
+                    saveMessageLabel
                     Spacer()
                         .frame(height: 24)
                 }
@@ -75,6 +32,63 @@ struct ProfileSettingsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             hydrateDrafts()
+        }
+    }
+
+    // MARK: - Extracted Sub-Views
+
+    private var profileFieldsSection: some View {
+        settingsSection(title: "Profile", icon: "person.fill", iconColor: AppTheme.Colors.mtaBlue) {
+            VStack(spacing: 0) {
+                rowLabel(icon: "envelope.fill", iconColor: .mint, title: "Email", value: currentProfile?.email ?? "Not available")
+
+                settingsDivider
+
+                editableField(icon: "textformat", iconColor: .purple, title: "Full Name", placeholder: "Add your full name", text: $fullNameDraft, capitalization: .words)
+
+                settingsDivider
+
+                editableField(icon: "at", iconColor: .indigo, title: "Username", placeholder: "Optional display username", text: $usernameDraft, capitalization: .none)
+            }
+        }
+    }
+
+    private var saveProfileButton: some View {
+        Button {
+            Task { await saveProfile() }
+        } label: {
+            HStack(spacing: 8) {
+                if isSaving {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(.white)
+                } else {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 14, weight: .bold))
+                }
+                let buttonTitle: String = isSaving ? "Saving..." : "Save Profile"
+                Text(buttonTitle)
+                    .font(.system(size: 15, weight: .bold))
+            }
+            .foregroundColor(.white)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .background(AppTheme.Colors.mtaBlue)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .shadow(color: AppTheme.Colors.mtaBlue.opacity(0.35), radius: 8, y: 4)
+        }
+        .disabled(isSaving || currentProfile == nil)
+        .padding(.horizontal, AppTheme.Layout.margin)
+    }
+
+    @ViewBuilder
+    private var saveMessageLabel: some View {
+        if let saveMessage {
+            let messageColor: Color = saveMessageIsError ? AppTheme.Colors.alertRed : AppTheme.Colors.successGreen
+            Text(saveMessage)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(messageColor)
+                .padding(.horizontal, AppTheme.Layout.margin)
         }
     }
 

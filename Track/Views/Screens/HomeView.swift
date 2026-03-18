@@ -321,11 +321,24 @@ struct HomeView: View {
             // Always restart the auto-refresh timer — iOS may have
             // invalidated it while the app was suspended.
             startRefreshTimer()
+
+            // Restart vehicle poll timer if a route was selected before
+            // the app went to background (we invalidated it in .background).
+            if viewModel.selectedRouteId != nil && vehiclePollTimer == nil {
+                handleRouteSelection()
+            }
         } else if newPhase == .background {
             // Timers don't fire reliably in the background — invalidate
             // so they can be cleanly restarted on .active.
             refreshTimer?.invalidate()
             refreshTimer = nil
+            // Vehicle poll timer fires every 1s for interpolation.
+            // Leaving it running in the background wastes CPU/energy
+            // and can accumulate stale ticks. Clean it up here;
+            // handleRouteSelection() will restart it when the app
+            // returns to .active if a route is still selected.
+            vehiclePollTimer?.invalidate()
+            vehiclePollTimer = nil
         }
     }
     

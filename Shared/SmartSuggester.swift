@@ -83,7 +83,7 @@ struct SmartSuggester {
         startLocation: CLLocation,
         destinationStationID: String,
         destinationName: String,
-        cloudSyncHandler: ((String, String, Double, Double, String, String, Int, Int, Int) async -> Void)? = nil
+        cloudSyncHandler: (@Sendable (String, String, Double, Double, String, String, Int, Int, Int) async -> Void)? = nil
     ) {
         let calendar = Calendar.current
         let now = Date()
@@ -151,8 +151,19 @@ struct SmartSuggester {
         
         // Sync to cloud asynchronously
         if let handler = cloudSyncHandler {
+            // Capture all values before entering the sending closure to
+            // avoid capturing `self` or any non-Sendable references.
+            let rID = routeID
+            let dir = direction
+            let la = lat
+            let lo = lon
+            let dSID = destinationStationID
+            let dName = destinationName
+            let h = hour
+            let w = weekday
+            let f = frequency
             Task {
-                await handler(routeID, direction, lat, lon, destinationStationID, destinationName, hour, weekday, frequency)
+                await handler(rID, dir, la, lo, dSID, dName, h, w, f)
             }
         }
     }

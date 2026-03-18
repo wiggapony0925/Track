@@ -94,25 +94,25 @@ struct ModalNavbar: View {
 
     private var searchGlyph: some View {
         Image(systemName: "magnifyingglass")
-            .font(.system(size: 16, weight: .semibold))
-            .foregroundColor(AppTheme.Colors.mtaBlue)
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundColor(AppTheme.Colors.accent)
             .padding(.leading, 2)
     }
 
     private var clearGlyph: some View {
         ZStack {
             Circle()
-                .fill(AppTheme.Gradients.controlSurface)
+                .fill(AppTheme.Colors.cardInset)
                 .overlay {
                     Circle()
-                        .stroke(AppTheme.Colors.borderSubtle, lineWidth: 1)
+                        .stroke(AppTheme.Colors.borderSubtle, lineWidth: 0.5)
                 }
 
             Image(systemName: "xmark")
-                .font(.system(size: 11, weight: .bold))
+                .font(.system(size: 10, weight: .bold))
                 .foregroundColor(AppTheme.Colors.textSecondary)
         }
-        .frame(width: 28, height: 28)
+        .frame(width: 26, height: 26)
     }
 
     private var micGlyph: some View {
@@ -122,24 +122,25 @@ struct ModalNavbar: View {
             speechManager.toggle()
         } label: {
             Image(systemName: isRecording ? "mic.fill" : "mic")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundColor(isRecording ? AppTheme.Colors.alertRed : AppTheme.Colors.mtaBlue)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundColor(isRecording ? AppTheme.Colors.alertRed : AppTheme.Colors.accent)
                 .padding(.trailing, 2)
         }
     }
 
     private func updateBadge(for date: Date) -> some View {
-        HStack(spacing: 7) {
+        HStack(spacing: 6) {
             Circle()
                 .fill(AppTheme.Colors.successGreen)
-                .frame(width: 7, height: 7)
+                .frame(width: 6, height: 6)
+                .shadow(color: AppTheme.Colors.successGreen.opacity(0.4), radius: 4, x: 0, y: 0)
 
             Text("Updated \(RelativeDateTimeFormatter().localizedString(for: date, relativeTo: .now))")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(AppTheme.Colors.textSecondary)
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundColor(AppTheme.Colors.textTertiary)
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 7)
+        .padding(.vertical, 6)
         .trackInsetBackground(cornerRadius: 999)
     }
 }
@@ -151,50 +152,59 @@ struct ModeFilterStrip: View {
     @Binding var selectedMode: TransportMode
     
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 5) {
             ForEach(TransportMode.allCases, id: \.self) { mode in
                 modeButton(for: mode)
             }
         }
-        .padding(6)
-        .trackFloatingChrome(cornerRadius: 18)
+        .padding(5)
+        .trackFloatingChrome(cornerRadius: 16)
     }
 
     private func modeButton(for mode: TransportMode) -> some View {
         let isActive: Bool = selectedMode == mode
         let traits: AccessibilityTraits = isActive ? .isSelected : []
         return Button {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
                 selectedMode = mode
             }
             HapticManager.impact(.light)
         } label: {
             ZStack {
                 if isActive {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    RoundedRectangle(cornerRadius: 13, style: .continuous)
                         .fill(AppTheme.Gradients.accent)
                         .overlay {
-                            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .stroke(AppTheme.Colors.textOnColor.opacity(0.18), lineWidth: 1)
+                            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                                .fill(
+                                    LinearGradient(
+                                        colors: [Color.white.opacity(0.15), Color.clear],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
                         }
                         .shadow(
-                            color: AppTheme.Colors.accentGlow.opacity(0.26),
+                            color: AppTheme.Colors.accentGlow.opacity(0.30),
                             radius: 10,
                             x: 0,
                             y: 4
                         )
+                        .matchedGeometryEffect(id: "modeHighlight", in: modeNamespace)
                 }
 
                 Image(systemName: mode.icon)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(isActive ? .white : AppTheme.Colors.accent)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(isActive ? .white : AppTheme.Colors.textSecondary)
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 42)
+            .frame(height: 40)
         }
         .accessibilityLabel(mode.label)
         .accessibilityAddTraits(traits)
     }
+
+    @Namespace private var modeNamespace
 }
 
 #Preview {

@@ -344,51 +344,20 @@ struct FarFromTransitView: View {
     }
 }
 
-// MARK: - No Service Empty State
+// MARK: - No Service Empty State (legacy alias)
 
-/// Full empty state when no service is available at all.
+/// Forwards to the unified `ErrorStateCard` component.
+/// Kept so callers outside the main dashboards don't break.
 struct NoServiceEmptyState: View {
     let icon: String
     let title: String
     let message: String
     let brandColor: Color
-    
+
     var body: some View {
-        VStack(spacing: 16) {
-            // Icon in circle
-            ZStack {
-                Circle()
-                    .fill(AppTheme.Gradients.tintWash(brandColor, intensity: 0.18))
-                    .frame(width: 64, height: 64)
-                
-                Image(systemName: icon)
-                    .font(.system(size: 28, weight: .medium))
-                    .foregroundColor(brandColor)
-            }
-            
-            // Title
-            Text(title)
-                .font(.custom("Helvetica-Bold", size: 18))
-                .foregroundColor(AppTheme.Colors.textPrimary)
-            
-            // Message
-            Text(message)
-                .font(.custom("Helvetica", size: 14))
-                .foregroundColor(AppTheme.Colors.textSecondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 24)
-            
-            // Search hint
-            HStack(spacing: 6) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 12, weight: .medium))
-                Text("Try searching for a station")
-                    .font(.system(size: 13, weight: .medium))
-            }
-            .foregroundColor(brandColor)
-            .padding(.top, 4)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 32)
+        ErrorStateCard(
+            .noService(icon: icon, title: title, message: message, brandColor: brandColor),
+            compact: true
+        )
     }
 }

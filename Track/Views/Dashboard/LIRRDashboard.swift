@@ -117,12 +117,14 @@ struct LIRRDashboard: View {
                         message: "No LIRR results for \"\(viewModel.searchText)\""
                     )
                 } else {
-                    // Complete empty state - no data at all
-                    NoServiceEmptyState(
-                        icon: "train.side.front.car",
-                        title: "No LIRR Service",
-                        message: "We couldn't find any LIRR departures right now. Try searching for a specific station or check back later.",
-                        brandColor: AppTheme.CommuterRailColors.lirrBlue
+                    ErrorStateCard(
+                        .noService(
+                            icon: "train.side.front.car",
+                            title: "No LIRR Service",
+                            message: "We couldn't find any LIRR departures right now. Try searching for a specific station or check back later.",
+                            brandColor: AppTheme.CommuterRailColors.lirrBlue
+                        ),
+                        compact: true
                     )
                 }
             }

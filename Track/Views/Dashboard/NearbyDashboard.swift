@@ -149,13 +149,31 @@ struct NearbyDashboard: View {
                             }
                         }
                     )
-                } else if viewModel.isNetworkError, let msg = viewModel.errorMessage {
-                    // Network is down — show a reconnect card, NOT the out-of-NYC card.
-                    OfflineEmptyStateCard(message: msg)
+                } else if viewModel.isNetworkError {
+                    ErrorStateCard(.networkOffline, onRetry: {
+                        Task {
+                            await viewModel.refreshNearbyTransit(
+                                location: viewModel.referenceLocation
+                            )
+                        }
+                    })
+                } else if viewModel.isBackendError, let msg = viewModel.errorMessage {
+                    ErrorStateCard(.backendError(message: msg), onRetry: {
+                        Task {
+                            await viewModel.refreshNearbyTransit(
+                                location: viewModel.referenceLocation
+                            )
+                        }
+                    })
+                } else if viewModel.isOutsideServiceArea {
+                    ErrorStateCard(
+                        .outsideServiceArea,
+                        action: .explore(cameraPosition: $cameraPosition, is3DMode: $is3DMode)
+                    )
                 } else {
-                    OutOfServiceAreaCard(
-                        cameraPosition: $cameraPosition,
-                        is3DMode: $is3DMode
+                    ErrorStateCard(
+                        .noNearbyArrivals,
+                        action: .explore(cameraPosition: $cameraPosition, is3DMode: $is3DMode)
                     )
                 }
             }
@@ -200,35 +218,44 @@ struct ClosestToYouSectionHeader: View {
     }
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 8) {
             // Closest-to-you badge with walking icon
-            HStack(spacing: 4) {
+            HStack(spacing: 5) {
                 Image(systemName: "figure.walk")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(.white)
-
-                Text("Closest · \(distanceDisplay)")
                     .font(.system(size: 10, weight: .bold))
                     .foregroundColor(.white)
+
+                Text("Closest")
+                    .font(.system(size: 11, weight: .heavy, design: .rounded))
+                    .foregroundColor(.white)
+
+                Text("\u{00b7}")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(.white.opacity(0.6))
+
+                Text(distanceDisplay)
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .foregroundColor(.white.opacity(0.85))
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background {
                 Capsule()
                     .fill(badgeColor)
-            )
+                    .shadow(color: badgeColor.opacity(0.25), radius: 6, x: 0, y: 2)
+            }
 
             Spacer()
 
             if let updated = updated {
                 Text(updated, style: .time)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(AppTheme.Colors.textSecondary)
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .foregroundColor(AppTheme.Colors.textTertiary)
             }
         }
         .padding(.horizontal, AppTheme.Layout.margin)
-        .padding(.top, 6)
-        .padding(.bottom, 4)
+        .padding(.top, 8)
+        .padding(.bottom, 6)
     }
 }
 
@@ -242,35 +269,44 @@ struct NearYouSectionHeader: View {
     }
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 8) {
             // Location indicator with distance badge
-            HStack(spacing: 4) {
+            HStack(spacing: 5) {
                 Image(systemName: "location.fill")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(.white)
-
-                Text(radiusDisplay)
                     .font(.system(size: 10, weight: .bold))
                     .foregroundColor(.white)
+
+                Text("Near You")
+                    .font(.system(size: 11, weight: .heavy, design: .rounded))
+                    .foregroundColor(.white)
+
+                Text("·")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(.white.opacity(0.6))
+
+                Text(radiusDisplay)
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .foregroundColor(.white.opacity(0.85))
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background {
                 Capsule()
                     .fill(AppTheme.Colors.successGreen)
-            )
+                    .shadow(color: AppTheme.Colors.successGreen.opacity(0.25), radius: 6, x: 0, y: 2)
+            }
 
             Spacer()
 
             if let updated = updated {
                 Text(updated, style: .time)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(AppTheme.Colors.textSecondary)
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .foregroundColor(AppTheme.Colors.textTertiary)
             }
         }
         .padding(.horizontal, AppTheme.Layout.margin)
-        .padding(.top, 6)
-        .padding(.bottom, 4)
+        .padding(.top, 8)
+        .padding(.bottom, 6)
     }
 }
 
@@ -283,29 +319,38 @@ struct FartherAwaySectionHeader: View {
     }
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 8) {
             // Walking indicator with distance badge
-            HStack(spacing: 4) {
+            HStack(spacing: 5) {
                 Image(systemName: "figure.walk")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(.white)
-
-                Text(radiusDisplay)
                     .font(.system(size: 10, weight: .bold))
                     .foregroundColor(.white)
+
+                Text("A Bit Farther")
+                    .font(.system(size: 11, weight: .heavy, design: .rounded))
+                    .foregroundColor(.white)
+
+                Text("·")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(.white.opacity(0.6))
+
+                Text(radiusDisplay)
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .foregroundColor(.white.opacity(0.85))
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background {
                 Capsule()
-                    .fill(AppTheme.Colors.mtaBlue)
-            )
+                    .fill(AppTheme.Colors.accent)
+                    .shadow(color: AppTheme.Colors.accent.opacity(0.20), radius: 6, x: 0, y: 2)
+            }
 
             Spacer()
         }
         .padding(.horizontal, AppTheme.Layout.margin)
-        .padding(.top, 10)
-        .padding(.bottom, 4)
+        .padding(.top, 12)
+        .padding(.bottom, 6)
     }
 }
 
@@ -318,28 +363,37 @@ struct MuchFartherAwaySectionHeader: View {
     }
 
     var body: some View {
-        HStack(spacing: 6) {
-            HStack(spacing: 4) {
+        HStack(spacing: 8) {
+            HStack(spacing: 5) {
                 Image(systemName: "car.fill")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(.white)
-
-                Text(radiusDisplay)
                     .font(.system(size: 10, weight: .bold))
                     .foregroundColor(.white)
+
+                Text("Much Farther")
+                    .font(.system(size: 11, weight: .heavy, design: .rounded))
+                    .foregroundColor(.white)
+
+                Text("·")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(.white.opacity(0.6))
+
+                Text(radiusDisplay)
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .foregroundColor(.white.opacity(0.85))
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background {
                 Capsule()
-                    .fill(Color.orange)
-            )
+                    .fill(AppTheme.Colors.warningYellow)
+                    .shadow(color: AppTheme.Colors.warningYellow.opacity(0.20), radius: 6, x: 0, y: 2)
+            }
 
             Spacer()
         }
         .padding(.horizontal, AppTheme.Layout.margin)
-        .padding(.top, 10)
-        .padding(.bottom, 4)
+        .padding(.top, 12)
+        .padding(.bottom, 6)
     }
 }
 
@@ -348,20 +402,18 @@ struct MuchFartherAwaySectionHeader: View {
 struct EmptyTierHint: View {
     var body: some View {
         HStack(spacing: 8) {
-            // Dotted separator line
-            Rectangle()
-                .fill(AppTheme.Colors.textSecondary.opacity(0.12))
-                .frame(width: 20, height: 1.5)
-                .padding(.leading, AppTheme.Layout.margin)
+            Image(systemName: "minus")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundColor(AppTheme.Colors.textTertiary.opacity(0.3))
 
             Text("Nothing in this range")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.35))
-                .italic()
+                .font(.system(size: 12, weight: .medium, design: .rounded))
+                .foregroundColor(AppTheme.Colors.textTertiary.opacity(0.4))
 
             Spacer()
         }
-        .padding(.vertical, 5)
+        .padding(.horizontal, AppTheme.Layout.margin + 4)
+        .padding(.vertical, 6)
     }
 }
 
@@ -472,88 +524,7 @@ struct FlatTransitList: View {
     }
 }
 
-// MARK: - Offline Empty State Card
 
-/// Shown when the network is unavailable (not when the user is outside NYC).
-struct OfflineEmptyStateCard: View {
-    let message: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                Image(systemName: "wifi.exclamationmark")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(AppTheme.Colors.alertRed)
-                Text("No Connection")
-                    .font(.system(size: 17, weight: .semibold, design: .rounded))
-                    .foregroundColor(AppTheme.Colors.textPrimary)
-                Spacer()
-            }
-
-            Text(message)
-                .font(.system(size: 14, weight: .regular))
-                .foregroundColor(AppTheme.Colors.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Text("Transit data will reload automatically once you're back online.")
-                .font(.system(size: 12, weight: .regular))
-                .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(AppTheme.Layout.cardPadding)
-        .trackCardBackground(cornerRadius: AppTheme.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius)
-                .strokeBorder(AppTheme.Colors.alertRed.opacity(0.25), lineWidth: 1)
-        )
-        .padding(.horizontal, AppTheme.Layout.margin)
-    }
-}
-
-// MARK: - Out of Service Area Card
-
-struct OutOfServiceAreaCard: View {
-    @Binding var cameraPosition: TrackCameraPosition
-    @Binding var is3DMode: Bool
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                Image(systemName: "tram.fill")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(AppTheme.Colors.mtaBlue)
-                Text("No Nearby Transit")
-                    .font(.system(size: 17, weight: .semibold, design: .rounded))
-                    .foregroundColor(AppTheme.Colors.textPrimary)
-                Spacer()
-            }
-
-            Text(
-                "We couldn't find any arrivals nearby. Try moving closer to a subway station or bus stop, or use the search pin to explore a different area."
-            )
-            .font(.system(size: 14, weight: .regular))
-            .foregroundColor(AppTheme.Colors.textSecondary)
-            .fixedSize(horizontal: false, vertical: true)
-
-            Button {
-                withAnimation(.easeInOut(duration: 1.0)) {
-                    cameraPosition = MapCameraPresets.explorer(is3D: is3DMode)
-                }
-            } label: {
-                Text("Explore New York City")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(AppTheme.Colors.textOnColor)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .trackAccentBackground(cornerRadius: 10)
-            }
-            .padding(.top, 4)
-        }
-        .padding(AppTheme.Layout.cardPadding)
-        .trackCardBackground(cornerRadius: AppTheme.Layout.cornerRadius)
-        .padding(.horizontal, AppTheme.Layout.margin)
-    }
-}
 
 #Preview {
     NearbyDashboard(

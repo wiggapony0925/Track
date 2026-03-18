@@ -116,17 +116,33 @@ struct TrackAPI {
     /// production. Prevents a stale UserDefaults flag from bricking the app
     /// when the developer's Mac isn't on the same network.
     ///
-    /// Called from `TrackApp.init()` at `.userInitiated` priority so it
-    /// resolves before HomeView.onAppear fires its first real request.
+    /// **Race-condition fix:** The flag is cleared *synchronously* before
+    /// any async work begins so that `baseURL` (read by `warmConnection()`
+    /// and HomeView's first refresh) resolves to production immediately.
+    /// Only if the local server probe succeeds is the flag restored. This
+    /// means worst-case the app uses production for the first request, then
+    /// switches to local on the next refresh — far better than hanging
+    /// forever on an unreachable localhost.
+    ///
+    /// Called from `TrackApp.init()` at `.userInitiated` priority.
     static func validateLocalServer() {
         #if DEBUG
         guard UserDefaults.standard.bool(forKey: "dev_use_localhost") else { return }
+
+        // ── Synchronous: clear the flag NOW so baseURL resolves to prod ──
+        // This prevents warmConnection() and the first API call from
+        // caching a localhost URL that might be unreachable.
+        UserDefaults.standard.removeObject(forKey: "dev_use_localhost")
+        invalidateBaseURL()
+
         // Read MainActor-isolated values before entering the detached task.
         let storedIP = UserDefaults.standard.string(forKey: "dev_custom_ip")?.trimmingCharacters(in: .whitespacesAndNewlines)
         let resolvedIP = (storedIP?.isEmpty == false) ? storedIP! : AppSettings.shared.defaultDeviceIP
         let port = AppSettings.shared.localPort
         let localURL = "http://\(resolvedIP):\(port)/health"
         let logger = AppLogger.shared       // capture on caller's actor
+
+        // ── Async: probe the local server and restore the flag if reachable ──
         Task.detached(priority: .userInitiated) {
             // Use a plain URLSession — no waitsForConnectivity — so a TCP
             // refused / host-unreachable error comes back in milliseconds.
@@ -137,15 +153,15 @@ struct TrackAPI {
             guard let url = URL(string: localURL) else { return }
             do {
                 _ = try await probe.data(from: url)
-                // Server responded — keep the flag as-is
+                // Server responded — restore the flag and switch to local
                 logger.log("API_CONFIG", message: "Local server reachable at \(localURL) ✓")
-            } catch {
-                // Server unreachable — clear the flag and force prod
-                logger.log("API_CONFIG", message: "Local server unreachable (\(error.localizedDescription)) — falling back to production")
                 await MainActor.run {
-                    UserDefaults.standard.removeObject(forKey: "dev_use_localhost")
+                    UserDefaults.standard.set(true, forKey: "dev_use_localhost")
                     invalidateBaseURL()
                 }
+            } catch {
+                // Server unreachable — flag already cleared, nothing to do
+                logger.log("API_CONFIG", message: "Local server unreachable (\(error.localizedDescription)) — staying on production")
             }
         }
         #endif
@@ -755,7 +771,7 @@ struct TrackAPI {
 
 // MARK: - Errors
 
-enum TrackAPIError: Error, CustomStringConvertible {
+enum TrackAPIError: Error, LocalizedError, CustomStringConvertible {
     case invalidURL
     case networkError
     case decodingFailed
@@ -773,6 +789,8 @@ enum TrackAPIError: Error, CustomStringConvertible {
             return "Server error (\(code))"
         }
     }
+
+    var errorDescription: String? { description }
 }
 
 // MARK: - Backend Response Types

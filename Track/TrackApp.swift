@@ -27,11 +27,11 @@ struct TrackApp: App {
 
         // Fetch remote config overrides (refresh interval, feature flags)
         // in the background so the values are ready before the first refresh.
-        Task.detached(priority: .utility) {
+        // Uses Task (not .detached) to stay on @MainActor and avoid
+        // sending non-Sendable [String: Any] across isolation boundaries.
+        Task(priority: .utility) {
             if let config = await TrackAPI.fetchRemoteConfig() {
-                await MainActor.run {
-                    AppSettings.applyRemoteOverrides(config)
-                }
+                AppSettings.applyRemoteOverrides(config)
             }
         }
         // Request notification permissions for service alerts

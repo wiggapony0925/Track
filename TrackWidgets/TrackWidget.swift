@@ -10,7 +10,7 @@
 
 import SwiftUI
 import SwiftData
-import WidgetKit
+@preconcurrency import WidgetKit
 import CoreLocation
 
 // MARK: - Timeline Provider
@@ -76,7 +76,7 @@ struct TrackWidgetProvider: TimelineProvider {
 
     /// Fetches live nearby transit data from the backend API.
     /// Uses the user's last known location from shared UserDefaults.
-    private func fetchLiveEntry(completion: @escaping (TrackWidgetEntry?) -> Void) {
+    private func fetchLiveEntry(completion: @Sendable @escaping (TrackWidgetEntry?) -> Void) {
         // Read cached location from App Group UserDefaults
         let defaults = UserDefaults(suiteName: kAppGroupIdentifier) ?? UserDefaults.standard
         let lat = defaults.double(forKey: "lastLatitude")
@@ -125,6 +125,10 @@ struct TrackWidgetProvider: TimelineProvider {
             return
         }
 
+        // Pre-read interaction stats before the @Sendable URLSession closure
+        // to avoid capturing the non-Sendable UserDefaults instance.
+        let stats: [String: Int] = defaults.dictionary(forKey: "route_interaction_stats") as? [String: Int] ?? [:]
+
         let task = URLSession.shared.dataTask(with: url) { (data: Data?, response: URLResponse?, error: Error?) in
             guard let data = data,
                   let http = response as? HTTPURLResponse,
@@ -138,9 +142,6 @@ struct TrackWidgetProvider: TimelineProvider {
                 let decoder = JSONDecoder()
                 decoder.dateDecodingStrategy = .iso8601
                 let responses = try decoder.decode([WidgetNearbyResponse].self, from: data)
-
-                // Load interaction stats for sorting
-                let stats = defaults.dictionary(forKey: "route_interaction_stats") as? [String: Int] ?? [:]
 
                 let arrivals = responses.map { item in
                     NearbyArrival(

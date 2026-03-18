@@ -33,8 +33,10 @@ struct ProjectedRouteLabelPlacement: Identifiable {
 /// Approximate rendered size of a route label capsule in screen points.
 /// This mirrors `TrunkRouteLabelView` closely enough for collision culling.
 func routeLabelVisualSize(routeCount: Int) -> CGSize {
-    let visibleCount = max(1, min(routeCount, 4))
-    let bulletRowWidth = CGFloat(visibleCount * 12 + max(0, visibleCount - 1))
+    let visibleCount: Int = max(1, min(routeCount, 4))
+    let bulletW: Int = visibleCount * 12
+    let gapW: Int = max(0, visibleCount - 1)
+    let bulletRowWidth: CGFloat = CGFloat(bulletW + gapW)
     return CGSize(width: bulletRowWidth + 3.0, height: 15.0)
 }
 
@@ -64,6 +66,10 @@ private func routeLabelDensityBudget(for distance: Double?) -> Int {
 /// - prefer labels nearer the viewport center
 /// - keep repeated identical signatures farther apart than different ones
 /// - reject any labels whose capsules would visually collide on screen
+///
+/// Performance: Uses a spatial grid to reduce pairwise collision checks
+/// from O(n²) to ~O(n). Each kept label is inserted into grid cells it
+/// overlaps; candidates only check labels in neighboring cells.
 func cullRouteLabelPlacements(
     _ placements: [ProjectedRouteLabelPlacement],
     viewportSize: CGSize,
@@ -87,42 +93,78 @@ func cullRouteLabelPlacements(
         return lhs.id < rhs.id
     }
 
+    // Spatial grid — cell size chosen to be the max collision radius so
+    // we only need to check the 3×3 neighborhood of each candidate.
+    let cellSize: CGFloat = max(140.0 * spacingScale, 60.0)
+    let cols = max(1, Int(viewportSize.width / cellSize) + 2)
+    var grid: [Int: [Int]] = [:]  // cellKey → [index in `kept`]
+
+    func cellKey(col: Int, row: Int) -> Int { row &* cols &+ col }
+    func cellCoord(_ pt: CGPoint) -> (col: Int, row: Int) {
+        (Int(pt.x / cellSize), Int(pt.y / cellSize))
+    }
+
     var kept: [ProjectedRouteLabelPlacement] = []
     kept.reserveCapacity(min(prioritized.count, budget))
 
     for candidate in prioritized {
         if kept.count >= budget { break }
 
-        let candidateSize = routeLabelVisualSize(routeCount: candidate.routeIds.count)
-        var collides = false
+        let candidateSize: CGSize = routeLabelVisualSize(routeCount: candidate.routeIds.count)
+        let (cc, cr) = cellCoord(candidate.point)
+        var collides: Bool = false
 
-        for existing in kept {
-            let existingSize = routeLabelVisualSize(routeCount: existing.routeIds.count)
-            let dx = abs(candidate.point.x - existing.point.x)
-            let dy = abs(candidate.point.y - existing.point.y)
-            let sameSignature = candidate.routeSignature == existing.routeSignature
+        // Only check labels in the 3×3 neighborhood
+        outerLoop: for dr in -1...1 {
+            for dc in -1...1 {
+                let key: Int = cellKey(col: cc + dc, row: cr + dr)
+                guard let indices = grid[key] else { continue }
+                for idx in indices {
+                    let existing: ProjectedRouteLabelPlacement = kept[idx]
+                    let existingSize: CGSize = routeLabelVisualSize(routeCount: existing.routeIds.count)
+                    let dx: CGFloat = abs(candidate.point.x - existing.point.x)
+                    let dy: CGFloat = abs(candidate.point.y - existing.point.y)
+                    let sameSignature: Bool = candidate.routeSignature == existing.routeSignature
 
-            let minX = (candidateSize.width + existingSize.width) / 2.0
-                + (sameSignature ? 18.0 : 8.0) * spacingScale
-            let minY = (candidateSize.height + existingSize.height) / 2.0
-                + (sameSignature ? 12.0 : 6.0) * spacingScale
+                    let sameExtra: CGFloat = sameSignature ? 18.0 : 8.0
+                    let minX: CGFloat = (candidateSize.width + existingSize.width) / 2.0
+                        + sameExtra * spacingScale
+                    let sameExtraY: CGFloat = sameSignature ? 12.0 : 6.0
+                    let minY: CGFloat = (candidateSize.height + existingSize.height) / 2.0
+                        + sameExtraY * spacingScale
 
-            if dx < minX && dy < minY {
-                collides = true
-                break
-            }
+                    if dx < minX && dy < minY {
+                        collides = true
+                        break outerLoop
+                    }
 
-            if sameSignature {
-                let minSpacing = max(candidateSize.width * 2.2, 120.0) * spacingScale
-                if hypot(dx, dy) < minSpacing {
-                    collides = true
-                    break
+                    if sameSignature {
+                        let minSpacing: CGFloat = max(candidateSize.width * 2.2, 120.0) * spacingScale
+                        let dist: CGFloat = hypot(dx, dy)
+                        if dist < minSpacing {
+                            collides = true
+                            break outerLoop
+                        }
+                    }
                 }
             }
         }
 
         if !collides {
+            let idx: Int = kept.count
             kept.append(candidate)
+            // Insert into all cells this label's bounding box overlaps
+            let halfW: CGFloat = candidateSize.width / 2.0 + 10.0 * spacingScale
+            let halfH: CGFloat = candidateSize.height / 2.0 + 10.0 * spacingScale
+            let minCol: Int = Int((candidate.point.x - halfW) / cellSize)
+            let maxCol: Int = Int((candidate.point.x + halfW) / cellSize)
+            let minRow: Int = Int((candidate.point.y - halfH) / cellSize)
+            let maxRow: Int = Int((candidate.point.y + halfH) / cellSize)
+            for r in minRow...maxRow {
+                for c in minCol...maxCol {
+                    grid[cellKey(col: c, row: r), default: []].append(idx)
+                }
+            }
         }
     }
 

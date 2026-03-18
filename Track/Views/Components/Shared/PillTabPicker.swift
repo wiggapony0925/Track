@@ -34,7 +34,7 @@ struct PillTabPicker: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 ForEach(tabs) { tab in
-                    let isActive = selectedId == tab.id
+                    let isActive: Bool = selectedId == tab.id
                     Button {
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                             selectedId = tab.id
@@ -43,7 +43,7 @@ struct PillTabPicker: View {
                         pillLabel(tab: tab, isActive: isActive)
                     }
                     .sensoryFeedback(.selection, trigger: selectedId)
-                    .accessibilityLabel("\(tab.label) tab")
+                    .accessibilityLabel(Text("\(tab.label) tab"))
                 }
             }
             .padding(.horizontal, AppTheme.Layout.margin)
@@ -53,33 +53,43 @@ struct PillTabPicker: View {
     // MARK: - Pill label
 
     private func pillLabel(tab: PillTab, isActive: Bool) -> some View {
-        HStack(spacing: 8) {
+        // Pre-compute themed values to reduce type-checker workload.
+        let fillStyle: AnyShapeStyle = isActive
+            ? AnyShapeStyle(AppTheme.Gradients.accent)
+            : AnyShapeStyle(AppTheme.Gradients.controlSurface)
+        let borderColor: Color = isActive
+            ? AppTheme.Colors.textOnColor.opacity(0.18)
+            : AppTheme.Colors.borderSubtle
+        let iconColor: Color = isActive ? .white : AppTheme.Colors.textSecondary
+        let textColor: Color = isActive ? AppTheme.Colors.textPrimary : AppTheme.Colors.textSecondary
+        let bgColor: Color = isActive
+            ? AppTheme.Colors.glassHighlight.opacity(0.07)
+            : AppTheme.Colors.cardBackground
+        let overlayBorder: Color = isActive
+            ? AppTheme.Colors.borderSubtle
+            : accentColor.opacity(0.10)
+        let shadowColor: Color = isActive ? accentColor.opacity(0.12) : .black.opacity(0.03)
+        let shadowRadius: CGFloat = isActive ? 8 : 3
+        let shadowY: CGFloat = isActive ? 4 : 2
+
+        return HStack(spacing: 8) {
             ZStack {
                 RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .fill(
-                        isActive
-                            ? AnyShapeStyle(AppTheme.Gradients.accent)
-                            : AnyShapeStyle(AppTheme.Gradients.controlSurface)
-                    )
+                    .fill(fillStyle)
                     .overlay {
                         RoundedRectangle(cornerRadius: 9, style: .continuous)
-                            .stroke(
-                                isActive
-                                    ? AppTheme.Colors.textOnColor.opacity(0.18)
-                                    : AppTheme.Colors.borderSubtle,
-                                lineWidth: 1
-                            )
+                            .stroke(borderColor, lineWidth: 1)
                     }
 
                 Image(systemName: tab.icon)
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(isActive ? .white : AppTheme.Colors.textSecondary)
+                    .foregroundColor(iconColor)
             }
             .frame(width: 28, height: 28)
 
             Text(tab.label)
                 .font(.custom("Helvetica-Bold", size: 13))
-                .foregroundColor(isActive ? AppTheme.Colors.textPrimary : AppTheme.Colors.textSecondary)
+                .foregroundColor(textColor)
                 .lineLimit(1)
 
             if tab.badgeCount > 0 {
@@ -90,24 +100,13 @@ struct PillTabPicker: View {
         .padding(.vertical, 8)
         .background(
             RoundedRectangle(cornerRadius: 12)
-                .fill(
-                    isActive
-                        ? AppTheme.Colors.glassHighlight.opacity(0.07)
-                        : AppTheme.Colors.cardBackground
-                )
+                .fill(bgColor)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 12)
-                .stroke(
-                    isActive ? AppTheme.Colors.borderSubtle : accentColor.opacity(0.10),
-                    lineWidth: 1
-                )
+                .stroke(overlayBorder, lineWidth: 1)
         )
-        .shadow(
-            color: isActive ? accentColor.opacity(0.12) : .black.opacity(0.03),
-            radius: isActive ? 8 : 3,
-            x: 0, y: isActive ? 4 : 2
-        )
+        .shadow(color: shadowColor, radius: shadowRadius, x: 0, y: shadowY)
     }
 
     // MARK: - Badge

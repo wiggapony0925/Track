@@ -29,15 +29,22 @@ extension Color {
             b = Double(bi) / 255.0
             a = 1.0
         case 6: // RGB (24-bit)
-            r = Double((int >> 16) & 0xFF) / 255.0
-            g = Double((int >> 8) & 0xFF) / 255.0
-            b = Double(int & 0xFF) / 255.0
+            let r16: UInt64 = (int >> 16) & 0xFF
+            let g8: UInt64 = (int >> 8) & 0xFF
+            let b0: UInt64 = int & 0xFF
+            r = Double(r16) / 255.0
+            g = Double(g8) / 255.0
+            b = Double(b0) / 255.0
             a = 1.0
         case 8: // ARGB (32-bit)
-            a = Double((int >> 24) & 0xFF) / 255.0
-            r = Double((int >> 16) & 0xFF) / 255.0
-            g = Double((int >> 8) & 0xFF) / 255.0
-            b = Double(int & 0xFF) / 255.0
+            let a24: UInt64 = (int >> 24) & 0xFF
+            let r16: UInt64 = (int >> 16) & 0xFF
+            let g8: UInt64 = (int >> 8) & 0xFF
+            let b0: UInt64 = int & 0xFF
+            a = Double(a24) / 255.0
+            r = Double(r16) / 255.0
+            g = Double(g8) / 255.0
+            b = Double(b0) / 255.0
         default:
             r = 0.0
             g = 0.0

@@ -84,46 +84,60 @@ struct ScheduledDepartureRow: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            // ── Left: clock time pill ──
-            VStack(spacing: 4) {
-                Text(departure.formattedTime)
-                    .font(.custom("Helvetica-Bold", size: 15))
-                    .foregroundColor(AppTheme.Colors.textPrimary)
-
-                Text("in \(departure.minutesAway) min")
-                    .font(.custom("Helvetica-Bold", size: 11))
-                    .foregroundColor(routeColor.opacity(0.8))
-            }
-            .frame(width: 80)
-            .padding(.vertical, 14)
-            .background(
-                RoundedRectangle(cornerRadius: 14)
-                    .fill(routeColor.opacity(0.08))
-            )
-
-            // ── Dashed connector ──
-            Rectangle()
-                .fill(routeColor.opacity(0.15))
-                .frame(width: 20, height: 2)
-
-            // ── Right: details ──
+            clockTimePill
+            dashedConnector
             ScheduledDepartureDetails(departure: departure)
-
             Spacer()
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius)
-                .fill(AppTheme.Gradients.surface)
-                .shadow(color: AppTheme.Colors.shadow.opacity(0.12), radius: 6, x: 0, y: 2)
-                .shadow(color: AppTheme.Colors.shadowStrong.opacity(0.06), radius: 2, x: 0, y: 1)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius)
-                .strokeBorder(routeColor.opacity(0.08), lineWidth: 1)
-        )
+        .background(rowBackground)
+        .overlay(rowBorderOverlay)
         .padding(.horizontal, AppTheme.Layout.margin)
+    }
+
+    // MARK: - Extracted Sub-Views
+
+    private var clockTimePill: some View {
+        let pillOpacity: Double = 0.08
+        let minuteColor: Color = routeColor.opacity(0.8)
+        return VStack(spacing: 4) {
+            Text(departure.formattedTime)
+                .font(.custom("Helvetica-Bold", size: 15))
+                .foregroundColor(AppTheme.Colors.textPrimary)
+
+            Text("in \(departure.minutesAway) min")
+                .font(.custom("Helvetica-Bold", size: 11))
+                .foregroundColor(minuteColor)
+        }
+        .frame(width: 80)
+        .padding(.vertical, 14)
+        .background(
+            RoundedRectangle(cornerRadius: 14)
+                .fill(routeColor.opacity(pillOpacity))
+        )
+    }
+
+    private var dashedConnector: some View {
+        let connectorColor: Color = routeColor.opacity(0.15)
+        return Rectangle()
+            .fill(connectorColor)
+            .frame(width: 20, height: 2)
+    }
+
+    private var rowBackground: some View {
+        let cr: CGFloat = AppTheme.Layout.cornerRadius
+        return RoundedRectangle(cornerRadius: cr)
+            .fill(AppTheme.Gradients.surface)
+            .shadow(color: AppTheme.Colors.shadow.opacity(0.12), radius: 6, x: 0, y: 2)
+            .shadow(color: AppTheme.Colors.shadowStrong.opacity(0.06), radius: 2, x: 0, y: 1)
+    }
+
+    private var rowBorderOverlay: some View {
+        let cr: CGFloat = AppTheme.Layout.cornerRadius
+        let borderColor: Color = routeColor.opacity(0.08)
+        return RoundedRectangle(cornerRadius: cr)
+            .strokeBorder(borderColor, lineWidth: 1)
     }
 }
 

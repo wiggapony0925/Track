@@ -1222,6 +1222,13 @@ extension HomeViewModel {
                 existing: groupedTransit
             )
 
+            // Server responded — cancel any in-flight cold-start retry chain
+            // and reset the attempt counter so the next cold-start (after a
+            // long idle period) starts fresh.
+            _coldStartRetryTask?.cancel()
+            _coldStartRetryTask = nil
+            _coldStartRetryAttempt = 0
+
             // Update pulse state for station capsules with imminent arrivals
             mapSystem.updateImminentStations(from: groupedTransit)
 
@@ -1291,18 +1298,26 @@ extension HomeViewModel {
             errorMessage = (error as? TransitError)?.description ?? error.localizedDescription
 
             // ── Cold-start auto-retry ──────────────────────────────────
-            // If the very first fetch failed (groupedTransit still showing
-            // stale session cache) and the server hasn't warmed up yet,
-            // schedule a quick retry instead of making the user wait for
-            // the full 30 s refresh timer.  Once the server responds to
-            // *any* request (shapes, stations…) `serverWarmedUp` flips
-            // and the extended 45 s timeout kicks in for the retry.
-            if !TrackAPI.serverWarmedUp {
-                AppLogger.shared.log("REFRESH", message: "⏳ Cold-start retry scheduled (5 s)")
+            // If the server hasn't warmed up yet, schedule a single retry
+            // chain with exponential backoff (5s → 10s → 20s → 40s).
+            // Only one chain runs at a time — if `_coldStartRetryTask`
+            // is already active, skip.  This prevents geometric explosion
+            // where each failed fetch spawns a new independent retry that
+            // itself spawns another on failure.
+            if !TrackAPI.serverWarmedUp && _coldStartRetryTask == nil {
+                let attempt = _coldStartRetryAttempt
+                guard attempt < Self.maxColdStartRetries else {
+                    AppLogger.shared.log("REFRESH", message: "⛔ Cold-start retry limit reached (\(attempt)/\(Self.maxColdStartRetries)) — waiting for timer")
+                    return
+                }
+                let delay = min(5.0 * pow(2.0, Double(attempt)), 40.0) // 5, 10, 20, 40, 40
+                AppLogger.shared.log("REFRESH", message: "⏳ Cold-start retry #\(attempt + 1)/\(Self.maxColdStartRetries) scheduled (\(Int(delay)) s)")
                 let retryLocation = location
-                Task { @MainActor [weak self] in
-                    try? await Task.sleep(nanoseconds: 5_000_000_000)
-                    guard let self else { return }
+                _coldStartRetryTask = Task { @MainActor [weak self] in
+                    try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                    guard let self, !Task.isCancelled else { return }
+                    self._coldStartRetryTask = nil
+                    self._coldStartRetryAttempt += 1
                     await self.refreshNearbyTransit(
                         location: retryLocation,
                         skipGlobalFeeds: skipGlobalFeeds,
@@ -1994,28 +2009,27 @@ extension HomeViewModel {
 
         // Find the updated group that matches the current route ID
         if let match = newGroups.first(where: { $0.routeId == current.routeId }) {
-            // Must update on MainActor since it publishes changes
-            Task { @MainActor in
-                self.selectedGroupedRoute = match
-                // Re-apply shape-based direction ordering so direction indices
-                // stay consistent with the route shape (and selectedStopId).
-                // Without this, fresh nearby data can scramble direction order,
-                // causing the stop-filtering in RouteDetailSheet to compare
-                // arrivals from the wrong direction against selectedStopId.
-                if let shape = self.routeShape {
-                    self.enrichGroupWithShapeDirections(shape)
-                }
-                AppLogger.shared.log("SYNC", message: "Updated selected route: \(match.routeId)")
-                #if DEBUG
-                if let selected = self.selectedGroupedRoute {
-                    AppLogger.shared.log(
-                        "SYNC",
-                        message:
-                            "Persist route=\(selected.routeId) mode=\(selected.mode) selectedDirIdx=\(self.selectedDirectionIndex) snapshot=\(self.debugDirectionSnapshot(selected))"
-                    )
-                }
-                #endif
+            // Already on @MainActor — mutate synchronously to avoid deferred
+            // double-writes and re-entrant observation crashes.
+            self.selectedGroupedRoute = match
+            // Re-apply shape-based direction ordering so direction indices
+            // stay consistent with the route shape (and selectedStopId).
+            // Without this, fresh nearby data can scramble direction order,
+            // causing the stop-filtering in RouteDetailSheet to compare
+            // arrivals from the wrong direction against selectedStopId.
+            if let shape = self.routeShape {
+                self.enrichGroupWithShapeDirections(shape)
             }
+            AppLogger.shared.log("SYNC", message: "Updated selected route: \(match.routeId)")
+            #if DEBUG
+            if let selected = self.selectedGroupedRoute {
+                AppLogger.shared.log(
+                    "SYNC",
+                    message:
+                        "Persist route=\(selected.routeId) mode=\(selected.mode) selectedDirIdx=\(self.selectedDirectionIndex) snapshot=\(self.debugDirectionSnapshot(selected))"
+                )
+            }
+            #endif
         }
     }
 

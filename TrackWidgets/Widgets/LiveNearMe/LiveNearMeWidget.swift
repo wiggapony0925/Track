@@ -7,7 +7,7 @@
 //
 
 import SwiftUI
-import WidgetKit
+@preconcurrency import WidgetKit
 
 // MARK: - Timeline Provider
 
@@ -83,7 +83,7 @@ struct LiveNearMeProvider: TimelineProvider {
     }
 
     /// Fetches live nearby transit data from the backend API.
-    private func fetchLiveEntry(maxRoutes: Int, completion: @escaping (LiveNearMeEntry?) -> Void) {
+    private func fetchLiveEntry(maxRoutes: Int, completion: @Sendable @escaping (LiveNearMeEntry?) -> Void) {
         let defaults = UserDefaults(suiteName: kAppGroupIdentifier) ?? UserDefaults.standard
         let lat = defaults.double(forKey: "lastLatitude")
         let lon = defaults.double(forKey: "lastLongitude")
@@ -131,6 +131,10 @@ struct LiveNearMeProvider: TimelineProvider {
             return
         }
 
+        // Pre-read interaction stats before the @Sendable URLSession closure
+        // to avoid capturing the non-Sendable UserDefaults instance.
+        let stats: [String: Int] = defaults.dictionary(forKey: "route_interaction_stats") as? [String: Int] ?? [:]
+
         let task = URLSession.shared.dataTask(with: url) { data, response, error in
             guard let data = data,
                   let http = response as? HTTPURLResponse,
@@ -144,9 +148,6 @@ struct LiveNearMeProvider: TimelineProvider {
                 let decoder = JSONDecoder()
                 decoder.dateDecodingStrategy = .iso8601
                 let responses = try decoder.decode([WidgetNearbyResponse].self, from: data)
-
-                // Load interaction stats for sorting
-                let stats = defaults.dictionary(forKey: "route_interaction_stats") as? [String: Int] ?? [:]
 
                 let arrivals = responses.map { item in
                     NearbyArrival(

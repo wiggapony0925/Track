@@ -39,61 +39,8 @@ struct LiveTrackingOverlay: View {
                 .frame(width: 36, height: 4)
                 .padding(.top, 8)
 
-            // Route header
-            HStack(spacing: 12) {
-                // Pulsing route badge
-                ZStack {
-                    Circle()
-                        .fill(routeColor.opacity(0.3))
-                        .frame(width: 48, height: 48)
-                        .scaleEffect(pulseScale)
-                    Circle()
-                        .fill(routeColor)
-                        .frame(width: AppTheme.Layout.badgeSizeLarge,
-                               height: AppTheme.Layout.badgeSizeLarge)
-                    Text(routeName)
-                        .font(.system(size: AppTheme.Layout.badgeFontLarge,
-                                      weight: .heavy, design: .monospaced))
-                        .foregroundColor(.white)
-                        .minimumScaleFactor(0.5)
-                        .lineLimit(1)
-                }
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("In Transit")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(AppTheme.Colors.textSecondary)
-                        .textCase(.uppercase)
-
-                    // Large countdown — pulses when GPS updates arrive
-                    if let eta = etaMinutes {
-                        HStack(alignment: .firstTextBaseline, spacing: 4) {
-                            Text("\(eta)")
-                                .font(.system(size: 32, weight: .bold, design: .rounded))
-                                .foregroundColor(AppTheme.Colors.countdown(eta))
-                                .scaleEffect(pulseScale)
-                            Text("min remaining")
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundColor(AppTheme.Colors.textSecondary)
-                        }
-                    } else {
-                        Text("Tracking…")
-                            .font(.system(size: 20, weight: .semibold, design: .rounded))
-                            .foregroundColor(AppTheme.Colors.textPrimary)
-                    }
-                }
-
-                Spacer()
-
-                // Live indicator pulse
-                Circle()
-                    .fill(AppTheme.Colors.goGreen)
-                    .frame(width: 10, height: 10)
-                    .scaleEffect(pulseScale)
-                    .shadow(color: AppTheme.Colors.goGreen.opacity(0.6), radius: 4)
-            }
-            .padding(.horizontal, AppTheme.Layout.margin)
-            .padding(.top, 12)
+            // Route header (extracted to reduce body type-check time)
+            routeHeaderRow
 
             // Stop checklist (auto-scrolls with progressive dimming)
             if !stops.isEmpty {
@@ -127,24 +74,7 @@ struct LiveTrackingOverlay: View {
             }
 
             // "Get Off" button — always visible at bottom
-            Button {
-                onGetOff?()
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 16, weight: .bold))
-                    Text("Get Off")
-                        .font(.system(size: 15, weight: .bold))
-                }
-                .foregroundColor(.white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .background(AppTheme.Colors.alertRed)
-                .cornerRadius(AppTheme.Layout.cornerRadius)
-            }
-            .padding(.horizontal, AppTheme.Layout.margin)
-            .padding(.top, 12)
-            .padding(.bottom, 16)
+            getOffButton
         }
         .background(
             RoundedRectangle(cornerRadius: 24, style: .continuous)
@@ -164,6 +94,86 @@ struct LiveTrackingOverlay: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Live tracking \(routeName), \(etaMinutes ?? 0) minutes remaining")
+    }
+
+    // MARK: - Extracted Subviews (reduce body type-check time)
+
+    @ViewBuilder
+    private var routeHeaderRow: some View {
+        HStack(spacing: 12) {
+            // Pulsing route badge
+            ZStack {
+                Circle()
+                    .fill(routeColor.opacity(0.3))
+                    .frame(width: 48, height: 48)
+                    .scaleEffect(pulseScale)
+                Circle()
+                    .fill(routeColor)
+                    .frame(width: AppTheme.Layout.badgeSizeLarge,
+                           height: AppTheme.Layout.badgeSizeLarge)
+                Text(routeName)
+                    .font(.system(size: AppTheme.Layout.badgeFontLarge,
+                                  weight: .heavy, design: .monospaced))
+                    .foregroundColor(.white)
+                    .minimumScaleFactor(0.5)
+                    .lineLimit(1)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("In Transit")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+                    .textCase(.uppercase)
+
+                if let eta: Int = etaMinutes {
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        Text("\(eta)")
+                            .font(.system(size: 32, weight: .bold, design: .rounded))
+                            .foregroundColor(AppTheme.Colors.countdown(eta))
+                            .scaleEffect(pulseScale)
+                        Text("min remaining")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
+                    }
+                } else {
+                    Text("Tracking…")
+                        .font(.system(size: 20, weight: .semibold, design: .rounded))
+                        .foregroundColor(AppTheme.Colors.textPrimary)
+                }
+            }
+
+            Spacer()
+
+            Circle()
+                .fill(AppTheme.Colors.goGreen)
+                .frame(width: 10, height: 10)
+                .scaleEffect(pulseScale)
+                .shadow(color: AppTheme.Colors.goGreen.opacity(0.6), radius: 4)
+        }
+        .padding(.horizontal, AppTheme.Layout.margin)
+        .padding(.top, 12)
+    }
+
+    @ViewBuilder
+    private var getOffButton: some View {
+        Button {
+            onGetOff?()
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 16, weight: .bold))
+                Text("Get Off")
+                    .font(.system(size: 15, weight: .bold))
+            }
+            .foregroundColor(.white)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .background(AppTheme.Colors.alertRed)
+            .cornerRadius(AppTheme.Layout.cornerRadius)
+        }
+        .padding(.horizontal, AppTheme.Layout.margin)
+        .padding(.top, 12)
+        .padding(.bottom, 16)
     }
 }
 

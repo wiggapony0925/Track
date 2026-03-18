@@ -62,23 +62,29 @@ struct SettingsContentView: View {
     }
     
     var body: some View {
+        bodyWithOverlay
+            .animation(.spring(response: 0.35, dampingFraction: 0.8), value: hasUnappliedChanges)
+            .animation(.spring(response: 0.3, dampingFraction: 0.85), value: showAppliedConfirmation)
+    }
+
+    private var bodyWithOverlay: some View {
+        bodyWithChangeTracking
+            .overlay(alignment: .bottom) { settingsOverlayContent }
+    }
+
+    private var bodyWithChangeTracking: some View {
         settingsBaseContent
             .onAppear { loadDrafts() }
             .onChange(of: draftRadius) { _, _ in checkForChanges() }
             .onChange(of: draftShowSearchRadius) { _, _ in checkForChanges() }
             .onChange(of: draftDragToSearch) { _, _ in checkForChanges() }
-            .onChange(of: appTheme) { _, _ in
-                Task { await SyncManager.shared.pushUserSettings() }
-            }
-            .onChange(of: hapticsEnabled) { _, _ in
-                Task { await SyncManager.shared.pushUserSettings() }
-            }
-            .onChange(of: distanceUnit) { _, _ in
-                Task { await SyncManager.shared.pushUserSettings() }
-            }
-            .overlay(alignment: .bottom) { settingsOverlayContent }
-            .animation(.spring(response: 0.35, dampingFraction: 0.8), value: hasUnappliedChanges)
-            .animation(.spring(response: 0.3, dampingFraction: 0.85), value: showAppliedConfirmation)
+            .onChange(of: appTheme) { _, _ in syncSettings() }
+            .onChange(of: hapticsEnabled) { _, _ in syncSettings() }
+            .onChange(of: distanceUnit) { _, _ in syncSettings() }
+    }
+
+    private func syncSettings() {
+        Task { await SyncManager.shared.pushUserSettings() }
     }
 
     private var settingsBaseContent: some View {
@@ -803,202 +809,221 @@ struct SettingsContentView: View {
         settingsSection(title: "About", icon: "info.circle.fill", iconColor: AppTheme.Colors.mtaBlue) {
             VStack(spacing: 0) {
 
-                // ── Hero identity ──────────────────────────────────
-                VStack(spacing: 14) {
-                    ZStack {
-                        // Soft radial glow behind the icon
-                        Circle()
-                            .fill(
-                                RadialGradient(
-                                    colors: [AppTheme.Colors.mtaBlue.opacity(0.18), Color.clear],
-                                    center: .center,
-                                    startRadius: 20,
-                                    endRadius: 70
-                                )
-                            )
-                            .frame(width: 120, height: 120)
-
-                        Image("AppIconImage")
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .frame(width: 80, height: 80)
-                            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-                            .shadow(color: AppTheme.Colors.shadow.opacity(0.20), radius: 12, y: 6)
-                            .shadow(color: AppTheme.Colors.shadowStrong.opacity(0.10), radius: 4, y: 2)
-                    }
-
-                    VStack(spacing: 3) {
-                        Text("Track")
-                            .font(.system(size: 26, weight: .heavy, design: .rounded))
-                            .foregroundColor(AppTheme.Colors.textPrimary)
-
-                        Text("NYC Transit, Live")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(AppTheme.Colors.textSecondary)
-                    }
-
-                    if let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
-                       let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String {
-                        Text("Version \(version)  ·  Build \(build)")
-                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                            .foregroundColor(AppTheme.Colors.mtaBlue)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 5)
-                            .background(AppTheme.Colors.mtaBlue.opacity(0.1))
-                            .clipShape(Capsule())
-                    }
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.top, 24)
-                .padding(.bottom, 20)
+                aboutHeroIdentity
 
                 aboutDivider
 
-                // ── Transit modes grid ─────────────────────────────
-                VStack(spacing: 12) {
-                    aboutSectionLabel("SUPPORTED TRANSIT")
-
-                    HStack(spacing: 10) {
-                        transitModeCard(icon: "tram.fill", label: "Subway", color: AppTheme.Colors.mtaBlue)
-                        transitModeCard(icon: "bus.fill", label: "Bus", color: AppTheme.BusColors.localBlue)
-                        transitModeCard(icon: "train.side.front.car", label: "LIRR", color: AppTheme.CommuterRailColors.lirrBlue)
-                        transitModeCard(icon: "train.side.front.car", label: "MNR", color: AppTheme.CommuterRailColors.mnrBlue)
-                    }
-                    .padding(.horizontal, AppTheme.Layout.cardPadding)
-                }
-                .padding(.vertical, 16)
+                aboutTransitModes
 
                 aboutDivider
 
-                // ── Data sources row ───────────────────────────────
-                VStack(spacing: 10) {
-                    aboutSectionLabel("POWERED BY")
-
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            dataChip(icon: "antenna.radiowaves.left.and.right", text: "MTA GTFS-RT")
-                            dataChip(icon: "mappin.and.ellipse", text: "Apple Maps")
-                            dataChip(icon: "clock.arrow.circlepath", text: "Real-Time Feeds")
-                        }
-                        .padding(.horizontal, AppTheme.Layout.cardPadding)
-                    }
-                }
-                .padding(.vertical, 16)
+                aboutDataSources
 
                 aboutDivider
 
-                // ── Quick links ────────────────────────────────────
-                VStack(spacing: 0) {
-                    aboutSectionLabel("LINKS")
-                        .padding(.top, 14)
-                        .padding(.bottom, 8)
-
-                    aboutLink(
-                        icon: "star.fill",
-                        iconColor: .orange,
-                        title: "Rate on the App Store",
-                        subtitle: "Your review helps us grow"
-                    ) {
-                        if let url = URL(string: "itms-apps://itunes.apple.com/app/id6743892498?action=write-review") {
-                            UIApplication.shared.open(url)
-                        }
-                    }
-
-                    Divider().padding(.leading, AppTheme.Layout.cardPadding + 42)
-
-                    aboutLink(
-                        icon: "square.and.arrow.up.fill",
-                        iconColor: AppTheme.Colors.mtaBlue,
-                        title: "Share Track",
-                        subtitle: "Tell a friend about the app"
-                    ) {
-                        let url = URL(string: "https://apps.apple.com/app/id6743892498")!
-                        let av = UIActivityViewController(activityItems: [url], applicationActivities: nil)
-                        if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-                           let root = scene.windows.first?.rootViewController {
-                            root.present(av, animated: true)
-                        }
-                    }
-
-                    Divider().padding(.leading, AppTheme.Layout.cardPadding + 42)
-
-                    aboutLink(
-                        icon: "hand.raised.fill",
-                        iconColor: .indigo,
-                        title: "Privacy Policy",
-                        subtitle: "How we handle your data"
-                    ) {
-                        if let url = URL(string: "https://tracknyc.app/privacy") {
-                            UIApplication.shared.open(url)
-                        }
-                    }
-
-                    Divider().padding(.leading, AppTheme.Layout.cardPadding + 42)
-
-                    aboutLink(
-                        icon: "doc.text.fill",
-                        iconColor: .teal,
-                        title: "Terms of Service",
-                        subtitle: "Usage terms & conditions"
-                    ) {
-                        if let url = URL(string: "https://tracknyc.app/terms") {
-                            UIApplication.shared.open(url)
-                        }
-                    }
-                }
-                .padding(.bottom, 6)
+                aboutQuickLinks
 
                 aboutDivider
 
-                // ── MTA Data Disclaimer ────────────────────────────
-                VStack(spacing: 10) {
-                    aboutSectionLabel("DATA DISCLAIMER")
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack(alignment: .top, spacing: 8) {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundColor(AppTheme.Colors.warningYellow)
-                                .padding(.top, 1)
-
-                            Text("Transit data is obtained from the Metropolitan Transportation Authority (MTA) and redistributed through Track's servers. This app is not licensed by, endorsed by, or affiliated with the MTA.")
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-
-                        HStack(alignment: .top, spacing: 8) {
-                            Image(systemName: "clock.badge.exclamationmark.fill")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.5))
-                                .padding(.top, 1)
-
-                            Text("Data is provided \"as is\" and may not be accurate, complete, or timely. Arrival times may be delayed due to caching and network conditions. Information shown may not reflect real-time conditions.")
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                    }
-                    .padding(.horizontal, AppTheme.Layout.cardPadding)
-                }
-                .padding(.vertical, 16)
+                aboutDataDisclaimer
 
                 aboutDivider
 
-                // ── Footer ─────────────────────────────────────────
-                VStack(spacing: 5) {
-                    Text("Made with ❤️ in New York City")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(AppTheme.Colors.textSecondary)
-
-                    Text("© \(Calendar.current.component(.year, from: Date())) Track NYC Transit")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.45))
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 18)
+                aboutFooter
             }
         }
+    }
+
+    // MARK: - About Sub-Views (extracted to reduce type-checker workload)
+
+    private var aboutHeroIdentity: some View {
+        VStack(spacing: 14) {
+            ZStack {
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [AppTheme.Colors.mtaBlue.opacity(0.18), Color.clear],
+                            center: .center,
+                            startRadius: 20,
+                            endRadius: 70
+                        )
+                    )
+                    .frame(width: 120, height: 120)
+
+                Image("AppIconImage")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 80, height: 80)
+                    .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    .shadow(color: AppTheme.Colors.shadow.opacity(0.20), radius: 12, y: 6)
+                    .shadow(color: AppTheme.Colors.shadowStrong.opacity(0.10), radius: 4, y: 2)
+            }
+
+            VStack(spacing: 3) {
+                Text("Track")
+                    .font(.system(size: 26, weight: .heavy, design: .rounded))
+                    .foregroundColor(AppTheme.Colors.textPrimary)
+
+                Text("NYC Transit, Live")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+            }
+
+            if let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
+               let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String {
+                Text("Version \(version)  ·  Build \(build)")
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .foregroundColor(AppTheme.Colors.mtaBlue)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 5)
+                    .background(AppTheme.Colors.mtaBlue.opacity(0.1))
+                    .clipShape(Capsule())
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 24)
+        .padding(.bottom, 20)
+    }
+
+    private var aboutTransitModes: some View {
+        VStack(spacing: 12) {
+            aboutSectionLabel("SUPPORTED TRANSIT")
+
+            HStack(spacing: 10) {
+                transitModeCard(icon: "tram.fill", label: "Subway", color: AppTheme.Colors.mtaBlue)
+                transitModeCard(icon: "bus.fill", label: "Bus", color: AppTheme.BusColors.localBlue)
+                transitModeCard(icon: "train.side.front.car", label: "LIRR", color: AppTheme.CommuterRailColors.lirrBlue)
+                transitModeCard(icon: "train.side.front.car", label: "MNR", color: AppTheme.CommuterRailColors.mnrBlue)
+            }
+            .padding(.horizontal, AppTheme.Layout.cardPadding)
+        }
+        .padding(.vertical, 16)
+    }
+
+    private var aboutDataSources: some View {
+        VStack(spacing: 10) {
+            aboutSectionLabel("POWERED BY")
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    dataChip(icon: "antenna.radiowaves.left.and.right", text: "MTA GTFS-RT")
+                    dataChip(icon: "mappin.and.ellipse", text: "Apple Maps")
+                    dataChip(icon: "clock.arrow.circlepath", text: "Real-Time Feeds")
+                }
+                .padding(.horizontal, AppTheme.Layout.cardPadding)
+            }
+        }
+        .padding(.vertical, 16)
+    }
+
+    private var aboutQuickLinks: some View {
+        VStack(spacing: 0) {
+            aboutSectionLabel("LINKS")
+                .padding(.top, 14)
+                .padding(.bottom, 8)
+
+            aboutLink(
+                icon: "star.fill",
+                iconColor: .orange,
+                title: "Rate on the App Store",
+                subtitle: "Your review helps us grow"
+            ) {
+                if let url = URL(string: "itms-apps://itunes.apple.com/app/id6743892498?action=write-review") {
+                    UIApplication.shared.open(url)
+                }
+            }
+
+            Divider().padding(.leading, AppTheme.Layout.cardPadding + 42)
+
+            aboutLink(
+                icon: "square.and.arrow.up.fill",
+                iconColor: AppTheme.Colors.mtaBlue,
+                title: "Share Track",
+                subtitle: "Tell a friend about the app"
+            ) {
+                let url = URL(string: "https://apps.apple.com/app/id6743892498")!
+                let av = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+                if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                   let root = scene.windows.first?.rootViewController {
+                    root.present(av, animated: true)
+                }
+            }
+
+            Divider().padding(.leading, AppTheme.Layout.cardPadding + 42)
+
+            aboutLink(
+                icon: "hand.raised.fill",
+                iconColor: .indigo,
+                title: "Privacy Policy",
+                subtitle: "How we handle your data"
+            ) {
+                if let url = URL(string: "https://tracknyc.app/privacy") {
+                    UIApplication.shared.open(url)
+                }
+            }
+
+            Divider().padding(.leading, AppTheme.Layout.cardPadding + 42)
+
+            aboutLink(
+                icon: "doc.text.fill",
+                iconColor: .teal,
+                title: "Terms of Service",
+                subtitle: "Usage terms & conditions"
+            ) {
+                if let url = URL(string: "https://tracknyc.app/terms") {
+                    UIApplication.shared.open(url)
+                }
+            }
+        }
+        .padding(.bottom, 6)
+    }
+
+    private var aboutDataDisclaimer: some View {
+        VStack(spacing: 10) {
+            aboutSectionLabel("DATA DISCLAIMER")
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(AppTheme.Colors.warningYellow)
+                        .padding(.top, 1)
+
+                    Text("Transit data is obtained from the Metropolitan Transportation Authority (MTA) and redistributed through Track's servers. This app is not licensed by, endorsed by, or affiliated with the MTA.")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "clock.badge.exclamationmark.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.5))
+                        .padding(.top, 1)
+
+                    Text("Data is provided \"as is\" and may not be accurate, complete, or timely. Arrival times may be delayed due to caching and network conditions. Information shown may not reflect real-time conditions.")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(.horizontal, AppTheme.Layout.cardPadding)
+        }
+        .padding(.vertical, 16)
+    }
+
+    private var aboutFooter: some View {
+        VStack(spacing: 5) {
+            Text("Made with ❤️ in New York City")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(AppTheme.Colors.textSecondary)
+
+            Text("© \(Calendar.current.component(.year, from: Date())) Track NYC Transit")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.45))
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 18)
     }
 
     // MARK: - About Helpers

@@ -72,18 +72,18 @@ enum AppTheme {
         static let screen = LinearGradient(
             stops: [
                 .init(color: Colors.background, location: 0.00),
-                .init(color: Colors.backgroundSecondary, location: 0.52),
+                .init(color: Colors.backgroundSecondary, location: 0.45),
                 .init(color: Colors.backgroundTertiary, location: 1.00),
             ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
+            startPoint: .top,
+            endPoint: .bottom
         )
 
         static let screenSheen = LinearGradient(
             stops: [
-                .init(color: Colors.glassHighlight.opacity(0.14), location: 0.00),
-                .init(color: Color.clear, location: 0.36),
-                .init(color: Colors.accentGlow.opacity(0.06), location: 1.00),
+                .init(color: Colors.glassHighlight.opacity(0.10), location: 0.00),
+                .init(color: Color.clear, location: 0.30),
+                .init(color: Colors.accentGlow.opacity(0.04), location: 1.00),
             ],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
@@ -91,7 +91,8 @@ enum AppTheme {
 
         static let screenGlow = LinearGradient(
             stops: [
-                .init(color: Colors.accentGlow.opacity(0.15), location: 0.00),
+                .init(color: Colors.accentGlow.opacity(0.12), location: 0.00),
+                .init(color: Colors.accentSecondary.opacity(0.04), location: 0.50),
                 .init(color: Color.clear, location: 1.00),
             ],
             startPoint: .topLeading,
@@ -100,7 +101,8 @@ enum AppTheme {
 
         static let heroGlow = LinearGradient(
             stops: [
-                .init(color: Colors.accentSecondary.opacity(0.10), location: 0.00),
+                .init(color: Colors.accentSecondary.opacity(0.08), location: 0.00),
+                .init(color: Colors.accentGlow.opacity(0.04), location: 0.50),
                 .init(color: Color.clear, location: 1.00),
             ],
             startPoint: .topLeading,
@@ -154,8 +156,8 @@ enum AppTheme {
 
         static let chromeHighlight = LinearGradient(
             stops: [
-                .init(color: Colors.glassHighlight.opacity(0.15), location: 0.00),
-                .init(color: Color.clear, location: 1.00),
+                .init(color: Colors.glassHighlight.opacity(0.12), location: 0.00),
+                .init(color: Color.clear, location: 0.70),
             ],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
@@ -170,11 +172,23 @@ enum AppTheme {
             endPoint: .bottomTrailing
         )
 
+        /// Vibrant accent gradient for hero elements — slightly wider color range.
+        static let accentVibrant = LinearGradient(
+            stops: [
+                .init(color: Colors.accentSecondary, location: 0.00),
+                .init(color: Colors.accent, location: 0.50),
+                .init(color: Colors.accentDeep, location: 1.00),
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+
         static func tintWash(_ tint: Color, intensity: Double = 0.18) -> LinearGradient {
             LinearGradient(
                 stops: [
                     .init(color: tint.opacity(intensity), location: 0.00),
-                    .init(color: tint.opacity(intensity * 0.3), location: 1.00),
+                    .init(color: tint.opacity(intensity * 0.25), location: 0.60),
+                    .init(color: tint.opacity(intensity * 0.08), location: 1.00),
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
@@ -186,52 +200,51 @@ enum AppTheme {
 
     struct Typography {
         /// Large rounded header (Dynamic Type: Large Title).
-        static let headerLarge: Font = .custom("Helvetica-Bold", size: 34)
+        static let headerLarge: Font = .system(size: 34, weight: .bold, design: .rounded)
 
         /// Sheet/detail title — smaller than headerLarge, larger than headerMedium.
         /// Used for route detail sheet titles where the RouteBadge is the hero element.
-        static let sheetTitle: Font = .custom("Helvetica-Bold", size: 26)
+        static let sheetTitle: Font = .system(size: 26, weight: .bold, design: .rounded)
 
         /// Medium header for sheet titles and card headers.
-        static let headerMedium: Font = .custom("Helvetica-Bold", size: 18)
+        static let headerMedium: Font = .system(size: 18, weight: .bold, design: .rounded)
 
         /// Section headers (Dynamic Type: Subheadline).
-        static let sectionHeader: Font = .custom("Helvetica-Bold", size: 15)
+        static let sectionHeader: Font = .system(size: 13, weight: .heavy, design: .rounded)
 
         /// Monospaced route labels (Dynamic Type: Body).
-        /// Using Helvetica-Bold instead of generic heavy monospaced for better brand alignment.
-        static let routeLabel: Font = .custom("Helvetica-Bold", size: 17)
+        static let routeLabel: Font = .system(size: 17, weight: .bold, design: .rounded)
 
         /// Standard body text (Dynamic Type: Callout).
-        static let body: Font = .custom("Helvetica", size: 16)
+        static let body: Font = .system(size: 16, weight: .regular, design: .default)
 
         /// Card title text (bold).
-        static let cardTitle: Font = .custom("Helvetica-Bold", size: 16)
+        static let cardTitle: Font = .system(size: 16, weight: .semibold, design: .rounded)
 
         /// Card subtitle / secondary text.
-        static let cardSubtitle: Font = .custom("Helvetica", size: 14)
+        static let cardSubtitle: Font = .system(size: 14, weight: .medium, design: .default)
 
         /// Caption text for timestamps, metadata, and small labels.
-        static let caption: Font = .custom("Helvetica", size: 13)
+        static let caption: Font = .system(size: 13, weight: .regular, design: .default)
 
         /// Small bold caption (e.g. day badges, counters).
-        static let captionBold: Font = .custom("Helvetica-Bold", size: 13)
+        static let captionBold: Font = .system(size: 13, weight: .bold, design: .rounded)
 
         /// Search bar input text.
-        static let searchInput: Font = .system(size: 15, weight: .regular)
+        static let searchInput: Font = .system(size: 15, weight: .regular, design: .default)
 
         /// Navigation back button text.
-        static let navButton: Font = .custom("Helvetica", size: 16)
+        static let navButton: Font = .system(size: 16, weight: .medium, design: .default)
 
         /// Settings row title.
-        static let settingsTitle: Font = .custom("Helvetica-Bold", size: 15)
+        static let settingsTitle: Font = .system(size: 15, weight: .semibold, design: .rounded)
 
         /// Settings row description.
-        static let settingsDescription: Font = .custom("Helvetica", size: 13)
+        static let settingsDescription: Font = .system(size: 13, weight: .regular, design: .default)
 
-        /// Helper to get Helvetica with specific weight/size.
+        /// Helper to get system font with rounded design at specific weight/size.
         static func helvetica(size: CGFloat, weight: Font.Weight = .regular) -> Font {
-            .custom("Helvetica", size: size).weight(weight)
+            .system(size: size, weight: weight, design: .rounded)
         }
     }
 
@@ -261,11 +274,23 @@ enum AppTheme {
         /// Small gap within tightly grouped items (4–6pt).
         static let tight: CGFloat = 6
         /// Standard inner section spacing (10–12pt).
-        static let inner: CGFloat = 10
+        static let inner: CGFloat = 12
         /// Gap between related sections (16pt).
-        static let section: CGFloat = 16
+        static let section: CGFloat = 18
         /// Large gap between major content blocks (24pt).
-        static let block: CGFloat = 24
+        static let block: CGFloat = 28
+    }
+
+    // MARK: - Animation
+
+    /// Reusable animation presets for consistent motion throughout the app.
+    struct Animation {
+        /// Snappy spring for taps and selections.
+        static let snappy = SwiftUI.Animation.spring(response: 0.3, dampingFraction: 0.75)
+        /// Smooth spring for sheet transitions and navigation.
+        static let smooth = SwiftUI.Animation.spring(response: 0.45, dampingFraction: 0.85)
+        /// Gentle ease for fades and opacity changes.
+        static let gentle = SwiftUI.Animation.easeInOut(duration: 0.25)
     }
 
     // MARK: - Subway Line Colors

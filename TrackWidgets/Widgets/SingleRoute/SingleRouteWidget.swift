@@ -7,7 +7,7 @@
 //
 
 import SwiftUI
-import WidgetKit
+@preconcurrency import WidgetKit
 
 // MARK: - Timeline Provider
 
@@ -55,7 +55,7 @@ struct SingleRouteProvider: TimelineProvider {
     }
 
     /// Fetch arrivals for the tracked route from the /nearby API
-    private func fetchTrackedRouteEntry(trackedRoute: TrackedRoute, completion: @escaping (SingleRouteEntry?) -> Void) {
+    private func fetchTrackedRouteEntry(trackedRoute: TrackedRoute, completion: @Sendable @escaping (SingleRouteEntry?) -> Void) {
         let defaults = UserDefaults(suiteName: kAppGroupIdentifier) ?? UserDefaults.standard
         let lat = defaults.double(forKey: "lastLatitude")
         let lon = defaults.double(forKey: "lastLongitude")

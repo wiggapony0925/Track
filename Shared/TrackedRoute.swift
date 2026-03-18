@@ -30,7 +30,7 @@ struct TrackedRoute: Codable {
 
     // MARK: - Persistence
 
-    private static let defaults = UserDefaults(suiteName: kAppGroupIdentifier) ?? UserDefaults.standard
+    private nonisolated(unsafe) static let defaults = UserDefaults(suiteName: "group.JFMCAPITALGROUP.Track")!
 
     private enum Keys {
         static let routeId = "tracked_route_id"
