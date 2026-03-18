@@ -20,7 +20,7 @@ services:
     name: Track
     runtime: docker
     region: virginia
-    plan: starter         # 512 MB RAM, 0.5 CPU — upgrade to standard if CPU-bound
+    plan: starter         # 512 MB RAM, 0.5 CPU ($7/mo) — upgrade to standard ($25/mo) if CPU-bound
     rootDir: TrackBackend
     dockerfilePath: ./Dockerfile
     dockerContext: .
@@ -52,7 +52,16 @@ services:
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
-        sync: false   # also accepted as SUPABASE_SERVICE_KEY \u2014 same value
+        sync: false   # also accepted as SUPABASE_SERVICE_KEY — same value
+
+      # ── Gunicorn worker count ──────────────────────────────
+      # Dockerfile defaults to 1 (safe for Starter's 512 MB RAM).
+      # Bump to 2 on Standard plan (2 GB) for true request parallelism.
+      # The critical 502 fix is thread-pool protobuf offloading, not
+      # extra workers — 1 worker is fine once ParseFromString is
+      # no longer blocking the event loop.
+      - key: WEB_CONCURRENCY
+        value: "1"
 
     # ── Render Persistent Disk ─────────────────────────────────────────────
     # Persists app/data/ across deploys so the 809 MB transit_schedule.db

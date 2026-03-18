@@ -20,6 +20,11 @@ COPY . .
 EXPOSE 8000
 
 # Command to run the app — uses $PORT if set by the cloud provider, defaults to 8000
-# --no-access-log: request logging handled by TrackLogger middleware (richer context)
-# --log-level warning: suppress uvicorn's internal INFO chatter; app logs via TrackLogger
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --no-access-log --log-level warning"]
+# gunicorn with uvicorn workers gives us:
+#   - Worker health monitoring & automatic restarts for stuck workers
+#   - Graceful reloads on deploy
+#   - Multiple workers (set WEB_CONCURRENCY=2+ on Standard/Pro plans)
+# --timeout 120: allow up to 2 min for cold-cache /nearby/grouped (fetches 7+ MTA feeds)
+# --graceful-timeout 30: workers get 30s to finish in-flight requests on shutdown
+# --no-access-log + --log-level warning: request logging handled by TrackLogger middleware
+CMD ["sh", "-c", "gunicorn app.main:app -k uvicorn.workers.UvicornWorker -w ${WEB_CONCURRENCY:-1} --bind 0.0.0.0:${PORT:-8000} --timeout 120 --graceful-timeout 30 --access-logfile /dev/null --log-level warning"]

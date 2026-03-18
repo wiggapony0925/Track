@@ -49,8 +49,12 @@ async def fetch_rail_arrivals(agency: str) -> list[TrackArrival]:
 
     raw = await fetch_protobuf(url)
 
+    # Offload CPU-bound protobuf parsing to the thread-pool so the
+    # event loop stays responsive for health checks and other requests.
+    import asyncio as _asyncio
+    loop = _asyncio.get_running_loop()
     feed = gtfs_realtime_pb2.FeedMessage()
-    feed.ParseFromString(raw)
+    await loop.run_in_executor(None, feed.ParseFromString, raw)
 
     arrivals: list[TrackArrival] = []
 

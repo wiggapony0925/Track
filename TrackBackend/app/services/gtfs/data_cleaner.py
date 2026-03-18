@@ -36,8 +36,11 @@ async def get_arrivals_for_line(line_id: str) -> list[TrackArrival]:
 
     raw = await fetch_protobuf(url)
 
+    # Offload CPU-bound protobuf parsing to the thread-pool so the
+    # event loop stays responsive for health checks and other requests.
+    loop = asyncio.get_running_loop()
     feed = gtfs_realtime_pb2.FeedMessage()
-    feed.ParseFromString(raw)
+    await loop.run_in_executor(None, feed.ParseFromString, raw)
 
     arrivals: list[TrackArrival] = []
     siri_obs: list[tuple[str, str, float]] = []  # (route_id, stop_id, deviation_s)

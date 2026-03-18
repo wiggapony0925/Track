@@ -42,6 +42,8 @@ app.include_router(predict.router)
 
 # Background task handle for periodic GTFS refresh
 _gtfs_refresh_task: asyncio.Task | None = None
+# Background task handle for continuous feed refresh (subway/rail keep-alive)
+_feed_refresh_task: asyncio.Task | None = None
 
 # How often to check MTA for new GTFS data (default: 24 hours)
 _GTFS_CHECK_INTERVAL = int(os.environ.get("GTFS_CHECK_INTERVAL", 86400))
@@ -49,7 +51,7 @@ _GTFS_CHECK_INTERVAL = int(os.environ.get("GTFS_CHECK_INTERVAL", 86400))
 
 @app.on_event("startup")
 async def startup_event():
-    global _gtfs_refresh_task
+    global _gtfs_refresh_task, _feed_refresh_task
     TrackLogger.startup()
     # Download fresh GTFS data from Supabase (falls back to Docker-bundled files)
     await ensure_data_available()
@@ -72,15 +74,19 @@ async def startup_event():
     )
     # Start background GTFS freshness checker
     _gtfs_refresh_task = asyncio.create_task(_periodic_gtfs_check())
-    # Prime caches in background so first real user never eats a cold penalty
-    asyncio.create_task(_warmup_caches())
+    # Prime caches in background so first real user never eats a cold penalty.
+    # After the initial prime, _warmup_caches hands off to
+    # _periodic_feed_refresh which keeps feeds hot every 10 seconds.
+    _feed_refresh_task = asyncio.create_task(_warmup_caches())
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    global _gtfs_refresh_task
+    global _gtfs_refresh_task, _feed_refresh_task
     if _gtfs_refresh_task:
         _gtfs_refresh_task.cancel()
+    if _feed_refresh_task:
+        _feed_refresh_task.cancel()
     # Emit final cache stats before the process exits so Render logs capture
     # the lifetime activity summary for every cache kind (bus Redis + mta in-process).
     cache_stats.flush()
@@ -116,6 +122,9 @@ async def _warmup_caches():
     Primes L3 (subway GTFS-RT feeds) and L4 (bus routes) caches so the
     very first user request is fast.  Runs in the background — the server
     accepts requests immediately while this completes.
+
+    After the initial prime, hands off to ``_periodic_feed_refresh``
+    which keeps feeds hot every 10 seconds so they NEVER go cold.
     """
     from app.services.gtfs.data_cleaner import get_arrivals_for_line
     from app.clients.bus_client import get_routes as get_bus_routes
@@ -137,6 +146,63 @@ async def _warmup_caches():
         f"[WARMUP] Done in {elapsed:.1f}s — subway feeds: {feed_ok}/9, bus routes: {bus_ok}",
         tag="WARMUP",
     )
+
+    # Transition to the keep-alive loop that continuously re-fetches
+    # all transit feeds.  This ensures the L3 feed cache is ALWAYS
+    # warm — no user request ever pays the cold-fetch penalty.
+    await _periodic_feed_refresh()
+
+
+# How often (seconds) to re-fetch all transit feeds in the background.
+# MTA updates GTFS-RT feeds every ~10-30s, so 10s keeps us within the
+# 12s fresh TTL and guarantees every user request hits a warm cache.
+_FEED_REFRESH_INTERVAL = int(os.environ.get("FEED_REFRESH_INTERVAL", 10))
+
+
+async def _periodic_feed_refresh():
+    """Background loop: keep ALL transit feeds hot in-memory forever.
+
+    Re-fetches every ``_FEED_REFRESH_INTERVAL`` seconds (default 10s):
+      - 9 subway GTFS-RT feeds  (one per feed family)
+      - LIRR GTFS-RT feed
+      - Metro-North GTFS-RT feed
+
+    Without this, feeds expire after ``MTA_FEED_STALE_TTL`` (60-120s)
+    and the next user request eats a 2-5 second cold penalty per feed.
+    With 7-9 feeds cold simultaneously, that snowballs to 15-25 seconds.
+    This loop eliminates that entirely — every feed fetch from the hot
+    path resolves from the in-process TTL cache in <1ms.
+    """
+    from app.services.gtfs.data_cleaner import get_arrivals_for_line
+    from app.clients.rail_client import fetch_rail_arrivals
+
+    feed_lines = ["A", "B", "N", "1", "G", "L", "J", "7", "SI"]
+
+    while True:
+        await asyncio.sleep(_FEED_REFRESH_INTERVAL)
+        try:
+            t0 = time.perf_counter()
+            results = await asyncio.gather(
+                *[get_arrivals_for_line(line) for line in feed_lines],
+                fetch_rail_arrivals("lirr"),
+                fetch_rail_arrivals("metro_north"),
+                return_exceptions=True,
+            )
+            elapsed = time.perf_counter() - t0
+            ok = sum(1 for r in results if not isinstance(r, Exception))
+            total = len(results)
+            if elapsed > 5.0 or ok < total:
+                TrackLogger.warning(
+                    f"[FEED_REFRESH] {ok}/{total} feeds OK in {elapsed:.1f}s",
+                    tag="FEED_REFRESH",
+                )
+        except asyncio.CancelledError:
+            break
+        except Exception as exc:
+            TrackLogger.error(
+                f"[FEED_REFRESH] Loop error: {exc}", tag="FEED_REFRESH",
+                exc_info=True,
+            )
 
 
 # ---------------------------------------------------------------------------

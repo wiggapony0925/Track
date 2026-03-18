@@ -58,7 +58,7 @@ _ovr = _load_cache_overrides()
 # └─────────────────────────────────────────────────────┘
 
 MTA_FEED_TTL_SECONDS: float = _ovr.get("mta_feed_ttl", 12.0)
-MTA_FEED_STALE_TTL_SECONDS: float = _ovr.get("mta_feed_stale_ttl", 60.0)
+MTA_FEED_STALE_TTL_SECONDS: float = _ovr.get("mta_feed_stale_ttl", 120.0)
 MTA_CACHE_MAX_SIZE: int = _ovr.get("mta_cache_max_size", 128)
 MTA_UPSTREAM_CONCURRENCY: int = _ovr.get("mta_upstream_concurrency", 32)
 
@@ -71,7 +71,7 @@ MTA_UPSTREAM_CONCURRENCY: int = _ovr.get("mta_upstream_concurrency", 32)
 BUS_ARRIVALS_FRESH_TTL: float = _ovr.get("bus_arrivals_fresh_ttl", 12.0)
 BUS_ARRIVALS_STALE_TTL: float = _ovr.get("bus_arrivals_stale_ttl", 25.0)
 BUS_ARRIVALS_MAX_SIZE: int = _ovr.get("bus_arrivals_max_size", 500)
-BUS_MAX_SIRI_STOPS: int = _ovr.get("bus_max_siri_stops", 80)
+BUS_MAX_SIRI_STOPS: int = _ovr.get("bus_max_siri_stops", 40)
 
 
 # ┌─────────────────────────────────────────────────────┐
@@ -123,9 +123,9 @@ REDIS_KEY_PREFIX: str = "track:bus"
 # │  repeat requests skip ALL upstream + processing.    │
 # └─────────────────────────────────────────────────────┘
 
-NEARBY_RESPONSE_FRESH_TTL: float = _ovr.get("nearby_response_fresh_ttl", 10.0)
-NEARBY_RESPONSE_STALE_TTL: float = _ovr.get("nearby_response_stale_ttl", 20.0)
-NEARBY_RESPONSE_ERROR_TTL: float = _ovr.get("nearby_response_error_ttl", 60.0)
+NEARBY_RESPONSE_FRESH_TTL: float = _ovr.get("nearby_response_fresh_ttl", 12.0)
+NEARBY_RESPONSE_STALE_TTL: float = _ovr.get("nearby_response_stale_ttl", 45.0)
+NEARBY_RESPONSE_ERROR_TTL: float = _ovr.get("nearby_response_error_ttl", 90.0)
 NEARBY_RESPONSE_MAX_SIZE: int = _ovr.get("nearby_response_max_size", 400)
 # 4 decimals ≈ 11m grid cells (was 3 ≈ 111m — too coarse, causing
 # users on cell boundaries to get stops from the wrong neighbourhood).
