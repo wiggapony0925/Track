@@ -124,7 +124,7 @@ REDIS_KEY_PREFIX: str = "track:bus"
 # └─────────────────────────────────────────────────────┘
 
 NEARBY_RESPONSE_FRESH_TTL: float = _ovr.get("nearby_response_fresh_ttl", 12.0)
-NEARBY_RESPONSE_STALE_TTL: float = _ovr.get("nearby_response_stale_ttl", 45.0)
+NEARBY_RESPONSE_STALE_TTL: float = _ovr.get("nearby_response_stale_ttl", 120.0)
 NEARBY_RESPONSE_ERROR_TTL: float = _ovr.get("nearby_response_error_ttl", 90.0)
 NEARBY_RESPONSE_MAX_SIZE: int = _ovr.get("nearby_response_max_size", 400)
 # 4 decimals ≈ 11m grid cells (was 3 ≈ 111m — too coarse, causing

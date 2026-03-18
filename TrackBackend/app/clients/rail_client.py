@@ -21,7 +21,7 @@ import time as _time
 # Keyed by feed URL.  Background refresh populates it; user requests
 # return the cached list in < 1 µs — zero thread pool, zero CPU.
 _RAIL_PARSED_CACHE: dict[str, tuple[float, list, int]] = {}
-_RAIL_PARSED_CACHE_TTL = 12.0  # seconds — matches MTA_FEED_FRESH_TTL
+_RAIL_PARSED_CACHE_TTL = 30.0  # must outlive background refresh cycle (~15-20s)
 
 # Known terminal stop_ids for direction inference when direction_id is absent.
 # MNR: Grand Central = "1"; LIRR: Penn Station = "237", Atlantic Terminal = "12"
@@ -119,7 +119,9 @@ def _parse_rail_feed_sync(
     return arrivals, len(feed.entity)
 
 
-async def fetch_rail_arrivals(agency: str) -> list[TrackArrival]:
+async def fetch_rail_arrivals(
+    agency: str, *, force_refresh: bool = False,
+) -> list[TrackArrival]:
     """Fetch & clean arrivals for a rail agency ('lirr' or 'metro_north')."""
     settings = get_settings()
 
@@ -132,12 +134,13 @@ async def fetch_rail_arrivals(agency: str) -> list[TrackArrival]:
         return []
 
     # ── Fast path: return cached parsed arrivals if still fresh ──
-    cached = _RAIL_PARSED_CACHE.get(url)
-    if cached is not None:
-        ts, cached_arrivals, _cnt = cached
-        if _time.time() - ts < _RAIL_PARSED_CACHE_TTL:
-            TrackLogger.cache(f"PARSED HIT rail/{agency}")
-            return list(cached_arrivals)
+    if not force_refresh:
+        cached = _RAIL_PARSED_CACHE.get(url)
+        if cached is not None:
+            ts, cached_arrivals, _cnt = cached
+            if _time.time() - ts < _RAIL_PARSED_CACHE_TTL:
+                TrackLogger.cache(f"PARSED HIT rail/{agency}")
+                return list(cached_arrivals)
 
     raw = await fetch_protobuf(url)
 

@@ -196,7 +196,7 @@ async def _periodic_feed_refresh():
             # and user requests between feeds (during the network await).
             for line in feed_lines:
                 try:
-                    await get_arrivals_for_line(line)
+                    await get_arrivals_for_line(line, force_refresh=True)
                     ok += 1
                 except Exception:
                     pass
@@ -204,7 +204,7 @@ async def _periodic_feed_refresh():
 
             for rail in ("lirr", "metro_north"):
                 try:
-                    await fetch_rail_arrivals(rail)
+                    await fetch_rail_arrivals(rail, force_refresh=True)
                     ok += 1
                 except Exception:
                     pass

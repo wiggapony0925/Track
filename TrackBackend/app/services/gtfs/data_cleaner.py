@@ -38,7 +38,7 @@ from app.utils.logger import TrackLogger
 import time as _time
 
 _PARSED_CACHE: dict[str, tuple[float, list, list, int]] = {}  # url → (ts, arrivals, siri_obs, entity_count)
-_PARSED_CACHE_TTL = 12.0  # match MTA_FEED_TTL_SECONDS
+_PARSED_CACHE_TTL = 30.0  # must outlive background refresh cycle (~15-20s)
 
 
 def _parse_feed_sync(
@@ -117,16 +117,25 @@ def _parse_feed_sync(
     return arrivals, siri_obs, len(feed.entity)
 
 
-async def get_arrivals_for_line(line_id: str) -> list[TrackArrival]:
+async def get_arrivals_for_line(
+    line_id: str, *, force_refresh: bool = False,
+) -> list[TrackArrival]:
     """Fetch & decode GTFS-RT Protobuf for *line_id*, returning clean arrivals.
 
     Each feed covers a family of lines (e.g. ACE, BDFM).  We return
     ALL routes found in the feed — not just the representative letter —
     so the caller gets every train from that feed.
 
-    Performance: If the feed was parsed within the last 12 seconds
+    Performance: If the feed was parsed within the last 30 seconds
     (by the background refresh loop or a prior request), returns the
     cached result immediately — zero thread pool, zero CPU.
+
+    Parameters
+    ----------
+    force_refresh : bool
+        When ``True`` (used by the background refresh loop), skip the
+        parsed cache and always re-fetch + re-parse.  This keeps data
+        fresh while still allowing user requests to hit the cache.
     """
     url = get_feed_url(line_id)
     if url is None:
@@ -134,12 +143,13 @@ async def get_arrivals_for_line(line_id: str) -> list[TrackArrival]:
         return []
 
     # ── Fast path: return cached parsed arrivals if still fresh ──
-    cached = _PARSED_CACHE.get(url)
-    if cached is not None:
-        ts, cached_arrivals, cached_siri_obs, cached_entity_count = cached
-        if _time.time() - ts < _PARSED_CACHE_TTL:
-            TrackLogger.cache(f"PARSED HIT {line_id}")
-            return list(cached_arrivals)  # shallow copy — caller may sort/filter
+    if not force_refresh:
+        cached = _PARSED_CACHE.get(url)
+        if cached is not None:
+            ts, cached_arrivals, cached_siri_obs, cached_entity_count = cached
+            if _time.time() - ts < _PARSED_CACHE_TTL:
+                TrackLogger.cache(f"PARSED HIT {line_id}")
+                return list(cached_arrivals)  # shallow copy — caller may sort/filter
 
     raw = await fetch_protobuf(url)
 
