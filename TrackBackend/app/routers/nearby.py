@@ -489,11 +489,27 @@ async def nearby_transit_grouped(
         TrackLogger.cache("RESP MISS coalesced /nearby/grouped")
         result = await inflight
         if result is not None:
+            # The coalesced task stored json_bytes in the cache — return those
+            cached_after = _nearby_resp_cache.get(key)
+            if cached_after is not None:
+                _, _, jb = cached_after
+                resp = Response(content=jb, media_type="application/json")
+                resp.headers["X-Track-Cache"] = "COALESCED"
+                return resp
             return result
         # Background refresh returned None (failed) — fall through to fresh compute
 
-    async def _miss_compute() -> list[GroupedNearbyTransit]:
+    async def _miss_compute() -> list[GroupedNearbyTransit] | Response:
         try:
+            await _compute_and_cache_grouped(key, lat, lon, effective_radius, mode)
+            # Return pre-serialized bytes from cache — skip response_model
+            cached_after = _nearby_resp_cache.get(key)
+            if cached_after is not None:
+                _, _, jb = cached_after
+                resp = Response(content=jb, media_type="application/json")
+                resp.headers["X-Track-Cache"] = "MISS-COMPUTED"
+                return resp
+            # Shouldn't happen, but fallback to normal serialization
             return await _compute_and_cache_grouped(key, lat, lon, effective_radius, mode)
         except Exception as exc:
             fallback = _find_cached_grouped_fallback(
@@ -509,7 +525,7 @@ async def nearby_transit_grouped(
                     f"exact={fallback_key == key} because {_describe_exception(exc)}",
                     tag="CACHE",
                 )
-                return fallback_data
+                return Response(content=_fb_json, media_type="application/json")
             raise
         finally:
             _nearby_resp_inflight.pop(key, None)
