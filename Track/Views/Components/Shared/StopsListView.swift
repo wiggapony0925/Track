@@ -101,7 +101,7 @@ struct StopsListView: View {
                     stop: stop,
                     routeColor: routeColor
                 )
-                .opacity(stop.isPassed ? 0.4 : 1.0)
+                .opacity(stop.isPassed ? 0.55 : 1.0)
                 .contentShape(Rectangle())
                 .onTapGesture {
                     onStopTapped?(stop)
@@ -114,17 +114,17 @@ struct StopsListView: View {
                         RoundedRectangle(cornerRadius: 1)
                             .fill(
                                 stop.isPassed
-                                    ? AppTheme.Colors.textSecondary.opacity(0.12)
-                                    : routeColor.opacity(0.2)
+                                    ? AppTheme.Colors.textSecondary.opacity(0.15)
+                                    : routeColor.opacity(0.25)
                             )
-                            .frame(width: 2.5, height: 14)
+                            .frame(width: 2, height: 8)
                         Spacer()
                     }
                     .padding(.leading, AppTheme.Layout.cardPadding)
                 }
             }
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 4)
         .trackCardBackground(cornerRadius: AppTheme.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius)
@@ -151,101 +151,122 @@ struct StopRowView: View {
     }
 
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
+        HStack(alignment: .center, spacing: 10) {
             // Stop dot — timeline indicator
             ZStack {
-                // Current stop: large pulse halo
+                // Current stop: subtle halo
                 if stop.isCurrent {
                     Circle()
-                        .fill(routeColor.opacity(0.15))
-                        .frame(width: 24, height: 24)
+                        .fill(routeColor.opacity(0.12))
+                        .frame(width: 22, height: 22)
                 }
                 // Terminal stops: ring style
                 if isTerminal && !stop.isCurrent {
                     Circle()
-                        .strokeBorder(routeColor, lineWidth: 2.5)
-                        .frame(width: 15, height: 15)
+                        .strokeBorder(routeColor, lineWidth: 2)
+                        .frame(width: 13, height: 13)
                     Circle()
                         .fill(routeColor)
-                        .frame(width: 7, height: 7)
+                        .frame(width: 5, height: 5)
                 } else {
                     Circle()
                         .fill(dotColor)
                         .frame(
-                            width: stop.isCurrent ? 14 : 9,
-                            height: stop.isCurrent ? 14 : 9
+                            width: stop.isCurrent ? 12 : 7,
+                            height: stop.isCurrent ? 12 : 7
                         )
                     if stop.isCurrent {
                         Circle()
                             .fill(AppTheme.Colors.cardFloating)
-                            .frame(width: 6, height: 6)
+                            .frame(width: 5, height: 5)
                     }
                 }
             }
-            .frame(width: 24)
+            .frame(width: 22)
 
             // Name + badges
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 5) {
                     Text(stop.name)
                         .font(.custom(
                             (stop.isCurrent || isTerminal) ? "Helvetica-Bold" : "Helvetica",
-                            size: stop.isCurrent ? 15 : 14
+                            size: stop.isCurrent ? 14 : 13
                         ))
                         .foregroundColor(stop.isCurrent ? routeColor : AppTheme.Colors.textPrimary)
                         .lineLimit(1)
 
                     if stop.isCurrent {
-                        Text("HERE")
-                            .font(.system(size: 8, weight: .black))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 2)
-                            .background(routeColor)
-                            .clipShape(Capsule())
+                        Circle()
+                            .fill(routeColor)
+                            .frame(width: 5, height: 5)
                     }
 
                     if !stop.accessibilityOutages.isEmpty {
                         Image(systemName: stop.hasElevatorOutage
                               ? "arrow.up.arrow.down.circle.fill" : "stairs")
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.system(size: 12, weight: .semibold))
                             .foregroundColor(.white)
-                            .frame(width: 20, height: 20)
+                            .frame(width: 18, height: 18)
                             .background(AppTheme.Colors.alertRed)
                             .clipShape(Circle())
                             .help(stop.accessibilityOutages.first ?? "Accessibility outage")
                     }
                 }
 
-                // Transfer badges
+                // Transfer badges — clean inline row
                 if !stop.transfers.isEmpty {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "arrow.triangle.swap")
-                                .font(.system(size: 9, weight: .semibold))
-                                .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
-
-                            ForEach(stop.transfers, id: \.self) { route in
-                                RouteBadge(routeID: route, size: .custom(22, 11))
-                            }
-                        }
-                    }
+                    transferBadgeRow
                 }
             }
 
-            Spacer()
+            Spacer(minLength: 4)
 
-            // Arrival ETA column — pill style
+            // Arrival ETA column
             arrivalColumn
         }
         .padding(.horizontal, AppTheme.Layout.cardPadding)
-        .padding(.vertical, 9)
+        .padding(.vertical, 7)
         .background(
-            RoundedRectangle(cornerRadius: 10)
+            RoundedRectangle(cornerRadius: 8)
                 .fill(stop.isSelected ? routeColor.opacity(0.08) : Color.clear)
                 .padding(.horizontal, 4)
         )
         .animation(.easeInOut(duration: 0.2), value: stop.isSelected)
+    }
+
+    /// Compact transfer badge row — subway circles and bus pills properly sized.
+    private var transferBadgeRow: some View {
+        HStack(spacing: 3) {
+            Image(systemName: "arrow.left.arrow.right")
+                .font(.system(size: 8, weight: .medium))
+                .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.5))
+
+            // Show up to 8 transfers inline, then "+N"
+            let visible = Array(stop.transfers.prefix(8))
+            let overflow = stop.transfers.count - visible.count
+
+            ForEach(visible, id: \.self) { route in
+                transferBadge(route)
+            }
+
+            if overflow > 0 {
+                Text("+\(overflow)")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
+            }
+        }
+    }
+
+    /// Individual transfer badge — subway gets circles, buses get compact pills.
+    @ViewBuilder
+    private func transferBadge(_ route: String) -> some View {
+        let subwayIDs: Set<String> = ["1","2","3","4","5","6","7","A","C","E","B","D","F","M","G","J","Z","L","N","Q","R","W","S","SI"]
+        let isSubway = subwayIDs.contains(route.uppercased())
+        if isSubway {
+            RouteBadge(routeID: route, size: .custom(18, 10))
+        } else {
+            RouteBadge(routeID: route, size: .custom(16, 8), isBus: true)
+        }
     }
 
     @ViewBuilder
@@ -254,22 +275,22 @@ struct StopRowView: View {
             if stop.nextArrivalIsAtStop {
                 // ── At stop / Now ──
                 Text("Now")
-                    .font(.custom("Helvetica-Bold", size: 12))
+                    .font(.custom("Helvetica-Bold", size: 11))
                     .foregroundColor(AppTheme.Colors.successGreen)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
                     .background(AppTheme.Colors.successGreen.opacity(0.1))
                     .clipShape(Capsule())
             } else {
-                HStack(spacing: 4) {
+                HStack(spacing: 3) {
                     if !stop.nextArrivalIsScheduled {
                         Circle()
                             .fill(AppTheme.Colors.successGreen)
-                            .frame(width: 5, height: 5)
+                            .frame(width: 4, height: 4)
                     }
-                    VStack(alignment: .trailing, spacing: 1) {
+                    VStack(alignment: .trailing, spacing: 0) {
                         Text("\(minutes)m")
-                            .font(.custom("Helvetica-Bold", size: 13))
+                            .font(.custom("Helvetica-Bold", size: 12))
                             .foregroundColor(
                                 stop.isPassed
                                 ? AppTheme.Colors.textSecondary.opacity(0.35)
@@ -279,21 +300,21 @@ struct StopRowView: View {
                             )
                         if let ts = stop.nextArrivalTimestamp {
                             Text(Date(timeIntervalSince1970: Double(ts)), style: .time)
-                                .font(.custom("Helvetica", size: 10))
-                                .foregroundColor(AppTheme.Colors.textSecondary.opacity(stop.isPassed ? 0.3 : 0.5))
+                                .font(.custom("Helvetica", size: 9))
+                                .foregroundColor(AppTheme.Colors.textSecondary.opacity(stop.isPassed ? 0.3 : 0.45))
                         }
                     }
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
                 .background(
                     Capsule()
                         .fill(
                             stop.isPassed
                             ? Color.clear
                             : (stop.nextArrivalIsScheduled
-                               ? AppTheme.Colors.textSecondary.opacity(0.06)
-                               : routeColor.opacity(0.08))
+                               ? AppTheme.Colors.textSecondary.opacity(0.05)
+                               : routeColor.opacity(0.07))
                         )
                 )
             }

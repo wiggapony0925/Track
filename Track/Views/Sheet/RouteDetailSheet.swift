@@ -1050,9 +1050,9 @@ struct RouteDetailSheet: View {
         }
 
         // Deduplicate helper (used in multiple branches below).
-        // Partitions: live (isRealTime) first sorted by ETA, then
-        // scheduled sorted by ETA.  This guarantees the chip strip
-        // always reads left→right: approaching buses → future scheduled.
+        // Sorts by ETA and deduplicates by vehicle/trip key.
+        // Final display order is determined by buildOrderedChips which
+        // sorts all chips chronologically (live + scheduled interleaved).
         func deduped(_ list: [NearbyTransitResponse]) -> [NearbyTransitResponse] {
             var seen = Set<String>()
             let unique = sortArrivalsByETA(list).filter { a in
@@ -1662,20 +1662,19 @@ struct RouteDetailSheet: View {
 
     /// Build ordered chips array from arrivals, partitioned live-first then scheduled.
     private func buildOrderedChips(from arrivals: [NearbyTransitResponse]) -> [(arrival: NearbyTransitResponse, eta: SmartETA)] {
-        var live: [(arrival: NearbyTransitResponse, eta: SmartETA)] = []
-        var sched: [(arrival: NearbyTransitResponse, eta: SmartETA)] = []
+        // Sort ALL chips chronologically by ETA — live and scheduled
+        // interleaved by time, matching Transit app behavior.
+        // Previously live chips were partitioned first; this caused
+        // a scheduled departure at 35 min to appear after a live
+        // bus at 50 min instead of between the 17 min and 50 min ones.
+        var chips: [(arrival: NearbyTransitResponse, eta: SmartETA)] = []
         for arrival in arrivals {
             let eta = smartETA(for: arrival)
             guard !eta.isPastArrival else { continue }
-            if arrival.isRealTime {
-                live.append((arrival, eta))
-            } else {
-                sched.append((arrival, eta))
-            }
+            chips.append((arrival, eta))
         }
-        live.sort { $0.eta.secondsRemaining < $1.eta.secondsRemaining }
-        sched.sort { $0.eta.secondsRemaining < $1.eta.secondsRemaining }
-        return live + sched
+        chips.sort { $0.eta.secondsRemaining < $1.eta.secondsRemaining }
+        return chips
     }
 
     /// Stop-name pill shown when user has manually selected a stop.
@@ -2322,7 +2321,22 @@ struct RouteDetailSheet: View {
             }
         }
 
-        return routes.sorted()
+        // Sort: subway lines first (numeric then alpha), then buses
+        let subwayIDs: Set<String> = ["1","2","3","4","5","6","7","A","C","E","B","D","F","M","G","J","Z","L","N","Q","R","W","S","SI"]
+        return routes.sorted { a, b in
+            let aIsSubway = subwayIDs.contains(a.uppercased())
+            let bIsSubway = subwayIDs.contains(b.uppercased())
+            if aIsSubway != bIsSubway { return aIsSubway }
+            // Both subway: numeric before alpha, then string compare
+            if aIsSubway && bIsSubway {
+                let aNum = Int(a)
+                let bNum = Int(b)
+                if let an = aNum, let bn = bNum { return an < bn }
+                if aNum != nil { return true }
+                if bNum != nil { return false }
+            }
+            return a.localizedStandardCompare(b) == .orderedAscending
+        }
     }
 
     /// Returns true when this stop has an active elevator or escalator outage.

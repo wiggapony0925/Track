@@ -13,13 +13,13 @@ struct StopsListSkeleton: View {
     var body: some View {
         VStack(spacing: 0) {
             ForEach(0..<count, id: \.self) { index in
-                HStack(spacing: 12) {
+                HStack(spacing: 10) {
                     // Stop dot
                     SkeletonCircle(
-                        size: (index == 0 || index == count - 1) ? 14 : 10,
+                        size: (index == 0 || index == count - 1) ? 13 : 7,
                         opacity: 0.15
                     )
-                    .frame(width: 18)
+                    .frame(width: 22)
 
                     // Stop name + details
                     VStack(alignment: .leading, spacing: 4) {
@@ -43,7 +43,7 @@ struct StopsListSkeleton: View {
                     }
                 }
                 .padding(.horizontal, AppTheme.Layout.cardPadding)
-                .padding(.vertical, 10)
+                .padding(.vertical, 7)
 
                 // Connecting line
                 if index < count - 1 {
@@ -51,7 +51,7 @@ struct StopsListSkeleton: View {
                         Spacer().frame(width: 27)
                         RoundedRectangle(cornerRadius: 1)
                             .fill(AppTheme.Colors.textSecondary.opacity(0.08))
-                            .frame(width: 2, height: 12)
+                            .frame(width: 2, height: 8)
                         Spacer()
                     }
                     .padding(.leading, AppTheme.Layout.cardPadding)
