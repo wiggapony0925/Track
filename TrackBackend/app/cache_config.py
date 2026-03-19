@@ -59,8 +59,8 @@ _ovr = _load_cache_overrides()
 
 MTA_FEED_TTL_SECONDS: float = _ovr.get("mta_feed_ttl", 12.0)
 MTA_FEED_STALE_TTL_SECONDS: float = _ovr.get("mta_feed_stale_ttl", 120.0)
-MTA_CACHE_MAX_SIZE: int = _ovr.get("mta_cache_max_size", 128)
-MTA_UPSTREAM_CONCURRENCY: int = _ovr.get("mta_upstream_concurrency", 32)
+MTA_CACHE_MAX_SIZE: int = _ovr.get("mta_cache_max_size", 256)
+MTA_UPSTREAM_CONCURRENCY: int = _ovr.get("mta_upstream_concurrency", 48)
 
 
 # ┌─────────────────────────────────────────────────────┐
@@ -70,8 +70,8 @@ MTA_UPSTREAM_CONCURRENCY: int = _ovr.get("mta_upstream_concurrency", 32)
 
 BUS_ARRIVALS_FRESH_TTL: float = _ovr.get("bus_arrivals_fresh_ttl", 12.0)
 BUS_ARRIVALS_STALE_TTL: float = _ovr.get("bus_arrivals_stale_ttl", 25.0)
-BUS_ARRIVALS_MAX_SIZE: int = _ovr.get("bus_arrivals_max_size", 500)
-BUS_MAX_SIRI_STOPS: int = _ovr.get("bus_max_siri_stops", 40)
+BUS_ARRIVALS_MAX_SIZE: int = _ovr.get("bus_arrivals_max_size", 1000)
+BUS_MAX_SIRI_STOPS: int = _ovr.get("bus_max_siri_stops", 50)
 
 
 # ┌─────────────────────────────────────────────────────┐
@@ -81,7 +81,7 @@ BUS_MAX_SIRI_STOPS: int = _ovr.get("bus_max_siri_stops", 40)
 
 BUS_VEHICLES_FRESH_TTL: float = _ovr.get("bus_vehicles_fresh_ttl", 6.0)
 BUS_VEHICLES_STALE_TTL: float = _ovr.get("bus_vehicles_stale_ttl", 30.0)
-BUS_VEHICLES_MAX_SIZE: int = _ovr.get("bus_vehicles_max_size", 400)
+BUS_VEHICLES_MAX_SIZE: int = _ovr.get("bus_vehicles_max_size", 800)
 
 
 # ┌─────────────────────────────────────────────────────┐
@@ -91,18 +91,18 @@ BUS_VEHICLES_MAX_SIZE: int = _ovr.get("bus_vehicles_max_size", 400)
 
 BUS_STOPS_FRESH_TTL: float = _ovr.get("bus_stops_fresh_ttl", 600.0)
 BUS_STOPS_STALE_TTL: float = _ovr.get("bus_stops_stale_ttl", 86400.0)
-BUS_STOPS_MAX_SIZE: int = _ovr.get("bus_stops_max_size", 400)
+BUS_STOPS_MAX_SIZE: int = _ovr.get("bus_stops_max_size", 800)
 
 BUS_ROUTE_SHAPE_FRESH_TTL: float = _ovr.get("bus_route_shape_fresh_ttl", 21600.0)
 BUS_ROUTE_SHAPE_STALE_TTL: float = _ovr.get("bus_route_shape_stale_ttl", 604800.0)
-BUS_ROUTE_SHAPE_MAX_SIZE: int = _ovr.get("bus_route_shape_max_size", 400)
+BUS_ROUTE_SHAPE_MAX_SIZE: int = _ovr.get("bus_route_shape_max_size", 800)
 
 BUS_ROUTES_FRESH_TTL: float = _ovr.get("bus_routes_fresh_ttl", 3600.0)
 BUS_ROUTES_STALE_TTL: float = _ovr.get("bus_routes_stale_ttl", 86400.0)
-BUS_ROUTES_MAX_SIZE: int = _ovr.get("bus_routes_max_size", 10)
+BUS_ROUTES_MAX_SIZE: int = _ovr.get("bus_routes_max_size", 20)
 
 BUS_NEARBY_STOPS_TTL: float = _ovr.get("bus_nearby_stops_ttl", 300.0)
-BUS_NEARBY_STOPS_MAX_SIZE: int = _ovr.get("bus_nearby_stops_max_size", 200)
+BUS_NEARBY_STOPS_MAX_SIZE: int = _ovr.get("bus_nearby_stops_max_size", 500)
 
 
 # ┌─────────────────────────────────────────────────────┐
@@ -126,7 +126,7 @@ REDIS_KEY_PREFIX: str = "track:bus"
 NEARBY_RESPONSE_FRESH_TTL: float = _ovr.get("nearby_response_fresh_ttl", 12.0)
 NEARBY_RESPONSE_STALE_TTL: float = _ovr.get("nearby_response_stale_ttl", 120.0)
 NEARBY_RESPONSE_ERROR_TTL: float = _ovr.get("nearby_response_error_ttl", 90.0)
-NEARBY_RESPONSE_MAX_SIZE: int = _ovr.get("nearby_response_max_size", 400)
+NEARBY_RESPONSE_MAX_SIZE: int = _ovr.get("nearby_response_max_size", 1000)
 # 4 decimals ≈ 11m grid cells (was 3 ≈ 111m — too coarse, causing
 # users on cell boundaries to get stops from the wrong neighbourhood).
 NEARBY_GPS_DECIMALS: int = _ovr.get("nearby_gps_decimals", 4)

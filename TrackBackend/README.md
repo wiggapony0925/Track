@@ -333,13 +333,13 @@ python scripts/fetch_mta_training_data.py
 
 | If you see... | Action |
 |---|---|
-| Render CPU consistently > 80% | Upgrade web service from `starter` to `standard` in `render.yaml` |
+| Render CPU consistently > 80% | Already on Standard ($25/mo). Next step: scale to `standard-plus` or add `numInstances: 2` in `render.yaml` |
 | Redis memory > 80 MB | Increase `plan: starter` → `plan: standard` in `render.yaml`, or reduce TTLs in `settings.json` `cache` section |
 | Cold starts taking > 60s | The persistent disk may have been wiped — first boot re-downloads GTFS from Supabase (expected) |
 | Deploy fails with `libgomp` error | Check `Dockerfile` — `libgomp1` must be in the `apt-get install` line |
 
-Current infrastructure (as of Feb 2026):
-- **Web service:** Render Starter (512 MB RAM, 0.5 CPU)
+Current infrastructure (as of Mar 2026):
+- **Web service:** Render Standard (2 GB RAM, 1 CPU, 2 Gunicorn workers)
 - **Redis:** Render Starter Key-Value (100 MB, `allkeys-lru`)
 - **Persistent disk:** 10 GB mounted at `/app/app/data`
 

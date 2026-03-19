@@ -183,7 +183,7 @@ def _get_client() -> httpx.AsyncClient:
             timeout=_get_timeout(),
             limits=httpx.Limits(
                 max_connections=MTA_UPSTREAM_CONCURRENCY,
-                max_keepalive_connections=min(16, MTA_UPSTREAM_CONCURRENCY),
+                max_keepalive_connections=min(24, MTA_UPSTREAM_CONCURRENCY),
             ),
         )
         _shared_client_loop_id = current_loop_id

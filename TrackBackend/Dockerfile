@@ -23,7 +23,7 @@ EXPOSE 8000
 # gunicorn with uvicorn workers gives us:
 #   - Worker health monitoring & automatic restarts for stuck workers
 #   - Graceful reloads on deploy
-#   - Multiple workers (set WEB_CONCURRENCY=2+ on Standard/Pro plans)
+#   - Multiple workers (WEB_CONCURRENCY=2 on Standard plan, 2 GB RAM)
 # --timeout 120: allow up to 2 min for cold-cache /nearby/grouped (fetches 7+ MTA feeds)
 # --graceful-timeout 30: workers get 30s to finish in-flight requests on shutdown
 # --no-access-log + --log-level warning: request logging handled by TrackLogger middleware
