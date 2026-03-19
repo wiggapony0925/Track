@@ -125,6 +125,11 @@ async def _warmup_caches():
 
     After the initial prime, hands off to ``_periodic_feed_refresh``
     which keeps feeds hot every 10 seconds so they NEVER go cold.
+
+    **Important:** Feeds are fetched ONE AT A TIME, not concurrently.
+    On a 0.5-CPU Render Starter, concurrent protobuf parsing causes GIL
+    contention that starves the event loop, making health checks fail
+    and Render's proxy returning 502 to all user requests.
     """
     from app.services.gtfs.data_cleaner import get_arrivals_for_line
     from app.clients.bus_client import get_routes as get_bus_routes
@@ -134,13 +139,22 @@ async def _warmup_caches():
 
     # One representative line per feed → primes all 9 subway feeds
     feed_lines = ["A", "B", "N", "1", "G", "L", "J", "7", "SI"]
-    results = await asyncio.gather(
-        *[get_arrivals_for_line(line) for line in feed_lines],
-        get_bus_routes(),
-        return_exceptions=True,
-    )
-    feed_ok = sum(1 for r in results[:9] if isinstance(r, list))
-    bus_ok = "OK" if isinstance(results[9], list) else "FAIL"
+    feed_ok = 0
+    for line in feed_lines:
+        try:
+            await get_arrivals_for_line(line)
+            feed_ok += 1
+        except Exception:
+            pass
+        await asyncio.sleep(0)  # yield to event loop between feeds
+
+    bus_ok = "FAIL"
+    try:
+        await get_bus_routes()
+        bus_ok = "OK"
+    except Exception:
+        pass
+
     elapsed = time.perf_counter() - t0
     TrackLogger.info(
         f"[WARMUP] Done in {elapsed:.1f}s — subway feeds: {feed_ok}/9, bus routes: {bus_ok}",
