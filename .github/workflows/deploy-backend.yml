@@ -1,0 +1,32 @@
+name: Deploy Backend
+
+# Only deploy to Render when backend files actually change.
+# This prevents iOS-only pushes from causing unnecessary redeploys
+# and 30-90s of 502 downtime during container restart.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "TrackBackend/**"
+      - "render.yaml"
+
+  workflow_dispatch: # allow manual deploy from Actions tab
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Trigger Render Deploy
+        run: |
+          echo "Backend files changed — triggering Render deploy..."
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            --max-time 30 \
+            -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}")
+          echo "Render deploy hook returned HTTP $STATUS"
+          if [ "$STATUS" -ne 200 ] && [ "$STATUS" -ne 201 ]; then
+            echo "::error::Deploy hook failed with HTTP $STATUS"
+            exit 1
+          fi
+          echo "Deploy triggered successfully"

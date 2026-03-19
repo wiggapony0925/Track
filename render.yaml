@@ -26,7 +26,10 @@ services:
     dockerContext: .
     healthCheckPath: /health
     branch: main
-    autoDeploy: true      # auto-deploy on every push to main
+    autoDeploy: false     # DISABLED — iOS-only pushes were causing unnecessary
+                          # redeploys + 502 downtime. Use the GitHub Action
+                          # (.github/workflows/deploy-backend.yml) instead,
+                          # which only triggers when TrackBackend/ files change.
     numInstances: 1
 
     envVars:
