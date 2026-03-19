@@ -316,25 +316,34 @@ final class MapSystemViewModel {
             return
         }
 
+        // ── Phase 0: Try pre-computed flattened polyline cache ──
+        // If we have a recent flattened cache, render it INSTANTLY (< 50 ms)
+        // by skipping the entire decode → unify → simplify → flatten pipeline.
+        // This is the fastest possible cold-start path.
+        let diskCacheMgr = OfflineCacheManager.shared
+        let flattenedRestored = loadFlattenedFromDiskCache()
+        if flattenedRestored {
+            AppLogger.shared.log("SYSTEM_MAP", message: "⚡ Instant render from flattened polyline cache")
+        }
+
         // ── Phase 1: Instant render from disk cache ──
         // Try to hydrate from the persistent disk cache first.
         // This avoids the network round-trip and lets the map draw
         // immediately — matching Transit app's instant-map behavior.
-        let diskCacheMgr = OfflineCacheManager.shared
         let hasDiskCache = await loadFromDiskCache()
 
         // ── Phase 2: Network refresh (background) ──
         // If we already rendered from cache, refresh in the background
         // so the user sees the map instantly but gets fresh data.
         // If no cache existed, this is the primary load path.
-        if !diskCacheMgr.isOnline && !hasDiskCache {
+        if !diskCacheMgr.isOnline && !hasDiskCache && !flattenedRestored {
             // Truly offline with no cache — use the bundled fallback
             await loadOfflineSystemMap()
             return
         }
 
         if diskCacheMgr.isOnline {
-            await fetchAndRenderFromNetwork(isBackgroundRefresh: hasDiskCache)
+            await fetchAndRenderFromNetwork(isBackgroundRefresh: hasDiskCache || flattenedRestored)
         }
     }
 
@@ -996,10 +1005,16 @@ final class MapSystemViewModel {
             }
 
             guard simplified.count >= 2 else { continue }
+
+            // Refine sharp bends (>25° turns) with targeted Catmull-Rom
+            // insertions. This smooths junction merges and tunnel approaches
+            // without bloating straight-segment point counts.
+            let refined = refineSharpBends(simplified)
+
             finalOffsetPolylines.append(PreparedPolyline(
                 origin: origin,
                 groupIndex: item.groupIndex,
-                coordinates: simplified,
+                coordinates: refined,
                 localLaneOffset: localLaneOffset
             ))
         }
@@ -1158,6 +1173,108 @@ final class MapSystemViewModel {
             message:
                 "Flattened \(totalPolylines) polylines (\(subwayNearCount) subway, \(commuterCount) commuter rail) — \(simplifiedPoints) points (simplified \(reductionPercent)%)"
         )
+
+        // Persist pre-computed flattened polylines to disk so the next
+        // cold start can skip the entire decode → unify → simplify pipeline.
+        persistFlattenedToDisk()
+    }
+
+    // MARK: - Flattened Polyline Disk Cache
+
+    /// Restores pre-computed flattened polylines from disk, providing an
+    /// instant cold-start render (< 50 ms) by skipping the entire
+    /// decode → unify → simplify → refine pipeline.
+    ///
+    /// Returns `true` if the cache was valid and polylines were restored.
+    private func loadFlattenedFromDiskCache() -> Bool {
+        let cache = OfflineCacheManager.shared
+        guard !cache.isFlattenedPolylinesCacheStale,
+              let bundle = cache.getCachedFlattenedPolylines()
+        else { return false }
+
+        let subway = bundle.subway.compactMap { cached -> FlattenedMapPolyline? in
+            let coords = cached.coordinates.compactMap { pair -> CLLocationCoordinate2D? in
+                guard pair.count == 2 else { return nil }
+                return CLLocationCoordinate2D(latitude: pair[0], longitude: pair[1])
+            }
+            guard coords.count >= 2 else { return nil }
+            return FlattenedMapPolyline(
+                id: cached.id,
+                coordinates: coords,
+                color: Color(hex: cached.colorHex),
+                lineWidth: CGFloat(cached.lineWidth),
+                routeIds: cached.routeIds,
+                isElevated: cached.isElevated,
+                trunkIndex: cached.trunkIndex,
+                laneOffset: CGFloat(cached.laneOffset)
+            )
+        }
+
+        let commuter = bundle.commuter.compactMap { cached -> FlattenedMapPolyline? in
+            let coords = cached.coordinates.compactMap { pair -> CLLocationCoordinate2D? in
+                guard pair.count == 2 else { return nil }
+                return CLLocationCoordinate2D(latitude: pair[0], longitude: pair[1])
+            }
+            guard coords.count >= 2 else { return nil }
+            return FlattenedMapPolyline(
+                id: cached.id,
+                coordinates: coords,
+                color: Color(hex: cached.colorHex),
+                lineWidth: CGFloat(cached.lineWidth),
+                routeIds: cached.routeIds,
+                isElevated: cached.isElevated,
+                trunkIndex: cached.trunkIndex,
+                laneOffset: CGFloat(cached.laneOffset)
+            )
+        }
+
+        guard !subway.isEmpty else { return false }
+
+        flattenedSubwayPolylines = subway
+        flattenedCommuterRailPolylines = commuter
+
+        let totalPoints = subway.reduce(0) { $0 + $1.coordinates.count }
+            + commuter.reduce(0) { $0 + $1.coordinates.count }
+        AppLogger.shared.log(
+            "SYSTEM_MAP",
+            message: "Restored \(subway.count + commuter.count) flattened polylines from disk cache (\(totalPoints) points)")
+        return true
+    }
+
+    /// Persists the current flattened polylines to disk so subsequent
+    /// cold starts render instantly without re-running the pipeline.
+    private func persistFlattenedToDisk() {
+        let subway = flattenedSubwayPolylines.map { poly in
+            OfflineCacheManager.CachedFlattenedPolyline(
+                id: poly.id,
+                coordinates: poly.coordinates.map { [$0.latitude, $0.longitude] },
+                colorHex: poly.color.toHex(),
+                lineWidth: Double(poly.lineWidth),
+                routeIds: poly.routeIds,
+                isElevated: poly.isElevated,
+                trunkIndex: poly.trunkIndex,
+                laneOffset: Double(poly.laneOffset)
+            )
+        }
+        let commuter = flattenedCommuterRailPolylines.map { poly in
+            OfflineCacheManager.CachedFlattenedPolyline(
+                id: poly.id,
+                coordinates: poly.coordinates.map { [$0.latitude, $0.longitude] },
+                colorHex: poly.color.toHex(),
+                lineWidth: Double(poly.lineWidth),
+                routeIds: poly.routeIds,
+                isElevated: poly.isElevated,
+                trunkIndex: poly.trunkIndex,
+                laneOffset: Double(poly.laneOffset)
+            )
+        }
+        let bundle = OfflineCacheManager.CachedFlattenedBundle(subway: subway, commuter: commuter)
+        Task.detached(priority: .utility) {
+            await OfflineCacheManager.shared.cacheFlattenedPolylines(bundle)
+            await MainActor.run {
+                AppLogger.shared.log("SYSTEM_MAP", message: "Persisted flattened polylines to disk cache")
+            }
+        }
     }
 
     // MARK: - Station Loading

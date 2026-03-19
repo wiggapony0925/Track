@@ -45,6 +45,8 @@ final class OfflineCacheManager: ObservableObject {
         static let mnrShapes = "cached_mnr_shapes"
         static let subwayShapes = "cached_subway_shapes"
         static let subwayShapesCachedAt = "cached_subway_shapes_timestamp"
+        static let flattenedPolylines = "cached_flattened_polylines"
+        static let flattenedPolylinesCachedAt = "cached_flattened_polylines_timestamp"
     }
 
     /// Bump this whenever the station consolidation logic or hash
@@ -215,7 +217,61 @@ final class OfflineCacheManager: ObservableObject {
         guard let data = userDefaults.data(forKey: CacheKey.mnrShapes) else { return nil }
         return try? JSONDecoder().decode(AllCommuterRailLinesResponse.self, from: data)
     }
-    
+
+    // MARK: - Cache Flattened Polylines (Pre-computed for instant cold start)
+
+    /// Serializable representation of a flattened polyline for disk caching.
+    /// Avoids re-running the full simplification + unification pipeline on every launch.
+    struct CachedFlattenedPolyline: Codable {
+        let id: String
+        let coordinates: [[Double]]  // [[lat, lon], ...]
+        let colorHex: String
+        let lineWidth: Double
+        let routeIds: [String]
+        let isElevated: Bool
+        let trunkIndex: Int
+        let laneOffset: Double
+    }
+
+    struct CachedFlattenedBundle: Codable {
+        let subway: [CachedFlattenedPolyline]
+        let commuter: [CachedFlattenedPolyline]
+    }
+
+    /// Cache pre-computed flattened polylines to disk so cold starts
+    /// can skip the entire simplification/unification pipeline.
+    func cacheFlattenedPolylines(_ bundle: CachedFlattenedBundle) {
+        guard let data = try? JSONEncoder().encode(bundle) else { return }
+        // Use file-based cache for large data instead of UserDefaults
+        guard let dir = flattenedCacheDirectory() else { return }
+        let fileURL = dir.appendingPathComponent("flattened_polylines.json")
+        try? data.write(to: fileURL, options: .atomic)
+        userDefaults.set(Date(), forKey: CacheKey.flattenedPolylinesCachedAt)
+    }
+
+    /// Get pre-computed flattened polylines (nil if never cached).
+    func getCachedFlattenedPolylines() -> CachedFlattenedBundle? {
+        guard let dir = flattenedCacheDirectory() else { return nil }
+        let fileURL = dir.appendingPathComponent("flattened_polylines.json")
+        guard let data = try? Data(contentsOf: fileURL) else { return nil }
+        return try? JSONDecoder().decode(CachedFlattenedBundle.self, from: data)
+    }
+
+    /// Whether the flattened polyline cache is stale (> 24 hours) or missing.
+    var isFlattenedPolylinesCacheStale: Bool {
+        guard let ts = userDefaults.object(forKey: CacheKey.flattenedPolylinesCachedAt) as? Date else { return true }
+        return Date().timeIntervalSince(ts) > 86_400
+    }
+
+    private func flattenedCacheDirectory() -> URL? {
+        guard let container = FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: kAppGroupIdentifier
+        ) else { return nil }
+        let dir = container.appendingPathComponent("FlattenedPolylineCache", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
     // MARK: - Helpers
     
     private func cacheKey(forMode mode: String) -> String {
@@ -245,6 +301,10 @@ final class OfflineCacheManager: ObservableObject {
         userDefaults.removeObject(forKey: CacheKey.mnrShapes)
         userDefaults.removeObject(forKey: CacheKey.subwayShapes)
         userDefaults.removeObject(forKey: CacheKey.subwayShapesCachedAt)
+        userDefaults.removeObject(forKey: CacheKey.flattenedPolylinesCachedAt)
+        if let dir = flattenedCacheDirectory() {
+            try? FileManager.default.removeItem(at: dir)
+        }
         lastFetchTime = nil
     }
 }

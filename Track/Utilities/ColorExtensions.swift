@@ -53,4 +53,18 @@ extension Color {
         }
         self.init(.sRGB, red: r, green: g, blue: b, opacity: a)
     }
+
+    /// Converts a Color to a CSS hex string like ``"#FF6319"``.
+    func toHex() -> String {
+        UIColor(self).toHex()
+    }
+}
+
+extension UIColor {
+    /// Converts a UIColor to a CSS hex string like ``"#FF6319"``.
+    func toHex() -> String {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        getRed(&r, green: &g, blue: &b, alpha: &a)
+        return String(format: "#%02X%02X%02X", Int(r * 255), Int(g * 255), Int(b * 255))
+    }
 }

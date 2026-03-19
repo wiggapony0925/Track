@@ -213,7 +213,10 @@ enum MapLibreStyleConfig {
     /// Subway fill line width — bold and prominent at every zoom.
     /// Wider than Transit app for better readability with dense NYC coverage.
     /// Exponential base 1.6 gives a natural acceleration curve.
+    /// Includes stops from zoom 8 so lines remain visible at city-overview level.
     static let subwayFillWidthStops: [(zoom: Double, width: Double)] = [
+        (8,  0.6),
+        (9,  0.8),
         (10, 1.2),
         (11, 1.6),
         (12, 2.2),
@@ -232,9 +235,10 @@ enum MapLibreStyleConfig {
 
     /// Subway casing width — soft border that gives lines a floating-above-map feel.
     /// The casing-to-fill ratio is ~1.6×, creating a subtle halo rather than a harsh edge.
+    /// Extended to zoom 8 to match fill width coverage.
     static let subwayCasingWidth = zoomInterpolate(
         base: subwayLineInterpolationBase,
-        stops: [10: 2.4, 11: 3.0, 12: 4.0, 13: 5.0, 14: 6.0, 15: 7.0, 16: 8.5, 17: 10.0, 18: 12.0]
+        stops: [8: 1.2, 9: 1.6, 10: 2.4, 11: 3.0, 12: 4.0, 13: 5.0, 14: 6.0, 15: 7.0, 16: 8.5, 17: 10.0, 18: 12.0]
     )
 
     /// Elevated line fill width — matches subway for visual consistency.
@@ -337,9 +341,18 @@ enum MapLibreStyleConfig {
     // width to avoid hairline gaps from fractional-pixel antialiasing.
     static let laneOffsetTouchRatio: Double = 0.98
 
+    /// Minimum lane-offset multiplier at very low zoom levels.
+    /// Even when fill width shrinks to sub-pixel, parallel corridors need
+    /// at least this much pixel separation to remain distinguishable.
+    /// Without this floor, parallel lines collapse into a single line
+    /// at zoom 8-9 because 0.6 × 0.98 ≈ 0.59 px of separation is
+    /// invisible. The 0.8 px floor keeps corridors visually separate.
+    private static let laneOffsetMinMultiplier: Double = 0.8
+
     static let laneOffsetStops: [(zoom: Double, multiplier: Double)] =
         subwayFillWidthStops.map { stop in
-            (zoom: stop.zoom, multiplier: stop.width * laneOffsetTouchRatio)
+            let raw = stop.width * laneOffsetTouchRatio
+            return (zoom: stop.zoom, multiplier: max(raw, laneOffsetMinMultiplier))
         }
 
     static func laneOffsetMultiplier(at zoom: Double) -> Double {
