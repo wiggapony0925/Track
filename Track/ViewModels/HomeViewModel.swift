@@ -1664,19 +1664,21 @@ final class HomeViewModel {
         // routes that serve the area are always visible.
         let freshGroups = result.groups.filter { !$0.isExpired }
 
-        // If filtering removed everything, treat this as a cache miss —
-        // all data was too stale.  Show skeletons and let the network
-        // refresh provide fresh data.
-        guard !freshGroups.isEmpty else {
+        // Even if ALL arrivals expired, show the route cards anyway.
+        // Stale route structure (showing which routes serve this area)
+        // is infinitely better than skeleton placeholders — the user
+        // sees familiar route names immediately while fresh data loads
+        // in the background.  Arrival times will show "--" briefly.
+        let groupsToShow = freshGroups.isEmpty ? result.groups : freshGroups
+        if freshGroups.isEmpty {
             let expiredCount = result.groups.count
             AppLogger.shared.log(
                 "CACHE",
-                message: "📭 Session cache had \(expiredCount) groups but ALL expired (\(Int(result.age))s old) — showing skeletons"
+                message: "⚠️ Session cache had \(expiredCount) groups but ALL expired (\(Int(result.age))s old) — showing stale route cards instead of skeletons"
             )
-            return false
         }
 
-        groupedTransit = freshGroups
+        groupedTransit = groupsToShow
 
         // Seed the GPS reference so the first render after cache load
         // can sort routes by distance instead of falling back to
@@ -1687,7 +1689,7 @@ final class HomeViewModel {
 
         // Populate flat transit array for fallback code paths
         var seenIDs = Set<String>()
-        nearbyTransit = freshGroups
+        nearbyTransit = groupsToShow
             .flatMap(\.directions)
             .flatMap(\.arrivals)
             .filter { seenIDs.insert($0.id).inserted }
@@ -1708,16 +1710,16 @@ final class HomeViewModel {
 
         if result.isLocationStale {
             let distStr = result.distanceFromCurrent.map { "\(Int($0))m away" } ?? "unknown distance"
-            let expiredCount = result.groups.count - freshGroups.count
+            let expiredCount = result.groups.count - groupsToShow.count
             AppLogger.shared.log(
                 "CACHE",
-                message: "⚠️ Loaded \(result.groups.count) cached groups (\(expiredCount) expired, \(freshGroups.count) live) but location is stale (\(distStr), \(Int(result.age))s old) — force refresh needed"
+                message: "⚠️ Loaded \(result.groups.count) cached groups (\(expiredCount) expired, \(groupsToShow.count) shown) but location is stale (\(distStr), \(Int(result.age))s old) — force refresh needed"
             )
         } else {
-            let expiredCount = result.groups.count - freshGroups.count
+            let expiredCount = result.groups.count - groupsToShow.count
             AppLogger.shared.log(
                 "CACHE",
-                message: "📦 Loaded \(freshGroups.count) live route groups from \(result.groups.count) cached (\(expiredCount) expired, \(Int(result.age))s old, same area) — skipping skeletons"
+                message: "📦 Loaded \(groupsToShow.count) route groups from \(result.groups.count) cached (\(expiredCount) expired, \(Int(result.age))s old, same area) — skipping skeletons"
             )
         }
         return true

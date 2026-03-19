@@ -1317,7 +1317,7 @@ extension HomeViewModel {
                     AppLogger.shared.log("REFRESH", message: "⛔ Cold-start retry limit reached (\(attempt)/\(Self.maxColdStartRetries)) — waiting for timer")
                     return
                 }
-                let delay = min(5.0 * pow(2.0, Double(attempt)), 40.0) // 5, 10, 20, 40, 40
+                let delay = min(3.0 * pow(2.0, Double(attempt)), 20.0) // 3, 6, 12, 20, 20
                 AppLogger.shared.log("REFRESH", message: "⏳ Cold-start retry #\(attempt + 1)/\(Self.maxColdStartRetries) scheduled (\(Int(delay)) s)")
                 let retryLocation = location
                 _coldStartRetryTask = Task { @MainActor [weak self] in

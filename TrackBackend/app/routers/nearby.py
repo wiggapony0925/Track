@@ -275,6 +275,14 @@ def _describe_exception(exc: BaseException) -> str:
     return type(exc).__name__
 
 
+# Maximum time (seconds) for a single /nearby/grouped computation.
+# Prevents runaway upstream calls (hung MTA feeds, slow OBA) from
+# blocking a Gunicorn worker indefinitely.  45 s is generous enough
+# for a cold-cache fan-out (7 subway + bus + 2 rail) but short enough
+# that the worker is freed before the iOS 60 s resource timeout.
+_NEARBY_COMPUTE_TIMEOUT = 45
+
+
 async def _compute_and_cache_grouped(
     key: tuple[float, float, int, str | None],
     lat: float,
@@ -284,7 +292,18 @@ async def _compute_and_cache_grouped(
 ) -> list["GroupedNearbyTransit"]:
     import time as _time
 
-    flat = await _collect_all(lat, lon, radius, mode_filter=mode)
+    try:
+        flat = await asyncio.wait_for(
+            _collect_all(lat, lon, radius, mode_filter=mode),
+            timeout=_NEARBY_COMPUTE_TIMEOUT,
+        )
+    except asyncio.TimeoutError:
+        TrackLogger.error(
+            f"_collect_all timed out after {_NEARBY_COMPUTE_TIMEOUT}s "
+            f"for ({lat:.4f}, {lon:.4f}) radius={radius} mode={mode}",
+            tag="NEARBY",
+        )
+        flat = []  # Return empty rather than hang forever
     alert_index = await _get_inline_alerts()
     grouped = _group_arrivals(flat, alert_index=alert_index)
 

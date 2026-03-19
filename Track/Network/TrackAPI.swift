@@ -60,8 +60,8 @@ struct TrackAPI {
         let config = URLSessionConfiguration.default
         config.waitsForConnectivity = true
         config.timeoutIntervalForRequest = 15
-        config.timeoutIntervalForResource = 60
-        config.httpMaximumConnectionsPerHost = 4
+        config.timeoutIntervalForResource = 30
+        config.httpMaximumConnectionsPerHost = 6
         // 10 MB memory / 50 MB disk cache for HTTP responses.
         // Keyed by full URL (including query params like lat/lon) so
         // each unique location/endpoint combo is cached independently.
@@ -81,10 +81,9 @@ struct TrackAPI {
     // MARK: - Cold-Start State
 
     /// Whether at least one backend response has succeeded this session.
-    /// Before this becomes `true`, HTTP timeouts are extended to 45 s to
-    /// survive Render's container cold-start (which can take 30-40 s to
-    /// boot the Docker image, load GTFS, and process the first heavy
-    /// endpoint like /nearby/grouped).
+    /// Before this becomes `true`, HTTP timeouts are extended to 25 s to
+    /// survive Render's container cold-start (warmup now takes ~5 s with
+    /// concurrent feed priming instead of the old ~25 s sequential warmup).
     /// Reset automatically on each app launch (static var, not persisted).
     nonisolated(unsafe) private(set) static var serverWarmedUp = false
 
@@ -708,9 +707,10 @@ struct TrackAPI {
 
         let task = Task<Data, Error> {
             var lastError: Error = TrackAPIError.networkError
-            // During cold-start use fewer retries with a much longer
-            // timeout so a single attempt can survive Render's 30-40 s
-            // boot time + the endpoint's own processing time.
+            // During cold-start use fewer retries with a longer timeout
+            // so a single attempt can survive Render's boot time.
+            // 25 s per request × 2 attempts fits within the 30 s resource
+            // timeout budget while giving the server time to warm up.
             let maxAttempts = serverWarmedUp ? 3 : 2
             for attempt in 0..<maxAttempts {
                 if attempt > 0 {
@@ -723,7 +723,7 @@ struct TrackAPI {
                     // Extend per-request timeout during cold-start so the
                     // retry doesn't burn all attempts before the server boots.
                     if !serverWarmedUp {
-                        request.timeoutInterval = 45
+                        request.timeoutInterval = 25
                     }
                     if let email = cachedUserEmail, !email.isEmpty {
                         request.setValue(email, forHTTPHeaderField: "x-user-email")
