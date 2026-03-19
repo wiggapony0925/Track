@@ -786,10 +786,12 @@ final class HomeViewModel {
     private func persistShapeToDisk(_ shape: RouteShapeResponse, for routeId: String) {
         guard let dir = Self._shapeDiskDir else { return }
         let key = Self._shapeDiskKey(routeId)
+        // Encode on the main actor so Encodable conformance is satisfied,
+        // then hand the raw bytes to a detached task for the disk write.
+        guard let data = try? JSONEncoder().encode(shape) else { return }
         Task.detached(priority: .utility) {
             let file = dir.appendingPathComponent(key + ".json")
             do {
-                let data = try JSONEncoder().encode(shape)
                 try data.write(to: file, options: .atomic)
             } catch {
                 // Best-effort — never propagate disk errors to UI
