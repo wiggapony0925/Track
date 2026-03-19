@@ -18,15 +18,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Trigger Render Deploy
+      - name: Trigger Render Deploy via API
         run: |
           echo "Backend files changed — triggering Render deploy..."
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
             --max-time 30 \
-            -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}")
-          echo "Render deploy hook returned HTTP $STATUS"
-          if [ "$STATUS" -ne 200 ] && [ "$STATUS" -ne 201 ]; then
-            echo "::error::Deploy hook failed with HTTP $STATUS"
+            -X POST "https://api.render.com/v1/services/srv-d662a19r0fns73cgpfog/deploys" \
+            -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{}')
+          STATUS=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | head -n -1)
+          echo "Render API returned HTTP $STATUS"
+          echo "$BODY" | head -5
+          if [ "$STATUS" -lt 200 ] || [ "$STATUS" -ge 300 ]; then
+            echo "::error::Deploy API failed with HTTP $STATUS"
             exit 1
           fi
           echo "Deploy triggered successfully"
