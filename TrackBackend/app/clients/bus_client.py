@@ -83,6 +83,16 @@ try:
                         # Store no-space match (e.g. "Q 9" -> "Q9")
                         ROUTE_LOOKUP[short_name.replace(" ", "")] = official_id
                         ROUTE_LOOKUP[short_name.lower().replace(" ", "")] = official_id
+                        # Store agency-stripped form of the official ID so
+                        # iOS clients that strip "MTABC_" or "MTA NYCT_"
+                        # before calling the API still get an instant cache
+                        # hit (e.g. official "MTABC_Q07" → register "Q07"
+                        # in addition to short_name "Q7").
+                        if "_" in official_id:
+                            stripped_form = official_id.split("_", 1)[1]
+                            if stripped_form != short_name:
+                                ROUTE_LOOKUP[stripped_form] = official_id
+                                ROUTE_LOOKUP[stripped_form.lower()] = official_id
                         # Canonical display name (mixed-case from JSON)
                         CANONICAL_BUS_DISPLAY[short_name.upper()] = short_name
                         # SBS routes: the JSON uses "-SBS" suffix (e.g. "M34-SBS")
