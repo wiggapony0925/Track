@@ -457,23 +457,25 @@ struct TrackAPI {
     /// Fetches polylines + colors for ALL subway lines (the full system map).
     ///
     /// Called once on app launch to draw every line on the map.
+    /// Uses an extended timeout because this endpoint triggers the server's
+    /// corridor pipeline on first call, which can take 45-90s on cold start.
     /// - Returns: An `AllSubwayLinesResponse` with lightweight overlay data per line.
     static func fetchAllSubwayShapes() async throws -> AllSubwayLinesResponse {
-        let data = try await get(path: "/subway/shapes/all")
+        let data = try await getWithExtendedTimeout(path: "/subway/shapes/all")
         return try decoder.decode(AllSubwayLinesResponse.self, from: data)
     }
 
     /// Fetches polylines + colors for ALL LIRR branches.
     /// - Returns: An `AllCommuterRailLinesResponse` with overlay data per branch.
     static func fetchAllLIRRShapes() async throws -> AllCommuterRailLinesResponse {
-        let data = try await get(path: "/lirr/shapes/all")
+        let data = try await getWithExtendedTimeout(path: "/lirr/shapes/all")
         return try decoder.decode(AllCommuterRailLinesResponse.self, from: data)
     }
 
     /// Fetches polylines + colors for ALL Metro-North branches.
     /// - Returns: An `AllCommuterRailLinesResponse` with overlay data per branch.
     static func fetchAllMNRShapes() async throws -> AllCommuterRailLinesResponse {
-        let data = try await get(path: "/mnr/shapes/all")
+        let data = try await getWithExtendedTimeout(path: "/mnr/shapes/all")
         return try decoder.decode(AllCommuterRailLinesResponse.self, from: data)
     }
 
@@ -687,6 +689,107 @@ struct TrackAPI {
         }
         AppLogger.shared.logRequest(method: "GET", url: url.absoluteString)
         return try await get(url: url)
+    }
+
+    /// Extended-timeout variant for heavy endpoints (shapes/all) that trigger
+    /// the server's corridor pipeline on cold start.  Uses a dedicated
+    /// URLSession with a 90 s resource timeout so the request survives
+    /// Render.com's free-tier cold boot (30-60 s) + pipeline execution.
+    private static let extendedSession: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.waitsForConnectivity = true
+        config.timeoutIntervalForRequest = 45
+        config.timeoutIntervalForResource = 90
+        config.httpMaximumConnectionsPerHost = 4
+        config.urlCache = URLCache(
+            memoryCapacity: 10 * 1024 * 1024,
+            diskCapacity: 50 * 1024 * 1024,
+            directory: FileManager.default
+                .containerURL(forSecurityApplicationGroupIdentifier: kAppGroupIdentifier)?
+                .appendingPathComponent("URLCache")
+        )
+        config.requestCachePolicy = .useProtocolCachePolicy
+        return URLSession(configuration: config)
+    }()
+
+    private static func getWithExtendedTimeout(path: String) async throws -> Data {
+        guard let url = URL(string: baseURL + path) else {
+            throw TrackAPIError.invalidURL
+        }
+        AppLogger.shared.logRequest(method: "GET", url: url.absoluteString)
+        return try await getWithExtendedTimeout(url: url)
+    }
+
+    private static func getWithExtendedTimeout(url: URL) async throws -> Data {
+        let cacheKey = url.absoluteString
+        let cacheablePath = cacheablePath(from: url)
+
+        // Re-use the same memo/cache layer as the standard get() method
+        if let cacheablePath,
+           let cached = await memoizer.getCached(for: cacheablePath, ttl: staticEndpointTTL)
+        {
+            AppLogger.shared.log("API_CACHE", message: "HIT \(cacheablePath)")
+            return cached
+        }
+
+        if let inflight = await memoizer.getInflight(for: cacheKey) {
+            AppLogger.shared.log("API_CACHE", message: "COALESCE \(url.path)")
+            return try await inflight.value
+        }
+
+        let task = Task<Data, Error> {
+            var lastError: Error = TrackAPIError.networkError
+            // Extended timeout: 1 attempt with 45 s timeout (cold-start),
+            // then 1 retry with 45 s if it's a transient 5xx.
+            let maxAttempts = 2
+            for attempt in 0..<maxAttempts {
+                if attempt > 0 {
+                    try await Task.sleep(nanoseconds: 2_000_000_000)  // 2 s backoff
+                }
+                do {
+                    var request = URLRequest(url: url)
+                    request.timeoutInterval = 45
+                    if let email = cachedUserEmail, !email.isEmpty {
+                        request.setValue(email, forHTTPHeaderField: "x-user-email")
+                    }
+                    let (data, response) = try await extendedSession.data(for: request)
+                    guard let http = response as? HTTPURLResponse else {
+                        lastError = TrackAPIError.networkError
+                        continue
+                    }
+                    guard (200...299).contains(http.statusCode) else {
+                        let serverErr = TrackAPIError.serverError(statusCode: http.statusCode)
+                        if http.statusCode < 500 { throw serverErr }
+                        lastError = serverErr
+                        continue
+                    }
+                    serverWarmedUp = true
+                    return data
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch let error as TrackAPIError {
+                    throw error
+                } catch {
+                    lastError = error
+                }
+            }
+            throw lastError
+        }
+
+        await memoizer.setInflight(task, for: cacheKey)
+
+        do {
+            let data = try await task.value
+            if let cacheablePath {
+                await memoizer.setCached(data, for: cacheablePath)
+                AppLogger.shared.log("API_CACHE", message: "STORE \(cacheablePath)")
+            }
+            await memoizer.clearInflight(for: cacheKey)
+            return data
+        } catch {
+            await memoizer.clearInflight(for: cacheKey)
+            throw error
+        }
     }
 
     private static func get(url: URL) async throws -> Data {

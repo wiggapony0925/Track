@@ -211,7 +211,7 @@ enum MapLibreStyleConfig {
     // translucent casings, with buttery exponential zoom scaling.
 
     /// Subway fill line width — bold and prominent at every zoom.
-    /// Wider than Transit app for better readability with dense NYC coverage.
+    /// Wider than Apple Maps for better readability with dense NYC coverage.
     /// Exponential base 1.6 gives a natural acceleration curve.
     /// Includes stops from zoom 8 so lines remain visible at city-overview level.
     static let subwayFillWidthStops: [(zoom: Double, width: Double)] = [
@@ -266,7 +266,7 @@ enum MapLibreStyleConfig {
 
     /// Active route fill width (when a specific route is selected) — extra bold
     /// so the selected route clearly dominates the dimmed system map.
-    /// Matched to Transit-app-level thickness for a premium, confident feel.
+    /// Must stay wider than subway fill for clear visual hierarchy.
     static let routeFillWidth = zoomInterpolate(
         base: 1.6,
         stops: [10: 3.5, 12: 5.0, 14: 7.0, 16: 8.5, 18: 10.0]
@@ -279,6 +279,7 @@ enum MapLibreStyleConfig {
     )
 
     /// Station circle dot radius — single-line stops only, visible from zoom 12.
+    /// Scaled to not be dwarfed by the now-thicker subway fill lines.
     static let stationDotRadius = zoomInterpolate(
         base: 1.4,
         stops: [12: 1.8, 13: 2.5, 14: 3.2, 15: 4.0, 16: 5.5, 17: 7.0, 18: 8.5]

@@ -832,7 +832,7 @@ final class MapSystemViewModel {
             let color: Color
             var polylines: [[CLLocationCoordinate2D]]
             /// Signed perpendicular offset from the server corridor pipeline.
-            let laneOffset: CGFloat
+            var laneOffset: CGFloat
             /// Per-branch local line offsets from the server corridor pipeline.
             let polylineLaneOffsets: [CGFloat]
         }
@@ -856,9 +856,12 @@ final class MapSystemViewModel {
 
                 let groupColor: Color = SubwayRoutesData.color(for: trunk.routeIds.first ?? "")
 
+                let localOffsets = trunk.polylineLaneOffsets
+                    .map { String(format: "%.2f", $0) }
+                    .joined(separator: ", ")
                 AppLogger.shared.log(
                     "POLYLINE_TRUNK",
-                    message: "[\(trunk.routeIds.joined(separator: "/"))]: \(decoded.count) trunk polylines (server-merged)")
+                    message: "[\(trunk.routeIds.joined(separator: "/"))]: \(decoded.count) trunk polylines, laneOffset=\(String(format: "%.3f", Double(trunk.laneOffset))), localOffsets=[\(localOffsets)] (server-merged)")
 
                 colorGroupResults.append(ColorGroupResult(
                     groupIndex: trunk.trunkIndex,
@@ -902,11 +905,51 @@ final class MapSystemViewModel {
                     routeIds: activeRoutes,
                     color: groupColor,
                     polylines: unified,
-                    laneOffset: 0,  // No server corridor data in offline fallback
+                    laneOffset: 0,
                     polylineLaneOffsets: []
                 ))
             }
+
         }
+
+        // ── Client-side corridor detection ──
+        //
+        // When ALL lane offsets are zero (server corridor pipeline didn't
+        // compute them or server timed out), detect overlapping trunk
+        // groups using a spatial hash grid and assign lane offsets so
+        // parallel lines render side-by-side instead of stacking
+        // invisibly on top of each other.
+        let allOffsetsZero = colorGroupResults.allSatisfy { abs($0.laneOffset) < 0.01 }
+        if allOffsetsZero && colorGroupResults.count >= 2 {
+            AppLogger.shared.log(
+                "CORRIDOR_FALLBACK",
+                message: "All \(colorGroupResults.count) trunk offsets are zero — running client corridor detection")
+            let polylinesByGroup = Dictionary(
+                uniqueKeysWithValues: colorGroupResults.map { ($0.groupIndex, $0.polylines) }
+            )
+            let clientOffsets = Self._assignClientCorridorOffsets(
+                groupCount: colorGroupResults.count,
+                groupIndices: colorGroupResults.map(\.groupIndex),
+                polylinesByGroup: polylinesByGroup
+            )
+            for i in colorGroupResults.indices {
+                if let offset = clientOffsets[colorGroupResults[i].groupIndex] {
+                    colorGroupResults[i].laneOffset = offset
+                }
+            }
+        }
+
+        // ── Diagnostic: Lane offset summary for ALL trunk groups ──
+        let offsetSummary = colorGroupResults
+            .sorted { $0.groupIndex < $1.groupIndex }
+            .map { grp in
+                let label = grp.routeIds.joined(separator: "/")
+                return "\(label)=\(String(format: "%+.2f", Double(grp.laneOffset)))"
+            }
+            .joined(separator: ", ")
+        AppLogger.shared.log(
+            "LANE_OFFSET",
+            message: "Global trunk offsets: [\(offsetSummary)]")
 
         // Yield to let the map render whatever data is already available
         await Task.yield()
@@ -1006,15 +1049,16 @@ final class MapSystemViewModel {
 
             guard simplified.count >= 2 else { continue }
 
-            // Refine sharp bends (>25° turns) with targeted Catmull-Rom
-            // insertions. This smooths junction merges and tunnel approaches
-            // without bloating straight-segment point counts.
-            let refined = refineSharpBends(simplified)
+            // DO NOT apply Catmull-Rom or refineSharpBends here.
+            // Server polylines pass through station coordinates — MapLibre's
+            // line-join: round handles smooth rendering natively on GPU.
+            // Client-side curve interpolation shifts polylines off station
+            // snap points and disrupts server-computed corridor offsets.
 
             finalOffsetPolylines.append(PreparedPolyline(
                 origin: origin,
                 groupIndex: item.groupIndex,
-                coordinates: refined,
+                coordinates: simplified,
                 localLaneOffset: localLaneOffset
             ))
         }
@@ -1053,6 +1097,26 @@ final class MapSystemViewModel {
         }
 
         flattenedSubwayPolylines = flat
+
+        // ── Diagnostic: summarize non-zero lane offsets across final polylines ──
+        var offsetsByTrunk: [String: Set<String>] = [:]
+        for poly in flat where abs(poly.laneOffset) > 0.01 {
+            let key = poly.routeIds.joined(separator: "/")
+            offsetsByTrunk[key, default: []].insert(String(format: "%.2f", Double(poly.laneOffset)))
+        }
+        if !offsetsByTrunk.isEmpty {
+            let summary = offsetsByTrunk
+                .sorted { $0.key < $1.key }
+                .map { "\($0.key): [\($0.value.sorted().joined(separator: ", "))]" }
+                .joined(separator: " | ")
+            AppLogger.shared.log(
+                "LANE_OFFSET",
+                message: "Flattened polylines with non-zero offsets: \(summary)")
+        } else {
+            AppLogger.shared.log(
+                "LANE_OFFSET",
+                message: "⚠️ NO polylines have non-zero lane offsets — all lines will overlap!")
+        }
 
         // Yield after subway polylines are set so the map can start rendering them
         await Task.yield()
@@ -1177,6 +1241,163 @@ final class MapSystemViewModel {
         // Persist pre-computed flattened polylines to disk so the next
         // cold start can skip the entire decode → unify → simplify pipeline.
         persistFlattenedToDisk()
+    }
+
+    // MARK: - Client-Side Corridor Detection (Offline Fallback)
+
+    /// Detects trunk groups that share geographic corridors using a spatial
+    /// hash grid, then assigns lane offsets so parallel lines render
+    /// side-by-side instead of stacking on top of each other.
+    ///
+    /// This is a lightweight client-side fallback for when the server's
+    /// corridor pipeline data isn't available (offline mode or server error).
+    ///
+    /// Algorithm:
+    /// 1. Build a grid-cell occupancy set per trunk group (~220 m cells)
+    /// 2. Two trunk groups are "corridor neighbors" if they share ≥ 3 cells
+    /// 3. Greedy offset assignment: each trunk gets an offset ≥ 1.0 apart
+    ///    from its corridor neighbors
+    /// 4. Re-centre around 0 and clamp to ±2.5
+    /// Assigns client-computed corridor offsets to `ColorGroupResult` values
+    /// so that trunk groups sharing geographic corridors render as parallel
+    /// lines instead of overlapping.
+    ///
+    /// This method mutates `laneOffset` on each element of `groups`.
+    private static func _assignClientCorridorOffsets(
+        groupCount: Int,
+        groupIndices: [Int],
+        polylinesByGroup: [Int: [[CLLocationCoordinate2D]]]
+    ) -> [Int: CGFloat] {
+        guard groupCount >= 2 else { return [:] }
+
+        // ── Step 1: Spatial hash — build grid-cell occupancy per trunk ──
+        // ~110 m cells at NYC latitude — fine enough to detect shared
+        // corridors but coarse enough to tolerate minor alignment
+        // differences between GTFS shape variants.
+        let cellSize: Double = 0.001
+        func cellKey(_ lat: Double, _ lon: Double) -> Int64 {
+            let gx = Int64(floor(lat / cellSize))
+            let gy = Int64(floor(lon / cellSize))
+            return gx &* 100_000_000 &+ gy
+        }
+
+        var cellsByTrunk: [Int: Set<Int64>] = [:]
+        for (trunkIdx, polylines) in polylinesByGroup {
+            var cells = Set<Int64>()
+            for polyline in polylines {
+                // Sample every vertex AND intermediate points along long segments
+                // so sparse polylines still register in shared corridor cells.
+                for i in 0..<polyline.count {
+                    let c = polyline[i]
+                    cells.insert(cellKey(c.latitude, c.longitude))
+
+                    // Interpolate along segment if gap > cellSize
+                    if i + 1 < polyline.count {
+                        let next = polyline[i + 1]
+                        let dLat = next.latitude - c.latitude
+                        let dLon = next.longitude - c.longitude
+                        let dist = max(abs(dLat), abs(dLon))
+                        let steps = Int(dist / cellSize)
+                        if steps > 1 {
+                            for s in 1..<steps {
+                                let frac = Double(s) / Double(steps)
+                                cells.insert(cellKey(
+                                    c.latitude + dLat * frac,
+                                    c.longitude + dLon * frac
+                                ))
+                            }
+                        }
+                    }
+                }
+            }
+            cellsByTrunk[trunkIdx] = cells
+        }
+
+        // ── Step 2: Detect corridor neighbors (≥ 5 shared cells) ──
+        //
+        // Two trunk groups sharing ≥ 5 grid cells (~550 m of overlapping
+        // track) are considered corridor neighbors and need distinct offsets.
+        var neighbors: [Int: Set<Int>] = [:]
+        let sorted = groupIndices.sorted()
+        for i in 0..<sorted.count {
+            for j in (i + 1)..<sorted.count {
+                let ti = sorted[i], tj = sorted[j]
+                guard let ci = cellsByTrunk[ti], let cj = cellsByTrunk[tj] else { continue }
+                let shared = ci.intersection(cj).count
+                if shared >= 5 {
+                    neighbors[ti, default: []].insert(tj)
+                    neighbors[tj, default: []].insert(ti)
+                }
+            }
+        }
+
+        // If no corridors detected, all offsets stay at 0
+        guard !neighbors.isEmpty else { return [:] }
+
+        // ── Step 3: Greedy offset assignment with min separation ──
+        // Only corridor members get offsets; isolated groups stay at 0.
+        let minDelta: CGFloat = 1.0
+        var placed: [Int: CGFloat] = [:]
+
+        for ti in sorted {
+            let tiNeighbors = neighbors[ti] ?? []
+            guard !tiNeighbors.isEmpty else { continue }  // Skip non-corridor groups
+
+            var offset: CGFloat = 0
+
+            // Find the highest placed offset among corridor neighbors
+            var maxNeighborOffset: CGFloat?
+            for (prevT, prevVal) in placed {
+                if tiNeighbors.contains(prevT) {
+                    if maxNeighborOffset == nil || prevVal > maxNeighborOffset! {
+                        maxNeighborOffset = prevVal
+                    }
+                }
+            }
+
+            if let maxNbr = maxNeighborOffset {
+                let minRequired = maxNbr + minDelta
+                if offset < minRequired {
+                    offset = minRequired
+                }
+            }
+
+            placed[ti] = offset
+        }
+
+        // ── Step 4: Re-centre around 0 ──
+        if !placed.isEmpty {
+            let vals = Array(placed.values)
+            let centre = ((vals.min() ?? 0) + (vals.max() ?? 0)) / 2.0
+            for key in placed.keys {
+                placed[key]! -= centre
+            }
+        }
+
+        // ── Step 5: Clamp to ±2.5 ──
+        if let maxAbs = placed.values.map({ abs($0) }).max(), maxAbs > 2.5 {
+            let scale: CGFloat = 2.5 / maxAbs
+            for key in placed.keys {
+                placed[key]! *= scale
+            }
+        }
+
+        // Log the detected corridors
+        let corridorSummary = neighbors.keys.sorted().map { ti -> String in
+            let nbrs = neighbors[ti]!.sorted().map { ni -> String in
+                let label = polylinesByGroup[ni] != nil ? "\(ni)" : "?"
+                return label
+            }
+            return "\(ti)↔{\(nbrs.joined(separator: ","))}"
+        }.joined(separator: ", ")
+        let offsetSummary = placed.sorted(by: { $0.key < $1.key })
+            .map { "\($0.key)=\(String(format: "%+.2f", Double($0.value)))" }
+            .joined(separator: ", ")
+        AppLogger.shared.log(
+            "CORRIDOR_FALLBACK",
+            message: "Client corridors: [\(corridorSummary)] → offsets: [\(offsetSummary)]")
+
+        return placed
     }
 
     // MARK: - Flattened Polyline Disk Cache

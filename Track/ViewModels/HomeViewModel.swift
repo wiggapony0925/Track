@@ -933,13 +933,14 @@ final class HomeViewModel {
                 let routePolys: [[CLLocationCoordinate2D]]
 
                 if isBus {
-                    // Bus pipeline: merge only + light smoothing
+                    // Bus pipeline: merge only + light smoothing + bend refinement
                     let merged = mergeAdjacentPolylines(activeRaw)
                     routePolys = merged.filter { $0.count >= 2 }.map {
-                        smoothPolyline($0, segmentsPerCurve: 4)
+                        let smoothed = smoothPolyline($0, segmentsPerCurve: 4)
+                        return refineSharpBends(smoothed, angleThreshold: 30.0)
                     }
                 } else {
-                    // Train pipeline: dedup → merge → consolidate → heavy smooth
+                    // Train pipeline: dedup → merge → consolidate → heavy smooth → refine bends
                     let deduped = removeDuplicateSegments(activeRaw)
                     let merged = mergeAdjacentPolylines(deduped)
 
@@ -952,7 +953,8 @@ final class HomeViewModel {
                     }
 
                     routePolys = unified.filter { $0.count >= 2 }.map {
-                        smoothPolyline($0, segmentsPerCurve: 8)
+                        let smoothed = smoothPolyline($0, segmentsPerCurve: 8)
+                        return refineSharpBends(smoothed)
                     }
                 }
 
@@ -995,7 +997,8 @@ final class HomeViewModel {
                         ? mergedInactive
                         : unifyTrainPolylines(mergedInactive)
                     inactivePolys = unifiedInactive.filter { $0.count >= 2 }.map {
-                        smoothPolyline($0, segmentsPerCurve: isBus ? 4 : 8)
+                        let smoothed = smoothPolyline($0, segmentsPerCurve: isBus ? 4 : 8)
+                        return refineSharpBends(smoothed, angleThreshold: isBus ? 30.0 : 25.0)
                     }
                 }
 
