@@ -668,6 +668,11 @@ struct TrackAPI {
              "/bus/routes":
             return true
         default:
+            // Schedule and shape endpoints change rarely — cache 30 s
+            // so rapid re-opens and back-button don't re-fetch.
+            if path.hasPrefix("/bus/schedule/") || path.hasPrefix("/bus/route-shape/") {
+                return true
+            }
             return false
         }
     }

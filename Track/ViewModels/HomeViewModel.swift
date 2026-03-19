@@ -759,6 +759,9 @@ final class HomeViewModel {
     private let _routeShapeCacheMaxAge: TimeInterval = 300  // 5 min
     private let _routeShapeCacheMaxSize = 10
 
+    /// Cancellation handle for the background shape prefetch task.
+    @ObservationIgnored var _shapePrefetchTask: Task<Void, Never>?
+
     // ── Disk cache helpers ──────────────────────────────────────────────
 
     /// Directory for persisted route shapes inside the app-group container.
@@ -816,7 +819,7 @@ final class HomeViewModel {
 
     /// Returns a cached route shape if it exists and is < 5 min old.
     /// Falls through to disk cache if memory is empty.
-    private func getCachedRouteShape(for routeId: String) -> RouteShapeResponse? {
+    func getCachedRouteShape(for routeId: String) -> RouteShapeResponse? {
         // L1: In-memory
         if let entry = _routeShapeCache[routeId] {
             if Date().timeIntervalSince(entry.fetchedAt) <= _routeShapeCacheMaxAge {
@@ -834,7 +837,7 @@ final class HomeViewModel {
     }
 
     /// Stores a route shape in the LRU cache and persists to disk.
-    private func cacheRouteShape(_ shape: RouteShapeResponse, for routeId: String) {
+    func cacheRouteShape(_ shape: RouteShapeResponse, for routeId: String) {
         _routeShapeCache[routeId] = CachedShape(shape: shape, fetchedAt: Date())
         // Evict oldest entries if over capacity
         if _routeShapeCache.count > _routeShapeCacheMaxSize {
@@ -1985,15 +1988,29 @@ final class HomeViewModel {
             )
         }
 
-        // Reset previous route data
+        // Reset previous route data — except shapes which have their own
+        // cache lifecycle.  Keeping the cached shape means the polyline,
+        // stops list, and banner appear INSTANTLY on re-opens instead of
+        // showing skeletons while we re-fetch. This matches Transit app's
+        // instant-open behavior.
         goMode.walkingRoute = nil
         nearestStopCoordinate = nil
         isStopManuallySelected = false
         busVehicles = []
         trainVehicles = []
         cachedTrainArrivals = []
-        routeShape = nil
         busSchedule = nil
+
+        // Use cached shape immediately if available (memory or disk).
+        // The shape will be refreshed in the background if stale.
+        let cachedShape: RouteShapeResponse? = getCachedRouteShape(for: group.routeId)
+        if let cached = cachedShape {
+            routeShape = cached
+            enrichGroupWithShapeDirections(cached)
+            AppLogger.shared.log("SHAPE_CACHE", message: "INSTANT \(group.routeId) — \(cached.stops.count) stops")
+        } else {
+            routeShape = nil
+        }
 
         selectedRouteId = group.routeId
         let loadingRouteId: String = group.routeId   // capture for staleness checks after await
@@ -2007,13 +2024,13 @@ final class HomeViewModel {
                 await self.fetchBusScheduleIfNeeded(expectedRouteId: loadingRouteId)
             }
 
-            // Check shape cache first — avoids network call on re-select
-            let cachedShape: RouteShapeResponse? = getCachedRouteShape(for: group.routeId)
+            // Shape was already applied above from cache if available.
+            // If we had a cache hit, the shape task becomes a non-blocking
+            // background refresh. If cache miss, it's the primary fetch.
+            let hadCachedShape = cachedShape != nil
 
             // Fetch shape + vehicles truly in parallel and process each
             // result the instant it arrives (no sequential bottleneck).
-            // Using parallel Tasks instead of withTaskGroup to avoid
-            // `sending` closure warnings with @MainActor-isolated self.
             //
             // Both tasks include an automatic retry after 2 s if the first
             // attempt fails (e.g. 502 from a cold server).  This is on top
@@ -2050,43 +2067,53 @@ final class HomeViewModel {
 
             let shapeTask = Task { @MainActor [weak self] in
                 guard let self else { return }
-                do {
-                    let loadedShape: RouteShapeResponse
-                    if let cached = cachedShape {
-                        loadedShape = cached
-                        AppLogger.shared.log("SHAPE_CACHE", message: "HIT \(loadingRouteId)")
-                    } else {
-                        // Try network, retry once after 2 s on failure
-                        var fetched: RouteShapeResponse?
-                        for attempt in 0..<2 {
-                            if attempt > 0 {
-                                try? await Task.sleep(nanoseconds: 2_000_000_000)
-                                guard self.selectedRouteId == loadingRouteId else { return }
-                            }
-                            do {
-                                fetched = try await TrackAPI.fetchRouteShape(routeID: loadingRouteId)
-                                break
-                            } catch {
-                                AppLogger.shared.logError("fetchRouteShape(\(loadingRouteId)) attempt=\(attempt)", error: error)
-                            }
+                // If we already applied a cached shape above, just refresh
+                // in the background to keep the cache warm — no need to block.
+                if hadCachedShape {
+                    // Background refresh — don't block on this
+                    do {
+                        let fresh = try await TrackAPI.fetchRouteShape(routeID: loadingRouteId)
+                        self.cacheRouteShape(fresh, for: loadingRouteId)
+                        // Only update the live shape if it actually changed (more stops, etc.)
+                        guard self.selectedRouteId == loadingRouteId else { return }
+                        if fresh.stops.count != self.routeShape?.stops.count ||
+                           fresh.polylines.count != self.routeShape?.polylines.count {
+                            self.routeShape = fresh
+                            self.enrichGroupWithShapeDirections(fresh)
                         }
-                        guard let shape = fetched else { return }
-                        loadedShape = shape
-                        self.cacheRouteShape(loadedShape, for: loadingRouteId)
+                    } catch {
+                        // Stale cache is better than no shape — just log
+                        AppLogger.shared.logError("fetchRouteShape(bg-refresh \(loadingRouteId))", error: error)
                     }
-                    guard self.selectedRouteId == loadingRouteId else { return }
-                    self.routeShape = loadedShape
-                    let decoded: [[CLLocationCoordinate2D]] = loadedShape.decodedPolylines
-                    let totalPoints: Int = decoded.reduce(0) { $0 + $1.count }
-                    AppLogger.shared.log(
-                        "BUS_SHAPE",
-                        message:
-                            "Loaded shape for \(loadingRouteId): \(loadedShape.polylines.count) polylines (\(totalPoints) total points), \(loadedShape.stops.count) stops"
-                    )
-                    self.enrichGroupWithShapeDirections(loadedShape)
-                } catch {
-                    AppLogger.shared.logError("fetchRouteShape(\(loadingRouteId))", error: error)
+                    return
                 }
+
+                // No cache — must fetch from network (with retry)
+                var fetched: RouteShapeResponse?
+                for attempt in 0..<2 {
+                    if attempt > 0 {
+                        try? await Task.sleep(nanoseconds: 2_000_000_000)
+                        guard self.selectedRouteId == loadingRouteId else { return }
+                    }
+                    do {
+                        fetched = try await TrackAPI.fetchRouteShape(routeID: loadingRouteId)
+                        break
+                    } catch {
+                        AppLogger.shared.logError("fetchRouteShape(\(loadingRouteId)) attempt=\(attempt)", error: error)
+                    }
+                }
+                guard let shape = fetched else { return }
+                self.cacheRouteShape(shape, for: loadingRouteId)
+                guard self.selectedRouteId == loadingRouteId else { return }
+                self.routeShape = shape
+                let decoded: [[CLLocationCoordinate2D]] = shape.decodedPolylines
+                let totalPoints: Int = decoded.reduce(0) { $0 + $1.count }
+                AppLogger.shared.log(
+                    "BUS_SHAPE",
+                    message:
+                        "Loaded shape for \(loadingRouteId): \(shape.polylines.count) polylines (\(totalPoints) total points), \(shape.stops.count) stops"
+                )
+                self.enrichGroupWithShapeDirections(shape)
             }
             _ = await vehicleTask.value
             _ = await shapeTask.value

@@ -1257,6 +1257,13 @@ extension HomeViewModel {
                 }
             }
 
+            // ── Shape prefetch: Transit-app-level instant opens ────────
+            // Fire-and-forget background tasks to prefetch route shapes for
+            // the top 3 bus routes while the user is still on the home screen.
+            // When they tap a route, the shape is already in the LRU/disk
+            // cache → stops list, polyline, and banner appear instantly.
+            prefetchTopBusShapes(from: newGrouped)
+
             // Fetch alerts and accessibility only on full refreshes — these are
             // global feeds that don't change by location. Skipping them during
             // drag-to-search avoids 2 extra network calls per pan gesture.
@@ -1333,6 +1340,47 @@ extension HomeViewModel {
         }
 
         isLoading = false
+    }
+
+    // MARK: - Shape Prefetch
+
+    /// Prefetches route shapes for the top N bus routes in the background.
+    /// Called after each nearby refresh so shapes are cached before the user
+    /// taps a route — eliminating the 0.3–0.7 s shape fetch on open.
+    /// Only prefetches routes NOT already in the LRU or disk cache.
+
+    func prefetchTopBusShapes(from groups: [GroupedNearbyTransitResponse]) {
+        _shapePrefetchTask?.cancel()
+        _shapePrefetchTask = Task { [weak self] in
+            guard let self else { return }
+
+            // Take the first 4 bus routes (sorted by soonest arrival, which
+            // is the order the user is most likely to tap).
+            let busRoutes = groups
+                .filter { $0.isBus }
+                .sorted { $0.soonestMinutes < $1.soonestMinutes }
+                .prefix(4)
+
+            for group in busRoutes {
+                guard !Task.isCancelled else { return }
+                // Skip if already cached (memory or disk)
+                if self.getCachedRouteShape(for: group.routeId) != nil { continue }
+
+                do {
+                    let shape = try await TrackAPI.fetchRouteShape(routeID: group.routeId)
+                    guard !Task.isCancelled else { return }
+                    await MainActor.run {
+                        self.cacheRouteShape(shape, for: group.routeId)
+                    }
+                    AppLogger.shared.log("SHAPE_PREFETCH", message: "\(group.routeId) cached (\(shape.stops.count) stops)")
+                    // Small yield to avoid hogging the event loop
+                    try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
+                } catch {
+                    // Prefetch is best-effort — never propagate errors
+                    AppLogger.shared.log("SHAPE_PREFETCH", message: "\(group.routeId) failed: \(error.localizedDescription)")
+                }
+            }
+        }
     }
 
     // MARK: - Grouped Transit Merge
