@@ -137,33 +137,34 @@ async def _warmup_caches():
     After the initial prime, hands off to ``_periodic_feed_refresh``
     which keeps feeds hot every 10 seconds so they NEVER go cold.
 
-    **Concurrency:** On Standard plan (1 CPU, 2 GB RAM) we warm feeds
-    concurrently with a semaphore to cap GIL contention.  This cuts
-    warmup from ~25 s (sequential) to ~5 s (3-at-a-time).
+    **Concurrency:** Feeds are warmed SEQUENTIALLY with explicit event-loop
+    yields between each feed.  On Standard plan (1 CPU) concurrent protobuf
+    parsing causes severe GIL contention — health checks timeout and Render's
+    proxy returns 502.  Sequential warmup takes ~20-25s but the server stays
+    responsive to user requests throughout.
     """
     global _warmup_complete
     from app.services.gtfs.data_cleaner import get_arrivals_for_line
     from app.clients.bus_client import get_routes as get_bus_routes
 
     t0 = time.perf_counter()
-    TrackLogger.info("[WARMUP] Priming subway GTFS-RT feeds + bus routes (concurrent)...", tag="WARMUP")
+    TrackLogger.info("[WARMUP] Priming subway GTFS-RT feeds + bus routes (sequential)...", tag="WARMUP")
 
-    # Warm up to 3 feeds at a time — keeps GIL contention manageable
-    # while still finishing ~5× faster than sequential.
-    sem = asyncio.Semaphore(3)
+    # Sequential warmup — one feed at a time with event-loop yields.
+    # Concurrent protobuf parsing (sem(3)) was tried and CAUSED 502s:
+    # GIL contention starves Uvicorn workers → Render proxy returns 502.
     feed_lines = ["A", "B", "N", "1", "G", "L", "J", "7", "SI"]
     feed_ok = 0
 
-    async def _warm_feed(line: str) -> bool:
-        async with sem:
-            try:
-                await get_arrivals_for_line(line)
-                return True
-            except Exception:
-                return False
-
-    results = await asyncio.gather(*[_warm_feed(ln) for ln in feed_lines])
-    feed_ok = sum(1 for r in results if r)
+    for line in feed_lines:
+        try:
+            await get_arrivals_for_line(line)
+            feed_ok += 1
+        except Exception:
+            pass
+        # Yield to the event loop between feeds so health checks and
+        # user requests are not starved during the warmup window.
+        await asyncio.sleep(0.05)
 
     bus_ok = "FAIL"
     try:
@@ -218,9 +219,9 @@ async def _periodic_feed_refresh():
             total = len(feed_lines) + 2  # subway feeds + LIRR + MNR
 
             # ── Process feeds with bounded concurrency ──
-            # Standard plan (1 CPU, 2 GB) can handle 3 concurrent
-            # feeds without starving the event loop.
-            sem = asyncio.Semaphore(3)
+            # Standard plan (1 CPU, 2 GB) — use sem(2) to keep GIL
+            # contention manageable.  sem(3) caused 502s.
+            sem = asyncio.Semaphore(2)
 
             async def _refresh_feed(line: str) -> bool:
                 async with sem:

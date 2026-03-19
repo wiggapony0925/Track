@@ -1048,6 +1048,42 @@ def _group_arrivals(flat: list[NearbyTransitArrival], alert_index: dict[str, lis
             ]
         # ─────────────────────────────────────────────────────────────────
 
+        # ── Drop compass-only placeholder tabs ────────────────────────────
+        # Phase B backfill creates direction tabs keyed by OBA compass
+        # bearing ("NE", "NW", "SW", etc.) that contain ONLY placeholder
+        # arrivals (99 min, no arrival_ts).  When the route already has
+        # at least one real destination-name direction tab with live data,
+        # these compass tabs are noise — the user sees confusing labels
+        # like "Northwest" with no useful timing info.
+        #
+        # Remove compass-only placeholder tabs when:
+        #   1. Direction key is a known compass/fallback key
+        #   2. ALL arrivals in the tab are placeholders (minutes >= 99, no ts)
+        #   3. At least one OTHER tab has real arrivals
+        has_any_semantic_live = any(
+            not _is_fallback_direction_key(d.direction)
+            and any(a.minutes_away < _PLACEHOLDER_MINUTES or a.arrival_ts is not None for a in d.arrivals)
+            for d in directions
+        )
+        if has_any_semantic_live and len(directions) > 1:
+            _before_prune = len(directions)
+            directions = [
+                d for d in directions
+                if not (
+                    _is_fallback_direction_key(d.direction)
+                    and all(
+                        a.minutes_away >= _PLACEHOLDER_MINUTES and a.arrival_ts is None
+                        for a in d.arrivals
+                    )
+                )
+            ]
+            _pruned = _before_prune - len(directions)
+            if _pruned:
+                TrackLogger.debug(
+                    f"Pruned {_pruned} compass-only placeholder tab(s) from {display}"
+                )
+        # ─────────────────────────────────────────────────────────────────
+
         if len(directions) == 1:
             single_direction_before += 1
 
