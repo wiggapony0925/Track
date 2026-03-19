@@ -262,15 +262,16 @@ enum MapLibreStyleConfig {
 
     /// Active route fill width (when a specific route is selected) — extra bold
     /// so the selected route clearly dominates the dimmed system map.
+    /// Matched to Transit-app-level thickness for a premium, confident feel.
     static let routeFillWidth = zoomInterpolate(
         base: 1.6,
-        stops: [10: 2.5, 12: 3.5, 14: 5.0, 16: 6.0, 18: 7.5]
+        stops: [10: 3.5, 12: 5.0, 14: 7.0, 16: 8.5, 18: 10.0]
     )
 
     /// Active route casing width — generous border for a premium floating effect.
     static let routeCasingWidth = zoomInterpolate(
         base: 1.6,
-        stops: [10: 4.0, 12: 6.0, 14: 8.0, 16: 9.5, 18: 11.0]
+        stops: [10: 5.5, 12: 8.0, 14: 10.5, 16: 12.5, 18: 14.0]
     )
 
     /// Station circle dot radius — single-line stops only, visible from zoom 12.

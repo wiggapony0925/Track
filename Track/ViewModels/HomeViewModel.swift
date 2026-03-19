@@ -740,11 +740,14 @@ final class HomeViewModel {
     /// which causes the "On Route" → "Scheduled" chip flicker.
     @ObservationIgnored var _busGraceBuffer: [String: (vehicle: BusVehicleResponse, missedAt: Date)] = [:]
 
-    // MARK: - Route Shape LRU Cache
+    // MARK: - Route Shape LRU Cache + Disk Persistence
     //
-    // Keeps the 10 most-recently-viewed route shapes in memory so re-selecting
-    // a route renders its polyline instantly without a network round-trip.
-    // Entries auto-expire after 5 minutes to avoid stale data.
+    // Two-tier shape cache:
+    //   L1  In-memory LRU (10 entries, 5 min TTL) — zero-latency re-select
+    //   L2  Disk JSON files (24 h TTL) — survives app restart & network failures
+    //
+    // Route geometry changes extremely rarely, so even a 24-hour disk entry
+    // is virtually always correct and far better than a blank map on a 502.
 
     private struct CachedShape {
         let shape: RouteShapeResponse
@@ -756,17 +759,81 @@ final class HomeViewModel {
     private let _routeShapeCacheMaxAge: TimeInterval = 300  // 5 min
     private let _routeShapeCacheMaxSize = 10
 
-    /// Returns a cached route shape if it exists and is < 5 min old.
-    private func getCachedRouteShape(for routeId: String) -> RouteShapeResponse? {
-        guard let entry = _routeShapeCache[routeId] else { return nil }
-        if Date().timeIntervalSince(entry.fetchedAt) > _routeShapeCacheMaxAge {
-            _routeShapeCache.removeValue(forKey: routeId)
-            return nil
-        }
-        return entry.shape
+    // ── Disk cache helpers ──────────────────────────────────────────────
+
+    /// Directory for persisted route shapes inside the app-group container.
+    private static let _shapeDiskDir: URL? = {
+        guard let group = FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: "group.JFMCAPITALGROUP.Track"
+        ) else { return nil }
+        let dir = group.appendingPathComponent("RouteShapeCache", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }()
+
+    private static let _shapeDiskMaxAge: TimeInterval = 86_400  // 24 h
+
+    /// Filename-safe key for a route ID (e.g. "MTA NYCT_B63" → "MTA_NYCT_B63").
+    private nonisolated static func _shapeDiskKey(_ routeId: String) -> String {
+        routeId.replacingOccurrences(of: " ", with: "_")
+               .replacingOccurrences(of: "/", with: "_")
     }
 
-    /// Stores a route shape in the LRU cache, evicting oldest if over capacity.
+    /// Save a shape to disk (fire-and-forget, never blocks UI).
+    private func persistShapeToDisk(_ shape: RouteShapeResponse, for routeId: String) {
+        guard let dir = Self._shapeDiskDir else { return }
+        let key = Self._shapeDiskKey(routeId)
+        Task.detached(priority: .utility) {
+            let file = dir.appendingPathComponent(key + ".json")
+            do {
+                let data = try JSONEncoder().encode(shape)
+                try data.write(to: file, options: .atomic)
+            } catch {
+                // Best-effort — never propagate disk errors to UI
+            }
+        }
+    }
+
+    /// Load a shape from disk if it exists and is < 24 h old.
+    private func loadShapeFromDisk(for routeId: String) -> RouteShapeResponse? {
+        guard let dir = Self._shapeDiskDir else { return nil }
+        let key = Self._shapeDiskKey(routeId)
+        let file = dir.appendingPathComponent(key + ".json")
+        guard FileManager.default.fileExists(atPath: file.path) else { return nil }
+        do {
+            let attrs = try FileManager.default.attributesOfItem(atPath: file.path)
+            if let modified = attrs[.modificationDate] as? Date,
+               Date().timeIntervalSince(modified) > Self._shapeDiskMaxAge {
+                try? FileManager.default.removeItem(at: file)
+                return nil
+            }
+            let data = try Data(contentsOf: file)
+            return try JSONDecoder().decode(RouteShapeResponse.self, from: data)
+        } catch {
+            return nil
+        }
+    }
+
+    /// Returns a cached route shape if it exists and is < 5 min old.
+    /// Falls through to disk cache if memory is empty.
+    private func getCachedRouteShape(for routeId: String) -> RouteShapeResponse? {
+        // L1: In-memory
+        if let entry = _routeShapeCache[routeId] {
+            if Date().timeIntervalSince(entry.fetchedAt) <= _routeShapeCacheMaxAge {
+                return entry.shape
+            }
+            _routeShapeCache.removeValue(forKey: routeId)
+        }
+        // L2: Disk
+        if let disk = loadShapeFromDisk(for: routeId) {
+            _routeShapeCache[routeId] = CachedShape(shape: disk, fetchedAt: Date())
+            AppLogger.shared.log("SHAPE_CACHE", message: "DISK HIT \(routeId)")
+            return disk
+        }
+        return nil
+    }
+
+    /// Stores a route shape in the LRU cache and persists to disk.
     private func cacheRouteShape(_ shape: RouteShapeResponse, for routeId: String) {
         _routeShapeCache[routeId] = CachedShape(shape: shape, fetchedAt: Date())
         // Evict oldest entries if over capacity
@@ -776,6 +843,8 @@ final class HomeViewModel {
                 _routeShapeCache.removeValue(forKey: entry.key)
             }
         }
+        // Persist to disk for next cold-start
+        persistShapeToDisk(shape, for: routeId)
     }
 
     var routeShape: RouteShapeResponse? {
@@ -1945,24 +2014,37 @@ final class HomeViewModel {
             // result the instant it arrives (no sequential bottleneck).
             // Using parallel Tasks instead of withTaskGroup to avoid
             // `sending` closure warnings with @MainActor-isolated self.
+            //
+            // Both tasks include an automatic retry after 2 s if the first
+            // attempt fails (e.g. 502 from a cold server).  This is on top
+            // of the network-layer retry in TrackAPI.get() — the higher-level
+            // retry lets the server finish warming up after the low-level
+            // retries are exhausted.
             let vehicleTask = Task { @MainActor [weak self] in
                 guard let self else { return }
-                do {
-                    let vehicles = try await TrackAPI.fetchBusVehicles(routeID: loadingRouteId)
-                    guard self.selectedRouteId == loadingRouteId else { return }
-                    self.busVehicles = vehicles
-                    self._targetBusGPS = Dictionary(
-                        vehicles.map { ($0.vehicleId, $0) },
-                        uniquingKeysWith: { $1 }
-                    )
-                    for v in vehicles {
-                        self.previousBusPositions[v.vehicleId] = BusSnapshot(
-                            lat: v.lat, lon: v.lon, timestamp: Date()
-                        )
+                for attempt in 0..<2 {
+                    if attempt > 0 {
+                        try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 s
+                        guard self.selectedRouteId == loadingRouteId else { return }
                     }
-                    self.lastBusUpdateTime = Date()
-                } catch {
-                    AppLogger.shared.logError("fetchBusVehicles(\(loadingRouteId))", error: error)
+                    do {
+                        let vehicles = try await TrackAPI.fetchBusVehicles(routeID: loadingRouteId)
+                        guard self.selectedRouteId == loadingRouteId else { return }
+                        self.busVehicles = vehicles
+                        self._targetBusGPS = Dictionary(
+                            vehicles.map { ($0.vehicleId, $0) },
+                            uniquingKeysWith: { $1 }
+                        )
+                        for v in vehicles {
+                            self.previousBusPositions[v.vehicleId] = BusSnapshot(
+                                lat: v.lat, lon: v.lon, timestamp: Date()
+                            )
+                        }
+                        self.lastBusUpdateTime = Date()
+                        return  // success — stop retrying
+                    } catch {
+                        AppLogger.shared.logError("fetchBusVehicles(\(loadingRouteId)) attempt=\(attempt)", error: error)
+                    }
                 }
             }
 
@@ -1974,7 +2056,22 @@ final class HomeViewModel {
                         loadedShape = cached
                         AppLogger.shared.log("SHAPE_CACHE", message: "HIT \(loadingRouteId)")
                     } else {
-                        loadedShape = try await TrackAPI.fetchRouteShape(routeID: loadingRouteId)
+                        // Try network, retry once after 2 s on failure
+                        var fetched: RouteShapeResponse?
+                        for attempt in 0..<2 {
+                            if attempt > 0 {
+                                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                                guard self.selectedRouteId == loadingRouteId else { return }
+                            }
+                            do {
+                                fetched = try await TrackAPI.fetchRouteShape(routeID: loadingRouteId)
+                                break
+                            } catch {
+                                AppLogger.shared.logError("fetchRouteShape(\(loadingRouteId)) attempt=\(attempt)", error: error)
+                            }
+                        }
+                        guard let shape = fetched else { return }
+                        loadedShape = shape
                         self.cacheRouteShape(loadedShape, for: loadingRouteId)
                     }
                     guard self.selectedRouteId == loadingRouteId else { return }

@@ -233,9 +233,14 @@ struct MapControlsOverlay: View {
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundColor(selectedRouteColor.opacity(0.84))
                             .lineLimit(1)
+                    } else if viewModel.routeShape == nil {
+                        // Shape hasn't loaded yet (still fetching or failed)
+                        Text("Loading route…")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(selectedRouteColor.opacity(0.55))
                     } else {
                         let stopsCount = viewModel.routeShape?.stops.count ?? 0
-                        Text("\(stopsCount) stops live on map")
+                        Text("\(stopsCount) stops on route")
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundColor(selectedRouteColor.opacity(0.84))
                     }
