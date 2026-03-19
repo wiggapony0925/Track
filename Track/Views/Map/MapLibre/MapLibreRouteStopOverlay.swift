@@ -21,6 +21,8 @@ import SwiftUI
 struct DisplayedRouteStop: Identifiable {
     let stop: BusStop
     let displayCoordinate: CLLocationCoordinate2D
+    /// True when this stop is behind the nearest stop (already passed by the bus).
+    let isBehind: Bool
 
     var id: String { stop.id }
 }
@@ -67,6 +69,7 @@ struct MapLibreRouteStopOverlay: View {
             RouteStopMarker(
                 isBusRoute: isBusRoute,
                 isSelected: isSelected,
+                isBehind: displayedStop.isBehind,
                 routeColor: routeColor,
                 stopName: stop.name
             )

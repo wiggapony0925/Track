@@ -163,6 +163,7 @@ struct MapLibreTrackMapView: View {
             overlayStack
         }
         .onChange(of: currentMapDistance) { _, _ in refreshViewportCacheIfNeeded() }
+        .onChange(of: viewModel.selectedStopId) { _, _ in forceRefreshStopCache() }
         .onChange(of: viewModel.walkingRoute?.polyline.pointCount) { _, _ in
             cachedWalkingCoords = Self.decodeWalkingRoute(viewModel.walkingRoute)
         }
@@ -219,6 +220,13 @@ struct MapLibreTrackMapView: View {
     }
 
     // MARK: - Viewport Cache (same logic as TrackMapView)
+
+    /// Force-refresh only the stop markers (e.g. when the nearest stop or
+    /// selected stop changes, so behind/ahead dimming updates).
+    private func forceRefreshStopCache() {
+        guard let center = currentMapCenter, let d = currentMapDistance else { return }
+        _cachedVisibleStops = computeVisibleDirectionStops(center: center, distance: d)
+    }
 
     private func refreshViewportCacheIfNeeded() {
         guard let center = currentMapCenter, let d = currentMapDistance else { return }
@@ -328,6 +336,24 @@ struct MapLibreTrackMapView: View {
                 && abs(stop.lon - center.longitude) <= lonSpan
         }
 
+        // Determine which stops are "behind" (already passed by the bus)
+        // by finding the nearest stop's position in the ordered stop list.
+        let behindStopIds: Set<String>
+        if let nearestCoord = viewModel.nearestStopCoordinate {
+            let nearestLoc = CLLocation(latitude: nearestCoord.latitude, longitude: nearestCoord.longitude)
+            // Find the index of the stop closest to nearestStopCoordinate
+            var bestIdx = 0
+            var bestDist: CLLocationDistance = .greatestFiniteMagnitude
+            for (i, stop) in allStops.enumerated() {
+                let d = CLLocation(latitude: stop.lat, longitude: stop.lon).distance(from: nearestLoc)
+                if d < bestDist { bestDist = d; bestIdx = i }
+            }
+            // All stops before the nearest stop index are "behind"
+            behindStopIds = Set(allStops.prefix(bestIdx).map(\.id))
+        } else {
+            behindStopIds = []
+        }
+
         let maxDisplaySnapDistance: Double =
             viewModel.selectedGroupedRoute?.isBus == true ? 100.0 : 160.0
 
@@ -343,7 +369,8 @@ struct MapLibreTrackMapView: View {
 
             return DisplayedRouteStop(
                 stop: stop,
-                displayCoordinate: displayCoordinate
+                displayCoordinate: displayCoordinate,
+                isBehind: behindStopIds.contains(stop.id)
             )
         }
     }

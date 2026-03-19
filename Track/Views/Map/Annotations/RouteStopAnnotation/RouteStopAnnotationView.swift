@@ -6,11 +6,13 @@ import SwiftUI
 struct RouteStopMarker: View, Equatable {
     let isBusRoute: Bool
     let isSelected: Bool
+    /// When true the bus has already passed this stop — render dimmed.
+    var isBehind: Bool = false
     let routeColor: Color
     let stopName: String
 
     static func == (lhs: RouteStopMarker, rhs: RouteStopMarker) -> Bool {
-        lhs.isBusRoute == rhs.isBusRoute && lhs.isSelected == rhs.isSelected && lhs.stopName == rhs.stopName
+        lhs.isBusRoute == rhs.isBusRoute && lhs.isSelected == rhs.isSelected && lhs.isBehind == rhs.isBehind && lhs.stopName == rhs.stopName
     }
 
     var body: some View {
@@ -46,6 +48,7 @@ struct RouteStopMarker: View, Equatable {
         }
         .frame(width: 30, height: 30)
         .drawingGroup()
+        .opacity(isBehind && !isSelected ? 0.30 : 1.0)
         .scaleEffect(isSelected ? 1.1 : 1.0)
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isSelected)
         .accessibilityLabel(stopName)
