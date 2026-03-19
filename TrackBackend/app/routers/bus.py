@@ -57,20 +57,30 @@ def _raise_bus_upstream_http_error(exc: httpx.HTTPStatusError) -> None:
     raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
-@router.get("/schedule/{route_id}", response_model=BusScheduleResponse)
-async def get_bus_schedule(route_id: str) -> BusScheduleResponse:
-    """
-    Returns today's upcoming scheduled departures for a bus route,
-    using the OneBusAway schedule-for-stop API.
+# ── In-memory TTL cache for bus schedules ──────────────────────────────
+# This is the most expensive endpoint (up to 6 serial OBA calls per miss)
+# and the only bus endpoint that had NO caching.  A 2-minute fresh window
+# with 10-minute stale-while-revalidate covers both rapid re-opens and
+# background refresh, preventing upstream pile-up on a single-worker server.
+import time as _time, re as _re
 
-    Departures are grouped by **headsign** (the trip's terminal destination)
-    which aligns with the logical route directions the iOS app expects
-    (e.g. "RUSH JFK AIRPORT via LEFFERTS BL" vs "RUSH KEW GARDENS via LEFFERTS BL").
-    """
-    from datetime import datetime, timezone, timedelta
+_schedule_cache: dict[str, tuple[float, BusScheduleResponse]] = {}
+_SCHEDULE_FRESH_TTL = 120       # 2 min
+_SCHEDULE_STALE_TTL = 600       # 10 min
+_SCHEDULE_MAX_SIZE  = 100
+_schedule_inflight: dict[str, "asyncio.Task[BusScheduleResponse]"] = {}
 
-    import httpx as _httpx
+import asyncio as _asyncio
 
+
+def _normalize_route_token(raw: str) -> str:
+    """Strip agency prefix, upper-case, and remove leading zeros."""
+    token = (raw.split("_", 1)[-1] if "_" in raw else raw).upper()
+    return _re.sub(r"(?<=\D)0+(?=\d)", "", token) or token
+
+
+async def _fetch_bus_schedule_uncached(route_id: str) -> BusScheduleResponse:
+    """Actual OBA schedule fetch — extracted so the handler can wrap it with caching."""
     settings = get_settings()
     oba_base = settings.urls.bus_oba_base
     api_key = settings.api_keys.mta_bus_key or "test"
@@ -82,7 +92,6 @@ async def get_bus_schedule(route_id: str) -> BusScheduleResponse:
     now = datetime.now(timezone(timedelta(hours=-5)))
     now_epoch = int(now.timestamp())
 
-    # Fetch stops using the existing bus_client function (handles agency prefix resolution)
     try:
         stop_models = await get_stops(route_id)
     except Exception as e:
@@ -92,10 +101,6 @@ async def get_bus_schedule(route_id: str) -> BusScheduleResponse:
     if not stop_models:
         return BusScheduleResponse(route_id=route_id, directions=[])
 
-    # ── Sample a spread of stops across the full route ──────────────────
-    # Pick up to 6 stops evenly spread across all stops regardless of
-    # compass direction.  This ensures we hit both logical directions
-    # (inbound + outbound) without querying dozens of stops.
     max_sample = 6
     if len(stop_models) <= max_sample:
         sample_stops = stop_models
@@ -109,20 +114,11 @@ async def get_bus_schedule(route_id: str) -> BusScheduleResponse:
         tag="BUS",
     )
 
-    # ── Query OBA for each sampled stop and collect ALL departures ──────
-    import re as _re
-
-    def _normalize_route_token(raw: str) -> str:
-        """Strip agency prefix, upper-case, and remove leading zeros from the
-        numeric portion so that 'Q07' and 'Q7' compare equal."""
-        token = (raw.split("_", 1)[-1] if "_" in raw else raw).upper()
-        # Strip leading zeros after any letter prefix: Q07 → Q7, B063 → B63
-        return _re.sub(r"(?<=\D)0+(?=\d)", "", token) or token
-
     req_token = _normalize_route_token(route_id)
     all_departures: list[BusScheduleDeparture] = []
 
-    async with _httpx.AsyncClient(timeout=10) as client:
+    # Re-use a single httpx client for all stops (connection pooling)
+    async with httpx.AsyncClient(timeout=10) as client:
         for stop in sample_stops:
             if not stop.id:
                 continue
@@ -163,20 +159,16 @@ async def get_bus_schedule(route_id: str) -> BusScheduleResponse:
                                 trip_id=ts.get("tripId", ""),
                             ))
 
-            # Once we have departures from at least 2 headsigns (both
-            # directions covered), we can stop querying more stops.
             found_headsigns = set(d.headsign for d in all_departures)
             if len(found_headsigns) >= 2 and len(all_departures) >= 10:
                 break
 
-    # ── Group by headsign (= logical direction) ────────────────────────
     hs_groups: dict[str, list[BusScheduleDeparture]] = {}
     for dep in all_departures:
         hs_groups.setdefault(dep.headsign, []).append(dep)
 
     directions: list[BusScheduleDirection] = []
     for headsign, deps in hs_groups.items():
-        # Deduplicate by trip_id, keep earliest departure per trip
         seen: set[str] = set()
         unique: list[BusScheduleDeparture] = []
         for dep in sorted(deps, key=lambda x: x.departure_time):
@@ -192,12 +184,76 @@ async def get_bus_schedule(route_id: str) -> BusScheduleResponse:
 
         directions.append(BusScheduleDirection(
             route_id=route_id,
-            direction=headsign,   # Use headsign AS the direction —
-            headsign=headsign,    # iOS matches on both fields.
+            direction=headsign,
+            headsign=headsign,
             departures=unique[:30],
         ))
 
     return BusScheduleResponse(route_id=route_id, directions=directions)
+
+
+@router.get("/schedule/{route_id}", response_model=BusScheduleResponse)
+async def get_bus_schedule(route_id: str, response: Response) -> BusScheduleResponse:
+    """
+    Returns today's upcoming scheduled departures for a bus route,
+    using the OneBusAway schedule-for-stop API.
+
+    Departures are grouped by **headsign** (the trip's terminal destination)
+    which aligns with the logical route directions the iOS app expects
+    (e.g. "RUSH JFK AIRPORT via LEFFERTS BL" vs "RUSH KEW GARDENS via LEFFERTS BL").
+    """
+    response.headers["Cache-Control"] = "public, max-age=60, stale-while-revalidate=600, stale-if-error=3600"
+
+    key = _normalize_route_token(route_id)
+    now = _time.monotonic()
+
+    # ── L1: In-memory TTL cache ─────────────────────────────────────────
+    cached = _schedule_cache.get(key)
+    if cached:
+        ts, result = cached
+        age = now - ts
+        if age < _SCHEDULE_FRESH_TTL:
+            TrackLogger.info(f"[SCHEDULE] CACHE HIT {route_id} (age={age:.0f}s)", tag="BUS")
+            return result
+        if age < _SCHEDULE_STALE_TTL:
+            TrackLogger.info(f"[SCHEDULE] CACHE STALE-HIT {route_id} (age={age:.0f}s), bg refresh", tag="BUS")
+            # Return stale, refresh in background
+            if key not in _schedule_inflight:
+                async def _bg_refresh(k: str, rid: str) -> None:
+                    try:
+                        fresh = await _fetch_bus_schedule_uncached(rid)
+                        _schedule_cache[k] = (_time.monotonic(), fresh)
+                    except Exception as exc:
+                        TrackLogger.warning(f"[SCHEDULE] bg refresh {rid}: {exc}", tag="BUS")
+                    finally:
+                        _schedule_inflight.pop(k, None)
+                _schedule_inflight[key] = _asyncio.create_task(_bg_refresh(key, route_id))
+            return result
+
+    # ── Deduplicate inflight requests ──────────────────────────────────
+    if key in _schedule_inflight:
+        TrackLogger.info(f"[SCHEDULE] COALESCE {route_id}", tag="BUS")
+        try:
+            return await _schedule_inflight[key]
+        except Exception:
+            pass  # fall through to fresh fetch
+
+    # ── Fresh fetch ────────────────────────────────────────────────────
+    async def _do_fetch() -> BusScheduleResponse:
+        try:
+            result = await _fetch_bus_schedule_uncached(route_id)
+            _schedule_cache[key] = (_time.monotonic(), result)
+            # Evict oldest when oversized
+            if len(_schedule_cache) > _SCHEDULE_MAX_SIZE:
+                oldest_key = min(_schedule_cache, key=lambda k: _schedule_cache[k][0])
+                _schedule_cache.pop(oldest_key, None)
+            return result
+        finally:
+            _schedule_inflight.pop(key, None)
+
+    task = _asyncio.create_task(_do_fetch())
+    _schedule_inflight[key] = task
+    return await task
 
 
 @router.get("/routes", response_model=list[BusRoute])
