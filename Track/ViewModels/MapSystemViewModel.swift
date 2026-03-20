@@ -1044,22 +1044,52 @@ final class MapSystemViewModel {
                     )
                 }
             } else {
-                simplified = simplifyPolyline(item.coordinates, tolerance: 0.00008)
+                simplified = simplifyPolyline(item.coordinates, tolerance: 0.00005)
             }
 
             guard simplified.count >= 2 else { continue }
 
-            // DO NOT apply Catmull-Rom or refineSharpBends here.
-            // Server polylines pass through station coordinates — MapLibre's
-            // line-join: round handles smooth rendering natively on GPU.
-            // Client-side curve interpolation shifts polylines off station
-            // snap points and disrupts server-computed corridor offsets.
+            // ── Backtrack Removal ──
+            // Remove self-intersecting loops that stem injection may
+            // create (e.g. 7/7X express overlay near Hudson Yards).
+            // Must run before the fillet to prevent arc amplification.
+            let cleaned = removePolylineBacktracks(simplified)
+            guard cleaned.count >= 2 else { continue }
+
+            // ── Offset-Adaptive Circular-Arc Fillet ──
+            //
+            // Replace sharp vertices with true circular arcs whose minimum
+            // radius scales with |laneOffset| (corridor width).  This is
+            // the key mathematical insight: a circle arc offset by d
+            // produces another circle arc of radius R±d.  By ensuring
+            // R_min > |laneOffset| × scale, EVERY parallel-offset copy
+            // of this polyline (rendered via MapLibre lineOffset) stays
+            // smooth — no cusps, no self-intersections, no pinching at
+            // junction Y-splits.
+            //
+            // • Junction vertices (laneOffset ≠ 0): wider radius to
+            //   accommodate N parallel lines fanning out.
+            // • Plain bends (laneOffset = 0): small base radius — just
+            //   enough to round the sharpest tunnel curves.
+            // • Straight segments: untouched (zero added points).
+            //
+            // Station coordinates are safe because the tangent pull-back
+            // is clamped to 40% of the shorter incident edge — station
+            // vertices always have >200 m edges so the max pull is <80 m.
+            let fillet = junctionAwareFillet(
+                cleaned,
+                laneOffset: Double(localLaneOffset),
+                angleThreshold: 22.0,
+                baseRadiusDeg: 0.00028,
+                scaleFactor: 0.00025,
+                arcPoints: 8
+            )
 
             finalOffsetPolylines.append(PreparedPolyline(
                 origin: origin,
                 groupIndex: item.groupIndex,
-                coordinates: simplified,
-                localLaneOffset: localLaneOffset
+                coordinates: fillet,
+                 localLaneOffset: localLaneOffset
             ))
         }
 

@@ -775,7 +775,103 @@ def _unify_via_grid(
 
     # Chain-merge nearby endpoints for cleanup (naturally-connected
     # segments whose stems overlap or whose endpoints touch).
-    return _chain_merge(stemmed, MERGE_GAP_M)
+    merged = _chain_merge(stemmed, MERGE_GAP_M)
+
+    # ── Safety net: remove self-intersecting loops ──
+    # Stem injection + chain merge can create paths that cross themselves
+    # (e.g. 7/7X express overlay near Hudson Yards).  Detect and cut loops
+    # so exported polylines never contain visual backtracks.
+    return _remove_self_intersections(merged)
+
+
+def _remove_self_intersections(
+    segments: list[LineString],
+) -> list[LineString]:
+    """Remove self-intersecting loops from polyline segments.
+
+    A self-intersecting LineString has a portion that backtracks through
+    previously-traversed territory, creating a visible loop.  This
+    happens when ``_inject_trunk_stems`` prepends/appends trunk baseline
+    in a direction antiparallel to the branch stub.
+
+    Strategy: walk the coordinate list tracking visited grid cells.
+    When a cell is revisited, the segment between the first and last
+    visit is a candidate loop.  If the loop's net displacement is small
+    relative to its arc length (i.e. it goes somewhere and comes back),
+    cut it out.  Keep the longer non-looping portion.
+    """
+    result: list[LineString] = []
+
+    for ls in segments:
+        if ls.is_simple:
+            result.append(ls)
+            continue
+
+        coords = list(ls.coords)
+        if len(coords) < 4:
+            result.append(ls)
+            continue
+
+        # Use a spatial grid to find where the path revisits itself.
+        # Cell size ~100 m — fine enough to detect loops without false
+        # positives from parallel tracks 200+ m apart.
+        cell_size = 100.0
+
+        def _cell(x: float, y: float) -> tuple[int, int]:
+            return (int(math.floor(x / cell_size)), int(math.floor(y / cell_size)))
+
+        # Record first and last index that visits each cell
+        first_visit: dict[tuple[int, int], int] = {}
+        last_visit: dict[tuple[int, int], int] = {}
+        for i, (x, y) in enumerate(coords):
+            cell = _cell(x, y)
+            if cell not in first_visit:
+                first_visit[cell] = i
+            last_visit[cell] = i
+
+        # Find the widest revisit gap (longest loop)
+        best_gap = 0
+        loop_start = -1
+        loop_end = -1
+        for cell, fi in first_visit.items():
+            li = last_visit[cell]
+            gap = li - fi
+            if gap > best_gap and gap >= 3:
+                # Verify it's a real loop: net displacement should be
+                # small relative to the arc length of the gap.
+                sx, sy = coords[fi]
+                ex, ey = coords[li]
+                net = math.sqrt((ex - sx) ** 2 + (ey - sy) ** 2)
+                # Sum of segment lengths in the gap
+                arc = 0.0
+                for j in range(fi, li):
+                    dx = coords[j + 1][0] - coords[j][0]
+                    dy = coords[j + 1][1] - coords[j][1]
+                    arc += math.sqrt(dx * dx + dy * dy)
+                # A genuine loop has net displacement < 30% of arc length
+                if arc > 0 and net / arc < 0.30:
+                    best_gap = gap
+                    loop_start = fi
+                    loop_end = li
+
+        if loop_start >= 0 and loop_end > loop_start:
+            # Cut the loop: keep [0..loop_start] + [loop_end..end]
+            before = coords[: loop_start + 1]
+            after = coords[loop_end:]
+            cleaned = before + after
+            TrackLogger.info(
+                f"[SelfIntersect] Removed loop at indices "
+                f"{loop_start}-{loop_end} ({loop_end - loop_start} vertices)"
+            )
+            if len(cleaned) >= 2:
+                result.append(LineString(cleaned))
+            else:
+                result.append(ls)
+        else:
+            # No clear loop found — keep as-is
+            result.append(ls)
+
+    return result
 
 
 def _inject_trunk_stems(
@@ -869,7 +965,34 @@ def _inject_trunk_stems(
                     if len(seg_coords) >= 2:
                         snap_pt = anchor_start.interpolate(proj)
                         stub_coords[0] = (snap_pt.x, snap_pt.y)
-                        prepend_stem = seg_coords
+                        # ── Backtrack guard ──
+                        # Check if the stem direction at the junction is
+                        # compatible with the stub direction.  If antiparallel
+                        # (dot < 0), the path would U-turn → try the other
+                        # direction along the anchor.
+                        if len(stub_coords) >= 2 and len(seg_coords) >= 2:
+                            stem_dx = seg_coords[-1][0] - seg_coords[-2][0]
+                            stem_dy = seg_coords[-1][1] - seg_coords[-2][1]
+                            stub_dx = stub_coords[1][0] - stub_coords[0][0]
+                            stub_dy = stub_coords[1][1] - stub_coords[0][1]
+                            dot = stem_dx * stub_dx + stem_dy * stub_dy
+                            if dot < 0:
+                                # Antiparallel → try stem in other direction
+                                stem_end_alt = min(
+                                    anchor_start.length, proj + _STEM_LENGTH_M
+                                )
+                                if stem_end_alt - proj > 50.0:
+                                    seg_alt = substring(
+                                        anchor_start, proj, stem_end_alt
+                                    )
+                                    alt_coords = list(reversed(seg_alt.coords))
+                                    if len(alt_coords) >= 2:
+                                        seg_coords = alt_coords
+                                else:
+                                    seg_coords = []  # skip stem
+                        if seg_coords and len(seg_coords) >= 2:
+                            prepend_stem = seg_coords
+                        # else: skip — stem would create a backtrack
                 except Exception as exc:
                     TrackLogger.warning(f"[BranchStem] Prepend failed: {exc}")
 
@@ -882,7 +1005,30 @@ def _inject_trunk_stems(
                     if len(seg_coords) >= 2:
                         snap_pt = anchor_end.interpolate(proj)
                         stub_coords[-1] = (snap_pt.x, snap_pt.y)
-                        append_stem = seg_coords
+                        # ── Backtrack guard (append side) ──
+                        if len(stub_coords) >= 2 and len(seg_coords) >= 2:
+                            stub_dx = stub_coords[-1][0] - stub_coords[-2][0]
+                            stub_dy = stub_coords[-1][1] - stub_coords[-2][1]
+                            stem_dx = seg_coords[1][0] - seg_coords[0][0]
+                            stem_dy = seg_coords[1][1] - seg_coords[0][1]
+                            dot = stub_dx * stem_dx + stub_dy * stem_dy
+                            if dot < 0:
+                                # Antiparallel → try stem in other direction
+                                stem_begin_alt = max(
+                                    0.0, proj - _STEM_LENGTH_M
+                                )
+                                if proj - stem_begin_alt > 50.0:
+                                    seg_alt = substring(
+                                        anchor_end, stem_begin_alt, proj
+                                    )
+                                    alt_coords = list(reversed(seg_alt.coords))
+                                    if len(alt_coords) >= 2:
+                                        seg_coords = alt_coords
+                                else:
+                                    seg_coords = []  # skip stem
+                        if seg_coords and len(seg_coords) >= 2:
+                            append_stem = seg_coords
+                        # else: skip — stem would create a backtrack
                 except Exception as exc:
                     TrackLogger.warning(f"[BranchStem] Append failed: {exc}")
 

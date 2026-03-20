@@ -933,10 +933,12 @@ final class HomeViewModel {
                 let routePolys: [[CLLocationCoordinate2D]]
 
                 if isBus {
-                    // Bus pipeline: merge only + light smoothing + bend refinement
+                    // Bus pipeline: merge + near-duplicate removal +
+                    // Catmull-Rom smooth + circular-arc fillet at sharp corners.
                     let merged = mergeAdjacentPolylines(activeRaw)
                     routePolys = merged.filter { $0.count >= 2 }.map {
-                        let smoothed = smoothPolyline($0, segmentsPerCurve: 4)
+                        let cleaned = removeNearDuplicates($0)
+                        let smoothed = smoothPolyline(cleaned, segmentsPerCurve: 6)
                         return refineSharpBends(smoothed, angleThreshold: 30.0)
                     }
                 } else {
@@ -953,7 +955,8 @@ final class HomeViewModel {
                     }
 
                     routePolys = unified.filter { $0.count >= 2 }.map {
-                        let smoothed = smoothPolyline($0, segmentsPerCurve: 8)
+                        let cleaned = removeNearDuplicates($0)
+                        let smoothed = smoothPolyline(cleaned, segmentsPerCurve: 8)
                         return refineSharpBends(smoothed)
                     }
                 }
@@ -997,8 +1000,9 @@ final class HomeViewModel {
                         ? mergedInactive
                         : unifyTrainPolylines(mergedInactive)
                     inactivePolys = unifiedInactive.filter { $0.count >= 2 }.map {
-                        let smoothed = smoothPolyline($0, segmentsPerCurve: isBus ? 4 : 8)
-                        return refineSharpBends(smoothed, angleThreshold: isBus ? 30.0 : 25.0)
+                        let cleaned = removeNearDuplicates($0)
+                        let smoothed = smoothPolyline(cleaned, segmentsPerCurve: isBus ? 6 : 8)
+                        return refineSharpBends(smoothed, angleThreshold: isBus ? 30.0 : 20.0)
                     }
                 }
 

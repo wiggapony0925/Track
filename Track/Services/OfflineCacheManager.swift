@@ -46,7 +46,7 @@ final class OfflineCacheManager: ObservableObject {
         static let subwayShapes = "cached_subway_shapes"
         static let subwayShapesCachedAt = "cached_subway_shapes_timestamp"
         static let flattenedPolylines = "cached_flattened_polylines"
-        static let flattenedPolylinesCachedAt = "cached_flattened_polylines_timestamp_v3"
+        static let flattenedPolylinesCachedAt = "cached_flattened_polylines_timestamp_v4"
     }
 
     /// Bump this whenever the station consolidation logic or hash

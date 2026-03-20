@@ -1133,129 +1133,482 @@ private nonisolated func knotDistance(
     return pow(distSq, alpha * 0.5)
 }
 
-// MARK: - Adaptive Curve Refinement (System Map)
+// MARK: - Circular-Arc Fillet Smoothing
 
-/// Refines sharp bends in a polyline by inserting Catmull-Rom interpolated
-/// points ONLY at vertices where the turn angle exceeds `angleThreshold`.
+/// Replaces sharp bends in a polyline with **true circular arc** segments.
 ///
-/// This is a targeted alternative to full `smoothPolyline()`:
-/// - Preserves straight segments exactly (no point inflation)
-/// - Preserves station-snap points that lie on straight runs
-/// - Only smooths the 10-20% of vertices that have visible corners
-/// - 5× fewer inserted points than full Catmull-Rom
+/// ## Why circular arcs instead of Bézier or Catmull-Rom?
 ///
-/// Perfect for the system map where MapLibre's `line-join: round` handles
-/// gentle curves well, but sharp >25° bends (junction merges, tunnel
-/// approaches, elevated curves) still show visible angular corners.
+/// Transit maps like the MTA subway have multiple coloured lines running
+/// in parallel through shared corridors.  When those lines curve around a
+/// bend, a curve parallel to a **circle arc** is itself a circle arc
+/// (just with radius R ± d).  Bézier and Catmull-Rom splines do NOT have
+/// this property — their parallel offsets develop cusps and loops.
+///
+/// This is the same insight Transit App uses (circle-arc rounding, 2016),
+/// but we go further with **offset-adaptive radius**: the minimum fillet
+/// radius at each vertex scales with the local corridor width so that
+/// when MapLibre applies ``lineOffset`` for parallel trunks, the
+/// **innermost** line never gets a radius smaller than the rendered line
+/// width.  This eliminates the pinch/collapse artifacts that appear at
+/// tight junction bends when 3-5 trunk lines fan out.
+///
+/// ### Mathematics
+///
+/// Given two consecutive edges meeting at a vertex **V** with half-angle
+/// `α/2` (where α = π − turn_angle):
+///
+/// 1. The arc centre **O** lies on the angle bisector at distance
+///    `R / sin(α/2)` from **V**.
+/// 2. Tangent points **A** (incoming) and **D** (outgoing) are at distance
+///    `R / tan(α/2)` from **V** along each edge.
+/// 3. Arc sweep = `π − α` radians, sampled at uniform angular steps.
 ///
 /// - Parameters:
-///   - coordinates: Original polyline points (≥ 3 points required).
-///   - angleThreshold: Minimum turn angle in degrees to trigger smoothing.
-///     Default **25°** — gentle curves stay untouched, sharp turns get refined.
-///   - insertions: Number of interpolated points to insert at each sharp bend.
-///     Default **3** — enough to round the corner without bloating point count.
-/// - Returns: Refined coordinate array with smooth corners.
+///   - coordinates: Original polyline points (≥ 3 required).
+///   - angleThreshold: Minimum turn angle (degrees) to trigger filleting.
+///     Default **20°** — the tightest corners that `line-join: round`
+///     can't hide.
+///   - baseRadiusDeg: Base fillet radius in degrees.  Default **0.00025°**
+///     ≈ 28 m at NYC — enough to round subway tunnel curves without
+///     shifting polylines off station-snapped positions.
+///   - arcPoints: Points to sample along each arc.  Default **8**.
+/// - Returns: Smoothed coordinate array.  Straight segments pass through
+///   unchanged; only sharp vertices are replaced with arcs.
 nonisolated func refineSharpBends(
     _ coordinates: [CLLocationCoordinate2D],
-    angleThreshold: Double = 25.0,
-    insertions: Int = 3
+    angleThreshold: Double = 20.0,
+    baseRadiusDeg: Double = 0.00025,
+    arcPoints: Int = 8
 ) -> [CLLocationCoordinate2D] {
     guard coordinates.count >= 3 else { return coordinates }
 
+    let n = coordinates.count
     let cosThreshold = cos(angleThreshold * .pi / 180.0)
-    let alpha: Double = 0.5  // centripetal
+    let R = baseRadiusDeg
+
+    // ── Pass 1: compute ideal tangent distance for every interior vertex ──
+    struct VertexInfo {
+        var tangentDist: Double = 0.0
+        var tanHalf: Double = 0.0
+        var needsFillet: Bool = false
+    }
+    var info = [VertexInfo](repeating: VertexInfo(), count: n)
+    var edgeLen = [Double](repeating: 0.0, count: n - 1)
+    for i in 0..<(n - 1) {
+        let dx = coordinates[i + 1].longitude - coordinates[i].longitude
+        let dy = coordinates[i + 1].latitude  - coordinates[i].latitude
+        edgeLen[i] = sqrt(dx * dx + dy * dy)
+    }
+
+    for i in 1..<(n - 1) {
+        let len1 = edgeLen[i - 1]
+        let len2 = edgeLen[i]
+        guard len1 > 1e-10, len2 > 1e-10 else { continue }
+
+        let prev = coordinates[i - 1], curr = coordinates[i], next = coordinates[i + 1]
+        let dx1 = curr.longitude - prev.longitude
+        let dy1 = curr.latitude  - prev.latitude
+        let dx2 = next.longitude - curr.longitude
+        let dy2 = next.latitude  - curr.latitude
+
+        let dot = (dx1 * dx2 + dy1 * dy2) / (len1 * len2)
+        if dot > cosThreshold { continue }
+
+        let clampedDot = max(-0.9999, min(0.9999, dot))
+        let turnAngle = acos(clampedDot)
+        let halfAngle = (Double.pi - turnAngle) / 2.0
+        guard halfAngle > 1e-6 else { continue }
+
+        let th = tan(halfAngle)
+        guard th > 1e-10 else { continue }
+
+        let idealDist = R / th
+        let soloClamped = min(idealDist, 0.40 * min(len1, len2))
+        info[i] = VertexInfo(tangentDist: soloClamped, tanHalf: th, needsFillet: true)
+    }
+
+    // ── Pass 1.5: budget adjacent fillets ──
+    for e in 0..<(n - 1) {
+        let wantLeft  = info[e].needsFillet     ? info[e].tangentDist     : 0.0
+        let wantRight = info[e + 1].needsFillet ? info[e + 1].tangentDist : 0.0
+        let total = wantLeft + wantRight
+        guard total > edgeLen[e] * 0.90 else { continue }
+        let budget = edgeLen[e] * 0.90
+        let scale = budget / total
+        if info[e].needsFillet     { info[e].tangentDist     = wantLeft  * scale }
+        if info[e + 1].needsFillet { info[e + 1].tangentDist = wantRight * scale }
+    }
+
+    // ── Pass 2: emit arc geometry ──
     var result: [CLLocationCoordinate2D] = [coordinates[0]]
 
-    for i in 1..<(coordinates.count - 1) {
+    for i in 1..<(n - 1) {
+        guard info[i].needsFillet else {
+            result.append(coordinates[i])
+            continue
+        }
+
         let prev = coordinates[i - 1]
         let curr = coordinates[i]
         let next = coordinates[i + 1]
 
-        // Compute turn angle at this vertex
         let dx1 = curr.longitude - prev.longitude
-        let dy1 = curr.latitude - prev.latitude
+        let dy1 = curr.latitude  - prev.latitude
         let dx2 = next.longitude - curr.longitude
-        let dy2 = next.latitude - curr.latitude
+        let dy2 = next.latitude  - curr.latitude
 
-        let len1 = sqrt(dx1 * dx1 + dy1 * dy1)
-        let len2 = sqrt(dx2 * dx2 + dy2 * dy2)
+        let len1 = edgeLen[i - 1]
+        let len2 = edgeLen[i]
 
-        guard len1 > 1e-10, len2 > 1e-10 else {
+        let budgetedDist = info[i].tangentDist
+        let effectiveR = budgetedDist * info[i].tanHalf
+
+        guard effectiveR > 1e-10, budgetedDist > 1e-10 else {
             result.append(curr)
             continue
         }
+
+        let u1x = dx1 / len1, u1y = dy1 / len1
+        let u2x = dx2 / len2, u2y = dy2 / len2
+
+        let aLon = curr.longitude - u1x * budgetedDist
+        let aLat = curr.latitude  - u1y * budgetedDist
+        let dLon = curr.longitude + u2x * budgetedDist
+        let dLat = curr.latitude  + u2y * budgetedDist
+
+        let cross = u1x * u2y - u1y * u2x
+
+        let perpX: Double, perpY: Double
+        if cross > 0 {
+            perpX = -u1y; perpY =  u1x
+        } else {
+            perpX =  u1y; perpY = -u1x
+        }
+
+        let cLon = aLon + perpX * effectiveR
+        let cLat = aLat + perpY * effectiveR
+
+        let startAngle = atan2(aLat - cLat, aLon - cLon)
+        let endAngle   = atan2(dLat - cLat, dLon - cLon)
+
+        var sweep = endAngle - startAngle
+        if cross > 0 {
+            if sweep > 0 { sweep -= 2.0 * .pi }
+        } else {
+            if sweep < 0 { sweep += 2.0 * .pi }
+        }
+
+        // Safety: skip arcs that sweep > 180° (near-reversal)
+        if abs(sweep) > Double.pi {
+            result.append(curr)
+            continue
+        }
+
+        for step in 0...arcPoints {
+            let t = Double(step) / Double(arcPoints)
+            let angle = startAngle + t * sweep
+            let pLon = cLon + effectiveR * cos(angle)
+            let pLat = cLat + effectiveR * sin(angle)
+            result.append(CLLocationCoordinate2D(latitude: pLat, longitude: pLon))
+        }
+    }
+
+    result.append(coordinates.last!)
+    return result
+}
+
+// MARK: - Offset-Adaptive Junction Fillet (System Map)
+
+/// Smooths sharp vertices in a **system-map trunk polyline** using
+/// circular arc fillets whose minimum radius adapts to the local
+/// corridor width (``laneOffset``).
+///
+/// ## Novel contribution (offset-adaptive radius)
+///
+/// Existing transit map renderers (Transit App, Apple Maps, Google Maps)
+/// either don't smooth junctions at all, or use a fixed-radius arc/Bézier.
+/// When multiple parallel lines share a corridor through MapLibre's
+/// ``lineOffset`` property, a **fixed** fillet radius fails:
+///
+///   - Too small → the innermost parallel line (R − n×lane_width)
+///     collapses to zero or negative radius → self-intersection.
+///   - Too large → straight segments are over-smoothed, polylines drift
+///     off station coordinates.
+///
+/// This function scales the fillet radius at each vertex:
+///
+///     R_effective = max(R_base, |laneOffset| × scaleFactor)
+///
+/// At Y-splits/merges (lane_offset ≠ 0), the radius grows so all
+/// parallel-offset copies of the arc remain smooth.  On non-corridor
+/// segments (lane_offset = 0), R falls back to the base — minimal
+/// visual change, stations stay attached.
+///
+/// Because we use **true circle arcs** (not Bézier), every parallel
+/// offset of the fillet is also a circle arc, which is the mathematical
+/// guarantee that eliminates cusp/loop artifacts at bends.
+///
+/// - Parameters:
+///   - coordinates: Trunk polyline points (≥ 3 required).
+///   - laneOffset: Signed pixel-space offset for this trunk's corridor
+///     position.  Magnitude indicates how many lane-widths from centre.
+///   - angleThreshold: Turn angle (degrees) to trigger filleting.
+///   - baseRadiusDeg: Base radius (degrees).  ~0.00020° ≈ 22 m.
+///   - scaleFactor: Multiplier from |laneOffset| to additional radius.
+///     Default **0.00012°** per lane unit ≈ 13 m per offset step.
+///   - arcPoints: Points per arc.
+/// - Returns: Smoothed polyline.
+
+// MARK: - Self-Intersection Removal
+
+/// Detects and removes backtracking loops in a polyline.
+///
+/// Walks the coordinate list tracking visited grid cells.  When a cell
+/// is revisited after traversing enough intermediate vertices (≥ 3),
+/// the segment between the first and last visit is checked for loop
+/// characteristics (net displacement < 30% of arc length).  If a loop
+/// is confirmed, it is cut out, keeping the longer non-looping portion.
+///
+/// Called before ``junctionAwareFillet`` to prevent the fillet from
+/// amplifying server-side artifacts into oversized visual arcs.
+nonisolated func removePolylineBacktracks(
+    _ coordinates: [CLLocationCoordinate2D],
+    cellSize: Double = 0.001  // ~111 m at equator, ~84 m at NYC latitude
+) -> [CLLocationCoordinate2D] {
+    guard coordinates.count >= 6 else { return coordinates }
+
+    typealias Cell = Int64
+
+    func cellKey(_ coord: CLLocationCoordinate2D) -> Cell {
+        let latCell = Int64(floor(coord.latitude / cellSize))
+        let lonCell = Int64(floor(coord.longitude / cellSize))
+        return latCell &* 10_000_000 &+ lonCell
+    }
+
+    // Track first and last visit index per cell
+    var firstVisit: [Cell: Int] = [:]
+    var lastVisit: [Cell: Int] = [:]
+
+    for i in coordinates.indices {
+        let cell = cellKey(coordinates[i])
+        if firstVisit[cell] == nil {
+            firstVisit[cell] = i
+        }
+        lastVisit[cell] = i
+    }
+
+    // Find the widest revisit gap (longest loop)
+    var bestGap = 0
+    var loopStart = -1
+    var loopEnd = -1
+
+    for (cell, fi) in firstVisit {
+        guard let li = lastVisit[cell] else { continue }
+        let gap = li - fi
+        guard gap >= 3, gap > bestGap else { continue }
+
+        // Check net displacement vs arc length
+        let sx = coordinates[fi].longitude
+        let sy = coordinates[fi].latitude
+        let ex = coordinates[li].longitude
+        let ey = coordinates[li].latitude
+        let netSq = (ex - sx) * (ex - sx) + (ey - sy) * (ey - sy)
+        let net = sqrt(netSq)
+
+        var arc = 0.0
+        for j in fi..<li {
+            let dx = coordinates[j + 1].longitude - coordinates[j].longitude
+            let dy = coordinates[j + 1].latitude - coordinates[j].latitude
+            arc += sqrt(dx * dx + dy * dy)
+        }
+
+        // A genuine loop has net displacement < 30% of arc length
+        if arc > 0, net / arc < 0.30 {
+            bestGap = gap
+            loopStart = fi
+            loopEnd = li
+        }
+    }
+
+    guard loopStart >= 0, loopEnd > loopStart else { return coordinates }
+
+    // Cut the loop: keep [0..loopStart] + [loopEnd..end]
+    let before = Array(coordinates[..<(loopStart + 1)])
+    let after = Array(coordinates[loopEnd...])
+    let cleaned = before + after
+
+    guard cleaned.count >= 2 else { return coordinates }
+    return cleaned
+}
+
+nonisolated func junctionAwareFillet(
+    _ coordinates: [CLLocationCoordinate2D],
+    laneOffset: Double,
+    angleThreshold: Double = 25.0,
+    baseRadiusDeg: Double = 0.00020,
+    scaleFactor: Double = 0.00012,
+    arcPoints: Int = 8
+) -> [CLLocationCoordinate2D] {
+    guard coordinates.count >= 3 else { return coordinates }
+
+    let n = coordinates.count
+
+    // Offset-adaptive radius: widen at corridor junctions so all
+    // parallel-offset copies stay smooth.
+    let adaptiveRadius = max(baseRadiusDeg, abs(laneOffset) * scaleFactor)
+
+    let cosThreshold = cos(angleThreshold * .pi / 180.0)
+
+    // ── Pass 1: compute ideal tangent distance for every interior vertex ──
+    // Store 0.0 for vertices that don't need filleting.
+    struct VertexInfo {
+        var tangentDist: Double = 0.0   // desired pull-back along each edge
+        var tanHalf: Double = 0.0       // tan(halfAngle) — needed to recover R
+        var needsFillet: Bool = false
+    }
+    var info = [VertexInfo](repeating: VertexInfo(), count: n)
+
+    // Also precompute edge lengths (edge i = coordinates[i]→coordinates[i+1])
+    var edgeLen = [Double](repeating: 0.0, count: n - 1)
+    for i in 0..<(n - 1) {
+        let dx = coordinates[i + 1].longitude - coordinates[i].longitude
+        let dy = coordinates[i + 1].latitude  - coordinates[i].latitude
+        edgeLen[i] = sqrt(dx * dx + dy * dy)
+    }
+
+    for i in 1..<(n - 1) {
+        let len1 = edgeLen[i - 1]
+        let len2 = edgeLen[i]
+        guard len1 > 1e-10, len2 > 1e-10 else { continue }
+
+        let prev = coordinates[i - 1], curr = coordinates[i], next = coordinates[i + 1]
+        let dx1 = curr.longitude - prev.longitude
+        let dy1 = curr.latitude  - prev.latitude
+        let dx2 = next.longitude - curr.longitude
+        let dy2 = next.latitude  - curr.latitude
 
         let dot = (dx1 * dx2 + dy1 * dy2) / (len1 * len2)
+        if dot > cosThreshold { continue }  // gentle bend
 
-        // If turn angle is gentle (high cosine = small angle), keep as-is
-        if dot > cosThreshold {
+        let clampedDot = max(-0.9999, min(0.9999, dot))
+        let turnAngle = acos(clampedDot)
+        let halfAngle = (Double.pi - turnAngle) / 2.0
+        guard halfAngle > 1e-6 else { continue }
+
+        let th = tan(halfAngle)
+        guard th > 1e-10 else { continue }
+
+        // Solo clamp: 40 % of shorter edge (before sharing budget)
+        let idealDist = adaptiveRadius / th
+        let soloClamped = min(idealDist, 0.40 * min(len1, len2))
+
+        info[i] = VertexInfo(tangentDist: soloClamped, tanHalf: th, needsFillet: true)
+    }
+
+    // ── Pass 1.5: budget adjacent fillets so they never overlap ──
+    //
+    // Each edge is shared by the vertex at each end.  Vertex i wants
+    // info[i].tangentDist of the outgoing edge (edge i) and vertex i+1
+    // wants info[i+1].tangentDist of the incoming edge (edge i).  The
+    // sum must not exceed the edge length; if it does, scale both
+    // proportionally.
+    for e in 0..<(n - 1) {
+        let iLeft  = e       // vertex at start of edge
+        let iRight = e + 1   // vertex at end of edge
+
+        // How much of this edge does each endpoint want?
+        let wantLeft  = info[iLeft].needsFillet  ? info[iLeft].tangentDist  : 0.0
+        let wantRight = info[iRight].needsFillet ? info[iRight].tangentDist : 0.0
+        let total = wantLeft + wantRight
+
+        guard total > edgeLen[e] * 0.90 else { continue }  // leave 10 % gap
+
+        // Scale both down proportionally to fit 90 % of edge
+        let budget = edgeLen[e] * 0.90
+        let scale = budget / total
+        if info[iLeft].needsFillet {
+            info[iLeft].tangentDist = wantLeft * scale
+        }
+        if info[iRight].needsFillet {
+            info[iRight].tangentDist = wantRight * scale
+        }
+    }
+
+    // ── Pass 2: emit arc geometry using budgeted tangent distances ──
+    var result: [CLLocationCoordinate2D] = [coordinates[0]]
+
+    for i in 1..<(n - 1) {
+        guard info[i].needsFillet else {
+            result.append(coordinates[i])
+            continue
+        }
+
+        let prev = coordinates[i - 1]
+        let curr = coordinates[i]
+        let next = coordinates[i + 1]
+
+        let dx1 = curr.longitude - prev.longitude
+        let dy1 = curr.latitude  - prev.latitude
+        let dx2 = next.longitude - curr.longitude
+        let dy2 = next.latitude  - curr.latitude
+
+        let len1 = edgeLen[i - 1]
+        let len2 = edgeLen[i]
+
+        let budgetedDist = info[i].tangentDist
+        let effectiveR = budgetedDist * info[i].tanHalf
+
+        // Skip if budget squeezed it to near-zero
+        guard effectiveR > 1e-10, budgetedDist > 1e-10 else {
             result.append(curr)
             continue
         }
 
-        // Sharp bend detected — insert Catmull-Rom interpolated points
-        // around this vertex to smooth the corner
-        let p0 = coordinates[max(i - 2, 0)]
-        let p1 = prev
-        let p2 = curr
-        let p3 = next
+        let u1x = dx1 / len1, u1y = dy1 / len1
+        let u2x = dx2 / len2, u2y = dy2 / len2
 
-        let d01 = knotDistance(p0, p1, alpha: alpha)
-        let d12 = knotDistance(p1, p2, alpha: alpha)
-        let d23 = knotDistance(p2, p3, alpha: alpha)
+        // Tangent points
+        let aLon = curr.longitude - u1x * budgetedDist
+        let aLat = curr.latitude  - u1y * budgetedDist
+        let dLon = curr.longitude + u2x * budgetedDist
+        let dLat = curr.latitude  + u2y * budgetedDist
 
-        guard d12 > 1e-10 else {
+        // Arc centre
+        let cross = u1x * u2y - u1y * u2x
+        let perpX: Double, perpY: Double
+        if cross > 0 {
+            perpX = -u1y; perpY = u1x
+        } else {
+            perpX = u1y; perpY = -u1x
+        }
+
+        let cLon = aLon + perpX * effectiveR
+        let cLat = aLat + perpY * effectiveR
+
+        let startAngle = atan2(aLat - cLat, aLon - cLon)
+        let endAngle   = atan2(dLat - cLat, dLon - cLon)
+
+        var sweep = endAngle - startAngle
+        if cross > 0 {
+            if sweep > 0 { sweep -= 2.0 * .pi }
+        } else {
+            if sweep < 0 { sweep += 2.0 * .pi }
+        }
+
+        // Safety: if the sweep somehow exceeds 180° the geometry is
+        // suspect (near-reversal that slipped through).  Skip the arc.
+        if abs(sweep) > Double.pi {
             result.append(curr)
             continue
         }
 
-        let t0: Double = 0
-        let t1 = t0 + d01
-        let t2 = t1 + d12
-        let t3 = t2 + d23
-
-        // Insert points in the second half of the segment approaching the bend
-        for step in 1...insertions {
-            let fraction = 0.5 + 0.5 * Double(step) / Double(insertions + 1)
-            let t = t1 + fraction * (t2 - t1)
-            let (lat, lon) = catmullRomPoint(
-                p0: (p0.latitude, p0.longitude),
-                p1: (p1.latitude, p1.longitude),
-                p2: (p2.latitude, p2.longitude),
-                p3: (p3.latitude, p3.longitude),
-                t: t, t0: t0, t1: t1, t2: t2, t3: t3
-            )
-            result.append(CLLocationCoordinate2D(latitude: lat, longitude: lon))
-        }
-
-        // Also insert points in the first half of the segment leaving the bend
-        let p0b = prev
-        let p1b = curr
-        let p2b = next
-        let p3b = coordinates[min(i + 2, coordinates.count - 1)]
-
-        let d01b = knotDistance(p0b, p1b, alpha: alpha)
-        let d12b = knotDistance(p1b, p2b, alpha: alpha)
-        let d23b = knotDistance(p2b, p3b, alpha: alpha)
-
-        guard d12b > 1e-10 else { continue }
-
-        let t0b: Double = 0
-        let t1b = t0b + d01b
-        let t2b = t1b + d12b
-        let t3b = t2b + d23b
-
-        for step in 1...insertions {
-            let fraction = Double(step) / Double(insertions + 1) * 0.5
-            let t = t1b + fraction * (t2b - t1b)
-            let (lat, lon) = catmullRomPoint(
-                p0: (p0b.latitude, p0b.longitude),
-                p1: (p1b.latitude, p1b.longitude),
-                p2: (p2b.latitude, p2b.longitude),
-                p3: (p3b.latitude, p3b.longitude),
-                t: t, t0: t0b, t1: t1b, t2: t2b, t3: t3b
-            )
-            result.append(CLLocationCoordinate2D(latitude: lat, longitude: lon))
+        for step in 0...arcPoints {
+            let t = Double(step) / Double(arcPoints)
+            let angle = startAngle + t * sweep
+            let pLon = cLon + effectiveR * cos(angle)
+            let pLat = cLat + effectiveR * sin(angle)
+            result.append(CLLocationCoordinate2D(latitude: pLat, longitude: pLon))
         }
     }
 

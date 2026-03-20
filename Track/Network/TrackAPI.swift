@@ -374,6 +374,13 @@ struct TrackAPI {
     ///   - radius: Search radius in meters (from settings.json by default).
     ///   - mode: Optional transit mode filter ("subway", "bus", "lirr", "mnr").
     /// - Returns: Array of `GroupedNearbyTransitResponse`.
+    ///
+    /// Uses extended timeouts because the backend's `/nearby/grouped`
+    /// endpoint fans out to multiple MTA / OBA feeds in parallel and
+    /// has a server-side compute timeout of 45 s.  The standard 15 s /
+    /// 25 s client timeouts are too short — the request times out before
+    /// the server finishes computing, especially on cold starts where
+    /// Render boots the container AND primes feed caches concurrently.
     static func fetchNearbyGrouped(
         lat: Double, lon: Double, radius: Int? = nil, mode: String? = nil
     ) async throws -> [GroupedNearbyTransitResponse] {
@@ -393,7 +400,8 @@ struct TrackAPI {
         guard let url = components.url else {
             throw TrackAPIError.invalidURL
         }
-        let data = try await get(url: url)
+        AppLogger.shared.logRequest(method: "GET", url: url.absoluteString)
+        let data = try await getWithExtendedTimeout(url: url)
         return try decoder.decode([GroupedNearbyTransitResponse].self, from: data)
     }
 
@@ -814,7 +822,14 @@ struct TrackAPI {
             // so a single attempt can survive Render's boot time.
             // 25 s per request × 2 attempts fits within the 30 s resource
             // timeout budget while giving the server time to warm up.
-            let maxAttempts = serverWarmedUp ? 3 : 2
+            //
+            // Capture cold-start state ONCE at the start of the retry loop.
+            // A concurrent request (e.g. /subway/stations/all) may flip
+            // serverWarmedUp mid-loop, which previously caused the timeout
+            // to drop from 25 s → 15 s between attempts — cutting the 2nd
+            // attempt short before the server could respond.
+            let wasColdStart = !serverWarmedUp
+            let maxAttempts = wasColdStart ? 2 : 3
             for attempt in 0..<maxAttempts {
                 if attempt > 0 {
                     // Exponential backoff: 0.5 s, 1.0 s
@@ -825,7 +840,9 @@ struct TrackAPI {
                     var request = URLRequest(url: url)
                     // Extend per-request timeout during cold-start so the
                     // retry doesn't burn all attempts before the server boots.
-                    if !serverWarmedUp {
+                    // Use the captured flag so the timeout stays consistent
+                    // across ALL attempts in this retry loop.
+                    if wasColdStart {
                         request.timeoutInterval = 25
                     }
                     if let email = cachedUserEmail, !email.isEmpty {
