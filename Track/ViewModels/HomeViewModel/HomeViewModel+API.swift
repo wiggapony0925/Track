@@ -1176,6 +1176,9 @@ extension HomeViewModel {
             return
         }
 
+        let refreshStart = Date()
+        let launchElapsed = AppLogger.shared.timeSinceLaunch
+
         if !silent {
             isLoading = true
             // Only clear the nearest-metro recommendation on a visible
@@ -1189,26 +1192,37 @@ extension HomeViewModel {
         let lat = location.coordinate.latitude
         let lon = location.coordinate.longitude
 
-        do {
-            // Fire all location-dependent fetches in parallel. Publish the
-            // grouped rows as soon as they arrive, then let the slower stop
-            // metadata refine distance badges afterward.
-            async let groupedTask = TrackAPI.fetchNearbyGrouped(lat: lat, lon: lon)
-            // Use a capped radius for bus stops (OBA has a ~100-stop hard
-            // limit per call).  With the full 8047 m radius the 100 slots
-            // are spread over 5 miles, so a physical stop 250 ft away may
-            // be displaced by far-away stops. 1600 m keeps all 100 slots
-            // within ~1 mi, giving dense coverage for the "Near You" tier.
-            // Routes beyond 1 mi fall back to groupMinDistance from live
-            // arrival coordinates, which is accurate for farther tiers.
-            async let busStopsTask = TrackAPI.fetchNearbyBusStops(
+        AppLogger.shared.log("TIMING", message: "refreshNearbyTransit START (T+\(AppLogger.formatDuration(launchElapsed)) since launch, silent=\(silent))")
+
+        // ── Bus stops: fire-and-forget ──────────────────────────────
+        // Bus stops are supplementary metadata (used for distance badges).
+        // Fetching them through OBA can be slow during cold starts (25 s+),
+        // and `async let` structured concurrency forces us to await ALL
+        // child tasks before the scope exits.  That kept `_refreshInFlight`
+        // true for 50+ seconds even though `/nearby/grouped` data was ready
+        // in 30 s.  By running bus stops in an unstructured Task, the
+        // refresh completes as soon as grouped + stations arrive, and bus
+        // stops update asynchronously afterward.
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let stops = (try? await TrackAPI.fetchNearbyBusStops(
                 lat: lat, lon: lon, radius: Self.busStopsNearbyRadius
-            )
+            )) ?? self.nearbyBusStops
+            self.nearbyBusStops = Self.augmentBusStops(stops, from: self.groupedTransit)
+        }
+
+        do {
+            // Fire grouped arrivals and station metadata in parallel.
+            // Grouped is the critical path; stations refine distance badges.
+            let groupedStart = Date()
+            async let groupedTask = TrackAPI.fetchNearbyGrouped(lat: lat, lon: lon)
             async let stationsTask = repository.fetchNearbyStations(
                 latitude: lat, longitude: lon
             )
 
             let newGrouped = (try await groupedTask).filter { $0.hasRealArrivals }
+            let groupedElapsed = Date().timeIntervalSince(groupedStart)
+            AppLogger.shared.log("TIMING", message: "  nearby/grouped → \(newGrouped.count) groups in \(AppLogger.formatDuration(groupedElapsed))")
 
             let rawTransit = newGrouped
                 .flatMap(\ .directions)
@@ -1269,19 +1283,28 @@ extension HomeViewModel {
             // drag-to-search avoids 2 extra network calls per pan gesture.
             if !skipGlobalFeeds {
                 Task {
+                    let globalStart = Date()
                     async let alertsTask = TrackAPI.fetchAlerts()
                     async let accessTask = TrackAPI.fetchAccessibility()
                     do {
                         let alerts = try await alertsTask
+                        let alertsElapsed = Date().timeIntervalSince(globalStart)
+                        AppLogger.shared.log("TIMING", message: "  alerts → \(alerts.count) alerts in \(AppLogger.formatDuration(alertsElapsed))")
                         await MainActor.run {
                             serviceAlerts = alerts
                             AlertNotificationManager.shared.processAlerts(alerts)
                         }
-                    } catch {}
+                    } catch {
+                        AppLogger.shared.log("TIMING", message: "  alerts → FAILED (\(error.localizedDescription))")
+                    }
                     do {
                         let accessibility = try await accessTask
+                        let accessElapsed = Date().timeIntervalSince(globalStart)
+                        AppLogger.shared.log("TIMING", message: "  accessibility → \(accessibility.count) outages in \(AppLogger.formatDuration(accessElapsed))")
                         await MainActor.run { elevatorOutages = accessibility }
-                    } catch {}
+                    } catch {
+                        AppLogger.shared.log("TIMING", message: "  accessibility → FAILED (\(error.localizedDescription))")
+                    }
                 }
             }
 
@@ -1289,29 +1312,44 @@ extension HomeViewModel {
             updateSelectedRouteFromRefreshedData(groupedTransit)
 
             let stations = (try? await stationsTask) ?? nearbyStations
+            let stationsElapsed = Date().timeIntervalSince(groupedStart)
+            AppLogger.shared.log("TIMING", message: "  stations → \(stations.count) stations in \(AppLogger.formatDuration(stationsElapsed))")
             // Augment nearbyStations with LIRR/MNR station data extracted from
             // grouped arrivals. The subway-only /stations/nearby endpoint never
             // returns commuter rail stations, so this keeps the primary
             // station-matching path working for all modes.
             nearbyStations = Self.augmentStations(stations, from: groupedTransit)
 
-            let stops = (try? await busStopsTask) ?? nearbyBusStops
-            // Uses the MERGED groupedTransit so graced routes (surviving from
-            // previous cycles) still contribute their stop coordinates.
-            nearbyBusStops = Self.augmentBusStops(stops, from: groupedTransit)
+            // ── Refresh complete: log timing summary ──
+            let refreshElapsed = Date().timeIntervalSince(refreshStart)
+            let totalFromLaunch = AppLogger.shared.timeSinceLaunch
+            let subwayCount = newGrouped.filter { $0.mode == "subway" }.count
+            let busCount = newGrouped.filter { $0.isBus }.count
+            let commuterCount = newGrouped.filter { $0.isCommuterRail }.count
+            AppLogger.shared.log("TIMING", message: "refreshNearbyTransit DONE in \(AppLogger.formatDuration(refreshElapsed)) — \(newGrouped.count) groups (\(subwayCount) subway, \(busCount) bus, \(commuterCount) commuter) T+\(AppLogger.formatDuration(totalFromLaunch)) since launch")
 
         } catch {
+            let refreshElapsed = Date().timeIntervalSince(refreshStart)
+            AppLogger.shared.log("TIMING", message: "refreshNearbyTransit FAILED after \(AppLogger.formatDuration(refreshElapsed)) — \(error.localizedDescription) (T+\(AppLogger.shared.timeSinceLaunchFormatted) since launch)")
             AppLogger.shared.logError("fetchNearbyTransit", error: error)
             errorMessage = (error as? TransitError)?.description ?? error.localizedDescription
 
-            // ── Cold-start auto-retry ──────────────────────────────────
-            // If the server hasn't warmed up yet, schedule a single retry
-            // chain with exponential backoff (5s → 10s → 20s → 40s).
+            // ── Auto-retry on server error ─────────────────────────────
+            // Schedule a retry chain with exponential backoff.
+            // Fires on ANY 5xx failure — not just cold-start.
+            // Render's proxy often returns 502 even after *some* endpoints
+            // succeed (so serverWarmedUp can be true).  Check the error
+            // type instead of the warmed-up flag.
             // Only one chain runs at a time — if `_coldStartRetryTask`
             // is already active, skip.  This prevents geometric explosion
             // where each failed fetch spawns a new independent retry that
             // itself spawns another on failure.
-            if !TrackAPI.serverWarmedUp && _coldStartRetryTask == nil {
+            let isServerError: Bool = {
+                if case TrackAPIError.serverError = error { return true }
+                if error.localizedDescription.contains("Server error") { return true }
+                return !TrackAPI.serverWarmedUp  // also retry during cold start
+            }()
+            if isServerError && _coldStartRetryTask == nil {
                 let attempt = _coldStartRetryAttempt
                 guard attempt < Self.maxColdStartRetries else {
                     AppLogger.shared.log("REFRESH", message: "⛔ Cold-start retry limit reached (\(attempt)/\(Self.maxColdStartRetries)) — waiting for timer")

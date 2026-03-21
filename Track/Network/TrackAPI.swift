@@ -747,30 +747,49 @@ struct TrackAPI {
 
         let task = Task<Data, Error> {
             var lastError: Error = TrackAPIError.networkError
-            // Extended timeout: 1 attempt with 45 s timeout (cold-start),
-            // then 1 retry with 45 s if it's a transient 5xx.
-            let maxAttempts = 2
+            // Extended timeout with aggressive cold-start retries.
+            // Render's free-tier cold boot takes 30-60 s — the proxy
+            // returns 502 while the container is still starting.
+            // 4 attempts with escalating backoff (0, 5, 10, 15 s)
+            // spans up to ~75 s total, covering worst-case cold boots.
+            let wasColdStart = !serverWarmedUp
+            let maxAttempts = wasColdStart ? 4 : 2
+            let endpointPath = url.path
+            let retryStart = Date()
             for attempt in 0..<maxAttempts {
                 if attempt > 0 {
-                    try await Task.sleep(nanoseconds: 2_000_000_000)  // 2 s backoff
+                    // Escalating backoff: 5s, 10s, 15s during cold start;
+                    // 3s for warm-server transient retries.
+                    let delay: UInt64 = wasColdStart
+                        ? UInt64(min(5 + (attempt - 1) * 5, 15)) * 1_000_000_000
+                        : 3_000_000_000
+                    let delaySec = Double(delay) / 1_000_000_000
+                    AppLogger.shared.log("API_RETRY", message: "\(endpointPath) attempt \(attempt + 1)/\(maxAttempts) — waiting \(String(format: "%.0f", delaySec))s (T+\(AppLogger.formatDuration(AppLogger.shared.timeSinceLaunch)))")
+                    try await Task.sleep(nanoseconds: delay)
                 }
                 do {
+                    let attemptStart = Date()
                     var request = URLRequest(url: url)
                     request.timeoutInterval = 45
                     if let email = cachedUserEmail, !email.isEmpty {
                         request.setValue(email, forHTTPHeaderField: "x-user-email")
                     }
                     let (data, response) = try await extendedSession.data(for: request)
+                    let attemptElapsed = Date().timeIntervalSince(attemptStart)
                     guard let http = response as? HTTPURLResponse else {
+                        AppLogger.shared.log("API_RETRY", message: "\(endpointPath) attempt \(attempt + 1) → no HTTP response (\(AppLogger.formatDuration(attemptElapsed)))")
                         lastError = TrackAPIError.networkError
                         continue
                     }
                     guard (200...299).contains(http.statusCode) else {
+                        AppLogger.shared.log("API_RETRY", message: "\(endpointPath) attempt \(attempt + 1) → HTTP \(http.statusCode) (\(AppLogger.formatDuration(attemptElapsed)))")
                         let serverErr = TrackAPIError.serverError(statusCode: http.statusCode)
                         if http.statusCode < 500 { throw serverErr }
                         lastError = serverErr
                         continue
                     }
+                    let totalRetryElapsed = Date().timeIntervalSince(retryStart)
+                    AppLogger.shared.log("API_RETRY", message: "\(endpointPath) attempt \(attempt + 1) → ✅ \(http.statusCode) (\(AppLogger.formatDuration(attemptElapsed)), total \(AppLogger.formatDuration(totalRetryElapsed)))")
                     serverWarmedUp = true
                     return data
                 } catch is CancellationError {
@@ -778,9 +797,13 @@ struct TrackAPI {
                 } catch let error as TrackAPIError {
                     throw error
                 } catch {
+                    let attemptElapsed = Date().timeIntervalSince(Date()) // approximate
+                    AppLogger.shared.log("API_RETRY", message: "\(endpointPath) attempt \(attempt + 1) → \(error.localizedDescription)")
                     lastError = error
                 }
             }
+            let totalRetryElapsed = Date().timeIntervalSince(retryStart)
+            AppLogger.shared.log("API_RETRY", message: "\(endpointPath) ALL \(maxAttempts) attempts FAILED after \(AppLogger.formatDuration(totalRetryElapsed)) (T+\(AppLogger.formatDuration(AppLogger.shared.timeSinceLaunch)))")
             throw lastError
         }
 

@@ -21,6 +21,30 @@ import Foundation
 final class AppLogger: @unchecked Sendable {
     static let shared = AppLogger()
 
+    /// Timestamp when the logger (and therefore the app) was first initialized.
+    /// Used to measure total elapsed time from app launch to key milestones.
+    let launchDate = Date()
+
+    /// Seconds elapsed since app launch.
+    nonisolated var timeSinceLaunch: TimeInterval {
+        Date().timeIntervalSince(launchDate)
+    }
+
+    /// Human-readable elapsed time since app launch (e.g. "2m 10.3s" or "4.5s").
+    nonisolated var timeSinceLaunchFormatted: String {
+        Self.formatDuration(timeSinceLaunch)
+    }
+
+    /// Formats a duration in seconds to a human-readable string.
+    nonisolated static func formatDuration(_ seconds: TimeInterval) -> String {
+        if seconds >= 60 {
+            let mins = Int(seconds) / 60
+            let secs = seconds - Double(mins * 60)
+            return "\(mins)m \(String(format: "%.1f", secs))s"
+        }
+        return "\(String(format: "%.1f", seconds))s"
+    }
+
     private let fileURL: URL
     private let dateFormatter: DateFormatter = {
         let df = DateFormatter()

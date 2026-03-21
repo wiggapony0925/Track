@@ -39,6 +39,10 @@ final class HomeViewModel {
     /// the `canSkipRefresh` gate (hasLoadedOnce is still false), creating a
     /// retry storm.
     private var _refreshInFlight = false
+    /// Timestamp when `_refreshInFlight` was set to `true`.
+    /// If a refresh has been in-flight for > 60 s, the timer skips the guard
+    /// to prevent indefinite blocking from a hung request.
+    private var _refreshStartedAt: Date?
 
     /// Tracks the single cold-start retry chain. When non-nil, a retry is
     /// already scheduled — new retry requests are ignored to prevent
@@ -1751,9 +1755,19 @@ final class HomeViewModel {
         // Without this guard, each timer tick spawns a new refresh() call
         // that never gets blocked by canSkipRefresh (hasLoadedOnce is still
         // false), creating a pile-up of coalesced-but-redundant work.
+        //
+        // Escape hatch: if the current refresh has been stuck for > 60 s,
+        // let a new one through. Render's proxy may have returned a 502
+        // that exhausted retries, but the outer `async let` structure kept
+        // the task alive waiting for a sibling. Without this, the user
+        // stares at an error screen for minutes.
         if _refreshInFlight && !force {
-            AppLogger.shared.log("REFRESH", message: "⏭️ Skipped — refresh already in flight")
-            return false
+            let stuckTooLong = _refreshStartedAt.map { Date().timeIntervalSince($0) > 60 } ?? false
+            if !stuckTooLong {
+                AppLogger.shared.log("REFRESH", message: "⏭️ Skipped — refresh already in flight")
+                return false
+            }
+            AppLogger.shared.log("REFRESH", message: "⚠️ Previous refresh stuck > 60 s — allowing new refresh")
         }
 
         // Skip if data is still fresh and user hasn't moved far.
@@ -1765,7 +1779,11 @@ final class HomeViewModel {
         }
 
         _refreshInFlight = true
-        defer { _refreshInFlight = false }
+        _refreshStartedAt = Date()
+        defer {
+            _refreshInFlight = false
+            _refreshStartedAt = nil
+        }
 
         AppLogger.shared.log(
             "REFRESH",
@@ -1825,6 +1843,29 @@ final class HomeViewModel {
         // Signal ContentView that critical-path data has landed so it can
         // kick off the lower-priority performFullSync() immediately.
         if wasFirstLoad {
+            let totalFromLaunch = AppLogger.shared.timeSinceLaunch
+            let mapLoaded = !mapSystem.flattenedSubwayPolylines.isEmpty
+            let stationsLoaded = !mapSystem.consolidatedStations.isEmpty
+            let transitCount = groupedTransit.count
+            let arrivalCount = nearbyTransit.count
+            let alertCount = serviceAlerts.count
+            let outageCount = elevatorOutages.count
+            let busStopCount = nearbyBusStops.count
+
+            AppLogger.shared.log("LOADED", message: """
+            ╔══════════════════════════════════════════════════════════════╗
+            ║  EVERYTHING LOADED — T+\(AppLogger.formatDuration(totalFromLaunch)) since app launch
+            ╠══════════════════════════════════════════════════════════════╣
+            ║  Transit groups:      \(transitCount) routes
+            ║  Live arrivals:       \(arrivalCount) trains/buses
+            ║  System map:          \(mapLoaded ? "✅ \(mapSystem.flattenedSubwayPolylines.count) subway + \(mapSystem.flattenedCommuterRailPolylines.count) commuter polylines" : "❌ not loaded")
+            ║  Stations:            \(stationsLoaded ? "✅ \(mapSystem.consolidatedStations.count) consolidated" : "❌ not loaded")
+            ║  Alerts:              \(alertCount > 0 ? "✅ \(alertCount) alerts" : "⏳ loading async")
+            ║  Accessibility:       \(outageCount > 0 ? "✅ \(outageCount) outages" : "⏳ loading async")
+            ║  Nearby bus stops:    \(busStopCount > 0 ? "✅ \(busStopCount) stops" : "⏳ loading async")
+            ╚══════════════════════════════════════════════════════════════╝
+            """)
+
             TransitDataReadyFlag.markReady()
             NotificationCenter.default.post(name: .transitDataLoaded, object: nil)
         }

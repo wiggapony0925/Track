@@ -265,6 +265,7 @@ final class MapSystemViewModel {
         guard !Self.hasStartedLoading else { return }
         Self.hasStartedLoading = true
         Task {
+            let mapLoadStart = Date()
             // Load system map and stations fully in parallel — neither
             // blocks the other. Map lines render the instant they arrive;
             // station dots appear independently as soon as the processed
@@ -272,6 +273,9 @@ final class MapSystemViewModel {
             async let mapTask: Void = loadSystemMap()
             async let stationsTask: Void = loadStations()
             _ = await (mapTask, stationsTask)
+
+            let mapLoadElapsed = Date().timeIntervalSince(mapLoadStart)
+            AppLogger.shared.log("TIMING", message: "MapSystemViewModel loaded in \(AppLogger.formatDuration(mapLoadElapsed)) — \(flattenedSubwayPolylines.count) subway + \(flattenedCommuterRailPolylines.count) commuter polylines, \(cachedStations.count) stations (T+\(AppLogger.shared.timeSinceLaunchFormatted))")
 
             // Both tasks ran in parallel so stations may have been
             // consolidated before offset polylines were ready.
@@ -343,6 +347,12 @@ final class MapSystemViewModel {
         }
 
         if diskCacheMgr.isOnline {
+            if hasDiskCache || flattenedRestored {
+                // Map is already rendered from disk cache — delay the network
+                // refresh by a few seconds so the backend's limited CPU can
+                // prioritize /nearby/grouped (which the user sees first).
+                try? await Task.sleep(nanoseconds: 3_000_000_000) // 3s
+            }
             await fetchAndRenderFromNetwork(isBackgroundRefresh: hasDiskCache || flattenedRestored)
         }
     }
@@ -444,6 +454,7 @@ final class MapSystemViewModel {
     /// When `isBackgroundRefresh` is true, the map already has content from
     /// the disk cache — this just silently replaces it with fresh data.
     private func fetchAndRenderFromNetwork(isBackgroundRefresh: Bool) async {
+        let networkStart = Date()
         do {
             // Fire all three transit fetches in parallel.
             // Subway is required; LIRR and MNR are optional (logged on failure).
@@ -458,6 +469,8 @@ final class MapSystemViewModel {
             }()
 
             let response = try await subwayTask
+            let subwayElapsed = Date().timeIntervalSince(networkStart)
+            AppLogger.shared.log("TIMING", message: "  subway/shapes/all → \(response.lines.count) lines in \(AppLogger.formatDuration(subwayElapsed))")
 
             // Persist to disk for next launch (fire-and-forget)
             OfflineCacheManager.shared.cacheSubwayShapes(response)

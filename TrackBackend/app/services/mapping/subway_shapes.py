@@ -373,12 +373,22 @@ def get_subway_service_type(route_id: str) -> str | None:
     return _load_service_types().get(route_id)
 
 
+_all_stations_cache: list[dict] | None = None
+
+
 def get_all_subway_stations() -> list[dict]:
     """Return all unique stations with the lines that serve them.
 
     Groups stops by parent ID (e.g. '120N' and '120S' -> '120') so that
     Transfer/Express stations show up as a single dot with all lines.
+
+    Result is cached in-memory after first computation — station data
+    only changes when GTFS is refreshed (every 24h).
     """
+    global _all_stations_cache
+    if _all_stations_cache is not None:
+        return _all_stations_cache
+
     route_shapes = _load_route_shapes()
 
     # Map parent_id -> {name, lat, lon, routes: set}
@@ -422,4 +432,5 @@ def get_all_subway_stations() -> list[dict]:
         s["routes"] = sorted(list(s["routes"]))
         results.append(s)
 
+    _all_stations_cache = results
     return results

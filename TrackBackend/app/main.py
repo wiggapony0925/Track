@@ -127,12 +127,77 @@ def is_warmed_up() -> bool:
     return _warmup_complete
 
 
-async def _warmup_caches():
-    """Pre-fetch subway feeds and bus data during startup.
+def _sync_prewarm_shapes() -> None:
+    """Synchronous helper to pre-warm the corridor pipeline in a thread.
 
-    Primes L3 (subway GTFS-RT feeds) and L4 (bus routes) caches so the
-    very first user request is fast.  Runs in the background — the server
-    accepts requests immediately while this completes.
+    Triggers all lru_cache'd file loads (shapes.txt, trips.txt,
+    shape_stops.json) and runs the full topological corridor pipeline.
+    Called from ``run_in_executor`` so the event loop isn't blocked.
+    """
+    from app.services.mapping.subway_shapes import (
+        _load_route_shapes,
+        _load_shapes,
+        _load_shape_stops,
+        _unpack_coords,
+        get_all_subway_stations,
+    )
+    from app.services.mapping.corridor_pipeline import apply_topological_offsets
+    from app.utils.transit_utils import get_all_subway_lines, get_subway_color
+    from app.utils.polyline_utils import encode_polyline, densify_wgs84
+    from app.models import SubwayLineOverlay
+
+    skip_variants = {"6X", "7X", "FX", "FS", "GS", "SR"}
+    lines = [l for l in get_all_subway_lines() if l not in skip_variants]
+
+    route_shapes = _load_route_shapes()
+    shapes_data = _load_shapes()
+    shape_stops = _load_shape_stops()
+
+    def _station_id(sid: str) -> str:
+        return sid[:-1] if sid and sid[-1] in ("N", "S") else sid
+
+    overlays: list[SubwayLineOverlay] = []
+    for line in lines:
+        direction_shapes = route_shapes.get(line)
+        if not direction_shapes:
+            continue
+        primary_dir = 0 if 0 in direction_shapes else min(direction_shapes.keys())
+        shape_ids = direction_shapes[primary_dir]
+        polylines_raw = []
+        for shape_id in shape_ids:
+            shape_buf = shapes_data.get(shape_id)
+            if shape_buf:
+                polylines_raw.append(_unpack_coords(shape_buf))
+        if not polylines_raw:
+            continue
+        encoded = [encode_polyline(densify_wgs84(coords)) for coords in polylines_raw]
+        color = get_subway_color(line)
+        overlays.append(SubwayLineOverlay(
+            route_id=line,
+            color_hex=color,
+            polylines=encoded,
+        ))
+
+    # This triggers the full corridor pipeline — the expensive part.
+    # After this call, all lru_cache and module-level caches are warm.
+    apply_topological_offsets(overlays)
+
+    # Also warm the stations cache
+    get_all_subway_stations()
+
+    TrackLogger.info(
+        f"[WARMUP] Corridor pipeline complete: {len(overlays)} lines processed",
+        tag="WARMUP",
+    )
+
+
+async def _warmup_caches():
+    """Pre-fetch subway feeds, bus data, and heavy static endpoints on startup.
+
+    Primes L3 (subway GTFS-RT feeds), L4 (bus routes), AND the corridor
+    pipeline (/subway/shapes/all + /subway/stations/all) so the very first
+    user request is fast.  Runs in the background — the server accepts
+    ``/health`` pings immediately while this completes.
 
     After the initial prime, hands off to ``_periodic_feed_refresh``
     which keeps feeds hot every 10 seconds so they NEVER go cold.
@@ -173,10 +238,47 @@ async def _warmup_caches():
     except Exception:
         pass
 
+    feed_elapsed = time.perf_counter() - t0
+    TrackLogger.info(
+        f"[WARMUP] Feeds done in {feed_elapsed:.1f}s — subway: {feed_ok}/9, bus: {bus_ok}",
+        tag="WARMUP",
+    )
+
+    # ── Pre-compute the corridor pipeline (shapes/all + stations/all) ──
+    # This is the HEAVIEST request on first call: parses GTFS CSVs and runs
+    # the 2900-line topological corridor pipeline.  Without pre-warming,
+    # the first /subway/shapes/all request takes 60-90s on 1 CPU, causing
+    # Render's 60s proxy timeout → 502.  By running it here we guarantee
+    # every user request hits warm lru_cache.
+    shapes_ok = "FAIL"
+    stations_ok = "FAIL"
+    try:
+        t_shapes = time.perf_counter()
+        TrackLogger.info("[WARMUP] Pre-computing corridor pipeline (shapes/all)...", tag="WARMUP")
+        # Run the CPU-heavy work in a thread to avoid blocking the event loop
+        # (lru_cache file I/O + corridor pipeline are sync/CPU-bound)
+        await asyncio.get_event_loop().run_in_executor(
+            None,
+            _sync_prewarm_shapes,
+        )
+        shapes_ok = f"OK ({time.perf_counter() - t_shapes:.1f}s)"
+        await asyncio.sleep(0.05)  # yield
+
+        t_stations = time.perf_counter()
+        from app.services.mapping.subway_shapes import get_all_subway_stations
+        get_all_subway_stations()  # populates the module-level cache
+        stations_ok = f"OK ({time.perf_counter() - t_stations:.1f}s)"
+    except Exception as exc:
+        TrackLogger.error(
+            f"[WARMUP] Shapes/stations pre-warm failed: {exc}",
+            tag="WARMUP", exc_info=True,
+        )
+
     _warmup_complete = True
     elapsed = time.perf_counter() - t0
     TrackLogger.info(
-        f"[WARMUP] Done in {elapsed:.1f}s — subway feeds: {feed_ok}/9, bus routes: {bus_ok}",
+        f"[WARMUP] Done in {elapsed:.1f}s — subway feeds: {feed_ok}/9, "
+        f"bus routes: {bus_ok}, shapes: {shapes_ok}, stations: {stations_ok}",
         tag="WARMUP",
     )
 
@@ -376,7 +478,20 @@ async def log_requests(request: Request, call_next):
 
 @app.get("/health")
 async def health() -> dict[str, str]:
-    """Lightweight liveness probe for uptime monitors (Better Stack, etc.)."""
+    """Liveness probe — returns 503 until warmup completes.
+
+    Render uses this to decide when to route traffic to a new instance.
+    By returning 503 during warmup, we prevent users from hitting an
+    instance whose lru_cache and corridor pipeline aren't ready yet —
+    which would cause 60-90s responses and Render proxy 502s.
+    """
+    if not _warmup_complete:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=503,
+            content={"status": "warming_up"},
+            headers={"Retry-After": "30"},
+        )
     return {"status": "ok"}
 
 
