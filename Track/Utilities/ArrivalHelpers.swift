@@ -314,4 +314,31 @@ enum ArrivalHelpers {
             return word.capitalized
         }.joined(separator: " ")
     }
+
+    // MARK: - Visible Directions Filter
+
+    /// Filters a group's directions to those that should appear in the
+    /// home row swipe view.  Kept as a static helper so both
+    /// `GroupedRouteRow` and unit tests use the exact same logic.
+    ///
+    /// **Policy** (must NEVER drop a real direction):
+    /// - Keep any direction with live arrivals.
+    /// - Keep any direction that *had* real arrivals (even if all expired).
+    /// - Drop "Opposite" placeholder with no arrivals.
+    /// - Drop compass-code fallback placeholders with no arrivals.
+    /// - Falls back to ALL directions when the filter would leave zero.
+    static func visibleDirections(
+        for directions: [DirectionArrivalsResponse]
+    ) -> [DirectionArrivalsResponse] {
+        let real = directions.filter { dir in
+            if !dir.liveArrivals.isEmpty { return true }
+            if dir.arrivals.contains(where: { !$0.isPlaceholder }) {
+                return true
+            }
+            if dir.direction.lowercased() == "opposite" { return false }
+            if DirectionConstants.isFallbackDirection(dir.direction) { return false }
+            return true
+        }
+        return real.isEmpty ? directions : real
+    }
 }

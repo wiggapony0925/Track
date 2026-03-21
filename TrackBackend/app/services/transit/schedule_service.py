@@ -251,5 +251,71 @@ class ScheduleService:
             TrackLogger.warning(f"Bad GTFS time '{gtfs_time}': {exc}", tag="SCHEDULE")
             return 999, 0
 
+    def get_headsigns_for_route(
+        self,
+        route_id: str,
+        direction_id: int | None = None,
+    ) -> dict[int, str]:
+        """Return the most common trip_headsign per direction_id for a route.
+
+        Used to enrich placeholder direction tabs with real terminal names
+        instead of generic "Outbound" / "Inbound".
+
+        Returns ``{0: "Jamaica", 1: "Penn Station"}`` style mapping.
+        Only directions with a non-empty headsign are included.
+        """
+        if not self.db_path.exists():
+            return {}
+
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+
+            dir_filter = ""
+            params: list = []
+
+            # Match route_id flexibly (same as _query_stop_times)
+            route_filter = (
+                "(t.route_id = ? COLLATE NOCASE"
+                " OR t.route_id LIKE (? || '+%') COLLATE NOCASE"
+                " OR t.route_id LIKE (? || '-%') COLLATE NOCASE"
+                " OR t.route_id IN"
+                "   (SELECT route_id FROM routes"
+                "    WHERE route_short_name = ? COLLATE NOCASE"
+                "       OR route_short_name LIKE (? || '-%') COLLATE NOCASE))"
+            )
+            params = [route_id, route_id, route_id, route_id, route_id]
+
+            if direction_id is not None:
+                dir_filter = "AND t.direction_id = ?"
+                params.append(direction_id)
+
+            query = f"""
+                SELECT t.direction_id, t.trip_headsign, COUNT(*) as cnt
+                FROM trips t
+                WHERE {route_filter}
+                {dir_filter}
+                AND t.trip_headsign IS NOT NULL
+                AND t.trip_headsign != ''
+                GROUP BY t.direction_id, t.trip_headsign
+                ORDER BY t.direction_id, cnt DESC
+            """
+
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+
+            # Pick the most common headsign per direction_id
+            result: dict[int, str] = {}
+            for d_id, headsign, _cnt in rows:
+                if d_id not in result and headsign and headsign.strip():
+                    result[d_id] = headsign.strip()
+
+            return result
+        except Exception as e:
+            TrackLogger.error(f"Headsign lookup failed for {route_id}: {e}", tag="SCHEDULE")
+            return {}
+        finally:
+            conn.close()
+
 # Singleton instance
 schedule_service = ScheduleService()

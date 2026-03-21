@@ -773,12 +773,22 @@ def _direction_label(direction: str, arrivals: list[NearbyTransitArrival] | None
 
     terminal = _primary_destination(arrivals)
     mode = arrivals[0].mode if arrivals else None
+    route_id = arrivals[0].route_id if arrivals else None
 
     # For legacy numeric direction keys (DirectionRef fallback),
     # try to get the destination from the first arrival.
     if direction in _NUMERIC_DIR_KEYS and arrivals:
         if terminal:
             return terminal
+        # Try GTFS headsign for numeric direction keys
+        if route_id:
+            did = int(direction) if direction in ("0", "1") else None
+            if did is not None:
+                headsigns = schedule_service.get_headsigns_for_route(
+                    _display_name(route_id), direction_id=did
+                )
+                if did in headsigns:
+                    return headsigns[did]
         return _DIRECTION_LABELS.get(direction, f"Direction {direction}")
 
     upper = direction.upper()
@@ -791,6 +801,23 @@ def _direction_label(direction: str, arrivals: list[NearbyTransitArrival] | None
         # instead of bare "Northbound".
         if terminal:
             return f"{base_label} → {terminal}"
+
+        # For Inbound/Outbound without a terminal, try GTFS headsign
+        # so the label shows "Inbound → Penn Station" instead of bare "Inbound".
+        if upper in ("INBOUND", "OUTBOUND") and route_id:
+            did = 0 if upper == "INBOUND" else 1
+            # Strip LIRR_/MNR_ prefix for GTFS lookup — GTFS uses bare numeric IDs
+            lookup = route_id
+            if lookup.startswith("LIRR_"):
+                lookup = lookup[5:]
+            elif lookup.startswith("MNR_"):
+                lookup = lookup[4:]
+            else:
+                lookup = _display_name(route_id)
+            headsigns = schedule_service.get_headsigns_for_route(lookup, direction_id=did)
+            if did in headsigns:
+                return f"{base_label} → {headsigns[did]}"
+
         return base_label
 
     # Destination-name keys (e.g. "KINGS PLAZA") → title-case for display
@@ -814,13 +841,110 @@ def _opposite_direction_key(mode: str, direction: str) -> str | None:
     if upper in _NUMERIC_OPPOSITE:
         return _NUMERIC_OPPOSITE[upper]
 
-    # Destination-name direction keys (common on bus branches)
-    if mode == "bus":
-        return _OPPOSITE_DIRECTION
+    # For destination-name direction keys, return None — the caller should
+    # use _resolve_opposite_headsign() to look up the GTFS headsign for
+    # the other direction instead of falling back to generic "Outbound".
+    return None
 
-    # Subway / rail fallback if no canonical opposite can be inferred
-    if mode in {"subway", "lirr", "mnr"}:
-        return _OPPOSITE_DIRECTION
+
+# ── GTFS headsign cache for opposite-direction placeholders ──────────
+# Avoids hitting the SQLite DB on every call to _resolve_opposite_headsign().
+_headsign_cache: dict[str, dict[int, str]] = {}   # route_id → {direction_id: headsign}
+
+
+def _resolve_opposite_headsign(
+    route_id: str,
+    primary_direction: str,
+    primary_arrivals: list[NearbyTransitArrival],
+) -> str | None:
+    """Look up the GTFS trip_headsign for the direction opposite to `primary_direction`.
+
+    Uses the GTFS trips table to find real terminal names instead of generic
+    "Outbound"/"Inbound" labels.  Returns the headsign string if found,
+    or None if the headsign can't be determined.
+
+    Strategy:
+    1. Get all headsigns for this route from GTFS (cached).
+    2. The primary direction's arrivals tell us which direction_id it is.
+    3. The opposite direction_id's headsign is the answer.
+    """
+    # Normalise route_id for GTFS lookup — strip agency prefixes
+    lookup_id = route_id
+    for prefix in BUS_AGENCY_PREFIXES:
+        if lookup_id.startswith(prefix):
+            lookup_id = lookup_id[len(prefix):]
+            break
+
+    # LIRR/MNR: strip "LIRR_" / "MNR_" prefix — GTFS stores bare numeric IDs
+    if lookup_id.startswith("LIRR_"):
+        lookup_id = lookup_id[5:]
+    elif lookup_id.startswith("MNR_"):
+        lookup_id = lookup_id[4:]
+
+    # Fetch headsigns from cache or DB
+    if lookup_id not in _headsign_cache:
+        headsigns = schedule_service.get_headsigns_for_route(lookup_id)
+        # Also try with common agency prefixes if direct lookup is empty
+        if not headsigns:
+            for pfx in ["MTABC_", "MTA NYCT_"]:
+                headsigns = schedule_service.get_headsigns_for_route(f"{pfx}{lookup_id}")
+                if headsigns:
+                    break
+        _headsign_cache[lookup_id] = headsigns
+
+    headsigns = _headsign_cache.get(lookup_id, {})
+    if not headsigns:
+        return None
+
+    # Determine which direction_id the primary direction corresponds to.
+    # Compare the primary direction key (or its arrivals' destinations)
+    # against the cached headsigns to infer direction_id.
+    primary_upper = primary_direction.upper().strip()
+
+    # Check if primary direction matches a known headsign
+    matched_dir_id: int | None = None
+    for did, hs in headsigns.items():
+        hs_upper = hs.upper().strip()
+        # Exact match or substring match (e.g. "JAMAICA" matches "Jamaica")
+        if primary_upper == hs_upper or primary_upper in hs_upper or hs_upper in primary_upper:
+            matched_dir_id = did
+            break
+
+    # Try matching against arrival destinations if direction key didn't match
+    if matched_dir_id is None and primary_arrivals:
+        for arr in primary_arrivals:
+            if not arr.destination or arr.destination.strip().lower() in ("", "unknown"):
+                continue
+            dest_upper = arr.destination.upper().strip()
+            for did, hs in headsigns.items():
+                hs_upper = hs.upper().strip()
+                if dest_upper == hs_upper or dest_upper in hs_upper or hs_upper in dest_upper:
+                    matched_dir_id = did
+                    break
+            if matched_dir_id is not None:
+                break
+
+    # If we identified the primary direction_id, return the opposite
+    if matched_dir_id is not None:
+        opposite_did = 1 - matched_dir_id  # 0→1, 1→0
+        if opposite_did in headsigns:
+            return headsigns[opposite_did]
+
+    # Fallback: if we have exactly 2 direction_ids, pick the one that
+    # doesn't match the primary
+    if len(headsigns) == 2 and set(headsigns.keys()) == {0, 1}:
+        # Pick whichever headsign is NOT similar to the primary direction
+        for did, hs in headsigns.items():
+            hs_upper = hs.upper().strip()
+            if primary_upper != hs_upper and primary_upper not in hs_upper and hs_upper not in primary_upper:
+                return hs
+
+    # Last resort: return whichever headsign we have if there's only one
+    # and it's different from the primary
+    for did, hs in headsigns.items():
+        hs_upper = hs.upper().strip()
+        if primary_upper != hs_upper:
+            return hs
 
     return None
 
@@ -1090,11 +1214,32 @@ def _group_arrivals(flat: list[NearbyTransitArrival], alert_index: dict[str, lis
             primary = directions[0]
             allow_opposite_placeholder = True
 
+            # Step 1: Try canonical compass/numeric opposite
             opposite = _opposite_direction_key(mode, primary.direction)
+
+            # Step 2: If no canonical opposite (destination-name direction),
+            # look up the GTFS headsign for the other direction so the
+            # placeholder tab shows a real terminal name (e.g. "Jamaica")
+            # instead of generic "Outbound".
+            if opposite is None:
+                headsign = _resolve_opposite_headsign(
+                    route_id, primary.direction, primary.arrivals
+                )
+                if headsign:
+                    opposite = headsign
+                    TrackLogger.debug(
+                        f"GTFS headsign for opposite of '{primary.direction}' "
+                        f"on {display}: '{headsign}'"
+                    )
+                else:
+                    # Last resort — fall back to generic label
+                    opposite = _OPPOSITE_DIRECTION
+
             if (
                 allow_opposite_placeholder
                 and opposite
                 and opposite != primary.direction
+                and opposite.upper() != primary.direction.upper()
                 and opposite not in dir_map
             ):
                 exemplar = primary.arrivals[0] if primary.arrivals else None
@@ -1102,7 +1247,7 @@ def _group_arrivals(flat: list[NearbyTransitArrival], alert_index: dict[str, lis
                     route_id=route_id,
                     stop_name=exemplar.stop_name if exemplar else display,
                     direction=opposite,
-                    destination=None,
+                    destination=opposite if not _is_fallback_direction_key(opposite) else None,
                     minutes_away=_PLACEHOLDER_MINUTES,
                     arrival_ts=None,
                     status="Scheduled",
@@ -2086,20 +2231,29 @@ async def _fetch_nearby_buses(
         elif upper in _NUMERIC_DIR_KEYS:
             new_dir = "1" if existing_dir == "0" else "0"
         else:
-            # Destination name — pick compass from the stop or default to "S"/"N"
-            # Try to find the compass direction from nearby stops
-            stop_compass = None
-            for s in stops:
-                if route_id in [_display_name(rid) for rid in s.route_ids]:
-                    if s.direction:
-                        stop_compass = s.direction.upper()
-                        break
-            if stop_compass and stop_compass in _OPPOSITE_COMPASS:
-                new_dir = _OPPOSITE_COMPASS[stop_compass]
+            # Destination-name direction — try GTFS headsign for the
+            # opposite direction first, fall back to compass / generic.
+            existing_arrivals = [r for r in results if r.route_id == route_id]
+            headsign = _resolve_opposite_headsign(
+                route_id, existing_dir, existing_arrivals
+            )
+            if headsign:
+                new_dir = headsign
             else:
-                # Default: if direction is a destination name going one way,
-                # use a generic opposite label
-                new_dir = _OPPOSITE_DIRECTION
+                # Try to find the compass direction from nearby stops
+                stop_compass = None
+                for s in stops:
+                    if route_id in [_display_name(rid) for rid in s.route_ids]:
+                        if s.direction:
+                            stop_compass = s.direction.upper()
+                            break
+                if stop_compass and stop_compass in _OPPOSITE_COMPASS:
+                    new_dir = _OPPOSITE_COMPASS[stop_compass]
+                else:
+                    new_dir = _OPPOSITE_DIRECTION
+
+        # Set destination on the placeholder when new_dir is a terminal name
+        ph_destination = new_dir if not _is_fallback_direction_key(new_dir) else None
 
         results.append(
             NearbyTransitArrival(
@@ -2114,7 +2268,7 @@ async def _fetch_nearby_buses(
                 stop_lon=rep_stop.lon,
                 stop_id=rep_stop.id,
                 vehicle_id=None,
-                destination=None,
+                destination=ph_destination,
             )
         )
         phase_c_count += 1

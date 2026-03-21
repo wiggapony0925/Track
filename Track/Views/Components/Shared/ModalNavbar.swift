@@ -15,6 +15,7 @@ struct ModalNavbar: View {
     @Binding var showSettings: Bool
     @Binding var selectedMode: TransportMode
     var lastUpdated: Date?
+    var isRefreshing: Bool = false
     
     @State private var speechManager = SpeechRecognitionManager()
     
@@ -78,11 +79,18 @@ struct ModalNavbar: View {
                 .padding(.horizontal, AppTheme.Layout.margin)
                 .padding(.bottom, 12)
 
-            if let lastUpdated {
+            if isRefreshing {
+                refreshingBadge
+                    .padding(.horizontal, AppTheme.Layout.margin)
+                    .padding(.bottom, 12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .transition(.opacity)
+            } else if let lastUpdated {
                 updateBadge(for: lastUpdated)
                     .padding(.horizontal, AppTheme.Layout.margin)
                     .padding(.bottom, 12)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .transition(.opacity)
             }
         }
         .onAppear {
@@ -136,6 +144,21 @@ struct ModalNavbar: View {
                 .shadow(color: AppTheme.Colors.successGreen.opacity(0.4), radius: 4, x: 0, y: 0)
 
             Text("Updated \(RelativeDateTimeFormatter().localizedString(for: date, relativeTo: .now))")
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundColor(AppTheme.Colors.textTertiary)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .trackInsetBackground(cornerRadius: 999)
+    }
+
+    private var refreshingBadge: some View {
+        HStack(spacing: 6) {
+            ProgressView()
+                .controlSize(.mini)
+                .tint(AppTheme.Colors.accent)
+
+            Text("Updating\u{2026}")
                 .font(.system(size: 11, weight: .semibold, design: .rounded))
                 .foregroundColor(AppTheme.Colors.textTertiary)
         }

@@ -40,7 +40,8 @@ struct DashboardView: View {
                 searchText: searchTextBinding,
                 showSettings: showSettingsBinding,
                 selectedMode: selectedModeBinding,
-                lastUpdated: lastUpdated
+                lastUpdated: lastUpdated,
+                isRefreshing: viewModel.isRefreshing
             )
             
             // MARK: - Scrollable Content
@@ -73,7 +74,8 @@ struct DashboardView: View {
                                 }
                             },
                             selectedMode: viewModel.selectedMode,
-                            smartETAProvider: { viewModel.smartETA(for: $0) }
+                            smartETAProvider: { viewModel.smartETA(for: $0) },
+                            isStale: viewModel.showStaleRows
                         )
                         .transition(.opacity.animation(.easeIn(duration: 0.25)))
                     }

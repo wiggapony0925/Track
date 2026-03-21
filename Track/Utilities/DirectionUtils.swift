@@ -75,11 +75,20 @@ enum DirectionConstants {
     /// The full set of uppercased direction strings that are considered
     /// compass/generic fallbacks (not real destination names).
     /// Includes codes, long forms, numeric placeholders, and special keys.
+    ///
+    /// NOTE: "INBOUND" and "OUTBOUND" are intentionally EXCLUDED.
+    /// Many MTA bus routes (e.g. Q80, Q37) use "Outbound" as their
+    /// primary reverse-direction label — it IS a real direction, not
+    /// a placeholder.  Treating it as fallback caused those directions
+    /// to vanish from the home row swipe tabs.
     static let fallbackDirectionStrings: Set<String> = {
         var s = Set<String>()
-        // Compass codes + their long labels
+        // Compass codes + their long labels (excluding Inbound/Outbound)
         for (code, label) in labels {
-            s.insert(code.uppercased())
+            let upper = code.uppercased()
+            // Skip INBOUND/OUTBOUND — they are real MTA bus direction names
+            if upper == "INBOUND" || upper == "OUTBOUND" { continue }
+            s.insert(upper)
             s.insert(label.uppercased())
         }
         // Generic / numeric / special

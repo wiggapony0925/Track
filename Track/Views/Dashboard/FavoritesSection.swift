@@ -24,6 +24,9 @@ struct FavoritesSection: View {
     /// Shared ETA provider — when supplied, favorites use the same
     /// vehicle-position + delay-factor enriched ETA as home rows.
     var smartETAProvider: ((NearbyTransitResponse) -> SmartETA)? = nil
+    /// When true, favorite cards render desaturated and non-interactive
+    /// while fresh backend data is being fetched.
+    var isStale: Bool = false
 
     /// Favorites sorted closest-first using the same distance function
     /// as the nearby list (`groupMinDistance`), so the order matches
@@ -126,7 +129,8 @@ struct FavoritesSection: View {
                                 matchedGroup: groupedTransit.first { $0.routeId == favorite.routeId },
                                 onTap: onSelect,
                                 userLocation: userLocation,
-                                smartETAProvider: smartETAProvider
+                                smartETAProvider: smartETAProvider,
+                                isStale: isStale
                             )
                         }
                     }
@@ -252,6 +256,8 @@ struct FavoriteCard: View {
     var userLocation: CLLocation? = nil
     /// Shared ETA provider — matches home row + route detail chip ETAs.
     var smartETAProvider: ((NearbyTransitResponse) -> SmartETA)? = nil
+    /// When true, card renders desaturated and non-interactive during refresh.
+    var isStale: Bool = false
 
     // MARK: Helpers
 
@@ -295,6 +301,7 @@ struct FavoriteCard: View {
             listRowContent
         } else {
             Button {
+                guard !isStale else { return }
                 if let group = matchedGroup {
                     onTap(group, directionIndex)
                 }
@@ -302,7 +309,7 @@ struct FavoriteCard: View {
                 cardContent
             }
             .buttonStyle(.plain)
-            .opacity(matchedGroup != nil ? 1.0 : 0.5)
+            .staleOverlay(isStale, normalOpacity: matchedGroup != nil ? 1.0 : 0.5)
             .disabled(matchedGroup == nil)
         }
     }

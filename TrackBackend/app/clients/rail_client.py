@@ -61,10 +61,17 @@ def _parse_rail_feed_sync(
         trip_update = entity.trip_update
         route_id = trip_update.trip.route_id
 
-        destination = "Unknown"
+        # Resolve the terminal station name from the last stop in the trip.
+        # Use None instead of "Unknown" so downstream code doesn't treat
+        # an unresolved name as a truthy destination string.
+        destination: str | None = None
         if trip_update.stop_time_update:
             last_stop_id = trip_update.stop_time_update[-1].stop_id
-            destination = get_stop_name(last_stop_id, agency=lookup_agency)
+            resolved = get_stop_name(last_stop_id, agency=lookup_agency)
+            # get_stop_name returns the raw stop_id when the name isn't found.
+            # Treat raw IDs and "Unknown" as unresolved.
+            if resolved and resolved != last_stop_id and resolved.lower() != "unknown":
+                destination = resolved
 
         direction = "N/A"
         if trip_update.trip.HasField("direction_id"):

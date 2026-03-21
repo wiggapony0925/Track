@@ -112,6 +112,28 @@ extension View {
         .shadow(color: tint.opacity(0.05), radius: 16, x: 0, y: 6)
     }
 
+    // MARK: - Stale / Refreshing State
+
+    /// Greyed-out treatment for rows refreshing stale data.
+    /// Applies reduced opacity, desaturation, disables hit-testing, and
+    /// animates the transition.  Use this instead of duplicating the 4
+    /// modifiers inline.
+    ///
+    /// - Parameters:
+    ///   - isStale: Whether the row/card is currently stale.
+    ///   - normalOpacity: Opacity when *not* stale (default 1.0).
+    ///     FavoriteCard passes a lower value for unmatched cards.
+    func staleOverlay(
+        _ isStale: Bool,
+        normalOpacity: Double = 1.0
+    ) -> some View {
+        self
+            .opacity(isStale ? 0.45 : normalOpacity)
+            .saturation(isStale ? 0.3 : 1.0)
+            .allowsHitTesting(!isStale)
+            .animation(.easeInOut(duration: 0.35), value: isStale)
+    }
+
     /// Elevated hero card — used for primary action cards and key content.
     func trackHeroCard(
         cornerRadius: CGFloat = AppTheme.Layout.cornerRadius

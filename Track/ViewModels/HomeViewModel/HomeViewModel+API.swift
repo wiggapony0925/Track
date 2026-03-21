@@ -1211,6 +1211,41 @@ extension HomeViewModel {
             self.nearbyBusStops = Self.augmentBusStops(stops, from: self.groupedTransit)
         }
 
+        // ── Alerts + Accessibility: fire at T+0 alongside grouped ───
+        // These are global feeds (not location-dependent) that take 0.3-1s.
+        // Firing them NOW instead of waiting for /nearby/grouped to return
+        // saves 1-3s of wall-clock time — the user sees alert banners and
+        // elevator outages as soon as their data arrives, not seconds later.
+        if !skipGlobalFeeds {
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                let globalStart = Date()
+                async let alertsTask = TrackAPI.fetchAlerts()
+                async let accessTask = TrackAPI.fetchAccessibility()
+                do {
+                    let alerts = try await alertsTask
+                    let alertsElapsed = Date().timeIntervalSince(globalStart)
+                    AppLogger.shared.log("TIMING", message: "  alerts → \(alerts.count) alerts in \(AppLogger.formatDuration(alertsElapsed))")
+                    self.serviceAlerts = alerts
+                    AlertNotificationManager.shared.processAlerts(alerts)
+                    // Persist for instant display on next cold launch
+                    GlobalFeedsCache.saveAlerts(alerts)
+                } catch {
+                    AppLogger.shared.log("TIMING", message: "  alerts → FAILED (\(error.localizedDescription))")
+                }
+                do {
+                    let accessibility = try await accessTask
+                    let accessElapsed = Date().timeIntervalSince(globalStart)
+                    AppLogger.shared.log("TIMING", message: "  accessibility → \(accessibility.count) outages in \(AppLogger.formatDuration(accessElapsed))")
+                    self.elevatorOutages = accessibility
+                    // Persist for instant display on next cold launch
+                    GlobalFeedsCache.saveAccessibility(accessibility)
+                } catch {
+                    AppLogger.shared.log("TIMING", message: "  accessibility → FAILED (\(error.localizedDescription))")
+                }
+            }
+        }
+
         do {
             // Fire grouped arrivals and station metadata in parallel.
             // Grouped is the critical path; stations refine distance badges.
@@ -1278,35 +1313,8 @@ extension HomeViewModel {
             // cache → stops list, polyline, and banner appear instantly.
             prefetchTopBusShapes(from: newGrouped)
 
-            // Fetch alerts and accessibility only on full refreshes — these are
-            // global feeds that don't change by location. Skipping them during
-            // drag-to-search avoids 2 extra network calls per pan gesture.
-            if !skipGlobalFeeds {
-                Task {
-                    let globalStart = Date()
-                    async let alertsTask = TrackAPI.fetchAlerts()
-                    async let accessTask = TrackAPI.fetchAccessibility()
-                    do {
-                        let alerts = try await alertsTask
-                        let alertsElapsed = Date().timeIntervalSince(globalStart)
-                        AppLogger.shared.log("TIMING", message: "  alerts → \(alerts.count) alerts in \(AppLogger.formatDuration(alertsElapsed))")
-                        await MainActor.run {
-                            serviceAlerts = alerts
-                            AlertNotificationManager.shared.processAlerts(alerts)
-                        }
-                    } catch {
-                        AppLogger.shared.log("TIMING", message: "  alerts → FAILED (\(error.localizedDescription))")
-                    }
-                    do {
-                        let accessibility = try await accessTask
-                        let accessElapsed = Date().timeIntervalSince(globalStart)
-                        AppLogger.shared.log("TIMING", message: "  accessibility → \(accessibility.count) outages in \(AppLogger.formatDuration(accessElapsed))")
-                        await MainActor.run { elevatorOutages = accessibility }
-                    } catch {
-                        AppLogger.shared.log("TIMING", message: "  accessibility → FAILED (\(error.localizedDescription))")
-                    }
-                }
-            }
+            // Alerts + accessibility already fired at T+0 (before the do block)
+            // so they run in parallel with /nearby/grouped from the start.
 
             // Sync the selected route if it's currently open
             updateSelectedRouteFromRefreshedData(groupedTransit)

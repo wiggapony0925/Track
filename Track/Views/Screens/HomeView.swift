@@ -33,6 +33,11 @@ struct HomeView: View {
     @State private var refreshTimer: Timer?
     @State private var vehiclePollTimer: Timer?
     @State private var hasLoadedInitialData = false
+    /// True when the first data load used a speculative NYC-center location
+    /// because no cached GPS was available (first-ever launch). When the real
+    /// GPS fix arrives, `handleLocationUpdate` force-refreshes with accurate
+    /// coordinates, then clears this flag.
+    @State private var usedSpeculativeLocation = false
     @State private var is3DMode = false
     
     // Zoom-level visibility for stations
@@ -237,6 +242,13 @@ struct HomeView: View {
         // Immediately kick off the first fetch using the cached location
         // from the previous session (stored in App Group by LocationManager).
         // This shaves ~1-2s off startup by not waiting for a fresh GPS fix.
+        //
+        // SPECULATIVE PREFETCH (first-ever launch):
+        // When no cached GPS exists (both lat/lon == 0), start fetching with
+        // NYC center as a fallback so the backend warms up IN PARALLEL with
+        // CoreLocation's first fix. When the real GPS arrives 1-5s later,
+        // handleLocationUpdate force-refreshes with accurate coordinates.
+        // This eliminates the 2-8s dead wait that otherwise shows skeletons.
         if !hasLoadedInitialData {
             let defaults = UserDefaults(suiteName: kAppGroupIdentifier) ?? .standard
             let lat = defaults.double(forKey: "lastLatitude")
@@ -258,6 +270,23 @@ struct HomeView: View {
                 // was location-stale or missing, force-refresh.
                 Task {
                     await viewModel.refresh(location: cachedLoc, force: true)
+                    lastUpdated = Date()
+                }
+            } else {
+                // ── First-ever launch: no cached GPS ──
+                // Start a speculative fetch with NYC center so the server
+                // wakes up and data arrives during the GPS wait. The user
+                // sees nearby routes for Midtown within 2-3s instead of
+                // staring at skeletons for 5-10s.
+                hasLoadedInitialData = true
+                usedSpeculativeLocation = true
+                let nyc = AppTheme.MapConfig.nycCenter
+                let speculativeLoc = CLLocation(latitude: nyc.latitude, longitude: nyc.longitude)
+                AppLogger.shared.log(
+                    "SPECULATIVE",
+                    message: "No cached GPS — starting speculative fetch with NYC center (\(nyc.latitude), \(nyc.longitude))")
+                Task {
+                    await viewModel.refresh(location: speculativeLoc, force: true)
                     lastUpdated = Date()
                 }
             }
@@ -660,7 +689,8 @@ struct HomeView: View {
                         for: dir, userLocation: locationManager.currentLocation, provider: { viewModel.smartETA(for: $0) }
                     ) else { return }
                     viewModel.trackNearbyArrival(arrival, location: locationManager.currentLocation)
-                }
+                },
+                isStale: viewModel.showStaleRows
             )
 
 #if DEBUG
@@ -832,6 +862,22 @@ struct HomeView: View {
             // Center the map on the user as soon as we get the first fix
             recenterOnUser()
             
+            Task {
+                await viewModel.refresh(location: loc, force: true)
+                lastUpdated = Date()
+            }
+        } else if usedSpeculativeLocation {
+            // ── First real GPS fix after speculative prefetch ──
+            // The speculative fetch used NYC center. Now that we have
+            // real coordinates, force-refresh to get location-accurate
+            // results. The speculative data kept the user entertained
+            // and warmed the server — this fetch should be fast.
+            usedSpeculativeLocation = false
+            recenterOnUser()
+            cameraPosition = MapCameraPresets.center(on: loc.coordinate, is3D: false)
+            AppLogger.shared.log(
+                "SPECULATIVE",
+                message: "Real GPS fix arrived (\(String(format: "%.4f", loc.coordinate.latitude)), \(String(format: "%.4f", loc.coordinate.longitude))) — replacing speculative data")
             Task {
                 await viewModel.refresh(location: loc, force: true)
                 lastUpdated = Date()

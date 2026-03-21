@@ -51,21 +51,19 @@ struct DirectionPickerView: View {
     // MARK: - Pill Label
 
     private func directionPillLabel(_ dir: DirectionPillData) -> some View {
-        let label = dir.label.count > 24
-            ? String(dir.label.prefix(22)) + "…"
-            : dir.label
-
-        return HStack(spacing: 6) {
+        HStack(spacing: 6) {
             // Direction arrow
             Image(systemName: directionIcon(for: dir.index, total: directions.count))
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundColor(dir.isActive ? .white : routeColor)
 
-            // Label
-            Text(label)
+            // Label — show the full MTA direction name; the pill
+            // scrolls horizontally so there is room for it.
+            Text(dir.label)
                 .font(.custom("Helvetica-Bold", size: 13))
                 .foregroundColor(dir.isActive ? .white : AppTheme.Colors.textPrimary)
-                .lineLimit(1)
+                .lineLimit(2)
+                .minimumScaleFactor(0.75)
 
             // Express / Local badge
             if let sType = dir.serviceType, !sType.isEmpty {

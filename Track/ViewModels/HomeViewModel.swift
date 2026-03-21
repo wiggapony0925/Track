@@ -32,6 +32,13 @@ final class HomeViewModel {
     /// displayed on cold launch.  The UI shows a subtle "Updating…" indicator
     /// instead of full skeleton placeholders.
     var isRefreshing = false
+    /// True for a short window (≤ 8 s) after `isRefreshing` becomes true.
+    /// Drives the greyed-out / non-interactive appearance on route rows
+    /// and favorite cards.  Auto-clears after 8 s so users can interact
+    /// with cached data during long cold-start refreshes, while the
+    /// navbar "Updating…" badge keeps showing until fresh data lands.
+    var showStaleRows = false
+    private var _staleRowsTimer: DispatchWorkItem?
     /// True while `refresh()` is executing. Used to prevent the 20s timer from
     /// stacking duplicate refresh calls when the backend is slow (cold-start
     /// can take 30-60s, causing 1-3 extra timer fires before the first fetch
@@ -1637,6 +1644,30 @@ final class HomeViewModel {
         return true
     }
 
+    // MARK: - Stale Row Display Window
+
+    /// Starts the 8-second window during which route rows appear greyed
+    /// out (non-interactive).  After the window expires, rows become
+    /// tappable again with the cached data while the navbar continues
+    /// showing "Updating…" until fresh data actually arrives.
+    private func _beginStaleRowsWindow() {
+        _staleRowsTimer?.cancel()
+        showStaleRows = true
+        let work = DispatchWorkItem { [weak self] in
+            self?.showStaleRows = false
+        }
+        _staleRowsTimer = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8, execute: work)
+    }
+
+    /// Cancels the stale-row timer and un-greys rows immediately
+    /// (called when fresh data arrives or refresh is skipped).
+    private func _cancelStaleRows() {
+        _staleRowsTimer?.cancel()
+        _staleRowsTimer = nil
+        showStaleRows = false
+    }
+
     // MARK: - Session Cache (Two-Phase Loading)
 
     /// Loads cached transit data from the previous session so route cards
@@ -1668,24 +1699,24 @@ final class HomeViewModel {
             return false
         }
 
-        // Strip groups whose real arrivals have ALL expired since the cache
-        // was written.  This prevents a flash of "--" cards on app reopen
-        // when the disk cache is minutes old and buses have already passed.
-        // Placeholder-only groups (no live data at all) are preserved so
-        // routes that serve the area are always visible.
-        let freshGroups = result.groups.filter { !$0.isExpired }
-
-        // Even if ALL arrivals expired, show the route cards anyway.
-        // Stale route structure (showing which routes serve this area)
-        // is infinitely better than skeleton placeholders — the user
-        // sees familiar route names immediately while fresh data loads
-        // in the background.  Arrival times will show "--" briefly.
-        let groupsToShow = freshGroups.isEmpty ? result.groups : freshGroups
-        if freshGroups.isEmpty {
-            let expiredCount = result.groups.count
+        // Always show ALL cached route groups — including ones whose
+        // live arrivals have expired.  Previously we filtered expired
+        // groups out, which caused buses (whose arrivals expire faster
+        // than subway/LIRR) to vanish from the home screen until the
+        // network refresh completed.  That looked like "trains load
+        // first, buses appear 2 minutes later" when the server was slow.
+        //
+        // Expired groups render with "--" arrival times and are
+        // silently replaced when the background refresh completes.
+        // This matches Transit's behavior: route structure is always
+        // visible, only the countdown numbers change.
+        let freshCount = result.groups.filter { !$0.isExpired }.count
+        let expiredCount = result.groups.count - freshCount
+        let groupsToShow = result.groups
+        if expiredCount > 0 {
             AppLogger.shared.log(
                 "CACHE",
-                message: "⚠️ Session cache had \(expiredCount) groups but ALL expired (\(Int(result.age))s old) — showing stale route cards instead of skeletons"
+                message: "📦 Session cache: \(freshCount) fresh + \(expiredCount) expired groups (\(Int(result.age))s old) — showing all as stale-while-revalidate"
             )
         }
 
@@ -1707,6 +1738,7 @@ final class HomeViewModel {
 
         hasLoadedOnce = true
         isRefreshing = true
+        _beginStaleRowsWindow()
         // Set a recent refresh date so `canSkipRefresh` blocks the
         // duplicate refresh that `handleScenePhaseChange(.active)` would
         // otherwise fire (it sees hasLoadedOnce=true and calls refresh).
@@ -1719,15 +1751,28 @@ final class HomeViewModel {
         TransitDataReadyFlag.markReady()
         NotificationCenter.default.post(name: .transitDataLoaded, object: nil)
 
+        // ── Also restore cached alerts + accessibility ──────────────
+        // These global feeds change slowly (MTA updates every few min).
+        // Showing cached alert banners and elevator outages instantly
+        // is far better than a blank state while the network fetches.
+        if serviceAlerts.isEmpty, let cachedAlerts = GlobalFeedsCache.loadAlerts() {
+            serviceAlerts = cachedAlerts
+            AlertNotificationManager.shared.processAlerts(cachedAlerts)
+            mapSystem.updateReroutedRoutes(from: cachedAlerts)
+            AppLogger.shared.log("CACHE", message: "📂 Restored \(cachedAlerts.count) alerts from disk cache")
+        }
+        if elevatorOutages.isEmpty, let cachedOutages = GlobalFeedsCache.loadAccessibility() {
+            elevatorOutages = cachedOutages
+            AppLogger.shared.log("CACHE", message: "📂 Restored \(cachedOutages.count) accessibility outages from disk cache")
+        }
+
         if result.isLocationStale {
             let distStr = result.distanceFromCurrent.map { "\(Int($0))m away" } ?? "unknown distance"
-            let expiredCount = result.groups.count - groupsToShow.count
             AppLogger.shared.log(
                 "CACHE",
-                message: "⚠️ Loaded \(result.groups.count) cached groups (\(expiredCount) expired, \(groupsToShow.count) shown) but location is stale (\(distStr), \(Int(result.age))s old) — force refresh needed"
+                message: "⚠️ Loaded \(groupsToShow.count) cached groups (\(expiredCount) expired, \(freshCount) fresh, \(Int(result.age))s old) but location is stale (\(distStr)) — force refresh needed"
             )
         } else {
-            let expiredCount = result.groups.count - groupsToShow.count
             AppLogger.shared.log(
                 "CACHE",
                 message: "📦 Loaded \(groupsToShow.count) route groups from \(result.groups.count) cached (\(expiredCount) expired, \(Int(result.age))s old, same area) — skipping skeletons"
@@ -1775,6 +1820,7 @@ final class HomeViewModel {
         if !force && canSkipRefresh(for: loc) {
             AppLogger.shared.log("REFRESH", message: "⏭️ Skipped — data still fresh")
             isRefreshing = false
+            _cancelStaleRows()
             return false
         }
 
@@ -1839,6 +1885,7 @@ final class HomeViewModel {
         hasLoadedOnce = true
         isLoading = false
         isRefreshing = false
+        _cancelStaleRows()
 
         // Signal ContentView that critical-path data has landed so it can
         // kick off the lower-priority performFullSync() immediately.

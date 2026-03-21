@@ -797,7 +797,6 @@ struct TrackAPI {
                 } catch let error as TrackAPIError {
                     throw error
                 } catch {
-                    let attemptElapsed = Date().timeIntervalSince(Date()) // approximate
                     AppLogger.shared.log("API_RETRY", message: "\(endpointPath) attempt \(attempt + 1) → \(error.localizedDescription)")
                     lastError = error
                 }

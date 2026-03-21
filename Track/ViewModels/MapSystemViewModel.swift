@@ -488,7 +488,7 @@ final class MapSystemViewModel {
             // Show subway lines immediately before commuter rail arrives
             self.cachedSystemMap = decoded
             self.cachedTrunkPolylines = response.trunkPolylines
-            self.computeSubwayOffsets()
+            self.computeSubwayOffsets(forceReflatten: true)
 
             // Now fold in LIRR and MNR results (already fetched in parallel)
             // Also extract commuter-rail stops so they appear as station dots.
@@ -737,7 +737,12 @@ final class MapSystemViewModel {
     /// Corridor offsets (fanning out co-located lines like 4/5/6 on Lex Ave)
     /// are now computed server-side by `/subway/shapes/all`, so the client
     /// simply converts `CachedTransitLine` → `OffsetSubwayLine` 1:1.
-    private func computeSubwayOffsets() {
+    /// - Parameter forceReflatten: When `true` (network refresh), always
+    ///   recompute flattened polylines even if they're already populated.
+    ///   When `false` (disk cache loading), keep existing flattened data
+    ///   so good polylines from the flattened disk cache aren't overwritten
+    ///   by a raw cache that may lack trunk polyline offsets.
+    private func computeSubwayOffsets(forceReflatten: Bool = false) {
         let subwayLines = cachedSystemMap.filter { $0.mode == .subway }
         cachedOffsetSubwayLines = subwayLines.map {
             OffsetSubwayLine(id: $0.id, color: $0.color, coordinates: $0.coordinates)
@@ -745,6 +750,20 @@ final class MapSystemViewModel {
         AppLogger.shared.log(
             "SYSTEM_MAP",
             message: "Mapped \(subwayLines.count) subway lines (offsets applied server-side)")
+
+        // Skip re-flattening if good polylines already exist (e.g. from
+        // the flattened disk cache) — prevents overwriting correct lane
+        // offsets with zero-offset data from a raw cache that's missing
+        // trunk polylines.  Network refresh always force-re-flattens.
+        if !forceReflatten && !flattenedSubwayPolylines.isEmpty {
+            let hasOffsets = flattenedSubwayPolylines.contains { abs($0.laneOffset) > 0.01 }
+            if hasOffsets {
+                AppLogger.shared.log(
+                    "SYSTEM_MAP",
+                    message: "Keeping \(flattenedSubwayPolylines.count) existing flattened polylines with valid offsets (skip re-flatten)")
+                return
+            }
+        }
 
         // Pre-compute flattened polylines for efficient rendering.
         // Heavy CPU work (unify + RDP + Catmull-Rom) runs off main actor

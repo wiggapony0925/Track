@@ -426,6 +426,10 @@ struct GroupedRouteList: View {
     let sheetNavigator: SheetNavigator
     var referenceLocation: CLLocation? = nil
 
+    /// When true, rows render desaturated and non-interactive while
+    /// fresh data is being fetched from the backend.
+    private var isStale: Bool { viewModel.showStaleRows }
+
     var body: some View {
         // LazyVStack: rows are only built when they scroll into view.
         // Critical for busy stops with 10+ routes — plain VStack eagerly
@@ -470,7 +474,8 @@ struct GroupedRouteList: View {
                     onAlertTapped: {
                         let directionIndex = viewModel.preferredDirectionIndex(for: group)
                         sheetNavigator.navigate(to: .routeDetail(group: group, directionIndex: directionIndex, initialTab: .alerts))
-                    }
+                    },
+                    isStale: isStale
                 )
             }
         }

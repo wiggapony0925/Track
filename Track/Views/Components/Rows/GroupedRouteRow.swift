@@ -28,6 +28,9 @@ struct  GroupedRouteRow: View {
     var onTrack: ((Int) -> Void)? = nil
     var onAlertTapped: (() -> Void)? = nil
     var presentation: GroupedRouteRowPresentation = .standard
+    /// When true, the row renders desaturated with blocked interactions
+    /// to indicate stale data while a backend refresh is in-flight.
+    var isStale: Bool = false
 
     @State private var currentDirectionIndex = 0
     @State private var showTrackingBanner = false
@@ -38,6 +41,10 @@ struct  GroupedRouteRow: View {
     /// preference that came from shape enrichment reordering, not a
     /// user swipe.
     @State private var _isSyncing = false
+    /// Debounce timer for direction preference persistence.
+    /// The scroll position binding fires on every frame during a swipe;
+    /// this fires `onDirectionChanged` only once the user settles.
+    @State private var _directionDebounce: Task<Void, Never>?
 
 
     /// Route color derived from group data or theme defaults.
@@ -76,32 +83,12 @@ struct  GroupedRouteRow: View {
 
     /// Directions that have real data — filters out backend placeholder-only tabs
     /// (e.g., Phase C "Opposite Direction" with no live arrivals and all
-    /// placeholder minutesAway ≥ 99) **and** directions whose real arrivals
-    /// have ALL expired (arrivalTs > 90 s in the past).  Falls back to all
-    /// directions only when filtering would leave zero.
+    /// placeholder minutesAway ≥ 99).  Directions whose real arrivals have
+    /// expired are **kept** so the swipe tab remains visible (showing "--"
+    /// countdowns) — consistent with the session-cache policy of displaying
+    /// all cached groups even when arrivals are stale.
     private var visibleDirections: [DirectionArrivalsResponse] {
-        let real = group.directions.filter { dir in
-            // Keep if it has at least one live (non-placeholder, non-expired) arrival
-            if !dir.liveArrivals.isEmpty { return true }
-
-            // Direction had real (non-placeholder) arrivals but they ALL
-            // expired (liveArrivals filtered them out) → hide it.
-            // Prevents stale "--" cards when cache/SWR data ages past
-            // the actual arrival time.
-            if dir.arrivals.contains(where: { !$0.isPlaceholder }) {
-                return false
-            }
-
-            // Drop: "Opposite" direction with no live arrivals
-            if dir.direction.lowercased() == "opposite" { return false }
-            // Drop compass-code placeholder directions with no live data.
-            // These are backend backfill (Phase C) — e.g. "SW" opposite of
-            // "EAST SIDE YORK AV CROSSTOWN" — and just show "Southwest"
-            // which is unhelpful.  They'll appear once buses start running.
-            if DirectionConstants.isFallbackDirection(dir.direction) { return false }
-            return true
-        }
-        return real.isEmpty ? group.directions : real
+        ArrivalHelpers.visibleDirections(for: group.directions)
     }
 
     /// Maps the current `visibleDirections` index back to the original
@@ -210,12 +197,15 @@ struct  GroupedRouteRow: View {
         .background { rowBackground }
         .contentShape(RoundedRectangle(cornerRadius: containerCornerRadius, style: .continuous))
         .onTapGesture {
+            guard !isStale else { return }
             HapticManager.selection()
             onSelect?(originalDirectionIndex)
         }
         .onLongPressGesture(minimumDuration: 0.5, perform: {
+            guard !isStale else { return }
             triggerTracking()
         })
+        .staleOverlay(isStale)
         .onAppear {
             let restoredVisible: Int = visibleIndex(forOriginal: initialDirectionIndex)
             if restoredVisible != currentDirectionIndex {
@@ -235,7 +225,15 @@ struct  GroupedRouteRow: View {
                 _isSyncing = false
                 return
             }
-            onDirectionChanged?(originalDirectionIndex)
+            // Debounce: the scroll binding fires on every frame during
+            // a swipe gesture.  Wait until the index stabilises before
+            // persisting the preference (avoids 100+ redundant calls).
+            _directionDebounce?.cancel()
+            _directionDebounce = Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(300))
+                guard !Task.isCancelled else { return }
+                onDirectionChanged?(originalDirectionIndex)
+            }
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(mainRowAccessibilityLabel)

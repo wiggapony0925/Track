@@ -23,6 +23,8 @@ struct ManageFavoritesView: View {
     var onSelect: ((GroupedNearbyTransitResponse, Int) -> Void)? = nil
     /// Called when the track button is tapped inside a row.
     var onTrack: ((GroupedNearbyTransitResponse, Int) -> Void)? = nil
+    /// When true, route rows render desaturated and non-interactive during refresh.
+    var isStale: Bool = false
     @ObservedObject private var favoritesManager = FavoritesManager.shared
 
     @State private var searchText = ""
@@ -356,7 +358,8 @@ struct ManageFavoritesView: View {
                         onAlertTapped: isEditing ? nil : {
                             sheetNavigator.navigate(to: .routeDetail(group: group, directionIndex: 0, initialTab: .alerts))
                         },
-                        presentation: .favorite
+                        presentation: .favorite,
+                        isStale: isStale
                     )
                 } else if let fav = repFav {
                     offlineFavoriteRow(fav: fav)
