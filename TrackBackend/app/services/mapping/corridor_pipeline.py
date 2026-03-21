@@ -2065,6 +2065,12 @@ _vertex_offsets_cache: dict[int, dict[int, list[float]]] | None = None
 _corridor_neighbors_cache: dict[int, set[int]] = {}
 _all_trunk_lane_offsets_cache: dict[int, float] | None = None
 
+# Pipeline result-level cache — avoids re-running the full 60-90s corridor
+# pipeline on every call to apply_topological_offsets().  Populated on the
+# first call (or during startup pre-warming) and reused for all subsequent
+# calls in this process.  Invalidated only on process restart (deploy).
+_pipeline_result_cache: list | None = None
+
 _EXPORT_LANE_OFFSET_STEP: float = 0.25
 _EXPORT_LANE_OFFSET_EPSILON: float = 0.12
 _EXPORT_TRANSITION_MAX_POINTS: int = 6
@@ -2783,11 +2789,24 @@ def apply_topological_offsets(
 
     Input:  list of SubwayLineOverlay (route_id, color_hex, polylines[encoded])
     Output: list of SubwayLineOverlay with properly offset polylines.
+
+    The pipeline takes 60-90s on 1 CPU (Standard plan).  Results are
+    cached in ``_pipeline_result_cache`` so subsequent calls return
+    instantly.  The cache is populated either by startup pre-warming
+    or by the first user request to ``/subway/shapes/all``.
     """
+    global _pipeline_result_cache
     from app.models import SubwayLineOverlay
 
     if not overlays:
         return overlays
+
+    # Return cached result if available — avoids 60-90s recomputation.
+    if _pipeline_result_cache is not None:
+        TrackLogger.info(
+            f"[Pipeline] Returning cached result ({len(_pipeline_result_cache)} overlays)"
+        )
+        return _pipeline_result_cache
 
     TrackLogger.info(
         f"[Pipeline] Starting trunk-group offset pipeline for "
@@ -2921,4 +2940,5 @@ def apply_topological_offsets(
         f"{total_polys} total polylines (per-route raw GTFS preserved)"
     )
 
+    _pipeline_result_cache = result
     return result

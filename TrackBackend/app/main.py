@@ -477,7 +477,7 @@ async def log_requests(request: Request, call_next):
 
 
 @app.get("/health")
-async def health() -> dict[str, str]:
+async def health():
     """Liveness probe — returns 503 until warmup completes.
 
     Render uses this to decide when to route traffic to a new instance.

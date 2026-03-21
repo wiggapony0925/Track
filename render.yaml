@@ -58,12 +58,17 @@ services:
         sync: false   # also accepted as SUPABASE_SERVICE_KEY — same value
 
       # ── Gunicorn worker count ──────────────────────────────
-      # Standard plan: 2 GB RAM → 2 workers (~1 GB each) for true
-      # request parallelism.  Each worker has its own async event loop,
-      # in-process cache, and thread pool.  Going higher than 2 risks
-      # OOM on a 2 GB instance with the ~800 MB transit_schedule.db.
+      # Standard plan: 1 CPU, 2 GB RAM.  ONE worker is optimal:
+      # - The 60-90s corridor pipeline is CPU-bound — 2 workers on
+      #   1 CPU just fight for CPU during warmup, doubling startup time
+      #   and causing Gunicorn worker timeouts.
+      # - All caches (lru_cache, module-level, response) live in-process
+      #   — 1 worker means ONE cache set to warm, not two.
+      # - After warmup, every request serves from cache in <1s — a single
+      #   async worker handles hundreds of concurrent I/O-bound requests.
+      # - Memory: ~1 GB used, ~1 GB buffer for safety.
       - key: WEB_CONCURRENCY
-        value: "2"
+        value: "1"
 
     # ── Render Persistent Disk ─────────────────────────────────────────────
     # Persists app/data/ across deploys so the 809 MB transit_schedule.db
