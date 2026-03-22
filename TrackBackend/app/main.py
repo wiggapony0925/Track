@@ -244,6 +244,24 @@ async def _warmup_caches():
         tag="WARMUP",
     )
 
+    # ── Mark server as healthy NOW ──
+    # /health returns 200 once feeds are warm (~20-30s).  This lets
+    # Render's zero-downtime deployer switch traffic from the old
+    # container to the new one quickly.  The corridor pipeline
+    # (60-90s CPU) runs AFTER this in the background — the iOS app
+    # has a disk cache for map shapes so the first /subway/shapes/all
+    # hit can wait; /nearby/grouped (critical path) is already fast.
+    #
+    # PREVIOUSLY _warmup_complete was set AFTER the corridor pipeline,
+    # meaning /health returned 503 for ~90-120s.  Render killed the old
+    # container before the new one passed health checks → 502 gap.
+    _warmup_complete = True
+    TrackLogger.info(
+        f"[WARMUP] Health check PASSING — feeds ready in {feed_elapsed:.1f}s.  "
+        f"Corridor pipeline starting in background...",
+        tag="WARMUP",
+    )
+
     # ── Pre-compute the corridor pipeline (shapes/all + stations/all) ──
     # This is the HEAVIEST request on first call: parses GTFS CSVs and runs
     # the 2900-line topological corridor pipeline.  Without pre-warming,
@@ -274,10 +292,9 @@ async def _warmup_caches():
             tag="WARMUP", exc_info=True,
         )
 
-    _warmup_complete = True
     elapsed = time.perf_counter() - t0
     TrackLogger.info(
-        f"[WARMUP] Done in {elapsed:.1f}s — subway feeds: {feed_ok}/9, "
+        f"[WARMUP] Full warmup done in {elapsed:.1f}s — subway feeds: {feed_ok}/9, "
         f"bus routes: {bus_ok}, shapes: {shapes_ok}, stations: {stations_ok}",
         tag="WARMUP",
     )
@@ -478,19 +495,31 @@ async def log_requests(request: Request, call_next):
 
 @app.get("/health")
 async def health():
-    """Liveness probe — returns 503 until warmup completes.
+    """Liveness / readiness probe for Render zero-downtime deploys.
 
-    Render uses this to decide when to route traffic to a new instance.
-    By returning 503 during warmup, we prevent users from hitting an
-    instance whose lru_cache and corridor pipeline aren't ready yet —
-    which would cause 60-90s responses and Render proxy 502s.
+    Returns 503 only during the initial feed warmup (~20-30s).
+    Returns 200 as soon as GTFS-RT feeds + bus routes are cached,
+    even if the corridor pipeline (60-90s CPU) is still running.
+
+    The corridor pipeline only affects ``/subway/shapes/all`` — the iOS
+    app has a disk cache for map shapes, so a slow first shapes request
+    is acceptable.  ``/nearby/grouped`` (critical path) is fast as soon
+    as feeds are warm.
+
+    **Why this matters for 502s:**
+    Render keeps the OLD container serving traffic until the NEW one's
+    health check returns 200.  If health is gated behind the full
+    corridor pipeline (~90-120s), Render may time out and kill the old
+    container — creating a 502 gap where neither instance serves.
+    By passing health after feeds (~20-30s), the traffic cutover happens
+    quickly and users never see a 502.
     """
     if not _warmup_complete:
         from fastapi.responses import JSONResponse
         return JSONResponse(
             status_code=503,
             content={"status": "warming_up"},
-            headers={"Retry-After": "30"},
+            headers={"Retry-After": "10"},
         )
     return {"status": "ok"}
 
