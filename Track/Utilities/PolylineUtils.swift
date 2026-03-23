@@ -797,8 +797,11 @@ nonisolated func unifyTrainPolylines(
 
         let ratio = Double(coveredCount) / Double(seg.count)
 
-        // >90% covered → near-duplicate (reverse direction, express overlay)
-        if ratio > 0.90 { continue }
+        // >95% covered → near-duplicate (reverse direction, express overlay).
+        // Previous 90% threshold was too aggressive — short express
+        // bypasses or branch tails that diverge for just a few blocks
+        // could hit 91-94% overlap and be wrongly discarded.
+        if ratio > 0.95 { continue }
 
         // <15% covered → mostly unique corridor, keep whole segment
         if ratio < 0.15 {
@@ -814,9 +817,11 @@ nonisolated func unifyTrainPolylines(
         // extract only the contiguous runs of uncovered points — the
         // divergent branch tails.
 
-        let minRun = 15  // Ignore short fragments — curve-area GPS drift between
-                         // GTFS shapes of the same physical track can produce
-                         // uncovered runs of 5–12 points that are NOT real branches.
+        let minRun = 8   // Ignore very short fragments — curve-area GPS drift
+                         // between GTFS shapes can produce uncovered runs of
+                         // 3-6 points that are NOT real branches.  Previous
+                         // threshold of 15 was too aggressive and dropped
+                         // legitimate short branch stubs near junctions.
         var runs: [(start: Int, end: Int)] = []
         var runStart: Int? = nil
 
@@ -1423,8 +1428,11 @@ nonisolated func removePolylineBacktracks(
             arc += sqrt(dx * dx + dy * dy)
         }
 
-        // A genuine loop has net displacement < 30% of arc length
-        if arc > 0, net / arc < 0.30 {
+        // A genuine loop has net displacement < 20% of arc length.
+        // Previous threshold of 30% was too aggressive — legitimate
+        // curved subway sections (e.g. turns near junctions) have
+        // net/arc ratios around 0.25-0.35 and were incorrectly removed.
+        if arc > 0, net / arc < 0.20 {
             bestGap = gap
             loopStart = fi
             loopEnd = li

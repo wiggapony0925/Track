@@ -46,7 +46,7 @@ final class OfflineCacheManager: ObservableObject {
         static let subwayShapes = "cached_subway_shapes"
         static let subwayShapesCachedAt = "cached_subway_shapes_timestamp"
         static let flattenedPolylines = "cached_flattened_polylines"
-        static let flattenedPolylinesCachedAt = "cached_flattened_polylines_timestamp_v4"
+        static let flattenedPolylinesCachedAt = "cached_flattened_polylines_timestamp_v5"
     }
 
     /// Bump this whenever the station consolidation logic or hash
@@ -249,15 +249,18 @@ final class OfflineCacheManager: ObservableObject {
         guard let data = try? JSONEncoder().encode(bundle) else { return }
         // Use file-based cache for large data instead of UserDefaults
         guard let dir = flattenedCacheDirectory() else { return }
-        let fileURL = dir.appendingPathComponent("flattened_polylines.json")
+        let fileURL = dir.appendingPathComponent("flattened_polylines_v5.json")
         try? data.write(to: fileURL, options: .atomic)
         userDefaults.set(Date(), forKey: CacheKey.flattenedPolylinesCachedAt)
+        // Clean up old cache versions
+        let oldFile = dir.appendingPathComponent("flattened_polylines.json")
+        try? FileManager.default.removeItem(at: oldFile)
     }
 
     /// Get pre-computed flattened polylines (nil if never cached).
     func getCachedFlattenedPolylines() -> CachedFlattenedBundle? {
         guard let dir = flattenedCacheDirectory() else { return nil }
-        let fileURL = dir.appendingPathComponent("flattened_polylines.json")
+        let fileURL = dir.appendingPathComponent("flattened_polylines_v5.json")
         guard let data = try? Data(contentsOf: fileURL) else { return nil }
         return try? JSONDecoder().decode(CachedFlattenedBundle.self, from: data)
     }

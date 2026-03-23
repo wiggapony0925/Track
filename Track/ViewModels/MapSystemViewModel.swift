@@ -247,6 +247,11 @@ final class MapSystemViewModel {
     /// `loadStations()` to return immediately — with zero subway stations.
     private static var hasStartedStationLoad = false
 
+    /// Handle to the currently running flattening task.  Used to cancel
+    /// an in-flight disk-cache flatten when a fresher network flatten
+    /// arrives — prevents the first task from persisting incomplete data.
+    private var activeFlattenTask: Task<Void, Never>?
+
     // MARK: - Init
 
     init() {
@@ -760,9 +765,13 @@ final class MapSystemViewModel {
         // the flattened disk cache) — prevents overwriting correct lane
         // offsets with zero-offset data from a raw cache that's missing
         // trunk polylines.  Network refresh always force-re-flattens.
+        // Validate that the cached count is plausible (≥ 30 polylines for
+        // 11 trunk groups) — if the cache was persisted from an incomplete
+        // flatten, force a re-compute instead of preserving gaps.
         if !forceReflatten && !flattenedSubwayPolylines.isEmpty {
             let hasOffsets = flattenedSubwayPolylines.contains { abs($0.laneOffset) > 0.01 }
-            if hasOffsets {
+            let hasEnoughPolylines = flattenedSubwayPolylines.count >= 30
+            if hasOffsets && hasEnoughPolylines {
                 AppLogger.shared.log(
                     "SYSTEM_MAP",
                     message: "Keeping \(flattenedSubwayPolylines.count) existing flattened polylines with valid offsets (skip re-flatten)")
@@ -773,7 +782,11 @@ final class MapSystemViewModel {
         // Pre-compute flattened polylines for efficient rendering.
         // Heavy CPU work (unify + RDP + Catmull-Rom) runs off main actor
         // so the map and UI remain responsive during computation.
-        Task {
+        // Cancel any in-flight flatten task first — prevents a stale
+        // disk-cache flatten from persisting incomplete data when a
+        // fresher network refresh arrives moments later.
+        activeFlattenTask?.cancel()
+        activeFlattenTask = Task {
             await computeFlattenedPolylinesAsync()
         }
     }
@@ -1084,14 +1097,20 @@ final class MapSystemViewModel {
                 simplified = simplifyPolyline(item.coordinates, tolerance: 0.00005)
             }
 
-            guard simplified.count >= 2 else { continue }
+            guard simplified.count >= 2 else {
+                AppLogger.shared.log("POLYLINE_DROP", message: "Dropped branch \(origin.branchIndex) of group \(item.groupIndex) after simplification (\(item.coordinates.count) → \(simplified.count) points)")
+                continue
+            }
 
             // ── Backtrack Removal ──
             // Remove self-intersecting loops that stem injection may
             // create (e.g. 7/7X express overlay near Hudson Yards).
             // Must run before the fillet to prevent arc amplification.
             let cleaned = removePolylineBacktracks(simplified)
-            guard cleaned.count >= 2 else { continue }
+            guard cleaned.count >= 2 else {
+                AppLogger.shared.log("POLYLINE_DROP", message: "Dropped branch \(origin.branchIndex) of group \(item.groupIndex) after backtrack removal (\(simplified.count) → \(cleaned.count) points)")
+                continue
+            }
 
             // ── Offset-Adaptive Circular-Arc Fillet ──
             //
@@ -1135,7 +1154,10 @@ final class MapSystemViewModel {
             let origin = prepared.origin
             let groupResult = colorGroupResults[origin.resultIndex]
             let groupKey: String = groupResult.routeIds.joined(separator: "-")
-            guard prepared.coordinates.count >= 2 else { continue }
+            guard prepared.coordinates.count >= 2 else {
+                AppLogger.shared.log("POLYLINE_DROP", message: "Dropped polyline trunk_\(groupKey)_\(origin.branchIndex) after fillet (\(prepared.coordinates.count) points)")
+                continue
+            }
             let localLaneOffset = prepared.localLaneOffset
 
             // Determine z-level: use the geographic midpoint of this
@@ -1307,6 +1329,12 @@ final class MapSystemViewModel {
 
         // Persist pre-computed flattened polylines to disk so the next
         // cold start can skip the entire decode → unify → simplify pipeline.
+        // Skip persistence if this task was cancelled (a newer flatten is
+        // running with fresher data — don't overwrite with stale results).
+        guard !Task.isCancelled else {
+            AppLogger.shared.log("SYSTEM_MAP", message: "Flatten task cancelled — skipping disk persist")
+            return
+        }
         persistFlattenedToDisk()
     }
 

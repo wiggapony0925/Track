@@ -218,7 +218,10 @@ async def _warmup_caches():
     # Sequential warmup — one feed at a time with event-loop yields.
     # Concurrent protobuf parsing (sem(3)) was tried and CAUSED 502s:
     # GIL contention starves Uvicorn workers → Render proxy returns 502.
-    feed_lines = ["A", "B", "N", "1", "G", "L", "J", "7", "SI"]
+    # One representative per MTA feed URL.
+    # "1" covers all numbered lines (1/2/3/4/5/6/7/GS) — no need
+    # for a separate "7" entry (same subway_123456 URL).
+    feed_lines = ["A", "B", "N", "1", "G", "L", "J", "SI"]
     feed_ok = 0
 
     for line in feed_lines:
@@ -240,7 +243,7 @@ async def _warmup_caches():
 
     feed_elapsed = time.perf_counter() - t0
     TrackLogger.info(
-        f"[WARMUP] Feeds done in {feed_elapsed:.1f}s — subway: {feed_ok}/9, bus: {bus_ok}",
+        f"[WARMUP] Feeds done in {feed_elapsed:.1f}s — subway: {feed_ok}/{len(feed_lines)}, bus: {bus_ok}",
         tag="WARMUP",
     )
 
@@ -294,7 +297,7 @@ async def _warmup_caches():
 
     elapsed = time.perf_counter() - t0
     TrackLogger.info(
-        f"[WARMUP] Full warmup done in {elapsed:.1f}s — subway feeds: {feed_ok}/9, "
+        f"[WARMUP] Full warmup done in {elapsed:.1f}s — subway feeds: {feed_ok}/{len(feed_lines)}, "
         f"bus routes: {bus_ok}, shapes: {shapes_ok}, stations: {stations_ok}",
         tag="WARMUP",
     )
@@ -328,7 +331,11 @@ async def _periodic_feed_refresh():
     from app.services.gtfs.data_cleaner import get_arrivals_for_line
     from app.clients.rail_client import fetch_rail_arrivals
 
-    feed_lines = ["A", "B", "N", "1", "G", "L", "J", "7", "SI"]
+    # One representative per MTA feed URL — "1" covers 1/2/3/4/5/6/7/GS.
+    # Previously included "7" separately, but it resolves to the same
+    # subway_123456 URL as "1", causing duplicate protobuf parsing
+    # every refresh cycle (wasting ~200ms of CPU on 1-CPU Render plan).
+    feed_lines = ["A", "B", "N", "1", "G", "L", "J", "SI"]
 
     while True:
         await asyncio.sleep(_FEED_REFRESH_INTERVAL)
