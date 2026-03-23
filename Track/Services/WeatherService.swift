@@ -19,7 +19,6 @@
 //  the console with error logs every 20 seconds.
 //
 
-import Combine
 import CoreLocation
 import Foundation
 import WeatherKit
@@ -34,12 +33,17 @@ struct WeatherSnapshot: Equatable {
     let fetchedAt: Date
 }
 
+/// Uses @Observable so it participates in the same observation graph as
+/// HomeViewModel (@Observable).  The old ObservableObject/Combine approach
+/// was invisible to the Observation framework — changes to `current` never
+/// triggered SwiftUI re-renders in views that read `viewModel.weatherSnapshot`.
+@Observable
 @MainActor
-final class WeatherService: ObservableObject {
+final class WeatherService {
     static let shared = WeatherService()
 
-    @Published private(set) var current: WeatherSnapshot?
-    @Published private(set) var isLoading = false
+    private(set) var current: WeatherSnapshot?
+    private(set) var isLoading = false
 
     private let weatherKitService = WeatherKit.WeatherService.shared
     private let cacheDuration: TimeInterval = 600 // 10 minutes

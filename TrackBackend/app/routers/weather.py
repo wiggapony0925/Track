@@ -71,26 +71,15 @@ async def get_weather(
     Response shape matches what WeatherService.swift needs to build
     a WeatherSnapshot.
     """
-    # Trigger a fetch (uses 5-min cache internally)
+    # Trigger a fetch (uses 5-min cache / 1-min negative cache internally)
     category = await get_current_weather(lat=lat, lon=lon)
     details = get_cached_weather_details()
 
-    if details is None:
-        # Never fetched — return a minimal response
-        return {
-            "temperature_c": None,
-            "temperature_f": None,
-            "wmo_code": 0,
-            "symbol": "sun.max.fill",
-            "description": "Clear sky",
-            "category": "clear",
-            "windspeed_kmh": None,
-        }
-
-    wmo_code = details.get("wmo_code", 0)
-    temp_c = details.get("temperature_c")
+    # Build response from cached details (may be error-fallback data)
+    wmo_code = details.get("wmo_code", 0) if details else 0
+    temp_c = details.get("temperature_c") if details else None
     temp_f = round(temp_c * 9 / 5 + 32) if temp_c is not None else None
-    windspeed = details.get("windspeed_kmh")
+    windspeed = details.get("windspeed_kmh") if details else None
 
     symbol, description = _WMO_TO_SYMBOL.get(wmo_code, _DEFAULT_SYMBOL)
 

@@ -34,10 +34,12 @@ _DEFAULT_LON = -74.0060
 _OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
 
 # ── Cache ─────────────────────────────────────────────────────────────────
-_CACHE_TTL = 300  # 5 minutes
+_CACHE_TTL = 300          # 5 minutes for successful fetches
+_NEGATIVE_CACHE_TTL = 60  # 1 minute cooldown after errors (prevents 429 storms)
 _cached_weather: str | None = None
 _cached_details: dict[str, Any] | None = None
 _cached_at: float = 0.0
+_is_negative_cache: bool = False  # True when cache holds error-fallback data
 
 
 # ── WMO weather code → category mapping ──────────────────────────────────
@@ -72,10 +74,12 @@ async def get_current_weather(
     Returns one of: "clear", "rain", "snow".
     Never raises — falls back to "clear" on any error.
     """
-    global _cached_weather, _cached_details, _cached_at
+    global _cached_weather, _cached_details, _cached_at, _is_negative_cache
 
     now = time.monotonic()
-    if _cached_weather is not None and (now - _cached_at) < _CACHE_TTL:
+    if _cached_weather is not None and (now - _cached_at) < (
+        _NEGATIVE_CACHE_TTL if _is_negative_cache else _CACHE_TTL
+    ):
         return _cached_weather
 
     try:
@@ -106,6 +110,7 @@ async def get_current_weather(
             "category": category,
         }
         _cached_at = now
+        _is_negative_cache = False
 
         # Prometheus gauge: 0=clear, 1=rain, 2=snow
         WEATHER_CATEGORY.set({"clear": 0, "rain": 1, "snow": 2}.get(category, 0))
@@ -124,8 +129,20 @@ async def get_current_weather(
             f"[WEATHER] Open-Meteo fetch failed: {exc} — defaulting to 'clear'",
             tag="WEATHER",
         )
-        # Return stale cache if available, otherwise "clear"
-        return _cached_weather or "clear"
+        # ── Negative cache: store fallback so we don't hammer the API ─────
+        # Use stale data if available, otherwise default to "clear".
+        fallback = _cached_weather or "clear"
+        _cached_weather = fallback
+        if _cached_details is None:
+            _cached_details = {
+                "wmo_code": 0,
+                "temperature_c": None,
+                "windspeed_kmh": None,
+                "category": fallback,
+            }
+        _cached_at = now
+        _is_negative_cache = True
+        return fallback
 
 
 def get_cached_weather_details() -> dict[str, Any] | None:

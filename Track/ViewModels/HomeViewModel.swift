@@ -628,11 +628,10 @@ final class HomeViewModel {
     /// so the ViewModel can resolve pin-vs-GPS without requiring a parameter.
     var lastKnownUserLocation: CLLocation?
 
-    /// Current weather snapshot from WeatherKit for UI display.
-    /// Updated on each refresh when location is available.
-    var weatherSnapshot: WeatherSnapshot? {
-        WeatherService.shared.current
-    }
+    /// Current weather snapshot for UI display.
+    /// Stored property so @Observable can track mutations.
+    /// Updated after each `WeatherService.shared.update(for:)` resolves.
+    var weatherSnapshot: WeatherSnapshot?
 
     // Walking route to the nearest station (forwarded from goMode)
     /// Cancelable task for directional split rebuild — debounces rapid GPS
@@ -1817,7 +1816,23 @@ final class HomeViewModel {
         // resolve pin vs GPS without needing a parameter at call sites.
         if let location { lastKnownUserLocation = location }
         // Update weather in the background (WeatherService caches for 10 min)
-        if let location { WeatherService.shared.update(for: location) }
+        if let location {
+            WeatherService.shared.update(for: location)
+            // Observe the result — poll briefly so the stored property
+            // picks up the snapshot once the async fetch resolves.
+            Task { @MainActor [weak self] in
+                // Wait up to 6 seconds for weather to resolve (covers backend fallback)
+                for _ in 0..<30 {
+                    try? await Task.sleep(nanoseconds: 200_000_000) // 200ms
+                    guard !Task.isCancelled else { return }
+                    if let fresh = WeatherService.shared.current,
+                       fresh != self?.weatherSnapshot {
+                        self?.weatherSnapshot = fresh
+                        return
+                    }
+                }
+            }
+        }
         let loc = effectiveLocation(userLocation: location)
 
         // Guard: if a refresh is already in-flight, don't stack another.
