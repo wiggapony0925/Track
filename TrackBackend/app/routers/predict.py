@@ -53,6 +53,7 @@ from app.ml.delay_model import predict_factor
 from app.ml.recency_model import get_weighted_error
 from app.utils import redis_client as _redis
 from app.utils.logger import TrackLogger
+from app.utils.metrics import ML_PREDICTIONS_TOTAL, ML_PREDICTION_FACTOR
 
 router = APIRouter(tags=["predict"])
 
@@ -137,7 +138,7 @@ async def predict_delay(
     route_id: str = Query(..., description="Transit route ID (e.g. '7', 'L', 'B63')"),
     hour: int = Query(..., ge=0, le=23, description="Current hour (0-23)"),
     day_of_week: int = Query(..., ge=1, le=7, description="Day of week (1=Sun, 7=Sat)"),
-    weather: str = Query("clear", description="Weather condition: clear | rain | snow"),
+    weather: str | None = Query(None, description="Weather condition: clear | rain | snow. Auto-detected from Open-Meteo if omitted."),
     mode: str = Query("subway", description="Transit mode: subway | bus | lirr | mnr"),
     stop_id: str | None = Query(None, description="GTFS stop_id (enables recency correction)"),
     schedule_deviation_s: int | None = Query(
@@ -175,6 +176,10 @@ async def predict_delay(
 
     Safe to call on every arrival row — < 1 ms when fully cached.
     """
+    # Auto-detect weather from Open-Meteo if the client didn't supply it
+    if weather is None:
+        from app.clients.weather_client import get_current_weather
+        weather = await get_current_weather()
     weather_lower = weather.lower()
     mode_lower = mode.lower()
 
@@ -289,6 +294,10 @@ async def predict_delay(
         stop_id=stop_id,
         mode=mode_lower,
     )
+
+    # ── Prometheus metrics ──
+    ML_PREDICTIONS_TOTAL.labels(source=source, mode=mode_lower).inc()
+    ML_PREDICTION_FACTOR.labels(mode=mode_lower).observe(factor)
 
     return DelayPrediction(
         adjusted_minutes=adjusted,

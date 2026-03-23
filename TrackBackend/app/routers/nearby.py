@@ -2673,13 +2673,15 @@ async def _ml_corrected(
     await _maybe_refresh_alerts()
     alert_boost = _get_alert_boost(route_id)
 
-    # 2. GBR contextual factor (weather always "clear" — live deviation_s
-    #    already encodes real-time weather impact via the delay_minutes feature)
+    # 2. GBR contextual factor — now uses live weather from Open-Meteo
+    #    (falls back to "clear" if the weather client hasn't fetched yet)
+    from app.clients.weather_client import get_current_weather
+    live_weather = await get_current_weather()
     factor, _ = _predict_factor(
         route_id=route_id,
         hour=hour,
         dow=dow,
-        weather="clear",
+        weather=live_weather,
         mode=mode,
         current_delay_s=deviation_s,
     )

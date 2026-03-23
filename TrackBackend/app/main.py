@@ -23,6 +23,7 @@ from app.services.gtfs.gtfs_refresh import rebuild_schedule_db_if_missing
 from app.utils import cache_stats
 from app.utils import redis_client as _redis
 from app.utils.logger import TrackLogger
+from app.utils.metrics import setup_metrics, WARMUP_COMPLETE
 
 app = FastAPI(
     title="Track API",
@@ -39,11 +40,17 @@ app.include_router(bus.router)
 app.include_router(nearby.router)
 app.include_router(predict.router)
 
+# ── Prometheus metrics ────────────────────────────────────────────────────
+# Instruments all HTTP endpoints and exposes GET /metrics for scraping.
+setup_metrics(app)
+
 
 # Background task handle for periodic GTFS refresh
 _gtfs_refresh_task: asyncio.Task | None = None
 # Background task handle for continuous feed refresh (subway/rail keep-alive)
 _feed_refresh_task: asyncio.Task | None = None
+# arq connection pool (for enqueueing jobs from the web process)
+_arq_pool: Any = None
 
 # How often to check MTA for new GTFS data (default: 24 hours)
 _GTFS_CHECK_INTERVAL = int(os.environ.get("GTFS_CHECK_INTERVAL", 86400))
@@ -59,6 +66,13 @@ async def startup_event():
     # the GTFS files we just downloaded.  No-op if the DB already exists.
     await rebuild_schedule_db_if_missing()
     await _redis.init_redis()
+    # Pre-fetch weather from Open-Meteo so the first ML prediction has real data
+    from app.clients.weather_client import get_current_weather
+    try:
+        weather = await get_current_weather()
+        TrackLogger.info(f"[STARTUP] Weather: {weather}", tag="STARTUP")
+    except Exception:
+        pass  # weather_client falls back to "clear" internally
     # Log startup summary so Render logs clearly show what's active
     redis_status = "ACTIVE  bus · subway · LIRR · MNR" if _redis.get_client() else "DISABLED (in-process only)"
     # Check whether the ML prediction feature flag is active
@@ -72,25 +86,75 @@ async def startup_event():
         f"env=production",
         tag="STARTUP",
     )
-    # Start background GTFS freshness checker
-    _gtfs_refresh_task = asyncio.create_task(_periodic_gtfs_check())
+    # Start background GTFS freshness checker.
+    # If an arq worker is running separately (arq app.worker.WorkerSettings),
+    # it handles GTFS cron + weather refresh.  The inline asyncio task is
+    # kept as a resilient fallback — it's harmless alongside arq (both
+    # check_and_refresh_gtfs calls are idempotent).
+    _gtfs_refresh_task = asyncio.create_task(_resilient_loop(
+        _periodic_gtfs_check, "GTFS_CHECK"
+    ))
     # Prime caches in background so first real user never eats a cold penalty.
     # After the initial prime, _warmup_caches hands off to
     # _periodic_feed_refresh which keeps feeds hot every 10 seconds.
-    _feed_refresh_task = asyncio.create_task(_warmup_caches())
+    _feed_refresh_task = asyncio.create_task(_resilient_loop(
+        _warmup_caches, "FEED_REFRESH"
+    ))
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    global _gtfs_refresh_task, _feed_refresh_task
+    global _gtfs_refresh_task, _feed_refresh_task, _arq_pool
     if _gtfs_refresh_task:
         _gtfs_refresh_task.cancel()
     if _feed_refresh_task:
         _feed_refresh_task.cancel()
+    if _arq_pool:
+        await _arq_pool.close()
     # Emit final cache stats before the process exits so Render logs capture
     # the lifetime activity summary for every cache kind (bus Redis + mta in-process).
     cache_stats.flush()
     await _redis.close_redis()
+
+
+async def _resilient_loop(
+    coro_fn,
+    label: str,
+    restart_delay: float = 5.0,
+    max_restarts: int = 50,
+) -> None:
+    """Run an async coroutine with automatic restart on failure.
+
+    If the coroutine crashes (anything except CancelledError), it is
+    restarted after ``restart_delay`` seconds, up to ``max_restarts``
+    times.  Every crash is logged with full traceback so failures are
+    no longer silent.
+    """
+    restarts = 0
+    while restarts < max_restarts:
+        try:
+            await coro_fn()
+            return  # normal exit
+        except asyncio.CancelledError:
+            TrackLogger.info(
+                f"[TASK] {label} cancelled — shutting down",
+                tag="TASK",
+            )
+            return
+        except Exception as exc:
+            restarts += 1
+            TrackLogger.error(
+                f"[TASK] {label} crashed (restart {restarts}/{max_restarts}): {exc}",
+                tag="TASK",
+                exc_info=True,
+            )
+            if restarts >= max_restarts:
+                TrackLogger.error(
+                    f"[TASK] {label} exceeded max restarts — giving up",
+                    tag="TASK",
+                )
+                return
+            await asyncio.sleep(restart_delay)
 
 
 async def _periodic_gtfs_check():
@@ -259,6 +323,7 @@ async def _warmup_caches():
     # meaning /health returned 503 for ~90-120s.  Render killed the old
     # container before the new one passed health checks → 502 gap.
     _warmup_complete = True
+    WARMUP_COMPLETE.set(1)
     TrackLogger.info(
         f"[WARMUP] Health check PASSING — feeds ready in {feed_elapsed:.1f}s.  "
         f"Corridor pipeline starting in background...",
@@ -330,6 +395,7 @@ async def _periodic_feed_refresh():
     """
     from app.services.gtfs.data_cleaner import get_arrivals_for_line
     from app.clients.rail_client import fetch_rail_arrivals
+    from app.utils.metrics import FEED_REFRESH_TOTAL, FEED_REFRESH_DURATION, ACTIVE_FEEDS
 
     # One representative per MTA feed URL — "1" covers 1/2/3/4/5/6/7/GS.
     # Previously included "7" separately, but it resolves to the same
@@ -351,18 +417,26 @@ async def _periodic_feed_refresh():
 
             async def _refresh_feed(line: str) -> bool:
                 async with sem:
+                    t_feed = time.perf_counter()
                     try:
                         await get_arrivals_for_line(line, force_refresh=True)
+                        FEED_REFRESH_TOTAL.labels(line=line, status="ok").inc()
+                        FEED_REFRESH_DURATION.labels(line=line).observe(time.perf_counter() - t_feed)
                         return True
                     except Exception:
+                        FEED_REFRESH_TOTAL.labels(line=line, status="error").inc()
                         return False
 
             async def _refresh_rail(rail: str) -> bool:
                 async with sem:
+                    t_feed = time.perf_counter()
                     try:
                         await fetch_rail_arrivals(rail, force_refresh=True)
+                        FEED_REFRESH_TOTAL.labels(line=rail, status="ok").inc()
+                        FEED_REFRESH_DURATION.labels(line=rail).observe(time.perf_counter() - t_feed)
                         return True
                     except Exception:
+                        FEED_REFRESH_TOTAL.labels(line=rail, status="error").inc()
                         return False
 
             feed_results = await asyncio.gather(
@@ -370,6 +444,7 @@ async def _periodic_feed_refresh():
                 *[_refresh_rail(r) for r in ("lirr", "metro_north")],
             )
             ok = sum(1 for r in feed_results if r)
+            ACTIVE_FEEDS.set(ok)
 
             elapsed = time.perf_counter() - t0
             if elapsed > 5.0 or ok < total:
@@ -528,7 +603,8 @@ async def health():
             content={"status": "warming_up"},
             headers={"Retry-After": "10"},
         )
-    return {"status": "ok"}
+    from app.clients.weather_client import get_cached_weather_details
+    return {"status": "ok", "weather": get_cached_weather_details()}
 
 
 @app.get("/config")
