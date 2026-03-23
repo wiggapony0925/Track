@@ -595,8 +595,8 @@ final class HomeViewModel {
     // Route detail sheet
     var selectedGroupedRoute: GroupedNearbyTransitResponse? {
         didSet {
-            _filteredBusVehiclesCache = nil
-            _filteredTrainVehiclesCache = nil
+            _filteredBusVehicleIds = nil
+            _filteredTrainVehicleIds = nil
         }
     }
     /// Cancelable task for polyline rebuild — cancelled when the user switches
@@ -604,9 +604,9 @@ final class HomeViewModel {
     @ObservationIgnored private var _polylineRebuildTask: Task<Void, Never>?
     var selectedDirectionIndex: Int = 0 {
         didSet {
-            // Invalidate vehicle filter caches when direction changes
-            _filteredBusVehiclesCache = nil
-            _filteredTrainVehiclesCache = nil
+            // Invalidate vehicle filter ID caches when direction changes
+            _filteredBusVehicleIds = nil
+            _filteredTrainVehicleIds = nil
             // Cancel any in-flight rebuild from a previous tap so rapid direction
             // switching doesn't cascade into multiple simultaneous MapPolyline
             // teardown/rebuild cycles on MapKit's render thread.
@@ -698,14 +698,13 @@ final class HomeViewModel {
     var busVehicles: [BusVehicleResponse] = [] {
         didSet {
             _busVehicleIndex = Dictionary(busVehicles.map { ($0.vehicleId, $0) }, uniquingKeysWith: { $1 })
-            // Only invalidate filter cache when vehicle IDs change (new vehicles
-            // appeared or old ones disappeared), NOT on every position update.
-            // The filter only depends on route/direction/destination — positions
-            // don't affect which vehicles pass the filter.
+            // Only invalidate filter ID cache when vehicle membership changes.
+            // Position-only updates are automatically fresh because the filter
+            // re-applies cached IDs to the live `busVehicles` array.
             let newIds = Set(busVehicles.map(\.vehicleId))
             let oldIds = Set(oldValue.map(\.vehicleId))
             if newIds != oldIds {
-                _filteredBusVehiclesCache = nil
+                _filteredBusVehicleIds = nil
             }
         }
     }
@@ -716,11 +715,13 @@ final class HomeViewModel {
         didSet {
             _trainVehicleByTrip = Dictionary(trainVehicles.compactMap { v in v.tripId.map { ($0, v) } }, uniquingKeysWith: { $1 })
             _trainVehicleById = Dictionary(trainVehicles.map { ($0.id, $0) }, uniquingKeysWith: { $1 })
-            // Only invalidate filter cache when vehicle set membership changes.
+            // Only invalidate filter ID cache when vehicle set membership changes.
+            // Position updates flow through automatically because
+            // filteredTrainVehicles re-applies cached IDs to live data.
             let newIds = Set(trainVehicles.map(\.id))
             let oldIds = Set(oldValue.map(\.id))
             if newIds != oldIds {
-                _filteredTrainVehiclesCache = nil
+                _filteredTrainVehicleIds = nil
             }
         }
     }
@@ -1134,19 +1135,24 @@ final class HomeViewModel {
 
     // MARK: - Direction-Filtered Vehicles (Cached)
 
-    /// Cached result of `filteredBusVehicles`. Invalidated when `busVehicles`,
-    /// `selectedDirectionIndex`, or `selectedGroupedRoute` changes.
-    @ObservationIgnored private var _filteredBusVehiclesCache: [BusVehicleResponse]?
-    /// Cached result of `filteredTrainVehicles`. Invalidated on same triggers.
-    @ObservationIgnored private var _filteredTrainVehiclesCache: [TrainVehicle]?
+    /// Cached **set of vehicle IDs** that pass the direction filter.
+    /// We cache IDs instead of full objects so that position updates
+    /// (which don't change the ID set) still reach the overlay with
+    /// fresh lat/lon values — fixing the stale-marker bug.
+    @ObservationIgnored private var _filteredBusVehicleIds: Set<String>?
+    /// Cached set of train IDs that pass the direction filter.
+    @ObservationIgnored private var _filteredTrainVehicleIds: Set<String>?
 
     /// Bus vehicles filtered to the currently selected direction.
-    /// Uses a cache that's invalidated when inputs change, avoiding
-    /// recomputation on every `@Observable` property access.
+    /// Uses an ID-set cache so positions are always fresh while
+    /// the expensive filter logic only runs when the direction or
+    /// vehicle membership changes.
     var filteredBusVehicles: [BusVehicleResponse] {
-        if let cached = _filteredBusVehiclesCache { return cached }
+        if let cachedIds = _filteredBusVehicleIds {
+            return busVehicles.filter { cachedIds.contains($0.vehicleId) }
+        }
         let result = _computeFilteredBusVehicles()
-        _filteredBusVehiclesCache = result
+        _filteredBusVehicleIds = Set(result.map(\.vehicleId))
         return result
     }
 
@@ -1204,11 +1210,13 @@ final class HomeViewModel {
     }
 
     /// Train vehicles filtered to the currently selected direction.
-    /// Uses a cache that's invalidated when inputs change.
+    /// Uses an ID-set cache so positions are always fresh.
     var filteredTrainVehicles: [TrainVehicle] {
-        if let cached = _filteredTrainVehiclesCache { return cached }
+        if let cachedIds = _filteredTrainVehicleIds {
+            return trainVehicles.filter { cachedIds.contains($0.id) }
+        }
         let result = _computeFilteredTrainVehicles()
-        _filteredTrainVehiclesCache = result
+        _filteredTrainVehicleIds = Set(result.map(\.id))
         return result
     }
 

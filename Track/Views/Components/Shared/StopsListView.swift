@@ -26,13 +26,15 @@ struct StopRowData: Identifiable {
 
 // MARK: - Stops List View
 
-/// Reusable stops list with route-colored dot timeline, transfer badges,
+/// Reusable stops list with a continuous route-colored line, transfer badges,
 /// accessibility outage warnings, and next-arrival ETAs.
+/// Inspired by Transit app's clean vertical timeline layout.
 struct StopsListView: View {
     let stops: [StopRowData]
     let routeColor: Color
     let isLoading: Bool               // shape == nil → show skeleton
     let selectedStopId: String?
+    var userLocation: CLLocationCoordinate2D? = nil
     var onStopTapped: ((StopRowData) -> Void)?
 
     var body: some View {
@@ -76,6 +78,22 @@ struct StopsListView: View {
         }
     }
 
+    // MARK: - Nearest Stop
+
+    /// Index of the stop closest to the user — shown with walking time.
+    private var nearestStopIndex: Int? {
+        guard let loc = userLocation else { return nil }
+        let userLoc = CLLocation(latitude: loc.latitude, longitude: loc.longitude)
+        var bestIdx: Int?
+        var bestDist = Double.greatestFiniteMagnitude
+        for (i, stop) in stops.enumerated() {
+            guard !stop.isPassed else { continue }
+            let d = userLoc.distance(from: CLLocation(latitude: stop.lat, longitude: stop.lon))
+            if d < bestDist { bestDist = d; bestIdx = i }
+        }
+        return bestIdx
+    }
+
     // MARK: - Sub-Views
 
     private var stopsEmptyState: some View {
@@ -95,36 +113,32 @@ struct StopsListView: View {
     }
 
     private var stopsContent: some View {
-        VStack(spacing: 0) {
+        let nearest = nearestStopIndex
+        return VStack(spacing: 0) {
             ForEach(Array(stops.enumerated()), id: \.element.id) { index, stop in
+                // Walking time badge above the nearest stop
+                if index == nearest, let loc = userLocation {
+                    let d = CLLocation(latitude: loc.latitude, longitude: loc.longitude)
+                        .distance(from: CLLocation(latitude: stop.lat, longitude: stop.lon))
+                    let walkMin = max(1, Int((d / 80.0).rounded()))  // ~80m/min walk
+                    walkingTimeBadge(minutes: walkMin)
+                }
+
                 StopRowView(
                     stop: stop,
-                    routeColor: routeColor
+                    routeColor: routeColor,
+                    showTopLine: !stop.isFirst,
+                    showBottomLine: !stop.isLast,
+                    lineFaded: stop.isPassed
                 )
-                .opacity(stop.isPassed ? 0.55 : 1.0)
+                .opacity(stop.isPassed ? 0.5 : 1.0)
                 .contentShape(Rectangle())
                 .onTapGesture {
                     onStopTapped?(stop)
                 }
-
-                // Timeline connector between stops
-                if index < stops.count - 1 {
-                    HStack(spacing: 0) {
-                        Spacer().frame(width: 27)
-                        RoundedRectangle(cornerRadius: 1)
-                            .fill(
-                                stop.isPassed
-                                    ? AppTheme.Colors.textSecondary.opacity(0.15)
-                                    : routeColor.opacity(0.25)
-                            )
-                            .frame(width: 2, height: 8)
-                        Spacer()
-                    }
-                    .padding(.leading, AppTheme.Layout.cardPadding)
-                }
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 8)
         .trackCardBackground(cornerRadius: AppTheme.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius)
@@ -132,79 +146,105 @@ struct StopsListView: View {
         )
         .padding(.horizontal, AppTheme.Layout.margin)
     }
+
+    /// Walking time pill shown above the nearest stop.
+    private func walkingTimeBadge(minutes: Int) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: "figure.walk")
+                .font(.system(size: 10, weight: .semibold))
+            Text("\(minutes) min")
+                .font(.system(size: 11, weight: .bold, design: .rounded))
+        }
+        .foregroundColor(AppTheme.Colors.mtaBlue)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(AppTheme.Colors.mtaBlue.opacity(0.1))
+        .clipShape(Capsule())
+        .padding(.leading, 40)
+        .padding(.vertical, 4)
+    }
 }
 
 // MARK: - Stop Row View
 
-/// A single stop row with dot indicator, name, transfers, accessibility, and ETA.
+/// A single stop row with a continuous line, dot indicator, name, transfers,
+/// accessibility info, and arrival ETA. Designed after Transit app style.
 struct StopRowView: View {
     let stop: StopRowData
     let routeColor: Color
+    var showTopLine: Bool = true
+    var showBottomLine: Bool = true
+    var lineFaded: Bool = false
 
-    private var dotColor: Color {
-        stop.isCurrent ? routeColor :
-        (stop.isPassed ? AppTheme.Colors.textSecondary.opacity(0.4) : routeColor)
+    private var lineColor: Color {
+        lineFaded
+            ? AppTheme.Colors.textSecondary.opacity(0.15)
+            : routeColor.opacity(0.5)
     }
 
     private var isTerminal: Bool {
         stop.isFirst || stop.isLast
     }
 
+    // MARK: Dot dimensions
+    private var dotSize: CGFloat {
+        stop.isCurrent ? 14 : (isTerminal ? 14 : 10)
+    }
+
     var body: some View {
-        HStack(alignment: .center, spacing: 10) {
-            // Stop dot — timeline indicator
-            ZStack {
-                // Current stop: subtle halo
-                if stop.isCurrent {
-                    Circle()
-                        .fill(routeColor.opacity(0.12))
-                        .frame(width: 22, height: 22)
+        HStack(alignment: .top, spacing: 0) {
+
+            // ── Left column: continuous line + dot ──
+            ZStack(alignment: .center) {
+                // Top line segment
+                VStack(spacing: 0) {
+                    if showTopLine {
+                        Rectangle()
+                            .fill(lineColor)
+                            .frame(width: 3)
+                    } else {
+                        Color.clear.frame(width: 3)
+                    }
+                    Color.clear.frame(width: 3)   // space for bottom half
                 }
-                // Terminal stops: ring style
-                if isTerminal && !stop.isCurrent {
-                    Circle()
-                        .strokeBorder(routeColor, lineWidth: 2)
-                        .frame(width: 13, height: 13)
-                    Circle()
-                        .fill(routeColor)
-                        .frame(width: 5, height: 5)
-                } else {
-                    Circle()
-                        .fill(dotColor)
-                        .frame(
-                            width: stop.isCurrent ? 12 : 7,
-                            height: stop.isCurrent ? 12 : 7
-                        )
-                    if stop.isCurrent {
-                        Circle()
-                            .fill(AppTheme.Colors.cardFloating)
-                            .frame(width: 5, height: 5)
+
+                // Bottom line segment
+                VStack(spacing: 0) {
+                    Color.clear.frame(width: 3)   // space for top half
+                    if showBottomLine {
+                        Rectangle()
+                            .fill(
+                                stop.isPassed
+                                    ? AppTheme.Colors.textSecondary.opacity(0.15)
+                                    : routeColor.opacity(0.5)
+                            )
+                            .frame(width: 3)
+                    } else {
+                        Color.clear.frame(width: 3)
                     }
                 }
-            }
-            .frame(width: 22)
 
-            // Name + badges
-            VStack(alignment: .leading, spacing: 2) {
+                // Stop dot
+                stopDot
+            }
+            .frame(width: 30)
+
+            // ── Right column: name, transfers, accessibility ──
+            VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 5) {
                     Text(stop.name)
-                        .font(.custom(
-                            (stop.isCurrent || isTerminal) ? "Helvetica-Bold" : "Helvetica",
-                            size: stop.isCurrent ? 14 : 13
+                        .font(.system(
+                            size: (stop.isCurrent || isTerminal) ? 14 : 13,
+                            weight: (stop.isCurrent || isTerminal) ? .bold : .medium,
+                            design: .rounded
                         ))
                         .foregroundColor(stop.isCurrent ? routeColor : AppTheme.Colors.textPrimary)
                         .lineLimit(1)
 
-                    if stop.isCurrent {
-                        Circle()
-                            .fill(routeColor)
-                            .frame(width: 5, height: 5)
-                    }
-
                     if !stop.accessibilityOutages.isEmpty {
                         Image(systemName: stop.hasElevatorOutage
                               ? "arrow.up.arrow.down.circle.fill" : "stairs")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.system(size: 11, weight: .semibold))
                             .foregroundColor(.white)
                             .frame(width: 18, height: 18)
                             .background(AppTheme.Colors.alertRed)
@@ -213,25 +253,68 @@ struct StopRowView: View {
                     }
                 }
 
-                // Transfer badges — clean inline row
+                // Transfer badges
                 if !stop.transfers.isEmpty {
                     transferBadgeRow
                 }
             }
+            .padding(.leading, 10)
+            .padding(.vertical, 10)
 
             Spacer(minLength: 4)
 
-            // Arrival ETA column
+            // ── Arrival ETA column ──
             arrivalColumn
+                .padding(.trailing, AppTheme.Layout.cardPadding)
+                .padding(.vertical, 10)
         }
-        .padding(.horizontal, AppTheme.Layout.cardPadding)
-        .padding(.vertical, 7)
+        .padding(.leading, AppTheme.Layout.cardPadding)
         .background(
             RoundedRectangle(cornerRadius: 8)
                 .fill(stop.isSelected ? routeColor.opacity(0.08) : Color.clear)
                 .padding(.horizontal, 4)
         )
         .animation(.easeInOut(duration: 0.2), value: stop.isSelected)
+    }
+
+    // MARK: - Stop Dot
+
+    @ViewBuilder
+    private var stopDot: some View {
+        if stop.isCurrent {
+            // Current stop: bright pulsing dot with halo
+            ZStack {
+                Circle()
+                    .fill(routeColor.opacity(0.15))
+                    .frame(width: 24, height: 24)
+                Circle()
+                    .fill(routeColor)
+                    .frame(width: 14, height: 14)
+                Circle()
+                    .fill(AppTheme.Colors.cardFloating)
+                    .frame(width: 6, height: 6)
+            }
+        } else if isTerminal {
+            // Terminal stop: outlined ring with center dot
+            ZStack {
+                Circle()
+                    .strokeBorder(routeColor, lineWidth: 2.5)
+                    .frame(width: 14, height: 14)
+                Circle()
+                    .fill(routeColor)
+                    .frame(width: 5, height: 5)
+            }
+        } else {
+            // Normal stop: filled circle on the line
+            Circle()
+                .fill(stop.isPassed ? AppTheme.Colors.textSecondary.opacity(0.3) : routeColor.opacity(0.8))
+                .frame(width: 10, height: 10)
+                .overlay(
+                    Circle()
+                        .fill(AppTheme.Colors.cardBackground)
+                        .frame(width: 4, height: 4)
+                )
+        }
     }
 
     /// Compact transfer badge row — subway circles and bus pills properly sized.
@@ -275,48 +358,36 @@ struct StopRowView: View {
             if stop.nextArrivalIsAtStop {
                 // ── At stop / Now ──
                 Text("Now")
-                    .font(.custom("Helvetica-Bold", size: 11))
+                    .font(.system(size: 12, weight: .heavy, design: .rounded))
                     .foregroundColor(AppTheme.Colors.successGreen)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3)
-                    .background(AppTheme.Colors.successGreen.opacity(0.1))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(AppTheme.Colors.successGreen.opacity(0.12))
                     .clipShape(Capsule())
             } else {
-                HStack(spacing: 3) {
-                    if !stop.nextArrivalIsScheduled {
-                        Circle()
-                            .fill(AppTheme.Colors.successGreen)
-                            .frame(width: 4, height: 4)
-                    }
-                    VStack(alignment: .trailing, spacing: 0) {
-                        Text("\(minutes)m")
-                            .font(.custom("Helvetica-Bold", size: 12))
+                VStack(alignment: .trailing, spacing: 1) {
+                    HStack(spacing: 3) {
+                        if !stop.nextArrivalIsScheduled {
+                            Circle()
+                                .fill(AppTheme.Colors.successGreen)
+                                .frame(width: 5, height: 5)
+                        }
+                        Text("\(minutes) min")
+                            .font(.system(size: 12, weight: .bold, design: .rounded))
                             .foregroundColor(
                                 stop.isPassed
-                                ? AppTheme.Colors.textSecondary.opacity(0.35)
-                                : (stop.nextArrivalIsScheduled
-                                   ? AppTheme.Colors.textSecondary
-                                   : routeColor)
+                                    ? AppTheme.Colors.textSecondary.opacity(0.35)
+                                    : (stop.nextArrivalIsScheduled
+                                       ? AppTheme.Colors.textSecondary
+                                       : routeColor)
                             )
-                        if let ts = stop.nextArrivalTimestamp {
-                            Text(Date(timeIntervalSince1970: Double(ts)), style: .time)
-                                .font(.custom("Helvetica", size: 9))
-                                .foregroundColor(AppTheme.Colors.textSecondary.opacity(stop.isPassed ? 0.3 : 0.45))
-                        }
+                    }
+                    if let ts = stop.nextArrivalTimestamp {
+                        Text(Date(timeIntervalSince1970: Double(ts)), style: .time)
+                            .font(.system(size: 10, weight: .medium, design: .rounded))
+                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(stop.isPassed ? 0.3 : 0.5))
                     }
                 }
-                .padding(.horizontal, 6)
-                .padding(.vertical, 3)
-                .background(
-                    Capsule()
-                        .fill(
-                            stop.isPassed
-                            ? Color.clear
-                            : (stop.nextArrivalIsScheduled
-                               ? AppTheme.Colors.textSecondary.opacity(0.05)
-                               : routeColor.opacity(0.07))
-                        )
-                )
             }
         } else {
             EmptyView()

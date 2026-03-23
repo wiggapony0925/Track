@@ -35,8 +35,15 @@ struct ArrivalChipData: Identifiable {
         return Date().addingTimeInterval(Double(minutesRemaining) * 60)
     }
 
+    /// Show "NOW" only when the vehicle is genuinely at the stop.
+    /// Using 15 s (not 30 s) prevents multiple chips from flipping
+    /// to "NOW" prematurely when arrivals are close together.
     var isNow: Bool {
-        !isScheduled && !isCancelled && (isAtStop || secondsRemaining <= 30)
+        guard !isScheduled, !isCancelled else { return false }
+        if isAtStop { return true }
+        // Only count down to NOW when the arrival timestamp is very close
+        // AND the prediction is backed by a live vehicle (not purely static).
+        return isRealTime && secondsRemaining <= 15
     }
 }
 

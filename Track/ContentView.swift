@@ -16,6 +16,10 @@ struct ContentView: View {
     @AppStorage("appTheme") private var appTheme = "system"
     @State private var locationManager = LocationManager()
 
+    /// Brief dimming overlay used for a smooth "lightbulb" transition
+    /// when the color scheme changes instead of a hard flicker.
+    @State private var themeTransitionOpacity: Double = 0
+
     // Watch scene transitions so we instantly re-check location status
     // when the user returns from the iOS Settings app after granting permission.
     @Environment(\.scenePhase) private var scenePhase
@@ -61,6 +65,23 @@ struct ContentView: View {
         }
         .preferredColorScheme(colorScheme)
         .tint(AppTheme.Colors.mtaBlue)
+        // Smooth "lightbulb" dim-in / dim-out when the color scheme changes.
+        // A black overlay quickly fades to ~40% opacity, the scheme flips
+        // underneath, then the overlay fades back to 0 — avoiding a hard flicker.
+        .overlay {
+            Color.black
+                .opacity(themeTransitionOpacity)
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
+                .animation(.easeInOut(duration: 0.25), value: themeTransitionOpacity)
+        }
+        .onChange(of: appTheme) { _, _ in
+            // Dim up → let the scheme change → dim back down
+            themeTransitionOpacity = 0.4
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) {
+                themeTransitionOpacity = 0
+            }
+        }
         .onAppear {
             if supabase.isAuthResolved && isAuth && hasCompletedOnboarding {
                 // Fire the full sync AFTER the first transit fetch completes.

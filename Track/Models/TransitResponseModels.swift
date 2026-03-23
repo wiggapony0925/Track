@@ -132,13 +132,21 @@ struct DirectionArrivalsResponse: Codable, Identifiable, Equatable {
                 && arrival.isScheduledOnly {
                 return false
             }
-            // Deduplicate arrivals that share the same stop + arrival time.
-            // MTA can assign slightly different trip IDs to the same physical
-            // train at the same stop, producing ghost duplicates (especially
-            // for subway where vehicle_id is unavailable).
+            // Deduplicate arrivals that share the same stop + similar arrival
+            // time.  MTA GTFS-RT often assigns slightly different trip IDs
+            // (or timestamps offset by 1-2 s) to the same physical train,
+            // producing ghost duplicates — especially for subway where
+            // vehicle_id is unavailable.
+            //
+            // Strategy: bucket arrival timestamps to 60-second windows so
+            // two predictions at 14:30:00 and 14:30:45 collapse into one.
+            // For bus (where bunching is real), use a tighter 30-second
+            // bucket.  Non-timestamped arrivals fall back to trip/id keys.
             let dedupKey: String
-            if let ts = arrival.arrivalTs {
-                dedupKey = "\(arrival.stopName)-\(ts)"
+            if let ts = arrival.arrivalTs, ts > 0 {
+                let bucketSize = arrival.mode == "bus" ? 30 : 60
+                let bucket = ts / bucketSize
+                dedupKey = "\(arrival.stopName)-B\(bucket)"
             } else if let tid = arrival.tripId, !tid.isEmpty {
                 dedupKey = "\(arrival.stopName)-\(tid)"
             } else {

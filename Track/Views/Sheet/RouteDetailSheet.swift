@@ -1662,19 +1662,42 @@ struct RouteDetailSheet: View {
 
     /// Build ordered chips array from arrivals, partitioned live-first then scheduled.
     private func buildOrderedChips(from arrivals: [NearbyTransitResponse]) -> [(arrival: NearbyTransitResponse, eta: SmartETA)] {
-        // Sort ALL chips chronologically by ETA — live and scheduled
-        // interleaved by time, matching Transit app behavior.
-        // Previously live chips were partitioned first; this caused
-        // a scheduled departure at 35 min to appear after a live
-        // bus at 50 min instead of between the 17 min and 50 min ones.
-        var chips: [(arrival: NearbyTransitResponse, eta: SmartETA)] = []
+        // Partition into live and scheduled buckets, then sort each by ETA.
+        // Live chips appear first (left) — matching Transit app behavior —
+        // then scheduled chips follow, each group sorted by time.
+        var live: [(arrival: NearbyTransitResponse, eta: SmartETA)] = []
+        var sched: [(arrival: NearbyTransitResponse, eta: SmartETA)] = []
         for arrival in arrivals {
             let eta = smartETA(for: arrival)
             guard !eta.isPastArrival else { continue }
-            chips.append((arrival, eta))
+            if arrival.isScheduledOnly {
+                sched.append((arrival, eta))
+            } else {
+                live.append((arrival, eta))
+            }
         }
-        chips.sort { $0.eta.secondsRemaining < $1.eta.secondsRemaining }
-        return chips
+        live.sort { $0.eta.secondsRemaining < $1.eta.secondsRemaining }
+        sched.sort { $0.eta.secondsRemaining < $1.eta.secondsRemaining }
+
+        // Safety cap: if more than 2 live chips show "NOW" simultaneously,
+        // only keep the first 2.  The GTFS-RT feed occasionally publishes
+        // duplicate trip entries for the same physical train with slightly
+        // different trip IDs — this prevents 4-6 ghost NOWs.
+        let nowThreshold: Double = 15 // seconds — aligned with ArrivalChipData.isNow
+        let nowCount = live.prefix(4).filter { $0.eta.secondsRemaining <= nowThreshold }.count
+        if nowCount > 2 {
+            // Keep first 2 NOW chips, skip the rest that are also NOW
+            var keptNows = 0
+            live = live.filter { pair in
+                if pair.eta.secondsRemaining <= nowThreshold {
+                    keptNows += 1
+                    return keptNows <= 2
+                }
+                return true
+            }
+        }
+
+        return live + sched
     }
 
     /// Stop-name pill shown when user has manually selected a stop.
@@ -2229,7 +2252,8 @@ struct RouteDetailSheet: View {
             stops: buildStopRowData(),
             routeColor: routeColor,
             isLoading: routeShape == nil,
-            selectedStopId: inSheetSelectedStopId
+            selectedStopId: inSheetSelectedStopId,
+            userLocation: currentLocation
         ) { stop in
             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                 if inSheetSelectedStopId == stop.id {

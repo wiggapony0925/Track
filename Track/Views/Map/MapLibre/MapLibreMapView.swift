@@ -217,17 +217,45 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         let coordinator = context.coordinator
         coordinator.parent = self   // Keep coordinator in sync with latest struct
 
-        // ── Dark mode style switching ──
+        // ── Dark mode style switching (smooth crossfade) ──
         // MapTiler provides both light (pastel) and dark (dataviz-dark) styles.
-        // When colorScheme changes, swap the base map tiles seamlessly.
+        // When colorScheme changes we snapshot the current map into a UIImageView,
+        // swap the tile URL underneath, then crossfade the snapshot out — no flicker.
         if coordinator.currentStyleIsDark != isDarkMode {
             coordinator.currentStyleIsDark = isDarkMode
             let newURL = MapLibreStyleConfig.styleURL(isDarkMode: isDarkMode)
                 ?? MapLibreStyleConfig.osmRasterStyleJSON()
             if let newURL {
+                // 1) Capture a raster snapshot of the outgoing style
+                //    using UIKit's drawHierarchy (works for any UIView).
+                let snapshotTag = 9999
+                let renderer = UIGraphicsImageRenderer(bounds: mapView.bounds)
+                let snapshot = renderer.image { _ in
+                    mapView.drawHierarchy(in: mapView.bounds, afterScreenUpdates: false)
+                }
+                let overlay = UIImageView(image: snapshot)
+                overlay.frame = mapView.bounds
+                overlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+                overlay.contentMode = .scaleAspectFill
+                overlay.tag = snapshotTag
+                mapView.addSubview(overlay)
+
+                // 2) Load the new style behind the snapshot.
                 mapView.styleURL = newURL
                 coordinator.styleLoaded = false
                 coordinator.sourcesCreated.removeAll()
+
+                // 3) Crossfade the snapshot away once the new style is on-screen.
+                //    Short delay lets MapLibre render at least the first frame.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    if let overlay = mapView.viewWithTag(snapshotTag) {
+                        UIView.animate(withDuration: 0.35, delay: 0, options: .curveEaseInOut) {
+                            overlay.alpha = 0
+                        } completion: { _ in
+                            overlay.removeFromSuperview()
+                        }
+                    }
+                }
             }
         }
 

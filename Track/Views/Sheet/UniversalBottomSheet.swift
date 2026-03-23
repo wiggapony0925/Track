@@ -37,7 +37,10 @@ struct UniversalBottomSheet<Content: View>: View {
     
     /// Content builder that maps SheetPage to actual views
     let content: (SheetPage) -> Content
-    
+
+    /// Brief dimming overlay for smooth dark ↔ light transition.
+    @State private var themeTransitionOpacity: Double = 0
+
     /// Maps the appTheme string to a ColorScheme for the sheet.
     private var colorScheme: ColorScheme? {
         switch appTheme {
@@ -70,6 +73,20 @@ struct UniversalBottomSheet<Content: View>: View {
             .presentationCornerRadius(32)
             .interactiveDismissDisabled()
             .preferredColorScheme(colorScheme)
+            // Smooth dim overlay when color scheme changes
+            .overlay {
+                Color.black
+                    .opacity(themeTransitionOpacity)
+                    .ignoresSafeArea()
+                    .allowsHitTesting(false)
+                    .animation(.easeInOut(duration: 0.25), value: themeTransitionOpacity)
+            }
+            .onChange(of: appTheme) { _, _ in
+                themeTransitionOpacity = 0.4
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) {
+                    themeTransitionOpacity = 0
+                }
+            }
     }
 }
 
