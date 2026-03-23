@@ -54,8 +54,10 @@ def _build_shapes_all_sync() -> AllSubwayLinesResponse:
     """Build the full subway system map response — CPU-bound, runs in thread pool."""
     from app.services.mapping.subway_shapes import _load_route_shapes, _load_shapes, _unpack_coords, _load_shape_stops
 
-    # Routes to skip: express/shuttle duplicates of parent lines
-    skip_variants = {"6X", "7X", "FX", "FS", "GS", "SR"}
+    # Routes to skip: express duplicates that share tracks with parent lines.
+    # FS (Franklin Shuttle) and GS (42nd St Shuttle) are NOT skipped —
+    # they are unique standalone routes with their own physical tracks.
+    skip_variants = {"6X", "7X", "FX", "SR"}
 
     overlays: list[SubwayLineOverlay] = []
     lines = [l for l in get_all_subway_lines() if l not in skip_variants]

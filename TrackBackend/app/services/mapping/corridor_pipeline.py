@@ -151,8 +151,10 @@ TRUNK_GROUPS: list[list[str]] = [
     ["J", "Z"],                    # 6: Brown — Nassau St
     ["L"],                          # 7: Gray — 14th St / Canarsie
     ["N", "Q", "R", "W"],         # 8: Yellow — Broadway BMT
-    ["S"],                          # 9: Shuttle Gray
+    ["GS"],                        # 9: 42nd St Shuttle (Grand Central ↔ Times Sq)
     ["SI"],                        # 10: Staten Island Railway
+    ["FS"],                        # 11: Franklin Ave Shuttle
+    ["H"],                         # 12: Rockaway Park Shuttle
 ]
 
 ROUTE_TO_TRUNK: dict[str, int] = {}
@@ -844,10 +846,17 @@ def _remove_self_intersections(
         best_gap = 0
         loop_start = -1
         loop_end = -1
+        n_coords = len(coords)
         for cell, fi in first_visit.items():
             li = last_visit[cell]
             gap = li - fi
             if gap > best_gap and gap >= 3:
+                # Safety: never remove more than 40% of the path —
+                # large "loops" are usually real route geometry
+                # (e.g. M train's downtown loop, N/Q through lower
+                # Manhattan) misidentified by the coarse grid.
+                if gap > n_coords * 0.40:
+                    continue
                 # Verify it's a real loop: net displacement should be
                 # small relative to the arc length of the gap.
                 sx, sy = coords[fi]
@@ -860,7 +869,8 @@ def _remove_self_intersections(
                     dy = coords[j + 1][1] - coords[j][1]
                     arc += math.sqrt(dx * dx + dy * dy)
                 # A genuine loop has net displacement < 30% of arc length
-                if arc > 0 and net / arc < 0.30:
+                # Also cap at 5 km — anything longer is real track geometry
+                if arc > 0 and net / arc < 0.30 and arc < 5000.0:
                     best_gap = gap
                     loop_start = fi
                     loop_end = li
