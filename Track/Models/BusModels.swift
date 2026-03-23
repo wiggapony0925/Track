@@ -46,6 +46,9 @@ struct BusArrival: Identifiable, Codable, Equatable {
     var directionRef: Int? = nil
     /// SIRI DestinationName: e.g. "JAMAICA via BREWER BL"
     var destinationName: String? = nil
+    /// MTA SIRI spooking detection: `false` when position is estimated from
+    /// static schedule rather than live GPS.  Show "Scheduled" instead of "Live".
+    var isRealtime: Bool = true
 
     enum CodingKeys: String, CodingKey {
         case routeId = "route_id"
@@ -59,6 +62,7 @@ struct BusArrival: Identifiable, Codable, Equatable {
         case bearing
         case directionRef = "direction_ref"
         case destinationName = "destination_name"
+        case isRealtime = "is_realtime"
     }
 }
 
@@ -96,6 +100,10 @@ struct BusVehicleResponse: Codable, Identifiable, Equatable {
     /// schedule.  The chip UI should show "Scheduled" instead of "Live".
     var isRealtime: Bool = true
 
+    /// When the GPS position was last recorded by the vehicle (RecordedAtTime).
+    /// Positions older than ~3 minutes may indicate a vehicle has lost signal.
+    var positionRecordedAt: Date? = nil
+
     /// Strips "MTA NYCT_" prefix for display.
     var displayRouteName: String {
         stripMTAPrefix(routeId)
@@ -120,6 +128,7 @@ struct BusVehicleResponse: Codable, Identifiable, Equatable {
         case expectedArrival = "expected_arrival"
         case onwardCalls = "onward_calls"
         case isRealtime = "is_realtime"
+        case positionRecordedAt = "position_recorded_at"
     }
 
     /// Returns a copy with an interpolated position for smooth map animation.

@@ -17,7 +17,7 @@ from app.config import get_feed_url, get_settings
 from app.models import ElevatorStatus, TrackArrival, TransitAlert
 from app.clients.mta_client import fetch_json, fetch_protobuf
 from app.ml.recency_model import observe_trip_updates_batch, observe_siri_delays_batch
-from app.services.transit.station_lookup import get_stop_name
+from app.services.transit.station_lookup import get_stop_info, get_stop_name
 from app.utils.geo_utils import minutes_until as _minutes_until
 from app.utils.logger import TrackLogger
 
@@ -99,6 +99,10 @@ def _parse_feed_sync(
             if resolved_name == stu.stop_id and len(stu.stop_id) > 1 and stu.stop_id[-1] in "NS":
                 resolved_name = get_stop_name(stu.stop_id[:-1])
 
+            stop_info = get_stop_info(stu.stop_id)
+            if stop_info is None and len(stu.stop_id) > 1 and stu.stop_id[-1] in "NS":
+                stop_info = get_stop_info(stu.stop_id[:-1])
+
             arrivals.append(
                 TrackArrival(
                     route_id=route,
@@ -111,6 +115,8 @@ def _parse_feed_sync(
                     status="Cancelled" if stop_cancelled else "On Time",
                     trip_id=trip.trip.trip_id,
                     is_cancelled=stop_cancelled,
+                    stop_lat=stop_info.lat if stop_info else None,
+                    stop_lon=stop_info.lon if stop_info else None,
                 )
             )
 

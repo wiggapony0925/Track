@@ -12,7 +12,7 @@ from google.transit import gtfs_realtime_pb2  # type: ignore[import-untyped]
 from app.config import get_settings
 from app.models import TrackArrival
 from app.clients.mta_client import fetch_protobuf
-from app.services.transit.station_lookup import get_stop_name
+from app.services.transit.station_lookup import get_stop_info, get_stop_name
 from app.utils.geo_utils import minutes_until as _minutes_until
 from app.utils.logger import TrackLogger
 import time as _time
@@ -119,7 +119,9 @@ def _parse_rail_feed_sync(
                     minutes_away=minutes,
                     arrival_ts=arrival_time,
                     status=status,
-                    trip_id=trip_update.trip.trip_id
+                    trip_id=trip_update.trip.trip_id,
+                    stop_lat=stop_info.lat if (stop_info := get_stop_info(stu.stop_id, agency=lookup_agency)) else None,
+                    stop_lon=stop_info.lon if stop_info else None,
                 )
             )
 

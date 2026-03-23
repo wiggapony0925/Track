@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from app.models import TrackArrival
-from app.services.transit.station_lookup import get_stop_name
+from app.services.transit.station_lookup import get_stop_info, get_stop_name
 from app.utils.logger import TrackLogger
 
 DB_PATH = Path("app/data/transit_schedule.db")
@@ -204,6 +204,8 @@ class ScheduleService:
                 arrival_ts=arrival_ts,
                 status="Scheduled",
                 trip_id=trip_id,
+                stop_lat=stop_info.lat if (stop_info := get_stop_info(s_id)) else None,
+                stop_lon=stop_info.lon if stop_info else None,
             ))
 
         return arrivals

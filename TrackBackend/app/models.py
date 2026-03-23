@@ -25,6 +25,8 @@ class TrackArrival(BaseModel):
     status: str = "On Time"
     trip_id: str | None = None
     is_cancelled: bool = False  # GTFS-RT schedule_relationship == CANCELED
+    stop_lat: float | None = None  # Latitude of the stop (from stops.txt)
+    stop_lon: float | None = None  # Longitude of the stop (from stops.txt)
 
 
 class TransitAlert(BaseModel):
