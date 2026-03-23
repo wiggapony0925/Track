@@ -186,10 +186,15 @@ final class OfflineCacheManager: ObservableObject {
         return try? JSONDecoder().decode(AllSubwayLinesResponse.self, from: data)
     }
 
-    /// Whether the subway shapes disk cache is stale (> 24 hours old) or missing.
+    /// Whether the subway shapes disk cache is stale (> 7 days old) or missing.
+    /// Subway shapes change extremely rarely (MTA service changes happen
+    /// a few times per year).  The previous 24-hour TTL forced a full
+    /// re-download every day, adding 60-90 s to cold starts when the
+    /// backend was also cold.  7 days matches Transit app's approach:
+    /// cache shapes semi-permanently, refresh opportunistically.
     var isSubwayShapesCacheStale: Bool {
         guard let ts = userDefaults.object(forKey: CacheKey.subwayShapesCachedAt) as? Date else { return true }
-        return Date().timeIntervalSince(ts) > 86_400  // 24 hours
+        return Date().timeIntervalSince(ts) > 604_800  // 7 days
     }
 
     // MARK: - Cache Commuter Rail Shapes
@@ -257,10 +262,14 @@ final class OfflineCacheManager: ObservableObject {
         return try? JSONDecoder().decode(CachedFlattenedBundle.self, from: data)
     }
 
-    /// Whether the flattened polyline cache is stale (> 24 hours) or missing.
+    /// Whether the flattened polyline cache is stale (> 7 days) or missing.
+    /// Flattened polylines are derived from subway shapes — same logic
+    /// applies: shapes barely change, so 7 days is safe.  The previous
+    /// 24-hour TTL meant the expensive decode → unify → simplify → fillet
+    /// pipeline ran on every launch after a day of not using the app.
     var isFlattenedPolylinesCacheStale: Bool {
         guard let ts = userDefaults.object(forKey: CacheKey.flattenedPolylinesCachedAt) as? Date else { return true }
-        return Date().timeIntervalSince(ts) > 86_400
+        return Date().timeIntervalSince(ts) > 604_800  // 7 days
     }
 
     private func flattenedCacheDirectory() -> URL? {

@@ -454,6 +454,11 @@ final class MapSystemViewModel {
     /// When `isBackgroundRefresh` is true, the map already has content from
     /// the disk cache — this just silently replaces it with fresh data.
     private func fetchAndRenderFromNetwork(isBackgroundRefresh: Bool) async {
+        // Wait for the backend health gate before firing shape requests.
+        // Without this, all three shape fetches (subway/LIRR/MNR) timeout
+        // or 502 during Render cold-start, wasting 60-90s of wall time.
+        await TrackAPI.waitForBackendReady()
+
         let networkStart = Date()
         do {
             // Fire all three transit fetches in parallel.
@@ -1471,8 +1476,10 @@ final class MapSystemViewModel {
     /// Returns `true` if the cache was valid and polylines were restored.
     private func loadFlattenedFromDiskCache() -> Bool {
         let cache = OfflineCacheManager.shared
-        guard !cache.isFlattenedPolylinesCacheStale,
-              let bundle = cache.getCachedFlattenedPolylines()
+        // No TTL check — polylines are physical track geometry that
+        // changes maybe 1-2× per year.  Always show whatever we have
+        // cached; the background network refresh keeps it current.
+        guard let bundle = cache.getCachedFlattenedPolylines()
         else { return false }
 
         let subway = bundle.subway.compactMap { cached -> FlattenedMapPolyline? in
@@ -1578,16 +1585,38 @@ final class MapSystemViewModel {
             return
         }
 
-        // If offline, use bundled static data
+        // ── Fast path: restore from disk cache ──
+        // Station positions rarely change (MTA updates a few times per
+        // year).  Show cached stations instantly — like Transit app does —
+        // and refresh from the network in the background.
+        if let cachedOnDisk = OfflineCacheManager.shared.getCachedStations(), !cachedOnDisk.isEmpty {
+            let restored = cachedOnDisk.map { s in
+                CachedSubwayStation(
+                    id: s.id,
+                    name: s.name,
+                    coordinate: CLLocationCoordinate2D(latitude: s.latitude, longitude: s.longitude),
+                    routes: s.routes
+                )
+            }
+            // Merge with any commuter-rail stops already loaded by loadSystemMap()
+            let commuterStops = self.cachedStations.filter { s in
+                s.routes.contains(where: { $0.hasPrefix("LIRR") || $0.hasPrefix("MNR") })
+            }
+            self.cachedStations = restored + commuterStops
+            self.consolidateStations()
+            AppLogger.shared.log("STATIONS", message: "Restored \(restored.count) stations from disk cache (instant)")
+        }
+
+        // If offline, use bundled static data (only if disk cache was empty)
         if !OfflineCacheManager.shared.isOnline {
-            loadOfflineStations()
+            if cachedStations.isEmpty || cachedStations.allSatisfy({ $0.routes.contains(where: { $0.hasPrefix("LIRR") || $0.hasPrefix("MNR") }) }) {
+                loadOfflineStations()
+            }
             return
         }
 
-        // Do not restore cached subway coordinates here. Older builds cached
-        // processed/snapped positions, which can be visually wrong once the
-        // line renderer changes. Always fetch raw GTFS station coordinates
-        // fresh when online so the dots remain authoritative.
+        // Network refresh: always fetch fresh station positions when
+        // online, but the user already sees disk-cached stations above.
         await loadRawStations()
     }
 

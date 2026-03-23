@@ -1194,6 +1194,20 @@ extension HomeViewModel {
 
         AppLogger.shared.log("TIMING", message: "refreshNearbyTransit START (T+\(AppLogger.formatDuration(launchElapsed)) since launch, silent=\(silent))")
 
+        // ── Health gate: wait for backend before firing requests ────
+        // When Render is cold-starting (after a crash/deploy/idle), the
+        // backend returns 502 for 30-90 seconds.  Without this gate, the
+        // app fires 6+ requests that all timeout (60s each), then retries
+        // them — wasting 2+ minutes on doomed requests.
+        //
+        // The health probe runs in parallel with session cache loading,
+        // so the user sees cached route cards and map polylines while we
+        // wait.  Once /health returns 200, we know the backend is ready
+        // and every subsequent request will succeed quickly.
+        //
+        // On normal launches (backend already warm), this resolves in <1ms.
+        await TrackAPI.waitForBackendReady()
+
         // ── Bus stops: fire-and-forget ──────────────────────────────
         // Bus stops are supplementary metadata (used for distance badges).
         // Fetching them through OBA can be slow during cold starts (25 s+),

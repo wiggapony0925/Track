@@ -104,19 +104,26 @@ enum TransitSessionCache {
     ///   - significantDistance: Distance in meters beyond which the cache
     ///     is considered location-stale.  Defaults to 400m (≈3 long blocks).
     ///   - maxAge: Maximum age in seconds before the cache is discarded
-    ///     entirely.  Defaults to 24 hours.  Stale route cards (even
-    ///     hours old) are far better than skeleton placeholders —
-    ///     they show the user which routes serve their area while
-    ///     fresh data loads in the background.  Transit app uses a
-    ///     similar approach: cached structure renders instantly, live
-    ///     times replace "--" within 1-3 seconds.
+    ///     entirely.  Defaults to **7 days** (604 800 s).  Stale route
+    ///     cards (even days old) are far better than skeleton
+    ///     placeholders — they show the user which routes serve their
+    ///     area while fresh data loads in the background.  Transit app
+    ///     uses the same approach: cached structure renders instantly,
+    ///     live times replace "--" within 1-3 seconds.
+    ///
+    ///     The previous 24-hour TTL caused the cache to be discarded
+    ///     after a single day of not opening the app, forcing a full
+    ///     cold-start load from the backend (60-150 s on Render).
+    ///     Route structure (which lines serve an area) barely changes
+    ///     week-to-week, so 7 days is safe.  The live-times within
+    ///     each card are always refreshed on the first network fetch.
     ///
     /// - Returns: A ``LoadResult`` with the groups and staleness flags,
     ///   or `nil` if the cache file is missing, corrupt, or too old.
     static func load(
         near currentLocation: CLLocation? = nil,
         significantDistance: Double = 400,
-        maxAge: TimeInterval = 86400
+        maxAge: TimeInterval = 604_800  // 7 days
     ) -> LoadResult? {
         guard let url = fileURL,
               FileManager.default.fileExists(atPath: url.path),

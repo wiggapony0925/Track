@@ -89,6 +89,9 @@ struct TrackAPI {
 
     // MARK: - Connection Warm-Up
 
+    /// In-flight health-gate task so multiple callers coalesce onto one probe.
+    nonisolated(unsafe) private static var _healthGateTask: Task<Bool, Never>?
+
     /// Fires a lightweight TCP/TLS warm-up to the backend host as early as
     /// possible in the app lifecycle (called from TrackApp.init).
     ///
@@ -97,16 +100,55 @@ struct TrackAPI {
     /// the connection is already open → that latency cost is paid in parallel
     /// with splash / auth checks rather than on the critical path.
     static func warmConnection() {
-        // .userInitiated guarantees the TLS handshake completes before
-        // HomeView fires its first /nearby/grouped request. The former
-        // .utility priority let iOS defer this, leaving TLS on the
-        // critical path and adding ~1-2s on cellular cold launches.
+        // Kick off the health gate probe immediately.  If the backend is
+        // warm (normal case) this resolves in <500 ms and `waitForBackendReady`
+        // returns instantly.  If the backend is cold-starting on Render,
+        // the probe keeps retrying with exponential backoff for up to 90 s
+        // — preventing the app from wasting its first refresh on requests
+        // that will all 502.
         let resolvedBase = baseURL          // read on @MainActor
-        Task.detached(priority: .userInitiated) {
-            guard let url = URL(string: resolvedBase + "/health") else { return }
-            var request = URLRequest(url: url)
-            request.timeoutInterval = 5
-            _ = try? await session.data(for: request)
+        _healthGateTask = Task.detached(priority: .userInitiated) {
+            let maxAttempts = 12  // ~90s total with backoff
+            for attempt in 0..<maxAttempts {
+                guard let url = URL(string: resolvedBase + "/health") else { return false }
+                var request = URLRequest(url: url)
+                request.timeoutInterval = 8
+                do {
+                    let (_, response) = try await session.data(for: request)
+                    if let http = response as? HTTPURLResponse, http.statusCode == 200 {
+                        serverWarmedUp = true
+                        await MainActor.run {
+                            AppLogger.shared.log("API_HEALTH", message: "Backend healthy (attempt \(attempt + 1), T+\(AppLogger.shared.timeSinceLaunchFormatted))")
+                        }
+                        return true
+                    }
+                } catch {}
+                // Exponential backoff: 1s, 2s, 4s, 8s, 8s, 8s, ...
+                let delay = min(pow(2.0, Double(attempt)), 8.0)
+                try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            }
+            await MainActor.run {
+                AppLogger.shared.log("API_HEALTH", message: "⚠️ Backend not healthy after 90s — proceeding anyway")
+            }
+            return false
+        }
+    }
+
+    /// Waits for the backend to become healthy before allowing the first
+    /// network refresh.  Returns immediately if the backend is already warm
+    /// or if no health probe is in flight.
+    ///
+    /// Call this from `HomeViewModel.refresh()` before firing grouped/shapes
+    /// requests.  When the backend is warm (99% of launches), this resolves
+    /// in <1 ms.  When Render is cold-starting, this blocks only the first
+    /// refresh — the UI still shows cached route cards and map polylines
+    /// from the session/disk cache while waiting.
+    static func waitForBackendReady() async {
+        // Fast path: already warm from a previous session or health probe
+        if serverWarmedUp { return }
+        // Wait for the in-flight health probe (if any)
+        if let task = _healthGateTask {
+            _ = await task.value
         }
     }
 
