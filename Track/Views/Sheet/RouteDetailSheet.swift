@@ -73,6 +73,10 @@ struct RouteDetailSheet: View {
     /// Active elevator/escalator outages — used to badge stops with accessibility warnings.
     var elevatorOutages: [ElevatorStatus] = []
 
+    /// Current weather snapshot for the weather chip in the header.
+    /// Provided by `WeatherService.shared` via the ViewModel.
+    var weatherSnapshot: WeatherSnapshot? = nil
+
     // MARK: - Debug log dedup keys (prevent computed-property spam)
     // Computed properties like `nearestStopArrivals` re-evaluate on every
     // SwiftUI body pass (~60 Hz).  These static keys ensure each diagnostic
@@ -212,6 +216,7 @@ struct RouteDetailSheet: View {
         smartETAProvider: ((NearbyTransitResponse) -> SmartETA)? = nil,
         liveVehicleCount: Int = 0,
         elevatorOutages: [ElevatorStatus] = [],
+        weatherSnapshot: WeatherSnapshot? = nil,
         initialTab: RouteDetailTab? = nil,
         isSheetExpanded: Bool = false,
         is3DMode: Binding<Bool> = .constant(false),
@@ -243,6 +248,7 @@ struct RouteDetailSheet: View {
         self.smartETAProvider = smartETAProvider
         self.liveVehicleCount = liveVehicleCount
         self.elevatorOutages = elevatorOutages
+        self.weatherSnapshot = weatherSnapshot
         self._selectedTab = State(initialValue: initialTab ?? .stops)
         self.onTrack = onTrack
         self.isTracking = isTracking
@@ -715,7 +721,14 @@ struct RouteDetailSheet: View {
                             .clipShape(Capsule())
                             .shimmer()
                     }
+
+                    // Inline weather indicator
+                    if let weather = weatherSnapshot {
+                        WeatherChipView(snapshot: weather, style: .standard)
+                            .transition(.opacity.combined(with: .scale(scale: 0.8)))
+                    }
                 }
+                .animation(.easeInOut(duration: 0.3), value: weatherSnapshot != nil)
             }
 
             Spacer()

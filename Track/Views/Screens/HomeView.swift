@@ -524,6 +524,7 @@ struct HomeView: View {
                 smartETAProvider: { viewModel.smartETA(for: $0) },
                 liveVehicleCount: vehicleCount,
                 elevatorOutages: viewModel.elevatorOutages,
+                weatherSnapshot: viewModel.weatherSnapshot,
                 initialTab: initialTab,
                 isSheetExpanded: sheetDetent == .large,
                 is3DMode: $is3DMode,

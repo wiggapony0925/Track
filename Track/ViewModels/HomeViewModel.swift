@@ -628,6 +628,12 @@ final class HomeViewModel {
     /// so the ViewModel can resolve pin-vs-GPS without requiring a parameter.
     var lastKnownUserLocation: CLLocation?
 
+    /// Current weather snapshot from WeatherKit for UI display.
+    /// Updated on each refresh when location is available.
+    var weatherSnapshot: WeatherSnapshot? {
+        WeatherService.shared.current
+    }
+
     // Walking route to the nearest station (forwarded from goMode)
     /// Cancelable task for directional split rebuild — debounces rapid GPS
     /// updates so the O(n×m) point-search only runs when location settles.
@@ -1810,6 +1816,8 @@ final class HomeViewModel {
         // Keep the raw GPS location up-to-date so `referenceLocation` can
         // resolve pin vs GPS without needing a parameter at call sites.
         if let location { lastKnownUserLocation = location }
+        // Update weather in the background (WeatherService caches for 10 min)
+        if let location { WeatherService.shared.update(for: location) }
         let loc = effectiveLocation(userLocation: location)
 
         // Guard: if a refresh is already in-flight, don't stack another.

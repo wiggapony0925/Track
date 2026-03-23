@@ -40,6 +40,9 @@ app.include_router(bus.router)
 app.include_router(nearby.router)
 app.include_router(predict.router)
 
+from app.routers import weather
+app.include_router(weather.router)
+
 # ── Prometheus metrics ────────────────────────────────────────────────────
 # Instruments all HTTP endpoints and exposes GET /metrics for scraping.
 setup_metrics(app)

@@ -1,0 +1,105 @@
+#
+# weather.py
+# TrackBackend
+#
+# Lightweight endpoint that exposes the cached Open-Meteo weather for the
+# iOS app to use as a fallback when WeatherKit is unavailable (e.g. in the
+# Simulator where Apple's JWT authenticator fails).
+#
+# Returns temperature, WMO code, SF Symbol name, condition description, and
+# the delay-model category ("clear" / "rain" / "snow").
+#
+
+from __future__ import annotations
+
+from fastapi import APIRouter, Query
+
+from app.clients.weather_client import get_current_weather, get_cached_weather_details
+
+router = APIRouter(tags=["weather"])
+
+
+# ── WMO code → SF Symbol mapping ─────────────────────────────────────────
+# Maps Open-Meteo WMO weather interpretation codes to Apple SF Symbol names.
+# These are the same multicolor symbols WeatherKit returns on real devices.
+# Full WMO table: https://open-meteo.com/en/docs
+_WMO_TO_SYMBOL: dict[int, tuple[str, str]] = {
+    # (SF Symbol name, human-readable description)
+    0:  ("sun.max.fill", "Clear sky"),
+    1:  ("sun.min.fill", "Mainly clear"),
+    2:  ("cloud.sun.fill", "Partly cloudy"),
+    3:  ("cloud.fill", "Overcast"),
+    45: ("cloud.fog.fill", "Fog"),
+    48: ("cloud.fog.fill", "Depositing rime fog"),
+    51: ("cloud.drizzle.fill", "Light drizzle"),
+    53: ("cloud.drizzle.fill", "Moderate drizzle"),
+    55: ("cloud.drizzle.fill", "Dense drizzle"),
+    56: ("cloud.sleet.fill", "Light freezing drizzle"),
+    57: ("cloud.sleet.fill", "Dense freezing drizzle"),
+    61: ("cloud.rain.fill", "Slight rain"),
+    63: ("cloud.rain.fill", "Moderate rain"),
+    65: ("cloud.heavyrain.fill", "Heavy rain"),
+    66: ("cloud.sleet.fill", "Light freezing rain"),
+    67: ("cloud.sleet.fill", "Heavy freezing rain"),
+    71: ("cloud.snow.fill", "Slight snow fall"),
+    73: ("cloud.snow.fill", "Moderate snow fall"),
+    75: ("cloud.snow.fill", "Heavy snow fall"),
+    77: ("cloud.snow.fill", "Snow grains"),
+    80: ("cloud.rain.fill", "Slight rain showers"),
+    81: ("cloud.rain.fill", "Moderate rain showers"),
+    82: ("cloud.heavyrain.fill", "Violent rain showers"),
+    85: ("cloud.snow.fill", "Slight snow showers"),
+    86: ("cloud.snow.fill", "Heavy snow showers"),
+    95: ("cloud.bolt.rain.fill", "Thunderstorm"),
+    96: ("cloud.bolt.rain.fill", "Thunderstorm with slight hail"),
+    99: ("cloud.bolt.rain.fill", "Thunderstorm with heavy hail"),
+}
+
+_DEFAULT_SYMBOL = ("cloud.fill", "Unknown")
+
+
+@router.get("/weather")
+async def get_weather(
+    lat: float = Query(40.7128, description="Latitude"),
+    lon: float = Query(-74.006, description="Longitude"),
+) -> dict:
+    """Return current weather conditions for the iOS weather chip.
+
+    Serves as a fallback data source when WeatherKit is unavailable
+    (e.g. iOS Simulator, missing entitlement, rate limit).
+
+    Response shape matches what WeatherService.swift needs to build
+    a WeatherSnapshot.
+    """
+    # Trigger a fetch (uses 5-min cache internally)
+    category = await get_current_weather(lat=lat, lon=lon)
+    details = get_cached_weather_details()
+
+    if details is None:
+        # Never fetched — return a minimal response
+        return {
+            "temperature_c": None,
+            "temperature_f": None,
+            "wmo_code": 0,
+            "symbol": "sun.max.fill",
+            "description": "Clear sky",
+            "category": "clear",
+            "windspeed_kmh": None,
+        }
+
+    wmo_code = details.get("wmo_code", 0)
+    temp_c = details.get("temperature_c")
+    temp_f = round(temp_c * 9 / 5 + 32) if temp_c is not None else None
+    windspeed = details.get("windspeed_kmh")
+
+    symbol, description = _WMO_TO_SYMBOL.get(wmo_code, _DEFAULT_SYMBOL)
+
+    return {
+        "temperature_c": temp_c,
+        "temperature_f": temp_f,
+        "wmo_code": wmo_code,
+        "symbol": symbol,
+        "description": description,
+        "category": category,
+        "windspeed_kmh": windspeed,
+    }

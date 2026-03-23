@@ -10,5 +10,7 @@
 	<array>
 		<string>group.JFMCAPITALGROUP.Track</string>
 	</array>
+	<key>com.apple.developer.weatherkit</key>
+	<true/>
 </dict>
 </plist>
