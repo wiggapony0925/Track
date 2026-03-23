@@ -248,14 +248,6 @@ struct GroupedNearbyTransitResponse: Codable, Identifiable, Equatable {
         return live.map(\.minutesAway).min() ?? 99
     }
 
-    /// The name of the direction (destination) for the soonest live arrival.
-    var soonestDirectionName: String? {
-        let all = directions.flatMap { dir in 
-            dir.liveArrivals.map { (dir.direction, $0.minutesAway) }
-        }
-        return all.min(by: { $0.1 < $1.1 })?.0
-    }
-
     /// True when at least one direction has a non-placeholder arrival.
     /// Placeholder-only routes (e.g. QM16 with all 99-min stubs) return false
     /// and should be filtered from the home dashboard.

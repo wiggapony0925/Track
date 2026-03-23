@@ -80,7 +80,7 @@ struct BusArrivalRow: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
 
-                if arrival.status == "Scheduled" {
+                if arrival.status == "Scheduled" || !arrival.isRealtime {
                     Image(systemName: "clock")
                         .font(.system(size: 10, weight: .bold))
                         .foregroundColor(AppTheme.Colors.textSecondary)

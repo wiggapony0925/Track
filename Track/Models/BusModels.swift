@@ -104,11 +104,6 @@ struct BusVehicleResponse: Codable, Identifiable, Equatable {
     /// Positions older than ~3 minutes may indicate a vehicle has lost signal.
     var positionRecordedAt: Date? = nil
 
-    /// Strips "MTA NYCT_" prefix for display.
-    var displayRouteName: String {
-        stripMTAPrefix(routeId)
-    }
-
     /// Minutes until arrival at next stop, or nil if unavailable.
     /// Uses ceil() to match ArrivalETAEngine.minutesRemaining and row countdowns.
     var minutesAway: Int? {

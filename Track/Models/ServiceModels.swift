@@ -93,6 +93,16 @@ struct TransitAlert: Identifiable, Codable {
 // MARK: - Filtering & Sorting
 
 extension Array where Element == TransitAlert {
+    /// Drops alerts whose `activePeriodEnd` has already passed.
+    /// Alerts without an expiry are kept (they're considered indefinite).
+    func excludingExpired() -> [TransitAlert] {
+        let now = Int(Date().timeIntervalSince1970)
+        return filter { alert in
+            guard let end = alert.activePeriodEnd else { return true }
+            return end > now
+        }
+    }
+
     /// Filter alerts by the selected transport mode.
     /// The `.nearby` mode returns all alerts; specific modes return only matching alerts.
     func filtered(for mode: TransportMode) -> [TransitAlert] {

@@ -59,6 +59,10 @@ struct MapLibreVehicleOverlay: View {
         ForEach(busVehicles) { vehicle in
             let coord: CLLocationCoordinate2D = CLLocationCoordinate2D(latitude: vehicle.lat, longitude: vehicle.lon)
             let isHighlighted: Bool = tappedVehicleId == vehicle.vehicleId
+            let isStale: Bool = {
+                guard let recorded = vehicle.positionRecordedAt else { return false }
+                return Date().timeIntervalSince(recorded) > 120 // >2 min = stale GPS
+            }()
             if let point: CGPoint = projectToScreen(coord, mapView: mapView) {
                 VehicleMarkerContent(
                     icon: TransportMode.bus.icon,
@@ -67,6 +71,7 @@ struct MapLibreVehicleOverlay: View {
                 ) {
                     toggleVehicle(vehicle.vehicleId)
                 }
+                .opacity(isStale ? 0.45 : 1.0)
                 .position(point)
             }
         }

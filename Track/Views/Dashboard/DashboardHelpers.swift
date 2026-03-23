@@ -93,6 +93,11 @@ struct ElevatorOutagesSection: View {
                                     .font(.custom("Helvetica", size: 12))
                                     .foregroundColor(AppTheme.Colors.textSecondary)
                                     .lineLimit(2)
+                                if let since = outage.outageSince, !since.isEmpty {
+                                    Text("Since \(since)")
+                                        .font(.custom("Helvetica", size: 10))
+                                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
+                                }
                             }
                             
                             Spacer(minLength: 0)

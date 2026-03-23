@@ -1240,7 +1240,7 @@ extension HomeViewModel {
                     let alerts = try await alertsTask
                     let alertsElapsed = Date().timeIntervalSince(globalStart)
                     AppLogger.shared.log("TIMING", message: "  alerts → \(alerts.count) alerts in \(AppLogger.formatDuration(alertsElapsed))")
-                    self.serviceAlerts = alerts
+                    self.serviceAlerts = alerts.excludingExpired()
                     AlertNotificationManager.shared.processAlerts(alerts)
                     // Persist for instant display on next cold launch
                     GlobalFeedsCache.saveAlerts(alerts)

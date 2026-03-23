@@ -454,6 +454,20 @@ struct ServiceAlertRow: View {
                             .font(.custom("Helvetica", size: 10))
                             .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
                         }
+
+                        if let end = alert.activePeriodEnd {
+                            let expiry = Date(timeIntervalSince1970: TimeInterval(end))
+                            if expiry > Date() {
+                                HStack(spacing: 2) {
+                                    Image(systemName: "clock.badge.xmark")
+                                        .font(.system(size: 9, weight: .medium))
+                                    Text("Expires")
+                                    Text(expiry, style: .relative)
+                                }
+                                .font(.custom("Helvetica", size: 10))
+                                .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.55))
+                            }
+                        }
                     }
                     .padding(.top, 2)
                 }
