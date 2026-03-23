@@ -304,16 +304,15 @@ async def _compute_and_cache_grouped(
     alert_index = await _get_inline_alerts()
     grouped = _group_arrivals(flat, alert_index=alert_index)
 
-    # ── Sanitise placeholder sentinel values before serialisation ──
-    # Internal _PLACEHOLDER_MINUTES (99) is used for sorting, but must
-    # not leak to the client as a real "99 min" arrival.  Convert to
-    # minutes_away=None with status="No Data" so the iOS app can show
-    # an appropriate UI (e.g. greyed-out tab) instead of "99 min".
+    # ── Mark placeholder arrivals ──────────────────────────────────
+    # Placeholders keep minutes_away=99 so the iOS `isPlaceholder`
+    # guard works (`minutesAway >= 99 && arrivalTs == nil`).  We only
+    # tag status="No Data" so the client can show an appropriate UI.
+    # DO NOT set minutes_away=None — iOS decodes it as non-optional Int.
     for g in grouped:
         for d in g.directions:
             for a in d.arrivals:
                 if a.minutes_away >= _PLACEHOLDER_MINUTES and a.arrival_ts is None:
-                    a.minutes_away = None
                     a.status = "No Data"
 
     # Pre-serialise so cache hits return raw bytes (zero Pydantic overhead)
