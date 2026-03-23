@@ -635,7 +635,7 @@ async def inspect_caches(request: Request) -> dict[str, Any]:
     for k, (ts, _) in _HTTP_CACHE._cache.items():
         age = now - ts
         short_key = k.split("?")[0] if "?" in k else k
-        mta_entries[short_key[:100]] = {"age_s": round(age, 1), "fresh": age < _HTTP_CACHE.ttl}
+        mta_entries[short_key[:100]] = {"age_s": round(age, 1), "fresh": age < _HTTP_CACHE.fresh_ttl}
     mta_stats = cache_stats._stats.get("mta.feed")
 
     # ── Bus caches (_TTLCacheEntry uses monotonic timestamps) ──
@@ -704,7 +704,8 @@ async def inspect_caches(request: Request) -> dict[str, Any]:
     return {
         "mta_feed_cache": {
             "entries": len(_HTTP_CACHE._cache),
-            "ttl_s": _HTTP_CACHE.ttl,
+            "fresh_ttl_s": _HTTP_CACHE.fresh_ttl,
+            "stale_ttl_s": _HTTP_CACHE.stale_ttl,
             "max_size": _HTTP_CACHE.max_size,
             "feeds": mta_entries,
         },

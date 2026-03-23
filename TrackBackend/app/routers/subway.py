@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import math
 import time
 
@@ -29,6 +30,7 @@ from app.services.transit.station_lookup import get_nearby_stop_ids, get_stop_in
 from app.utils.logger import TrackLogger
 from app.utils.polyline_utils import decode_polyline as _decode_polyline, encode_polyline as _encode_polyline, densify_wgs84 as _densify_wgs84, simplify_polyline as _simplify_polyline
 from app.services.mapping.corridor_pipeline import apply_topological_offsets, get_processed_stops, get_trunk_polylines, ROUTE_TO_TRUNK
+from app.config import get_settings
 from app.utils.transit_utils import (
     clean_route_id,
     get_all_subway_lines,
@@ -41,21 +43,15 @@ router = APIRouter(tags=["subway"])
 # NOTE: Static path endpoints MUST be declared before the wildcard /{line_id}
 # endpoint, otherwise FastAPI would match literal segments as a line_id.
 
+# ── Response-level cache for /subway/shapes/all ──
+# The pipeline + dir1 clipping is extremely CPU-heavy (60-90s cold).
+# Cache the fully-built response so only the first request pays the cost.
+_shapes_all_cache: AllSubwayLinesResponse | None = None
+_shapes_all_lock = asyncio.Lock()
 
-@router.get("/subway/shapes/all", response_model=AllSubwayLinesResponse)
-async def subway_shapes_all() -> AllSubwayLinesResponse:
-    """Return polylines for ALL subway lines — the full system map.
 
-    This is called once on app launch to draw every subway line on the
-    map with the correct MTA colors.  The response is lightweight
-    (polylines + color only, no stop lists) to keep it fast.
-
-    Optimizations for the system map overlay:
-    - Express/shuttle variants (6X, 7X, FX, FS, GS) are skipped because
-      they run on the exact same tracks as their parent line.
-    - Only direction-0 shapes are returned because northbound and southbound
-      trace the same physical tracks — halving the polyline count.
-    """
+def _build_shapes_all_sync() -> AllSubwayLinesResponse:
+    """Build the full subway system map response — CPU-bound, runs in thread pool."""
     from app.services.mapping.subway_shapes import _load_route_shapes, _load_shapes, _unpack_coords, _load_shape_stops
 
     # Routes to skip: express/shuttle duplicates of parent lines
@@ -291,6 +287,30 @@ async def subway_shapes_all() -> AllSubwayLinesResponse:
     return AllSubwayLinesResponse(lines=overlays, trunk_polylines=trunk_polylines)
 
 
+@router.get("/subway/shapes/all", response_model=AllSubwayLinesResponse)
+async def subway_shapes_all() -> AllSubwayLinesResponse:
+    """Return polylines for ALL subway lines — the full system map.
+
+    The actual computation is CPU-heavy (corridor pipeline + dir1 clipping)
+    so it runs in a thread pool via ``run_in_executor`` and the result is
+    cached. Subsequent requests return instantly from cache.
+    """
+    global _shapes_all_cache
+
+    if _shapes_all_cache is not None:
+        return _shapes_all_cache
+
+    async with _shapes_all_lock:
+        # Double-check after acquiring lock (another request may have built it)
+        if _shapes_all_cache is not None:
+            return _shapes_all_cache
+
+        loop = asyncio.get_running_loop()
+        result = await loop.run_in_executor(None, _build_shapes_all_sync)
+        _shapes_all_cache = result
+        return result
+
+
 @router.get("/subway/stations/all", response_model=AllSubwayStationsResponse)
 async def subway_stations_all() -> AllSubwayStationsResponse:
     """Return all unique subway stations with the lines that serve them.
@@ -441,13 +461,26 @@ async def subway_arrivals(line_id: str, response: Response) -> list[TrackArrival
             detail=f"Unknown subway line: {line_id}",
         )
     try:
+        settings = get_settings()
+        max_minutes = settings.app_settings.max_arrival_minutes
+        max_results = settings.app_settings.max_arrivals_per_line
+
         arrivals = await get_arrivals_for_line(clean_id)
-        # Filter out stale arrivals (already at station or in the past)
         now = int(time.time())
-        fresh = [a for a in arrivals if a.arrival_ts and a.arrival_ts > now]
+        # Filter to: (1) this route only, (2) future, (3) within time horizon
+        fresh = [
+            a for a in arrivals
+            if a.route_id == clean_id
+            and a.arrival_ts
+            and a.arrival_ts > now
+            and (a.arrival_ts - now) <= max_minutes * 60
+        ]
         # Recalculate minutes_away from the current time
         for a in fresh:
             a.minutes_away = max(0, (a.arrival_ts - now) // 60)
+        # Sort by soonest first, then cap total count
+        fresh.sort(key=lambda a: a.arrival_ts)
+        fresh = fresh[:max_results]
         return fresh
     except Exception as exc:
         TrackLogger.warning(

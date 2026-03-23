@@ -42,6 +42,11 @@ class AppSettings(BaseModel):
     http_retry_delay_seconds: float = 1.0  # Delay between retries
     show_ghost_trains: bool = False  # If True, show trains with projected positions even if data is missing
     simulation_easing_enabled: bool = True  # If True, clients should use physics-based interpolation
+    max_arrival_minutes: int = 60  # Max minutes into the future to include in subway arrivals
+    max_arrivals_per_line: int = 200  # Cap on total arrivals returned per subway line
+    placeholder_minutes: int = 99  # Sentinel value for placeholder arrivals (sorts to bottom)
+    max_schedule_per_dormant: int = 10  # Max scheduled departures injected per dormant bus route
+    nearby_compute_timeout_seconds: int = 45  # Timeout (sec) for /nearby/grouped data collection
     # Note: Supabase credentials should be set via environment variables:
     # SUPABASE_URL, SUPABASE_SERVICE_KEY
 

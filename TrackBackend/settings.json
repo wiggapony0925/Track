@@ -12,7 +12,12 @@
     "http_max_retries": 2,
     "http_retry_delay_seconds": 1.0,
     "show_ghost_trains": false,
-    "simulation_easing_enabled": true
+    "simulation_easing_enabled": true,
+    "max_arrival_minutes": 60,
+    "max_arrivals_per_line": 200,
+    "placeholder_minutes": 99,
+    "max_schedule_per_dormant": 10,
+    "nearby_compute_timeout_seconds": 45
   },
   "cache": {
     "mta_feed_ttl": 12.0,

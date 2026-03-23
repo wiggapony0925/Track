@@ -1042,21 +1042,30 @@ async def _fetch_routes_uncached() -> list[BusRoute]:
     seen_ids: set[str] = set()
     results: list[BusRoute] = []
 
-    for path in agency_paths:
+    # Fetch all agencies concurrently (was sequential → could exceed Render 60s timeout)
+    async def _fetch_one_agency(path: str) -> list[dict[str, Any]]:
         url = settings.urls.bus_oba_base + path
         try:
             data = await _fetch_bus_json(url, params)
+            return (
+                data.get("data", {}).get("list", [])
+                if isinstance(data, dict)
+                else []
+            )
         except Exception as exc:
             TrackLogger.warning(f"Failed to fetch routes from {path}: {exc}", tag="BUS")
+            return []
+
+    agency_results = await asyncio.gather(
+        *[_fetch_one_agency(p) for p in agency_paths],
+        return_exceptions=True,
+    )
+
+    for agency_data in agency_results:
+        if isinstance(agency_data, BaseException):
+            TrackLogger.warning(f"Agency routes fetch exception: {agency_data}", tag="BUS")
             continue
-
-        routes_data: list[dict[str, Any]] = (
-            data.get("data", {}).get("list", [])
-            if isinstance(data, dict)
-            else []
-        )
-
-        for r in routes_data:
+        for r in agency_data:
             rid = r.get("id", "")
             if rid in seen_ids:
                 continue

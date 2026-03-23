@@ -66,12 +66,9 @@ import math as _math
 # Default bus color (MTA blue) — used when bus routes don't provide one
 _BUS_DEFAULT_COLOR = "#0039A6"
 
-# Placeholder minutes_away value — sorts to the bottom within its distance tier
-_PLACEHOLDER_MINUTES = 99
-
-# Max scheduled departures to inject per dormant route (keeps the card concise
-# while still populating the Departures board in the route detail sheet)
-_MAX_SCHEDULE_PER_DORMANT = 10
+# Load tunable constants from settings.json → app_settings
+_PLACEHOLDER_MINUTES: int = get_settings().app_settings.placeholder_minutes
+_MAX_SCHEDULE_PER_DORMANT: int = get_settings().app_settings.max_schedule_per_dormant
 
 _BUS_STATIC_GTFS_ROOT = Path(__file__).resolve().parent.parent / "data" / "bus"
 
@@ -280,7 +277,7 @@ def _describe_exception(exc: BaseException) -> str:
 # blocking a Gunicorn worker indefinitely.  45 s is generous enough
 # for a cold-cache fan-out (7 subway + bus + 2 rail) but short enough
 # that the worker is freed before the iOS 60 s resource timeout.
-_NEARBY_COMPUTE_TIMEOUT = 45
+_NEARBY_COMPUTE_TIMEOUT: int = get_settings().app_settings.nearby_compute_timeout_seconds
 
 
 async def _compute_and_cache_grouped(
@@ -306,6 +303,18 @@ async def _compute_and_cache_grouped(
         flat = []  # Return empty rather than hang forever
     alert_index = await _get_inline_alerts()
     grouped = _group_arrivals(flat, alert_index=alert_index)
+
+    # ── Sanitise placeholder sentinel values before serialisation ──
+    # Internal _PLACEHOLDER_MINUTES (99) is used for sorting, but must
+    # not leak to the client as a real "99 min" arrival.  Convert to
+    # minutes_away=None with status="No Data" so the iOS app can show
+    # an appropriate UI (e.g. greyed-out tab) instead of "99 min".
+    for g in grouped:
+        for d in g.directions:
+            for a in d.arrivals:
+                if a.minutes_away >= _PLACEHOLDER_MINUTES and a.arrival_ts is None:
+                    a.minutes_away = None
+                    a.status = "No Data"
 
     # Pre-serialise so cache hits return raw bytes (zero Pydantic overhead)
     json_bytes = _grouped_ta.dump_json(grouped)
