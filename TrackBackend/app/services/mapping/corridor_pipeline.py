@@ -59,10 +59,10 @@ from app.utils.polyline_utils import decode_polyline, encode_polyline
 LANE_WIDTH: float = 40.0
 
 # Two trunk paths closer than this are considered to share a corridor.
-# 25 m is tight enough to exclude adjacent streets (Roosevelt Ave vs
-# Queens Blvd = ~30-50 m apart) while catching true shared tunnels where
-# GPS traces of different trunks run within ~10 m of each other.
-CORRIDOR_DETECT_DIST: float = 25.0
+# 35 m catches true shared tunnels (GPS traces within ~10-30 m) while
+# still excluding most adjacent streets.  CPW/6th-Ave A vs D shapes
+# measured at ~28-32 m apart — the previous 25 m threshold missed them.
+CORRIDOR_DETECT_DIST: float = 35.0
 
 # Minimum |dot product| of travel directions for two trunk paths to be
 # considered parallel.  cos(45°) ≈ 0.707.  Tightened from 0.574 to
@@ -100,7 +100,10 @@ DESPIKE_MAX_EXCURSION: float = 0.6
 MIN_PATH_LENGTH: float = 50.0
 
 # Maximum gap between endpoint of two segments for merge (meters).
-MERGE_GAP_M: float = 50.0
+# Increased from 50 → 100 m to bridge coverage gaps in dense junctions
+# (e.g. 47-50 St Rockefeller Center where GTFS shape coordinates for
+# different BDFM routes can have small position offsets between them).
+MERGE_GAP_M: float = 100.0
 
 # Maximum distance for snapping a stop onto an offset path (meters).
 STOP_SNAP_DIST: float = 150.0
@@ -129,8 +132,9 @@ ARC_MAX_POINTS: int = 8
 
 # Douglas-Peucker tolerance (meters) for post-offset simplification.
 # Removes redundant vertices added by densification + arc subdivision
-# while preserving the smooth curve shape.
-RDP_TOLERANCE: float = 2.0
+# while preserving the smooth curve shape.  Reduced from 2.0 → 1.5 m
+# to retain more detail at sharp bends (e.g. Columbus Circle, DeKalb).
+RDP_TOLERANCE: float = 1.5
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -676,12 +680,19 @@ def _unify_via_grid(
             # even if it runs nearby (e.g. Lefferts Blvd A train spur
             # parallel to Far Rockaway within 250 m).
             r_mid = (r_start + r_end) // 2
+            run_len = r_end - r_start + 1
             all_near = (_is_near(*coords[r_start]) and
                         _is_near(*coords[r_mid]) and
                         _is_near(*coords[r_end]))
             if all_near:
                 # Additional check: does the run diverge in direction?
-                if not _run_diverges_from_trunk(coords, r_start, r_end, trunk_baseline):
+                # Only reject as a corridor variant if the run is long
+                # enough (≥ 20 vertices) to represent genuine parallel
+                # express/local service.  Short near-runs (< 20 pts)
+                # are more likely coverage gaps in the trunk grid —
+                # e.g. the missing BDFM segment before 47-50 St
+                # Rockefeller Center — and should be kept.
+                if run_len >= 20 and not _run_diverges_from_trunk(coords, r_start, r_end, trunk_baseline):
                     continue  # corridor variant — skip
 
             # Extend into covered zone using distance-based approach.
