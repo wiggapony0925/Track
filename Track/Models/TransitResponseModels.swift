@@ -21,7 +21,10 @@ struct NearbyTransitResponse: Codable, Identifiable, Equatable {
     let stopName: String
     let direction: String
     let destination: String?
-    let minutesAway: Int
+    /// Minutes until arrival.  Defaults to `99` (placeholder sentinel)
+    /// when the backend sends `null` — e.g. direction stubs with no
+    /// live data.  The `isPlaceholder` guard catches these.
+    var minutesAway: Int = 99
     let status: String
     let mode: String
     let stopLat: Double?

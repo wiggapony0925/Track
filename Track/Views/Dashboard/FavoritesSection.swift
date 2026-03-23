@@ -293,6 +293,15 @@ struct FavoriteCard: View {
         } ?? 0
     }
 
+    /// Walking distance from user to the favorite's saved stop.
+    private var walkingDistanceMeters: Double? {
+        guard let loc = userLocation,
+              let lat = favorite.stopLat,
+              let lon = favorite.stopLon else { return nil }
+        let stopLoc = CLLocation(latitude: lat, longitude: lon)
+        return loc.distance(from: stopLoc)
+    }
+
     // MARK: Body
 
     var body: some View {
@@ -341,6 +350,11 @@ struct FavoriteCard: View {
                         .foregroundColor(routeColor.opacity(0.8))
                         .lineLimit(1)
                 }
+                if let dist = walkingDistanceMeters {
+                    Text(formatWalkingDistance(dist, suffix: "walk"))
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
+                }
             }
 
             Spacer()
@@ -363,20 +377,32 @@ struct FavoriteCard: View {
             TimelineView(.periodic(from: .now, by: 1.0)) { _ in
                 let eta = resolvedETA(for: arrival)
                 let isNow = eta.isAtStop || eta.secondsRemaining <= 30
-                Text(isNow ? "Now" : "\(eta.minutesRemaining) min")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(eta.minutesRemaining <= 2 ? .white : AppTheme.Colors.mtaBlue)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 4)
-                    .background {
-                        Capsule()
-                            .fill(
-                                eta.minutesRemaining <= 2
-                                    ? AnyShapeStyle(AppTheme.Colors.alertRed)
-                                    : AnyShapeStyle(AppTheme.Gradients.accentSurface)
-                            )
+                HStack(spacing: 5) {
+                    // Live / Scheduled indicator
+                    if arrival.isScheduledOnly {
+                        Image(systemName: "calendar.badge.clock")
+                            .font(.system(size: 8, weight: .semibold))
+                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
+                    } else {
+                        Circle()
+                            .fill(AppTheme.Colors.successGreen)
+                            .frame(width: 5, height: 5)
                     }
-                    .clipShape(Capsule())
+                    Text(isNow ? "Now" : "\(eta.minutesRemaining) min")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(eta.minutesRemaining <= 2 ? .white : AppTheme.Colors.mtaBlue)
+                }
+                .padding(.horizontal, 9)
+                .padding(.vertical, 4)
+                .background {
+                    Capsule()
+                        .fill(
+                            eta.minutesRemaining <= 2
+                                ? AnyShapeStyle(AppTheme.Colors.alertRed)
+                                : AnyShapeStyle(AppTheme.Gradients.accentSurface)
+                        )
+                }
+                .clipShape(Capsule())
             }
         } else {
             Text("—")
@@ -422,6 +448,13 @@ struct FavoriteCard: View {
                         .lineLimit(2)
                         .minimumScaleFactor(0.7)
                         .fixedSize(horizontal: false, vertical: true)
+                }
+
+                // Walking distance
+                if let dist = walkingDistanceMeters {
+                    Text(formatWalkingDistance(dist, suffix: "walk"))
+                        .font(.system(size: 9, weight: .semibold, design: .rounded))
+                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
                 }
             }
         }
@@ -479,6 +512,15 @@ struct FavoriteCard: View {
                             .font(.system(size: 8, weight: .bold))
                             .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.8))
                     }
+                    // Live / Scheduled label
+                    Text(arrival.isScheduledOnly ? "Sched" : "Live")
+                        .font(.system(size: 7, weight: .heavy, design: .rounded))
+                        .textCase(.uppercase)
+                        .foregroundColor(
+                            arrival.isScheduledOnly
+                                ? AppTheme.Colors.textSecondary.opacity(0.6)
+                                : AppTheme.Colors.successGreen
+                        )
                 }
             }
         } else {

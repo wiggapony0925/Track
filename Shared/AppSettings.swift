@@ -198,6 +198,14 @@ struct AppSettings {
     /// How much to bias the camera center toward the stop (0 = midpoint, 1 = stop).
     let walkingCenterBias: Double
 
+    // MARK: - Speed-Aware Thresholds
+
+    /// Speed in m/s above which the user is considered on a moving vehicle
+    /// (train, bus, car). ~15 m/s ≈ 34 mph ≈ 54 km/h.
+    /// When travelling this fast, walking routes are skipped and refresh
+    /// cooldowns are shortened.
+    static let transitSpeedThreshold: Double = 15.0
+
     // MARK: - Init
 
     private init() {

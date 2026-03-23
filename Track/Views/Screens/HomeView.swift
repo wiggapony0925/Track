@@ -909,10 +909,16 @@ struct HomeView: View {
             // significantMovementMeters (150m) for normal refreshes, but
             // if the refreshLocation was set from a stale cache, force on
             // any detectable movement (> 50m).
+            // At transit speed (train/bus), always use the lower threshold
+            // so stops refresh as the vehicle moves through them.
             let fixAge = abs(loc.timestamp.timeIntervalSinceNow)
-            let threshold: Double = fixAge < 5 
-                ? AppSettings.shared.significantMovementMeters
-                : max(50, AppSettings.shared.distanceFilterMeters)
+            let isTransitSpeed = loc.speed >= AppSettings.transitSpeedThreshold
+            let threshold: Double
+            if isTransitSpeed || fixAge >= 5 {
+                threshold = max(50, AppSettings.shared.distanceFilterMeters)
+            } else {
+                threshold = AppSettings.shared.significantMovementMeters
+            }
             guard moved >= threshold else { return }
 
             AppLogger.shared.log(
@@ -937,6 +943,9 @@ struct HomeView: View {
         guard viewModel.routeShape != nil else { return }
         // Skip when search pin is active — distances are from pin, not GPS
         guard !viewModel.isSearchPinActive else { return }
+        // At transit speed, walking directions are meaningless — the user
+        // is on a train or bus, not walking to a stop.
+        guard !locationManager.isAtTransitSpeed else { return }
         
         // Debounce: only update if moved 20m+ from last walking update
         let walkingThreshold: Double = 20
@@ -1076,15 +1085,27 @@ struct HomeView: View {
     // MARK: - Map Centering
     
     /// Centers the map on the user's current location (no route selected)
-    /// or does nothing if a route detail is already being shown.
+    /// or gently tracks the user at transit speed even when a route detail
+    /// is open, so the map follows the train.
     private func recenterOnUser() {
-        // Don't override the camera when viewing a specific route
-        guard viewModel.selectedRouteId == nil else { return }
-        
         guard let coordinate = locationManager.currentLocation?.coordinate else {
             // No location yet — reset to the .userLocation position so the map
             // will auto-center once CoreLocation delivers a fix.
-            cameraPosition = .userLocation
+            if viewModel.selectedRouteId == nil {
+                cameraPosition = .userLocation
+            }
+            return
+        }
+
+        if viewModel.selectedRouteId != nil {
+            // When viewing a route detail at transit speed, gently pan the
+            // camera so the user sees the train moving along the map.
+            // At walking speed, don't override — the route framing is more useful.
+            if locationManager.isAtTransitSpeed {
+                withAnimation(MapCameraPresets.smoothAnimation) {
+                    cameraPosition = MapCameraPresets.center(on: coordinate, is3D: is3DMode)
+                }
+            }
             return
         }
         

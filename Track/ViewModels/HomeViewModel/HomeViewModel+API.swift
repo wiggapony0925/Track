@@ -1282,7 +1282,8 @@ extension HomeViewModel {
             // drops them.  A route survives up to 3 consecutive misses.
             groupedTransit = mergeGroupedTransit(
                 new: newGrouped,
-                existing: groupedTransit
+                existing: groupedTransit,
+                isAtTransitSpeed: location.speed >= AppSettings.transitSpeedThreshold
             )
 
             // Server responded — cancel any in-flight cold-start retry chain
@@ -1458,7 +1459,8 @@ extension HomeViewModel {
     private func mergeGroupedTransit(
         new: [GroupedNearbyTransitResponse],
         existing: [GroupedNearbyTransitResponse],
-        source: String = "nearby"
+        source: String = "nearby",
+        isAtTransitSpeed: Bool = false
     ) -> [GroupedNearbyTransitResponse] {
         // Server hiccup guard: if the API returned nothing keep previous data.
         guard !new.isEmpty || existing.isEmpty else {
@@ -1527,7 +1529,9 @@ extension HomeViewModel {
         // After 3 consecutive misses the route is stale (likely the user
         // moved away) and its stop coordinates may no longer be accurate,
         // which causes displayDistanceMeters to bucket it incorrectly.
-        let maxGraceCycles = 3
+        // At transit speed (on a train/bus) routes fly by faster, so use
+        // only 1 grace cycle to evict stale data sooner.
+        let maxGraceCycles = isAtTransitSpeed ? 1 : 3
         for oldGroup in existing where !newRouteIds.contains(oldGroup.routeId.uppercased()) {
             let graceKey = oldGroup.routeId.uppercased()
             let count = (missCounts[graceKey] ?? 0) + 1
@@ -1614,7 +1618,8 @@ extension HomeViewModel {
             nearbyGroupedSubwayArrivals = mergeGroupedTransit(
                 new: filtered,
                 existing: nearbyGroupedSubwayArrivals,
-                source: "subway"
+                source: "subway",
+                isAtTransitSpeed: location.speed >= AppSettings.transitSpeedThreshold
             )
 
             // Update pulse state for station capsules with imminent arrivals
@@ -1656,7 +1661,8 @@ extension HomeViewModel {
             nearbyGroupedBusArrivals = mergeGroupedTransit(
                 new: filtered,
                 existing: nearbyGroupedBusArrivals,
-                source: "bus"
+                source: "bus",
+                isAtTransitSpeed: location.speed >= AppSettings.transitSpeedThreshold
             )
 
             updateSelectedRouteFromRefreshedData(nearbyGroupedBusArrivals)
@@ -1720,7 +1726,8 @@ extension HomeViewModel {
                 nearbyGroupedLIRRArrivals = mergeGroupedTransit(
                     new: newGrouped,
                     existing: nearbyGroupedLIRRArrivals,
-                    source: "lirr"
+                    source: "lirr",
+                    isAtTransitSpeed: loc.speed >= AppSettings.transitSpeedThreshold
                 )
                 // Inject LIRR station data so distance matching works
                 nearbyStations = Self.augmentStations(nearbyStations, from: newGrouped)
@@ -1761,7 +1768,8 @@ extension HomeViewModel {
                 nearbyGroupedMNRArrivals = mergeGroupedTransit(
                     new: newGrouped,
                     existing: nearbyGroupedMNRArrivals,
-                    source: "mnr"
+                    source: "mnr",
+                    isAtTransitSpeed: loc.speed >= AppSettings.transitSpeedThreshold
                 )
                 // Inject MNR station data so distance matching works
                 nearbyStations = Self.augmentStations(nearbyStations, from: newGrouped)

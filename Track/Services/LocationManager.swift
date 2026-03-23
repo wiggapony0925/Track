@@ -16,6 +16,18 @@ final class LocationManager: NSObject, CLLocationManagerDelegate {
     var authorizationStatus: CLAuthorizationStatus = .notDetermined
     var locationError: String?
 
+    /// Current speed in m/s. Returns 0 when unavailable or invalid
+    /// (CoreLocation reports −1 when speed can't be determined).
+    var currentSpeed: Double {
+        guard let speed = currentLocation?.speed, speed >= 0 else { return 0 }
+        return speed
+    }
+
+    /// Whether the user is currently on a moving vehicle (train, bus, car).
+    var isAtTransitSpeed: Bool {
+        currentSpeed >= AppSettings.transitSpeedThreshold
+    }
+
     override init() {
         super.init()
         manager.delegate = self
@@ -24,7 +36,9 @@ final class LocationManager: NSObject, CLLocationManagerDelegate {
         // Hint to CoreLocation that the user is on foot / using transit.
         // iOS can power-gate the GPS chip more aggressively between fixes.
         manager.activityType = .otherNavigation
-        manager.pausesLocationUpdatesAutomatically = true
+        // Never let iOS auto-pause GPS — on a smooth train ride iOS
+        // decides the user is "stationary" and stops delivering fixes.
+        manager.pausesLocationUpdatesAutomatically = false
     }
 
     func requestPermission() {

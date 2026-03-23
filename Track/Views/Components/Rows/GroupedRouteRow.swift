@@ -467,6 +467,17 @@ struct  GroupedRouteRow: View {
                         .font(.system(size: 11, weight: .bold))
                         .foregroundColor(severityColor)
 
+                    if let alertType = topAlert.alertType {
+                        Text(alertType)
+                            .font(.system(size: 10, weight: .heavy, design: .rounded))
+                            .textCase(.uppercase)
+                            .foregroundColor(severityColor)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(severityColor.opacity(0.15))
+                            .clipShape(Capsule())
+                    }
+
                     Text(topAlert.title)
                         .font(.system(size: 13, weight: .bold, design: .rounded))
                         .foregroundColor(AppTheme.Colors.textPrimary)

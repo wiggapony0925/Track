@@ -466,7 +466,7 @@ final class HomeViewModel {
     /// on the very next merge.  Routes that DO reappear have their count reset
     /// by the merge logic's "reappeared" check.
     private func expireAllGraceCounters() {
-        let evictionThreshold = 3  // must match maxGraceCycles in mergeGroupedTransit()
+        let evictionThreshold = 3  // must match maxGraceCycles in mergeGroupedTransit() (walking speed)
         let sourceArrays: [(String, [GroupedNearbyTransitResponse])] = [
             ("nearby", groupedTransit),
             ("subway", nearbyGroupedSubwayArrivals),
@@ -1626,17 +1626,26 @@ final class HomeViewModel {
             return false
         }
         let elapsed = Date().timeIntervalSince(lastDate)
-        let cooldown = TimeInterval(AppSettings.shared.refreshCooldownSeconds)
+        // At transit speed, halve the cooldown so data refreshes faster
+        // while the user is on a moving train / bus.
+        let speed = location?.speed ?? 0
+        let isTransitSpeed = speed >= AppSettings.transitSpeedThreshold
+        let baseCooldown = TimeInterval(AppSettings.shared.refreshCooldownSeconds)
+        let cooldown = isTransitSpeed ? baseCooldown * 0.5 : baseCooldown
+        let speedStr = String(format: "%.1f", speed)
         guard elapsed < cooldown else {
-            AppLogger.shared.log("REFRESH", message: "canSkipRefresh → NO (elapsed \(Int(elapsed))s ≥ cooldown \(Int(cooldown))s, mode=\(selectedMode))")
+            AppLogger.shared.log("REFRESH", message: "canSkipRefresh → NO (elapsed \(Int(elapsed))s ≥ cooldown \(Int(cooldown))s, speed=\(speedStr)m/s, mode=\(selectedMode))")
             return false
         }
         // If we have a previous fetch location, require meaningful movement
+        // At transit speed, lower the threshold so stops refresh more often.
         if let lastLoc = lastRefreshLocation, let newLoc = location {
             let dist = newLoc.distance(from: lastLoc)
-            let threshold = AppSettings.shared.significantMovementMeters
+            let threshold = isTransitSpeed
+                ? max(50, AppSettings.shared.distanceFilterMeters)
+                : AppSettings.shared.significantMovementMeters
             let skip = dist < threshold
-            AppLogger.shared.log("REFRESH", message: "canSkipRefresh → \(skip ? "YES" : "NO") (moved \(Int(dist))m, threshold \(Int(threshold))m, \(Int(elapsed))s ago, mode=\(selectedMode))")
+            AppLogger.shared.log("REFRESH", message: "canSkipRefresh → \(skip ? "YES" : "NO") (moved \(Int(dist))m, threshold \(Int(threshold))m, \(Int(elapsed))s ago, speed=\(speedStr)m/s, mode=\(selectedMode))")
             return skip
         }
         // No location to compare — trust the time guard alone

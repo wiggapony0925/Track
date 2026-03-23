@@ -444,7 +444,28 @@ struct TrackAPI {
         }
         AppLogger.shared.logRequest(method: "GET", url: url.absoluteString)
         let data = try await getWithExtendedTimeout(url: url)
-        return try decoder.decode([GroupedNearbyTransitResponse].self, from: data)
+        do {
+            return try decoder.decode([GroupedNearbyTransitResponse].self, from: data)
+        } catch let decodingError as DecodingError {
+            // Log detailed decode context so we can diagnose contract mismatches
+            let detail: String
+            switch decodingError {
+            case .keyNotFound(let key, let ctx):
+                detail = "keyNotFound '\(key.stringValue)' at \(ctx.codingPath.map(\.stringValue).joined(separator: "."))"
+            case .typeMismatch(let type, let ctx):
+                detail = "typeMismatch \(type) at \(ctx.codingPath.map(\.stringValue).joined(separator: "."))"
+            case .valueNotFound(let type, let ctx):
+                detail = "valueNotFound \(type) at \(ctx.codingPath.map(\.stringValue).joined(separator: "."))"
+            case .dataCorrupted(let ctx):
+                detail = "dataCorrupted at \(ctx.codingPath.map(\.stringValue).joined(separator: "."))"
+            @unknown default:
+                detail = decodingError.localizedDescription
+            }
+            let preview = String(data: data.prefix(500), encoding: .utf8) ?? "<binary>"
+            AppLogger.shared.logError("fetchNearbyGrouped DECODE", error: decodingError)
+            AppLogger.shared.log("DECODE", message: "Detail: \(detail) | Response preview: \(preview)")
+            throw decodingError
+        }
     }
 
     // MARK: - Bus Vehicles & Route Shapes

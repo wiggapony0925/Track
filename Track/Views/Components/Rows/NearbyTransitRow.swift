@@ -92,9 +92,11 @@ struct NearbyTransitRow: View {
             }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(
-            "\(arrival.isBus ? "Bus" : "Train") \(arrival.displayName), \(arrival.stopName), \(arrival.minutesAway) minutes away"
-        )
+        .accessibilityLabel({
+            let eta = resolvedETA(for: arrival)
+            let timeText = eta.isAtStop ? "arriving now" : "\(eta.minutesRemaining) minutes away"
+            return "\(arrival.isBus ? "Bus" : "Train") \(arrival.displayName), \(arrival.stopName), \(timeText)"
+        }())
         .accessibilityHint(
             isExpanded ? "Expanded. Shows arrival details." : "Tap to see arrival details")
     }
@@ -312,12 +314,15 @@ struct NearbyTransitRow: View {
     }
 
     private var statusPillContent: some View {
-        let pillColor: Color = transitStatusColor(for: arrival.status)
+        let pillColor: Color = arrival.isCancelled
+            ? AppTheme.Colors.alertRed
+            : transitStatusColor(for: arrival.status)
+        let label = arrival.isCancelled ? "CANCELLED" : arrival.status
         return HStack(spacing: 4) {
             Circle()
                 .fill(pillColor)
                 .frame(width: 6, height: 6)
-            Text(arrival.status)
+            Text(label)
                 .font(.custom("Helvetica-Bold", size: 11))
                 .textCase(.uppercase)
         }
@@ -330,7 +335,9 @@ struct NearbyTransitRow: View {
 
     @ViewBuilder
     private var liveIndicatorContent: some View {
-        if isLiveOnMap && !arrival.isScheduledOnly {
+        if arrival.isCancelled {
+            cancelledPill
+        } else if isLiveOnMap && !arrival.isScheduledOnly {
             liveOnMapPill
         } else if arrival.isScheduledOnly {
             scheduledPill
@@ -406,6 +413,21 @@ struct NearbyTransitRow: View {
         .padding(.horizontal, 6)
         .padding(.vertical, 3)
         .background(AppTheme.Colors.mtaBlue.opacity(0.08))
+        .clipShape(Capsule())
+    }
+
+    private var cancelledPill: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "xmark.octagon.fill")
+                .font(.system(size: 8, weight: .semibold))
+            Text("Cancelled")
+                .font(.custom("Helvetica-Bold", size: 9))
+                .textCase(.uppercase)
+        }
+        .foregroundColor(AppTheme.Colors.alertRed)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 3)
+        .background(AppTheme.Colors.alertRed.opacity(0.1))
         .clipShape(Capsule())
     }
 
