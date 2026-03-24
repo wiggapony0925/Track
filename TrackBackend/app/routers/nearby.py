@@ -647,7 +647,7 @@ async def _collect_all(
     effective_radius = radius if radius is not None else settings.app_settings.search_radius_meters
     results: list[NearbyTransitArrival] = []
 
-    _WAIT_TIMEOUT = 38  # seconds — wall-clock budget for all modes
+    _WAIT_TIMEOUT = 42  # seconds — wall-clock budget for all modes
 
     import time as _t
     _t0 = _t.perf_counter()

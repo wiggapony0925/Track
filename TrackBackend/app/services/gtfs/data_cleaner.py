@@ -38,7 +38,7 @@ from app.utils.logger import TrackLogger
 import time as _time
 
 _PARSED_CACHE: dict[str, tuple[float, list, list, int]] = {}  # url → (ts, arrivals, siri_obs, entity_count)
-_PARSED_CACHE_TTL = 60.0  # must outlive bg refresh cycle + interval (~30s)
+_PARSED_CACHE_TTL = 120.0  # 2 min — outlive request interval so subway hits warm cache
 
 
 def _parse_feed_sync(
