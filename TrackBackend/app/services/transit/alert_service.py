@@ -87,7 +87,7 @@ async def _do_refresh() -> None:
     global _boost_by_route, _last_refresh
     try:
         from app.services.gtfs.data_cleaner import get_alerts  # avoid circular at module level
-        alerts = await get_alerts()
+        alerts = await asyncio.wait_for(get_alerts(), timeout=10.0)
         new_index: dict[str, float] = {}
         for alert in alerts:
             sev = (alert.severity or "").lower()
@@ -117,6 +117,9 @@ async def _do_refresh() -> None:
             f"{warning_count} WARNING routes affected",
             tag="ML",
         )
+    except asyncio.TimeoutError:
+        TrackLogger.warning("[ALERTS] Refresh timed out after 10s — using stale index", tag="ML")
+        _last_refresh = _time.time()  # back off, don't hammer on repeated timeouts
     except Exception as exc:
         TrackLogger.warning(f"[ALERTS] Refresh failed ({exc}) — using stale index", tag="ML")
         _last_refresh = _time.time()  # back off, don't hammer on repeated errors

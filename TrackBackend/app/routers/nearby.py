@@ -289,6 +289,18 @@ async def _compute_and_cache_grouped(
 ) -> list["GroupedNearbyTransit"]:
     import time as _time
 
+    # ── Pre-load ML model in background thread ──────────────────────
+    # Without this, the first _ml_corrected() call inside
+    # _fetch_nearby_subway triggers a synchronous joblib.load() that
+    # blocks the event loop for 30+ seconds on Render cold starts,
+    # causing _collect_all to exceed its timeout.  Loading here (before
+    # the timeout wrapper) keeps the budget for actual feed fetching.
+    from app.ml.delay_model import ensure_model_loaded as _eml
+    try:
+        await asyncio.wait_for(_eml(), timeout=35.0)
+    except (asyncio.TimeoutError, Exception):
+        pass  # predict_factor falls back to heuristic internally
+
     try:
         flat = await asyncio.wait_for(
             _collect_all(lat, lon, radius, mode_filter=mode),
@@ -301,7 +313,16 @@ async def _compute_and_cache_grouped(
             tag="NEARBY",
         )
         flat = []  # Return empty rather than hang forever
-    alert_index = await _get_inline_alerts()
+
+    # ── Inline alerts (timeout-guarded) ─────────────────────────────
+    try:
+        alert_index = await asyncio.wait_for(_get_inline_alerts(), timeout=10.0)
+    except asyncio.TimeoutError:
+        TrackLogger.warning(
+            "Inline alert fetch timed out after 10s — proceeding without alerts",
+            tag="NEARBY",
+        )
+        alert_index = _inline_alert_cache  # fall back to stale cache
     grouped = _group_arrivals(flat, alert_index=alert_index)
 
     # ── Mark placeholder arrivals ──────────────────────────────────
@@ -601,18 +622,34 @@ async def _collect_all(
     effective_radius = radius if radius is not None else settings.app_settings.search_radius_meters
     results: list[NearbyTransitArrival] = []
 
+    # ── Per-mode timeout ────────────────────────────────────────────
+    # Each transit mode gets its own 30 s budget.  Modes run
+    # concurrently so the wall-clock maximum is ~30 s (not 4 × 30).
+    # If one mode is slow (e.g. bus SIRI), partial results from the
+    # other modes are still returned instead of the previous
+    # all-or-nothing 45 s timeout that yielded an empty list.
+    _PER_MODE_TIMEOUT = 30  # seconds
+
     # Build task list based on mode filter
     import time as _t
     _t0 = _t.perf_counter()
     tasks: dict[str, asyncio.Task] = {}
     if mode_filter is None or mode_filter == "subway":
-        tasks["subway"] = asyncio.ensure_future(_fetch_nearby_subway(lat, lon, effective_radius))
+        tasks["subway"] = asyncio.ensure_future(
+            asyncio.wait_for(_fetch_nearby_subway(lat, lon, effective_radius), timeout=_PER_MODE_TIMEOUT)
+        )
     if mode_filter is None or mode_filter == "bus":
-        tasks["bus"] = asyncio.ensure_future(_fetch_nearby_buses(lat, lon, effective_radius))
+        tasks["bus"] = asyncio.ensure_future(
+            asyncio.wait_for(_fetch_nearby_buses(lat, lon, effective_radius), timeout=_PER_MODE_TIMEOUT)
+        )
     if mode_filter is None or mode_filter == "lirr":
-        tasks["lirr"] = asyncio.ensure_future(_fetch_nearby_rail(lat, lon, effective_radius, "lirr"))
+        tasks["lirr"] = asyncio.ensure_future(
+            asyncio.wait_for(_fetch_nearby_rail(lat, lon, effective_radius, "lirr"), timeout=_PER_MODE_TIMEOUT)
+        )
     if mode_filter is None or mode_filter == "mnr":
-        tasks["mnr"] = asyncio.ensure_future(_fetch_nearby_rail(lat, lon, effective_radius, "mnr"))
+        tasks["mnr"] = asyncio.ensure_future(
+            asyncio.wait_for(_fetch_nearby_rail(lat, lon, effective_radius, "mnr"), timeout=_PER_MODE_TIMEOUT)
+        )
 
     task_results = await asyncio.gather(*tasks.values(), return_exceptions=True)
     _elapsed = _t.perf_counter() - _t0
@@ -622,6 +659,12 @@ async def _collect_all(
         if isinstance(result, list):
             results.extend(result)
             _mode_times[label] = f"{len(result)} items"
+        elif isinstance(result, asyncio.TimeoutError):
+            TrackLogger.warning(
+                f"{label.upper()} feed timed out after {_PER_MODE_TIMEOUT}s",
+                tag="NEARBY",
+            )
+            _mode_times[label] = f"TIMEOUT"
         elif isinstance(result, Exception):
             TrackLogger.error(
                 f"{label.upper()} feed failed: {_describe_exception(result)}"
@@ -1026,7 +1069,7 @@ async def _get_inline_alerts() -> dict[str, list["InlineAlert"]]:
 
     try:
         from app.services.gtfs.data_cleaner import get_alerts
-        raw_alerts = await get_alerts()
+        raw_alerts = await asyncio.wait_for(get_alerts(), timeout=10.0)
         index: dict[str, list[InlineAlert]] = defaultdict(list)
         for alert in raw_alerts:
             sev = (alert.severity or "").lower()
@@ -1052,6 +1095,8 @@ async def _get_inline_alerts() -> dict[str, list["InlineAlert"]]:
                     index[key].append(inline)
         _inline_alert_cache = dict(index)
         _inline_alert_ts = now
+    except asyncio.TimeoutError:
+        TrackLogger.warning("Inline alert fetch timed out after 10s — using stale cache", tag="NEARBY")
     except Exception as exc:
         TrackLogger.warning(f"Inline alert fetch failed: {exc}")
     return _inline_alert_cache
