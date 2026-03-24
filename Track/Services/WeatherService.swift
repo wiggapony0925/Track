@@ -81,7 +81,18 @@ final class WeatherService {
             return
         }
 
+        // If a fetch is already in flight for a nearby location, let it finish
+        // instead of cancelling it.  Two rapid location updates (e.g. GPS
+        // accuracy refinement) would otherwise cancel the first task mid-
+        // backend-fallback, causing a spurious "cancelled" error.
+        if isLoading,
+           let lastLoc = lastFetchLocation,
+           lastLoc.distance(from: location) < 1000 {
+            return
+        }
+
         fetchTask?.cancel()
+        lastFetchLocation = location
         fetchTask = Task {
             await fetch(location: location)
         }
@@ -189,7 +200,7 @@ final class WeatherService {
 
         do {
             var request = URLRequest(url: url)
-            request.timeoutInterval = 5
+            request.timeoutInterval = 10
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse,
                   (200...299).contains(http.statusCode) else { return nil }
