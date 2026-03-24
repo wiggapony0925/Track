@@ -478,33 +478,19 @@ final class MapSystemViewModel {
                 catch { await MainActor.run { AppLogger.shared.logError("MNR shapes failed", error: error) }; return nil }
             }()
 
-            let response = try await subwayTask
-            let subwayElapsed = Date().timeIntervalSince(networkStart)
-            AppLogger.shared.log("TIMING", message: "  subway/shapes/all → \(response.lines.count) lines in \(AppLogger.formatDuration(subwayElapsed))")
+            // ── Phase A: Commuter rail (fast — usually cache hit) ──
+            // Await LIRR/MNR first because they typically resolve in
+            // < 1 s (often from URLSession cache) while subway/shapes/all
+            // can take 20-60 s during Render cold start.  Processing
+            // commuter rail here lets the map show LIRR & MNR lines
+            // immediately instead of blocking behind the subway await.
+            let lirrResponse = await lirrTask
+            let mnrResponse = await mnrTask
 
-            // Persist to disk for next launch (fire-and-forget)
-            OfflineCacheManager.shared.cacheSubwayShapes(response)
-
-            // Pre-decode subway coordinates for the system-map overview.
-            var decoded: [CachedTransitLine] = response.lines.map { line in
-                CachedTransitLine(
-                    id: line.routeId,
-                    color: Color(hex: line.colorHex),
-                    coordinates: line.decodedPolylines,
-                    mode: .subway
-                )
-            }
-
-            // Show subway lines immediately before commuter rail arrives
-            self.cachedSystemMap = decoded
-            self.cachedTrunkPolylines = response.trunkPolylines
-            self.computeSubwayOffsets(forceReflatten: true)
-
-            // Now fold in LIRR and MNR results (already fetched in parallel)
-            // Also extract commuter-rail stops so they appear as station dots.
+            var commuterLines: [CachedTransitLine] = []
             var commuterStops: [CachedSubwayStation] = []
 
-            if let lirrResponse = await lirrTask {
+            if let lirrResponse {
                 let lirrLines: [CachedTransitLine] = lirrResponse.lines.map { line in
                     CachedTransitLine(
                         id: line.routeId,
@@ -513,10 +499,8 @@ final class MapSystemViewModel {
                         mode: .lirr
                     )
                 }
-                decoded.append(contentsOf: lirrLines)
+                commuterLines.append(contentsOf: lirrLines)
                 OfflineCacheManager.shared.cacheLIRRShapes(lirrResponse)
-
-                // Collect LIRR stops
                 for line in lirrResponse.lines {
                     for stop in line.stops {
                         commuterStops.append(CachedSubwayStation(
@@ -530,7 +514,7 @@ final class MapSystemViewModel {
                 AppLogger.shared.log("SYSTEM_MAP", message: "LIRR: \(lirrLines.count) lines loaded")
             }
 
-            if let mnrResponse = await mnrTask {
+            if let mnrResponse {
                 let mnrLines: [CachedTransitLine] = mnrResponse.lines.map { line in
                     CachedTransitLine(
                         id: line.routeId,
@@ -539,10 +523,8 @@ final class MapSystemViewModel {
                         mode: .mnr
                     )
                 }
-                decoded.append(contentsOf: mnrLines)
+                commuterLines.append(contentsOf: mnrLines)
                 OfflineCacheManager.shared.cacheMNRShapes(mnrResponse)
-
-                // Collect MNR stops
                 for line in mnrResponse.lines {
                     for stop in line.stops {
                         commuterStops.append(CachedSubwayStation(
@@ -556,51 +538,73 @@ final class MapSystemViewModel {
                 AppLogger.shared.log("SYSTEM_MAP", message: "MNR: \(mnrLines.count) lines loaded")
             }
 
-            // Merge commuter-rail stops into the station list so they
-            // appear as dots on the system map alongside subway stations.
-            if !commuterStops.isEmpty {
-                // Deduplicate by stop ID — a stop shared by multiple
-                // branches keeps all its route IDs.
-                var stopMap: [String: CachedSubwayStation] = [:]
-                for s in commuterStops {
-                    if var existing = stopMap[s.id] {
-                        let merged = Array(Set(existing.routes + s.routes)).sorted()
-                        existing = CachedSubwayStation(
-                            id: existing.id,
-                            name: existing.name,
-                            coordinate: existing.coordinate,
-                            routes: merged
-                        )
-                        stopMap[s.id] = existing
-                    } else {
-                        stopMap[s.id] = s
+            // Render commuter rail NOW — don't wait for subway.
+            // Appends to the subway polylines already visible from the
+            // flattened-cache or disk-cache loaded earlier.
+            if !commuterLines.isEmpty {
+                self.cachedSystemMap.removeAll(where: { $0.mode == .lirr || $0.mode == .mnr })
+                self.cachedSystemMap.append(contentsOf: commuterLines)
+                flattenCommuterRailPolylines()
+
+                // Merge commuter-rail stops into the station list
+                if !commuterStops.isEmpty {
+                    var stopMap: [String: CachedSubwayStation] = [:]
+                    for s in commuterStops {
+                        if var existing = stopMap[s.id] {
+                            let merged = Array(Set(existing.routes + s.routes)).sorted()
+                            existing = CachedSubwayStation(
+                                id: existing.id,
+                                name: existing.name,
+                                coordinate: existing.coordinate,
+                                routes: merged
+                            )
+                            stopMap[s.id] = existing
+                        } else {
+                            stopMap[s.id] = s
+                        }
                     }
+                    let dedupedStops = Array(stopMap.values)
+                    self.cachedStations.append(contentsOf: dedupedStops)
+                    self.consolidateStations()
+                    AppLogger.shared.log(
+                        "STATIONS",
+                        message: "Added \(dedupedStops.count) commuter-rail stops (\(commuterStops.count) raw)")
                 }
-                let dedupedStops = Array(stopMap.values)
-                self.cachedStations.append(contentsOf: dedupedStops)
-                self.consolidateStations()
-                AppLogger.shared.log(
-                    "STATIONS",
-                    message: "Added \(dedupedStops.count) commuter-rail stops (\(commuterStops.count) raw)")
+                AppLogger.shared.log("SYSTEM_MAP", message: "Commuter rail rendered (\(commuterLines.count) lines) — awaiting subway…")
             }
 
-            // Log details about what we loaded
+            // ── Phase B: Subway (may be slow during cold start) ─────
+            let response = try await subwayTask
+            let subwayElapsed = Date().timeIntervalSince(networkStart)
+            AppLogger.shared.log("TIMING", message: "  subway/shapes/all → \(response.lines.count) lines in \(AppLogger.formatDuration(subwayElapsed))")
+
+            OfflineCacheManager.shared.cacheSubwayShapes(response)
+
+            var decoded: [CachedTransitLine] = response.lines.map { line in
+                CachedTransitLine(
+                    id: line.routeId,
+                    color: Color(hex: line.colorHex),
+                    coordinates: line.decodedPolylines,
+                    mode: .subway
+                )
+            }
+            // Merge commuter rail (already processed in Phase A)
+            decoded.append(contentsOf: commuterLines)
+
+            self.cachedSystemMap = decoded
+            self.cachedTrunkPolylines = response.trunkPolylines
+            self.computeSubwayOffsets(forceReflatten: true)
+
+            // Re-flatten commuter rail after cachedSystemMap was replaced
+            if !commuterLines.isEmpty {
+                flattenCommuterRailPolylines()
+            }
+
             let subwayCount = decoded.filter { $0.mode == .subway }.count
             let lirrCount = decoded.filter { $0.mode == .lirr }.count
             let mnrCount = decoded.filter { $0.mode == .mnr }.count
             let totalBranches = decoded.reduce(0) { $0 + $1.coordinates.count }
             let totalPoints = decoded.reduce(0) { $0 + $1.coordinates.reduce(0) { $0 + $1.count } }
-
-            // Update with commuter rail additions (subway already rendered above)
-            if decoded.count > subwayCount {
-                self.cachedSystemMap = decoded
-                // Flatten commuter rail polylines now that LIRR/MNR data is
-                // in cachedSystemMap. This MUST happen here because
-                // computeSubwayOffsets() fired earlier (for subway) and its
-                // async flattening task reads cachedSystemMap before LIRR/MNR
-                // are folded in — resulting in empty commuter polylines.
-                flattenCommuterRailPolylines()
-            }
 
             let refreshTag = isBackgroundRefresh ? "(background refresh)" : ""
             AppLogger.shared.log(
@@ -610,10 +614,7 @@ final class MapSystemViewModel {
             )
 
             // ── Commuter-rail retry ─────────────────────────────────
-            // Subway succeeded but LIRR/MNR may have silently failed
-            // (they return nil instead of throwing).  Retry just the
-            // commuter-rail fetches so the map eventually gets full
-            // coverage even during backend cold start.
+            // If LIRR/MNR both failed in Phase A, schedule retries.
             if lirrCount == 0 || mnrCount == 0 {
                 let missingModes = [lirrCount == 0 ? "LIRR" : nil, mnrCount == 0 ? "MNR" : nil].compactMap { $0 }.joined(separator: "+")
                 AppLogger.shared.log("SYSTEM_MAP", message: "⚠️ Missing \(missingModes) — scheduling commuter-rail retry")
@@ -626,7 +627,7 @@ final class MapSystemViewModel {
                     var addedLines: [CachedTransitLine] = []
                     var addedStops: [CachedSubwayStation] = []
 
-                    if lirrCount == 0 || !cachedSystemMap.contains(where: { $0.mode == .lirr }) {
+                    if !cachedSystemMap.contains(where: { $0.mode == .lirr }) {
                         if let lirrResp = try? await TrackAPI.fetchAllLIRRShapes() {
                             let lines = lirrResp.lines.map { line in
                                 CachedTransitLine(id: line.routeId, color: Color(hex: line.colorHex), coordinates: line.decodedPolylines, mode: .lirr)
@@ -641,7 +642,7 @@ final class MapSystemViewModel {
                         }
                     }
 
-                    if mnrCount == 0 || !cachedSystemMap.contains(where: { $0.mode == .mnr }) {
+                    if !cachedSystemMap.contains(where: { $0.mode == .mnr }) {
                         if let mnrResp = try? await TrackAPI.fetchAllMNRShapes() {
                             let lines = mnrResp.lines.map { line in
                                 CachedTransitLine(id: line.routeId, color: Color(hex: line.colorHex), coordinates: line.decodedPolylines, mode: .mnr)
