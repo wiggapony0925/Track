@@ -608,6 +608,70 @@ final class MapSystemViewModel {
                 message:
                     "Loaded \(decoded.count) transit lines (\(subwayCount) subway, \(lirrCount) LIRR, \(mnrCount) MNR) — \(totalBranches) branches, \(totalPoints) total points \(refreshTag)"
             )
+
+            // ── Commuter-rail retry ─────────────────────────────────
+            // Subway succeeded but LIRR/MNR may have silently failed
+            // (they return nil instead of throwing).  Retry just the
+            // commuter-rail fetches so the map eventually gets full
+            // coverage even during backend cold start.
+            if lirrCount == 0 || mnrCount == 0 {
+                let missingModes = [lirrCount == 0 ? "LIRR" : nil, mnrCount == 0 ? "MNR" : nil].compactMap { $0 }.joined(separator: "+")
+                AppLogger.shared.log("SYSTEM_MAP", message: "⚠️ Missing \(missingModes) — scheduling commuter-rail retry")
+                let commuterRetryDelays: [UInt64] = [8, 25, 50]
+                for (attempt, delay) in commuterRetryDelays.enumerated() {
+                    try? await Task.sleep(nanoseconds: delay * 1_000_000_000)
+                    guard !Task.isCancelled else { return }
+                    AppLogger.shared.log("SYSTEM_MAP", message: "🔄 Commuter-rail retry \(attempt + 1)/\(commuterRetryDelays.count)…")
+
+                    var addedLines: [CachedTransitLine] = []
+                    var addedStops: [CachedSubwayStation] = []
+
+                    if lirrCount == 0 || !cachedSystemMap.contains(where: { $0.mode == .lirr }) {
+                        if let lirrResp = try? await TrackAPI.fetchAllLIRRShapes() {
+                            let lines = lirrResp.lines.map { line in
+                                CachedTransitLine(id: line.routeId, color: Color(hex: line.colorHex), coordinates: line.decodedPolylines, mode: .lirr)
+                            }
+                            addedLines.append(contentsOf: lines)
+                            OfflineCacheManager.shared.cacheLIRRShapes(lirrResp)
+                            for line in lirrResp.lines {
+                                for stop in line.stops {
+                                    addedStops.append(CachedSubwayStation(id: stop.stopId, name: stop.name, coordinate: CLLocationCoordinate2D(latitude: stop.lat, longitude: stop.lon), routes: [line.routeId]))
+                                }
+                            }
+                        }
+                    }
+
+                    if mnrCount == 0 || !cachedSystemMap.contains(where: { $0.mode == .mnr }) {
+                        if let mnrResp = try? await TrackAPI.fetchAllMNRShapes() {
+                            let lines = mnrResp.lines.map { line in
+                                CachedTransitLine(id: line.routeId, color: Color(hex: line.colorHex), coordinates: line.decodedPolylines, mode: .mnr)
+                            }
+                            addedLines.append(contentsOf: lines)
+                            OfflineCacheManager.shared.cacheMNRShapes(mnrResp)
+                            for line in mnrResp.lines {
+                                for stop in line.stops {
+                                    addedStops.append(CachedSubwayStation(id: stop.stopId, name: stop.name, coordinate: CLLocationCoordinate2D(latitude: stop.lat, longitude: stop.lon), routes: [line.routeId]))
+                                }
+                            }
+                        }
+                    }
+
+                    if !addedLines.isEmpty {
+                        self.cachedSystemMap.append(contentsOf: addedLines)
+                        if !addedStops.isEmpty {
+                            self.cachedStations.append(contentsOf: addedStops)
+                            self.consolidateStations()
+                        }
+                        flattenCommuterRailPolylines()
+                        let hasLIRR = cachedSystemMap.contains(where: { $0.mode == .lirr })
+                        let hasMNR = cachedSystemMap.contains(where: { $0.mode == .mnr })
+                        AppLogger.shared.log("SYSTEM_MAP", message: "✅ Commuter-rail retry \(attempt + 1) added \(addedLines.count) lines (LIRR: \(hasLIRR), MNR: \(hasMNR))")
+                        if hasLIRR && hasMNR { return }
+                    } else {
+                        AppLogger.shared.log("SYSTEM_MAP", message: "⚠️ Commuter-rail retry \(attempt + 1) — still no data")
+                    }
+                }
+            }
         } catch {
             AppLogger.shared.logError("loadSystemMap", error: error)
             // Fall back to offline data on error only if we don't already
