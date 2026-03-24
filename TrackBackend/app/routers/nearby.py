@@ -322,7 +322,11 @@ async def _compute_and_cache_grouped(
         oldest_key = min(_nearby_resp_cache, key=lambda k: _nearby_resp_cache[k][0])
         del _nearby_resp_cache[oldest_key]
 
-    _nearby_resp_cache[key] = (_time.time(), grouped, json_bytes)
+    # Don't cache empty results during warmup — feeds aren't ready yet
+    # and caching [] would poison subsequent requests for FRESH_TTL seconds.
+    from app.main import is_warmed_up as _is_warmed_up  # lazy to avoid circular import
+    if grouped or _is_warmed_up():
+        _nearby_resp_cache[key] = (_time.time(), grouped, json_bytes)
     return grouped
 
 
@@ -445,6 +449,21 @@ async def nearby_transit_grouped(
     (e.g. ``?mode=subway`` returns only subway groups, ``?mode=lirr`` for LIRR).
     """
     import time as _time
+
+    # ── Warmup gate ─────────────────────────────────────────────
+    # During cold start, feeds aren't cached yet so _collect_all
+    # returns empty results.  Instead of caching & serving 0 groups
+    # (which the iOS client treats as "no transit nearby"), return
+    # 503 + Retry-After so the client retries after feeds are ready.
+    from app.main import is_warmed_up as _is_warmed_up  # lazy to avoid circular import
+    if not _is_warmed_up():
+        from fastapi.responses import JSONResponse
+        TrackLogger.info("[WARMUP] /nearby/grouped → 503 (feeds not ready)", tag="WARMUP")
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "Feeds warming up"},
+            headers={"Retry-After": "5"},
+        )
 
     settings = get_settings()
     effective_radius = radius if radius is not None else settings.app_settings.search_radius_meters

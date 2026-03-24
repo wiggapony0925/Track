@@ -24,6 +24,21 @@ def _clear_caches():
     _do_clear()
 
 
+@pytest.fixture(autouse=True)
+def _pretend_warmed_up():
+    """Mark the backend as warmed-up for tests.
+
+    The /nearby/grouped endpoint now returns 503 when _warmup_complete
+    is False. In tests, feeds aren't loaded; setting this flag lets
+    endpoint tests run against mocked data without hitting the gate.
+    """
+    import app.main as _main
+    orig = _main._warmup_complete
+    _main._warmup_complete = True
+    yield
+    _main._warmup_complete = orig
+
+
 def _do_clear():
     """Best-effort cache clearing — import failures are silenced so
     the fixture never breaks a test for unrelated import reasons."""

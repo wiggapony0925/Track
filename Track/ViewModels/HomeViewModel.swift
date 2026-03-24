@@ -573,11 +573,35 @@ final class HomeViewModel {
     func refreshGlobalFeedsIfNeeded() async {
         if let last = lastGlobalFeedsDate,
            Date().timeIntervalSince(last) < 30 { return }
+        await refreshGlobalFeeds()
+    }
+
+    /// Unconditionally fetch alerts + accessibility in parallel, persist to cache.
+    /// Called directly on cold-start first load (after grouped succeeds)
+    /// and via `refreshGlobalFeedsIfNeeded()` for subsequent refreshes.
+    func refreshGlobalFeeds() async {
         lastGlobalFeedsDate = Date()
-        async let alertsTask: Void = refreshAlerts()
-        async let accessTask: [ElevatorStatus]? = { try? await TrackAPI.fetchAccessibility() }()
-        _ = await alertsTask
-        if let outages = await accessTask { elevatorOutages = outages }
+        let start = Date()
+        async let alertsTask = TrackAPI.fetchAlerts()
+        async let accessTask = TrackAPI.fetchAccessibility()
+        do {
+            let alerts = try await alertsTask
+            AppLogger.shared.log("TIMING", message: "  alerts → \(alerts.count) alerts in \(AppLogger.formatDuration(Date().timeIntervalSince(start)))")
+            self.serviceAlerts = alerts.excludingExpired()
+            AlertNotificationManager.shared.processAlerts(alerts)
+            mapSystem.updateReroutedRoutes(from: serviceAlerts)
+            GlobalFeedsCache.saveAlerts(alerts)
+        } catch {
+            AppLogger.shared.log("TIMING", message: "  alerts → FAILED (\(error.localizedDescription))")
+        }
+        do {
+            let outages = try await accessTask
+            AppLogger.shared.log("TIMING", message: "  accessibility → \(outages.count) outages in \(AppLogger.formatDuration(Date().timeIntervalSince(start)))")
+            self.elevatorOutages = outages
+            GlobalFeedsCache.saveAccessibility(outages)
+        } catch {
+            AppLogger.shared.log("TIMING", message: "  accessibility → FAILED (\(error.localizedDescription))")
+        }
     }
 
     /// Fetch alerts from the API and deliver local notifications for new ones.

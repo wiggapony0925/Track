@@ -615,6 +615,25 @@ final class MapSystemViewModel {
             if cachedSystemMap.isEmpty {
                 await loadOfflineSystemMap()
             }
+
+            // ── Retry with backoff ──────────────────────────────────
+            // The initial fetch often fails during Render cold start
+            // (502/timeout while corridor pipeline builds).  Schedule a
+            // background retry so the map eventually gets fresh polylines
+            // — even if the first attempt hit stale offline data.
+            let retryDelays: [UInt64] = [10, 30, 60] // seconds
+            for (attempt, delay) in retryDelays.enumerated() {
+                try? await Task.sleep(nanoseconds: delay * 1_000_000_000)
+                guard !Task.isCancelled else { return }
+                AppLogger.shared.log("SYSTEM_MAP", message: "🔄 Retry \(attempt + 1)/\(retryDelays.count) fetching shapes…")
+                do {
+                    await fetchAndRenderFromNetwork(isBackgroundRefresh: true)
+                    AppLogger.shared.log("SYSTEM_MAP", message: "✅ Shapes retry \(attempt + 1) succeeded")
+                    return
+                } catch {
+                    AppLogger.shared.logError("Shapes retry \(attempt + 1) failed", error: error)
+                }
+            }
         }
     }
 
