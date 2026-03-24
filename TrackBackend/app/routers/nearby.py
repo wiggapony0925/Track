@@ -647,7 +647,7 @@ async def _collect_all(
     effective_radius = radius if radius is not None else settings.app_settings.search_radius_meters
     results: list[NearbyTransitArrival] = []
 
-    _WAIT_TIMEOUT = 30  # seconds — wall-clock budget for all modes
+    _WAIT_TIMEOUT = 38  # seconds — wall-clock budget for all modes
 
     import time as _t
     _t0 = _t.perf_counter()
@@ -696,9 +696,17 @@ async def _collect_all(
         # Cancel every task that didn't finish in time
         for t in pending:
             t.cancel()
-        # Wait for cancellations to propagate (prevents zombie tasks)
+        # Wait briefly for cancellations to propagate.  Don't block
+        # indefinitely — run_in_executor threads (protobuf parsing)
+        # can't be interrupted; they'll finish in the background.
         if pending:
-            await asyncio.gather(*pending, return_exceptions=True)
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(*pending, return_exceptions=True),
+                    timeout=2.0,
+                )
+            except asyncio.TimeoutError:
+                pass  # threads will finish in background
 
     _elapsed = _t.perf_counter() - _t0
 
