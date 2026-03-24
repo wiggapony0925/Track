@@ -23,39 +23,43 @@ router = APIRouter(tags=["weather"])
 # Maps Open-Meteo WMO weather interpretation codes to Apple SF Symbol names.
 # These are the same multicolor symbols WeatherKit returns on real devices.
 # Full WMO table: https://open-meteo.com/en/docs
-_WMO_TO_SYMBOL: dict[int, tuple[str, str]] = {
-    # (SF Symbol name, human-readable description)
-    0:  ("sun.max.fill", "Clear sky"),
-    1:  ("sun.min.fill", "Mainly clear"),
-    2:  ("cloud.sun.fill", "Partly cloudy"),
-    3:  ("cloud.fill", "Overcast"),
-    45: ("cloud.fog.fill", "Fog"),
-    48: ("cloud.fog.fill", "Depositing rime fog"),
-    51: ("cloud.drizzle.fill", "Light drizzle"),
-    53: ("cloud.drizzle.fill", "Moderate drizzle"),
-    55: ("cloud.drizzle.fill", "Dense drizzle"),
-    56: ("cloud.sleet.fill", "Light freezing drizzle"),
-    57: ("cloud.sleet.fill", "Dense freezing drizzle"),
-    61: ("cloud.rain.fill", "Slight rain"),
-    63: ("cloud.rain.fill", "Moderate rain"),
-    65: ("cloud.heavyrain.fill", "Heavy rain"),
-    66: ("cloud.sleet.fill", "Light freezing rain"),
-    67: ("cloud.sleet.fill", "Heavy freezing rain"),
-    71: ("cloud.snow.fill", "Slight snow fall"),
-    73: ("cloud.snow.fill", "Moderate snow fall"),
-    75: ("cloud.snow.fill", "Heavy snow fall"),
-    77: ("cloud.snow.fill", "Snow grains"),
-    80: ("cloud.rain.fill", "Slight rain showers"),
-    81: ("cloud.rain.fill", "Moderate rain showers"),
-    82: ("cloud.heavyrain.fill", "Violent rain showers"),
-    85: ("cloud.snow.fill", "Slight snow showers"),
-    86: ("cloud.snow.fill", "Heavy snow showers"),
-    95: ("cloud.bolt.rain.fill", "Thunderstorm"),
-    96: ("cloud.bolt.rain.fill", "Thunderstorm with slight hail"),
-    99: ("cloud.bolt.rain.fill", "Thunderstorm with heavy hail"),
+#
+# Each entry: (day_symbol, night_symbol, description)
+# Night variants use moon-based symbols for clear/partly cloudy conditions;
+# precipitation and overcast symbols are the same day and night.
+_WMO_TO_SYMBOL: dict[int, tuple[str, str, str]] = {
+    # (SF Symbol day, SF Symbol night, human-readable description)
+    0:  ("sun.max.fill",         "moon.stars.fill",       "Clear sky"),
+    1:  ("sun.min.fill",         "moon.fill",             "Mainly clear"),
+    2:  ("cloud.sun.fill",       "cloud.moon.fill",       "Partly cloudy"),
+    3:  ("cloud.fill",           "cloud.fill",            "Overcast"),
+    45: ("cloud.fog.fill",       "cloud.fog.fill",        "Fog"),
+    48: ("cloud.fog.fill",       "cloud.fog.fill",        "Depositing rime fog"),
+    51: ("cloud.drizzle.fill",   "cloud.drizzle.fill",    "Light drizzle"),
+    53: ("cloud.drizzle.fill",   "cloud.drizzle.fill",    "Moderate drizzle"),
+    55: ("cloud.drizzle.fill",   "cloud.drizzle.fill",    "Dense drizzle"),
+    56: ("cloud.sleet.fill",     "cloud.sleet.fill",      "Light freezing drizzle"),
+    57: ("cloud.sleet.fill",     "cloud.sleet.fill",      "Dense freezing drizzle"),
+    61: ("cloud.rain.fill",      "cloud.rain.fill",       "Slight rain"),
+    63: ("cloud.rain.fill",      "cloud.rain.fill",       "Moderate rain"),
+    65: ("cloud.heavyrain.fill", "cloud.heavyrain.fill",  "Heavy rain"),
+    66: ("cloud.sleet.fill",     "cloud.sleet.fill",      "Light freezing rain"),
+    67: ("cloud.sleet.fill",     "cloud.sleet.fill",      "Heavy freezing rain"),
+    71: ("cloud.snow.fill",      "cloud.snow.fill",       "Slight snow fall"),
+    73: ("cloud.snow.fill",      "cloud.snow.fill",       "Moderate snow fall"),
+    75: ("cloud.snow.fill",      "cloud.snow.fill",       "Heavy snow fall"),
+    77: ("cloud.snow.fill",      "cloud.snow.fill",       "Snow grains"),
+    80: ("cloud.rain.fill",      "cloud.rain.fill",       "Slight rain showers"),
+    81: ("cloud.rain.fill",      "cloud.rain.fill",       "Moderate rain showers"),
+    82: ("cloud.heavyrain.fill", "cloud.heavyrain.fill",  "Violent rain showers"),
+    85: ("cloud.snow.fill",      "cloud.snow.fill",       "Slight snow showers"),
+    86: ("cloud.snow.fill",      "cloud.snow.fill",       "Heavy snow showers"),
+    95: ("cloud.bolt.rain.fill", "cloud.bolt.rain.fill",  "Thunderstorm"),
+    96: ("cloud.bolt.rain.fill", "cloud.bolt.rain.fill",  "Thunderstorm with slight hail"),
+    99: ("cloud.bolt.rain.fill", "cloud.bolt.rain.fill",  "Thunderstorm with heavy hail"),
 }
 
-_DEFAULT_SYMBOL = ("cloud.fill", "Unknown")
+_DEFAULT_SYMBOL = ("cloud.fill", "cloud.fill", "Unknown")
 
 
 @router.get("/weather")
@@ -80,8 +84,10 @@ async def get_weather(
     temp_c = details.get("temperature_c") if details else None
     temp_f = round(temp_c * 9 / 5 + 32) if temp_c is not None else None
     windspeed = details.get("windspeed_kmh") if details else None
+    is_day = details.get("is_day", True) if details else True
 
-    symbol, description = _WMO_TO_SYMBOL.get(wmo_code, _DEFAULT_SYMBOL)
+    day_symbol, night_symbol, description = _WMO_TO_SYMBOL.get(wmo_code, _DEFAULT_SYMBOL)
+    symbol = day_symbol if is_day else night_symbol
 
     return {
         "temperature_c": temp_c,
@@ -91,4 +97,5 @@ async def get_weather(
         "description": description,
         "category": category,
         "windspeed_kmh": windspeed,
+        "is_day": is_day,
     }

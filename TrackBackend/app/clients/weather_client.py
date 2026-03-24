@@ -99,6 +99,7 @@ async def get_current_weather(
         wmo_code = int(current.get("weathercode", 0))
         temperature = current.get("temperature")
         windspeed = current.get("windspeed")
+        is_day = bool(current.get("is_day", 1))  # Open-Meteo: 1=day, 0=night
 
         category = _wmo_to_category(wmo_code)
 
@@ -108,6 +109,7 @@ async def get_current_weather(
             "temperature_c": temperature,
             "windspeed_kmh": windspeed,
             "category": category,
+            "is_day": is_day,
         }
         _cached_at = now
         _is_negative_cache = False
@@ -139,6 +141,7 @@ async def get_current_weather(
                 "temperature_c": None,
                 "windspeed_kmh": None,
                 "category": fallback,
+                "is_day": True,
             }
         _cached_at = now
         _is_negative_cache = True
