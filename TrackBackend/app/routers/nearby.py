@@ -655,15 +655,18 @@ async def _collect_all(
     import time as _mono
     _collect_deadline = _mono.monotonic() + _WAIT_TIMEOUT
 
-    # Pre-warm alert index + weather cache ONCE so the hundreds of
-    # _ml_corrected calls inside each mode function never block on a
-    # first-call HTTP fetch (up to 10 s for alerts, 5 s for weather).
-    await _maybe_refresh_alerts()
-    from app.clients.weather_client import get_current_weather
-    await get_current_weather()
-
     # Build task dict — plain create_task, NO nested wait_for
+    # Pre-warm alert index + weather cache runs AS A TASK alongside the
+    # mode fetchers — not sequentially before them — so we don't lose
+    # 0.7–10 s of the 38 s budget on the first HTTP fetch.
+    async def _pre_warm() -> list:
+        await _maybe_refresh_alerts()
+        from app.clients.weather_client import get_current_weather
+        await get_current_weather()
+        return []  # return empty list so it blends with other results
+
     tasks: dict[str, asyncio.Task] = {}
+    tasks["_warm"] = asyncio.create_task(_pre_warm())
     if mode_filter is None or mode_filter == "subway":
         tasks["subway"] = asyncio.create_task(
             _fetch_nearby_subway(lat, lon, effective_radius, _deadline=_collect_deadline)
@@ -724,6 +727,8 @@ async def _collect_all(
     _mode_times: dict[str, str] = {}
     for task in tasks.values():
         label = task_to_label[task]
+        if label.startswith("_"):
+            continue  # skip internal helper tasks (_warm)
         if task in pending:
             _mode_times[label] = "TIMEOUT"
             TrackLogger.warning(
