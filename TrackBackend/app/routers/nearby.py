@@ -55,7 +55,7 @@ from app.services.mapping.commuter_rail_shapes import (
     get_lirr_route_color,
     get_mnr_route_color,
 )
-from app.ml.delay_model import predict_factor as _predict_factor
+from app.ml.delay_model import predict_factor as _predict_factor, predict_factor_batch as _predict_factor_batch
 from app.ml.recency_model import (
     get_weighted_error as _get_weighted_error,
     get_weighted_errors_batch as _get_weighted_errors_batch,
@@ -1557,6 +1557,9 @@ async def _fetch_nearby_subway(
     success_count = 0
     total_raw = 0
     total_kept = 0
+
+    # Phase 1: Collect kept arrivals (fast — no ML, no await per item)
+    _kept_arrivals: list[tuple] = []  # (arrival, line, stop_info)
     for line, arrivals in zip(feed_lines, feed_results):
         if isinstance(arrivals, Exception):
             TrackLogger.error(
@@ -1568,55 +1571,50 @@ async def _fetch_nearby_subway(
         success_count += 1
         total_raw += len(arrivals)
         for arrival in arrivals:
-            # Skip stale arrivals (already at station)
             if arrival.minutes_away <= 0:
                 continue
-            # Only keep arrivals at stops within range
             if arrival.station not in nearby_stops:
                 continue
-
-            # Resolve the human-readable station name and coordinates
             stop_info = get_stop_info(arrival.station)
-            stop_name = stop_info.name if stop_info else arrival.station
-            stop_lat = stop_info.lat if stop_info else None
-            stop_lon = stop_info.lon if stop_info else None
-
-            # Use the actual route_id from the GTFS-RT trip, not the feed line
+            _kept_arrivals.append((arrival, line, stop_info))
             total_kept += 1
-            # Yield to the event loop every 50 arrivals so asyncio
-            # timeouts and health checks can fire promptly.
-            if total_kept % 50 == 0:
+            if total_kept % 200 == 0:
                 await asyncio.sleep(0)
 
-            # For subway, keep the compass direction ("N"/"S") as the grouping
-            # key only as fallback. Prefer destination to preserve branch-specific
-            # direction tabs (supports 3+ direction cases naturally).
-            # If destination is missing, fall back to compass direction.
-            direction_key = arrival.destination or arrival.direction
-            corrected_mins = await _ml_corrected(
-                arrival.minutes_away, arrival.route_id or line, "subway",
+    # Phase 2: Batch ML prediction — ONE model.predict() call for all kept arrivals
+    _batch_data = [
+        (a.minutes_away, a.route_id or ln, "subway", a.station, 0.0)
+        for a, ln, _ in _kept_arrivals
+    ]
+    _corrected_all = _ml_corrected_batch(
+        _batch_data, recency_cache=_subway_recency_cache, weather=_cached_weather,
+    )
+    await asyncio.sleep(0)  # yield after batch compute
+
+    # Phase 3: Build result objects
+    for idx, (arrival, line, stop_info) in enumerate(_kept_arrivals):
+        stop_name = stop_info.name if stop_info else arrival.station
+        stop_lat = stop_info.lat if stop_info else None
+        stop_lon = stop_info.lon if stop_info else None
+        direction_key = arrival.destination or arrival.direction
+        results.append(
+            NearbyTransitArrival(
+                route_id=arrival.route_id or line,
+                stop_name=stop_name,
+                direction=direction_key,
+                destination=arrival.destination,
+                minutes_away=_corrected_all[idx],
+                arrival_ts=arrival.arrival_ts,
+                status=arrival.status,
+                mode="subway",
+                stop_lat=stop_lat,
+                stop_lon=stop_lon,
                 stop_id=arrival.station,
-                recency_cache=_subway_recency_cache,
-                _weather=_cached_weather,
+                trip_id=arrival.trip_id,
+                is_real_time=arrival.status != "Scheduled",
+                is_cancelled=arrival.is_cancelled,
             )
-            results.append(
-                NearbyTransitArrival(
-                    route_id=arrival.route_id or line,
-                    stop_name=stop_name,
-                    direction=direction_key,
-                    destination=arrival.destination,
-                    minutes_away=corrected_mins,
-                    arrival_ts=arrival.arrival_ts,
-                    status=arrival.status,
-                    mode="subway",
-                    stop_lat=stop_lat,
-                    stop_lon=stop_lon,
-                    stop_id=arrival.station,
-                    trip_id=arrival.trip_id,
-                    is_real_time=arrival.status != "Scheduled",
-                    is_cancelled=arrival.is_cancelled,
-                )
-            )
+        )
 
     if success_count == 0 and len(feed_lines) > 0:
         TrackLogger.error(
@@ -1907,9 +1905,10 @@ async def _fetch_nearby_buses(
     # Track which route IDs already have live data
     routes_with_live: set[str] = set()
 
+    # Phase 1: Collect kept bus arrivals (fast — no ML)
     fail_count = 0
     first_error: Exception | None = None
-    _bus_ml_count = 0
+    _bus_kept: list[tuple] = []  # (arrival, stop, minutes, normalised_route, direction, deviation_s)
     for i, result in enumerate(stop_results):
         stop = stops_to_query[i]
         if isinstance(result, Exception):
@@ -1918,40 +1917,18 @@ async def _fetch_nearby_buses(
                 first_error = result
             continue
         
-        # result is a list[BusArrival]
         for arrival in result:
-            # Skip arrivals in the past
             if arrival.expected_arrival:
                 now_utc = datetime.now(timezone.utc)
                 exp_utc = arrival.expected_arrival
                 if exp_utc.tzinfo is None:
                     exp_utc = exp_utc.replace(tzinfo=timezone.utc)
-                
-                # Allow 1 minute grace period for "Just Moved"
                 if (exp_utc - now_utc).total_seconds() < -60:
                     continue
 
             minutes = _bus_minutes_away(arrival.expected_arrival)
-
-            # Normalise route_id — SIRI sometimes gives "B63" (PublishedLineName)
-            # and sometimes "MTA NYCT_B63" (LineRef fallback).  Stripping the
-            # agency prefix guarantees both directions of the same route land in
-            # the same grouped card.
             normalised_route = _display_name(arrival.route_id)
 
-            # Direction grouping — use the same strategy as subway:
-            # prefer the destination name as the direction key so that
-            # BRANCHING routes get separate swipeable tabs per terminal.
-            #
-            # Examples (B46 Utica Ave):
-            #   dest="KINGS PLAZA"    → direction key "KINGS PLAZA"
-            #   dest="AV H"          → direction key "AV H"
-            #   dest="WILLIAMSBURG"   → direction key "WILLIAMSBURG"
-            #
-            # This mirrors how subway uses destination ("Far Rockaway",
-            # "Lefferts Blvd") so the A train gets one tab per branch.
-            #
-            # Fallback chain: DestinationName → DirectionRef → stop compass → "Loop"
             dest = arrival.destination_name
             if dest:
                 direction = dest
@@ -1963,38 +1940,40 @@ async def _fetch_nearby_buses(
                 direction = "Loop"
 
             routes_with_live.add(normalised_route)
-            # Also track the raw form for the backfill check
             routes_with_live.add(arrival.route_id)
-            corrected_mins = await _ml_corrected(
-                minutes, normalised_route, "bus",
-                stop_id=stop.id, deviation_s=float(arrival.schedule_deviation_s or 0),
-                recency_cache=_bus_recency_cache,
-                _weather=_bus_cached_weather,
+            _bus_kept.append((arrival, stop, minutes, normalised_route, direction,
+                              float(arrival.schedule_deviation_s or 0)))
+
+    # Phase 2: Batch ML prediction — one model.predict() for all bus arrivals
+    _bus_batch_data = [
+        (mins, route, "bus", stop.id, dev_s)
+        for _, stop, mins, route, _, dev_s in _bus_kept
+    ]
+    _bus_corrected_all = _ml_corrected_batch(
+        _bus_batch_data, recency_cache=_bus_recency_cache, weather=_bus_cached_weather,
+    )
+    await asyncio.sleep(0)  # yield after batch compute
+
+    # Phase 3: Build result objects
+    for idx, (arrival, stop, minutes, normalised_route, direction, _) in enumerate(_bus_kept):
+        bus_status = arrival.status_text if arrival.is_realtime else "Scheduled"
+        results.append(
+            NearbyTransitArrival(
+                route_id=normalised_route,
+                stop_name=stop.name,
+                arrival_ts=int(arrival.expected_arrival.timestamp()) if arrival.expected_arrival else None,
+                direction=direction,
+                minutes_away=_bus_corrected_all[idx],
+                status=bus_status,
+                mode="bus",
+                stop_lat=stop.lat,
+                stop_lon=stop.lon,
+                stop_id=stop.id,
+                vehicle_id=arrival.vehicle_id,
+                destination=arrival.destination_name or arrival.status_text,
+                is_real_time=arrival.is_realtime,
             )
-            _bus_ml_count += 1
-            if _bus_ml_count % 50 == 0:
-                await asyncio.sleep(0)  # yield so timeouts can fire
-            # Honour SIRI's is_realtime flag: when False the vehicle position is
-            # estimated from the static schedule (GPS not transmitting) — treat
-            # it identically to a GTFS-static fallback so iOS renders it grey.
-            bus_status = arrival.status_text if arrival.is_realtime else "Scheduled"
-            results.append(
-                NearbyTransitArrival(
-                    route_id=normalised_route,
-                    stop_name=stop.name,
-                    arrival_ts=int(arrival.expected_arrival.timestamp()) if arrival.expected_arrival else None,
-                    direction=direction,
-                    minutes_away=corrected_mins,
-                    status=bus_status,
-                    mode="bus",
-                    stop_lat=stop.lat,
-                    stop_lon=stop.lon,
-                    stop_id=stop.id,
-                    vehicle_id=arrival.vehicle_id,
-                    destination=arrival.destination_name or arrival.status_text,
-                    is_real_time=arrival.is_realtime,
-                )
-            )
+        )
 
     if fail_count > 0:
         TrackLogger.warning(
@@ -2979,3 +2958,68 @@ async def _ml_corrected(
     max_delta = 2 if minutes_away <= 10 else (3 if minutes_away <= 25 else 4)
     result    = max(minutes_away - max_delta, min(minutes_away + max_delta, result))
     return max(0, result)
+
+
+def _ml_corrected_batch(
+    arrivals_data: list[tuple[int, str, str, str, float]],
+    recency_cache: dict | None = None,
+    weather: str = "clear",
+) -> list[int]:
+    """Synchronous batch ML correction — one model.predict() for N arrivals.
+
+    Each tuple is (minutes_away, route_id, mode, stop_id, deviation_s).
+    Returns corrected minutes for each arrival in order.
+
+    This replaces the per-item async _ml_corrected loop, avoiding:
+    - N individual model.predict() calls (replaced by 1 batch call)
+    - N×2 await statements (alert refresh + weather fetch)
+    - N event-loop context switches
+    """
+    now_utc = datetime.now(timezone.utc)
+    hour = now_utc.hour
+    dow = (now_utc.isoweekday() % 7) + 1
+
+    # Build batch prediction inputs — only for items that need prediction
+    pred_indices: list[int] = []
+    pred_inputs: list[tuple[str, int, int, str, str, float]] = []
+    for i, (mins, route_id, mode, stop_id, dev_s) in enumerate(arrivals_data):
+        if mins <= 0 or mins >= 99:
+            continue
+        pred_indices.append(i)
+        pred_inputs.append((route_id, hour, dow, weather, mode, dev_s))
+
+    # One batch predict call
+    if pred_inputs:
+        batch_results = _predict_factor_batch(pred_inputs)
+    else:
+        batch_results = []
+
+    # Build results
+    results: list[int] = []
+    pred_idx = 0
+    for i, (mins, route_id, mode, stop_id, dev_s) in enumerate(arrivals_data):
+        if mins <= 0 or mins >= 99:
+            results.append(mins)
+            continue
+
+        factor, _ = batch_results[pred_idx]
+        pred_idx += 1
+
+        alert_boost = _get_alert_boost(route_id)
+
+        recency_s = 0.0
+        if stop_id and recency_cache is not None:
+            err = recency_cache.get((route_id, stop_id))
+            if err is not None:
+                recency_s = max(-300.0, min(300.0, err))
+
+        base_seconds = max(0.0, mins * 60.0 + recency_s)
+        final_factor = min(2.0, factor * (1.0 + alert_boost))
+        corrected = base_seconds * final_factor / 60.0
+        result = round(corrected)
+
+        max_delta = 2 if mins <= 10 else (3 if mins <= 25 else 4)
+        result = max(mins - max_delta, min(mins + max_delta, result))
+        results.append(max(0, result))
+
+    return results

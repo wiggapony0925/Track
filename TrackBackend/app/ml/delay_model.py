@@ -299,6 +299,59 @@ def predict_factor(
         return _heuristic(route_id, hour, dow, weather, mode), "heuristic"
 
 
+def predict_factor_batch(
+    items: list[tuple[str, int, int, str, str, float]],
+) -> list[tuple[float, str]]:
+    """Batch version of predict_factor — one model.predict() call for N items.
+
+    Each item is (route_id, hour, dow, weather, mode, current_delay_s).
+    Returns list of (factor, source) in the same order as ``items``.
+
+    Using a single predict() call on an (N, F) matrix is 50-200× faster
+    than N individual predict() calls because GBR traverses all trees
+    once for the entire batch (vectorised C loop) instead of N times.
+    """
+    if not items:
+        return []
+    model = _load_model()
+    if model is None:
+        return [
+            (_heuristic(r, h, d, w, m), "heuristic")
+            for r, h, d, w, m, _ in items
+        ]
+    try:
+        import numpy as np
+        import warnings
+
+        n_expected: int = getattr(model, "n_features_in_", 8)
+        rows = []
+        for route_id, hour, dow, weather, mode, delay_s in items:
+            feats = encode_features(route_id, hour, dow, weather, mode, delay_s)
+            rows.append(feats[:n_expected])
+        X = np.array(rows, dtype=np.float64)
+
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message="X does not have valid feature names",
+                category=UserWarning,
+            )
+            raw_preds = model.predict(X)  # shape (N,)
+
+        return [
+            (round(max(0.90, min(float(p), 2.0)), 4), "model")
+            for p in raw_preds
+        ]
+    except Exception as exc:
+        TrackLogger.model_event(
+            f"batch predict error ({exc}) — heuristic fallback.", level="warning"
+        )
+        return [
+            (_heuristic(r, h, d, w, m), "heuristic")
+            for r, h, d, w, m, _ in items
+        ]
+
+
 def reload_model() -> bool:
     """Force-reload model from disk (call after retraining)."""
     global _model, _model_loaded
