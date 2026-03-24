@@ -322,10 +322,11 @@ async def _compute_and_cache_grouped(
         oldest_key = min(_nearby_resp_cache, key=lambda k: _nearby_resp_cache[k][0])
         del _nearby_resp_cache[oldest_key]
 
-    # Don't cache empty results during warmup — feeds aren't ready yet
-    # and caching [] would poison subsequent requests for FRESH_TTL seconds.
-    from app.main import is_warmed_up as _is_warmed_up  # lazy to avoid circular import
-    if grouped or _is_warmed_up():
+    # Never cache empty results.  During warmup feeds aren't ready yet;
+    # after warmup a transient timeout / 502 would poison the cache for
+    # FRESH_TTL seconds, causing every subsequent request to return 0
+    # groups until the entry expires.  Only cache non-empty responses.
+    if grouped:
         _nearby_resp_cache[key] = (_time.time(), grouped, json_bytes)
     return grouped
 

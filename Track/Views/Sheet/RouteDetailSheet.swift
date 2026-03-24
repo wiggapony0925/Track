@@ -711,6 +711,7 @@ struct RouteDetailSheet: View {
                     .padding(.vertical, 3)
                     .background(routeColor.opacity(0.12))
                     .clipShape(Capsule())
+                    .dynamicTypeSize(...DynamicTypeSize.accessibility1)
 
                     // Express / Local / Mixed service type (route-level, from GTFS)
                     if let serviceType = routeShape?.serviceType, !serviceType.isEmpty {

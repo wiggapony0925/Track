@@ -57,6 +57,9 @@ TrackBackend/app/data/*.txt
 # Logs
 TrackBackend/logs/
 
+# Runtime caches (generated at startup, not source-controlled)
+TrackBackend/app/data/_cache_*
+
 # GTFS metadata (local download/freshness tracking)
 TrackBackend/app/data/.dl_meta/
 TrackBackend/app/data/.gtfs_meta/

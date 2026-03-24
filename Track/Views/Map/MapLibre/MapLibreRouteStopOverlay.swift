@@ -50,10 +50,11 @@ struct MapLibreRouteStopOverlay: View {
     let cameraChangeToken: UInt64
 
     var body: some View {
+        let zoom = mapView?.zoomLevel ?? 0
         GeometryReader { _ in
             ZStack {
                 ForEach(stops) { displayedStop in
-                    stopMarkerView(for: displayedStop)
+                    stopMarkerView(for: displayedStop, showLabel: zoom >= 13)
                 }
             }
         }
@@ -61,7 +62,7 @@ struct MapLibreRouteStopOverlay: View {
     }
 
     @ViewBuilder
-    private func stopMarkerView(for displayedStop: DisplayedRouteStop) -> some View {
+    private func stopMarkerView(for displayedStop: DisplayedRouteStop, showLabel: Bool) -> some View {
         let stop: BusStop = displayedStop.stop
         let coord: CLLocationCoordinate2D = displayedStop.displayCoordinate
         let isSelected: Bool = stop.id == selectedStopId
@@ -71,7 +72,8 @@ struct MapLibreRouteStopOverlay: View {
                 isSelected: isSelected,
                 isBehind: displayedStop.isBehind,
                 routeColor: routeColor,
-                stopName: stop.name
+                stopName: stop.name,
+                showLabel: showLabel || isSelected
             )
             .position(point)
             .onTapGesture { onStopTap(stop) }

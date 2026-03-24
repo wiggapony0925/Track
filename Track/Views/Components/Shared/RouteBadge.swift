@@ -113,6 +113,7 @@ struct RouteBadge: View {
             .frame(width: size.dimension, height: size.dimension)
             .background(backgroundColor)
             .clipShape(Circle())
+            .dynamicTypeSize(...DynamicTypeSize.accessibility1)
             .accessibilityLabel("Subway Route \(routeID)")
     }
     
@@ -131,6 +132,7 @@ struct RouteBadge: View {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(backgroundColor)
             )
+            .dynamicTypeSize(...DynamicTypeSize.accessibility1)
             .accessibilityLabel("\(isSBS ? "Select Bus Service" : "Bus") Route \(routeID)")
     }
     
@@ -156,6 +158,7 @@ struct RouteBadge: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(backgroundColor)
         )
+        .dynamicTypeSize(...DynamicTypeSize.accessibility1)
         .accessibilityLabel("\(isLIRR ? "LIRR" : "Metro-North") \(routeID)")
     }
     

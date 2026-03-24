@@ -16,6 +16,7 @@ struct ModalNavbar: View {
     @Binding var selectedMode: TransportMode
     var lastUpdated: Date?
     var isRefreshing: Bool = false
+    var weatherSnapshot: WeatherSnapshot? = nil
     
     @State private var speechManager = SpeechRecognitionManager()
     
@@ -80,17 +81,27 @@ struct ModalNavbar: View {
                 .padding(.bottom, 12)
 
             if isRefreshing {
-                refreshingBadge
-                    .padding(.horizontal, AppTheme.Layout.margin)
-                    .padding(.bottom, 12)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .transition(.opacity)
+                HStack(spacing: 6) {
+                    refreshingBadge
+                    Spacer()
+                    if let weather = weatherSnapshot {
+                        WeatherChipView(snapshot: weather, style: .compact)
+                    }
+                }
+                .padding(.horizontal, AppTheme.Layout.margin)
+                .padding(.bottom, 12)
+                .transition(.opacity)
             } else if let lastUpdated {
-                updateBadge(for: lastUpdated)
-                    .padding(.horizontal, AppTheme.Layout.margin)
-                    .padding(.bottom, 12)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .transition(.opacity)
+                HStack(spacing: 6) {
+                    updateBadge(for: lastUpdated)
+                    Spacer()
+                    if let weather = weatherSnapshot {
+                        WeatherChipView(snapshot: weather, style: .compact)
+                    }
+                }
+                .padding(.horizontal, AppTheme.Layout.margin)
+                .padding(.bottom, 12)
+                .transition(.opacity)
             }
         }
         .onAppear {
@@ -235,7 +246,8 @@ struct ModeFilterStrip: View {
         searchText: .constant(""),
         showSettings: .constant(false),
         selectedMode: .constant(.nearby),
-        lastUpdated: Date()
+        lastUpdated: Date(),
+        weatherSnapshot: .preview(.clear)
     )
     .background(AppTheme.Colors.background)
 }

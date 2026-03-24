@@ -197,63 +197,41 @@ def is_warmed_up() -> bool:
 def _sync_prewarm_shapes() -> None:
     """Synchronous helper to pre-warm the corridor pipeline in a thread.
 
-    Triggers all lru_cache'd file loads (shapes.txt, trips.txt,
-    shape_stops.json) and runs the full topological corridor pipeline.
-    Called from ``run_in_executor`` so the event loop isn't blocked.
+    Reuses the SAME ``_build_shapes_all_sync`` function that the
+    ``/subway/shapes/all`` endpoint uses, then stores the result in the
+    endpoint's in-memory cache AND writes it to disk.  This guarantees:
+
+    1. The first client request is instant (in-memory cache hit).
+    2. Future restarts/deploys load from disk instead of re-computing
+       the 60-90s corridor pipeline.
+    3. No duplicate computation — previously the warmup ran its own
+       stripped-down pipeline that didn't populate the endpoint cache,
+       causing the first client request to re-run the full pipeline.
     """
-    from app.services.mapping.subway_shapes import (
-        _load_route_shapes,
-        _load_shapes,
-        _load_shape_stops,
-        _unpack_coords,
-        get_all_subway_stations,
+    from app.routers.subway import (
+        _build_shapes_all_sync,
+        _load_shapes_disk_cache,
+        _save_shapes_disk_cache,
+        set_shapes_all_cache,
     )
-    from app.services.mapping.corridor_pipeline import apply_topological_offsets
-    from app.utils.transit_utils import get_all_subway_lines, get_subway_color
-    from app.utils.polyline_utils import encode_polyline, densify_wgs84
-    from app.models import SubwayLineOverlay
 
-    skip_variants = {"6X", "7X", "FX", "FS", "GS", "SR"}
-    lines = [l for l in get_all_subway_lines() if l not in skip_variants]
+    # Try disk cache first — avoids the 60-90s CPU hit entirely
+    disk_result = _load_shapes_disk_cache()
+    if disk_result is not None:
+        set_shapes_all_cache(disk_result)
+        TrackLogger.info(
+            "[WARMUP] Corridor pipeline: loaded from disk cache (instant)",
+            tag="WARMUP",
+        )
+        return
 
-    route_shapes = _load_route_shapes()
-    shapes_data = _load_shapes()
-    shape_stops = _load_shape_stops()
-
-    def _station_id(sid: str) -> str:
-        return sid[:-1] if sid and sid[-1] in ("N", "S") else sid
-
-    overlays: list[SubwayLineOverlay] = []
-    for line in lines:
-        direction_shapes = route_shapes.get(line)
-        if not direction_shapes:
-            continue
-        primary_dir = 0 if 0 in direction_shapes else min(direction_shapes.keys())
-        shape_ids = direction_shapes[primary_dir]
-        polylines_raw = []
-        for shape_id in shape_ids:
-            shape_buf = shapes_data.get(shape_id)
-            if shape_buf:
-                polylines_raw.append(_unpack_coords(shape_buf))
-        if not polylines_raw:
-            continue
-        encoded = [encode_polyline(densify_wgs84(coords)) for coords in polylines_raw]
-        color = get_subway_color(line)
-        overlays.append(SubwayLineOverlay(
-            route_id=line,
-            color_hex=color,
-            polylines=encoded,
-        ))
-
-    # This triggers the full corridor pipeline — the expensive part.
-    # After this call, all lru_cache and module-level caches are warm.
-    apply_topological_offsets(overlays)
-
-    # Also warm the stations cache
-    get_all_subway_stations()
+    # No disk cache → run the full pipeline
+    result = _build_shapes_all_sync()
+    set_shapes_all_cache(result)
+    _save_shapes_disk_cache(result)
 
     TrackLogger.info(
-        f"[WARMUP] Corridor pipeline complete: {len(overlays)} lines processed",
+        f"[WARMUP] Corridor pipeline complete: {len(result.lines)} lines processed + saved to disk",
         tag="WARMUP",
     )
 

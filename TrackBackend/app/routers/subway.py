@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import math
 import time
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query, Response
 
@@ -46,8 +47,51 @@ router = APIRouter(tags=["subway"])
 # ── Response-level cache for /subway/shapes/all ──
 # The pipeline + dir1 clipping is extremely CPU-heavy (60-90s cold).
 # Cache the fully-built response so only the first request pays the cost.
+#
+# Two cache layers:
+#   1. In-memory: instant for subsequent requests in the same process.
+#   2. Disk:      survives restarts / deploys so the 60-90s corridor
+#      pipeline only needs to run ONCE.  The disk cache is loaded at
+#      startup and the in-memory cache is populated from it.
 _shapes_all_cache: AllSubwayLinesResponse | None = None
 _shapes_all_lock = asyncio.Lock()
+
+_SHAPES_DISK_CACHE_PATH = Path(__file__).resolve().parent.parent / "data" / "_cache_shapes_all.json"
+
+
+def _load_shapes_disk_cache() -> AllSubwayLinesResponse | None:
+    """Try to load the shapes/all response from disk cache."""
+    try:
+        if not _SHAPES_DISK_CACHE_PATH.exists():
+            return None
+        import json
+        raw = json.loads(_SHAPES_DISK_CACHE_PATH.read_text())
+        resp = AllSubwayLinesResponse(**raw)
+        TrackLogger.info(
+            f"[SHAPES_DISK] Loaded shapes/all disk cache "
+            f"({len(resp.lines)} lines, {len(resp.trunk_polylines)} trunks)",
+            tag="SHAPES",
+        )
+        return resp
+    except Exception as exc:
+        TrackLogger.warning(f"[SHAPES_DISK] Failed to load disk cache: {exc}", tag="SHAPES")
+        return None
+
+
+def _save_shapes_disk_cache(resp: AllSubwayLinesResponse) -> None:
+    """Persist the shapes/all response to disk so it survives restarts."""
+    try:
+        import json
+        _SHAPES_DISK_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        data = resp.model_dump(mode="json")
+        _SHAPES_DISK_CACHE_PATH.write_text(json.dumps(data))
+        size_kb = _SHAPES_DISK_CACHE_PATH.stat().st_size / 1024
+        TrackLogger.info(
+            f"[SHAPES_DISK] Saved shapes/all disk cache ({size_kb:.0f} KB)",
+            tag="SHAPES",
+        )
+    except Exception as exc:
+        TrackLogger.warning(f"[SHAPES_DISK] Failed to save disk cache: {exc}", tag="SHAPES")
 
 
 def _build_shapes_all_sync() -> AllSubwayLinesResponse:
@@ -289,13 +333,24 @@ def _build_shapes_all_sync() -> AllSubwayLinesResponse:
     return AllSubwayLinesResponse(lines=overlays, trunk_polylines=trunk_polylines)
 
 
+def set_shapes_all_cache(resp: AllSubwayLinesResponse) -> None:
+    """Set the in-memory shapes cache (called by warmup to avoid a second
+    CPU-heavy computation when the first client request arrives)."""
+    global _shapes_all_cache
+    _shapes_all_cache = resp
+
+
 @router.get("/subway/shapes/all", response_model=AllSubwayLinesResponse)
 async def subway_shapes_all() -> AllSubwayLinesResponse:
     """Return polylines for ALL subway lines — the full system map.
 
     The actual computation is CPU-heavy (corridor pipeline + dir1 clipping)
     so it runs in a thread pool via ``run_in_executor`` and the result is
-    cached. Subsequent requests return instantly from cache.
+    cached.  Three cache layers protect against cold starts:
+
+    1. In-memory cache — instant, populated by warmup or first request.
+    2. Disk cache — survives deploys / restarts; loaded at startup.
+    3. CPU re-computation — only when both caches miss (rare).
     """
     global _shapes_all_cache
 
@@ -307,9 +362,16 @@ async def subway_shapes_all() -> AllSubwayLinesResponse:
         if _shapes_all_cache is not None:
             return _shapes_all_cache
 
+        # Try disk cache before burning 60-90s of CPU
+        disk_result = _load_shapes_disk_cache()
+        if disk_result is not None:
+            _shapes_all_cache = disk_result
+            return disk_result
+
         loop = asyncio.get_running_loop()
         result = await loop.run_in_executor(None, _build_shapes_all_sync)
         _shapes_all_cache = result
+        _save_shapes_disk_cache(result)
         return result
 
 

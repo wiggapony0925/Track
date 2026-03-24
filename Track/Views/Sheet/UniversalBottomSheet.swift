@@ -69,7 +69,10 @@ struct UniversalBottomSheet<Content: View>: View {
             .presentationDetents([.fraction(0.4), .large], selection: $sheetDetent)
             .presentationDragIndicator(.visible)
             .presentationBackgroundInteraction(.enabled)
-            .presentationBackground(AppTheme.Gradients.floating)
+            .presentationBackground {
+                AppTheme.Colors.cardElevated
+                    .ignoresSafeArea()
+            }
             .presentationCornerRadius(32)
             .interactiveDismissDisabled()
             .preferredColorScheme(colorScheme)

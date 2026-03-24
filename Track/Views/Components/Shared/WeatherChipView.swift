@@ -178,15 +178,22 @@ struct WeatherChipView: View {
 // MARK: - Preview Helper
 
 extension WeatherSnapshot {
+    /// Whether the current local hour is during daytime (6 AM - 8 PM).
+    private static var isDaytime: Bool {
+        let hour = Calendar.current.component(.hour, from: Date())
+        return hour >= 6 && hour < 20
+    }
+
     /// Convenience initializer for SwiftUI Previews.
     static func preview(_ condition: WeatherCondition) -> WeatherSnapshot {
+        let isDay = isDaytime
         switch condition {
         case .clear:
             return WeatherSnapshot(
                 temperature: 22.0,
                 temperatureFormatted: "72°F",
-                conditionSymbol: "sun.max.fill",
-                conditionDescription: "Clear",
+                conditionSymbol: isDay ? "sun.max.fill" : "moon.stars.fill",
+                conditionDescription: isDay ? "Clear" : "Clear Night",
                 category: .clear,
                 fetchedAt: Date()
             )

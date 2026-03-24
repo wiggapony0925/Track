@@ -190,6 +190,7 @@ final class WeatherService {
         let description: String
         let category: String
         let windspeed_kmh: Double?
+        let is_day: Bool?
     }
 
     private func fetchFromBackend(location: CLLocation) async -> WeatherSnapshot? {

@@ -98,6 +98,7 @@ struct DirectionPickerView: View {
             radius: dir.isActive ? 4 : 2,
             x: 0, y: dir.isActive ? 2 : 1
         )
+        .dynamicTypeSize(...DynamicTypeSize.accessibility1)
     }
 
     // MARK: - Service Type Pill
@@ -180,5 +181,6 @@ struct ServiceTypeBadge: View {
         .padding(.vertical, 3)
         .background(r.color.opacity(0.1))
         .clipShape(Capsule())
+        .dynamicTypeSize(...DynamicTypeSize.accessibility1)
     }
 }

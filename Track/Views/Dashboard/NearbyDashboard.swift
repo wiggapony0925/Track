@@ -45,7 +45,7 @@ struct NearbyDashboard: View {
 
                 // Display "Near You" section
                 if !nearYou.isEmpty {
-                    NearYouSectionHeader(radiusMeters: nearYouRadius, updated: lastUpdated, weatherSnapshot: viewModel.weatherSnapshot)
+                    NearYouSectionHeader(radiusMeters: nearYouRadius, updated: lastUpdated)
                     GroupedRouteList(
                         groups: nearYou,
                         viewModel: viewModel,
@@ -54,7 +54,7 @@ struct NearbyDashboard: View {
                         referenceLocation: refLocation
                     )
                 } else if viewModel.searchText.isEmpty {
-                    NearYouSectionHeader(radiusMeters: nearYouRadius, updated: lastUpdated, weatherSnapshot: viewModel.weatherSnapshot)
+                    NearYouSectionHeader(radiusMeters: nearYouRadius, updated: lastUpdated)
                     EmptyTierHint()
                 }
 
@@ -112,7 +112,7 @@ struct NearbyDashboard: View {
                     arrivals: sorted, from: refLocation)
 
                 if !nearYouArrivals.isEmpty {
-                    NearYouSectionHeader(radiusMeters: nearYouRadius, updated: lastUpdated, weatherSnapshot: viewModel.weatherSnapshot)
+                    NearYouSectionHeader(radiusMeters: nearYouRadius, updated: lastUpdated)
                     FlatTransitList(
                         arrivals: nearYouArrivals,
                         viewModel: viewModel,
@@ -263,7 +263,6 @@ struct ClosestToYouSectionHeader: View {
 struct NearYouSectionHeader: View {
     let radiusMeters: Double
     let updated: Date?
-    var weatherSnapshot: WeatherSnapshot? = nil
 
     private var radiusDisplay: String {
         formatDistanceMiles(radiusMeters)
@@ -299,24 +298,15 @@ struct NearYouSectionHeader: View {
 
             Spacer()
 
-            // Weather chip + time grouped together on the trailing side
-            HStack(spacing: 6) {
-                if let weather = weatherSnapshot {
-                    WeatherChipView(snapshot: weather, style: .compact)
-                        .transition(.opacity.combined(with: .scale(scale: 0.8)))
-                }
-
-                if let updated = updated {
-                    Text(updated, style: .time)
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
-                        .foregroundColor(AppTheme.Colors.textTertiary)
-                }
+            if let updated = updated {
+                Text(updated, style: .time)
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .foregroundColor(AppTheme.Colors.textTertiary)
             }
         }
         .padding(.horizontal, AppTheme.Layout.margin)
         .padding(.top, 8)
         .padding(.bottom, 6)
-        .animation(.easeInOut(duration: 0.3), value: weatherSnapshot)
     }
 }
 

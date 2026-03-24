@@ -107,6 +107,7 @@ struct PillTabPicker: View {
                 .stroke(overlayBorder, lineWidth: 1)
         )
         .shadow(color: shadowColor, radius: shadowRadius, x: 0, y: shadowY)
+        .dynamicTypeSize(...DynamicTypeSize.accessibility1)
     }
 
     // MARK: - Badge

@@ -182,10 +182,11 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         mapView.minimumZoomLevel = MapLibreStyleConfig.minZoom
         mapView.maximumZoomLevel = MapLibreStyleConfig.maxZoom
 
-        // Energy: Cap the GL render loop to 30fps. The map remains smooth
-        // for panning/zooming and halves GPU/display power draw (~25% → ~12%).
-        // SwiftUI overlays are already throttled to 30fps via cameraChangeToken.
-        mapView.preferredFramesPerSecond = .lowPower
+        // Render at native display refresh rate (60fps / 120fps ProMotion)
+        // for buttery-smooth panning and pinch-zoom. The GPU-accelerated GL
+        // pipeline handles this efficiently; SwiftUI overlays are separately
+        // throttled to ~30fps via cameraChangeToken.
+        mapView.preferredFramesPerSecond = .maximum
 
         // Attribution (required by OSM/MapTiler ToS)
         mapView.attributionButton.isHidden = false
@@ -229,33 +230,68 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 // 1) Capture a raster snapshot of the outgoing style
                 //    using UIKit's drawHierarchy (works for any UIView).
                 let snapshotTag = 9999
-                let renderer = UIGraphicsImageRenderer(bounds: mapView.bounds)
-                let snapshot = renderer.image { _ in
-                    mapView.drawHierarchy(in: mapView.bounds, afterScreenUpdates: false)
+                // Guard against rendering offscreen (causes console warnings
+                // and wastes GPU time when the map view isn't in a window).
+                let snapshot: UIImage?
+                if mapView.window != nil {
+                    let renderer = UIGraphicsImageRenderer(bounds: mapView.bounds)
+                    snapshot = renderer.image { _ in
+                        mapView.drawHierarchy(in: mapView.bounds, afterScreenUpdates: false)
+                    }
+                } else {
+                    snapshot = nil
                 }
-                let overlay = UIImageView(image: snapshot)
-                overlay.frame = mapView.bounds
-                overlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-                overlay.contentMode = .scaleAspectFill
-                overlay.tag = snapshotTag
-                mapView.addSubview(overlay)
+                // Only show the crossfade overlay if we actually captured a snapshot
+                if let snapshot {
+                    let overlay = UIImageView(image: snapshot)
+                    overlay.frame = mapView.bounds
+                    overlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+                    overlay.contentMode = .scaleAspectFill
+                    overlay.tag = snapshotTag
+                    mapView.addSubview(overlay)
+                }
 
                 // 2) Load the new style behind the snapshot.
                 mapView.styleURL = newURL
                 coordinator.styleLoaded = false
                 coordinator.sourcesCreated.removeAll()
 
-                // 3) Crossfade the snapshot away once the new style is on-screen.
-                //    Short delay lets MapLibre render at least the first frame.
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                // 3) Crossfade the snapshot away once the new style loads.
+                //    Fast fade so transitions feel instant.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                     if let overlay = mapView.viewWithTag(snapshotTag) {
-                        UIView.animate(withDuration: 0.35, delay: 0, options: .curveEaseInOut) {
+                        UIView.animate(withDuration: 0.2, delay: 0, options: .curveEaseOut) {
                             overlay.alpha = 0
                         } completion: { _ in
                             overlay.removeFromSuperview()
                         }
                     }
                 }
+            }
+        }
+
+        // ── Route-colour tint (single-pass, merged into customizeBaseStyle) ──
+        // When a route is selected/deselected or changes colour, re-run
+        // customizeBaseStyle with the route colour baked in — one iteration,
+        // instant, no separate tint pass.
+        if coordinator.styleLoaded {
+            let wantsTint = hasActiveRoute
+            let tintChanged: Bool = {
+                if wantsTint != coordinator.lastRouteTintActive { return true }
+                if wantsTint, !MapLibreStyleConfig.colorsEqualRGBA(routeColor, coordinator.lastRouteTintColor) { return true }
+                return false
+            }()
+
+            if tintChanged {
+                if let style = mapView.style {
+                    MapLibreStyleConfig.customizeBaseStyle(
+                        style,
+                        isDarkMode: isDarkMode,
+                        routeColor: wantsTint ? routeColor : nil
+                    )
+                }
+                coordinator.lastRouteTintActive = wantsTint
+                coordinator.lastRouteTintColor = wantsTint ? routeColor : nil
             }
         }
 
@@ -351,6 +387,11 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         private var lastTransferHash: Int = -1
         private var lastDarkMode: Bool?
 
+        /// Route-colour tint tracking — detects when the tint should
+        /// be applied, changed, or removed so we can trigger a crossfade.
+        fileprivate var lastRouteTintActive: Bool = false
+        fileprivate var lastRouteTintColor: UIColor?
+
         /// Cached built shapes — avoid rebuilding GeoJSON when data is unchanged.
         private var cachedSubwayShape: MLNShapeCollectionFeature?
         private var cachedCommuterShape: MLNShapeCollectionFeature?
@@ -367,6 +408,19 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             styleLoaded = true
             sourcesCreated.removeAll()  // New style = all layers need recreation
             invalidateAllDirtyFlags()   // Force full rebuild
+
+            // Strip POI clutter, recolour base-map layers, and bake in
+            // the route-colour wash (if active) — all in one pass.
+            MapLibreStyleConfig.customizeBaseStyle(
+                style,
+                isDarkMode: parent.isDarkMode,
+                routeColor: parent.hasActiveRoute ? parent.routeColor : nil
+            )
+
+            // Track tint state so updateUIView doesn't repeat.
+            lastRouteTintActive = parent.hasActiveRoute
+            lastRouteTintColor = parent.hasActiveRoute ? parent.routeColor : nil
+
             setup3DBuildings(style: style, isDarkMode: parent.isDarkMode)
             updateAllLayers(mapView: mapView, representable: parent)
         }
@@ -380,6 +434,8 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             lastWalkingHash = -1
             lastTransferHash = -1
             lastDarkMode = nil
+            lastRouteTintActive = false
+            lastRouteTintColor = nil
         }
 
         // MARK: - Delegate: Camera Changed
@@ -656,7 +712,7 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 features: commuterFeatures,
                 width: MapLibreStyleConfig.commuterCasingWidth,
                 opacity: commuterCasingOpacity,
-                color: .constant(isDark ? UIColor.white.withAlphaComponent(0.15) : UIColor.white),
+                color: .constant(isDark ? UIColor(red: 0.75, green: 0.72, blue: 0.88, alpha: 0.18) : UIColor.white),
                 cap: "butt", join: "round",
                 dashPattern: [3, 2]
             )
@@ -692,7 +748,7 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 features: subwayFeatures,
                 width: MapLibreStyleConfig.subwayCasingWidth,
                 opacity: subwayCasingOpacity,
-                color: .constant(isDark ? UIColor.white.withAlphaComponent(0.25) : UIColor.white),
+                color: .constant(isDark ? UIColor(red: 0.78, green: 0.74, blue: 0.95, alpha: 0.28) : UIColor.white),
                 cap: "round", join: "round",
                 applyLaneOffset: true
             )
@@ -732,7 +788,7 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 features: nil,
                 width: MapLibreStyleConfig.elevatedCasingWidth,
                 opacity: subwayCasingOpacity,
-                color: .constant(isDark ? UIColor.white.withAlphaComponent(0.30) : UIColor.white),
+                color: .constant(isDark ? UIColor(red: 0.78, green: 0.74, blue: 0.95, alpha: 0.32) : UIColor.white),
                 cap: "round", join: "round",
                 applyLaneOffset: true
             )
@@ -908,23 +964,23 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 singleLayer.circleRadius = MapLibreStyleConfig.stationDotRadius
                 singleLayer.circleColor = NSExpression(forKeyPath: "color")
                 singleLayer.circleStrokeColor = NSExpression(
-                    forConstantValue: isDark ? UIColor.white.withAlphaComponent(0.45) : UIColor.white
+                    forConstantValue: isDark ? UIColor(red: 0.85, green: 0.82, blue: 1.0, alpha: 0.50) : UIColor.white
                 )
                 singleLayer.circleStrokeWidth = MapLibreStyleConfig.stationDotStrokeWidth
                 singleLayer.predicate = NSPredicate(format: "isTransfer == NO")
-                singleLayer.minimumZoomLevel = 12
-                // Fade in smoothly from zoom 12
+                singleLayer.minimumZoomLevel = 11
+                // Fade in smoothly from zoom 11
                 singleLayer.circleOpacity = NSExpression(
                     forMLNInterpolating: .zoomLevelVariable,
                     curveType: .linear,
                     parameters: nil,
-                    stops: NSExpression(forConstantValue: [12: 0.0, 12.5: 0.6, 13: 1.0])
+                    stops: NSExpression(forConstantValue: [11: 0.0, 11.5: 0.3, 12: 0.6, 13: 1.0])
                 )
                 singleLayer.circleStrokeOpacity = NSExpression(
                     forMLNInterpolating: .zoomLevelVariable,
                     curveType: .linear,
                     parameters: nil,
-                    stops: NSExpression(forConstantValue: [12: 0.0, 12.5: 0.6, 13: 1.0])
+                    stops: NSExpression(forConstantValue: [11: 0.0, 11.5: 0.3, 12: 0.6, 13: 1.0])
                 )
                 style.addLayer(singleLayer)
 
@@ -958,15 +1014,17 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 labelLayer.text = NSExpression(forKeyPath: "name")
                 labelLayer.textFontSize = MapLibreStyleConfig.stationLabelFontSize
                 labelLayer.textColor = NSExpression(
-                    forConstantValue: isDark ? UIColor.white : UIColor(white: 0.12, alpha: 1)
+                    forConstantValue: isDark
+                        ? UIColor(red: 0.94, green: 0.93, blue: 1.0, alpha: 1.0)
+                        : UIColor(white: 0.10, alpha: 1)
                 )
                 labelLayer.textHaloColor = NSExpression(
                     forConstantValue: isDark
-                        ? UIColor.black.withAlphaComponent(0.85)
-                        : UIColor.white.withAlphaComponent(0.95)
+                        ? UIColor(red: 0.02, green: 0.03, blue: 0.08, alpha: 0.92)
+                        : UIColor.white.withAlphaComponent(0.97)
                 )
-                labelLayer.textHaloWidth = NSExpression(forConstantValue: 2.0)
-                labelLayer.textHaloBlur = NSExpression(forConstantValue: 0.5)
+                labelLayer.textHaloWidth = NSExpression(forConstantValue: 2.5)
+                labelLayer.textHaloBlur = NSExpression(forConstantValue: 0.3)
                 labelLayer.textOffset = NSExpression(forConstantValue: NSValue(cgVector: CGVector(dx: 0, dy: 1.3)))
                 labelLayer.textAnchor = NSExpression(forConstantValue: "top")
                 labelLayer.textFontNames = NSExpression(forConstantValue: ["Open Sans Semibold", "Arial Unicode MS Bold"])
@@ -990,17 +1048,19 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             // Update colors for dark/light mode on existing layers
             if let single = style.layer(withIdentifier: MapLibreStyleConfig.layerStationDotsSingle) as? MLNCircleStyleLayer {
                 single.circleStrokeColor = NSExpression(
-                    forConstantValue: isDark ? UIColor.white.withAlphaComponent(0.45) : UIColor.white
+                    forConstantValue: isDark ? UIColor(red: 0.85, green: 0.82, blue: 1.0, alpha: 0.50) : UIColor.white
                 )
             }
             if let labels = style.layer(withIdentifier: MapLibreStyleConfig.layerStationLabels) as? MLNSymbolStyleLayer {
                 labels.textColor = NSExpression(
-                    forConstantValue: isDark ? UIColor.white : UIColor(white: 0.12, alpha: 1)
+                    forConstantValue: isDark
+                        ? UIColor(red: 0.94, green: 0.93, blue: 1.0, alpha: 1.0)
+                        : UIColor(white: 0.10, alpha: 1)
                 )
                 labels.textHaloColor = NSExpression(
                     forConstantValue: isDark
-                        ? UIColor.black.withAlphaComponent(0.85)
-                        : UIColor.white.withAlphaComponent(0.95)
+                        ? UIColor(red: 0.02, green: 0.03, blue: 0.08, alpha: 0.92)
+                        : UIColor.white.withAlphaComponent(0.97)
                 )
             }
         }
@@ -1237,7 +1297,8 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             layer.fillExtrusionHeight = NSExpression(forKeyPath: "render_height")
             layer.fillExtrusionBase = NSExpression(forKeyPath: "render_min_height")
 
-            // Color & opacity — subtle enough to not compete with transit overlays
+            // Color & opacity — rich enough to add depth, subtle enough
+            // to not compete with transit overlays
             let color = isDarkMode
                 ? MapLibreStyleConfig.buildingColorDark
                 : MapLibreStyleConfig.buildingColorLight
@@ -1246,9 +1307,10 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 ? MapLibreStyleConfig.buildingOpacityDark
                 : MapLibreStyleConfig.buildingOpacity
 
-            // Slight translation for ambient shadow direction (sunlight from top-left)
+            // Translation for ambient shadow direction — slightly more
+            // dramatic for a premium 3D cityscape feel (sunlight from top-left)
             layer.fillExtrusionTranslation = NSExpression(
-                forConstantValue: NSValue(cgVector: CGVector(dx: 0.5, dy: 1.0))
+                forConstantValue: NSValue(cgVector: CGVector(dx: 0.8, dy: 1.5))
             )
 
             // Minimum zoom — no point rendering at city-wide zoom

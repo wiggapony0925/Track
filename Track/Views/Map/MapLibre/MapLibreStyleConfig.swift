@@ -115,17 +115,26 @@ enum MapLibreStyleConfig {
         URL(string: "https://api.maptiler.com/maps/pastel/style.json?key=\(mapTilerAPIKey)")
     }
 
-    /// MapTiler Dark style — for dark mode support.
+    /// MapTiler Streets v2 Light — clean modern base with good road hierarchy
+    /// and subtle building footprints. Better typography than pastel and
+    /// enough detail for navigation without competing with transit overlays.
+    static var lightStyleURL: URL? {
+        URL(string: "https://api.maptiler.com/maps/streets-v2-light/style.json?key=\(mapTilerAPIKey)")
+    }
+
+    /// MapTiler Streets v2 Dark — rich dark blue-gray base with clear road
+    /// contrast and visible water features. Transit lines pop against the
+    /// dark background with excellent readability.
     static var darkStyleURL: URL? {
-        URL(string: "https://api.maptiler.com/maps/dataviz-dark/style.json?key=\(mapTilerAPIKey)")
+        URL(string: "https://api.maptiler.com/maps/streets-v2-dark/style.json?key=\(mapTilerAPIKey)")
     }
 
     /// The default style URL used by the app.
-    /// Uses MapTiler pastel if a valid API key exists, otherwise nil
+    /// Uses Streets v2 Light if a valid API key exists, otherwise nil
     /// (triggers OSM raster tile fallback in MapLibreMapView).
     static var defaultStyleURL: URL? {
         guard hasAPIKey else { return nil }
-        return mutedStyleURL
+        return lightStyleURL
     }
 
     // MARK: - Fallback Raster Tiles (no API key needed)
@@ -200,7 +209,7 @@ enum MapLibreStyleConfig {
     /// Returns the correct style URL based on dark mode preference.
     static func styleURL(isDarkMode: Bool) -> URL? {
         guard hasAPIKey else { return nil }
-        return isDarkMode ? darkStyleURL : mutedStyleURL
+        return isDarkMode ? darkStyleURL : lightStyleURL
     }
 
     // MARK: - Transit-Style Rendering Configuration
@@ -215,17 +224,17 @@ enum MapLibreStyleConfig {
     /// Exponential base 1.6 gives a natural acceleration curve.
     /// Includes stops from zoom 8 so lines remain visible at city-overview level.
     static let subwayFillWidthStops: [(zoom: Double, width: Double)] = [
-        (8,  0.6),
-        (9,  0.8),
-        (10, 1.2),
-        (11, 1.6),
-        (12, 2.2),
-        (13, 2.8),
-        (14, 3.5),
-        (15, 4.2),
-        (16, 5.0),
-        (17, 6.0),
-        (18, 7.0),
+        (8,  0.8),
+        (9,  1.1),
+        (10, 1.6),
+        (11, 2.0),
+        (12, 2.6),
+        (13, 3.2),
+        (14, 4.0),
+        (15, 4.8),
+        (16, 5.6),
+        (17, 6.5),
+        (18, 7.5),
     ]
 
     static let subwayFillWidth = zoomInterpolate(
@@ -238,7 +247,7 @@ enum MapLibreStyleConfig {
     /// Extended to zoom 8 to match fill width coverage.
     static let subwayCasingWidth = zoomInterpolate(
         base: subwayLineInterpolationBase,
-        stops: [8: 1.2, 9: 1.6, 10: 2.4, 11: 3.0, 12: 4.0, 13: 5.0, 14: 6.0, 15: 7.0, 16: 8.5, 17: 10.0, 18: 12.0]
+        stops: [8: 1.5, 9: 2.0, 10: 3.0, 11: 3.6, 12: 4.6, 13: 5.6, 14: 7.0, 15: 8.0, 16: 9.5, 17: 11.0, 18: 13.0]
     )
 
     /// Elevated line fill width — matches subway for visual consistency.
@@ -248,7 +257,7 @@ enum MapLibreStyleConfig {
     /// that distinguishes above-ground structure from tunnels.
     static let elevatedCasingWidth = zoomInterpolate(
         base: 1.6,
-        stops: [10: 3.0, 11: 3.5, 12: 4.5, 13: 5.5, 14: 7.0, 15: 8.0, 16: 10.0, 17: 12.0, 18: 14.0]
+        stops: [10: 3.5, 11: 4.2, 12: 5.2, 13: 6.2, 14: 7.5, 15: 8.8, 16: 10.5, 17: 12.5, 18: 15.0]
     )
 
     /// Commuter rail fill width — thinner than subway to establish visual hierarchy.
@@ -269,26 +278,26 @@ enum MapLibreStyleConfig {
     /// Must stay wider than subway fill for clear visual hierarchy.
     static let routeFillWidth = zoomInterpolate(
         base: 1.6,
-        stops: [10: 3.5, 12: 5.0, 14: 7.0, 16: 8.5, 18: 10.0]
+        stops: [10: 4.0, 12: 5.5, 14: 7.5, 16: 9.0, 18: 11.0]
     )
 
     /// Active route casing width — generous border for a premium floating effect.
     static let routeCasingWidth = zoomInterpolate(
         base: 1.6,
-        stops: [10: 5.5, 12: 8.0, 14: 10.5, 16: 12.5, 18: 14.0]
+        stops: [10: 6.0, 12: 8.5, 14: 11.0, 16: 13.0, 18: 15.5]
     )
 
-    /// Station circle dot radius — single-line stops only, visible from zoom 12.
+    /// Station circle dot radius — single-line stops, visible from zoom 11.
     /// Scaled to not be dwarfed by the now-thicker subway fill lines.
     static let stationDotRadius = zoomInterpolate(
         base: 1.4,
-        stops: [12: 1.8, 13: 2.5, 14: 3.2, 15: 4.0, 16: 5.5, 17: 7.0, 18: 8.5]
+        stops: [11: 1.0, 12: 2.0, 13: 2.8, 14: 3.6, 15: 4.5, 16: 6.0, 17: 7.5, 18: 9.0]
     )
 
     /// Station dot stroke width — thin crisp border.
     static let stationDotStrokeWidth = zoomInterpolate(
         base: 1.3,
-        stops: [12: 0.5, 13: 0.7, 15: 1.0, 17: 1.5, 18: 1.8]
+        stops: [11: 0.3, 12: 0.6, 13: 0.8, 15: 1.1, 17: 1.6, 18: 2.0]
     )
 
     /// Transfer pill icon size — zoom-interpolated scale factor applied to
@@ -386,6 +395,274 @@ enum MapLibreStyleConfig {
         return NSExpression(mglJSONObject: json)
     }()
 
+    // MARK: - Base Style Cleanup
+    //
+    // MapTiler streets-v2 styles ship with hundreds of layers including
+    // POI icons (restaurants, shops, gas stations), road shields, highway
+    // numbers, and transit labels that clash with our custom transit overlays.
+    //
+    // All customization values are loaded from JSON files at:
+    //   Resources/MapStyles/map_style_light.json
+    //   Resources/MapStyles/map_style_dark.json
+    //
+    // After the style loads we strip everything that doesn't serve a
+    // transit navigation app, then tint the remaining base layers to
+    // harmonize with the app's purple/indigo palette.
+
+    /// Applies the full suite of transit-app customizations to a loaded
+    /// MapTiler base style: strips clutter, dims low-priority layers, and
+    /// recolors surviving layers to match the app's palette.
+    ///
+    /// All colors and patterns are driven by the JSON style files under
+    /// `Resources/MapStyles/` — edit those to tweak the map theme without
+    /// touching Swift code.
+    ///
+    /// Call once from `didFinishLoading style:` after the style is ready.
+    /// Customise the base map style: strip POI clutter, dim low-priority
+    /// layers, and recolour surviving layers to match the app’s palette.
+    ///
+    /// When `routeColor` is non-nil the palette is pre-blended towards a
+    /// desaturated version of the route colour — Transit-app-style ambient
+    /// wash baked into the same single pass. No second iteration needed.
+    static func customizeBaseStyle(
+        _ style: MLNStyle,
+        isDarkMode: Bool,
+        routeColor: UIColor? = nil
+    ) {
+        guard let config = MapStyleLoader.config(isDarkMode: isDarkMode) else {
+            #if DEBUG
+            print("[MapLibreStyleConfig] No map style JSON loaded — skipping base style customization")
+            #endif
+            return
+        }
+
+        // \u2500\u2500 Pre-compute palette (with optional route-colour wash) \u2500\u2500
+        let water: UIColor
+        let park: UIColor
+        let land: UIColor
+        let road: UIColor
+        let roadCasing: UIColor
+        let building: UIColor
+        let roadLabel: UIColor
+        let placeLabel: UIColor
+
+        if let rc = routeColor {
+            let wash = desaturateForTint(rc, isDarkMode: isDarkMode)
+            water      = blendColor(base: config.waterColor,      overlay: wash, t: config.tintWater)
+            park       = blendColor(base: config.parkColor,       overlay: wash, t: config.tintPark)
+            land       = blendColor(base: config.landColor,       overlay: wash, t: config.tintLand)
+            road       = blendColor(base: config.roadColor,       overlay: wash, t: config.tintRoad)
+            roadCasing = blendColor(base: config.roadCasingColor, overlay: wash, t: config.tintRoad)
+            building   = blendColor(base: config.buildingColor,   overlay: wash, t: config.tintBuilding)
+            roadLabel  = blendColor(base: config.roadLabelColor,  overlay: wash, t: config.tintRoadLabel)
+            placeLabel = blendColor(base: config.placeLabelColor, overlay: wash, t: config.tintPlaceLabel)
+        } else {
+            water      = config.waterColor
+            park       = config.parkColor
+            land       = config.landColor
+            road       = config.roadColor
+            roadCasing = config.roadCasingColor
+            building   = config.buildingColor
+            roadLabel  = config.roadLabelColor
+            placeLabel = config.placeLabelColor
+        }
+
+        let layers = style.layers
+
+        // ── 1. Strip unwanted layers ──
+        for layer in layers {
+            let id = layer.identifier.lowercased()
+            if config.strippedLayerPatterns.contains(where: { id.contains($0) }) {
+                style.removeLayer(layer)
+            }
+        }
+
+        // ── 1b. Kill ALL remaining symbol layers that aren't road/place labels ──
+        // MapTiler streets-v2 has dozens of icon/text layers for schools,
+        // gas stations, shops, etc. under unpredictable IDs. An allowlist
+        // approach ensures ONLY transit-relevant text survives.
+        let allowedSymbolPatterns: Set<String> = [
+            "road", "street", "highway", "motorway",  // road labels
+            "place", "city", "town", "village",       // place labels
+            "state", "country", "continent",           // geo labels
+            "borough", "neighbourhood", "neighborhood",
+            "water"                                     // water labels
+        ]
+        for layer in style.layers {
+            guard layer is MLNSymbolStyleLayer else { continue }
+            let id = layer.identifier.lowercased()
+            let isAllowed = allowedSymbolPatterns.contains(where: { id.contains($0) })
+            if !isAllowed {
+                style.removeLayer(layer)
+            }
+        }
+
+        // ── 2 & 3. Dim + recolor in a SINGLE pass ──
+        // Consolidates what was previously 2 separate layer iterations
+        // into one pass for faster style load times.
+        for layer in style.layers {
+            let id = layer.identifier.lowercased()
+
+            // Dim low-priority layers
+            if config.dimmedPatterns.contains(where: { id.contains($0) }) {
+                if let fill = layer as? MLNFillStyleLayer {
+                    fill.fillOpacity = NSExpression(forConstantValue: config.dimmedOpacity)
+                } else if let line = layer as? MLNLineStyleLayer {
+                    line.lineOpacity = NSExpression(forConstantValue: config.dimmedOpacity)
+                }
+            }
+
+            // Water
+            if id.contains("water") {
+                if let fill = layer as? MLNFillStyleLayer {
+                    fill.fillColor = NSExpression(forConstantValue: water)
+                } else if let line = layer as? MLNLineStyleLayer {
+                    line.lineColor = NSExpression(forConstantValue: water)
+                }
+            }
+
+            // Parks / green spaces
+            if id.contains("park") || id.contains("green") || id.contains("grass")
+                || id.contains("forest") || id.contains("wood") || id.contains("vegetation")
+                || id.contains("garden") || id.contains("cemetery") || id.contains("scrub") {
+                if let fill = layer as? MLNFillStyleLayer {
+                    fill.fillColor = NSExpression(forConstantValue: park)
+                }
+            }
+
+            // Land / background
+            if id.contains("landcover") || id.contains("landuse")
+                || id == "background" || id.contains("earth") || id.contains("land") {
+                let isSpecific = id.contains("park") || id.contains("green")
+                    || id.contains("forest") || id.contains("wood")
+                    || id.contains("cemetery") || id.contains("garden")
+                if !isSpecific {
+                    if let fill = layer as? MLNFillStyleLayer {
+                        fill.fillColor = NSExpression(forConstantValue: land)
+                    } else if let bg = layer as? MLNBackgroundStyleLayer {
+                        bg.backgroundColor = NSExpression(forConstantValue: land)
+                    }
+                }
+            }
+
+            // Roads
+            if id.contains("road") || id.contains("street") || id.contains("highway")
+                || id.contains("motorway") || id.contains("trunk") || id.contains("path")
+                || id.contains("bridge") || id.contains("tunnel") {
+                if let fill = layer as? MLNFillStyleLayer {
+                    fill.fillColor = NSExpression(forConstantValue: road)
+                } else if let line = layer as? MLNLineStyleLayer {
+                    if !id.contains("label") && !id.contains("name") {
+                        // Road casings get a distinct darker color for depth
+                        let color = id.contains("casing") ? roadCasing : road
+                        line.lineColor = NSExpression(forConstantValue: color)
+                    }
+                }
+            }
+
+            // Road labels — keep but restyle to be subdued
+            if (id.contains("road") || id.contains("street") || id.contains("highway"))
+                && (id.contains("label") || id.contains("name")) {
+                if let symbol = layer as? MLNSymbolStyleLayer {
+                    symbol.textColor = NSExpression(forConstantValue: roadLabel)
+                    symbol.textHaloColor = NSExpression(forConstantValue: config.roadLabelHaloColor)
+                    symbol.textHaloWidth = NSExpression(forConstantValue: config.roadLabelHaloWidth)
+                    symbol.textHaloBlur = NSExpression(forConstantValue: config.roadLabelHaloBlur)
+                }
+            }
+
+            // Place / neighborhood / borough labels — keep but theme-match
+            if id.contains("place") && (id.contains("label") || id.contains("name")) {
+                if let symbol = layer as? MLNSymbolStyleLayer {
+                    symbol.textColor = NSExpression(forConstantValue: placeLabel)
+                    symbol.textHaloColor = NSExpression(forConstantValue: config.placeLabelHaloColor)
+                    symbol.textHaloWidth = NSExpression(forConstantValue: config.placeLabelHaloWidth)
+                    symbol.textHaloBlur = NSExpression(forConstantValue: config.placeLabelHaloBlur)
+                }
+            }
+
+            // Buildings
+            if id.contains("building") {
+                if let fill = layer as? MLNFillStyleLayer {
+                    fill.fillColor = NSExpression(forConstantValue: building)
+                }
+            }
+        }
+
+        // Tint 3D building extrusion if present
+        if let rc = routeColor {
+            let wash = desaturateForTint(rc, isDarkMode: isDarkMode)
+            let tintedBldg3D = blendColor(
+                base: isDarkMode ? buildingColorDark : buildingColorLight,
+                overlay: wash, t: config.tintBuilding
+            )
+            if let extrusion = style.layer(withIdentifier: layerBuilding3D) as? MLNFillExtrusionStyleLayer {
+                extrusion.fillExtrusionColor = NSExpression(forConstantValue: tintedBldg3D)
+            }
+        }
+    }
+
+    // MARK: - Route Color Tinting (merged into customizeBaseStyle)
+    //
+    // Transit-app-style colour wash: when a route is selected,
+    // `customizeBaseStyle(_:isDarkMode:routeColor:)` pre-blends the
+    // palette with a desaturated version of the route colour in a
+    // SINGLE pass — no separate iteration, instant on style load.
+    //
+    // Per-element tint strengths are defined in the JSON style configs
+    // (tintStrengths section) so water/parks barely shift while
+    // buildings/land absorb more of the route character.
+
+    /// Desaturates and lightens (light mode) or softens (dark mode) a
+    /// colour so it works as an ambient map wash instead of a neon overlay.
+    ///
+    /// Uses sqrt-compressed saturation for perceptually uniform results —
+    /// very saturated subway colours (red, green, blue) get dampened more
+    /// aggressively while already-muted colours stay proportional.
+    static func desaturateForTint(_ color: UIColor, isDarkMode: Bool) -> UIColor {
+        var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        color.getHue(&h, saturation: &s, brightness: &b, alpha: &a)
+        if isDarkMode {
+            // Very muted glow — low saturation, capped brightness
+            // so dark base colours aren't washed out.
+            let newSat = s * 0.22
+            let newBri = min(b * 0.55, 0.38)
+            return UIColor(hue: h, saturation: newSat, brightness: newBri, alpha: 1.0)
+        } else {
+            // Light pastel wash — sqrt curve compresses loud colours,
+            // brightness pushed high for an airy, integrated feel.
+            let newSat = sqrt(s) * 0.18
+            let newBri = min(b * 0.4 + 0.55, 0.90)
+            return UIColor(hue: h, saturation: newSat, brightness: newBri, alpha: 1.0)
+        }
+    }
+
+    /// Compares two UIColors by their RGBA float components.
+    static func colorsEqualRGBA(_ a: UIColor?, _ b: UIColor?) -> Bool {
+        guard let a, let b else { return a == nil && b == nil }
+        var ar: CGFloat = 0, ag: CGFloat = 0, ab: CGFloat = 0, aa: CGFloat = 0
+        var br: CGFloat = 0, bg: CGFloat = 0, bb: CGFloat = 0, ba: CGFloat = 0
+        a.getRed(&ar, green: &ag, blue: &ab, alpha: &aa)
+        b.getRed(&br, green: &bg, blue: &bb, alpha: &ba)
+        let eps: CGFloat = 0.002
+        return abs(ar - br) < eps && abs(ag - bg) < eps
+            && abs(ab - bb) < eps && abs(aa - ba) < eps
+    }
+
+    /// Blends two UIColors in RGB space.
+    static func blendColor(base: UIColor, overlay: UIColor, t: CGFloat) -> UIColor {
+        var br: CGFloat = 0, bg: CGFloat = 0, bb: CGFloat = 0, ba: CGFloat = 0
+        var or: CGFloat = 0, og: CGFloat = 0, ob: CGFloat = 0, oa: CGFloat = 0
+        base.getRed(&br, green: &bg, blue: &bb, alpha: &ba)
+        overlay.getRed(&or, green: &og, blue: &ob, alpha: &oa)
+        return UIColor(
+            red:   br + (or - br) * t,
+            green: bg + (og - bg) * t,
+            blue:  bb + (ob - bb) * t,
+            alpha: 1.0
+        )
+    }
+
     // MARK: - Transit Layer IDs (z-ordering)
     //
     // Rendering order (bottom to top):
@@ -423,27 +700,31 @@ enum MapLibreStyleConfig {
     // MARK: - 3D Buildings
 
     /// Minimum zoom level at which 3D building extrusions become visible.
-    /// Below this zoom, buildings are too small to be meaningful.
-    static let building3DMinZoom: Double = 14.5
+    /// Lowered to 14.0 so buildings appear earlier during zoom-in for a
+    /// more immersive street-level transition.
+    static let building3DMinZoom: Double = 14.0
 
-    /// Building fill color (light mode) — subtle warm gray so buildings
-    /// add depth without competing with transit overlays.
-    static let buildingColorLight = UIColor(red: 0.84, green: 0.82, blue: 0.88, alpha: 1.0)
+    /// Building fill color (light mode) — subtle purple-tinted gray that
+    /// harmonizes with the app's lavender theme without stealing focus
+    /// from transit overlays.
+    static let buildingColorLight = UIColor(red: 0.85, green: 0.82, blue: 0.92, alpha: 1.0)
 
-    /// Building fill color (dark mode) — muted blue-gray for contrast against
-    /// the dark base map without being distracting.
-    static let buildingColorDark = UIColor(red: 0.12, green: 0.15, blue: 0.21, alpha: 1.0)
+    /// Building fill color (dark mode) — muted indigo that matches the
+    /// native streets-v2-dark palette with a subtle purple tint.
+    static let buildingColorDark = UIColor(red: 0.14, green: 0.15, blue: 0.25, alpha: 1.0)
 
     /// Building extrusion opacity — fades in smoothly from minZoom to z16.
+    /// Pumped up for a richer, more immersive 3D cityscape.
     static let buildingOpacity = zoomInterpolate(
         base: 1.0,
-        stops: [14.5: 0.0, 15: 0.35, 16: 0.55, 17: 0.65, 18: 0.7]
+        stops: [14.0: 0.0, 14.5: 0.30, 15: 0.50, 16: 0.68, 17: 0.78, 18: 0.85]
     )
 
-    /// Building extrusion opacity (dark mode) — slightly lower for subtlety.
+    /// Building extrusion opacity (dark mode) — slightly lower but still
+    /// prominent enough to give the dark map visual depth.
     static let buildingOpacityDark = zoomInterpolate(
         base: 1.0,
-        stops: [14.5: 0.0, 15: 0.25, 16: 0.45, 17: 0.55, 18: 0.6]
+        stops: [14.0: 0.0, 14.5: 0.22, 15: 0.40, 16: 0.58, 17: 0.68, 18: 0.75]
     )
 
     // MARK: - Transfer Pill Image Factory
