@@ -301,18 +301,33 @@ async def _compute_and_cache_grouped(
     except (asyncio.TimeoutError, Exception):
         pass  # predict_factor falls back to heuristic internally
 
+    # ── Collect arrivals ────────────────────────────────────────────
+    # _collect_all internally uses asyncio.wait() with a 30 s timeout
+    # and explicitly cancels + awaits all pending tasks — no zombies.
+    # The outer 45 s guard catches pathological cases (e.g. the
+    # cancellation itself is blocked by GIL contention).
+    _ca_task = asyncio.create_task(
+        _collect_all(lat, lon, radius, mode_filter=mode)
+    )
     try:
         flat = await asyncio.wait_for(
-            _collect_all(lat, lon, radius, mode_filter=mode),
+            asyncio.shield(_ca_task),
             timeout=_NEARBY_COMPUTE_TIMEOUT,
         )
     except asyncio.TimeoutError:
+        _ca_task.cancel()
+        # Wait briefly for the cancel to propagate, but don't hang
+        try:
+            await asyncio.wait_for(_ca_task, timeout=3.0)
+        except (asyncio.TimeoutError, asyncio.CancelledError):
+            pass
         TrackLogger.error(
             f"_collect_all timed out after {_NEARBY_COMPUTE_TIMEOUT}s "
             f"for ({lat:.4f}, {lon:.4f}) radius={radius} mode={mode}",
             tag="NEARBY",
         )
-        flat = []  # Return empty rather than hang forever
+        # Salvage any partial results if _collect_all managed to return
+        flat = _ca_task.result() if _ca_task.done() and not _ca_task.cancelled() and _ca_task.exception() is None else []
 
     # ── Inline alerts (timeout-guarded) ─────────────────────────────
     try:
@@ -613,64 +628,106 @@ async def _collect_all(
     *, mode_filter: str | None = None,
 ) -> list[NearbyTransitArrival]:
     """Gather subway + bus arrivals in parallel.
-    
+
     When *mode_filter* is provided (e.g. ``"subway"``, ``"bus"``, ``"lirr"``,
     ``"mnr"``), only that mode is fetched — skipping unnecessary network
     calls for the other feeds.
+
+    Uses ``asyncio.wait()`` with an explicit timeout so that:
+    1. Completed modes return partial results even when others are slow.
+    2. Pending tasks are **cancelled and awaited** — no zombie tasks
+       that continue blocking the event loop after the timeout fires.
+
+    Previous implementation used ``asyncio.ensure_future(asyncio.wait_for(…))``
+    which created detached tasks that survived cancellation of the parent
+    ``_collect_all`` coroutine, causing 97 s response times when only 45 s
+    was budgeted.
     """
     settings = get_settings()
     effective_radius = radius if radius is not None else settings.app_settings.search_radius_meters
     results: list[NearbyTransitArrival] = []
 
-    # ── Per-mode timeout ────────────────────────────────────────────
-    # Each transit mode gets its own 30 s budget.  Modes run
-    # concurrently so the wall-clock maximum is ~30 s (not 4 × 30).
-    # If one mode is slow (e.g. bus SIRI), partial results from the
-    # other modes are still returned instead of the previous
-    # all-or-nothing 45 s timeout that yielded an empty list.
-    _PER_MODE_TIMEOUT = 30  # seconds
+    _WAIT_TIMEOUT = 30  # seconds — wall-clock budget for all modes
 
-    # Build task list based on mode filter
     import time as _t
     _t0 = _t.perf_counter()
+
+    # Build task dict — plain create_task, NO nested wait_for
     tasks: dict[str, asyncio.Task] = {}
     if mode_filter is None or mode_filter == "subway":
-        tasks["subway"] = asyncio.ensure_future(
-            asyncio.wait_for(_fetch_nearby_subway(lat, lon, effective_radius), timeout=_PER_MODE_TIMEOUT)
+        tasks["subway"] = asyncio.create_task(
+            _fetch_nearby_subway(lat, lon, effective_radius)
         )
     if mode_filter is None or mode_filter == "bus":
-        tasks["bus"] = asyncio.ensure_future(
-            asyncio.wait_for(_fetch_nearby_buses(lat, lon, effective_radius), timeout=_PER_MODE_TIMEOUT)
+        tasks["bus"] = asyncio.create_task(
+            _fetch_nearby_buses(lat, lon, effective_radius)
         )
     if mode_filter is None or mode_filter == "lirr":
-        tasks["lirr"] = asyncio.ensure_future(
-            asyncio.wait_for(_fetch_nearby_rail(lat, lon, effective_radius, "lirr"), timeout=_PER_MODE_TIMEOUT)
+        tasks["lirr"] = asyncio.create_task(
+            _fetch_nearby_rail(lat, lon, effective_radius, "lirr")
         )
     if mode_filter is None or mode_filter == "mnr":
-        tasks["mnr"] = asyncio.ensure_future(
-            asyncio.wait_for(_fetch_nearby_rail(lat, lon, effective_radius, "mnr"), timeout=_PER_MODE_TIMEOUT)
+        tasks["mnr"] = asyncio.create_task(
+            _fetch_nearby_rail(lat, lon, effective_radius, "mnr")
         )
 
-    task_results = await asyncio.gather(*tasks.values(), return_exceptions=True)
+    if not tasks:
+        return results
+
+    # Map Task → label for result harvesting
+    task_to_label = {t: lbl for lbl, t in tasks.items()}
+
+    # ── Wait with timeout, then forcibly cancel stragglers ──────────
+    done: set[asyncio.Task] = set()
+    pending: set[asyncio.Task] = set()
+    try:
+        done, pending = await asyncio.wait(
+            tasks.values(),
+            timeout=_WAIT_TIMEOUT,
+            return_when=asyncio.ALL_COMPLETED,
+        )
+    except asyncio.CancelledError:
+        # Parent (_compute_and_cache_grouped) cancelled us — propagate
+        for t in tasks.values():
+            t.cancel()
+        await asyncio.gather(*tasks.values(), return_exceptions=True)
+        raise
+    finally:
+        # Cancel every task that didn't finish in time
+        for t in pending:
+            t.cancel()
+        # Wait for cancellations to propagate (prevents zombie tasks)
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+
     _elapsed = _t.perf_counter() - _t0
-    
+
+    # ── Harvest results ─────────────────────────────────────────────
     _mode_times: dict[str, str] = {}
-    for label, result in zip(tasks.keys(), task_results):
-        if isinstance(result, list):
-            results.extend(result)
-            _mode_times[label] = f"{len(result)} items"
-        elif isinstance(result, asyncio.TimeoutError):
+    for task in tasks.values():
+        label = task_to_label[task]
+        if task in pending:
+            _mode_times[label] = "TIMEOUT"
             TrackLogger.warning(
-                f"{label.upper()} feed timed out after {_PER_MODE_TIMEOUT}s",
+                f"{label.upper()} feed cancelled after {_WAIT_TIMEOUT}s",
                 tag="NEARBY",
             )
-            _mode_times[label] = f"TIMEOUT"
-        elif isinstance(result, Exception):
+        elif task.cancelled():
+            _mode_times[label] = "CANCELLED"
+        elif task.exception() is not None:
+            exc = task.exception()
             TrackLogger.error(
-                f"{label.upper()} feed failed: {_describe_exception(result)}"
+                f"{label.upper()} feed failed: {_describe_exception(exc)}"
             )
-            _mode_times[label] = f"FAILED"
-    
+            _mode_times[label] = "FAILED"
+        else:
+            result = task.result()
+            if isinstance(result, list):
+                results.extend(result)
+                _mode_times[label] = f"{len(result)} items"
+            else:
+                _mode_times[label] = "empty"
+
     TrackLogger.info(
         f"⏱ _collect_all wall={_elapsed:.3f}s radius={effective_radius}m "
         f"mode={mode_filter or 'all'} → {_mode_times}"
@@ -1496,10 +1553,9 @@ async def _fetch_nearby_subway(
 
             # Use the actual route_id from the GTFS-RT trip, not the feed line
             total_kept += 1
-            # Yield to the event loop every 200 arrivals so asyncio
-            # timeouts (per-mode 30 s, overall 45 s) can actually fire
-            # even though _ml_corrected never truly suspends.
-            if total_kept % 200 == 0:
+            # Yield to the event loop every 50 arrivals so asyncio
+            # timeouts and health checks can fire promptly.
+            if total_kept % 50 == 0:
                 await asyncio.sleep(0)
 
             # For subway, keep the compass direction ("N"/"S") as the grouping
@@ -1592,6 +1648,8 @@ async def _fetch_nearby_subway(
                         trip_id=s.trip_id
                     ))
                     backfill_count += 1
+                    if backfill_count % 50 == 0:
+                        await asyncio.sleep(0)
 
             if backfill_count:
                 TrackLogger.info(f"Backfilled {backfill_count} subway schedule entries for {len(subway_missing)} stops")
@@ -1856,7 +1914,7 @@ async def _fetch_nearby_buses(
                 recency_cache=_bus_recency_cache,
             )
             _bus_ml_count += 1
-            if _bus_ml_count % 100 == 0:
+            if _bus_ml_count % 50 == 0:
                 await asyncio.sleep(0)  # yield so timeouts can fire
             # Honour SIRI's is_realtime flag: when False the vehicle position is
             # estimated from the static schedule (GPS not transmitting) — treat
@@ -2672,12 +2730,20 @@ async def _fetch_nearby_rail(
         TrackLogger.error(f"{agency.upper()} feed failed: {_describe_exception(exc)}")
         return results
 
+    _rail_kept = 0
     for arrival in arrivals:
         if arrival.station not in nearby_stops:
             continue
         # Skip arrivals with no route_id — these can't be meaningfully grouped
         if not arrival.route_id:
             continue
+
+        # Yield every 50 kept arrivals so the event loop can service
+        # timeout callbacks and health checks.  Rail feeds (LIRR 1444,
+        # MNR 3447 arrivals) would otherwise block the loop for seconds.
+        _rail_kept += 1
+        if _rail_kept % 50 == 0:
+            await asyncio.sleep(0)
             
         stop_info = get_stop_info(arrival.station, agency=agency)
         
