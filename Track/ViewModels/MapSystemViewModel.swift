@@ -626,13 +626,14 @@ final class MapSystemViewModel {
                 try? await Task.sleep(nanoseconds: delay * 1_000_000_000)
                 guard !Task.isCancelled else { return }
                 AppLogger.shared.log("SYSTEM_MAP", message: "🔄 Retry \(attempt + 1)/\(retryDelays.count) fetching shapes…")
-                do {
-                    await fetchAndRenderFromNetwork(isBackgroundRefresh: true)
-                    AppLogger.shared.log("SYSTEM_MAP", message: "✅ Shapes retry \(attempt + 1) succeeded")
+                let countBefore = flattenedSubwayPolylines.count + flattenedCommuterRailPolylines.count
+                await fetchAndRenderFromNetwork(isBackgroundRefresh: true)
+                let countAfter = flattenedSubwayPolylines.count + flattenedCommuterRailPolylines.count
+                if countAfter > countBefore || cachedSystemMap.contains(where: { $0.mode == .lirr || $0.mode == .mnr }) {
+                    AppLogger.shared.log("SYSTEM_MAP", message: "✅ Shapes retry \(attempt + 1) succeeded — \(cachedSystemMap.count) lines loaded")
                     return
-                } catch {
-                    AppLogger.shared.logError("Shapes retry \(attempt + 1) failed", error: error)
                 }
+                AppLogger.shared.log("SYSTEM_MAP", message: "⚠️ Shapes retry \(attempt + 1) — no new data yet")
             }
         }
     }
