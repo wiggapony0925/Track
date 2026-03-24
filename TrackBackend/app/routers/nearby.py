@@ -331,10 +331,10 @@ async def _compute_and_cache_grouped(
 
     # ── Inline alerts (timeout-guarded) ─────────────────────────────
     try:
-        alert_index = await asyncio.wait_for(_get_inline_alerts(), timeout=10.0)
+        alert_index = await asyncio.wait_for(_get_inline_alerts(), timeout=3.0)
     except asyncio.TimeoutError:
         TrackLogger.warning(
-            "Inline alert fetch timed out after 10s — proceeding without alerts",
+            "Inline alert fetch timed out after 3s — proceeding without alerts",
             tag="NEARBY",
         )
         alert_index = _inline_alert_cache  # fall back to stale cache
@@ -1149,7 +1149,7 @@ async def _get_inline_alerts() -> dict[str, list["InlineAlert"]]:
 
     try:
         from app.services.gtfs.data_cleaner import get_alerts
-        raw_alerts = await asyncio.wait_for(get_alerts(), timeout=10.0)
+        raw_alerts = await asyncio.wait_for(get_alerts(), timeout=3.0)
         index: dict[str, list[InlineAlert]] = defaultdict(list)
         for alert in raw_alerts:
             sev = (alert.severity or "").lower()
@@ -1176,7 +1176,7 @@ async def _get_inline_alerts() -> dict[str, list["InlineAlert"]]:
         _inline_alert_cache = dict(index)
         _inline_alert_ts = now
     except asyncio.TimeoutError:
-        TrackLogger.warning("Inline alert fetch timed out after 10s — using stale cache", tag="NEARBY")
+        TrackLogger.warning("Inline alert fetch timed out after 3s — using stale cache", tag="NEARBY")
     except Exception as exc:
         TrackLogger.warning(f"Inline alert fetch failed: {exc}")
     return _inline_alert_cache
