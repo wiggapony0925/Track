@@ -652,11 +652,21 @@ async def _collect_all(
     import time as _t
     _t0 = _t.perf_counter()
 
+    import time as _mono
+    _collect_deadline = _mono.monotonic() + _WAIT_TIMEOUT
+
+    # Pre-warm alert index + weather cache ONCE so the hundreds of
+    # _ml_corrected calls inside each mode function never block on a
+    # first-call HTTP fetch (up to 10 s for alerts, 5 s for weather).
+    await _maybe_refresh_alerts()
+    from app.clients.weather_client import get_current_weather
+    await get_current_weather()
+
     # Build task dict — plain create_task, NO nested wait_for
     tasks: dict[str, asyncio.Task] = {}
     if mode_filter is None or mode_filter == "subway":
         tasks["subway"] = asyncio.create_task(
-            _fetch_nearby_subway(lat, lon, effective_radius)
+            _fetch_nearby_subway(lat, lon, effective_radius, _deadline=_collect_deadline)
         )
     if mode_filter is None or mode_filter == "bus":
         tasks["bus"] = asyncio.create_task(
@@ -1486,6 +1496,7 @@ def _soonest_minutes(group: GroupedNearbyTransit) -> int:
 
 async def _fetch_nearby_subway(
     lat: float, lon: float, radius: int,
+    *, _deadline: float | None = None,
 ) -> list[NearbyTransitArrival]:
     """Fetch arrivals from all subway feeds, filtered to nearby stations.
 
@@ -1532,6 +1543,12 @@ async def _fetch_nearby_subway(
             _subway_recency_qs.append((_a.route_id or _ln, _a.station, _batch_dow, _batch_hour))
     _subway_recency_cache = await _get_weighted_errors_batch(_subway_recency_qs)
 
+    # Pre-warm alert index + weather cache so the per-arrival
+    # _ml_corrected calls never block on a first-call HTTP fetch.
+    await _maybe_refresh_alerts()
+    from app.clients.weather_client import get_current_weather as _gcw_sub
+    _cached_weather = await _gcw_sub()
+
     success_count = 0
     total_raw = 0
     total_kept = 0
@@ -1575,6 +1592,7 @@ async def _fetch_nearby_subway(
                 arrival.minutes_away, arrival.route_id or line, "subway",
                 stop_id=arrival.station,
                 recency_cache=_subway_recency_cache,
+                _weather=_cached_weather,
             )
             results.append(
                 NearbyTransitArrival(
@@ -1609,6 +1627,21 @@ async def _fetch_nearby_subway(
     # IMPORTANT: only backfill subway stops — skip LIRR/MNR stops that
     # may share numeric stop_ids (e.g. "183" is both subway and LIRR).
     # LIRR/MNR have their own dedicated _fetch_nearby_rail() path.
+    #
+    # Budget gate: the scheduled backfill launches 200+ asyncio.to_thread
+    # SQLite queries that saturate the 5-thread pool and create heavy GIL
+    # contention, stalling the entire event loop.  Skip it when budget is
+    # tight — live arrivals are the priority.
+    import time as _mono_sub
+    _budget_ok = _deadline is None or (_deadline - _mono_sub.monotonic()) > 12
+    if not _budget_ok:
+        _budget_left_s = (_deadline - _mono_sub.monotonic()) if _deadline else float("inf")
+        TrackLogger.info(
+            f"Subway skipping scheduled backfill — only {_budget_left_s:.1f}s left "
+            f"(returning {total_kept} live arrivals)"
+        )
+        return results
+
     stops_with_live = {a.stop_id for a in results}
     missing_stops = nearby_stops - stops_with_live
     
@@ -1640,6 +1673,7 @@ async def _fetch_nearby_subway(
                     corrected_mins = await _ml_corrected(
                         s.minutes_away, s.route_id, "subway",
                         stop_id=s.station,
+                        _weather=_cached_weather,
                     )
                     results.append(NearbyTransitArrival(
                         route_id=s.route_id,
@@ -1663,6 +1697,12 @@ async def _fetch_nearby_subway(
                 TrackLogger.info(f"Backfilled {backfill_count} subway schedule entries for {len(subway_missing)} stops")
 
     # -----------------------------------------------------------------
+    # Budget gate: skip anchor phase if running low on time
+    _anchor_ok = _deadline is None or (_deadline - _mono_sub.monotonic()) > 5
+    if not _anchor_ok:
+        TrackLogger.info("Subway skipping anchor phase — budget tight")
+        return results
+
     # Nearest-stop anchor (same concept as bus Phase D)
     #
     # Ensures every subway route has at least one entry at the closest
@@ -1855,6 +1895,10 @@ async def _fetch_nearby_buses(
     _bus_recency_cache = await _get_weighted_errors_batch(_bus_recency_qs)
     await asyncio.sleep(0)  # yield so per-mode timeout can fire
 
+    # Pre-warm weather for the ML loop (avoid per-item await)
+    from app.clients.weather_client import get_current_weather as _gcw_bus
+    _bus_cached_weather = await _gcw_bus()
+
     # Track which route IDs already have live data
     routes_with_live: set[str] = set()
 
@@ -1920,6 +1964,7 @@ async def _fetch_nearby_buses(
                 minutes, normalised_route, "bus",
                 stop_id=stop.id, deviation_s=float(arrival.schedule_deviation_s or 0),
                 recency_cache=_bus_recency_cache,
+                _weather=_bus_cached_weather,
             )
             _bus_ml_count += 1
             if _bus_ml_count % 50 == 0:
@@ -2851,6 +2896,8 @@ async def _ml_corrected(
     stop_id: str = "",
     deviation_s: float = 0.0,
     recency_cache: dict | None = None,
+    *,
+    _weather: str | None = None,
 ) -> int:
     """Return ML-corrected minutes_away.
 
@@ -2868,6 +2915,13 @@ async def _ml_corrected(
     Factor range is [0.90, 2.0] before alert boost (floor allows early-arrival
     predictions for reliable off-peak routes; ceiling guards sanity).
     Placeholders (minutes=99) and already-departed (minutes=0) are unchanged.
+
+    When ``_weather`` is supplied (pre-fetched by the caller) and
+    ``recency_cache`` is also supplied, this function avoids **all** async
+    I/O — the only awaits are the alert index refresh (skipped if TTL fresh)
+    and the weather fetch (skipped if ``_weather`` is pre-filled).  This
+    dramatically reduces per-item overhead in hot loops (458+ bus arrivals,
+    500+ subway arrivals).
     """
     if minutes_away <= 0 or minutes_away >= 99:
         return minutes_away
@@ -2881,13 +2935,14 @@ async def _ml_corrected(
 
     # 2. GBR contextual factor — now uses live weather from Open-Meteo
     #    (falls back to "clear" if the weather client hasn't fetched yet)
-    from app.clients.weather_client import get_current_weather
-    live_weather = await get_current_weather()
+    if _weather is None:
+        from app.clients.weather_client import get_current_weather
+        _weather = await get_current_weather()
     factor, _ = _predict_factor(
         route_id=route_id,
         hour=hour,
         dow=dow,
-        weather=live_weather,
+        weather=_weather,
         mode=mode,
         current_delay_s=deviation_s,
     )
