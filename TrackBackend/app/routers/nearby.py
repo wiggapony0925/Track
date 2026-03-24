@@ -1496,7 +1496,12 @@ async def _fetch_nearby_subway(
 
             # Use the actual route_id from the GTFS-RT trip, not the feed line
             total_kept += 1
-            
+            # Yield to the event loop every 200 arrivals so asyncio
+            # timeouts (per-mode 30 s, overall 45 s) can actually fire
+            # even though _ml_corrected never truly suspends.
+            if total_kept % 200 == 0:
+                await asyncio.sleep(0)
+
             # For subway, keep the compass direction ("N"/"S") as the grouping
             # key only as fallback. Prefer destination to preserve branch-specific
             # direction tabs (supports 3+ direction cases naturally).
@@ -1683,12 +1688,22 @@ async def _fetch_nearby_buses(
     sees *all* bus service in their area, not just buses that happen to
     be approaching right now.
     """
+    import time as _monotonic_mod
+    # Internal deadline: leave 5 s headroom before the per-mode timeout.
+    # Phases A-F are "nice-to-have" enrichment; core SIRI results are
+    # the priority.  Returning partial results is much better than
+    # timing out and returning nothing.
+    _BUS_INTERNAL_DEADLINE = _monotonic_mod.monotonic() + 25  # seconds
+
+    def _budget_left() -> float:
+        return _BUS_INTERNAL_DEADLINE - _monotonic_mod.monotonic()
+
     settings = get_settings()
     effective_radius = radius if radius is not None else settings.app_settings.search_radius_meters
     results: list[NearbyTransitArrival] = []
 
     async def _add_static_only_placeholders(reason: str) -> list[NearbyTransitArrival]:
-        static_routes = _nearby_static_bus_routes(lat, lon, effective_radius)
+        static_routes = await asyncio.to_thread(_nearby_static_bus_routes, lat, lon, effective_radius)
         # Parallel fetch: all static-route schedule queries at once
         items = list(static_routes.items())
         if not items:
@@ -1772,12 +1787,14 @@ async def _fetch_nearby_buses(
                 (_display_name(_barr.route_id), _bstop.id, _bus_batch_dow, _bus_batch_hour)
             )
     _bus_recency_cache = await _get_weighted_errors_batch(_bus_recency_qs)
+    await asyncio.sleep(0)  # yield so per-mode timeout can fire
 
     # Track which route IDs already have live data
     routes_with_live: set[str] = set()
 
     fail_count = 0
     first_error: Exception | None = None
+    _bus_ml_count = 0
     for i, result in enumerate(stop_results):
         stop = stops_to_query[i]
         if isinstance(result, Exception):
@@ -1838,6 +1855,9 @@ async def _fetch_nearby_buses(
                 stop_id=stop.id, deviation_s=float(arrival.schedule_deviation_s or 0),
                 recency_cache=_bus_recency_cache,
             )
+            _bus_ml_count += 1
+            if _bus_ml_count % 100 == 0:
+                await asyncio.sleep(0)  # yield so timeouts can fire
             # Honour SIRI's is_realtime flag: when False the vehicle position is
             # estimated from the static schedule (GPS not transmitting) — treat
             # it identically to a GTFS-static fallback so iOS renders it grey.
@@ -1879,6 +1899,18 @@ async def _fetch_nearby_buses(
     # -----------------------------------------------------------------
     _MIN_TOPOFF  = 20  # target total arrivals per (route, stop, direction)
     _MAX_SCHED   = 24  # max scheduled entries added per direction (≈12 h board)
+
+    _t_siri_done = _monotonic_mod.monotonic()
+    TrackLogger.info(
+        f"⏱ BUS SIRI+ML done | live={len(results)} fail={fail_count} "
+        f"budget_left={_budget_left():.1f}s",
+        tag="NEARBY",
+    )
+
+    # ── Deadline gate: skip enrichment phases if budget exhausted ────
+    if _budget_left() <= 0:
+        TrackLogger.warning("Bus internal deadline expired after SIRI — returning partial results", tag="NEARBY")
+        return results
 
     # Group current bus results by (route_id, stop_id, direction)
     _live_by_key: dict[tuple, list] = defaultdict(list)
@@ -1993,6 +2025,11 @@ async def _fetch_nearby_buses(
     # -----------------------------------------------------------------
     # 1c. Enrich stop.route_ids from static schedule DB
     # -----------------------------------------------------------------
+    if _budget_left() <= 2:
+        TrackLogger.warning(f"Bus deadline approaching — skipping phases 1c+ (budget={_budget_left():.1f}s)", tag="NEARBY")
+        return results
+    await asyncio.sleep(0)  # yield for timeout checks
+
     # Like 1b, but uses the GTFS schedule DB for stops where SIRI
     # returned no observations.  Also merges into partially-populated
     # stops so dormant routes (no bus approaching) still get anchors.
@@ -2065,6 +2102,12 @@ async def _fetch_nearby_buses(
     live_route_dirs: dict[str, set[str]] = defaultdict(set)
     for r in results:
         live_route_dirs[r.route_id].add(r.direction)
+
+    # ── Deadline gate before Phase A (heavy schedule queries) ────────
+    if _budget_left() <= 2:
+        TrackLogger.warning(f"Bus deadline approaching — skipping phases A+ (budget={_budget_left():.1f}s)", tag="NEARBY")
+        return results
+    await asyncio.sleep(0)  # yield for timeout checks
 
     # Prefer an existing route direction key for placeholder anchors so
     # we don't create synthetic tabs like "Eastbound" next to destination tabs.
@@ -2252,6 +2295,12 @@ async def _fetch_nearby_buses(
             f"for routes with incomplete live directions"
         )
 
+    # ── Deadline gate before Phase C ────────────────────────────────
+    if _budget_left() <= 2:
+        TrackLogger.warning(f"Bus deadline — skipping phases C+ (budget={_budget_left():.1f}s)", tag="NEARBY")
+        return results
+    await asyncio.sleep(0)
+
     # -----------------------------------------------------------------
     # Phase C: Routes that STILL have only 1 direction after Phases A+B.
     #
@@ -2352,6 +2401,12 @@ async def _fetch_nearby_buses(
             f"for single-direction routes"
         )
 
+    # ── Deadline gate before Phase D (network calls to OBA) ─────────
+    if _budget_left() <= 3:
+        TrackLogger.warning(f"Bus deadline — skipping phases D+ (budget={_budget_left():.1f}s)", tag="NEARBY")
+        return results
+    await asyncio.sleep(0)
+
     # -----------------------------------------------------------------
     # Phase D: Nearest-stop anchor (OBA stops-for-route lookup)
     #
@@ -2447,6 +2502,12 @@ async def _fetch_nearby_buses(
             f"stops-for-route lookup (checked {len(routes_needing_anchor)} routes)"
         )
 
+    # ── Deadline gate before Phase E (synchronous SQLite) ───────────
+    if _budget_left() <= 2:
+        TrackLogger.warning(f"Bus deadline — skipping phases E+ (budget={_budget_left():.1f}s)", tag="NEARBY")
+        return results
+    await asyncio.sleep(0)
+
     # -----------------------------------------------------------------
     # Phase E: Static GTFS fallback (guarantee route visibility in radius)
     # -----------------------------------------------------------------
@@ -2457,7 +2518,7 @@ async def _fetch_nearby_buses(
     # to avoid over-inflating direction/tab expectations in normal mode.
     run_phase_e = fail_count > 0 or any(not s.route_ids for s in stops)
     if run_phase_e:
-        static_routes = _nearby_static_bus_routes(lat, lon, effective_radius)
+        static_routes = await asyncio.to_thread(_nearby_static_bus_routes, lat, lon, effective_radius)
         existing_routes = {r.route_id for r in results if r.mode == "bus"}
         phase_e_count = 0
         for route_id, (stop_name, stop_lat, stop_lon, stop_id) in static_routes.items():
@@ -2487,6 +2548,12 @@ async def _fetch_nearby_buses(
                 f"Phase E: Added {phase_e_count} static-GTFS nearby bus routes "
                 f"(radius={effective_radius}m)"
             )
+
+    # ── Deadline gate before Phase F (up to 160 OBA HTTP requests) ──
+    if _budget_left() <= 3:
+        TrackLogger.warning(f"Bus deadline — skipping Phase F (budget={_budget_left():.1f}s)", tag="NEARBY")
+        return results
+    await asyncio.sleep(0)
 
     # -----------------------------------------------------------------
     # Phase F: OBA route-stop scan for locale-matched candidates
