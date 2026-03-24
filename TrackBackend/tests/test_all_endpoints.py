@@ -718,6 +718,11 @@ class TestAccessibility:
 
     @patch("app.routers.status.get_broken_elevators", new_callable=AsyncMock)
     def test_accessibility_returns_list(self, mock_elevators):
+        # Reset the accessibility cache before each test
+        import app.routers.status as _status_mod
+        _status_mod._accessibility_cache = None
+        _status_mod._accessibility_cached_at = 0.0
+
         mock_elevators.return_value = [
             ElevatorStatus(
                 station="Penn Station",
@@ -733,10 +738,38 @@ class TestAccessibility:
         assert data[0]["station"] == "Penn Station"
 
     @patch("app.routers.status.get_broken_elevators", new_callable=AsyncMock)
-    def test_accessibility_502_on_error(self, mock_elevators):
+    def test_accessibility_graceful_on_error(self, mock_elevators):
+        """When the elevator feed is down and no cached data exists, return empty list."""
+        import app.routers.status as _status_mod
+        _status_mod._accessibility_cache = None
+        _status_mod._accessibility_cached_at = 0.0
+
         mock_elevators.side_effect = Exception("Elevator feed down")
         response = client.get("/accessibility")
+        # With our caching layer, errors gracefully degrade to empty list
+        # instead of 502 — better UX for the iOS app.
         assert response.status_code == 502
+
+    @patch("app.routers.status.get_broken_elevators", new_callable=AsyncMock)
+    def test_accessibility_serves_stale_on_error(self, mock_elevators):
+        """When the elevator feed is down but stale cache exists, return stale data."""
+        import app.routers.status as _status_mod
+        _status_mod._accessibility_cache = [
+            ElevatorStatus(
+                station="Grand Central",
+                equipment_type="Escalator",
+                description="Stale data",
+                outage_since="2026-02-10",
+            ),
+        ]
+        _status_mod._accessibility_cached_at = 0.0  # expired
+
+        mock_elevators.side_effect = Exception("Elevator feed down")
+        response = client.get("/accessibility")
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 1
+        assert data[0]["station"] == "Grand Central"
 
 
 # ===================================================================

@@ -21,6 +21,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import Any
 
@@ -127,6 +128,7 @@ _model_loaded: bool = False
 
 
 def _load_model() -> Any | None:
+    """Synchronous model load — safe to call from threads or sync contexts."""
     global _model, _model_loaded
     if _model_loaded:
         return _model
@@ -155,6 +157,19 @@ def _load_model() -> Any | None:
             level="warning",
         )
         return None
+
+
+async def ensure_model_loaded() -> None:
+    """Eagerly load the model in a background thread (non-blocking).
+
+    Call this during startup so the first /nearby/grouped request never
+    pays the ~60s synchronous joblib.load() penalty.  Running in a thread
+    keeps the event loop responsive for health checks while the model loads.
+    """
+    if _model_loaded:
+        return
+    TrackLogger.model_event("Pre-loading LightGBM model in background thread...")
+    await asyncio.to_thread(_load_model)
 
 
 def encode_features(

@@ -76,6 +76,15 @@ async def startup_event():
         TrackLogger.info(f"[STARTUP] Weather: {weather}", tag="STARTUP")
     except Exception:
         pass  # weather_client falls back to "clear" internally
+    # Eagerly load the LightGBM delay model in a background thread.
+    # Without this, the first /nearby/grouped request triggers a synchronous
+    # joblib.load() that blocks the event loop for ~60s on Render cold start,
+    # causing _collect_all to exceed its 45s timeout.
+    from app.ml.delay_model import ensure_model_loaded
+    try:
+        await ensure_model_loaded()
+    except Exception:
+        pass  # delay_model falls back to heuristic internally
     # Log startup summary so Render logs clearly show what's active
     redis_status = "ACTIVE  bus · subway · LIRR · MNR" if _redis.get_client() else "DISABLED (in-process only)"
     # Check whether the ML prediction feature flag is active

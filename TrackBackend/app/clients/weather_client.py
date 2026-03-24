@@ -35,11 +35,24 @@ _OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
 
 # ── Cache ─────────────────────────────────────────────────────────────────
 _CACHE_TTL = 300          # 5 minutes for successful fetches
-_NEGATIVE_CACHE_TTL = 60  # 1 minute cooldown after errors (prevents 429 storms)
+_NEGATIVE_CACHE_TTL = 300 # 5 minutes cooldown after errors (prevents 429 storms)
 _cached_weather: str | None = None
 _cached_details: dict[str, Any] | None = None
 _cached_at: float = 0.0
 _is_negative_cache: bool = False  # True when cache holds error-fallback data
+_consecutive_failures: int = 0    # exponential backoff counter
+
+# ── Shared httpx client ───────────────────────────────────────────────────
+# Reusing a single client avoids TCP handshake + TLS negotiation overhead
+# on every 5-minute weather fetch.
+_http_client: httpx.AsyncClient | None = None
+
+
+def _get_http_client() -> httpx.AsyncClient:
+    global _http_client
+    if _http_client is None:
+        _http_client = httpx.AsyncClient(timeout=5.0)
+    return _http_client
 
 
 # ── WMO weather code → category mapping ──────────────────────────────────
@@ -75,25 +88,33 @@ async def get_current_weather(
     Never raises — falls back to "clear" on any error.
     """
     global _cached_weather, _cached_details, _cached_at, _is_negative_cache
+    global _consecutive_failures
 
     now = time.monotonic()
-    if _cached_weather is not None and (now - _cached_at) < (
-        _NEGATIVE_CACHE_TTL if _is_negative_cache else _CACHE_TTL
-    ):
+    # Exponential backoff: after N consecutive failures, wait
+    # min(300, 60 * 2^(N-1)) seconds before retrying.  This prevents
+    # hammering Open-Meteo during sustained 429 periods.
+    if _is_negative_cache and _consecutive_failures > 0:
+        backoff_ttl = min(_NEGATIVE_CACHE_TTL, 60 * (2 ** (_consecutive_failures - 1)))
+    else:
+        backoff_ttl = _NEGATIVE_CACHE_TTL
+
+    effective_ttl = backoff_ttl if _is_negative_cache else _CACHE_TTL
+    if _cached_weather is not None and (now - _cached_at) < effective_ttl:
         return _cached_weather
 
     try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            resp = await client.get(
-                _OPEN_METEO_URL,
-                params={
-                    "latitude": lat,
-                    "longitude": lon,
-                    "current_weather": "true",
-                },
-            )
-            resp.raise_for_status()
-            data = resp.json()
+        client = _get_http_client()
+        resp = await client.get(
+            _OPEN_METEO_URL,
+            params={
+                "latitude": lat,
+                "longitude": lon,
+                "current_weather": "true",
+            },
+        )
+        resp.raise_for_status()
+        data = resp.json()
 
         current = data.get("current_weather", {})
         wmo_code = int(current.get("weathercode", 0))
@@ -113,6 +134,7 @@ async def get_current_weather(
         }
         _cached_at = now
         _is_negative_cache = False
+        _consecutive_failures = 0  # reset on success
 
         # Prometheus gauge: 0=clear, 1=rain, 2=snow
         WEATHER_CATEGORY.set({"clear": 0, "rain": 1, "snow": 2}.get(category, 0))
@@ -126,9 +148,11 @@ async def get_current_weather(
         return category
 
     except Exception as exc:
+        _consecutive_failures += 1
         WEATHER_FETCH_TOTAL.labels(status="error").inc()
         TrackLogger.warning(
-            f"[WEATHER] Open-Meteo fetch failed: {exc} — defaulting to 'clear'",
+            f"[WEATHER] Open-Meteo fetch failed (attempt {_consecutive_failures}): "
+            f"{exc} — defaulting to 'clear'",
             tag="WEATHER",
         )
         # ── Negative cache: store fallback so we don't hammer the API ─────
