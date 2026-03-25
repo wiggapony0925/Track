@@ -707,10 +707,12 @@ class TestAlerts:
         assert response.json() == []
 
     @patch("app.routers.status.get_alerts", new_callable=AsyncMock)
-    def test_alerts_502_on_error(self, mock_alerts):
+    def test_alerts_empty_on_error(self, mock_alerts):
+        """When get_alerts raises, the endpoint returns [] instead of 502."""
         mock_alerts.side_effect = Exception("Alert feed down")
         response = client.get("/alerts")
-        assert response.status_code == 502
+        assert response.status_code == 200
+        assert response.json() == []
 
 
 class TestAccessibility:

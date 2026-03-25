@@ -36,10 +36,16 @@ async def alerts(
 ) -> list[TransitAlert]:
     """Return critical MTA service alerts, optionally filtered by mode."""
     try:
-        return await get_alerts(mode=mode)
+        return await asyncio.wait_for(get_alerts(mode=mode), timeout=8.0)
+    except asyncio.TimeoutError:
+        TrackLogger.warning(
+            f"[ALERTS] /alerts timed out after 8s (mode={mode}) — returning empty",
+            tag="ALERTS",
+        )
+        return []
     except Exception as exc:
         TrackLogger.error(f"[ALERTS] Failed to fetch alerts (mode={mode}): {exc}", tag="ALERTS", exc_info=True)
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        return []  # return empty instead of 502 to avoid middleware crash
 
 
 @router.get("/accessibility", response_model=list[ElevatorStatus])

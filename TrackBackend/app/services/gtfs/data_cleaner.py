@@ -344,14 +344,22 @@ async def get_alerts(mode: str | None = None) -> list[TransitAlert]:
     if mode and mode in feed_map:
         return await _parse_alert_feed(feed_map[mode], mode)
 
-    # Fetch all feeds concurrently
+    # Fetch all feeds concurrently — tolerate individual feed failures
     tasks = [_parse_alert_feed(url, m) for m, url in feed_map.items()]
-    results = await asyncio.gather(*tasks)
+    results = await asyncio.gather(*tasks, return_exceptions=True)
     all_alerts: list[TransitAlert] = []
-    for result in results:
+    ok_count = 0
+    for m_key, result in zip(feed_map.keys(), results):
+        if isinstance(result, BaseException):
+            TrackLogger.warning(
+                f"[ALERTS] {m_key} alert feed failed: {result}",
+                tag="ALERTS",
+            )
+            continue
         all_alerts.extend(result)
+        ok_count += 1
 
-    TrackLogger.alerts(f"Fetched {len(all_alerts)} alerts across {len(feed_map)} feeds")
+    TrackLogger.alerts(f"Fetched {len(all_alerts)} alerts across {ok_count}/{len(feed_map)} feeds")
     return all_alerts
 
 
