@@ -302,7 +302,17 @@ class TrackLogger:
         elapsed_ms: float | None = None,
     ) -> None:
         timing = f" ({elapsed_ms:.1f}ms)" if elapsed_ms is not None else ""
-        level = logging.INFO if status < 400 else logging.WARNING if status < 500 else logging.ERROR
+
+        # Render health-check probes hit "/" which returns 404 — expected noise.
+        # /health returns 503 during warmup — also expected; don't log as ERROR.
+        _path = path.split("?")[0]
+        if _path == "/" and status == 404:
+            return  # suppress Render probe noise entirely
+        if _path == "/health" and status == 503:
+            level = logging.INFO  # warmup 503 is expected
+        else:
+            level = logging.INFO if status < 400 else logging.WARNING if status < 500 else logging.ERROR
+
         _logger.log(
             level,
             f"{method} {path} → {status}{timing}",

@@ -438,7 +438,7 @@ async def _periodic_feed_refresh():
 
             elapsed = time.perf_counter() - t0
             if elapsed > 5.0 or ok < total:
-                TrackLogger.warning(
+                TrackLogger.info(
                     f"[FEED_REFRESH] {ok}/{total} feeds OK in {elapsed:.1f}s",
                     tag="FEED_REFRESH",
                 )

@@ -333,7 +333,7 @@ async def _compute_and_cache_grouped(
     try:
         alert_index = await asyncio.wait_for(_get_inline_alerts(), timeout=3.0)
     except asyncio.TimeoutError:
-        TrackLogger.warning(
+        TrackLogger.info(
             "Inline alert fetch timed out after 3s — proceeding without alerts",
             tag="NEARBY",
         )
@@ -603,7 +603,7 @@ async def nearby_transit_grouped(
             )
             if fallback is not None:
                 fallback_key, fallback_data, fallback_age, _fb_json = fallback
-                TrackLogger.warning(
+                TrackLogger.info(
                     f"RESP STALE-IF-ERROR /nearby/grouped age={fallback_age:.1f}s "
                     f"exact={fallback_key == key} because {_describe_exception(exc)}",
                     tag="CACHE",
@@ -731,8 +731,8 @@ async def _collect_all(
             continue  # skip internal helper tasks (_warm)
         if task in pending:
             _mode_times[label] = "TIMEOUT"
-            TrackLogger.warning(
-                f"{label.upper()} feed cancelled after {_WAIT_TIMEOUT}s",
+            TrackLogger.info(
+                f"{label.upper()} feed cancelled after {_WAIT_TIMEOUT}s — partial results returned",
                 tag="NEARBY",
             )
         elif task.cancelled():
@@ -777,7 +777,7 @@ async def _collect_all(
     results = sanitised
 
     if dropped_empty_route_id:
-        TrackLogger.warning(
+        TrackLogger.info(
             f"Dropped {dropped_empty_route_id} nearby arrivals with empty route_id"
         )
 
@@ -1176,9 +1176,9 @@ async def _get_inline_alerts() -> dict[str, list["InlineAlert"]]:
         _inline_alert_cache = dict(index)
         _inline_alert_ts = now
     except asyncio.TimeoutError:
-        TrackLogger.warning("Inline alert fetch timed out after 3s — using stale cache", tag="NEARBY")
+        TrackLogger.info("Inline alert fetch timed out after 3s — using stale cache", tag="NEARBY")
     except Exception as exc:
-        TrackLogger.warning(f"Inline alert fetch failed: {exc}")
+        TrackLogger.info(f"Inline alert fetch failed: {exc}")
     return _inline_alert_cache
 
 
@@ -1471,7 +1471,7 @@ def _group_arrivals(flat: list[NearbyTransitArrival], alert_index: dict[str, lis
         slipped = [
             g.route_id for g in groups if len(g.directions) == 1
         ]
-        TrackLogger.warning(
+        TrackLogger.info(
             f"[BACKFILL GAP] {single_direction_after} route(s) still have only 1 direction "
             f"after Phase B/C and grouping fix: {slipped}"
         )
@@ -1976,7 +1976,7 @@ async def _fetch_nearby_buses(
         )
 
     if fail_count > 0:
-        TrackLogger.warning(
+        TrackLogger.info(
             f"Bus arrivals failed for {fail_count}/{len(stop_results)} stops (MTA 5xx): {first_error}"
         )
 
@@ -2004,7 +2004,7 @@ async def _fetch_nearby_buses(
 
     # ── Deadline gate: skip enrichment phases if budget exhausted ────
     if _budget_left() <= 0:
-        TrackLogger.warning("Bus internal deadline expired after SIRI — returning partial results", tag="NEARBY")
+        TrackLogger.info("Bus internal deadline expired after SIRI — returning partial results", tag="NEARBY")
         return results
 
     # Group current bus results by (route_id, stop_id, direction)
@@ -2121,7 +2121,7 @@ async def _fetch_nearby_buses(
     # 1c. Enrich stop.route_ids from static schedule DB
     # -----------------------------------------------------------------
     if _budget_left() <= 2:
-        TrackLogger.warning(f"Bus deadline approaching — skipping phases 1c+ (budget={_budget_left():.1f}s)", tag="NEARBY")
+        TrackLogger.info(f"Bus deadline approaching — skipping phases 1c+ (budget={_budget_left():.1f}s)", tag="NEARBY")
         return results
     await asyncio.sleep(0)  # yield for timeout checks
 
@@ -2200,7 +2200,7 @@ async def _fetch_nearby_buses(
 
     # ── Deadline gate before Phase A (heavy schedule queries) ────────
     if _budget_left() <= 2:
-        TrackLogger.warning(f"Bus deadline approaching — skipping phases A+ (budget={_budget_left():.1f}s)", tag="NEARBY")
+        TrackLogger.info(f"Bus deadline approaching — skipping phases A+ (budget={_budget_left():.1f}s)", tag="NEARBY")
         return results
     await asyncio.sleep(0)  # yield for timeout checks
 
@@ -2392,7 +2392,7 @@ async def _fetch_nearby_buses(
 
     # ── Deadline gate before Phase C ────────────────────────────────
     if _budget_left() <= 2:
-        TrackLogger.warning(f"Bus deadline — skipping phases C+ (budget={_budget_left():.1f}s)", tag="NEARBY")
+        TrackLogger.info(f"Bus deadline — skipping phases C+ (budget={_budget_left():.1f}s)", tag="NEARBY")
         return results
     await asyncio.sleep(0)
 
@@ -2498,7 +2498,7 @@ async def _fetch_nearby_buses(
 
     # ── Deadline gate before Phase D (network calls to OBA) ─────────
     if _budget_left() <= 3:
-        TrackLogger.warning(f"Bus deadline — skipping phases D+ (budget={_budget_left():.1f}s)", tag="NEARBY")
+        TrackLogger.info(f"Bus deadline — skipping phases D+ (budget={_budget_left():.1f}s)", tag="NEARBY")
         return results
     await asyncio.sleep(0)
 
@@ -2599,7 +2599,7 @@ async def _fetch_nearby_buses(
 
     # ── Deadline gate before Phase E (synchronous SQLite) ───────────
     if _budget_left() <= 2:
-        TrackLogger.warning(f"Bus deadline — skipping phases E+ (budget={_budget_left():.1f}s)", tag="NEARBY")
+        TrackLogger.info(f"Bus deadline — skipping phases E+ (budget={_budget_left():.1f}s)", tag="NEARBY")
         return results
     await asyncio.sleep(0)
 
@@ -2646,7 +2646,7 @@ async def _fetch_nearby_buses(
 
     # ── Deadline gate before Phase F (up to 160 OBA HTTP requests) ──
     if _budget_left() <= 3:
-        TrackLogger.warning(f"Bus deadline — skipping Phase F (budget={_budget_left():.1f}s)", tag="NEARBY")
+        TrackLogger.info(f"Bus deadline — skipping Phase F (budget={_budget_left():.1f}s)", tag="NEARBY")
         return results
     await asyncio.sleep(0)
 

@@ -118,8 +118,8 @@ async def _do_refresh() -> None:
             tag="ML",
         )
     except asyncio.TimeoutError:
-        TrackLogger.warning("[ALERTS] Refresh timed out after 3s — using stale index", tag="ML")
+        TrackLogger.info("[ALERTS] Refresh timed out after 3s — using stale index", tag="ML")
         _last_refresh = _time.time()  # back off, don't hammer on repeated timeouts
     except Exception as exc:
-        TrackLogger.warning(f"[ALERTS] Refresh failed ({exc}) — using stale index", tag="ML")
+        TrackLogger.info(f"[ALERTS] Refresh failed ({exc}) — using stale index", tag="ML")
         _last_refresh = _time.time()  # back off, don't hammer on repeated errors

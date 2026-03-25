@@ -177,7 +177,7 @@ async def get_current_weather(
         except Exception as exc:
             _consecutive_failures += 1
             WEATHER_FETCH_TOTAL.labels(status="error").inc()
-            TrackLogger.warning(
+            TrackLogger.info(
                 f"[WEATHER] Open-Meteo fetch failed (attempt {_consecutive_failures}): "
                 f"{exc} — defaulting to 'clear'",
                 tag="WEATHER",
