@@ -18,6 +18,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
 from typing import Any
 
@@ -41,6 +42,14 @@ _cached_details: dict[str, Any] | None = None
 _cached_at: float = 0.0
 _is_negative_cache: bool = False  # True when cache holds error-fallback data
 _consecutive_failures: int = 0    # exponential backoff counter
+_fetch_lock: asyncio.Lock | None = None  # lazy — must be created inside event loop
+
+
+def _get_fetch_lock() -> asyncio.Lock:
+    global _fetch_lock
+    if _fetch_lock is None:
+        _fetch_lock = asyncio.Lock()
+    return _fetch_lock
 
 # ── Shared httpx client ───────────────────────────────────────────────────
 # Reusing a single client avoids TCP handshake + TLS negotiation overhead
@@ -103,73 +112,91 @@ async def get_current_weather(
     if _cached_weather is not None and (now - _cached_at) < effective_ttl:
         return _cached_weather
 
-    try:
-        client = _get_http_client()
-        resp = await client.get(
-            _OPEN_METEO_URL,
-            params={
-                "latitude": lat,
-                "longitude": lon,
-                "current_weather": "true",
-            },
-        )
-        resp.raise_for_status()
-        data = resp.json()
+    # Gate concurrent callers — only one fetches; the rest wait and get
+    # the result from cache once the lock is released.
+    lock = _get_fetch_lock()
+    if lock.locked():
+        # Another coroutine is already fetching — return stale/fallback
+        return _cached_weather or "clear"
 
-        current = data.get("current_weather", {})
-        wmo_code = int(current.get("weathercode", 0))
-        temperature = current.get("temperature")
-        windspeed = current.get("windspeed")
-        is_day = bool(current.get("is_day", 1))  # Open-Meteo: 1=day, 0=night
+    async with lock:
+        # Double-check after acquiring lock (another caller may have refreshed)
+        now = time.monotonic()
+        if _is_negative_cache and _consecutive_failures > 0:
+            backoff_ttl = min(_NEGATIVE_CACHE_TTL, 60 * (2 ** (_consecutive_failures - 1)))
+        else:
+            backoff_ttl = _NEGATIVE_CACHE_TTL
+        effective_ttl = backoff_ttl if _is_negative_cache else _CACHE_TTL
+        if _cached_weather is not None and (now - _cached_at) < effective_ttl:
+            return _cached_weather
 
-        category = _wmo_to_category(wmo_code)
+        try:
+            client = _get_http_client()
+            resp = await client.get(
+                _OPEN_METEO_URL,
+                params={
+                    "latitude": lat,
+                    "longitude": lon,
+                    "current_weather": "true",
+                },
+            )
+            resp.raise_for_status()
+            data = resp.json()
 
-        _cached_weather = category
-        _cached_details = {
-            "wmo_code": wmo_code,
-            "temperature_c": temperature,
-            "windspeed_kmh": windspeed,
-            "category": category,
-            "is_day": is_day,
-        }
-        _cached_at = now
-        _is_negative_cache = False
-        _consecutive_failures = 0  # reset on success
+            current = data.get("current_weather", {})
+            wmo_code = int(current.get("weathercode", 0))
+            temperature = current.get("temperature")
+            windspeed = current.get("windspeed")
+            is_day = bool(current.get("is_day", 1))  # Open-Meteo: 1=day, 0=night
 
-        # Prometheus gauge: 0=clear, 1=rain, 2=snow
-        WEATHER_CATEGORY.set({"clear": 0, "rain": 1, "snow": 2}.get(category, 0))
-        WEATHER_FETCH_TOTAL.labels(status="ok").inc()
+            category = _wmo_to_category(wmo_code)
 
-        TrackLogger.info(
-            f"[WEATHER] Open-Meteo: code={wmo_code} → {category} "
-            f"(temp={temperature}°C, wind={windspeed} km/h)",
-            tag="WEATHER",
-        )
-        return category
-
-    except Exception as exc:
-        _consecutive_failures += 1
-        WEATHER_FETCH_TOTAL.labels(status="error").inc()
-        TrackLogger.warning(
-            f"[WEATHER] Open-Meteo fetch failed (attempt {_consecutive_failures}): "
-            f"{exc} — defaulting to 'clear'",
-            tag="WEATHER",
-        )
-        # ── Negative cache: store fallback so we don't hammer the API ─────
-        # Use stale data if available, otherwise default to "clear".
-        fallback = _cached_weather or "clear"
-        _cached_weather = fallback
-        if _cached_details is None:
+            _cached_weather = category
             _cached_details = {
-                "wmo_code": 0,
-                "temperature_c": None,
-                "windspeed_kmh": None,
-                "category": fallback,
-                "is_day": True,
+                "wmo_code": wmo_code,
+                "temperature_c": temperature,
+                "windspeed_kmh": windspeed,
+                "category": category,
+                "is_day": is_day,
             }
-        _cached_at = now
-        _is_negative_cache = True
-        return fallback
+            _cached_at = now
+            _is_negative_cache = False
+            _consecutive_failures = 0  # reset on success
+
+            # Prometheus gauge: 0=clear, 1=rain, 2=snow
+            WEATHER_CATEGORY.set({"clear": 0, "rain": 1, "snow": 2}.get(category, 0))
+            WEATHER_FETCH_TOTAL.labels(status="ok").inc()
+
+            TrackLogger.info(
+                f"[WEATHER] Open-Meteo: code={wmo_code} → {category} "
+                f"(temp={temperature}°C, wind={windspeed} km/h)",
+                tag="WEATHER",
+            )
+            return category
+
+        except Exception as exc:
+            _consecutive_failures += 1
+            WEATHER_FETCH_TOTAL.labels(status="error").inc()
+            TrackLogger.warning(
+                f"[WEATHER] Open-Meteo fetch failed (attempt {_consecutive_failures}): "
+                f"{exc} — defaulting to 'clear'",
+                tag="WEATHER",
+            )
+            # ── Negative cache: store fallback so we don't hammer the API ─────
+            # Use stale data if available, otherwise default to "clear".
+            fallback = _cached_weather or "clear"
+            _cached_weather = fallback
+            if _cached_details is None:
+                _cached_details = {
+                    "wmo_code": 0,
+                    "temperature_c": None,
+                    "windspeed_kmh": None,
+                    "category": fallback,
+                    "is_day": True,
+                }
+            _cached_at = now
+            _is_negative_cache = True
+            return fallback
 
 
 def get_cached_weather_details() -> dict[str, Any] | None:
