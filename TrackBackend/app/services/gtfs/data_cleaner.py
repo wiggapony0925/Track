@@ -145,7 +145,7 @@ async def get_arrivals_for_line(
     """
     url = get_feed_url(line_id)
     if url is None:
-        TrackLogger.warning(f"No feed URL for line_id={line_id}", tag="SUBWAY")
+        TrackLogger.info(f"No feed URL for line_id={line_id}", tag="SUBWAY")
         return []
 
     # ── Fast path: return cached parsed arrivals if still fresh ──
@@ -209,7 +209,7 @@ async def _parse_alert_feed(url: str, mode: str) -> list[TransitAlert]:
     try:
         data: Any = await fetch_json(url)
     except Exception as exc:
-        TrackLogger.error(f"Failed to fetch {mode} alerts: {exc}", tag="ALERTS", exc_info=True)
+        TrackLogger.info(f"Failed to fetch {mode} alerts: {exc}", tag="ALERTS")
         return []
 
     now = int(_t.time())
@@ -351,7 +351,7 @@ async def get_alerts(mode: str | None = None) -> list[TransitAlert]:
     ok_count = 0
     for m_key, result in zip(feed_map.keys(), results):
         if isinstance(result, BaseException):
-            TrackLogger.warning(
+            TrackLogger.info(
                 f"[ALERTS] {m_key} alert feed failed: {result}",
                 tag="ALERTS",
             )

@@ -64,7 +64,7 @@ async def init_redis() -> None:
     redis_url = os.getenv("REDIS_URL", "").strip()
 
     if redis_asyncio is None:
-        TrackLogger.warning(
+        TrackLogger.info(
             "[REDIS] redis-py not installed — shared cache disabled. "
             "Run: pip install redis>=5.0.0",
             tag="REDIS",
@@ -112,7 +112,7 @@ async def init_redis() -> None:
         )
     except Exception as exc:
         _redis_client = None
-        TrackLogger.warning(
+        TrackLogger.info(
             f"[REDIS] Connection FAILED to {_safe_url} — "
             f"{type(exc).__name__}: {exc} | falling back to in-process caches",
             tag="REDIS",
@@ -183,7 +183,7 @@ async def cache_get(
     except Exception as exc:
         s.errors += 1
         cache_stats.tick()
-        TrackLogger.warning(
+        TrackLogger.info(
             f"[REDIS] GET error  kind={kind}  id={identifier[:80]}: {exc}", tag="REDIS"
         )
         return None, None
@@ -216,7 +216,7 @@ async def cache_set(
         cache_stats.tick()
     except Exception as exc:
         s.errors += 1
-        TrackLogger.warning(
+        TrackLogger.info(
             f"[REDIS] SET error  kind={kind}  id={identifier[:80]}: {exc}", tag="REDIS"
         )
 
@@ -276,7 +276,7 @@ async def feed_get(
     except Exception as exc:
         s.errors += 1
         cache_stats.tick()
-        TrackLogger.warning(f"[REDIS] feed GET error  kind={kind}: {exc}", tag="REDIS")
+        TrackLogger.info(f"[REDIS] feed GET error  kind={kind}: {exc}", tag="REDIS")
         return None, None
 
 
@@ -312,4 +312,4 @@ async def feed_set(
         cache_stats.tick()
     except Exception as exc:
         s.errors += 1
-        TrackLogger.warning(f"[REDIS] feed SET error  kind={kind}: {exc}", tag="REDIS")
+        TrackLogger.info(f"[REDIS] feed SET error  kind={kind}: {exc}", tag="REDIS")

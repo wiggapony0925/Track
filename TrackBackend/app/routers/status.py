@@ -38,13 +38,13 @@ async def alerts(
     try:
         return await asyncio.wait_for(get_alerts(mode=mode), timeout=8.0)
     except asyncio.TimeoutError:
-        TrackLogger.warning(
-            f"[ALERTS] /alerts timed out after 8s (mode={mode}) — returning empty",
+        TrackLogger.info(
+            f"[ALERTS] /alerts timed out after 8s (mode={mode}) \u2014 returning empty",
             tag="ALERTS",
         )
         return []
     except Exception as exc:
-        TrackLogger.error(f"[ALERTS] Failed to fetch alerts (mode={mode}): {exc}", tag="ALERTS", exc_info=True)
+        TrackLogger.info(f"[ALERTS] Failed to fetch alerts (mode={mode}): {exc}", tag="ALERTS")
         return []  # return empty instead of 502 to avoid middleware crash
 
 

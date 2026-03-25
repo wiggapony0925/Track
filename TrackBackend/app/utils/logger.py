@@ -365,12 +365,12 @@ class TrackLogger:
     @staticmethod
     def retry(msg: str) -> None:
         """Log retry attempts for external API calls."""
-        _logger.warning(msg, extra={"tag": "RETRY"})
+        _logger.info(msg, extra={"tag": "RETRY"})
 
     @staticmethod
     def circuit(msg: str) -> None:
         """Log circuit breaker state changes."""
-        _logger.warning(msg, extra={"tag": "CIRCUIT"})
+        _logger.info(msg, extra={"tag": "CIRCUIT"})
 
     @staticmethod
     def resolve(msg: str) -> None:

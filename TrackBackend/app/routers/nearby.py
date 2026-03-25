@@ -195,7 +195,7 @@ def _load_static_bus_route_stop_index() -> dict[str, tuple[float, float, str, se
 
         conn.close()
     except Exception as exc:
-        TrackLogger.error(f"Static bus fallback DB query failed: {exc}", exc_info=True)
+        TrackLogger.info(f"Static bus fallback DB query failed: {exc}", exc_info=True)
         return {}
 
     TrackLogger.bus(f"Static bus fallback index loaded: {len(index)} stops (from SQLite)")
@@ -321,7 +321,7 @@ async def _compute_and_cache_grouped(
             await asyncio.wait_for(_ca_task, timeout=3.0)
         except (asyncio.TimeoutError, asyncio.CancelledError):
             pass
-        TrackLogger.error(
+        TrackLogger.info(
             f"_collect_all timed out after {_NEARBY_COMPUTE_TIMEOUT}s "
             f"for ({lat:.4f}, {lon:.4f}) radius={radius} mode={mode}",
             tag="NEARBY",
@@ -527,9 +527,8 @@ async def nearby_transit_grouped(
                     try:
                         return await _compute_and_cache_grouped(k, k[0], k[1], r, m)
                     except Exception as exc:
-                        TrackLogger.error(
+                        TrackLogger.info(
                             f"BG refresh /nearby/grouped failed: {_describe_exception(exc)}",
-                            exc_info=True,
                         )
                         return None
                     finally:
@@ -554,9 +553,8 @@ async def nearby_transit_grouped(
                 try:
                     return await _compute_and_cache_grouped(k, req_lat, req_lon, r, m)
                 except Exception as exc:
-                    TrackLogger.error(
+                    TrackLogger.info(
                         f"BG refresh /nearby/grouped failed: {_describe_exception(exc)}",
-                        exc_info=True,
                     )
                     return None
                 finally:
@@ -739,7 +737,7 @@ async def _collect_all(
             _mode_times[label] = "CANCELLED"
         elif task.exception() is not None:
             exc = task.exception()
-            TrackLogger.error(
+            TrackLogger.info(
                 f"{label.upper()} feed failed: {_describe_exception(exc)}"
             )
             _mode_times[label] = "FAILED"
@@ -1562,7 +1560,7 @@ async def _fetch_nearby_subway(
     _kept_arrivals: list[tuple] = []  # (arrival, line, stop_info)
     for line, arrivals in zip(feed_lines, feed_results):
         if isinstance(arrivals, Exception):
-            TrackLogger.error(
+            TrackLogger.info(
                 f"Subway feed '{line}' failed: {_describe_exception(arrivals)}"
             )
             continue
@@ -1617,7 +1615,7 @@ async def _fetch_nearby_subway(
         )
 
     if success_count == 0 and len(feed_lines) > 0:
-        TrackLogger.error(
+        TrackLogger.info(
             f"All {len(feed_lines)} subway feeds failed — check MTA API key and network"
         )
     elif success_count > 0:
@@ -1844,7 +1842,7 @@ async def _fetch_nearby_buses(
     try:
         stops = await get_nearby_stops(lat, lon, radius_m=effective_radius)
     except Exception as exc:
-        TrackLogger.error(f"Bus stops fetch failed: {exc}")
+        TrackLogger.info(f"Bus stops fetch failed: {exc}")
         return await _add_static_only_placeholders("nearby-stop lookup failed")
     _oba_ms = (_t.perf_counter() - _t_oba) * 1000
 
@@ -1916,7 +1914,9 @@ async def _fetch_nearby_buses(
             if first_error is None:
                 first_error = result
             continue
-        
+        if not result:  # None or empty list from SIRI
+            continue
+
         for arrival in result:
             if arrival.expected_arrival:
                 now_utc = datetime.now(timezone.utc)
@@ -2764,7 +2764,7 @@ async def _fetch_nearby_rail(
     try:
         arrivals = await fetch_rail_arrivals(feed_agency)
     except Exception as exc:
-        TrackLogger.error(f"{agency.upper()} feed failed: {_describe_exception(exc)}")
+        TrackLogger.info(f"{agency.upper()} feed failed: {_describe_exception(exc)}")
         return results
 
     _rail_kept = 0

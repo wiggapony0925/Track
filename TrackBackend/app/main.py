@@ -445,9 +445,8 @@ async def _periodic_feed_refresh():
         except asyncio.CancelledError:
             break
         except Exception as exc:
-            TrackLogger.error(
+            TrackLogger.info(
                 f"[FEED_REFRESH] Loop error: {exc}", tag="FEED_REFRESH",
-                exc_info=True,
             )
 
 
