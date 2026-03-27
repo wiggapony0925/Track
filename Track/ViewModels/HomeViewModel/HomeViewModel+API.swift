@@ -695,17 +695,22 @@ extension HomeViewModel {
                 #if DEBUG
                 print("[SCHEDULE] Discarding stale schedule for \(routeId) — user moved to \(selectedRouteId ?? "nil")")
                 #endif
+                // Still cache it so re-opening this route later is instant.
+                busScheduleByRoute[routeId] = schedule
                 return
             }
             busSchedule = schedule
+            busScheduleByRoute[routeId] = schedule
             #if DEBUG
             let dirSummary = schedule.directions.map { "\($0.direction): \($0.departures.count) deps" }.joined(separator: ", ")
             print("[SCHEDULE] Loaded schedule for \(routeId): \(schedule.directions.count) dirs [\(dirSummary)]")
             #endif
         } catch {
             AppLogger.shared.logError("fetchBusSchedule(\(routeId))", error: error)
-            // Only nil out if we're still on the same route
-            if selectedRouteId == (expectedRouteId ?? routeId) {
+            // Only nil out if we're still on the same route AND there's no
+            // cached fallback.  Prefer stale schedule data over empty chips.
+            if selectedRouteId == (expectedRouteId ?? routeId),
+               busScheduleByRoute[routeId] == nil {
                 busSchedule = nil
             }
         }
@@ -731,7 +736,7 @@ extension HomeViewModel {
         trackedVehicleCoordinate = nil
         tappedVehicleId = nil
         selectedStopId = nil
-        goMode.walkingRoute = nil
+        goMode.cancelWalkingRoute()
         busSchedule = nil
     }
 
@@ -2095,33 +2100,88 @@ extension HomeViewModel {
 
     /// Syncs the currently selected route (RouteDetailSheet) with the latest data
     /// fetched from a refresh, ensuring the sheet shows live updates.
+    ///
+    /// CRITICAL: When bus vehicle sync has already enriched the selected route
+    /// with 100+ onward-call arrivals (per direction), the nearby API's 2-arrival
+    /// response must NOT overwrite that data.  Instead we merge: keep the enriched
+    /// arrivals as the base, and only fold in genuinely new nearby arrivals that
+    /// the vehicle sync doesn't cover (e.g. scheduled-only entries).
     private func updateSelectedRouteFromRefreshedData(_ newGroups: [GroupedNearbyTransitResponse]) {
         guard let current = selectedGroupedRoute else { return }
 
         // Find the updated group that matches the current route ID
-        if let match = newGroups.first(where: { $0.routeId == current.routeId }) {
-            // Already on @MainActor — mutate synchronously to avoid deferred
-            // double-writes and re-entrant observation crashes.
+        guard let match = newGroups.first(where: { $0.routeId == current.routeId }) else { return }
+
+        // ── Bus routes with active vehicle sync: MERGE instead of replace ────
+        // The vehicle sync (`syncBusArrivals`) populates every direction with
+        // 50-150+ arrivals from onwardCalls.  The nearby API only returns 1-4
+        // per direction.  A wholesale replace causes the chip strip to flap
+        // between 4 chips and 140+ chips every 20-40 seconds.
+        //
+        // Strategy: if the current group has significantly more arrivals than
+        // the incoming nearby data (indicating an active vehicle sync), keep
+        // the current group and only merge in nearby arrivals for stops that
+        // the vehicle sync didn't reach.
+        let currentTotal = current.directions.reduce(0) { $0 + $1.arrivals.count }
+        let matchTotal = match.directions.reduce(0) { $0 + $1.arrivals.count }
+        let isBusWithActiveSync = current.isBus
+            && currentTotal > matchTotal * 3
+            && currentTotal > 20
+
+        if isBusWithActiveSync {
+            // Merge: keep current enriched group, fold in nearby's scheduled-only
+            // arrivals and update metadata (colorHex etc).
+            var mergedDirections: [DirectionArrivalsResponse] = []
+            for currentDir in current.directions {
+                let matchDir = match.directions.first(where: { $0.direction == currentDir.direction })
+                guard let matchDir else {
+                    mergedDirections.append(currentDir)
+                    continue
+                }
+                // Find nearby arrivals not already covered by the current set
+                let existingKeys = Set(currentDir.arrivals.compactMap { $0.vehicleId ?? $0.tripId })
+                let existingStopTs = Set(currentDir.arrivals.map { "\($0.stopId ?? "")_\($0.arrivalTs ?? 0)" })
+                let newFromNearby = matchDir.arrivals.filter { arrival in
+                    if let key = arrival.vehicleId ?? arrival.tripId, existingKeys.contains(key) {
+                        return false
+                    }
+                    let stopTsKey = "\(arrival.stopId ?? "")_\(arrival.arrivalTs ?? 0)"
+                    return !existingStopTs.contains(stopTsKey)
+                }
+                let merged = currentDir.arrivals + newFromNearby
+                mergedDirections.append(DirectionArrivalsResponse(
+                    direction: currentDir.direction,
+                    directionLabel: currentDir.directionLabel ?? matchDir.directionLabel,
+                    arrivals: merged
+                ))
+            }
+            let mergedGroup = GroupedNearbyTransitResponse(
+                routeId: current.routeId,
+                displayName: match.displayName,
+                mode: match.mode,
+                colorHex: match.colorHex ?? current.colorHex,
+                directions: mergedDirections
+            )
+            self.selectedGroupedRoute = mergedGroup
+        } else {
+            // Non-bus or no active sync — replace as before
             self.selectedGroupedRoute = match
-            // Re-apply shape-based direction ordering so direction indices
-            // stay consistent with the route shape (and selectedStopId).
-            // Without this, fresh nearby data can scramble direction order,
-            // causing the stop-filtering in RouteDetailSheet to compare
-            // arrivals from the wrong direction against selectedStopId.
-            if let shape = self.routeShape {
-                self.enrichGroupWithShapeDirections(shape)
-            }
-            AppLogger.shared.log("SYNC", message: "Updated selected route: \(match.routeId)")
-            #if DEBUG
-            if let selected = self.selectedGroupedRoute {
-                AppLogger.shared.log(
-                    "SYNC",
-                    message:
-                        "Persist route=\(selected.routeId) mode=\(selected.mode) selectedDirIdx=\(self.selectedDirectionIndex) snapshot=\(self.debugDirectionSnapshot(selected))"
-                )
-            }
-            #endif
         }
+        // Re-apply shape-based direction ordering so direction indices
+        // stay consistent with the route shape (and selectedStopId).
+        if let shape = self.routeShape {
+            self.enrichGroupWithShapeDirections(shape)
+        }
+        AppLogger.shared.log("SYNC", message: "Updated selected route: \(match.routeId)\(isBusWithActiveSync ? " (merged, kept \(currentTotal) arrivals)" : "")")
+        #if DEBUG
+        if let selected = self.selectedGroupedRoute {
+            AppLogger.shared.log(
+                "SYNC",
+                message:
+                    "Persist route=\(selected.routeId) mode=\(selected.mode) selectedDirIdx=\(self.selectedDirectionIndex) snapshot=\(self.debugDirectionSnapshot(selected))"
+            )
+        }
+        #endif
     }
 
     func debugDirectionSnapshot(_ group: GroupedNearbyTransitResponse) -> String {

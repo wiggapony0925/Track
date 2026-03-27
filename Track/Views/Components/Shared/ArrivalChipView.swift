@@ -114,10 +114,14 @@ struct ArrivalChipView: View {
         RoundedRectangle(cornerRadius: 2)
             .fill(
                 isSched
-                    ? chipAccent.opacity(0.2)
-                    : chipAccent.opacity(isFirst ? 0.85 : 0.6)
+                    ? AnyShapeStyle(chipAccent.opacity(0.2))
+                    : AnyShapeStyle(LinearGradient(
+                        colors: [chipAccent.opacity(isFirst ? 0.9 : 0.65), chipAccent.opacity(isFirst ? 0.5 : 0.3)],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                      ))
             )
-            .frame(width: isFirst ? 36 : 28, height: 3)
+            .frame(width: isFirst ? 40 : 30, height: 3)
             .padding(.top, 10)
     }
 
@@ -191,13 +195,17 @@ struct ArrivalChipView: View {
             .fill(AppTheme.Gradients.floating)
             .overlay(
                 RoundedRectangle(cornerRadius: cornerR, style: .continuous)
+                    .fill(isFirst && !isSched ? chipAccent.opacity(0.03) : Color.clear)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerR, style: .continuous)
                     .stroke(AppTheme.Colors.borderSubtle, lineWidth: 1)
             )
             .shadow(
                 color: isSched
                     ? .clear
-                    : chipAccent.opacity(isFirst && !isSelected ? 0.14 : 0.08),
-                radius: isFirst ? 14 : 8, x: 0, y: 6
+                    : chipAccent.opacity(isFirst && !isSelected ? 0.18 : 0.08),
+                radius: isFirst ? 16 : 8, x: 0, y: isFirst ? 8 : 6
             )
     }
 
@@ -245,6 +253,7 @@ struct ArrivalChipETA: View {
             .lineLimit(1)
             .minimumScaleFactor(0.7)
             .foregroundStyle(AppTheme.Colors.countdown(0))
+            .shadow(color: AppTheme.Colors.countdown(0).opacity(0.35), radius: 8, x: 0, y: 2)
             .contentTransition(.numericText(countsDown: true))
             .animation(.spring(response: 0.4, dampingFraction: 0.8), value: mins)
             .dynamicTypeSize(...DynamicTypeSize.large)

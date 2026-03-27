@@ -40,28 +40,37 @@ struct StopsListView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             // Header
-            HStack(spacing: 6) {
+            HStack(spacing: 8) {
+                // Left accent bar
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(routeColor)
+                    .frame(width: 3, height: 18)
+
                 Image(systemName: "mappin.and.ellipse")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundColor(routeColor)
 
                 Text("Stops")
-                    .font(.custom("Helvetica-Bold", size: 13))
-                    .foregroundColor(AppTheme.Colors.textSecondary)
+                    .font(.custom("Helvetica-Bold", size: 14))
+                    .foregroundColor(AppTheme.Colors.textPrimary)
                     .textCase(.uppercase)
-                    .tracking(0.6)
+                    .tracking(0.8)
 
                 Spacer()
 
                 if !stops.isEmpty {
-                    HStack(spacing: 0) {
+                    HStack(spacing: 3) {
                         Text("\(stops.count)")
                             .font(.custom("Helvetica-Bold", size: 12))
                             .foregroundColor(routeColor)
-                        Text(" stop\(stops.count == 1 ? "" : "s")")
+                        Text("stop\(stops.count == 1 ? "" : "s")")
                             .font(.custom("Helvetica", size: 12))
                             .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
                     }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(routeColor.opacity(0.06))
+                    .clipShape(Capsule())
                 }
             }
             .padding(.horizontal, AppTheme.Layout.margin)
@@ -149,17 +158,23 @@ struct StopsListView: View {
 
     /// Walking time pill shown above the nearest stop.
     private func walkingTimeBadge(minutes: Int) -> some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 5) {
             Image(systemName: "figure.walk")
                 .font(.system(size: 10, weight: .semibold))
-            Text("\(minutes) min")
+            Text("\(minutes) min walk")
                 .font(.system(size: 11, weight: .bold, design: .rounded))
         }
         .foregroundColor(AppTheme.Colors.mtaBlue)
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
-        .background(AppTheme.Colors.mtaBlue.opacity(0.1))
-        .clipShape(Capsule())
+        .background(
+            Capsule()
+                .fill(AppTheme.Colors.mtaBlue.opacity(0.08))
+                .overlay(
+                    Capsule()
+                        .strokeBorder(AppTheme.Colors.mtaBlue.opacity(0.15), lineWidth: 0.5)
+                )
+        )
         .padding(.leading, 40)
         .padding(.vertical, 4)
     }
@@ -282,17 +297,21 @@ struct StopRowView: View {
     @ViewBuilder
     private var stopDot: some View {
         if stop.isCurrent {
-            // Current stop: bright pulsing dot with halo
+            // Current stop: bright dot with glowing halo
             ZStack {
                 Circle()
-                    .fill(routeColor.opacity(0.15))
-                    .frame(width: 24, height: 24)
+                    .fill(routeColor.opacity(0.1))
+                    .frame(width: 28, height: 28)
+                Circle()
+                    .fill(routeColor.opacity(0.2))
+                    .frame(width: 20, height: 20)
                 Circle()
                     .fill(routeColor)
                     .frame(width: 14, height: 14)
+                    .shadow(color: routeColor.opacity(0.4), radius: 4, x: 0, y: 1)
                 Circle()
                     .fill(AppTheme.Colors.cardFloating)
-                    .frame(width: 6, height: 6)
+                    .frame(width: 5, height: 5)
             }
         } else if isTerminal {
             // Terminal stop: outlined ring with center dot

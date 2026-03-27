@@ -445,34 +445,40 @@ struct RouteDetailSheet: View {
             VStack(alignment: .leading, spacing: 0) {
                 // ── Hero section: header + alert + countdown ──
                 routeHeader
-                    .padding(.bottom, 12)
-
-                alertBannerContent
                     .padding(.bottom, 14)
 
+                alertBannerContent
+                    .padding(.bottom, 16)
+
                 countdownSection
-                    .padding(.bottom, 6)
+                    .padding(.bottom, 10)
 
                 directionPickerContent
-                    .padding(.bottom, 20)
+                    .padding(.bottom, 24)
 
-                // ── Thin separator between hero and tab content ──
-                Divider()
-                    .overlay(routeColor.opacity(0.15))
-                    .padding(.horizontal, AppTheme.Layout.margin)
-                    .padding(.bottom, 16)
+                // ── Accent separator between hero and tab content ──
+                HStack(spacing: 0) {
+                    RoundedRectangle(cornerRadius: 1.5)
+                        .fill(routeColor)
+                        .frame(width: 28, height: 3)
+                    Rectangle()
+                        .fill(routeColor.opacity(0.08))
+                        .frame(height: 1)
+                }
+                .padding(.horizontal, AppTheme.Layout.margin)
+                .padding(.bottom, 20)
 
                 // ── Tab navigation & content ──
                 contentTabPicker
-                    .padding(.bottom, 16)
+                    .padding(.bottom, 18)
 
                 tabContent
-                    .padding(.bottom, 20)
+                    .padding(.bottom, 24)
 
                 // ── Footer metadata ──
                 routeInfoFooter
-                
-                Spacer().frame(height: 40)
+
+                Spacer().frame(height: 50)
             }
             .padding(.top, AppTheme.Layout.margin)
         }
@@ -673,15 +679,21 @@ struct RouteDetailSheet: View {
     // MARK: - Header
 
     private var routeHeader: some View {
-        HStack(spacing: 14) {
-            // Unified badge with mode-specific styling
-            RouteBadge(
-                routeID: group.displayName, size: .large, hexColor: group.colorHex, mode: group.mode
-            )
-            .shadow(color: routeColor.opacity(0.35), radius: 8, x: 0, y: 4)
-            .shadow(color: AppTheme.Colors.shadowStrong.opacity(0.10), radius: 12, x: 0, y: 6)
+        HStack(spacing: 16) {
+            // Route badge with ambient glow
+            ZStack {
+                Circle()
+                    .fill(routeColor.opacity(0.12))
+                    .frame(width: 68, height: 68)
+                    .blur(radius: 14)
+                RouteBadge(
+                    routeID: group.displayName, size: .large, hexColor: group.colorHex, mode: group.mode
+                )
+                .shadow(color: routeColor.opacity(0.4), radius: 10, x: 0, y: 5)
+                .shadow(color: AppTheme.Colors.shadowStrong.opacity(0.12), radius: 16, x: 0, y: 8)
+            }
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 5) {
                 Text(group.displayName)
                     .font(AppTheme.Typography.sheetTitle)
                     .foregroundColor(AppTheme.Colors.textPrimary)
@@ -1126,6 +1138,16 @@ struct RouteDetailSheet: View {
             }
         }
 
+        // ── Prefer ViewModel's selectedStopId (aligned with walking polyline) ──
+        // The ViewModel already resolved the nearest stop with arrival data;
+        // honour it so chips match the walking-polyline destination exactly.
+        if nearestStopKey == nil, let vmStop = selectedStopId, !vmStop.isEmpty {
+            let atVM = live.filter { stopKeyMatches($0.stopId ?? $0.stopName, vmStop) }
+            if !atVM.isEmpty {
+                nearestStopKey = vmStop
+            }
+        }
+
         // ── Fall back to distance-based nearest stop ───────────────────────
         // Resolve from `raw` (unfiltered) so the nearest-stop key matches
         // `ArrivalHelpers.countdownArrival` used by the home row.  The
@@ -1379,11 +1401,13 @@ struct RouteDetailSheet: View {
         let vanished = oldKeys.subtracting(newKeys)
         let appeared = newKeys.subtracting(oldKeys)
 
-        // Vehicles vanished but none appeared → likely a SIRI feed dropout.
-        // Block for 15s (1-2 polls) to let the feed recover.
+        // Vehicles vanished but none appeared → likely a SIRI feed dropout
+        // or the nearby API replaced the enriched vehicle-sync data with
+        // its sparse 2-arrival response.  Block for 25s (2-3 poll cycles)
+        // to let the feed recover.
         if !vanished.isEmpty && appeared.isEmpty {
             let elapsed = Date.now.timeIntervalSince(lastStableRefreshDate)
-            if elapsed < 15 {
+            if elapsed < 25 {
                 #if DEBUG
                 print("[STABLE_CHIPS] ⏳ ANTI-FLAP: blocking vanished=\(vanished) with no new arrivals, \(String(format: "%.0f", elapsed))s since last refresh")
                 #endif
@@ -1717,9 +1741,9 @@ struct RouteDetailSheet: View {
     /// Stop-name pill shown when user has manually selected a stop.
     @ViewBuilder
     private func userSelectedStopPill(stopName: String) -> some View {
-        HStack(spacing: 4) {
-            Image(systemName: "mappin")
-                .font(.system(size: 8, weight: .bold))
+        HStack(spacing: 5) {
+            Image(systemName: "mappin.circle.fill")
+                .font(.system(size: 10, weight: .semibold))
             Text(stopName)
                 .font(.custom("Helvetica-Bold", size: 11))
                 .lineLimit(1)
@@ -1729,37 +1753,58 @@ struct RouteDetailSheet: View {
                     onStopSelected?(nil)
                 }
             } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 7, weight: .bold))
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 11, weight: .semibold))
             }
         }
         .foregroundColor(routeColor)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 3)
-        .background(routeColor.opacity(0.12))
-        .clipShape(Capsule())
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
+        .background(
+            Capsule()
+                .fill(routeColor.opacity(0.1))
+                .overlay(
+                    Capsule()
+                        .strokeBorder(routeColor.opacity(0.2), lineWidth: 0.5)
+                )
+        )
     }
 
     /// Header row for the countdown section with "Next Arrivals" title and optional stop name.
     @ViewBuilder
     private func countdownHeader(displayStopName: String?, isUserSelected: Bool) -> some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 8) {
+            // Left accent bar
+            RoundedRectangle(cornerRadius: 2)
+                .fill(routeColor)
+                .frame(width: 3, height: 18)
+
             Text("Next Arrivals")
-                .font(.custom("Helvetica-Bold", size: 13))
-                .foregroundColor(AppTheme.Colors.textSecondary)
+                .font(.custom("Helvetica-Bold", size: 14))
+                .foregroundColor(AppTheme.Colors.textPrimary)
                 .textCase(.uppercase)
-                .tracking(0.6)
+                .tracking(0.8)
 
             if let stopName = displayStopName {
                 if isUserSelected {
                     userSelectedStopPill(stopName: stopName)
                 } else {
-                    Text("at \(stopName)")
-                        .font(.custom("Helvetica", size: 12))
-                        .foregroundColor(routeColor)
-                        .lineLimit(1)
+                    HStack(spacing: 4) {
+                        Image(systemName: "mappin.circle.fill")
+                            .font(.system(size: 9, weight: .semibold))
+                        Text(stopName)
+                            .font(.custom("Helvetica-Bold", size: 11))
+                            .lineLimit(1)
+                    }
+                    .foregroundColor(routeColor)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(routeColor.opacity(0.08))
+                    .clipShape(Capsule())
                 }
             }
+
+            Spacer()
         }
         .padding(.horizontal, AppTheme.Layout.margin)
     }
@@ -1783,34 +1828,72 @@ struct RouteDetailSheet: View {
 
     /// "X vehicles en route" placeholder.
     private var countdownVehiclesEnRouteState: some View {
-        VStack(spacing: 8) {
-            Image(systemName: group.isBus ? "bus.fill" : "tram.fill")
-                .font(.system(size: 28))
-                .foregroundColor(routeColor.opacity(0.6))
-            Text("\(liveVehicleCount) vehicle\(liveVehicleCount == 1 ? "" : "s") en route")
-                .font(.custom("Helvetica-Bold", size: 14))
-                .foregroundColor(AppTheme.Colors.textPrimary)
-            Text("No predicted arrivals at your stop yet")
-                .font(.custom("Helvetica", size: 12))
-                .foregroundColor(AppTheme.Colors.textSecondary)
+        HStack(spacing: 14) {
+            ZStack {
+                Circle()
+                    .fill(routeColor.opacity(0.08))
+                    .frame(width: 52, height: 52)
+                Image(systemName: group.isBus ? "bus.fill" : "tram.fill")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundColor(routeColor)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("\(liveVehicleCount) vehicle\(liveVehicleCount == 1 ? "" : "s") en route")
+                    .font(.custom("Helvetica-Bold", size: 15))
+                    .foregroundColor(AppTheme.Colors.textPrimary)
+                Text("No predicted arrivals at your stop yet")
+                    .font(.custom("Helvetica", size: 13))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+            }
+
+            Spacer()
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 20)
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(AppTheme.Colors.cardBackground)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .strokeBorder(routeColor.opacity(0.1), lineWidth: 0.5)
+                )
+        )
+        .shadow(color: AppTheme.Colors.shadow.opacity(0.04), radius: 8, x: 0, y: 3)
         .padding(.horizontal, AppTheme.Layout.margin)
     }
 
     /// Generic "No upcoming arrivals" state.
     private var countdownNoArrivalsState: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "clock")
-                .font(.system(size: 28))
-                .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.5))
-            Text("No upcoming arrivals")
-                .font(.custom("Helvetica", size: 14))
-                .foregroundColor(AppTheme.Colors.textSecondary)
+        HStack(spacing: 14) {
+            ZStack {
+                Circle()
+                    .fill(AppTheme.Colors.textSecondary.opacity(0.06))
+                    .frame(width: 48, height: 48)
+                Image(systemName: "moon.zzz.fill")
+                    .font(.system(size: 20, weight: .medium))
+                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.45))
+            }
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text("No upcoming arrivals")
+                    .font(.custom("Helvetica-Bold", size: 15))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+                Text("Service may have ended for today")
+                    .font(.custom("Helvetica", size: 12))
+                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
+            }
+
+            Spacer()
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 24)
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(AppTheme.Colors.cardBackground)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .strokeBorder(AppTheme.Colors.borderSubtle, lineWidth: 0.5)
+                )
+        )
         .padding(.horizontal, AppTheme.Layout.margin)
     }
 
@@ -1843,7 +1926,37 @@ struct RouteDetailSheet: View {
             }
             .padding(.horizontal, AppTheme.Layout.margin)
             .padding(.vertical, 8)
+            .onAppear { logChips(chips) }
+            .onChange(of: chips.map(\.arrival.id)) { _, _ in logChips(chips) }
         }
+    }
+
+    /// Logs every visible chip for debugging — compare against raw endpoint data.
+    private func logChips(_ chips: [(arrival: NearbyTransitResponse, eta: SmartETA)]) {
+        #if DEBUG
+        let dir = safeDirection.direction
+        let stopName = chips.first?.arrival.stopName ?? "?"
+        print("1111━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        print("[CHIPS] \(group.routeId) → \(dir) | stop: \(stopName) | \(chips.count) chip(s)")
+        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        for (i, pair) in chips.enumerated() {
+            let a = pair.arrival
+            let eta = pair.eta
+            let type = a.isScheduledOnly ? "SCHED" : (a.isRealTime ? "LIVE" : "OTHER")
+            let vid = a.vehicleId ?? "nil"
+            let tid = a.tripId ?? "nil"
+            let sid = a.stopId ?? "nil"
+            let dest = a.destination ?? "nil"
+            let mins = eta.minutesRemaining
+            let secs = Int(eta.secondsRemaining)
+            let status = a.status
+            let ts = a.arrivalTs.map { String($0) } ?? "nil"
+            let dist = a.distanceM.map { String(Int($0)) + "m" } ?? "nil"
+            let isNow = eta.isAtStop || eta.secondsRemaining <= 15
+            print("  [\(i)] \(type) | \(isNow ? "NOW" : "\(mins)min") (\(secs)s) | vid=\(vid) tid=\(tid) | stop=\(a.stopName) sid=\(sid) | dest=\(dest) | status=\(status) | arrTs=\(ts) | dist=\(dist)")
+        }
+        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
+        #endif
     }
 
     private var countdownSection: some View {
@@ -1885,6 +1998,28 @@ struct RouteDetailSheet: View {
             let routeUpper = group.routeId.uppercased()
             let displayUpper = group.displayName.uppercased()
 
+            // ── Resolve the user's nearest stop so we only show scheduled
+            //    arrivals AT that stop (not at every stop on the line). ──
+            let nearestStopName: String? = {
+                // Use the ViewModel's resolved stop first
+                if let sid = selectedStopId, !sid.isEmpty { return sid }
+                // Fallback: find nearest from route shape
+                if let shape = routeShape {
+                    let refLoc = (currentLocation ?? searchCenter).map {
+                        CLLocation(latitude: $0.latitude, longitude: $0.longitude)
+                    }
+                    if let refLoc {
+                        let shapeDir = shape.matchedDirection(index: selectedDirectionIndex, name: direction.direction)
+                        let stops = shapeDir?.stops ?? shape.stops
+                        return stops.min(by: {
+                            refLoc.distance(from: CLLocation(latitude: $0.lat, longitude: $0.lon))
+                            < refLoc.distance(from: CLLocation(latitude: $1.lat, longitude: $1.lon))
+                        })?.id
+                    }
+                }
+                return nil
+            }()
+
             let matching = cachedTrainArrivals.filter { arrival in
                 // ── Route gate ──
                 let arrRoute = arrival.routeID.uppercased()
@@ -1893,14 +2028,34 @@ struct RouteDetailSheet: View {
                         || routeUpper.hasSuffix("_\(arrRoute)")
                 else { return false }
 
-                // ── Direction gate (existing logic) ──
+                // ── Direction gate ──
+                // Use destination matching — the direction field is just
+                // "N"/"S" which false-matches via .contains() on almost
+                // any direction name ("hudso*n* yards" contains "n").
                 let arrDir = arrival.direction.lowercased()
                 let arrDest = arrival.destination?.lowercased() ?? ""
-                return arrDir == dirLower
-                    || arrDest == dirLower
-                    || dirLower.contains(arrDir)
-                    || dirLower.contains(arrDest)
-                    || arrDest.contains(dirLower)
+
+                let dirMatch: Bool = {
+                    // Exact matches are always safe
+                    if arrDir == dirLower || arrDest == dirLower { return true }
+                    // Only allow substring matching for strings >= 3 chars
+                    // to avoid single-char compass codes ("n","s") false-matching
+                    if arrDir.count >= 3 && (dirLower.contains(arrDir) || arrDir.contains(dirLower)) { return true }
+                    if arrDest.count >= 3 && (dirLower.contains(arrDest) || arrDest.contains(dirLower)) { return true }
+                    return false
+                }()
+                guard dirMatch else { return false }
+
+                // ── Stop gate — only show the user's nearest stop ──
+                if let nearest = nearestStopName {
+                    let sid = arrival.stationID.lowercased()
+                    let sname = arrival.stationName.lowercased()
+                    let nLower = nearest.lowercased()
+                    return sid == nLower || sname == nLower
+                        || sid.contains(nLower) || nLower.contains(sid)
+                        || sname.contains(nLower) || nLower.contains(sname)
+                }
+                return true
             }
             .filter { $0.estimatedTime > Date().addingTimeInterval(-30) }
             .sorted { $0.estimatedTime < $1.estimatedTime }
@@ -1947,7 +2102,22 @@ struct RouteDetailSheet: View {
                 }
                 return false
             }
-            // Fallback: positional index match
+            // Bridge via route shape: the live direction name (e.g. "133 ST-BROADWAY")
+            // often doesn't match the OBA schedule headsign (e.g. "RIVERBANK 145 ST via 10 AV").
+            // Use the route shape to find which direction_id the current direction maps to,
+            // then match the schedule direction that corresponds to the same direction_id.
+            ?? {
+                guard let shape = routeShape, !shape.directions.isEmpty else { return nil }
+                let shapeDir = shape.matchedDirection(index: selectedDirectionIndex, name: direction.direction)
+                guard let shapeDirId = shapeDir?.directionId else { return nil }
+                // Schedule directions are ordered by direction_id (0 first, 1 second).
+                // Match by positional alignment: schedule dir at index N = direction_id N.
+                let schedIdx = min(shapeDirId, schedule.directions.count - 1)
+                guard schedIdx >= 0 && schedIdx < schedule.directions.count else { return nil }
+                return schedule.directions[schedIdx]
+            }()
+            // Fallback: positional index match (last resort — may not align if
+            // group has more directions than the schedule)
             ?? schedule.directions.first { (schedDir: BusScheduleDirection) -> Bool in
                 let idx: Int? = schedule.directions.firstIndex(where: { $0.direction == schedDir.direction })
                 return idx == selectedDirectionIndex
@@ -2436,10 +2606,25 @@ struct RouteDetailSheet: View {
     /// Animating pulse state for the live indicator dot
     @State private var liveDotPulse = false
 
+    /// Derive live vehicle count from the current direction's real-time arrivals.
+    /// This is more accurate than the ViewModel's `filteredBusVehicles.count`
+    /// which uses destination-matching heuristics and includes grace-buffered
+    /// vehicles that may have already left the route.
+    private var directionLiveVehicleCount: Int {
+        let arrivals = safeDirection.arrivals
+        let uniqueVehicles = Set(arrivals.filter(\.isRealTime).compactMap(\.vehicleId))
+        // Prefer the direction-scoped count derived from real arrivals.
+        // Fall back to the total route vehicle count only when the
+        // direction has no arrival data at all (avoids showing "0 live buses"
+        // when vehicles are clearly running but haven't been assigned to a
+        // direction yet during the initial load window).
+        return uniqueVehicles.isEmpty ? liveVehicleCount : uniqueVehicles.count
+    }
+
     private var routeInfoFooter: some View {
         let shape = routeShape
         let hasStops = shape?.stops.isEmpty == false
-        let hasVehicles = liveVehicleCount > 0
+        let hasVehicles = directionLiveVehicleCount > 0
         let isShapeLoading = shape == nil
 
         if isShapeLoading {
@@ -2447,115 +2632,80 @@ struct RouteDetailSheet: View {
             return AnyView(RouteInfoFooterSkeleton())
         } else if hasStops || hasVehicles {
             return AnyView(
-                VStack(spacing: 12) {
-                    // Thin separator above footer
-                    Divider()
-                        .overlay(AppTheme.Colors.textSecondary.opacity(0.1))
-                        .padding(.horizontal, AppTheme.Layout.margin)
-
-                    HStack(spacing: 12) {
-                        if let shape, hasStops {
-                            let dirStops = shape.stopsForDirection(index: selectedDirectionIndex, name: selectedDirectionName)
-                            HStack(spacing: 6) {
-                                Image(systemName: "mappin.and.ellipse")
-                                    .font(.system(size: 12, weight: .medium))
-                                    .foregroundColor(routeColor)
-                                Text("\(dirStops.count) stops")
-                                    .font(.custom("Helvetica-Bold", size: 13))
-                                    .foregroundColor(AppTheme.Colors.textSecondary)
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background(routeColor.opacity(0.08))
-                            .clipShape(Capsule())
+                HStack(spacing: 10) {
+                    if let shape, hasStops {
+                        let dirStops = shape.stopsForDirection(index: selectedDirectionIndex, name: selectedDirectionName)
+                        HStack(spacing: 6) {
+                            Image(systemName: "mappin.and.ellipse")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(routeColor)
+                            Text("\(dirStops.count) stops")
+                                .font(.custom("Helvetica-Bold", size: 12))
+                                .foregroundColor(AppTheme.Colors.textSecondary)
                         }
-
-                        if hasVehicles {
-                            HStack(spacing: 6) {
-                                // Pulsing live dot
-                                Circle()
-                                    .fill(AppTheme.Colors.successGreen)
-                                    .frame(width: 7, height: 7)
-                                    .overlay(
-                                        Circle()
-                                            .fill(AppTheme.Colors.successGreen.opacity(0.35))
-                                            .frame(width: 14, height: 14)
-                                            .scaleEffect(liveDotPulse ? 1.4 : 0.8)
-                                            .opacity(liveDotPulse ? 0 : 0.6)
-                                    )
-                                    .onAppear {
-                                        withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: false)) {
-                                            liveDotPulse = true
-                                        }
-                                    }
-                                Text("\(liveVehicleCount) live \(group.isBus ? "buses" : "trains")")
-                                    .font(.custom("Helvetica-Bold", size: 13))
-                                    .foregroundColor(AppTheme.Colors.successGreen)
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background(AppTheme.Colors.successGreen.opacity(0.08))
-                            .clipShape(Capsule())
-                        }
-
-                        Spacer()
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(
+                            Capsule()
+                                .fill(routeColor.opacity(0.06))
+                                .overlay(
+                                    Capsule()
+                                        .strokeBorder(routeColor.opacity(0.1), lineWidth: 0.5)
+                                )
+                        )
                     }
-                    .padding(.horizontal, AppTheme.Layout.margin)
+
+                    if hasVehicles {
+                        HStack(spacing: 6) {
+                            // Pulsing live dot
+                            Circle()
+                                .fill(AppTheme.Colors.successGreen)
+                                .frame(width: 7, height: 7)
+                                .overlay(
+                                    Circle()
+                                        .fill(AppTheme.Colors.successGreen.opacity(0.35))
+                                        .frame(width: 14, height: 14)
+                                        .scaleEffect(liveDotPulse ? 1.4 : 0.8)
+                                        .opacity(liveDotPulse ? 0 : 0.6)
+                                )
+                                .onAppear {
+                                    withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: false)) {
+                                        liveDotPulse = true
+                                    }
+                                }
+                            Text("\(directionLiveVehicleCount) live \(group.isBus ? "buses" : "trains")")
+                                .font(.custom("Helvetica-Bold", size: 12))
+                                .foregroundColor(AppTheme.Colors.successGreen)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(
+                            Capsule()
+                                .fill(AppTheme.Colors.successGreen.opacity(0.06))
+                                .overlay(
+                                    Capsule()
+                                        .strokeBorder(AppTheme.Colors.successGreen.opacity(0.12), lineWidth: 0.5)
+                                )
+                        )
+                    }
+
+                    Spacer()
                 }
+                .padding(.horizontal, AppTheme.Layout.margin + 2)
+                .padding(.vertical, 14)
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(AppTheme.Colors.cardBackground)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .strokeBorder(AppTheme.Colors.borderSubtle, lineWidth: 0.5)
+                        )
+                )
+                .shadow(color: AppTheme.Colors.shadow.opacity(0.03), radius: 6, x: 0, y: 3)
+                .padding(.horizontal, AppTheme.Layout.margin)
             )
         } else {
             return AnyView(EmptyView())
         }
     }
-}
-
-#Preview {
-    RouteDetailSheet(
-        group: GroupedNearbyTransitResponse(
-            routeId: "A",
-            displayName: "A",
-            mode: "subway",
-            colorHex: "#0039A6",
-            directions: [
-                DirectionArrivalsResponse(
-                    direction: "N",
-                    arrivals: [
-                        NearbyTransitResponse(
-                            routeId: "A", stopName: "Canal St", direction: "N",
-                            destination: "Inwood-207 St",
-                            minutesAway: 3, status: "On Time", mode: "subway",
-                            stopLat: 40.72, stopLon: -74.0,
-                            arrivalTs: Int(Date().timeIntervalSince1970 + 180),
-                            vehicleId: "V123", tripId: "T456", stopId: "A32"
-                        ),
-                        NearbyTransitResponse(
-                            routeId: "A", stopName: "14 St", direction: "N",
-                            destination: "Inwood-207 St",
-                            minutesAway: 8, status: "On Time", mode: "subway",
-                            stopLat: 40.74, stopLon: -74.0,
-                            arrivalTs: Int(Date().timeIntervalSince1970 + 480),
-                            vehicleId: "V124", tripId: "T457", stopId: "A28"
-                        ),
-                    ]
-                ),
-                DirectionArrivalsResponse(
-                    direction: "S",
-                    arrivals: [
-                        NearbyTransitResponse(
-                            routeId: "A", stopName: "Fulton St", direction: "S",
-                            destination: "Far Rockaway",
-                            minutesAway: 5, status: "Delayed", mode: "subway",
-                            stopLat: 40.71, stopLon: -74.01,
-                            arrivalTs: Int(Date().timeIntervalSince1970 + 300),
-                            vehicleId: "V125", tripId: "T458", stopId: "A34"
-                        )
-                    ]
-                ),
-            ]
-        ),
-        vehicleCoordinateLookup: { _ in nil },
-        trainVehicles: [],
-        routeShape: .constant(nil),
-        selectedDirectionIndex: .constant(0)
-    )
 }

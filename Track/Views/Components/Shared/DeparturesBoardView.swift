@@ -30,18 +30,25 @@ struct DeparturesBoardView: View {
 
     private var departuresHeader: some View {
         HStack(spacing: 8) {
+            RoundedRectangle(cornerRadius: 2)
+                .fill(routeColor.opacity(0.5))
+                .frame(width: 3, height: 18)
             Text("Scheduled")
-                .font(.custom("Helvetica-Bold", size: 13))
-                .foregroundColor(AppTheme.Colors.textSecondary)
+                .font(.custom("Helvetica-Bold", size: 14))
+                .foregroundColor(AppTheme.Colors.textPrimary)
                 .textCase(.uppercase)
-                .tracking(0.6)
+                .tracking(0.8)
 
             Spacer()
 
             if departures.count > 0 {
                 Text("\(departures.count) not on route")
-                    .font(.custom("Helvetica", size: 12))
-                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
+                    .font(.custom("Helvetica", size: 11))
+                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(AppTheme.Colors.textSecondary.opacity(0.06))
+                    .clipShape(Capsule())
             }
         }
         .padding(.horizontal, AppTheme.Layout.margin)
@@ -54,22 +61,36 @@ struct DeparturesBoardView: View {
         if !hasScheduleData && isLoading {
             ArrivalRowSkeleton(count: 4)
         } else {
-            VStack(spacing: 10) {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 36, weight: .light))
-                    .foregroundColor(AppTheme.Colors.successGreen.opacity(0.7))
-                Text("All departures are live-tracked")
-                    .font(.custom("Helvetica-Bold", size: 15))
-                    .foregroundColor(AppTheme.Colors.textPrimary)
-                Text("Every scheduled bus or train in this direction\nis currently reporting its position.")
-                    .font(.custom("Helvetica", size: 13))
-                    .foregroundColor(AppTheme.Colors.textSecondary)
-                    .multilineTextAlignment(.center)
+            HStack(spacing: 14) {
+                ZStack {
+                    Circle()
+                        .fill(AppTheme.Colors.successGreen.opacity(0.08))
+                        .frame(width: 52, height: 52)
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 24, weight: .medium))
+                        .foregroundColor(AppTheme.Colors.successGreen.opacity(0.7))
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("All departures are live-tracked")
+                        .font(.custom("Helvetica-Bold", size: 15))
+                        .foregroundColor(AppTheme.Colors.textPrimary)
+                    Text("Every scheduled vehicle is reporting its position")
+                        .font(.custom("Helvetica", size: 13))
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+                }
+
+                Spacer()
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 40)
-            .background(AppTheme.Colors.cardBackground)
-            .cornerRadius(AppTheme.Layout.cornerRadius)
+            .padding(16)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(AppTheme.Colors.cardBackground)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .strokeBorder(AppTheme.Colors.successGreen.opacity(0.1), lineWidth: 0.5)
+                    )
+            )
             .padding(.horizontal, AppTheme.Layout.margin)
         }
     }

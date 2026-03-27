@@ -56,8 +56,9 @@ struct RouteAlertBanner: View {
     private func alertStrip(title: String, extraCount: Int, color: Color) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 12, weight: .bold))
+                .font(.system(size: 13, weight: .bold))
                 .foregroundColor(.white)
+                .shadow(color: .black.opacity(0.2), radius: 2, y: 1)
 
             Text(title)
                 .font(.custom("Helvetica-Bold", size: 12))
@@ -70,17 +71,34 @@ struct RouteAlertBanner: View {
                 Text("+\(extraCount)")
                     .font(.system(size: 10, weight: .bold))
                     .foregroundColor(color)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Capsule().fill(AppTheme.Colors.cardFloating.opacity(0.92)))
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(Capsule().fill(AppTheme.Colors.cardFloating.opacity(0.95)))
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
         .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(color)
-                .shadow(color: color.opacity(0.3), radius: 6, x: 0, y: 3)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [color, color.opacity(0.85)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [Color.white.opacity(0.12), Color.clear],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                )
+                .shadow(color: color.opacity(0.35), radius: 8, x: 0, y: 4)
+                .shadow(color: color.opacity(0.15), radius: 2, x: 0, y: 1)
         )
         .padding(.horizontal, AppTheme.Layout.margin)
     }
@@ -161,16 +179,20 @@ struct RouteAlertsSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             // Section header
-            HStack(spacing: 6) {
+            HStack(spacing: 8) {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(AppTheme.Colors.warningYellow)
+                    .frame(width: 3, height: 18)
+
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(AppTheme.Colors.warningYellow)
 
                 Text("Active Alerts")
-                    .font(.custom("Helvetica-Bold", size: 13))
-                    .foregroundColor(AppTheme.Colors.textSecondary)
+                    .font(.custom("Helvetica-Bold", size: 14))
+                    .foregroundColor(AppTheme.Colors.textPrimary)
                     .textCase(.uppercase)
-                    .tracking(0.6)
+                    .tracking(0.8)
 
                 Spacer()
 
@@ -213,24 +235,37 @@ struct NoAlertsEmptyState: View {
     let routeDisplayName: String
 
     var body: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "checkmark.shield.fill")
-                .font(.system(size: 36, weight: .light))
-                .foregroundColor(AppTheme.Colors.successGreen)
+        HStack(spacing: 16) {
+            ZStack {
+                Circle()
+                    .fill(AppTheme.Colors.successGreen.opacity(0.08))
+                    .frame(width: 56, height: 56)
+                Image(systemName: "checkmark.shield.fill")
+                    .font(.system(size: 26, weight: .medium))
+                    .foregroundColor(AppTheme.Colors.successGreen)
+            }
 
-            Text("All Clear")
-                .font(.custom("Helvetica-Bold", size: 17))
-                .foregroundColor(AppTheme.Colors.textPrimary)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("All Clear")
+                    .font(.custom("Helvetica-Bold", size: 17))
+                    .foregroundColor(AppTheme.Colors.textPrimary)
 
-            Text("No active service alerts for the \(routeDisplayName)")
-                .font(.custom("Helvetica", size: 14))
-                .foregroundColor(AppTheme.Colors.textSecondary)
-                .multilineTextAlignment(.center)
+                Text("No active service alerts for the \(routeDisplayName)")
+                    .font(.custom("Helvetica", size: 14))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+            }
+
+            Spacer()
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 40)
-        .background(AppTheme.Colors.cardBackground)
-        .cornerRadius(AppTheme.Layout.cornerRadius)
+        .padding(20)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius, style: .continuous)
+                .fill(AppTheme.Colors.cardBackground)
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius, style: .continuous)
+                        .strokeBorder(AppTheme.Colors.successGreen.opacity(0.1), lineWidth: 0.5)
+                )
+        )
         .padding(.horizontal, AppTheme.Layout.margin)
     }
 }

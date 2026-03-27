@@ -23,12 +23,17 @@ struct DirectionPickerView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Direction")
-                .font(.custom("Helvetica-Bold", size: 13))
-                .foregroundColor(AppTheme.Colors.textSecondary)
-                .textCase(.uppercase)
-                .tracking(0.6)
-                .padding(.horizontal, AppTheme.Layout.margin)
+            HStack(spacing: 8) {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(routeColor)
+                    .frame(width: 3, height: 18)
+                Text("Direction")
+                    .font(.custom("Helvetica-Bold", size: 14))
+                    .foregroundColor(AppTheme.Colors.textPrimary)
+                    .textCase(.uppercase)
+                    .tracking(0.8)
+            }
+            .padding(.horizontal, AppTheme.Layout.margin)
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {

@@ -107,6 +107,9 @@ final class HomeViewModel {
 
     /// Cached bus schedule for the currently selected bus route.
     var busSchedule: BusScheduleResponse?
+    /// Per-route bus schedule cache so re-opening a route shows SCHED chips
+    /// instantly instead of waiting for the async fetch to complete.
+    var busScheduleByRoute: [String: BusScheduleResponse] = [:]
     /// Cached train arrivals for interpolation between refresh cycles.
     var cachedTrainArrivals: [TrainArrival] = []
 
@@ -2107,7 +2110,7 @@ final class HomeViewModel {
         isSearchPinActive = false
         searchPinCoordinate = nil
         expireAllGraceCounters()
-        goMode.walkingRoute = nil
+        goMode.cancelWalkingRoute()
         nearestStopCoordinate = nil
         isStopManuallySelected = false
         nearestTransit = nil
@@ -2156,13 +2159,19 @@ final class HomeViewModel {
         // stops list, and banner appear INSTANTLY on re-opens instead of
         // showing skeletons while we re-fetch. This matches Transit app's
         // instant-open behavior.
-        goMode.walkingRoute = nil
+        //
+        // Schedule data is NOT cleared here:
+        //  • busSchedule — restored from busScheduleByRoute[routeId] so
+        //    SCHED chips appear on the very first render.
+        //  • cachedTrainArrivals — kept across route switches because
+        //    scheduledDeparturesForCurrentDirection already filters by
+        //    routeId, so stale arrivals for a different line are ignored.
+        goMode.cancelWalkingRoute()
         nearestStopCoordinate = nil
         isStopManuallySelected = false
         busVehicles = []
         trainVehicles = []
-        cachedTrainArrivals = []
-        busSchedule = nil
+        busSchedule = busScheduleByRoute[group.routeId]
 
         // Use cached shape immediately if available (memory or disk).
         // The shape will be refreshed in the background if stale.
@@ -2438,11 +2447,11 @@ final class HomeViewModel {
                     // predictions at monitored timepoint stops, so the
                     // physically nearest stop may not have an ETA.
                     //
-                    // Always use the nearest shape stop for walking
-                    // distance (the user walks to the closest physical
-                    // stop regardless of where the next prediction is).
-                    // But set selectedStopId to the nearest *arrival*
-                    // stop so chip filtering shows the correct ETAs.
+                    // Walk the user to the nearest stop that ALSO has
+                    // predicted arrivals — so the walking polyline,
+                    // stop-name pill, and countdown chips all agree.
+                    // Falling back to the shape stop only when no
+                    // arrival stop has coordinates.
                     targetStopCoord = CLLocationCoordinate2D(latitude: closest.lat, longitude: closest.lon)
                     targetStopId = closest.id  // default to shape stop
 
@@ -2454,12 +2463,22 @@ final class HomeViewModel {
                             let dist = userRef.distance(from: CLLocation(latitude: lat, longitude: lon))
                             if dist < bestDist { bestDist = dist; bestArrival = arrival }
                         }
-                        if let best = bestArrival {
-                            // Use arrival stop ID for chip matching only —
-                            // walking coordinate stays at the shape stop.
+                        if let best = bestArrival,
+                           let bestLat = best.stopLat, let bestLon = best.stopLon {
+                            // Align BOTH the walking polyline and the chip
+                            // stop to the nearest arrival stop so the user
+                            // sees consistent information everywhere.
+                            targetStopCoord = CLLocationCoordinate2D(latitude: bestLat, longitude: bestLon)
                             targetStopId = best.stopId
                             #if DEBUG
-                            print("[WALK DIST] \(currentGroup.routeId) (\(currentGroup.mode))  source=routeShape (nearest shape stop '\(closest.name)' has no arrivals; chips→'\(best.stopName)')  nearest stop='\(closest.name)' id=\(closest.id)  (\(String(format: "%.5f", closest.lat)),\(String(format: "%.5f", closest.lon)))  straight-line=\(Int(minDistance))m / \(String(format: "%.2f", minDistance / 1609.34))mi  ← polyline targets this stop")
+                            print("[WALK DIST] \(currentGroup.routeId) (\(currentGroup.mode))  source=routeShape (nearest shape stop '\(closest.name)' has no arrivals; redirected to arrival stop '\(best.stopName)')  walking polyline→(\(String(format: "%.5f", bestLat)),\(String(format: "%.5f", bestLon)))  straight-line=\(Int(bestDist))m")
+                            #endif
+                        } else if let best = bestArrival {
+                            // Arrival stop has no coords — keep shape stop
+                            // for walking but use arrival stop for chips.
+                            targetStopId = best.stopId
+                            #if DEBUG
+                            print("[WALK DIST] \(currentGroup.routeId) (\(currentGroup.mode))  source=routeShape (nearest shape stop '\(closest.name)' has no arrivals; chips→'\(best.stopName)' but no coords — walking stays at shape stop)")
                             #endif
                         } else {
                             #if DEBUG

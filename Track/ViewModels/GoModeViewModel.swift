@@ -155,10 +155,23 @@ final class GoModeViewModel {
     /// Walking route to the nearest station (managed by GO mode for navigation).
     var walkingRoute: MKRoute?
 
+    /// Monotonically increasing token — incremented by `cancelWalkingRoute()`
+    /// so in-flight fetches know they're stale and discard their result.
+    private var _walkingRouteToken: UInt = 0
+
+    /// Cancels any in-flight walking route fetch and clears the current route.
+    func cancelWalkingRoute() {
+        _walkingRouteToken &+= 1
+        walkingRoute = nil
+    }
+
     /// Fetches walking directions from user to a destination and stores the route polyline.
+    /// Uses a token-based staleness check so results from cancelled/outdated fetches
+    /// don't overwrite a cleared route (e.g. after sheet dismissal).
     func fetchWalkingRoute(
         from source: CLLocationCoordinate2D, to destination: CLLocationCoordinate2D
     ) async {
+        let token = _walkingRouteToken
         // MKPlacemark is deprecated in iOS 26.0
         let sourceItem = MKMapItem(
             location: CLLocation(latitude: source.latitude, longitude: source.longitude),
@@ -175,10 +188,13 @@ final class GoModeViewModel {
         let directions = MKDirections(request: request)
         do {
             let response = try await directions.calculate()
+            // Staleness check: if token changed, the route was cancelled
+            guard _walkingRouteToken == token else { return }
             if let route = response.routes.first {
                 self.walkingRoute = route
             }
         } catch {
+            guard _walkingRouteToken == token else { return }
             AppLogger.shared.logError("Walking route calculation", error: error)
             self.walkingRoute = nil
         }
