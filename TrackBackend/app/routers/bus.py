@@ -74,9 +74,20 @@ import asyncio as _asyncio
 
 
 def _normalize_route_token(raw: str) -> str:
-    """Strip agency prefix, upper-case, and remove leading zeros."""
+    """Strip agency prefix, upper-case, remove leading zeros, normalise SBS.
+
+    MTA uses two SBS forms interchangeably:
+      - Display / client side: ``M34-SBS``
+      - OBA / SIRI route IDs:  ``M34+SBS`` (or just ``M34+``)
+    Normalize ``+`` → ``-`` so both forms produce the same cache / match key.
+    Also treat a bare trailing ``+`` as ``-SBS`` (e.g. ``M34+`` → ``M34-SBS``).
+    """
     token = (raw.split("_", 1)[-1] if "_" in raw else raw).upper()
-    return _re.sub(r"(?<=\D)0+(?=\d)", "", token) or token
+    token = _re.sub(r"(?<=\D)0+(?=\d)", "", token) or token
+    # Unify SBS variants: M34+SBS → M34-SBS, M34+ → M34-SBS
+    token = _re.sub(r"\+SBS$", "-SBS", token)
+    token = _re.sub(r"\+$", "-SBS", token)
+    return token
 
 
 async def _fetch_bus_schedule_uncached(route_id: str) -> BusScheduleResponse:
