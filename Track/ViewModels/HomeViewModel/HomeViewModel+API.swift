@@ -496,6 +496,10 @@ extension HomeViewModel {
     /// if there were no arrivals to process.
     private func buildSyncedTrainGroup(_ arrivals: [TrainArrival], mode: String = "subway") async -> GroupedNearbyTransitResponse? {
         guard let currentGroup = await MainActor.run(body: { selectedGroupedRoute }) else { return nil }
+        
+        // Get the user's selected stop — arrivals at THIS stop are protected
+        // from being overwritten by route-specific API data
+        let protectedStopId = await MainActor.run(body: { selectedStopId })
 
         // Map TrainArrival -> NearbyTransitResponse
         // Filter to only this route if needed (though caller usually filters)
@@ -626,12 +630,106 @@ extension HomeViewModel {
 
         var newDirections: [DirectionArrivalsResponse] = []
 
-        // Preserve existing direction labels
-        for oldDir in currentGroup.directions {
-            let liveArrivals = grouped[oldDir.direction] ?? []
-            let sorted = liveArrivals.sorted { $0.minutesAway < $1.minutesAway }
+        // Helper to check if a stop ID matches the protected stop
+        func isProtectedStop(_ stopId: String?) -> Bool {
+            guard let protected = protectedStopId, !protected.isEmpty,
+                  let sid = stopId, !sid.isEmpty else { return false }
+            // Exact match or normalized match (strip MTA prefix + N/S suffix)
+            if sid == protected { return true }
+            let norm1 = normalizeStopId(sid)
+            let norm2 = normalizeStopId(protected)
+            return norm1 == norm2 && !norm1.isEmpty
+        }
 
-            // Only replace if we got new arrivals; otherwise keep existing to avoid flashing empty
+        // ── STOP-AWARE MERGE: protect arrivals at user's selected stop ──
+        // The nearby API returns arrivals pre-filtered to the user's nearest stop.
+        // The route-specific API returns ALL stops on the line.
+        // 
+        // CRITICAL: For the user's selected stop, KEEP the nearby API data.
+        // The route-specific API may show fewer arrivals at that stop because
+        // it wasn't filtered for proximity. This prevents chip count drops.
+        func mergeArrivals(existing: [NearbyTransitResponse], new: [NearbyTransitResponse]) -> [NearbyTransitResponse] {
+            let now = Date()
+            let expiryThreshold = now.addingTimeInterval(-60) // 1 min grace
+
+            // Partition existing by protected vs other stops
+            var protectedArrivals: [NearbyTransitResponse] = []
+            var otherExisting: [String: NearbyTransitResponse] = [:]
+            
+            for arrival in existing {
+                if isProtectedStop(arrival.stopId) {
+                    // ALWAYS keep arrivals at user's selected stop
+                    protectedArrivals.append(arrival)
+                } else {
+                    let key = arrival.tripId ?? arrival.vehicleId ?? arrival.id
+                    otherExisting[key] = arrival
+                }
+            }
+
+            // Build merged result for non-protected stops
+            var merged: [String: NearbyTransitResponse] = [:]
+
+            // Add new arrivals (but skip any at protected stop — keeping existing)
+            for arrival in new {
+                // Skip arrivals at protected stop — use existing nearby API data
+                if isProtectedStop(arrival.stopId) { continue }
+                
+                let key = arrival.tripId ?? arrival.vehicleId ?? arrival.id
+
+                // Check for suspicious ETA jumps on same trip
+                if let existing = otherExisting[key],
+                   let newTs = arrival.arrivalTs,
+                   let oldTs = existing.arrivalTs {
+                    let timeDiff = newTs - oldTs
+                    if timeDiff > 600 { // >10 min later — suspicious
+                        #if DEBUG
+                        print("[MERGE_ARRIVAL] ⚠️ Suspicious ETA jump for \(key): old=\(oldTs) new=\(newTs) diff=+\(timeDiff/60)min — keeping old")
+                        #endif
+                        merged[key] = existing
+                        continue
+                    }
+                }
+
+                merged[key] = arrival
+            }
+
+            // Add non-protected existing arrivals that weren't in new set AND haven't expired
+            for arrival in otherExisting.values {
+                let key = arrival.tripId ?? arrival.vehicleId ?? arrival.id
+                guard merged[key] == nil else { continue }
+
+                if let ts = arrival.arrivalTs {
+                    let arrivalTime = Date(timeIntervalSince1970: TimeInterval(ts))
+                    guard arrivalTime > expiryThreshold else { continue }
+                }
+
+                merged[key] = arrival
+            }
+
+            // Remove expired protected arrivals
+            let validProtected = protectedArrivals.filter { arrival in
+                guard let ts = arrival.arrivalTs else { return true }
+                return Date(timeIntervalSince1970: TimeInterval(ts)) > expiryThreshold
+            }
+
+            #if DEBUG
+            if !validProtected.isEmpty {
+                print("[MERGE_ARRIVAL] 🛡️ Protected \(validProtected.count) arrivals at stop \(protectedStopId ?? "nil")")
+            }
+            #endif
+
+            return validProtected + Array(merged.values)
+        }
+
+        // Preserve existing direction labels and MERGE arrivals
+        for oldDir in currentGroup.directions {
+            let newArrivalsForDir = grouped[oldDir.direction] ?? []
+
+            // Merge arrivals from both data sources
+            let mergedArrivals = mergeArrivals(existing: oldDir.arrivals, new: newArrivalsForDir)
+            let sorted = mergedArrivals.sorted { $0.minutesAway < $1.minutesAway }
+
+            // Only replace if we got arrivals; otherwise keep existing to avoid flashing empty
             if sorted.isEmpty && !oldDir.arrivals.isEmpty {
                 newDirections.append(oldDir)
             } else {
@@ -1249,15 +1347,47 @@ extension HomeViewModel {
         do {
             // Fire grouped arrivals and station metadata in parallel.
             // Grouped is the critical path; stations refine distance badges.
+            //
+            // FIX: The combined endpoint (/nearby/grouped without mode filter)
+            // can time out on subway when the search radius is large (8047m).
+            // The backend processes bus + rail + subway in parallel with a 42s
+            // budget, but with large radii the subway task runs out of time.
+            //
+            // To fix this, we also fire a dedicated subway request (mode=subway)
+            // in parallel. If subway is missing from the combined response but
+            // present in the dedicated response, we merge it in.
             let groupedStart = Date()
             async let groupedTask = TrackAPI.fetchNearbyGrouped(lat: lat, lon: lon)
+            async let subwayTask = TrackAPI.fetchNearbyGrouped(lat: lat, lon: lon, mode: "subway")
             async let stationsTask = repository.fetchNearbyStations(
                 latitude: lat, longitude: lon
             )
 
-            let newGrouped = (try await groupedTask).filter { $0.hasRealArrivals }
+            // Await combined first, then merge subway if needed
+            let combined = try await groupedTask
+            let subway = (try? await subwayTask) ?? []
+            
+            // Count subway in combined response
+            let combinedSubwayCount = combined.filter { $0.mode == "subway" }.count
+            
+            // Merge subway groups that aren't already in combined response
+            var mergedGrouped = combined
+            if combinedSubwayCount == 0 && !subway.isEmpty {
+                let existingRouteIds = Set(combined.map(\.routeId))
+                for group in subway where !existingRouteIds.contains(group.routeId) {
+                    mergedGrouped.append(group)
+                }
+                AppLogger.shared.log(
+                    "SUBWAY_FIX",
+                    message: "Combined had 0 subway, merged \(subway.count) from dedicated fetch"
+                )
+            }
+
+            let newGrouped = mergedGrouped.filter { $0.hasRealArrivals }
             let groupedElapsed = Date().timeIntervalSince(groupedStart)
-            AppLogger.shared.log("TIMING", message: "  nearby/grouped → \(newGrouped.count) groups in \(AppLogger.formatDuration(groupedElapsed))")
+            let subwayCount = newGrouped.filter { $0.mode == "subway" }.count
+            let busCount = newGrouped.filter { $0.mode == "bus" }.count
+            AppLogger.shared.log("TIMING", message: "  nearby/grouped → \(newGrouped.count) groups (\(subwayCount) subway, \(busCount) bus) in \(AppLogger.formatDuration(groupedElapsed))")
 
             let rawTransit = newGrouped
                 .flatMap(\ .directions)
@@ -1337,10 +1467,10 @@ extension HomeViewModel {
             // ── Refresh complete: log timing summary ──
             let refreshElapsed = Date().timeIntervalSince(refreshStart)
             let totalFromLaunch = AppLogger.shared.timeSinceLaunch
-            let subwayCount = newGrouped.filter { $0.mode == "subway" }.count
-            let busCount = newGrouped.filter { $0.isBus }.count
+            let finalSubwayCount = newGrouped.filter { $0.mode == "subway" }.count
+            let finalBusCount = newGrouped.filter { $0.isBus }.count
             let commuterCount = newGrouped.filter { $0.isCommuterRail }.count
-            AppLogger.shared.log("TIMING", message: "refreshNearbyTransit DONE in \(AppLogger.formatDuration(refreshElapsed)) — \(newGrouped.count) groups (\(subwayCount) subway, \(busCount) bus, \(commuterCount) commuter) T+\(AppLogger.formatDuration(totalFromLaunch)) since launch")
+            AppLogger.shared.log("TIMING", message: "refreshNearbyTransit DONE in \(AppLogger.formatDuration(refreshElapsed)) — \(newGrouped.count) groups (\(finalSubwayCount) subway, \(finalBusCount) bus, \(commuterCount) commuter) T+\(AppLogger.formatDuration(totalFromLaunch)) since launch")
 
         } catch {
             let refreshElapsed = Date().timeIntervalSince(refreshStart)

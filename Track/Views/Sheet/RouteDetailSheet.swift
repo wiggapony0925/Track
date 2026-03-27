@@ -170,6 +170,15 @@ struct RouteDetailSheet: View {
     /// re-sorts of `group.directions` never flip the sheet to a different dir.
     @State private var lockedDirectionHeadsign: String?
 
+    /// Stable copies of schedule data for use in event handlers.
+    /// The prop-passed `busSchedule` / `cachedTrainArrivals` vars may not
+    /// reflect the latest ViewModel state when `.onChange` handlers fire
+    /// (SwiftUI evaluates view struct THEN fires onChange).  These @State
+    /// snapshots are updated in `handleScheduleChange` and read by handlers
+    /// that need schedule data (e.g. direction changes, chip rebuilds).
+    @State private var stableBusSchedule: BusScheduleResponse?
+    @State private var stableTrainArrivals: [TrainArrival] = []
+
     /// Convenience: locked stop key for the currently-displayed direction.
     private var lockedNearestStopKey: String? { lockedStopKeyPerDirection[selectedDirectionIndex] }
 
@@ -515,6 +524,9 @@ struct RouteDetailSheet: View {
         rebuildCachedPolyline()
         isFavorited = favoritesManager.isFavorite(routeId: group.routeId, mode: group.mode)
         isLoadingArrivals = safeDirection.arrivals.isEmpty
+        // Initialize stable schedule snapshots from props
+        if busSchedule != nil { stableBusSchedule = busSchedule }
+        if !cachedTrainArrivals.isEmpty { stableTrainArrivals = cachedTrainArrivals }
         stableNearestArrivals = nearestStopArrivals
         lastStableRefreshDate = .distantPast
         refreshDirectionBadgeCounts()
@@ -627,6 +639,17 @@ struct RouteDetailSheet: View {
     }
 
     private func handleScheduleChange() {
+        // Snapshot schedule data into @State so it survives across SwiftUI
+        // render cycles.  The prop-passed `busSchedule`/`cachedTrainArrivals`
+        // may be stale when event handlers (e.g. direction change) read them
+        // because SwiftUI fires onChange AFTER props are captured.
+        if busSchedule != nil {
+            stableBusSchedule = busSchedule
+        }
+        if !cachedTrainArrivals.isEmpty {
+            stableTrainArrivals = cachedTrainArrivals
+        }
+
         // Don't disrupt chips while user has a chip selected
         guard selectedChipId == nil else {
             chipRefreshDeferred = true
@@ -1222,11 +1245,13 @@ struct RouteDetailSheet: View {
 
         #if DEBUG
         do {
-            let schedLogKey = "\(group.routeId)_\(direction.direction.prefix(30))_\(allSchedItems.count)_\(schedItems.count)_\(busSchedule != nil)"
+            let effectiveBusSchedule = stableBusSchedule ?? busSchedule
+            let effectiveTrainArrivals = stableTrainArrivals.isEmpty ? cachedTrainArrivals : stableTrainArrivals
+            let schedLogKey = "\(group.routeId)_\(direction.direction.prefix(30))_\(allSchedItems.count)_\(schedItems.count)_\(effectiveBusSchedule != nil)"
             if schedLogKey != Self._lastChipsSchedLog {
                 Self._lastChipsSchedLog = schedLogKey
                 if allSchedItems.isEmpty {
-                    print("[CHIPS_SCHED] route=\(group.routeId) dir=\(direction.direction.prefix(30))  scheduledDeparturesForCurrentDirection is EMPTY — busSchedule=\(busSchedule != nil ? "loaded" : "nil") cachedTrainArrivals=\(cachedTrainArrivals.count)")
+                    print("[CHIPS_SCHED] route=\(group.routeId) dir=\(direction.direction.prefix(30))  scheduledDeparturesForCurrentDirection is EMPTY — busSchedule=\(effectiveBusSchedule != nil ? "loaded" : "nil") stableSched=\(stableBusSchedule != nil) cachedTrainArrivals=\(effectiveTrainArrivals.count) stableTrains=\(stableTrainArrivals.count)")
                 }
             }
         }
@@ -1391,6 +1416,23 @@ struct RouteDetailSheet: View {
         }
         guard !stableNearestArrivals.isEmpty else { return true }
 
+        let elapsed = Date.now.timeIntervalSince(lastStableRefreshDate)
+
+        // ── Anti-flap: protect against dramatic count drops ───────────
+        // When count drops by >50%, it's likely a data source switch or
+        // backend returning sparse data — not real departures.
+        // Block the drop temporarily to prevent jarring chip count changes.
+        let oldCount = stableNearestArrivals.count
+        let newCount = new.count
+        if newCount < oldCount / 2 && oldCount >= 4 {
+            if elapsed < 30 {
+                #if DEBUG
+                print("[STABLE_CHIPS] ⏳ ANTI-FLAP: blocking count drop \(oldCount)→\(newCount), \(String(format: "%.0f", elapsed))s since last refresh")
+                #endif
+                return false
+            }
+        }
+
         // ── Anti-flap: protect arrivals from SIRI feed dropouts ───────────
         // Compare by VEHICLE SET — not count.  Only block when vehicles
         // *vanished* (same vehicles minus some), which means the feed
@@ -1406,7 +1448,6 @@ struct RouteDetailSheet: View {
         // its sparse 2-arrival response.  Block for 25s (2-3 poll cycles)
         // to let the feed recover.
         if !vanished.isEmpty && appeared.isEmpty {
-            let elapsed = Date.now.timeIntervalSince(lastStableRefreshDate)
             if elapsed < 25 {
                 #if DEBUG
                 print("[STABLE_CHIPS] ⏳ ANTI-FLAP: blocking vanished=\(vanished) with no new arrivals, \(String(format: "%.0f", elapsed))s since last refresh")
@@ -1983,13 +2024,20 @@ struct RouteDetailSheet: View {
     private var scheduledDeparturesForCurrentDirection: [ScheduledItem] {
         let direction = safeDirection
 
+        // Prefer stable @State snapshots over prop-passed values.
+        // Props may be stale when called from event handlers (onChange fires
+        // after props are captured).  Fall back to props for the initial
+        // render before handleScheduleChange() populates the @State.
+        let effectiveBusSchedule = stableBusSchedule ?? busSchedule
+        let effectiveTrainArrivals = stableTrainArrivals.isEmpty ? cachedTrainArrivals : stableTrainArrivals
+
         // --- Bus schedule ---
-        if group.isBus, let schedule = busSchedule {
+        if group.isBus, let schedule = effectiveBusSchedule {
             return busScheduledDepartures(schedule: schedule, direction: direction)
         }
 
         // --- Train (subway / LIRR / MNR) schedule from cached GTFS arrivals ---
-        if !group.isBus && !cachedTrainArrivals.isEmpty {
+        if !group.isBus && !effectiveTrainArrivals.isEmpty {
             let dirLower = direction.direction.lowercased()
 
             // Route filter — cachedTrainArrivals may contain sister lines
