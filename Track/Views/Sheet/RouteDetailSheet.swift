@@ -1755,8 +1755,24 @@ struct RouteDetailSheet: View {
                 live.append((arrival, eta))
             }
         }
-        live.sort { $0.eta.secondsRemaining < $1.eta.secondsRemaining }
-        sched.sort { $0.eta.secondsRemaining < $1.eta.secondsRemaining }
+        // Sort by feed arrivalTs (canonical order) when available.
+        // SmartETA's vehicle-position blending can reorder far-out trains
+        // (e.g. trip A inflated 10 min, trip B deflated 6 min → swapped),
+        // but the feed's relative arrival order at a given stop is reliable.
+        live.sort { a, b in
+            if let tsA = a.arrival.arrivalTs, let tsB = b.arrival.arrivalTs,
+               tsA > 0, tsB > 0, tsA != tsB {
+                return tsA < tsB
+            }
+            return a.eta.secondsRemaining < b.eta.secondsRemaining
+        }
+        sched.sort { a, b in
+            if let tsA = a.arrival.arrivalTs, let tsB = b.arrival.arrivalTs,
+               tsA > 0, tsB > 0, tsA != tsB {
+                return tsA < tsB
+            }
+            return a.eta.secondsRemaining < b.eta.secondsRemaining
+        }
 
         // Safety cap: if more than 2 live chips show "NOW" simultaneously,
         // only keep the first 2.  The GTFS-RT feed occasionally publishes
@@ -1977,7 +1993,7 @@ struct RouteDetailSheet: View {
         #if DEBUG
         let dir = safeDirection.direction
         let stopName = chips.first?.arrival.stopName ?? "?"
-        print("1111━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
         print("[CHIPS] \(group.routeId) → \(dir) | stop: \(stopName) | \(chips.count) chip(s)")
         print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
         for (i, pair) in chips.enumerated() {

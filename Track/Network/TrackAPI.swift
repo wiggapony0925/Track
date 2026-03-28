@@ -770,7 +770,7 @@ struct TrackAPI {
         let config = URLSessionConfiguration.default
         config.waitsForConnectivity = true
         config.timeoutIntervalForRequest = 45
-        config.timeoutIntervalForResource = 90
+        config.timeoutIntervalForResource = 60
         config.httpMaximumConnectionsPerHost = 4
         config.urlCache = URLCache(
             memoryCapacity: 10 * 1024 * 1024,
@@ -816,7 +816,7 @@ struct TrackAPI {
             // 4 attempts with escalating backoff (0, 5, 10, 15 s)
             // spans up to ~75 s total, covering worst-case cold boots.
             let wasColdStart = !serverWarmedUp
-            let maxAttempts = wasColdStart ? 4 : 2
+            let maxAttempts = wasColdStart ? 4 : 3
             let endpointPath = url.path
             let retryStart = Date()
             for attempt in 0..<maxAttempts {

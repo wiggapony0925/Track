@@ -53,6 +53,13 @@ enum ArrivalHelpers {
         return arrivals.sorted { lhs, rhs in
             // Partition: live always before scheduled
             if lhs.isRealTime != rhs.isRealTime { return lhs.isRealTime }
+            // Feed arrivalTs is canonical for relative arrival ordering.
+            // SmartETA blending can produce non-monotonic results for
+            // distant trains — train A inflated, train B deflated → swapped.
+            if let tsL = lhs.arrivalTs, let tsR = rhs.arrivalTs,
+               tsL > 0, tsR > 0, tsL != tsR {
+                return tsL < tsR
+            }
             let left  = etaMap[lhs.id]?.secondsRemaining ?? .infinity
             let right = etaMap[rhs.id]?.secondsRemaining ?? .infinity
             if left != right { return left < right }

@@ -676,17 +676,52 @@ extension HomeViewModel {
                 
                 let key = arrival.tripId ?? arrival.vehicleId ?? arrival.id
 
-                // Check for suspicious ETA jumps on same trip
+                // Check for suspicious ETA jumps on same trip AT SAME STOP.
+                // Cross-stop comparisons produce false positives because ETAs
+                // naturally differ between stops along a route — comparing
+                // trip X at stop A (old) vs stop B (new) is NOT a real jump.
                 if let existing = otherExisting[key],
                    let newTs = arrival.arrivalTs,
-                   let oldTs = existing.arrivalTs {
+                   let oldTs = existing.arrivalTs,
+                   arrival.stopId != nil && existing.stopId == arrival.stopId {
                     let timeDiff = newTs - oldTs
                     if timeDiff > 600 { // >10 min later — suspicious
+                        // ── Anti-latch: release protection after 30 s ──
+                        // Once we keep the old ETA, subsequent polls see
+                        // an even larger diff and reject forever.  Track
+                        // when we first protected this trip and accept the
+                        // new value once 30 s have elapsed.
+                        let oldArrivalDate = Date(timeIntervalSince1970: TimeInterval(oldTs))
+                        let oldAlreadyPast = oldArrivalDate < now.addingTimeInterval(-60)
+
+                        let protectionStart = _mergeProtectionStarts[key] ?? now
+                        if _mergeProtectionStarts[key] == nil {
+                            _mergeProtectionStarts[key] = now
+                        }
+                        let protectedTooLong = now.timeIntervalSince(protectionStart) > 30
+
+                        if oldAlreadyPast || protectedTooLong {
+                            // Old ETA expired or protected too long — accept API update
+                            #if DEBUG
+                            let reason = oldAlreadyPast ? "old ETA in past" : "protected >30s"
+                            print("[MERGE_ARRIVAL] ✅ Released latch for \(key): old=\(oldTs) new=\(newTs) diff=+\(timeDiff/60)min — \(reason)")
+                            #endif
+                            // Don't remove from _mergeProtectionStarts here;
+                            // end-of-merge cleanup handles it.  Removing mid-loop
+                            // resets the 30 s timer when later iterations re-trigger
+                            // protection for the same trip key at a different stop.
+                            merged[key] = arrival
+                            continue
+                        }
+
                         #if DEBUG
                         print("[MERGE_ARRIVAL] ⚠️ Suspicious ETA jump for \(key): old=\(oldTs) new=\(newTs) diff=+\(timeDiff/60)min — keeping old")
                         #endif
                         merged[key] = existing
                         continue
+                    } else {
+                        // Normal update at same stop — clear any protection tracking
+                        _mergeProtectionStarts.removeValue(forKey: key)
                     }
                 }
 
@@ -717,6 +752,10 @@ extension HomeViewModel {
                 print("[MERGE_ARRIVAL] 🛡️ Protected \(validProtected.count) arrivals at stop \(protectedStopId ?? "nil")")
             }
             #endif
+
+            // Purge stale entries from the protection tracker (trips no longer in either set)
+            let activeKeys = Set(merged.keys).union(otherExisting.keys)
+            _mergeProtectionStarts = _mergeProtectionStarts.filter { activeKeys.contains($0.key) }
 
             return validProtected + Array(merged.values)
         }

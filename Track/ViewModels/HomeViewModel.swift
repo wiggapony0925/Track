@@ -803,6 +803,12 @@ final class HomeViewModel {
     private let _routeShapeCacheMaxAge: TimeInterval = 300  // 5 min
     private let _routeShapeCacheMaxSize = 10
 
+    /// Tracks when each trip was first protected by the ETA-jump guard in
+    /// `mergeArrivals`.  If a trip has been protected for > 30 s the guard
+    /// releases the latch and accepts the new API value, preventing stale
+    /// ETAs from being frozen forever.  Keyed by tripId/vehicleId.
+    @ObservationIgnored var _mergeProtectionStarts: [String: Date] = [:]
+
     /// Cancellation handle for the background shape prefetch task.
     @ObservationIgnored var _shapePrefetchTask: Task<Void, Never>?
 
