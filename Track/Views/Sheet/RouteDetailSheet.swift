@@ -2098,7 +2098,6 @@ struct RouteDetailSheet: View {
             }
         }
     }
-    }
 
     // MARK: - Scheduled Departures (Unified: Bus + Train)
 
@@ -2837,3 +2836,4 @@ struct RouteDetailSheet: View {
         }
     }
 }
+
