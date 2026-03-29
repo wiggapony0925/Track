@@ -86,6 +86,21 @@ class FavoritesManager: ObservableObject {
         stopLat: Double?,
         stopLon: Double?
     ) async -> Bool {
+        await toggleFavorite(
+            routeId: routeId,
+            routeDisplayName: routeDisplayName,
+            mode: mode
+        )
+    }
+
+    /// Route-level toggle — saves only route identity (no stop/direction).
+    /// Returns `true` if the item is now favorited.
+    @discardableResult
+    func toggleFavorite(
+        routeId: String,
+        routeDisplayName: String,
+        mode: String
+    ) async -> Bool {
         // If already favorited (same route+mode), remove all duplicates.
         let existing = favorites.filter {
             matchesFavoriteIdentity(
@@ -103,13 +118,13 @@ class FavoritesManager: ObservableObject {
         await addFavorite(
             routeId: routeId,
             routeDisplayName: routeDisplayName,
-            stopId: stopId,
-            stopName: stopName,
-            direction: direction,
-            destination: destination,
+            stopId: "",
+            stopName: "",
+            direction: nil,
+            destination: nil,
             mode: mode,
-            stopLat: stopLat,
-            stopLon: stopLon
+            stopLat: nil,
+            stopLon: nil
         )
         return true
     }

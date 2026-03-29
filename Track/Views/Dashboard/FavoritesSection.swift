@@ -28,15 +28,14 @@ struct FavoritesSection: View {
     /// while fresh backend data is being fetched.
     var isStale: Bool = false
 
-    /// Favorites sorted closest-first using the same distance function
-    /// as the nearby list (`groupMinDistance`), so the order matches
-    /// what the user sees in the Near You / Farther Away sections.
+    /// Favorites sorted closest-first using route-level distance
+    /// (`groupMinDistance` — nearest stop anywhere on the route).
+    /// This matches the dynamic distance shown on each card.
     ///
     /// Strategy:
     /// 1. Matched favorites (route has live data) — sorted by actual
-    ///    meter distance from the user via `groupMinDistance`.
-    /// 2. Unmatched favorites — sorted by saved stop coordinates, then
-    ///    `displayOrder` as a final fallback.
+    ///    meter distance to the nearest stop via `groupMinDistance`.
+    /// 2. Unmatched favorites — sorted by `displayOrder` as a fallback.
     private var sortedFavorites: [CloudFavorite] {
         // Build a lookup: routeId → matched GroupedNearbyTransitResponse
         let groupLookup: [String: GroupedNearbyTransitResponse] = Dictionary(
@@ -53,12 +52,9 @@ struct FavoritesSection: View {
             let bGroup = groupLookup[b.routeId]
 
             switch (aGroup, bGroup) {
-            case let (ag?, bg?):
-                // Both matched — sort purely by physical distance to nearest stop.
-                // No soonestMinutes tiebreak: a far-away train arriving in 1 min
-                // should not jump ahead of a closer stop arriving in 3 min.
+            case let (.some(ag), .some(bg)):
+                // Both matched — sort by nearest stop on route (route-level).
                 guard let loc = userLocation else {
-                    // No GPS yet — stable alpha tiebreak
                     return ag.displayName.localizedCaseInsensitiveCompare(bg.displayName) == .orderedAscending
                 }
                 let aDist = groupMinDistance(for: ag, from: loc)
@@ -71,19 +67,9 @@ struct FavoritesSection: View {
             case (.none, .some):
                 return false
             case (.none, .none):
-                // Neither in radius — use saved stop coordinates
-                let aDist = distanceToStop(a)
-                let bDist = distanceToStop(b)
-                if aDist != bDist { return aDist < bDist }
                 return (a.displayOrder ?? 0) < (b.displayOrder ?? 0)
             }
         }
-    }
-
-    private func distanceToStop(_ fav: CloudFavorite) -> CLLocationDistance {
-        guard let loc = userLocation,
-              let lat = fav.stopLat, let lon = fav.stopLon else { return .greatestFiniteMagnitude }
-        return loc.distance(from: CLLocation(latitude: lat, longitude: lon))
     }
 
     var body: some View {
@@ -271,35 +257,70 @@ struct FavoriteCard: View {
         }
     }
 
-    /// Next live arrival for the matched direction, picking the soonest
-    /// bus at the user's **nearest stop** — same algorithm as the nearby
-    /// row and detail sheet so all three always show the same number.
-    private var nextArrival: NearbyTransitResponse? {
+    /// Route-level countdown — searches ALL directions for the soonest
+    /// arrival at the user's nearest stop. Provides the arrival, the
+    /// direction it belongs to, and the walking distance in meters.
+    private var routeCountdown: ArrivalHelpers.RouteCountdownResult? {
         guard let group = matchedGroup else { return nil }
-        let dir = group.directions.first {
-            $0.direction.lowercased() == (favorite.direction ?? "").lowercased()
-        } ?? group.directions.first
-        guard let dir else { return nil }
-        return ArrivalHelpers.countdownArrival(
-            for: dir,
+        return ArrivalHelpers.routeLevelCountdown(
+            for: group,
             userLocation: userLocation,
             provider: smartETAProvider
         )
     }
 
+    /// Next live arrival for display — route-level (any direction, nearest stop).
+    private var nextArrival: NearbyTransitResponse? {
+        routeCountdown?.arrival
+    }
+
+    /// Direction index for navigation when the card is tapped.
+    /// Falls back to 0 if the resolved direction isn't found.
     private var directionIndex: Int {
-        matchedGroup?.directions.firstIndex {
-            $0.direction.lowercased() == (favorite.direction ?? "").lowercased()
+        guard let dirName = routeCountdown?.directionName,
+              let group = matchedGroup else { return 0 }
+        return group.directions.firstIndex {
+            $0.direction.lowercased() == dirName.lowercased()
         } ?? 0
     }
 
-    /// Walking distance from user to the favorite's saved stop.
+    /// Dynamic walking distance from user to the nearest stop on the route.
+    /// Falls back to the saved stop coordinates for offline/unmatched routes.
     private var walkingDistanceMeters: Double? {
+        if let rc = routeCountdown, rc.distanceMeters < .greatestFiniteMagnitude {
+            return rc.distanceMeters
+        }
+        // Fallback: saved stop coordinates (for unmatched/offline routes)
         guard let loc = userLocation,
               let lat = favorite.stopLat,
               let lon = favorite.stopLon else { return nil }
-        let stopLoc = CLLocation(latitude: lat, longitude: lon)
-        return loc.distance(from: stopLoc)
+        return loc.distance(from: CLLocation(latitude: lat, longitude: lon))
+    }
+
+    /// Dynamic stop name from the nearest stop, falling back to saved.
+    private var displayStopName: String {
+        if let arrival = routeCountdown?.arrival,
+           !arrival.stopName.isEmpty {
+            return arrival.stopName
+        }
+        let saved = favorite.stopName
+        return saved.isEmpty ? favorite.routeDisplayName : saved
+    }
+
+    /// Dynamic direction label, falling back to saved.
+    private var displayDirection: String? {
+        if let dirName = routeCountdown?.directionName,
+           let group = matchedGroup,
+           let dir = group.directions.first(where: {
+               $0.direction.lowercased() == dirName.lowercased()
+           }) {
+            // Use arrival destination if available, otherwise direction name
+            if let dest = routeCountdown?.arrival.destination, !dest.isEmpty {
+                return dest
+            }
+            return ArrivalHelpers.resolveDirectionLabel(for: dir, useShortCompass: true)
+        }
+        return favorite.destination ?? favorite.direction
     }
 
     // MARK: Body
@@ -340,11 +361,11 @@ struct FavoriteCard: View {
                     .font(.system(size: 15, weight: .bold, design: .rounded))
                     .foregroundColor(AppTheme.Colors.textPrimary)
                     .lineLimit(1)
-                Text(favorite.stopName)
+                Text(displayStopName)
                     .font(.system(size: 12, weight: .regular))
                     .foregroundColor(AppTheme.Colors.textSecondary)
                     .lineLimit(1)
-                if let dest = favorite.destination ?? favorite.direction {
+                if let dest = displayDirection {
                     Text("→ \(dest)")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundColor(routeColor.opacity(0.8))
@@ -434,15 +455,15 @@ struct FavoriteCard: View {
 
             // Bottom row: Text Info
             VStack(alignment: .leading, spacing: 2) {
-                Text(favorite.stopName)
+                Text(displayStopName)
                     .font(.system(size: 13, weight: .heavy, design: .rounded))
                     .foregroundColor(AppTheme.Colors.textPrimary)
                     .lineLimit(2)
                     .minimumScaleFactor(0.7)
                     .fixedSize(horizontal: false, vertical: true)
 
-                if let direction = favorite.direction {
-                    Text("→ \(favorite.destination ?? direction)")
+                if let direction = displayDirection {
+                    Text("→ \(direction)")
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundColor(AppTheme.Colors.textSecondary)
                         .lineLimit(2)

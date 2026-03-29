@@ -821,19 +821,11 @@ struct RouteDetailSheet: View {
                         showSignInPrompt = true
                         return
                     }
-                    let dir = safeDirection
-                    let firstArrival = dir.arrivals.first
                     Task {
                         let nowFav = await FavoritesManager.shared.toggleFavorite(
                             routeId: group.routeId,
                             routeDisplayName: group.displayName,
-                            stopId: firstArrival?.stopId ?? "",
-                            stopName: firstArrival?.stopName ?? dir.direction,
-                            direction: dir.direction,
-                            destination: firstArrival?.destination,
-                            mode: group.mode,
-                            stopLat: firstArrival?.stopLat,
-                            stopLon: firstArrival?.stopLon
+                            mode: group.mode
                         )
                         withAnimation(.spring(response: 0.3)) {
                             isFavorited = nowFav

@@ -224,6 +224,96 @@ enum ArrivalHelpers {
         return sortedByETA(candidates, provider: provider).first
     }
 
+    // MARK: - Route-Level Countdown (All Directions)
+
+    /// Finds the best countdown arrival across **all directions** of a route,
+    /// picking the nearest stop to the user regardless of direction.
+    ///
+    /// Returns the arrival, the direction name it belongs to, and the
+    /// walking distance in meters — everything a favorite card needs
+    /// to render a fully dynamic, route-level display.
+    struct RouteCountdownResult {
+        let arrival: NearbyTransitResponse
+        let directionName: String
+        let distanceMeters: CLLocationDistance
+    }
+
+    static func routeLevelCountdown(
+        for group: GroupedNearbyTransitResponse,
+        userLocation: CLLocation? = nil,
+        provider: ((NearbyTransitResponse) -> SmartETA)? = nil
+    ) -> RouteCountdownResult? {
+        // Flatten all non-placeholder, non-past arrivals from every direction.
+        var candidates: [(arrival: NearbyTransitResponse, direction: String)] = []
+        for dir in group.directions {
+            // Live first
+            var dirCandidates = dir.liveArrivals.filter {
+                !resolvedETA(for: $0, provider: provider).isPastArrival
+            }
+            // Scheduled fallback
+            if dirCandidates.isEmpty {
+                dirCandidates = dir.arrivals.filter { a in
+                    guard !a.isPlaceholder else { return false }
+                    let eta = resolvedETA(for: a, provider: provider)
+                    return !eta.isPastArrival && eta.minutesRemaining >= 0
+                }
+            }
+            for c in dirCandidates {
+                candidates.append((c, dir.direction))
+            }
+        }
+        guard !candidates.isEmpty else { return nil }
+
+        // Find nearest stop by distance (across all directions)
+        if let loc = userLocation {
+            var nearestStopKey: String?
+            var nearestDist: CLLocationDistance = .greatestFiniteMagnitude
+
+            for (arrival, _) in candidates {
+                let dist: CLLocationDistance
+                if let dm = arrival.distanceM {
+                    dist = dm
+                } else if let lat = arrival.stopLat, let lon = arrival.stopLon {
+                    dist = loc.distance(from: CLLocation(latitude: lat, longitude: lon))
+                } else {
+                    dist = .greatestFiniteMagnitude
+                }
+                if dist < nearestDist {
+                    nearestDist = dist
+                    nearestStopKey = arrival.stopId ?? arrival.stopName
+                }
+            }
+
+            if let key = nearestStopKey {
+                let atNearest = candidates.filter {
+                    ($0.arrival.stopId ?? $0.arrival.stopName) == key
+                }
+                // Sort by ETA, pick soonest
+                let sorted = sortedByETA(atNearest.map(\.arrival), provider: provider)
+                if let best = sorted.first,
+                   let match = atNearest.first(where: { $0.arrival.id == best.id }) {
+                    return RouteCountdownResult(
+                        arrival: best,
+                        directionName: match.direction,
+                        distanceMeters: nearestDist
+                    )
+                }
+            }
+        }
+
+        // No location — just pick the soonest overall
+        let sorted = sortedByETA(candidates.map(\.arrival), provider: provider)
+        if let best = sorted.first,
+           let match = candidates.first(where: { $0.arrival.id == best.id }) {
+            return RouteCountdownResult(
+                arrival: best,
+                directionName: match.direction,
+                distanceMeters: .greatestFiniteMagnitude
+            )
+        }
+        return nil
+    }
+
     // MARK: - Soonest Scheduled Minutes
 
     /// Returns the soonest scheduled minutes for a direction when only

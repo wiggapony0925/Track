@@ -51,7 +51,7 @@ struct ManageFavoritesView: View {
             let modeOK = modeFilter == "all" || fav.mode == modeFilter
             let searchOK = searchText.isEmpty
                 || fav.routeDisplayName.localizedCaseInsensitiveContains(searchText)
-                || fav.stopName.localizedCaseInsensitiveContains(searchText)
+                || (!fav.stopName.isEmpty && fav.stopName.localizedCaseInsensitiveContains(searchText))
                 || (fav.destination?.localizedCaseInsensitiveContains(searchText) ?? false)
             return modeOK && searchOK
         }
