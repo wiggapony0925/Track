@@ -756,88 +756,40 @@ struct RouteDetailSheet: View {
     }
 
     private var routeHeader: some View {
-        HStack(spacing: 16) {
-            // Route badge with ambient glow
-            ZStack {
-                Circle()
-                    .fill(routeColor.opacity(0.15))
-                    .frame(width: 72, height: 72)
-                    .blur(radius: 16)
-                RouteBadge(
-                    routeID: group.displayName, size: .large, hexColor: group.colorHex, mode: group.mode
-                )
-                .shadow(color: routeColor.opacity(0.45), radius: 12, x: 0, y: 6)
-                .shadow(color: AppTheme.Colors.shadowStrong.opacity(0.10), radius: 18, x: 0, y: 10)
-            }
-
-            VStack(alignment: .leading, spacing: 5) {
-                Text(group.displayName)
-                    .font(AppTheme.Typography.sheetTitle)
-                    .foregroundColor(AppTheme.Colors.textPrimary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-
-                if group.directions.indices.contains(selectedDirectionIndex) {
-                    let dir = group.directions[selectedDirectionIndex]
-                    let subtitle = "→ \(resolvedDirectionLabel(for: dir, at: selectedDirectionIndex))"
-                    Text(subtitle)
-                        .font(AppTheme.Typography.cardSubtitle)
-                        .foregroundColor(AppTheme.Colors.textSecondary)
-                        .lineLimit(1)
-                }
-
-                // Mode badge + Express/Local badge + Walking distance
-                HStack(spacing: 6) {
-                    Text(
-                        group.isCommuterRail
-                            ? (group.isLIRR ? "LIRR" : "Metro-North") : group.isBus ? "Bus" : "Subway"
+        VStack(alignment: .leading, spacing: 10) {
+            // ── Top row: badge + name/direction + action buttons ──
+            HStack(spacing: 16) {
+                // Route badge with ambient glow
+                ZStack {
+                    Circle()
+                        .fill(routeColor.opacity(0.15))
+                        .frame(width: 72, height: 72)
+                        .blur(radius: 16)
+                    RouteBadge(
+                        routeID: group.displayName, size: .large, hexColor: group.colorHex, mode: group.mode
                     )
-                    .font(.custom("Helvetica-Bold", size: 10))
-                    .foregroundColor(routeColor)
-                    .textCase(.uppercase)
-                    .tracking(0.8)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(routeColor.opacity(0.12))
-                    .clipShape(Capsule())
-                    .dynamicTypeSize(...DynamicTypeSize.accessibility1)
+                    .shadow(color: routeColor.opacity(0.45), radius: 12, x: 0, y: 6)
+                    .shadow(color: AppTheme.Colors.shadowStrong.opacity(0.10), radius: 18, x: 0, y: 10)
+                }
 
-                    // Express / Local / Mixed service type (route-level, from GTFS)
-                    if let serviceType = routeShape?.serviceType, !serviceType.isEmpty {
-                        ServiceTypeBadge(serviceType: serviceType)
-                    } else if routeShape == nil && !group.isBus {
-                        // Shape loading — show shimmer placeholder for service type
-                        SkeletonBar(width: 52, height: 20, opacity: 0.08)
-                            .clipShape(Capsule())
-                            .shimmer()
-                    }
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(group.displayName)
+                        .font(AppTheme.Typography.sheetTitle)
+                        .foregroundColor(AppTheme.Colors.textPrimary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
 
-                    // Walking distance to nearest stop
-                    if let dist = nearestStopWalkingDistance {
-                        HStack(spacing: 3) {
-                            Image(systemName: "figure.walk")
-                                .font(.system(size: 8, weight: .bold))
-                            Text(formatWalkingDistance(dist))
-                                .font(.custom("Helvetica-Bold", size: 10))
-                        }
-                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 3)
-                        .background(AppTheme.Colors.textSecondary.opacity(0.06))
-                        .clipShape(Capsule())
-                        .dynamicTypeSize(...DynamicTypeSize.accessibility1)
-                    }
-
-                    // Inline weather indicator
-                    if let weather = weatherSnapshot {
-                        WeatherChipView(snapshot: weather, style: .standard)
-                            .transition(.opacity.combined(with: .scale(scale: 0.8)))
+                    if group.directions.indices.contains(selectedDirectionIndex) {
+                        let dir = group.directions[selectedDirectionIndex]
+                        let subtitle = "→ \(resolvedDirectionLabel(for: dir, at: selectedDirectionIndex))"
+                        Text(subtitle)
+                            .font(AppTheme.Typography.cardSubtitle)
+                            .foregroundColor(AppTheme.Colors.textSecondary)
+                            .lineLimit(1)
                     }
                 }
-                .animation(.easeInOut(duration: 0.3), value: weatherSnapshot != nil)
-            }
 
-            Spacer()
+                Spacer()
 
             // Favorite + Close buttons — frosted circle style
             HStack(spacing: 10) {
@@ -945,6 +897,59 @@ struct RouteDetailSheet: View {
                 }
                 .accessibilityLabel("Close")
             }
+        }
+
+            // ── Tags row: mode + service type + walking + weather ──
+            HStack(spacing: 8) {
+                Text(
+                    group.isCommuterRail
+                        ? (group.isLIRR ? "LIRR" : "Metro-North") : group.isBus ? "Bus" : "Subway"
+                )
+                .font(.custom("Helvetica-Bold", size: 11))
+                .foregroundColor(routeColor)
+                .textCase(.uppercase)
+                .tracking(0.8)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(routeColor.opacity(0.10))
+                .clipShape(Capsule())
+                .dynamicTypeSize(...DynamicTypeSize.accessibility1)
+
+                // Express / Local / Mixed service type (route-level, from GTFS)
+                if let serviceType = routeShape?.serviceType, !serviceType.isEmpty {
+                    ServiceTypeBadge(serviceType: serviceType)
+                } else if routeShape == nil && !group.isBus {
+                    SkeletonBar(width: 52, height: 22, opacity: 0.08)
+                        .clipShape(Capsule())
+                        .shimmer()
+                }
+
+                // Walking distance to nearest stop
+                if let dist = nearestStopWalkingDistance {
+                    HStack(spacing: 4) {
+                        Image(systemName: "figure.walk")
+                            .font(.system(size: 9, weight: .bold))
+                        Text(formatWalkingDistance(dist))
+                            .font(.custom("Helvetica-Bold", size: 11))
+                    }
+                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4)
+                    .background(AppTheme.Colors.textSecondary.opacity(0.06))
+                    .clipShape(Capsule())
+                    .dynamicTypeSize(...DynamicTypeSize.accessibility1)
+                }
+
+                // Inline weather indicator
+                if let weather = weatherSnapshot {
+                    WeatherChipView(snapshot: weather, style: .standard)
+                        .transition(.opacity.combined(with: .scale(scale: 0.8)))
+                }
+
+                Spacer()
+            }
+            .animation(.easeInOut(duration: 0.3), value: weatherSnapshot != nil)
+            .padding(.leading, 4)
         }
         .padding(.horizontal, AppTheme.Layout.margin)
     }
@@ -2092,17 +2097,7 @@ struct RouteDetailSheet: View {
                 countdownChipScroller(arrivals: source)
             }
         }
-        .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(AppTheme.Colors.cardBackground.opacity(0.6))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .strokeBorder(routeColor.opacity(0.08), lineWidth: 0.5)
-                )
-                .shadow(color: routeColor.opacity(0.04), radius: 12, x: 0, y: 4)
-        )
-        .padding(.horizontal, 4)
+    }
     }
 
     // MARK: - Scheduled Departures (Unified: Bus + Train)

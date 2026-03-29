@@ -48,13 +48,17 @@ router = APIRouter(tags=["subway"])
 # The pipeline + dir1 clipping is extremely CPU-heavy (60-90s cold).
 # Cache the fully-built response so only the first request pays the cost.
 #
-# Two cache layers:
-#   1. In-memory: instant for subsequent requests in the same process.
-#   2. Disk:      survives restarts / deploys so the 60-90s corridor
+# Three cache layers:
+#   1. Pre-serialized JSON bytes: returned directly as a Response, skipping
+#      Pydantic → JSON serialization on every request (~100ms savings).
+#   2. In-memory Pydantic model: for code that needs the parsed object.
+#   3. Disk:      survives restarts / deploys so the 60-90s corridor
 #      pipeline only needs to run ONCE.  The disk cache is loaded at
 #      startup and the in-memory cache is populated from it.
 _shapes_all_cache: AllSubwayLinesResponse | None = None
+_shapes_all_json_bytes: bytes | None = None   # pre-serialized JSON
 _shapes_all_lock = asyncio.Lock()
+_shapes_all_building = False  # True while pipeline is running
 
 _SHAPES_DISK_CACHE_PATH = Path(__file__).resolve().parent.parent / "data" / "_cache_shapes_all.json"
 
@@ -336,43 +340,78 @@ def _build_shapes_all_sync() -> AllSubwayLinesResponse:
 def set_shapes_all_cache(resp: AllSubwayLinesResponse) -> None:
     """Set the in-memory shapes cache (called by warmup to avoid a second
     CPU-heavy computation when the first client request arrives)."""
-    global _shapes_all_cache
+    global _shapes_all_cache, _shapes_all_json_bytes
     _shapes_all_cache = resp
+    # Pre-serialize to JSON bytes so the endpoint skips Pydantic serialization.
+    import json
+    _shapes_all_json_bytes = json.dumps(resp.model_dump(mode="json")).encode("utf-8")
 
 
 @router.get("/subway/shapes/all", response_model=AllSubwayLinesResponse)
-async def subway_shapes_all() -> AllSubwayLinesResponse:
+async def subway_shapes_all() -> Response:
     """Return polylines for ALL subway lines — the full system map.
 
     The actual computation is CPU-heavy (corridor pipeline + dir1 clipping)
     so it runs in a thread pool via ``run_in_executor`` and the result is
-    cached.  Three cache layers protect against cold starts:
+    cached.  Four cache layers protect against cold starts:
 
-    1. In-memory cache — instant, populated by warmup or first request.
-    2. Disk cache — survives deploys / restarts; loaded at startup.
-    3. CPU re-computation — only when both caches miss (rare).
+    1. Pre-serialized JSON bytes — skips Pydantic serialization entirely.
+    2. In-memory Pydantic cache — populated by warmup or first request.
+    3. Disk cache — survives deploys / restarts; loaded at startup.
+    4. CPU re-computation — only when all caches miss (rare).
+
+    If the pipeline is currently building (warmup in progress), returns
+    503 + Retry-After so the iOS client retries cleanly instead of hanging
+    for 60-90s and timing out.
     """
-    global _shapes_all_cache
+    global _shapes_all_cache, _shapes_all_json_bytes, _shapes_all_building
 
-    if _shapes_all_cache is not None:
-        return _shapes_all_cache
+    # Fast path: pre-serialized bytes ready
+    if _shapes_all_json_bytes is not None:
+        return Response(
+            content=_shapes_all_json_bytes,
+            media_type="application/json",
+        )
+
+    # Pipeline currently building — tell client to retry shortly
+    if _shapes_all_building:
+        return Response(
+            content=b'{"detail":"Subway shapes computing, retry shortly"}',
+            status_code=503,
+            media_type="application/json",
+            headers={"Retry-After": "15"},
+        )
 
     async with _shapes_all_lock:
-        # Double-check after acquiring lock (another request may have built it)
-        if _shapes_all_cache is not None:
-            return _shapes_all_cache
+        # Double-check after acquiring lock
+        if _shapes_all_json_bytes is not None:
+            return Response(
+                content=_shapes_all_json_bytes,
+                media_type="application/json",
+            )
 
         # Try disk cache before burning 60-90s of CPU
         disk_result = _load_shapes_disk_cache()
         if disk_result is not None:
-            _shapes_all_cache = disk_result
-            return disk_result
+            set_shapes_all_cache(disk_result)
+            return Response(
+                content=_shapes_all_json_bytes,
+                media_type="application/json",
+            )
 
-        loop = asyncio.get_running_loop()
-        result = await loop.run_in_executor(None, _build_shapes_all_sync)
-        _shapes_all_cache = result
-        _save_shapes_disk_cache(result)
-        return result
+        _shapes_all_building = True
+        try:
+            loop = asyncio.get_running_loop()
+            result = await loop.run_in_executor(None, _build_shapes_all_sync)
+            set_shapes_all_cache(result)
+            _save_shapes_disk_cache(result)
+        finally:
+            _shapes_all_building = False
+
+        return Response(
+            content=_shapes_all_json_bytes,
+            media_type="application/json",
+        )
 
 
 @router.get("/subway/stations/all", response_model=AllSubwayStationsResponse)

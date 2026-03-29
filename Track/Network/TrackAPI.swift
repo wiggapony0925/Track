@@ -811,18 +811,19 @@ struct TrackAPI {
         let task = Task<Data, Error> {
             var lastError: Error = TrackAPIError.networkError
             // Extended timeout with aggressive cold-start retries.
-            // Render's free-tier cold boot takes 30-60 s — the proxy
-            // returns 502 while the container is still starting.
-            // 4 attempts with escalating backoff (0, 5, 10, 15 s)
-            // spans up to ~75 s total, covering worst-case cold boots.
+            // During cold start, the server's corridor pipeline can take
+            // 60-90s and returns 503 + Retry-After:15.  6 attempts × 15s
+            // = 90s coverage, enough for worst-case pipeline builds.
             let wasColdStart = !serverWarmedUp
-            let maxAttempts = wasColdStart ? 4 : 3
+            let maxAttempts = wasColdStart ? 6 : 3
             let endpointPath = url.path
             let retryStart = Date()
             for attempt in 0..<maxAttempts {
                 if attempt > 0 {
                     // Escalating backoff: 5s, 10s, 15s during cold start;
                     // 3s for warm-server transient retries.
+                    // Note: 503 responses with Retry-After already sleep
+                    // before reaching this point, so we skip the extra delay.
                     let delay: UInt64 = wasColdStart
                         ? UInt64(min(5 + (attempt - 1) * 5, 15)) * 1_000_000_000
                         : 3_000_000_000
@@ -848,6 +849,15 @@ struct TrackAPI {
                         AppLogger.shared.log("API_RETRY", message: "\(endpointPath) attempt \(attempt + 1) → HTTP \(http.statusCode) (\(AppLogger.formatDuration(attemptElapsed)))")
                         let serverErr = TrackAPIError.serverError(statusCode: http.statusCode)
                         if http.statusCode < 500 { throw serverErr }
+                        // Respect Retry-After header from 503 (shapes building)
+                        if http.statusCode == 503,
+                           let retryAfterStr = http.value(forHTTPHeaderField: "Retry-After"),
+                           let retryAfterSec = Double(retryAfterStr),
+                           retryAfterSec > 0, retryAfterSec <= 30
+                        {
+                            AppLogger.shared.log("API_RETRY", message: "\(endpointPath) server said Retry-After: \(retryAfterStr)s")
+                            try await Task.sleep(nanoseconds: UInt64(retryAfterSec * 1_000_000_000))
+                        }
                         lastError = serverErr
                         continue
                     }

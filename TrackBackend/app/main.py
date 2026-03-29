@@ -14,6 +14,7 @@ import time
 from typing import Any
 
 from fastapi import FastAPI, Request
+from starlette.middleware.gzip import GZipMiddleware
 
 from app.config import get_settings
 from app.routers import bus, lirr, mnr, nearby, predict, status, subway
@@ -42,6 +43,13 @@ app.include_router(predict.router)
 
 from app.routers import weather
 app.include_router(weather.router)
+
+# ── GZip compression ──────────────────────────────────────────────────────
+# Compress all responses >= 500 bytes.  The subway/shapes/all payload is
+# 3-5 MB uncompressed; gzip shrinks it ~5x, slashing transfer time from
+# seconds to sub-second.  URLSession on iOS handles Accept-Encoding: gzip
+# transparently.
+app.add_middleware(GZipMiddleware, minimum_size=500)
 
 # ── Prometheus metrics ────────────────────────────────────────────────────
 # Instruments all HTTP endpoints and exposes GET /metrics for scraping.
@@ -217,6 +225,7 @@ def _sync_prewarm_shapes() -> None:
        stripped-down pipeline that didn't populate the endpoint cache,
        causing the first client request to re-run the full pipeline.
     """
+    import app.routers.subway as _subway_mod
     from app.routers.subway import (
         _build_shapes_all_sync,
         _load_shapes_disk_cache,
@@ -234,10 +243,16 @@ def _sync_prewarm_shapes() -> None:
         )
         return
 
-    # No disk cache → run the full pipeline
-    result = _build_shapes_all_sync()
-    set_shapes_all_cache(result)
-    _save_shapes_disk_cache(result)
+    # No disk cache → run the full pipeline.  Set the building flag so
+    # concurrent /subway/shapes/all requests get 503 + Retry-After instead
+    # of hanging for 60-90s and timing out.
+    _subway_mod._shapes_all_building = True
+    try:
+        result = _build_shapes_all_sync()
+        set_shapes_all_cache(result)
+        _save_shapes_disk_cache(result)
+    finally:
+        _subway_mod._shapes_all_building = False
 
     TrackLogger.info(
         f"[WARMUP] Corridor pipeline complete: {len(result.lines)} lines processed + saved to disk",

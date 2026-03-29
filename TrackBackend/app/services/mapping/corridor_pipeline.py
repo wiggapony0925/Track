@@ -2293,14 +2293,24 @@ def _should_preserve_visual_transition_run(
     return True
 
 
+# Safety cap for iterative expansion/stabilization loops.  Each iteration
+# grows exactly one run, so convergence is bounded by the number of runs.
+# 500 iterations covers even the densest trunk paths (12 groups × ~40
+# runs each) with generous headroom.  Without this cap, pathological
+# geometry can cause the export to hang for minutes on Render's 1 CPU.
+_EXPORT_ITERATION_CAP: int = 500
+
+
 def _expand_visual_y_transition_runs(visual_offsets: list[float]) -> list[float]:
     """Give Y-split fan-out runs enough vertices to render as a visible taper."""
     if len(visual_offsets) < 5:
         return list(visual_offsets)
 
     expanded = list(visual_offsets)
+    _iter = 0
 
-    while True:
+    while _iter < _EXPORT_ITERATION_CAP:
+        _iter += 1
         runs = _build_visual_offset_runs(expanded)
         changed = False
 
@@ -2353,6 +2363,9 @@ def _expand_visual_y_transition_runs(visual_offsets: list[float]) -> list[float]
         if not changed:
             return expanded
 
+    # Iteration cap reached — return best effort so far.
+    return expanded
+
 
 def _stabilize_visual_lane_offsets(
     coords_m: list[tuple[float, float]],
@@ -2363,8 +2376,10 @@ def _stabilize_visual_lane_offsets(
         return list(visual_offsets)
 
     stabilized = list(visual_offsets)
+    _iter = 0
 
-    while True:
+    while _iter < _EXPORT_ITERATION_CAP:
+        _iter += 1
         runs = _build_visual_offset_runs(stabilized)
         changed = False
 
@@ -2411,6 +2426,9 @@ def _stabilize_visual_lane_offsets(
 
         if not changed:
             return stabilized
+
+    # Iteration cap reached — return best effort so far.
+    return stabilized
 
 
 def _segment_export_path_by_lane_offset(
