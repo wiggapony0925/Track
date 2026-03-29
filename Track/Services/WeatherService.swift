@@ -109,9 +109,9 @@ final class WeatherService {
                 applySnapshot(snapshot, location: location)
                 return
             }
-            // WeatherKit failed — mark unavailable so we skip it next time.
+            // WeatherKit not available — switch to backend for this session.
             weatherKitUnavailable = true
-            AppLogger.shared.log("WEATHER", message: "WeatherKit unavailable — using backend fallback for this session")
+            AppLogger.shared.log("WEATHER", message: "Using backend fallback (WeatherKit not available on this device)")
         }
 
         // ── Fallback: Track backend /weather ─────────────────────────────
@@ -173,8 +173,12 @@ final class WeatherService {
                 fetchedAt: Date()
             )
         } catch {
-            // Log once — backoff prevents repeated spamming
-            AppLogger.shared.log("WEATHER", message: "WeatherKit failed: \(error.localizedDescription)")
+            // Silently return nil — the caller will flip to the backend
+            // fallback and log a single clean message; no need to spam
+            // the console with the raw WeatherKit error each time.
+            #if DEBUG
+            print("[WEATHER] WeatherKit error: \(error.localizedDescription)")
+            #endif
             return nil
         }
     }

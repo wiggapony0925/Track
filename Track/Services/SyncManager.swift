@@ -43,6 +43,18 @@ class SyncManager: ObservableObject {
             return
         }
         
+        // Proactively refresh the session token before sync operations.
+        // Prevents "Not authorized" errors when the stored access token
+        // expired between app launches or background periods.
+        await SupabaseManager.shared.refreshSessionIfNeeded()
+        
+        // Re-check after refresh — token refresh may have failed and
+        // triggered a sign-out if the refresh token was also expired.
+        guard SupabaseManager.shared.isAuthenticated else {
+            AppLogger.shared.log("SYNC", message: "Session expired — skipping sync")
+            return
+        }
+        
         isSyncing = true
         syncError = nil
         

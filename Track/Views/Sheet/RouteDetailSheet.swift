@@ -2552,7 +2552,7 @@ struct RouteDetailSheet: View {
                 transfers: transfers,
                 accessibilityOutages: outages.map(\.description),
                 hasElevatorOutage: outages.contains { $0.equipmentType.lowercased().contains("elevator") },
-                nextArrivalMinutes: (nextArrival != nil && !(nextArrival!.isPlaceholder)) ? nextArrival!.minutesAway : nil,
+                nextArrivalMinutes: nextArrival.flatMap { $0.isPlaceholder ? nil : $0.minutesAway },
                 nextArrivalIsScheduled: nextArrival?.isScheduledOnly ?? true,
                 nextArrivalIsAtStop: (nextArrival?.minutesAway ?? 1) <= 0,
                 nextArrivalTimestamp: nextArrival?.arrivalTs,

@@ -616,7 +616,9 @@ final class HomeViewModel {
             alertsLastUpdated = Date()
             AlertNotificationManager.shared.processAlerts(serviceAlerts)
             mapSystem.updateReroutedRoutes(from: serviceAlerts)
-        } catch {}
+        } catch {
+            AppLogger.shared.log("ALERTS", message: "refreshAlerts failed: \(error.localizedDescription)")
+        }
     }
 
     // Route detail sheet
@@ -844,7 +846,7 @@ final class HomeViewModel {
             do {
                 try data.write(to: file, options: .atomic)
             } catch {
-                // Best-effort — never propagate disk errors to UI
+                AppLogger.shared.log("DISK", message: "Shape cache write failed: \(error.localizedDescription)")
             }
         }
     }

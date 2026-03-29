@@ -287,9 +287,11 @@ extension HomeViewModel {
                     routeId: vehicle.routeId,
                     stopName: call.stopName ?? "Unknown Stop",
                     direction: resolvedDirection,
-                    destination: call.destinationName,
+                    destination: call.destinationName ?? vehicle.statusText,
                     minutesAway: minutes,
-                    status: vehicle.isRealtime ? call.statusText : "Scheduled",
+                    status: vehicle.isRealtime
+                        ? (call.statusText == "Scheduled" ? "En Route" : call.statusText)
+                        : "Scheduled",
                     mode: "bus",
                     stopLat: stopLat,
                     stopLon: stopLon,

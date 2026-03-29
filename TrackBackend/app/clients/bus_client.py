@@ -1852,6 +1852,14 @@ async def _get_vehicles_impl(route_id: str) -> list[BusVehicle]:
             except (ValueError, TypeError):
                 pass
 
+        # DestinationName can be a string or a list (same parsing as stop-monitoring)
+        raw_dest = journey.get("DestinationName")
+        veh_destination: str | None = None
+        if isinstance(raw_dest, list):
+            veh_destination = raw_dest[0] if raw_dest else None
+        elif isinstance(raw_dest, str):
+            veh_destination = raw_dest or None
+
         # Parse OnwardCalls (future stops) to populate the arrivals list client-side
         onward_calls: list[BusArrival] = []
         onward_data = journey.get("OnwardCalls", {}).get("OnwardCall", [])
@@ -1919,13 +1927,13 @@ async def _get_vehicles_impl(route_id: str) -> list[BusVehicle]:
                 vehicle_id=journey.get("VehicleRef", ""),
                 stop_id=stop_ref,
                 stop_name=stop_name,
-                status_text=present_dist or "Scheduled",
+                status_text=present_dist or ("En Route" if is_realtime else "Scheduled"),
                 status="Live",
                 expected_arrival=call_expected,
                 distance_meters=dist_m,
                 bearing=bearing, # Inherit bearing from vehicle
                 direction_ref=direction_ref, # Inherit direction
-                destination_name=None, # Will be filled by frontend via route/stop lookup if needed
+                destination_name=veh_destination,  # Inherit headsign from vehicle journey
                 is_realtime=is_realtime,  # Propagate spooking state
             ))
 

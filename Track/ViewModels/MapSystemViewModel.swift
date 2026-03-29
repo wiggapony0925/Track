@@ -980,7 +980,7 @@ final class MapSystemViewModel {
         // and are the SAME geometry that station dots were snapped to.
         // This eliminates overlapping same-colour lines and ensures polylines
         // pass through station positions.
-        let useTrunkPolylines: Bool = cachedTrunkPolylines != nil && !(cachedTrunkPolylines!.isEmpty)
+        let useTrunkPolylines: Bool = !(cachedTrunkPolylines?.isEmpty ?? true)
 
         if useTrunkPolylines, let trunkGroups = cachedTrunkPolylines {
             for trunk in trunkGroups {
@@ -1564,7 +1564,7 @@ final class MapSystemViewModel {
 
         // Log the detected corridors
         let corridorSummary = neighbors.keys.sorted().map { ti -> String in
-            let nbrs = neighbors[ti]!.sorted().map { ni -> String in
+            let nbrs = neighbors[ti, default: []].sorted().map { ni -> String in
                 let label = polylinesByGroup[ni] != nil ? "\(ni)" : "?"
                 return label
             }
