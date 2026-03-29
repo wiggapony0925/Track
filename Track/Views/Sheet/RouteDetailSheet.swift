@@ -452,30 +452,15 @@ struct RouteDetailSheet: View {
     private var bodyContent: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
-                // ── Hero section: header + alert + countdown ──
-                routeHeader
-                    .padding(.bottom, 14)
+                // ── Hero zone: header + alert + countdown + direction ──
+                // Wrapped in a tinted backdrop that visually groups the
+                // "at a glance" info and creates route-colored identity.
+                heroZone
+                    .padding(.bottom, 8)
 
-                alertBannerContent
+                // ── Gradient fade separator ──
+                heroSeparator
                     .padding(.bottom, 16)
-
-                countdownSection
-                    .padding(.bottom, 10)
-
-                directionPickerContent
-                    .padding(.bottom, 24)
-
-                // ── Accent separator between hero and tab content ──
-                HStack(spacing: 0) {
-                    RoundedRectangle(cornerRadius: 1.5)
-                        .fill(routeColor)
-                        .frame(width: 28, height: 3)
-                    Rectangle()
-                        .fill(routeColor.opacity(0.08))
-                        .frame(height: 1)
-                }
-                .padding(.horizontal, AppTheme.Layout.margin)
-                .padding(.bottom, 20)
 
                 // ── Tab navigation & content ──
                 contentTabPicker
@@ -491,6 +476,58 @@ struct RouteDetailSheet: View {
             }
             .padding(.top, AppTheme.Layout.margin)
         }
+    }
+
+    // MARK: - Hero Zone
+
+    /// Groups header, alert, countdown, and direction picker into a visually
+    /// cohesive "hero" area with a subtle route-colored backdrop.
+    private var heroZone: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            routeHeader
+                .padding(.bottom, 14)
+
+            alertBannerContent
+                .padding(.bottom, 16)
+
+            countdownSection
+                .padding(.bottom, 12)
+
+            directionPickerContent
+                .padding(.bottom, 8)
+        }
+        .padding(.vertical, 4)
+        .background(
+            // Subtle route-colored gradient wash
+            LinearGradient(
+                stops: [
+                    .init(color: routeColor.opacity(0.04), location: 0),
+                    .init(color: routeColor.opacity(0.015), location: 0.7),
+                    .init(color: Color.clear, location: 1),
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea(edges: .top)
+        )
+    }
+
+    /// Smooth gradient separator replacing the hard accent line.
+    private var heroSeparator: some View {
+        HStack(spacing: 0) {
+            // Leading accent dot
+            Circle()
+                .fill(routeColor)
+                .frame(width: 5, height: 5)
+            // Fading gradient line
+            LinearGradient(
+                colors: [routeColor.opacity(0.3), routeColor.opacity(0.03)],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+            .frame(height: 1)
+        }
+        .padding(.horizontal, AppTheme.Layout.margin)
     }
 
     // MARK: - Lifecycle Handlers
@@ -701,19 +738,36 @@ struct RouteDetailSheet: View {
 
     // MARK: - Header
 
+    /// Walking distance to the nearest stop on this route, in meters.
+    private var nearestStopWalkingDistance: Double? {
+        guard let loc = currentLocation ?? searchCenter else { return nil }
+        let refLoc = CLLocation(latitude: loc.latitude, longitude: loc.longitude)
+        let allArrivals = group.directions.flatMap(\.arrivals)
+        var best = Double.greatestFiniteMagnitude
+        for a in allArrivals {
+            if let lat = a.stopLat, let lon = a.stopLon {
+                let d = refLoc.distance(from: CLLocation(latitude: lat, longitude: lon))
+                if d < best { best = d }
+            } else if let dm = a.distanceM, dm < best {
+                best = dm
+            }
+        }
+        return best < .greatestFiniteMagnitude ? best : nil
+    }
+
     private var routeHeader: some View {
         HStack(spacing: 16) {
             // Route badge with ambient glow
             ZStack {
                 Circle()
-                    .fill(routeColor.opacity(0.12))
-                    .frame(width: 68, height: 68)
-                    .blur(radius: 14)
+                    .fill(routeColor.opacity(0.15))
+                    .frame(width: 72, height: 72)
+                    .blur(radius: 16)
                 RouteBadge(
                     routeID: group.displayName, size: .large, hexColor: group.colorHex, mode: group.mode
                 )
-                .shadow(color: routeColor.opacity(0.4), radius: 10, x: 0, y: 5)
-                .shadow(color: AppTheme.Colors.shadowStrong.opacity(0.12), radius: 16, x: 0, y: 8)
+                .shadow(color: routeColor.opacity(0.45), radius: 12, x: 0, y: 6)
+                .shadow(color: AppTheme.Colors.shadowStrong.opacity(0.10), radius: 18, x: 0, y: 10)
             }
 
             VStack(alignment: .leading, spacing: 5) {
@@ -732,7 +786,7 @@ struct RouteDetailSheet: View {
                         .lineLimit(1)
                 }
 
-                // Mode badge + Express/Local badge
+                // Mode badge + Express/Local badge + Walking distance
                 HStack(spacing: 6) {
                     Text(
                         group.isCommuterRail
@@ -756,6 +810,22 @@ struct RouteDetailSheet: View {
                         SkeletonBar(width: 52, height: 20, opacity: 0.08)
                             .clipShape(Capsule())
                             .shimmer()
+                    }
+
+                    // Walking distance to nearest stop
+                    if let dist = nearestStopWalkingDistance {
+                        HStack(spacing: 3) {
+                            Image(systemName: "figure.walk")
+                                .font(.system(size: 8, weight: .bold))
+                            Text(formatWalkingDistance(dist))
+                                .font(.custom("Helvetica-Bold", size: 10))
+                        }
+                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(AppTheme.Colors.textSecondary.opacity(0.06))
+                        .clipShape(Capsule())
+                        .dynamicTypeSize(...DynamicTypeSize.accessibility1)
                     }
 
                     // Inline weather indicator
@@ -2022,6 +2092,17 @@ struct RouteDetailSheet: View {
                 countdownChipScroller(arrivals: source)
             }
         }
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(AppTheme.Colors.cardBackground.opacity(0.6))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .strokeBorder(routeColor.opacity(0.08), lineWidth: 0.5)
+                )
+                .shadow(color: routeColor.opacity(0.04), radius: 12, x: 0, y: 4)
+        )
+        .padding(.horizontal, 4)
     }
 
     // MARK: - Scheduled Departures (Unified: Bus + Train)
@@ -2677,6 +2758,7 @@ struct RouteDetailSheet: View {
         return uniqueVehicles.isEmpty ? liveVehicleCount : uniqueVehicles.count
     }
 
+    @ViewBuilder
     private var routeInfoFooter: some View {
         let shape = routeShape
         let hasStops = shape?.stops.isEmpty == false
@@ -2684,84 +2766,79 @@ struct RouteDetailSheet: View {
         let isShapeLoading = shape == nil
 
         if isShapeLoading {
-            // Shape still loading — show shimmer placeholders
-            return AnyView(RouteInfoFooterSkeleton())
+            RouteInfoFooterSkeleton()
         } else if hasStops || hasVehicles {
-            return AnyView(
-                HStack(spacing: 10) {
-                    if let shape, hasStops {
-                        let dirStops = shape.stopsForDirection(index: selectedDirectionIndex, name: selectedDirectionName)
-                        HStack(spacing: 6) {
-                            Image(systemName: "mappin.and.ellipse")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundColor(routeColor)
-                            Text("\(dirStops.count) stops")
-                                .font(.custom("Helvetica-Bold", size: 12))
-                                .foregroundColor(AppTheme.Colors.textSecondary)
-                        }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(
-                            Capsule()
-                                .fill(routeColor.opacity(0.06))
-                                .overlay(
-                                    Capsule()
-                                        .strokeBorder(routeColor.opacity(0.1), lineWidth: 0.5)
-                                )
-                        )
+            HStack(spacing: 10) {
+                if let shape, hasStops {
+                    let dirStops = shape.stopsForDirection(index: selectedDirectionIndex, name: selectedDirectionName)
+                    HStack(spacing: 6) {
+                        Image(systemName: "mappin.and.ellipse")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(routeColor)
+                        Text("\(dirStops.count) stops")
+                            .font(.custom("Helvetica-Bold", size: 12))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
                     }
-
-                    if hasVehicles {
-                        HStack(spacing: 6) {
-                            // Pulsing live dot
-                            Circle()
-                                .fill(AppTheme.Colors.successGreen)
-                                .frame(width: 7, height: 7)
-                                .overlay(
-                                    Circle()
-                                        .fill(AppTheme.Colors.successGreen.opacity(0.35))
-                                        .frame(width: 14, height: 14)
-                                        .scaleEffect(liveDotPulse ? 1.4 : 0.8)
-                                        .opacity(liveDotPulse ? 0 : 0.6)
-                                )
-                                .onAppear {
-                                    withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: false)) {
-                                        liveDotPulse = true
-                                    }
-                                }
-                            Text("\(directionLiveVehicleCount) live \(group.isBus ? "buses" : "trains")")
-                                .font(.custom("Helvetica-Bold", size: 12))
-                                .foregroundColor(AppTheme.Colors.successGreen)
-                        }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(
-                            Capsule()
-                                .fill(AppTheme.Colors.successGreen.opacity(0.06))
-                                .overlay(
-                                    Capsule()
-                                        .strokeBorder(AppTheme.Colors.successGreen.opacity(0.12), lineWidth: 0.5)
-                                )
-                        )
-                    }
-
-                    Spacer()
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(
+                        Capsule()
+                            .fill(routeColor.opacity(0.06))
+                            .overlay(
+                                Capsule()
+                                    .strokeBorder(routeColor.opacity(0.1), lineWidth: 0.5)
+                            )
+                    )
                 }
-                .padding(.horizontal, AppTheme.Layout.margin + 2)
-                .padding(.vertical, 14)
-                .background(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(AppTheme.Colors.cardBackground)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .strokeBorder(AppTheme.Colors.borderSubtle, lineWidth: 0.5)
-                        )
-                )
-                .shadow(color: AppTheme.Colors.shadow.opacity(0.03), radius: 6, x: 0, y: 3)
-                .padding(.horizontal, AppTheme.Layout.margin)
+
+                if hasVehicles {
+                    HStack(spacing: 6) {
+                        // Pulsing live dot
+                        Circle()
+                            .fill(AppTheme.Colors.successGreen)
+                            .frame(width: 7, height: 7)
+                            .overlay(
+                                Circle()
+                                    .fill(AppTheme.Colors.successGreen.opacity(0.35))
+                                    .frame(width: 14, height: 14)
+                                    .scaleEffect(liveDotPulse ? 1.4 : 0.8)
+                                    .opacity(liveDotPulse ? 0 : 0.6)
+                            )
+                            .onAppear {
+                                withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: false)) {
+                                    liveDotPulse = true
+                                }
+                            }
+                        Text("\(directionLiveVehicleCount) live \(group.isBus ? "buses" : "trains")")
+                            .font(.custom("Helvetica-Bold", size: 12))
+                            .foregroundColor(AppTheme.Colors.successGreen)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(
+                        Capsule()
+                            .fill(AppTheme.Colors.successGreen.opacity(0.06))
+                            .overlay(
+                                Capsule()
+                                    .strokeBorder(AppTheme.Colors.successGreen.opacity(0.12), lineWidth: 0.5)
+                                )
+                    )
+                }
+
+                Spacer()
+            }
+            .padding(.horizontal, AppTheme.Layout.margin + 2)
+            .padding(.vertical, 14)
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(AppTheme.Colors.cardBackground.opacity(0.7))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .strokeBorder(routeColor.opacity(0.06), lineWidth: 0.5)
+                    )
             )
-        } else {
-            return AnyView(EmptyView())
+            .shadow(color: routeColor.opacity(0.03), radius: 8, x: 0, y: 3)
+            .padding(.horizontal, AppTheme.Layout.margin)
         }
     }
 }
