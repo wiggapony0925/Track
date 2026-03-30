@@ -32,7 +32,7 @@ from app.cache_config import (
     NEARBY_RESPONSE_STALE_TTL,
 )
 from app.config import get_settings
-from app.models import BusStop, DirectionArrivals, GroupedNearbyTransit, InlineAlert, NearbyTransitArrival
+from app.models import BusStop, DirectionArrivals, GroupedNearbyTransit, InlineAlert, NearbyTransitArrival, RESP_503
 from app.clients.bus_client import (
     get_nearby_stops,
     get_realtime_arrivals,
@@ -478,6 +478,7 @@ async def nearby_transit(
         "The primary endpoint for the Track home screen. Returns nearby transit arrivals "
         "grouped by route with direction sub-groups, ML delay corrections, and inline service alerts."
     ),
+    responses={**RESP_503},
 )
 async def nearby_transit_grouped(
     lat: float = Query(..., ge=-90, le=90, description="Latitude of the user's location.", examples=[40.7580]),

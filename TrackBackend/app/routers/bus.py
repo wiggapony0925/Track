@@ -15,7 +15,7 @@ import httpx
 from fastapi import APIRouter, HTTPException, Query, Response
 
 from app.config import get_settings
-from app.models import BusArrival, BusRoute, BusStop, BusVehicle, RouteShape, BusScheduleResponse, BusScheduleDirection, BusScheduleDeparture
+from app.models import BusArrival, BusRoute, BusStop, BusVehicle, RouteShape, BusScheduleResponse, BusScheduleDirection, BusScheduleDeparture, RESP_502
 from app.clients.bus_client import (
     get_nearby_stops,
     get_realtime_arrivals,
@@ -278,6 +278,7 @@ async def get_bus_schedule(route_id: str, response: Response) -> BusScheduleResp
     response_model=list[BusRoute],
     summary="List all bus routes",
     description="Returns every MTA bus route with short name, long name, colour, and description.",
+    responses={**RESP_502},
 )
 async def bus_routes() -> list[BusRoute]:
     """Return all MTA bus routes.

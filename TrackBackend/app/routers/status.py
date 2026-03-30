@@ -12,7 +12,7 @@ import time
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app.models import ElevatorStatus, TransitAlert
+from app.models import ElevatorStatus, TransitAlert, RESP_502
 from app.services.gtfs.data_cleaner import get_alerts, get_broken_elevators
 from app.utils.logger import TrackLogger
 
@@ -68,6 +68,7 @@ async def alerts(
     response_model=list[ElevatorStatus],
     summary="Get elevator & escalator outages",
     description="Returns currently out-of-service elevators and escalators across the MTA system.",
+    responses={**RESP_502},
 )
 async def accessibility() -> list[ElevatorStatus]:
     """Return currently broken elevators and escalators.

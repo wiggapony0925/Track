@@ -328,3 +328,36 @@ class BusScheduleResponse(BaseModel):
 
     route_id: str
     directions: list[BusScheduleDirection]
+
+
+# ── Shared error response schema ─────────────────────────────────────────
+# Used by the `responses=` parameter on endpoint decorators to document
+# error status codes in the OpenAPI spec (and thus in the Scalar docs).
+
+
+class ErrorDetail(BaseModel):
+    """Standard error body returned by the API."""
+
+    detail: str = Field(
+        ..., description="Human-readable error message.", examples=["Resource not found"]
+    )
+
+
+# Pre-built response dicts — import these in router files to avoid repetition.
+# Usage:  @router.get("/path", responses={**RESP_404, **RESP_502})
+
+RESP_400: dict = {
+    400: {"model": ErrorDetail, "description": "Bad request — invalid parameters."},
+}
+RESP_403: dict = {
+    403: {"model": ErrorDetail, "description": "Forbidden — endpoint restricted to localhost."},
+}
+RESP_404: dict = {
+    404: {"model": ErrorDetail, "description": "Resource not found."},
+}
+RESP_502: dict = {
+    502: {"model": ErrorDetail, "description": "Upstream MTA/OBA service error."},
+}
+RESP_503: dict = {
+    503: {"model": ErrorDetail, "description": "Service unavailable — server is warming up. Retry after the `Retry-After` header value."},
+}

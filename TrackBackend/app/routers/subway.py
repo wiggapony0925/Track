@@ -19,6 +19,8 @@ from app.models import (
     AllSubwayStationsResponse,
     BusStop,
     DirectionShape,
+    RESP_404,
+    RESP_503,
     RouteShape,
     SubwayLineOverlay,
     SubwayStation,
@@ -352,6 +354,7 @@ def set_shapes_all_cache(resp: AllSubwayLinesResponse) -> None:
     response_model=AllSubwayLinesResponse,
     summary="Get all subway line shapes",
     description="Returns encoded polylines for every subway line — used to draw the full NYC subway system map.",
+    responses={**RESP_503},
 )
 async def subway_shapes_all() -> Response:
     """Return polylines for ALL subway lines — the full system map.
@@ -498,6 +501,7 @@ async def subway_stations_nearby(
     response_model=RouteShape,
     summary="Get single subway line shape",
     description="Returns the full geometry and ordered stops for a single subway line.",
+    responses={**RESP_404},
 )
 async def subway_shape(route_id: str) -> RouteShape:
     """Return the full route geometry and ordered stops for a subway line.
@@ -584,6 +588,7 @@ async def subway_shape(route_id: str) -> RouteShape:
     response_model=list[TrackArrival],
     summary="Get real-time subway arrivals",
     description="Returns upcoming real-time arrivals for a specific subway line from GTFS-RT feeds.",
+    responses={**RESP_404},
 )
 async def subway_arrivals(line_id: str, response: Response) -> list[TrackArrival]:
     """Return upcoming arrivals for a subway line.

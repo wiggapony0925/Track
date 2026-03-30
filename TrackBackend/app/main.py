@@ -805,6 +805,7 @@ async def log_requests(request: Request, call_next):
     tags=["system"],
     summary="Health check",
     description="Liveness/readiness probe. Returns 200 when feeds are warm, 503 during startup.",
+    responses={503: {"description": "Service unavailable — server is warming up. Retry after the `Retry-After` header value."}},
 )
 async def health():
     """Health check endpoint.
@@ -1047,6 +1048,7 @@ async def inspect_caches(request: Request) -> dict[str, Any]:
     tags=["system"],
     summary="Clear all caches",
     description="Clears all in-memory caches. Restricted to localhost.",
+    responses={403: {"description": "Forbidden — endpoint restricted to localhost."}},
 )
 async def clear_all_caches(request: Request) -> dict[str, Any]:
     """Clear all in-memory caches.

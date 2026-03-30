@@ -320,6 +320,7 @@ def _is_rush(hour: int, dow: int) -> bool:
     "/predict/reload-model",
     summary="Reload ML model",
     description="Hot-reloads the LightGBM delay model from disk without restarting the server. Localhost only.",
+    responses={403: {"description": "Forbidden — endpoint restricted to localhost."}},
 )
 async def reload_model_endpoint(request: Request) -> dict:
     """Hot-reload the delay prediction model from disk.

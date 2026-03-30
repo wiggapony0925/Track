@@ -15,6 +15,7 @@ from app.models import (
     CommuterRailLineOverlay,
     CommuterRailStop,
     DirectionShape,
+    RESP_404,
     RouteShape,
     TrackArrival,
 )
@@ -66,6 +67,7 @@ async def mnr_shapes_all() -> AllCommuterRailLinesResponse:
     response_model=RouteShape,
     summary="Get single Metro-North line shape",
     description="Returns the polyline geometry and ordered stops for a single Metro-North line.",
+    responses={**RESP_404},
 )
 async def mnr_shape(route_id: str) -> RouteShape:
     """Return the polyline for a single Metro-North line.

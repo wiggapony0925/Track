@@ -15,6 +15,7 @@ from app.models import (
     CommuterRailLineOverlay,
     CommuterRailStop,
     DirectionShape,
+    RESP_404,
     RouteShape,
     TrackArrival,
 )
@@ -66,6 +67,7 @@ async def lirr_shapes_all() -> AllCommuterRailLinesResponse:
     response_model=RouteShape,
     summary="Get single LIRR branch shape",
     description="Returns the polyline geometry and ordered stops for a single LIRR branch.",
+    responses={**RESP_404},
 )
 async def lirr_shape(route_id: str) -> RouteShape:
     """Return the polyline for a single LIRR branch.
