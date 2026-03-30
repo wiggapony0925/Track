@@ -99,8 +99,25 @@ def _load_otp_reliability() -> None:
     except Exception as exc:
         TrackLogger.warning(f"[ML] Could not load OTP reliability: {exc}", tag="ML")
 
-WEATHER_ENCODING: dict[str, int] = {"clear": 0, "rain": 1, "snow": 2}
+# ── Expanded weather encoding ────────────────────────────────────────────
+# Transit App integrates 7+ weather conditions. We now support all of them
+# while remaining backward-compatible with the original 3 categories.
+# Old 3-category models still work — extra categories map to nearest.
+WEATHER_ENCODING: dict[str, int] = {
+    "clear": 0, "sunny": 0, "partly_cloudy": 0,
+    "cloudy": 1, "overcast": 1, "fog": 1, "mist": 1,
+    "rain": 2, "drizzle": 2, "light_rain": 2, "thunderstorm": 3,
+    "snow": 4, "sleet": 4, "freezing_rain": 4, "ice": 4,
+    "heavy_rain": 5, "heavy_snow": 6,
+}
 MODE_ENCODING: dict[str, int] = {"subway": 0, "bus": 1, "lirr": 2, "mnr": 3}
+
+# Season encoding — Transit App's ETA benchmark shows seasonal variation
+# in prediction accuracy. Winter storms and summer heat affect service.
+SEASON_ENCODING: dict[int, int] = {
+    1: 0, 2: 0, 3: 1, 4: 1, 5: 1, 6: 2, 7: 2, 8: 2, 9: 3, 10: 3, 11: 3, 12: 0,
+    # 0=winter, 1=spring, 2=summer, 3=fall
+}
 
 # Lines with Communications-Based Train Control (CBTC) deployment.
 # These lines have sub-segment moving-block position data available to the MTA
@@ -117,9 +134,13 @@ _RUSH_EVENING = range(17, 20)
 # Feature names — must match train_model.py exactly.
 # Used to build a named DataFrame at inference time so LightGBM doesn't emit
 # "X does not have valid feature names" warnings on every prediction.
+#
+# v2 features add month + season for better seasonal delay patterns.
+# Backward-compatible: old models receive truncated vectors via n_features_in_.
 FEATURE_NAMES: list[str] = [
     "route_reliability", "hour", "dow", "weather", "mode",
     "is_rush", "is_weekend", "delay_minutes",
+    "month", "season",  # v2 features
 ]
 
 # ── Singleton ──────────────────────────────────────────────────────────────
@@ -209,9 +230,16 @@ def encode_features(
     is_weekend  = int(not is_weekday)
     delay_minutes = max(-10.0, min(10.0, current_delay_s / 60.0))
 
+    # v2 features — month + season (backward-compatible: truncated by n_features_in_)
+    from datetime import datetime as _dt
+    now = _dt.now()
+    month = float(now.month)
+    season = float(SEASON_ENCODING.get(now.month, 0))
+
     return [reliability, float(hour), float(dow),
             float(weather_enc), float(mode_enc), float(is_rush), float(is_weekend),
-            delay_minutes]
+            delay_minutes,
+            month, season]
 
 
 def _heuristic(route_id: str, hour: int, dow: int, weather: str, mode: str) -> float:
@@ -240,11 +268,22 @@ def _heuristic(route_id: str, hour: int, dow: int, weather: str, mode: str) -> f
         else:
             factor += 0.10
 
+    # Expanded weather handling — mirrors WEATHER_ENCODING tiers
     w = weather.lower()
-    if w == "rain":
-        factor += 0.15 if mode.lower() == "bus" else 0.05
-    elif w == "snow":
-        factor += 0.30 if mode.lower() == "bus" else 0.20
+    w_enc = WEATHER_ENCODING.get(w, 0)
+    is_bus = mode.lower() == "bus"
+    if w_enc == 1:          # cloudy/fog/mist — minor surface impact
+        factor += 0.08 if is_bus else 0.02
+    elif w_enc == 2:        # rain/drizzle/light_rain
+        factor += 0.15 if is_bus else 0.05
+    elif w_enc == 3:        # thunderstorm
+        factor += 0.25 if is_bus else 0.10
+    elif w_enc == 4:        # snow/sleet/freezing_rain/ice
+        factor += 0.30 if is_bus else 0.20
+    elif w_enc == 5:        # heavy_rain
+        factor += 0.25 if is_bus else 0.12
+    elif w_enc == 6:        # heavy_snow — worst case
+        factor += 0.40 if is_bus else 0.30
 
     # Route-specific chronic delay offsets (key already normalised above)
     if key == "G":

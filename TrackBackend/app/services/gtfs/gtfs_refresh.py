@@ -508,7 +508,20 @@ def _upload_to_supabase(archive_names: set[str]) -> None:
 # ---------------------------------------------------------------------------
 
 def _clear_gtfs_caches() -> None:
-    """Clear all @lru_cache'd GTFS data so the running server picks up fresh files."""
+    """Clear all @lru_cache'd GTFS data so the running server picks up fresh files.
+
+    Uses the central cache registry when available (new tracked_cache decorator),
+    then falls back to manually-imported functions for any caches that haven't
+    been migrated yet.
+    """
+    # ── Phase 1: central registry (covers all @tracked_cache functions) ──
+    try:
+        from app.utils.cache_registry import clear_all_caches
+        registry_cleared = clear_all_caches()
+    except ImportError:
+        registry_cleared = 0
+
+    # ── Phase 2: legacy manual list (safe to double-clear; .cache_clear is idempotent) ──
     from app.services.mapping.subway_shapes import (
         _load_shapes,
         _parse_trips,
@@ -539,13 +552,17 @@ def _clear_gtfs_caches() -> None:
         _get_shape_to_route_map,
     ]
 
-    cleared = 0
+    legacy_cleared = 0
     for fn in caches:
         if hasattr(fn, "cache_clear"):
             fn.cache_clear()
-            cleared += 1
+            legacy_cleared += 1
 
-    TrackLogger.info(f"[GTFS] Cleared {cleared} cached data functions", tag="GTFS")
+    TrackLogger.info(
+        f"[GTFS] Cleared caches: {registry_cleared} via registry, "
+        f"{legacy_cleared} via legacy imports",
+        tag="GTFS",
+    )
 
 
 # ---------------------------------------------------------------------------

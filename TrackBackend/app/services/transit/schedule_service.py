@@ -248,7 +248,6 @@ class ScheduleService:
             ts = int(arrival_dt.timestamp())
             mins = max(0, int(diff.total_seconds() // 60))
             return mins, ts
-            return mins, ts
         except (ValueError, TypeError, IndexError) as exc:
             TrackLogger.warning(f"Bad GTFS time '{gtfs_time}': {exc}", tag="SCHEDULE")
             return 999, 0
