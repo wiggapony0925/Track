@@ -120,7 +120,7 @@ async def accessibility() -> list[ElevatorStatus]:
     A background task refreshes the data every 5 minutes.
     On first cold request (no cache), fetches synchronously with a 30s timeout.
     """
-    global _accessibility_refreshing
+    global _accessibility_cache, _accessibility_cached_at, _accessibility_refreshing
 
     now = time.monotonic()
     age = now - _accessibility_cached_at
