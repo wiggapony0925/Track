@@ -83,8 +83,10 @@ final class AppLogger: @unchecked Sendable {
             let timestamp = fmt.string(from: now)
             let entry = "[\(timestamp)] [\(tag)] \(message)\n"
 
-            // Print to Xcode console
+            // Print to Xcode console (debug builds only)
+            #if DEBUG
             print(entry, terminator: "")
+            #endif
             guard let data = entry.data(using: .utf8) else { return }
             
             do {

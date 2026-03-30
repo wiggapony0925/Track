@@ -234,13 +234,13 @@ final class HomeViewModel {
             let bucketsMsg: String
             if let referenceLocation {
                 let src = isSearchPinActive ? "PIN" : "GPS"
-                bucketsMsg = "[BUCKETS] center=\(src) (\(String(format: "%.5f", referenceLocation.coordinate.latitude)), \(String(format: "%.5f", referenceLocation.coordinate.longitude)))  groups=\(groups.count)  nearbyBusStops=\(nearbyBusStops.count)  nearbyStations=\(nearbyStations.count)  lastKnownGPS=\(lastKnownUserLocation.map { "(\(String(format: "%.5f", $0.coordinate.latitude)),\(String(format: "%.5f", $0.coordinate.longitude)))" } ?? "nil")"
+                bucketsMsg = "center=\(src) (\(String(format: "%.5f", referenceLocation.coordinate.latitude)), \(String(format: "%.5f", referenceLocation.coordinate.longitude)))  groups=\(groups.count)  nearbyBusStops=\(nearbyBusStops.count)  nearbyStations=\(nearbyStations.count)"
             } else {
-                bucketsMsg = "[BUCKETS] ⚠️ referenceLocation=nil — sorting without distance  lastKnownGPS=\(lastKnownUserLocation.map { "(\(String(format: "%.5f", $0.coordinate.latitude)),\(String(format: "%.5f", $0.coordinate.longitude)))" } ?? "nil")"
+                bucketsMsg = "⚠️ referenceLocation=nil — sorting without distance"
             }
             if Self._lastBucketsMessage != bucketsMsg {
                 Self._lastBucketsMessage = bucketsMsg
-                print(bucketsMsg)
+                AppLogger.shared.log("BUCKETS", message: bucketsMsg)
             }
         }
         #endif
@@ -846,7 +846,9 @@ final class HomeViewModel {
             do {
                 try data.write(to: file, options: .atomic)
             } catch {
-                AppLogger.shared.log("DISK", message: "Shape cache write failed: \(error.localizedDescription)")
+                #if DEBUG
+                print("[DISK] Shape cache write failed: \(error.localizedDescription)")
+                #endif
             }
         }
     }
@@ -2286,6 +2288,7 @@ final class HomeViewModel {
                 self.cacheRouteShape(shape, for: loadingRouteId)
                 guard self.selectedRouteId == loadingRouteId else { return }
                 self.routeShape = shape
+                #if DEBUG
                 let decoded: [[CLLocationCoordinate2D]] = shape.decodedPolylines
                 let totalPoints: Int = decoded.reduce(0) { $0 + $1.count }
                 AppLogger.shared.log(
@@ -2293,6 +2296,7 @@ final class HomeViewModel {
                     message:
                         "Loaded shape for \(loadingRouteId): \(shape.polylines.count) polylines (\(totalPoints) total points), \(shape.stops.count) stops"
                 )
+                #endif
                 self.enrichGroupWithShapeDirections(shape)
             }
             _ = await vehicleTask.value
@@ -2800,11 +2804,13 @@ final class HomeViewModel {
             // correct selectedDirectionIndex.
             selectedGroupedRoute = updatedGroup
 
+            #if DEBUG
             AppLogger.shared.log(
                 "ROUTE_DETAIL",
                 message:
                     "Enriched \(group.displayName) from \(existingCount) → \(orderedDirections.count) directions (ordered by shape direction_id)"
             )
+            #endif
         }
     }
 

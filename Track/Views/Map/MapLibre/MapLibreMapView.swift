@@ -178,6 +178,7 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
 
         // Core configuration
         mapView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        mapView.automaticallyAdjustsContentInset = false
         mapView.showsUserLocation = showUserLocation
         mapView.minimumZoomLevel = MapLibreStyleConfig.minZoom
         mapView.maximumZoomLevel = MapLibreStyleConfig.maxZoom
@@ -1347,7 +1348,7 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 feature.attributes = [
                     "color": polyline.color.toHex(),
                     "trunk_index": NSNumber(value: polyline.trunkIndex),
-                    "lane_offset": NSNumber(value: Float(polyline.laneOffset)),
+                    "lane_offset": NSNumber(value: Double(polyline.laneOffset)),
                     "isLIRR": NSNumber(value: isLIRR),
                     "isMNR": NSNumber(value: isMNR)
                 ]

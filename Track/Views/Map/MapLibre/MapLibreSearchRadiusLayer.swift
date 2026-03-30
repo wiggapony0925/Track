@@ -160,7 +160,7 @@ enum MapLibreSearchRadiusManager {
             // Stroke
             let stroke = MLNLineStyleLayer(identifier: strokeLayerID, source: source)
             stroke.lineColor = NSExpression(forConstantValue: strokeColor)
-            stroke.lineWidth = NSExpression(forConstantValue: NSNumber(value: Float(strokeWidth)))
+            stroke.lineWidth = NSExpression(forConstantValue: NSNumber(value: Double(strokeWidth)))
             stroke.lineDashPattern = NSExpression(forConstantValue: dashPattern)
             style.addLayer(stroke)
         }

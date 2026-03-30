@@ -156,9 +156,6 @@ class FavoritesManager: ObservableObject {
                 favorites = deduplicated(remote)
                 saveToCache()
                 lastRefreshDate = Date()
-                #if DEBUG
-                print("[FavoritesManager] Refreshed \(favorites.count) favorites from cloud")
-                #endif
             } catch SupabaseError.unauthorized {
                 // Session may be in-flight during startup token refresh.
                 // Keep cached favorites and avoid noisy decode/error churn.

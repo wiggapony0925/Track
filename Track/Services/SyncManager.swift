@@ -121,9 +121,6 @@ class SyncManager: ObservableObject {
         // Only overwrite if we got data from cloud
         if !cloudSchedules.isEmpty {
             WidgetSchedule.saveAll(localSchedules)
-            #if DEBUG
-            print("[SyncManager] Synced \(localSchedules.count) schedules from cloud")
-            #endif
         }
     }
     
@@ -227,9 +224,7 @@ class SyncManager: ObservableObject {
         // a physical device on WiFi can't use another device's local IP.
         // Syncing them caused the app to flip between prod/dev URLs mid-session.
         
-        #if DEBUG
-        print("[SyncManager] Pulled user settings from cloud")
-        #endif
+                AppLogger.shared.log("SYNC", message: "Pulled user settings from cloud")
     }
     
     /// Push current @AppStorage values to Supabase
@@ -272,13 +267,8 @@ class SyncManager: ObservableObject {
         
         do {
             try await SupabaseManager.shared.saveUserSettings(settings)
-            #if DEBUG
-            print("[SyncManager] Pushed user settings to cloud")
-            #endif
         } catch {
-            #if DEBUG
-            print("[SyncManager] Failed to push settings: \(error)")
-            #endif
+            AppLogger.shared.log("SYNC", message: "Failed to push settings: \(error.localizedDescription)")
         }
     }
     
@@ -289,9 +279,6 @@ class SyncManager: ObservableObject {
         do {
             let patterns = try await SupabaseManager.shared.fetchCommutePatterns()
             if !patterns.isEmpty {
-                #if DEBUG
-                print("[SyncManager] Pulled \(patterns.count) commute patterns from cloud")
-                #endif
             }
             // Patterns are available for SmartSuggester cross-device use.
             // The local SwiftData store is the primary source and is updated

@@ -63,9 +63,6 @@ enum GlobalFeedsCache {
         guard let encoded = try? encoder.encode(envelope) else { return }
         DispatchQueue.global(qos: .utility).async {
             try? encoded.write(to: url, options: [.atomic])
-            #if DEBUG
-            print("[CACHE] 💾 Saved \(label) (\(encoded.count / 1024)KB) to global feeds cache")
-            #endif
         }
     }
 
@@ -98,15 +95,8 @@ enum GlobalFeedsCache {
 
         let age = Date().timeIntervalSince(envelope.savedAt)
         guard age < maxAge else {
-            #if DEBUG
-            print("[CACHE] 🗑️ \(label) cache too old (\(Int(age))s > \(Int(maxAge))s) — discarding")
-            #endif
             return nil
         }
-
-        #if DEBUG
-        print("[CACHE] 📂 Restored \(label) from disk (\(Int(age))s old)")
-        #endif
 
         return envelope.data
     }

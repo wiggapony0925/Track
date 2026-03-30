@@ -79,17 +79,12 @@ enum TransitSessionCache {
         encoder.dateEncodingStrategy = .secondsSince1970
         guard let data = try? encoder.encode(envelope) else { return }
 
-        let count = groups.count
-        let kb = data.count / 1024
         DispatchQueue.global(qos: .utility).async {
             do {
                 try data.write(to: url, options: .atomic)
-                #if DEBUG
-                print("[CACHE] 💾 Saved \(count) route groups (\(kb)KB) at (\(String(format: "%.4f", lat)), \(String(format: "%.4f", lon))) to session cache")
-                #endif
             } catch {
                 #if DEBUG
-                print("[CACHE] ❌ Failed to save session cache: \(error.localizedDescription)")
+                print("[CACHE] Failed to save session cache: \(error.localizedDescription)")
                 #endif
             }
         }

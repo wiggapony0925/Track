@@ -991,12 +991,14 @@ final class MapSystemViewModel {
 
                 let groupColor: Color = SubwayRoutesData.color(for: trunk.routeIds.first ?? "")
 
+                #if DEBUG
                 let localOffsets = trunk.polylineLaneOffsets
                     .map { String(format: "%.2f", $0) }
                     .joined(separator: ", ")
                 AppLogger.shared.log(
                     "POLYLINE_TRUNK",
                     message: "[\(trunk.routeIds.joined(separator: "/"))]: \(decoded.count) trunk polylines, laneOffset=\(String(format: "%.3f", Double(trunk.laneOffset))), localOffsets=[\(localOffsets)] (server-merged)")
+                #endif
 
                 colorGroupResults.append(ColorGroupResult(
                     groupIndex: trunk.trunkIndex,
@@ -1074,6 +1076,7 @@ final class MapSystemViewModel {
             }
         }
 
+        #if DEBUG
         // ── Diagnostic: Lane offset summary for ALL trunk groups ──
         let offsetSummary = colorGroupResults
             .sorted { $0.groupIndex < $1.groupIndex }
@@ -1085,6 +1088,7 @@ final class MapSystemViewModel {
         AppLogger.shared.log(
             "LANE_OFFSET",
             message: "Global trunk offsets: [\(offsetSummary)]")
+        #endif
 
         // Yield to let the map render whatever data is already available
         await Task.yield()
@@ -1272,6 +1276,7 @@ final class MapSystemViewModel {
 
         flattenedSubwayPolylines = flat
 
+        #if DEBUG
         // ── Diagnostic: summarize non-zero lane offsets across final polylines ──
         var offsetsByTrunk: [String: Set<String>] = [:]
         for poly in flat where abs(poly.laneOffset) > 0.01 {
@@ -1291,6 +1296,7 @@ final class MapSystemViewModel {
                 "LANE_OFFSET",
                 message: "⚠️ NO polylines have non-zero lane offsets — all lines will overlap!")
         }
+        #endif
 
         // Yield after subway polylines are set so the map can start rendering them
         await Task.yield()
