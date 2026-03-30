@@ -47,6 +47,7 @@ class AppSettings(BaseModel):
     placeholder_minutes: int = 99  # Sentinel value for placeholder arrivals (sorts to bottom)
     max_schedule_per_dormant: int = 10  # Max scheduled departures injected per dormant bus route
     nearby_compute_timeout_seconds: int = 50  # Timeout (sec) for /nearby/grouped data collection
+    docs_session_days: int = 7  # How long the /api-docs session cookie lasts (days)
     # Note: Supabase credentials should be set via environment variables:
     # SUPABASE_URL, SUPABASE_SERVICE_KEY
 

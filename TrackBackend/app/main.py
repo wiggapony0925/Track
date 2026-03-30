@@ -143,7 +143,7 @@ app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 # ---------------------------------------------------------------------------
 _DOCS_TOKEN = os.environ.get("DOCS_ACCESS_TOKEN", "").strip()
 _COOKIE_NAME = "track_docs_session"
-_COOKIE_MAX_AGE = 60 * 60 * 24 * 7  # 7 days
+_COOKIE_MAX_AGE = 60 * 60 * 24 * get_settings().app_settings.docs_session_days
 
 
 def _sign_cookie(token: str) -> str:

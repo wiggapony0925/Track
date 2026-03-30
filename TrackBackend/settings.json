@@ -17,7 +17,8 @@
     "max_arrivals_per_line": 200,
     "placeholder_minutes": 99,
     "max_schedule_per_dormant": 10,
-    "nearby_compute_timeout_seconds": 50
+    "nearby_compute_timeout_seconds": 50,
+    "docs_session_days": 7
   },
   "cache": {
     "mta_feed_ttl": 12.0,
