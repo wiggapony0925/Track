@@ -19,6 +19,7 @@ import csv
 import json
 from collections import defaultdict
 from functools import lru_cache
+from math import radians, cos, sin, sqrt, atan2
 from pathlib import Path
 from typing import NamedTuple
 
@@ -434,3 +435,90 @@ def get_all_subway_stations() -> list[dict]:
 
     _all_stations_cache = results
     return results
+
+
+# ── Transfer enrichment ─────────────────────────────────────────────
+# Populates route_ids on shape stops so the iOS client can display
+# accurate transfer badges without relying on client-side heuristics.
+
+_station_name_index: dict[str, list[dict]] | None = None
+
+
+def _haversine(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Return distance in metres between two WGS-84 points."""
+    R = 6_371_000
+    dlat = radians(lat2 - lat1)
+    dlon = radians(lon2 - lon1)
+    a = sin(dlat / 2) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon / 2) ** 2
+    return R * 2 * atan2(sqrt(a), sqrt(1 - a))
+
+
+def _get_station_name_index() -> tuple[dict[str, list[dict]], list[dict]]:
+    """Build (name_lookup, all_stations) from the subway station cache."""
+    global _station_name_index
+    all_stations = get_all_subway_stations()
+    if _station_name_index is None:
+        idx: dict[str, list[dict]] = {}
+        for s in all_stations:
+            key = s["name"].lower().strip()
+            idx.setdefault(key, []).append(s)
+        _station_name_index = idx
+    return _station_name_index, all_stations
+
+
+def enrich_stops_with_transfers(
+    stops: list,
+    current_route: str,
+    proximity_m: float = 200.0,
+    name_match_m: float = 500.0,
+) -> list:
+    """Populate ``route_ids`` on each BusStop with transfer routes.
+
+    Two match strategies:
+
+    1. **Name match** — stations sharing the *exact same* display name
+       within *name_match_m* metres (default 500 m).  The generous
+       radius handles sprawling complexes like Grand Central where
+       platforms of different services sit 200-300 m apart.  Numbered
+       streets that repeat across boroughs (e.g. ``111 St``) are always
+       10+ km apart so 500 m is perfectly safe.
+
+    2. **Proximity match** — any station within *proximity_m* metres
+       regardless of name (default 200 m).  Catches transfer complexes
+       with different names (74 St-Broadway ↔ Jackson Hts-Roosevelt Av).
+
+    Operates in-place and returns the same list for convenience.
+    """
+    name_lookup, all_stations = _get_station_name_index()
+    _EXPRESS = {"6": "6X", "7": "7X", "F": "FX"}
+    _BASE = {v: k for k, v in _EXPRESS.items()}
+
+    for stop in stops:
+        transfer_routes: set[str] = set()
+        stop_key = stop.name.lower().strip()
+        matched_ids: set[str] = set()
+
+        # 1. Name match — same name within 500 m (large station complexes)
+        for s in name_lookup.get(stop_key, []):
+            if _haversine(stop.lat, stop.lon, s["lat"], s["lon"]) <= name_match_m:
+                matched_ids.add(s["id"])
+                transfer_routes.update(s["routes"])
+
+        # 2. Proximity match — different-name transfers within 200 m
+        for s in all_stations:
+            if s["id"] in matched_ids:
+                continue
+            if _haversine(stop.lat, stop.lon, s["lat"], s["lon"]) <= proximity_m:
+                transfer_routes.update(s["routes"])
+
+        # Remove current route and its express/local twin
+        transfer_routes.discard(current_route)
+        if current_route in _EXPRESS:
+            transfer_routes.discard(_EXPRESS[current_route])
+        if current_route in _BASE:
+            transfer_routes.discard(_BASE[current_route])
+
+        if transfer_routes:
+            stop.route_ids = sorted(transfer_routes)
+
+    return stops

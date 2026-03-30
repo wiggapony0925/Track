@@ -26,7 +26,7 @@ from app.models import (
     TrunkGroupPolylines,
 )
 from app.services.gtfs.data_cleaner import get_arrivals_for_line
-from app.services.mapping.subway_shapes import get_all_subway_stations, get_subway_route_shape, get_subway_service_type
+from app.services.mapping.subway_shapes import get_all_subway_stations, get_subway_route_shape, get_subway_service_type, enrich_stops_with_transfers
 from app.services.transit.station_lookup import get_nearby_stop_ids, get_stop_info
 from app.utils.logger import TrackLogger
 from app.utils.polyline_utils import decode_polyline as _decode_polyline, encode_polyline as _encode_polyline, densify_wgs84 as _densify_wgs84, simplify_polyline as _simplify_polyline
@@ -347,22 +347,23 @@ def set_shapes_all_cache(resp: AllSubwayLinesResponse) -> None:
     _shapes_all_json_bytes = json.dumps(resp.model_dump(mode="json")).encode("utf-8")
 
 
-@router.get("/subway/shapes/all", response_model=AllSubwayLinesResponse)
+@router.get(
+    "/subway/shapes/all",
+    response_model=AllSubwayLinesResponse,
+    summary="Get all subway line shapes",
+    description="Returns encoded polylines for every subway line — used to draw the full NYC subway system map.",
+)
 async def subway_shapes_all() -> Response:
     """Return polylines for ALL subway lines — the full system map.
 
-    The actual computation is CPU-heavy (corridor pipeline + dir1 clipping)
-    so it runs in a thread pool via ``run_in_executor`` and the result is
-    cached.  Four cache layers protect against cold starts:
+    Response includes per-line overlays and pre-merged trunk geometry
+    (colour-grouped polylines with lane offsets for multi-track rendering).
 
-    1. Pre-serialized JSON bytes — skips Pydantic serialization entirely.
-    2. In-memory Pydantic cache — populated by warmup or first request.
-    3. Disk cache — survives deploys / restarts; loaded at startup.
-    4. CPU re-computation — only when all caches miss (rare).
+    The payload is 3–5 MB uncompressed; GZip shrinks it ~5×.
+    Cached with `max-age=3600` — geometry only changes on deploy.
 
-    If the pipeline is currently building (warmup in progress), returns
-    503 + Retry-After so the iOS client retries cleanly instead of hanging
-    for 60-90s and timing out.
+    Returns `503` with `Retry-After: 15` if the corridor pipeline is still
+    computing (first boot only, ~60–90 s).
     """
     global _shapes_all_cache, _shapes_all_json_bytes, _shapes_all_building
 
@@ -414,12 +415,17 @@ async def subway_shapes_all() -> Response:
         )
 
 
-@router.get("/subway/stations/all", response_model=AllSubwayStationsResponse)
+@router.get(
+    "/subway/stations/all",
+    response_model=AllSubwayStationsResponse,
+    summary="Get all subway stations",
+    description="Returns every unique subway station with the lines that serve it — for map markers.",
+)
 async def subway_stations_all() -> AllSubwayStationsResponse:
     """Return all unique subway stations with the lines that serve them.
 
-    This data allows the map to display "Penn Station (1 2 3 A C E)"
-    markers just like Apple Maps.
+    Each station includes `id`, `name`, `lat`, `lon`, and a `routes` array
+    (e.g. `["1", "2", "3", "A", "C", "E"]` for Penn Station).
     """
     raw_stations = get_all_subway_stations()
     stations = []
@@ -429,30 +435,39 @@ async def subway_stations_all() -> AllSubwayStationsResponse:
     return AllSubwayStationsResponse(stations=stations)
 
 
-@router.get("/subway/stations/processed")
+@router.get(
+    "/subway/stations/processed",
+    summary="Get processed station positions",
+    description="Returns stations snapped onto offset polylines with transfer flags for precise map rendering.",
+)
 async def subway_stations_processed():
     """Return stations with positions snapped onto the offset polylines.
 
-    Must be called after ``/subway/shapes/all`` has been fetched (which
-    populates the pipeline cache).  Returns ``is_transfer`` flags and
-    per-route snapped lat/lon so the iOS map can draw circles on each
-    line and white bars at transfer hubs.
+    Each station includes:
+    - `is_transfer` — `true` when the station spans ≥ 2 trunk groups
+    - `positions` — per-route snapped `(lat, lon)` for circle placement on each line
+
+    Must be called after `/subway/shapes/all` has populated the pipeline cache.
     """
     raw = get_processed_stops()
     return {"stations": raw}
 
 
-@router.get("/subway/stations/nearby", response_model=AllSubwayStationsResponse)
+@router.get(
+    "/subway/stations/nearby",
+    response_model=AllSubwayStationsResponse,
+    summary="Get nearby subway stations",
+    description="Returns subway stations within a radius of the given coordinates, sorted by distance.",
+)
 async def subway_stations_nearby(
-    lat: float = Query(..., ge=-90, le=90, description="User latitude"),
-    lon: float = Query(..., ge=-180, le=180, description="User longitude"),
-    radius: int = Query(1600, description="Search radius in meters (default ~1 mile)"),
+    lat: float = Query(..., ge=-90, le=90, description="Latitude of the user's location.", examples=[40.7580]),
+    lon: float = Query(..., ge=-180, le=180, description="Longitude of the user's location.", examples=[-73.9855]),
+    radius: int = Query(1600, ge=100, le=10000, description="Search radius in meters.", examples=[1600]),
 ) -> AllSubwayStationsResponse:
     """Return subway stations near the user's location.
 
-    Instead of downloading ALL 400+ stations and filtering client-side,
-    this endpoint returns only stations within *radius* meters of the
-    provided coordinates.  Significantly reduces payload and client work.
+    Filters the full station list server-side and returns only stations within
+    `radius` meters, sorted by proximity. Much lighter than downloading all 470+ stations.
     """
     raw_stations = get_all_subway_stations()
 
@@ -478,16 +493,22 @@ async def subway_stations_nearby(
     return AllSubwayStationsResponse(stations=nearby)
 
 
-@router.get("/subway/shape/{route_id}", response_model=RouteShape)
+@router.get(
+    "/subway/shape/{route_id}",
+    response_model=RouteShape,
+    summary="Get single subway line shape",
+    description="Returns the full geometry and ordered stops for a single subway line.",
+)
 async def subway_shape(route_id: str) -> RouteShape:
     """Return the full route geometry and ordered stops for a subway line.
 
-    This enables the iOS app to draw the entire line (e.g. the full C train
-    from Euclid Av to 168 St) on the map, not just the 2–3 nearby stops.
+    **Path parameter:** Any valid subway route ID — `A`, `7`, `L`, `GS`, etc.
 
-    Uses GTFS static data (shapes.txt, trips.txt, stop_times.txt) to build:
-    - polylines: Google-encoded polyline strings for the route geometry
-    - stops: ordered list of all stations along the line
+    Response includes:
+    - `polylines` — Google-encoded polyline strings for the route geometry
+    - `stops` — ordered list of all stations along the line (with transfer info)
+    - `directions` — per-direction shapes split by GTFS `direction_id` (0 / 1)
+    - `service_type` — `"express"`, `"local"`, or `"mixed"`
     """
     clean_id = clean_route_id(route_id)
     result = get_subway_route_shape(clean_id)
@@ -520,6 +541,9 @@ async def subway_shape(route_id: str) -> RouteShape:
         for entry in stop_entries
     ]
 
+    # Enrich stops with transfer route_ids from station data
+    enrich_stops_with_transfers(stops, current_route=clean_id)
+
     # Build per-direction shapes — merge + densify + simplify each direction
     directions: list[DirectionShape] = []
     for dd in direction_data:
@@ -532,6 +556,7 @@ async def subway_shape(route_id: str) -> RouteShape:
             BusStop(id=s.stop_id, name=s.name, lat=s.lat, lon=s.lon)
             for s in dd.stops
         ]
+        enrich_stops_with_transfers(dir_stops, current_route=clean_id)
         directions.append(DirectionShape(
             direction_id=dd.direction_id,
             headsign=dd.headsign,
@@ -554,9 +579,25 @@ async def subway_shape(route_id: str) -> RouteShape:
     )
 
 
-@router.get("/subway/{line_id}", response_model=list[TrackArrival])
+@router.get(
+    "/subway/{line_id}",
+    response_model=list[TrackArrival],
+    summary="Get real-time subway arrivals",
+    description="Returns upcoming real-time arrivals for a specific subway line from GTFS-RT feeds.",
+)
 async def subway_arrivals(line_id: str, response: Response) -> list[TrackArrival]:
-    """Return upcoming arrivals for a subway line (e.g. ``/subway/L``)."""
+    """Return upcoming arrivals for a subway line.
+
+    **Path parameter:** Any valid subway line ID — `A`, `7`, `L`, `GS`, etc.
+
+    Each arrival includes `station_name`, `direction`, `destination`,
+    `minutes_away`, `arrival_ts` (epoch), and `status`.
+
+    Results are filtered to future arrivals within the configured time horizon,
+    sorted soonest-first, and capped at the per-line maximum.
+
+    Returns an empty array (not an error) if the MTA feed is temporarily unavailable.
+    """
     clean_id = clean_route_id(line_id)
     if resolve_subway_feed_key(clean_id) is None:
         raise HTTPException(

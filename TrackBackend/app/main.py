@@ -9,15 +9,22 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import hmac
 import os
+import secrets
 import time
 from typing import Any
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Query, Request
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from starlette.middleware.gzip import GZipMiddleware
 
+from pathlib import Path
+
 from app.config import get_settings
-from app.routers import bus, lirr, mnr, nearby, predict, status, subway
+from app.routers import bus, lirr, mnr, nearby, predict, status, subway, weather
 from app.clients.bus_client import clear_bus_cache
 from app.services.gtfs.data_loader import ensure_data_available
 from app.services.gtfs.gtfs_refresh import rebuild_schedule_db_if_missing
@@ -26,10 +33,86 @@ from app.utils import redis_client as _redis
 from app.utils.logger import TrackLogger
 from app.utils.metrics import setup_metrics, WARMUP_COMPLETE
 
+# ---------------------------------------------------------------------------
+# OpenAPI metadata — powers the /api-docs Scalar documentation page
+# ---------------------------------------------------------------------------
+_API_DESCRIPTION = """
+## NYC Transit API for the Track iOS App
+
+Real-time arrivals, route shapes, service alerts, and ML delay predictions
+for the New York City transit network — Subway, Bus, LIRR, and Metro-North.
+
+### Data Sources
+- **MTA GTFS-RT** — real-time subway, LIRR, and Metro-North feeds
+- **MTA SIRI** — real-time bus arrivals and vehicle positions
+- **MTA Elevator/Escalator** — accessibility outage status
+- **Open-Meteo** — weather conditions (fallback for Apple WeatherKit)
+
+### Authentication
+No API key required for local development. Production traffic is
+routed through the Track iOS app.
+
+### Caching
+Responses include `Cache-Control` headers tuned per endpoint:
+- **Static geometry** (shapes, stations): `max-age=3600`
+- **Real-time data** (arrivals, vehicles): `max-age=5–8`
+- **Alerts & accessibility**: `max-age=30–60`
+"""
+
+_OPENAPI_TAGS = [
+    {
+        "name": "nearby",
+        "description": "Nearby transit arrivals grouped by route. The primary endpoint for the Track home screen.",
+    },
+    {
+        "name": "subway",
+        "description": "NYC Subway real-time arrivals, route shapes, and station data.",
+    },
+    {
+        "name": "bus",
+        "description": "MTA Bus real-time arrivals, vehicle positions, route shapes, and schedules.",
+    },
+    {
+        "name": "lirr",
+        "description": "Long Island Rail Road real-time arrivals and route shapes.",
+    },
+    {
+        "name": "mnr",
+        "description": "Metro-North Railroad real-time arrivals and route shapes.",
+    },
+    {
+        "name": "status",
+        "description": "Service alerts and elevator/escalator accessibility status.",
+    },
+    {
+        "name": "predict",
+        "description": "ML-powered delay predictions using LightGBM + recency model.",
+    },
+    {
+        "name": "weather",
+        "description": "Current weather conditions from Open-Meteo (fallback for WeatherKit).",
+    },
+    {
+        "name": "system",
+        "description": "Health checks, configuration, data status, and cache administration.",
+    },
+]
+
 app = FastAPI(
     title="Track API",
-    description="Proxy API for the Track NYC Transit iOS app",
+    description=_API_DESCRIPTION,
     version="1.0.0",
+    openapi_tags=_OPENAPI_TAGS,
+    openapi_url=None,  # disable built-in /openapi.json — we serve it gated below
+    docs_url=None,     # disable default Swagger UI — we use Scalar
+    redoc_url=None,    # disable default ReDoc — we use Scalar
+    contact={
+        "name": "Jeffrey Fernandez",
+        "url": "https://github.com/jeffreyfernandez",
+    },
+    license_info={
+        "name": "Private",
+    },
 )
 
 # Register routers
@@ -40,9 +123,147 @@ app.include_router(status.router)
 app.include_router(bus.router)
 app.include_router(nearby.router)
 app.include_router(predict.router)
-
-from app.routers import weather
 app.include_router(weather.router)
+
+# ── Static files (docs assets, favicon) ──────────────────────────────────
+_STATIC_DIR = Path(__file__).resolve().parent / "static"
+app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
+
+# ---------------------------------------------------------------------------
+# Docs access control — private documentation sharing
+# ---------------------------------------------------------------------------
+# Set DOCS_ACCESS_TOKEN in .env to require a token for viewing docs.
+# Share the link as:  https://your-api.onrender.com/api-docs?token=<TOKEN>
+#
+# On first visit with a valid token, a signed session cookie is set so the
+# user doesn't need the token in the URL for subsequent page loads or for
+# Scalar's internal /openapi.json fetches.
+#
+# When DOCS_ACCESS_TOKEN is unset or empty, docs are open (dev mode).
+# ---------------------------------------------------------------------------
+_DOCS_TOKEN = os.environ.get("DOCS_ACCESS_TOKEN", "").strip()
+_COOKIE_NAME = "track_docs_session"
+_COOKIE_MAX_AGE = 60 * 60 * 24 * 7  # 7 days
+
+
+def _sign_cookie(token: str) -> str:
+    """Create an HMAC-SHA256 signature for the docs session cookie."""
+    return hmac.new(token.encode(), b"track-docs-session", hashlib.sha256).hexdigest()
+
+
+def _verify_docs_access(request: Request) -> bool:
+    """Return True if the request has valid docs access (token or cookie)."""
+    if not _DOCS_TOKEN:
+        return True  # No token configured → open access (dev mode)
+
+    # 1. Check query parameter
+    query_token = request.query_params.get("token", "")
+    if query_token and secrets.compare_digest(query_token, _DOCS_TOKEN):
+        return True
+
+    # 2. Check session cookie
+    cookie_value = request.cookies.get(_COOKIE_NAME, "")
+    expected = _sign_cookie(_DOCS_TOKEN)
+    if cookie_value and secrets.compare_digest(cookie_value, expected):
+        return True
+
+    return False
+
+
+def _denied_response() -> HTMLResponse:
+    """Return a styled 403 page for unauthorized doc access."""
+    return HTMLResponse(
+        content="""<!DOCTYPE html>
+<html><head><title>Track API — Access Required</title>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<style>
+  body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+       background:#1a1a2e;font-family:system-ui,-apple-system,sans-serif;color:#e0e0e0}
+  .card{background:#16213e;border:1px solid #0f3460;border-radius:12px;padding:3rem;
+        max-width:420px;text-align:center;box-shadow:0 4px 24px rgba(0,0,0,.4)}
+  h1{margin:0 0 .5rem;font-size:1.5rem;color:#a78bfa}
+  p{margin:.5rem 0;line-height:1.6;color:#94a3b8}
+  code{background:#0f3460;padding:2px 8px;border-radius:4px;font-size:.85rem;color:#c084fc}
+</style></head>
+<body><div class="card">
+  <h1>Access Required</h1>
+  <p>This documentation is private.</p>
+  <p>Use the link you were given — it contains the access token:</p>
+  <p><code>/api-docs?token=&lt;your-token&gt;</code></p>
+</div></body></html>""",
+        status_code=403,
+    )
+
+
+def _set_session_cookie(response: HTMLResponse, token: str, request: Request) -> HTMLResponse:
+    """Stamp the docs session cookie on a response."""
+    # Only set Secure flag when served over HTTPS (production).
+    # On http://localhost the browser silently drops Secure cookies,
+    # which breaks Scalar's internal /openapi.json fetch.
+    is_https = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
+    response.set_cookie(
+        key=_COOKIE_NAME,
+        value=_sign_cookie(token),
+        max_age=_COOKIE_MAX_AGE,
+        httponly=True,
+        secure=is_https,
+        samesite="lax",
+        path="/",
+    )
+    return response
+
+
+# ---------------------------------------------------------------------------
+# Scalar API documentation page  (replaces default /docs & /redoc)
+# ---------------------------------------------------------------------------
+_DOCS_HTML_PATH = _STATIC_DIR / "docs" / "index.html"
+
+
+@app.get("/api-docs", include_in_schema=False)
+async def scalar_docs(request: Request):
+    """Scalar-powered API documentation (like Transit API docs)."""
+    if not _verify_docs_access(request):
+        return _denied_response()
+
+    response = HTMLResponse(_DOCS_HTML_PATH.read_text())
+
+    # If they arrived with a valid ?token= param, set the session cookie
+    # so Scalar's internal fetches (openapi.json etc.) work without it
+    query_token = request.query_params.get("token", "")
+    if _DOCS_TOKEN and query_token and secrets.compare_digest(query_token, _DOCS_TOKEN):
+        _set_session_cookie(response, _DOCS_TOKEN, request)
+
+    return response
+
+
+@app.get("/docs", include_in_schema=False)
+async def docs_redirect(request: Request):
+    """Redirect /docs to /api-docs (preserving any token param)."""
+    token = request.query_params.get("token", "")
+    url = "/api-docs" + (f"?token={token}" if token else "")
+    return RedirectResponse(url=url)
+
+
+@app.get("/redoc", include_in_schema=False)
+async def redoc_redirect(request: Request):
+    """Redirect /redoc to /api-docs (preserving any token param)."""
+    token = request.query_params.get("token", "")
+    url = "/api-docs" + (f"?token={token}" if token else "")
+    return RedirectResponse(url=url)
+
+
+# ── Protected OpenAPI spec ────────────────────────────────────────────────
+# Override FastAPI's default /openapi.json so it respects docs auth too.
+# Without this, anyone could still read the full API schema.
+_original_openapi = app.openapi
+
+
+@app.get("/openapi.json", include_in_schema=False)
+async def protected_openapi(request: Request):
+    """Serve the OpenAPI spec, gated behind the same docs token."""
+    if not _verify_docs_access(request):
+        return JSONResponse({"detail": "Access token required"}, status_code=403)
+    return JSONResponse(_original_openapi())
 
 # ── GZip compression ──────────────────────────────────────────────────────
 # Compress all responses >= 500 bytes.  The subway/shapes/all payload is
@@ -579,26 +800,18 @@ async def log_requests(request: Request, call_next):
         TrackLogger.clear_request_id()
 
 
-@app.get("/health")
+@app.get(
+    "/health",
+    tags=["system"],
+    summary="Health check",
+    description="Liveness/readiness probe. Returns 200 when feeds are warm, 503 during startup.",
+)
 async def health():
-    """Liveness / readiness probe for Render zero-downtime deploys.
+    """Health check endpoint.
 
-    Returns 503 only during the initial feed warmup (~20-30s).
-    Returns 200 as soon as GTFS-RT feeds + bus routes are cached,
-    even if the corridor pipeline (60-90s CPU) is still running.
+    Returns `{"status": "ok", "weather": {...}}` once feeds are warm (~20–30 s after boot).
 
-    The corridor pipeline only affects ``/subway/shapes/all`` — the iOS
-    app has a disk cache for map shapes, so a slow first shapes request
-    is acceptable.  ``/nearby/grouped`` (critical path) is fast as soon
-    as feeds are warm.
-
-    **Why this matters for 502s:**
-    Render keeps the OLD container serving traffic until the NEW one's
-    health check returns 200.  If health is gated behind the full
-    corridor pipeline (~90-120s), Render may time out and kill the old
-    container — creating a 502 gap where neither instance serves.
-    By passing health after feeds (~20-30s), the traffic cutover happens
-    quickly and users never see a 502.
+    Returns `503` with `Retry-After: 10` during the initial feed warmup window.
     """
     if not _warmup_complete:
         from fastapi.responses import JSONResponse
@@ -611,16 +824,34 @@ async def health():
     return {"status": "ok", "weather": get_cached_weather_details()}
 
 
-@app.get("/config")
+@app.get(
+    "/config",
+    tags=["system"],
+    summary="Get app configuration",
+    description="Returns the app_settings block from the server configuration.",
+)
 async def config() -> dict[str, Any]:
-    """Return the *app_settings* block from settings.json."""
+    """Return the app configuration.
+
+    Includes settings like `search_radius_meters`, `max_arrival_minutes`,
+    `max_arrivals_per_line`, and feature flags.
+    """
     settings = get_settings()
     return settings.app_settings.model_dump()
 
 
-@app.get("/data/status")
+@app.get(
+    "/data/status",
+    tags=["system"],
+    summary="Get GTFS data status",
+    description="Returns which GTFS data groups are available and when they were last updated.",
+)
 async def data_status() -> dict[str, Any]:
-    """Check which GTFS data groups are available and their freshness."""
+    """Check GTFS data availability and freshness.
+
+    Returns `data_groups` (which GTFS files are present) and
+    `gtfs_feeds` (last update timestamps per feed).
+    """
     from app.services.gtfs.data_loader import check_local_data_status
     from app.services.gtfs.gtfs_refresh import get_gtfs_freshness
     return {
@@ -629,25 +860,40 @@ async def data_status() -> dict[str, Any]:
     }
 
 
-@app.post("/data/refresh")
-async def data_refresh(full: bool = False) -> dict[str, Any]:
-    """Manually trigger a GTFS data refresh check.
+@app.post(
+    "/data/refresh",
+    tags=["system"],
+    summary="Trigger GTFS data refresh",
+    description="Manually triggers a GTFS data refresh check against upstream MTA feeds.",
+)
+async def data_refresh(
+    full: bool = Query(False, description="If true, check all feeds including bus (slower). Default checks only subway/lirr/mnr."),
+) -> dict[str, Any]:
+    """Manually trigger a GTFS data refresh.
 
-    Query params:
-        full: If true, check all feeds including bus (slower).
-              Default checks only subway/lirr/mnr.
+    Returns the results of the refresh check, including which feeds were
+    updated and whether new data was downloaded.
     """
     from app.services.gtfs.gtfs_refresh import check_and_refresh_gtfs
     results = await check_and_refresh_gtfs(full_check=full)
     return {"results": results}
 
 
-@app.get("/admin/cache/inspect")
+@app.get(
+    "/admin/cache/inspect",
+    tags=["system"],
+    summary="Inspect cache layers",
+    description="Returns a detailed snapshot of every cache layer — entry counts, ages, hit rates, and Redis state.",
+)
 async def inspect_caches(request: Request) -> dict[str, Any]:
-    """Return a snapshot of every cache layer: sizes, keys, ages, hit rates.
+    """Inspect all cache layers.
 
-    Works both locally and on Render — hit your Render URL at
-    ``/admin/cache/inspect`` to see production cache state.
+    Returns detailed stats for:
+    - **MTA feed cache** — GTFS-RT feed entries with freshness
+    - **Bus caches** — arrivals, vehicles, stops, routes, shapes
+    - **Nearby response cache** — pre-computed grouped responses
+    - **Redis** — connection status, memory usage, sample keys
+    - **Hit/miss counters** — per-cache-kind hit percentages
     """
     import time as _t
 
@@ -796,11 +1042,18 @@ async def inspect_caches(request: Request) -> dict[str, Any]:
     }
 
 
-@app.post("/admin/cache/clear")
+@app.post(
+    "/admin/cache/clear",
+    tags=["system"],
+    summary="Clear all caches",
+    description="Clears all in-memory caches. Restricted to localhost.",
+)
 async def clear_all_caches(request: Request) -> dict[str, Any]:
-    """Clear all in-memory caches. Localhost only — used by speed tests.
+    """Clear all in-memory caches.
 
     Returns counts of cleared entries per cache layer.
+
+    **Restricted to localhost** — returns `403` when called from a remote IP.
     """
     client = request.client
     if client and client.host not in ("127.0.0.1", "::1", "localhost"):

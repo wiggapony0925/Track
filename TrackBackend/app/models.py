@@ -9,40 +9,40 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class TrackArrival(BaseModel):
     """A single upcoming train arrival at a station."""
 
-    route_id: str = ""
-    station: str
-    station_name: str = ""
-    direction: str
-    destination: str | None = None  # e.g. "Wakefield-241 St"
-    minutes_away: int
-    arrival_ts: int = 0
-    status: str = "On Time"
-    trip_id: str | None = None
-    is_cancelled: bool = False  # GTFS-RT schedule_relationship == CANCELED
-    stop_lat: float | None = None  # Latitude of the stop (from stops.txt)
-    stop_lon: float | None = None  # Longitude of the stop (from stops.txt)
+    route_id: str = Field("", description="GTFS route ID (e.g. 'A', '7', 'L').")
+    station: str = Field(..., description="GTFS stop ID.")
+    station_name: str = Field("", description="Human-readable station name.")
+    direction: str = Field(..., description="Direction label (e.g. 'Northbound', 'Southbound').")
+    destination: str | None = Field(None, description="Terminal station name (e.g. 'Wakefield-241 St').")
+    minutes_away: int = Field(..., description="Minutes until arrival.")
+    arrival_ts: int = Field(0, description="Arrival time as Unix epoch seconds.")
+    status: str = Field("On Time", description="Current status: 'On Time', 'Delayed', etc.")
+    trip_id: str | None = Field(None, description="GTFS trip ID for this vehicle run.")
+    is_cancelled: bool = Field(False, description="True when the trip is cancelled (GTFS-RT CANCELED).")
+    stop_lat: float | None = Field(None, description="Latitude of the stop.")
+    stop_lon: float | None = Field(None, description="Longitude of the stop.")
 
 
 class TransitAlert(BaseModel):
-    """A critical service alert."""
+    """A critical MTA service alert (delays, suspensions, planned work)."""
 
-    route_id: str | None = None
-    title: str
-    description: str
-    severity: str
-    mode: str = "subway"
-    updated_at: int | None = None  # epoch seconds – active_period start or transit_realtime timestamp
-    affected_routes: list[str] = []  # all route_ids touched by this alert
-    alert_type: str | None = None  # MercuryAlert.alert_type (e.g. "Delays", "Planned - Suspended")
-    sort_order: int = 0  # MTA severity rank (higher = more severe, e.g. Delays=26, Suspended=39)
-    display_before_active: int | None = None  # seconds before active_period to show (null = don't show in status box)
-    active_period_end: int | None = None  # epoch seconds – when the alert expires
+    route_id: str | None = Field(None, description="Primary affected route ID, if applicable.")
+    title: str = Field(..., description="Alert headline.")
+    description: str = Field(..., description="Full alert description text.")
+    severity: str = Field(..., description="Severity level (e.g. 'severe', 'warning').")
+    mode: str = Field("subway", description="Transit mode: subway, bus, lirr, or mnr.")
+    updated_at: int | None = Field(None, description="When the alert was last updated (Unix epoch seconds).")
+    affected_routes: list[str] = Field([], description="All route IDs affected by this alert.")
+    alert_type: str | None = Field(None, description="MTA alert type (e.g. 'Delays', 'Planned - Suspended').")
+    sort_order: int = Field(0, description="MTA severity rank (higher = more severe).")
+    display_before_active: int | None = Field(None, description="Seconds before active period to start showing the alert.")
+    active_period_end: int | None = Field(None, description="When the alert expires (Unix epoch seconds).")
 
 
 class ElevatorStatus(BaseModel):
@@ -137,19 +137,18 @@ class InlineAlert(BaseModel):
 
 
 class GroupedNearbyTransit(BaseModel):
-    """Arrivals grouped by route with directions as sub-groups.
+    """Arrivals grouped by route with direction sub-groups.
 
-    The iOS app shows one card per route; tapping opens a detail sheet
-    with swipeable direction tabs.
+    Each group represents one transit route card on the home screen.
     """
 
-    route_id: str
-    display_name: str
-    mode: str  # "subway", "bus", "lirr", or "mnr"
-    color_hex: str | None = None
-    directions: list[DirectionArrivals]
-    sorting_key: str = ""  # MTA canonical sort order (e.g. subway letters: A before B)
-    alerts: list[InlineAlert] = []  # Active service alerts for this route
+    route_id: str = Field(..., description="GTFS route ID (e.g. 'A', 'B63').")
+    display_name: str = Field(..., description="Human-readable route name for display.")
+    mode: str = Field(..., description="Transit mode: subway, bus, lirr, or mnr.")
+    color_hex: str | None = Field(None, description="Route brand colour as hex (e.g. '#0039A6').")
+    directions: list[DirectionArrivals] = Field(..., description="Arrivals split by direction (e.g. Northbound / Southbound).")
+    sorting_key: str = Field("", description="MTA canonical sort key for consistent ordering.")
+    alerts: list[InlineAlert] = Field([], description="Active service alerts for this route.")
 
 
 class BusVehicle(BaseModel):

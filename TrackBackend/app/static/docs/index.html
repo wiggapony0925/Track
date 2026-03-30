@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Track API — Documentation</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" type="image/svg+xml" href="/static/docs/favicon.svg" />
+
+    <!-- Open Graph / social sharing -->
+    <meta property="og:title" content="Track API — Documentation" />
+    <meta property="og:description" content="Real-time NYC transit data: Subway, Bus, LIRR, and Metro-North arrivals, shapes, alerts, and ML delay predictions." />
+    <meta property="og:type" content="website" />
+
+    <style>
+        /* ── Loading state ──────────────────────────────────── */
+        body { margin: 0; background: #02040C; }
+
+        /* ── Dark mode — exact Track iOS dark palette ──────── */
+        .dark-mode,
+        .scalar-app.dark-mode {
+            --scalar-background-1: #02040C;       /* background        rgba(2,4,12)       */
+            --scalar-background-2: #0E1422;       /* cardBackground    rgba(14,20,34)     */
+            --scalar-background-3: #141B2C;       /* cardElevated      rgba(20,27,44)     */
+            --scalar-background-accent: #321C4814; /* accentTint        rgba(50,28,72,0.08)*/
+
+            --scalar-color-1: #F8F8FF;            /* textPrimary       rgba(248,248,255)  */
+            --scalar-color-2: #9BA4C2;            /* textSecondary     rgba(155,164,194)  */
+            --scalar-color-3: #64708E;            /* textTertiary      rgba(100,112,142)  */
+            --scalar-color-accent: #C878FF;       /* accent            rgba(200,120,255)  */
+            --scalar-color-green: #34D36E;        /* successGreen      rgba(52,211,110)   */
+            --scalar-color-red: #FF5252;          /* alertRed          rgba(255,82,82)    */
+            --scalar-color-yellow: #FFD040;       /* warningYellow     rgba(255,208,64)   */
+            --scalar-color-blue: #C878FF;         /* use accent for POST badges           */
+
+            --scalar-border-color: rgba(155,164,194,0.12);
+            --scalar-scrollbar-color: rgba(155,164,194,0.18);
+            --scalar-scrollbar-color-active: rgba(155,164,194,0.36);
+
+            --scalar-sidebar-background-1: #060A16;   /* backgroundSecondary rgba(6,10,22) */
+            --scalar-sidebar-color-1: #F8F8FF;
+            --scalar-sidebar-color-2: #9BA4C2;
+            --scalar-sidebar-color-active: #C878FF;
+            --scalar-sidebar-border-color: rgba(155,164,194,0.08);
+            --scalar-sidebar-search-background: #0C1220;
+            --scalar-sidebar-search-border-color: rgba(155,164,194,0.10);
+            --scalar-sidebar-search-color: #F8F8FF;
+
+            --scalar-button-1: #C878FF;
+            --scalar-button-1-color: #02040C;
+            --scalar-button-1-hover: #D499FF;
+
+            color-scheme: dark;
+        }
+
+        /* ── Light mode — exact Track iOS light palette ────── */
+        .light-mode,
+        .scalar-app.light-mode {
+            --scalar-background-1: #FAF8FF;       /* background        rgba(250,248,255)  */
+            --scalar-background-2: #FFFFFF;        /* cardBackground    rgba(255,255,255)  */
+            --scalar-background-3: #F4F0FC;       /* backgroundSecondary rgba(244,240,252) */
+            --scalar-background-accent: #F8F2FF;  /* accentTint        rgba(248,242,255)  */
+
+            --scalar-color-1: #0E101C;            /* textPrimary       rgba(14,16,28)     */
+            --scalar-color-2: #5C6276;            /* textSecondary     rgba(92,98,118)    */
+            --scalar-color-3: #82889B;            /* textTertiary      rgba(130,136,155)  */
+            --scalar-color-accent: #9B48F0;       /* accent            rgba(155,72,240)   */
+            --scalar-color-green: #008C37;        /* successGreen      rgba(0,140,55)     */
+            --scalar-color-red: #E83028;          /* alertRed          rgba(232,48,40)    */
+            --scalar-color-yellow: #F8C608;       /* warningYellow     rgba(248,198,8)    */
+            --scalar-color-blue: #9B48F0;         /* use accent for POST badges           */
+
+            --scalar-border-color: rgba(92,98,118,0.10);
+            --scalar-scrollbar-color: rgba(92,98,118,0.15);
+            --scalar-scrollbar-color-active: rgba(92,98,118,0.30);
+
+            --scalar-sidebar-background-1: #F4F0FC;  /* backgroundSecondary */
+            --scalar-sidebar-color-1: #0E101C;
+            --scalar-sidebar-color-2: #5C6276;
+            --scalar-sidebar-color-active: #9B48F0;
+            --scalar-sidebar-border-color: rgba(92,98,118,0.08);
+            --scalar-sidebar-search-background: #EDE8F7;
+            --scalar-sidebar-search-border-color: rgba(92,98,118,0.10);
+            --scalar-sidebar-search-color: #0E101C;
+
+            --scalar-button-1: #9B48F0;
+            --scalar-button-1-color: #FFFFFF;
+            --scalar-button-1-hover: #8236D8;
+
+            color-scheme: light;
+        }
+    </style>
+</head>
+<body>
+    <script id="api-reference" data-url="/openapi.json"></script>
+    <script>
+        var configuration = {
+            // ── Theme & Layout ──────────────────────────────────
+            // 'none' = no pre-set theme — we control everything via
+            // CSS variables above to match the Track iOS app exactly.
+            theme: 'none',
+            layout: 'modern',
+            withDefaultFonts: true,
+            darkMode: true,
+
+            // ── Sidebar & Navigation ────────────────────────────
+            defaultOpenAllTags: false,
+            tagsSorter: 'alpha',
+            searchHotKey: 'k',
+            showSidebar: true,
+
+            // ── API Client / Try It ─────────────────────────────
+            hiddenClients: [],
+            defaultHttpClient: {
+                targetKey: 'python',
+                clientKey: 'requests',
+            },
+
+            // ── Metadata (SEO / social preview) ─────────────────
+            metaData: {
+                title: 'Track API — Documentation',
+                description: 'Real-time NYC transit data for the Track iOS app',
+                ogDescription: 'Subway, Bus, LIRR, and Metro-North arrivals, shapes, alerts, and ML delay predictions.',
+            },
+
+            // ── Features ────────────────────────────────────────
+            hideDownloadButton: false,
+            hideModels: false,
+            hideClientButton: false,
+
+            // ── Servers ─────────────────────────────────────────
+            servers: [
+                { url: 'https://track-api.onrender.com', description: 'Production (Render)' },
+                { url: 'http://localhost:8767', description: 'Local development' },
+            ],
+        }
+
+        document.getElementById('api-reference').dataset.configuration =
+            JSON.stringify(configuration)
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
+</body>
+</html>

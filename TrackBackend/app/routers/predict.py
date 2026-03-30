@@ -132,49 +132,51 @@ class DelayPrediction(BaseModel):
 
 
 # ── Endpoint ──────────────────────────────────────────────────────────────
-@router.get("/predict/delay", response_model=DelayPrediction)
+@router.get(
+    "/predict/delay",
+    response_model=DelayPrediction,
+    summary="Predict arrival delay",
+    description=(
+        "Returns a delay-adjusted arrival time blending LightGBM pattern model, "
+        "recency correction, and live SIRI deviation signals."
+    ),
+)
 async def predict_delay(
-    minutes_away: int = Query(..., description="MTA-predicted minutes until arrival"),
-    route_id: str = Query(..., description="Transit route ID (e.g. '7', 'L', 'B63')"),
-    hour: int = Query(..., ge=0, le=23, description="Current hour (0-23)"),
-    day_of_week: int = Query(..., ge=1, le=7, description="Day of week (1=Sun, 7=Sat)"),
-    weather: str | None = Query(None, description="Weather condition: clear | rain | snow. Auto-detected from Open-Meteo if omitted."),
-    mode: str = Query("subway", description="Transit mode: subway | bus | lirr | mnr"),
-    stop_id: str | None = Query(None, description="GTFS stop_id (enables recency correction)"),
+    minutes_away: int = Query(..., ge=0, description="MTA-predicted minutes until arrival.", examples=[8]),
+    route_id: str = Query(..., description="Transit route ID.", examples=["7"]),
+    hour: int = Query(..., ge=0, le=23, description="Current hour (0–23).", examples=[17]),
+    day_of_week: int = Query(..., ge=1, le=7, description="Day of week (1=Sun … 7=Sat).", examples=[3]),
+    weather: str | None = Query(None, description="Weather condition. Auto-detected from Open-Meteo if omitted.", examples=["clear"]),
+    mode: str = Query("subway", description="Transit mode.", examples=["subway"]),
+    stop_id: str | None = Query(None, description="GTFS stop_id — enables per-stop recency correction.", examples=["726S"]),
     schedule_deviation_s: int | None = Query(
         None,
         description=(
             "Live SIRI schedule deviation in seconds "
-            "(ExpectedArrivalTime minus AimedArrivalTime). "
-            "Positive = running late. When provided, bypasses the contextual "
-            "cache and feeds the deviation into the GBR model as a momentum "
-            "signal so systematically-late vehicles get a higher factor."
+            "(ExpectedArrival − AimedArrival). Positive = running late. "
+            "Feeds into the LightGBM model as a momentum signal."
         ),
+        examples=[45],
     ),
 ) -> DelayPrediction:
-    """Return a delay-adjusted arrival time blending three signals:
+    """Return a delay-adjusted arrival time.
 
-    1. **Recency model** (Transit-style): if ``stop_id`` is provided, looks up
-       recent actual-vs-predicted error observations at this exact stop and
-       applies an exponentially-weighted correction.  Recent trips weigh far
-       more than old ones (half-life ≈1.4 hours).  Observations now arrive
-       at every SIRI poll (~30 s) via ``observe_siri_delay``.
+    Blends three signals:
 
-    2. **LightGBM factor** (pattern model): accounts for route reliability,
-       rush-hour, day-of-week, weather, and transit mode.  Result is cached
-       per (route, hour, dow, weather, mode) when no live deviation is
-       available.  When ``schedule_deviation_s`` is provided the factor is
-       computed fresh with the deviation as an 8th feature (momentum signal—
-       buses already running late tend to slip further).
+    1. **LightGBM factor** — route reliability, rush hour, day-of-week,
+       weather, and transit mode patterns.
+    2. **Recency model** — exponentially-weighted correction from recent
+       actual-vs-predicted errors at this specific stop.
+    3. **Live SIRI deviation** — `schedule_deviation_s` as a momentum
+       signal (buses already running late tend to slip further).
 
-    3. **Live SIRI deviation** (momentum): ``schedule_deviation_s`` feeds the
-       LightGBM model so it can learn that currently-late vehicles arrive even
-       later than the contextual factor alone predicts.
+    **Formula:** `adjusted_minutes = ceil((mta_seconds + recency_error) × factor / 60)`
 
-    Final ETA:
-        adjusted_minutes = ceil((mta_seconds + recency_error_s) × factor / 60)
+    Response includes `adjusted_minutes`, `original_minutes`, `delay_factor`,
+    `model_source`, `recency_error_seconds`, and a human-readable
+    `adjustment_reason`.
 
-    Safe to call on every arrival row — < 1 ms when fully cached.
+    Safe to call on every arrival row — < 1 ms when cached.
     """
     # Auto-detect weather from Open-Meteo if the client didn't supply it
     if weather is None:
@@ -314,12 +316,18 @@ def _is_rush(hour: int, dow: int) -> bool:
     return is_weekday and (hour in range(7, 10) or hour in range(17, 20))
 
 
-@router.post("/predict/reload-model")
+@router.post(
+    "/predict/reload-model",
+    summary="Reload ML model",
+    description="Hot-reloads the LightGBM delay model from disk without restarting the server. Localhost only.",
+)
 async def reload_model_endpoint(request: Request) -> dict:
-    """Hot-reload the GBR model from disk without restarting the server.
+    """Hot-reload the delay prediction model from disk.
 
-    Call this after running scripts/train_model.py so new weights take
-    effect immediately.  Restricted to localhost only (same as /admin/cache/clear).
+    Call this after training a new model so updated weights take effect
+    immediately. Clears the L1 factor cache so predictions use the new model.
+
+    **Restricted to localhost** — returns `403` when called from a remote IP.
     """
     client = request.client
     if client and client.host not in ("127.0.0.1", "::1", "localhost"):

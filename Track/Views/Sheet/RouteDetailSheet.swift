@@ -2591,37 +2591,51 @@ struct RouteDetailSheet: View {
 
     /// Finds transfer routes at a given stop.
     ///
-    /// Two sources:
-    /// 1. **Subway stations** — matched by name/proximity from `cachedStations`.
-    /// 2. **Bus routes** — pulled directly from `stop.routeIds` (set by the backend
-    ///    for stops fetched from /bus/nearby; often nil for shape-derived stops).
+    /// Three sources, combined additively:
+    /// 1. **Subway stations** — all name-matched AND proximity-matched (≤200 m)
+    ///    stations from `cachedStations`.  Collects routes from EVERY matching
+    ///    entry (not just the first), catching transfer complexes like
+    ///    Times Sq (1/2/3 + 7 + N/Q/R/W + GS) and different-name complexes
+    ///    like 74 St-Broadway ↔ Jackson Hts-Roosevelt Av.
+    /// 2. **Bus route IDs** — from `stop.routeIds` (set by the backend for
+    ///    stops fetched from /bus/nearby or enriched shape stops).
+    /// 3. **Fallback shape stops** — nearby/name-matched stops in the current
+    ///    routeShape that carry routeIds (captures bus-to-bus transfers).
     ///
     /// Returns a deduplicated, sorted list of route display names (badges).
     private func transferRoutes(for stop: BusStop) -> [String] {
         let currentRoute = group.displayName
         var routes = Set<String>()
 
-        // ── 1. Subway station matches ──
+        // ── 1. Subway / commuter-rail station matches ──
         if !cachedStations.isEmpty {
             let stopName = stop.name.lowercased().trimmingCharacters(in: .whitespaces)
+            let stopCoord = CLLocation(latitude: stop.lat, longitude: stop.lon)
 
-            // Exact name match
-            if let match = cachedStations.first(where: {
+            // 1a. Name match — collect ALL stations sharing this name
+            //     (e.g. "Times Sq-42 St" appears for 1/2/3, 7/7X, N/Q/R/W, GS)
+            let nameMatches = cachedStations.filter {
                 $0.name.lowercased().trimmingCharacters(in: .whitespaces) == stopName
-            }) {
-                for r in match.routes where r != currentRoute { routes.insert(r) }
-            } else {
-                // Proximity match (~100 m)
-                let stopCoord = CLLocation(latitude: stop.lat, longitude: stop.lon)
-                let nearbyStations = cachedStations.filter { station in
-                    let loc = CLLocation(
-                        latitude: station.coordinate.latitude,
-                        longitude: station.coordinate.longitude)
-                    return stopCoord.distance(from: loc) <= 100
-                }
-                for station in nearbyStations {
-                    for r in station.routes where r != currentRoute { routes.insert(r) }
-                }
+            }
+            for station in nameMatches {
+                for r in station.routes where r != currentRoute { routes.insert(r) }
+            }
+
+            // 1b. Proximity match — ALWAYS runs (not just as fallback)
+            //     Catches transfer complexes with different names, e.g.:
+            //     · 74 St-Broadway (7) ↔ Jackson Hts-Roosevelt Av (E/F/M/R) — 23 m
+            //     · Court Sq (7) ↔ Court Sq-23 St (E/F) — 111 m
+            //     · Court Sq (7) ↔ Court Sq (G) — 131 m
+            let nameMatchIDs = Set(nameMatches.map(\.id))
+            let nearbyStations = cachedStations.filter { station in
+                guard !nameMatchIDs.contains(station.id) else { return false }
+                let loc = CLLocation(
+                    latitude: station.coordinate.latitude,
+                    longitude: station.coordinate.longitude)
+                return stopCoord.distance(from: loc) <= 200
+            }
+            for station in nearbyStations {
+                for r in station.routes where r != currentRoute { routes.insert(r) }
             }
         }
 
@@ -2660,8 +2674,18 @@ struct RouteDetailSheet: View {
             }
         }
 
+        // Filter out express variants that duplicate a base line the user
+        // already sees (e.g. "6X" when "6" is present, "7X" when "7" is present,
+        // "FX" when "F" is present).  These are the same physical line.
+        let expressVariants: [String: String] = ["6X": "6", "7X": "7", "FX": "F"]
+        for (express, base) in expressVariants {
+            if routes.contains(express) && routes.contains(base) {
+                routes.remove(express)
+            }
+        }
+
         // Sort: subway lines first (numeric then alpha), then buses
-        let subwayIDs: Set<String> = ["1","2","3","4","5","6","7","A","C","E","B","D","F","M","G","J","Z","L","N","Q","R","W","S","SI"]
+        let subwayIDs: Set<String> = ["1","2","3","4","5","6","6X","7","7X","A","C","E","B","D","F","FX","M","G","J","Z","L","N","Q","R","W","GS","FS","SI"]
         return routes.sorted { a, b in
             let aIsSubway = subwayIDs.contains(a.uppercased())
             let bIsSubway = subwayIDs.contains(b.uppercased())

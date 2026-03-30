@@ -27,14 +27,29 @@ _accessibility_cached_at: float = 0.0
 _accessibility_lock = asyncio.Lock()
 
 
-@router.get("/alerts", response_model=list[TransitAlert])
+@router.get(
+    "/alerts",
+    response_model=list[TransitAlert],
+    summary="Get service alerts",
+    description="Returns critical MTA service alerts (delays, suspensions, planned work), optionally filtered by transit mode.",
+)
 async def alerts(
     mode: str | None = Query(
         default=None,
-        description="Filter by transit mode: subway, bus, lirr, mnr. Omit for all.",
+        description="Filter by transit mode. Omit for all modes.",
+        examples=["subway"],
     ),
 ) -> list[TransitAlert]:
-    """Return critical MTA service alerts, optionally filtered by mode."""
+    """Return critical MTA service alerts.
+
+    Each alert includes `title`, `description`, `severity`, `alert_type`
+    (e.g. `Delays`, `Planned - Suspended`), `affected_routes`, and
+    `sort_order` (MTA severity rank — higher = more severe).
+
+    **Modes:** `subway`, `bus`, `lirr`, `mnr` — omit for all.
+
+    Returns an empty array (not an error) if the MTA feed times out.
+    """
     try:
         return await asyncio.wait_for(get_alerts(mode=mode), timeout=8.0)
     except asyncio.TimeoutError:
@@ -48,9 +63,20 @@ async def alerts(
         return []  # return empty instead of 502 to avoid middleware crash
 
 
-@router.get("/accessibility", response_model=list[ElevatorStatus])
+@router.get(
+    "/accessibility",
+    response_model=list[ElevatorStatus],
+    summary="Get elevator & escalator outages",
+    description="Returns currently out-of-service elevators and escalators across the MTA system.",
+)
 async def accessibility() -> list[ElevatorStatus]:
-    """Return currently broken elevators and escalators (cached 5 min)."""
+    """Return currently broken elevators and escalators.
+
+    Each entry includes `station`, `equipment_type` (`elevator` or `escalator`),
+    `description`, and `outage_since`.
+
+    Results are cached for 5 minutes since the MTA feed can be very slow (50+ s).
+    """
     global _accessibility_cache, _accessibility_cached_at
 
     now = time.monotonic()

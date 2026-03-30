@@ -70,6 +70,13 @@ services:
       - key: WEB_CONCURRENCY
         value: "1"
 
+      # ── Docs Access Control ────────────────────────────────
+      # Secret token that gates /api-docs and /openapi.json.
+      # Set a random string in the Render dashboard.
+      # Share docs via: https://<host>/api-docs?token=<TOKEN>
+      - key: DOCS_ACCESS_TOKEN
+        sync: false
+
     # ── Render Persistent Disk ─────────────────────────────────────────────
     # Persists app/data/ across deploys so the 809 MB transit_schedule.db
     # and 430 MB bus GTFS are NOT baked into the Docker image.

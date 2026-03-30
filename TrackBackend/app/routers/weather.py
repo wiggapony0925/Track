@@ -62,18 +62,27 @@ _WMO_TO_SYMBOL: dict[int, tuple[str, str, str]] = {
 _DEFAULT_SYMBOL = ("cloud.fill", "cloud.fill", "Unknown")
 
 
-@router.get("/weather")
+@router.get(
+    "/weather",
+    summary="Get current weather",
+    description="Returns current weather conditions from Open-Meteo, including temperature, SF Symbol name, and WMO code.",
+)
 async def get_weather(
-    lat: float = Query(40.7128, description="Latitude"),
-    lon: float = Query(-74.006, description="Longitude"),
+    lat: float = Query(40.7128, description="Latitude. Defaults to NYC.", examples=[40.7128]),
+    lon: float = Query(-74.006, description="Longitude. Defaults to NYC.", examples=[-74.006]),
 ) -> dict:
-    """Return current weather conditions for the iOS weather chip.
+    """Return current weather conditions.
 
-    Serves as a fallback data source when WeatherKit is unavailable
-    (e.g. iOS Simulator, missing entitlement, rate limit).
+    Response includes:
+    - `temperature_c` / `temperature_f` — current temperature
+    - `wmo_code` — WMO weather interpretation code
+    - `symbol` — Apple SF Symbol name (day/night aware)
+    - `description` — human-readable condition (e.g. "Partly cloudy")
+    - `category` — simplified category (`clear`, `rain`, `snow`)
+    - `windspeed_kmh` — current wind speed
+    - `is_day` — whether it's currently daytime
 
-    Response shape matches what WeatherService.swift needs to build
-    a WeatherSnapshot.
+    Uses a 5-minute cache internally. Serves as a fallback for Apple WeatherKit.
     """
     # Trigger a fetch (uses 5-min cache / 1-min negative cache internally)
     category = await get_current_weather(lat=lat, lon=lon)

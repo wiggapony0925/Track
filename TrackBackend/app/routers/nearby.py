@@ -441,21 +441,24 @@ router = APIRouter(tags=["nearby"])
     "/nearby",
     response_model=list[NearbyTransitArrival],
     deprecated=True,
-    summary="[Deprecated] Use /nearby/grouped instead",
+    summary="List nearby arrivals (flat)",
+    description=(
+        "Returns a flat list of upcoming transit arrivals near the given coordinates. "
+        "**Deprecated** — use `/nearby/grouped` instead, which groups arrivals by route, "
+        "includes ML delay corrections, and benefits from response-level caching."
+    ),
 )
 async def nearby_transit(
     response: Response,
-    lat: float = Query(..., ge=-90, le=90, description="User latitude"),
-    lon: float = Query(..., ge=-180, le=180, description="User longitude"),
-    radius: int | None = Query(None, description="Search radius in meters"),
+    lat: float = Query(..., ge=-90, le=90, description="Latitude of the user's location.", examples=[40.7580]),
+    lon: float = Query(..., ge=-180, le=180, description="Longitude of the user's location.", examples=[-73.9855]),
+    radius: int | None = Query(None, ge=100, le=10000, description="Search radius in meters. Defaults to the server-configured value (~800 m).", examples=[800]),
 ) -> list[NearbyTransitArrival]:
     """Return the nearest buses and trains with live countdowns.
 
-    **Deprecated** — prefer ``/nearby/grouped`` which returns one card per
+    **Deprecated** — prefer `/nearby/grouped` which returns one card per
     route with direction sub-groups, benefits from response-level caching,
     and includes ML delay corrections.
-
-    This flat endpoint remains for the ``fetchNearestMetro`` fallback.
     """
     settings = get_settings()
     effective_radius = radius if radius is not None else settings.app_settings.search_radius_meters
@@ -467,23 +470,38 @@ async def nearby_transit(
     return results
 
 
-@router.get("/nearby/grouped", response_model=list[GroupedNearbyTransit])
+@router.get(
+    "/nearby/grouped",
+    response_model=list[GroupedNearbyTransit],
+    summary="List nearby arrivals grouped by route",
+    description=(
+        "The primary endpoint for the Track home screen. Returns nearby transit arrivals "
+        "grouped by route with direction sub-groups, ML delay corrections, and inline service alerts."
+    ),
+)
 async def nearby_transit_grouped(
-    lat: float = Query(..., ge=-90, le=90, description="User latitude"),
-    lon: float = Query(..., ge=-180, le=180, description="User longitude"),
-    radius: int | None = Query(None, description="Search radius in meters"),
-    mode: str | None = Query(None, description="Filter by transit mode: subway, bus, lirr, mnr"),
+    lat: float = Query(..., ge=-90, le=90, description="Latitude of the user's location.", examples=[40.7580]),
+    lon: float = Query(..., ge=-180, le=180, description="Longitude of the user's location.", examples=[-73.9855]),
+    radius: int | None = Query(None, ge=100, le=10000, description="Search radius in meters. Defaults to the server-configured value (~800 m).", examples=[800]),
+    mode: str | None = Query(None, description="Filter results to a single transit mode.", examples=["subway"]),
 ) -> list[GroupedNearbyTransit]:
     """Return nearby arrivals grouped by route with direction sub-groups.
 
-    Instead of showing eight separate "A" train entries, this endpoint
-    returns one card per route. Each card contains a ``directions``
-    list the iOS app can render as swipeable tabs (e.g. Northbound /
-    Southbound).  The first arrival's ``minutes_away`` is used to sort
-    the groups so the soonest route appears first.
-    
-    The optional ``mode`` filter restricts results to a single transit mode
-    (e.g. ``?mode=subway`` returns only subway groups, ``?mode=lirr`` for LIRR).
+    Instead of returning separate rows for every upcoming train, this endpoint
+    returns **one card per route**. Each card contains a `directions` list
+    (e.g. Northbound / Southbound) that the client can render as swipeable tabs.
+
+    Results are sorted by the soonest arrival so the most imminent route appears first.
+
+    **Features:**
+    - Groups arrivals by route with direction sub-groups
+    - Applies ML delay corrections (LightGBM + recency model)
+    - Embeds inline service alerts per route
+    - Response-level caching (5 s fresh / 30 s stale-while-revalidate)
+
+    **Modes:** `subway`, `bus`, `lirr`, `mnr` — omit for all modes.
+
+    Returns `503` with `Retry-After` header during server cold start (~20 s).
     """
     import time as _time
 

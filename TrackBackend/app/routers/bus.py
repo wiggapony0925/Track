@@ -203,15 +203,21 @@ async def _fetch_bus_schedule_uncached(route_id: str) -> BusScheduleResponse:
     return BusScheduleResponse(route_id=route_id, directions=directions)
 
 
-@router.get("/schedule/{route_id}", response_model=BusScheduleResponse)
+@router.get(
+    "/schedule/{route_id}",
+    response_model=BusScheduleResponse,
+    summary="Get bus schedule",
+    description="Returns today's upcoming scheduled departures for a bus route, grouped by direction/headsign.",
+)
 async def get_bus_schedule(route_id: str, response: Response) -> BusScheduleResponse:
-    """
-    Returns today's upcoming scheduled departures for a bus route,
-    using the OneBusAway schedule-for-stop API.
+    """Return today's upcoming scheduled departures for a bus route.
 
-    Departures are grouped by **headsign** (the trip's terminal destination)
-    which aligns with the logical route directions the iOS app expects
-    (e.g. "RUSH JFK AIRPORT via LEFFERTS BL" vs "RUSH KEW GARDENS via LEFFERTS BL").
+    **Path parameter:** MTA bus route ID — e.g. `B63`, `M34-SBS`, `MTA NYCT_B63`.
+
+    Departures are grouped by **headsign** (the trip's terminal destination),
+    which aligns with the logical route directions.
+
+    Cached for 60 s with stale-while-revalidate.
     """
     response.headers["Cache-Control"] = "public, max-age=60, stale-while-revalidate=600, stale-if-error=3600"
 
@@ -267,9 +273,18 @@ async def get_bus_schedule(route_id: str, response: Response) -> BusScheduleResp
     return await task
 
 
-@router.get("/routes", response_model=list[BusRoute])
+@router.get(
+    "/routes",
+    response_model=list[BusRoute],
+    summary="List all bus routes",
+    description="Returns every MTA bus route with short name, long name, colour, and description.",
+)
 async def bus_routes() -> list[BusRoute]:
-    """Return all MTA bus routes."""
+    """Return all MTA bus routes.
+
+    Each route includes `id`, `short_name` (e.g. `B63`), `long_name`,
+    `color` (hex), and `description`.
+    """
     try:
         return await get_routes()
     except httpx.HTTPStatusError as exc:
@@ -278,9 +293,22 @@ async def bus_routes() -> list[BusRoute]:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
-@router.get("/stops/{route_id:path}", response_model=list[BusStop])
+@router.get(
+    "/stops/{route_id:path}",
+    response_model=list[BusStop],
+    summary="Get stops for a bus route",
+    description="Returns all stops along a specific bus route.",
+)
 async def bus_stops(route_id: str, response: Response) -> list[BusStop]:
-    """Return stops for a bus route (e.g. ``/bus/stops/MTA NYCT_B63``)."""
+    """Return stops for a bus route.
+
+    **Path parameter:** MTA bus route ID — e.g. `MTA NYCT_B63`.
+
+    Each stop includes `id`, `name`, `lat`, `lon`, `direction`, and
+    `route_ids` (all routes that serve this stop).
+
+    Returns an empty array if the upstream API is unavailable.
+    """
     try:
         return await get_stops(route_id)
     except httpx.HTTPStatusError as exc:
@@ -302,14 +330,22 @@ async def bus_stops(route_id: str, response: Response) -> list[BusStop]:
         return []
 
 
-@router.get("/nearby", response_model=list[BusStop])
+@router.get(
+    "/nearby",
+    response_model=list[BusStop],
+    summary="Get nearby bus stops",
+    description="Returns bus stops near a GPS coordinate within the given radius.",
+)
 async def bus_nearby(
     response: Response,
-    lat: float = Query(..., ge=-90, le=90, description="Latitude"),
-    lon: float = Query(..., ge=-180, le=180, description="Longitude"),
-    radius: int | None = Query(None, description="Search radius in meters"),
+    lat: float = Query(..., ge=-90, le=90, description="Latitude of the user's location.", examples=[40.7580]),
+    lon: float = Query(..., ge=-180, le=180, description="Longitude of the user's location.", examples=[-73.9855]),
+    radius: int | None = Query(None, ge=100, le=10000, description="Search radius in meters. Defaults to the server-configured value (~800 m).", examples=[800]),
 ) -> list[BusStop]:
-    """Return bus stops near a GPS coordinate."""
+    """Return bus stops near a GPS coordinate.
+
+    Returns an empty array if the upstream API is unavailable.
+    """
     settings = get_settings()
     effective_radius = radius if radius is not None else settings.app_settings.search_radius_meters
     TrackLogger.location(lat, lon, "bus/nearby")
@@ -334,9 +370,25 @@ async def bus_nearby(
         return []
 
 
-@router.get("/live/{stop_id:path}", response_model=list[BusArrival])
+@router.get(
+    "/live/{stop_id:path}",
+    response_model=list[BusArrival],
+    summary="Get real-time bus arrivals",
+    description="Returns real-time bus arrivals at a specific stop from the MTA SIRI feed.",
+)
 async def bus_live(stop_id: str, response: Response) -> list[BusArrival]:
-    """Return real-time bus arrivals at a stop (e.g. ``/bus/live/MTA_308214``)."""
+    """Return real-time bus arrivals at a stop.
+
+    **Path parameter:** MTA stop ID — e.g. `MTA_308214`.
+
+    Each arrival includes `route_id`, `vehicle_id`, `stop_name`, `status_text`,
+    `expected_arrival`, `distance_meters`, `bearing`, and `is_realtime`.
+
+    When `is_realtime` is `false`, the position is interpolated from the
+    static schedule (the vehicle is not actively transmitting GPS).
+
+    Falls back to scheduled departures if no live data is available.
+    """
     def _schedule_fallback() -> list[BusArrival]:
         scheduled = schedule_service.get_scheduled_arrivals(stop_id, limit=5)
         return [
@@ -387,15 +439,22 @@ async def bus_live(stop_id: str, response: Response) -> list[BusArrival]:
         return _schedule_fallback()
 
 
-@router.get("/vehicles/{route_id:path}", response_model=list[BusVehicle])
+@router.get(
+    "/vehicles/{route_id:path}",
+    response_model=list[BusVehicle],
+    summary="Get live bus positions",
+    description="Returns live GPS positions for all vehicles on a bus route.",
+)
 async def bus_vehicles(route_id: str, response: Response) -> list[BusVehicle]:
     """Return live vehicle positions for a bus route.
 
-    Example: ``/bus/vehicles/MTA NYCT_B63``
+    **Path parameter:** MTA bus route ID — e.g. `MTA NYCT_B63`.
 
-    Each vehicle includes GPS coordinates, bearing, next stop name,
-    and distance status text — everything needed to plot live buses
-    on a map.
+    Each vehicle includes `lat`, `lon`, `bearing`, `next_stop`, `status_text`,
+    `direction_ref`, and `is_realtime`. When `is_realtime` is `false`, the
+    position is interpolated from the static schedule.
+
+    Cached for 5 s with stale-while-revalidate.
     """
     response.headers["Cache-Control"] = "public, max-age=5, stale-while-revalidate=30, stale-if-error=120"
     try:
@@ -419,14 +478,23 @@ async def bus_vehicles(route_id: str, response: Response) -> list[BusVehicle]:
         return []
 
 
-@router.get("/route-shape/{route_id:path}", response_model=RouteShape)
+@router.get(
+    "/route-shape/{route_id:path}",
+    response_model=RouteShape,
+    summary="Get bus route shape",
+    description="Returns encoded polylines and stops for drawing a bus route on a map.",
+)
 async def bus_route_shape(route_id: str, response: Response) -> RouteShape:
     """Return the route shape (polylines + stops) for a bus route.
 
-    Example: ``/bus/route-shape/MTA NYCT_B63``
+    **Path parameter:** MTA bus route ID — e.g. `MTA NYCT_B63`.
 
-    Returns Google-encoded polylines for drawing the route on a map,
-    along with all stops on the route for annotation.
+    Response includes:
+    - `polylines` — Google-encoded polylines for the combined route geometry
+    - `stops` — all stops along the route
+    - `directions` — per-direction shapes split by GTFS `direction_id`
+
+    Cached for 1 hour with stale-while-revalidate.
     """
     response.headers["Cache-Control"] = "public, max-age=3600, stale-while-revalidate=86400, stale-if-error=604800"
     try:
