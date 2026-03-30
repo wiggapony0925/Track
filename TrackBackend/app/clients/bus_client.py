@@ -488,7 +488,6 @@ def _load_static_bus_route_shape_index() -> dict[str, RouteShape]:
         trips_path = borough_dir / "trips.txt"
         shapes_path = borough_dir / "shapes.txt"
         stops_path = borough_dir / "stops.txt"
-        stop_times_path = borough_dir / "stop_times.txt"
         # shapes_path is still read as CSV (small); stop_times is now
         # queried from SQLite so we no longer require the CSV to exist.
         if not (routes_path.exists() and trips_path.exists() and shapes_path.exists() and stops_path.exists()):
@@ -588,26 +587,16 @@ def _load_static_bus_route_shape_index() -> dict[str, RouteShape]:
             except Exception as _exc:
                 TrackLogger.warning(f"Static shape index: SQLite stop query failed: {_exc}", tag="BUS")
         else:
-            # Absolute fallback: read stop_times CSV (expensive, but shouldn't
-            # reach here on Render where the DB is always built).
-            if stop_times_path.exists():
-                with open(stop_times_path, encoding="utf-8") as f:
-                    for row in csv.DictReader(f):
-                        trip_id = (row.get("trip_id") or "").strip()
-                        stop_id = (row.get("stop_id") or "").strip()
-                        if not trip_id or not stop_id:
-                            continue
-                        meta = trip_to_meta.get(trip_id)
-                        if not meta:
-                            continue
-                        short, _dir_id, _shape_id = meta
-                        if stop_id not in route_stop_seen[short]:
-                            route_stop_seen[short].add(stop_id)
-                            try:
-                                seq = int(row.get("stop_sequence") or 0)
-                            except (ValueError, TypeError):
-                                seq = 0
-                            route_stop_ordered[short].append((seq, stop_id))
+            # No SQLite DB available — skip stop-route mapping entirely.
+            # The old CSV fallback (stop_times.txt, 6.5M rows) was removed
+            # because it would OOM on Render's 2 GB plan before finishing.
+            # The Docker build always produces transit_schedule.db, so this
+            # branch should never execute in production.
+            TrackLogger.warning(
+                "transit_schedule.db not found — stop ordering will be empty "
+                "for this borough. Build the DB with scripts/build_schedule_db.py.",
+                tag="BUS",
+            )
 
         for short, by_dir in route_shape_ids_by_dir.items():
             directions: list[DirectionShape] = []

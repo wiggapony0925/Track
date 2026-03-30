@@ -85,12 +85,37 @@ def _load_shapes_disk_cache() -> AllSubwayLinesResponse | None:
 
 
 def _save_shapes_disk_cache(resp: AllSubwayLinesResponse) -> None:
-    """Persist the shapes/all response to disk so it survives restarts."""
+    """Persist the shapes/all response to disk so it survives restarts.
+
+    Uses atomic write (tmp file + rename) so a crash mid-write can't
+    leave a corrupted JSON file that breaks the next cold start.
+    """
     try:
         import json
+        import tempfile
         _SHAPES_DISK_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
         data = resp.model_dump(mode="json")
-        _SHAPES_DISK_CACHE_PATH.write_text(json.dumps(data))
+        payload = json.dumps(data)
+        # Write to a temp file in the same directory, then atomic rename.
+        # os.rename() is atomic on POSIX when src and dst are on the same
+        # filesystem — guaranteed here since both are in app/data/.
+        fd, tmp_path = tempfile.mkstemp(
+            dir=_SHAPES_DISK_CACHE_PATH.parent,
+            suffix=".tmp",
+        )
+        try:
+            with open(fd, "w") as f:
+                f.write(payload)
+            import os
+            os.replace(tmp_path, _SHAPES_DISK_CACHE_PATH)
+        except BaseException:
+            # Clean up the temp file if rename failed
+            import os
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
         size_kb = _SHAPES_DISK_CACHE_PATH.stat().st_size / 1024
         TrackLogger.info(
             f"[SHAPES_DISK] Saved shapes/all disk cache ({size_kb:.0f} KB)",
@@ -701,76 +726,80 @@ def _merge_polyline_segments(
         if not merged:
             chains.append(list(seg))
 
-    # Second pass: merge chains with each other
+    # Second pass: merge chains using a spatial hash so lookups are O(1)
+    # instead of scanning every chain pair.  Keys are coordinate tuples
+    # rounded to ~11 m precision (5 decimal places ≈ 1.1 m, but we use 4
+    # to create a coarser grid that captures the 200 m gap threshold with
+    # neighboring-cell checks).
+    _GRID_DECIMALS = 3  # ~111 m cells — comfortably covers 200 m threshold
+
+    def _grid_key(pt: tuple[float, float]) -> tuple[int, int]:
+        return (round(pt[0], _GRID_DECIMALS), round(pt[1], _GRID_DECIMALS))
+
+    def _neighbor_keys(pt: tuple[float, float]) -> list[tuple[int, int]]:
+        """Return the grid cell + 8 neighbors to handle points near cell edges."""
+        base_lat = round(pt[0], _GRID_DECIMALS)
+        base_lon = round(pt[1], _GRID_DECIMALS)
+        step = 10 ** (-_GRID_DECIMALS)
+        keys = []
+        for dlat in (-step, 0, step):
+            for dlon in (-step, 0, step):
+                keys.append((round(base_lat + dlat, _GRID_DECIMALS),
+                             round(base_lon + dlon, _GRID_DECIMALS)))
+        return keys
+
     did_merge = True
     while did_merge:
         did_merge = False
+        # Build spatial index: grid_cell → set of chain indices with an
+        # endpoint in that cell.  Only endpoints matter for merging.
+        from collections import defaultdict as _defaultdict
+        endpoint_index: dict[tuple, set[int]] = _defaultdict(set)
+        for idx, chain in enumerate(chains):
+            for key in _neighbor_keys(chain[0]):
+                endpoint_index[key].add(idx)
+            for key in _neighbor_keys(chain[-1]):
+                endpoint_index[key].add(idx)
+
+        merged_away: set[int] = set()
         for i in range(len(chains)):
-            for j in range(i + 1, len(chains)):
+            if i in merged_away:
+                continue
+            # Collect candidate chain indices near our endpoints
+            candidates: set[int] = set()
+            for key in _neighbor_keys(chains[i][0]):
+                candidates.update(endpoint_index.get(key, set()))
+            for key in _neighbor_keys(chains[i][-1]):
+                candidates.update(endpoint_index.get(key, set()))
+            candidates.discard(i)
+            candidates -= merged_away
+
+            for j in sorted(candidates):
                 if _dist_m(chains[i][-1], chains[j][0]) < gap_threshold_m:
-                    chains[i].extend(chains[j][1:])
-                    chains.pop(j)
+                    chains[i] = chains[i] + chains[j][1:]
+                    merged_away.add(j)
                     did_merge = True
                     break
                 if _dist_m(chains[j][-1], chains[i][0]) < gap_threshold_m:
                     chains[i] = chains[j] + chains[i][1:]
-                    chains.pop(j)
+                    merged_away.add(j)
                     did_merge = True
                     break
                 if _dist_m(chains[i][-1], chains[j][-1]) < gap_threshold_m:
-                    chains[i].extend(reversed(chains[j][:-1]))
-                    chains.pop(j)
+                    chains[i] = chains[i] + list(reversed(chains[j][:-1]))
+                    merged_away.add(j)
                     did_merge = True
                     break
                 if _dist_m(chains[i][0], chains[j][0]) < gap_threshold_m:
                     chains[i] = list(reversed(chains[j][1:])) + chains[i]
-                    chains.pop(j)
+                    merged_away.add(j)
                     did_merge = True
                     break
-            if did_merge:
-                break
+
+        if merged_away:
+            chains = [c for idx, c in enumerate(chains) if idx not in merged_away]
 
     return chains
 
-
-# ---------------------------------------------------------------------------
-# Chaikin's corner-cutting algorithm for polyline smoothing
-# ---------------------------------------------------------------------------
-
-
-def _chaikin_smooth(
-    coords: list[tuple[float, float]],
-    iterations: int = 3,
-) -> list[tuple[float, float]]:
-    """Smooth a polyline using Chaikin's corner-cutting algorithm.
-
-    Each iteration replaces every interior edge with two new points at
-    the 25% and 75% positions, progressively rounding sharp corners
-    while preserving the overall path shape.
-
-    The first and last points are always preserved to maintain
-    connectivity with adjacent polyline segments.
-    """
-    if len(coords) <= 2:
-        return coords
-
-    pts = list(coords)
-    for _ in range(iterations):
-        if len(pts) <= 2:
-            break
-        new_pts: list[tuple[float, float]] = [pts[0]]  # preserve start
-        for i in range(len(pts) - 1):
-            p0 = pts[i]
-            p1 = pts[i + 1]
-            # Q = 3/4 * P0 + 1/4 * P1
-            q = (0.75 * p0[0] + 0.25 * p1[0], 0.75 * p0[1] + 0.25 * p1[1])
-            # R = 1/4 * P0 + 3/4 * P1
-            r = (0.25 * p0[0] + 0.75 * p1[0], 0.25 * p0[1] + 0.75 * p1[1])
-            new_pts.append(q)
-            new_pts.append(r)
-        new_pts.append(pts[-1])  # preserve end
-        pts = new_pts
-
-    return pts
 
 

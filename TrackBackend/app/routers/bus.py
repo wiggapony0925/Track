@@ -63,8 +63,11 @@ def _raise_bus_upstream_http_error(exc: httpx.HTTPStatusError) -> None:
 # with 10-minute stale-while-revalidate covers both rapid re-opens and
 # background refresh, preventing upstream pile-up on a single-worker server.
 import time as _time, re as _re
+from collections import OrderedDict as _OrderedDict
 
-_schedule_cache: dict[str, tuple[float, BusScheduleResponse]] = {}
+# OrderedDict gives O(1) LRU eviction: move_to_end() on access,
+# popitem(last=False) to evict the oldest entry.
+_schedule_cache: _OrderedDict[str, tuple[float, BusScheduleResponse]] = _OrderedDict()
 _SCHEDULE_FRESH_TTL = 120       # 2 min
 _SCHEDULE_STALE_TTL = 600       # 10 min
 _SCHEDULE_MAX_SIZE  = 100
@@ -112,12 +115,18 @@ async def _fetch_bus_schedule_uncached(route_id: str) -> BusScheduleResponse:
     if not stop_models:
         return BusScheduleResponse(route_id=route_id, directions=[])
 
+    # Always include the first and last stops (terminals) — these have
+    # the most reliable schedule data because every trip passes through
+    # them.  Fill the remaining slots with evenly-spaced interior stops.
     max_sample = 6
     if len(stop_models) <= max_sample:
         sample_stops = stop_models
     else:
-        step = len(stop_models) / max_sample
-        sample_stops = [stop_models[int(i * step)] for i in range(max_sample)]
+        interior_count = max_sample - 2  # reserve 2 slots for terminals
+        interior = stop_models[1:-1]
+        step = len(interior) / interior_count
+        sampled_interior = [interior[int(i * step)] for i in range(interior_count)]
+        sample_stops = [stop_models[0]] + sampled_interior + [stop_models[-1]]
 
     TrackLogger.info(
         f"[SCHEDULE] {route_id}: {len(stop_models)} total stops, "
@@ -230,6 +239,7 @@ async def get_bus_schedule(route_id: str, response: Response) -> BusScheduleResp
         ts, result = cached
         age = now - ts
         if age < _SCHEDULE_FRESH_TTL:
+            _schedule_cache.move_to_end(key)  # mark as recently used
             TrackLogger.info(f"[SCHEDULE] CACHE HIT {route_id} (age={age:.0f}s)", tag="BUS")
             return result
         if age < _SCHEDULE_STALE_TTL:
@@ -260,10 +270,10 @@ async def get_bus_schedule(route_id: str, response: Response) -> BusScheduleResp
         try:
             result = await _fetch_bus_schedule_uncached(route_id)
             _schedule_cache[key] = (_time.monotonic(), result)
-            # Evict oldest when oversized
-            if len(_schedule_cache) > _SCHEDULE_MAX_SIZE:
-                oldest_key = min(_schedule_cache, key=lambda k: _schedule_cache[k][0])
-                _schedule_cache.pop(oldest_key, None)
+            _schedule_cache.move_to_end(key)  # freshest at the end
+            # Evict oldest (front of OrderedDict) — O(1)
+            while len(_schedule_cache) > _SCHEDULE_MAX_SIZE:
+                _schedule_cache.popitem(last=False)
             return result
         finally:
             _schedule_inflight.pop(key, None)

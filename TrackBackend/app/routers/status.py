@@ -18,13 +18,44 @@ from app.utils.logger import TrackLogger
 
 router = APIRouter(tags=["status"])
 
-# ── Accessibility cache ───────────────────────────────────────────────────
+# -- Accessibility cache ---------------------------------------------------
 # The MTA elevator/escalator JSON feed can be extremely slow (50+ seconds).
-# Cache results for 5 minutes so only one request per period pays that cost.
+# Uses stale-while-revalidate: always return cached data instantly to the
+# user, then refresh in the background.  No user ever blocks on the MTA.
 _ACCESSIBILITY_CACHE_TTL = 300  # 5 minutes
 _accessibility_cache: list[ElevatorStatus] | None = None
 _accessibility_cached_at: float = 0.0
-_accessibility_lock = asyncio.Lock()
+_accessibility_refreshing: bool = False  # True while a bg refresh is running
+
+
+async def _refresh_accessibility_cache() -> None:
+    """Background task: fetch elevator status and update the cache.
+
+    If the fetch fails or times out, the stale cache is preserved so
+    subsequent requests still return data.
+    """
+    global _accessibility_cache, _accessibility_cached_at, _accessibility_refreshing
+    try:
+        result = await asyncio.wait_for(get_broken_elevators(), timeout=30.0)
+        _accessibility_cache = result
+        _accessibility_cached_at = time.monotonic()
+        TrackLogger.info(
+            f"[ACCESSIBILITY] Cache refreshed -- {len(result)} outages",
+            tag="ALERTS",
+        )
+    except asyncio.TimeoutError:
+        TrackLogger.warning(
+            "[ACCESSIBILITY] Background refresh timed out (30s) -- keeping stale cache",
+            tag="ALERTS",
+        )
+    except Exception as exc:
+        TrackLogger.error(
+            f"[ACCESSIBILITY] Background refresh failed: {exc}",
+            tag="ALERTS",
+            exc_info=True,
+        )
+    finally:
+        _accessibility_refreshing = False
 
 
 @router.get(
@@ -42,11 +73,11 @@ async def alerts(
 ) -> list[TransitAlert]:
     """Return critical MTA service alerts.
 
-    Each alert includes `title`, `description`, `severity`, `alert_type`
-    (e.g. `Delays`, `Planned - Suspended`), `affected_routes`, and
-    `sort_order` (MTA severity rank — higher = more severe).
+    Each alert includes title, description, severity, alert_type
+    (e.g. Delays, Planned - Suspended), affected_routes, and
+    sort_order (MTA severity rank -- higher = more severe).
 
-    **Modes:** `subway`, `bus`, `lirr`, `mnr` — omit for all.
+    Modes: subway, bus, lirr, mnr -- omit for all.
 
     Returns an empty array (not an error) if the MTA feed times out.
     """
@@ -54,13 +85,22 @@ async def alerts(
         return await asyncio.wait_for(get_alerts(mode=mode), timeout=8.0)
     except asyncio.TimeoutError:
         TrackLogger.info(
-            f"[ALERTS] /alerts timed out after 8s (mode={mode}) \u2014 returning empty",
+            f"[ALERTS] /alerts timed out after 8s (mode={mode}) -- returning empty",
             tag="ALERTS",
         )
         return []
+    except (OSError, ConnectionError) as exc:
+        # Network-level failures -- expected when MTA is down
+        TrackLogger.info(f"[ALERTS] Upstream unreachable (mode={mode}): {exc}", tag="ALERTS")
+        return []
     except Exception as exc:
-        TrackLogger.info(f"[ALERTS] Failed to fetch alerts (mode={mode}): {exc}", tag="ALERTS")
-        return []  # return empty instead of 502 to avoid middleware crash
+        # Unexpected errors (parsing bugs, KeyError, etc.) -- log at warning
+        # so they surface in monitoring, but still degrade gracefully.
+        TrackLogger.warning(
+            f"[ALERTS] Unexpected error fetching alerts (mode={mode}): {type(exc).__name__}: {exc}",
+            tag="ALERTS",
+        )
+        return []
 
 
 @router.get(
@@ -73,24 +113,36 @@ async def alerts(
 async def accessibility() -> list[ElevatorStatus]:
     """Return currently broken elevators and escalators.
 
-    Each entry includes `station`, `equipment_type` (`elevator` or `escalator`),
-    `description`, and `outage_since`.
+    Each entry includes station, equipment_type (elevator or escalator),
+    description, and outage_since.
 
-    Results are cached for 5 minutes since the MTA feed can be very slow (50+ s).
+    Uses stale-while-revalidate: always returns instantly from cache.
+    A background task refreshes the data every 5 minutes.
+    On first cold request (no cache), fetches synchronously with a 30s timeout.
     """
-    global _accessibility_cache, _accessibility_cached_at
+    global _accessibility_refreshing
 
     now = time.monotonic()
-    if _accessibility_cache is not None and (now - _accessibility_cached_at) < _ACCESSIBILITY_CACHE_TTL:
+    age = now - _accessibility_cached_at
+
+    # Fast path: cache is fresh -- return immediately
+    if _accessibility_cache is not None and age < _ACCESSIBILITY_CACHE_TTL:
         return _accessibility_cache
 
-    # Use a lock so concurrent requests don't all hit MTA simultaneously
-    async with _accessibility_lock:
-        # Double-check after acquiring lock (another request may have populated)
-        now = time.monotonic()
-        if _accessibility_cache is not None and (now - _accessibility_cached_at) < _ACCESSIBILITY_CACHE_TTL:
-            return _accessibility_cache
+    # Stale cache exists -- return it instantly, kick bg refresh if not already running
+    if _accessibility_cache is not None:
+        if not _accessibility_refreshing:
+            _accessibility_refreshing = True
+            asyncio.create_task(_refresh_accessibility_cache())
+            TrackLogger.info(
+                f"[ACCESSIBILITY] Serving stale cache (age={age:.0f}s), bg refresh started",
+                tag="ALERTS",
+            )
+        return _accessibility_cache
 
+    # Cold start: no cache at all -- must fetch synchronously (first request only)
+    if not _accessibility_refreshing:
+        _accessibility_refreshing = True
         try:
             result = await asyncio.wait_for(get_broken_elevators(), timeout=30.0)
             _accessibility_cache = result
@@ -98,12 +150,21 @@ async def accessibility() -> list[ElevatorStatus]:
             return result
         except asyncio.TimeoutError:
             TrackLogger.warning(
-                "[ALERTS] Elevator status fetch timed out (30s) — returning stale/empty",
+                "[ACCESSIBILITY] Cold-start fetch timed out (30s) -- returning empty",
                 tag="ALERTS",
             )
-            return _accessibility_cache or []
+            return []
         except Exception as exc:
-            TrackLogger.error(f"[ALERTS] Failed to fetch elevator status: {exc}", tag="ALERTS", exc_info=True)
-            if _accessibility_cache is not None:
-                return _accessibility_cache  # serve stale on error
+            TrackLogger.error(
+                f"[ACCESSIBILITY] Cold-start fetch failed: {exc}",
+                tag="ALERTS",
+                exc_info=True,
+            )
             raise HTTPException(status_code=502, detail=str(exc)) from exc
+        finally:
+            _accessibility_refreshing = False
+
+    # Another request is already doing the cold-start fetch -- return empty
+    # rather than blocking.  The next request after the fetch completes
+    # will return the populated cache.
+    return []

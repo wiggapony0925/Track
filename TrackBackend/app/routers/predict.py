@@ -40,6 +40,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import math
 import os
 import time
@@ -69,6 +70,11 @@ def _ml_enabled() -> bool:
 
 # ── In-process L1 LRU cache ───────────────────────────────────────────────
 _L1: "OrderedDict[str, tuple[float, float]]" = OrderedDict()  # key → (factor, stored_at)
+
+# ── Inflight coalescing for contextual cache misses ───────────────────────
+# Prevents thundering herd: if 50 requests hit the same expired key
+# simultaneously, only one computes the factor + writes to Redis.
+_inflight: dict[str, asyncio.Task] = {}
 
 
 def _l1_get(key: str) -> float | None:
@@ -127,8 +133,10 @@ class DelayPrediction(BaseModel):
     original_minutes: int
     delay_factor: float
     adjustment_reason: str | None = None
-    model_source: str = "heuristic"   # "model"|"model_live"|"heuristic"|"heuristic_live"|"l1_hit"|"l2_hit"|"disabled"
+    model_source: str = "heuristic"   # "model"|"model_live"|"heuristic"|"heuristic_live"|"l1_hit"|"l2_hit"|"coalesced"|"disabled"
     recency_error_seconds: float = 0.0  # signed correction from recency model (+ = late)
+    is_rush_hour: bool = False          # structured flag so iOS can format its own reason string
+    weather_condition: str = "clear"    # echo back the weather used for prediction
 
 
 # ── Endpoint ──────────────────────────────────────────────────────────────
@@ -240,15 +248,31 @@ async def predict_delay(
                 _l1_set(factor_cache_key, factor)
                 source = "l2_hit"
             else:
-                factor, source = predict_factor(
-                    route_id=route_id,
-                    hour=hour,
-                    dow=day_of_week,
-                    weather=weather_lower,
-                    mode=mode_lower,
-                )
-                _l1_set(factor_cache_key, factor)
-                await _redis_set(factor_cache_key, factor)
+                # Coalesce concurrent misses for the same key — only one
+                # task computes the factor and writes to Redis/L1.
+                inflight = _inflight.get(factor_cache_key)
+                if inflight is not None:
+                    factor, source = await inflight
+                    source = "coalesced"
+                else:
+                    async def _compute_and_store(k: str) -> tuple[float, str]:
+                        try:
+                            f, s = predict_factor(
+                                route_id=route_id,
+                                hour=hour,
+                                dow=day_of_week,
+                                weather=weather_lower,
+                                mode=mode_lower,
+                            )
+                            _l1_set(k, f)
+                            await _redis_set(k, f)
+                            return f, s
+                        finally:
+                            _inflight.pop(k, None)
+
+                    task = asyncio.create_task(_compute_and_store(factor_cache_key))
+                    _inflight[factor_cache_key] = task
+                    factor, source = await task
 
     # ── 2. Recency correction (per-stop, real-time) ──────────────────────
     # How much this specific stop has been running late/early recently.
@@ -308,6 +332,8 @@ async def predict_delay(
         adjustment_reason=reason,
         model_source=source,
         recency_error_seconds=round(recency_error_s, 2),
+        is_rush_hour=_is_rush(hour, day_of_week),
+        weather_condition=weather_lower,
     )
 
 

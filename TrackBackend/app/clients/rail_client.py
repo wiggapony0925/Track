@@ -34,8 +34,7 @@ def filter_fresh_arrivals(arrivals: list) -> list:
     Used identically by the LIRR and MNR routers — extracted here to avoid
     copy-pasting the same four lines in two places.
     """
-    import time as _t
-    now = int(_t.time())
+    now = int(_time.time())
     fresh = [a for a in arrivals if a.arrival_ts and a.arrival_ts > now]
     for a in fresh:
         a.minutes_away = max(0, (a.arrival_ts - now) // 60)
@@ -109,6 +108,7 @@ def _parse_rail_feed_sync(
             else:
                 status = "On Time"
 
+            stop_info = get_stop_info(stu.stop_id, agency=lookup_agency)
             arrivals.append(
                 TrackArrival(
                     route_id=route_id,
@@ -120,7 +120,7 @@ def _parse_rail_feed_sync(
                     arrival_ts=arrival_time,
                     status=status,
                     trip_id=trip_update.trip.trip_id,
-                    stop_lat=stop_info.lat if (stop_info := get_stop_info(stu.stop_id, agency=lookup_agency)) else None,
+                    stop_lat=stop_info.lat if stop_info else None,
                     stop_lon=stop_info.lon if stop_info else None,
                 )
             )

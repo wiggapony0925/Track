@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections import OrderedDict
 from typing import Any
 
 import httpx
@@ -56,12 +57,12 @@ def _describe_exception(exc: BaseException) -> str:
 # ---------------------------------------------------------------------------
 
 class AsyncTTLCache:
-    """Simple bounded TTL cache.
+    """Simple bounded TTL cache backed by an OrderedDict.
 
     - get(): O(1)
-    - set(): O(1) amortized, O(n) worst-case during eviction sweep.
-    - Eviction: When cache exceeds *max_size*, removes all expired entries.
-      If still over limit, drops the oldest 25%.
+    - set(): O(1) amortized (re-inserts move the key to the tail).
+    - Eviction: When cache exceeds *max_size*, pops the oldest 25%
+      from the front of the OrderedDict in O(k) time — no sorting.
     """
 
     def __init__(
@@ -73,7 +74,7 @@ class AsyncTTLCache:
         self.fresh_ttl = fresh_ttl
         self.stale_ttl = stale_ttl
         self.max_size = max_size
-        self._cache: dict[str, tuple[float, Any]] = {}
+        self._cache: OrderedDict[str, tuple[float, Any]] = OrderedDict()
 
     def get_state(self, key: str) -> tuple[Any | None, str | None]:
         entry = self._cache.get(key)
@@ -100,6 +101,8 @@ class AsyncTTLCache:
         return None, None
 
     def set(self, key: str, value: Any) -> None:
+        # Remove first so re-insertion moves the key to the tail.
+        self._cache.pop(key, None)
         if len(self._cache) >= self.max_size:
             TrackLogger.cache(f"Evicting — cache at {len(self._cache)}/{self.max_size}")
             self._evict()
@@ -115,19 +118,11 @@ class AsyncTTLCache:
         cache_stats.tick()
 
     def _evict(self) -> None:
-        """Remove expired entries; if still over limit, drop oldest 25%."""
-        now = time.time()
-        # Remove all expired
-        self._cache = {
-            k: (ts, v) for k, (ts, v) in self._cache.items()
-            if now - ts < self.stale_ttl
-        }
-        # If still at capacity, drop oldest quarter
-        if len(self._cache) >= self.max_size:
-            sorted_keys = sorted(self._cache, key=lambda k: self._cache[k][0])
-            drop_count = max(1, len(sorted_keys) // 4)
-            for k in sorted_keys[:drop_count]:
-                del self._cache[k]
+        """Pop the oldest 25% from the front — O(k), no sorting."""
+        drop_count = max(1, len(self._cache) // 4)
+        for _ in range(drop_count):
+            if self._cache:
+                self._cache.popitem(last=False)
 
 
 # Shared cache instance

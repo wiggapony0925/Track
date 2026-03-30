@@ -569,7 +569,7 @@ async def _warmup_caches():
         TrackLogger.info("[WARMUP] Pre-computing corridor pipeline (shapes/all)...", tag="WARMUP")
         # Run the CPU-heavy work in a thread to avoid blocking the event loop
         # (lru_cache file I/O + corridor pipeline are sync/CPU-bound)
-        await asyncio.get_event_loop().run_in_executor(
+        await asyncio.get_running_loop().run_in_executor(
             None,
             _sync_prewarm_shapes,
         )
@@ -815,7 +815,6 @@ async def health():
     Returns `503` with `Retry-After: 10` during the initial feed warmup window.
     """
     if not _warmup_complete:
-        from fastapi.responses import JSONResponse
         return JSONResponse(
             status_code=503,
             content={"status": "warming_up"},
