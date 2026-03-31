@@ -93,6 +93,25 @@ def _normalize_route_token(raw: str) -> str:
     return token
 
 
+# Regex to extract a bus route token embedded between underscores in a trip ID.
+# MTA trip IDs follow: "AGENCY_DEPOT_SERVICE_ROUTE_BLOCK[_TIMESTAMP]"
+# e.g. "MTA NYCT_MV_A6-Weekday-SDon-036000_M11_601"
+# The route segment is letters followed by digits (optionally +/-SBS).
+_TRIP_ROUTE_RE = _re.compile(r"_([A-Za-z]+\d+(?:[+-]SBS)?)_")
+
+
+def _trip_route_token(trip_id: str) -> str | None:
+    """Extract a normalised route token from an MTA trip ID, if recognisable.
+
+    Returns ``None`` when the format is unrecognised so the caller can
+    conservatively keep the trip rather than wrongly filtering it out.
+    """
+    m = _TRIP_ROUTE_RE.search(trip_id)
+    if m is None:
+        return None
+    return _normalize_route_token(m.group(1))
+
+
 async def _fetch_bus_schedule_uncached(route_id: str) -> BusScheduleResponse:
     """Actual OBA schedule fetch — extracted so the handler can wrap it with caching."""
     settings = get_settings()
@@ -136,6 +155,7 @@ async def _fetch_bus_schedule_uncached(route_id: str) -> BusScheduleResponse:
 
     req_token = _normalize_route_token(route_id)
     all_departures: list[BusScheduleDeparture] = []
+    interline_skipped = 0
 
     # Re-use a single httpx client for all stops (connection pooling)
     async with httpx.AsyncClient(timeout=10) as client:
@@ -170,18 +190,39 @@ async def _fetch_bus_schedule_uncached(route_id: str) -> BusScheduleResponse:
                     headsign = dg.get("tripHeadsign", "")
                     for ts in dg.get("scheduleStopTimes", []):
                         t = ts.get("departureTime", 0) or ts.get("arrivalTime", 0)
-                        if t and t / 1000 > now_epoch:
-                            all_departures.append(BusScheduleDeparture(
-                                stop_name=stop.name,
-                                stop_id=stop.id,
-                                departure_time=t // 1000,
-                                headsign=headsign,
-                                trip_id=ts.get("tripId", ""),
-                            ))
+                        if not (t and t / 1000 > now_epoch):
+                            continue
+
+                        trip_id = ts.get("tripId", "")
+
+                        # ── Interline guard ────────────────────────
+                        # OBA nests interlined trips inside the
+                        # parent route's SRS block (e.g. M104 trips
+                        # appear under M11).  The trip ID embeds the
+                        # *actual* route — reject mismatches.
+                        trip_token = _trip_route_token(trip_id)
+                        if trip_token is not None and trip_token != req_token:
+                            interline_skipped += 1
+                            continue
+
+                        all_departures.append(BusScheduleDeparture(
+                            stop_name=stop.name,
+                            stop_id=stop.id,
+                            departure_time=t // 1000,
+                            headsign=headsign,
+                            trip_id=trip_id,
+                        ))
 
             found_headsigns = set(d.headsign for d in all_departures)
             if len(found_headsigns) >= 2 and len(all_departures) >= 10:
                 break
+
+    if interline_skipped:
+        TrackLogger.info(
+            f"[SCHEDULE] {route_id}: filtered {interline_skipped} interlined "
+            f"trips from other routes",
+            tag="BUS",
+        )
 
     hs_groups: dict[str, list[BusScheduleDeparture]] = {}
     for dep in all_departures:

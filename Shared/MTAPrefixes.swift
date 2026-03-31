@@ -82,18 +82,31 @@ func stripMTAStopPrefix(_ id: String) -> String {
 /// Strips known agency prefixes, removes spaces, removes the `-SBS` suffix
 /// (grouped API uses `"M23-SBS"` while GTFS stop IDs use `"MTA NYCT_M23+"`),
 /// and uppercases the result so both representations compare equal.
+///
+/// Also handles the `+SBS` variant: `stripMTAAgencyPrefix` converts `+` to
+/// nothing, leaving a bare `SBS` suffix — we strip trailing `SBS` to match.
+///
 /// Examples:
-///   - "MTA NYCT_Q10"  -> "Q10"
-///   - "MTABC_Q10"     -> "Q10"
-///   - "M23-SBS"       -> "M23"
-///   - "MTA NYCT_M23+" -> "M23"
-///   - "LIRR_9"        -> "9"
-///   - "mnr_1"         -> "1"
+///   - "MTA NYCT_Q10"       -> "Q10"
+///   - "MTABC_Q10"          -> "Q10"
+///   - "M23-SBS"            -> "M23"
+///   - "MTA NYCT_M23+"      -> "M23"
+///   - "MTA NYCT_M14A+SBS"  -> "M14A"
+///   - "M14A-SBS"           -> "M14A"
+///   - "LIRR_9"             -> "9"
+///   - "mnr_1"              -> "1"
 func normalizeMTARouteToken(_ id: String) -> String {
     var result = stripMTAAgencyPrefix(id)
         .replacingOccurrences(of: "-SBS", with: "", options: .caseInsensitive)
         .replacingOccurrences(of: " ", with: "")
         .uppercased()
+
+    // Strip trailing "SBS" that remains when the input used the +SBS form.
+    // stripMTAAgencyPrefix removes all "+" chars, so "M14A+SBS" → "M14ASBS".
+    // The "-SBS" replacement above doesn't catch that — handle it here.
+    if result.hasSuffix("SBS") {
+        result = String(result.dropLast(3))
+    }
 
     // Strip leading zeros from the numeric portion.
     // GTFS shape data zero-pads some route numbers ("MTABC_Q09" → "Q09")
