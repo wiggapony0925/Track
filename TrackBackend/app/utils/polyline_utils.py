@@ -31,7 +31,7 @@ def decode_polyline(encoded: str) -> list[tuple[float, float]]:
                 lng += delta
             else:
                 lat += delta
-        coords.append((lat / 1e5, lng / 1e5))
+        coords.append((lat / 1e6, lng / 1e6))
     return coords
 
 
@@ -43,11 +43,11 @@ def encode_polyline(coords: list[tuple[float, float]]) -> str:
     result: list[str] = []
     prev_lat, prev_lng = 0, 0
     for lat, lng in coords:
-        lat_e5 = round(lat * 1e5)
-        lng_e5 = round(lng * 1e5)
-        _encode_value(lat_e5 - prev_lat, result)
-        _encode_value(lng_e5 - prev_lng, result)
-        prev_lat, prev_lng = lat_e5, lng_e5
+        lat_e6 = round(lat * 1e6)
+        lng_e6 = round(lng * 1e6)
+        _encode_value(lat_e6 - prev_lat, result)
+        _encode_value(lng_e6 - prev_lng, result)
+        prev_lat, prev_lng = lat_e6, lng_e6
     return "".join(result)
 
 
@@ -84,14 +84,14 @@ def _wgs84_dist(a: tuple[float, float], b: tuple[float, float]) -> float:
 
 def densify_wgs84(
     coords: list[tuple[float, float]],
-    max_spacing_m: float = 100.0,
+    max_spacing_m: float = 25.0,
 ) -> list[tuple[float, float]]:
     """Linearly interpolate points into segments longer than *max_spacing_m*.
 
     Operates in WGS-84 (lat, lon) — no reprojection needed.  This
-    prevents client-side Catmull-Rom smoothing from bowing outward
-    between sparse GTFS vertices (e.g. 600 m gaps on the 7 train's
-    straight elevated section above Roosevelt Ave).
+    ensures curves have enough vertices at ~25 m spacing so client-side
+    filleting produces smooth arcs (was 100 m — too sparse for tight
+    subway turns).
     """
     if len(coords) < 2:
         return list(coords)

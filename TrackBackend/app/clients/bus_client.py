@@ -322,7 +322,7 @@ def _densify_bus_polylines(encoded_segments: list[str]) -> list[str]:
             result.append(seg)
             continue
         densified = densify_wgs84(coords)
-        simplified = simplify_polyline(densified, tolerance=0.00005)
+        simplified = simplify_polyline(densified, tolerance=0.00002)
         result.append(encode_polyline(simplified))
     return result
 

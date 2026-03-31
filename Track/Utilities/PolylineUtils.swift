@@ -14,16 +14,16 @@ import CoreLocation
 nonisolated func decodePolyline(_ encoded: String) -> [CLLocationCoordinate2D] {
     var coordinates: [CLLocationCoordinate2D] = []
     var index = encoded.startIndex
-    var lat: Int32 = 0
-    var lon: Int32 = 0
+    var lat: Int64 = 0
+    var lon: Int64 = 0
 
     while index < encoded.endIndex {
-        var shift: Int32 = 0
-        var result: Int32 = 0
-        var byte: Int32
+        var shift: Int64 = 0
+        var result: Int64 = 0
+        var byte: Int64
 
         repeat {
-            byte = Int32(encoded[index].asciiValue ?? 0) - 63
+            byte = Int64(encoded[index].asciiValue ?? 0) - 63
             index = encoded.index(after: index)
             result |= (byte & 0x1F) << shift
             shift += 5
@@ -38,7 +38,7 @@ nonisolated func decodePolyline(_ encoded: String) -> [CLLocationCoordinate2D] {
         guard index < encoded.endIndex else { break }
 
         repeat {
-            byte = Int32(encoded[index].asciiValue ?? 0) - 63
+            byte = Int64(encoded[index].asciiValue ?? 0) - 63
             index = encoded.index(after: index)
             result |= (byte & 0x1F) << shift
             shift += 5
@@ -49,8 +49,8 @@ nonisolated func decodePolyline(_ encoded: String) -> [CLLocationCoordinate2D] {
 
         coordinates.append(
             CLLocationCoordinate2D(
-                latitude: Double(lat) / 1e5,
-                longitude: Double(lon) / 1e5
+                latitude: Double(lat) / 1e6,
+                longitude: Double(lon) / 1e6
             )
         )
     }
@@ -63,12 +63,12 @@ nonisolated func decodePolyline(_ encoded: String) -> [CLLocationCoordinate2D] {
 /// from known stop coordinates (e.g. subway station locations).
 nonisolated func encodePolyline(_ coordinates: [CLLocationCoordinate2D]) -> String {
     var encoded = ""
-    var prevLat: Int32 = 0
-    var prevLon: Int32 = 0
+    var prevLat: Int64 = 0
+    var prevLon: Int64 = 0
 
     for coord in coordinates {
-        let lat = Int32(round(coord.latitude * 1e5))
-        let lon = Int32(round(coord.longitude * 1e5))
+        let lat = Int64(round(coord.latitude * 1e6))
+        let lon = Int64(round(coord.longitude * 1e6))
 
         encodeValue(lat - prevLat, into: &encoded)
         encodeValue(lon - prevLon, into: &encoded)
@@ -81,10 +81,10 @@ nonisolated func encodePolyline(_ coordinates: [CLLocationCoordinate2D]) -> Stri
 }
 
 /// Encodes a single signed value into the Google polyline encoding format.
-private nonisolated func encodeValue(_ value: Int32, into result: inout String) {
+private nonisolated func encodeValue(_ value: Int64, into result: inout String) {
     var v = value < 0 ? ~(value << 1) : (value << 1)
     while v >= 0x20 {
-        let chunk = Int32((v & 0x1F) | 0x20) + 63
+        let chunk = Int64((v & 0x1F) | 0x20) + 63
         result.append(Character(UnicodeScalar(Int(chunk))!))
         v >>= 5
     }
@@ -358,327 +358,6 @@ nonisolated func mergeAdjacentPolylines(
     }
 
     return chains.filter { $0.count >= 2 }
-}
-
-// MARK: - Cross-Color Corridor Offsets (Apple Maps Style)
-
-/// Applies perpendicular offsets to polylines of different color groups that
-/// share a physical corridor, so they render as parallel colored stripes
-/// instead of stacking on top of each other — matching Apple Maps transit.
-///
-/// **Segment-Level Corridor Detection**
-/// Instead of checking corridor membership per-point (which causes lane
-/// order to flicker when GPS drift moves a point between grid cells),
-/// this algorithm identifies **corridor runs** — contiguous stretches of
-/// ≥ minRunLength points where multiple color groups travel together.
-/// The group set and lane ordering are frozen for the entire run,
-/// producing rock-stable parallel lines.
-///
-/// **Rigid Shared Centerline**
-/// All groups in a corridor offset from the SAME centerline — computed
-/// as the average position across all participating groups' nearest
-/// points. This eliminates wiggles caused by independent peer lookups.
-///
-/// **How it works**:
-/// 1. Builds a spatial grid of all polylines from all color groups.
-/// 2. For each polyline, computes per-point group sets from the grid.
-/// 3. Identifies corridor runs: contiguous stretches where ≥2 groups
-///    share the neighborhood, using majority-vote within each run.
-/// 4. Freezes lane ordering per run (sorted group index — deterministic).
-/// 5. Computes a shared centerline per point from nearest peers.
-/// 6. Applies perpendicular offset with miter joins on the centerline.
-/// 7. Smoothly transitions at corridor boundaries.
-///
-/// - Parameters:
-///   - groupedPolylines: Array of `(groupIndex, coordinates)` tuples.
-///   - laneSpacingDegrees: Center-to-center distance between adjacent lanes,
-///     in degrees of longitude.  Default 0.00015°.
-///   - smoothWindow: Moving-average window (in points) that gradually eases
-///     into/out of offset corridors.
-/// - Returns: The same polylines with perpendicular offsets applied.
-///
-/// - Note: **DEPRECATED** — Corridor offsets are now computed server-side in
-///   `corridor_pipeline.py` (arc-based v3.2). This client-side implementation
-///   is kept only for existing test coverage; do not call from production code.
-@available(*, deprecated, message: "Corridor offsets are computed server-side. Use server pipeline.")
-nonisolated func applyCorridorOffsets(
-    _ groupedPolylines: [(groupIndex: Int, coordinates: [CLLocationCoordinate2D])],
-    laneSpacingDegrees: Double = 0.00015,
-    smoothWindow: Int = 16
-) -> [(groupIndex: Int, coordinates: [CLLocationCoordinate2D])] {
-
-    let gridSize: Double = 0.0005  // ~56 m cells
-
-    // ── Step 1: Build spatial index ──
-    struct GridPoint {
-        let groupIdx: Int
-        let coord: CLLocationCoordinate2D
-    }
-
-    var cellGroups: [Int64: Set<Int>] = [:]
-    var cellPoints: [Int64: [GridPoint]] = [:]
-
-    func cellKey(_ lat: Double, _ lon: Double) -> Int64 {
-        let gx: Int32 = Int32(lat / gridSize)
-        let gy: Int32 = Int32(lon / gridSize)
-        let hi: Int64 = Int64(gx) << 32
-        let lo: Int64 = Int64(gy & 0x7FFF_FFFF)
-        return hi | lo
-    }
-
-    func groupsAt(_ lat: Double, _ lon: Double) -> Set<Int> {
-        let gx: Int32 = Int32(lat / gridSize)
-        let gy: Int32 = Int32(lon / gridSize)
-        var groups: Set<Int> = []
-        for dx: Int32 in -1...1 {
-            for dy: Int32 in -1...1 {
-                let hi: Int64 = Int64(gx &+ dx) << 32
-                let lo: Int64 = Int64((gy &+ dy) & 0x7FFF_FFFF)
-                let key: Int64 = hi | lo
-                if let g = cellGroups[key] { groups.formUnion(g) }
-            }
-        }
-        return groups
-    }
-
-    for (groupIdx, coords) in groupedPolylines {
-        for coord in coords {
-            let key: Int64 = cellKey(coord.latitude, coord.longitude)
-            cellGroups[key, default: []].insert(groupIdx)
-            cellPoints[key, default: []].append(GridPoint(groupIdx: groupIdx, coord: coord))
-        }
-    }
-
-    // ── Step 2: Per-polyline segment-level corridor detection ──
-    var result: [(groupIndex: Int, coordinates: [CLLocationCoordinate2D])] = []
-
-    for (groupIdx, coords) in groupedPolylines {
-        guard coords.count >= 2 else {
-            result.append((groupIdx, coords))
-            continue
-        }
-
-        // 2a. Compute raw per-point group sets
-        var pointGroups = [Set<Int>](repeating: [], count: coords.count)
-        for i in 0..<coords.count {
-            pointGroups[i] = groupsAt(coords[i].latitude, coords[i].longitude)
-        }
-
-        // 2b. Identify corridor runs — contiguous stretches where this
-        //     point sees ≥2 groups.  Short runs (< minRunLength) are
-        //     crossing artifacts and get zeroed out.
-        let minRunLength = 8
-        var isInCorridor = [Bool](repeating: false, count: coords.count)
-        for i in 0..<coords.count {
-            isInCorridor[i] = pointGroups[i].count > 1 && pointGroups[i].contains(groupIdx)
-        }
-
-        // Zero out short runs (crossing filter)
-        var runStart: Int? = nil
-        for i in 0..<coords.count {
-            if isInCorridor[i] {
-                if runStart == nil { runStart = i }
-            } else if let s = runStart {
-                if i - s < minRunLength {
-                    for k in s..<i { isInCorridor[k] = false }
-                }
-                runStart = nil
-            }
-        }
-        if let s = runStart, coords.count - s < minRunLength {
-            for k in s..<coords.count { isInCorridor[k] = false }
-        }
-
-        // 2c. For each corridor run, freeze the group set using majority
-        //     vote — the most common group set across the run's points.
-        //     This prevents point-by-point lane count flickering.
-        struct CorridorRun {
-            let start: Int
-            let end: Int      // inclusive
-            let frozenGroups: [Int]  // sorted, frozen for entire run
-        }
-
-        var corridorRuns: [CorridorRun] = []
-        var rStart: Int? = nil
-        for i in 0...coords.count {
-            let inCorr = i < coords.count && isInCorridor[i]
-            if inCorr {
-                if rStart == nil { rStart = i }
-            } else if let s = rStart {
-                let end = i - 1
-                // Majority vote: count how often each group set appears
-                var setCounts: [Set<Int>: Int] = [:]
-                for k in s...end {
-                    let gs: Set<Int> = pointGroups[k]
-                    setCounts[gs, default: 0] += 1
-                }
-                // Pick the group set that appears most often
-                let bestSet: Set<Int> = setCounts.max(by: { $0.value < $1.value })?.key ?? []
-                let frozen: [Int] = bestSet.sorted()
-
-                // Only keep if this group is in the frozen set and ≥2 groups
-                if frozen.count >= 2 && frozen.contains(groupIdx) {
-                    corridorRuns.append(CorridorRun(start: s, end: end, frozenGroups: frozen))
-                }
-                rStart = nil
-            }
-        }
-
-        // 2d. Build per-point lane offsets and centerline displacements
-        //     using frozen corridor assignments.
-        var centerDisplacements = [(lon: Double, lat: Double)](repeating: (0, 0), count: coords.count)
-        var laneOffsets = [Double](repeating: 0, count: coords.count)
-
-        for run in corridorRuns {
-            let frozenGroups = run.frozenGroups
-            guard let laneIndex = frozenGroups.firstIndex(of: groupIdx) else { continue }
-            let numLanes: Int = frozenGroups.count
-            let laneOffset: Double = (Double(laneIndex) - Double(numLanes - 1) / 2.0) * laneSpacingDegrees
-
-            for i in run.start...run.end {
-                laneOffsets[i] = laneOffset
-
-                // Compute centerline displacement from nearest peers
-                let coord = coords[i]
-                var peers: [CLLocationCoordinate2D] = [coord]
-                let gx: Int32 = Int32(coord.latitude / gridSize)
-                let gy: Int32 = Int32(coord.longitude / gridSize)
-
-                for otherGroup in frozenGroups where otherGroup != groupIdx {
-                    var bestDistSq: Double = Double.infinity
-                    var bestPeer: CLLocationCoordinate2D? = nil
-                    for dx: Int32 in -1...1 {
-                        for dy: Int32 in -1...1 {
-                            let hi: Int64 = Int64(gx &+ dx) << 32
-                            let lo: Int64 = Int64((gy &+ dy) & 0x7FFF_FFFF)
-                            let key: Int64 = hi | lo
-                            guard let pts = cellPoints[key] else { continue }
-                            for p in pts where p.groupIdx == otherGroup {
-                                let dlat = p.coord.latitude - coord.latitude
-                                let dlon = p.coord.longitude - coord.longitude
-                                let dsq = dlat * dlat + dlon * dlon
-                                if dsq < bestDistSq {
-                                    bestDistSq = dsq
-                                    bestPeer = p.coord
-                                }
-                            }
-                        }
-                    }
-                    let threshSq: Double = gridSize * gridSize * 4.0
-                    if let peer = bestPeer, bestDistSq < threshSq {
-                        peers.append(peer)
-                    }
-                }
-
-                let avgLat: Double = peers.map { $0.latitude }.reduce(0.0, +) / Double(peers.count)
-                let avgLon: Double = peers.map { $0.longitude }.reduce(0.0, +) / Double(peers.count)
-
-                centerDisplacements[i] = (lon: avgLon - coord.longitude, lat: avgLat - coord.latitude)
-            }
-        }
-
-        // ── Step 3: Smooth transitions at corridor boundaries ──
-        var smoothedCenter = centerDisplacements
-        var smoothedOffsets = laneOffsets
-        for i in 0..<coords.count {
-            let halfWin: Int = smoothWindow / 2
-            let lo: Int = max(0, i - halfWin)
-            let hi: Int = min(coords.count - 1, i + halfWin)
-            let windowSize: Double = Double(hi - lo + 1)
-            var sumLon: Double = 0.0
-            var sumLat: Double = 0.0
-            var sumOff: Double = 0.0
-            for k in lo...hi {
-                sumLon += centerDisplacements[k].lon
-                sumLat += centerDisplacements[k].lat
-                sumOff += laneOffsets[k]
-            }
-            smoothedCenter[i] = (sumLon / windowSize, sumLat / windowSize)
-            smoothedOffsets[i] = sumOff / windowSize
-        }
-
-        // ── Step 4: Create base geometry (snap to centerline) ──
-        var baseCoords = [CLLocationCoordinate2D](repeating: CLLocationCoordinate2D(latitude: 0, longitude: 0), count: coords.count)
-        for i in 0..<coords.count {
-            baseCoords[i] = CLLocationCoordinate2D(
-                latitude: coords[i].latitude + smoothedCenter[i].lat,
-                longitude: coords[i].longitude + smoothedCenter[i].lon
-            )
-        }
-
-        // ── Step 5: Compute per-segment unit normals ──
-        let segCount = baseCoords.count - 1
-        var segNormals = [(Double, Double)](repeating: (0, 0), count: segCount)
-        for s in 0..<segCount {
-            let dx = baseCoords[s + 1].longitude - baseCoords[s].longitude
-            let dy = baseCoords[s + 1].latitude - baseCoords[s].latitude
-            let len = sqrt(dx * dx + dy * dy)
-            if len > 1e-10 {
-                segNormals[s] = (-dy / len, dx / len)
-            }
-        }
-
-        // ── Step 6: Apply offsets with miter joins ──
-        var offsetCoords: [CLLocationCoordinate2D] = []
-        offsetCoords.reserveCapacity(coords.count)
-
-        for i in 0..<baseCoords.count {
-            let offset = smoothedOffsets[i]
-            if abs(offset) < 1e-10 {
-                offsetCoords.append(baseCoords[i])
-                continue
-            }
-
-            if i == 0 {
-                let (nLat, nLon) = segNormals[0]
-                offsetCoords.append(CLLocationCoordinate2D(
-                    latitude: baseCoords[i].latitude + nLat * offset,
-                    longitude: baseCoords[i].longitude + nLon * offset
-                ))
-            } else if i == baseCoords.count - 1 {
-                let (nLat, nLon) = segNormals[segCount - 1]
-                offsetCoords.append(CLLocationCoordinate2D(
-                    latitude: baseCoords[i].latitude + nLat * offset,
-                    longitude: baseCoords[i].longitude + nLon * offset
-                ))
-            } else {
-                let (n1Lat, n1Lon) = segNormals[i - 1]
-                let (n2Lat, n2Lon) = segNormals[i]
-
-                var mLat = n1Lat + n2Lat
-                var mLon = n1Lon + n2Lon
-                let mLen = sqrt(mLat * mLat + mLon * mLon)
-
-                if mLen > 1e-10 {
-                    mLat /= mLen
-                    mLon /= mLen
-
-                    let dot = mLat * n1Lat + mLon * n1Lon
-                    let miterScale: Double
-                    if abs(dot) > 0.25 {
-                        miterScale = min(1.0 / dot, 4.0)
-                    } else {
-                        miterScale = 4.0
-                    }
-
-                    offsetCoords.append(CLLocationCoordinate2D(
-                        latitude: baseCoords[i].latitude + mLat * offset * miterScale,
-                        longitude: baseCoords[i].longitude + mLon * offset * miterScale
-                    ))
-                } else {
-                    let (nLat, nLon) = segNormals[i - 1]
-                    offsetCoords.append(CLLocationCoordinate2D(
-                        latitude: baseCoords[i].latitude + nLat * offset,
-                        longitude: baseCoords[i].longitude + nLon * offset
-                    ))
-                }
-            }
-        }
-
-        result.append((groupIdx, offsetCoords))
-    }
-
-    return result
 }
 
 // MARK: - Train Polyline Unification (Branch-Extracting)
@@ -985,6 +664,83 @@ private nonisolated func perpendicularDistance(
     return sqrt(px * px + py * py)
 }
 
+// MARK: - Spike Removal
+
+/// Removes sharp V-shaped spikes from a polyline.
+///
+/// After ``consolidateIntoSinglePolyline`` greedily joins GTFS segments,
+/// the join point can create a brief reversal (spike) — e.g. the line goes
+/// south, dips further south for 1-3 points, then jumps back north.  These
+/// spikes get amplified by Catmull-Rom into prominent visual artifacts.
+///
+/// **Algorithm:** For every interior vertex, compute the angle between the
+/// incoming and outgoing edges.  If the angle is sharper than the threshold
+/// (i.e. a near-180° reversal), the vertex is a spike tip and is removed.
+/// The pass repeats until no more spikes are found, so multi-point spikes
+/// are progressively trimmed.
+///
+/// - Parameters:
+///   - coordinates: Polyline vertices.
+///   - angleThreshold: Minimum deflection angle in degrees that constitutes
+///     a spike.  Default 160° catches sharp U-turns while leaving legitimate
+///     subway curves (which rarely exceed 120°) untouched.
+/// - Returns: Cleaned polyline with spike vertices removed.
+nonisolated func removeSpikes(
+    _ coordinates: [CLLocationCoordinate2D],
+    angleThreshold: Double = 160.0
+) -> [CLLocationCoordinate2D] {
+    guard coordinates.count >= 3 else { return coordinates }
+
+    let cosThreshold = cos(angleThreshold * .pi / 180.0)  // cosine of threshold angle
+
+    var coords = coordinates
+    var changed = true
+
+    // Repeat until stable — multi-point spikes need several passes.
+    while changed {
+        changed = false
+        guard coords.count >= 3 else { break }
+
+        var cleaned: [CLLocationCoordinate2D] = [coords[0]]
+        var i = 1
+        while i < coords.count - 1 {
+            let prev = cleaned.last!
+            let curr = coords[i]
+            let next = coords[i + 1]
+
+            // Incoming vector (prev → curr)
+            let ax = curr.longitude - prev.longitude
+            let ay = curr.latitude  - prev.latitude
+            // Outgoing vector (curr → next)
+            let bx = next.longitude - curr.longitude
+            let by = next.latitude  - curr.latitude
+
+            let magA = sqrt(ax * ax + ay * ay)
+            let magB = sqrt(bx * bx + by * by)
+
+            if magA > 1e-12, magB > 1e-12 {
+                let cosAngle = (ax * bx + ay * by) / (magA * magB)
+                // cosAngle ≈ -1 means ~180° reversal (spike)
+                // cosThreshold for 160° ≈ -0.94
+                if cosAngle < cosThreshold {
+                    // Skip this vertex — it's a spike tip
+                    changed = true
+                    i += 1
+                    continue
+                }
+            }
+
+            cleaned.append(curr)
+            i += 1
+        }
+        // Always keep the last point
+        cleaned.append(coords.last!)
+        coords = cleaned
+    }
+
+    return coords
+}
+
 // MARK: - Catmull-Rom Spline Smoothing
 
 /// Smooths a polyline using Catmull-Rom spline interpolation.
@@ -1032,8 +788,10 @@ nonisolated func removeNearDuplicates(
 ///
 /// - Parameters:
 ///   - coordinates: Original polyline points (must have ≥ 2 points).
-///   - segmentsPerCurve: Number of interpolated points between each pair
-///     of original points. Higher = smoother but more points.
+///   - segmentsPerCurve: **Maximum** number of interpolated points between
+///     each pair of original points. Actual count scales with segment
+///     length — very short segments (< 20 m) use fewer subdivisions to
+///     avoid point-count explosion without sacrificing visual quality.
 ///     Default **4** gives good visual smoothing without bloating point count.
 ///   - alpha: Catmull-Rom parameterization (0 = uniform, 0.5 = centripetal,
 ///     1.0 = chordal). Default **0.5** (centripetal) avoids cusps and
@@ -1046,29 +804,50 @@ nonisolated func smoothPolyline(
 ) -> [CLLocationCoordinate2D] {
     guard coordinates.count >= 3 else { return coordinates }
 
+    // Adaptive subdivision thresholds (in degrees).
+    // Segments shorter than minLenForFull get proportionally fewer points.
+    // At NYC latitude, 0.00018° ≈ 20 m — below this, 2 segments is enough.
+    let minLenForFull = 0.00045  // ~50 m — use full segmentsPerCurve above this
+    let minLenForAny  = 0.00004 // ~4.5 m — below this, just emit endpoint (no interp)
+
     var result: [CLLocationCoordinate2D] = []
     let n = coordinates.count
 
     for i in 0..<(n - 1) {
-        // Catmull-Rom needs 4 control points: P0, P1, P2, P3
-        // Clamp at boundaries by duplicating endpoints
         let p0 = coordinates[max(i - 1, 0)]
         let p1 = coordinates[i]
         let p2 = coordinates[i + 1]
         let p3 = coordinates[min(i + 2, n - 1)]
 
-        // Add the start point of this segment
         if i == 0 { result.append(p1) }
 
-        // Compute knot parameter distances using centripetal parameterization
         let d01 = knotDistance(p0, p1, alpha: alpha)
         let d12 = knotDistance(p1, p2, alpha: alpha)
         let d23 = knotDistance(p2, p3, alpha: alpha)
 
-        // Guard degenerate segments (identical points)
         guard d12 > 1e-10 else {
             result.append(p2)
             continue
+        }
+
+        // Adaptive segment count based on edge length in degrees.
+        let edgeLenDeg: Double = {
+            let dx = p2.longitude - p1.longitude
+            let dy = p2.latitude  - p1.latitude
+            return sqrt(dx * dx + dy * dy)
+        }()
+
+        let effectiveSegments: Int
+        if edgeLenDeg < minLenForAny {
+            // Segment so short that interpolation adds no visible quality.
+            result.append(p2)
+            continue
+        } else if edgeLenDeg < minLenForFull {
+            // Scale linearly between 2 and segmentsPerCurve.
+            let ratio = (edgeLenDeg - minLenForAny) / (minLenForFull - minLenForAny)
+            effectiveSegments = max(2, Int(Double(segmentsPerCurve) * ratio))
+        } else {
+            effectiveSegments = segmentsPerCurve
         }
 
         let t0: Double = 0
@@ -1076,9 +855,8 @@ nonisolated func smoothPolyline(
         let t2: Double = t1 + d12
         let t3: Double = t2 + d23
 
-        // Interpolate between p1 and p2
-        for step in 1...segmentsPerCurve {
-            let fraction = Double(step) / Double(segmentsPerCurve)
+        for step in 1...effectiveSegments {
+            let fraction = Double(step) / Double(effectiveSegments)
             let t = t1 + fraction * (t2 - t1)
 
             let (lat, lon) = catmullRomPoint(
@@ -1186,11 +964,92 @@ nonisolated func refineSharpBends(
     baseRadiusDeg: Double = 0.00025,
     arcPoints: Int = 8
 ) -> [CLLocationCoordinate2D] {
+    circularArcFillet(
+        coordinates,
+        radiusDeg: baseRadiusDeg,
+        angleThreshold: angleThreshold,
+        arcPoints: arcPoints
+    )
+}
+
+// MARK: - Offset-Adaptive Junction Fillet (System Map)
+
+/// Smooths sharp vertices in a **system-map trunk polyline** using
+/// circular arc fillets whose minimum radius adapts to the local
+/// corridor width (``laneOffset``).
+///
+/// ## Offset-adaptive radius
+///
+/// When multiple parallel lines share a corridor through MapLibre's
+/// ``lineOffset`` property, a **fixed** fillet radius fails:
+///
+///   - Too small → the innermost parallel line (R − n×lane_width)
+///     collapses to zero or negative radius → self-intersection.
+///   - Too large → straight segments are over-smoothed, polylines drift
+///     off station coordinates.
+///
+/// This function scales the fillet radius at each vertex:
+///
+///     R_effective = max(R_base, |laneOffset| × scaleFactor)
+///
+/// Because we use **true circle arcs** (not Bézier), every parallel
+/// offset of the fillet is also a circle arc — the mathematical
+/// guarantee that eliminates cusp/loop artifacts at bends.
+///
+/// - Parameters:
+///   - coordinates: Trunk polyline points (≥ 3 required).
+///   - laneOffset: Signed pixel-space offset for this trunk's corridor
+///     position.  Magnitude indicates how many lane-widths from centre.
+///   - angleThreshold: Turn angle (degrees) to trigger filleting.
+///   - baseRadiusDeg: Base radius (degrees).  ~0.00020° ≈ 22 m.
+///   - scaleFactor: Multiplier from |laneOffset| to additional radius.
+///     Default **0.00012°** per lane unit ≈ 13 m per offset step.
+///   - arcPoints: Points per arc.
+/// - Returns: Smoothed polyline.
+nonisolated func junctionAwareFillet(
+    _ coordinates: [CLLocationCoordinate2D],
+    laneOffset: Double,
+    angleThreshold: Double = 25.0,
+    baseRadiusDeg: Double = 0.00020,
+    scaleFactor: Double = 0.00012,
+    arcPoints: Int = 8
+) -> [CLLocationCoordinate2D] {
+    let adaptiveRadius = max(baseRadiusDeg, abs(laneOffset) * scaleFactor)
+    return circularArcFillet(
+        coordinates,
+        radiusDeg: adaptiveRadius,
+        angleThreshold: angleThreshold,
+        arcPoints: arcPoints
+    )
+}
+
+// MARK: - Circular-Arc Fillet Core
+
+/// Shared implementation for ``refineSharpBends`` and ``junctionAwareFillet``.
+///
+/// Replaces sharp vertices with true circular arc segments using a
+/// three-pass algorithm:
+/// 1. Compute ideal tangent pull-back for each interior vertex.
+/// 2. Budget adjacent fillets so they never overlap (90% edge budget).
+/// 3. Emit arc geometry at each filleted vertex.
+///
+/// - Parameters:
+///   - coordinates: Polyline vertices (≥ 3 required).
+///   - radiusDeg: Fillet radius in degrees.
+///   - angleThreshold: Minimum turn angle (degrees) to trigger filleting.
+///   - arcPoints: Points to sample along each arc.
+/// - Returns: Smoothed coordinate array.
+private nonisolated func circularArcFillet(
+    _ coordinates: [CLLocationCoordinate2D],
+    radiusDeg: Double,
+    angleThreshold: Double,
+    arcPoints: Int
+) -> [CLLocationCoordinate2D] {
     guard coordinates.count >= 3 else { return coordinates }
 
     let n = coordinates.count
     let cosThreshold = cos(angleThreshold * .pi / 180.0)
-    let R = baseRadiusDeg
+    let R = radiusDeg
 
     // ── Pass 1: compute ideal tangent distance for every interior vertex ──
     struct VertexInfo {
@@ -1233,7 +1092,7 @@ nonisolated func refineSharpBends(
         info[i] = VertexInfo(tangentDist: soloClamped, tanHalf: th, needsFillet: true)
     }
 
-    // ── Pass 1.5: budget adjacent fillets ──
+    // ── Pass 1.5: budget adjacent fillets so they never overlap ──
     for e in 0..<(n - 1) {
         let wantLeft  = info[e].needsFillet     ? info[e].tangentDist     : 0.0
         let wantRight = info[e + 1].needsFillet ? info[e + 1].tangentDist : 0.0
@@ -1323,63 +1182,29 @@ nonisolated func refineSharpBends(
     return result
 }
 
-// MARK: - Offset-Adaptive Junction Fillet (System Map)
-
-/// Smooths sharp vertices in a **system-map trunk polyline** using
-/// circular arc fillets whose minimum radius adapts to the local
-/// corridor width (``laneOffset``).
-///
-/// ## Novel contribution (offset-adaptive radius)
-///
-/// Existing transit map renderers (Transit App, Apple Maps, Google Maps)
-/// either don't smooth junctions at all, or use a fixed-radius arc/Bézier.
-/// When multiple parallel lines share a corridor through MapLibre's
-/// ``lineOffset`` property, a **fixed** fillet radius fails:
-///
-///   - Too small → the innermost parallel line (R − n×lane_width)
-///     collapses to zero or negative radius → self-intersection.
-///   - Too large → straight segments are over-smoothed, polylines drift
-///     off station coordinates.
-///
-/// This function scales the fillet radius at each vertex:
-///
-///     R_effective = max(R_base, |laneOffset| × scaleFactor)
-///
-/// At Y-splits/merges (lane_offset ≠ 0), the radius grows so all
-/// parallel-offset copies of the arc remain smooth.  On non-corridor
-/// segments (lane_offset = 0), R falls back to the base — minimal
-/// visual change, stations stay attached.
-///
-/// Because we use **true circle arcs** (not Bézier), every parallel
-/// offset of the fillet is also a circle arc, which is the mathematical
-/// guarantee that eliminates cusp/loop artifacts at bends.
-///
-/// - Parameters:
-///   - coordinates: Trunk polyline points (≥ 3 required).
-///   - laneOffset: Signed pixel-space offset for this trunk's corridor
-///     position.  Magnitude indicates how many lane-widths from centre.
-///   - angleThreshold: Turn angle (degrees) to trigger filleting.
-///   - baseRadiusDeg: Base radius (degrees).  ~0.00020° ≈ 22 m.
-///   - scaleFactor: Multiplier from |laneOffset| to additional radius.
-///     Default **0.00012°** per lane unit ≈ 13 m per offset step.
-///   - arcPoints: Points per arc.
-/// - Returns: Smoothed polyline.
-
 // MARK: - Self-Intersection Removal
 
-/// Detects and removes backtracking loops in a polyline.
+/// Detects and removes **all** backtracking loops in a polyline.
 ///
 /// Walks the coordinate list tracking visited grid cells.  When a cell
 /// is revisited after traversing enough intermediate vertices (≥ 3),
 /// the segment between the first and last visit is checked for loop
-/// characteristics (net displacement < 30% of arc length).  If a loop
-/// is confirmed, it is cut out, keeping the longer non-looping portion.
+/// characteristics (net displacement < 20 % of arc length).  If a loop
+/// is confirmed it is cut out, keeping the longer non-looping portion.
 ///
-/// Called before ``junctionAwareFillet`` to prevent the fillet from
-/// amplifying server-side artifacts into oversized visual arcs.
+/// The function iterates until no more loops are found, so polylines with
+/// multiple backtrack artifacts are fully cleaned in a single call.
+///
+/// - Parameters:
+///   - coordinates: Polyline vertices.
+///   - cellSize: Spatial grid cell size in degrees for revisit detection.
+///     Default `0.001` ≈ 84 m at NYC latitude.
+///   - maxPasses: Safety cap on iteration count. Default **5**.
+/// - Returns: Cleaned polyline with all detected backtrack loops removed.
 nonisolated func removePolylineBacktracks(
     _ coordinates: [CLLocationCoordinate2D],
-    cellSize: Double = 0.001  // ~111 m at equator, ~84 m at NYC latitude
+    cellSize: Double = 0.001,
+    maxPasses: Int = 5
 ) -> [CLLocationCoordinate2D] {
     guard coordinates.count >= 6 else { return coordinates }
 
@@ -1391,235 +1216,60 @@ nonisolated func removePolylineBacktracks(
         return latCell &* 10_000_000 &+ lonCell
     }
 
-    // Track first and last visit index per cell
-    var firstVisit: [Cell: Int] = [:]
-    var lastVisit: [Cell: Int] = [:]
+    /// Finds and removes the single largest backtrack loop.
+    /// Returns `nil` when no loop is detected.
+    func removeOneLoop(_ coords: [CLLocationCoordinate2D]) -> [CLLocationCoordinate2D]? {
+        guard coords.count >= 6 else { return nil }
 
-    for i in coordinates.indices {
-        let cell = cellKey(coordinates[i])
-        if firstVisit[cell] == nil {
-            firstVisit[cell] = i
+        var firstVisit: [Cell: Int] = [:]
+        var lastVisit:  [Cell: Int] = [:]
+
+        for i in coords.indices {
+            let cell = cellKey(coords[i])
+            if firstVisit[cell] == nil { firstVisit[cell] = i }
+            lastVisit[cell] = i
         }
-        lastVisit[cell] = i
+
+        var bestGap   = 0
+        var loopStart = -1
+        var loopEnd   = -1
+
+        for (cell, fi) in firstVisit {
+            guard let li = lastVisit[cell] else { continue }
+            let gap = li - fi
+            guard gap >= 3, gap > bestGap else { continue }
+
+            let sx = coords[fi].longitude, sy = coords[fi].latitude
+            let ex = coords[li].longitude, ey = coords[li].latitude
+            let net = sqrt((ex - sx) * (ex - sx) + (ey - sy) * (ey - sy))
+
+            var arc = 0.0
+            for j in fi..<li {
+                let dx = coords[j + 1].longitude - coords[j].longitude
+                let dy = coords[j + 1].latitude  - coords[j].latitude
+                arc += sqrt(dx * dx + dy * dy)
+            }
+
+            if arc > 0, net / arc < 0.20 {
+                bestGap   = gap
+                loopStart = fi
+                loopEnd   = li
+            }
+        }
+
+        guard loopStart >= 0, loopEnd > loopStart else { return nil }
+
+        let before  = Array(coords[..<(loopStart + 1)])
+        let after   = Array(coords[loopEnd...])
+        let cleaned = before + after
+        guard cleaned.count >= 2 else { return nil }
+        return cleaned
     }
 
-    // Find the widest revisit gap (longest loop)
-    var bestGap = 0
-    var loopStart = -1
-    var loopEnd = -1
-
-    for (cell, fi) in firstVisit {
-        guard let li = lastVisit[cell] else { continue }
-        let gap = li - fi
-        guard gap >= 3, gap > bestGap else { continue }
-
-        // Check net displacement vs arc length
-        let sx = coordinates[fi].longitude
-        let sy = coordinates[fi].latitude
-        let ex = coordinates[li].longitude
-        let ey = coordinates[li].latitude
-        let netSq = (ex - sx) * (ex - sx) + (ey - sy) * (ey - sy)
-        let net = sqrt(netSq)
-
-        var arc = 0.0
-        for j in fi..<li {
-            let dx = coordinates[j + 1].longitude - coordinates[j].longitude
-            let dy = coordinates[j + 1].latitude - coordinates[j].latitude
-            arc += sqrt(dx * dx + dy * dy)
-        }
-
-        // A genuine loop has net displacement < 20% of arc length.
-        // Previous threshold of 30% was too aggressive — legitimate
-        // curved subway sections (e.g. turns near junctions) have
-        // net/arc ratios around 0.25-0.35 and were incorrectly removed.
-        if arc > 0, net / arc < 0.20 {
-            bestGap = gap
-            loopStart = fi
-            loopEnd = li
-        }
+    var result = coordinates
+    for _ in 0..<maxPasses {
+        guard let cleaned = removeOneLoop(result) else { break }
+        result = cleaned
     }
-
-    guard loopStart >= 0, loopEnd > loopStart else { return coordinates }
-
-    // Cut the loop: keep [0..loopStart] + [loopEnd..end]
-    let before = Array(coordinates[..<(loopStart + 1)])
-    let after = Array(coordinates[loopEnd...])
-    let cleaned = before + after
-
-    guard cleaned.count >= 2 else { return coordinates }
-    return cleaned
-}
-
-nonisolated func junctionAwareFillet(
-    _ coordinates: [CLLocationCoordinate2D],
-    laneOffset: Double,
-    angleThreshold: Double = 25.0,
-    baseRadiusDeg: Double = 0.00020,
-    scaleFactor: Double = 0.00012,
-    arcPoints: Int = 8
-) -> [CLLocationCoordinate2D] {
-    guard coordinates.count >= 3 else { return coordinates }
-
-    let n = coordinates.count
-
-    // Offset-adaptive radius: widen at corridor junctions so all
-    // parallel-offset copies stay smooth.
-    let adaptiveRadius = max(baseRadiusDeg, abs(laneOffset) * scaleFactor)
-
-    let cosThreshold = cos(angleThreshold * .pi / 180.0)
-
-    // ── Pass 1: compute ideal tangent distance for every interior vertex ──
-    // Store 0.0 for vertices that don't need filleting.
-    struct VertexInfo {
-        var tangentDist: Double = 0.0   // desired pull-back along each edge
-        var tanHalf: Double = 0.0       // tan(halfAngle) — needed to recover R
-        var needsFillet: Bool = false
-    }
-    var info = [VertexInfo](repeating: VertexInfo(), count: n)
-
-    // Also precompute edge lengths (edge i = coordinates[i]→coordinates[i+1])
-    var edgeLen = [Double](repeating: 0.0, count: n - 1)
-    for i in 0..<(n - 1) {
-        let dx = coordinates[i + 1].longitude - coordinates[i].longitude
-        let dy = coordinates[i + 1].latitude  - coordinates[i].latitude
-        edgeLen[i] = sqrt(dx * dx + dy * dy)
-    }
-
-    for i in 1..<(n - 1) {
-        let len1 = edgeLen[i - 1]
-        let len2 = edgeLen[i]
-        guard len1 > 1e-10, len2 > 1e-10 else { continue }
-
-        let prev = coordinates[i - 1], curr = coordinates[i], next = coordinates[i + 1]
-        let dx1 = curr.longitude - prev.longitude
-        let dy1 = curr.latitude  - prev.latitude
-        let dx2 = next.longitude - curr.longitude
-        let dy2 = next.latitude  - curr.latitude
-
-        let dot = (dx1 * dx2 + dy1 * dy2) / (len1 * len2)
-        if dot > cosThreshold { continue }  // gentle bend
-
-        let clampedDot = max(-0.9999, min(0.9999, dot))
-        let turnAngle = acos(clampedDot)
-        let halfAngle = (Double.pi - turnAngle) / 2.0
-        guard halfAngle > 1e-6 else { continue }
-
-        let th = tan(halfAngle)
-        guard th > 1e-10 else { continue }
-
-        // Solo clamp: 40 % of shorter edge (before sharing budget)
-        let idealDist = adaptiveRadius / th
-        let soloClamped = min(idealDist, 0.40 * min(len1, len2))
-
-        info[i] = VertexInfo(tangentDist: soloClamped, tanHalf: th, needsFillet: true)
-    }
-
-    // ── Pass 1.5: budget adjacent fillets so they never overlap ──
-    //
-    // Each edge is shared by the vertex at each end.  Vertex i wants
-    // info[i].tangentDist of the outgoing edge (edge i) and vertex i+1
-    // wants info[i+1].tangentDist of the incoming edge (edge i).  The
-    // sum must not exceed the edge length; if it does, scale both
-    // proportionally.
-    for e in 0..<(n - 1) {
-        let iLeft  = e       // vertex at start of edge
-        let iRight = e + 1   // vertex at end of edge
-
-        // How much of this edge does each endpoint want?
-        let wantLeft  = info[iLeft].needsFillet  ? info[iLeft].tangentDist  : 0.0
-        let wantRight = info[iRight].needsFillet ? info[iRight].tangentDist : 0.0
-        let total = wantLeft + wantRight
-
-        guard total > edgeLen[e] * 0.90 else { continue }  // leave 10 % gap
-
-        // Scale both down proportionally to fit 90 % of edge
-        let budget = edgeLen[e] * 0.90
-        let scale = budget / total
-        if info[iLeft].needsFillet {
-            info[iLeft].tangentDist = wantLeft * scale
-        }
-        if info[iRight].needsFillet {
-            info[iRight].tangentDist = wantRight * scale
-        }
-    }
-
-    // ── Pass 2: emit arc geometry using budgeted tangent distances ──
-    var result: [CLLocationCoordinate2D] = [coordinates[0]]
-
-    for i in 1..<(n - 1) {
-        guard info[i].needsFillet else {
-            result.append(coordinates[i])
-            continue
-        }
-
-        let prev = coordinates[i - 1]
-        let curr = coordinates[i]
-        let next = coordinates[i + 1]
-
-        let dx1 = curr.longitude - prev.longitude
-        let dy1 = curr.latitude  - prev.latitude
-        let dx2 = next.longitude - curr.longitude
-        let dy2 = next.latitude  - curr.latitude
-
-        let len1 = edgeLen[i - 1]
-        let len2 = edgeLen[i]
-
-        let budgetedDist = info[i].tangentDist
-        let effectiveR = budgetedDist * info[i].tanHalf
-
-        // Skip if budget squeezed it to near-zero
-        guard effectiveR > 1e-10, budgetedDist > 1e-10 else {
-            result.append(curr)
-            continue
-        }
-
-        let u1x = dx1 / len1, u1y = dy1 / len1
-        let u2x = dx2 / len2, u2y = dy2 / len2
-
-        // Tangent points
-        let aLon = curr.longitude - u1x * budgetedDist
-        let aLat = curr.latitude  - u1y * budgetedDist
-        let dLon = curr.longitude + u2x * budgetedDist
-        let dLat = curr.latitude  + u2y * budgetedDist
-
-        // Arc centre
-        let cross = u1x * u2y - u1y * u2x
-        let perpX: Double, perpY: Double
-        if cross > 0 {
-            perpX = -u1y; perpY = u1x
-        } else {
-            perpX = u1y; perpY = -u1x
-        }
-
-        let cLon = aLon + perpX * effectiveR
-        let cLat = aLat + perpY * effectiveR
-
-        let startAngle = atan2(aLat - cLat, aLon - cLon)
-        let endAngle   = atan2(dLat - cLat, dLon - cLon)
-
-        var sweep = endAngle - startAngle
-        if cross > 0 {
-            if sweep > 0 { sweep -= 2.0 * .pi }
-        } else {
-            if sweep < 0 { sweep += 2.0 * .pi }
-        }
-
-        // Safety: if the sweep somehow exceeds 180° the geometry is
-        // suspect (near-reversal that slipped through).  Skip the arc.
-        if abs(sweep) > Double.pi {
-            result.append(curr)
-            continue
-        }
-
-        for step in 0...arcPoints {
-            let t = Double(step) / Double(arcPoints)
-            let angle = startAngle + t * sweep
-            let pLon = cLon + effectiveR * cos(angle)
-            let pLat = cLat + effectiveR * sin(angle)
-            result.append(CLLocationCoordinate2D(latitude: pLat, longitude: pLon))
-        }
-    }
-
-    result.append(coordinates.last!)
     return result
 }

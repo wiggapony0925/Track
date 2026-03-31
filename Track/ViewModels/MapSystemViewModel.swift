@@ -1098,23 +1098,24 @@ final class MapSystemViewModel {
         // CORRIDOR OFFSETS ARE APPLIED SERVER-SIDE by corridor_pipeline.py.
         // The server's 5-phase topological pipeline (skeleton → lane ordering
         // → perpendicular vertex offsets → junction blending → export) produces
-        // correctly-offset polylines in WGS84.  Applying applyCorridorOffsets()
-        // here AGAIN was the root cause of:
-        //   - EKG zigzag spikes (double miter amplification)
-        //   - Cross-avenue contamination (already-offset lines detected as peers)
-        //   - Columbus Circle bubbles (double arc radii)
+        // correctly-offset polylines in WGS84.
         //
-        // The client applies only RDP simplification — NO Catmull-Rom.
+        // Client pipeline (order matters):
+        //   1. RDP simplification — reduce raw GTFS noise while preserving detail
+        //   2. Backtrack + spike removal — fix artifacts
+        //   3. Near-duplicate removal — clean micro-clusters
+        //   4. High-density circular-arc fillet — smooth ALL bends ≥ 6°
+        //      with 20-point arcs and large radius for glass-smooth curves
         //
-        // MapLibre's `line-join: round` and `line-cap: round` already
-        // produce GPU-accelerated smooth rendering.  Client-side
-        // Catmull-Rom was over-processing:
-        //   - 3× more vertices (GPU + memory cost)
-        //   - Shifted polylines off station coordinates (visible at z14+)
-        //   - Created "roller coaster" loops at station-snap kinks
+        // v9 — Backend now produces float64 + precision-6 encoded polylines
+        // with 25 m densification (was float32 + precision-5 + 100 m gaps).
+        // Source data is 10× more precise, so client-side smoothing can be
+        // lighter-touch.
         //
         // Parameters:
-        //   RDP tolerance 0.00008° (~9 m)  — preserves fine detail
+        //   RDP tolerance 0.00004° (~4.4 m) — preserves curve detail
+        //   Fillet angle 10° — catches visible subway bends
+        //   Arc points 16 — smooth at all zoom levels
 
         struct PolylineOrigin { let resultIndex: Int; let branchIndex: Int }
 
@@ -1129,8 +1130,8 @@ final class MapSystemViewModel {
             }
         }
 
-        // Server polylines pass through station coordinates — only simplify.
-        // No Catmull-Rom: MapLibre renders smooth round joins natively.
+        // Server polylines pass through station coordinates.
+        // After simplification, high-density arc fillets smooth all bends.
         func localLaneOffset(
             for groupResult: ColorGroupResult,
             branchIndex: Int
@@ -1183,7 +1184,7 @@ final class MapSystemViewModel {
                     )
                 }
             } else {
-                simplified = simplifyPolyline(item.coordinates, tolerance: 0.00005)
+                simplified = simplifyPolyline(item.coordinates, tolerance: 0.00004)
             }
 
             guard simplified.count >= 2 else {
@@ -1191,13 +1192,15 @@ final class MapSystemViewModel {
                 continue
             }
 
-            // ── Backtrack Removal ──
+            // ── Backtrack & Spike Removal ──
             // Remove self-intersecting loops that stem injection may
-            // create (e.g. 7/7X express overlay near Hudson Yards).
+            // create (e.g. 7/7X express overlay near Hudson Yards),
+            // then remove V-shaped spikes from mis-joined segments
+            // (e.g. 3 train near 145 St where branches converge).
             // Must run before the fillet to prevent arc amplification.
-            let cleaned = removePolylineBacktracks(simplified)
+            let cleaned = removeSpikes(removePolylineBacktracks(simplified))
             guard cleaned.count >= 2 else {
-                AppLogger.shared.log("POLYLINE_DROP", message: "Dropped branch \(origin.branchIndex) of group \(item.groupIndex) after backtrack removal (\(simplified.count) → \(cleaned.count) points)")
+                AppLogger.shared.log("POLYLINE_DROP", message: "Dropped branch \(origin.branchIndex) of group \(item.groupIndex) after backtrack/spike removal (\(simplified.count) → \(cleaned.count) points)")
                 continue
             }
 
@@ -1221,20 +1224,28 @@ final class MapSystemViewModel {
             // Station coordinates are safe because the tangent pull-back
             // is clamped to 40% of the shorter incident edge — station
             // vertices always have >200 m edges so the max pull is <80 m.
+            // Remove near-duplicate points (micro-clusters from station-snap)
+            // before filleting — prevents arc distortion at tiny edges.
+            let deduplicated = removeNearDuplicates(cleaned, minSpacing: 0.00004)
+            guard deduplicated.count >= 2 else {
+                AppLogger.shared.log("POLYLINE_DROP", message: "Dropped branch \(origin.branchIndex) of group \(item.groupIndex) after dedup (\(cleaned.count) → \(deduplicated.count) points)")
+                continue
+            }
+
             let fillet = junctionAwareFillet(
-                cleaned,
+                deduplicated,
                 laneOffset: Double(localLaneOffset),
-                angleThreshold: 22.0,
-                baseRadiusDeg: 0.00028,
-                scaleFactor: 0.00025,
-                arcPoints: 8
+                angleThreshold: 10.0,
+                baseRadiusDeg: 0.00045,
+                scaleFactor: 0.00030,
+                arcPoints: 16
             )
 
             finalOffsetPolylines.append(PreparedPolyline(
                 origin: origin,
                 groupIndex: item.groupIndex,
                 coordinates: fillet,
-                 localLaneOffset: localLaneOffset
+                localLaneOffset: localLaneOffset
             ))
         }
 

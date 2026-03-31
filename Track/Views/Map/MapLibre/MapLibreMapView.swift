@@ -747,7 +747,8 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 opacity: subwayCasingOpacity,
                 color: .constant(isDark ? UIColor(red: 0.78, green: 0.74, blue: 0.95, alpha: 0.28) : UIColor.white),
                 cap: "round", join: "round",
-                applyLaneOffset: true
+                applyLaneOffset: true,
+                sortByTrunkIndex: true
             )
             ensureLineLayer(
                 style: style,
@@ -758,7 +759,8 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 opacity: subwayOpacity,
                 color: .dataDriven,
                 cap: "round", join: "round",
-                applyLaneOffset: true
+                applyLaneOffset: true,
+                sortByTrunkIndex: true
             )
 
             // ── ELEVATED (shared source — 3 GL layers with shadow) ──
@@ -787,7 +789,8 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 opacity: subwayCasingOpacity,
                 color: .constant(isDark ? UIColor(red: 0.78, green: 0.74, blue: 0.95, alpha: 0.32) : UIColor.white),
                 cap: "round", join: "round",
-                applyLaneOffset: true
+                applyLaneOffset: true,
+                sortByTrunkIndex: true
             )
             ensureLineLayer(
                 style: style,
@@ -798,7 +801,8 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 opacity: subwayOpacity,
                 color: .dataDriven,
                 cap: "round", join: "round",
-                applyLaneOffset: true
+                applyLaneOffset: true,
+                sortByTrunkIndex: true
             )
         }
 
@@ -1386,7 +1390,8 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             join: String,
             translatePixels: CGPoint? = nil,
             dashPattern: [NSNumber]? = nil,
-            applyLaneOffset: Bool = false
+            applyLaneOffset: Bool = false,
+            sortByTrunkIndex: Bool = false
         ) {
             // Update or create source
             if let features {
@@ -1431,6 +1436,14 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 // parallel and touching instead of collapsing or gapping.
                 if applyLaneOffset {
                     layer.lineOffset = MapLibreStyleConfig.laneOffsetExpression
+                }
+
+                // Deterministic z-ordering within the layer: features with
+                // higher trunk_index render on top.  This produces consistent
+                // over/under at line crossings (e.g. L crossing the G)
+                // instead of arbitrary paint order.
+                if sortByTrunkIndex {
+                    layer.lineSortKey = NSExpression(forKeyPath: "trunk_index")
                 }
 
                 style.addLayer(layer)

@@ -1013,12 +1013,13 @@ final class HomeViewModel {
                 let routePolys: [[CLLocationCoordinate2D]]
 
                 if isBus {
-                    // Bus pipeline: merge + near-duplicate removal +
-                    // Catmull-Rom smooth + circular-arc fillet at sharp corners.
+                    // Bus pipeline: merge + near-duplicate removal + backtrack/spike
+                    // removal + Catmull-Rom smooth + circular-arc fillet.
                     let merged = mergeAdjacentPolylines(activeRaw)
                     routePolys = merged.filter { $0.count >= 2 }.map {
                         let cleaned = removeNearDuplicates($0)
-                        let smoothed = smoothPolyline(cleaned, segmentsPerCurve: 6)
+                        let despiked = removeSpikes(removePolylineBacktracks(cleaned))
+                        let smoothed = smoothPolyline(despiked, segmentsPerCurve: 6)
                         return refineSharpBends(smoothed, angleThreshold: 30.0)
                     }
                 } else {
@@ -1036,7 +1037,8 @@ final class HomeViewModel {
 
                     routePolys = unified.filter { $0.count >= 2 }.map {
                         let cleaned = removeNearDuplicates($0)
-                        let smoothed = smoothPolyline(cleaned, segmentsPerCurve: 8)
+                        let despiked = removeSpikes(removePolylineBacktracks(cleaned))
+                        let smoothed = smoothPolyline(despiked, segmentsPerCurve: 8)
                         return refineSharpBends(smoothed)
                     }
                 }
@@ -1081,7 +1083,8 @@ final class HomeViewModel {
                         : unifyTrainPolylines(mergedInactive)
                     inactivePolys = unifiedInactive.filter { $0.count >= 2 }.map {
                         let cleaned = removeNearDuplicates($0)
-                        let smoothed = smoothPolyline(cleaned, segmentsPerCurve: isBus ? 6 : 8)
+                        let despiked = removeSpikes(removePolylineBacktracks(cleaned))
+                        let smoothed = smoothPolyline(despiked, segmentsPerCurve: isBus ? 6 : 8)
                         return refineSharpBends(smoothed, angleThreshold: isBus ? 30.0 : 20.0)
                     }
                 }

@@ -21,15 +21,16 @@ class ShapePoint(NamedTuple):
 
 
 def pack_coords(points: list[ShapePoint]) -> bytes:
-    """Pack sorted ShapePoints into compact float32 bytes (8 bytes/point).
+    """Pack sorted ShapePoints into compact float64 bytes (16 bytes/point).
 
-    Stores (lat, lon) pairs as little-endian float32.  Use unpack_coords()
-    to decode.  For 347K points this saves ~48 MB vs NamedTuple storage.
+    Stores (lat, lon) pairs as little-endian float64 (double).  Use
+    unpack_coords() to decode.  float64 preserves full GTFS precision
+    (~15 significant digits) instead of float32's ~7 digits (±0.6 m jitter).
     """
     if not points:
         return b""
     return struct.pack(
-        f"<{len(points) * 2}f",
+        f"<{len(points) * 2}d",
         *[v for p in points for v in (p.lat, p.lon)],
     )
 
@@ -38,17 +39,17 @@ def unpack_coords(buf: bytes) -> list[tuple[float, float]]:
     """Unpack compact bytes back to [(lat, lon), ...] list."""
     if not buf:
         return []
-    n = len(buf) // 8  # 4 bytes per float × 2 floats per point
-    vals = struct.unpack(f"<{n * 2}f", buf)
+    n = len(buf) // 16  # 8 bytes per double × 2 doubles per point
+    vals = struct.unpack(f"<{n * 2}d", buf)
     return [(vals[i], vals[i + 1]) for i in range(0, len(vals), 2)]
 
 
-def unpack_point_set(buf: bytes, decimals: int = 5) -> set[tuple[float, float]]:
+def unpack_point_set(buf: bytes, decimals: int = 6) -> set[tuple[float, float]]:
     """Unpack to a set of rounded (lat, lon) tuples — used for deduplication."""
     if not buf:
         return set()
-    n = len(buf) // 8
-    vals = struct.unpack(f"<{n * 2}f", buf)
+    n = len(buf) // 16
+    vals = struct.unpack(f"<{n * 2}d", buf)
     return {
         (round(vals[i], decimals), round(vals[i + 1], decimals))
         for i in range(0, len(vals), 2)

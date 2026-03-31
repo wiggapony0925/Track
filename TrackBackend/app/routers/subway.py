@@ -578,7 +578,7 @@ async def subway_shape(
     # simplification then trims redundant collinear points.
     merged_all = _merge_polyline_segments(polylines_raw)
     encoded_polylines: list[str] = [
-        _encode_polyline(_simplify_polyline(_densify_wgs84(coords), tolerance=0.00005))
+        _encode_polyline(_simplify_polyline(_densify_wgs84(coords), tolerance=0.00002))
         for coords in merged_all
     ]
 
@@ -600,7 +600,7 @@ async def subway_shape(
     for dd in direction_data:
         merged_dir = _merge_polyline_segments(dd.polylines)
         dir_encoded = [
-            _encode_polyline(_simplify_polyline(_densify_wgs84(coords), tolerance=0.00005))
+            _encode_polyline(_simplify_polyline(_densify_wgs84(coords), tolerance=0.00002))
             for coords in merged_dir
         ]
         dir_stops = [
