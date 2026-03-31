@@ -13,7 +13,7 @@ import time
 from fastapi import APIRouter, HTTPException, Query
 
 from app.models import ElevatorStatus, TransitAlert, RESP_502
-from app.services.gtfs.data_cleaner import get_alerts, get_broken_elevators
+from app.services.gtfs.realtime_parser import get_alerts, get_broken_elevators
 from app.utils.logger import TrackLogger
 
 router = APIRouter(tags=["status"])

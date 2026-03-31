@@ -28,8 +28,8 @@ from app.routers import bus, lirr, mnr, nearby, predict, status, subway, weather
 from app.clients.bus_client import clear_bus_cache
 from app.services.gtfs.data_loader import ensure_data_available
 from app.services.gtfs.gtfs_refresh import rebuild_schedule_db_if_missing
+from app.clients import redis_client as _redis
 from app.utils import cache_stats
-from app.utils import redis_client as _redis
 from app.utils.logger import TrackLogger
 from app.utils.metrics import setup_metrics, WARMUP_COMPLETE
 
@@ -499,7 +499,7 @@ async def _warmup_caches():
     responsive to user requests throughout.
     """
     global _warmup_complete
-    from app.services.gtfs.data_cleaner import get_arrivals_for_line
+    from app.services.gtfs.realtime_parser import get_arrivals_for_line
     from app.clients.bus_client import get_routes as get_bus_routes
 
     t0 = time.perf_counter()
@@ -619,7 +619,7 @@ async def _periodic_feed_refresh():
     This loop eliminates that entirely — every feed fetch from the hot
     path resolves from the in-process TTL cache in <1ms.
     """
-    from app.services.gtfs.data_cleaner import get_arrivals_for_line
+    from app.services.gtfs.realtime_parser import get_arrivals_for_line
     from app.clients.rail_client import fetch_rail_arrivals
     from app.utils.metrics import FEED_REFRESH_TOTAL, FEED_REFRESH_DURATION, ACTIVE_FEEDS
 

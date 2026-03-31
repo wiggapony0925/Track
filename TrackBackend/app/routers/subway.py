@@ -27,7 +27,7 @@ from app.models import (
     TrackArrival,
     TrunkGroupPolylines,
 )
-from app.services.gtfs.data_cleaner import get_arrivals_for_line
+from app.services.gtfs.realtime_parser import get_arrivals_for_line
 from app.services.mapping.subway_shapes import get_all_subway_stations, get_subway_route_shape, get_subway_service_type, enrich_stops_with_transfers
 from app.services.transit.station_lookup import get_nearby_stop_ids, get_stop_info
 from app.utils.logger import TrackLogger

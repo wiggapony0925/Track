@@ -2,9 +2,9 @@
 Service layer — subdivided by domain.
 
 Sub-packages:
-    services.gtfs/      Data ingestion, cleaning, refresh (GTFS pipeline)
-    services.mapping/   Geometry engine (corridor pipeline, shapes)
-    services.transit/   User-facing transit logic (schedules, stations, alerts)
+    services.gtfs/      GTFS pipeline — schema parser, realtime feed, refresh, data loader
+    services.mapping/   Geometry engine — corridor offsets, subway/rail shapes, polyline QA
+    services.transit/   User-facing transit logic — schedules, station lookup, alert boosting
 
 External API clients live in ``app.clients/``.
 """

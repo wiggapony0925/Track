@@ -11,7 +11,7 @@
 # ── Boost table ────────────────────────────────────────────────────────────
 #   severe  → +25%  (service suspended / major gap / signal failure)
 #   warning → +10%  (delays reported but service running)
-#   (INFO alerts are already filtered out by data_cleaner.py)
+#   (INFO alerts are already filtered out by realtime_parser.py)
 #
 # ── Usage in _ml_corrected ─────────────────────────────────────────────────
 #   await maybe_refresh()
@@ -86,7 +86,7 @@ async def maybe_refresh() -> None:
 async def _do_refresh() -> None:
     global _boost_by_route, _last_refresh
     try:
-        from app.services.gtfs.data_cleaner import get_alerts  # avoid circular at module level
+        from app.services.gtfs.realtime_parser import get_alerts  # avoid circular at module level
         alerts = await asyncio.wait_for(get_alerts(), timeout=3.0)
         new_index: dict[str, float] = {}
         for alert in alerts:

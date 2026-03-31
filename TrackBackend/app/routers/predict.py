@@ -52,7 +52,7 @@ from pydantic import BaseModel
 from app.cache_config import PREDICT_FACTOR_MAX_SIZE, PREDICT_FACTOR_TTL
 from app.ml.delay_model import predict_factor
 from app.ml.recency_model import get_weighted_error
-from app.utils import redis_client as _redis
+from app.clients import redis_client as _redis
 from app.utils.logger import TrackLogger
 from app.utils.metrics import ML_PREDICTIONS_TOTAL, ML_PREDICTION_FACTOR
 

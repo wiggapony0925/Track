@@ -4,7 +4,7 @@
 #
 # Shared geographic and time utilities.
 # Deduplicates haversine (bus_client + station_lookup) and
-# minutes_until (data_cleaner + rail_client).
+# minutes_until (realtime_parser + rail_client).
 #
 
 from __future__ import annotations

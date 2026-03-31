@@ -4,7 +4,7 @@ import time
 import httpx
 from app.clients.mta_client import fetch_protobuf
 from app.config import get_feed_url
-from app.services.gtfs.data_cleaner import get_arrivals_for_line
+from app.services.gtfs.realtime_parser import get_arrivals_for_line
 
 # Benchmark settings
 TEST_LINE = "L"

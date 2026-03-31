@@ -25,7 +25,7 @@ from typing import NamedTuple
 
 from app.services.transit.station_lookup import get_stop_info
 from app.utils.logger import TrackLogger
-from app.utils.shape_utils import (
+from app.services.mapping.shape_utils import (
     ShapePoint,
     pack_coords as _pack_coords,
     unpack_coords as _unpack_coords,
@@ -60,7 +60,7 @@ class DirectionData(NamedTuple):
 # Compact shape helpers — store sorted lat/lon as packed single-precision
 # floats (4 bytes each → 8 bytes/point) instead of NamedTuple objects
 # (~148 bytes/point).  For 347K points this saves ~48 MB.
-# (imported from app.utils.shape_utils as _pack_coords / _unpack_coords / _unpack_point_set)
+# (imported from app.services.mapping.shape_utils as _pack_coords / _unpack_coords / _unpack_point_set)
 
 
 # ---------------------------------------------------------------------------

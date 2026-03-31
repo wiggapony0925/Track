@@ -553,7 +553,6 @@ def _clear_gtfs_caches() -> None:
         _mnr_shapes, _mnr_routes, _mnr_trips,
         _mnr_stops, _mnr_shape_stop_map,
     )
-    from app.services.gtfs.gtfs_parser import _get_shape_to_route_map
 
     caches = [
         _load_shapes, _parse_trips, _load_route_shapes,
@@ -564,7 +563,6 @@ def _clear_gtfs_caches() -> None:
         _lirr_stops, _lirr_shape_stop_map,
         _mnr_shapes, _mnr_routes, _mnr_trips,
         _mnr_stops, _mnr_shape_stop_map,
-        _get_shape_to_route_map,
     ]
 
     legacy_cleared = 0

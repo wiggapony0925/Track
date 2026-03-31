@@ -26,7 +26,7 @@ from app.cache_config import (
 )
 from app.config import get_settings
 from app.utils import cache_stats
-from app.utils import redis_client as _redis
+from app.clients import redis_client as _redis
 from app.utils.logger import TrackLogger
 
 # Cache-stats kind label used for all MTA feeds (subway / LIRR / MNR).

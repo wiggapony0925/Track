@@ -1255,7 +1255,7 @@ class TestLiveNewFieldsIntegration:
         """Live /subway/{line} response includes is_cancelled field."""
         loop = asyncio.new_event_loop()
         try:
-            from app.services.gtfs.data_cleaner import get_arrivals_for_line
+            from app.services.gtfs.realtime_parser import get_arrivals_for_line
             arrivals = loop.run_until_complete(get_arrivals_for_line("A"))
             assert len(arrivals) > 0, "No arrivals from A train feed"
             for a in arrivals:

@@ -41,7 +41,7 @@ from app.clients.bus_client import (
     BUS_AGENCY_PREFIXES,
     CANONICAL_BUS_DISPLAY,
 )
-from app.services.gtfs.data_cleaner import get_arrivals_for_line
+from app.services.gtfs.realtime_parser import get_arrivals_for_line
 from app.services.transit.station_lookup import get_nearby_stop_ids, get_stop_info
 from app.utils.geo_utils import haversine_m
 from app.utils.logger import TrackLogger
@@ -1165,7 +1165,7 @@ async def _get_inline_alerts() -> dict[str, list["InlineAlert"]]:
         return _inline_alert_cache
 
     try:
-        from app.services.gtfs.data_cleaner import get_alerts
+        from app.services.gtfs.realtime_parser import get_alerts
         raw_alerts = await asyncio.wait_for(get_alerts(), timeout=3.0)
         index: dict[str, list[InlineAlert]] = defaultdict(list)
         for alert in raw_alerts:

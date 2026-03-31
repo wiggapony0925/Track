@@ -72,8 +72,8 @@ async def lirr_shapes_all() -> AllCommuterRailLinesResponse:
 async def lirr_shape(route_id: str) -> RouteShape:
     """Return the polyline for a single LIRR branch.
 
-    **Path parameter:** Numeric GTFS route ID (e.g. `9` for Port Washington)
-    or the prefixed form `LIRR_9`.
+    **Path parameter:** Numeric GTFS route ID (e.g. `9` for Port Washington),
+    the prefixed form `LIRR_9`, or the branch name (e.g. `Babylon`).
 
     Response includes:
     - `polylines` — encoded polylines for the branch geometry
@@ -84,6 +84,17 @@ async def lirr_shape(route_id: str) -> RouteShape:
     numeric_id = route_id.removeprefix("LIRR_")
 
     line_data = get_single_lirr_line(numeric_id)
+
+    # Fallback: resolve by branch name (e.g. "Babylon" → route 1)
+    if line_data is None:
+        query = route_id.lower().replace(" branch", "").strip()
+        for line in get_all_lirr_lines():
+            name = line["name"].lower().replace(" branch", "").strip()
+            if name == query or name.startswith(query):
+                numeric_id = line["route_id"].removeprefix("LIRR_")
+                line_data = get_single_lirr_line(numeric_id)
+                break
+
     if line_data is None:
         raise HTTPException(status_code=404, detail=f"LIRR branch '{route_id}' not found")
 

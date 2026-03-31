@@ -72,8 +72,8 @@ async def mnr_shapes_all() -> AllCommuterRailLinesResponse:
 async def mnr_shape(route_id: str) -> RouteShape:
     """Return the polyline for a single Metro-North line.
 
-    **Path parameter:** Numeric GTFS route ID (e.g. `1` for Hudson)
-    or the prefixed form `MNR_1`.
+    **Path parameter:** Numeric GTFS route ID (e.g. `1` for Hudson),
+    the prefixed form `MNR_1`, or the line name (e.g. `Hudson`).
 
     Response includes:
     - `polylines` — encoded polylines for the line geometry
@@ -83,6 +83,17 @@ async def mnr_shape(route_id: str) -> RouteShape:
     numeric_id = route_id.removeprefix("MNR_")
 
     line_data = get_single_mnr_line(numeric_id)
+
+    # Fallback: resolve by line name (e.g. "Hudson" → route 1)
+    if line_data is None:
+        query = route_id.lower().strip()
+        for line in get_all_mnr_lines():
+            name = line["name"].lower().strip()
+            if name == query or name.startswith(query):
+                numeric_id = line["route_id"].removeprefix("MNR_")
+                line_data = get_single_mnr_line(numeric_id)
+                break
+
     if line_data is None:
         raise HTTPException(status_code=404, detail=f"MNR line '{route_id}' not found")
 

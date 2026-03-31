@@ -8,7 +8,7 @@
 #
 # ── How it works ──────────────────────────────────────────────────────────
 #
-# OBSERVE (after each data_cleaner.py GTFS-RT parse):
+# OBSERVE (after each realtime_parser.py GTFS-RT parse):
 #   • Snapshot the current stop_time_updates for each trip in Redis.
 #   • Next poll: stops that disappeared = vehicle passed them.
 #     error = now − predicted_arrival_ts  (positive = late, negative = early)
@@ -37,7 +37,7 @@ import math
 import time as _time
 from datetime import datetime, timezone
 
-from app.utils import redis_client as _redis
+from app.clients import redis_client as _redis
 from app.utils.logger import TrackLogger
 
 _SNAP_PREFIX      = "track:recency:snap"

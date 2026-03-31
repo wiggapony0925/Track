@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 from app.utils.logger import TrackLogger
-from app.utils.shape_utils import (
+from app.services.mapping.shape_utils import (
     ShapePoint,
     pack_coords as _pack_coords,
     unpack_coords as _unpack_coords,
@@ -91,7 +91,7 @@ class CommuterStop(NamedTuple):
 
 
 # ---------------------------------------------------------------------------
-# (imported from app.utils.shape_utils as _pack_coords / _unpack_coords / _unpack_point_set)
+# (imported from app.services.mapping.shape_utils as _pack_coords / _unpack_coords / _unpack_point_set)
 
 
 # ---------------------------------------------------------------------------

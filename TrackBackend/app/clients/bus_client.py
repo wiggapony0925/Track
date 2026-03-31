@@ -51,7 +51,7 @@ try:
 except RuntimeError:
     asyncio.set_event_loop(asyncio.new_event_loop())
 
-from app.utils import redis_client as _redis
+from app.clients import redis_client as _redis
 
 # ---------------------------------------------------------------------------
 # Load Route Map (Canonical Source of Truth)

@@ -1,6 +1,6 @@
 #
 # redis_client.py
-# TrackBackend
+# TrackBackend/app/clients
 #
 # Shared Redis connection used by ALL transit service clients.
 # Bus, subway, LIRR, and MNR all funnel through the same pool so that
