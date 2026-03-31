@@ -254,6 +254,13 @@ def _rebuild_schedule_db() -> bool:
             "service_id": "service_id", "date": "date",
             "exception_type": "exception_type",
         },
+        "calendar": {
+            "service_id": "service_id",
+            "monday": "monday", "tuesday": "tuesday",
+            "wednesday": "wednesday", "thursday": "thursday",
+            "friday": "friday", "saturday": "saturday", "sunday": "sunday",
+            "start_date": "start_date", "end_date": "end_date",
+        },
     }
 
     try:
@@ -305,6 +312,7 @@ def _rebuild_schedule_db() -> bool:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_stop_times_arrival ON stop_times(arrival_time)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_trips_service ON trips(service_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_calendar_date ON calendar_dates(date)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_calendar_service ON calendar(service_id)")
         conn.commit()
         conn.close()
 
@@ -352,6 +360,13 @@ def _create_db_schema(conn: sqlite3.Connection) -> None:
     c.execute("DROP TABLE IF EXISTS calendar_dates")
     c.execute("""CREATE TABLE calendar_dates (
         service_id TEXT, date TEXT, exception_type INTEGER
+    )""")
+    c.execute("DROP TABLE IF EXISTS calendar")
+    c.execute("""CREATE TABLE calendar (
+        service_id TEXT PRIMARY KEY,
+        monday INTEGER, tuesday INTEGER, wednesday INTEGER,
+        thursday INTEGER, friday INTEGER, saturday INTEGER, sunday INTEGER,
+        start_date TEXT, end_date TEXT
     )""")
     conn.commit()
 

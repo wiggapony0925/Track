@@ -11,7 +11,7 @@ from app.utils.logger import TrackLogger
 
 DB_PATH = Path("app/data/transit_schedule.db")
 
-# Map Python weekday (0=Mon) to GTFS service_id keywords
+# Map Python weekday (0=Mon) to GTFS service_id keywords (fallback heuristic)
 _WEEKDAY_KEYWORDS = {
     0: "Weekday",   # Monday
     1: "Weekday",   # Tuesday
@@ -20,6 +20,12 @@ _WEEKDAY_KEYWORDS = {
     4: "Weekday",   # Friday
     5: "Saturday",
     6: "Sunday",
+}
+
+# Map Python weekday (0=Mon) to calendar.txt column name
+_WEEKDAY_COLUMNS = {
+    0: "monday", 1: "tuesday", 2: "wednesday",
+    3: "thursday", 4: "friday", 5: "saturday", 6: "sunday",
 }
 
 class ScheduleService:
@@ -33,37 +39,53 @@ class ScheduleService:
 
     def _resolve_active_services(self, cursor, current_date: str) -> list[str]:
         """
-        Resolve active service_ids for today using two strategies:
-        1. calendar_dates table (exception_type=1 means added, 2 means removed)
-        2. Day-of-week heuristic from service_id naming (e.g. *-Weekday-*, *-Saturday-*)
-        
-        MTA bus GTFS uses a calendar.txt with weekly patterns, but our DB only
-        imported calendar_dates. Named service_ids encode the day-of-week, so we
-        use that as a fallback for routes missing from calendar_dates.
+        Resolve active service_ids for today using three strategies:
+        1. calendar.txt — proper day-of-week + date range check (Transit App pattern)
+        2. calendar_dates table (exception_type=1 means added, 2 means removed)
+        3. Day-of-week heuristic from service_id naming (fallback)
+
+        This mirrors Transit App's GTFS-flex-to-GOFS calendar resolution:
+        base service from calendar.txt, then overlay calendar_dates exceptions.
         """
-        # Strategy 1: Explicitly listed in calendar_dates for today
+        now = datetime.now()
+
+        # Strategy 1: calendar.txt — proper weekly pattern with date range
+        day_col = _WEEKDAY_COLUMNS.get(now.weekday(), "monday")
+        try:
+            cursor.execute(
+                f"SELECT service_id FROM calendar "
+                f"WHERE {day_col} = 1 AND start_date <= ? AND end_date >= ?",
+                (current_date, current_date),
+            )
+            calendar_active = {r[0] for r in cursor.fetchall()}
+        except Exception:
+            # Table might not exist yet (pre-migration)
+            calendar_active = set()
+
+        # Strategy 2: Explicitly listed in calendar_dates for today
         cursor.execute(
             "SELECT service_id, exception_type FROM calendar_dates WHERE date = ?",
             (current_date,),
         )
         rows = cursor.fetchall()
-        
+
         added = {r[0] for r in rows if r[1] == 1}    # explicitly running today
         removed = {r[0] for r in rows if r[1] == 2}   # explicitly NOT running today
-        
-        # Strategy 2: Match service_ids by day-of-week keyword in the name
-        now = datetime.now()
-        day_keyword = _WEEKDAY_KEYWORDS[now.weekday()]
-        
-        cursor.execute(
-            "SELECT DISTINCT service_id FROM trips WHERE service_id LIKE ?",
-            (f"%{day_keyword}%",),
-        )
-        name_matched = {r[0] for r in cursor.fetchall()}
-        
-        # Merge: union of both sets, minus any explicitly removed
-        active = (added | name_matched) - removed
-        
+
+        # Strategy 3: Fallback name heuristic (only if calendar.txt is empty)
+        if not calendar_active:
+            day_keyword = _WEEKDAY_KEYWORDS[now.weekday()]
+            cursor.execute(
+                "SELECT DISTINCT service_id FROM trips WHERE service_id LIKE ?",
+                (f"%{day_keyword}%",),
+            )
+            name_matched = {r[0] for r in cursor.fetchall()}
+        else:
+            name_matched = set()
+
+        # Merge: calendar base ∪ name heuristic ∪ explicit adds, minus removes
+        active = (calendar_active | name_matched | added) - removed
+
         return list(active)
 
     def get_scheduled_arrivals(self, stop_id: str, route_id: str | None = None, limit: int = 10) -> list[TrackArrival]:

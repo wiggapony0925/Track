@@ -285,3 +285,50 @@ def _percentile(values: list[float], threshold: float) -> float:
         return values[-1]
 
     return values[index - 1] + frac * (values[index] - values[index - 1])
+
+
+# ── Geofence circle polygon ─────────────────────────────────────────────
+# Adapted from Transit App's GTFS-flex-to-GOFS zones.py.
+# Creates a circular polygon from a center point + radius — useful for
+# "stations within radius" queries and geofence checks without PostGIS.
+
+def geofence_circle(
+    lat: float, lon: float,
+    radius_m: float = 500.0,
+    num_vertices: int = 16,
+) -> list[tuple[float, float]]:
+    """Create a circular polygon as a list of (lon, lat) tuples (GeoJSON order).
+
+    Uses haversine forward projection for accuracy at any latitude.
+    Adapted from Transit App's ``get_circle_polygon()`` + ``offset_circle_vertex()``.
+
+    Args:
+        lat: Center latitude in degrees.
+        lon: Center longitude in degrees.
+        radius_m: Radius in meters (default 500m — typical station walkable area).
+        num_vertices: Number of vertices on the circle (default 16).
+
+    Returns:
+        A closed ring of (longitude, latitude) tuples suitable for GeoJSON Polygon.
+        The first and last points are identical (closed ring per GeoJSON spec).
+    """
+    sin, cos, asin, atan2, pi, radians, degrees_ = (
+        math.sin, math.cos, math.asin, math.atan2, math.pi, math.radians, math.degrees,
+    )
+    R = 6_371_009.0
+    lat_c = radians(lat)
+    lon_c = radians(lon)
+    d = radius_m / R
+
+    ring: list[tuple[float, float]] = []
+    for i in range(num_vertices):
+        bearing = -i / num_vertices * 2.0 * pi
+        rad_lat = asin(sin(lat_c) * cos(d) + cos(lat_c) * sin(d) * cos(bearing))
+        rad_lon = lon_c + atan2(
+            sin(bearing) * sin(d) * cos(lat_c),
+            cos(d) - sin(lat_c) * sin(rad_lat),
+        )
+        ring.append((round(degrees_(rad_lon), 10), round(degrees_(rad_lat), 10)))
+
+    ring.append(ring[0])  # close the ring
+    return ring

@@ -406,6 +406,180 @@ def validate_speed_plausibility(
     pass  # Placeholder for future implementation
 
 
+# ── Foreign-key cross-reference validation ───────────────────────────────
+# Adapted from Transit App's gtfs-fares-v2-validator pattern: first pass
+# collects ID sets, second pass checks references.  Catches orphan data
+# and broken foreign keys that silently cause missing arrivals.
+
+def validate_foreign_keys(data_dir: Path, acc: ProblemAccumulator) -> None:
+    """Validate cross-file foreign key references in GTFS data.
+
+    Checks:
+      - trips.route_id → routes.route_id
+      - trips.service_id → calendar.service_id ∪ calendar_dates.service_id
+      - stop_times.trip_id → trips.trip_id
+      - stop_times.stop_id → stops.stop_id
+
+    Also detects orphan entities (defined but never referenced).
+    """
+    # Phase 1: Collect all defined IDs (like fares-v2-validator's set-building)
+    route_ids: set[str] = set()
+    stop_ids: set[str] = set()
+    trip_ids: set[str] = set()
+    service_ids: set[str] = set()
+
+    routes_path = data_dir / "routes.txt"
+    if routes_path.exists():
+        with open(routes_path, encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                rid = row.get("route_id", "").strip()
+                if rid:
+                    route_ids.add(rid)
+
+    stops_path = data_dir / "stops.txt"
+    if stops_path.exists():
+        with open(stops_path, encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                sid = row.get("stop_id", "").strip()
+                if sid:
+                    stop_ids.add(sid)
+
+    calendar_path = data_dir / "calendar.txt"
+    if calendar_path.exists():
+        with open(calendar_path, encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                sid = row.get("service_id", "").strip()
+                if sid:
+                    service_ids.add(sid)
+
+    cal_dates_path = data_dir / "calendar_dates.txt"
+    if cal_dates_path.exists():
+        with open(cal_dates_path, encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                sid = row.get("service_id", "").strip()
+                if sid:
+                    service_ids.add(sid)
+
+    trips_path = data_dir / "trips.txt"
+    if trips_path.exists():
+        with open(trips_path, encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                tid = row.get("trip_id", "").strip()
+                if tid:
+                    trip_ids.add(tid)
+
+    # Phase 2: Check foreign keys (like fares-v2-validator's check_linked_id)
+    # Track which route_ids and stop_ids are actually referenced
+    used_route_ids: set[str] = set()
+    used_stop_ids: set[str] = set()
+    bad_route_refs = 0
+    bad_service_refs = 0
+    bad_trip_refs = 0
+    bad_stop_refs = 0
+
+    # trips → routes, services
+    if trips_path.exists():
+        with open(trips_path, encoding="utf-8") as f:
+            for row_num, row in enumerate(csv.DictReader(f), start=2):
+                route_ref = row.get("route_id", "").strip()
+                if route_ref and route_ref not in route_ids:
+                    if bad_route_refs < 10:  # cap error spam
+                        acc.add(ValidationProblem(
+                            severity=Severity.ERROR,
+                            category="foreign_key_invalid",
+                            message=f"Trip references unknown route_id '{route_ref}'",
+                            file="trips.txt", row=row_num,
+                            field="route_id",
+                        ))
+                    bad_route_refs += 1
+                elif route_ref:
+                    used_route_ids.add(route_ref)
+
+                svc_ref = row.get("service_id", "").strip()
+                if svc_ref and service_ids and svc_ref not in service_ids:
+                    if bad_service_refs < 10:
+                        acc.add(ValidationProblem(
+                            severity=Severity.WARNING,
+                            category="foreign_key_invalid",
+                            message=f"Trip references unknown service_id '{svc_ref}'",
+                            file="trips.txt", row=row_num,
+                            field="service_id",
+                        ))
+                    bad_service_refs += 1
+
+    # stop_times → trips, stops
+    stop_times_path = data_dir / "stop_times.txt"
+    if stop_times_path.exists():
+        with open(stop_times_path, encoding="utf-8") as f:
+            for row_num, row in enumerate(csv.DictReader(f), start=2):
+                trip_ref = row.get("trip_id", "").strip()
+                if trip_ref and trip_ref not in trip_ids:
+                    if bad_trip_refs < 10:
+                        acc.add(ValidationProblem(
+                            severity=Severity.ERROR,
+                            category="foreign_key_invalid",
+                            message=f"stop_time references unknown trip_id '{trip_ref}'",
+                            file="stop_times.txt", row=row_num,
+                            field="trip_id",
+                        ))
+                    bad_trip_refs += 1
+
+                stop_ref = row.get("stop_id", "").strip()
+                if stop_ref and stop_ref not in stop_ids:
+                    if bad_stop_refs < 10:
+                        acc.add(ValidationProblem(
+                            severity=Severity.ERROR,
+                            category="foreign_key_invalid",
+                            message=f"stop_time references unknown stop_id '{stop_ref}'",
+                            file="stop_times.txt", row=row_num,
+                            field="stop_id",
+                        ))
+                    bad_stop_refs += 1
+                elif stop_ref:
+                    used_stop_ids.add(stop_ref)
+
+    # Summarize if we hit the cap
+    if bad_route_refs > 10:
+        acc.add(ValidationProblem(
+            severity=Severity.ERROR, category="foreign_key_invalid",
+            message=f"... and {bad_route_refs - 10} more invalid route_id references",
+            file="trips.txt",
+        ))
+    if bad_trip_refs > 10:
+        acc.add(ValidationProblem(
+            severity=Severity.ERROR, category="foreign_key_invalid",
+            message=f"... and {bad_trip_refs - 10} more invalid trip_id references",
+            file="stop_times.txt",
+        ))
+    if bad_stop_refs > 10:
+        acc.add(ValidationProblem(
+            severity=Severity.ERROR, category="foreign_key_invalid",
+            message=f"... and {bad_stop_refs - 10} more invalid stop_id references",
+            file="stop_times.txt",
+        ))
+
+    # Phase 3: Orphan detection (defined but never referenced)
+    orphan_routes = route_ids - used_route_ids
+    if orphan_routes and len(orphan_routes) < len(route_ids):  # only warn if partial
+        sample = sorted(orphan_routes)[:5]
+        acc.add(ValidationProblem(
+            severity=Severity.NOTICE, category="orphan_entity",
+            message=f"{len(orphan_routes)} routes defined but never referenced by trips "
+                    f"(e.g., {', '.join(sample)})",
+            file="routes.txt",
+        ))
+
+    orphan_stops = stop_ids - used_stop_ids
+    if orphan_stops and len(orphan_stops) < len(stop_ids):
+        sample = sorted(orphan_stops)[:5]
+        acc.add(ValidationProblem(
+            severity=Severity.NOTICE, category="orphan_entity",
+            message=f"{len(orphan_stops)} stops defined but never referenced by stop_times "
+                    f"(e.g., {', '.join(sample)})",
+            file="stops.txt",
+        ))
+
+
 # ── High-level validation runner ─────────────────────────────────────────
 
 def validate_gtfs_data(data_dir: Path | str) -> dict[str, Any]:
@@ -436,6 +610,7 @@ def validate_gtfs_data(data_dir: Path | str) -> dict[str, Any]:
     validate_stops(data_dir, acc)
     validate_shapes(data_dir, acc)
     validate_routes(data_dir, acc)
+    validate_foreign_keys(data_dir, acc)
 
     elapsed = _time.time() - t0
 
