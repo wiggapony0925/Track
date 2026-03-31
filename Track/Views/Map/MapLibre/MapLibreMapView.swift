@@ -105,9 +105,6 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
     /// Consolidated station markers.
     var stations: [MapSystemViewModel.ConsolidatedStation]
 
-    /// Route labels for trunk groups.
-    var routeLabels: [HomeViewModel.TrunkRouteLabel]
-
     /// Active route polyline coordinates (when a route is selected).
     var routePolylines: [[CLLocationCoordinate2D]]
 
@@ -582,14 +579,13 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         ) {
             let stationCount: Int = representable.stations.count
             let activeFlag: Int = representable.hasActiveRoute ? 0x2 : 0x0
-            let zoomBucket: Int = Int((mapView.zoomLevel * 12.0).rounded())
-            // Bearing and pitch removed from station hash — station dots are
-            // circles & rotation-invariant. Including them triggered full
-            // GeoJSON rebuilds on every small camera rotation (~10° bucket),
-            // causing dozens of unnecessary heavy rebuilds during gestures.
-            let stationHash: Int = stationCount
-                ^ activeFlag
-                ^ (zoomBucket &* 131)
+            // Zoom bucket intentionally excluded — station dots/pills use
+            // zoom-interpolated GL expressions (circleRadius, iconScale,
+            // opacity) so the GPU handles smooth transitions natively.
+            // Including zoomBucket was rebuilding the full GeoJSON (thousands
+            // of point features) on every small pinch gesture, causing the
+            // visible stutter/pause during zoom.
+            let stationHash: Int = stationCount ^ activeFlag
             if stationHash != lastStationHash || darkChanged {
                 updateStationDotLayers(
                     mapView: mapView,
@@ -1071,6 +1067,7 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         private func updateTransferConnectors(style: MLNStyle, representable: MapLibreMapView) {
             let sourceID = MapLibreStyleConfig.srcTransferConn
             let layerID = MapLibreStyleConfig.layerTransferConn
+            let isDark = representable.isDarkMode
 
             guard !representable.hasActiveRoute else {
                 if let source = style.source(withIdentifier: sourceID) as? MLNShapeSource {
@@ -1085,9 +1082,11 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 var coords = connector.coordinates
                 let feature = MLNPolylineFeature(coordinates: &coords, count: UInt(coords.count))
                 let d = connector.distanceMeters
+                // Shorter transfers (vertical, same complex) get slightly thicker,
+                // longer walking transfers fade to a thinner, subtler line.
                 feature.attributes = [
-                    "width": max(1.0, 2.5 - (d / 120.0) * 1.5),
-                    "opacity": max(0.4, 0.8 - (d / 120.0) * 0.4),
+                    "width": max(1.2, 2.2 - (d / 150.0) * 1.0),
+                    "opacity": max(0.25, 0.55 - (d / 150.0) * 0.3),
                 ]
                 features.append(feature)
             }
@@ -1102,10 +1101,18 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 sourcesCreated.insert(sourceID)
 
                 let layer = MLNLineStyleLayer(identifier: layerID, source: source)
-                layer.lineColor = NSExpression(forConstantValue: UIColor.systemGray4)
+                // Softer color that blends into the map background
+                layer.lineColor = NSExpression(
+                    forConstantValue: isDark
+                        ? UIColor(white: 0.55, alpha: 1)
+                        : UIColor(white: 0.62, alpha: 1)
+                )
                 layer.lineWidth = NSExpression(forKeyPath: "width")
                 layer.lineOpacity = NSExpression(forKeyPath: "opacity")
                 layer.lineCap = NSExpression(forConstantValue: "round")
+                layer.lineJoin = NSExpression(forConstantValue: "round")
+                // Dash pattern: short dashes for a refined, non-solid look
+                layer.lineDashPattern = NSExpression(forConstantValue: [2.0, 1.5])
                 style.addLayer(layer)
             }
         }

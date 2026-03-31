@@ -301,10 +301,12 @@ enum MapLibreStyleConfig {
     )
 
     /// Transfer pill icon size — zoom-interpolated scale factor applied to
-    /// the runtime-generated capsule image.
+    /// the runtime-generated capsule image. Images are rendered at 3x the
+    /// display size so GL always scales *down* (crisp, no pixelation).
+    /// `base: 1.0` (linear) gives visually uniform scaling across zooms.
     static let transferPillIconSize = zoomInterpolate(
-        base: 1.4,
-        stops: [10: 0.25, 11: 0.38, 12: 0.52, 13: 0.65, 14: 0.8, 15: 1.0, 16: 1.3, 17: 1.6, 18: 2.0]
+        base: 1.0,
+        stops: [10: 0.08, 11: 0.13, 12: 0.18, 13: 0.22, 14: 0.27, 15: 0.33, 16: 0.43, 17: 0.53, 18: 0.67]
     )
 
     /// Station label font size — legible from zoom 14.
@@ -316,15 +318,15 @@ enum MapLibreStyleConfig {
     // MARK: - Transfer Pill Image Generation
 
     /// Base pill height in points (short axis of the capsule).
-    static let transferPillHeight: CGFloat = 12
+    static let transferPillHeight: CGFloat = 10
     /// Border thickness for pill images.
-    static let transferPillStroke: CGFloat = 1.5
+    static let transferPillStroke: CGFloat = 1.2
     /// Pill widths keyed by colorGroupCount (number of distinct trunk-color groups).
     static let transferPillWidths: [Int: CGFloat] = [
-        2: 20,
-        3: 26,
-        4: 32,
-        5: 38,
+        2: 18,
+        3: 24,
+        4: 30,
+        5: 36,
     ]
 
     /// Walking route width — dashed line for pedestrian directions.
@@ -740,29 +742,56 @@ enum MapLibreStyleConfig {
     /// - Returns: A `UIImage` suitable for `style.setImage(_:forName:)`.
     static func transferPillImage(colorGroupCount: Int, isDark: Bool) -> UIImage {
         let clamped = min(max(colorGroupCount, 2), 5)
-        let w = transferPillWidths[clamped] ?? 20
-        let h = transferPillHeight
-        let sw = transferPillStroke
+        // Render at 3× the logical size so MapLibre always scales DOWN,
+        // producing crisp pills at every zoom level without pixelation.
+        let scale: CGFloat = 3.0
+        let w = (transferPillWidths[clamped] ?? 18) * scale
+        let h = transferPillHeight * scale
+        let sw = transferPillStroke * scale
+        // Extra padding for the subtle outer shadow
+        let padding: CGFloat = 3.0 * scale
+        let totalW = w + padding * 2
+        let totalH = h + padding * 2
+
+        // Force scale=1 so the renderer draws at exact pixel size
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1.0
+        format.opaque = false
 
         let renderer = UIGraphicsImageRenderer(
-            size: CGSize(width: w, height: h),
-            format: UIGraphicsImageRendererFormat.preferred()
+            size: CGSize(width: totalW, height: totalH),
+            format: format
         )
 
-        return renderer.image { _ in
-            let rect = CGRect(x: sw / 2, y: sw / 2,
+        return renderer.image { ctx in
+            let rect = CGRect(x: padding + sw / 2, y: padding + sw / 2,
                               width: w - sw, height: h - sw)
-            let path = UIBezierPath(roundedRect: rect, cornerRadius: h / 2)
+            let cornerRadius = h / 2
+            let path = UIBezierPath(roundedRect: rect, cornerRadius: cornerRadius)
+
+            // Subtle drop shadow for depth
+            let cgCtx = ctx.cgContext
+            cgCtx.saveGState()
+            let shadowColor: UIColor = isDark
+                ? UIColor.black.withAlphaComponent(0.50)
+                : UIColor.black.withAlphaComponent(0.15)
+            cgCtx.setShadow(
+                offset: CGSize(width: 0, height: 1.0 * scale),
+                blur: 2.0 * scale,
+                color: shadowColor.cgColor
+            )
 
             let fill: UIColor = isDark
-                ? UIColor(white: 0.18, alpha: 1)
+                ? UIColor(white: 0.20, alpha: 1)
                 : .white
-            let stroke: UIColor = isDark
-                ? UIColor(white: 0.85, alpha: 1)
-                : UIColor(white: 0.12, alpha: 1)
-
             fill.setFill()
             path.fill()
+            cgCtx.restoreGState()
+
+            // Refined stroke — softer than before
+            let stroke: UIColor = isDark
+                ? UIColor(white: 0.72, alpha: 0.85)
+                : UIColor(white: 0.25, alpha: 0.55)
             stroke.setStroke()
             path.lineWidth = sw
             path.stroke()

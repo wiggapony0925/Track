@@ -64,7 +64,6 @@ struct MapLibreTrackMapView: View {
     // MARK: - Viewport Caching (same O(n) optimization as TrackMapView)
 
     @State private var _cachedTransferConnectors: [TransferConnector] = []
-    @State private var _cachedVisibleLabels: [HomeViewModel.TrunkRouteLabel] = []
     @State private var _cachedVisibleStops: [DisplayedRouteStop] = []
     @State private var _lastViewportCenter: CLLocationCoordinate2D?
     @State private var _lastViewportDistance: Double?
@@ -128,7 +127,6 @@ struct MapLibreTrackMapView: View {
                 subwayPolylines: viewModel.flattenedSubwayPolylines,
                 commuterRailPolylines: viewModel.flattenedCommuterRailPolylines,
                 stations: viewModel.consolidatedStations,
-                routeLabels: viewModel.trunkRouteLabels,
                 routePolylines: viewModel.cachedRoutePolylines,
                 inactivePolylines: viewModel.cachedInactivePolylines,
                 routeColor: UIColor(selectedRouteColor),
@@ -177,15 +175,6 @@ struct MapLibreTrackMapView: View {
 
     @ViewBuilder
     private var overlayStack: some View {
-        // Route labels
-        MapLibreRouteLabelOverlay(
-            mapView: mapViewRef,
-            labels: _cachedVisibleLabels,
-            currentDistance: currentMapDistance,
-            hasActiveRoute: viewModel.routeShape != nil,
-            cameraChangeToken: cameraChangeToken
-        )
-
         // Route stops (when a route is selected)
         if viewModel.routeShape != nil {
             MapLibreRouteStopOverlay(
@@ -249,7 +238,6 @@ struct MapLibreTrackMapView: View {
             _cachedTransferConnectors = computeTransferConnectors(
                 from: viewModel.consolidatedStations, center: center, distance: d
             )
-            _cachedVisibleLabels = computeVisibleRouteLabels(center: center, distance: d)
             _cachedVisibleStops = computeVisibleDirectionStops(center: center, distance: d)
         }
     }
@@ -286,39 +274,60 @@ struct MapLibreTrackMapView: View {
         var connectors: [TransferConnector] = []
         for (complexID, platforms) in byComplex {
             guard platforms.count >= 2 else { continue }
-            let count: Double = Double(platforms.count)
-            let avgLat: Double = platforms.map(\.coordinate.latitude).reduce(0.0, +) / count
-            let avgLon: Double = platforms.map(\.coordinate.longitude).reduce(0.0, +) / count
-            let centerCoord: CLLocationCoordinate2D = CLLocationCoordinate2D(latitude: avgLat, longitude: avgLon)
-            let centerLoc: CLLocation = CLLocation(latitude: avgLat, longitude: avgLon)
-            for (i, platform) in platforms.enumerated() {
-                let platformLoc: CLLocation = CLLocation(
-                    latitude: platform.coordinate.latitude,
-                    longitude: platform.coordinate.longitude
-                )
-                let dist: Double = platformLoc.distance(from: centerLoc)
-                let connectorId: String = "xfer-\(complexID)-\(i)"
-                connectors.append(TransferConnector(
-                    id: connectorId,
-                    coordinates: [platform.coordinate, centerCoord],
-                    distanceMeters: dist
-                ))
+            // Connect each pair of platforms with a smooth curved path
+            // instead of radial spokes to the centroid.
+            for i in 0..<platforms.count {
+                for j in (i + 1)..<platforms.count {
+                    let a = platforms[i].coordinate
+                    let b = platforms[j].coordinate
+                    let distMeters = CLLocation(latitude: a.latitude, longitude: a.longitude)
+                        .distance(from: CLLocation(latitude: b.latitude, longitude: b.longitude))
+                    let connectorId: String = "xfer-\(complexID)-\(i)-\(j)"
+                    let curvedCoords = Self.curvedPath(from: a, to: b, steps: 8)
+                    connectors.append(TransferConnector(
+                        id: connectorId,
+                        coordinates: curvedCoords,
+                        distanceMeters: distMeters
+                    ))
+                }
             }
         }
         return connectors
     }
 
-    private func computeVisibleRouteLabels(
-        center: CLLocationCoordinate2D, distance: Double
-    ) -> [HomeViewModel.TrunkRouteLabel] {
-        let metersPerDeg: Double = 111_000.0
-        let latSpan: Double = (distance / metersPerDeg) * 1.5
-        let cosLat: Double = cos(center.latitude * Double.pi / 180.0)
-        let lonSpan: Double = (distance / (metersPerDeg * cosLat)) * 1.5
-        return viewModel.trunkRouteLabels.filter { label in
-            abs(label.coordinate.latitude - center.latitude) <= latSpan
-                && abs(label.coordinate.longitude - center.longitude) <= lonSpan
+    /// Generates a smooth quadratic Bezier curve between two coordinates.
+    /// The control point is offset perpendicular to the line connecting
+    /// `from` and `to`, producing a gentle arc.
+    private static func curvedPath(
+        from a: CLLocationCoordinate2D,
+        to b: CLLocationCoordinate2D,
+        steps: Int
+    ) -> [CLLocationCoordinate2D] {
+        let midLat = (a.latitude + b.latitude) / 2.0
+        let midLon = (a.longitude + b.longitude) / 2.0
+        // Perpendicular offset for the control point — produces a subtle arc
+        let dLat = b.latitude - a.latitude
+        let dLon = b.longitude - a.longitude
+        // Offset perpendicular to the line by ~20% of its length
+        let offsetScale: Double = 0.20
+        let ctrlLat = midLat + (-dLon) * offsetScale
+        let ctrlLon = midLon + dLat * offsetScale
+
+        var coords: [CLLocationCoordinate2D] = []
+        coords.reserveCapacity(steps + 1)
+        for i in 0...steps {
+            let t = Double(i) / Double(steps)
+            let oneMinusT = 1.0 - t
+            // Quadratic Bezier: P = (1-t)²·A + 2(1-t)t·C + t²·B
+            let lat = oneMinusT * oneMinusT * a.latitude
+                + 2.0 * oneMinusT * t * ctrlLat
+                + t * t * b.latitude
+            let lon = oneMinusT * oneMinusT * a.longitude
+                + 2.0 * oneMinusT * t * ctrlLon
+                + t * t * b.longitude
+            coords.append(CLLocationCoordinate2D(latitude: lat, longitude: lon))
         }
+        return coords
     }
 
     private func computeVisibleDirectionStops(
