@@ -350,7 +350,17 @@ extension HomeViewModel {
             // a live arrival from the same vehicle (meaning the bus went live).
             let liveVehicleIds = Set(sorted.compactMap(\.vehicleId))
             let filteredScheduled = oldScheduled.filter { sched in
-                guard let vid = sched.vehicleId else { return true }
+                guard let vid = sched.vehicleId else {
+                    // No vehicleId — keep if arrival time is still in the future
+                    // or within the last 2 minutes (clock skew buffer). Drop
+                    // entries that are 5+ minutes past their arrivalTs to prevent
+                    // stale ghost arrivals accumulating over bus-sync cycles.
+                    if let ts = sched.arrivalTs, ts > 0 {
+                        let secFromNow = TimeInterval(ts) - Date().timeIntervalSince1970
+                        return secFromNow > -120 // keep if <2 min past
+                    }
+                    return true
+                }
                 return !liveVehicleIds.contains(vid)
             }
 
@@ -1352,6 +1362,15 @@ extension HomeViewModel {
         // On normal launches (backend already warm), this resolves in <1ms.
         await TrackAPI.waitForBackendReady()
 
+        // ── Cancel stale side-effect Tasks from the previous refresh ──
+        // These fire-and-forget Tasks can outlive their refresh cycle.
+        // If a slow OBA response returns *after* a new refresh has
+        // already fetched fresh stops, the stale Task would overwrite
+        // fresh data with old data. Cancel them here.
+        _busStopsFetchTask?.cancel()
+        _globalFeedsFetchTask?.cancel()
+        _shapePrefetchTask?.cancel()
+
         // ── Bus stops: fire-and-forget ──────────────────────────────
         // Bus stops are supplementary metadata (used for distance badges).
         // Fetching them through OBA can be slow during cold starts (25 s+),
@@ -1361,11 +1380,12 @@ extension HomeViewModel {
         // in 30 s.  By running bus stops in an unstructured Task, the
         // refresh completes as soon as grouped + stations arrive, and bus
         // stops update asynchronously afterward.
-        Task { @MainActor [weak self] in
-            guard let self else { return }
+        _busStopsFetchTask = Task { @MainActor [weak self] in
+            guard let self, !Task.isCancelled else { return }
             let stops = (try? await TrackAPI.fetchNearbyBusStops(
                 lat: lat, lon: lon, radius: Self.busStopsNearbyRadius
             )) ?? self.nearbyBusStops
+            guard !Task.isCancelled else { return }
             self.nearbyBusStops = Self.augmentBusStops(stops, from: self.groupedTransit)
         }
 
@@ -1379,8 +1399,8 @@ extension HomeViewModel {
         // stations + bus stops), and alerts fire once the backend is proven warm.
         let isFirstLoad = groupedTransit.isEmpty
         if !skipGlobalFeeds && !isFirstLoad {
-            Task { @MainActor [weak self] in
-                guard let self else { return }
+            _globalFeedsFetchTask = Task { @MainActor [weak self] in
+                guard let self, !Task.isCancelled else { return }
                 await self.refreshGlobalFeeds()
             }
         }
@@ -1488,7 +1508,8 @@ extension HomeViewModel {
             // On first load (cold start), global feeds were deferred until
             // grouped succeeds — fire them now that the backend is proven warm.
             if isFirstLoad && !skipGlobalFeeds {
-                Task { @MainActor [weak self] in
+                _globalFeedsFetchTask = Task { @MainActor [weak self] in
+                    guard !Task.isCancelled else { return }
                     await self?.refreshGlobalFeeds()
                 }
             }
@@ -1561,6 +1582,9 @@ extension HomeViewModel {
         if nearbyTransit.isEmpty && groupedTransit.isEmpty && errorMessage == nil {
             await fetchNearestMetro(location: location)
         }
+
+        // Evict stale ETA engine entries that accumulate from departed vehicles.
+        ArrivalETAEngine.evictStaleEntries()
 
         isLoading = false
     }
@@ -1790,7 +1814,13 @@ extension HomeViewModel {
             updateSelectedRouteFromRefreshedData(nearbyGroupedSubwayArrivals)
 
             let stations = (try? await stationsTask) ?? nearbyStations
-            nearbyStations = Self.augmentStations(stations, from: nearbyGroupedSubwayArrivals)
+            // Augment with subway AND existing commuter rail groups so a
+            // subway-only refresh doesn't wipe LIRR/MNR station data from
+            // nearbyStations (distance matching breaks otherwise).
+            var allGroupsForAugment = nearbyGroupedSubwayArrivals as [GroupedNearbyTransitResponse]
+            allGroupsForAugment += nearbyGroupedLIRRArrivals
+            allGroupsForAugment += nearbyGroupedMNRArrivals
+            nearbyStations = Self.augmentStations(stations, from: allGroupsForAugment)
         } catch {
             AppLogger.shared.logError("refreshSubway", error: error)
             errorMessage = (error as? TransitError)?.description ?? error.localizedDescription

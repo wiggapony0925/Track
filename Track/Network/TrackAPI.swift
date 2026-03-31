@@ -8,6 +8,7 @@
 
 import CoreLocation
 import Foundation
+import os
 
 private actor APIRequestMemoizer {
     private var inflight: [String: Task<Data, Error>] = [:]
@@ -80,17 +81,31 @@ struct TrackAPI {
 
     // MARK: - Cold-Start State
 
+    /// Thread-safe lock protecting `serverWarmedUp`.
+    /// Replaces `nonisolated(unsafe)` to eliminate data races between
+    /// the health probe (Task.detached), retry loops, and MainActor reads.
+    nonisolated private static let _warmLock = OSAllocatedUnfairLock(initialState: false)
+
     /// Whether at least one backend response has succeeded this session.
     /// Before this becomes `true`, HTTP timeouts are extended to 25 s to
-    /// survive Render's container cold-start (warmup now takes ~5 s with
-    /// concurrent feed priming instead of the old ~25 s sequential warmup).
-    /// Reset automatically on each app launch (static var, not persisted).
-    nonisolated(unsafe) private(set) static var serverWarmedUp = false
+    /// survive Render's container cold-start.
+    /// Thread-safe: reads/writes go through `_warmLock`.
+    nonisolated(unsafe) static var serverWarmedUp: Bool {
+        get { _warmLock.withLock { $0 } }
+        set { _warmLock.withLock { $0 = newValue } }
+    }
 
     // MARK: - Connection Warm-Up
 
+    /// Thread-safe lock protecting `_healthGateTask`.
+    nonisolated private static let _healthGateLock = OSAllocatedUnfairLock<Task<Bool, Never>?>(initialState: nil)
+
     /// In-flight health-gate task so multiple callers coalesce onto one probe.
-    nonisolated(unsafe) private static var _healthGateTask: Task<Bool, Never>?
+    /// Thread-safe: reads/writes go through `_healthGateLock`.
+    nonisolated(unsafe) private static var _healthGateTask: Task<Bool, Never>? {
+        get { _healthGateLock.withLock { $0 } }
+        set { _healthGateLock.withLock { $0 = newValue } }
+    }
 
     /// Fires a lightweight TCP/TLS warm-up to the backend host as early as
     /// possible in the app lifecycle (called from TrackApp.init).
@@ -210,12 +225,16 @@ struct TrackAPI {
 
     // MARK: - Cached User Email (avoids MainActor hop on every request)
 
+    /// Thread-safe lock protecting `cachedUserEmail`.
+    nonisolated private static let _emailLock = OSAllocatedUnfairLock<String?>(initialState: nil)
+
     /// Set by SupabaseManager after login/profile load to avoid hopping
     /// to @MainActor on every API call.
-    /// nonisolated(unsafe) is safe here: written only from @MainActor
-    /// (SupabaseManager.currentUser didSet) and read from async contexts
-    /// where a stale/nil value is harmless (just omits the header).
-    nonisolated(unsafe) private(set) static var cachedUserEmail: String?
+    /// Thread-safe: reads/writes go through `_emailLock`.
+    nonisolated(unsafe) static var cachedUserEmail: String? {
+        get { _emailLock.withLock { $0 } }
+        set { _emailLock.withLock { $0 = newValue } }
+    }
 
     static func setCachedEmail(_ email: String?) {
         cachedUserEmail = email
@@ -226,8 +245,12 @@ struct TrackAPI {
     /// The active backend URL, determined by the Developer Settings in SettingsView.
     /// On a physical device, localhost is never used (it would point to the phone itself).
     /// Cached to avoid re-computing (and logging) on every API call.
-    /// nonisolated(unsafe): written from @MainActor, read from async contexts.
-    nonisolated(unsafe) private static var _cachedBaseURL: String?
+    /// Thread-safe: reads/writes go through `_baseURLLock`.
+    nonisolated private static let _baseURLLock = OSAllocatedUnfairLock<String?>(initialState: nil)
+    nonisolated(unsafe) private static var _cachedBaseURL: String? {
+        get { _baseURLLock.withLock { $0 } }
+        set { _baseURLLock.withLock { $0 = newValue } }
+    }
     
     /// Invalidate the cached URL when developer settings change.
     static func invalidateBaseURL() {
@@ -726,7 +749,24 @@ struct TrackAPI {
 
     private static let decoder: JSONDecoder = {
         let d = JSONDecoder()
-        d.dateDecodingStrategy = .iso8601
+        // Use a custom strategy that handles both standard ISO 8601
+        // ("2026-03-31T12:00:00Z") and fractional-second variants
+        // ("2026-03-31T12:00:00.123456+00:00") that MTA SIRI and
+        // Python's datetime.isoformat() emit by default.
+        let isoFull = ISO8601DateFormatter()
+        isoFull.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let isoBase = ISO8601DateFormatter()
+        isoBase.formatOptions = [.withInternetDateTime]
+        d.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let str = try container.decode(String.self)
+            if let date = isoFull.date(from: str) { return date }
+            if let date = isoBase.date(from: str) { return date }
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Cannot decode date: \(str)"
+            )
+        }
         return d
     }()
 

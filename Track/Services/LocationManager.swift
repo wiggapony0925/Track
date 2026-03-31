@@ -71,15 +71,18 @@ final class LocationManager: NSObject, CLLocationManagerDelegate {
     ///
     /// Call this when the app returns to the foreground after a long
     /// suspension so the UI can refresh with the correct location ASAP.
+    /// In-flight restore task for the one-shot GPS fix.
+    private var _restoreFilterTask: Task<Void, Never>?
+
     func requestImmediateFix() {
+        _restoreFilterTask?.cancel()
         manager.distanceFilter = kCLDistanceFilterNone
         manager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
         manager.startUpdatingLocation()
         // Restore normal filter after a brief window (enough for 1-2 fixes).
-        // Reduced from 3s → 1s to avoid rapid-fire GPS callbacks that trigger
-        // cascading refresh cycles and waste energy.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
-            guard let self else { return }
+        _restoreFilterTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            guard let self, !Task.isCancelled else { return }
             self.manager.distanceFilter = AppSettings.shared.distanceFilterMeters
             self.manager.desiredAccuracy = kCLLocationAccuracyBest
         }

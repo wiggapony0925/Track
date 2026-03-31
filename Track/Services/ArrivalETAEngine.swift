@@ -176,6 +176,55 @@ enum ArrivalETAEngine {
         smoothedETA.removeValue(forKey: vehicleKey)
     }
 
+    // MARK: - Stale Entry Eviction
+
+    /// Maximum age (seconds) before a position-history / smoothedETA entry
+    /// is considered stale. Vehicles that haven't reported in 3 minutes are
+    /// almost certainly gone from the nearby feed.
+    private static let staleEntryAge: TimeInterval = 180
+
+    /// Maximum number of keys allowed in each dictionary. Acts as a hard
+    /// cap even if recent entries are not yet stale.
+    private static let maxCacheKeys = 200
+
+    /// Evicts entries whose most-recent sample/timestamp is older than
+    /// `staleEntryAge`, and caps total size at `maxCacheKeys`.
+    /// Should be called once per refresh cycle (e.g. at the end of
+    /// `refreshBusVehicles` / `refreshTrainVehicles`).
+    static func evictStaleEntries() {
+        let now = Date()
+
+        // ── positionHistory ──
+        positionHistory = positionHistory.filter { _, samples in
+            guard let last = samples.last else { return false }
+            return now.timeIntervalSince(last.timestamp) < staleEntryAge
+        }
+        if positionHistory.count > maxCacheKeys {
+            // Keep only the `maxCacheKeys` most-recently-updated entries.
+            let sorted = positionHistory.sorted {
+                ($0.value.last?.timestamp ?? .distantPast)
+                    > ($1.value.last?.timestamp ?? .distantPast)
+            }
+            positionHistory = Dictionary(uniqueKeysWithValues: sorted.prefix(maxCacheKeys).map { ($0.key, $0.value) })
+        }
+
+        // ── smoothedETA ──
+        smoothedETA = smoothedETA.filter { _, entry in
+            now.timeIntervalSince(entry.timestamp) < staleEntryAge
+        }
+        if smoothedETA.count > maxCacheKeys {
+            let sorted = smoothedETA.sorted { $0.value.timestamp > $1.value.timestamp }
+            smoothedETA = Dictionary(uniqueKeysWithValues: sorted.prefix(maxCacheKeys).map { ($0.key, $0.value) })
+        }
+
+        // ── delayFactorCache ──
+        // Already has a TTL check in `cachedDelayFactor`, but entries are
+        // never removed — do it here.
+        delayFactorCache = delayFactorCache.filter { _, entry in
+            now.timeIntervalSince(entry.fetchedAt) < delayFactorTTL
+        }
+    }
+
     // MARK: - Compute Smart ETA
 
     /// Computes a smart ETA for a vehicle heading toward a stop.

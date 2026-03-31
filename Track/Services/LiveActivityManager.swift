@@ -174,34 +174,48 @@ final class LiveActivityManager {
     // MARK: - End
 
     /// Ends the current Live Activity (by tracked ID).
+    ///
+    /// We snapshot the existing activities **before** entering the Task so
+    /// the unstructured Task only touches activities that existed at call
+    /// time — if `startActivity()` fires right after, the snapshot won't
+    /// include the newly created activity.
     func endActivity() {
         let activityID = currentActivityID
         // Clear immediately so `isTracking` returns false
         // and `startActivity()` won't see a stale ID.
         currentActivityID = nil
 
+        // Snapshot current activities on the calling (MainActor) thread.
+        let snapshot = Activity<TrackActivityAttributes>.activities
+
+        guard !snapshot.isEmpty else {
+            if let id = activityID {
+                AppLogger.shared.log("LIVE_ACTIVITY", message: "No activities to end for \(id)")
+            }
+            return
+        }
+
+        if let id = activityID {
+            AppLogger.shared.log("LIVE_ACTIVITY", message: "Ending tracked activity \(id)")
+        }
+
         Task {
-            // End ALL activities — not just the tracked one.
-            // Catches orphans from previous sessions or race conditions.
-            for activity in Activity<TrackActivityAttributes>.activities {
-                let finalState = TrackActivityAttributes.ContentState(
-                    statusText: "Arrived",
-                    arrivalTime: Date(),
-                    progress: 1.0,
-                    minutesAway: 0,
-                    nextArrivals: [],
-                    walkMinutes: nil,
-                    isHurryUp: false
-                )
+            let finalState = TrackActivityAttributes.ContentState(
+                statusText: "Arrived",
+                arrivalTime: Date(),
+                progress: 1.0,
+                minutesAway: 0,
+                nextArrivals: [],
+                walkMinutes: nil,
+                isHurryUp: false
+            )
+            for activity in snapshot {
                 await activity.end(
                     ActivityContent(state: finalState, staleDate: nil),
                     dismissalPolicy: .after(Date.now.addingTimeInterval(AppSettings.shared.liveActivityDismissalSeconds))
                 )
                 AppLogger.shared.log("LIVE_ACTIVITY", message: "Ended activity \(activity.id)")
             }
-        }
-        if let id = activityID {
-            AppLogger.shared.log("LIVE_ACTIVITY", message: "Ending tracked activity \(id)")
         }
     }
 

@@ -38,7 +38,7 @@ final class HomeViewModel {
     /// with cached data during long cold-start refreshes, while the
     /// navbar "Updating…" badge keeps showing until fresh data lands.
     var showStaleRows = false
-    private var _staleRowsTimer: DispatchWorkItem?
+    private var _staleRowsTimer: Task<Void, Never>?
     /// True while `refresh()` is executing. Used to prevent the 20s timer from
     /// stacking duplicate refresh calls when the backend is slow (cold-start
     /// can take 30-60s, causing 1-3 extra timer fires before the first fetch
@@ -61,6 +61,17 @@ final class HomeViewModel {
     /// Maximum number of cold-start retry attempts before giving up and
     /// letting the normal 30s timer handle subsequent refreshes.
     static let maxColdStartRetries = 5
+
+    // MARK: - Side-effect Tasks (cancelled on each refresh to prevent stale writes)
+
+    /// In-flight bus stops fetch. Cancelled at the start of each
+    /// `refreshNearbyTransit()` so a slow OBA response from the
+    /// *previous* refresh doesn't overwrite stops fetched by the new one.
+    @ObservationIgnored var _busStopsFetchTask: Task<Void, Never>?
+
+    /// In-flight global feeds (alerts + accessibility) fetch.
+    @ObservationIgnored var _globalFeedsFetchTask: Task<Void, Never>?
+
     var errorMessage: String?
 
     /// True when `errorMessage` indicates a network/connectivity failure rather
@@ -662,6 +673,10 @@ final class HomeViewModel {
     /// Updated after each `WeatherService.shared.update(for:)` resolves.
     var weatherSnapshot: WeatherSnapshot?
 
+    /// In-flight weather observation polling task. Cancelled on each
+    /// `refresh()` so only one polling loop runs at a time.
+    @ObservationIgnored private var _weatherPollTask: Task<Void, Never>?
+
     // Walking route to the nearest station (forwarded from goMode)
     /// Cancelable task for directional split rebuild — debounces rapid GPS
     /// updates so the O(n×m) point-search only runs when location settles.
@@ -854,15 +869,26 @@ final class HomeViewModel {
     }
 
     /// Load a shape from disk if it exists and is < 24 h old.
+    /// Uses nonisolated helper to keep FileManager I/O off the main actor.
     private func loadShapeFromDisk(for routeId: String) -> RouteShapeResponse? {
         guard let dir = Self._shapeDiskDir else { return nil }
         let key = Self._shapeDiskKey(routeId)
+        return Self._readShapeFile(dir: dir, key: key, maxAge: Self._shapeDiskMaxAge)
+    }
+
+    /// Disk read helper for cached route shapes.
+    /// Kept as a static so it doesn't capture `self`, but remains
+    /// @MainActor-isolated because RouteShapeResponse's Decodable
+    /// conformance is MainActor-isolated in Swift 6.
+    private static func _readShapeFile(
+        dir: URL, key: String, maxAge: TimeInterval
+    ) -> RouteShapeResponse? {
         let file = dir.appendingPathComponent(key + ".json")
         guard FileManager.default.fileExists(atPath: file.path) else { return nil }
         do {
             let attrs = try FileManager.default.attributesOfItem(atPath: file.path)
             if let modified = attrs[.modificationDate] as? Date,
-               Date().timeIntervalSince(modified) > Self._shapeDiskMaxAge {
+               Date().timeIntervalSince(modified) > maxAge {
                 try? FileManager.default.removeItem(at: file)
                 return nil
             }
@@ -1712,11 +1738,11 @@ final class HomeViewModel {
     private func _beginStaleRowsWindow() {
         _staleRowsTimer?.cancel()
         showStaleRows = true
-        let work = DispatchWorkItem { [weak self] in
+        _staleRowsTimer = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 8_000_000_000)
+            guard !Task.isCancelled else { return }
             self?.showStaleRows = false
         }
-        _staleRowsTimer = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 8, execute: work)
     }
 
     /// Cancels the stale-row timer and un-greys rows immediately
@@ -1857,7 +1883,9 @@ final class HomeViewModel {
             WeatherService.shared.update(for: location)
             // Observe the result — poll briefly so the stored property
             // picks up the snapshot once the async fetch resolves.
-            Task { @MainActor [weak self] in
+            // Cancel any previous polling task so only one loop runs.
+            _weatherPollTask?.cancel()
+            _weatherPollTask = Task { @MainActor [weak self] in
                 // Wait up to 6 seconds for weather to resolve (covers backend fallback)
                 for _ in 0..<30 {
                     try? await Task.sleep(nanoseconds: 200_000_000) // 200ms
@@ -1873,20 +1901,21 @@ final class HomeViewModel {
         let loc = effectiveLocation(userLocation: location)
 
         // Guard: if a refresh is already in-flight, don't stack another.
-        // The timer fires every 20s but a cold-start fetch can take 30-60s.
-        // Without this guard, each timer tick spawns a new refresh() call
-        // that never gets blocked by canSkipRefresh (hasLoadedOnce is still
-        // false), creating a pile-up of coalesced-but-redundant work.
+        // This now applies to BOTH forced and non-forced refreshes.
+        // On app open, onAppear and scenePhase(.active) can both fire
+        // force:true simultaneously — without this guard, two concurrent
+        // refreshes race on groupedTransit/nearbyStations causing data
+        // corruption (last-write-wins).
         //
         // Escape hatch: if the current refresh has been stuck for > 60 s,
         // let a new one through. Render's proxy may have returned a 502
         // that exhausted retries, but the outer `async let` structure kept
         // the task alive waiting for a sibling. Without this, the user
         // stares at an error screen for minutes.
-        if _refreshInFlight && !force {
+        if _refreshInFlight {
             let stuckTooLong = _refreshStartedAt.map { Date().timeIntervalSince($0) > 60 } ?? false
             if !stuckTooLong {
-                AppLogger.shared.log("REFRESH", message: "⏭️ Skipped — refresh already in flight")
+                AppLogger.shared.log("REFRESH", message: "⏭️ Skipped — refresh already in flight\(force ? " (forced)" : "")")
                 return false
             }
             AppLogger.shared.log("REFRESH", message: "⚠️ Previous refresh stuck > 60 s — allowing new refresh")
