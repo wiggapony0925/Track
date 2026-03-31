@@ -9,7 +9,7 @@
 from __future__ import annotations
 
 import traceback
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta
 
 import httpx
 from fastapi import APIRouter, HTTPException, Path, Query, Response
