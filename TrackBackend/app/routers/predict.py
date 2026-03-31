@@ -47,11 +47,12 @@ import time
 from collections import OrderedDict
 
 from fastapi import APIRouter, Query, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.cache_config import PREDICT_FACTOR_MAX_SIZE, PREDICT_FACTOR_TTL
 from app.ml.delay_model import predict_factor
 from app.ml.recency_model import get_weighted_error
+from app.models import ReloadModelResponse
 from app.clients import redis_client as _redis
 from app.utils.logger import TrackLogger
 from app.utils.metrics import ML_PREDICTIONS_TOTAL, ML_PREDICTION_FACTOR
@@ -129,14 +130,25 @@ async def _redis_set(key: str, factor: float) -> None:
 class DelayPrediction(BaseModel):
     """Predicted arrival adjustment returned to the iOS app."""
 
-    adjusted_minutes: int
-    original_minutes: int
-    delay_factor: float
-    adjustment_reason: str | None = None
-    model_source: str = "heuristic"   # "model"|"model_live"|"heuristic"|"heuristic_live"|"l1_hit"|"l2_hit"|"coalesced"|"disabled"
-    recency_error_seconds: float = 0.0  # signed correction from recency model (+ = late)
-    is_rush_hour: bool = False          # structured flag so iOS can format its own reason string
-    weather_condition: str = "clear"    # echo back the weather used for prediction
+    model_config = ConfigDict(json_schema_extra={"examples": [{
+        "adjusted_minutes": 9,
+        "original_minutes": 8,
+        "delay_factor": 1.15,
+        "adjustment_reason": "Rush-hour slowdown pattern on this line",
+        "model_source": "model_live",
+        "recency_error_seconds": 32.5,
+        "is_rush_hour": True,
+        "weather_condition": "clear",
+    }]})
+
+    adjusted_minutes: int = Field(..., description="Delay-adjusted minutes until arrival.")
+    original_minutes: int = Field(..., description="Original MTA-predicted minutes.")
+    delay_factor: float = Field(..., description="Multiplicative delay factor applied (e.g. 1.15 = 15% slower).")
+    adjustment_reason: str | None = Field(None, description="Human-readable reason for the adjustment.")
+    model_source: str = Field("heuristic", description="Prediction source: 'model', 'model_live', 'heuristic', 'heuristic_live', 'l1_hit', 'l2_hit', 'coalesced', or 'disabled'.")
+    recency_error_seconds: float = Field(0.0, description="Signed correction from recency model in seconds (positive = late).")
+    is_rush_hour: bool = Field(False, description="True during rush hour periods.")
+    weather_condition: str = Field("clear", description="Weather condition used for prediction (e.g. 'clear', 'rain', 'snow').")
 
 
 # ── Endpoint ──────────────────────────────────────────────────────────────
@@ -145,26 +157,30 @@ class DelayPrediction(BaseModel):
     response_model=DelayPrediction,
     summary="Predict arrival delay",
     description=(
-        "Returns a delay-adjusted arrival time blending LightGBM pattern model, "
-        "recency correction, and live SIRI deviation signals."
+        "Returns a delay-adjusted arrival time by blending three signals: "
+        "(1) a LightGBM model trained on historical route reliability patterns, "
+        "(2) a recency model that corrects per-stop prediction errors, and "
+        "(3) live SIRI schedule deviation data when available. "
+        "The response includes the adjusted minutes, the multiplicative delay factor, "
+        "and the model source used."
     ),
 )
 async def predict_delay(
-    minutes_away: int = Query(..., ge=0, description="MTA-predicted minutes until arrival.", examples=[8]),
-    route_id: str = Query(..., description="Transit route ID.", examples=["7"]),
-    hour: int = Query(..., ge=0, le=23, description="Current hour (0–23).", examples=[17]),
-    day_of_week: int = Query(..., ge=1, le=7, description="Day of week (1=Sun … 7=Sat).", examples=[3]),
-    weather: str | None = Query(None, description="Weather condition. Auto-detected from Open-Meteo if omitted.", examples=["clear"]),
-    mode: str = Query("subway", description="Transit mode.", examples=["subway"]),
-    stop_id: str | None = Query(None, description="GTFS stop_id — enables per-stop recency correction.", examples=["726S"]),
+    minutes_away: int = Query(..., ge=0, description="MTA-predicted minutes until arrival (from GTFS-RT or SIRI feed).", examples=[8]),
+    route_id: str = Query(..., description="Transit route ID (e.g. subway line or bus route).", examples=["7", "A", "B63"]),
+    hour: int = Query(..., ge=0, le=23, description="Current hour of the day (0–23, 24-hour format).", examples=[17]),
+    day_of_week: int = Query(..., ge=1, le=7, description="Day of week (1=Sunday, 2=Monday, … 7=Saturday).", examples=[3]),
+    weather: str | None = Query(None, description="Weather condition code. If omitted, auto-detected from the Open-Meteo cache.", examples=["clear", "rain", "snow"]),
+    mode: str = Query("subway", description="Transit mode for selecting the correct prediction model.", examples=["subway", "bus", "lirr", "mnr"]),
+    stop_id: str | None = Query(None, description="GTFS stop_id — enables per-stop recency error correction for higher accuracy.", examples=["726S", "127N"]),
     schedule_deviation_s: int | None = Query(
         None,
         description=(
             "Live SIRI schedule deviation in seconds "
-            "(ExpectedArrival − AimedArrival). Positive = running late. "
-            "Feeds into the LightGBM model as a momentum signal."
+            "(ExpectedArrival − AimedArrival). Positive values mean running late. "
+            "When provided, feeds into the LightGBM model as a momentum signal."
         ),
-        examples=[45],
+        examples=[45, -15],
     ),
 ) -> DelayPrediction:
     """Return a delay-adjusted arrival time.
@@ -348,7 +364,7 @@ def _is_rush(hour: int, dow: int) -> bool:
     description="Hot-reloads the LightGBM delay model from disk without restarting the server. Localhost only.",
     responses={403: {"description": "Forbidden — endpoint restricted to localhost."}},
 )
-async def reload_model_endpoint(request: Request) -> dict:
+async def reload_model_endpoint(request: Request) -> ReloadModelResponse:
     """Hot-reload the delay prediction model from disk.
 
     Call this after training a new model so updated weights take effect
@@ -364,8 +380,8 @@ async def reload_model_endpoint(request: Request) -> dict:
     from app.ml.delay_model import reload_model
     _L1.clear()  # flush L1 so stale factors are recomputed
     success = reload_model()
-    return {
-        "success": success,
-        "message": "Model reloaded — L1 cache cleared." if success
-                   else "No model file found. Using heuristic.",
-    }
+    return ReloadModelResponse(
+        success=success,
+        message="Model reloaded — L1 cache cleared." if success
+                else "No model file found. Using heuristic.",
+    )

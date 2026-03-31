@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import APIRouter, HTTPException, Path, Response
 
 from app.models import (
     AllCommuterRailLinesResponse,
@@ -16,6 +16,7 @@ from app.models import (
     CommuterRailStop,
     DirectionShape,
     RESP_404,
+    RESP_502,
     RouteShape,
     TrackArrival,
 )
@@ -35,7 +36,10 @@ router = APIRouter(tags=["lirr"])
     "/lirr/shapes/all",
     response_model=AllCommuterRailLinesResponse,
     summary="Get all LIRR branch shapes",
-    description="Returns encoded polylines for every LIRR branch — used to draw the full LIRR system map.",
+    description=(
+        "Returns encoded polylines for every LIRR branch — used to draw the full LIRR system map. "
+        "Each branch includes station markers with coordinates."
+    ),
 )
 async def lirr_shapes_all() -> AllCommuterRailLinesResponse:
     """Return polylines for ALL LIRR branches.
@@ -66,10 +70,13 @@ async def lirr_shapes_all() -> AllCommuterRailLinesResponse:
     "/lirr/shape/{route_id}",
     response_model=RouteShape,
     summary="Get single LIRR branch shape",
-    description="Returns the polyline geometry and ordered stops for a single LIRR branch.",
+    description=(
+        "Returns the polyline geometry, ordered stops, and per-direction shapes for a single LIRR branch. "
+        "Accepts numeric GTFS route ID, prefixed form (e.g. `LIRR_9`), or branch name (e.g. `Babylon`)."
+    ),
     responses={**RESP_404},
 )
-async def lirr_shape(route_id: str) -> RouteShape:
+async def lirr_shape(route_id: str = Path(..., description="LIRR branch GTFS route ID, prefixed form, or branch name.", examples=["9", "LIRR_9", "Babylon"])) -> RouteShape:
     """Return the polyline for a single LIRR branch.
 
     **Path parameter:** Numeric GTFS route ID (e.g. `9` for Port Washington),
@@ -135,7 +142,12 @@ async def lirr_shape(route_id: str) -> RouteShape:
     "/lirr",
     response_model=list[TrackArrival],
     summary="Get real-time LIRR arrivals",
-    description="Returns upcoming real-time LIRR arrivals from the GTFS-Realtime feed.",
+    description=(
+        "Returns upcoming real-time LIRR arrivals from the GTFS-Realtime feed. "
+        "Each arrival includes station, direction, destination, minutes away, and cancellation status. "
+        "Returns an empty array if the MTA feed is temporarily unavailable."
+    ),
+    responses={**RESP_502},
 )
 async def lirr_arrivals(response: Response) -> list[TrackArrival]:
     """Return upcoming LIRR arrivals.

@@ -452,7 +452,7 @@ async def nearby_transit(
     response: Response,
     lat: float = Query(..., ge=-90, le=90, description="Latitude of the user's location.", examples=[40.7580]),
     lon: float = Query(..., ge=-180, le=180, description="Longitude of the user's location.", examples=[-73.9855]),
-    radius: int | None = Query(None, ge=100, le=10000, description="Search radius in meters. Defaults to the server-configured value (~800 m).", examples=[800]),
+    radius: int | None = Query(None, ge=100, le=10000, description="Maximum search radius from the request location (in meters). Defaults to the server-configured value (~800\u202fm).", examples=[800]),
 ) -> list[NearbyTransitArrival]:
     """Return the nearest buses and trains with live countdowns.
 
@@ -476,15 +476,16 @@ async def nearby_transit(
     summary="List nearby arrivals grouped by route",
     description=(
         "The primary endpoint for the Track home screen. Returns nearby transit arrivals "
-        "grouped by route with direction sub-groups, ML delay corrections, and inline service alerts."
+        "grouped by route with direction sub-groups, ML delay corrections, inline service alerts, "
+        "and MTA canonical ordering. Supports filtering by transit mode."
     ),
     responses={**RESP_503},
 )
 async def nearby_transit_grouped(
     lat: float = Query(..., ge=-90, le=90, description="Latitude of the user's location.", examples=[40.7580]),
     lon: float = Query(..., ge=-180, le=180, description="Longitude of the user's location.", examples=[-73.9855]),
-    radius: int | None = Query(None, ge=100, le=10000, description="Search radius in meters. Defaults to the server-configured value (~800 m).", examples=[800]),
-    mode: str | None = Query(None, description="Filter results to a single transit mode.", examples=["subway"]),
+    radius: int | None = Query(None, ge=100, le=10000, description="Maximum search radius from the request location (in meters). Defaults to the server-configured value (~800\u202fm).", examples=[800]),
+    mode: str | None = Query(None, description="Filter results to a single transit mode. Omit for all modes.", examples=["subway", "bus", "lirr", "mnr"]),
 ) -> list[GroupedNearbyTransit]:
     """Return nearby arrivals grouped by route with direction sub-groups.
 

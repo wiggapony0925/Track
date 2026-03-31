@@ -12,10 +12,10 @@ import traceback
 from datetime import datetime, timezone, timedelta
 
 import httpx
-from fastapi import APIRouter, HTTPException, Query, Response
+from fastapi import APIRouter, HTTPException, Path, Query, Response
 
 from app.config import get_settings
-from app.models import BusArrival, BusRoute, BusStop, BusVehicle, RouteShape, BusScheduleResponse, BusScheduleDirection, BusScheduleDeparture, RESP_502
+from app.models import BusArrival, BusRoute, BusStop, BusVehicle, RouteShape, BusScheduleResponse, BusScheduleDirection, BusScheduleDeparture, RESP_404, RESP_502
 from app.clients.bus_client import (
     get_nearby_stops,
     get_realtime_arrivals,
@@ -216,9 +216,16 @@ async def _fetch_bus_schedule_uncached(route_id: str) -> BusScheduleResponse:
     "/schedule/{route_id}",
     response_model=BusScheduleResponse,
     summary="Get bus schedule",
-    description="Returns today's upcoming scheduled departures for a bus route, grouped by direction/headsign.",
+    description=(
+        "Returns today's upcoming scheduled departures for a bus route, grouped by direction and headsign. "
+        "Useful as a fallback when real-time SIRI data is unavailable."
+    ),
+    responses={**RESP_404, **RESP_502},
 )
-async def get_bus_schedule(route_id: str, response: Response) -> BusScheduleResponse:
+async def get_bus_schedule(
+    route_id: str = Path(..., description="MTA bus route ID — short name or fully-qualified OBA ID.", examples=["B63", "M34-SBS", "MTA NYCT_B63"]),
+    response: Response = None,
+) -> BusScheduleResponse:
     """Return today's upcoming scheduled departures for a bus route.
 
     **Path parameter:** MTA bus route ID — e.g. `B63`, `M34-SBS`, `MTA NYCT_B63`.
@@ -287,7 +294,10 @@ async def get_bus_schedule(route_id: str, response: Response) -> BusScheduleResp
     "/routes",
     response_model=list[BusRoute],
     summary="List all bus routes",
-    description="Returns every MTA bus route with short name, long name, colour, and description.",
+    description=(
+        "Returns every MTA bus route with short name, long name, brand colour, and description. "
+        "Covers all 300+ NYC bus routes across all five boroughs."
+    ),
     responses={**RESP_502},
 )
 async def bus_routes() -> list[BusRoute]:
@@ -308,9 +318,16 @@ async def bus_routes() -> list[BusRoute]:
     "/stops/{route_id:path}",
     response_model=list[BusStop],
     summary="Get stops for a bus route",
-    description="Returns all stops along a specific bus route.",
+    description=(
+        "Returns all stops along a specific bus route, including coordinates, direction, "
+        "and all other routes that serve each stop. Returns an empty array on upstream failure."
+    ),
+    responses={**RESP_502},
 )
-async def bus_stops(route_id: str, response: Response) -> list[BusStop]:
+async def bus_stops(
+    route_id: str = Path(..., description="Fully-qualified OBA route ID.", examples=["MTA NYCT_B63", "MTA NYCT_M34-SBS"]),
+    response: Response = None,
+) -> list[BusStop]:
     """Return stops for a bus route.
 
     **Path parameter:** MTA bus route ID — e.g. `MTA NYCT_B63`.
@@ -345,13 +362,17 @@ async def bus_stops(route_id: str, response: Response) -> list[BusStop]:
     "/nearby",
     response_model=list[BusStop],
     summary="Get nearby bus stops",
-    description="Returns bus stops near a GPS coordinate within the given radius.",
+    description=(
+        "Returns bus stops within a given radius of a GPS coordinate. "
+        "Each stop includes coordinates, direction, and all route IDs served."
+    ),
+    responses={**RESP_502},
 )
 async def bus_nearby(
     response: Response,
     lat: float = Query(..., ge=-90, le=90, description="Latitude of the user's location.", examples=[40.7580]),
     lon: float = Query(..., ge=-180, le=180, description="Longitude of the user's location.", examples=[-73.9855]),
-    radius: int | None = Query(None, ge=100, le=10000, description="Search radius in meters. Defaults to the server-configured value (~800 m).", examples=[800]),
+    radius: int | None = Query(None, ge=100, le=10000, description="Maximum search radius from the request location (in meters). Defaults to the server-configured value (~800\u202fm).", examples=[800]),
 ) -> list[BusStop]:
     """Return bus stops near a GPS coordinate.
 
@@ -385,9 +406,17 @@ async def bus_nearby(
     "/live/{stop_id:path}",
     response_model=list[BusArrival],
     summary="Get real-time bus arrivals",
-    description="Returns real-time bus arrivals at a specific stop from the MTA SIRI feed.",
+    description=(
+        "Returns real-time bus arrivals at a specific stop from the MTA SIRI feed. "
+        "Includes vehicle distance, bearing, and `is_realtime` flag (false when position is "
+        "estimated from schedule). Falls back to scheduled departures if no live data is available."
+    ),
+    responses={**RESP_502},
 )
-async def bus_live(stop_id: str, response: Response) -> list[BusArrival]:
+async def bus_live(
+    stop_id: str = Path(..., description="MTA stop ID (OBA format).", examples=["MTA_308214", "MTA_400062"]),
+    response: Response = None,
+) -> list[BusArrival]:
     """Return real-time bus arrivals at a stop.
 
     **Path parameter:** MTA stop ID — e.g. `MTA_308214`.
@@ -454,9 +483,17 @@ async def bus_live(stop_id: str, response: Response) -> list[BusArrival]:
     "/vehicles/{route_id:path}",
     response_model=list[BusVehicle],
     summary="Get live bus positions",
-    description="Returns live GPS positions for all vehicles on a bus route.",
+    description=(
+        "Returns live GPS positions for all vehicles currently running on a bus route. "
+        "Each vehicle includes bearing, next stop, onward predictions, and an `is_realtime` flag. "
+        "Cached for 5\u202fs with stale-while-revalidate."
+    ),
+    responses={**RESP_502},
 )
-async def bus_vehicles(route_id: str, response: Response) -> list[BusVehicle]:
+async def bus_vehicles(
+    route_id: str = Path(..., description="Fully-qualified OBA route ID.", examples=["MTA NYCT_B63", "MTA NYCT_M34-SBS"]),
+    response: Response = None,
+) -> list[BusVehicle]:
     """Return live vehicle positions for a bus route.
 
     **Path parameter:** MTA bus route ID — e.g. `MTA NYCT_B63`.
@@ -493,9 +530,17 @@ async def bus_vehicles(route_id: str, response: Response) -> list[BusVehicle]:
     "/route-shape/{route_id:path}",
     response_model=RouteShape,
     summary="Get bus route shape",
-    description="Returns encoded polylines and stops for drawing a bus route on a map.",
+    description=(
+        "Returns encoded polylines and stops for drawing a bus route on a map. "
+        "Includes per-direction shapes split by GTFS `direction_id` and a `service_type` "
+        "indicator (`express`, `local`, or `mixed`)."
+    ),
+    responses={**RESP_404, **RESP_502},
 )
-async def bus_route_shape(route_id: str, response: Response) -> RouteShape:
+async def bus_route_shape(
+    route_id: str = Path(..., description="Fully-qualified OBA route ID.", examples=["MTA NYCT_B63", "MTA NYCT_M34-SBS"]),
+    response: Response = None,
+) -> RouteShape:
     """Return the route shape (polylines + stops) for a bus route.
 
     **Path parameter:** MTA bus route ID — e.g. `MTA NYCT_B63`.

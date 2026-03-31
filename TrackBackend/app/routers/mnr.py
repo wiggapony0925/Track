@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import APIRouter, HTTPException, Path, Response
 
 from app.models import (
     AllCommuterRailLinesResponse,
@@ -16,6 +16,7 @@ from app.models import (
     CommuterRailStop,
     DirectionShape,
     RESP_404,
+    RESP_502,
     RouteShape,
     TrackArrival,
 )
@@ -35,7 +36,10 @@ router = APIRouter(tags=["mnr"])
     "/mnr/shapes/all",
     response_model=AllCommuterRailLinesResponse,
     summary="Get all Metro-North line shapes",
-    description="Returns encoded polylines for every Metro-North line — used to draw the full MNR system map.",
+    description=(
+        "Returns encoded polylines for every Metro-North line — used to draw the full MNR system map. "
+        "Each line includes station markers with coordinates."
+    ),
 )
 async def mnr_shapes_all() -> AllCommuterRailLinesResponse:
     """Return polylines for ALL Metro-North lines.
@@ -66,10 +70,13 @@ async def mnr_shapes_all() -> AllCommuterRailLinesResponse:
     "/mnr/shape/{route_id}",
     response_model=RouteShape,
     summary="Get single Metro-North line shape",
-    description="Returns the polyline geometry and ordered stops for a single Metro-North line.",
+    description=(
+        "Returns the polyline geometry, ordered stops, and per-direction shapes for a single Metro-North line. "
+        "Accepts numeric GTFS route ID, prefixed form (e.g. `MNR_1`), or line name (e.g. `Hudson`)."
+    ),
     responses={**RESP_404},
 )
-async def mnr_shape(route_id: str) -> RouteShape:
+async def mnr_shape(route_id: str = Path(..., description="Metro-North GTFS route ID, prefixed form, or line name.", examples=["1", "MNR_1", "Hudson"])) -> RouteShape:
     """Return the polyline for a single Metro-North line.
 
     **Path parameter:** Numeric GTFS route ID (e.g. `1` for Hudson),
@@ -134,7 +141,12 @@ async def mnr_shape(route_id: str) -> RouteShape:
     "/mnr",
     response_model=list[TrackArrival],
     summary="Get real-time Metro-North arrivals",
-    description="Returns upcoming real-time Metro-North arrivals from the GTFS-Realtime feed.",
+    description=(
+        "Returns upcoming real-time Metro-North arrivals from the GTFS-Realtime feed. "
+        "Each arrival includes station, direction, destination, minutes away, and cancellation status. "
+        "Returns an empty array if the MTA feed is temporarily unavailable."
+    ),
+    responses={**RESP_502},
 )
 async def mnr_arrivals(response: Response) -> list[TrackArrival]:
     """Return upcoming Metro-North arrivals.

@@ -10,15 +10,16 @@ from __future__ import annotations
 import asyncio
 import math
 import time
-from pathlib import Path
+from pathlib import Path as _Path
 
-from fastapi import APIRouter, HTTPException, Query, Response
+from fastapi import APIRouter, HTTPException, Path, Query, Response
 
 from app.models import (
     AllSubwayLinesResponse,
     AllSubwayStationsResponse,
     BusStop,
     DirectionShape,
+    ProcessedStationsResponse,
     RESP_404,
     RESP_503,
     RouteShape,
@@ -62,7 +63,7 @@ _shapes_all_json_bytes: bytes | None = None   # pre-serialized JSON
 _shapes_all_lock = asyncio.Lock()
 _shapes_all_building = False  # True while pipeline is running
 
-_SHAPES_DISK_CACHE_PATH = Path(__file__).resolve().parent.parent / "data" / "_cache_shapes_all.json"
+_SHAPES_DISK_CACHE_PATH = _Path(__file__).resolve().parent.parent / "data" / "_cache_shapes_all.json"
 
 
 def _load_shapes_disk_cache() -> AllSubwayLinesResponse | None:
@@ -378,7 +379,11 @@ def set_shapes_all_cache(resp: AllSubwayLinesResponse) -> None:
     "/subway/shapes/all",
     response_model=AllSubwayLinesResponse,
     summary="Get all subway line shapes",
-    description="Returns encoded polylines for every subway line — used to draw the full NYC subway system map.",
+    description=(
+        "Returns encoded polylines for every subway line — used to draw the full NYC subway system map. "
+        "Includes pre-merged trunk geometry with lane offsets for rendering parallel multi-track corridors "
+        "(e.g. A/C/E on 8th Ave). The payload is 3–5\u202fMB uncompressed; GZip is enabled."
+    ),
     responses={**RESP_503},
 )
 async def subway_shapes_all() -> Response:
@@ -447,7 +452,10 @@ async def subway_shapes_all() -> Response:
     "/subway/stations/all",
     response_model=AllSubwayStationsResponse,
     summary="Get all subway stations",
-    description="Returns every unique subway station with the lines that serve it — for map markers.",
+    description=(
+        "Returns all 470+ unique subway stations with the route IDs that serve each — "
+        "for rendering map markers with multi-line badges."
+    ),
 )
 async def subway_stations_all() -> AllSubwayStationsResponse:
     """Return all unique subway stations with the lines that serve them.
@@ -465,10 +473,16 @@ async def subway_stations_all() -> AllSubwayStationsResponse:
 
 @router.get(
     "/subway/stations/processed",
+    response_model=ProcessedStationsResponse,
     summary="Get processed station positions",
-    description="Returns stations snapped onto offset polylines with transfer flags for precise map rendering.",
+    description=(
+        "Returns stations snapped onto offset polylines with transfer flags for precise map rendering. "
+        "Each station includes per-route snapped coordinates and an `is_transfer` flag for stations "
+        "that span multiple trunk groups (e.g. Times Sq–42 St)."
+    ),
+    responses={**RESP_503},
 )
-async def subway_stations_processed():
+async def subway_stations_processed() -> ProcessedStationsResponse:
     """Return stations with positions snapped onto the offset polylines.
 
     Each station includes:
@@ -478,19 +492,22 @@ async def subway_stations_processed():
     Must be called after `/subway/shapes/all` has populated the pipeline cache.
     """
     raw = get_processed_stops()
-    return {"stations": raw}
+    return ProcessedStationsResponse(stations=raw)
 
 
 @router.get(
     "/subway/stations/nearby",
     response_model=AllSubwayStationsResponse,
     summary="Get nearby subway stations",
-    description="Returns subway stations within a radius of the given coordinates, sorted by distance.",
+    description=(
+        "Returns subway stations within a given radius of a GPS coordinate, sorted by distance. "
+        "Lighter than downloading all 470+ stations when only nearby ones are needed."
+    ),
 )
 async def subway_stations_nearby(
     lat: float = Query(..., ge=-90, le=90, description="Latitude of the user's location.", examples=[40.7580]),
     lon: float = Query(..., ge=-180, le=180, description="Longitude of the user's location.", examples=[-73.9855]),
-    radius: int = Query(1600, ge=100, le=10000, description="Search radius in meters.", examples=[1600]),
+    radius: int = Query(1600, ge=100, le=10000, description="Maximum search radius from the request location (in meters). Defaults to 1600\u202fm.", examples=[1600]),
 ) -> AllSubwayStationsResponse:
     """Return subway stations near the user's location.
 
@@ -525,10 +542,15 @@ async def subway_stations_nearby(
     "/subway/shape/{route_id}",
     response_model=RouteShape,
     summary="Get single subway line shape",
-    description="Returns the full geometry and ordered stops for a single subway line.",
+    description=(
+        "Returns the full geometry, ordered stops, and per-direction shapes for a single subway line. "
+        "Includes `service_type` (`express`, `local`, or `mixed`) and stop-level transfer annotations."
+    ),
     responses={**RESP_404},
 )
-async def subway_shape(route_id: str) -> RouteShape:
+async def subway_shape(
+    route_id: str = Path(..., description="Subway route ID (case-insensitive).", examples=["A", "7", "L", "GS"]),
+) -> RouteShape:
     """Return the full route geometry and ordered stops for a subway line.
 
     **Path parameter:** Any valid subway route ID — `A`, `7`, `L`, `GS`, etc.
@@ -612,10 +634,17 @@ async def subway_shape(route_id: str) -> RouteShape:
     "/subway/{line_id}",
     response_model=list[TrackArrival],
     summary="Get real-time subway arrivals",
-    description="Returns upcoming real-time arrivals for a specific subway line from GTFS-RT feeds.",
+    description=(
+        "Returns upcoming real-time arrivals for a specific subway line from GTFS-RT feeds. "
+        "Arrivals are sorted soonest-first and capped at the per-line maximum. "
+        "Returns an empty array (not an error) if the MTA feed is temporarily unavailable."
+    ),
     responses={**RESP_404},
 )
-async def subway_arrivals(line_id: str, response: Response) -> list[TrackArrival]:
+async def subway_arrivals(
+    line_id: str = Path(..., description="Subway line ID (case-insensitive).", examples=["A", "7", "L", "GS"]),
+    response: Response = None,
+) -> list[TrackArrival]:
     """Return upcoming arrivals for a subway line.
 
     **Path parameter:** Any valid subway line ID — `A`, `7`, `L`, `GS`, etc.

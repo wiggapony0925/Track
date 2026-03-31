@@ -62,13 +62,18 @@ async def _refresh_accessibility_cache() -> None:
     "/alerts",
     response_model=list[TransitAlert],
     summary="Get service alerts",
-    description="Returns critical MTA service alerts (delays, suspensions, planned work), optionally filtered by transit mode.",
+    description=(
+        "Returns critical MTA service alerts (delays, suspensions, planned work) with severity ranking. "
+        "Each alert includes affected routes, alert type, and MTA severity sort order. "
+        "Optionally filter by transit mode."
+    ),
+    responses={**RESP_502},
 )
 async def alerts(
     mode: str | None = Query(
         default=None,
         description="Filter by transit mode. Omit for all modes.",
-        examples=["subway"],
+        examples=["subway", "bus", "lirr", "mnr"],
     ),
 ) -> list[TransitAlert]:
     """Return critical MTA service alerts.
@@ -107,7 +112,11 @@ async def alerts(
     "/accessibility",
     response_model=list[ElevatorStatus],
     summary="Get elevator & escalator outages",
-    description="Returns currently out-of-service elevators and escalators across the MTA system.",
+    description=(
+        "Returns currently out-of-service elevators and escalators across the MTA system. "
+        "Each entry includes station, equipment type (`EL` or `ES`), description, and when "
+        "the outage began. Refreshed every 5 minutes in the background."
+    ),
     responses={**RESP_502},
 )
 async def accessibility() -> list[ElevatorStatus]:

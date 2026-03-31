@@ -15,6 +15,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Query
 
 from app.clients.weather_client import get_current_weather, get_cached_weather_details
+from app.models import WeatherResponse, RESP_502
 
 router = APIRouter(tags=["weather"])
 
@@ -64,13 +65,20 @@ _DEFAULT_SYMBOL = ("cloud.fill", "cloud.fill", "Unknown")
 
 @router.get(
     "/weather",
+    response_model=WeatherResponse,
     summary="Get current weather",
-    description="Returns current weather conditions from Open-Meteo, including temperature, SF Symbol name, and WMO code.",
+    description=(
+        "Returns current weather conditions from Open-Meteo, including temperature in both "
+        "Celsius and Fahrenheit, wind speed, WMO weather code, Apple SF Symbol name (day/night aware), "
+        "and a human-readable condition description. Uses a 5-minute internal cache. "
+        "Serves as a server-side fallback for Apple WeatherKit."
+    ),
+    responses={**RESP_502},
 )
 async def get_weather(
-    lat: float = Query(40.7128, description="Latitude. Defaults to NYC.", examples=[40.7128]),
-    lon: float = Query(-74.006, description="Longitude. Defaults to NYC.", examples=[-74.006]),
-) -> dict:
+    lat: float = Query(40.7128, description="Latitude of the location. Defaults to New York City.", examples=[40.7128]),
+    lon: float = Query(-74.006, description="Longitude of the location. Defaults to New York City.", examples=[-74.006]),
+) -> WeatherResponse:
     """Return current weather conditions.
 
     Response includes:
@@ -98,13 +106,13 @@ async def get_weather(
     day_symbol, night_symbol, description = _WMO_TO_SYMBOL.get(wmo_code, _DEFAULT_SYMBOL)
     symbol = day_symbol if is_day else night_symbol
 
-    return {
-        "temperature_c": temp_c,
-        "temperature_f": temp_f,
-        "wmo_code": wmo_code,
-        "symbol": symbol,
-        "description": description,
-        "category": category,
-        "windspeed_kmh": windspeed,
-        "is_day": is_day,
-    }
+    return WeatherResponse(
+        temperature_c=temp_c,
+        temperature_f=temp_f,
+        wmo_code=wmo_code,
+        symbol=symbol,
+        description=description,
+        category=category,
+        windspeed_kmh=windspeed,
+        is_day=is_day,
+    )

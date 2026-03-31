@@ -43,58 +43,96 @@ Real-time arrivals, route shapes, service alerts, and ML delay predictions
 for the New York City transit network — Subway, Bus, LIRR, and Metro-North.
 
 ### Data Sources
-- **MTA GTFS-RT** — real-time subway, LIRR, and Metro-North feeds
-- **MTA SIRI** — real-time bus arrivals and vehicle positions
-- **MTA Elevator/Escalator** — accessibility outage status
-- **Open-Meteo** — weather conditions (fallback for Apple WeatherKit)
+| Source | Coverage | Update Frequency |
+|--------|----------|------------------|
+| **MTA GTFS-RT** | Subway, LIRR, Metro-North | Every 15–30 s |
+| **MTA SIRI** | Bus arrivals & vehicle positions | Every 15–30 s |
+| **MTA Elevator/Escalator** | Accessibility outages | Every 5 min |
+| **Open-Meteo** | Weather conditions | Every 5 min |
+| **MTA GTFS Static** | Schedules, stops, shapes | Daily |
 
 ### Authentication
 No API key required for local development. Production traffic is
 routed through the Track iOS app.
 
-### Caching
+### Caching Strategy
 Responses include `Cache-Control` headers tuned per endpoint:
-- **Static geometry** (shapes, stations): `max-age=3600`
-- **Real-time data** (arrivals, vehicles): `max-age=5–8`
-- **Alerts & accessibility**: `max-age=30–60`
+| Endpoint Type | `max-age` | `stale-while-revalidate` |
+|---------------|-----------|-------------------------|
+| Static geometry (shapes, stations) | 3600 s | 86400 s |
+| Real-time data (arrivals, vehicles) | 5–8 s | 30 s |
+| Alerts & accessibility | 30–60 s | 300 s |
+| Nearby (grouped) | 6 s | 30 s |
+
+### Rate Limits
+No explicit rate limits for authenticated iOS clients. Remote admin
+endpoints are restricted to `localhost` only.
 """
 
 _OPENAPI_TAGS = [
     {
         "name": "nearby",
-        "description": "Nearby transit arrivals grouped by route. The primary endpoint for the Track home screen.",
+        "description": (
+            "Nearby transit arrivals grouped by route — the primary endpoint for the Track home screen. "
+            "Combines Subway, Bus, LIRR, and Metro-North arrivals into a single ranked feed "
+            "with inline service alerts and per-direction grouping."
+        ),
     },
     {
         "name": "subway",
-        "description": "NYC Subway real-time arrivals, route shapes, and station data.",
+        "description": (
+            "NYC Subway — real-time arrivals from 36 GTFS-RT feeds, route polylines with "
+            "topological offsets for multi-track rendering, and station data for 470+ stations."
+        ),
     },
     {
         "name": "bus",
-        "description": "MTA Bus real-time arrivals, vehicle positions, route shapes, and schedules.",
+        "description": (
+            "MTA Bus — real-time SIRI arrivals, live vehicle GPS positions, route shapes with "
+            "per-direction polylines, bus schedules, and 16,000+ stop locations."
+        ),
     },
     {
         "name": "lirr",
-        "description": "Long Island Rail Road real-time arrivals and route shapes.",
+        "description": (
+            "Long Island Rail Road — real-time arrivals and branch shapes for all 11 LIRR branches "
+            "with station markers and per-direction geometry."
+        ),
     },
     {
         "name": "mnr",
-        "description": "Metro-North Railroad real-time arrivals and route shapes.",
+        "description": (
+            "Metro-North Railroad — real-time arrivals and line shapes for all 5 Metro-North lines "
+            "with station markers and per-direction geometry."
+        ),
     },
     {
         "name": "status",
-        "description": "Service alerts and elevator/escalator accessibility status.",
+        "description": (
+            "MTA service alerts (delays, suspensions, planned work) with severity ranking, "
+            "and real-time elevator/escalator outage tracking for accessibility."
+        ),
     },
     {
         "name": "predict",
-        "description": "ML-powered delay predictions using LightGBM + recency model.",
+        "description": (
+            "ML-powered delay predictions using a LightGBM model trained on historical patterns, "
+            "combined with a recency model for per-stop corrections and live SIRI deviation signals."
+        ),
     },
     {
         "name": "weather",
-        "description": "Current weather conditions from Open-Meteo (fallback for WeatherKit).",
+        "description": (
+            "Current weather conditions from Open-Meteo — temperature, wind speed, SF Symbol name, "
+            "and WMO code. Serves as a server-side fallback for Apple WeatherKit."
+        ),
     },
     {
         "name": "system",
-        "description": "Health checks, configuration, data status, and cache administration.",
+        "description": (
+            "Server health, configuration, GTFS data status, and cache administration. "
+            "Admin endpoints (`/admin/*`) are restricted to localhost."
+        ),
     },
 ]
 
@@ -804,7 +842,12 @@ async def log_requests(request: Request, call_next):
     "/health",
     tags=["system"],
     summary="Health check",
-    description="Liveness/readiness probe. Returns 200 when feeds are warm, 503 during startup.",
+    description=(
+        "Liveness and readiness probe for load-balancer health checks. "
+        "Returns HTTP 200 with `{\"status\": \"ok\", \"weather\": {...}}` once all "
+        "GTFS-RT feeds have been fetched at least once (~20–30 s after cold boot). "
+        "During the warmup window the endpoint returns HTTP 503 with a `Retry-After: 10` header."
+    ),
     responses={503: {"description": "Service unavailable — server is warming up. Retry after the `Retry-After` header value."}},
 )
 async def health():
@@ -828,7 +871,11 @@ async def health():
     "/config",
     tags=["system"],
     summary="Get app configuration",
-    description="Returns the app_settings block from the server configuration.",
+    description=(
+        "Returns the `app_settings` block from the server configuration file. "
+        "Includes `search_radius_meters`, `max_arrival_minutes`, `max_arrivals_per_line`, "
+        "feature flags, and other client-facing tunables the iOS app reads at launch."
+    ),
 )
 async def config() -> dict[str, Any]:
     """Return the app configuration.
@@ -844,7 +891,11 @@ async def config() -> dict[str, Any]:
     "/data/status",
     tags=["system"],
     summary="Get GTFS data status",
-    description="Returns which GTFS data groups are available and when they were last updated.",
+    description=(
+        "Returns the availability and freshness of every GTFS static data group "
+        "(stops, routes, shapes, transfers, calendar). Includes per-feed last-update "
+        "timestamps so operators can verify that scheduled data refreshes are running."
+    ),
 )
 async def data_status() -> dict[str, Any]:
     """Check GTFS data availability and freshness.
@@ -864,10 +915,21 @@ async def data_status() -> dict[str, Any]:
     "/data/refresh",
     tags=["system"],
     summary="Trigger GTFS data refresh",
-    description="Manually triggers a GTFS data refresh check against upstream MTA feeds.",
+    description=(
+        "Manually triggers a GTFS static-data refresh against upstream MTA feeds. "
+        "Compares local file hashes with the remote server and re-downloads only "
+        "changed archives. Use `full=true` to include bus GTFS data (adds ~15 s)."
+    ),
 )
 async def data_refresh(
-    full: bool = Query(False, description="If true, check all feeds including bus (slower). Default checks only subway/lirr/mnr."),
+    full: bool = Query(
+        False,
+        description=(
+            "When `true`, checks all feeds including bus GTFS (slower, ~15 s). "
+            "When `false` (default), checks only subway, LIRR, and Metro-North feeds."
+        ),
+        examples=[False, True],
+    ),
 ) -> dict[str, Any]:
     """Manually trigger a GTFS data refresh.
 
@@ -883,7 +945,12 @@ async def data_refresh(
     "/admin/cache/inspect",
     tags=["system"],
     summary="Inspect cache layers",
-    description="Returns a detailed snapshot of every cache layer — entry counts, ages, hit rates, and Redis state.",
+    description=(
+        "Returns a detailed diagnostic snapshot of every cache layer: MTA feed cache "
+        "(entry counts and per-feed age), bus caches (arrivals, vehicles, stops, routes, shapes), "
+        "nearby response cache, Redis L3 state (memory, eviction policy, sample keys), "
+        "and cumulative hit/miss/stale counters with hit-rate percentages."
+    ),
 )
 async def inspect_caches(request: Request) -> dict[str, Any]:
     """Inspect all cache layers.
@@ -1046,7 +1113,11 @@ async def inspect_caches(request: Request) -> dict[str, Any]:
     "/admin/cache/clear",
     tags=["system"],
     summary="Clear all caches",
-    description="Clears all in-memory caches. Restricted to localhost.",
+    description=(
+        "Purges every in-memory cache layer (MTA feeds, bus data, nearby responses) "
+        "and returns the number of entries cleared per layer. "
+        "**Restricted to localhost** — remote callers receive HTTP 403."
+    ),
     responses={403: {"description": "Forbidden — endpoint restricted to localhost."}},
 )
 async def clear_all_caches(request: Request) -> dict[str, Any]:
