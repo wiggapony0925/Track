@@ -10,17 +10,17 @@ Usage:
 
 Outputs a report of uncovered stops sorted by distance to nearest polyline point.
 """
+
 from __future__ import annotations
 
 import argparse
 import json
 import math
-import sys
 import urllib.request
 from dataclasses import dataclass, field
 
-
 # ── Haversine distance (meters) ─────────────────────────────────────────────
+
 
 def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Great-circle distance between two WGS-84 points in meters."""
@@ -28,14 +28,20 @@ def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     phi1, phi2 = math.radians(lat1), math.radians(lat2)
     dphi = math.radians(lat2 - lat1)
     dlam = math.radians(lon2 - lon1)
-    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2) ** 2
+    a = (
+        math.sin(dphi / 2) ** 2
+        + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2) ** 2
+    )
     return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
 def point_to_segment_distance_m(
-    plat: float, plon: float,
-    alat: float, alon: float,
-    blat: float, blon: float,
+    plat: float,
+    plon: float,
+    alat: float,
+    alon: float,
+    blat: float,
+    blon: float,
 ) -> float:
     """Approx minimum distance from point P to line segment A–B (meters).
 
@@ -66,6 +72,7 @@ def point_to_segment_distance_m(
 
 # ── Polyline decoder (precision-6) ──────────────────────────────────────────
 
+
 def decode_polyline(encoded: str) -> list[tuple[float, float]]:
     coords: list[tuple[float, float]] = []
     i, lat, lng = 0, 0, 0
@@ -89,6 +96,7 @@ def decode_polyline(encoded: str) -> list[tuple[float, float]]:
 
 
 # ── Data structures ─────────────────────────────────────────────────────────
+
 
 @dataclass
 class Station:
@@ -115,6 +123,7 @@ class CoverageResult:
 
 # ── API fetchers ────────────────────────────────────────────────────────────
 
+
 def fetch_json(url: str) -> dict:
     req = urllib.request.Request(url, headers={"Accept": "application/json"})
     with urllib.request.urlopen(req, timeout=30) as resp:
@@ -125,13 +134,15 @@ def fetch_stations(backend: str) -> list[Station]:
     data = fetch_json(f"{backend}/subway/stations/all")
     stations = []
     for s in data.get("stations", []):
-        stations.append(Station(
-            id=s["id"],
-            name=s["name"],
-            lat=s["lat"],
-            lon=s["lon"],
-            routes=s.get("routes", []),
-        ))
+        stations.append(
+            Station(
+                id=s["id"],
+                name=s["name"],
+                lat=s["lat"],
+                lon=s["lon"],
+                routes=s.get("routes", []),
+            )
+        )
     return stations
 
 
@@ -151,6 +162,7 @@ def fetch_polylines(backend: str) -> dict[str, RoutePolylines]:
 
 # ── Coverage check ──────────────────────────────────────────────────────────
 
+
 def min_distance_to_route(
     lat: float, lon: float, route: RoutePolylines
 ) -> tuple[float, tuple[float, float]]:
@@ -162,9 +174,12 @@ def min_distance_to_route(
         # Check segment-by-segment for true perpendicular projection
         for j in range(len(segment) - 1):
             d = point_to_segment_distance_m(
-                lat, lon,
-                segment[j][0], segment[j][1],
-                segment[j + 1][0], segment[j + 1][1],
+                lat,
+                lon,
+                segment[j][0],
+                segment[j][1],
+                segment[j + 1][0],
+                segment[j + 1][1],
             )
             if d < best_dist:
                 best_dist = d
@@ -196,43 +211,57 @@ def check_coverage(
             route = route_polylines.get(rid)
             if route is None:
                 # Route not in shapes response — might be a shuttle or special
-                uncovered.append(CoverageResult(
-                    station=station,
-                    route_id=rid,
-                    min_distance_m=float("inf"),
-                    nearest_point=(0, 0),
-                ))
+                uncovered.append(
+                    CoverageResult(
+                        station=station,
+                        route_id=rid,
+                        min_distance_m=float("inf"),
+                        nearest_point=(0, 0),
+                    )
+                )
                 continue
 
             if not route.segments:
-                uncovered.append(CoverageResult(
-                    station=station,
-                    route_id=rid,
-                    min_distance_m=float("inf"),
-                    nearest_point=(0, 0),
-                ))
+                uncovered.append(
+                    CoverageResult(
+                        station=station,
+                        route_id=rid,
+                        min_distance_m=float("inf"),
+                        nearest_point=(0, 0),
+                    )
+                )
                 continue
 
             dist, nearest = min_distance_to_route(station.lat, station.lon, route)
             if dist > threshold_m:
-                uncovered.append(CoverageResult(
-                    station=station,
-                    route_id=rid,
-                    min_distance_m=dist,
-                    nearest_point=nearest,
-                ))
+                uncovered.append(
+                    CoverageResult(
+                        station=station,
+                        route_id=rid,
+                        min_distance_m=dist,
+                        nearest_point=nearest,
+                    )
+                )
 
     return uncovered
 
 
 # ── Main ────────────────────────────────────────────────────────────────────
 
+
 def main():
     parser = argparse.ArgumentParser(description="Check stop-to-polyline coverage")
-    parser.add_argument("--threshold", type=float, default=80,
-                        help="Max distance (m) for a stop to be 'covered' (default: 80)")
-    parser.add_argument("--backend", default="http://localhost:8767",
-                        help="Backend URL (default: http://localhost:8767)")
+    parser.add_argument(
+        "--threshold",
+        type=float,
+        default=80,
+        help="Max distance (m) for a stop to be 'covered' (default: 80)",
+    )
+    parser.add_argument(
+        "--backend",
+        default="http://localhost:8767",
+        help="Backend URL (default: http://localhost:8767)",
+    )
     args = parser.parse_args()
 
     print(f"Backend:   {args.backend}")
@@ -247,8 +276,12 @@ def main():
     print("Fetching polylines...", end=" ", flush=True)
     route_polylines = fetch_polylines(args.backend)
     total_segments = sum(len(r.segments) for r in route_polylines.values())
-    total_points = sum(sum(len(s) for s in r.segments) for r in route_polylines.values())
-    print(f"{len(route_polylines)} routes, {total_segments} segments, {total_points:,} points")
+    total_points = sum(
+        sum(len(s) for s in r.segments) for r in route_polylines.values()
+    )
+    print(
+        f"{len(route_polylines)} routes, {total_segments} segments, {total_points:,} points"
+    )
     print()
 
     # Check coverage
@@ -262,11 +295,15 @@ def main():
     covered = total_pairs - len(uncovered)
 
     print(f"{'='*70}")
-    print(f"COVERAGE SUMMARY")
+    print("COVERAGE SUMMARY")
     print(f"{'='*70}")
     print(f"Total stop-route pairs:  {total_pairs}")
-    print(f"Covered (< {args.threshold}m):       {covered}  ({100*covered/total_pairs:.1f}%)")
-    print(f"Uncovered (>= {args.threshold}m):     {len(uncovered)}  ({100*len(uncovered)/total_pairs:.1f}%)")
+    print(
+        f"Covered (< {args.threshold}m):       {covered}  ({100*covered/total_pairs:.1f}%)"
+    )
+    print(
+        f"Uncovered (>= {args.threshold}m):     {len(uncovered)}  ({100*len(uncovered)/total_pairs:.1f}%)"
+    )
     print()
 
     if not uncovered:
@@ -281,28 +318,38 @@ def main():
     distant = [r for r in uncovered if r.min_distance_m != float("inf")]
 
     if missing_route:
-        print(f"⚠️  MISSING ROUTES ({len(missing_route)} stop-route pairs with no polyline data):")
+        print(
+            f"⚠️  MISSING ROUTES ({len(missing_route)} stop-route pairs with no polyline data):"
+        )
         print(f"{'─'*70}")
         seen_routes: set[str] = set()
         for r in missing_route:
             if r.route_id not in seen_routes:
                 stops_for_route = [x for x in missing_route if x.route_id == r.route_id]
-                print(f"  Route {r.route_id:>3s}: {len(stops_for_route)} stops, no polyline")
+                print(
+                    f"  Route {r.route_id:>3s}: {len(stops_for_route)} stops, no polyline"
+                )
                 seen_routes.add(r.route_id)
         print()
 
     if distant:
-        print(f"❌ UNCOVERED STOPS ({len(distant)} stop-route pairs farther than {args.threshold}m):")
+        print(
+            f"❌ UNCOVERED STOPS ({len(distant)} stop-route pairs farther than {args.threshold}m):"
+        )
         print(f"{'─'*70}")
-        print(f"  {'Route':>5s}  {'Distance':>8s}  {'Station ID':>10s}  {'Station Name'}")
+        print(
+            f"  {'Route':>5s}  {'Distance':>8s}  {'Station ID':>10s}  {'Station Name'}"
+        )
         print(f"  {'─'*5:>5s}  {'─'*8:>8s}  {'─'*10:>10s}  {'─'*30}")
         for r in distant:
             dist_str = f"{r.min_distance_m:.0f}m"
-            print(f"  {r.route_id:>5s}  {dist_str:>8s}  {r.station.id:>10s}  {r.station.name}")
+            print(
+                f"  {r.route_id:>5s}  {dist_str:>8s}  {r.station.id:>10s}  {r.station.name}"
+            )
         print()
 
         # Group by route for a route-level view
-        print(f"BY ROUTE:")
+        print("BY ROUTE:")
         print(f"{'─'*70}")
         route_groups: dict[str, list[CoverageResult]] = {}
         for r in distant:
@@ -311,8 +358,10 @@ def main():
             group = route_groups[rid]
             avg_dist = sum(r.min_distance_m for r in group) / len(group)
             max_dist = max(r.min_distance_m for r in group)
-            print(f"  Route {rid:>3s}: {len(group):>3d} uncovered stops"
-                  f"  (avg {avg_dist:.0f}m, max {max_dist:.0f}m)")
+            print(
+                f"  Route {rid:>3s}: {len(group):>3d} uncovered stops"
+                f"  (avg {avg_dist:.0f}m, max {max_dist:.0f}m)"
+            )
 
     print()
     print(f"{'='*70}")

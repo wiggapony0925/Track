@@ -3,10 +3,12 @@
 Fetch precise NYC subway track data from OpenStreetMap via Overpass API.
 OSM has survey-grade subway track alignments that follow actual infrastructure.
 """
-import urllib.request
+
+from __future__ import annotations
+
 import json
 import ssl
-import sys
+import urllib.request
 
 ctx = ssl.create_default_context()
 ctx.check_hostname = False
@@ -26,7 +28,7 @@ out skel qt;
 """
 
 url = "https://overpass-api.de/api/interpreter"
-data = f"data={query}".encode("utf-8")
+data = f"data={query}".encode()
 
 print("Fetching NYC subway tracks from OpenStreetMap Overpass API...")
 print("(This may take 30-60 seconds)")
@@ -51,7 +53,9 @@ for w in ways[:20]:
     service = tags.get("service", "")
     ref = tags.get("ref", "")
     nds = w.get("nodes", [])
-    print(f"  Way {w['id']}: name={name}, colour={colour}, ref={ref}, service={service}, nodes={len(nds)}")
+    print(
+        f"  Way {w['id']}: name={name}, colour={colour}, ref={ref}, service={service}, nodes={len(nds)}"
+    )
     for k in tags:
         route_tags.add(k)
 

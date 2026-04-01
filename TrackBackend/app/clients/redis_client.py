@@ -1,20 +1,17 @@
-#
-# redis_client.py
-# TrackBackend/app/clients
-#
-# Shared Redis connection used by ALL transit service clients.
-# Bus, subway, LIRR, and MNR all funnel through the same pool so that
-# the cache survives deploys and is shared across Render instances.
-#
-# Public API:
-#   init_redis()            — call once at startup (main.py)
-#   close_redis()           — call once at shutdown (main.py)
-#   get_client()            — returns live redis client or None
-#   cache_get(prefix, kind, identifier, ...)  — structured GET (bus-style)
-#   cache_set(prefix, kind, identifier, ...)  — structured SET (bus-style)
-#   feed_get(kind, url, ...)                  — MTA feed GET (subway/LIRR/MNR)
-#   feed_set(kind, url, data, ...)            — MTA feed SET
-#
+"""TrackBackend/app/clients
+
+Shared Redis connection used by ALL transit service clients.
+Bus, subway, LIRR, and MNR all funnel through the same pool so that
+the cache survives deploys and is shared across Render instances.
+
+Public API:
+init_redis()            — call once at startup (main.py)
+close_redis()           — call once at shutdown (main.py)
+get_client()            — returns live redis client or None
+cache_get(prefix, kind, identifier, ...)  — structured GET (bus-style)
+cache_set(prefix, kind, identifier, ...)  — structured SET (bus-style)
+feed_get(kind, url, ...)                  — MTA feed GET (subway/LIRR/MNR)
+feed_set(kind, url, data, ...)            — MTA feed SET."""
 
 from __future__ import annotations
 
@@ -22,11 +19,14 @@ import base64
 import json
 import os
 import time as _time
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
 from app.utils import cache_stats
 from app.utils.logger import TrackLogger
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 # redis-py is an optional dependency — fall back gracefully when absent.
 try:
@@ -44,6 +44,7 @@ _redis_init_attempted: bool = False
 # ---------------------------------------------------------------------------
 # Lifecycle
 # ---------------------------------------------------------------------------
+
 
 def get_client() -> Any:
     """Return the live Redis client, or None if unavailable."""
@@ -126,8 +127,8 @@ async def close_redis() -> None:
         return
     try:
         await _redis_client.close()
-    except Exception:
-        pass
+    except Exception:  # Broad catch intentional: best-effort shutdown cleanup.
+        TrackLogger.debug("Redis close failed", exc_info=True)
     finally:
         _redis_client = None
 
@@ -135,6 +136,7 @@ async def close_redis() -> None:
 # ---------------------------------------------------------------------------
 # Structured helpers — used by bus_client (fresh/stale TTL semantics)
 # ---------------------------------------------------------------------------
+
 
 def _make_key(prefix: str, kind: str, identifier: str) -> str:
     return f"{prefix}:{kind}:{identifier}"
@@ -228,6 +230,7 @@ async def cache_set(
 # we base64-encode them inside a JSON envelope (same transport as structured
 # helpers above). JSON feeds are stored directly inside the envelope.
 # ---------------------------------------------------------------------------
+
 
 def _feed_key(kind: str, url: str) -> str:
     """Build a Redis key for an MTA feed URL."""

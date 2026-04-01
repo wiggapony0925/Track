@@ -1,14 +1,9 @@
-#
-# providers/mta/__init__.py
-# TrackBackend
-#
-# MTA New York — Transit provider implementation.
-#
-# Centralises all MTA-specific constants so they can be swapped out
-# when a second provider is added.  Everything that was formerly
-# hard-coded as ``85_000``, ``cos(40.7°)``, or ``"MTA NYCT_"`` across
-# the codebase is sourced from here.
-#
+"""MTA New York — Transit provider implementation.
+
+Centralises all MTA-specific constants so they can be swapped out
+when a second provider is added.  Everything that was formerly
+hard-coded as ``85_000``, ``cos(40.7°)``, or ``"MTA NYCT_"`` across
+the codebase is sourced from here."""
 
 from __future__ import annotations
 

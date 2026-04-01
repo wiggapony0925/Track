@@ -1,10 +1,5 @@
-#
-# shape_utils.py
-# TrackBackend
-#
-# Shared geometry helpers used by subway_shapes.py and commuter_rail_shapes.py.
-# Extracted to eliminate copy-paste duplication between those two modules.
-#
+"""Shared geometry helpers used by subway_shapes.py and commuter_rail_shapes.py.
+Extracted to eliminate copy-paste duplication between those two modules."""
 
 from __future__ import annotations
 

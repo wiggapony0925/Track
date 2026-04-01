@@ -16,29 +16,22 @@ Superior to Transit App's py-gtfs-loader/__init__.py:
 
 from __future__ import annotations
 
+import contextlib
 import copy
 import csv
 import io
 import json
 import logging
-import os
 import shutil
 import struct
-import sys
+import typing
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import IntEnum
 from pathlib import Path
 from typing import (
+    TYPE_CHECKING,
     Any,
-    Dict,
-    Iterator,
-    List,
-    Optional,
-    Sequence,
-    Set,
-    Tuple,
-    Type,
     Union,
 )
 
@@ -49,6 +42,7 @@ from app.services.gtfs.gtfs_entities import (
     Entity,
     EntityTable,
     FeedInfo,
+    FieldSpec,
     Frequency,
     GroupedTable,
     Route,
@@ -57,17 +51,20 @@ from app.services.gtfs.gtfs_entities import (
     StopTime,
     Transfer,
     Trip,
-    FieldSpec,
     _ResolvedField,
     get_entity_registry,
 )
 from app.services.gtfs.gtfs_types import GTFSDate, GTFSTime, LatLon, serialize
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  Problem / Error accumulation
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 
 class Severity:
     ERROR = "error"
@@ -78,6 +75,7 @@ class Severity:
 @dataclass
 class LoadProblem:
     """A single problem found during feed loading."""
+
     severity: str
     file: str
     line: int
@@ -95,17 +93,30 @@ class ProblemCollector:
 
     def __init__(self, max_per_file: int = 100):
         self._problems: list[LoadProblem] = []
-        self._counts: Dict[str, int] = defaultdict(int)
+        self._counts: dict[str, int] = defaultdict(int)
         self._max = max_per_file
 
-    def add(self, severity: str, file: str, line: int, field_name: str,
-            message: str, value: str = "") -> None:
+    def add(
+        self,
+        severity: str,
+        file: str,
+        line: int,
+        field_name: str,
+        message: str,
+        value: str = "",
+    ) -> None:
         self._counts[file] += 1
         if self._counts[file] <= self._max:
-            self._problems.append(LoadProblem(
-                severity=severity, file=file, line=line,
-                field=field_name, message=message, value=value,
-            ))
+            self._problems.append(
+                LoadProblem(
+                    severity=severity,
+                    file=file,
+                    line=line,
+                    field=field_name,
+                    message=message,
+                    value=value,
+                )
+            )
 
     @property
     def problems(self) -> list[LoadProblem]:
@@ -123,17 +134,19 @@ class ProblemCollector:
         return self.error_count > 0
 
     def summary(self) -> str:
-        return (f"{self.error_count} errors, {self.warning_count} warnings, "
-                f"{len(self._problems) - self.error_count - self.warning_count} notices")
+        return (
+            f"{self.error_count} errors, {self.warning_count} warnings, "
+            f"{len(self._problems) - self.error_count - self.warning_count} notices"
+        )
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  Type conversion — smarter than py-gtfs-loader's convert()
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+
 def _get_inner_type(type_hint: type) -> type:
     """Unwrap Optional[X] and List[X]."""
-    import typing
     origin = getattr(type_hint, "__origin__", None)
     if origin is Union or origin is typing.Union:
         args = [a for a in type_hint.__args__ if a is not type(None)]
@@ -145,15 +158,19 @@ def _get_inner_type(type_hint: type) -> type:
 
 def _is_optional(type_hint: type) -> bool:
     """Check if type is Optional[X]."""
-    import typing
     origin = getattr(type_hint, "__origin__", None)
     if origin is Union or origin is typing.Union:
         return type(None) in type_hint.__args__
     return False
 
 
-def convert_value(raw: str, target_type: type, is_optional: bool,
-                  default: Any, spec: Optional[FieldSpec] = None) -> Any:
+def convert_value(
+    raw: str,
+    target_type: type,
+    is_optional: bool,
+    default: Any,
+    spec: FieldSpec | None = None,
+) -> Any:
     """
     Convert a raw CSV string to the target Python type.
 
@@ -198,27 +215,52 @@ def convert_value(raw: str, target_type: type, is_optional: bool,
     return stripped
 
 
-def _validate_range(value: Any, spec: FieldSpec, filename: str,
-                    line: int, field_name: str, collector: ProblemCollector) -> None:
+def _validate_range(
+    value: Any,
+    spec: FieldSpec,
+    filename: str,
+    line: int,
+    field_name: str,
+    collector: ProblemCollector,
+) -> None:
     """Check min/max constraints from FieldSpec."""
-    if spec.min_val is not None and isinstance(value, (int, float)):
-        if value < spec.min_val:
-            collector.add(Severity.WARNING, filename, line, field_name,
-                          f"value {value} below minimum {spec.min_val}", str(value))
-    if spec.max_val is not None and isinstance(value, (int, float)):
-        if value > spec.max_val:
-            collector.add(Severity.WARNING, filename, line, field_name,
-                          f"value {value} above maximum {spec.max_val}", str(value))
+    if (
+        spec.min_val is not None
+        and isinstance(value, (int, float))
+        and value < spec.min_val
+    ):
+        collector.add(
+            Severity.WARNING,
+            filename,
+            line,
+            field_name,
+            f"value {value} below minimum {spec.min_val}",
+            str(value),
+        )
+    if (
+        spec.max_val is not None
+        and isinstance(value, (int, float))
+        and value > spec.max_val
+    ):
+        collector.add(
+            Severity.WARNING,
+            filename,
+            line,
+            field_name,
+            f"value {value} above maximum {spec.max_val}",
+            str(value),
+        )
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  CSV loading pipeline
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+
 def _merge_header_and_schema(
     header: list[str],
-    entity_cls: Type[Entity],
-) -> Dict[str, _ResolvedField]:
+    entity_cls: type[Entity],
+) -> dict[str, _ResolvedField]:
     """
     Merge CSV header columns with Entity schema declarations.
 
@@ -228,7 +270,7 @@ def _merge_header_and_schema(
     """
     field_types = entity_cls._field_types()
     field_specs = entity_cls._field_specs()
-    resolved: Dict[str, _ResolvedField] = {}
+    resolved: dict[str, _ResolvedField] = {}
 
     # Columns present in the CSV
     for col in header:
@@ -236,15 +278,20 @@ def _merge_header_and_schema(
             spec = field_specs.get(col, FieldSpec())
             type_ = field_types[col]
             is_opt = _is_optional(type_)
-            inner = _get_inner_type(type_) if is_opt else type_
+            _get_inner_type(type_) if is_opt else type_
             resolved[col] = _ResolvedField(
-                type_=type_, required=spec.required,
-                default=spec.default, from_schema=True,
+                type_=type_,
+                required=spec.required,
+                default=spec.default,
+                from_schema=True,
             )
         else:
             # Unknown column — preserve as string
             resolved[col] = _ResolvedField(
-                type_=str, required=False, default="", from_schema=False,
+                type_=str,
+                required=False,
+                default="",
+                from_schema=False,
             )
 
     # Schema fields NOT in header
@@ -263,11 +310,11 @@ def _merge_header_and_schema(
 
 def _load_csv(
     filepath: Path,
-    entity_cls: Type[Entity],
+    entity_cls: type[Entity],
     feed: GTFSFeed,
     collector: ProblemCollector,
     strip_quotes: bool = True,
-) -> Tuple[EntityTable | GroupedTable, int]:
+) -> tuple[EntityTable | GroupedTable, int]:
     """
     Parse a single GTFS CSV file into an EntityTable or GroupedTable.
 
@@ -279,10 +326,7 @@ def _load_csv(
     is_grouped = group_field is not None
 
     table: EntityTable | GroupedTable
-    if is_grouped:
-        table = GroupedTable()
-    else:
-        table = EntityTable()
+    table = GroupedTable() if is_grouped else EntityTable()
 
     # Read with BOM handling
     try:
@@ -303,8 +347,13 @@ def _load_csv(
     field_specs = entity_cls._field_specs()
     for name, spec in field_specs.items():
         if spec.required and name not in header:
-            collector.add(Severity.ERROR, filename, 1, name,
-                          f"required field '{name}' missing from header")
+            collector.add(
+                Severity.ERROR,
+                filename,
+                1,
+                name,
+                f"required field '{name}' missing from header",
+            )
 
     row_count = 0
     for line_no, row in enumerate(reader, start=2):
@@ -322,20 +371,33 @@ def _load_csv(
 
             # Required field check
             if rfield.required and raw.strip() == "":
-                collector.add(Severity.ERROR, filename, line_no, col_name,
-                              "required field is empty")
+                collector.add(
+                    Severity.ERROR,
+                    filename,
+                    line_no,
+                    col_name,
+                    "required field is empty",
+                )
                 setattr(entity, col_name, rfield.default)
                 continue
 
             # Convert
             try:
                 value = convert_value(
-                    raw, rfield.type_, _is_optional(rfield.type_),
+                    raw,
+                    rfield.type_,
+                    _is_optional(rfield.type_),
                     rfield.default,
                 )
             except (ValueError, TypeError, KeyError) as exc:
-                collector.add(Severity.ERROR, filename, line_no, col_name,
-                              f"conversion failed: {exc}", raw)
+                collector.add(
+                    Severity.ERROR,
+                    filename,
+                    line_no,
+                    col_name,
+                    f"conversion failed: {exc}",
+                    raw,
+                )
                 setattr(entity, col_name, rfield.default)
                 continue
 
@@ -364,10 +426,8 @@ def _load_csv(
     # Sort grouped tables by group_by field
     if is_grouped and group_field:
         for key in table:
-            try:
+            with contextlib.suppress(TypeError):
                 table[key].sort(key=lambda e: getattr(e, group_field, 0))
-            except TypeError:
-                pass  # mixed types — leave unsorted
 
     return table, row_count
 
@@ -375,6 +435,7 @@ def _load_csv(
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  CSV write-back
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 
 def _flatten_entities(table: EntityTable | GroupedTable) -> list[Entity]:
     """Un-nest grouped tables into a flat row list."""
@@ -392,7 +453,7 @@ def _flatten_entities(table: EntityTable | GroupedTable) -> list[Entity]:
 def _save_csv(
     filepath: Path,
     table: EntityTable | GroupedTable,
-    entity_cls: Type[Entity],
+    entity_cls: type[Entity],
     sorted_output: bool = False,
 ) -> None:
     """Write a table back to CSV, preserving the original header order."""
@@ -417,14 +478,13 @@ def _save_csv(
             rows.sort(key=lambda e: getattr(e, pk, ""))
 
         for entity in rows:
-            writer.writerow([
-                serialize(entity.get(col, "")) for col in columns
-            ])
+            writer.writerow([serialize(entity.get(col, "")) for col in columns])
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  Foreign-key validation
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 
 def _validate_foreign_keys(feed: GTFSFeed, collector: ProblemCollector) -> None:
     """
@@ -445,7 +505,11 @@ def _validate_foreign_keys(feed: GTFSFeed, collector: ProblemCollector) -> None:
         if not fks:
             continue
 
-        entities = _flatten_entities(table) if isinstance(table, GroupedTable) else list(table.values())
+        entities = (
+            _flatten_entities(table)
+            if isinstance(table, GroupedTable)
+            else list(table.values())
+        )
 
         for fk_field, target_spec in fks.items():
             target_table_name, target_col = target_spec.split(".", 1)
@@ -455,7 +519,7 @@ def _validate_foreign_keys(feed: GTFSFeed, collector: ProblemCollector) -> None:
 
             # Build set of valid keys
             if isinstance(target_table, GroupedTable):
-                valid_keys: Set[str] = set(target_table.keys())
+                valid_keys: set[str] = set(target_table.keys())
             else:
                 valid_keys = set(target_table.keys())
 
@@ -466,14 +530,20 @@ def _validate_foreign_keys(feed: GTFSFeed, collector: ProblemCollector) -> None:
                     broken_count += 1
                     if broken_count <= 10:  # cap per FK relation
                         collector.add(
-                            Severity.WARNING, filename, 0, fk_field,
+                            Severity.WARNING,
+                            filename,
+                            0,
+                            fk_field,
                             f"references non-existent {target_table_name}.{target_col}={fk_val!r}",
                             str(fk_val),
                         )
 
             if broken_count > 10:
                 collector.add(
-                    Severity.WARNING, filename, 0, fk_field,
+                    Severity.WARNING,
+                    filename,
+                    0,
+                    fk_field,
                     f"... and {broken_count - 10} more broken {fk_field} references",
                 )
 
@@ -483,15 +553,23 @@ def _validate_foreign_keys(feed: GTFSFeed, collector: ProblemCollector) -> None:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 # Default set of files to load (mirrors py-gtfs-loader's GTFS_SUBSET_SCHEMA)
-DEFAULT_FILES: list[Type[Entity]] = [
-    Agency, Calendar, CalendarDate, Route, Trip,
-    Stop, StopTime, Shape, Transfer, FeedInfo, Frequency,
+DEFAULT_FILES: list[type[Entity]] = [
+    Agency,
+    Calendar,
+    CalendarDate,
+    Route,
+    Trip,
+    Stop,
+    StopTime,
+    Shape,
+    Transfer,
+    FeedInfo,
+    Frequency,
 ]
 
 
 class GTFSFeed:
-    """
-    In-memory representation of a GTFS feed.
+    """In-memory representation of a GTFS feed.
 
     Access tables by name::
 
@@ -502,6 +580,21 @@ class GTFSFeed:
 
     This replaces the loose-dict approach in py-gtfs-loader with a
     typed, navigable, validated container.
+
+    Attributes:
+        agency: Keyed table of Agency entities.
+        calendar: Keyed table of Calendar entries.
+        calendar_dates: Grouped table of CalendarDate exceptions.
+        routes: Keyed table of Route entities.
+        trips: Keyed table of Trip entities.
+        stops: Keyed table of Stop entities.
+        stop_times: Grouped table of StopTime records keyed by trip_id.
+        shapes: Grouped table of Shape points keyed by shape_id.
+        transfers: Grouped table of Transfer records.
+        feed_info: Keyed table of FeedInfo metadata.
+        frequencies: Grouped table of Frequency entries.
+        source_dir: Filesystem path the feed was loaded from.
+        problems: List of LoadProblem instances found during loading.
     """
 
     def __init__(self) -> None:
@@ -519,12 +612,12 @@ class GTFSFeed:
         self.frequencies: GroupedTable = GroupedTable()
 
         # Metadata
-        self.source_dir: Optional[Path] = None
+        self.source_dir: Path | None = None
         self.problems: list[LoadProblem] = []
-        self._entity_counts: Dict[str, int] = {}
+        self._entity_counts: dict[str, int] = {}
 
     # ── named table access by filename ──────────────────────────
-    _TABLE_MAP: Dict[str, str] = {
+    _TABLE_MAP: dict[str, str] = {
         "agency.txt": "agency",
         "calendar.txt": "calendar",
         "calendar_dates.txt": "calendar_dates",
@@ -538,7 +631,7 @@ class GTFSFeed:
         "frequencies.txt": "frequencies",
     }
 
-    def table_for_filename(self, filename: str) -> Optional[EntityTable | GroupedTable]:
+    def table_for_filename(self, filename: str) -> EntityTable | GroupedTable | None:
         attr = self._TABLE_MAP.get(filename)
         return getattr(self, attr) if attr else None
 
@@ -601,16 +694,19 @@ class GTFSFeed:
         return active
 
     # ── diagnostics ─────────────────────────────────────────────
-    def entity_counts(self) -> Dict[str, int]:
+    def entity_counts(self) -> dict[str, int]:
         return dict(self._entity_counts)
 
     def summary(self) -> str:
         parts = []
-        for fname, attr in self._TABLE_MAP.items():
+        for _fname, attr in self._TABLE_MAP.items():
             table = getattr(self, attr, None)
             if table:
-                count = sum(len(v) if isinstance(v, list) else 1
-                            for v in table.values()) if isinstance(table, GroupedTable) else len(table)
+                count = (
+                    sum(len(v) if isinstance(v, list) else 1 for v in table.values())
+                    if isinstance(table, GroupedTable)
+                    else len(table)
+                )
                 if count:
                     parts.append(f"{attr}: {count:,}")
         return " | ".join(parts) if parts else "(empty feed)"
@@ -625,7 +721,7 @@ class GTFSFeed:
         cls,
         gtfs_dir: str | Path,
         *,
-        files: Optional[Sequence[Type[Entity]]] = None,
+        files: Sequence[type[Entity]] | None = None,
         validate_fks: bool = True,
         strip_quotes: bool = True,
         verbose: bool = False,
@@ -659,12 +755,20 @@ class GTFSFeed:
 
             if not filepath.exists():
                 if entity_cls.__required_file__:
-                    collector.add(Severity.ERROR, filename, 0, "",
-                                  f"required file '{filename}' not found")
+                    collector.add(
+                        Severity.ERROR,
+                        filename,
+                        0,
+                        "",
+                        f"required file '{filename}' not found",
+                    )
                 continue
 
             table, count = _load_csv(
-                filepath, entity_cls, feed, collector,
+                filepath,
+                entity_cls,
+                feed,
+                collector,
                 strip_quotes=strip_quotes,
             )
 
@@ -691,8 +795,8 @@ class GTFSFeed:
     def load_file(
         cls,
         filepath: str | Path,
-        entity_cls: Type[Entity],
-    ) -> Tuple[EntityTable | GroupedTable, list[LoadProblem]]:
+        entity_cls: type[Entity],
+    ) -> tuple[EntityTable | GroupedTable, list[LoadProblem]]:
         """
         Load a single GTFS file outside a feed context.
 
@@ -710,7 +814,7 @@ class GTFSFeed:
         output_dir: str | Path,
         *,
         sorted_output: bool = False,
-        files: Optional[Sequence[Type[Entity]]] = None,
+        files: Sequence[type[Entity]] | None = None,
     ) -> None:
         """
         Write the feed back to CSV files.
@@ -722,7 +826,7 @@ class GTFSFeed:
         out = Path(output_dir)
         out.mkdir(parents=True, exist_ok=True)
 
-        registry = get_entity_registry()
+        get_entity_registry()
         to_write = files or DEFAULT_FILES
 
         for entity_cls in to_write:
@@ -766,6 +870,7 @@ class GTFSFeed:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  Module-level convenience functions
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 
 def load_feed(
     gtfs_dir: str | Path,

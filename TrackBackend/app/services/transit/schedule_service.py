@@ -1,36 +1,59 @@
+"""Fallback schedule queries against the local GTFS SQLite database.
+
+Used when real-time feeds are unavailable or for dormant routes.
+All wall-clock comparisons use America/New_York so that the schedule
+aligns with MTA timetables regardless of the server's system timezone.
+"""
+
+from __future__ import annotations
 
 import asyncio
 import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any
+from zoneinfo import ZoneInfo
 
 from app.models import TrackArrival
 from app.services.transit.station_lookup import get_stop_info, get_stop_name
 from app.utils.logger import TrackLogger
 
+_NY = ZoneInfo("America/New_York")
+
 DB_PATH = Path("app/data/transit_schedule.db")
 
 # Map Python weekday (0=Mon) to GTFS service_id keywords (fallback heuristic)
 _WEEKDAY_KEYWORDS = {
-    0: "Weekday",   # Monday
-    1: "Weekday",   # Tuesday
-    2: "Weekday",   # Wednesday
-    3: "Weekday",   # Thursday
-    4: "Weekday",   # Friday
+    0: "Weekday",  # Monday
+    1: "Weekday",  # Tuesday
+    2: "Weekday",  # Wednesday
+    3: "Weekday",  # Thursday
+    4: "Weekday",  # Friday
     5: "Saturday",
     6: "Sunday",
 }
 
 # Map Python weekday (0=Mon) to calendar.txt column name
 _WEEKDAY_COLUMNS = {
-    0: "monday", 1: "tuesday", 2: "wednesday",
-    3: "thursday", 4: "friday", 5: "saturday", 6: "sunday",
+    0: "monday",
+    1: "tuesday",
+    2: "wednesday",
+    3: "thursday",
+    4: "friday",
+    5: "saturday",
+    6: "sunday",
 }
 
+
 class ScheduleService:
-    """Service to query static GTFS schedules as a fallback for live data."""
-    
+    """Query static GTFS schedules as a fallback for live data.
+
+    Reads from a local SQLite database built from GTFS static files.
+    Used when real-time feeds are unavailable or for dormant routes.
+
+    Attributes:
+        db_path: Path to the ``transit_schedule.db`` SQLite file.
+    """
+
     def __init__(self, db_path: Path = DB_PATH):
         self.db_path = db_path
 
@@ -47,7 +70,7 @@ class ScheduleService:
         This mirrors Transit App's GTFS-flex-to-GOFS calendar resolution:
         base service from calendar.txt, then overlay calendar_dates exceptions.
         """
-        now = datetime.now()
+        now = datetime.now(tz=_NY)
 
         # Strategy 1: calendar.txt — proper weekly pattern with date range
         day_col = _WEEKDAY_COLUMNS.get(now.weekday(), "monday")
@@ -58,7 +81,7 @@ class ScheduleService:
                 (current_date, current_date),
             )
             calendar_active = {r[0] for r in cursor.fetchall()}
-        except Exception:
+        except sqlite3.Error:
             # Table might not exist yet (pre-migration)
             calendar_active = set()
 
@@ -69,8 +92,8 @@ class ScheduleService:
         )
         rows = cursor.fetchall()
 
-        added = {r[0] for r in rows if r[1] == 1}    # explicitly running today
-        removed = {r[0] for r in rows if r[1] == 2}   # explicitly NOT running today
+        added = {r[0] for r in rows if r[1] == 1}  # explicitly running today
+        removed = {r[0] for r in rows if r[1] == 2}  # explicitly NOT running today
 
         # Strategy 3: Fallback name heuristic (only if calendar.txt is empty)
         if not calendar_active:
@@ -88,7 +111,9 @@ class ScheduleService:
 
         return list(active)
 
-    def get_scheduled_arrivals(self, stop_id: str, route_id: str | None = None, limit: int = 10) -> list[TrackArrival]:
+    def get_scheduled_arrivals(
+        self, stop_id: str, route_id: str | None = None, limit: int = 10
+    ) -> list[TrackArrival]:
         """
         Fetch the next scheduled arrivals for a given stop.
 
@@ -100,7 +125,7 @@ class ScheduleService:
             return []
 
         # Current time in GTFS format HH:MM:SS
-        now = datetime.now()
+        now = datetime.now(tz=_NY)
         current_date = now.strftime("%Y%m%d")
         current_time_str = now.strftime("%H:%M:%S")
 
@@ -118,28 +143,38 @@ class ScheduleService:
 
             if active_services:
                 arrivals = self._query_stop_times(
-                    cursor, stop_id, active_services, current_time_str,
-                    route_id, limit, day_offset=0,
+                    cursor,
+                    stop_id,
+                    active_services,
+                    current_time_str,
+                    route_id,
+                    limit,
+                    day_offset=0,
                 )
 
             # 2. If today didn't fill the limit, query tomorrow's service
             #    (early-morning departures) to extend the window.
             if len(arrivals) < limit:
-                tomorrow_services = self._resolve_active_services(
-                    cursor, tomorrow_date
-                )
+                tomorrow_services = self._resolve_active_services(cursor, tomorrow_date)
                 if tomorrow_services:
                     remaining = limit - len(arrivals)
                     next_day = self._query_stop_times(
-                        cursor, stop_id, tomorrow_services, "00:00:00",
-                        route_id, remaining, day_offset=1,
+                        cursor,
+                        stop_id,
+                        tomorrow_services,
+                        "00:00:00",
+                        route_id,
+                        remaining,
+                        day_offset=1,
                     )
                     arrivals.extend(next_day)
 
             return arrivals
 
         except Exception as e:
-            TrackLogger.error(f"Schedule query failed: {e}", tag="SCHEDULE", exc_info=True)
+            TrackLogger.error(
+                f"Schedule query failed: {e}", tag="SCHEDULE", exc_info=True
+            )
             return []
         finally:
             conn.close()
@@ -196,12 +231,7 @@ class ScheduleService:
             LIMIT ?
         """.format(",".join(["?"] * len(active_services)), route_filter)
 
-        params = (
-            [stop_id]
-            + active_services
-            + route_params
-            + [time_from, limit]
-        )
+        params = [stop_id, *active_services, *route_params, time_from, limit]
 
         cursor.execute(query, params)
         rows = cursor.fetchall()
@@ -216,19 +246,23 @@ class ScheduleService:
 
             direction = "N" if direction_id == 0 else "S"
 
-            arrivals.append(TrackArrival(
-                route_id=r_id,
-                station=s_id,
-                station_name=get_stop_name(s_id),
-                direction=direction,
-                destination=headsign,
-                minutes_away=minutes,
-                arrival_ts=arrival_ts,
-                status="Scheduled",
-                trip_id=trip_id,
-                stop_lat=stop_info.lat if (stop_info := get_stop_info(s_id)) else None,
-                stop_lon=stop_info.lon if stop_info else None,
-            ))
+            arrivals.append(
+                TrackArrival(
+                    route_id=r_id,
+                    station=s_id,
+                    station_name=get_stop_name(s_id),
+                    direction=direction,
+                    destination=headsign,
+                    minutes_away=minutes,
+                    arrival_ts=arrival_ts,
+                    status="Scheduled",
+                    trip_id=trip_id,
+                    stop_lat=(
+                        stop_info.lat if (stop_info := get_stop_info(s_id)) else None
+                    ),
+                    stop_lon=stop_info.lon if stop_info else None,
+                )
+            )
 
         return arrivals
 
@@ -243,7 +277,9 @@ class ScheduleService:
             self.get_scheduled_arrivals, stop_id, route_id, limit
         )
 
-    def _calculate_timing(self, gtfs_time: str, *, day_offset: int = 0) -> tuple[int, int]:
+    def _calculate_timing(
+        self, gtfs_time: str, *, day_offset: int = 0
+    ) -> tuple[int, int]:
         """Parse GTFS time HH:MM:SS and return (minutes_away, arrival_ts).
 
         Handles GTFS times past midnight (e.g. 25:30:00 = 1:30 AM next day)
@@ -253,16 +289,16 @@ class ScheduleService:
         so that tomorrow's "06:30:00" is placed 24 h ahead instead of in the past.
         """
         try:
-            h, m, s = map(int, gtfs_time.split(':'))
+            h, m, s = map(int, gtfs_time.split(":"))
             days = h // 24
             hours = h % 24
-            
-            now = datetime.now()
+
+            now = datetime.now(tz=_NY)
             base = now + timedelta(days=day_offset)
             arrival_dt = base.replace(hour=hours, minute=m, second=s, microsecond=0)
             if days > 0:
                 arrival_dt += timedelta(days=days)
-            
+
             # If the normalized time is in the past (e.g. "01:30:00" queried
             # at 02:00 for a trip that started yesterday before midnight), the
             # trip has already departed — clamp to 0 minutes away.
@@ -335,10 +371,13 @@ class ScheduleService:
 
             return result
         except Exception as e:
-            TrackLogger.error(f"Headsign lookup failed for {route_id}: {e}", tag="SCHEDULE")
+            TrackLogger.error(
+                f"Headsign lookup failed for {route_id}: {e}", tag="SCHEDULE"
+            )
             return {}
         finally:
             conn.close()
+
 
 # Singleton instance
 schedule_service = ScheduleService()

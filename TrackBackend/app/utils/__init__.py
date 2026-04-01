@@ -17,14 +17,16 @@ Modules:
     transit_utils    – Route-to-color mapping, feed key resolution
 """
 
+from __future__ import annotations
+
 from app.utils.geo_utils import bounding_box_degrees, haversine_m
 from app.utils.logger import TrackLogger
 from app.utils.polyline_utils import decode_polyline, encode_polyline
 
 __all__ = [
     "TrackLogger",
-    "haversine_m",
     "bounding_box_degrees",
-    "encode_polyline",
     "decode_polyline",
+    "encode_polyline",
+    "haversine_m",
 ]

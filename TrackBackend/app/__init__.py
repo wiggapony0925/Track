@@ -11,4 +11,6 @@ Packages:
     utils     – Shared helpers (logging, geo, polyline, transit colors, metrics)
 """
 
+from __future__ import annotations
+
 __version__ = "1.0.0"

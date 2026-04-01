@@ -1,25 +1,17 @@
-#
-# data_loader.py
-# TrackBackend
-#
-# Downloads GTFS data from Supabase Storage on startup, with automatic
-# fallback to Docker-bundled files when Supabase is unreachable.
-#
-# Architecture:
-#   PRIMARY  — Download fresh .tar.gz archives from Supabase Storage bucket.
-#   FALLBACK — Use local files already present in app/data/ (Docker image).
-#
-# Data is organized into download groups (archives) so large directories
-# can be fetched as a single compressed file instead of hundreds of
-# individual requests.
-#
+"""Downloads GTFS data from Supabase Storage on startup, with automatic
+fallback to Docker-bundled files when Supabase is unreachable.
+
+Architecture:
+PRIMARY  — Download fresh .tar.gz archives from Supabase Storage bucket.
+FALLBACK — Use local files already present in app/data/ (Docker image).
+
+Data is organized into download groups (archives) so large directories
+can be fetched as a single compressed file instead of hundreds of
+individual requests."""
 
 from __future__ import annotations
 
-import gzip
-import hashlib
 import os
-import shutil
 import tarfile
 import tempfile
 import time
@@ -53,7 +45,9 @@ DOCKER_FALLBACK_BASE_URL = os.environ.get("GTFS_DOCKER_FALLBACK_BASE_URL", "").s
 # bundled local files.  Useful when the bucket is empty or Supabase is not
 # configured (defaults to false — always try remote first).
 SKIP_REMOTE_SYNC = os.environ.get("SKIP_REMOTE_SYNC", "").strip().lower() in (
-    "1", "true", "yes"
+    "1",
+    "true",
+    "yes",
 )
 
 # Timeout for downloading — generous for large files (transit_schedule.db ~100MB gzipped)
@@ -72,10 +66,10 @@ _DOWNLOAD_TIMEOUT = httpx.Timeout(connect=10.0, read=120.0, write=30.0, pool=10.
 DOWNLOAD_MANIFEST: list[dict[str, Any]] = [
     {
         "object": "subway_core.tar.gz",
-        "extract_to": "",           # relative to _DATA_DIR
+        "extract_to": "",  # relative to _DATA_DIR
         "description": "Subway shapes, trips, stops, shape_stops.json",
         "required_files": ["shapes.txt", "trips.txt", "shape_stops.json"],
-        "critical": True,           # server can't function well without this
+        "critical": True,  # server can't function well without this
     },
     {
         "object": "subway_routes.tar.gz",
@@ -126,10 +120,10 @@ DOWNLOAD_MANIFEST: list[dict[str, Any]] = [
         # fallback; this download replaces it only when a newer version has
         # been explicitly pushed to Supabase (i.e. after a local retrain).
         "object": "delay_model.tar.gz",
-        "extract_to": "",           # extracts delay_model.pkl to app/data/ root
+        "extract_to": "",  # extracts delay_model.pkl to app/data/ root
         "description": "ML LightGBM delay prediction model",
         "required_files": ["delay_model.pkl"],
-        "critical": False,          # heuristic factor used if missing
+        "critical": False,  # heuristic factor used if missing
     },
 ]
 
@@ -148,6 +142,7 @@ LOCAL_ONLY_FILES: list[dict[str, Any]] = [
 # ---------------------------------------------------------------------------
 # Supabase Storage helpers
 # ---------------------------------------------------------------------------
+
 
 def _storage_url(object_path: str) -> str:
     """Build the Supabase Storage download URL for an object."""
@@ -268,12 +263,10 @@ def _try_download_from_docker_fallback(
 # Download + extract
 # ---------------------------------------------------------------------------
 
+
 def _has_required_files(entry: dict[str, Any]) -> bool:
     """Check if the required local files for a manifest entry already exist."""
-    for rel in entry["required_files"]:
-        if not (_DATA_DIR / rel).exists():
-            return False
-    return True
+    return all((_DATA_DIR / rel).exists() for rel in entry["required_files"])
 
 
 def _download_and_extract(
@@ -313,15 +306,14 @@ def _download_and_extract(
                         f"[DATA] {desc}: up-to-date (ETag match)", tag="DATA"
                     )
                     return True, True
-                else:
-                    TrackLogger.warning(
-                        f"[DATA] {desc}: ETag matched but local files missing — "
-                        "clearing ETag and re-downloading",
-                        tag="DATA",
-                    )
-                    _clear_local_etag(obj)
-                    # Re-request without ETag to force a full download
-                    return _download_and_extract(client, entry)
+                TrackLogger.warning(
+                    f"[DATA] {desc}: ETag matched but local files missing — "
+                    "clearing ETag and re-downloading",
+                    tag="DATA",
+                )
+                _clear_local_etag(obj)
+                # Re-request without ETag to force a full download
+                return _download_and_extract(client, entry)
 
             if resp.status_code >= 400:
                 # Read the first 400 bytes of the error body for diagnostics.
@@ -336,8 +328,13 @@ def _download_and_extract(
                 raw_err = b"".join(error_chunks).decode(errors="replace")
                 try:
                     import json as _json
+
                     err_data = _json.loads(raw_err)
-                    err_msg = err_data.get("message") or err_data.get("error") or raw_err[:120]
+                    err_msg = (
+                        err_data.get("message")
+                        or err_data.get("error")
+                        or raw_err[:120]
+                    )
                 except Exception:
                     err_msg = raw_err[:120]
 
@@ -346,7 +343,11 @@ def _download_and_extract(
                     or "not_found" in raw_err
                     or "Object not found" in raw_err
                 )
-                status_label = f"HTTP {resp.status_code} (not found)" if is_not_found else f"HTTP {resp.status_code}"
+                status_label = (
+                    f"HTTP {resp.status_code} (not found)"
+                    if is_not_found
+                    else f"HTTP {resp.status_code}"
+                )
 
                 docker_ok = _try_download_from_docker_fallback(client, entry)
                 if docker_ok:
@@ -361,11 +362,9 @@ def _download_and_extract(
 
             # Stream to a temp file, then extract
             etag = resp.headers.get("etag", "")
-            content_length = int(resp.headers.get("content-length", 0))
+            int(resp.headers.get("content-length", 0))
 
-            with tempfile.NamedTemporaryFile(
-                suffix=".tar.gz", delete=False
-            ) as tmp:
+            with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as tmp:
                 tmp_path = tmp.name
                 downloaded = 0
                 for chunk in resp.iter_bytes(chunk_size=65_536):
@@ -406,15 +405,14 @@ def _download_and_extract(
         if docker_ok:
             return True, True
         fallback_ok = _has_required_files(entry)
-        TrackLogger.error(
-            f"[DATA] {desc}: unexpected error — {exc}", tag="DATA"
-        )
+        TrackLogger.error(f"[DATA] {desc}: unexpected error — {exc}", tag="DATA")
         return fallback_ok, False
 
 
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 async def ensure_data_available() -> dict[str, bool]:
     """Download GTFS data from Supabase Storage with Docker-bundled fallback.
@@ -431,12 +429,15 @@ async def ensure_data_available() -> dict[str, bool]:
     """
     results: dict[str, bool] = {}
 
-    TrackLogger.info("[DATA] Starting GTFS data sync from Supabase Storage...", tag="DATA")
+    TrackLogger.info(
+        "[DATA] Starting GTFS data sync from Supabase Storage...", tag="DATA"
+    )
     t_total = time.monotonic()
 
     # Use sync httpx inside an executor to avoid blocking the event loop
     # while streaming large downloads.
     import asyncio
+
     loop = asyncio.get_running_loop()
     results = await loop.run_in_executor(None, _sync_download_all)
 
@@ -505,11 +506,14 @@ def _sync_download_all() -> dict[str, bool]:
 
     if remote_failures:
         failed_list = ", ".join(remote_failures[:3])
-        extra = "" if len(remote_failures) <= 3 else f", +{len(remote_failures) - 3} more"
+        extra = (
+            "" if len(remote_failures) <= 3 else f", +{len(remote_failures) - 3} more"
+        )
         all_failed = len(remote_failures) == len(DOWNLOAD_MANIFEST)
         hint = (
             " — set SKIP_REMOTE_SYNC=true to use only local data and silence these warnings"
-            if all_failed else ""
+            if all_failed
+            else ""
         )
         TrackLogger.warning(
             f"[DATA] Remote sync failed for {len(remote_failures)} data groups; "
@@ -526,8 +530,7 @@ def check_local_data_status() -> dict[str, bool]:
     Useful for health checks without triggering downloads.
     """
     status = {
-        entry["description"]: _has_required_files(entry)
-        for entry in DOWNLOAD_MANIFEST
+        entry["description"]: _has_required_files(entry) for entry in DOWNLOAD_MANIFEST
     }
     # Include Docker-bundled-only files in the status check
     for entry in LOCAL_ONLY_FILES:

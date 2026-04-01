@@ -1,27 +1,23 @@
-#
-# delay_model.py
-# app/ml/delay_model.py
-#
-# LightGBM pattern model.
-# Predicts a delay_factor for a transit context: route × hour × day × weather × mode.
-# The factor multiplies MTA's raw minutes_away to correct for known chronic patterns.
-#
-# Why LightGBM?
-#   • 10–50× faster training vs sklearn GradientBoostingRegressor (leaf-wise growth)
-#   • Built-in early stopping — automatically finds optimal tree count, no guessing
-#   • Handles millions of rows without OOM issues
-#   • Same sklearn-compatible .predict() API — inference code unchanged
-#   • ~5 µs inference — safe on every API request.
-#   • Trivially retrained as real TripLog data accumulates.
-#   • Small model file (<500 KB), ships inside Docker.
-#
-# Fallback: if no model file exists, falls back to the rule-based heuristic
-# so the endpoint never breaks.
-#
+"""LightGBM pattern model.
+Predicts a delay_factor for a transit context: route × hour × day × weather × mode.
+The factor multiplies MTA's raw minutes_away to correct for known chronic patterns.
+
+Why LightGBM?
+• 10–50× faster training vs sklearn GradientBoostingRegressor (leaf-wise growth)
+• Built-in early stopping — automatically finds optimal tree count, no guessing
+• Handles millions of rows without OOM issues
+• Same sklearn-compatible .predict() API — inference code unchanged
+• ~5 µs inference — safe on every API request.
+• Trivially retrained as real TripLog data accumulates.
+• Small model file (<500 KB), ships inside Docker.
+
+Fallback: if no model file exists, falls back to the rule-based heuristic
+so the endpoint never breaks."""
 
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from pathlib import Path
 from typing import Any
 
@@ -34,12 +30,32 @@ MODEL_PATH = Path(__file__).resolve().parent.parent / "data" / "delay_model.pkl"
 # Route reliability tiers — fallback used when no JSON data is available.
 # 0 = most reliable → 4 = most chronically delayed.
 ROUTE_RELIABILITY: dict[str, int] = {
-    "SI": 0, "L": 0,
-    "7": 1, "W": 1, "Z": 1, "SIR": 1,
-    "1": 2, "2": 2, "3": 2, "R": 2, "N": 2, "Q": 2, "M": 2,
-    "B": 2, "D": 2, "E": 2, "F": 2, "S": 2,
-    "LIRR": 2, "MNR": 2,
-    "4": 3, "5": 3, "6": 3, "J": 3, "A": 3, "C": 3,
+    "SI": 0,
+    "L": 0,
+    "7": 1,
+    "W": 1,
+    "Z": 1,
+    "SIR": 1,
+    "1": 2,
+    "2": 2,
+    "3": 2,
+    "R": 2,
+    "N": 2,
+    "Q": 2,
+    "M": 2,
+    "B": 2,
+    "D": 2,
+    "E": 2,
+    "F": 2,
+    "S": 2,
+    "LIRR": 2,
+    "MNR": 2,
+    "4": 3,
+    "5": 3,
+    "6": 3,
+    "J": 3,
+    "A": 3,
+    "C": 3,
     "G": 4,
 }
 
@@ -71,18 +87,18 @@ def _load_otp_reliability() -> None:
         from collections import defaultdict
 
         accum: dict[str, list[float]] = defaultdict(list)
-        for fname in ["subway_otp_2015_2019.json",
-                      "subway_otp_2020_2024.json",
-                      "subway_otp_2025.json"]:
+        for fname in [
+            "subway_otp_2015_2019.json",
+            "subway_otp_2020_2024.json",
+            "subway_otp_2025.json",
+        ]:
             p = training_dir / fname
             if not p.exists():
                 continue
             for row in json.loads(p.read_text()):
                 line = (row.get("line") or "").upper().strip()
-                try:
+                with contextlib.suppress(KeyError, ValueError, TypeError):
                     accum[line].append(float(row["terminal_on_time_performance"]))
-                except (KeyError, ValueError, TypeError):
-                    pass
 
         for line, vals in accum.items():
             avg_otp = sum(vals) / len(vals)
@@ -99,23 +115,47 @@ def _load_otp_reliability() -> None:
     except Exception as exc:
         TrackLogger.warning(f"[ML] Could not load OTP reliability: {exc}", tag="ML")
 
+
 # ── Expanded weather encoding ────────────────────────────────────────────
 # Transit App integrates 7+ weather conditions. We now support all of them
 # while remaining backward-compatible with the original 3 categories.
 # Old 3-category models still work — extra categories map to nearest.
 WEATHER_ENCODING: dict[str, int] = {
-    "clear": 0, "sunny": 0, "partly_cloudy": 0,
-    "cloudy": 1, "overcast": 1, "fog": 1, "mist": 1,
-    "rain": 2, "drizzle": 2, "light_rain": 2, "thunderstorm": 3,
-    "snow": 4, "sleet": 4, "freezing_rain": 4, "ice": 4,
-    "heavy_rain": 5, "heavy_snow": 6,
+    "clear": 0,
+    "sunny": 0,
+    "partly_cloudy": 0,
+    "cloudy": 1,
+    "overcast": 1,
+    "fog": 1,
+    "mist": 1,
+    "rain": 2,
+    "drizzle": 2,
+    "light_rain": 2,
+    "thunderstorm": 3,
+    "snow": 4,
+    "sleet": 4,
+    "freezing_rain": 4,
+    "ice": 4,
+    "heavy_rain": 5,
+    "heavy_snow": 6,
 }
 MODE_ENCODING: dict[str, int] = {"subway": 0, "bus": 1, "lirr": 2, "mnr": 3}
 
 # Season encoding — Transit App's ETA benchmark shows seasonal variation
 # in prediction accuracy. Winter storms and summer heat affect service.
 SEASON_ENCODING: dict[int, int] = {
-    1: 0, 2: 0, 3: 1, 4: 1, 5: 1, 6: 2, 7: 2, 8: 2, 9: 3, 10: 3, 11: 3, 12: 0,
+    1: 0,
+    2: 0,
+    3: 1,
+    4: 1,
+    5: 1,
+    6: 2,
+    7: 2,
+    8: 2,
+    9: 3,
+    10: 3,
+    11: 3,
+    12: 0,
     # 0=winter, 1=spring, 2=summer, 3=fall
 }
 
@@ -138,9 +178,16 @@ _RUSH_EVENING = range(17, 20)
 # v2 features add month + season for better seasonal delay patterns.
 # Backward-compatible: old models receive truncated vectors via n_features_in_.
 FEATURE_NAMES: list[str] = [
-    "route_reliability", "hour", "dow", "weather", "mode",
-    "is_rush", "is_weekend", "delay_minutes",
-    "month", "season",  # v2 features
+    "route_reliability",
+    "hour",
+    "dow",
+    "weather",
+    "mode",
+    "is_rush",
+    "is_weekend",
+    "delay_minutes",
+    "month",
+    "season",  # v2 features
 ]
 
 # ── Singleton ──────────────────────────────────────────────────────────────
@@ -165,6 +212,7 @@ def _load_model() -> Any | None:
 
     try:
         import joblib  # type: ignore[import-untyped]
+
         _model = joblib.load(MODEL_PATH)
         size_kb = MODEL_PATH.stat().st_size // 1024
         n_trees = getattr(_model, "n_estimators", "?")
@@ -194,7 +242,11 @@ async def ensure_model_loaded() -> None:
 
 
 def encode_features(
-    route_id: str, hour: int, dow: int, weather: str, mode: str,
+    route_id: str,
+    hour: int,
+    dow: int,
+    weather: str,
+    mode: str,
     current_delay_s: float = 0.0,
 ) -> list[float]:
     """Convert inputs → numeric feature vector.
@@ -224,22 +276,31 @@ def encode_features(
         reliability = float(ROUTE_RELIABILITY.get(key, 2))
 
     weather_enc = WEATHER_ENCODING.get(weather.lower(), 0)
-    mode_enc    = MODE_ENCODING.get(mode.lower(), 0)
-    is_weekday  = 2 <= dow <= 6
-    is_rush     = int(is_weekday and (hour in _RUSH_MORNING or hour in _RUSH_EVENING))
-    is_weekend  = int(not is_weekday)
+    mode_enc = MODE_ENCODING.get(mode.lower(), 0)
+    is_weekday = 2 <= dow <= 6
+    is_rush = int(is_weekday and (hour in _RUSH_MORNING or hour in _RUSH_EVENING))
+    is_weekend = int(not is_weekday)
     delay_minutes = max(-10.0, min(10.0, current_delay_s / 60.0))
 
     # v2 features — month + season (backward-compatible: truncated by n_features_in_)
     from datetime import datetime as _dt
+
     now = _dt.now()
     month = float(now.month)
     season = float(SEASON_ENCODING.get(now.month, 0))
 
-    return [reliability, float(hour), float(dow),
-            float(weather_enc), float(mode_enc), float(is_rush), float(is_weekend),
-            delay_minutes,
-            month, season]
+    return [
+        reliability,
+        float(hour),
+        float(dow),
+        float(weather_enc),
+        float(mode_enc),
+        float(is_rush),
+        float(is_weekend),
+        delay_minutes,
+        month,
+        season,
+    ]
 
 
 def _heuristic(route_id: str, hour: int, dow: int, weather: str, mode: str) -> float:
@@ -272,17 +333,17 @@ def _heuristic(route_id: str, hour: int, dow: int, weather: str, mode: str) -> f
     w = weather.lower()
     w_enc = WEATHER_ENCODING.get(w, 0)
     is_bus = mode.lower() == "bus"
-    if w_enc == 1:          # cloudy/fog/mist — minor surface impact
+    if w_enc == 1:  # cloudy/fog/mist — minor surface impact
         factor += 0.08 if is_bus else 0.02
-    elif w_enc == 2:        # rain/drizzle/light_rain
+    elif w_enc == 2:  # rain/drizzle/light_rain
         factor += 0.15 if is_bus else 0.05
-    elif w_enc == 3:        # thunderstorm
+    elif w_enc == 3:  # thunderstorm
         factor += 0.25 if is_bus else 0.10
-    elif w_enc == 4:        # snow/sleet/freezing_rain/ice
+    elif w_enc == 4:  # snow/sleet/freezing_rain/ice
         factor += 0.30 if is_bus else 0.20
-    elif w_enc == 5:        # heavy_rain
+    elif w_enc == 5:  # heavy_rain
         factor += 0.25 if is_bus else 0.12
-    elif w_enc == 6:        # heavy_snow — worst case
+    elif w_enc == 6:  # heavy_snow — worst case
         factor += 0.40 if is_bus else 0.30
 
     # Route-specific chronic delay offsets (key already normalised above)
@@ -295,14 +356,18 @@ def _heuristic(route_id: str, hour: int, dow: int, weather: str, mode: str) -> f
 
 
 def predict_factor(
-    route_id: str, hour: int, dow: int, weather: str, mode: str = "subway",
+    route_id: str,
+    hour: int,
+    dow: int,
+    weather: str,
+    mode: str = "subway",
     current_delay_s: float = 0.0,
 ) -> tuple[float, str]:
     """Return (delay_factor, source).
 
-    factor is clamped to [1.0, 2.0]:
-      - Never < 1.0: we never tell a user a train is ahead of schedule
-        (risky — they'd miss it).
+    factor is clamped to [0.90, 2.0]:
+      - Never < 0.90: allows modest "ahead of schedule" signals from the
+        model while preventing dangerously large under-predictions.
       - Never > 2.0: sanity guard against bad inputs.
 
     current_delay_s: live schedule deviation from SIRI/GTFS-RT.  Passed
@@ -314,8 +379,10 @@ def predict_factor(
         return _heuristic(route_id, hour, dow, weather, mode), "heuristic"
 
     try:
-        import numpy as np  # type: ignore[import-untyped]
         import warnings
+
+        import numpy as np  # type: ignore[import-untyped]
+
         feats = encode_features(route_id, hour, dow, weather, mode, current_delay_s)
         # Backward compat: older 7-feature models drop the delay_minutes column
         n_expected: int = getattr(model, "n_features_in_", len(feats))
@@ -354,13 +421,11 @@ def predict_factor_batch(
         return []
     model = _load_model()
     if model is None:
-        return [
-            (_heuristic(r, h, d, w, m), "heuristic")
-            for r, h, d, w, m, _ in items
-        ]
+        return [(_heuristic(r, h, d, w, m), "heuristic") for r, h, d, w, m, _ in items]
     try:
-        import numpy as np
         import warnings
+
+        import numpy as np
 
         n_expected: int = getattr(model, "n_features_in_", 8)
         rows = []
@@ -377,18 +442,12 @@ def predict_factor_batch(
             )
             raw_preds = model.predict(X)  # shape (N,)
 
-        return [
-            (round(max(0.90, min(float(p), 2.0)), 4), "model")
-            for p in raw_preds
-        ]
+        return [(round(max(0.90, min(float(p), 2.0)), 4), "model") for p in raw_preds]
     except Exception as exc:
         TrackLogger.model_event(
             f"batch predict error ({exc}) — heuristic fallback.", level="warning"
         )
-        return [
-            (_heuristic(r, h, d, w, m), "heuristic")
-            for r, h, d, w, m, _ in items
-        ]
+        return [(_heuristic(r, h, d, w, m), "heuristic") for r, h, d, w, m, _ in items]
 
 
 def reload_model() -> bool:

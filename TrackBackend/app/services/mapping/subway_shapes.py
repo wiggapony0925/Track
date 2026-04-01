@@ -1,17 +1,12 @@
-#
-# subway_shapes.py
-# TrackBackend
-#
-# Loads MTA GTFS static data to provide full subway route polylines
-# and ordered stop lists. Uses pre-computed shape_stops.json (52 KB)
-# instead of the raw stop_times.txt (35 MB) for fast lookups.
-#
-# Data files required in app/data/:
-#   - shapes.txt:       Route geometry points (from GTFS static)
-#   - trips.txt:        Maps route_id → shape_id (from GTFS static)
-#   - shape_stops.json: Pre-computed shape_id → [stop_ids] mapping
-#   - stops.txt:        Stop coordinates and names (loaded via station_lookup)
-#
+"""Loads MTA GTFS static data to provide full subway route polylines
+and ordered stop lists. Uses pre-computed shape_stops.json (52 KB)
+instead of the raw stop_times.txt (35 MB) for fast lookups.
+
+Data files required in app/data/:
+- shapes.txt:       Route geometry points (from GTFS static)
+- trips.txt:        Maps route_id → shape_id (from GTFS static)
+- shape_stops.json: Pre-computed shape_id → [stop_ids] mapping
+- stops.txt:        Stop coordinates and names (loaded via station_lookup)."""
 
 from __future__ import annotations
 
@@ -19,18 +14,21 @@ import csv
 import json
 from collections import defaultdict
 from functools import lru_cache
-from math import radians, cos, sin, sqrt, atan2
+from math import atan2, cos, radians, sin, sqrt
 from pathlib import Path
 from typing import NamedTuple
 
-from app.services.transit.station_lookup import get_stop_info
-from app.utils.logger import TrackLogger
 from app.services.mapping.shape_utils import (
     ShapePoint,
-    pack_coords as _pack_coords,
-    unpack_coords as _unpack_coords,
-    unpack_point_set as _unpack_point_set,
 )
+from app.services.mapping.shape_utils import (
+    pack_coords as _pack_coords,
+)
+from app.services.mapping.shape_utils import (
+    unpack_coords as _unpack_coords,
+)
+from app.services.transit.station_lookup import get_stop_info
+from app.utils.logger import TrackLogger
 
 _DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
 _SHAPES_PATH = _DATA_DIR / "shapes.txt"
@@ -67,6 +65,7 @@ class DirectionData(NamedTuple):
 # Shapes: shape_id → list of (lat, lon) in order
 # ---------------------------------------------------------------------------
 
+
 @lru_cache(maxsize=1)
 def _load_shapes() -> dict[str, bytes]:
     """Parse shapes.txt into a dict of shape_id → packed bytes (8 bytes/point).
@@ -89,7 +88,9 @@ def _load_shapes() -> dict[str, bytes]:
                 lon = float(row["shape_pt_lon"])
                 seq = int(row["shape_pt_sequence"])
             except (ValueError, KeyError) as exc:
-                TrackLogger.debug(f"Skipping malformed shape row {shape_id}: {exc}", tag="DATA")
+                TrackLogger.debug(
+                    f"Skipping malformed shape row {shape_id}: {exc}", tag="DATA"
+                )
                 continue
             raw[shape_id].append(ShapePoint(lat=lat, lon=lon, sequence=seq))
 
@@ -107,16 +108,21 @@ def _load_shapes() -> dict[str, bytes]:
 # Parsed in a SINGLE pass to avoid reading trips.txt twice (~20K rows).
 # ---------------------------------------------------------------------------
 
+
 @lru_cache(maxsize=1)
 def _parse_trips() -> tuple[
-    dict[str, dict[int, set[str]]],          # route_shapes_raw
-    dict[str, dict[int, str]],                # headsigns
+    dict[str, dict[int, set[str]]],  # route_shapes_raw
+    dict[str, dict[int, str]],  # headsigns
 ]:
     """Single-pass parse of trips.txt returning both route-shape mapping and headsigns."""
     from collections import Counter
 
-    route_shapes_raw: dict[str, dict[int, set[str]]] = defaultdict(lambda: defaultdict(set))
-    headsign_counts: dict[str, dict[int, Counter]] = defaultdict(lambda: defaultdict(Counter))
+    route_shapes_raw: dict[str, dict[int, set[str]]] = defaultdict(
+        lambda: defaultdict(set)
+    )
+    headsign_counts: dict[str, dict[int, Counter]] = defaultdict(
+        lambda: defaultdict(Counter)
+    )
 
     if not _TRIPS_PATH.exists():
         return {}, {}
@@ -130,7 +136,10 @@ def _parse_trips() -> tuple[
             try:
                 direction = int(row.get("direction_id", "0"))
             except ValueError as exc:
-                TrackLogger.debug(f"Bad direction_id for route {route_id}, defaulting to 0: {exc}", tag="DATA")
+                TrackLogger.debug(
+                    f"Bad direction_id for route {route_id}, defaulting to 0: {exc}",
+                    tag="DATA",
+                )
                 direction = 0
 
             if route_id and shape_id:
@@ -142,8 +151,7 @@ def _parse_trips() -> tuple[
     headsigns: dict[str, dict[int, str]] = {}
     for route_id, dir_map in headsign_counts.items():
         headsigns[route_id] = {
-            d: counter.most_common(1)[0][0]
-            for d, counter in dir_map.items()
+            d: counter.most_common(1)[0][0] for d, counter in dir_map.items()
         }
 
     return dict(route_shapes_raw), headsigns
@@ -164,7 +172,7 @@ def _load_route_shapes() -> dict[str, dict[int, list[str]]]:
         for direction, shape_ids in dir_map.items():
             # Sort by stop count descending so the longest variant wins
             sorted_sids = sorted(
-                list(shape_ids),
+                shape_ids,
                 key=lambda sid: len(shape_stops_map.get(sid, [])),
                 reverse=True,
             )
@@ -198,6 +206,7 @@ def _load_route_shapes() -> dict[str, dict[int, list[str]]]:
 # ---------------------------------------------------------------------------
 # Shape stops: shape_id → [stop_ids] (pre-computed, 52 KB)
 # ---------------------------------------------------------------------------
+
 
 @lru_cache(maxsize=1)
 def _load_shape_stops() -> dict[str, list[str]]:
@@ -234,13 +243,15 @@ def _get_stops_for_shape(shape_id: str) -> tuple[RouteStopEntry, ...]:
         if info.name in seen_names:
             continue
         seen_names.add(info.name)
-        entries.append(RouteStopEntry(
-            stop_id=stop_id,
-            name=info.name,
-            lat=info.lat,
-            lon=info.lon,
-            sequence=seq,
-        ))
+        entries.append(
+            RouteStopEntry(
+                stop_id=stop_id,
+                name=info.name,
+                lat=info.lat,
+                lon=info.lon,
+                sequence=seq,
+            )
+        )
 
     return tuple(entries)
 
@@ -249,9 +260,13 @@ def _get_stops_for_shape(shape_id: str) -> tuple[RouteStopEntry, ...]:
 # Public API
 # ---------------------------------------------------------------------------
 
+
 def get_subway_route_shape(
     route_id: str,
-) -> tuple[list[list[tuple[float, float]]], list[RouteStopEntry], list[DirectionData]] | None:
+) -> (
+    tuple[list[list[tuple[float, float]]], list[RouteStopEntry], list[DirectionData]]
+    | None
+):
     """Return the full route geometry and ordered stops for a subway line.
 
     Returns:
@@ -295,17 +310,19 @@ def get_subway_route_shape(
                     dir_seen.add(stop.stop_id)
 
         if dir_polylines:
-            direction_data.append(DirectionData(
-                direction_id=direction_id,
-                headsign=headsigns.get(direction_id, ""),
-                polylines=dir_polylines,
-                stops=dir_stops,
-            ))
+            direction_data.append(
+                DirectionData(
+                    direction_id=direction_id,
+                    headsign=headsigns.get(direction_id, ""),
+                    polylines=dir_polylines,
+                    stops=dir_stops,
+                )
+            )
 
     if not polylines:
         return None
 
-    # Final sort of stops by sequence is not perfectly valid across branches, 
+    # Final sort of stops by sequence is not perfectly valid across branches,
     # but the client usually just needs the collection of stops served.
     return polylines, all_stops, direction_data
 
@@ -313,6 +330,7 @@ def get_subway_route_shape(
 # ---------------------------------------------------------------------------
 # Express / Local service type detection
 # ---------------------------------------------------------------------------
+
 
 @lru_cache(maxsize=1)
 def _load_service_types() -> dict[str, str]:
@@ -423,14 +441,14 @@ def get_all_subway_stations() -> list[dict]:
                             "lon": stop.lon,
                             "routes": set(),
                         }
-                    
+
                     stations[parent_id]["routes"].add(route_id)
 
     # Convert to list
     results = []
     for s in stations.values():
         # Sort routes: 1,2,3,A,C,E...
-        s["routes"] = sorted(list(s["routes"]))
+        s["routes"] = sorted(s["routes"])
         results.append(s)
 
     _all_stations_cache = results
@@ -449,7 +467,10 @@ def _haversine(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     R = 6_371_000
     dlat = radians(lat2 - lat1)
     dlon = radians(lon2 - lon1)
-    a = sin(dlat / 2) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon / 2) ** 2
+    a = (
+        sin(dlat / 2) ** 2
+        + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon / 2) ** 2
+    )
     return R * 2 * atan2(sqrt(a), sqrt(1 - a))
 
 

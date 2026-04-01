@@ -21,13 +21,11 @@ Requires the server to be running on http://127.0.0.1:8000
 
 from __future__ import annotations
 
-import asyncio
-import json
 import random
 import statistics
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 try:
@@ -48,20 +46,20 @@ RADIUS = 800
 # 10 locations across NYC — 2 per borough, realistic user positions
 LOCATIONS = [
     # Manhattan
-    ("Manhattan – Penn Station",       40.7505, -73.9934),
-    ("Manhattan – Times Square",       40.7580, -73.9855),
-    ("Manhattan – Wall Street",        40.7074, -74.0113),
+    ("Manhattan – Penn Station", 40.7505, -73.9934),
+    ("Manhattan – Times Square", 40.7580, -73.9855),
+    ("Manhattan – Wall Street", 40.7074, -74.0113),
     # Brooklyn
-    ("Brooklyn – Downtown",            40.6892, -73.9857),
-    ("Brooklyn – Williamsburg",        40.7081, -73.9571),
+    ("Brooklyn – Downtown", 40.6892, -73.9857),
+    ("Brooklyn – Williamsburg", 40.7081, -73.9571),
     # Queens
-    ("Queens – Jackson Heights",       40.7466, -73.8913),
-    ("Queens – Flushing",              40.7614, -73.8300),
+    ("Queens – Jackson Heights", 40.7466, -73.8913),
+    ("Queens – Flushing", 40.7614, -73.8300),
     # Bronx
-    ("Bronx – Yankee Stadium",         40.8296, -73.9262),
-    ("Bronx – Fordham",                40.8614, -73.8877),
+    ("Bronx – Yankee Stadium", 40.8296, -73.9262),
+    ("Bronx – Fordham", 40.8614, -73.8877),
     # Staten Island
-    ("Staten Island – St George",      40.6433, -74.0735),
+    ("Staten Island – St George", 40.6433, -74.0735),
 ]
 
 # Known route/stop IDs for targeted endpoint tests
@@ -74,6 +72,7 @@ MNR_STATION_IDS = ["MNR_1", "MNR_48"]
 # ═══════════════════════════════════════════════════════════════════════
 # HELPERS
 # ═══════════════════════════════════════════════════════════════════════
+
 
 def _fmt(seconds: float) -> str:
     """Format seconds to a readable string."""
@@ -111,12 +110,14 @@ class TestResult:
         self.results: list[dict] = []
 
     def add(self, label: str, time_s: float, status: int, detail: str = ""):
-        self.results.append({
-            "label": label,
-            "time_s": time_s,
-            "status": status,
-            "detail": detail,
-        })
+        self.results.append(
+            {
+                "label": label,
+                "time_s": time_s,
+                "status": status,
+                "detail": detail,
+            }
+        )
 
 
 def cache_clear(client: httpx.Client) -> dict:
@@ -134,7 +135,7 @@ def _cell_jitter(lat: float, lon: float, decimals: int = 3) -> tuple[float, floa
     Computes the cell center, then adds random jitter within ±40% of the
     cell width (±0.0004 for 3 decimals), ensuring no cell-boundary crossing.
     """
-    factor = 10 ** decimals
+    factor = 10**decimals
     center_lat = round(lat * factor) / factor
     center_lon = round(lon * factor) / factor
     half_cell = 0.4 / factor  # 40% of cell width — safe margin
@@ -148,14 +149,17 @@ def _cell_jitter(lat: float, lon: float, decimals: int = 3) -> tuple[float, floa
 # TEST SECTIONS
 # ═══════════════════════════════════════════════════════════════════════
 
-def timed_get(client: httpx.Client, url: str, params: dict | None = None) -> tuple[float, int, int]:
+
+def timed_get(
+    client: httpx.Client, url: str, params: dict | None = None
+) -> tuple[float, int, int]:
     """GET with timing. Returns (seconds, status_code, response_bytes)."""
     t0 = time.perf_counter()
     try:
         r = client.get(url, params=params)
         elapsed = time.perf_counter() - t0
         return elapsed, r.status_code, len(r.content)
-    except Exception as exc:
+    except Exception:
         elapsed = time.perf_counter() - t0
         return elapsed, 0, 0
 
@@ -173,34 +177,70 @@ def test_1_endpoint_inventory(c: httpx.Client, out: list[str]):
     lat, lon = 40.7505, -73.9934  # Penn Station
     endpoints = [
         # (name, path, params)
-        ("GET /nearby",                  f"{BASE}/nearby",                  {"lat": lat, "lon": lon, "radius": RADIUS}),
-        ("GET /nearby/grouped",          f"{BASE}/nearby/grouped",          {"lat": lat, "lon": lon, "radius": RADIUS}),
-        ("GET /nearby/grouped?mode=subway", f"{BASE}/nearby/grouped",      {"lat": lat, "lon": lon, "radius": RADIUS, "mode": "subway"}),
-        ("GET /nearby/grouped?mode=bus", f"{BASE}/nearby/grouped",         {"lat": lat, "lon": lon, "radius": RADIUS, "mode": "bus"}),
-        ("GET /nearby/grouped?mode=lirr", f"{BASE}/nearby/grouped",       {"lat": lat, "lon": lon, "radius": RADIUS, "mode": "lirr"}),
-        ("GET /nearby/grouped?mode=mnr", f"{BASE}/nearby/grouped",        {"lat": lat, "lon": lon, "radius": RADIUS, "mode": "mnr"}),
-        ("GET /subway/A",               f"{BASE}/subway/A",                None),
-        ("GET /subway/1",               f"{BASE}/subway/1",                None),
-        ("GET /subway/7",               f"{BASE}/subway/7",                None),
-        ("GET /subway/L",               f"{BASE}/subway/L",                None),
-        ("GET /subway/shapes/all",       f"{BASE}/subway/shapes/all",      None),
-        ("GET /subway/stations/all",     f"{BASE}/subway/stations/all",    None),
-        ("GET /subway/stations/nearby",  f"{BASE}/subway/stations/nearby", {"lat": lat, "lon": lon, "radius": RADIUS}),
-        ("GET /subway/shape/A",          f"{BASE}/subway/shape/A",         None),
-        ("GET /bus/routes",              f"{BASE}/bus/routes",              None),
-        ("GET /bus/nearby",              f"{BASE}/bus/nearby",              {"lat": lat, "lon": lon, "radius": RADIUS}),
-        ("GET /bus/stops/MTA NYCT_M15",  f"{BASE}/bus/stops/MTA NYCT_M15", None),
-        ("GET /bus/live/MTA_305168",     f"{BASE}/bus/live/MTA_305168",    None),
+        ("GET /nearby", f"{BASE}/nearby", {"lat": lat, "lon": lon, "radius": RADIUS}),
+        (
+            "GET /nearby/grouped",
+            f"{BASE}/nearby/grouped",
+            {"lat": lat, "lon": lon, "radius": RADIUS},
+        ),
+        (
+            "GET /nearby/grouped?mode=subway",
+            f"{BASE}/nearby/grouped",
+            {"lat": lat, "lon": lon, "radius": RADIUS, "mode": "subway"},
+        ),
+        (
+            "GET /nearby/grouped?mode=bus",
+            f"{BASE}/nearby/grouped",
+            {"lat": lat, "lon": lon, "radius": RADIUS, "mode": "bus"},
+        ),
+        (
+            "GET /nearby/grouped?mode=lirr",
+            f"{BASE}/nearby/grouped",
+            {"lat": lat, "lon": lon, "radius": RADIUS, "mode": "lirr"},
+        ),
+        (
+            "GET /nearby/grouped?mode=mnr",
+            f"{BASE}/nearby/grouped",
+            {"lat": lat, "lon": lon, "radius": RADIUS, "mode": "mnr"},
+        ),
+        ("GET /subway/A", f"{BASE}/subway/A", None),
+        ("GET /subway/1", f"{BASE}/subway/1", None),
+        ("GET /subway/7", f"{BASE}/subway/7", None),
+        ("GET /subway/L", f"{BASE}/subway/L", None),
+        ("GET /subway/shapes/all", f"{BASE}/subway/shapes/all", None),
+        ("GET /subway/stations/all", f"{BASE}/subway/stations/all", None),
+        (
+            "GET /subway/stations/nearby",
+            f"{BASE}/subway/stations/nearby",
+            {"lat": lat, "lon": lon, "radius": RADIUS},
+        ),
+        ("GET /subway/shape/A", f"{BASE}/subway/shape/A", None),
+        ("GET /bus/routes", f"{BASE}/bus/routes", None),
+        (
+            "GET /bus/nearby",
+            f"{BASE}/bus/nearby",
+            {"lat": lat, "lon": lon, "radius": RADIUS},
+        ),
+        ("GET /bus/stops/MTA NYCT_M15", f"{BASE}/bus/stops/MTA NYCT_M15", None),
+        ("GET /bus/live/MTA_305168", f"{BASE}/bus/live/MTA_305168", None),
         ("GET /bus/vehicles/MTA NYCT_M15", f"{BASE}/bus/vehicles/MTA NYCT_M15", None),
-        ("GET /bus/route-shape/MTA NYCT_M15", f"{BASE}/bus/route-shape/MTA NYCT_M15", None),
+        (
+            "GET /bus/route-shape/MTA NYCT_M15",
+            f"{BASE}/bus/route-shape/MTA NYCT_M15",
+            None,
+        ),
         ("GET /bus/schedule/MTA NYCT_M15", f"{BASE}/bus/schedule/MTA NYCT_M15", None),
-        ("GET /lirr",                    f"{BASE}/lirr",                   {"lat": lat, "lon": lon}),
-        ("GET /lirr/shapes/all",         f"{BASE}/lirr/shapes/all",        None),
-        ("GET /mnr",                     f"{BASE}/mnr",                    {"lat": lat, "lon": lon}),
-        ("GET /mnr/shapes/all",          f"{BASE}/mnr/shapes/all",         None),
-        ("GET /alerts",                  f"{BASE}/alerts",                  None),
-        ("GET /accessibility",           f"{BASE}/accessibility",           None),
-        ("GET /predict/delay",           f"{BASE}/predict/delay",           {"minutes_away": 5, "route_id": "A", "hour": 8}),
+        ("GET /lirr", f"{BASE}/lirr", {"lat": lat, "lon": lon}),
+        ("GET /lirr/shapes/all", f"{BASE}/lirr/shapes/all", None),
+        ("GET /mnr", f"{BASE}/mnr", {"lat": lat, "lon": lon}),
+        ("GET /mnr/shapes/all", f"{BASE}/mnr/shapes/all", None),
+        ("GET /alerts", f"{BASE}/alerts", None),
+        ("GET /accessibility", f"{BASE}/accessibility", None),
+        (
+            "GET /predict/delay",
+            f"{BASE}/predict/delay",
+            {"minutes_away": 5, "route_id": "A", "hour": 8},
+        ),
     ]
 
     pass_count = 0
@@ -215,10 +255,14 @@ def test_1_endpoint_inventory(c: httpx.Client, out: list[str]):
             fail_count += 1
         times.append(elapsed)
         icon = "✅" if ok else "❌"
-        out.append(f"  {icon} {name:<45s} {status:>3d}  {_fmt(elapsed):>10s}  {nbytes:>7,d} bytes")
+        out.append(
+            f"  {icon} {name:<45s} {status:>3d}  {_fmt(elapsed):>10s}  {nbytes:>7,d} bytes"
+        )
 
-    out.append(f"\n  Summary: {pass_count} passed, {fail_count} failed, "
-               f"total {_fmt(sum(times))}, avg {_fmt(statistics.mean(times))}")
+    out.append(
+        f"\n  Summary: {pass_count} passed, {fail_count} failed, "
+        f"total {_fmt(sum(times))}, avg {_fmt(statistics.mean(times))}"
+    )
     return pass_count, fail_count
 
 
@@ -235,31 +279,41 @@ def test_2_cold_vs_cached(c: httpx.Client, out: list[str]):
     out.append("")
 
     tests = [
-        ("/nearby/grouped",          {"lat": 40.6892, "lon": -73.9857, "radius": RADIUS}),
-        ("/nearby/grouped?mode=subway", {"lat": 40.7081, "lon": -73.9571, "radius": RADIUS, "mode": "subway"}),
-        ("/nearby/grouped?mode=bus", {"lat": 40.7466, "lon": -73.8913, "radius": RADIUS, "mode": "bus"}),
-        ("/subway/A",                None),
-        ("/subway/1",                None),
-        ("/bus/routes",              None),
-        ("/bus/live/MTA_305168",     None),
-        ("/subway/shapes/all",       None),
-        ("/alerts",                  None),
+        ("/nearby/grouped", {"lat": 40.6892, "lon": -73.9857, "radius": RADIUS}),
+        (
+            "/nearby/grouped?mode=subway",
+            {"lat": 40.7081, "lon": -73.9571, "radius": RADIUS, "mode": "subway"},
+        ),
+        (
+            "/nearby/grouped?mode=bus",
+            {"lat": 40.7466, "lon": -73.8913, "radius": RADIUS, "mode": "bus"},
+        ),
+        ("/subway/A", None),
+        ("/subway/1", None),
+        ("/bus/routes", None),
+        ("/bus/live/MTA_305168", None),
+        ("/subway/shapes/all", None),
+        ("/alerts", None),
     ]
 
     total_cold = 0.0
     total_cached = 0.0
     for path, params in tests:
         # Cold
-        cold_t, cold_s, _ = timed_get(c, f"{BASE}{path}", params)
+        cold_t, _cold_s, _ = timed_get(c, f"{BASE}{path}", params)
         # Cached (immediate)
-        cache_t, cache_s, _ = timed_get(c, f"{BASE}{path}", params)
+        cache_t, _cache_s, _ = timed_get(c, f"{BASE}{path}", params)
         total_cold += cold_t
         total_cached += cache_t
         speedup = _pct(cache_t, cold_t)
-        out.append(f"  {path:<40s}  cold={_fmt(cold_t):>10s}  cached={_fmt(cache_t):>10s}  {speedup}")
+        out.append(
+            f"  {path:<40s}  cold={_fmt(cold_t):>10s}  cached={_fmt(cache_t):>10s}  {speedup}"
+        )
 
-    out.append(f"\n  Totals: cold={_fmt(total_cold)}, cached={_fmt(total_cached)}, "
-               f"overall {_pct(total_cached, total_cold)}")
+    out.append(
+        f"\n  Totals: cold={_fmt(total_cold)}, cached={_fmt(total_cached)}, "
+        f"overall {_pct(total_cached, total_cold)}"
+    )
 
 
 def test_3_venn_diagram_cache_sharing(c: httpx.Client, out: list[str]):
@@ -278,7 +332,9 @@ def test_3_venn_diagram_cache_sharing(c: httpx.Client, out: list[str]):
     out.append("=" * 80)
     out.append("TEST 3: VENN DIAGRAM — Overlapping radius cache sharing")
     out.append("=" * 80)
-    out.append("  User A = cold fetch, User B = same grid cell, User C = adjacent cell,")
+    out.append(
+        "  User A = cold fetch, User B = same grid cell, User C = adjacent cell,"
+    )
     out.append("  User D = completely different area (Brooklyn)")
     out.append("")
 
@@ -297,10 +353,18 @@ def test_3_venn_diagram_cache_sharing(c: httpx.Client, out: list[str]):
     # User D: Brooklyn
     d_lat, d_lon = 40.6892, -73.9857
 
-    out.append(f"  User A: ({center_lat}, {center_lon}) → cell ({round(center_lat*f)/f}, {round(center_lon*f)/f})")
-    out.append(f"  User B: ({b_lat}, {b_lon}) → cell ({round(b_lat*f)/f}, {round(b_lon*f)/f})")
-    out.append(f"  User C: ({c_lat}, {c_lon}) → cell ({round(c_lat*f)/f}, {round(c_lon*f)/f})")
-    out.append(f"  User D: ({d_lat}, {d_lon}) → cell ({round(d_lat*f)/f}, {round(d_lon*f)/f})")
+    out.append(
+        f"  User A: ({center_lat}, {center_lon}) → cell ({round(center_lat*f)/f}, {round(center_lon*f)/f})"
+    )
+    out.append(
+        f"  User B: ({b_lat}, {b_lon}) → cell ({round(b_lat*f)/f}, {round(b_lon*f)/f})"
+    )
+    out.append(
+        f"  User C: ({c_lat}, {c_lon}) → cell ({round(c_lat*f)/f}, {round(c_lon*f)/f})"
+    )
+    out.append(
+        f"  User D: ({d_lat}, {d_lon}) → cell ({round(d_lat*f)/f}, {round(d_lon*f)/f})"
+    )
     out.append("")
 
     params_a = {"lat": center_lat, "lon": center_lon, "radius": RADIUS}
@@ -314,8 +378,12 @@ def test_3_venn_diagram_cache_sharing(c: httpx.Client, out: list[str]):
     t_d, s_d, _ = timed_get(c, f"{BASE}/nearby/grouped", params_d)
 
     out.append(f"  User A (cold):             {_fmt(t_a):>10s}  [{s_a}]")
-    out.append(f"  User B (same cell):        {_fmt(t_b):>10s}  [{s_b}]  {_pct(t_b, t_a)}")
-    out.append(f"  User C (adjacent cell):    {_fmt(t_c):>10s}  [{s_c}]  {_pct(t_c, t_a)} (per-stop sharing)")
+    out.append(
+        f"  User B (same cell):        {_fmt(t_b):>10s}  [{s_b}]  {_pct(t_b, t_a)}"
+    )
+    out.append(
+        f"  User C (adjacent cell):    {_fmt(t_c):>10s}  [{s_c}]  {_pct(t_c, t_a)} (per-stop sharing)"
+    )
     out.append(f"  User D (Brooklyn, cold):   {_fmt(t_d):>10s}  [{s_d}]")
 
 
@@ -333,7 +401,9 @@ def test_4_fifty_users_simulation(c: httpx.Client, out: list[str]):
     out.append("=" * 80)
     out.append("TEST 4: 50-USER SIMULATION — /nearby/grouped across NYC")
     out.append("=" * 80)
-    out.append(f"  {len(LOCATIONS)} locations × 1 cold + 4 cached = {NUM_USERS} requests")
+    out.append(
+        f"  {len(LOCATIONS)} locations × 1 cold + 4 cached = {NUM_USERS} requests"
+    )
     out.append("")
 
     cold_times: list[float] = []
@@ -353,7 +423,7 @@ def test_4_fifty_users_simulation(c: httpx.Client, out: list[str]):
         out.append(f"  🧊 COLD  {loc_name:<35s} {_fmt(t):>10s} {status_str}")
 
         # 4 cached calls — users in same grid cell with safe jitter
-        for i in range(4):
+        for _i in range(4):
             jitter_lat, jitter_lon = _cell_jitter(lat, lon)
             params_j = {"lat": jitter_lat, "lon": jitter_lon, "radius": RADIUS}
             t2, s2, _ = timed_get(c, f"{BASE}/nearby/grouped", params_j)
@@ -367,20 +437,34 @@ def test_4_fifty_users_simulation(c: httpx.Client, out: list[str]):
     all_stats = _stats(all_times)
 
     out.append("")
-    out.append(f"  ┌──────────────────────────────────────────────────────────────┐")
-    out.append(f"  │  50-User Results                                            │")
-    out.append(f"  ├──────────────┬────────────┬────────────┬────────────────────┤")
-    out.append(f"  │              │  Cold (10) │ Cached (40)│   All (50)         │")
-    out.append(f"  ├──────────────┼────────────┼────────────┼────────────────────┤")
-    out.append(f"  │ Min          │ {_fmt(cold_stats['min']):>10s} │ {_fmt(cached_stats['min']):>10s} │ {_fmt(all_stats['min']):>18s} │")
-    out.append(f"  │ Max          │ {_fmt(cold_stats['max']):>10s} │ {_fmt(cached_stats['max']):>10s} │ {_fmt(all_stats['max']):>18s} │")
-    out.append(f"  │ Avg          │ {_fmt(cold_stats['avg']):>10s} │ {_fmt(cached_stats['avg']):>10s} │ {_fmt(all_stats['avg']):>18s} │")
-    out.append(f"  │ Median       │ {_fmt(cold_stats['median']):>10s} │ {_fmt(cached_stats['median']):>10s} │ {_fmt(all_stats['median']):>18s} │")
-    out.append(f"  │ P95          │ {_fmt(cold_stats['p95']):>10s} │ {_fmt(cached_stats['p95']):>10s} │ {_fmt(all_stats['p95']):>18s} │")
-    out.append(f"  │ Total        │ {_fmt(sum(cold_times)):>10s} │ {_fmt(sum(cached_times)):>10s} │ {_fmt(sum(all_times)):>18s} │")
+    out.append("  ┌──────────────────────────────────────────────────────────────┐")
+    out.append("  │  50-User Results                                            │")
+    out.append("  ├──────────────┬────────────┬────────────┬────────────────────┤")
+    out.append("  │              │  Cold (10) │ Cached (40)│   All (50)         │")
+    out.append("  ├──────────────┼────────────┼────────────┼────────────────────┤")
+    out.append(
+        f"  │ Min          │ {_fmt(cold_stats['min']):>10s} │ {_fmt(cached_stats['min']):>10s} │ {_fmt(all_stats['min']):>18s} │"
+    )
+    out.append(
+        f"  │ Max          │ {_fmt(cold_stats['max']):>10s} │ {_fmt(cached_stats['max']):>10s} │ {_fmt(all_stats['max']):>18s} │"
+    )
+    out.append(
+        f"  │ Avg          │ {_fmt(cold_stats['avg']):>10s} │ {_fmt(cached_stats['avg']):>10s} │ {_fmt(all_stats['avg']):>18s} │"
+    )
+    out.append(
+        f"  │ Median       │ {_fmt(cold_stats['median']):>10s} │ {_fmt(cached_stats['median']):>10s} │ {_fmt(all_stats['median']):>18s} │"
+    )
+    out.append(
+        f"  │ P95          │ {_fmt(cold_stats['p95']):>10s} │ {_fmt(cached_stats['p95']):>10s} │ {_fmt(all_stats['p95']):>18s} │"
+    )
+    out.append(
+        f"  │ Total        │ {_fmt(sum(cold_times)):>10s} │ {_fmt(sum(cached_times)):>10s} │ {_fmt(sum(all_times)):>18s} │"
+    )
     out.append(f"  │ Errors       │ {'—':>10s} │ {'—':>10s} │ {errors:>18d} │")
-    out.append(f"  └──────────────┴────────────┴────────────┴────────────────────┘")
-    out.append(f"  Cache speedup: cold avg {_fmt(cold_stats['avg'])} → cached avg {_fmt(cached_stats['avg'])} = {_pct(cached_stats['avg'], cold_stats['avg'])}")
+    out.append("  └──────────────┴────────────┴────────────┴────────────────────┘")
+    out.append(
+        f"  Cache speedup: cold avg {_fmt(cold_stats['avg'])} → cached avg {_fmt(cached_stats['avg'])} = {_pct(cached_stats['avg'], cold_stats['avg'])}"
+    )
 
 
 def test_5_fifty_users_all_endpoints(c: httpx.Client, out: list[str]):
@@ -411,7 +495,13 @@ def test_5_fifty_users_all_endpoints(c: httpx.Client, out: list[str]):
         loc = random.choice(LOCATIONS)
         lat = loc[1] + random.uniform(-0.001, 0.001)
         lon = loc[2] + random.uniform(-0.001, 0.001)
-        requests.append(("nearby/grouped", f"{BASE}/nearby/grouped", {"lat": lat, "lon": lon, "radius": RADIUS}))
+        requests.append(
+            (
+                "nearby/grouped",
+                f"{BASE}/nearby/grouped",
+                {"lat": lat, "lon": lon, "radius": RADIUS},
+            )
+        )
 
     # 8 × /subway/{line} (15%)
     for _ in range(8):
@@ -426,7 +516,7 @@ def test_5_fifty_users_all_endpoints(c: httpx.Client, out: list[str]):
     # 5 × /bus/vehicles/{route} (10%)
     for _ in range(5):
         route = random.choice(BUS_ROUTES)
-        requests.append((f"bus/vehicles", f"{BASE}/bus/vehicles/{route}", None))
+        requests.append(("bus/vehicles", f"{BASE}/bus/vehicles/{route}", None))
 
     # 3 × /subway/shapes/all (app launch)
     for _ in range(3):
@@ -442,8 +532,17 @@ def test_5_fifty_users_all_endpoints(c: httpx.Client, out: list[str]):
 
     # 2 × /predict/delay
     for _ in range(2):
-        requests.append(("predict/delay", f"{BASE}/predict/delay",
-                         {"minutes_away": random.randint(1, 15), "route_id": random.choice(SUBWAY_LINES), "hour": random.randint(6, 22)}))
+        requests.append(
+            (
+                "predict/delay",
+                f"{BASE}/predict/delay",
+                {
+                    "minutes_away": random.randint(1, 15),
+                    "route_id": random.choice(SUBWAY_LINES),
+                    "hour": random.randint(6, 22),
+                },
+            )
+        )
 
     random.shuffle(requests)
 
@@ -462,13 +561,17 @@ def test_5_fifty_users_all_endpoints(c: httpx.Client, out: list[str]):
 
     out.append(f"  50 requests, {errors} errors, total wall time: {_fmt(total_time)}")
     out.append("")
-    out.append(f"  {'Endpoint':<25s} {'Count':>5s} {'Avg':>10s} {'Min':>10s} {'Max':>10s} {'Total':>10s}")
+    out.append(
+        f"  {'Endpoint':<25s} {'Count':>5s} {'Avg':>10s} {'Min':>10s} {'Max':>10s} {'Total':>10s}"
+    )
     out.append(f"  {'─'*25} {'─'*5} {'─'*10} {'─'*10} {'─'*10} {'─'*10}")
 
     for ep in sorted(by_endpoint):
         times = by_endpoint[ep]
         st = _stats(times)
-        out.append(f"  {ep:<25s} {len(times):>5d} {_fmt(st['avg']):>10s} {_fmt(st['min']):>10s} {_fmt(st['max']):>10s} {_fmt(sum(times)):>10s}")
+        out.append(
+            f"  {ep:<25s} {len(times):>5d} {_fmt(st['avg']):>10s} {_fmt(st['min']):>10s} {_fmt(st['max']):>10s} {_fmt(sum(times)):>10s}"
+        )
 
 
 def test_6_static_endpoint_speed(c: httpx.Client, out: list[str]):
@@ -478,22 +581,26 @@ def test_6_static_endpoint_speed(c: httpx.Client, out: list[str]):
 
     out.append("")
     out.append("=" * 80)
-    out.append("TEST 6: STATIC DATA ENDPOINTS — Should be near-instant after first call")
+    out.append(
+        "TEST 6: STATIC DATA ENDPOINTS — Should be near-instant after first call"
+    )
     out.append("=" * 80)
 
     static_endpoints = [
-        ("subway/shapes/all",     f"{BASE}/subway/shapes/all",     None),
-        ("subway/stations/all",   f"{BASE}/subway/stations/all",   None),
-        ("subway/shape/A",        f"{BASE}/subway/shape/A",        None),
-        ("subway/shape/7",        f"{BASE}/subway/shape/7",        None),
-        ("lirr/shapes/all",       f"{BASE}/lirr/shapes/all",       None),
-        ("mnr/shapes/all",        f"{BASE}/mnr/shapes/all",        None),
-        ("bus/routes",            f"{BASE}/bus/routes",             None),
+        ("subway/shapes/all", f"{BASE}/subway/shapes/all", None),
+        ("subway/stations/all", f"{BASE}/subway/stations/all", None),
+        ("subway/shape/A", f"{BASE}/subway/shape/A", None),
+        ("subway/shape/7", f"{BASE}/subway/shape/7", None),
+        ("lirr/shapes/all", f"{BASE}/lirr/shapes/all", None),
+        ("mnr/shapes/all", f"{BASE}/mnr/shapes/all", None),
+        ("bus/routes", f"{BASE}/bus/routes", None),
         ("bus/stops/MTA NYCT_M15", f"{BASE}/bus/stops/MTA NYCT_M15", None),
         ("bus/route-shape/MTA NYCT_M15", f"{BASE}/bus/route-shape/MTA NYCT_M15", None),
     ]
 
-    out.append(f"\n  {'Endpoint':<35s} {'Cold':>10s} {'2nd call':>10s} {'3rd call':>10s} {'Speedup':>12s}")
+    out.append(
+        f"\n  {'Endpoint':<35s} {'Cold':>10s} {'2nd call':>10s} {'3rd call':>10s} {'Speedup':>12s}"
+    )
     out.append(f"  {'─'*35} {'─'*10} {'─'*10} {'─'*10} {'─'*12}")
 
     for name, url, params in static_endpoints:
@@ -501,7 +608,9 @@ def test_6_static_endpoint_speed(c: httpx.Client, out: list[str]):
         t2, _, _ = timed_get(c, url, params)
         t3, _, _ = timed_get(c, url, params)
         speedup = _pct(t2, t1)
-        out.append(f"  {name:<35s} {_fmt(t1):>10s} {_fmt(t2):>10s} {_fmt(t3):>10s} {speedup:>12s}")
+        out.append(
+            f"  {name:<35s} {_fmt(t1):>10s} {_fmt(t2):>10s} {_fmt(t3):>10s} {speedup:>12s}"
+        )
 
 
 def test_7_bus_live_per_stop_sharing(c: httpx.Client, out: list[str]):
@@ -521,10 +630,12 @@ def test_7_bus_live_per_stop_sharing(c: httpx.Client, out: list[str]):
     out.append("")
 
     for stop_id in BUS_STOP_IDS:
-        t1, s1, _ = timed_get(c, f"{BASE}/bus/live/{stop_id}")
-        t2, s2, _ = timed_get(c, f"{BASE}/bus/live/{stop_id}")
-        t3, s3, _ = timed_get(c, f"{BASE}/bus/live/{stop_id}")
-        out.append(f"  {stop_id:<20s}  1st={_fmt(t1):>10s}  2nd={_fmt(t2):>10s}  3rd={_fmt(t3):>10s}  {_pct(t2, t1)}")
+        t1, _s1, _ = timed_get(c, f"{BASE}/bus/live/{stop_id}")
+        t2, _s2, _ = timed_get(c, f"{BASE}/bus/live/{stop_id}")
+        t3, _s3, _ = timed_get(c, f"{BASE}/bus/live/{stop_id}")
+        out.append(
+            f"  {stop_id:<20s}  1st={_fmt(t1):>10s}  2nd={_fmt(t2):>10s}  3rd={_fmt(t3):>10s}  {_pct(t2, t1)}"
+        )
 
 
 def test_8_subway_feed_sharing(c: httpx.Client, out: list[str]):
@@ -545,15 +656,15 @@ def test_8_subway_feed_sharing(c: httpx.Client, out: list[str]):
 
     # Feed groups: lines that share the same protobuf feed
     feed_groups = [
-        ("ACE feed",   ["A", "C", "E"]),
-        ("BDFM feed",  ["B", "D", "F", "M"]),
-        ("NQRW feed",  ["N", "Q", "R", "W"]),
-        ("1-6 feed",   ["1", "2", "3", "4", "5", "6"]),
-        ("G feed",     ["G"]),
-        ("L feed",     ["L"]),
-        ("JZ feed",    ["J", "Z"]),
-        ("7 feed",     ["7"]),
-        ("SI feed",    ["SI"]),
+        ("ACE feed", ["A", "C", "E"]),
+        ("BDFM feed", ["B", "D", "F", "M"]),
+        ("NQRW feed", ["N", "Q", "R", "W"]),
+        ("1-6 feed", ["1", "2", "3", "4", "5", "6"]),
+        ("G feed", ["G"]),
+        ("L feed", ["L"]),
+        ("JZ feed", ["J", "Z"]),
+        ("7 feed", ["7"]),
+        ("SI feed", ["SI"]),
     ]
 
     for feed_name, lines in feed_groups:
@@ -561,7 +672,7 @@ def test_8_subway_feed_sharing(c: httpx.Client, out: list[str]):
         for line in lines:
             t, s, _ = timed_get(c, f"{BASE}/subway/{line}")
             times.append((line, t, s))
-        first_line, first_t, first_s = times[0]
+        _first_line, _first_t, _first_s = times[0]
         result_parts = [f"{ln}={_fmt(t)}" for ln, t, _ in times]
         out.append(f"  {feed_name:<12s}: {' → '.join(result_parts)}")
 
@@ -577,7 +688,7 @@ def test_9_mode_filter_speed(c: httpx.Client, out: list[str]):
     out.append("TEST 9: MODE FILTER OPTIMIZATION — Filtered vs unfiltered")
     out.append("=" * 80)
 
-    lat, lon = 40.7580, -73.9855  # Times Square
+    _lat, _lon = 40.7580, -73.9855  # Times Square
     # Use unique coordinates to avoid response cache hits from earlier tests
     lat2, lon2 = 40.7345, -73.9912
 
@@ -598,6 +709,7 @@ def test_9_mode_filter_speed(c: httpx.Client, out: list[str]):
 # MAIN
 # ═══════════════════════════════════════════════════════════════════════
 
+
 def main():
     # Check server is up
     try:
@@ -609,23 +721,31 @@ def main():
         print("   Start it with: cd TrackBackend && python run.py")
         sys.exit(1)
 
-    print(f"🚀 Track Backend Cache & Speed Test")
+    print("🚀 Track Backend Cache & Speed Test")
     print(f"   Server: {BASE}")
     print(f"   Users simulated: {NUM_USERS}")
     print(f"   Locations: {len(LOCATIONS)} across NYC")
     print()
 
     out: list[str] = []
-    out.append("╔══════════════════════════════════════════════════════════════════════════════╗")
-    out.append("║             TRACK BACKEND — CACHE & SPEED TEST RESULTS                     ║")
-    out.append("╚══════════════════════════════════════════════════════════════════════════════╝")
+    out.append(
+        "╔══════════════════════════════════════════════════════════════════════════════╗"
+    )
+    out.append(
+        "║             TRACK BACKEND — CACHE & SPEED TEST RESULTS                     ║"
+    )
+    out.append(
+        "╚══════════════════════════════════════════════════════════════════════════════╝"
+    )
     out.append("")
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     out.append(f"  Date:     {now.strftime('%Y-%m-%d %H:%M:%S UTC')}")
     out.append(f"  Server:   {BASE}")
     out.append(f"  Users:    {NUM_USERS}")
     out.append(f"  Radius:   {RADIUS}m")
-    out.append(f"  Locations: {len(LOCATIONS)} ({', '.join(l[0].split(' – ')[0] for l in LOCATIONS[:5])}...)")
+    out.append(
+        f"  Locations: {len(LOCATIONS)} ({', '.join(loc[0].split(' – ')[0] for loc in LOCATIONS[:5])}...)"
+    )
 
     client = httpx.Client(timeout=TIMEOUT)
     overall_start = time.perf_counter()
@@ -634,11 +754,15 @@ def main():
     try:
         cr = client.post(f"{BASE}/admin/cache/clear")
         if cr.status_code == 200:
-            print(f"   Cache-clear endpoint: available ✅")
+            print("   Cache-clear endpoint: available ✅")
         else:
-            print(f"   Cache-clear endpoint: {cr.status_code} (tests may show warm caches)")
+            print(
+                f"   Cache-clear endpoint: {cr.status_code} (tests may show warm caches)"
+            )
     except Exception:
-        print(f"   Cache-clear endpoint: unavailable (upgrade server for accurate cold tests)")
+        print(
+            "   Cache-clear endpoint: unavailable (upgrade server for accurate cold tests)"
+        )
 
     try:
         # Run all tests
@@ -689,7 +813,7 @@ def main():
     out.append("OVERALL SUMMARY")
     out.append("=" * 80)
     out.append(f"  Total test time:  {_fmt(overall_elapsed)}")
-    out.append(f"  All 9 test suites completed.")
+    out.append("  All 9 test suites completed.")
     out.append("")
     out.append("  Cache Architecture (all in-memory Python dicts):")
     out.append("  ┌────────────────────────────────────────────────────────────┐")
@@ -707,7 +831,9 @@ def main():
     out.append("")
 
     # Write to file
-    results_path = Path(__file__).resolve().parent.parent / "logs" / "cache_speed_test_results.txt"
+    results_path = (
+        Path(__file__).resolve().parent.parent / "logs" / "cache_speed_test_results.txt"
+    )
     results_path.parent.mkdir(parents=True, exist_ok=True)
     results_path.write_text("\n".join(out) + "\n", encoding="utf-8")
 

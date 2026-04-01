@@ -6,7 +6,6 @@ from app.services.mapping.corridor_pipeline import _to_meters
 from app.utils.polyline_utils import decode_polyline as _decode_polyline
 from tests.test_all_endpoints import client
 
-
 SKIPPED_SYSTEM_MAP_VARIANTS = {"FS", "GS", "SR", "H"}
 
 

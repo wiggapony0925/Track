@@ -1,48 +1,76 @@
-#
-# bus_client.py
-# TrackBackend
-#
-# Dual-API client for MTA Bus data.
-#   - OneBusAway (OBA) API: Static route/stop discovery
-#   - SIRI API: Real-time vehicle locations and arrival predictions
-#
-# Important: Always use fully-qualified IDs (e.g. "MTA NYCT_B63").
-# The MTA APIs require the full prefix for lookups.
-#
+"""Dual-API client for MTA Bus data.
+- OneBusAway (OBA) API: Static route/stop discovery
+- SIRI API: Real-time vehicle locations and arrival predictions
+
+Important: Always use fully-qualified IDs (e.g. "MTA NYCT_B63").
+The MTA APIs require the full prefix for lookups."""
 
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import csv
-from dataclasses import dataclass
 import json
 import re
 import time as _time
 from collections import defaultdict
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any
 from urllib.parse import quote
 
 import httpx
 
 from app.cache_config import (
-    BUS_ARRIVALS_FRESH_TTL, BUS_ARRIVALS_MAX_SIZE, BUS_ARRIVALS_STALE_TTL,
-    BUS_NEARBY_STOPS_MAX_SIZE, BUS_NEARBY_STOPS_TTL,
-    BUS_ROUTE_SHAPE_FRESH_TTL, BUS_ROUTE_SHAPE_MAX_SIZE, BUS_ROUTE_SHAPE_STALE_TTL,
-    BUS_ROUTES_FRESH_TTL, BUS_ROUTES_MAX_SIZE, BUS_ROUTES_STALE_TTL,
-    BUS_STOPS_FRESH_TTL, BUS_STOPS_MAX_SIZE, BUS_STOPS_STALE_TTL,
-    BUS_UPSTREAM_CONCURRENCY, BUS_VEHICLES_FRESH_TTL, BUS_VEHICLES_MAX_SIZE,
-    BUS_VEHICLES_STALE_TTL, OBA_AUTH_COOLDOWN, REDIS_KEY_PREFIX,
-    SIRI_CIRCUIT_COOLDOWN, SIRI_FAIL_THRESHOLD,
+    BUS_ARRIVALS_FRESH_TTL,
+    BUS_ARRIVALS_MAX_SIZE,
+    BUS_ARRIVALS_STALE_TTL,
+    BUS_NEARBY_STOPS_MAX_SIZE,
+    BUS_NEARBY_STOPS_TTL,
+    BUS_ROUTE_SHAPE_FRESH_TTL,
+    BUS_ROUTE_SHAPE_MAX_SIZE,
+    BUS_ROUTE_SHAPE_STALE_TTL,
+    BUS_ROUTES_FRESH_TTL,
+    BUS_ROUTES_MAX_SIZE,
+    BUS_ROUTES_STALE_TTL,
+    BUS_STOPS_FRESH_TTL,
+    BUS_STOPS_MAX_SIZE,
+    BUS_STOPS_STALE_TTL,
+    BUS_UPSTREAM_CONCURRENCY,
+    BUS_VEHICLES_FRESH_TTL,
+    BUS_VEHICLES_MAX_SIZE,
+    BUS_VEHICLES_STALE_TTL,
+    OBA_AUTH_COOLDOWN,
+    REDIS_KEY_PREFIX,
+    SIRI_CIRCUIT_COOLDOWN,
+    SIRI_FAIL_THRESHOLD,
 )
+from app.clients import redis_client as _redis
 from app.config import get_settings
-from app.models import BusArrival, BusRoute, BusStop, BusVehicle, DirectionShape, RouteShape
+from app.ml.recency_model import observe_siri_delays_batch
+from app.models import (
+    BusArrival,
+    BusRoute,
+    BusStop,
+    BusVehicle,
+    DirectionShape,
+    RouteShape,
+)
 from app.utils.geo_utils import haversine_m
-from app.utils import cache_stats
 from app.utils.logger import TrackLogger
-from app.utils.polyline_utils import decode_polyline, encode_polyline, densify_wgs84, simplify_polyline
-from app.ml.recency_model import observe_siri_delay, observe_siri_delays_batch
+from app.utils.polyline_utils import (
+    decode_polyline,
+    densify_wgs84,
+    encode_polyline,
+    simplify_polyline,
+)
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+# Strong references to fire-and-forget tasks so the GC won't collect them.
+_background_tasks: set[asyncio.Task[Any]] = set()
 
 # Python 3.14 no longer creates an implicit main-thread event loop.
 # Some legacy sync test paths still call asyncio.get_event_loop().run_until_complete(...).
@@ -50,8 +78,6 @@ try:
     asyncio.get_event_loop()
 except RuntimeError:
     asyncio.set_event_loop(asyncio.new_event_loop())
-
-from app.clients import redis_client as _redis
 
 # ---------------------------------------------------------------------------
 # Load Route Map (Canonical Source of Truth)
@@ -69,11 +95,11 @@ try:
     base_dir = Path(__file__).parent.parent
     map_path = base_dir / "data" / "early_2026_buses_tag.json"
     if map_path.exists():
-        with open(map_path, "r") as f:
+        with open(map_path) as f:
             data = json.load(f)
             # Flatten the categorized structure into a single lookup dict
             # Data is { "Brooklyn": { "B1": "ID" }, ... }
-            for category, routes in data.items():
+            for _category, routes in data.items():
                 if isinstance(routes, dict):
                     for short_name, official_id in routes.items():
                         # Store exact match
@@ -122,33 +148,34 @@ except Exception as e:
 AGENCY_MAP = {
     "B": "MTA NYCT",  # Brooklyn
     "M": "MTA NYCT",  # Manhattan
-    "Q": "MTABC",     # Queens (Default to MTABC, but fallback to NYCT handles exceptions)
-    "Bx": "MTA NYCT", # Bronx
+    "Q": "MTABC",  # Queens (Default to MTABC, but fallback to NYCT handles exceptions)
+    "Bx": "MTA NYCT",  # Bronx
     "S": "MTA NYCT",  # Staten Island
-    "X": "MTABC",     # Express buses are largely MTABC
+    "X": "MTABC",  # Express buses are largely MTABC
 }
+
 
 async def _discover_and_cache_bus_id(short_name: str) -> str | None:
     """Attempt to discover a new route ID from the live MTA API and cache it.
-    
+
     This handles cases like a brand new 'Q80' that isn't in our 2026 JSON yet.
     """
     settings = get_settings()
     api_key = settings.api_keys.mta_bus_key
     base_url = settings.urls.bus_oba_base + "/routes-for-agency"
-    
+
     clean_name = short_name.strip().upper()
-    
+
     # We check the most likely agencies
     agencies = ["MTABC", "MTA NYCT", "MTA BUS"]
-    
+
     async with httpx.AsyncClient(timeout=5.0) as client:
         for agency in agencies:
             try:
                 url = f"{base_url}/{agency}.json"
                 params = {"key": api_key}
                 resp = await client.get(url, params=params)
-                
+
                 if resp.status_code == 200:
                     data = resp.json()
                     if data and data.get("code") == 200:
@@ -156,35 +183,38 @@ async def _discover_and_cache_bus_id(short_name: str) -> str | None:
                         for r in routes:
                             sn = r.get("shortName", "").upper()
                             official_id = r.get("id")
-                            
+
                             # If we find it, cache it in memory immediately
                             if sn == clean_name:
                                 ROUTE_LOOKUP[short_name] = official_id
                                 ROUTE_LOOKUP[short_name.lower()] = official_id
                                 return official_id
             except Exception as e:
-                TrackLogger.warning(f"Auto-discovery failed for {agency}: {e}", tag="BUS")
+                TrackLogger.warning(
+                    f"Auto-discovery failed for {agency}: {e}", tag="BUS"
+                )
                 continue
-                
+
     return None
+
 
 async def resolve_bus_id(route_id: str) -> str:
     """Resolve the correct agency prefix for a bus route ID.
-    
+
     1. Direct Lookup: Check the canonical route map.
     2. Live Discovery: If not in map, ask the MTA API directly (Self-Healing).
     3. Heuristic Fallback: Use prefix logic if all else fails.
     """
     if "_" in route_id:
         return route_id
-        
+
     # Standardize input for lookup
     clean_id = route_id.strip()
-    
+
     # 1. Try Memory Cache / JSON Map
     if clean_id in ROUTE_LOOKUP:
         return ROUTE_LOOKUP[clean_id]
-        
+
     clean_lower = clean_id.lower()
     if clean_lower in ROUTE_LOOKUP:
         return ROUTE_LOOKUP[clean_lower]
@@ -193,7 +223,9 @@ async def resolve_bus_id(route_id: str) -> str:
     # If it's a new route like 'Q80', we look it up live and update ROUTE_LOOKUP
     discovered_id = await _discover_and_cache_bus_id(clean_id)
     if discovered_id:
-        TrackLogger.resolve(f"Self-healed: Discovered new route {clean_id} -> {discovered_id}")
+        TrackLogger.resolve(
+            f"Self-healed: Discovered new route {clean_id} -> {discovered_id}"
+        )
         return discovered_id
 
     # 3. Fallback Heuristics (Guessing)
@@ -207,7 +239,7 @@ async def resolve_bus_id(route_id: str) -> str:
                     if len(num_str) == 1:
                         return f"{agency}_Q0{num_str}{suffix}"
             return f"{agency}_{base_id}"
-    
+
     return f"MTA NYCT_{base_id}"
 
 
@@ -251,7 +283,9 @@ async def _guess_alternative_id(canonical_id: str) -> str | None:
                 # Extract the short name from the route_part
                 ROUTE_LOOKUP[route_part] = alt
                 ROUTE_LOOKUP[route_part.lower()] = alt
-                TrackLogger.resolve(f"Agency fallback: {canonical_id} -> {alt} (cached)")
+                TrackLogger.resolve(
+                    f"Agency fallback: {canonical_id} -> {alt} (cached)"
+                )
                 return alt
     except Exception:
         pass
@@ -273,7 +307,9 @@ def _get_timeout() -> httpx.Timeout:
 # ---------------------------------------------------------------------------
 
 
-def _merge_polyline_segments(encoded_segments: list[str], gap_threshold_m: float = 50.0) -> list[str]:
+def _merge_polyline_segments(
+    encoded_segments: list[str], gap_threshold_m: float = 50.0
+) -> list[str]:
     """Merge adjacent encoded polyline segments into fewer continuous polylines.
 
     Segments whose endpoints are within *gap_threshold_m* meters are joined.
@@ -357,6 +393,7 @@ def _get_upstream_semaphore() -> asyncio.Semaphore:
         _upstream_semaphore = asyncio.Semaphore(BUS_UPSTREAM_CONCURRENCY)
         _upstream_semaphore_loop_id = loop_id
     return _upstream_semaphore
+
 
 # ---------------------------------------------------------------------------
 # Shared HTTP client (connection pooling)
@@ -490,7 +527,12 @@ def _load_static_bus_route_shape_index() -> dict[str, RouteShape]:
         stops_path = borough_dir / "stops.txt"
         # shapes_path is still read as CSV (small); stop_times is now
         # queried from SQLite so we no longer require the CSV to exist.
-        if not (routes_path.exists() and trips_path.exists() and shapes_path.exists() and stops_path.exists()):
+        if not (
+            routes_path.exists()
+            and trips_path.exists()
+            and shapes_path.exists()
+            and stops_path.exists()
+        ):
             continue
 
         route_id_to_short: dict[str, str] = {}
@@ -502,7 +544,9 @@ def _load_static_bus_route_shape_index() -> dict[str, RouteShape]:
                     route_id_to_short[route_id] = route_short
 
         trip_to_meta: dict[str, tuple[str, int, str]] = {}
-        route_shape_ids_by_dir: dict[str, dict[int, set[str]]] = defaultdict(lambda: defaultdict(set))
+        route_shape_ids_by_dir: dict[str, dict[int, set[str]]] = defaultdict(
+            lambda: defaultdict(set)
+        )
         with open(trips_path, encoding="utf-8") as f:
             for row in csv.DictReader(f):
                 trip_id = (row.get("trip_id") or "").strip()
@@ -563,6 +607,7 @@ def _load_static_bus_route_shape_index() -> dict[str, RouteShape]:
         route_stop_seen: dict[str, set[str]] = defaultdict(set)
         if _db_path.exists():
             import sqlite3 as _sqlite3
+
             try:
                 _conn = _sqlite3.connect(_db_path)
                 _cur = _conn.cursor()
@@ -571,21 +616,26 @@ def _load_static_bus_route_shape_index() -> dict[str, RouteShape]:
                 _route_shorts = set(route_id_to_short.values())
                 if _route_shorts:
                     placeholders = ",".join("?" for _ in _route_shorts)
-                    _cur.execute(f"""
+                    _cur.execute(
+                        f"""
                         SELECT DISTINCT st.stop_id, st.stop_sequence, r.route_short_name
                         FROM stop_times st
                         JOIN trips t ON t.trip_id = st.trip_id
                         JOIN routes r ON r.route_id = t.route_id AND r.route_type = 3
                         WHERE r.route_short_name IN ({placeholders})
                         ORDER BY r.route_short_name, st.stop_sequence
-                    """, list(_route_shorts))
+                    """,
+                        list(_route_shorts),
+                    )
                     for _sid, _seq, _short in _cur.fetchall():
                         if _sid and _short and _sid not in route_stop_seen[_short]:
                             route_stop_seen[_short].add(_sid)
                             route_stop_ordered[_short].append((_seq or 0, _sid))
                 _conn.close()
             except Exception as _exc:
-                TrackLogger.warning(f"Static shape index: SQLite stop query failed: {_exc}", tag="BUS")
+                TrackLogger.warning(
+                    f"Static shape index: SQLite stop query failed: {_exc}", tag="BUS"
+                )
         else:
             # No SQLite DB available — skip stop-route mapping entirely.
             # The old CSV fallback (stop_times.txt, 6.5M rows) was removed
@@ -665,7 +715,9 @@ def _load_static_bus_route_shape_index() -> dict[str, RouteShape]:
             if existing is None:
                 index[short] = fresh
             else:
-                merged_polylines = _merge_polyline_segments(existing.polylines + fresh.polylines)
+                merged_polylines = _merge_polyline_segments(
+                    existing.polylines + fresh.polylines
+                )
                 seen_stop_ids = {s.id for s in existing.stops}
                 merged_stops = list(existing.stops)
                 for stop in fresh.stops:
@@ -703,6 +755,7 @@ def get_static_route_shape(route_id: str) -> RouteShape | None:
         service_type=shape.service_type,
     )
 
+
 # Arrivals cache: live SIRI stop-monitoring data (TTLs from cache_config)
 _arrivals_cache: dict[str, _TTLCacheEntry] = {}
 _arrivals_inflight: dict[str, asyncio.Task[list[BusArrival]]] = {}
@@ -719,12 +772,16 @@ _stops_inflight: dict[str, asyncio.Task[list[BusStop]]] = {}
 _routes_cache: dict[str, _TTLCacheEntry] = {}
 _routes_inflight: dict[str, asyncio.Task[list[BusRoute]]] = {}
 
+
 def clear_bus_cache() -> int:
     """Clear all bus in-memory caches. Returns total entries cleared."""
     count = (
-        len(_arrivals_cache) + len(_vehicle_cache)
-        + len(_stops_cache) + len(_routes_cache)
-        + len(_route_shape_cache) + len(_nearby_stops_cache)
+        len(_arrivals_cache)
+        + len(_vehicle_cache)
+        + len(_stops_cache)
+        + len(_routes_cache)
+        + len(_route_shape_cache)
+        + len(_nearby_stops_cache)
     )
     _arrivals_cache.clear()
     _arrivals_inflight.clear()
@@ -745,6 +802,7 @@ def clear_bus_cache() -> int:
 # init/close are now handled by main.py via redis_client.init_redis().
 # ---------------------------------------------------------------------------
 
+
 async def init_shared_cache() -> None:
     """Initialise the shared Redis connection (delegates to utils.redis_client)."""
     await _redis.init_redis()
@@ -764,8 +822,12 @@ async def _shared_cache_get(
     parser: Callable[[Any], Any],
 ) -> tuple[Any | None, str | None]:
     return await _redis.cache_get(
-        REDIS_KEY_PREFIX, kind, identifier,
-        fresh_ttl=fresh_ttl, stale_ttl=stale_ttl, parser=parser,
+        REDIS_KEY_PREFIX,
+        kind,
+        identifier,
+        fresh_ttl=fresh_ttl,
+        stale_ttl=stale_ttl,
+        parser=parser,
     )
 
 
@@ -777,8 +839,11 @@ async def _shared_cache_set(
     data: Any,
 ) -> None:
     await _redis.cache_set(
-        REDIS_KEY_PREFIX, kind, identifier,
-        stale_ttl=stale_ttl, data=data,
+        REDIS_KEY_PREFIX,
+        kind,
+        identifier,
+        stale_ttl=stale_ttl,
+        data=data,
     )
 
 
@@ -790,7 +855,7 @@ def _normalize_mta_bus_url(url: str) -> str:
     auth/rate-limit retry storms caused by doomed HTTP calls.
     """
     if url.startswith("http://bustime.mta.info"):
-        return "https://" + url[len("http://"):]
+        return "https://" + url[len("http://") :]
     return url
 
 
@@ -800,7 +865,7 @@ def _is_oba_url(url: str) -> bool:
 
 def _siri_circuit_is_open() -> bool:
     """Return True when calls should be short-circuited."""
-    global _siri_circuit_open, _siri_circuit_opened_at
+    global _siri_circuit_open, _siri_circuit_opened_at, _siri_consecutive_auth_failures
     if not _siri_circuit_open:
         return False
     # Auto-reset after cooldown so the app can self-heal
@@ -816,7 +881,10 @@ def _record_siri_auth_failure() -> None:
     """Record a SIRI 401/403 failure; trip the breaker after threshold."""
     global _siri_consecutive_auth_failures, _siri_circuit_open, _siri_circuit_opened_at
     _siri_consecutive_auth_failures += 1
-    if _siri_consecutive_auth_failures >= SIRI_FAIL_THRESHOLD and not _siri_circuit_open:
+    if (
+        _siri_consecutive_auth_failures >= SIRI_FAIL_THRESHOLD
+        and not _siri_circuit_open
+    ):
         _siri_circuit_open = True
         _siri_circuit_opened_at = _time.time()
         TrackLogger.circuit(
@@ -961,12 +1029,15 @@ async def get_routes() -> list[BusRoute]:
     if cache_state == "stale":
         # Serve stale immediately, refresh in background
         if cache_key not in _routes_inflight:
+
             async def _refresh_routes() -> None:
                 task = _routes_inflight.get(cache_key)
                 try:
                     fresh = await _fetch_routes_uncached()
                     _cache_set(
-                        _routes_cache, cache_key, fresh,
+                        _routes_cache,
+                        cache_key,
+                        fresh,
                         max_size=BUS_ROUTES_MAX_SIZE,
                         stale_ttl=BUS_ROUTES_STALE_TTL,
                     )
@@ -999,7 +1070,9 @@ async def get_routes() -> list[BusRoute]:
     try:
         fresh = await task
         _cache_set(
-            _routes_cache, cache_key, fresh,
+            _routes_cache,
+            cache_key,
+            fresh,
             max_size=BUS_ROUTES_MAX_SIZE,
             stale_ttl=BUS_ROUTES_STALE_TTL,
         )
@@ -1037,9 +1110,7 @@ async def _fetch_routes_uncached() -> list[BusRoute]:
         try:
             data = await _fetch_bus_json(url, params)
             return (
-                data.get("data", {}).get("list", [])
-                if isinstance(data, dict)
-                else []
+                data.get("data", {}).get("list", []) if isinstance(data, dict) else []
             )
         except Exception as exc:
             TrackLogger.warning(f"Failed to fetch routes from {path}: {exc}", tag="BUS")
@@ -1052,7 +1123,9 @@ async def _fetch_routes_uncached() -> list[BusRoute]:
 
     for agency_data in agency_results:
         if isinstance(agency_data, BaseException):
-            TrackLogger.warning(f"Agency routes fetch exception: {agency_data}", tag="BUS")
+            TrackLogger.warning(
+                f"Agency routes fetch exception: {agency_data}", tag="BUS"
+            )
             continue
         for r in agency_data:
             rid = r.get("id", "")
@@ -1069,7 +1142,9 @@ async def _fetch_routes_uncached() -> list[BusRoute]:
                 )
             )
 
-    TrackLogger.bus(f"Fetched {len(results)} bus routes from {len(agency_paths)} agencies")
+    TrackLogger.bus(
+        f"Fetched {len(results)} bus routes from {len(agency_paths)} agencies"
+    )
     return results
 
 
@@ -1113,17 +1188,30 @@ async def get_stops(route_id: str) -> list[BusStop]:
             parser=_parse_stops,
         )
         if shared_state in ("fresh", "stale") and shared is not None:
-            _cache_set(_stops_cache, cache_key, shared, max_size=BUS_STOPS_MAX_SIZE, stale_ttl=BUS_STOPS_STALE_TTL)
+            _cache_set(
+                _stops_cache,
+                cache_key,
+                shared,
+                max_size=BUS_STOPS_MAX_SIZE,
+                stale_ttl=BUS_STOPS_STALE_TTL,
+            )
             cached = shared
             cache_state = shared_state
 
     if cache_state == "stale":
         if cache_key not in _stops_inflight:
+
             async def _refresh_stops() -> None:
                 task = _stops_inflight.get(cache_key)
                 try:
                     fresh = await _fetch_stops_uncached(canonical_id)
-                    _cache_set(_stops_cache, cache_key, fresh, max_size=BUS_STOPS_MAX_SIZE, stale_ttl=BUS_STOPS_STALE_TTL)
+                    _cache_set(
+                        _stops_cache,
+                        cache_key,
+                        fresh,
+                        max_size=BUS_STOPS_MAX_SIZE,
+                        stale_ttl=BUS_STOPS_STALE_TTL,
+                    )
                     await _shared_cache_set(
                         "stops",
                         cache_key,
@@ -1131,7 +1219,10 @@ async def get_stops(route_id: str) -> list[BusStop]:
                         data=[item.model_dump(mode="json") for item in fresh],
                     )
                 except Exception as exc:
-                    TrackLogger.warning(f"[BUS_STOPS] Background refresh failed for {cache_key}: {exc}", tag="BUS")
+                    TrackLogger.warning(
+                        f"[BUS_STOPS] Background refresh failed for {cache_key}: {exc}",
+                        tag="BUS",
+                    )
                 finally:
                     if task is not None and _stops_inflight.get(cache_key) is task:
                         _stops_inflight.pop(cache_key, None)
@@ -1153,7 +1244,13 @@ async def get_stops(route_id: str) -> list[BusStop]:
     _stops_inflight[cache_key] = task
     try:
         fresh = await task
-        _cache_set(_stops_cache, cache_key, fresh, max_size=BUS_STOPS_MAX_SIZE, stale_ttl=BUS_STOPS_STALE_TTL)
+        _cache_set(
+            _stops_cache,
+            cache_key,
+            fresh,
+            max_size=BUS_STOPS_MAX_SIZE,
+            stale_ttl=BUS_STOPS_STALE_TTL,
+        )
         await _shared_cache_set(
             "stops",
             cache_key,
@@ -1194,12 +1291,16 @@ async def _fetch_stops_uncached(canonical_id: str) -> list[BusStop]:
                 raise e
             last_error = e
             if attempt < max_retries:
-                TrackLogger.retry(f"[BUS_STOPS] Retry {attempt + 1}/{max_retries} for {canonical_id} (HTTP {e.response.status_code})")
+                TrackLogger.retry(
+                    f"[BUS_STOPS] Retry {attempt + 1}/{max_retries} for {canonical_id} (HTTP {e.response.status_code})"
+                )
                 await asyncio.sleep(retry_delay)
         except httpx.TimeoutException as e:
             last_error = e
             if attempt < max_retries:
-                TrackLogger.retry(f"[BUS_STOPS] Retry {attempt + 1}/{max_retries} for {canonical_id} (timeout)")
+                TrackLogger.retry(
+                    f"[BUS_STOPS] Retry {attempt + 1}/{max_retries} for {canonical_id} (timeout)"
+                )
                 await asyncio.sleep(retry_delay)
 
     if last_error:
@@ -1255,7 +1356,9 @@ _nearby_stops_cache: dict[tuple[float, float, int], tuple[float, list[BusStop]]]
 
 
 async def get_nearby_stops(
-    lat: float, lon: float, radius_m: int | None = None,
+    lat: float,
+    lon: float,
+    radius_m: int | None = None,
 ) -> list[BusStop]:
     """Fetch bus stops near a GPS coordinate using OBA ``stops-for-location``.
 
@@ -1267,7 +1370,9 @@ async def get_nearby_stops(
     Includes retry logic and a 60-second TTL cache to avoid rate limiting.
     """
     settings = get_settings()
-    effective_radius = radius_m if radius_m is not None else settings.app_settings.search_radius_meters
+    effective_radius = (
+        radius_m if radius_m is not None else settings.app_settings.search_radius_meters
+    )
 
     # Round coords to ~111m grid to improve cache hits from small GPS drift
     cache_key = (round(lat, 3), round(lon, 3), effective_radius)
@@ -1283,6 +1388,7 @@ async def get_nearby_stops(
 
     # Convert meters → degrees.
     from app.providers import get_provider as _get_provider
+
     _prov = _get_provider()
 
     lat_span = max(0.005, effective_radius / _prov.meters_per_deg_lat)
@@ -1305,9 +1411,7 @@ async def get_nearby_stops(
         try:
             data = await _fetch_bus_json(url, params)
             stops_data: list[dict[str, Any]] = (
-                data.get("data", {}).get("stops", [])
-                if isinstance(data, dict)
-                else []
+                data.get("data", {}).get("stops", []) if isinstance(data, dict) else []
             )
 
             results: list[BusStop] = []
@@ -1315,9 +1419,7 @@ async def get_nearby_stops(
                 # OBA stops-for-location returns routes as full objects under
                 # the key "routes", not a flat "routeIds" list.  Extract the
                 # route id from each nested object so route matching works.
-                route_ids = [
-                    r["id"] for r in s.get("routes", []) if r.get("id")
-                ]
+                route_ids = [r["id"] for r in s.get("routes", []) if r.get("id")]
                 results.append(
                     BusStop(
                         id=s.get("id", ""),
@@ -1335,13 +1437,18 @@ async def get_nearby_stops(
                 _nearby_stops_cache[cache_key] = (_time.monotonic(), results)
                 if len(_nearby_stops_cache) > BUS_NEARBY_STOPS_MAX_SIZE:
                     # Evict oldest entries
-                    by_age = sorted(_nearby_stops_cache, key=lambda k: _nearby_stops_cache[k][0])
+                    by_age = sorted(
+                        _nearby_stops_cache, key=lambda k: _nearby_stops_cache[k][0]
+                    )
                     for k in by_age[: max(1, len(by_age) // 4)]:
                         _nearby_stops_cache.pop(k, None)
             return results
         except (httpx.HTTPStatusError, httpx.TimeoutException) as exc:
             last_error = exc
-            if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code in (401, 403):
+            if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code in (
+                401,
+                403,
+            ):
                 # Auth/quota failures are not transient — return immediately.
                 raise exc
             if attempt < max_retries:
@@ -1386,12 +1493,15 @@ async def get_realtime_arrivals(stop_id: str) -> list[BusArrival]:
     if cache_state == "stale":
         # Serve stale data immediately; kick off a background refresh
         if cache_key not in _arrivals_inflight:
+
             async def _refresh_arrivals() -> None:
                 task = _arrivals_inflight.get(cache_key)
                 try:
                     fresh = await _fetch_realtime_arrivals_uncached(stop_id)
                     _cache_set(
-                        _arrivals_cache, cache_key, fresh,
+                        _arrivals_cache,
+                        cache_key,
+                        fresh,
                         max_size=BUS_ARRIVALS_MAX_SIZE,
                         stale_ttl=BUS_ARRIVALS_STALE_TTL,
                     )
@@ -1424,7 +1534,9 @@ async def get_realtime_arrivals(stop_id: str) -> list[BusArrival]:
     try:
         fresh = await task
         _cache_set(
-            _arrivals_cache, cache_key, fresh,
+            _arrivals_cache,
+            cache_key,
+            fresh,
             max_size=BUS_ARRIVALS_MAX_SIZE,
             stale_ttl=BUS_ARRIVALS_STALE_TTL,
         )
@@ -1499,19 +1611,15 @@ async def _fetch_realtime_arrivals_uncached(stop_id: str) -> list[BusArrival]:
         distance_meters: float | None = None
         raw_dist = distances.get("DistanceFromCall")
         if raw_dist is not None:
-            try:
+            with contextlib.suppress(ValueError, TypeError):
                 distance_meters = float(raw_dist)
-            except (ValueError, TypeError):
-                pass
 
         # Vehicle bearing
         bearing: float | None = None
         raw_bearing = journey.get("Bearing")
         if raw_bearing is not None:
-            try:
+            with contextlib.suppress(ValueError, TypeError):
                 bearing = float(raw_bearing)
-            except (ValueError, TypeError):
-                pass
 
         # Route identifier - prefer PublishedLineName for a clean route name
         # (e.g. "Q43"), fallback to LineRef which has agency prefix (e.g. "MTA NYCT_Q43").
@@ -1529,10 +1637,8 @@ async def _fetch_realtime_arrivals_uncached(stop_id: str) -> list[BusArrival]:
         direction_ref: int | None = None
         raw_dir = journey.get("DirectionRef")
         if raw_dir is not None:
-            try:
+            with contextlib.suppress(ValueError, TypeError):
                 direction_ref = int(raw_dir)
-            except (ValueError, TypeError):
-                pass
 
         # DestinationName can be a string or a list
         raw_dest = journey.get("DestinationName")
@@ -1546,13 +1652,13 @@ async def _fetch_realtime_arrivals_uncached(stop_id: str) -> list[BusArrival]:
         aimed_str: str | None = monitored_call.get("AimedArrivalTime")
         aimed_arrival: datetime | None = None
         if aimed_str:
-            try:
+            with contextlib.suppress(ValueError, TypeError):
                 aimed_arrival = datetime.fromisoformat(aimed_str)
-            except (ValueError, TypeError):
-                pass
         schedule_deviation_s: int | None = None
         if expected_arrival and aimed_arrival:
-            schedule_deviation_s = int((expected_arrival - aimed_arrival).total_seconds())
+            schedule_deviation_s = int(
+                (expected_arrival - aimed_arrival).total_seconds()
+            )
 
         # MTA bus spooking detection — stop-monitoring visit
         monitored_raw_visit = journey.get("Monitored", True)
@@ -1580,7 +1686,9 @@ async def _fetch_realtime_arrivals_uncached(stop_id: str) -> list[BusArrival]:
 
     # Flush all recency observations in one pipeline — avoids "max clients reached".
     if _stop_obs:
-        asyncio.ensure_future(observe_siri_delays_batch(_stop_obs))
+        task = asyncio.ensure_future(observe_siri_delays_batch(_stop_obs))
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)
     return arrivals
 
 
@@ -1630,17 +1738,30 @@ async def get_vehicle_positions(route_id: str) -> list[BusVehicle]:
             parser=_parse_vehicles,
         )
         if shared_state in ("fresh", "stale") and shared is not None:
-            _cache_set(_vehicle_cache, cache_key, shared, max_size=BUS_VEHICLES_MAX_SIZE, stale_ttl=BUS_VEHICLES_STALE_TTL)
+            _cache_set(
+                _vehicle_cache,
+                cache_key,
+                shared,
+                max_size=BUS_VEHICLES_MAX_SIZE,
+                stale_ttl=BUS_VEHICLES_STALE_TTL,
+            )
             cached = shared
             cache_state = shared_state
 
     if cache_state == "stale":
         if cache_key not in _vehicle_inflight:
+
             async def _refresh_vehicles() -> None:
                 task = _vehicle_inflight.get(cache_key)
                 try:
                     fresh = await _fetch_vehicle_positions_uncached(canonical_id)
-                    _cache_set(_vehicle_cache, cache_key, fresh, max_size=BUS_VEHICLES_MAX_SIZE, stale_ttl=BUS_VEHICLES_STALE_TTL)
+                    _cache_set(
+                        _vehicle_cache,
+                        cache_key,
+                        fresh,
+                        max_size=BUS_VEHICLES_MAX_SIZE,
+                        stale_ttl=BUS_VEHICLES_STALE_TTL,
+                    )
                     await _shared_cache_set(
                         "vehicles",
                         cache_key,
@@ -1648,7 +1769,10 @@ async def get_vehicle_positions(route_id: str) -> list[BusVehicle]:
                         data=[item.model_dump(mode="json") for item in fresh],
                     )
                 except Exception as exc:
-                    TrackLogger.warning(f"[BUS_VEHICLES] Background refresh failed for {cache_key}: {exc}", tag="BUS")
+                    TrackLogger.warning(
+                        f"[BUS_VEHICLES] Background refresh failed for {cache_key}: {exc}",
+                        tag="BUS",
+                    )
                 finally:
                     if task is not None and _vehicle_inflight.get(cache_key) is task:
                         _vehicle_inflight.pop(cache_key, None)
@@ -1670,7 +1794,13 @@ async def get_vehicle_positions(route_id: str) -> list[BusVehicle]:
     _vehicle_inflight[cache_key] = task
     try:
         fresh = await task
-        _cache_set(_vehicle_cache, cache_key, fresh, max_size=BUS_VEHICLES_MAX_SIZE, stale_ttl=BUS_VEHICLES_STALE_TTL)
+        _cache_set(
+            _vehicle_cache,
+            cache_key,
+            fresh,
+            max_size=BUS_VEHICLES_MAX_SIZE,
+            stale_ttl=BUS_VEHICLES_STALE_TTL,
+        )
         await _shared_cache_set(
             "vehicles",
             cache_key,
@@ -1711,12 +1841,16 @@ async def _fetch_vehicle_positions_uncached(canonical_id: str) -> list[BusVehicl
                 raise e
             last_error = e
             if attempt < max_retries:
-                TrackLogger.retry(f"[BUS_VEHICLES] Retry {attempt + 1}/{max_retries} for {canonical_id} (HTTP {e.response.status_code})")
+                TrackLogger.retry(
+                    f"[BUS_VEHICLES] Retry {attempt + 1}/{max_retries} for {canonical_id} (HTTP {e.response.status_code})"
+                )
                 await asyncio.sleep(retry_delay)
         except httpx.TimeoutException as e:
             last_error = e
             if attempt < max_retries:
-                TrackLogger.retry(f"[BUS_VEHICLES] Retry {attempt + 1}/{max_retries} for {canonical_id} (timeout)")
+                TrackLogger.retry(
+                    f"[BUS_VEHICLES] Retry {attempt + 1}/{max_retries} for {canonical_id} (timeout)"
+                )
                 await asyncio.sleep(retry_delay)
 
     if last_error:
@@ -1774,10 +1908,8 @@ async def _get_vehicles_impl(route_id: str) -> list[BusVehicle]:
         bearing: float | None = None
         raw_bearing = journey.get("Bearing")
         if raw_bearing is not None:
-            try:
+            with contextlib.suppress(ValueError, TypeError):
                 bearing = float(raw_bearing)
-            except (ValueError, TypeError):
-                pass
 
         # MTA bus spooking detection ─────────────────────────────────────────
         # SIRI `Monitored` field: False when the vehicle is not actively
@@ -1789,10 +1921,8 @@ async def _get_vehicles_impl(route_id: str) -> list[BusVehicle]:
         position_recorded_at: datetime | None = None
         recorded_at_str = activity.get("RecordedAtTime")
         if recorded_at_str:
-            try:
+            with contextlib.suppress(ValueError, TypeError):
                 position_recorded_at = datetime.fromisoformat(recorded_at_str)
-            except (ValueError, TypeError):
-                pass
         if not is_realtime:
             TrackLogger.warning(
                 f"[BUS SPOOKING] {journey.get('LineRef', route_id)} "
@@ -1828,7 +1958,9 @@ async def _get_vehicles_impl(route_id: str) -> list[BusVehicle]:
             try:
                 aimed_mc_dt = datetime.fromisoformat(aimed_mc_str)
                 dev_mc_s = (expected_arrival - aimed_mc_dt).total_seconds()
-                _veh_obs.append((journey.get("LineRef", route_id), mc_stop_ref, dev_mc_s))
+                _veh_obs.append(
+                    (journey.get("LineRef", route_id), mc_stop_ref, dev_mc_s)
+                )
             except (ValueError, TypeError):
                 pass
 
@@ -1836,10 +1968,8 @@ async def _get_vehicles_impl(route_id: str) -> list[BusVehicle]:
         direction_ref: int | None = None
         raw_dir = journey.get("DirectionRef")
         if raw_dir is not None:
-            try:
+            with contextlib.suppress(ValueError, TypeError):
                 direction_ref = int(raw_dir)
-            except (ValueError, TypeError):
-                pass
 
         # DestinationName can be a string or a list (same parsing as stop-monitoring)
         raw_dest = journey.get("DestinationName")
@@ -1865,24 +1995,20 @@ async def _get_vehicles_impl(route_id: str) -> list[BusVehicle]:
             call_ext = call.get("Extensions", {})
             call_dist = call_ext.get("Distances", {})
             present_dist = call_dist.get("PresentableDistance", "")
-            
+
             # Distance in meters
             dist_m: float | None = None
             raw_dm = call_dist.get("DistanceFromCall")
             if raw_dm is not None:
-                try:
+                with contextlib.suppress(ValueError, TypeError):
                     dist_m = float(raw_dm)
-                except (ValueError, TypeError):
-                    pass
 
             # Expected Arrival
             call_expected: datetime | None = None
             call_exp_str = call.get("ExpectedArrivalTime")
             if call_exp_str:
-                try:
+                with contextlib.suppress(ValueError, TypeError):
                     call_expected = datetime.fromisoformat(call_exp_str)
-                except (ValueError, TypeError):
-                    pass
 
             # Accumulate onward call deviation for batch write
             call_aimed_str = call.get("AimedArrivalTime")
@@ -1890,7 +2016,9 @@ async def _get_vehicles_impl(route_id: str) -> list[BusVehicle]:
                 try:
                     call_aimed_dt = datetime.fromisoformat(call_aimed_str)
                     call_dev_s = (call_expected - call_aimed_dt).total_seconds()
-                    _veh_obs.append((journey.get("LineRef", route_id), stop_ref, call_dev_s))
+                    _veh_obs.append(
+                        (journey.get("LineRef", route_id), stop_ref, call_dev_s)
+                    )
                 except (ValueError, TypeError):
                     pass
 
@@ -1901,30 +2029,35 @@ async def _get_vehicles_impl(route_id: str) -> list[BusVehicle]:
             # StopPointName can be a string or a list (e.g. [{'@lang': 'en', '#text': '5 Av'}])
             stop_name_raw = call.get("StopPointName", "")
             stop_name = ""
-            if isinstance(stop_name_raw, list) and len(stop_name_raw) > 0:
+            if isinstance(stop_name_raw, list) and stop_name_raw:
                 # Sometimes it's just a list of strings ["5 Av"]
                 if isinstance(stop_name_raw[0], str):
                     stop_name = stop_name_raw[0]
                 # Sometimes it's a dict inside a list
                 elif isinstance(stop_name_raw[0], dict):
-                    stop_name = stop_name_raw[0].get("#text", "") or stop_name_raw[0].get("value", "")
+                    stop_name = stop_name_raw[0].get("#text", "") or stop_name_raw[
+                        0
+                    ].get("value", "")
             elif isinstance(stop_name_raw, str):
                 stop_name = stop_name_raw
 
-            onward_calls.append(BusArrival(
-                route_id=journey.get("LineRef", route_id),
-                vehicle_id=journey.get("VehicleRef", ""),
-                stop_id=stop_ref,
-                stop_name=stop_name,
-                status_text=present_dist or ("En Route" if is_realtime else "Scheduled"),
-                status="Live",
-                expected_arrival=call_expected,
-                distance_meters=dist_m,
-                bearing=bearing, # Inherit bearing from vehicle
-                direction_ref=direction_ref, # Inherit direction
-                destination_name=veh_destination,  # Inherit headsign from vehicle journey
-                is_realtime=is_realtime,  # Propagate spooking state
-            ))
+            onward_calls.append(
+                BusArrival(
+                    route_id=journey.get("LineRef", route_id),
+                    vehicle_id=journey.get("VehicleRef", ""),
+                    stop_id=stop_ref,
+                    stop_name=stop_name,
+                    status_text=present_dist
+                    or ("En Route" if is_realtime else "Scheduled"),
+                    status="Live",
+                    expected_arrival=call_expected,
+                    distance_meters=dist_m,
+                    bearing=bearing,  # Inherit bearing from vehicle
+                    direction_ref=direction_ref,  # Inherit direction
+                    destination_name=veh_destination,  # Inherit headsign from vehicle journey
+                    is_realtime=is_realtime,  # Propagate spooking state
+                )
+            )
 
         vehicles.append(
             BusVehicle(
@@ -1945,7 +2078,9 @@ async def _get_vehicles_impl(route_id: str) -> list[BusVehicle]:
 
     # Flush all recency observations in one pipeline — avoids "max clients reached".
     if _veh_obs:
-        asyncio.ensure_future(observe_siri_delays_batch(_veh_obs))
+        task = asyncio.ensure_future(observe_siri_delays_batch(_veh_obs))
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)
 
     return vehicles
 
@@ -1993,17 +2128,30 @@ async def get_route_shape(route_id: str) -> RouteShape:
             parser=_parse_shape,
         )
         if shared_state in ("fresh", "stale") and shared is not None:
-            _cache_set(_route_shape_cache, cache_key, shared, max_size=BUS_ROUTE_SHAPE_MAX_SIZE, stale_ttl=BUS_ROUTE_SHAPE_STALE_TTL)
+            _cache_set(
+                _route_shape_cache,
+                cache_key,
+                shared,
+                max_size=BUS_ROUTE_SHAPE_MAX_SIZE,
+                stale_ttl=BUS_ROUTE_SHAPE_STALE_TTL,
+            )
             cached = shared
             cache_state = shared_state
 
     if cache_state == "stale":
         if cache_key not in _route_shape_inflight:
+
             async def _refresh_shape() -> None:
                 task = _route_shape_inflight.get(cache_key)
                 try:
                     fresh = await _fetch_route_shape_uncached(canonical_id)
-                    _cache_set(_route_shape_cache, cache_key, fresh, max_size=BUS_ROUTE_SHAPE_MAX_SIZE, stale_ttl=BUS_ROUTE_SHAPE_STALE_TTL)
+                    _cache_set(
+                        _route_shape_cache,
+                        cache_key,
+                        fresh,
+                        max_size=BUS_ROUTE_SHAPE_MAX_SIZE,
+                        stale_ttl=BUS_ROUTE_SHAPE_STALE_TTL,
+                    )
                     await _shared_cache_set(
                         "route_shape",
                         cache_key,
@@ -2011,9 +2159,15 @@ async def get_route_shape(route_id: str) -> RouteShape:
                         data=fresh.model_dump(mode="json"),
                     )
                 except Exception as exc:
-                    TrackLogger.warning(f"[BUS_SHAPE] Background refresh failed for {cache_key}: {exc}", tag="BUS")
+                    TrackLogger.warning(
+                        f"[BUS_SHAPE] Background refresh failed for {cache_key}: {exc}",
+                        tag="BUS",
+                    )
                 finally:
-                    if task is not None and _route_shape_inflight.get(cache_key) is task:
+                    if (
+                        task is not None
+                        and _route_shape_inflight.get(cache_key) is task
+                    ):
                         _route_shape_inflight.pop(cache_key, None)
 
             refresh_task = asyncio.create_task(_refresh_shape())
@@ -2033,7 +2187,13 @@ async def get_route_shape(route_id: str) -> RouteShape:
     _route_shape_inflight[cache_key] = task
     try:
         fresh = await task
-        _cache_set(_route_shape_cache, cache_key, fresh, max_size=BUS_ROUTE_SHAPE_MAX_SIZE, stale_ttl=BUS_ROUTE_SHAPE_STALE_TTL)
+        _cache_set(
+            _route_shape_cache,
+            cache_key,
+            fresh,
+            max_size=BUS_ROUTE_SHAPE_MAX_SIZE,
+            stale_ttl=BUS_ROUTE_SHAPE_STALE_TTL,
+        )
         await _shared_cache_set(
             "route_shape",
             cache_key,
@@ -2074,12 +2234,16 @@ async def _fetch_route_shape_uncached(canonical_id: str) -> RouteShape:
                 raise e
             last_error = e
             if attempt < max_retries:
-                TrackLogger.retry(f"[BUS_SHAPE] Retry {attempt + 1}/{max_retries} for {canonical_id} (HTTP {e.response.status_code})")
+                TrackLogger.retry(
+                    f"[BUS_SHAPE] Retry {attempt + 1}/{max_retries} for {canonical_id} (HTTP {e.response.status_code})"
+                )
                 await asyncio.sleep(retry_delay)
         except httpx.TimeoutException as e:
             last_error = e
             if attempt < max_retries:
-                TrackLogger.retry(f"[BUS_SHAPE] Retry {attempt + 1}/{max_retries} for {canonical_id} (timeout)")
+                TrackLogger.retry(
+                    f"[BUS_SHAPE] Retry {attempt + 1}/{max_retries} for {canonical_id} (timeout)"
+                )
                 await asyncio.sleep(retry_delay)
 
     if last_error:
@@ -2115,7 +2279,7 @@ async def _get_route_shape_impl(route_id: str) -> RouteShape:
     entry = data.get("data", {}).get("entry", {}) if isinstance(data, dict) else {}
     raw_polylines = entry.get("polylines", [])
     TrackLogger.debug(f"Got {len(raw_polylines)} raw polylines from API", tag="BUS")
-    
+
     for poly in raw_polylines:
         encoded = poly.get("points", "")
         if encoded:
@@ -2167,20 +2331,30 @@ async def _get_route_shape_impl(route_id: str) -> RouteShape:
                     dir_id = int(sg_id)
                 except ValueError:
                     dir_id = 0
-                headsign = sg.get("name", {}).get("name", "") if isinstance(sg.get("name"), dict) else str(sg.get("name", ""))
+                headsign = (
+                    sg.get("name", {}).get("name", "")
+                    if isinstance(sg.get("name"), dict)
+                    else str(sg.get("name", ""))
+                )
 
                 # Extract stop IDs for this direction — preserve OBA's
                 # ordering which reflects the route's actual travel sequence.
                 dir_stop_ids: list[str] = []
                 seen_stop_ids: set[str] = set()
                 for ref in sg.get("stopIds", []):
-                    sid = ref.get("id", "") if isinstance(ref, dict) else (ref if isinstance(ref, str) else "")
+                    sid = (
+                        ref.get("id", "")
+                        if isinstance(ref, dict)
+                        else (ref if isinstance(ref, str) else "")
+                    )
                     if sid and sid not in seen_stop_ids:
                         dir_stop_ids.append(sid)
                         seen_stop_ids.add(sid)
 
                 stop_lookup = {s.id: s for s in stops}
-                dir_stops = [stop_lookup[sid] for sid in dir_stop_ids if sid in stop_lookup]
+                dir_stops = [
+                    stop_lookup[sid] for sid in dir_stop_ids if sid in stop_lookup
+                ]
 
                 # Use OBA's polylineIds to assign direction-specific polylines.
                 # polylineIds references the "id" field of entry.polylines[].
@@ -2198,25 +2372,39 @@ async def _get_route_shape_impl(route_id: str) -> RouteShape:
                     # No polylineIds available — fall back to all entry polylines
                     dir_polylines = list(polylines)
 
-                directions.append(DirectionShape(
-                    direction_id=dir_id,
-                    headsign=headsign,
-                    polylines=dir_polylines,
-                    stops=dir_stops,
-                ))
+                directions.append(
+                    DirectionShape(
+                        direction_id=dir_id,
+                        headsign=headsign,
+                        polylines=dir_polylines,
+                        stops=dir_stops,
+                    )
+                )
     except Exception as exc:
-        TrackLogger.warning(f"Failed to parse stopGroupings for {route_id}: {exc}", tag="BUS")
+        TrackLogger.warning(
+            f"Failed to parse stopGroupings for {route_id}: {exc}", tag="BUS"
+        )
         # Continue without direction data — polylines + stops are still valid
 
     # Fallback: if no stopGroupings, split polylines in half as a heuristic
     if not directions and len(polylines) >= 2:
         mid = len(polylines) // 2
-        directions.append(DirectionShape(
-            direction_id=0, headsign="", polylines=polylines[:mid], stops=[],
-        ))
-        directions.append(DirectionShape(
-            direction_id=1, headsign="", polylines=polylines[mid:], stops=[],
-        ))
+        directions.append(
+            DirectionShape(
+                direction_id=0,
+                headsign="",
+                polylines=polylines[:mid],
+                stops=[],
+            )
+        )
+        directions.append(
+            DirectionShape(
+                direction_id=1,
+                headsign="",
+                polylines=polylines[mid:],
+                stops=[],
+            )
+        )
 
     # Merge adjacent polyline segments to eliminate gaps between short segments.
     # OBA returns many tiny fragments; merging produces continuous lines.
@@ -2225,7 +2413,18 @@ async def _get_route_shape_impl(route_id: str) -> RouteShape:
     for d in directions:
         d.polylines = _densify_bus_polylines(_merge_polyline_segments(d.polylines))
 
-    TrackLogger.bus(f"Shape for {route_id}: {len(merged_polylines)} merged polylines (from {len(polylines)} raw), "
-          f"{len(stops)} stops, {len(directions)} directions"
-          + (f" ({', '.join(f'dir{d.direction_id}:{len(d.polylines)}pl' for d in directions)})" if directions else ""))
-    return RouteShape(route_id=route_id, polylines=merged_polylines, stops=stops, directions=directions)
+    TrackLogger.bus(
+        f"Shape for {route_id}: {len(merged_polylines)} merged polylines (from {len(polylines)} raw), "
+        f"{len(stops)} stops, {len(directions)} directions"
+        + (
+            f" ({', '.join(f'dir{d.direction_id}:{len(d.polylines)}pl' for d in directions)})"
+            if directions
+            else ""
+        )
+    )
+    return RouteShape(
+        route_id=route_id,
+        polylines=merged_polylines,
+        stops=stops,
+        directions=directions,
+    )

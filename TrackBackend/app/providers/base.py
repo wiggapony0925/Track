@@ -1,14 +1,9 @@
-#
-# providers/base.py
-# TrackBackend
-#
-# Abstract base class for transit providers.
-#
-# Every supported transit region (MTA, CTA, WMATA, …) implements this
-# interface.  The provider centralises region-specific constants —
-# geographic centre, bounding box, agency prefixes, route colours — so
-# the rest of the codebase stays region-agnostic.
-#
+"""Abstract base class for transit providers.
+
+Every supported transit region (MTA, CTA, WMATA, …) implements this
+interface.  The provider centralises region-specific constants —
+geographic centre, bounding box, agency prefixes, route colours — so
+the rest of the codebase stays region-agnostic."""
 
 from __future__ import annotations
 

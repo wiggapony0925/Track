@@ -1,53 +1,48 @@
-#
-# recency_model.py
-# app/ml/recency_model.py
-#
-# Transit-style recency correction.
-# Watches every GTFS-RT poll, records actual vs. MTA-predicted times per stop,
-# and returns an exponentially-weighted mean error to correct minutes_away.
-#
-# ── How it works ──────────────────────────────────────────────────────────
-#
-# OBSERVE (after each realtime_parser.py GTFS-RT parse):
-#   • Snapshot the current stop_time_updates for each trip in Redis.
-#   • Next poll: stops that disappeared = vehicle passed them.
-#     error = now − predicted_arrival_ts  (positive = late, negative = early)
-#   • Store error in a sorted set keyed by (route, stop, dow, hour).
-#
-# QUERY (from predict.py):
-#   • Fetch last 50 observations for (route, stop, dow, hour).
-#   • Apply exponential decay: w = exp(−0.5 × age_hours) → half-life ≈ 1.4 h.
-#     A train that passed 10 minutes ago weighs ~7× more than one from 3 hours ago.
-#   • Also sample ±1 hour bucket for more signal, at half weight.
-#   • Return weighted mean error in seconds (None if < 3 observations).
-#
-# ── Redis key structure ────────────────────────────────────────────────────
-#   track:recency:snap:{trip_id}      HASH  {stop_id→arrival_ts}  TTL=2h
-#   track:recency:obs:{route}:{stop}:{dow}:{hour}
-#                                     ZSET  score=unix_ts  value=error_s  TTL=25h
-#
-# ── Graceful degradation ──────────────────────────────────────────────────
-#   Every Redis call is fire-and-forget.  Redis unavailable = silent no-op.
-#
+"""Transit-style recency correction.
+Watches every GTFS-RT poll, records actual vs. MTA-predicted times per stop,
+and returns an exponentially-weighted mean error to correct minutes_away.
+
+── How it works ──────────────────────────────────────────────────────────
+
+OBSERVE (after each realtime_parser.py GTFS-RT parse):
+• Snapshot the current stop_time_updates for each trip in Redis.
+• Next poll: stops that disappeared = vehicle passed them.
+error = now − predicted_arrival_ts  (positive = late, negative = early)
+• Store error in a sorted set keyed by (route, stop, dow, hour).
+
+QUERY (from predict.py):
+• Fetch last 50 observations for (route, stop, dow, hour).
+• Apply exponential decay: w = exp(−0.5 × age_hours) → half-life ≈ 1.4 h.
+A train that passed 10 minutes ago weighs ~7× more than one from 3 hours ago.
+• Also sample ±1 hour bucket for more signal, at half weight.
+• Return weighted mean error in seconds (None if < 3 observations).
+
+── Redis key structure ────────────────────────────────────────────────────
+track:recency:snap:{trip_id}      HASH  {stop_id→arrival_ts}  TTL=2h
+track:recency:obs:{route}:{stop}:{dow}:{hour}
+ZSET  score=unix_ts  value=error_s  TTL=25h
+
+── Graceful degradation ──────────────────────────────────────────────────
+Every Redis call is fire-and-forget.  Redis unavailable = silent no-op."""
 
 from __future__ import annotations
 
 import asyncio
 import math
 import time as _time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from app.clients import redis_client as _redis
 from app.utils.logger import TrackLogger
 
-_SNAP_PREFIX      = "track:recency:snap"
-_OBS_PREFIX       = "track:recency:obs"
-_SNAP_TTL         = 7_200    # 2 hours
-_OBS_TTL          = 90_000   # 25 hours
-MAX_OBS_PER_KEY   = 50
-MAX_AGE_HOURS     = 6.0
-_LAMBDA           = 0.5      # decay constant (half-life ≈ 1.4 h)
-_MAX_ERROR_SECS   = 600      # ±10 min — discard garbage (cancelled trips)
+_SNAP_PREFIX = "track:recency:snap"
+_OBS_PREFIX = "track:recency:obs"
+_SNAP_TTL = 7_200  # 2 hours
+_OBS_TTL = 90_000  # 25 hours
+MAX_OBS_PER_KEY = 50
+MAX_AGE_HOURS = 6.0
+_LAMBDA = 0.5  # decay constant (half-life ≈ 1.4 h)
+_MAX_ERROR_SECS = 600  # ±10 min — discard garbage (cancelled trips)
 
 # Semaphore: cap concurrent Redis query connections so that a large /nearby
 # response (169+ stops) can't exhaust the pool (typically 20 connections) by
@@ -71,7 +66,7 @@ _OBSERVE_SEMAPHORE_LOOP_ID: int | None = None
 def _get_query_semaphore() -> asyncio.Semaphore:
     global _QUERY_SEMAPHORE, _QUERY_SEMAPHORE_LOOP_ID
     loop_id = id(asyncio.get_running_loop())
-    if _QUERY_SEMAPHORE is None or _QUERY_SEMAPHORE_LOOP_ID != loop_id:
+    if _QUERY_SEMAPHORE is None or loop_id != _QUERY_SEMAPHORE_LOOP_ID:
         _QUERY_SEMAPHORE = asyncio.Semaphore(8)
         _QUERY_SEMAPHORE_LOOP_ID = loop_id
     return _QUERY_SEMAPHORE
@@ -80,7 +75,7 @@ def _get_query_semaphore() -> asyncio.Semaphore:
 def _get_observe_semaphore() -> asyncio.Semaphore:
     global _OBSERVE_SEMAPHORE, _OBSERVE_SEMAPHORE_LOOP_ID
     loop_id = id(asyncio.get_running_loop())
-    if _OBSERVE_SEMAPHORE is None or _OBSERVE_SEMAPHORE_LOOP_ID != loop_id:
+    if _OBSERVE_SEMAPHORE is None or loop_id != _OBSERVE_SEMAPHORE_LOOP_ID:
         _OBSERVE_SEMAPHORE = asyncio.Semaphore(2)
         _OBSERVE_SEMAPHORE_LOOP_ID = loop_id
     return _OBSERVE_SEMAPHORE
@@ -121,7 +116,7 @@ async def observe_trip_updates(
                 if abs(error_s) > _MAX_ERROR_SECS:
                     continue
 
-                dt = datetime.fromtimestamp(now, tz=timezone.utc)
+                dt = datetime.fromtimestamp(now, tz=UTC)
                 dow = (dt.isoweekday() % 7) + 1  # Mon=2 … Sun=1 (match predict router)
                 hour = dt.hour
 
@@ -170,8 +165,8 @@ async def observe_siri_delay(
 
     try:
         now = _time.time()
-        dt = datetime.fromtimestamp(now, tz=timezone.utc)
-        dow = (dt.isoweekday() % 7) + 1   # Mon=2 … Sun=1
+        dt = datetime.fromtimestamp(now, tz=UTC)
+        dow = (dt.isoweekday() % 7) + 1  # Mon=2 … Sun=1
         hour = dt.hour
 
         obs_key = _obs_key(route_id, stop_id, dow, hour)
@@ -210,15 +205,12 @@ async def observe_siri_delays_batch(
         return
 
     now = _time.time()
-    dt = datetime.fromtimestamp(now, tz=timezone.utc)
-    dow = (dt.isoweekday() % 7) + 1   # Mon=2 … Sun=1
+    dt = datetime.fromtimestamp(now, tz=UTC)
+    dow = (dt.isoweekday() % 7) + 1  # Mon=2 … Sun=1
     hour = dt.hour
 
     # Filter garbage before touching Redis
-    valid = [
-        (r, s, d) for r, s, d in observations
-        if abs(d) <= _MAX_ERROR_SECS
-    ]
+    valid = [(r, s, d) for r, s, d in observations if abs(d) <= _MAX_ERROR_SECS]
     if not valid:
         return
 
@@ -258,7 +250,7 @@ async def observe_trip_updates_batch(
 
     try:
         now = _time.time()
-        dt = datetime.fromtimestamp(now, tz=timezone.utc)
+        dt = datetime.fromtimestamp(now, tz=UTC)
         dow = (dt.isoweekday() % 7) + 1
         hour = dt.hour
 
@@ -270,7 +262,9 @@ async def observe_trip_updates_batch(
 
         # ── Phase 2: compute all observations + write everything at once ──
         write_pipe = client.pipeline(transaction=False)
-        for (trip_id, route_id, stop_arrivals), prev_raw in zip(trips, prev_snapshots):
+        for (trip_id, route_id, stop_arrivals), prev_raw in zip(
+            trips, prev_snapshots, strict=False
+        ):
             snap_key = _snap_key(trip_id)
 
             if prev_raw:
@@ -286,7 +280,9 @@ async def observe_trip_updates_batch(
                     write_pipe.expire(obs_key, _OBS_TTL)
 
             if stop_arrivals:
-                write_pipe.hset(snap_key, mapping={k: str(v) for k, v in stop_arrivals.items()})
+                write_pipe.hset(
+                    snap_key, mapping={k: str(v) for k, v in stop_arrivals.items()}
+                )
                 write_pipe.expire(snap_key, _SNAP_TTL)
             else:
                 write_pipe.delete(snap_key)
@@ -295,7 +291,28 @@ async def observe_trip_updates_batch(
             await write_pipe.execute()
 
     except Exception as exc:
-        TrackLogger.warning(f"[RECENCY] batch trip observe error ({len(trips)} trips): {exc}", tag="ML")
+        TrackLogger.warning(
+            f"[RECENCY] batch trip observe error ({len(trips)} trips): {exc}", tag="ML"
+        )
+
+
+def _exponential_wsum(
+    entries: list[tuple[float, float]],
+    scale: float,
+    now: float,
+    lambda_: float,
+) -> tuple[float, float]:
+    """Compute exponentially-weighted sum of entries."""
+    sw, swx = 0.0, 0.0
+    for val_str, ts in entries:
+        try:
+            err = float(val_str)
+        except ValueError:
+            continue
+        w = math.exp(-lambda_ * (now - ts) / 3600.0) * scale
+        swx += w * err
+        sw += w
+    return swx, sw
 
 
 async def get_weighted_errors_batch(
@@ -328,9 +345,21 @@ async def get_weighted_errors_batch(
     try:
         pipe = client.pipeline(transaction=False)
         for route_id, stop_id, dow, hour in unique:
-            pipe.zrangebyscore(_obs_key(route_id, stop_id, dow, hour),        cutoff, "+inf", withscores=True)
-            pipe.zrangebyscore(_obs_key(route_id, stop_id, dow, (hour-1)%24), cutoff, "+inf", withscores=True)
-            pipe.zrangebyscore(_obs_key(route_id, stop_id, dow, (hour+1)%24), cutoff, "+inf", withscores=True)
+            pipe.zrangebyscore(
+                _obs_key(route_id, stop_id, dow, hour), cutoff, "+inf", withscores=True
+            )
+            pipe.zrangebyscore(
+                _obs_key(route_id, stop_id, dow, (hour - 1) % 24),
+                cutoff,
+                "+inf",
+                withscores=True,
+            )
+            pipe.zrangebyscore(
+                _obs_key(route_id, stop_id, dow, (hour + 1) % 24),
+                cutoff,
+                "+inf",
+                withscores=True,
+            )
         raw_all: list = await pipe.execute()
     except Exception as exc:
         TrackLogger.warning(
@@ -338,29 +367,19 @@ async def get_weighted_errors_batch(
         )
         return {}
 
-    def _wsum(entries: list[tuple[str, float]], scale: float) -> tuple[float, float]:
-        sw, swx = 0.0, 0.0
-        for val_str, ts in entries:
-            try:
-                err = float(val_str)
-            except ValueError:
-                continue
-            w = math.exp(-_LAMBDA * (now - ts) / 3600.0) * scale
-            swx += w * err
-            sw  += w
-        return swx, sw
-
     out: dict[tuple[str, str], float | None] = {}
-    for i, (route_id, stop_id, dow, hour) in enumerate(unique):
+    for i, (route_id, stop_id, _dow, _hour) in enumerate(unique):
         raw_exact: list[tuple[str, float]] = raw_all[i * 3]
-        raw_adj: list[tuple[str, float]]   = list(raw_all[i * 3 + 1]) + list(raw_all[i * 3 + 2])
+        raw_adj: list[tuple[str, float]] = list(raw_all[i * 3 + 1]) + list(
+            raw_all[i * 3 + 2]
+        )
 
         if len(raw_exact) + len(raw_adj) < 3:
             out[(route_id, stop_id)] = None
             continue
 
-        wx_e, w_e = _wsum(raw_exact, 2.0)
-        wx_a, w_a = _wsum(raw_adj,   1.0)
+        wx_e, w_e = _exponential_wsum(raw_exact, 2.0, now, _LAMBDA)
+        wx_a, w_a = _exponential_wsum(raw_adj, 1.0, now, _LAMBDA)
         total_w = w_e + w_a
         if total_w <= 0:
             out[(route_id, stop_id)] = None
@@ -407,20 +426,8 @@ async def get_weighted_error(
             if len(raw_exact) + len(raw_adj) < 3:
                 return None
 
-            def _wsum(entries: list[tuple[str, float]], scale: float) -> tuple[float, float]:
-                sw, swx = 0.0, 0.0
-                for val_str, ts in entries:
-                    try:
-                        err = float(val_str)
-                    except ValueError:
-                        continue
-                    w = math.exp(-_LAMBDA * (now - ts) / 3600.0) * scale
-                    swx += w * err
-                    sw  += w
-                return swx, sw
-
-            wx_e, w_e = _wsum(raw_exact, 2.0)
-            wx_a, w_a = _wsum(raw_adj,   1.0)
+            wx_e, w_e = _exponential_wsum(raw_exact, 2.0, now, _LAMBDA)
+            wx_a, w_a = _exponential_wsum(raw_adj, 1.0, now, _LAMBDA)
             total_w = w_e + w_a
             if total_w <= 0:
                 return None
@@ -434,5 +441,7 @@ async def get_weighted_error(
             return error
 
         except Exception as exc:
-            TrackLogger.warning(f"[RECENCY] query error {route_id}/{stop_id}: {exc}", tag="ML")
+            TrackLogger.warning(
+                f"[RECENCY] query error {route_id}/{stop_id}: {exc}", tag="ML"
+            )
             return None

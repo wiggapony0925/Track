@@ -1,73 +1,66 @@
-#
-# eta_accuracy_benchmark.py
-# app/ml/eta_accuracy_benchmark.py
-#
-# ETA Accuracy Benchmark — inspired by Transit App's open-source methodology.
-# https://github.com/TransitApp/ETA-Accuracy-Benchmark
-#
-# Measures prediction accuracy using Transit App's industry-standard approach:
-#   - Time-bucketed accuracy (0-3, 3-6, 6-10, 10-15 min)
-#   - Asymmetric thresholds (early arrivals penalized more than late)
-#   - Weighted average across buckets
-#
-# This gives Track a production-grade accuracy metric comparable to what
-# Transit App uses internally, enabling direct benchmarking against them.
-#
-# ── Time Buckets & Thresholds ──────────────────────────────────────────
-#
-#   Bucket (min)   Early Tolerance   Late Tolerance
-#   ───────────    ───────────────   ──────────────
-#    0–3 min        30 sec            90 sec
-#    3–6 min        60 sec           150 sec
-#    6–10 min       60 sec           210 sec
-#   10–15 min       90 sec           270 sec
-#
-# A prediction is "accurate" if:
-#   actual_arrival - predicted_arrival ∈ [-early_tolerance, +late_tolerance]
-#
-# Negative = arrived earlier than predicted (bad: rider misses it)
-# Positive = arrived later than predicted  (less bad: rider waits)
-#
+"""ETA Accuracy Benchmark — inspired by Transit App's open-source methodology.
+https://github.com/TransitApp/ETA-Accuracy-Benchmark
+
+Measures prediction accuracy using Transit App's industry-standard approach:
+- Time-bucketed accuracy (0-3, 3-6, 6-10, 10-15 min)
+- Asymmetric thresholds (early arrivals penalized more than late)
+- Weighted average across buckets
+
+This gives Track a production-grade accuracy metric comparable to what
+Transit App uses internally, enabling direct benchmarking against them.
+
+── Time Buckets & Thresholds ──────────────────────────────────────────
+
+Bucket (min)   Early Tolerance   Late Tolerance
+0–3 min        30 sec            90 sec
+3–6 min        60 sec           150 sec
+6–10 min       60 sec           210 sec
+10–15 min       90 sec           270 sec
+
+A prediction is "accurate" if:
+actual_arrival - predicted_arrival ∈ [-early_tolerance, +late_tolerance]
+
+Negative = arrived earlier than predicted (bad: rider misses it)
+Positive = arrived later than predicted  (less bad: rider waits)."""
 
 from __future__ import annotations
 
-import json
-import time as _time
-from dataclasses import dataclass, field, asdict
+import collections
+from dataclasses import dataclass, field
 from typing import Any
 
-from app.utils.logger import TrackLogger
-
-
 # ── Transit App's ETA Accuracy Benchmark thresholds ──────────────────────
+
 
 @dataclass(frozen=True)
 class TimeBucket:
     """A time bucket with asymmetric accuracy thresholds (seconds)."""
+
     name: str
-    min_seconds: int       # inclusive: >= this
-    max_seconds: int       # exclusive: < this
-    early_tolerance: int   # max seconds early (negative deviation)
-    late_tolerance: int    # max seconds late  (positive deviation)
+    min_seconds: int  # inclusive: >= this
+    max_seconds: int  # exclusive: < this
+    early_tolerance: int  # max seconds early (negative deviation)
+    late_tolerance: int  # max seconds late  (positive deviation)
 
 
 # Directly from Transit App's ETA-Accuracy-Benchmark specification
 BUCKETS: list[TimeBucket] = [
-    TimeBucket("0-3 min",   0,   180,  30,  90),
-    TimeBucket("3-6 min",   180, 360,  60, 150),
-    TimeBucket("6-10 min",  360, 600,  60, 210),
-    TimeBucket("10-15 min", 600, 900,  90, 270),
+    TimeBucket("0-3 min", 0, 180, 30, 90),
+    TimeBucket("3-6 min", 180, 360, 60, 150),
+    TimeBucket("6-10 min", 360, 600, 60, 210),
+    TimeBucket("10-15 min", 600, 900, 90, 270),
 ]
 
 
 @dataclass
 class BucketResult:
     """Accuracy stats for one time bucket."""
+
     bucket_name: str
     total: int = 0
     accurate: int = 0
-    early_miss: int = 0     # arrived too early (rider missed it)
-    late_miss: int = 0      # arrived too late (beyond tolerance)
+    early_miss: int = 0  # arrived too early (rider missed it)
+    late_miss: int = 0  # arrived too late (beyond tolerance)
 
     @property
     def accuracy(self) -> float:
@@ -94,6 +87,7 @@ class PredictionSample:
         stop_id:              Stop identifier
         source:               Prediction source ("model", "heuristic", "recency", etc.)
     """
+
     predicted_arrival_ts: float
     actual_arrival_ts: float
     sample_ts: float
@@ -105,10 +99,11 @@ class PredictionSample:
 @dataclass
 class BenchmarkResult:
     """Complete benchmark result with per-bucket and overall accuracy."""
+
     bucket_results: list[BucketResult] = field(default_factory=list)
     total_samples: int = 0
-    samples_in_range: int = 0       # samples within 0-15 min range
-    samples_out_of_range: int = 0   # samples outside 0-15 min (excluded)
+    samples_in_range: int = 0  # samples within 0-15 min range
+    samples_out_of_range: int = 0  # samples outside 0-15 min (excluded)
 
     @property
     def overall_accuracy(self) -> float:
@@ -118,9 +113,7 @@ class BenchmarkResult:
         percentages, which gives additional weight to smaller (closer) buckets
         since they contain fewer predictions.
         """
-        bucket_accuracies = [
-            b.accuracy for b in self.bucket_results if b.total > 0
-        ]
+        bucket_accuracies = [b.accuracy for b in self.bucket_results if b.total > 0]
         if not bucket_accuracies:
             return 0.0
         return sum(bucket_accuracies) / len(bucket_accuracies)
@@ -149,6 +142,7 @@ class BenchmarkResult:
 
 
 # ── Core benchmark computation ──────────────────────────────────────────
+
 
 def classify_prediction(sample: PredictionSample) -> tuple[str | None, bool]:
     """Classify a single prediction as accurate/inaccurate within its bucket.
@@ -196,13 +190,11 @@ def run_benchmark(samples: list[PredictionSample]) -> BenchmarkResult:
         BenchmarkResult with per-bucket and overall accuracy.
     """
     bucket_map: dict[str, BucketResult] = {
-        b.name: BucketResult(bucket_name=b.name)
-        for b in BUCKETS
+        b.name: BucketResult(bucket_name=b.name) for b in BUCKETS
     }
 
     out_of_range = 0
     for sample in samples:
-        time_to_actual = sample.actual_arrival_ts - sample.sample_ts
         time_variance = sample.actual_arrival_ts - sample.predicted_arrival_ts
 
         bucket_name, is_accurate = classify_prediction(sample)
@@ -217,16 +209,14 @@ def run_benchmark(samples: list[PredictionSample]) -> BenchmarkResult:
         elif time_variance < 0:
             br.early_miss += 1  # arrived before predicted (rider missed it)
         else:
-            br.late_miss += 1   # arrived too late beyond tolerance
+            br.late_miss += 1  # arrived too late beyond tolerance
 
-    result = BenchmarkResult(
+    return BenchmarkResult(
         bucket_results=list(bucket_map.values()),
         total_samples=len(samples),
         samples_in_range=sum(b.total for b in bucket_map.values()),
         samples_out_of_range=out_of_range,
     )
-
-    return result
 
 
 def run_benchmark_by_route(
@@ -246,10 +236,12 @@ def run_benchmark_by_route(
     }
 
     # Sort worst-performing first
-    return dict(sorted(
-        results.items(),
-        key=lambda kv: kv[1].overall_accuracy,
-    ))
+    return dict(
+        sorted(
+            results.items(),
+            key=lambda kv: kv[1].overall_accuracy,
+        )
+    )
 
 
 def run_benchmark_by_source(
@@ -273,8 +265,9 @@ def run_benchmark_by_source(
 
 # Circular buffer of recent prediction-vs-actual pairs for benchmarking.
 # Stored in module-level list (lightweight; for production use Redis ZSET).
-_recent_observations: list[PredictionSample] = []
-_MAX_OBSERVATIONS = 10_000
+_recent_observations: collections.deque[PredictionSample] = collections.deque(
+    maxlen=10_000
+)
 
 
 def record_observation(
@@ -290,17 +283,17 @@ def record_observation(
     Called when we can determine the actual arrival (e.g., from GTFS-RT
     snapshot diffing in recency_model.py).
     """
-    _recent_observations.append(PredictionSample(
-        predicted_arrival_ts=predicted_arrival_ts,
-        actual_arrival_ts=actual_arrival_ts,
-        sample_ts=sample_ts,
-        route_id=route_id,
-        stop_id=stop_id,
-        source=source,
-    ))
-    # Circular buffer: trim oldest observations
-    while len(_recent_observations) > _MAX_OBSERVATIONS:
-        _recent_observations.pop(0)
+    _recent_observations.append(
+        PredictionSample(
+            predicted_arrival_ts=predicted_arrival_ts,
+            actual_arrival_ts=actual_arrival_ts,
+            sample_ts=sample_ts,
+            route_id=route_id,
+            stop_id=stop_id,
+            source=source,
+        )
+    )
+    # deque(maxlen=…) handles eviction automatically.
 
 
 def get_current_benchmark() -> dict[str, Any]:
@@ -312,7 +305,7 @@ def get_current_benchmark() -> dict[str, Any]:
         return {
             "status": "no_observations",
             "message": "No prediction observations collected yet. "
-                       "Accuracy data accumulates as GTFS-RT feeds are polled.",
+            "Accuracy data accumulates as GTFS-RT feeds are polled.",
             "overall": None,
         }
 
@@ -325,11 +318,7 @@ def get_current_benchmark() -> dict[str, Any]:
         "observation_count": len(_recent_observations),
         "overall": overall.to_dict(),
         "by_route": {
-            route_id: result.to_dict()
-            for route_id, result in by_route.items()
+            route_id: result.to_dict() for route_id, result in by_route.items()
         },
-        "by_source": {
-            source: result.to_dict()
-            for source, result in by_source.items()
-        },
+        "by_source": {source: result.to_dict() for source, result in by_source.items()},
     }

@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Check if A train shape geometry passes near Sutphin Blvd."""
-import csv, math
+
+from __future__ import annotations
+
+import csv
+import math
 from collections import defaultdict
 
 DATA_DIR = "app/data"
@@ -9,12 +13,19 @@ DATA_DIR = "app/data"
 SUTPHIN_LAT = 40.7005
 SUTPHIN_LON = -73.8080
 
+
 def haversine_m(lat1, lon1, lat2, lon2):
     R = 6371000
     dlat = math.radians(lat2 - lat1)
     dlon = math.radians(lon2 - lon1)
-    a = math.sin(dlat/2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon/2)**2
-    return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+    a = (
+        math.sin(dlat / 2) ** 2
+        + math.cos(math.radians(lat1))
+        * math.cos(math.radians(lat2))
+        * math.sin(dlon / 2) ** 2
+    )
+    return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
 
 # Load shapes for A, C, E
 shapes_data = defaultdict(list)
@@ -41,14 +52,14 @@ print("=" * 70)
 for sid in a_kept + e_kept:
     pts = sorted(shapes_data.get(sid, []))
     nearby = []
-    min_dist = float('inf')
+    min_dist = float("inf")
     for seq, lat, lon in pts:
         d = haversine_m(lat, lon, SUTPHIN_LAT, SUTPHIN_LON)
         if d < min_dist:
             min_dist = d
         if d < 500:
             nearby.append((seq, lat, lon, d))
-    
+
     route = sid.split("..")[0]
     print(f"\n  {sid} ({len(pts)} pts): min_dist={min_dist:.0f}m to Sutphin")
     if nearby:
@@ -56,7 +67,7 @@ for sid in a_kept + e_kept:
         for seq, lat, lon, d in nearby[:5]:
             print(f"      seq={seq}: ({lat:.4f}, {lon:.4f}) dist={d:.0f}m")
     else:
-        print(f"    No points within 500m")
+        print("    No points within 500m")
 
 # Also check ALL A train shapes (not just dedup-kept ones)
 print("\n" + "=" * 70)
@@ -66,18 +77,20 @@ for sid in sorted(shapes_data.keys()):
     if not sid.startswith("A.."):
         continue
     pts = sorted(shapes_data[sid])
-    min_dist = float('inf')
+    min_dist = float("inf")
     closest = None
     for seq, lat, lon in pts:
         d = haversine_m(lat, lon, SUTPHIN_LAT, SUTPHIN_LON)
         if d < min_dist:
             min_dist = d
             closest = (seq, lat, lon)
-    print(f"  {sid}: min_dist={min_dist:.0f}m, closest_pt=({closest[1]:.4f}, {closest[2]:.4f})")
+    print(
+        f"  {sid}: min_dist={min_dist:.0f}m, closest_pt=({closest[1]:.4f}, {closest[2]:.4f})"
+    )
 
 # Check the corridor_pipeline trunk merge result
 # The trunk merge pools A+C+E polylines, so the E train's Jamaica extension
-# becomes part of the TRUNK.  Even though A's original shapes don't go to 
+# becomes part of the TRUNK.  Even though A's original shapes don't go to
 # Jamaica, the trunk baseline will cover Jamaica because E goes there.
 print("\n" + "=" * 70)
 print("TRUNK MERGE ANALYSIS: Blue trunk (A/C/E) coverage grid")
@@ -87,6 +100,8 @@ for route in ["A", "C", "E"]:
     for sid in sorted(shapes_data.keys()):
         if sid.startswith(f"{route}.."):
             pts = sorted(shapes_data[sid])
-            min_dist_sutphin = min(haversine_m(lat, lon, SUTPHIN_LAT, SUTPHIN_LON) for _, lat, lon in pts)
+            min_dist_sutphin = min(
+                haversine_m(lat, lon, SUTPHIN_LAT, SUTPHIN_LON) for _, lat, lon in pts
+            )
             if min_dist_sutphin < 500:
                 print(f"  {sid}: reaches within {min_dist_sutphin:.0f}m of Sutphin")

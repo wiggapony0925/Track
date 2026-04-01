@@ -1,13 +1,8 @@
-#
-# mta_client.py
-# TrackBackend
-#
-# Async HTTP client that fetches raw data from MTA endpoints.
-# Returns bytes (Protobuf) or parsed JSON depending on the feed.
-#
-# Uses a shared httpx.AsyncClient for connection pooling and a
-# bounded TTL cache with automatic eviction.
-#
+"""Async HTTP client that fetches raw data from MTA endpoints.
+Returns bytes (Protobuf) or parsed JSON depending on the feed.
+
+Uses a shared httpx.AsyncClient for connection pooling and a
+bounded TTL cache with automatic eviction."""
 
 from __future__ import annotations
 
@@ -24,9 +19,9 @@ from app.cache_config import (
     MTA_FEED_TTL_SECONDS,
     MTA_UPSTREAM_CONCURRENCY,
 )
+from app.clients import redis_client as _redis
 from app.config import get_settings
 from app.utils import cache_stats
-from app.clients import redis_client as _redis
 from app.utils.logger import TrackLogger
 
 # Cache-stats kind label used for all MTA feeds (subway / LIRR / MNR).
@@ -56,6 +51,7 @@ def _describe_exception(exc: BaseException) -> str:
 # TTL Cache with bounded size
 # ---------------------------------------------------------------------------
 
+
 class AsyncTTLCache:
     """Simple bounded TTL cache backed by an OrderedDict.
 
@@ -77,6 +73,15 @@ class AsyncTTLCache:
         self._cache: OrderedDict[str, tuple[float, Any]] = OrderedDict()
 
     def get_state(self, key: str) -> tuple[Any | None, str | None]:
+        """Look up a cached value and classify its freshness.
+
+        Args:
+            key: Cache key (typically a feed URL).
+
+        Returns:
+            Tuple of (value, state) where state is ``"fresh"``,
+            ``"stale"``, or ``None`` if the key is missing/expired.
+        """
         entry = self._cache.get(key)
         if entry is None:
             cache_stats.bucket("mta.feed").miss += 1
@@ -101,6 +106,12 @@ class AsyncTTLCache:
         return None, None
 
     def set(self, key: str, value: Any) -> None:
+        """Store a value in the cache with the current timestamp.
+
+        Args:
+            key: Cache key (typically a feed URL).
+            value: Data to cache (bytes or parsed JSON).
+        """
         # Remove first so re-insertion moves the key to the tail.
         self._cache.pop(key, None)
         if len(self._cache) >= self.max_size:
@@ -187,6 +198,12 @@ def _get_client() -> httpx.AsyncClient:
 
 
 def _build_mta_headers() -> dict[str, str]:
+    """Build HTTP headers for MTA API requests.
+
+    Returns:
+        Dict containing the ``x-api-key`` header if configured,
+        otherwise an empty dict.
+    """
     settings = get_settings()
     headers: dict[str, str] = {}
     if settings.api_keys.mta_api_key:
@@ -195,6 +212,19 @@ def _build_mta_headers() -> dict[str, str]:
 
 
 async def _fetch_from_upstream(url: str, *, parse_json: bool) -> Any:
+    """Fetch data from an MTA endpoint with retries.
+
+    Args:
+        url: Full MTA feed URL.
+        parse_json: If True, return parsed JSON; otherwise raw bytes.
+
+    Returns:
+        Parsed JSON object or raw bytes from the response.
+
+    Raises:
+        httpx.HTTPStatusError: On non-retryable HTTP errors.
+        httpx.TimeoutException: If all retries are exhausted.
+    """
     client = _get_client()
     settings = get_settings()
     max_retries = settings.app_settings.http_max_retries
@@ -226,6 +256,7 @@ async def _fetch_from_upstream(url: str, *, parse_json: bool) -> Any:
                 await asyncio.sleep(retry_delay)
                 continue
             raise
+    return None
 
 
 async def _fetch_with_cache(url: str, *, parse_json: bool) -> Any:
@@ -233,7 +264,11 @@ async def _fetch_with_cache(url: str, *, parse_json: bool) -> Any:
         data = await _fetch_from_upstream(url, parse_json=parse_json)
         _HTTP_CACHE.set(url, data)
         await _redis.feed_set(
-            _FEED_KIND, url, data, stale_ttl=_HTTP_CACHE.stale_ttl, is_bytes=not parse_json
+            _FEED_KIND,
+            url,
+            data,
+            stale_ttl=_HTTP_CACHE.stale_ttl,
+            is_bytes=not parse_json,
         )
         return data
 

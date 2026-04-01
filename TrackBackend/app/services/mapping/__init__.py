@@ -9,10 +9,12 @@ Modules:
     shape_utils            – Compact binary packing for GTFS shape coordinates
 """
 
+from __future__ import annotations
+
 __all__ = [
-    "corridor_pipeline",
-    "subway_shapes",
     "commuter_rail_shapes",
+    "corridor_pipeline",
     "polyline_quality",
     "shape_utils",
+    "subway_shapes",
 ]

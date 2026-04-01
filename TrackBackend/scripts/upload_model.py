@@ -46,6 +46,7 @@ BUCKET = os.environ.get("GTFS_BUCKET", "gtfs-data")
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _auth_headers() -> dict[str, str]:
     return {
         "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
@@ -84,7 +85,9 @@ def _upload(client: httpx.Client, archive_path: Path) -> bool:
             },
         )
         if resp.status_code in (200, 201):
-            print(f"  Uploaded {ARCHIVE_NAME} → Supabase bucket '{BUCKET}' ({method} {resp.status_code})")
+            print(
+                f"  Uploaded {ARCHIVE_NAME} → Supabase bucket '{BUCKET}' ({method} {resp.status_code})"
+            )
             return True
         if method == "PATCH" and resp.status_code in (400, 404):
             continue  # object doesn't exist yet, try POST
@@ -111,6 +114,7 @@ def _verify(client: httpx.Client) -> bool:
 # Main
 # ---------------------------------------------------------------------------
 
+
 def main() -> int:
     if not MODEL_PKL.exists():
         print(f"ERROR: model not found at {MODEL_PKL}")
@@ -123,7 +127,7 @@ def main() -> int:
 
     # Show model info
     pkl_kb = MODEL_PKL.stat().st_size / 1024
-    print(f"\nUploading delay model to Supabase")
+    print("\nUploading delay model to Supabase")
     print(f"  Source : {MODEL_PKL}  ({pkl_kb:.1f} KB)")
     print(f"  Bucket : {BUCKET}")
     print(f"  Object : {ARCHIVE_NAME}\n")

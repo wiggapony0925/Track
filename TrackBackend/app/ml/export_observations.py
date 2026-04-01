@@ -1,43 +1,38 @@
-#
-# export_observations.py
-# app/ml/export_observations.py
-#
-# ══════════════════════════════════════════════════════════════════
-# RETRAIN LINK  — exports live Redis recency data to a CSV file
-# that train_model.py can ingest via --real-data.
-#
-# Usage:
-#   python -m app.ml.export_observations                   # → observations.csv
-#   python -m app.ml.export_observations -o my_data.csv   # custom path
-#   python -m app.ml.export_observations --min-obs 5      # require ≥5 obs/key
-#
-# The CSV produced has columns expected by load_real_observations():
-#   route_id, stop_id, hour, dow, weather, mode, actual_factor, deviation_s
-#
-# ── How actual_factor is derived ──────────────────────────────────
-#
-#   Redis stores raw deviation_s (seconds late/early) recorded by
-#   recency_model.py.  The ML model predicts a multiplicative delay
-#   *factor* (1.0 = on-time, 2.0 = double the predicted time).
-#
-#   We convert:
-#       actual_factor = 1.0 + clamp(deviation_s, 0, MAX_LATE_S) / BASE_S
-#       BASE_S  = 300  (5 minutes — typical stop-to-stop travel time)
-#       MAX_LATE_S = 300  (cap at factor=2.0 as the model is clamped there)
-#
-#   Early trains (negative deviation_s) → factor = 1.0 (no speedup modelled).
-#   This is intentional: the model only predicts *additional wait* time, not
-#   optimistic compression.
-#
-# ── Redis key format ──────────────────────────────────────────────
-#   track:recency:obs:{route}:{stop_id}:{dow}:{hour}
-#      ZSET  score=unix_ts  value=deviation_s
-#
-# ── Requires ──────────────────────────────────────────────────────
-#   REDIS_URL env var (same as backend).  Safe to run against prod
-#   Redis — read-only; does not modify any keys.
-# ══════════════════════════════════════════════════════════════════
-#
+"""══════════════════════════════════════════════════════════════════
+RETRAIN LINK  — exports live Redis recency data to a CSV file
+that train_model.py can ingest via --real-data.
+
+Usage:
+python -m app.ml.export_observations                   # → observations.csv
+python -m app.ml.export_observations -o my_data.csv   # custom path
+python -m app.ml.export_observations --min-obs 5      # require ≥5 obs/key
+
+The CSV produced has columns expected by load_real_observations():
+route_id, stop_id, hour, dow, weather, mode, actual_factor, deviation_s
+
+── How actual_factor is derived ──────────────────────────────────
+
+Redis stores raw deviation_s (seconds late/early) recorded by
+recency_model.py.  The ML model predicts a multiplicative delay
+*factor* (1.0 = on-time, 2.0 = double the predicted time).
+
+We convert:
+actual_factor = 1.0 + clamp(deviation_s, 0, MAX_LATE_S) / BASE_S
+BASE_S  = 300  (5 minutes — typical stop-to-stop travel time)
+MAX_LATE_S = 300  (cap at factor=2.0 as the model is clamped there)
+
+Early trains (negative deviation_s) → factor = 1.0 (no speedup modelled).
+This is intentional: the model only predicts *additional wait* time, not
+optimistic compression.
+
+── Redis key format ──────────────────────────────────────────────
+track:recency:obs:{route}:{stop_id}:{dow}:{hour}
+ZSET  score=unix_ts  value=deviation_s
+
+── Requires ──────────────────────────────────────────────────────
+REDIS_URL env var (same as backend).  Safe to run against prod
+Redis — read-only; does not modify any keys.
+══════════════════════════════════════════════════════════════════."""
 
 from __future__ import annotations
 
@@ -50,16 +45,17 @@ import time
 from pathlib import Path
 
 # ── Constants ──────────────────────────────────────────────────────────────
-_OBS_PREFIX   = "track:recency:obs"
-_SCAN_MATCH   = f"{_OBS_PREFIX}:*"
-_SCAN_COUNT   = 200       # hint for Redis SCAN — larger = fewer round-trips
-BASE_S        = 300.0     # 5-minute baseline for factor conversion
-MAX_LATE_S    = 300.0     # caps factor at 2.0 — matches model clamp in train_model.py
-MAX_EARLY_S   = 600.0     # ignore extreme early readings (likely bad GTFS data)
-MAX_OBS_AGE_H = 24.0      # discard observations older than 24 h
+_OBS_PREFIX = "track:recency:obs"
+_SCAN_MATCH = f"{_OBS_PREFIX}:*"
+_SCAN_COUNT = 200  # hint for Redis SCAN — larger = fewer round-trips
+BASE_S = 300.0  # 5-minute baseline for factor conversion
+MAX_LATE_S = 300.0  # caps factor at 2.0 — matches model clamp in train_model.py
+MAX_EARLY_S = 600.0  # ignore extreme early readings (likely bad GTFS data)
+MAX_OBS_AGE_H = 24.0  # discard observations older than 24 h
 
 
 # ── Redis helpers ──────────────────────────────────────────────────────────
+
 
 def _get_redis_url() -> str:
     url = os.environ.get("REDIS_URL", "").strip()
@@ -84,7 +80,7 @@ async def _collect_observations(
     except ImportError:
         raise SystemExit(
             "ERROR: redis package not installed.  Run:  pip install redis"
-        )
+        ) from None
 
     rows: list[dict] = []
     cutoff_ts = time.time() - max_age_hours * 3600
@@ -111,15 +107,15 @@ async def _collect_observations(
             if len(parts) < 7:
                 continue
 
-            route_id   = parts[3]
+            route_id = parts[3]
             # stop_id may contain colons — everything between route and the last 2 fields
-            hour_str   = parts[-1]
-            dow_str    = parts[-2]
-            stop_id    = ":".join(parts[4:-2])
+            hour_str = parts[-1]
+            dow_str = parts[-2]
+            stop_id = ":".join(parts[4:-2])
 
             try:
                 hour = int(hour_str)
-                dow  = int(dow_str)
+                dow = int(dow_str)
             except ValueError:
                 continue
 
@@ -149,16 +145,18 @@ async def _collect_observations(
                 clamped = max(0.0, min(MAX_LATE_S, deviation_s))
                 actual_factor = round(1.0 + clamped / BASE_S, 4)
 
-                rows.append({
-                    "route_id":      route_id,
-                    "stop_id":       stop_id,
-                    "hour":          hour,
-                    "dow":           dow,
-                    "weather":       "clear",   # not stored in Redis — use neutral default
-                    "mode":          _infer_mode(route_id),
-                    "actual_factor": actual_factor,
-                    "deviation_s":   round(deviation_s, 2),
-                })
+                rows.append(
+                    {
+                        "route_id": route_id,
+                        "stop_id": stop_id,
+                        "hour": hour,
+                        "dow": dow,
+                        "weather": "clear",  # not stored in Redis — use neutral default
+                        "mode": _infer_mode(route_id),
+                        "actual_factor": actual_factor,
+                        "deviation_s": round(deviation_s, 2),
+                    }
+                )
                 key_rows += 1
 
         print(
@@ -182,15 +180,23 @@ def _infer_mode(route_id: str) -> str:
     if len(r) >= 4 and r[0].isalpha() and r[1:].isdigit():
         return "bus"
     lirr_prefixes = ("LIRR", "LI")
-    mnr_prefixes  = ("MNR", "MNWHL", "MNCORR", "MNHARLEM", "MNMADISON")
+    mnr_prefixes = ("MNR", "MNWHL", "MNCORR", "MNHARLEM", "MNMADISON")
     if any(r.startswith(p) for p in lirr_prefixes + mnr_prefixes):
         return "rail"
     return "subway"
 
 
 def _write_csv(rows: list[dict], output_path: Path) -> None:
-    fieldnames = ["route_id", "stop_id", "hour", "dow", "weather", "mode",
-                  "actual_factor", "deviation_s"]
+    fieldnames = [
+        "route_id",
+        "stop_id",
+        "hour",
+        "dow",
+        "weather",
+        "mode",
+        "actual_factor",
+        "deviation_s",
+    ]
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
@@ -199,20 +205,26 @@ def _write_csv(rows: list[dict], output_path: Path) -> None:
 
 
 async def _main(args: argparse.Namespace) -> None:
-    redis_url  = _get_redis_url()
-    output     = Path(args.output)
-    min_obs    = args.min_obs
-    max_age_h  = args.max_age_hours
+    redis_url = _get_redis_url()
+    output = Path(args.output)
+    min_obs = args.min_obs
+    max_age_h = args.max_age_hours
 
-    print(f"Track observation exporter", flush=True)
-    print(f"  Redis:    {redis_url[:40]}{'…' if len(redis_url) > 40 else ''}", flush=True)
+    print("Track observation exporter", flush=True)
+    print(
+        f"  Redis:    {redis_url[:40]}{'…' if len(redis_url) > 40 else ''}", flush=True
+    )
     print(f"  Output:   {output}", flush=True)
-    print(f"  Min obs:  {min_obs}  (keys with fewer observations are skipped)", flush=True)
+    print(
+        f"  Min obs:  {min_obs}  (keys with fewer observations are skipped)", flush=True
+    )
     print(f"  Max age:  {max_age_h}h", flush=True)
     print(flush=True)
 
     print("Scanning Redis…", flush=True)
-    rows = await _collect_observations(redis_url, min_obs=min_obs, max_age_hours=max_age_h)
+    rows = await _collect_observations(
+        redis_url, min_obs=min_obs, max_age_hours=max_age_h
+    )
 
     if not rows:
         print(
@@ -225,12 +237,12 @@ async def _main(args: argparse.Namespace) -> None:
 
     _write_csv(rows, output)
 
-    delayed    = sum(1 for r in rows if r["deviation_s"] > 30)
-    early      = sum(1 for r in rows if r["deviation_s"] < -30)
-    on_time    = len(rows) - delayed - early
-    mean_dev   = sum(r["deviation_s"] for r in rows) / len(rows)
-    mean_fac   = sum(r["actual_factor"] for r in rows) / len(rows)
-    modes      = {}
+    delayed = sum(1 for r in rows if r["deviation_s"] > 30)
+    early = sum(1 for r in rows if r["deviation_s"] < -30)
+    on_time = len(rows) - delayed - early
+    mean_dev = sum(r["deviation_s"] for r in rows) / len(rows)
+    mean_fac = sum(r["actual_factor"] for r in rows) / len(rows)
+    modes = {}
     for r in rows:
         modes[r["mode"]] = modes.get(r["mode"], 0) + 1
 
@@ -245,8 +257,7 @@ async def _main(args: argparse.Namespace) -> None:
     print(f"{'─' * 55}", flush=True)
     print(f"\n  Saved → {output}", flush=True)
     print(
-        f"\nNext step:\n"
-        f"  python -m app.ml.train_model --real-data {output}",
+        f"\nNext step:\n  python -m app.ml.train_model --real-data {output}",
         flush=True,
     )
 
@@ -264,7 +275,8 @@ if __name__ == "__main__":
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
-        "-o", "--output",
+        "-o",
+        "--output",
         default="observations.csv",
         metavar="PATH",
         help="Output CSV file path (default: observations.csv)",

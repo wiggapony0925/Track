@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """Check the processed stations response for JSON issues."""
+
+from __future__ import annotations
+
 import json
 import math
+
 from app.services.mapping.corridor_pipeline import get_processed_stops
 
 stops = get_processed_stops()

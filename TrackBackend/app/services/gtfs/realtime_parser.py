@@ -1,26 +1,27 @@
-#
-# realtime_parser.py
-# TrackBackend/app/services/gtfs
-#
-# Converts raw MTA Protobuf (GTFS-Realtime) and JSON data into clean,
-# standardized Pydantic models that the iOS app can consume directly.
-#
+"""TrackBackend/app/services/gtfs
+
+Converts raw MTA Protobuf (GTFS-Realtime) and JSON data into clean,
+standardized Pydantic models that the iOS app can consume directly."""
 
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import time as _time
 from typing import Any
 
 from google.transit import gtfs_realtime_pb2  # type: ignore[import-untyped]
 
-from app.config import get_feed_url, get_settings
-from app.models import ElevatorStatus, TrackArrival, TransitAlert
 from app.clients.mta_client import fetch_json, fetch_protobuf
-from app.ml.recency_model import observe_trip_updates_batch, observe_siri_delays_batch
+from app.config import get_feed_url, get_settings
+from app.ml.recency_model import observe_siri_delays_batch, observe_trip_updates_batch
+from app.models import ElevatorStatus, TrackArrival, TransitAlert
 from app.services.transit.station_lookup import get_stop_info, get_stop_name
 from app.utils.geo_utils import minutes_until as _minutes_until
 from app.utils.logger import TrackLogger
 
+# Strong references to fire-and-forget tasks so the GC won't collect them.
+_background_tasks: set[asyncio.Task[Any]] = set()
 
 # ---------------------------------------------------------------------------
 # Parsed-arrivals cache — avoid re-parsing protobuf entities on cache hits.
@@ -35,15 +36,16 @@ from app.utils.logger import TrackLogger
 # With this cache, the second+ call within the TTL returns the pre-parsed
 # list in <1 µs — zero thread pool, zero CPU, zero GIL pressure.
 # ---------------------------------------------------------------------------
-import time as _time
-
-_PARSED_CACHE: dict[str, tuple[float, list, list, int]] = {}  # url → (ts, arrivals, siri_obs, entity_count)
+_PARSED_CACHE: dict[str, tuple[float, list, list, int]] = (
+    {}
+)  # url → (ts, arrivals, siri_obs, entity_count)
 _PARSED_CACHE_TTL = 120.0  # 2 min — outlive request interval so subway hits warm cache
 
 
 def _parse_feed_sync(
-    raw: bytes, line_id: str,
-) -> tuple[list["TrackArrival"], list[tuple[str, str, float]], int]:
+    raw: bytes,
+    line_id: str,
+) -> tuple[list[TrackArrival], list[tuple[str, str, float]], int]:
     """Parse a GTFS-RT protobuf feed and extract arrivals — **runs in a thread**.
 
     This is the CPU-heavy function that was previously blocking the event
@@ -73,7 +75,11 @@ def _parse_feed_sync(
         if trip.stop_time_update:
             last_stop_id = trip.stop_time_update[-1].stop_id
             destination = get_stop_name(last_stop_id)
-            if destination == "Unknown" and len(last_stop_id) > 1 and last_stop_id[-1] in "NS":
+            if (
+                destination == "Unknown"
+                and len(last_stop_id) > 1
+                and last_stop_id[-1] in "NS"
+            ):
                 destination = get_stop_name(last_stop_id[:-1])
             if destination == "Unknown":
                 destination = None
@@ -90,13 +96,15 @@ def _parse_feed_sync(
             minutes = _minutes_until(arrival_time)
             direction = "N" if stu.stop_id.endswith("N") else "S"
 
-            gtfs_delay_s: int | None = None
             if stu.HasField("arrival") and stu.arrival.delay != 0:
-                gtfs_delay_s = stu.arrival.delay
                 siri_obs.append((route, stu.stop_id, float(stu.arrival.delay)))
 
             resolved_name = get_stop_name(stu.stop_id)
-            if resolved_name == stu.stop_id and len(stu.stop_id) > 1 and stu.stop_id[-1] in "NS":
+            if (
+                resolved_name == stu.stop_id
+                and len(stu.stop_id) > 1
+                and stu.stop_id[-1] in "NS"
+            ):
                 resolved_name = get_stop_name(stu.stop_id[:-1])
 
             stop_info = get_stop_info(stu.stop_id)
@@ -124,7 +132,9 @@ def _parse_feed_sync(
 
 
 async def get_arrivals_for_line(
-    line_id: str, *, force_refresh: bool = False,
+    line_id: str,
+    *,
+    force_refresh: bool = False,
 ) -> list[TrackArrival]:
     """Fetch & decode GTFS-RT Protobuf for *line_id*, returning clean arrivals.
 
@@ -152,7 +162,7 @@ async def get_arrivals_for_line(
     if not force_refresh:
         cached = _PARSED_CACHE.get(url)
         if cached is not None:
-            ts, cached_arrivals, cached_siri_obs, cached_entity_count = cached
+            ts, cached_arrivals, _cached_siri_obs, _cached_entity_count = cached
             if _time.time() - ts < _PARSED_CACHE_TTL:
                 TrackLogger.cache(f"PARSED HIT {line_id}")
                 return list(cached_arrivals)  # shallow copy — caller may sort/filter
@@ -172,13 +182,17 @@ async def get_arrivals_for_line(
     # Cache the parsed result so subsequent calls skip all CPU work
     _PARSED_CACHE[url] = (_time.time(), arrivals, siri_obs, entity_count)
 
-    TrackLogger.subway(f"Feed {line_id}: {len(arrivals)} arrivals from {entity_count} entities")
+    TrackLogger.subway(
+        f"Feed {line_id}: {len(arrivals)} arrivals from {entity_count} entities"
+    )
 
     # ── Fire-and-forget recency observations ────────────────────────────
     # Collect all SIRI delay observations and trip snapshots, then write
     # everything in two pipelines (one per call) instead of one future
     # per stop/trip — prevents connection-pool exhaustion.
-    trip_stops: dict[str, tuple[str, dict[str, int]]] = {}  # trip_id → (route_id, {stop_id: ts})
+    trip_stops: dict[str, tuple[str, dict[str, int]]] = (
+        {}
+    )  # trip_id → (route_id, {stop_id: ts})
     for arrival in arrivals:
         if arrival.trip_id and arrival.arrival_ts:
             if arrival.trip_id not in trip_stops:
@@ -186,11 +200,15 @@ async def get_arrivals_for_line(
             trip_stops[arrival.trip_id][1][arrival.station] = arrival.arrival_ts
 
     if siri_obs:
-        asyncio.ensure_future(observe_siri_delays_batch(siri_obs))
+        task = asyncio.ensure_future(observe_siri_delays_batch(siri_obs))
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)
 
     if trip_stops:
         trips = [(tid, rid, smap) for tid, (rid, smap) in trip_stops.items()]
-        asyncio.ensure_future(observe_trip_updates_batch(trips))
+        task = asyncio.ensure_future(observe_trip_updates_batch(trips))
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)
 
     return arrivals
 
@@ -286,15 +304,17 @@ async def _parse_alert_feed(url: str, mode: str) -> list[TransitAlert]:
             mes = ie.get("transit_realtime.mercury_entity_selector", {})
             so_raw = mes.get("sort_order", "")
             if ":" in so_raw:
-                try:
+                with contextlib.suppress(ValueError, IndexError):
                     max_sort_order = max(max_sort_order, int(so_raw.rsplit(":", 1)[-1]))
-                except (ValueError, IndexError):
-                    pass
 
         # ── Text fields ─────────────────────────────────────────────────
         header_text = alert_data.get("header_text", {})
         translations = header_text.get("translation", [])
-        title = translations[0].get("text", "Service Alert") if translations else "Service Alert"
+        title = (
+            translations[0].get("text", "Service Alert")
+            if translations
+            else "Service Alert"
+        )
 
         desc_text = alert_data.get("description_text", {})
         desc_translations = desc_text.get("translation", [])
@@ -349,7 +369,7 @@ async def get_alerts(mode: str | None = None) -> list[TransitAlert]:
     results = await asyncio.gather(*tasks, return_exceptions=True)
     all_alerts: list[TransitAlert] = []
     ok_count = 0
-    for m_key, result in zip(feed_map.keys(), results):
+    for m_key, result in zip(feed_map.keys(), results, strict=False):
         if isinstance(result, BaseException):
             TrackLogger.info(
                 f"[ALERTS] {m_key} alert feed failed: {result}",
@@ -359,7 +379,9 @@ async def get_alerts(mode: str | None = None) -> list[TransitAlert]:
         all_alerts.extend(result)
         ok_count += 1
 
-    TrackLogger.alerts(f"Fetched {len(all_alerts)} alerts across {ok_count}/{len(feed_map)} feeds")
+    TrackLogger.alerts(
+        f"Fetched {len(all_alerts)} alerts across {ok_count}/{len(feed_map)} feeds"
+    )
     return all_alerts
 
 

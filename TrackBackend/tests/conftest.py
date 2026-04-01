@@ -1,11 +1,8 @@
-#
-# conftest.py
-# TrackBackend/tests
-#
-# Shared pytest fixtures for test isolation.
-# Clears module-level caches between tests so stale data from one test
-# cannot leak into another.
-#
+"""Shared pytest fixtures for test isolation.
+Clears module-level caches between tests so stale data from one test
+cannot leak into another."""
+
+from __future__ import annotations
 
 import pytest
 
@@ -33,6 +30,7 @@ def _pretend_warmed_up():
     endpoint tests run against mocked data without hitting the gate.
     """
     import app.main as _main
+
     orig = _main._warmup_complete
     _main._warmup_complete = True
     yield
@@ -44,12 +42,14 @@ def _do_clear():
     the fixture never breaks a test for unrelated import reasons."""
     try:
         from app.routers.nearby import clear_nearby_cache
+
         clear_nearby_cache()
     except Exception:
         pass
 
     try:
         from app.clients.bus_client import clear_bus_cache
+
         clear_bus_cache()
     except Exception:
         pass

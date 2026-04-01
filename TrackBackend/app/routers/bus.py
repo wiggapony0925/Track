@@ -1,21 +1,18 @@
-#
-# bus.py
-# TrackBackend
-#
-# Router for MTA Bus endpoints.
-# Uses the dual-API architecture: OBA for static data, SIRI for real-time.
-#
+"""Router for MTA Bus endpoints.
+Uses the dual-API architecture: OBA for static data, SIRI for real-time."""
 
 from __future__ import annotations
 
-import traceback
-from datetime import datetime, timedelta
+import asyncio as _asyncio
+import re as _re
+import time as _time
+from collections import OrderedDict as _OrderedDict
+from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import httpx
 from fastapi import APIRouter, HTTPException, Path, Query, Response
 
-from app.config import get_settings
-from app.models import BusArrival, BusRoute, BusStop, BusVehicle, RouteShape, BusScheduleResponse, BusScheduleDirection, BusScheduleDeparture, RESP_404, RESP_502
 from app.clients.bus_client import (
     get_nearby_stops,
     get_realtime_arrivals,
@@ -24,6 +21,19 @@ from app.clients.bus_client import (
     get_static_route_shape,
     get_stops,
     get_vehicle_positions,
+)
+from app.config import get_settings
+from app.models import (
+    RESP_404,
+    RESP_502,
+    BusArrival,
+    BusRoute,
+    BusScheduleDeparture,
+    BusScheduleDirection,
+    BusScheduleResponse,
+    BusStop,
+    BusVehicle,
+    RouteShape,
 )
 from app.services.transit.schedule_service import schedule_service
 from app.utils.logger import TrackLogger
@@ -62,18 +72,16 @@ def _raise_bus_upstream_http_error(exc: httpx.HTTPStatusError) -> None:
 # and the only bus endpoint that had NO caching.  A 2-minute fresh window
 # with 10-minute stale-while-revalidate covers both rapid re-opens and
 # background refresh, preventing upstream pile-up on a single-worker server.
-import time as _time, re as _re
-from collections import OrderedDict as _OrderedDict
 
 # OrderedDict gives O(1) LRU eviction: move_to_end() on access,
 # popitem(last=False) to evict the oldest entry.
 _schedule_cache: _OrderedDict[str, tuple[float, BusScheduleResponse]] = _OrderedDict()
-_SCHEDULE_FRESH_TTL = 120       # 2 min
-_SCHEDULE_STALE_TTL = 600       # 10 min
-_SCHEDULE_MAX_SIZE  = 100
-_schedule_inflight: dict[str, "asyncio.Task[BusScheduleResponse]"] = {}
-
-import asyncio as _asyncio
+_SCHEDULE_FRESH_TTL = 120  # 2 min
+_SCHEDULE_STALE_TTL = 600  # 10 min
+_SCHEDULE_MAX_SIZE = 100
+_OBA_REQUEST_TIMEOUT = 10
+_MAX_SCHEDULE_SAMPLE_STOPS = 6
+_schedule_inflight: dict[str, _asyncio.Task[BusScheduleResponse]] = {}
 
 
 def _normalize_route_token(raw: str) -> str:
@@ -89,8 +97,7 @@ def _normalize_route_token(raw: str) -> str:
     token = _re.sub(r"(?<=\D)0+(?=\d)", "", token) or token
     # Unify SBS variants: M34+SBS → M34-SBS, M34+ → M34-SBS
     token = _re.sub(r"\+SBS$", "-SBS", token)
-    token = _re.sub(r"\+$", "-SBS", token)
-    return token
+    return _re.sub(r"\+$", "-SBS", token)
 
 
 # Regex to extract a bus route token embedded between underscores in a trip ID.
@@ -122,13 +129,17 @@ async def _fetch_bus_schedule_uncached(route_id: str) -> BusScheduleResponse:
         TrackLogger.warning("[SCHEDULE] OBA base URL not configured", tag="BUS")
         return BusScheduleResponse(route_id=route_id, directions=[])
 
-    now = datetime.now(timezone(timedelta(hours=-5)))
+    now = datetime.now(ZoneInfo("America/New_York"))
     now_epoch = int(now.timestamp())
 
     try:
         stop_models = await get_stops(route_id)
     except Exception as e:
-        TrackLogger.error(f"[SCHEDULE] Failed to get stops for {route_id}: {e}", tag="BUS", exc_info=True)
+        TrackLogger.error(
+            f"[SCHEDULE] Failed to get stops for {route_id}: {e}",
+            tag="BUS",
+            exc_info=True,
+        )
         return BusScheduleResponse(route_id=route_id, directions=[])
 
     if not stop_models:
@@ -137,7 +148,7 @@ async def _fetch_bus_schedule_uncached(route_id: str) -> BusScheduleResponse:
     # Always include the first and last stops (terminals) — these have
     # the most reliable schedule data because every trip passes through
     # them.  Fill the remaining slots with evenly-spaced interior stops.
-    max_sample = 6
+    max_sample = _MAX_SCHEDULE_SAMPLE_STOPS
     if len(stop_models) <= max_sample:
         sample_stops = stop_models
     else:
@@ -145,7 +156,7 @@ async def _fetch_bus_schedule_uncached(route_id: str) -> BusScheduleResponse:
         interior = stop_models[1:-1]
         step = len(interior) / interior_count
         sampled_interior = [interior[int(i * step)] for i in range(interior_count)]
-        sample_stops = [stop_models[0]] + sampled_interior + [stop_models[-1]]
+        sample_stops = [stop_models[0], *sampled_interior, stop_models[-1]]
 
     TrackLogger.info(
         f"[SCHEDULE] {route_id}: {len(stop_models)} total stops, "
@@ -158,7 +169,7 @@ async def _fetch_bus_schedule_uncached(route_id: str) -> BusScheduleResponse:
     interline_skipped = 0
 
     # Re-use a single httpx client for all stops (connection pooling)
-    async with httpx.AsyncClient(timeout=10) as client:
+    async with httpx.AsyncClient(timeout=_OBA_REQUEST_TIMEOUT) as client:
         for stop in sample_stops:
             if not stop.id:
                 continue
@@ -205,15 +216,17 @@ async def _fetch_bus_schedule_uncached(route_id: str) -> BusScheduleResponse:
                             interline_skipped += 1
                             continue
 
-                        all_departures.append(BusScheduleDeparture(
-                            stop_name=stop.name,
-                            stop_id=stop.id,
-                            departure_time=t // 1000,
-                            headsign=headsign,
-                            trip_id=trip_id,
-                        ))
+                        all_departures.append(
+                            BusScheduleDeparture(
+                                stop_name=stop.name,
+                                stop_id=stop.id,
+                                departure_time=t // 1000,
+                                headsign=headsign,
+                                trip_id=trip_id,
+                            )
+                        )
 
-            found_headsigns = set(d.headsign for d in all_departures)
+            found_headsigns = {d.headsign for d in all_departures}
             if len(found_headsigns) >= 2 and len(all_departures) >= 10:
                 break
 
@@ -243,12 +256,14 @@ async def _fetch_bus_schedule_uncached(route_id: str) -> BusScheduleResponse:
             tag="BUS",
         )
 
-        directions.append(BusScheduleDirection(
-            route_id=route_id,
-            direction=headsign,
-            headsign=headsign,
-            departures=unique[:30],
-        ))
+        directions.append(
+            BusScheduleDirection(
+                route_id=route_id,
+                direction=headsign,
+                headsign=headsign,
+                departures=unique[:30],
+            )
+        )
 
     return BusScheduleResponse(route_id=route_id, directions=directions)
 
@@ -264,7 +279,11 @@ async def _fetch_bus_schedule_uncached(route_id: str) -> BusScheduleResponse:
     responses={**RESP_404, **RESP_502},
 )
 async def get_bus_schedule(
-    route_id: str = Path(..., description="MTA bus route ID — short name or fully-qualified OBA ID.", examples=["B63", "M34-SBS", "MTA NYCT_B63"]),
+    route_id: str = Path(
+        ...,
+        description="MTA bus route ID — short name or fully-qualified OBA ID.",
+        examples=["B63", "M34-SBS", "MTA NYCT_B63"],
+    ),
     response: Response = None,
 ) -> BusScheduleResponse:
     """Return today's upcoming scheduled departures for a bus route.
@@ -276,7 +295,9 @@ async def get_bus_schedule(
 
     Cached for 60 s with stale-while-revalidate.
     """
-    response.headers["Cache-Control"] = "public, max-age=60, stale-while-revalidate=600, stale-if-error=3600"
+    response.headers["Cache-Control"] = (
+        "public, max-age=60, stale-while-revalidate=600, stale-if-error=3600"
+    )
 
     key = _normalize_route_token(route_id)
     now = _time.monotonic()
@@ -288,21 +309,32 @@ async def get_bus_schedule(
         age = now - ts
         if age < _SCHEDULE_FRESH_TTL:
             _schedule_cache.move_to_end(key)  # mark as recently used
-            TrackLogger.info(f"[SCHEDULE] CACHE HIT {route_id} (age={age:.0f}s)", tag="BUS")
+            TrackLogger.info(
+                f"[SCHEDULE] CACHE HIT {route_id} (age={age:.0f}s)", tag="BUS"
+            )
             return result
         if age < _SCHEDULE_STALE_TTL:
-            TrackLogger.info(f"[SCHEDULE] CACHE STALE-HIT {route_id} (age={age:.0f}s), bg refresh", tag="BUS")
+            TrackLogger.info(
+                f"[SCHEDULE] CACHE STALE-HIT {route_id} (age={age:.0f}s), bg refresh",
+                tag="BUS",
+            )
             # Return stale, refresh in background
             if key not in _schedule_inflight:
+
                 async def _bg_refresh(k: str, rid: str) -> None:
                     try:
                         fresh = await _fetch_bus_schedule_uncached(rid)
                         _schedule_cache[k] = (_time.monotonic(), fresh)
                     except Exception as exc:
-                        TrackLogger.warning(f"[SCHEDULE] bg refresh {rid}: {exc}", tag="BUS")
+                        TrackLogger.warning(
+                            f"[SCHEDULE] bg refresh {rid}: {exc}", tag="BUS"
+                        )
                     finally:
                         _schedule_inflight.pop(k, None)
-                _schedule_inflight[key] = _asyncio.create_task(_bg_refresh(key, route_id))
+
+                _schedule_inflight[key] = _asyncio.create_task(
+                    _bg_refresh(key, route_id)
+                )
             return result
 
     # ── Deduplicate inflight requests ──────────────────────────────────
@@ -366,7 +398,11 @@ async def bus_routes() -> list[BusRoute]:
     responses={**RESP_502},
 )
 async def bus_stops(
-    route_id: str = Path(..., description="Fully-qualified OBA route ID.", examples=["MTA NYCT_B63", "MTA NYCT_M34-SBS"]),
+    route_id: str = Path(
+        ...,
+        description="Fully-qualified OBA route ID.",
+        examples=["MTA NYCT_B63", "MTA NYCT_M34-SBS"],
+    ),
     response: Response = None,
 ) -> list[BusStop]:
     """Return stops for a bus route.
@@ -411,16 +447,36 @@ async def bus_stops(
 )
 async def bus_nearby(
     response: Response,
-    lat: float = Query(..., ge=-90, le=90, description="Latitude of the user's location.", examples=[40.7580]),
-    lon: float = Query(..., ge=-180, le=180, description="Longitude of the user's location.", examples=[-73.9855]),
-    radius: int | None = Query(None, ge=100, le=10000, description="Maximum search radius from the request location (in meters). Defaults to the server-configured value (~800\u202fm).", examples=[800]),
+    lat: float = Query(
+        ...,
+        ge=-90,
+        le=90,
+        description="Latitude of the user's location.",
+        examples=[40.7580],
+    ),
+    lon: float = Query(
+        ...,
+        ge=-180,
+        le=180,
+        description="Longitude of the user's location.",
+        examples=[-73.9855],
+    ),
+    radius: int | None = Query(
+        None,
+        ge=100,
+        le=10000,
+        description="Maximum search radius from the request location (in meters). Defaults to the server-configured value (~800\u202fm).",
+        examples=[800],
+    ),
 ) -> list[BusStop]:
     """Return bus stops near a GPS coordinate.
 
     Returns an empty array if the upstream API is unavailable.
     """
     settings = get_settings()
-    effective_radius = radius if radius is not None else settings.app_settings.search_radius_meters
+    effective_radius = (
+        radius if radius is not None else settings.app_settings.search_radius_meters
+    )
     TrackLogger.location(lat, lon, "bus/nearby")
     try:
         return await get_nearby_stops(lat, lon, radius_m=effective_radius)
@@ -455,7 +511,11 @@ async def bus_nearby(
     responses={**RESP_502},
 )
 async def bus_live(
-    stop_id: str = Path(..., description="MTA stop ID (OBA format).", examples=["MTA_308214", "MTA_400062"]),
+    stop_id: str = Path(
+        ...,
+        description="MTA stop ID (OBA format).",
+        examples=["MTA_308214", "MTA_400062"],
+    ),
     response: Response = None,
 ) -> list[BusArrival]:
     """Return real-time bus arrivals at a stop.
@@ -470,6 +530,7 @@ async def bus_live(
 
     Falls back to scheduled departures if no live data is available.
     """
+
     def _schedule_fallback() -> list[BusArrival]:
         scheduled = schedule_service.get_scheduled_arrivals(stop_id, limit=5)
         return [
@@ -479,7 +540,9 @@ async def bus_live(
                 stop_id=s.station,
                 status_text=f"{s.destination} ({s.status})",
                 status="Scheduled",
-                expected_arrival=datetime.fromtimestamp(s.arrival_ts) if s.arrival_ts else None,
+                expected_arrival=(
+                    datetime.fromtimestamp(s.arrival_ts) if s.arrival_ts else None
+                ),
                 distance_meters=None,
                 bearing=None,
             )
@@ -488,14 +551,19 @@ async def bus_live(
 
     try:
         live_arrivals = await get_realtime_arrivals(stop_id)
-        
+
         # Filter out stale arrivals (older than 1 minute ago)
-        now_utc = datetime.now(timezone.utc)
+        now_utc = datetime.now(UTC)
         live_arrivals = [
-            a for a in live_arrivals
-            if not a.expected_arrival or (
-                a.expected_arrival.replace(tzinfo=timezone.utc) if a.expected_arrival.tzinfo is None else a.expected_arrival
-            ) > now_utc - timedelta(seconds=60)
+            a
+            for a in live_arrivals
+            if not a.expected_arrival
+            or (
+                a.expected_arrival.replace(tzinfo=UTC)
+                if a.expected_arrival.tzinfo is None
+                else a.expected_arrival
+            )
+            > now_utc - timedelta(seconds=60)
         ]
 
         if not live_arrivals:
@@ -532,7 +600,11 @@ async def bus_live(
     responses={**RESP_502},
 )
 async def bus_vehicles(
-    route_id: str = Path(..., description="Fully-qualified OBA route ID.", examples=["MTA NYCT_B63", "MTA NYCT_M34-SBS"]),
+    route_id: str = Path(
+        ...,
+        description="Fully-qualified OBA route ID.",
+        examples=["MTA NYCT_B63", "MTA NYCT_M34-SBS"],
+    ),
     response: Response = None,
 ) -> list[BusVehicle]:
     """Return live vehicle positions for a bus route.
@@ -545,7 +617,9 @@ async def bus_vehicles(
 
     Cached for 5 s with stale-while-revalidate.
     """
-    response.headers["Cache-Control"] = "public, max-age=5, stale-while-revalidate=30, stale-if-error=120"
+    response.headers["Cache-Control"] = (
+        "public, max-age=5, stale-while-revalidate=30, stale-if-error=120"
+    )
     try:
         return await get_vehicle_positions(route_id)
     except httpx.HTTPStatusError as exc:
@@ -579,7 +653,11 @@ async def bus_vehicles(
     responses={**RESP_404, **RESP_502},
 )
 async def bus_route_shape(
-    route_id: str = Path(..., description="Fully-qualified OBA route ID.", examples=["MTA NYCT_B63", "MTA NYCT_M34-SBS"]),
+    route_id: str = Path(
+        ...,
+        description="Fully-qualified OBA route ID.",
+        examples=["MTA NYCT_B63", "MTA NYCT_M34-SBS"],
+    ),
     response: Response = None,
 ) -> RouteShape:
     """Return the route shape (polylines + stops) for a bus route.
@@ -593,7 +671,9 @@ async def bus_route_shape(
 
     Cached for 1 hour with stale-while-revalidate.
     """
-    response.headers["Cache-Control"] = "public, max-age=3600, stale-while-revalidate=86400, stale-if-error=604800"
+    response.headers["Cache-Control"] = (
+        "public, max-age=3600, stale-while-revalidate=86400, stale-if-error=604800"
+    )
     try:
         return await get_route_shape(route_id)
     except httpx.HTTPStatusError as exc:
@@ -607,10 +687,10 @@ async def bus_route_shape(
             return _fallback_route_shape(route_id)
         _raise_bus_upstream_http_error(exc)
     except Exception as exc:
-        traceback.print_exc()
         TrackLogger.warning(
             f"[BUS] /route-shape/{route_id}: upstream error ({exc}) — returning empty shape fallback",
             tag="BUS",
+            exc_info=True,
         )
         response.headers["X-Track-Degraded"] = "shape-fallback"
         return _fallback_route_shape(route_id)

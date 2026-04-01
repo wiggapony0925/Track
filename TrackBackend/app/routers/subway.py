@@ -1,27 +1,27 @@
-#
-# subway.py
-# TrackBackend
-#
-# Router for subway line arrivals and route shapes.
-#
+"""Router for subway line arrivals and route shapes."""
 
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import json
 import math
+import os
+import tempfile
 import time
 from pathlib import Path as _Path
 
 from fastapi import APIRouter, HTTPException, Path, Query, Response
 
+from app.config import get_settings
 from app.models import (
+    RESP_404,
+    RESP_503,
     AllSubwayLinesResponse,
     AllSubwayStationsResponse,
     BusStop,
     DirectionShape,
     ProcessedStationsResponse,
-    RESP_404,
-    RESP_503,
     RouteShape,
     SubwayLineOverlay,
     SubwayStation,
@@ -29,12 +29,32 @@ from app.models import (
     TrunkGroupPolylines,
 )
 from app.services.gtfs.realtime_parser import get_arrivals_for_line
-from app.services.mapping.subway_shapes import get_all_subway_stations, get_subway_route_shape, get_subway_service_type, enrich_stops_with_transfers
-from app.services.transit.station_lookup import get_nearby_stop_ids, get_stop_info
+from app.services.mapping.corridor_pipeline import (
+    ROUTE_TO_TRUNK,
+    apply_topological_offsets,
+    get_processed_stops,
+    get_trunk_crossings,
+    get_trunk_polylines,
+)
+from app.services.mapping.subway_shapes import (
+    enrich_stops_with_transfers,
+    get_all_subway_stations,
+    get_subway_route_shape,
+    get_subway_service_type,
+)
 from app.utils.logger import TrackLogger
-from app.utils.polyline_utils import decode_polyline as _decode_polyline, encode_polyline as _encode_polyline, densify_wgs84 as _densify_wgs84, simplify_polyline as _simplify_polyline
-from app.services.mapping.corridor_pipeline import apply_topological_offsets, get_processed_stops, get_trunk_polylines, get_trunk_crossings, ROUTE_TO_TRUNK
-from app.config import get_settings
+from app.utils.polyline_utils import (
+    decode_polyline as _decode_polyline,
+)
+from app.utils.polyline_utils import (
+    densify_wgs84 as _densify_wgs84,
+)
+from app.utils.polyline_utils import (
+    encode_polyline as _encode_polyline,
+)
+from app.utils.polyline_utils import (
+    simplify_polyline as _simplify_polyline,
+)
 from app.utils.transit_utils import (
     clean_route_id,
     get_all_subway_lines,
@@ -59,11 +79,13 @@ router = APIRouter(tags=["subway"])
 #      pipeline only needs to run ONCE.  The disk cache is loaded at
 #      startup and the in-memory cache is populated from it.
 _shapes_all_cache: AllSubwayLinesResponse | None = None
-_shapes_all_json_bytes: bytes | None = None   # pre-serialized JSON
+_shapes_all_json_bytes: bytes | None = None  # pre-serialized JSON
 _shapes_all_lock = asyncio.Lock()
 _shapes_all_building = False  # True while pipeline is running
 
-_SHAPES_DISK_CACHE_PATH = _Path(__file__).resolve().parent.parent / "data" / "_cache_shapes_all.json"
+_SHAPES_DISK_CACHE_PATH = (
+    _Path(__file__).resolve().parent.parent / "data" / "_cache_shapes_all.json"
+)
 
 
 def _load_shapes_disk_cache() -> AllSubwayLinesResponse | None:
@@ -71,7 +93,6 @@ def _load_shapes_disk_cache() -> AllSubwayLinesResponse | None:
     try:
         if not _SHAPES_DISK_CACHE_PATH.exists():
             return None
-        import json
         raw = json.loads(_SHAPES_DISK_CACHE_PATH.read_text())
         resp = AllSubwayLinesResponse(**raw)
         TrackLogger.info(
@@ -81,7 +102,9 @@ def _load_shapes_disk_cache() -> AllSubwayLinesResponse | None:
         )
         return resp
     except Exception as exc:
-        TrackLogger.warning(f"[SHAPES_DISK] Failed to load disk cache: {exc}", tag="SHAPES")
+        TrackLogger.warning(
+            f"[SHAPES_DISK] Failed to load disk cache: {exc}", tag="SHAPES"
+        )
         return None
 
 
@@ -92,8 +115,6 @@ def _save_shapes_disk_cache(resp: AllSubwayLinesResponse) -> None:
     leave a corrupted JSON file that breaks the next cold start.
     """
     try:
-        import json
-        import tempfile
         _SHAPES_DISK_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
         data = resp.model_dump(mode="json")
         payload = json.dumps(data)
@@ -107,15 +128,11 @@ def _save_shapes_disk_cache(resp: AllSubwayLinesResponse) -> None:
         try:
             with open(fd, "w") as f:
                 f.write(payload)
-            import os
             os.replace(tmp_path, _SHAPES_DISK_CACHE_PATH)
         except BaseException:
             # Clean up the temp file if rename failed
-            import os
-            try:
+            with contextlib.suppress(OSError):
                 os.unlink(tmp_path)
-            except OSError:
-                pass
             raise
         size_kb = _SHAPES_DISK_CACHE_PATH.stat().st_size / 1024
         TrackLogger.info(
@@ -123,12 +140,19 @@ def _save_shapes_disk_cache(resp: AllSubwayLinesResponse) -> None:
             tag="SHAPES",
         )
     except Exception as exc:
-        TrackLogger.warning(f"[SHAPES_DISK] Failed to save disk cache: {exc}", tag="SHAPES")
+        TrackLogger.warning(
+            f"[SHAPES_DISK] Failed to save disk cache: {exc}", tag="SHAPES"
+        )
 
 
 def _build_shapes_all_sync() -> AllSubwayLinesResponse:
     """Build the full subway system map response — CPU-bound, runs in thread pool."""
-    from app.services.mapping.subway_shapes import _load_route_shapes, _load_shapes, _unpack_coords, _load_shape_stops
+    from app.services.mapping.subway_shapes import (
+        _load_route_shapes,
+        _load_shape_stops,
+        _load_shapes,
+        _unpack_coords,
+    )
 
     # Routes to skip: express duplicates that share tracks with parent lines.
     # FS (Franklin Shuttle) and GS (42nd St Shuttle) are NOT skipped —
@@ -136,7 +160,7 @@ def _build_shapes_all_sync() -> AllSubwayLinesResponse:
     skip_variants = {"6X", "7X", "FX", "SR"}
 
     overlays: list[SubwayLineOverlay] = []
-    lines = [l for l in get_all_subway_lines() if l not in skip_variants]
+    lines = [line for line in get_all_subway_lines() if line not in skip_variants]
 
     route_shapes = _load_route_shapes()
     shapes_data = _load_shapes()
@@ -181,11 +205,13 @@ def _build_shapes_all_sync() -> AllSubwayLinesResponse:
 
         encoded = [_encode_polyline(_densify_wgs84(coords)) for coords in polylines_raw]
         color = get_subway_color(line)
-        overlays.append(SubwayLineOverlay(
-            route_id=line,
-            color_hex=color,
-            polylines=encoded,
-        ))
+        overlays.append(
+            SubwayLineOverlay(
+                route_id=line,
+                color_hex=color,
+                polylines=encoded,
+            )
+        )
 
         # Check direction 1 for shapes covering unique stations
         covered_stations: set[str] = set()
@@ -234,6 +260,7 @@ def _build_shapes_all_sync() -> AllSubwayLinesResponse:
         # proximity testing.  We'll check each dir-1 vertex against
         # these to find where the branch diverges from the trunk.
         from app.providers import get_provider as _get_provider
+
         _prov = _get_provider()
         METERS_PER_DEG: float = _prov.meters_per_deg_lat
         COS_LAT: float = _prov.cos_lat
@@ -243,10 +270,8 @@ def _build_shapes_all_sync() -> AllSubwayLinesResponse:
             enc_list: list[str] = trunk_poly_map.get(trunk_idx, [])
             result: list[list[tuple[float, float]]] = []
             for enc in enc_list:
-                try:
+                with contextlib.suppress(Exception):
                     result.append(_decode_polyline(enc))
-                except Exception:
-                    pass
             return result
 
         def _min_dist_to_trunk(
@@ -326,7 +351,7 @@ def _build_shapes_all_sync() -> AllSubwayLinesResponse:
                     if trim_from < clip_end - 1:
                         # Keep everything up to the first parallel vertex,
                         # plus the very last vertex as the join point.
-                        clipped = clipped[:trim_from] + [clipped[-1]]
+                        clipped = [*clipped[:trim_from], clipped[-1]]
 
                     TrackLogger.info(
                         f"[Dir1] Clipped {line} shape {sid}: {len(raw)} → {len(clipped)} pts "
@@ -340,7 +365,9 @@ def _build_shapes_all_sync() -> AllSubwayLinesResponse:
             enc = _encode_polyline(_densify_wgs84(raw))
             if line in overlay_map:
                 overlay_map[line].polylines.append(enc)
-                TrackLogger.info(f"[Dir1] Added reverse shape {sid} to {line} ({len(raw)} pts)")
+                TrackLogger.info(
+                    f"[Dir1] Added reverse shape {sid} to {line} ({len(raw)} pts)"
+                )
             # Also append to trunk polylines
             if trunk_idx is not None:
                 if trunk_idx not in trunk_poly_map:
@@ -352,13 +379,12 @@ def _build_shapes_all_sync() -> AllSubwayLinesResponse:
             if ti in trunk_poly_map:
                 tp["polylines"] = trunk_poly_map[ti]
 
-    trunk_polylines = [
-        TrunkGroupPolylines(**tp) for tp in trunk_polys_raw
-    ]
+    trunk_polylines = [TrunkGroupPolylines(**tp) for tp in trunk_polys_raw]
 
     # Detect crossing points between different trunk groups
     crossings_raw = get_trunk_crossings()
     from app.models import CrossingPoint
+
     crossing_points = [CrossingPoint(**c) for c in crossings_raw]
 
     total_polys = sum(len(o.polylines) for o in overlays)
@@ -368,7 +394,9 @@ def _build_shapes_all_sync() -> AllSubwayLinesResponse:
         f"{len(trunk_polylines)} trunk groups, {total_trunk} trunk polylines, "
         f"{len(crossing_points)} crossing points"
     )
-    return AllSubwayLinesResponse(lines=overlays, trunk_polylines=trunk_polylines, crossings=crossing_points)
+    return AllSubwayLinesResponse(
+        lines=overlays, trunk_polylines=trunk_polylines, crossings=crossing_points
+    )
 
 
 def set_shapes_all_cache(resp: AllSubwayLinesResponse) -> None:
@@ -377,7 +405,6 @@ def set_shapes_all_cache(resp: AllSubwayLinesResponse) -> None:
     global _shapes_all_cache, _shapes_all_json_bytes
     _shapes_all_cache = resp
     # Pre-serialize to JSON bytes so the endpoint skips Pydantic serialization.
-    import json
     _shapes_all_json_bytes = json.dumps(resp.model_dump(mode="json")).encode("utf-8")
 
 
@@ -511,9 +538,27 @@ async def subway_stations_processed() -> ProcessedStationsResponse:
     ),
 )
 async def subway_stations_nearby(
-    lat: float = Query(..., ge=-90, le=90, description="Latitude of the user's location.", examples=[40.7580]),
-    lon: float = Query(..., ge=-180, le=180, description="Longitude of the user's location.", examples=[-73.9855]),
-    radius: int = Query(1600, ge=100, le=10000, description="Maximum search radius from the request location (in meters). Defaults to 1600\u202fm.", examples=[1600]),
+    lat: float = Query(
+        ...,
+        ge=-90,
+        le=90,
+        description="Latitude of the user's location.",
+        examples=[40.7580],
+    ),
+    lon: float = Query(
+        ...,
+        ge=-180,
+        le=180,
+        description="Longitude of the user's location.",
+        examples=[-73.9855],
+    ),
+    radius: int = Query(
+        1600,
+        ge=100,
+        le=10000,
+        description="Maximum search radius from the request location (in meters). Defaults to 1600\u202fm.",
+        examples=[1600],
+    ),
 ) -> AllSubwayStationsResponse:
     """Return subway stations near the user's location.
 
@@ -534,13 +579,17 @@ async def subway_stations_nearby(
         dist = math.sqrt(dlat * dlat + dlon * dlon)
         if dist <= radius:
             nearby.append(SubwayStation(**s))
-    
-    nearby.sort(key=lambda s: (
-        ((s.lat - lat) * meters_per_deg_lat) ** 2 +
-        ((s.lon - lon) * meters_per_deg_lon) ** 2
-    ))
-    
-    TrackLogger.info(f"Subway stations/nearby: {len(nearby)} stations within {radius}m of ({lat:.4f}, {lon:.4f})")
+
+    nearby.sort(
+        key=lambda s: (
+            ((s.lat - lat) * meters_per_deg_lat) ** 2
+            + ((s.lon - lon) * meters_per_deg_lon) ** 2
+        )
+    )
+
+    TrackLogger.info(
+        f"Subway stations/nearby: {len(nearby)} stations within {radius}m of ({lat:.4f}, {lon:.4f})"
+    )
     return AllSubwayStationsResponse(stations=nearby)
 
 
@@ -555,7 +604,11 @@ async def subway_stations_nearby(
     responses={**RESP_404},
 )
 async def subway_shape(
-    route_id: str = Path(..., description="Subway route ID (case-insensitive).", examples=["A", "7", "L", "GS"]),
+    route_id: str = Path(
+        ...,
+        description="Subway route ID (case-insensitive).",
+        examples=["A", "7", "L", "GS"],
+    ),
 ) -> RouteShape:
     """Return the full route geometry and ordered stops for a subway line.
 
@@ -606,21 +659,24 @@ async def subway_shape(
     for dd in direction_data:
         merged_dir = _merge_polyline_segments(dd.polylines)
         dir_encoded = [
-            _encode_polyline(_simplify_polyline(_densify_wgs84(coords), tolerance=0.00002))
+            _encode_polyline(
+                _simplify_polyline(_densify_wgs84(coords), tolerance=0.00002)
+            )
             for coords in merged_dir
         ]
         dir_stops = [
-            BusStop(id=s.stop_id, name=s.name, lat=s.lat, lon=s.lon)
-            for s in dd.stops
+            BusStop(id=s.stop_id, name=s.name, lat=s.lat, lon=s.lon) for s in dd.stops
         ]
         enrich_stops_with_transfers(dir_stops, current_route=clean_id)
-        directions.append(DirectionShape(
-            direction_id=dd.direction_id,
-            headsign=dd.headsign,
-            polylines=dir_encoded,
-            stops=dir_stops,
-            service_type=get_subway_service_type(clean_id),
-        ))
+        directions.append(
+            DirectionShape(
+                direction_id=dd.direction_id,
+                headsign=dd.headsign,
+                polylines=dir_encoded,
+                stops=dir_stops,
+                service_type=get_subway_service_type(clean_id),
+            )
+        )
 
     TrackLogger.info(
         f"Subway shape '{clean_id}': {len(encoded_polylines)} polyline(s), "
@@ -648,7 +704,11 @@ async def subway_shape(
     responses={**RESP_404},
 )
 async def subway_arrivals(
-    line_id: str = Path(..., description="Subway line ID (case-insensitive).", examples=["A", "7", "L", "GS"]),
+    line_id: str = Path(
+        ...,
+        description="Subway line ID (case-insensitive).",
+        examples=["A", "7", "L", "GS"],
+    ),
     response: Response = None,
 ) -> list[TrackArrival]:
     """Return upcoming arrivals for a subway line.
@@ -678,7 +738,8 @@ async def subway_arrivals(
         now = int(time.time())
         # Filter to: (1) this route only, (2) future, (3) within time horizon
         fresh = [
-            a for a in arrivals
+            a
+            for a in arrivals
             if a.route_id == clean_id
             and a.arrival_ts
             and a.arrival_ts > now
@@ -689,8 +750,7 @@ async def subway_arrivals(
             a.minutes_away = max(0, (a.arrival_ts - now) // 60)
         # Sort by soonest first, then cap total count
         fresh.sort(key=lambda a: a.arrival_ts)
-        fresh = fresh[:max_results]
-        return fresh
+        return fresh[:max_results]
     except Exception as exc:
         TrackLogger.warning(
             f"[SUBWAY] /{line_id}: feed error ({exc}) — returning empty fallback",
@@ -727,6 +787,7 @@ def _merge_polyline_segments(
         return segments
 
     from app.providers import get_provider as _get_provider
+
     _prov = _get_provider()
     METERS_PER_DEG = _prov.meters_per_deg_lat
 
@@ -779,8 +840,12 @@ def _merge_polyline_segments(
         keys = []
         for dlat in (-step, 0, step):
             for dlon in (-step, 0, step):
-                keys.append((round(base_lat + dlat, _GRID_DECIMALS),
-                             round(base_lon + dlon, _GRID_DECIMALS)))
+                keys.append(
+                    (
+                        round(base_lat + dlat, _GRID_DECIMALS),
+                        round(base_lon + dlon, _GRID_DECIMALS),
+                    )
+                )
         return keys
 
     did_merge = True
@@ -789,6 +854,7 @@ def _merge_polyline_segments(
         # Build spatial index: grid_cell → set of chain indices with an
         # endpoint in that cell.  Only endpoints matter for merging.
         from collections import defaultdict as _defaultdict
+
         endpoint_index: dict[tuple, set[int]] = _defaultdict(set)
         for idx, chain in enumerate(chains):
             for key in _neighbor_keys(chain[0]):
@@ -835,6 +901,3 @@ def _merge_polyline_segments(
             chains = [c for idx, c in enumerate(chains) if idx not in merged_away]
 
     return chains
-
-
-

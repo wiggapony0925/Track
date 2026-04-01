@@ -1,24 +1,19 @@
-#
-# worker.py
-# TrackBackend
-#
-# arq worker configuration for background task scheduling.
-#
-# arq is a Redis-backed async task queue that provides:
-#   • Cron-style scheduling for periodic jobs (GTFS refresh, weather, etc.)
-#   • Automatic retries with exponential backoff on failure
-#   • Job visibility — each run is logged with timing and status
-#   • Graceful shutdown — in-progress jobs complete before exit
-#
-# Run the worker alongside the FastAPI server:
-#   arq app.worker.WorkerSettings
-#
-# Or in development:
-#   python -m arq app.worker.WorkerSettings
-#
-# The worker shares the same Redis instance as the main app (REDIS_URL env).
-# If Redis is unavailable, the main.py fallback tasks still run via asyncio.
-#
+"""arq worker configuration for background task scheduling.
+
+arq is a Redis-backed async task queue that provides:
+• Cron-style scheduling for periodic jobs (GTFS refresh, weather, etc.)
+• Automatic retries with exponential backoff on failure
+• Job visibility — each run is logged with timing and status
+• Graceful shutdown — in-progress jobs complete before exit
+
+Run the worker alongside the FastAPI server:
+arq app.worker.WorkerSettings
+
+Or in development:
+python -m arq app.worker.WorkerSettings
+
+The worker shares the same Redis instance as the main app (REDIS_URL env).
+If Redis is unavailable, the main.py fallback tasks still run via asyncio."""
 
 from __future__ import annotations
 
@@ -46,6 +41,15 @@ async def check_gtfs_freshness(ctx: dict[str, Any]) -> dict[str, str]:
 
     Runs daily via cron.  Equivalent to the old _periodic_gtfs_check()
     asyncio.create_task loop, but with arq's retry and visibility.
+
+    Args:
+        ctx: arq worker context dict (injected by the framework).
+
+    Returns:
+        Dict mapping feed names to their refresh status strings.
+
+    Raises:
+        Exception: Re-raised on failure so arq retries the job.
     """
     from app.services.gtfs.gtfs_refresh import check_and_refresh_gtfs
 
@@ -76,6 +80,15 @@ async def refresh_weather(ctx: dict[str, Any]) -> str:
 
     Runs every 5 minutes.  Keeps the weather cache warm so /predict/delay
     and /nearby/grouped never wait on a cold weather fetch.
+
+    Args:
+        ctx: arq worker context dict (injected by the framework).
+
+    Returns:
+        Weather condition string (e.g. "clear", "rain").
+
+    Raises:
+        Exception: Re-raised on failure so arq retries the job.
     """
     from app.clients.weather_client import get_current_weather
 
@@ -94,6 +107,9 @@ async def flush_cache_stats(ctx: dict[str, Any]) -> None:
 
     Runs every 10 minutes.  Provides ongoing visibility into cache
     performance without waiting for shutdown.
+
+    Args:
+        ctx: arq worker context dict (injected by the framework).
     """
     from app.utils import cache_stats
 
@@ -139,14 +155,14 @@ class WorkerSettings:
             check_gtfs_freshness,
             hour=4,
             minute=0,
-            run_at_startup=True,   # also run on first boot
-            unique=True,           # skip if a previous run is still going
-            timeout=600,           # 10 min max (GTFS download + DB rebuild)
+            run_at_startup=True,  # also run on first boot
+            unique=True,  # skip if a previous run is still going
+            timeout=600,  # 10 min max (GTFS download + DB rebuild)
         ),
         # Weather: every 5 minutes
         cron(
             refresh_weather,
-            minute={0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55},
+            minute=set(range(0, 60, 5)),
             run_at_startup=True,
             unique=True,
             timeout=30,
@@ -165,10 +181,10 @@ class WorkerSettings:
     on_shutdown = on_shutdown
 
     # Retry settings
-    max_jobs = 10           # max concurrent jobs
-    job_timeout = 600       # default per-job timeout (10 min)
-    max_tries = 3           # retry failed jobs up to 3 times
-    retry_delay = 30.0      # 30s between retries (arq uses exponential backoff)
+    max_jobs = 10  # max concurrent jobs
+    job_timeout = 600  # default per-job timeout (10 min)
+    max_tries = 3  # retry failed jobs up to 3 times
+    retry_delay = 30.0  # 30s between retries (arq uses exponential backoff)
 
     # Queue name — keep separate from any other arq workers
     queue_name = "track:arq"

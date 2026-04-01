@@ -1,27 +1,22 @@
-#
-# logger.py
-# TrackBackend
-#
-# Production-grade logging for the Track backend.
-#
-# Features:
-#   - Python `logging` module (not print) — proper levels, filtering, handlers
-#   - Colored console output for local dev
-#   - JSON structured output on Render (machine-parseable for Better Stack)
-#   - Rotating file logs in local dev (track.log, 5 MB × 3 backups)
-#   - Configurable log level via LOG_LEVEL env var (default: INFO on Render, DEBUG local)
-#   - Structured context: request timing, feed performance, cache stats
-#   - Full stack traces on error/warning via exc_info support
-#   - Dedicated methods for every subsystem: bus, subway, rail, alerts, cache,
-#     ML (model load · per-prediction · cache hits), perf
-#
-# Usage:
-#   from app.utils.logger import TrackLogger
-#   TrackLogger.info("message")
-#   TrackLogger.error("something broke", exc_info=True)
-#   TrackLogger.ml("[MODEL] LightGBM loaded — 176 trees")
-#   TrackLogger.request("GET", "/nearby", 200, elapsed_ms=42.3)
-#
+"""Production-grade logging for the Track backend.
+
+Features:
+- Python `logging` module (not print) — proper levels, filtering, handlers
+- Colored console output for local dev
+- JSON structured output on Render (machine-parseable for Better Stack)
+- Rotating file logs in local dev (track.log, 5 MB × 3 backups)
+- Configurable log level via LOG_LEVEL env var (default: INFO on Render, DEBUG local)
+- Structured context: request timing, feed performance, cache stats
+- Full stack traces on error/warning via exc_info support
+- Dedicated methods for every subsystem: bus, subway, rail, alerts, cache,
+ML (model load · per-prediction · cache hits), perf
+
+Usage:
+from app.utils.logger import TrackLogger
+TrackLogger.info("message")
+TrackLogger.error("something broke", exc_info=True)
+TrackLogger.ml("[MODEL] LightGBM loaded — 176 trees")
+TrackLogger.request("GET", "/nearby", 200, elapsed_ms=42.3)."""
 
 from __future__ import annotations
 
@@ -31,7 +26,6 @@ import logging
 import os
 import sys
 import time
-import traceback as _tb
 from contextlib import contextmanager
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -247,9 +241,9 @@ class TrackLogger:
     # ------------------------------------------------------------------
     @staticmethod
     def startup() -> None:
-        import os
         try:
             import pyfiglet
+
             banner = pyfiglet.figlet_format("TRACK", font="slant")
             # Print banner directly for visual effect (not through logging)
             print(Fore.CYAN + Style.BRIGHT + banner + Style.RESET_ALL)
@@ -262,7 +256,9 @@ class TrackLogger:
         ml_raw = os.environ.get("ARRIVING_PREDICTION_MODEL", "true")
         ml_on = ml_raw.strip().lower() not in ("false", "0", "off", "no", "disabled")
         ml_label = f"{'ENABLED' if ml_on else '*** DISABLED ***'} (ARRIVING_PREDICTION_MODEL={ml_raw})"
-        _logger.info(f"[STARTUP] ML prediction model: {ml_label}", extra={"tag": "STARTUP"})
+        _logger.info(
+            f"[STARTUP] ML prediction model: {ml_label}", extra={"tag": "STARTUP"}
+        )
 
         env_name = os.environ.get("RENDER_SERVICE_NAME", os.environ.get("ENV", "local"))
         _logger.info(f"[STARTUP] Environment: {env_name}", extra={"tag": "STARTUP"})
@@ -305,13 +301,17 @@ class TrackLogger:
 
         # Render health-check probes hit "/" which returns 404 — expected noise.
         # /health returns 503 during warmup — also expected; don't log as ERROR.
-        _path = path.split("?")[0]
+        _path = path.split("?", maxsplit=1)[0]
         if _path == "/" and status == 404:
             return  # suppress Render probe noise entirely
         if _path == "/health" and status == 503:
             level = logging.INFO  # warmup 503 is expected
         else:
-            level = logging.INFO if status < 400 else logging.WARNING if status < 500 else logging.ERROR
+            level = (
+                logging.INFO
+                if status < 400
+                else logging.WARNING if status < 500 else logging.ERROR
+            )
 
         _logger.log(
             level,
@@ -464,6 +464,6 @@ class _TimedContext:
         self.start = time.perf_counter()
         return self
 
-    def __exit__(self, *exc) -> None:  # noqa: ANN002
+    def __exit__(self, *exc) -> None:
         elapsed = (time.perf_counter() - self.start) * 1000
         _logger.debug(f"Completed in {elapsed:.1f}ms", extra={"tag": self.tag})

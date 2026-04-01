@@ -1,16 +1,24 @@
 """Probe OBA schedule-for-stop to check for M104 trips under M11 SRS."""
-import json, urllib.request, os, ssl, re
-from datetime import datetime, timezone, timedelta
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import ssl
+import urllib.request
+from datetime import datetime, timedelta, timezone
 
 # Bypass SSL cert verification for local testing
 ssl._create_default_https_context = ssl._create_unverified_context
 
 # Load dotenv manually
-for line in open(os.path.join(os.path.dirname(__file__), "..", ".env")):
-    line = line.strip()
-    if line and not line.startswith("#") and "=" in line:
-        k, v = line.split("=", 1)
-        os.environ.setdefault(k.strip(), v.strip())
+with open(os.path.join(os.path.dirname(__file__), "..", ".env")) as f:
+    for raw_line in f:
+        line = raw_line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            k, v = line.split("=", 1)
+            os.environ.setdefault(k.strip(), v.strip())
 
 api_key = os.environ.get("OBA_API_KEY", "")
 oba_base = "https://bustime.mta.info/api/where"
@@ -32,7 +40,7 @@ else:
     interior = stops[1:-1]
     step = len(interior) / interior_count
     sampled_interior = [interior[int(i * step)] for i in range(interior_count)]
-    sample_stops = [stops[0]] + sampled_interior + [stops[-1]]
+    sample_stops = [stops[0], *sampled_interior, stops[-1]]
 
 print(f"  Sampling {len(sample_stops)} stops (same logic as backend):")
 for s in sample_stops:
@@ -41,12 +49,13 @@ for s in sample_stops:
 now = datetime.now(timezone(timedelta(hours=-5)))
 date_str = now.strftime("%Y-%m-%d")
 
+
 def normalize(raw):
     token = (raw.split("_", 1)[-1] if "_" in raw else raw).upper()
     token = re.sub(r"(?<=\D)0+(?=\d)", "", token) or token
     token = re.sub(r"\+SBS$", "-SBS", token)
-    token = re.sub(r"\+$", "-SBS", token)
-    return token
+    return re.sub(r"\+$", "-SBS", token)
+
 
 req_token = normalize("M11")
 print(f"\nreq_token = {req_token!r}")
@@ -65,19 +74,19 @@ for stop in sample_stops:
 
     entry = data2.get("data", {}).get("entry", {})
     srs_list = entry.get("stopRouteSchedules", [])
-    
+
     print(f"\n  STOP {sid} ({sname}): {len(srs_list)} SRS entries")
-    
+
     for srs in srs_list:
         srs_route = srs.get("routeId", "")
         srs_token = normalize(srs_route)
-        passes_filter = (srs_token == req_token)
-        
+        passes_filter = srs_token == req_token
+
         if not passes_filter:
             # Check: would this be filtered? Show it briefly
             print(f"    SRS {srs_route} (token={srs_token}) -> FILTERED OUT (correct)")
             continue
-        
+
         print(f"    SRS {srs_route} (token={srs_token}) -> PASSES FILTER")
         for dg in srs.get("stopRouteDirectionSchedules", []):
             hs = dg.get("tripHeadsign", "")
@@ -86,7 +95,9 @@ for stop in sample_stops:
             m104_trips = [ts for ts in times if "M104" in ts.get("tripId", "").upper()]
             m11_trips = [ts for ts in times if "M11" in ts.get("tripId", "").upper()]
             other_trips = len(times) - len(m104_trips) - len(m11_trips)
-            print(f"      hs='{hs}': {len(times)} total, {len(m11_trips)} M11-branded, {len(m104_trips)} M104-branded, {other_trips} other")
+            print(
+                f"      hs='{hs}': {len(times)} total, {len(m11_trips)} M11-branded, {len(m104_trips)} M104-branded, {other_trips} other"
+            )
             total_m104_trips += len(m104_trips)
             for ts in m104_trips[:3]:
                 print(f"        CONTAMINATED: {ts.get('tripId')}")

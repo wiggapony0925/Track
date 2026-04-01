@@ -1,20 +1,15 @@
-#
-# weather_client.py
-# TrackBackend
-#
-# Fetches current weather conditions from the Open-Meteo API (free, no key).
-# Returns a weather category ("clear" | "rain" | "snow") compatible with
-# delay_model.py's WEATHER_ENCODING.
-#
-# Open-Meteo:
-#   • Free for non-commercial use, no API key required
-#   • WMO weather interpretation codes returned on the /v1/forecast endpoint
-#   • Rate limit: ~10,000 requests/day (more than enough at 5-min caching)
-#
-# Caching: in-memory TTL cache (5 minutes).  Weather doesn't change on a
-# per-request basis — one fetch per 5 min is plenty.  Falls back to "clear"
-# on any error so callers are never blocked.
-#
+"""Fetches current weather conditions from the Open-Meteo API (free, no key).
+Returns a weather category ("clear" | "rain" | "snow") compatible with
+delay_model.py's WEATHER_ENCODING.
+
+Open-Meteo:
+• Free for non-commercial use, no API key required
+• WMO weather interpretation codes returned on the /v1/forecast endpoint
+• Rate limit: ~10,000 requests/day (more than enough at 5-min caching)
+
+Caching: in-memory TTL cache (5 minutes).  Weather doesn't change on a
+per-request basis — one fetch per 5 min is plenty.  Falls back to "clear"
+on any error so callers are never blocked."""
 
 from __future__ import annotations
 
@@ -35,13 +30,13 @@ _DEFAULT_LON = -74.0060
 _OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
 
 # ── Cache ─────────────────────────────────────────────────────────────────
-_CACHE_TTL = 300          # 5 minutes for successful fetches
-_NEGATIVE_CACHE_TTL = 1800 # 30 min max backoff for sustained 429s
+_CACHE_TTL = 300  # 5 minutes for successful fetches
+_NEGATIVE_CACHE_TTL = 1800  # 30 min max backoff for sustained 429s
 _cached_weather: str | None = None
 _cached_details: dict[str, Any] | None = None
 _cached_at: float = 0.0
 _is_negative_cache: bool = False  # True when cache holds error-fallback data
-_consecutive_failures: int = 0    # exponential backoff counter
+_consecutive_failures: int = 0  # exponential backoff counter
 _fetch_lock: asyncio.Lock | None = None  # lazy — must be created inside event loop
 
 
@@ -50,6 +45,7 @@ def _get_fetch_lock() -> asyncio.Lock:
     if _fetch_lock is None:
         _fetch_lock = asyncio.Lock()
     return _fetch_lock
+
 
 # ── Shared httpx client ───────────────────────────────────────────────────
 # Reusing a single client avoids TCP handshake + TLS negotiation overhead
@@ -70,17 +66,31 @@ def _get_http_client() -> httpx.AsyncClient:
 def _wmo_to_category(code: int) -> str:
     """Map WMO weather interpretation code to delay_model category."""
     if code in (
-        71, 73, 75, 77,    # Snow fall: slight, moderate, heavy, snow grains
-        85, 86,             # Snow showers: slight, heavy
+        71,
+        73,
+        75,
+        77,  # Snow fall: slight, moderate, heavy, snow grains
+        85,
+        86,  # Snow showers: slight, heavy
     ):
         return "snow"
     if code in (
-        51, 53, 55,         # Drizzle: light, moderate, dense
-        56, 57,             # Freezing drizzle: light, dense
-        61, 63, 65,         # Rain: slight, moderate, heavy
-        66, 67,             # Freezing rain: light, heavy
-        80, 81, 82,         # Rain showers: slight, moderate, violent
-        95, 96, 99,         # Thunderstorm: slight/moderate, with hail
+        51,
+        53,
+        55,  # Drizzle: light, moderate, dense
+        56,
+        57,  # Freezing drizzle: light, dense
+        61,
+        63,
+        65,  # Rain: slight, moderate, heavy
+        66,
+        67,  # Freezing rain: light, heavy
+        80,
+        81,
+        82,  # Rain showers: slight, moderate, violent
+        95,
+        96,
+        99,  # Thunderstorm: slight/moderate, with hail
     ):
         return "rain"
     # 0=clear, 1-3=partly cloudy/overcast, 45/48=fog
@@ -123,7 +133,9 @@ async def get_current_weather(
         # Double-check after acquiring lock (another caller may have refreshed)
         now = time.monotonic()
         if _is_negative_cache and _consecutive_failures > 0:
-            backoff_ttl = min(_NEGATIVE_CACHE_TTL, 60 * (2 ** (_consecutive_failures - 1)))
+            backoff_ttl = min(
+                _NEGATIVE_CACHE_TTL, 60 * (2 ** (_consecutive_failures - 1))
+            )
         else:
             backoff_ttl = _NEGATIVE_CACHE_TTL
         effective_ttl = backoff_ttl if _is_negative_cache else _CACHE_TTL

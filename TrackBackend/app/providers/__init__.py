@@ -1,17 +1,15 @@
-#
-# providers/__init__.py
-# TrackBackend
-#
-# Provider registry.
-#
-# Import and register every supported transit provider here.
-# The rest of the codebase calls ``get_provider()`` to obtain
-# region-specific constants without hard-coding them.
-#
+"""Provider registry.
+
+Import and register every supported transit provider here.
+The rest of the codebase calls ``get_provider()`` to obtain
+region-specific constants without hard-coding them."""
 
 from __future__ import annotations
 
-from app.providers.base import TransitProvider
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.providers.base import TransitProvider
 
 _providers: dict[str, TransitProvider] = {}
 _default_id: str = "mta"
@@ -27,8 +25,7 @@ def get_provider(provider_id: str | None = None) -> TransitProvider:
     pid = provider_id or _default_id
     if pid not in _providers:
         raise KeyError(
-            f"Unknown transit provider: {pid!r}. "
-            f"Registered: {list(_providers)}"
+            f"Unknown transit provider: {pid!r}. Registered: {list(_providers)}"
         )
     return _providers[pid]
 

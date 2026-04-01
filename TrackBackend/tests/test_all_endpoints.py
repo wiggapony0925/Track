@@ -1,25 +1,16 @@
-#
-# test_all_endpoints.py
-# TrackBackend
-#
-# Comprehensive test suite for EVERY endpoint in the Track backend.
-# Tests cover: models, grouping logic, subway, bus, LIRR, MNR,
-# nearby, status, predict, and config endpoints.
-#
+"""Comprehensive test suite for EVERY endpoint in the Track backend.
+Tests cover: models, grouping logic, subway, bus, LIRR, MNR,
+nearby, status, predict, and config endpoints."""
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, patch
 
-import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
 from app.models import (
-    AllCommuterRailLinesResponse,
-    AllSubwayLinesResponse,
-    AllSubwayStationsResponse,
     BusArrival,
     BusRoute,
     BusStop,
@@ -30,8 +21,6 @@ from app.models import (
     GroupedNearbyTransit,
     NearbyTransitArrival,
     RouteShape,
-    SubwayLineOverlay,
-    SubwayStation,
     TrackArrival,
     TransitAlert,
 )
@@ -98,7 +87,9 @@ class TestSubwayShapesAll:
     @patch("app.routers.subway.get_all_subway_lines", return_value=["A", "L"])
     @patch("app.services.mapping.subway_shapes._load_route_shapes")
     @patch("app.services.mapping.subway_shapes._load_shapes")
-    def test_shapes_all_returns_overlays(self, mock_shapes, mock_route_shapes, mock_lines):
+    def test_shapes_all_returns_overlays(
+        self, mock_shapes, mock_route_shapes, mock_lines
+    ):
         import struct
 
         mock_route_shapes.return_value = {
@@ -116,7 +107,7 @@ class TestSubwayShapesAll:
         data = response.json()
         assert "lines" in data
         assert len(data["lines"]) == 2
-        route_ids = {l["route_id"] for l in data["lines"]}
+        route_ids = {line["route_id"] for line in data["lines"]}
         assert route_ids == {"A", "L"}
         for line in data["lines"]:
             assert "color_hex" in line
@@ -130,8 +121,20 @@ class TestSubwayStationsAll:
     @patch("app.routers.subway.get_all_subway_stations")
     def test_stations_all_returns_stations(self, mock_stations):
         mock_stations.return_value = [
-            {"id": "101", "name": "Van Cortlandt Park", "lat": 40.89, "lon": -73.89, "routes": ["1"]},
-            {"id": "A27", "name": "59 St-Columbus Circle", "lat": 40.768, "lon": -73.981, "routes": ["A", "C", "B", "D", "1"]},
+            {
+                "id": "101",
+                "name": "Van Cortlandt Park",
+                "lat": 40.89,
+                "lon": -73.89,
+                "routes": ["1"],
+            },
+            {
+                "id": "A27",
+                "name": "59 St-Columbus Circle",
+                "lat": 40.768,
+                "lon": -73.981,
+                "routes": ["A", "C", "B", "D", "1"],
+            },
         ]
         response = client.get("/subway/stations/all")
         assert response.status_code == 200
@@ -156,7 +159,10 @@ class TestSubwayShape:
 
         from app.services.mapping.subway_shapes import DirectionData
 
-        stops = [FakeStop("L01", "8 Av", 40.74, -74.0), FakeStop("L02", "6 Av", 40.737, -73.997)]
+        stops = [
+            FakeStop("L01", "8 Av", 40.74, -74.0),
+            FakeStop("L02", "6 Av", 40.737, -73.997),
+        ]
         polylines = [[(40.7, -74.0), (40.71, -74.01)]]
         dir_data = [
             DirectionData(
@@ -200,12 +206,18 @@ class TestSubwayArrivals:
     @patch("app.routers.subway.get_arrivals_for_line", new_callable=AsyncMock)
     def test_arrivals_returns_fresh(self, mock_arrivals):
         import time
+
         future_ts = int(time.time()) + 300  # 5 min from now
         mock_arrivals.return_value = [
             TrackArrival(
-                route_id="L", station="L01", station_name="8 Av",
-                direction="S", destination="Canarsie-Rockaway Pkwy",
-                minutes_away=5, arrival_ts=future_ts, status="On Time",
+                route_id="L",
+                station="L01",
+                station_name="8 Av",
+                direction="S",
+                destination="Canarsie-Rockaway Pkwy",
+                minutes_away=5,
+                arrival_ts=future_ts,
+                status="On Time",
             ),
         ]
         response = client.get("/subway/L")
@@ -222,7 +234,9 @@ class TestSubwayArrivals:
 
     @patch("app.routers.subway.resolve_subway_feed_key", return_value="subway_l")
     @patch("app.routers.subway.get_arrivals_for_line", new_callable=AsyncMock)
-    def test_arrivals_graceful_fallback_on_feed_error(self, mock_arrivals, mock_resolve):
+    def test_arrivals_graceful_fallback_on_feed_error(
+        self, mock_arrivals, mock_resolve
+    ):
         mock_arrivals.side_effect = Exception("Feed timeout")
         response = client.get("/subway/L")
         # Endpoints now return 200 + empty list on error (graceful degradation)
@@ -242,8 +256,13 @@ class TestBusRoutes:
     @patch("app.routers.bus.get_routes", new_callable=AsyncMock)
     def test_routes_returns_list(self, mock_routes):
         mock_routes.return_value = [
-            BusRoute(id="MTA NYCT_B63", short_name="B63", long_name="Atlantic Av",
-                     color="0039A6", description="Brooklyn"),
+            BusRoute(
+                id="MTA NYCT_B63",
+                short_name="B63",
+                long_name="Atlantic Av",
+                color="0039A6",
+                description="Brooklyn",
+            ),
         ]
         response = client.get("/bus/routes")
         assert response.status_code == 200
@@ -291,11 +310,15 @@ class TestBusLive:
     @patch("app.routers.bus.get_realtime_arrivals", new_callable=AsyncMock)
     def test_live_returns_arrivals(self, mock_live):
         from datetime import timedelta
+
         mock_live.return_value = [
             BusArrival(
-                route_id="MTA NYCT_B63", vehicle_id="V1", stop_id="S1",
-                status_text="Approaching", status="Live",
-                expected_arrival=datetime.now(timezone.utc) + timedelta(minutes=10),
+                route_id="MTA NYCT_B63",
+                vehicle_id="V1",
+                stop_id="S1",
+                status_text="Approaching",
+                status="Live",
+                expected_arrival=datetime.now(UTC) + timedelta(minutes=10),
             ),
         ]
         response = client.get("/bus/live/MTA_308214")
@@ -311,7 +334,9 @@ class TestBusVehicles:
     @patch("app.routers.bus.get_vehicle_positions", new_callable=AsyncMock)
     def test_vehicles_returns_positions(self, mock_vehicles):
         mock_vehicles.return_value = [
-            BusVehicle(vehicle_id="V1", route_id="B63", lat=40.67, lon=-73.99, bearing=180.0),
+            BusVehicle(
+                vehicle_id="V1", route_id="B63", lat=40.67, lon=-73.99, bearing=180.0
+            ),
         ]
         response = client.get("/bus/vehicles/MTA%20NYCT_B63")
         assert response.status_code == 200
@@ -415,12 +440,17 @@ class TestLIRRArrivals:
     @patch("app.routers.lirr.fetch_rail_arrivals", new_callable=AsyncMock)
     def test_arrivals_returns_fresh(self, mock_arrivals):
         import time
+
         future_ts = int(time.time()) + 600
         mock_arrivals.return_value = [
             TrackArrival(
-                route_id="5", station="LI_BPORT", station_name="Bridgehampton",
-                direction="W", destination="Penn Station",
-                minutes_away=10, arrival_ts=future_ts,
+                route_id="5",
+                station="LI_BPORT",
+                station_name="Bridgehampton",
+                direction="W",
+                destination="Penn Station",
+                minutes_away=10,
+                arrival_ts=future_ts,
             ),
         ]
         response = client.get("/lirr")
@@ -506,12 +536,17 @@ class TestMNRArrivals:
     @patch("app.routers.mnr.fetch_rail_arrivals", new_callable=AsyncMock)
     def test_arrivals_returns_fresh(self, mock_arrivals):
         import time
+
         future_ts = int(time.time()) + 600
         mock_arrivals.return_value = [
             TrackArrival(
-                route_id="1", station="MNR_GCT", station_name="Grand Central",
-                direction="N", destination="Poughkeepsie",
-                minutes_away=8, arrival_ts=future_ts,
+                route_id="1",
+                station="MNR_GCT",
+                station_name="Grand Central",
+                direction="N",
+                destination="Poughkeepsie",
+                minutes_away=8,
+                arrival_ts=future_ts,
             ),
         ]
         response = client.get("/mnr")
@@ -548,12 +583,22 @@ class TestNearbyFlat:
     def test_returns_sorted_by_minutes(self, mock_bus, mock_sub, mock_rail):
         mock_rail.return_value = []
         mock_sub.return_value = [
-            NearbyTransitArrival(route_id="L", stop_name="1st Ave", direction="N",
-                                 minutes_away=5, mode="subway"),
+            NearbyTransitArrival(
+                route_id="L",
+                stop_name="1st Ave",
+                direction="N",
+                minutes_away=5,
+                mode="subway",
+            ),
         ]
         mock_bus.return_value = [
-            NearbyTransitArrival(route_id="B63", stop_name="5 Av", direction="E",
-                                 minutes_away=2, mode="bus"),
+            NearbyTransitArrival(
+                route_id="B63",
+                stop_name="5 Av",
+                direction="E",
+                minutes_away=2,
+                mode="bus",
+            ),
         ]
         data = client.get("/nearby?lat=40.7&lon=-73.9").json()
         assert data[0]["minutes_away"] <= data[1]["minutes_away"]
@@ -564,8 +609,15 @@ class TestNearbyFlat:
     def test_includes_lirr_and_mnr(self, mock_bus, mock_sub, mock_rail):
         # _fetch_nearby_rail is called twice (lirr, mnr) — return data only once
         mock_rail.side_effect = [
-            [NearbyTransitArrival(route_id="LIRR_5", stop_name="Jamaica",
-                                  direction="W", minutes_away=7, mode="lirr")],
+            [
+                NearbyTransitArrival(
+                    route_id="LIRR_5",
+                    stop_name="Jamaica",
+                    direction="W",
+                    minutes_away=7,
+                    mode="lirr",
+                )
+            ],
             [],  # MNR returns nothing
         ]
         mock_sub.return_value = []
@@ -599,10 +651,20 @@ class TestNearbyGrouped:
     def test_groups_by_route(self, mock_bus, mock_sub, mock_rail):
         mock_rail.return_value = []
         mock_sub.return_value = [
-            NearbyTransitArrival(route_id="A", stop_name="S1", direction="N",
-                                 minutes_away=3, mode="subway"),
-            NearbyTransitArrival(route_id="A", stop_name="S2", direction="S",
-                                 minutes_away=5, mode="subway"),
+            NearbyTransitArrival(
+                route_id="A",
+                stop_name="S1",
+                direction="N",
+                minutes_away=3,
+                mode="subway",
+            ),
+            NearbyTransitArrival(
+                route_id="A",
+                stop_name="S2",
+                direction="S",
+                minutes_away=5,
+                mode="subway",
+            ),
         ]
         mock_bus.return_value = []
         data = client.get("/nearby/grouped?lat=40.7&lon=-73.9").json()
@@ -615,8 +677,15 @@ class TestNearbyGrouped:
     @patch("app.routers.nearby._fetch_nearby_buses", new_callable=AsyncMock)
     def test_grouped_lirr_has_prefixed_id_and_name(self, mock_bus, mock_sub, mock_rail):
         mock_rail.side_effect = [
-            [NearbyTransitArrival(route_id="LIRR_5", stop_name="Jamaica",
-                                  direction="W", minutes_away=7, mode="lirr")],
+            [
+                NearbyTransitArrival(
+                    route_id="LIRR_5",
+                    stop_name="Jamaica",
+                    direction="W",
+                    minutes_away=7,
+                    mode="lirr",
+                )
+            ],
             [],  # MNR returns nothing
         ]
         mock_sub.return_value = []
@@ -627,7 +696,9 @@ class TestNearbyGrouped:
         assert data[0]["mode"] == "lirr"
         # display_name should be the branch name, not "5"
         assert data[0]["display_name"] != "5"
-        assert "Branch" in data[0]["display_name"] or "Service" in data[0]["display_name"]
+        assert (
+            "Branch" in data[0]["display_name"] or "Service" in data[0]["display_name"]
+        )
 
     @patch("app.routers.nearby._fetch_nearby_rail", new_callable=AsyncMock)
     @patch("app.routers.nearby._fetch_nearby_subway", new_callable=AsyncMock)
@@ -635,8 +706,15 @@ class TestNearbyGrouped:
     def test_grouped_mnr_has_prefixed_id_and_name(self, mock_bus, mock_sub, mock_rail):
         mock_rail.side_effect = [
             [],  # LIRR returns nothing
-            [NearbyTransitArrival(route_id="MNR_1", stop_name="Grand Central",
-                                  direction="N", minutes_away=4, mode="mnr")],
+            [
+                NearbyTransitArrival(
+                    route_id="MNR_1",
+                    stop_name="Grand Central",
+                    direction="N",
+                    minutes_away=4,
+                    mode="mnr",
+                )
+            ],
         ]
         mock_sub.return_value = []
         mock_bus.return_value = []
@@ -653,16 +731,33 @@ class TestNearbyGrouped:
     def test_grouped_all_modes_together(self, mock_bus, mock_sub, mock_rail):
         """All 4 modes appear together, sorted by soonest arrival."""
         mock_sub.return_value = [
-            NearbyTransitArrival(route_id="L", stop_name="1st Ave", direction="N",
-                                 minutes_away=5, mode="subway"),
+            NearbyTransitArrival(
+                route_id="L",
+                stop_name="1st Ave",
+                direction="N",
+                minutes_away=5,
+                mode="subway",
+            ),
         ]
         mock_bus.return_value = [
-            NearbyTransitArrival(route_id="MTA NYCT_B63", stop_name="5 Av",
-                                 direction="E", minutes_away=2, mode="bus"),
+            NearbyTransitArrival(
+                route_id="MTA NYCT_B63",
+                stop_name="5 Av",
+                direction="E",
+                minutes_away=2,
+                mode="bus",
+            ),
         ]
         mock_rail.side_effect = [
-            [NearbyTransitArrival(route_id="LIRR_9", stop_name="Jamaica",
-                                  direction="W", minutes_away=10, mode="lirr")],
+            [
+                NearbyTransitArrival(
+                    route_id="LIRR_9",
+                    stop_name="Jamaica",
+                    direction="W",
+                    minutes_away=10,
+                    mode="lirr",
+                )
+            ],
             [],  # MNR returns nothing
         ]
         data = client.get("/nearby/grouped?lat=40.7&lon=-73.9").json()
@@ -722,6 +817,7 @@ class TestAccessibility:
     def test_accessibility_returns_list(self, mock_elevators):
         # Reset the accessibility cache before each test
         import app.routers.status as _status_mod
+
         _status_mod._accessibility_cache = None
         _status_mod._accessibility_cached_at = 0.0
 
@@ -743,6 +839,7 @@ class TestAccessibility:
     def test_accessibility_graceful_on_error(self, mock_elevators):
         """When the elevator feed is down and no cached data exists, return empty list."""
         import app.routers.status as _status_mod
+
         _status_mod._accessibility_cache = None
         _status_mod._accessibility_cached_at = 0.0
 
@@ -756,6 +853,7 @@ class TestAccessibility:
     def test_accessibility_serves_stale_on_error(self, mock_elevators):
         """When the elevator feed is down but stale cache exists, return stale data."""
         import app.routers.status as _status_mod
+
         _status_mod._accessibility_cache = [
             ElevatorStatus(
                 station="Grand Central",
@@ -815,36 +913,66 @@ class TestGroupArrivals:
 
     def test_groups_by_route_id(self):
         flat = [
-            NearbyTransitArrival(route_id="A", stop_name="S1", direction="N",
-                                 minutes_away=3, mode="subway"),
-            NearbyTransitArrival(route_id="A", stop_name="S2", direction="S",
-                                 minutes_away=5, mode="subway"),
-            NearbyTransitArrival(route_id="L", stop_name="S3", direction="N",
-                                 minutes_away=2, mode="subway"),
+            NearbyTransitArrival(
+                route_id="A",
+                stop_name="S1",
+                direction="N",
+                minutes_away=3,
+                mode="subway",
+            ),
+            NearbyTransitArrival(
+                route_id="A",
+                stop_name="S2",
+                direction="S",
+                minutes_away=5,
+                mode="subway",
+            ),
+            NearbyTransitArrival(
+                route_id="L",
+                stop_name="S3",
+                direction="N",
+                minutes_away=2,
+                mode="subway",
+            ),
         ]
         groups = _group_arrivals(flat)
         assert len(groups) == 2
 
     def test_subway_gets_color(self):
         flat = [
-            NearbyTransitArrival(route_id="L", stop_name="S1", direction="N",
-                                 minutes_away=3, mode="subway"),
+            NearbyTransitArrival(
+                route_id="L",
+                stop_name="S1",
+                direction="N",
+                minutes_away=3,
+                mode="subway",
+            ),
         ]
         groups = _group_arrivals(flat)
         assert groups[0].color_hex == "#7C858C"
 
     def test_bus_gets_default_color(self):
         flat = [
-            NearbyTransitArrival(route_id="MTA NYCT_B63", stop_name="5 Av",
-                                 direction="E", minutes_away=4, mode="bus"),
+            NearbyTransitArrival(
+                route_id="MTA NYCT_B63",
+                stop_name="5 Av",
+                direction="E",
+                minutes_away=4,
+                mode="bus",
+            ),
         ]
         groups = _group_arrivals(flat)
         assert groups[0].color_hex == "#0039A6"
 
     def test_lirr_gets_branch_color(self):
         flat = [
-            NearbyTransitArrival(route_id="LIRR_9", stop_name="Jamaica",
-                                 direction="W", minutes_away=7, mode="lirr"),
+            NearbyTransitArrival(
+                route_id="LIRR_9",
+                stop_name="Jamaica",
+                direction="W",
+                minutes_away=7,
+                mode="lirr",
+            ),
         ]
         groups = _group_arrivals(flat)
         assert groups[0].color_hex is not None
@@ -852,8 +980,13 @@ class TestGroupArrivals:
 
     def test_mnr_gets_line_color(self):
         flat = [
-            NearbyTransitArrival(route_id="MNR_1", stop_name="Grand Central",
-                                 direction="N", minutes_away=4, mode="mnr"),
+            NearbyTransitArrival(
+                route_id="MNR_1",
+                stop_name="Grand Central",
+                direction="N",
+                minutes_away=4,
+                mode="mnr",
+            ),
         ]
         groups = _group_arrivals(flat)
         assert groups[0].color_hex is not None
@@ -861,10 +994,20 @@ class TestGroupArrivals:
 
     def test_sorted_by_soonest(self):
         flat = [
-            NearbyTransitArrival(route_id="A", stop_name="S1", direction="N",
-                                 minutes_away=10, mode="subway"),
-            NearbyTransitArrival(route_id="L", stop_name="S2", direction="N",
-                                 minutes_away=2, mode="subway"),
+            NearbyTransitArrival(
+                route_id="A",
+                stop_name="S1",
+                direction="N",
+                minutes_away=10,
+                mode="subway",
+            ),
+            NearbyTransitArrival(
+                route_id="L",
+                stop_name="S2",
+                direction="N",
+                minutes_away=2,
+                mode="subway",
+            ),
         ]
         groups = _group_arrivals(flat)
         # Groups are sorted by canonical MTA order first (A=040 < L=080),
@@ -881,23 +1024,43 @@ class TestSoonestMinutes:
 
     def test_returns_min_across_directions(self):
         group = GroupedNearbyTransit(
-            route_id="A", display_name="A", mode="subway",
+            route_id="A",
+            display_name="A",
+            mode="subway",
             directions=[
-                DirectionArrivals(direction="N", arrivals=[
-                    NearbyTransitArrival(route_id="A", stop_name="S1", direction="N",
-                                         minutes_away=8, mode="subway"),
-                ]),
-                DirectionArrivals(direction="S", arrivals=[
-                    NearbyTransitArrival(route_id="A", stop_name="S2", direction="S",
-                                         minutes_away=3, mode="subway"),
-                ]),
+                DirectionArrivals(
+                    direction="N",
+                    arrivals=[
+                        NearbyTransitArrival(
+                            route_id="A",
+                            stop_name="S1",
+                            direction="N",
+                            minutes_away=8,
+                            mode="subway",
+                        ),
+                    ],
+                ),
+                DirectionArrivals(
+                    direction="S",
+                    arrivals=[
+                        NearbyTransitArrival(
+                            route_id="A",
+                            stop_name="S2",
+                            direction="S",
+                            minutes_away=3,
+                            mode="subway",
+                        ),
+                    ],
+                ),
             ],
         )
         assert _soonest_minutes(group) == 3
 
     def test_returns_999_for_empty(self):
         group = GroupedNearbyTransit(
-            route_id="X", display_name="X", mode="subway",
+            route_id="X",
+            display_name="X",
+            mode="subway",
             directions=[],
         )
         assert _soonest_minutes(group) == 999
@@ -992,22 +1155,31 @@ class TestModels:
 
     def test_nearby_arrival_requires_mode(self):
         a = NearbyTransitArrival(
-            route_id="L", stop_name="S1", direction="N",
-            minutes_away=3, mode="subway",
+            route_id="L",
+            stop_name="S1",
+            direction="N",
+            minutes_away=3,
+            mode="subway",
         )
         assert a.mode == "subway"
 
     def test_nearby_arrival_lirr_mode(self):
         a = NearbyTransitArrival(
-            route_id="LIRR_5", stop_name="Jamaica", direction="W",
-            minutes_away=7, mode="lirr",
+            route_id="LIRR_5",
+            stop_name="Jamaica",
+            direction="W",
+            minutes_away=7,
+            mode="lirr",
         )
         assert a.mode == "lirr"
 
     def test_nearby_arrival_mnr_mode(self):
         a = NearbyTransitArrival(
-            route_id="MNR_1", stop_name="GCT", direction="N",
-            minutes_away=4, mode="mnr",
+            route_id="MNR_1",
+            stop_name="GCT",
+            direction="N",
+            minutes_away=4,
+            mode="mnr",
         )
         assert a.mode == "mnr"
 
@@ -1040,7 +1212,9 @@ class TestModels:
 
     def test_track_arrival_optional_fields(self):
         a = TrackArrival(
-            station="L01", direction="S", minutes_away=5,
+            station="L01",
+            direction="S",
+            minutes_away=5,
         )
         assert a.route_id == ""
         assert a.station_name == ""

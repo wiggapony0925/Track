@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 """Check offline bundle polylines for A/C/E near Sutphin."""
+
+from __future__ import annotations
+
 import json
 import math
 
@@ -32,11 +35,17 @@ for route_id in ["A", "C", "E"]:
                     lat = pt["lat"]
                     lon = pt["lon"]
                     dlat = (lat - SUTPHIN_LAT) * 111000
-                    dlon = (lon - SUTPHIN_LON) * 111000 * math.cos(math.radians(SUTPHIN_LAT))
+                    dlon = (
+                        (lon - SUTPHIN_LON)
+                        * 111000
+                        * math.cos(math.radians(SUTPHIN_LAT))
+                    )
                     d = math.sqrt(dlat * dlat + dlon * dlon)
                     if d < min_dist:
                         min_dist = d
-            print(f"{route_id}: v2 | {len(route_data)} branches | {total_pts} pts | closest={min_dist:.0f}m")
+            print(
+                f"{route_id}: v2 | {len(route_data)} branches | {total_pts} pts | closest={min_dist:.0f}m"
+            )
         elif isinstance(first, dict):
             # v1: single list of {lat, lon}
             min_dist = float("inf")
@@ -44,7 +53,9 @@ for route_id in ["A", "C", "E"]:
                 lat = pt["lat"]
                 lon = pt["lon"]
                 dlat = (lat - SUTPHIN_LAT) * 111000
-                dlon = (lon - SUTPHIN_LON) * 111000 * math.cos(math.radians(SUTPHIN_LAT))
+                dlon = (
+                    (lon - SUTPHIN_LON) * 111000 * math.cos(math.radians(SUTPHIN_LAT))
+                )
                 d = math.sqrt(dlat * dlat + dlon * dlon)
                 if d < min_dist:
                     min_dist = d

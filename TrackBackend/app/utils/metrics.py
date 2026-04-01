@@ -1,24 +1,19 @@
-#
-# metrics.py
-# TrackBackend
-#
-# Prometheus metrics for Track backend observability.
-#
-# Uses prometheus-fastapi-instrumentator for automatic HTTP request metrics
-# (latency histograms, request counts, response sizes) plus custom counters
-# and gauges for transit-specific signals.
-#
-# Metrics endpoint: GET /metrics (Prometheus scrape target)
-#
-# Key metrics exposed:
-#   • track_http_*               — auto-instrumented request latency, count, size
-#   • track_feed_refresh_total   — GTFS-RT feed refresh attempts by line/status
-#   • track_feed_refresh_seconds — feed refresh latency histogram
-#   • track_ml_predictions_total — delay predictions by source (model|heuristic)
-#   • track_weather_category     — current weather (gauge with label)
-#   • track_cache_hits_total     — cache hit/miss/stale counters by layer
-#   • track_warmup_complete      — 1 when server is fully warmed up
-#
+"""Prometheus metrics for Track backend observability.
+
+Uses prometheus-fastapi-instrumentator for automatic HTTP request metrics
+(latency histograms, request counts, response sizes) plus custom counters
+and gauges for transit-specific signals.
+
+Metrics endpoint: GET /metrics (Prometheus scrape target)
+
+Key metrics exposed:
+• track_http_*               — auto-instrumented request latency, count, size
+• track_feed_refresh_total   — GTFS-RT feed refresh attempts by line/status
+• track_feed_refresh_seconds — feed refresh latency histogram
+• track_ml_predictions_total — delay predictions by source (model|heuristic)
+• track_weather_category     — current weather (gauge with label)
+• track_cache_hits_total     — cache hit/miss/stale counters by layer
+• track_warmup_complete      — 1 when server is fully warmed up."""
 
 from __future__ import annotations
 
@@ -124,10 +119,12 @@ def setup_metrics(app) -> None:
 
     Call once during startup (main.py).  Creates the /metrics endpoint.
     """
-    APP_INFO.info({
-        "version": "1.0.0",
-        "name": "Track API",
-    })
+    APP_INFO.info(
+        {
+            "version": "1.0.0",
+            "name": "Track API",
+        }
+    )
 
     instrumentator.instrument(app).expose(
         app,

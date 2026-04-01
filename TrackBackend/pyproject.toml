@@ -1,0 +1,45 @@
+[tool.black]
+line-length = 88
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # pyflakes
+    "I",      # isort
+    "UP",     # pyupgrade
+    "B",      # flake8-bugbear
+    "SIM",    # flake8-simplify
+    "C4",     # flake8-comprehensions
+    "RET",    # flake8-return
+    "PIE",    # flake8-pie
+    "ISC",    # flake8-implicit-str-concat
+    "TCH",    # flake8-type-checking
+    "PLC",    # pylint convention
+    "PLE",    # pylint error
+    "PLW",    # pylint warning
+    "RUF",    # ruff-specific rules
+]
+ignore = [
+    "RUF001",   # ambiguous unicode in strings (emojis, arrows OK)
+    "RUF002",   # ambiguous unicode in docstrings (en-dashes OK)
+    "RUF003",   # ambiguous unicode in comments (OK)
+    "RUF012",   # mutable class default (common in test fixtures)
+    "PLC0415",  # import-outside-top-level (lazy imports for perf/circular deps)
+    "PLW0603",  # global-statement (used for singleton caches)
+    "PLW0602",  # global-variable-not-assigned
+    "ISC001",   # conflicts with Black formatter
+    "E501",     # line-too-long (Black handles this)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = [
+    "B011",     # assert-false (acceptable in test assertions)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]

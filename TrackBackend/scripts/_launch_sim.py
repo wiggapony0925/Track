@@ -1,22 +1,26 @@
 #!/usr/bin/env python3
 """Simulate the exact iOS app cold launch: 4 parallel API calls."""
-import httpx
-import time
+
+from __future__ import annotations
+
 import concurrent.futures
-import sys
+import time
+
+import httpx
 
 BASE = "http://127.0.0.1:8000"
 LAT, LON, RAD = 40.7505, -73.9934, 8047
 
 CALLS = [
-    ("/nearby",         {"lat": LAT, "lon": LON, "radius": RAD}),
+    ("/nearby", {"lat": LAT, "lon": LON, "radius": RAD}),
     ("/nearby/grouped", {"lat": LAT, "lon": LON, "radius": RAD}),
-    ("/bus/nearby",     {"lat": LAT, "lon": LON, "radius": RAD}),
-    ("/alerts",         None),
+    ("/bus/nearby", {"lat": LAT, "lon": LON, "radius": RAD}),
+    ("/alerts", None),
 ]
 
 OUT_FILE = "/tmp/launch_sim_out.txt"
 lines = []
+
 
 def log(msg):
     print(msg, flush=True)
@@ -61,10 +65,10 @@ log(f"\n{'='*60}")
 log(f"  Cold launch backend time:   {wall_cold:.3f}s")
 log(f"  Cached launch backend time: {wall_cached:.3f}s")
 log(f"  Speedup:                    {wall_cold/max(wall_cached,0.001):.0f}x")
-log(f"\n  Your measured app launch: 4.008s")
+log("\n  Your measured app launch: 4.008s")
 log(f"  Backend portion (cold):   ~{wall_cold:.1f}s")
 log(f"  iOS overhead (est):       ~{max(0, 4.008 - wall_cold):.1f}s")
-log(f"    (auth resolve, GPS wait, SwiftUI render, JSON decode)")
+log("    (auth resolve, GPS wait, SwiftUI render, JSON decode)")
 
 with open(OUT_FILE, "w") as f:
     f.write("\n".join(lines) + "\n")

@@ -1,8 +1,15 @@
 #!/usr/bin/env python3
 """Check if backend shapes cache has precision-5 (stale) or precision-6 (current) polylines."""
-import json, os, time
 
-path = os.path.join(os.path.dirname(__file__), "..", "app", "data", "_cache_shapes_all.json")
+from __future__ import annotations
+
+import json
+import os
+import time
+
+path = os.path.join(
+    os.path.dirname(__file__), "..", "app", "data", "_cache_shapes_all.json"
+)
 path = os.path.abspath(path)
 
 if not os.path.exists(path):
@@ -54,7 +61,9 @@ print(f"As precision-5: ({c5[0]:.5f}, {c5[1]:.5f})")
 if 39 < c6[0] < 42 and -75 < c6[1] < -72:
     print("\n✅ Cache contains PRECISION-6 polylines (current v9)")
 elif 39 < c5[0] < 42 and -75 < c5[1] < -72:
-    print("\n❌ Cache contains PRECISION-5 polylines (STALE! Delete and restart backend)")
+    print(
+        "\n❌ Cache contains PRECISION-5 polylines (STALE! Delete and restart backend)"
+    )
     print(f"   rm '{path}'")
 else:
     print("\n⚠️  Could not determine precision (coordinates don't look like NYC)")

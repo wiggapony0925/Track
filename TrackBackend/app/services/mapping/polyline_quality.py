@@ -1,21 +1,33 @@
+"""Post-processing quality checks and fixups for subway route polylines."""
+
 from __future__ import annotations
 
+import itertools
 import math
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 
 from shapely.geometry import LineString, Point
-from shapely.geometry.base import BaseGeometry
 
 import app.services.mapping.corridor_pipeline as corridor_pipeline
 from app.models import SubwayLineOverlay
 from app.routers.subway import get_all_subway_lines, get_subway_color
-from app.services.mapping.subway_shapes import _load_route_shapes, _load_shapes, _unpack_coords
+from app.services.mapping.subway_shapes import (
+    _load_route_shapes,
+    _load_shapes,
+    _unpack_coords,
+)
 from app.utils.polyline_utils import (
     decode_polyline as _decode_polyline,
+)
+from app.utils.polyline_utils import (
     densify_wgs84,
+)
+from app.utils.polyline_utils import (
     encode_polyline as _encode_polyline,
 )
 
+if TYPE_CHECKING:
+    from shapely.geometry.base import BaseGeometry
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Zoom-level simulation constants
@@ -44,7 +56,7 @@ ZOOM_TEST_LEVELS: list[float] = [value / 2.0 for value in range(20, 37)]
 # These are the standard Web Mercator values × cos(40.7°).
 _METRES_PER_PX_Z0 = 156_543.03 * math.cos(math.radians(40.7))
 ZOOM_METRES_PER_PX: dict[int, float] = {
-    z: _METRES_PER_PX_Z0 / (2 ** z) for z in range(10, 19)
+    z: _METRES_PER_PX_Z0 / (2**z) for z in range(10, 19)
 }
 
 # At each zoom, the acceptable displacement (metres) for a polyline
@@ -53,6 +65,7 @@ ZOOM_METRES_PER_PX: dict[int, float] = {
 # visually "on top of" the station dot.  We add a small absolute
 # tolerance to account for Google-polyline quantisation (±0.5 m).
 LANE_OFFSET_TOUCH_RATIO = 0.98
+
 
 def _max_acceptable_gap_m(zoom: int) -> float:
     """Maximum geographic gap (metres) that is still visually invisible.
@@ -102,7 +115,7 @@ def _fill_width_px_at_zoom(zoom: float) -> float:
 
 
 def _metres_per_px_at_zoom(zoom: float) -> float:
-    return _METRES_PER_PX_Z0 / (2 ** zoom)
+    return _METRES_PER_PX_Z0 / (2**zoom)
 
 
 def _lane_offset_multiplier_at_zoom(zoom: float) -> float:
@@ -174,7 +187,9 @@ def _station_anchor(station: dict) -> tuple[float, float]:
 
 
 def _scene_contains(scene: GoldScene, lat: float, lon: float) -> bool:
-    return scene.min_lat <= lat <= scene.max_lat and scene.min_lon <= lon <= scene.max_lon
+    return (
+        scene.min_lat <= lat <= scene.max_lat and scene.min_lon <= lon <= scene.max_lon
+    )
 
 
 def _build_subway_overlays() -> list[SubwayLineOverlay]:
@@ -204,7 +219,9 @@ def _build_subway_overlays() -> list[SubwayLineOverlay]:
             SubwayLineOverlay(
                 route_id=line,
                 color_hex=get_subway_color(line),
-                polylines=[_encode_polyline(densify_wgs84(coords)) for coords in polylines_raw],
+                polylines=[
+                    _encode_polyline(densify_wgs84(coords)) for coords in polylines_raw
+                ],
             )
         )
 
@@ -220,15 +237,16 @@ def _build_trunk_geometries(trunk_polylines: list[dict]) -> dict[int, list[LineS
             if len(coords) < 2:
                 continue
             projected = [
-                corridor_pipeline._to_meters.transform(lon, lat)
-                for lat, lon in coords
+                corridor_pipeline._to_meters.transform(lon, lat) for lat, lon in coords
             ]
             lines.append(LineString(projected))
         result[trunk["trunk_index"]] = lines
     return result
 
 
-def _build_render_branches(trunk_polylines: list[dict]) -> dict[int, list[RenderBranch]]:
+def _build_render_branches(
+    trunk_polylines: list[dict],
+) -> dict[int, list[RenderBranch]]:
     result: dict[int, list[RenderBranch]] = {}
     for trunk in trunk_polylines:
         encoded_polylines = trunk.get("polylines", [])
@@ -239,8 +257,7 @@ def _build_render_branches(trunk_polylines: list[dict]) -> dict[int, list[Render
             if len(coords) < 2:
                 continue
             projected = [
-                corridor_pipeline._to_meters.transform(lon, lat)
-                for lat, lon in coords
+                corridor_pipeline._to_meters.transform(lon, lat) for lat, lon in coords
             ]
             lane_offset = (
                 float(local_offsets[idx])
@@ -266,7 +283,11 @@ def _offset_geometry_for_zoom(
     if abs(lane_offset) < 1e-9:
         return geometry
 
-    offset_m = lane_offset * _lane_offset_multiplier_at_zoom(zoom) * _metres_per_px_at_zoom(zoom)
+    offset_m = (
+        lane_offset
+        * _lane_offset_multiplier_at_zoom(zoom)
+        * _metres_per_px_at_zoom(zoom)
+    )
     if abs(offset_m) < 1e-9:
         return geometry
 
@@ -298,7 +319,11 @@ def _station_attachment_metrics(
             for position in positions
         }
         trunk_ids.discard(None)
-        lines = [line for trunk_idx in trunk_ids for line in trunk_geometries.get(trunk_idx, [])]
+        lines = [
+            line
+            for trunk_idx in trunk_ids
+            for line in trunk_geometries.get(trunk_idx, [])
+        ]
         if not lines:
             continue
 
@@ -343,7 +368,9 @@ def _rendered_gap_for_station(
     found = False
     for trunk_idx in trunk_ids:
         for branch in render_branches.get(trunk_idx, []):
-            rendered = _offset_geometry_for_zoom(branch.geometry, branch.lane_offset, zoom)
+            rendered = _offset_geometry_for_zoom(
+                branch.geometry, branch.lane_offset, zoom
+            )
             distance = rendered.distance(point)
             if distance < best:
                 best = distance
@@ -357,7 +384,7 @@ def _segment_lengths_m(trunk_polylines: list[dict]) -> list[float]:
     for trunk in trunk_polylines:
         for encoded in trunk.get("polylines", []):
             coords = _decode_polyline(encoded)
-            for start, end in zip(coords, coords[1:]):
+            for start, end in itertools.pairwise(coords):
                 x0, y0 = corridor_pipeline._to_meters.transform(start[1], start[0])
                 x1, y1 = corridor_pipeline._to_meters.transform(end[1], end[0])
                 lengths.append(math.hypot(x1 - x0, y1 - y0))
@@ -365,7 +392,9 @@ def _segment_lengths_m(trunk_polylines: list[dict]) -> list[float]:
 
 
 def _lane_neighbor_deltas(trunk_polylines: list[dict]) -> list[dict]:
-    lane_offsets = {trunk["trunk_index"]: trunk["lane_offset"] for trunk in trunk_polylines}
+    lane_offsets = {
+        trunk["trunk_index"]: trunk["lane_offset"] for trunk in trunk_polylines
+    }
     deltas: list[dict] = []
 
     for left_trunk, neighbors in corridor_pipeline._corridor_neighbors_cache.items():
@@ -449,7 +478,9 @@ def build_subway_quality_snapshot() -> dict:
 
     return {
         "trunk_count": len(trunk_polylines),
-        "polyline_count": sum(len(trunk.get("polylines", [])) for trunk in trunk_polylines),
+        "polyline_count": sum(
+            len(trunk.get("polylines", [])) for trunk in trunk_polylines
+        ),
         "station_count": len(processed_stops),
         "station_attachment_distances_m": station_distances,
         "position_attachment_distances_m": position_distances,
@@ -473,6 +504,7 @@ def build_subway_quality_snapshot() -> dict:
 # ═══════════════════════════════════════════════════════════════════════════════
 # Raw MTA station attachment — ground truth metric
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 def _raw_mta_station_attachment(
     trunk_geometries: dict[int, list[LineString]],
@@ -516,12 +548,14 @@ def _raw_mta_station_attachment(
         distances.append(dist)
 
         if dist > 10.0:
-            outliers.append({
-                "distance_m": dist,
-                "station_name": station["name"],
-                "station_id": station["id"],
-                "routes": sorted(set(routes)),
-            })
+            outliers.append(
+                {
+                    "distance_m": dist,
+                    "station_name": station["name"],
+                    "station_id": station["id"],
+                    "routes": sorted(set(routes)),
+                }
+            )
 
     outliers.sort(key=lambda item: item["distance_m"], reverse=True)
     return distances, outliers
@@ -530,6 +564,7 @@ def _raw_mta_station_attachment(
 # ═══════════════════════════════════════════════════════════════════════════════
 # Zoom-level quality analysis
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 def _zoom_level_quality(
     render_branches: dict[int, list[RenderBranch]],
@@ -580,22 +615,25 @@ def _zoom_level_quality(
         visible_count = sum(1 for d in sorted_dists if d > gap)
         pct_within = 100.0 * (total - visible_count) / total if total else 0.0
 
-        max_lane_offset = max(
-            all_lane_offsets,
-            default=0.0
+        max_lane_offset = max(all_lane_offsets, default=0.0)
+        max_lane_displacement_m = (
+            max_lane_offset * _lane_offset_multiplier_at_zoom(zoom) * mpp
         )
-        max_lane_displacement_m = max_lane_offset * _lane_offset_multiplier_at_zoom(zoom) * mpp
 
-        results.append({
-            "zoom": zoom,
-            "metres_per_px": round(mpp, 4),
-            "fill_width_px": round(fill_px, 3),
-            "max_acceptable_gap_m": round(gap, 3),
-            "stations_visible_gap": visible_count,
-            "pct_within_line": round(pct_within, 2),
-            "worst_gap_m": round(sorted_dists[-1], 3) if sorted_dists else 0.0,
-            "p95_gap_m": round(percentile(sorted_dists, 95), 3) if sorted_dists else 0.0,
-            "max_lane_displacement_m": round(max_lane_displacement_m, 3),
-        })
+        results.append(
+            {
+                "zoom": zoom,
+                "metres_per_px": round(mpp, 4),
+                "fill_width_px": round(fill_px, 3),
+                "max_acceptable_gap_m": round(gap, 3),
+                "stations_visible_gap": visible_count,
+                "pct_within_line": round(pct_within, 2),
+                "worst_gap_m": round(sorted_dists[-1], 3) if sorted_dists else 0.0,
+                "p95_gap_m": (
+                    round(percentile(sorted_dists, 95), 3) if sorted_dists else 0.0
+                ),
+                "max_lane_displacement_m": round(max_lane_displacement_m, 3),
+            }
+        )
 
     return results

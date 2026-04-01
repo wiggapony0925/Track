@@ -1,13 +1,8 @@
-#
-# station_lookup.py
-# TrackBackend
-#
-# Loads MTA GTFS stops.txt (Subway, LIRR, Metro-North) and provides fast
-# lookups from stop_id → (lat, lon, name) and spatial proximity queries.
-#
-# Performance: get_nearby_stop_ids() uses a bounding-box pre-filter O(1)
-# before haversine O(k) where k << n total stops.
-#
+"""Loads MTA GTFS stops.txt (Subway, LIRR, Metro-North) and provides fast
+lookups from stop_id → (lat, lon, name) and spatial proximity queries.
+
+Performance: get_nearby_stop_ids() uses a bounding-box pre-filter O(1)
+before haversine O(k) where k << n total stops."""
 
 from __future__ import annotations
 
@@ -84,7 +79,9 @@ def _load_stops() -> dict[str, StopInfo]:
                 # but namespaced keys are used for agency-specific lookups)
                 stops[stop_id] = info
 
-        TrackLogger.data(f"Loaded {len(stops) - count_before} stops from {agency} ({path.name})")
+        TrackLogger.data(
+            f"Loaded {len(stops) - count_before} stops from {agency} ({path.name})"
+        )
 
     TrackLogger.data(f"Station lookup ready: {len(stops)} total stop entries")
     return stops
@@ -122,7 +119,11 @@ def get_stop_name(stop_id: str, agency: str | None = None) -> str:
 
 
 def is_stop_nearby(
-    stop_id: str, lat: float, lon: float, radius_m: float, agency: str | None = None,
+    stop_id: str,
+    lat: float,
+    lon: float,
+    radius_m: float,
+    agency: str | None = None,
 ) -> bool:
     """Return True if the stop_id is within radius_m meters of (lat, lon)."""
     info = get_stop_info(stop_id, agency=agency)
@@ -132,7 +133,10 @@ def is_stop_nearby(
 
 
 def get_nearby_stop_ids(
-    lat: float, lon: float, radius_m: float, agency: str | None = None,
+    lat: float,
+    lon: float,
+    radius_m: float,
+    agency: str | None = None,
 ) -> set[str]:
     """Return the set of stop_ids within radius_m meters of (lat, lon).
 

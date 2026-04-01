@@ -3,9 +3,9 @@ from __future__ import annotations
 import pytest
 
 from app.services.mapping.polyline_quality import (
-    build_subway_quality_snapshot,
     ZOOM_TEST_LEVELS,
     _max_acceptable_gap_m,
+    build_subway_quality_snapshot,
 )
 
 
@@ -15,6 +15,7 @@ def quality_snapshot() -> dict:
 
 
 # ─── Existing system-level checks ────────────────────────────────────────────
+
 
 def test_quality_snapshot_covers_full_system(quality_snapshot: dict):
     assert quality_snapshot["trunk_count"] == 10
@@ -43,6 +44,7 @@ def test_exported_trunk_geometry_remains_continuous(quality_snapshot: dict):
 
 # ─── Raw MTA station attachment (stops are ground truth) ─────────────────────
 
+
 def test_raw_mta_stations_near_polylines(quality_snapshot: dict):
     """Every raw MTA station coordinate must be close to its trunk polyline.
 
@@ -51,21 +53,22 @@ def test_raw_mta_stations_near_polylines(quality_snapshot: dict):
     """
     summary = quality_snapshot["raw_mta_attachment_summary"]
     # p95 of raw MTA stations within 1.5 m of their trunk polyline
-    assert summary["p95"] <= 1.5, (
-        f"p95 raw MTA attachment {summary['p95']:.2f} m exceeds 1.5 m"
-    )
+    assert (
+        summary["p95"] <= 1.5
+    ), f"p95 raw MTA attachment {summary['p95']:.2f} m exceeds 1.5 m"
     # p99 within 3 m
-    assert summary["p99"] <= 3.0, (
-        f"p99 raw MTA attachment {summary['p99']:.2f} m exceeds 3.0 m"
-    )
+    assert (
+        summary["p99"] <= 3.0
+    ), f"p99 raw MTA attachment {summary['p99']:.2f} m exceeds 3.0 m"
 
 
 def test_raw_mta_outliers_are_few(quality_snapshot: dict):
     """At most a handful of stations should be farther than 10 m."""
     outliers = quality_snapshot["raw_mta_outliers"]
-    assert len(outliers) <= 5, (
-        f"{len(outliers)} raw MTA outliers (>10 m): "
-        + ", ".join(f"{o['station_name']} ({o['distance_m']:.1f} m)" for o in outliers[:10])
+    assert (
+        len(outliers) <= 5
+    ), f"{len(outliers)} raw MTA outliers (>10 m): " + ", ".join(
+        f"{o['station_name']} ({o['distance_m']:.1f} m)" for o in outliers[:10]
     )
 
 
@@ -80,12 +83,13 @@ def test_processed_stops_use_raw_mta_coordinates(quality_snapshot: dict):
     raw_summary = quality_snapshot["raw_mta_attachment_summary"]
     pos_summary = quality_snapshot["position_attachment_summary"]
     # They should be very similar (not identical due to per-route grouping)
-    assert abs(raw_summary["p50"] - pos_summary["p50"]) < 0.5, (
-        "Processed positions appear to have been snapped off raw MTA coords"
-    )
+    assert (
+        abs(raw_summary["p50"] - pos_summary["p50"]) < 0.5
+    ), "Processed positions appear to have been snapped off raw MTA coords"
 
 
 # ─── Multi-zoom-level polyline quality ───────────────────────────────────────
+
 
 class TestZoomLevelQuality:
     """Verify rendered polyline-to-station attachment across the full zoom range.
@@ -100,9 +104,9 @@ class TestZoomLevelQuality:
         """Quality data should exist for the whole zoom sweep."""
         zoom_quality = quality_snapshot["zoom_quality"]
         zooms = {z["zoom"] for z in zoom_quality}
-        assert zooms == set(ZOOM_TEST_LEVELS), (
-            f"Missing zoom levels: {set(ZOOM_TEST_LEVELS) - zooms}"
-        )
+        assert zooms == set(
+            ZOOM_TEST_LEVELS
+        ), f"Missing zoom levels: {set(ZOOM_TEST_LEVELS) - zooms}"
 
     @pytest.mark.parametrize("zoom", ZOOM_TEST_LEVELS)
     def test_no_visible_gaps_at_zoom(self, quality_snapshot: dict, zoom: int):
@@ -151,9 +155,9 @@ class TestZoomLevelQuality:
             None,
         )
         assert z18 is not None
-        assert z18["worst_gap_m"] <= 10.0, (
-            f"Worst gap at z18 is {z18['worst_gap_m']:.2f} m — too large for max zoom"
-        )
+        assert (
+            z18["worst_gap_m"] <= 10.0
+        ), f"Worst gap at z18 is {z18['worst_gap_m']:.2f} m — too large for max zoom"
 
     def test_far_zoom_tolerance_is_generous(self, quality_snapshot: dict):
         """At zoom 10.0 (max zoom-out) the acceptable gap should be large.
@@ -168,7 +172,9 @@ class TestZoomLevelQuality:
         # At z10 the acceptable gap should be generous (> 40 m)
         assert z10["max_acceptable_gap_m"] > 40.0
 
-    def test_close_zoom_rendered_gap_stays_well_inside_stroke(self, quality_snapshot: dict):
+    def test_close_zoom_rendered_gap_stays_well_inside_stroke(
+        self, quality_snapshot: dict
+    ):
         """At close zooms the rendered p95 gap should remain inside the line."""
         for zoom_data in quality_snapshot["zoom_quality"]:
             zoom = zoom_data["zoom"]
@@ -182,12 +188,13 @@ class TestZoomLevelQuality:
 
 # ─── Zoom constant sanity checks ────────────────────────────────────────────
 
+
 def test_max_acceptable_gap_monotonically_decreasing():
     """Acceptable gap should decrease as zoom increases (closer = tighter)."""
     prev_gap = float("inf")
     for zoom in range(10, 19):
         gap = _max_acceptable_gap_m(zoom)
-        assert gap < prev_gap, (
-            f"Gap at z{zoom} ({gap:.2f} m) not less than z{zoom-1} ({prev_gap:.2f} m)"
-        )
+        assert (
+            gap < prev_gap
+        ), f"Gap at z{zoom} ({gap:.2f} m) not less than z{zoom-1} ({prev_gap:.2f} m)"
         prev_gap = gap

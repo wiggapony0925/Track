@@ -9,6 +9,8 @@ Modules:
     weather_client  – OpenWeather current conditions for ML features
 """
 
+from __future__ import annotations
+
 __all__ = [
     "bus_client",
     "mta_client",

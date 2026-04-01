@@ -1,18 +1,21 @@
-#
-# polyline_utils.py
-# TrackBackend
-#
-# Shared Google-encoded polyline encode/decode utilities.
-# Eliminates duplication across subway.py, lirr.py, mnr.py, bus_client.py.
-#
+"""Shared Google-encoded polyline encode/decode utilities.
+Eliminates duplication across subway.py, lirr.py, mnr.py, bus_client.py."""
 
 from __future__ import annotations
+
+import math as _math
 
 
 def decode_polyline(encoded: str) -> list[tuple[float, float]]:
     """Decode a Google-encoded polyline into [(lat, lon), ...].
 
     Time complexity: O(n) where n is the length of the encoded string.
+
+    Args:
+        encoded: Google-encoded polyline string.
+
+    Returns:
+        List of (lat, lon) coordinate tuples.
     """
     coords: list[tuple[float, float]] = []
     i, lat, lng = 0, 0, 0
@@ -39,6 +42,12 @@ def encode_polyline(coords: list[tuple[float, float]]) -> str:
     """Encode [(lat, lon), ...] into a Google-encoded polyline string.
 
     Time complexity: O(n) where n is the number of coordinate pairs.
+
+    Args:
+        coords: List of (lat, lon) coordinate tuples.
+
+    Returns:
+        Google-encoded polyline string.
     """
     result: list[str] = []
     prev_lat, prev_lng = 0, 0
@@ -60,10 +69,8 @@ def _encode_value(value: int, result: list[str]) -> None:
     result.append(chr(v + 63))
 
 
-import math as _math
-
 # ── WGS-84 degree-to-metre constant ─────────────────────────────────────
-_DEG_LAT_M = 111_320.0          # 1° latitude ≈ 111.32 km everywhere
+_DEG_LAT_M = 111_320.0  # 1° latitude ≈ 111.32 km everywhere
 
 
 def _deg_lon_m(lat: float) -> float:
@@ -92,6 +99,14 @@ def densify_wgs84(
     ensures curves have enough vertices at ~25 m spacing so client-side
     filleting produces smooth arcs (was 100 m — too sparse for tight
     subway turns).
+
+    Args:
+        coords: List of (lat, lon) coordinate tuples.
+        max_spacing_m: Maximum distance in metres between adjacent
+            points; longer segments are subdivided.
+
+    Returns:
+        Densified list of (lat, lon) tuples.
     """
     if len(coords) < 2:
         return list(coords)
@@ -103,13 +118,15 @@ def densify_wgs84(
         dist = _wgs84_dist(prev, curr)
 
         if dist > max_spacing_m:
-            n_sub = int(_math.ceil(dist / max_spacing_m))
+            n_sub = _math.ceil(dist / max_spacing_m)
             for j in range(1, n_sub):
                 t = j / n_sub
-                result.append((
-                    prev[0] + t * (curr[0] - prev[0]),
-                    prev[1] + t * (curr[1] - prev[1]),
-                ))
+                result.append(
+                    (
+                        prev[0] + t * (curr[0] - prev[0]),
+                        prev[1] + t * (curr[1] - prev[1]),
+                    )
+                )
         result.append(curr)
 
     return result
@@ -124,6 +141,14 @@ def simplify_polyline(
     line segment between their neighbours.  A tolerance of 0.00005° ≈ 5.5 m
     at NYC latitude — visually identical on mobile zoom levels but cuts the
     point count by 40−60 % after densification.
+
+    Args:
+        coords: List of (lat, lon) coordinate tuples.
+        tolerance: Maximum perpendicular deviation in degrees before
+            a point is kept.
+
+    Returns:
+        Simplified list of (lat, lon) tuples.
     """
     if len(coords) <= 2:
         return coords
@@ -139,12 +164,23 @@ def simplify_polyline(
 
     for i in range(1, len(coords) - 1):
         if line_len_sq == 0:
-            dist = ((coords[i][0] - first[0]) ** 2 + (coords[i][1] - first[1]) ** 2) ** 0.5
+            dist = (
+                (coords[i][0] - first[0]) ** 2 + (coords[i][1] - first[1]) ** 2
+            ) ** 0.5
         else:
-            t = max(0, min(1, ((coords[i][1] - first[1]) * dx + (coords[i][0] - first[0]) * dy) / line_len_sq))
+            t = max(
+                0,
+                min(
+                    1,
+                    ((coords[i][1] - first[1]) * dx + (coords[i][0] - first[0]) * dy)
+                    / line_len_sq,
+                ),
+            )
             proj_lat = first[0] + t * dy
             proj_lon = first[1] + t * dx
-            dist = ((coords[i][0] - proj_lat) ** 2 + (coords[i][1] - proj_lon) ** 2) ** 0.5
+            dist = (
+                (coords[i][0] - proj_lat) ** 2 + (coords[i][1] - proj_lon) ** 2
+            ) ** 0.5
         if dist > max_dist:
             max_dist = dist
             max_idx = i
@@ -153,5 +189,4 @@ def simplify_polyline(
         left = simplify_polyline(coords[: max_idx + 1], tolerance)
         right = simplify_polyline(coords[max_idx:], tolerance)
         return left[:-1] + right
-    else:
-        return [first, last]
+    return [first, last]

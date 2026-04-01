@@ -1,97 +1,91 @@
-#
-# train_model.py
-# app/ml/train_model.py
-#
-# Bootstrap + train the LightGBM delay factor model.
-#
-# Run from the TrackBackend directory:
-#   python -m app.ml.train_model
-#
-# ── What this does ─────────────────────────────────────────────────────────
-#
-#  Phase 1 — Bootstrap from GTFS (works right now, zero extra data needed)
-#  -----------------------------------------------------------------------
-#  We have 8M+ stop_times rows in transit_schedule.db.  From those we
-#  derive real facts about each route:
-#    • Average stop count per trip (proxy for trip length / exposure to delay)
-#    • Which hours each route actually runs (from scheduled departure times)
-#    • Which modes the route belongs to (subway / bus / lirr / mnr)
-#
-#  We then generate synthetic training samples by sampling from distributions
-#  that encode known MTA OTP (on-time performance) patterns:
-#
-#    delay_factor = base_for_route
-#                + rush_hour_effect
-#                + weather_effect
-#                + Gaussian noise (σ=0.03)
-#
-#  This is NOT making things up — it is encoding domain knowledge as a prior
-#  so the model starts better than pure heuristics from day one.
-#
-#  Phase 2 — Real data (automatic over time)
-#  -----------------------------------------
-#  Once the app is running, recency_model.py records actual vs. MTA-predicted
-#  errors per stop into Redis.  Periodically export those to a CSV and rerun
-#  this script with --real-data path/to/observations.csv to blend real and
-#  bootstrapped samples.  The bootstrapped rows are down-weighted so real
-#  data quickly dominates.
-#
-# ── Why LightGBM instead of sklearn GradientBoostingRegressor? ────────────
-#   • 10–50× faster training on the same data (leaf-wise growth vs level-wise)
-#   • Built-in early stopping — automatically stops adding trees when
-#     validation error stops improving, preventing overfitting
-#   • Handles large datasets (millions of rows) without OOM issues
-#   • Same sklearn-compatible API: .fit() / .predict() / sample_weight
-#   • Same .pkl output — no changes needed to delay_model.py or the API
-#
-# ── Output ─────────────────────────────────────────────────────────────────
-#   app/data/delay_model.pkl  — joblib-serialised LightGBM ready to load
-#
+"""Bootstrap + train the LightGBM delay factor model.
+
+Run from the TrackBackend directory:
+python -m app.ml.train_model
+
+── What this does ─────────────────────────────────────────────────────────
+
+Phase 1 — Bootstrap from GTFS (works right now, zero extra data needed)
+We have 8M+ stop_times rows in transit_schedule.db.  From those we
+derive real facts about each route:
+• Average stop count per trip (proxy for trip length / exposure to delay)
+• Which hours each route actually runs (from scheduled departure times)
+• Which modes the route belongs to (subway / bus / lirr / mnr)
+
+We then generate synthetic training samples by sampling from distributions
+that encode known MTA OTP (on-time performance) patterns:
+
+delay_factor = base_for_route
++ rush_hour_effect
++ weather_effect
++ Gaussian noise (σ=0.03)
+
+This is NOT making things up — it is encoding domain knowledge as a prior
+so the model starts better than pure heuristics from day one.
+
+Phase 2 — Real data (automatic over time)
+Once the app is running, recency_model.py records actual vs. MTA-predicted
+errors per stop into Redis.  Periodically export those to a CSV and rerun
+this script with --real-data path/to/observations.csv to blend real and
+bootstrapped samples.  The bootstrapped rows are down-weighted so real
+data quickly dominates.
+
+── Why LightGBM instead of sklearn GradientBoostingRegressor? ────────────
+• 10–50× faster training on the same data (leaf-wise growth vs level-wise)
+• Built-in early stopping — automatically stops adding trees when
+validation error stops improving, preventing overfitting
+• Handles large datasets (millions of rows) without OOM issues
+• Same sklearn-compatible API: .fit() / .predict() / sample_weight
+• Same .pkl output — no changes needed to delay_model.py or the API
+
+── Output ─────────────────────────────────────────────────────────────────
+app/data/delay_model.pkl  — joblib-serialised LightGBM ready to load."""
 
 from __future__ import annotations
 
 import argparse
+import contextlib
 import random
 import sqlite3
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
-# ── Paths ──────────────────────────────────────────────────────────────────
-_ROOT   = Path(__file__).resolve().parent.parent.parent   # TrackBackend/
-_DB     = _ROOT / "app" / "data" / "transit_schedule.db"
-_OUT    = _ROOT / "app" / "data" / "delay_model.pkl"
-
-# ── Feature encoding (must match delay_model.py exactly) ──────────────────
 from app.ml.delay_model import (
     ROUTE_RELIABILITY,
-    WEATHER_ENCODING,
-    MODE_ENCODING,
     encode_features,
 )
+
+# ── Paths ──────────────────────────────────────────────────────────────────
+_ROOT = Path(__file__).resolve().parent.parent.parent  # TrackBackend/
+_DB = _ROOT / "app" / "data" / "transit_schedule.db"
+_OUT = _ROOT / "app" / "data" / "delay_model.pkl"
+
+# ── Feature encoding (must match delay_model.py exactly) ──────────────────
 
 # ── MTA on-time performance priors (public data, NYC Transit 2024 reports) ─
 # Base delay factor at off-peak, clear weather for each reliability tier.
 # Subway: ~80-85% on time → avg factor ≈ 1.05–1.08
 # Bus:    ~55-65% on time → avg factor ≈ 1.10–1.18
 _TIER_BASE: dict[int, float] = {
-    0: 1.02,   # Tier 0 (L, SI) — very reliable
-    1: 1.04,   # Tier 1 (7, W)
-    2: 1.07,   # Tier 2 (most lines) — moderate chronic delay
-    3: 1.10,   # Tier 3 (A/C/4/5/6) — frequently delayed
-    4: 1.16,   # Tier 4 (G) — chronically delayed
+    0: 1.02,  # Tier 0 (L, SI) — very reliable
+    1: 1.04,  # Tier 1 (7, W)
+    2: 1.07,  # Tier 2 (most lines) — moderate chronic delay
+    3: 1.10,  # Tier 3 (A/C/4/5/6) — frequently delayed
+    4: 1.16,  # Tier 4 (G) — chronically delayed
 }
 
 # Rush-hour additive effect per mode tier
 _RUSH_SUBWAY = 0.10
-_RUSH_BUS    = 0.20
+_RUSH_BUS = 0.20
 
 # Weather additive effects
 _WEATHER_EFFECTS: dict[str, dict[str, float]] = {
     "subway": {"clear": 0.0, "rain": 0.05, "snow": 0.20},
-    "bus":    {"clear": 0.0, "rain": 0.15, "snow": 0.30},
-    "lirr":   {"clear": 0.0, "rain": 0.08, "snow": 0.25},
-    "mnr":    {"clear": 0.0, "rain": 0.08, "snow": 0.25},
+    "bus": {"clear": 0.0, "rain": 0.15, "snow": 0.30},
+    "lirr": {"clear": 0.0, "rain": 0.08, "snow": 0.25},
+    "mnr": {"clear": 0.0, "rain": 0.08, "snow": 0.25},
 }
 
 # Gaussian noise standard deviation (prevents overfitting to exact priors)
@@ -104,8 +98,8 @@ _SAMPLES_PER_CELL = 3
 _HOUR_BUCKETS = [0, 6, 7, 8, 9, 10, 12, 15, 17, 18, 19, 20, 22]
 
 # Day of week values (1=Sun … 7=Sat) in our convention
-_WEEKDAYS  = [2, 3, 4, 5, 6]
-_WEEKENDS  = [1, 7]
+_WEEKDAYS = [2, 3, 4, 5, 6]
+_WEEKENDS = [1, 7]
 
 
 def _build_route_table(conn: sqlite3.Connection) -> dict[str, dict]:
@@ -157,7 +151,7 @@ def _build_route_table(conn: sqlite3.Connection) -> dict[str, dict]:
         rid_upper = route_id.upper()
         if rid_upper.startswith("LIRR"):
             mode = "lirr"
-        elif rid_upper.startswith("MNR") or rid_upper.startswith("METRO"):
+        elif rid_upper.startswith(("MNR", "METRO")):
             mode = "mnr"
 
         reliability = ROUTE_RELIABILITY.get(key, 2)
@@ -182,7 +176,9 @@ def _is_rush(hour: int, is_weekday: bool) -> bool:
     return is_weekday and (hour in range(7, 10) or hour in range(17, 20))
 
 
-def _make_factor(reliability: int, mode: str, hour: int, is_weekday: bool, weather: str) -> float:
+def _make_factor(
+    reliability: int, mode: str, hour: int, is_weekday: bool, weather: str
+) -> float:
     base = _TIER_BASE.get(reliability, 1.07)
 
     if _is_rush(hour, is_weekday):
@@ -212,12 +208,19 @@ def generate_bootstrap_samples(
     y: list[float] = []
     w: list[float] = []
 
-    weathers = ["clear", "clear", "clear", "rain", "rain", "snow"]  # realistic distribution
+    weathers = [
+        "clear",
+        "clear",
+        "clear",
+        "rain",
+        "rain",
+        "snow",
+    ]  # realistic distribution
 
-    for route_id, info in route_table.items():
+    for _route_id, info in route_table.items():
         reliability = info["reliability"]
-        mode        = info["mode"]
-        short       = info["short"]
+        mode = info["mode"]
+        short = info["short"]
 
         for hour in _HOUR_BUCKETS:
             if info["hours"] and hour not in info["hours"]:
@@ -225,22 +228,30 @@ def generate_bootstrap_samples(
                 continue
 
             for dow_group in [_WEEKDAYS, _WEEKENDS]:
-                is_weekday = (dow_group is _WEEKDAYS)
+                is_weekday = dow_group is _WEEKDAYS
                 for dow in dow_group:
                     for weather in weathers:
                         for _ in range(_SAMPLES_PER_CELL):
-                            factor = _make_factor(reliability, mode, hour, is_weekday, weather)
+                            factor = _make_factor(
+                                reliability, mode, hour, is_weekday, weather
+                            )
                             # Bootstrap delay_minutes: realistic spread around 0
                             # (mean 0 = on-time, sigma ~1.5 min = observed MTA spread).
                             # Real observations will have actual deviations; the
                             # bootstrap primes the surface so the model learns
                             # the momentum direction immediately.
                             bootleg_delay_s = random.gauss(0, 90)  # ~N(0, 1.5 min)
-                            feats = encode_features(short, hour, dow, weather, mode,
-                                                    current_delay_s=bootleg_delay_s)
+                            feats = encode_features(
+                                short,
+                                hour,
+                                dow,
+                                weather,
+                                mode,
+                                current_delay_s=bootleg_delay_s,
+                            )
                             X.append(feats)
                             y.append(factor)
-                            w.append(0.5)   # bootstrap weight (real data = 1.0)
+                            w.append(0.5)  # bootstrap weight (real data = 1.0)
 
     print(f"  Generated {len(X):,} bootstrap samples", flush=True)
     return X, y, w
@@ -290,28 +301,37 @@ def load_mta_open_data() -> tuple[list[list[float]], list[float], list[float]]:
     def _clamp(v: float, lo: float = 1.0, hi: float = 2.0) -> float:
         return max(lo, min(hi, v))
 
-    def _feats(reliability: float, hour: int, dow: int,
-               weather: float, mode: float) -> list[float]:
+    def _feats(
+        reliability: float, hour: int, dow: int, weather: float, mode: float
+    ) -> list[float]:
         is_weekday = 2 <= dow <= 6
         is_rush = float(is_weekday and (hour in range(7, 10) or hour in range(17, 20)))
-        return [reliability, float(hour), float(dow),
-                weather, mode, is_rush, float(not is_weekday), 0.0]
+        return [
+            reliability,
+            float(hour),
+            float(dow),
+            weather,
+            mode,
+            is_rush,
+            float(not is_weekday),
+            0.0,
+        ]
 
     # ── Step 1: Build per-line OTP reliability from subway OTP JSON files ──
     # Accumulate as running totals so we can average across all three files
     otp_accum: dict[str, list[float]] = defaultdict(list)
-    for fname in ["subway_otp_2015_2019.json",
-                  "subway_otp_2020_2024.json",
-                  "subway_otp_2025.json"]:
+    for fname in [
+        "subway_otp_2015_2019.json",
+        "subway_otp_2020_2024.json",
+        "subway_otp_2025.json",
+    ]:
         p = TRAINING_DIR / fname
         if not p.exists():
             continue
         for row in json.loads(p.read_text()):
             line = (row.get("line") or "").upper().strip()
-            try:
+            with contextlib.suppress(KeyError, ValueError, TypeError):
                 otp_accum[line].append(float(row["terminal_on_time_performance"]))
-            except (KeyError, ValueError, TypeError):
-                pass
 
     # Map OTP → reliability float  (0 = perfect, 4 = very unreliable)
     # 100% OTP → 0.0,  75% OTP → 2.0,  50% OTP → 4.0
@@ -319,16 +339,20 @@ def load_mta_open_data() -> tuple[list[list[float]], list[float], list[float]]:
     for line, vals in otp_accum.items():
         avg_otp = sum(vals) / len(vals)
         line_reliability[line] = _clamp((1.0 - avg_otp) * 8.0, 0.0, 4.0)
-    print(f"  OTP reliability built for {len(line_reliability)} subway lines", flush=True)
+    print(
+        f"  OTP reliability built for {len(line_reliability)} subway lines", flush=True
+    )
 
     # ── Step 2: Subway customer journey — best per-line delay signal ───────
     # additional_platform_time (APT) = avg extra wait minutes above schedule
     # additional_train_time   (ATT) = avg extra ride minutes above schedule
     # factor = 1 + (apt + att) / 15  (15 min is a typical short-trip baseline)
     cj_count = 0
-    for fname in ["subway_customer_journey_2015_2019.json",
-                  "subway_customer_journey_2020_2024.json",
-                  "subway_customer_journey_2025.json"]:
+    for fname in [
+        "subway_customer_journey_2015_2019.json",
+        "subway_customer_journey_2020_2024.json",
+        "subway_customer_journey_2025.json",
+    ]:
         p = TRAINING_DIR / fname
         if not p.exists():
             continue
@@ -345,7 +369,9 @@ def load_mta_open_data() -> tuple[list[list[float]], list[float], list[float]]:
             day_type = str(row.get("day_type", "1"))
             for hr in _period_hours(period):
                 for dow in _dow_for_day_type(day_type):
-                    X.append(_feats(rel, hr, dow, 0.0, 0.0))  # mode=subway, weather=clear
+                    X.append(
+                        _feats(rel, hr, dow, 0.0, 0.0)
+                    )  # mode=subway, weather=clear
                     y.append(factor)
                     w.append(0.8)
                     cj_count += 1
@@ -360,9 +386,11 @@ def load_mta_open_data() -> tuple[list[list[float]], list[float], list[float]]:
                 overall_otp = float(row.get("otp") or 0)
             except (ValueError, TypeError):
                 continue
-            for col, hours_list in [("am_peak", [7, 8, 9]),
-                                    ("pm_peak", [17, 18, 19]),
-                                    ("off_peak", [12, 19, 20, 22])]:
+            for col, hours_list in [
+                ("am_peak", [7, 8, 9]),
+                ("pm_peak", [17, 18, 19]),
+                ("off_peak", [12, 19, 20, 22]),
+            ]:
                 try:
                     period_otp = float(row.get(col) or overall_otp)
                 except (ValueError, TypeError):
@@ -371,7 +399,9 @@ def load_mta_open_data() -> tuple[list[list[float]], list[float], list[float]]:
                 is_peak = col != "off_peak"
                 for hr in hours_list:
                     for dow in ([2, 3, 4, 5, 6] if is_peak else [2, 3, 4, 5, 6, 1, 7]):
-                        X.append(_feats(2.0, hr, dow, 0.0, 2.0))  # mode=lirr, weather=clear
+                        X.append(
+                            _feats(2.0, hr, dow, 0.0, 2.0)
+                        )  # mode=lirr, weather=clear
                         y.append(factor)
                         w.append(0.8)
                         lirr_count += 1
@@ -386,9 +416,11 @@ def load_mta_open_data() -> tuple[list[list[float]], list[float], list[float]]:
                 overall_otp = float(row.get("otp") or 0)
             except (ValueError, TypeError):
                 continue
-            for col, hours_list in [("am_peak", [7, 8, 9]),
-                                    ("pm_peak", [17, 18, 19]),
-                                    ("off_peak", [12, 19, 20, 22])]:
+            for col, hours_list in [
+                ("am_peak", [7, 8, 9]),
+                ("pm_peak", [17, 18, 19]),
+                ("off_peak", [12, 19, 20, 22]),
+            ]:
                 try:
                     period_otp = float(row.get(col) or overall_otp)
                 except (ValueError, TypeError):
@@ -415,7 +447,9 @@ def load_mta_open_data() -> tuple[list[list[float]], list[float], list[float]]:
             factor = _clamp(1.0 + att / 10.0)
             period = row.get("period", "")
             trip_type = (row.get("trip_type") or "").lower()
-            day_type = "1" if ("weekday" in trip_type or "peak" in period.lower()) else "2"
+            day_type = (
+                "1" if ("weekday" in trip_type or "peak" in period.lower()) else "2"
+            )
             for hr in _period_hours(period):
                 for dow in _dow_for_day_type(day_type):
                     X.append(_feats(2.0, hr, dow, 0.0, 1.0))  # mode=bus
@@ -432,11 +466,9 @@ def load_mta_open_data() -> tuple[list[list[float]], list[float], list[float]]:
         wa_accum: dict[str, list[float]] = defaultdict(list)
         for row in json.loads(p.read_text()):
             route = (row.get("route_id") or "").upper().strip()
-            try:
+            with contextlib.suppress(KeyError, ValueError, TypeError):
                 wa_accum[route].append(float(row["wait_assessment"]))
-            except (KeyError, ValueError, TypeError):
-                pass
-        for route, vals in wa_accum.items():
+        for _route, vals in wa_accum.items():
             avg_wa = sum(vals) / len(vals)
             # Low wait_assessment = bunching = higher delay factor for bus
             factor = _clamp(1.0 + (1.0 - avg_wa) * 0.25)
@@ -454,7 +486,9 @@ def load_mta_open_data() -> tuple[list[list[float]], list[float], list[float]]:
     inc_count = 0
     p = TRAINING_DIR / "subway_delay_incidents.json"
     if p.exists():
-        inc_accum: dict[tuple, dict] = defaultdict(lambda: {"total": 0.0, "months": set()})
+        inc_accum: dict[tuple, dict] = defaultdict(
+            lambda: {"total": 0.0, "months": set()}
+        )
         for row in json.loads(p.read_text()):
             line = (row.get("line") or "").upper().strip()
             try:
@@ -476,8 +510,18 @@ def load_mta_open_data() -> tuple[list[list[float]], list[float], list[float]]:
             for hr in [8, 9, 17, 18, 19]:
                 for dow in _dow_for_day_type(day_type):
                     is_rush = float(hr in range(7, 10) or hr in range(17, 20))
-                    X.append([base_rel, float(hr), float(dow), 0.0, 0.0, is_rush,
-                               float(1 - (2 <= dow <= 6)), 0.0])
+                    X.append(
+                        [
+                            base_rel,
+                            float(hr),
+                            float(dow),
+                            0.0,
+                            0.0,
+                            is_rush,
+                            float(1 - (2 <= dow <= 6)),
+                            0.0,
+                        ]
+                    )
                     y.append(factor)
                     w.append(0.6)
                     inc_count += 1
@@ -487,7 +531,9 @@ def load_mta_open_data() -> tuple[list[list[float]], list[float], list[float]]:
     delayed_count = 0
     p = TRAINING_DIR / "subway_trains_delayed.json"
     if p.exists():
-        del_accum: dict[tuple, dict] = defaultdict(lambda: {"total": 0.0, "months": set()})
+        del_accum: dict[tuple, dict] = defaultdict(
+            lambda: {"total": 0.0, "months": set()}
+        )
         for row in json.loads(p.read_text()):
             line = (row.get("line") or "").upper().strip()
             try:
@@ -508,9 +554,21 @@ def load_mta_open_data() -> tuple[list[list[float]], list[float], list[float]]:
             factor = _clamp(1.03 + boost + base_rel * 0.02)
             for hr in _HOUR_BUCKETS:
                 for dow in _dow_for_day_type(day_type):
-                    is_rush = float((2 <= dow <= 6) and (hr in range(7, 10) or hr in range(17, 20)))
-                    X.append([base_rel, float(hr), float(dow), 0.0, 0.0, is_rush,
-                               float(1 - (2 <= dow <= 6)), 0.0])
+                    is_rush = float(
+                        (2 <= dow <= 6) and (hr in range(7, 10) or hr in range(17, 20))
+                    )
+                    X.append(
+                        [
+                            base_rel,
+                            float(hr),
+                            float(dow),
+                            0.0,
+                            0.0,
+                            is_rush,
+                            float(1 - (2 <= dow <= 6)),
+                            0.0,
+                        ]
+                    )
                     y.append(factor)
                     w.append(0.6)
                     delayed_count += 1
@@ -523,11 +581,9 @@ def load_mta_open_data() -> tuple[list[list[float]], list[float], list[float]]:
         sd_accum: dict[str, list[float]] = defaultdict(list)
         for row in json.loads(p.read_text()):
             route = (row.get("route_id") or "").upper().strip()
-            try:
+            with contextlib.suppress(KeyError, ValueError, TypeError):
                 sd_accum[route].append(float(row["service_delivered"]))
-            except (KeyError, ValueError, TypeError):
-                pass
-        for route, vals in sd_accum.items():
+        for _route, vals in sd_accum.items():
             avg_sd = sum(vals) / len(vals)
             # service_delivered < 1.0 → ghost buses → riders wait longer
             factor = _clamp(1.0 + (1.0 - avg_sd) * 0.4)
@@ -540,17 +596,22 @@ def load_mta_open_data() -> tuple[list[list[float]], list[float], list[float]]:
                     bus_sd_count += 1
     print(f"  Bus service delivered: {bus_sd_count:,} samples", flush=True)
 
-    print(f"\n  MTA open data total: {len(X):,} samples across all datasets", flush=True)
+    print(
+        f"\n  MTA open data total: {len(X):,} samples across all datasets", flush=True
+    )
     return X, y, w
 
 
-def load_real_observations(csv_path: Path) -> tuple[list[list[float]], list[float], list[float]]:
+def load_real_observations(
+    csv_path: Path,
+) -> tuple[list[list[float]], list[float], list[float]]:
     """Load real observation CSV produced by export_observations.py.
 
     Expected columns:
       route_id, stop_id, hour, dow, weather, mode, actual_factor
     """
     import csv as _csv
+
     X, y, w = [], [], []
     with open(csv_path, newline="", encoding="utf-8") as f:
         reader = _csv.DictReader(f)
@@ -567,7 +628,7 @@ def load_real_observations(csv_path: Path) -> tuple[list[list[float]], list[floa
                 )
                 X.append(feats)
                 y.append(max(1.0, min(2.0, factor)))
-                w.append(1.0)   # real data gets full weight
+                w.append(1.0)  # real data gets full weight
             except (ValueError, KeyError):
                 continue
     print(f"  Loaded {len(X):,} real observation samples from {csv_path}", flush=True)
@@ -582,10 +643,10 @@ def train(X: list[list[float]], y: list[float], w: list[float]) -> Any:
     needed.  The full model is then re-fitted on 100% of the data using the
     optimal tree count found by early stopping.
     """
-    import lightgbm as lgb       # type: ignore
-    import numpy as np           # type: ignore
+    import lightgbm as lgb  # type: ignore
+    import numpy as np  # type: ignore
+    from sklearn.metrics import mean_absolute_error  # type: ignore
     from sklearn.model_selection import train_test_split  # type: ignore
-    from sklearn.metrics import mean_absolute_error       # type: ignore
 
     X_arr = np.array(X, dtype=float)
     y_arr = np.array(y, dtype=float)
@@ -603,19 +664,20 @@ def train(X: list[list[float]], y: list[float], w: list[float]) -> Any:
     # num_leaves=63 ≈ max_depth=6 but LightGBM grows leaves not levels, so it
     # finds better splits without adding depth overhead.
     val_model = lgb.LGBMRegressor(
-        n_estimators=2000,       # upper bound — early stopping will cut this down
-        num_leaves=63,           # 2^6-1: expressive but not overfit
+        n_estimators=2000,  # upper bound — early stopping will cut this down
+        num_leaves=63,  # 2^6-1: expressive but not overfit
         learning_rate=0.05,
-        subsample=0.8,           # row-level bagging per tree
-        colsample_bytree=0.8,    # feature-level bagging per tree
-        min_child_samples=20,    # leaf must have ≥20 samples (regularisation)
-        reg_alpha=0.1,           # L1 — sparsifies feature use
-        reg_lambda=0.1,          # L2 — smooths leaf values
+        subsample=0.8,  # row-level bagging per tree
+        colsample_bytree=0.8,  # feature-level bagging per tree
+        min_child_samples=20,  # leaf must have ≥20 samples (regularisation)
+        reg_alpha=0.1,  # L1 — sparsifies feature use
+        reg_lambda=0.1,  # L2 — smooths leaf values
         random_state=42,
-        verbose=-1,              # suppress LightGBM's per-iteration output
+        verbose=-1,  # suppress LightGBM's per-iteration output
     )
     val_model.fit(
-        X_tr, y_tr,
+        X_tr,
+        y_tr,
         sample_weight=w_tr,
         eval_set=[(X_val, y_val)],
         eval_sample_weight=[w_val],
@@ -628,10 +690,12 @@ def train(X: list[list[float]], y: list[float], w: list[float]) -> Any:
     best_n = val_model.best_iteration_
     mae = mean_absolute_error(y_val, val_model.predict(X_val))
     elapsed = time.perf_counter() - t0
-    print(f"  Early stopping: best iteration = {best_n}  "
-          f"(of 2000 max)", flush=True)
-    print(f"  Validation MAE: {mae:.4f} delay_factor units "
-          f"({mae * 10:.2f} min on a 10-min trip)", flush=True)
+    print(f"  Early stopping: best iteration = {best_n}  (of 2000 max)", flush=True)
+    print(
+        f"  Validation MAE: {mae:.4f} delay_factor units "
+        f"({mae * 10:.2f} min on a 10-min trip)",
+        flush=True,
+    )
     print(f"  Val fit time: {elapsed:.1f}s", flush=True)
 
     # ── Re-fit on 100% of data using the optimal tree count ───────────
@@ -653,10 +717,18 @@ def train(X: list[list[float]], y: list[float], w: list[float]) -> Any:
     print(f"  Full fit time:  {time.perf_counter() - t1:.1f}s", flush=True)
 
     # ── Feature importances (gain-based) ─────────────────────────────
-    feature_names = ["route_reliability", "hour", "dow", "weather", "mode",
-                     "is_rush", "is_weekend", "delay_minutes"]
+    feature_names = [
+        "route_reliability",
+        "hour",
+        "dow",
+        "weather",
+        "mode",
+        "is_rush",
+        "is_weekend",
+        "delay_minutes",
+    ]
     importances = sorted(
-        zip(feature_names, model.feature_importances_),
+        zip(feature_names, model.feature_importances_, strict=False),
         key=lambda x: -x[1],
     )
     total_imp = sum(imp for _, imp in importances) or 1
@@ -695,8 +767,10 @@ def main(real_data_csv: Path | None = None) -> None:
         X += X_mta
         y += y_mta
         w += w_mta
-        print(f"  Bootstrap: {len(X_boot):,}  MTA open: {len(X_mta):,}  "
-              f"combined: {len(X):,} samples")
+        print(
+            f"  Bootstrap: {len(X_boot):,}  MTA open: {len(X_mta):,}  "
+            f"combined: {len(X):,} samples"
+        )
     else:
         print("  No MTA open data found — bootstrap only.")
         print("  Run: python scripts/fetch_mta_training_data.py  to download datasets.")
@@ -708,13 +782,19 @@ def main(real_data_csv: Path | None = None) -> None:
         X += X_real
         y += y_real
         w += w_real
-        print(f"  Total samples: {len(X):,} ({len(X_real):,} real + {len(X_mta):,} MTA + {len(X_boot):,} bootstrap)")
+        print(
+            f"  Total samples: {len(X):,} ({len(X_real):,} real + {len(X_mta):,} MTA + {len(X_boot):,} bootstrap)"
+        )
     else:
-        print(f"\n  (No real-observations CSV — using bootstrap + MTA open data.  "
-              f"Total: {len(X):,} samples)")
+        print(
+            f"\n  (No real-observations CSV — using bootstrap + MTA open data.  "
+            f"Total: {len(X):,} samples)"
+        )
         print("  As users ride trains, recency_model.py logs errors to Redis.")
         print("  Export them with:  python -m app.ml.export_observations")
-        print("  Then retrain with: python -m app.ml.train_model --real-data observations.csv")
+        print(
+            "  Then retrain with: python -m app.ml.train_model --real-data observations.csv"
+        )
 
     # ── Train ──────────────────────────────────────────────────────────
     print("\nStep 4/5  Training LightGBM")
@@ -723,16 +803,15 @@ def main(real_data_csv: Path | None = None) -> None:
     # ── Save ───────────────────────────────────────────────────────────
     print(f"\nStep 5/5  Saving model → {_OUT}")
     import joblib  # type: ignore
+
     _OUT.parent.mkdir(parents=True, exist_ok=True)
     joblib.dump(model, _OUT)
     size_kb = _OUT.stat().st_size / 1024
     print(f"  Saved ({size_kb:.0f} KB)\n")
 
-    print("━━━  Done.  Call POST /predict/reload-model to hot-swap on a live server.  ━━━\n")
-
-
-# Allow direct import of the `Any` type used in train()
-from typing import Any
+    print(
+        "━━━  Done.  Call POST /predict/reload-model to hot-swap on a live server.  ━━━\n"
+    )
 
 
 if __name__ == "__main__":

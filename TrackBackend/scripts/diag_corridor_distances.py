@@ -5,43 +5,56 @@ For each vertex where corridor offsets are applied, measure the actual
 distance to the neighboring trunk.  This tells us what the "real shared
 track" threshold should be.
 """
-import sys, os, math
+
+from __future__ import annotations
+
+import os
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
+from collections import defaultdict, namedtuple
+
+from shapely import STRtree
+from shapely.geometry import Point
+
+from app.models import SubwayLineOverlay
 from app.services.mapping.corridor_pipeline import (
+    CORRIDOR_ALIGN_MIN,
+    CORRIDOR_DETECT_DIST,
+    TRUNK_GROUPS,
+    _direction_at_distance,
     _group_and_merge_trunks,
     _local_direction,
-    _direction_at_distance,
-    TRUNK_GROUPS,
-    ROUTE_TO_TRUNK,
-    CORRIDOR_DETECT_DIST,
-    CORRIDOR_ALIGN_MIN,
-    _to_meters,
-    _to_wgs84,
+)
+from app.services.mapping.subway_shapes import (
+    _load_route_shapes,
+    _load_shapes,
+    _unpack_coords,
 )
 from app.utils.polyline_utils import encode_polyline
-from app.services.mapping.subway_shapes import _load_route_shapes, _load_shapes, _unpack_coords
 from app.utils.transit_utils import get_all_subway_lines
-from app.models import SubwayLineOverlay
-from shapely.geometry import Point
-from shapely import STRtree
-from collections import namedtuple, defaultdict
 
 # Build overlays
 skip = {"6X", "7X", "FX", "FS", "GS", "SR"}
-lines = [l for l in get_all_subway_lines() if l not in skip]
-rs = _load_route_shapes(); sd = _load_shapes()
+lines = [ln for ln in get_all_subway_lines() if ln not in skip]
+rs = _load_route_shapes()
+sd = _load_shapes()
 overlays = []
-for l in lines:
-    ds = rs.get(l)
-    if not ds: continue
+for ln in lines:
+    ds = rs.get(ln)
+    if not ds:
+        continue
     d0 = 0 if 0 in ds else min(ds.keys())
     raws = [_unpack_coords(sd[s]) for s in ds[d0] if s in sd]
     if raws:
-        overlays.append(SubwayLineOverlay(
-            route_id=l, color_hex="",
-            polylines=[encode_polyline(r) for r in raws],
-        ))
+        overlays.append(
+            SubwayLineOverlay(
+                route_id=ln,
+                color_hex="",
+                polylines=[encode_polyline(r) for r in raws],
+            )
+        )
 
 trunk_paths = _group_and_merge_trunks(overlays)
 
@@ -60,7 +73,7 @@ tree = STRtree(all_geoms)
 pair_distances = defaultdict(list)  # (trunk_a, trunk_b) -> [distances]
 
 for ti, paths in trunk_paths.items():
-    for pi, path in enumerate(paths):
+    for _pi, path in enumerate(paths):
         coords = list(path.coords)
         for i in range(0, len(coords), 3):  # sample every 3rd vertex
             x, y = coords[i]
@@ -85,7 +98,9 @@ for ti, paths in trunk_paths.items():
 print("=" * 80)
 print("CORRIDOR PAIR DISTANCE DISTRIBUTION")
 print("=" * 80)
-print(f"{'Pair':30s} {'Count':>6s} {'Min':>6s} {'P10':>6s} {'Med':>6s} {'P90':>6s} {'Max':>6s}")
+print(
+    f"{'Pair':30s} {'Count':>6s} {'Min':>6s} {'P10':>6s} {'Med':>6s} {'P90':>6s} {'Max':>6s}"
+)
 print("-" * 80)
 
 for pair, dists in sorted(pair_distances.items()):
@@ -100,7 +115,9 @@ for pair, dists in sorted(pair_distances.items()):
     p90 = dists[9 * n // 10] if n >= 10 else dists[-1]
 
     flag = " ← FALSE?" if min(dists) > 15 else ""
-    print(f"  {label:38s} {n:5d} {dists[0]:5.1f}m {p10:5.1f}m {med:5.1f}m {p90:5.1f}m {dists[-1]:5.1f}m{flag}")
+    print(
+        f"  {label:38s} {n:5d} {dists[0]:5.1f}m {p10:5.1f}m {med:5.1f}m {p90:5.1f}m {dists[-1]:5.1f}m{flag}"
+    )
 
 print("\n" + "=" * 80)
 print("INTERPRETATION")

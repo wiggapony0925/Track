@@ -1,19 +1,17 @@
-#
-# main.py
-# TrackBackend
-#
-# Application entry point. Registers all routers and serves the /config
-# endpoint that the iOS app fetches on launch.
-#
+"""Application entry point. Registers all routers and serves the /config
+endpoint that the iOS app fetches on launch."""
 
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import dataclasses
 import hashlib
 import hmac
 import os
 import secrets
 import time
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Query, Request
@@ -21,17 +19,15 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.gzip import GZipMiddleware
 
-from pathlib import Path
-
+from app.clients import redis_client as _redis
+from app.clients.bus_client import clear_bus_cache
 from app.config import get_settings
 from app.routers import bus, lirr, mnr, nearby, predict, status, subway, weather
-from app.clients.bus_client import clear_bus_cache
 from app.services.gtfs.data_loader import ensure_data_available
 from app.services.gtfs.gtfs_refresh import rebuild_schedule_db_if_missing
-from app.clients import redis_client as _redis
 from app.utils import cache_stats
 from app.utils.logger import TrackLogger
-from app.utils.metrics import setup_metrics, WARMUP_COMPLETE
+from app.utils.metrics import WARMUP_COMPLETE, setup_metrics
 
 # ---------------------------------------------------------------------------
 # OpenAPI metadata — powers the /api-docs Scalar documentation page
@@ -142,8 +138,8 @@ app = FastAPI(
     version="1.0.0",
     openapi_tags=_OPENAPI_TAGS,
     openapi_url=None,  # disable built-in /openapi.json — we serve it gated below
-    docs_url=None,     # disable default Swagger UI — we use Scalar
-    redoc_url=None,    # disable default ReDoc — we use Scalar
+    docs_url=None,  # disable default Swagger UI — we use Scalar
+    redoc_url=None,  # disable default ReDoc — we use Scalar
     contact={
         "name": "Jeffrey Fernandez",
         "url": "https://github.com/jeffreyfernandez",
@@ -202,10 +198,7 @@ def _verify_docs_access(request: Request) -> bool:
     # 2. Check session cookie
     cookie_value = request.cookies.get(_COOKIE_NAME, "")
     expected = _sign_cookie(_DOCS_TOKEN)
-    if cookie_value and secrets.compare_digest(cookie_value, expected):
-        return True
-
-    return False
+    return bool(cookie_value and secrets.compare_digest(cookie_value, expected))
 
 
 def _denied_response() -> HTMLResponse:
@@ -233,12 +226,17 @@ def _denied_response() -> HTMLResponse:
     )
 
 
-def _set_session_cookie(response: HTMLResponse, token: str, request: Request) -> HTMLResponse:
+def _set_session_cookie(
+    response: HTMLResponse, token: str, request: Request
+) -> HTMLResponse:
     """Stamp the docs session cookie on a response."""
     # Only set Secure flag when served over HTTPS (production).
     # On http://localhost the browser silently drops Secure cookies,
     # which breaks Scalar's internal /openapi.json fetch.
-    is_https = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
+    is_https = (
+        request.url.scheme == "https"
+        or request.headers.get("x-forwarded-proto") == "https"
+    )
     response.set_cookie(
         key=_COOKIE_NAME,
         value=_sign_cookie(token),
@@ -303,6 +301,7 @@ async def protected_openapi(request: Request):
         return JSONResponse({"detail": "Access token required"}, status_code=403)
     return JSONResponse(_original_openapi())
 
+
 # ── GZip compression ──────────────────────────────────────────────────────
 # Compress all responses >= 500 bytes.  The subway/shapes/all payload is
 # 3-5 MB uncompressed; gzip shrinks it ~5x, slashing transfer time from
@@ -315,20 +314,30 @@ app.add_middleware(GZipMiddleware, minimum_size=500)
 setup_metrics(app)
 
 
-# Background task handle for periodic GTFS refresh
-_gtfs_refresh_task: asyncio.Task | None = None
-# Background task handle for continuous feed refresh (subway/rail keep-alive)
-_feed_refresh_task: asyncio.Task | None = None
-# arq connection pool (for enqueueing jobs from the web process)
-_arq_pool: Any = None
+@dataclasses.dataclass
+class _AppState:
+    """Mutable application lifecycle state."""
+
+    gtfs_refresh_task: asyncio.Task | None = None
+    feed_refresh_task: asyncio.Task | None = None
+    arq_pool: Any = None
+    warmup_complete: bool = False
+
+
+_app_state = _AppState()
 
 # How often to check MTA for new GTFS data (default: 24 hours)
-_GTFS_CHECK_INTERVAL = int(os.environ.get("GTFS_CHECK_INTERVAL", 86400))
+_GTFS_CHECK_INTERVAL = int(os.environ.get("GTFS_CHECK_INTERVAL", "86400"))
 
 
 @app.on_event("startup")
 async def startup_event():
-    global _gtfs_refresh_task, _feed_refresh_task
+    """Initialise all services on application boot.
+
+    Downloads GTFS data, connects to Redis, pre-fetches weather,
+    eagerly loads the ML delay model, and starts background refresh
+    tasks for GTFS freshness and feed caching.
+    """
     TrackLogger.startup()
     # Download fresh GTFS data from Supabase (falls back to Docker-bundled files)
     await ensure_data_available()
@@ -338,6 +347,7 @@ async def startup_event():
     await _redis.init_redis()
     # Pre-fetch weather from Open-Meteo so the first ML prediction has real data
     from app.clients.weather_client import get_current_weather
+
     try:
         weather = await get_current_weather()
         TrackLogger.info(f"[STARTUP] Weather: {weather}", tag="STARTUP")
@@ -348,12 +358,15 @@ async def startup_event():
     # joblib.load() that blocks the event loop for ~60s on Render cold start,
     # causing _collect_all to exceed its 45s timeout.
     from app.ml.delay_model import ensure_model_loaded
-    try:
+
+    with contextlib.suppress(Exception):
         await ensure_model_loaded()
-    except Exception:
-        pass  # delay_model falls back to heuristic internally
     # Log startup summary so Render logs clearly show what's active
-    redis_status = "ACTIVE  bus · subway · LIRR · MNR" if _redis.get_client() else "DISABLED (in-process only)"
+    redis_status = (
+        "ACTIVE  bus · subway · LIRR · MNR"
+        if _redis.get_client()
+        else "DISABLED (in-process only)"
+    )
     # Check whether the ML prediction feature flag is active
     _ml_flag = os.environ.get("ARRIVING_PREDICTION_MODEL", "true").strip().lower()
     _ml_on = _ml_flag not in ("false", "0", "off", "no", "disabled")
@@ -370,26 +383,30 @@ async def startup_event():
     # it handles GTFS cron + weather refresh.  The inline asyncio task is
     # kept as a resilient fallback — it's harmless alongside arq (both
     # check_and_refresh_gtfs calls are idempotent).
-    _gtfs_refresh_task = asyncio.create_task(_resilient_loop(
-        _periodic_gtfs_check, "GTFS_CHECK"
-    ))
+    _app_state.gtfs_refresh_task = asyncio.create_task(
+        _resilient_loop(_periodic_gtfs_check, "GTFS_CHECK")
+    )
     # Prime caches in background so first real user never eats a cold penalty.
     # After the initial prime, _warmup_caches hands off to
     # _periodic_feed_refresh which keeps feeds hot every 10 seconds.
-    _feed_refresh_task = asyncio.create_task(_resilient_loop(
-        _warmup_caches, "FEED_REFRESH"
-    ))
+    _app_state.feed_refresh_task = asyncio.create_task(
+        _resilient_loop(_warmup_caches, "FEED_REFRESH")
+    )
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    global _gtfs_refresh_task, _feed_refresh_task, _arq_pool
-    if _gtfs_refresh_task:
-        _gtfs_refresh_task.cancel()
-    if _feed_refresh_task:
-        _feed_refresh_task.cancel()
-    if _arq_pool:
-        await _arq_pool.close()
+    """Gracefully tear down background tasks and connections.
+
+    Cancels GTFS and feed-refresh tasks, closes the arq pool,
+    flushes final cache statistics, and disconnects from Redis.
+    """
+    if _app_state.gtfs_refresh_task:
+        _app_state.gtfs_refresh_task.cancel()
+    if _app_state.feed_refresh_task:
+        _app_state.feed_refresh_task.cancel()
+    if _app_state.arq_pool:
+        await _app_state.arq_pool.close()
     # Emit final cache stats before the process exits so Render logs capture
     # the lifetime activity summary for every cache kind (bus Redis + mta in-process).
     cache_stats.flush()
@@ -459,15 +476,9 @@ async def _periodic_gtfs_check():
         await asyncio.sleep(_GTFS_CHECK_INTERVAL)
 
 
-# Whether the initial cache warmup has completed.  Checked by the
-# /nearby/grouped endpoint to give early requests a better experience
-# (return 503 + Retry-After instead of hanging for 30 s on cold feeds).
-_warmup_complete = False
-
-
 def is_warmed_up() -> bool:
     """Return True once initial feed warmup has finished."""
-    return _warmup_complete
+    return _app_state.warmup_complete
 
 
 def _sync_prewarm_shapes() -> None:
@@ -536,12 +547,14 @@ async def _warmup_caches():
     proxy returns 502.  Sequential warmup takes ~20-25s but the server stays
     responsive to user requests throughout.
     """
-    global _warmup_complete
-    from app.services.gtfs.realtime_parser import get_arrivals_for_line
     from app.clients.bus_client import get_routes as get_bus_routes
+    from app.services.gtfs.realtime_parser import get_arrivals_for_line
 
     t0 = time.perf_counter()
-    TrackLogger.info("[WARMUP] Priming subway GTFS-RT feeds + bus routes (sequential)...", tag="WARMUP")
+    TrackLogger.info(
+        "[WARMUP] Priming subway GTFS-RT feeds + bus routes (sequential)...",
+        tag="WARMUP",
+    )
 
     # Sequential warmup — one feed at a time with event-loop yields.
     # Concurrent protobuf parsing (sem(3)) was tried and CAUSED 502s:
@@ -549,10 +562,9 @@ async def _warmup_caches():
     # One representative per MTA feed URL.
     # "1" covers all numbered lines (1/2/3/4/5/6/7/GS) — no need
     # for a separate "7" entry (same subway_123456 URL).
-    feed_lines = ["A", "B", "N", "1", "G", "L", "J", "SI"]
     feed_ok = 0
 
-    for line in feed_lines:
+    for line in _FEED_LINES:
         try:
             await get_arrivals_for_line(line)
             feed_ok += 1
@@ -571,7 +583,7 @@ async def _warmup_caches():
 
     feed_elapsed = time.perf_counter() - t0
     TrackLogger.info(
-        f"[WARMUP] Feeds done in {feed_elapsed:.1f}s — subway: {feed_ok}/{len(feed_lines)}, bus: {bus_ok}",
+        f"[WARMUP] Feeds done in {feed_elapsed:.1f}s — subway: {feed_ok}/{len(_FEED_LINES)}, bus: {bus_ok}",
         tag="WARMUP",
     )
 
@@ -586,7 +598,7 @@ async def _warmup_caches():
     # PREVIOUSLY _warmup_complete was set AFTER the corridor pipeline,
     # meaning /health returned 503 for ~90-120s.  Render killed the old
     # container before the new one passed health checks → 502 gap.
-    _warmup_complete = True
+    _app_state.warmup_complete = True
     WARMUP_COMPLETE.set(1)
     TrackLogger.info(
         f"[WARMUP] Health check PASSING — feeds ready in {feed_elapsed:.1f}s.  "
@@ -604,7 +616,9 @@ async def _warmup_caches():
     stations_ok = "FAIL"
     try:
         t_shapes = time.perf_counter()
-        TrackLogger.info("[WARMUP] Pre-computing corridor pipeline (shapes/all)...", tag="WARMUP")
+        TrackLogger.info(
+            "[WARMUP] Pre-computing corridor pipeline (shapes/all)...", tag="WARMUP"
+        )
         # Run the CPU-heavy work in a thread to avoid blocking the event loop
         # (lru_cache file I/O + corridor pipeline are sync/CPU-bound)
         await asyncio.get_running_loop().run_in_executor(
@@ -616,17 +630,19 @@ async def _warmup_caches():
 
         t_stations = time.perf_counter()
         from app.services.mapping.subway_shapes import get_all_subway_stations
+
         get_all_subway_stations()  # populates the module-level cache
         stations_ok = f"OK ({time.perf_counter() - t_stations:.1f}s)"
     except Exception as exc:
         TrackLogger.error(
             f"[WARMUP] Shapes/stations pre-warm failed: {exc}",
-            tag="WARMUP", exc_info=True,
+            tag="WARMUP",
+            exc_info=True,
         )
 
     elapsed = time.perf_counter() - t0
     TrackLogger.info(
-        f"[WARMUP] Full warmup done in {elapsed:.1f}s — subway feeds: {feed_ok}/{len(feed_lines)}, "
+        f"[WARMUP] Full warmup done in {elapsed:.1f}s — subway feeds: {feed_ok}/{len(_FEED_LINES)}, "
         f"bus routes: {bus_ok}, shapes: {shapes_ok}, stations: {stations_ok}",
         tag="WARMUP",
     )
@@ -640,7 +656,9 @@ async def _warmup_caches():
 # How often (seconds) to re-fetch all transit feeds in the background.
 # MTA updates GTFS-RT feeds every ~10-30s, so 10s keeps us within the
 # 12s fresh TTL and guarantees every user request hits a warm cache.
-_FEED_REFRESH_INTERVAL = int(os.environ.get("FEED_REFRESH_INTERVAL", 10))
+_FEED_REFRESH_INTERVAL = int(os.environ.get("FEED_REFRESH_INTERVAL", "10"))
+_EPOCH_THRESHOLD = 1_000_000_000
+_FEED_LINES = ["A", "B", "N", "1", "G", "L", "J", "SI"]
 
 
 async def _periodic_feed_refresh():
@@ -657,54 +675,60 @@ async def _periodic_feed_refresh():
     This loop eliminates that entirely — every feed fetch from the hot
     path resolves from the in-process TTL cache in <1ms.
     """
-    from app.services.gtfs.realtime_parser import get_arrivals_for_line
     from app.clients.rail_client import fetch_rail_arrivals
-    from app.utils.metrics import FEED_REFRESH_TOTAL, FEED_REFRESH_DURATION, ACTIVE_FEEDS
+    from app.services.gtfs.realtime_parser import get_arrivals_for_line
+    from app.utils.metrics import (
+        ACTIVE_FEEDS,
+        FEED_REFRESH_DURATION,
+        FEED_REFRESH_TOTAL,
+    )
 
     # One representative per MTA feed URL — "1" covers 1/2/3/4/5/6/7/GS.
     # Previously included "7" separately, but it resolves to the same
     # subway_123456 URL as "1", causing duplicate protobuf parsing
     # every refresh cycle (wasting ~200ms of CPU on 1-CPU Render plan).
-    feed_lines = ["A", "B", "N", "1", "G", "L", "J", "SI"]
-
     while True:
         await asyncio.sleep(_FEED_REFRESH_INTERVAL)
         try:
             t0 = time.perf_counter()
             ok = 0
-            total = len(feed_lines) + 2  # subway feeds + LIRR + MNR
+            total = len(_FEED_LINES) + 2  # subway feeds + LIRR + MNR
 
             # ── Process feeds with bounded concurrency ──
             # Standard plan (1 CPU, 2 GB) — use sem(2) to keep GIL
             # contention manageable.  sem(3) caused 502s.
             sem = asyncio.Semaphore(2)
 
-            async def _refresh_feed(line: str) -> bool:
+            async def _refresh_feed(line: str, sem: asyncio.Semaphore = sem) -> bool:
                 async with sem:
                     t_feed = time.perf_counter()
                     try:
                         await get_arrivals_for_line(line, force_refresh=True)
                         FEED_REFRESH_TOTAL.labels(line=line, status="ok").inc()
-                        FEED_REFRESH_DURATION.labels(line=line).observe(time.perf_counter() - t_feed)
+                        FEED_REFRESH_DURATION.labels(line=line).observe(
+                            time.perf_counter() - t_feed
+                        )
                         return True
                     except Exception:
                         FEED_REFRESH_TOTAL.labels(line=line, status="error").inc()
                         return False
 
-            async def _refresh_rail(rail: str) -> bool:
+            async def _refresh_rail(rail: str, sem: asyncio.Semaphore = sem) -> bool:
                 async with sem:
                     t_feed = time.perf_counter()
                     try:
                         await fetch_rail_arrivals(rail, force_refresh=True)
                         FEED_REFRESH_TOTAL.labels(line=rail, status="ok").inc()
-                        FEED_REFRESH_DURATION.labels(line=rail).observe(time.perf_counter() - t_feed)
+                        FEED_REFRESH_DURATION.labels(line=rail).observe(
+                            time.perf_counter() - t_feed
+                        )
                         return True
                     except Exception:
                         FEED_REFRESH_TOTAL.labels(line=rail, status="error").inc()
                         return False
 
             feed_results = await asyncio.gather(
-                *[_refresh_feed(ln) for ln in feed_lines],
+                *[_refresh_feed(ln) for ln in _FEED_LINES],
                 *[_refresh_rail(r) for r in ("lirr", "metro_north")],
             )
             ok = sum(1 for r in feed_results if r)
@@ -720,7 +744,8 @@ async def _periodic_feed_refresh():
             break
         except Exception as exc:
             TrackLogger.info(
-                f"[FEED_REFRESH] Loop error: {exc}", tag="FEED_REFRESH",
+                f"[FEED_REFRESH] Loop error: {exc}",
+                tag="FEED_REFRESH",
             )
 
 
@@ -741,35 +766,83 @@ async def _periodic_feed_refresh():
 
 _CACHE_CONTROL_RULES: list[tuple[str, str]] = [
     # ── Static / semi-static geometry (changes on deploy, not per-request) ──
-    ("/subway/shapes/all",  "public, max-age=3600, stale-while-revalidate=86400, stale-if-error=604800"),
-    ("/subway/stations/all", "public, max-age=3600, stale-while-revalidate=86400, stale-if-error=604800"),
-    ("/subway/stations/processed", "public, max-age=3600, stale-while-revalidate=86400, stale-if-error=604800"),
-    ("/subway/shape/",      "public, max-age=3600, stale-while-revalidate=86400, stale-if-error=604800"),
-    ("/lirr/shapes/all",    "public, max-age=3600, stale-while-revalidate=86400, stale-if-error=604800"),
-    ("/lirr/shape/",        "public, max-age=3600, stale-while-revalidate=86400, stale-if-error=604800"),
-    ("/mnr/shapes/all",     "public, max-age=3600, stale-while-revalidate=86400, stale-if-error=604800"),
-    ("/mnr/shape/",         "public, max-age=3600, stale-while-revalidate=86400, stale-if-error=604800"),
+    (
+        "/subway/shapes/all",
+        "public, max-age=3600, stale-while-revalidate=86400, stale-if-error=604800",
+    ),
+    (
+        "/subway/stations/all",
+        "public, max-age=3600, stale-while-revalidate=86400, stale-if-error=604800",
+    ),
+    (
+        "/subway/stations/processed",
+        "public, max-age=3600, stale-while-revalidate=86400, stale-if-error=604800",
+    ),
+    (
+        "/subway/shape/",
+        "public, max-age=3600, stale-while-revalidate=86400, stale-if-error=604800",
+    ),
+    (
+        "/lirr/shapes/all",
+        "public, max-age=3600, stale-while-revalidate=86400, stale-if-error=604800",
+    ),
+    (
+        "/lirr/shape/",
+        "public, max-age=3600, stale-while-revalidate=86400, stale-if-error=604800",
+    ),
+    (
+        "/mnr/shapes/all",
+        "public, max-age=3600, stale-while-revalidate=86400, stale-if-error=604800",
+    ),
+    (
+        "/mnr/shape/",
+        "public, max-age=3600, stale-while-revalidate=86400, stale-if-error=604800",
+    ),
     # Bus routes list and route shapes (already partially covered in bus.py)
-    ("/bus/routes",         "public, max-age=3600, stale-while-revalidate=86400, stale-if-error=604800"),
-    ("/bus/route-shape/",   "public, max-age=3600, stale-while-revalidate=86400, stale-if-error=604800"),
+    (
+        "/bus/routes",
+        "public, max-age=3600, stale-while-revalidate=86400, stale-if-error=604800",
+    ),
+    (
+        "/bus/route-shape/",
+        "public, max-age=3600, stale-while-revalidate=86400, stale-if-error=604800",
+    ),
     # Bus stops per route — semi-static
-    ("/bus/stops/",         "public, max-age=600, stale-while-revalidate=86400, stale-if-error=604800"),
+    (
+        "/bus/stops/",
+        "public, max-age=600, stale-while-revalidate=86400, stale-if-error=604800",
+    ),
     # ── Real-time transit data (seconds-level freshness) ──
-    ("/nearby/grouped",     "private, max-age=5, stale-while-revalidate=15, stale-if-error=60"),
-    ("/subway/",            "private, max-age=8, stale-while-revalidate=20, stale-if-error=60"),
-    ("/lirr",               "private, max-age=8, stale-while-revalidate=20, stale-if-error=60"),
-    ("/mnr",                "private, max-age=8, stale-while-revalidate=20, stale-if-error=60"),
-    ("/bus/live/",          "private, max-age=8, stale-while-revalidate=20, stale-if-error=60"),
-    ("/bus/vehicles/",      "public, max-age=5, stale-while-revalidate=30, stale-if-error=120"),
-    ("/bus/nearby",         "private, max-age=60, stale-while-revalidate=300, stale-if-error=600"),
+    (
+        "/nearby/grouped",
+        "private, max-age=5, stale-while-revalidate=15, stale-if-error=60",
+    ),
+    ("/subway/", "private, max-age=8, stale-while-revalidate=20, stale-if-error=60"),
+    ("/lirr", "private, max-age=8, stale-while-revalidate=20, stale-if-error=60"),
+    ("/mnr", "private, max-age=8, stale-while-revalidate=20, stale-if-error=60"),
+    ("/bus/live/", "private, max-age=8, stale-while-revalidate=20, stale-if-error=60"),
+    (
+        "/bus/vehicles/",
+        "public, max-age=5, stale-while-revalidate=30, stale-if-error=120",
+    ),
+    (
+        "/bus/nearby",
+        "private, max-age=60, stale-while-revalidate=300, stale-if-error=600",
+    ),
     # ── Alerts & accessibility (moderate refresh) ──
-    ("/alerts",             "public, max-age=30, stale-while-revalidate=120, stale-if-error=600"),
-    ("/accessibility",      "public, max-age=60, stale-while-revalidate=300, stale-if-error=600"),
+    ("/alerts", "public, max-age=30, stale-while-revalidate=120, stale-if-error=600"),
+    (
+        "/accessibility",
+        "public, max-age=60, stale-while-revalidate=300, stale-if-error=600",
+    ),
     # ── ML predictions (stable for minutes) ──
-    ("/predict/delay",      "private, max-age=60, stale-while-revalidate=300, stale-if-error=600"),
+    (
+        "/predict/delay",
+        "private, max-age=60, stale-while-revalidate=300, stale-if-error=600",
+    ),
     # ── Config / health (short or no cache) ──
-    ("/config",             "public, max-age=300, stale-while-revalidate=600"),
-    ("/health",             "no-store"),
+    ("/config", "public, max-age=300, stale-while-revalidate=600"),
+    ("/health", "no-store"),
 ]
 
 
@@ -844,11 +917,15 @@ async def log_requests(request: Request, call_next):
     summary="Health check",
     description=(
         "Liveness and readiness probe for load-balancer health checks. "
-        "Returns HTTP 200 with `{\"status\": \"ok\", \"weather\": {...}}` once all "
+        'Returns HTTP 200 with `{"status": "ok", "weather": {...}}` once all '
         "GTFS-RT feeds have been fetched at least once (~20–30 s after cold boot). "
         "During the warmup window the endpoint returns HTTP 503 with a `Retry-After: 10` header."
     ),
-    responses={503: {"description": "Service unavailable — server is warming up. Retry after the `Retry-After` header value."}},
+    responses={
+        503: {
+            "description": "Service unavailable — server is warming up. Retry after the `Retry-After` header value."
+        }
+    },
 )
 async def health():
     """Health check endpoint.
@@ -857,13 +934,14 @@ async def health():
 
     Returns `503` with `Retry-After: 10` during the initial feed warmup window.
     """
-    if not _warmup_complete:
+    if not _app_state.warmup_complete:
         return JSONResponse(
             status_code=503,
             content={"status": "warming_up"},
             headers={"Retry-After": "10"},
         )
     from app.clients.weather_client import get_cached_weather_details
+
     return {"status": "ok", "weather": get_cached_weather_details()}
 
 
@@ -905,6 +983,7 @@ async def data_status() -> dict[str, Any]:
     """
     from app.services.gtfs.data_loader import check_local_data_status
     from app.services.gtfs.gtfs_refresh import get_gtfs_freshness
+
     return {
         "data_groups": check_local_data_status(),
         "gtfs_feeds": get_gtfs_freshness(),
@@ -937,6 +1016,7 @@ async def data_refresh(
     updated and whether new data was downloaded.
     """
     from app.services.gtfs.gtfs_refresh import check_and_refresh_gtfs
+
     results = await check_and_refresh_gtfs(full_check=full)
     return {"results": results}
 
@@ -964,11 +1044,15 @@ async def inspect_caches(request: Request) -> dict[str, Any]:
     """
     import time as _t
 
-    from app.clients.mta_client import _HTTP_CACHE
     from app.clients.bus_client import (
-        _arrivals_cache, _vehicle_cache, _stops_cache,
-        _routes_cache, _route_shape_cache, _nearby_stops_cache,
+        _arrivals_cache,
+        _nearby_stops_cache,
+        _route_shape_cache,
+        _routes_cache,
+        _stops_cache,
+        _vehicle_cache,
     )
+    from app.clients.mta_client import _HTTP_CACHE
     from app.routers.nearby import _nearby_resp_cache
 
     now = _t.time()
@@ -996,9 +1080,7 @@ async def inspect_caches(request: Request) -> dict[str, Any]:
             "keys": sorted(keys_info, key=lambda x: x["age_s"]),
         }
 
-    def _summarise_entry_dict(
-        cache: dict, mono: bool = True
-    ) -> dict[str, Any]:
+    def _summarise_entry_dict(cache: dict, mono: bool = True) -> dict[str, Any]:
         """Summarise a { key: _TTLCacheEntry } dict (bus caches).
 
         Auto-detects whether timestamps are monotonic (~222k range on a
@@ -1012,7 +1094,7 @@ async def inspect_caches(request: Request) -> dict[str, Any]:
         for k, entry in cache.items():
             ts = entry.ts
             # Heuristic: epoch timestamps are > 1 billion, monotonic < 1 million
-            ref = now if ts > 1_000_000_000 else now_mono
+            ref = now if ts > _EPOCH_THRESHOLD else now_mono
             age = max(0, ref - ts)
             keys_info.append({"key": str(k)[:120], "age_s": round(age, 1)})
             ages.append(age)
@@ -1028,8 +1110,10 @@ async def inspect_caches(request: Request) -> dict[str, Any]:
     for k, (ts, _) in _HTTP_CACHE._cache.items():
         age = now - ts
         short_key = k.split("?")[0] if "?" in k else k
-        mta_entries[short_key[:100]] = {"age_s": round(age, 1), "fresh": age < _HTTP_CACHE.fresh_ttl}
-    mta_stats = cache_stats._stats.get("mta.feed")
+        mta_entries[short_key[:100]] = {
+            "age_s": round(age, 1),
+            "fresh": age < _HTTP_CACHE.fresh_ttl,
+        }
 
     # ── Bus caches (_TTLCacheEntry uses monotonic timestamps) ──
     bus = {
@@ -1044,7 +1128,7 @@ async def inspect_caches(request: Request) -> dict[str, Any]:
                 {
                     "key": str(k),
                     "age_s": round(
-                        max(0, (now if v[0] > 1_000_000_000 else now_mono) - v[0]), 1
+                        max(0, (now if v[0] > _EPOCH_THRESHOLD else now_mono) - v[0]), 1
                     ),
                 }
                 for k, v in _nearby_stops_cache.items()
@@ -1072,9 +1156,11 @@ async def inspect_caches(request: Request) -> dict[str, Any]:
             }
             # Sample some keys to show what's stored
             sample_keys = []
-            cursor, keys = await rc.scan(cursor=0, count=50)
+            _cursor, keys = await rc.scan(cursor=0, count=50)
             for raw_key in keys[:50]:
-                key_str = raw_key.decode() if isinstance(raw_key, bytes) else str(raw_key)
+                key_str = (
+                    raw_key.decode() if isinstance(raw_key, bytes) else str(raw_key)
+                )
                 ttl = await rc.ttl(key_str)
                 sample_keys.append({"key": key_str[:120], "ttl_s": ttl})
             redis_info["sample_keys"] = sorted(sample_keys, key=lambda x: x["key"])
@@ -1130,10 +1216,11 @@ async def clear_all_caches(request: Request) -> dict[str, Any]:
     client = request.client
     if client and client.host not in ("127.0.0.1", "::1", "localhost"):
         from fastapi import HTTPException
+
         raise HTTPException(status_code=403, detail="localhost only")
 
-    from app.routers.nearby import clear_nearby_cache
     from app.clients.mta_client import clear_mta_cache
+    from app.routers.nearby import clear_nearby_cache
 
     counts = {
         "nearby_response": clear_nearby_cache(),

@@ -29,16 +29,14 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import json
 import random
 import statistics
 import sys
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 
 try:
     import httpx
@@ -51,59 +49,88 @@ except ImportError:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 DEFAULT_BASE = "http://127.0.0.1:8767"
-TIMEOUT = 60.0            # nearby/grouped can take 25s+ (cold MTA calls)
-TIMEOUT_LIGHT = 15.0      # fast/cached endpoints
+TIMEOUT = 60.0  # nearby/grouped can take 25s+ (cold MTA calls)
+TIMEOUT_LIGHT = 15.0  # fast/cached endpoints
 
 # NYC locations — spread across all boroughs + edge cases
 LOCATIONS = [
-    ("Penn Station",           40.7505, -73.9934),
-    ("Times Square",           40.7580, -73.9855),
-    ("Grand Central",          40.7527, -73.9772),
-    ("Wall Street",            40.7074, -74.0113),
-    ("Union Square",           40.7359, -73.9911),
-    ("Columbus Circle",        40.7681, -73.9819),
-    ("Downtown Brooklyn",      40.6892, -73.9857),
-    ("Williamsburg",           40.7081, -73.9571),
-    ("Jackson Heights",        40.7466, -73.8913),
-    ("Flushing",               40.7614, -73.8300),
-    ("Yankee Stadium",         40.8296, -73.9262),
-    ("Fordham",                40.8614, -73.8877),
-    ("St George SI",           40.6433, -74.0735),
-    ("Astoria",                40.7722, -73.9174),
-    ("Harlem 125th",           40.8075, -73.9455),
-    ("Coney Island",           40.5755, -73.9707),
-    ("JFK Airport",            40.6413, -73.7781),
-    ("Bushwick",               40.6944, -73.9213),
-    ("LIC Court Square",       40.7471, -73.9459),
-    ("Washington Heights",     40.8468, -73.9316),
+    ("Penn Station", 40.7505, -73.9934),
+    ("Times Square", 40.7580, -73.9855),
+    ("Grand Central", 40.7527, -73.9772),
+    ("Wall Street", 40.7074, -74.0113),
+    ("Union Square", 40.7359, -73.9911),
+    ("Columbus Circle", 40.7681, -73.9819),
+    ("Downtown Brooklyn", 40.6892, -73.9857),
+    ("Williamsburg", 40.7081, -73.9571),
+    ("Jackson Heights", 40.7466, -73.8913),
+    ("Flushing", 40.7614, -73.8300),
+    ("Yankee Stadium", 40.8296, -73.9262),
+    ("Fordham", 40.8614, -73.8877),
+    ("St George SI", 40.6433, -74.0735),
+    ("Astoria", 40.7722, -73.9174),
+    ("Harlem 125th", 40.8075, -73.9455),
+    ("Coney Island", 40.5755, -73.9707),
+    ("JFK Airport", 40.6413, -73.7781),
+    ("Bushwick", 40.6944, -73.9213),
+    ("LIC Court Square", 40.7471, -73.9459),
+    ("Washington Heights", 40.8468, -73.9316),
 ]
 
-SUBWAY_LINES = ["A", "C", "E", "B", "D", "F", "M", "N", "Q", "R", "W",
-                "1", "2", "3", "4", "5", "6", "7", "G", "J", "Z", "L", "S"]
+SUBWAY_LINES = [
+    "A",
+    "C",
+    "E",
+    "B",
+    "D",
+    "F",
+    "M",
+    "N",
+    "Q",
+    "R",
+    "W",
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6",
+    "7",
+    "G",
+    "J",
+    "Z",
+    "L",
+    "S",
+]
 
 BUS_ROUTES = [
-    "MTA NYCT_M15", "MTA NYCT_M34-SBS", "MTA NYCT_B44",
-    "MTA NYCT_B63", "MTA NYCT_Q58", "MTABC_BX1",
-    "MTA NYCT_M1", "MTA NYCT_S79-SBS",
+    "MTA NYCT_M15",
+    "MTA NYCT_M34-SBS",
+    "MTA NYCT_B44",
+    "MTA NYCT_B63",
+    "MTA NYCT_Q58",
+    "MTABC_BX1",
+    "MTA NYCT_M1",
+    "MTA NYCT_S79-SBS",
 ]
 
-BUS_STOP_IDS = ["MTA_305168", "MTA_308209", "MTA_504185",
-                "MTA_400561", "MTA_308214"]
+BUS_STOP_IDS = ["MTA_305168", "MTA_308209", "MTA_504185", "MTA_400561", "MTA_308214"]
 
 LIRR_ROUTES = ["9", "2", "1", "10"]
-MNR_ROUTES  = ["1", "2", "4", "5"]
+MNR_ROUTES = ["1", "2", "4", "5"]
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # DATA TYPES
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @dataclass
 class RequestResult:
     endpoint: str
     status: int
-    latency: float          # seconds
-    size: int               # response bytes
+    latency: float  # seconds
+    size: int  # response bytes
     error: str | None = None
+
 
 @dataclass
 class PhaseReport:
@@ -119,22 +146,29 @@ class PhaseReport:
 
     @property
     def error_rate(self) -> float:
-        return (self.total_errors / self.total_requests * 100) if self.total_requests else 0
+        return (
+            (self.total_errors / self.total_requests * 100)
+            if self.total_requests
+            else 0
+        )
 
     def latency_stats(self, endpoint: str | None = None) -> dict[str, float]:
-        times = [r.latency for r in self.results
-                 if (endpoint is None or r.endpoint == endpoint) and r.error is None]
+        times = [
+            r.latency
+            for r in self.results
+            if (endpoint is None or r.endpoint == endpoint) and r.error is None
+        ]
         if not times:
             return {}
         times.sort()
         n = len(times)
         return {
-            "min":  times[0],
-            "p50":  times[n // 2],
-            "p90":  times[int(n * 0.90)],
-            "p95":  times[int(n * 0.95)],
-            "p99":  times[int(n * 0.99)],
-            "max":  times[-1],
+            "min": times[0],
+            "p50": times[n // 2],
+            "p90": times[int(n * 0.90)],
+            "p95": times[int(n * 0.95)],
+            "p99": times[int(n * 0.99)],
+            "max": times[-1],
             "mean": statistics.mean(times),
             "stdev": statistics.stdev(times) if n > 1 else 0,
             "count": n,
@@ -146,12 +180,19 @@ class PhaseReport:
             dist[r.status] += 1
         return dict(sorted(dist.items()))
 
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # HTTP HELPERS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-async def _hit(client: httpx.AsyncClient, method: str, url: str,
-               label: str, timeout: float | None = None) -> RequestResult:
+
+async def _hit(
+    client: httpx.AsyncClient,
+    method: str,
+    url: str,
+    label: str,
+    timeout: float | None = None,
+) -> RequestResult:
     """Fire a single request, return timing + metadata."""
     t = timeout or (TIMEOUT if "/nearby" in url else TIMEOUT_LIGHT)
     t0 = time.perf_counter()
@@ -178,9 +219,11 @@ async def _hit(client: httpx.AsyncClient, method: str, url: str,
 def _rand_loc() -> tuple[str, float, float]:
     return random.choice(LOCATIONS)
 
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # ENDPOINT GENERATORS
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 def _all_endpoint_urls(base: str) -> list[tuple[str, str, str]]:
     """Return (method, url, label) tuples for every hittable endpoint."""
@@ -193,27 +236,44 @@ def _all_endpoint_urls(base: str) -> list[tuple[str, str, str]]:
 
     # --- Nearby (core endpoint, multiple locations) ---
     for name, lat, lon in LOCATIONS[:8]:
-        urls.append(("GET", f"{base}/nearby/grouped?lat={lat}&lon={lon}&radius=800",
-                      f"/nearby/grouped [{name}]"))
+        urls.append(
+            (
+                "GET",
+                f"{base}/nearby/grouped?lat={lat}&lon={lon}&radius=800",
+                f"/nearby/grouped [{name}]",
+            )
+        )
 
     # --- Subway ---
     for line in SUBWAY_LINES:
         urls.append(("GET", f"{base}/subway/{line}", f"/subway/{line}"))
 
     for name, lat, lon in LOCATIONS[:5]:
-        urls.append(("GET", f"{base}/subway/stations/nearby?lat={lat}&lon={lon}&radius=1600",
-                      f"/subway/stations/nearby [{name}]"))
+        urls.append(
+            (
+                "GET",
+                f"{base}/subway/stations/nearby?lat={lat}&lon={lon}&radius=1600",
+                f"/subway/stations/nearby [{name}]",
+            )
+        )
 
     urls.append(("GET", f"{base}/subway/stations/all", "/subway/stations/all"))
-    urls.append(("GET", f"{base}/subway/stations/processed", "/subway/stations/processed"))
+    urls.append(
+        ("GET", f"{base}/subway/stations/processed", "/subway/stations/processed")
+    )
 
     for line in ["A", "1", "7", "L", "G"]:
         urls.append(("GET", f"{base}/subway/shape/{line}", f"/subway/shape/{line}"))
 
     # --- Bus ---
     for name, lat, lon in LOCATIONS[:5]:
-        urls.append(("GET", f"{base}/bus/nearby?lat={lat}&lon={lon}&radius=800",
-                      f"/bus/nearby [{name}]"))
+        urls.append(
+            (
+                "GET",
+                f"{base}/bus/nearby?lat={lat}&lon={lon}&radius=800",
+                f"/bus/nearby [{name}]",
+            )
+        )
 
     urls.append(("GET", f"{base}/bus/routes", "/bus/routes"))
 
@@ -249,18 +309,28 @@ def _all_endpoint_urls(base: str) -> list[tuple[str, str, str]]:
     urls.append(("GET", f"{base}/weather?lat=40.7505&lon=-73.9934", "/weather [Penn]"))
 
     # --- ML Prediction ---
-    urls.append(("GET",
-        f"{base}/predict/delay?minutes_away=5&route_id=A&hour=8&day_of_week=1",
-        "/predict/delay [A, 5min]"))
-    urls.append(("GET",
-        f"{base}/predict/delay?minutes_away=12&route_id=7&hour=17&day_of_week=3&mode=subway",
-        "/predict/delay [7, 12min]"))
+    urls.append(
+        (
+            "GET",
+            f"{base}/predict/delay?minutes_away=5&route_id=A&hour=8&day_of_week=1",
+            "/predict/delay [A, 5min]",
+        )
+    )
+    urls.append(
+        (
+            "GET",
+            f"{base}/predict/delay?minutes_away=12&route_id=7&hour=17&day_of_week=3&mode=subway",
+            "/predict/delay [7, 12min]",
+        )
+    )
 
     return urls
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # PHASES
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 async def phase_warmup(client: httpx.AsyncClient, base: str) -> PhaseReport:
     """Phase 1: Hit every endpoint once with low concurrency to warm caches."""
@@ -268,12 +338,12 @@ async def phase_warmup(client: httpx.AsyncClient, base: str) -> PhaseReport:
     endpoints = _all_endpoint_urls(base)
     sem = asyncio.Semaphore(10)
 
-    async def _go(m, u, l):
+    async def _go(m, u, label):
         async with sem:
-            return await _hit(client, m, u, l)
+            return await _hit(client, m, u, label)
 
     t0 = time.perf_counter()
-    results = await asyncio.gather(*[_go(m, u, l) for m, u, l in endpoints])
+    results = await asyncio.gather(*[_go(m, u, label) for m, u, label in endpoints])
     report.wall_time = time.perf_counter() - t0
     report.results = list(results)
     report.total_requests = len(results)
@@ -288,20 +358,32 @@ async def phase_sustained(client: httpx.AsyncClient, base: str) -> PhaseReport:
 
     # Mix of fast endpoints (subway, alerts, weather) + a few nearby calls
     fast_endpoints = [
-        *[(f"{base}/subway/{l}", f"/subway/{l}") for l in SUBWAY_LINES[:12]],
+        *[
+            (f"{base}/subway/{label}", f"/subway/{label}")
+            for label in SUBWAY_LINES[:12]
+        ],
         *[(f"{base}/alerts", "/alerts") for _ in range(5)],
         *[(f"{base}/weather?lat=40.75&lon=-73.99", "/weather") for _ in range(5)],
         *[(f"{base}/lirr", "/lirr") for _ in range(3)],
         *[(f"{base}/mnr", "/mnr") for _ in range(3)],
         *[(f"{base}/bus/routes", "/bus/routes") for _ in range(3)],
         *[(f"{base}/subway/stations/all", "/subway/stations/all") for _ in range(3)],
-        *[(f"{base}/predict/delay?minutes_away=5&route_id=A&hour=8&day_of_week=1",
-           "/predict/delay") for _ in range(5)],
+        *[
+            (
+                f"{base}/predict/delay?minutes_away=5&route_id=A&hour=8&day_of_week=1",
+                "/predict/delay",
+            )
+            for _ in range(5)
+        ],
     ]
     # Add a few nearby/grouped (the expensive ones)
     for name, lat, lon in LOCATIONS[:5]:
-        fast_endpoints.append((f"{base}/nearby/grouped?lat={lat}&lon={lon}&radius=800",
-                               f"/nearby/grouped [{name}]"))
+        fast_endpoints.append(
+            (
+                f"{base}/nearby/grouped?lat={lat}&lon={lon}&radius=800",
+                f"/nearby/grouped [{name}]",
+            )
+        )
 
     # Pad to 150 total
     while len(fast_endpoints) < 150:
@@ -314,7 +396,7 @@ async def phase_sustained(client: httpx.AsyncClient, base: str) -> PhaseReport:
             return await _hit(client, "GET", url, label)
 
     t0 = time.perf_counter()
-    results = await asyncio.gather(*[_go(u, l) for u, l in fast_endpoints])
+    results = await asyncio.gather(*[_go(u, label) for u, label in fast_endpoints])
     report.wall_time = time.perf_counter() - t0
     report.results = list(results)
     report.total_requests = len(results)
@@ -329,21 +411,28 @@ async def phase_spike(client: httpx.AsyncClient, base: str) -> PhaseReport:
     # Mix of endpoints to simulate real traffic
     tasks = []
     for _ in range(30):
-        name, lat, lon = _rand_loc()
-        tasks.append(("GET", f"{base}/nearby/grouped?lat={lat}&lon={lon}", "/nearby/grouped"))
+        _name, lat, lon = _rand_loc()
+        tasks.append(
+            ("GET", f"{base}/nearby/grouped?lat={lat}&lon={lon}", "/nearby/grouped")
+        )
     for _ in range(20):
         line = random.choice(SUBWAY_LINES)
         tasks.append(("GET", f"{base}/subway/{line}", f"/subway/{line}"))
     for _ in range(15):
-        name, lat, lon = _rand_loc()
+        _name, lat, lon = _rand_loc()
         tasks.append(("GET", f"{base}/bus/nearby?lat={lat}&lon={lon}", "/bus/nearby"))
     for _ in range(10):
         tasks.append(("GET", f"{base}/alerts", "/alerts"))
     for _ in range(10):
         tasks.append(("GET", f"{base}/weather?lat=40.75&lon=-73.99", "/weather"))
     for _ in range(5):
-        tasks.append(("GET", f"{base}/predict/delay?minutes_away=5&route_id=A&hour=8&day_of_week=1",
-                       "/predict/delay"))
+        tasks.append(
+            (
+                "GET",
+                f"{base}/predict/delay?minutes_away=5&route_id=A&hour=8&day_of_week=1",
+                "/predict/delay",
+            )
+        )
     for _ in range(5):
         tasks.append(("GET", f"{base}/lirr", "/lirr"))
     for _ in range(5):
@@ -352,7 +441,9 @@ async def phase_spike(client: httpx.AsyncClient, base: str) -> PhaseReport:
     random.shuffle(tasks)
 
     t0 = time.perf_counter()
-    results = await asyncio.gather(*[_hit(client, m, u, l) for m, u, l in tasks])
+    results = await asyncio.gather(
+        *[_hit(client, m, u, label) for m, u, label in tasks]
+    )
     report.wall_time = time.perf_counter() - t0
     report.results = list(results)
     report.total_requests = len(results)
@@ -368,18 +459,28 @@ async def phase_endurance(client: httpx.AsyncClient, base: str) -> PhaseReport:
 
     # Build a pool of endpoints with ~90% fast, ~10% nearby/grouped
     fast_pool = [
-        *[(f"{base}/subway/{l}", f"/subway/{l}") for l in SUBWAY_LINES],
-        *[(f"{base}/alerts", "/alerts"),
-          (f"{base}/alerts?mode=subway", "/alerts?mode=subway"),
-          (f"{base}/alerts?mode=bus", "/alerts?mode=bus")],
+        *[(f"{base}/subway/{label}", f"/subway/{label}") for label in SUBWAY_LINES],
+        *[
+            (f"{base}/alerts", "/alerts"),
+            (f"{base}/alerts?mode=subway", "/alerts?mode=subway"),
+            (f"{base}/alerts?mode=bus", "/alerts?mode=bus"),
+        ],
         *[(f"{base}/weather?lat=40.75&lon=-73.99", "/weather")],
         *[(f"{base}/lirr", "/lirr"), (f"{base}/mnr", "/mnr")],
         *[(f"{base}/health", "/health"), (f"{base}/config", "/config")],
-        *[(f"{base}/predict/delay?minutes_away={m}&route_id={r}&hour=8&day_of_week=1",
-           f"/predict/delay [{r},{m}m]")
-          for m in [3, 5, 10] for r in ["A", "7", "L"]],
+        *[
+            (
+                f"{base}/predict/delay?minutes_away={m}&route_id={r}&hour=8&day_of_week=1",
+                f"/predict/delay [{r},{m}m]",
+            )
+            for m in [3, 5, 10]
+            for r in ["A", "7", "L"]
+        ],
         *[(f"{base}/bus/stops/{rt}", f"/bus/stops/{rt}") for rt in BUS_ROUTES[:3]],
-        *[(f"{base}/subway/shape/{l}", f"/subway/shape/{l}") for l in ["A", "1", "7"]],
+        *[
+            (f"{base}/subway/shape/{label}", f"/subway/shape/{label}")
+            for label in ["A", "1", "7"]
+        ],
         *[(f"{base}/accessibility", "/accessibility")],
     ]
 
@@ -424,7 +525,9 @@ async def phase_heavy_payload(client: httpx.AsyncClient, base: str) -> PhaseRepo
     random.shuffle(tasks)
 
     t0 = time.perf_counter()
-    results = await asyncio.gather(*[_hit(client, m, u, l) for m, u, l in tasks])
+    results = await asyncio.gather(
+        *[_hit(client, m, u, label) for m, u, label in tasks]
+    )
     report.wall_time = time.perf_counter() - t0
     report.results = list(results)
     report.total_requests = len(results)
@@ -469,7 +572,9 @@ async def phase_chaos(client: httpx.AsyncClient, base: str) -> PhaseReport:
     tasks = [random.choice(all_endpoints) for _ in range(100)]
 
     t0 = time.perf_counter()
-    results = await asyncio.gather(*[_hit(client, m, u, l) for m, u, l in tasks])
+    results = await asyncio.gather(
+        *[_hit(client, m, u, label) for m, u, label in tasks]
+    )
     report.wall_time = time.perf_counter() - t0
     report.results = list(results)
     report.total_requests = len(results)
@@ -481,8 +586,10 @@ async def phase_chaos(client: httpx.AsyncClient, base: str) -> PhaseReport:
 # REPORT FORMATTING
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 def _ms(s: float) -> str:
     return f"{s * 1000:.1f}ms"
+
 
 def _sz(b: int) -> str:
     if b < 1024:
@@ -506,26 +613,34 @@ def format_phase(report: PhaseReport) -> str:
     # Overall latency
     overall = report.latency_stats()
     if overall:
-        lines.append(f"\n  Overall Latency:")
-        lines.append(f"    min={_ms(overall['min'])}  p50={_ms(overall['p50'])}  "
-                      f"p90={_ms(overall['p90'])}  p95={_ms(overall['p95'])}  "
-                      f"p99={_ms(overall['p99'])}  max={_ms(overall['max'])}")
+        lines.append("\n  Overall Latency:")
+        lines.append(
+            f"    min={_ms(overall['min'])}  p50={_ms(overall['p50'])}  "
+            f"p90={_ms(overall['p90'])}  p95={_ms(overall['p95'])}  "
+            f"p99={_ms(overall['p99'])}  max={_ms(overall['max'])}"
+        )
         lines.append(f"    mean={_ms(overall['mean'])}  stdev={_ms(overall['stdev'])}")
 
     # Per-endpoint breakdown (group by base label)
-    endpoints = sorted(set(r.endpoint.split(" [")[0] for r in report.results))
+    endpoints = sorted({r.endpoint.split(" [")[0] for r in report.results})
     if len(endpoints) > 1:
-        lines.append(f"\n  Per-Endpoint Breakdown:")
-        lines.append(f"  {'Endpoint':<35s} {'Count':>5s}  {'p50':>8s}  {'p90':>8s}  "
-                      f"{'p99':>8s}  {'Max':>8s}  {'Errs':>4s}  {'Avg Size':>9s}")
+        lines.append("\n  Per-Endpoint Breakdown:")
+        lines.append(
+            f"  {'Endpoint':<35s} {'Count':>5s}  {'p50':>8s}  {'p90':>8s}  "
+            f"{'p99':>8s}  {'Max':>8s}  {'Errs':>4s}  {'Avg Size':>9s}"
+        )
         lines.append(f"  {'-' * 95}")
         for ep in endpoints:
             ep_results = [r for r in report.results if r.endpoint.startswith(ep)]
-            stats = report.latency_stats()
+            report.latency_stats()
             # compute per-endpoint stats manually
             times = sorted(r.latency for r in ep_results if r.error is None)
             errs = sum(1 for r in ep_results if r.error or r.status >= 500)
-            avg_size = (sum(r.size for r in ep_results) // len(ep_results)) if ep_results else 0
+            avg_size = (
+                (sum(r.size for r in ep_results) // len(ep_results))
+                if ep_results
+                else 0
+            )
             if times:
                 n = len(times)
                 lines.append(
@@ -559,40 +674,50 @@ def format_summary(phases: list[PhaseReport]) -> str:
     total_err = sum(p.total_errors for p in phases)
     total_time = sum(p.wall_time for p in phases)
 
-    all_latencies = sorted(r.latency for p in phases for r in p.results if r.error is None)
+    all_latencies = sorted(
+        r.latency for p in phases for r in p.results if r.error is None
+    )
     total_bytes = sum(r.size for p in phases for r in p.results)
     n = len(all_latencies)
 
     lines = [
         f"\n{'█' * 80}",
-        f"  EXTREME PERFORMANCE TEST — FINAL SUMMARY",
+        "  EXTREME PERFORMANCE TEST — FINAL SUMMARY",
         f"{'█' * 80}",
-        f"",
-        f"  Test run:        {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}",
+        "",
+        f"  Test run:        {datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S UTC')}",
         f"  Total requests:  {total_req}",
-        f"  Total errors:    {total_err} ({total_err / total_req * 100:.1f}%)" if total_req else "",
+        (
+            f"  Total errors:    {total_err} ({total_err / total_req * 100:.1f}%)"
+            if total_req
+            else ""
+        ),
         f"  Total wall time: {total_time:.1f}s",
         f"  Avg throughput:  {total_req / total_time:.1f} req/s" if total_time else "",
         f"  Total data:      {_sz(total_bytes)}",
-        f"",
+        "",
     ]
 
     if all_latencies:
-        lines.extend([
-            f"  Global Latency Distribution ({n} successful requests):",
-            f"    min  = {_ms(all_latencies[0])}",
-            f"    p50  = {_ms(all_latencies[n // 2])}",
-            f"    p90  = {_ms(all_latencies[int(n * 0.90)])}",
-            f"    p95  = {_ms(all_latencies[int(n * 0.95)])}",
-            f"    p99  = {_ms(all_latencies[int(n * 0.99)])}",
-            f"    max  = {_ms(all_latencies[-1])}",
-            f"    mean = {_ms(statistics.mean(all_latencies))}",
-            f"",
-        ])
+        lines.extend(
+            [
+                f"  Global Latency Distribution ({n} successful requests):",
+                f"    min  = {_ms(all_latencies[0])}",
+                f"    p50  = {_ms(all_latencies[n // 2])}",
+                f"    p90  = {_ms(all_latencies[int(n * 0.90)])}",
+                f"    p95  = {_ms(all_latencies[int(n * 0.95)])}",
+                f"    p99  = {_ms(all_latencies[int(n * 0.99)])}",
+                f"    max  = {_ms(all_latencies[-1])}",
+                f"    mean = {_ms(statistics.mean(all_latencies))}",
+                "",
+            ]
+        )
 
     # Phase comparison table
-    lines.append(f"  Phase Comparison:")
-    lines.append(f"  {'Phase':<45s} {'Reqs':>5s}  {'Errs':>4s}  {'RPS':>7s}  {'p50':>8s}  {'p99':>8s}")
+    lines.append("  Phase Comparison:")
+    lines.append(
+        f"  {'Phase':<45s} {'Reqs':>5s}  {'Errs':>4s}  {'RPS':>7s}  {'p50':>8s}  {'p99':>8s}"
+    )
     lines.append(f"  {'-' * 85}")
     for p in phases:
         stats = p.latency_stats()
@@ -608,11 +733,17 @@ def format_summary(phases: list[PhaseReport]) -> str:
     if total_err == 0:
         lines.append(f"  ✅ VERDICT: ALL {total_req} REQUESTS PASSED — ZERO ERRORS")
     elif total_err / total_req < 0.01:
-        lines.append(f"  ⚠️  VERDICT: {total_err}/{total_req} errors ({total_err/total_req*100:.2f}%) — ACCEPTABLE")
+        lines.append(
+            f"  ⚠️  VERDICT: {total_err}/{total_req} errors ({total_err/total_req*100:.2f}%) — ACCEPTABLE"
+        )
     elif total_err / total_req < 0.05:
-        lines.append(f"  ⚠️  VERDICT: {total_err}/{total_req} errors ({total_err/total_req*100:.1f}%) — NEEDS ATTENTION")
+        lines.append(
+            f"  ⚠️  VERDICT: {total_err}/{total_req} errors ({total_err/total_req*100:.1f}%) — NEEDS ATTENTION"
+        )
     else:
-        lines.append(f"  ❌ VERDICT: {total_err}/{total_req} errors ({total_err/total_req*100:.1f}%) — CRITICAL")
+        lines.append(
+            f"  ❌ VERDICT: {total_err}/{total_req} errors ({total_err/total_req*100:.1f}%) — CRITICAL"
+        )
 
     p99 = all_latencies[int(n * 0.99)] if all_latencies else 0
     if p99 < 0.5:
@@ -630,8 +761,9 @@ def format_summary(phases: list[PhaseReport]) -> str:
 # MAIN
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 async def main(base: str) -> None:
-    print(f"\n🔥 EXTREME PERFORMANCE TEST")
+    print("\n🔥 EXTREME PERFORMANCE TEST")
     print(f"   Target: {base}")
     print(f"   Time:   {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"{'─' * 60}\n")
@@ -668,15 +800,19 @@ async def main(base: str) -> None:
             phases.append(report)
             stats = report.latency_stats()
             p50 = _ms(stats.get("p50", 0)) if stats else "N/A"
-            print(f"   ✓ {report.total_requests} reqs in {report.wall_time:.1f}s "
-                  f"({report.rps:.0f} req/s) | p50={p50} | "
-                  f"errors={report.total_errors}\n")
+            print(
+                f"   ✓ {report.total_requests} reqs in {report.wall_time:.1f}s "
+                f"({report.rps:.0f} req/s) | p50={p50} | "
+                f"errors={report.total_errors}\n"
+            )
 
     # Build full report
     output_lines: list[str] = []
-    output_lines.append(f"EXTREME PERFORMANCE TEST REPORT")
+    output_lines.append("EXTREME PERFORMANCE TEST REPORT")
     output_lines.append(f"Target: {base}")
-    output_lines.append(f"Date:   {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}")
+    output_lines.append(
+        f"Date:   {datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S UTC')}"
+    )
 
     for p in phases:
         output_lines.append(format_phase(p))
@@ -697,8 +833,12 @@ async def main(base: str) -> None:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Extreme performance test for Track backend")
-    parser.add_argument("--base", default=DEFAULT_BASE, help=f"Base URL (default: {DEFAULT_BASE})")
+    parser = argparse.ArgumentParser(
+        description="Extreme performance test for Track backend"
+    )
+    parser.add_argument(
+        "--base", default=DEFAULT_BASE, help=f"Base URL (default: {DEFAULT_BASE})"
+    )
     args = parser.parse_args()
 
     asyncio.run(main(args.base))

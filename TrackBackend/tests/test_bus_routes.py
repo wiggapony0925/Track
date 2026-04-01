@@ -1,20 +1,15 @@
-#
-# test_bus_routes.py
-# TrackBackend
-#
-# Comprehensive test suite verifying that ALL 365 bus routes from
-# early_2026_buses_tag.json are correctly covered by the backend.
-#
-# Tests cover:
-#   1. JSON integrity — the canonical data file loads and has expected structure
-#   2. ROUTE_LOOKUP — every route in the JSON is in the in-memory lookup
-#   3. get_routes() — the multi-agency fetch returns ALL routes when mocked
-#   4. Config wiring — settings.json has both MTA NYCT and MTABC agencies
-#   5. resolve_bus_id() — resolves every short name to its canonical ID
-#   6. Endpoint integration — /bus/routes returns all 365 routes
-#   7. Display name — agency prefix stripping
-#   8. Per-route parametrized — EVERY SINGLE BUS individually tested
-#
+"""Comprehensive test suite verifying that ALL 365 bus routes from
+early_2026_buses_tag.json are correctly covered by the backend.
+
+Tests cover:
+1. JSON integrity — the canonical data file loads and has expected structure
+2. ROUTE_LOOKUP — every route in the JSON is in the in-memory lookup
+3. get_routes() — the multi-agency fetch returns ALL routes when mocked
+4. Config wiring — settings.json has both MTA NYCT and MTABC agencies
+5. resolve_bus_id() — resolves every short name to its canonical ID
+6. Endpoint integration — /bus/routes returns all 365 routes
+7. Display name — agency prefix stripping
+8. Per-route parametrized — EVERY SINGLE BUS individually tested."""
 
 from __future__ import annotations
 
@@ -25,16 +20,21 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from app.clients.bus_client import ROUTE_LOOKUP, get_routes, resolve_bus_id
 from app.config import get_settings
 from app.models import BusRoute
-from app.clients.bus_client import ROUTE_LOOKUP, get_routes, resolve_bus_id
 from app.routers.nearby import _display_name
 
 # ---------------------------------------------------------------------------
 # Fixtures: load the canonical JSON once for the whole module
 # ---------------------------------------------------------------------------
 
-_JSON_PATH = Path(__file__).resolve().parent.parent / "app" / "data" / "early_2026_buses_tag.json"
+_JSON_PATH = (
+    Path(__file__).resolve().parent.parent
+    / "app"
+    / "data"
+    / "early_2026_buses_tag.json"
+)
 
 
 @pytest.fixture(scope="module")
@@ -82,13 +82,20 @@ class TestBusJsonIntegrity:
         assert isinstance(bus_json, dict)
 
     def test_has_all_six_categories(self, bus_json):
-        expected = {"Brooklyn", "Manhattan", "Queens", "Bronx", "Staten Island", "Express"}
+        expected = {
+            "Brooklyn",
+            "Manhattan",
+            "Queens",
+            "Bronx",
+            "Staten Island",
+            "Express",
+        }
         assert set(bus_json.keys()) == expected
 
     def test_total_route_count(self, all_routes):
-        assert len(all_routes) == 365, (
-            f"Expected 365 total routes, got {len(all_routes)}"
-        )
+        assert (
+            len(all_routes) == 365
+        ), f"Expected 365 total routes, got {len(all_routes)}"
 
     def test_brooklyn_count(self, bus_json):
         assert len(bus_json["Brooklyn"]) == 66
@@ -115,9 +122,9 @@ class TestBusJsonIntegrity:
 
     def test_every_route_has_agency_prefix(self, all_routes):
         for category, short_name, official_id in all_routes:
-            assert "_" in official_id, (
-                f"{category}/{short_name}: official_id '{official_id}' missing agency prefix"
-            )
+            assert (
+                "_" in official_id
+            ), f"{category}/{short_name}: official_id '{official_id}' missing agency prefix"
 
     def test_no_duplicate_official_ids(self, all_routes):
         ids = [oid for _, _, oid in all_routes]
@@ -138,31 +145,27 @@ class TestRouteLookupCoverage:
 
     def test_every_short_name_in_lookup(self, all_routes):
         missing = []
-        for category, short_name, expected_id in all_routes:
+        for category, short_name, _expected_id in all_routes:
             if short_name not in ROUTE_LOOKUP:
                 missing.append(f"{category}/{short_name}")
-        assert len(missing) == 0, (
-            f"{len(missing)} routes missing from ROUTE_LOOKUP: {missing[:20]}"
-        )
+        assert (
+            len(missing) == 0
+        ), f"{len(missing)} routes missing from ROUTE_LOOKUP: {missing[:20]}"
 
     def test_every_lookup_resolves_to_correct_id(self, all_routes):
         wrong = []
-        for category, short_name, expected_id in all_routes:
+        for _category, short_name, expected_id in all_routes:
             actual = ROUTE_LOOKUP.get(short_name)
             if actual != expected_id:
                 wrong.append(f"{short_name}: expected={expected_id}, got={actual}")
-        assert len(wrong) == 0, (
-            f"{len(wrong)} routes have wrong IDs: {wrong[:20]}"
-        )
+        assert len(wrong) == 0, f"{len(wrong)} routes have wrong IDs: {wrong[:20]}"
 
     def test_lowercase_lookups_exist(self, all_routes):
         missing = []
         for _, short_name, _ in all_routes:
             if short_name.lower() not in ROUTE_LOOKUP:
                 missing.append(short_name)
-        assert len(missing) == 0, (
-            f"Lowercase lookup missing for: {missing[:20]}"
-        )
+        assert len(missing) == 0, f"Lowercase lookup missing for: {missing[:20]}"
 
 
 # ===================================================================
@@ -259,9 +262,9 @@ class TestGetRoutesMultiAgency:
         mock_fetch.return_value = _make_oba_response([])
         await get_routes()
         # Should be called at least 2 times (NYCT + MTABC)
-        assert mock_fetch.call_count >= 2, (
-            f"Expected at least 2 agency calls, got {mock_fetch.call_count}"
-        )
+        assert (
+            mock_fetch.call_count >= 2
+        ), f"Expected at least 2 agency calls, got {mock_fetch.call_count}"
 
 
 # ===================================================================
@@ -276,21 +279,29 @@ class TestSettingsMultiAgency:
         settings = get_settings()
         eps = settings.urls.bus_endpoints
         assert eps is not None, "bus_endpoints not configured"
-        assert isinstance(eps.routes_for_agency, list), (
-            f"routes_for_agency should be a list, got {type(eps.routes_for_agency)}"
-        )
+        assert isinstance(
+            eps.routes_for_agency, list
+        ), f"routes_for_agency should be a list, got {type(eps.routes_for_agency)}"
 
     def test_routes_for_agency_has_nyct(self):
         settings = get_settings()
         eps = settings.urls.bus_endpoints
-        paths = eps.routes_for_agency if isinstance(eps.routes_for_agency, list) else [eps.routes_for_agency]
+        paths = (
+            eps.routes_for_agency
+            if isinstance(eps.routes_for_agency, list)
+            else [eps.routes_for_agency]
+        )
         has_nyct = any("MTA" in p and "NYCT" in p for p in paths)
         assert has_nyct, f"No MTA NYCT agency in routes_for_agency: {paths}"
 
     def test_routes_for_agency_has_mtabc(self):
         settings = get_settings()
         eps = settings.urls.bus_endpoints
-        paths = eps.routes_for_agency if isinstance(eps.routes_for_agency, list) else [eps.routes_for_agency]
+        paths = (
+            eps.routes_for_agency
+            if isinstance(eps.routes_for_agency, list)
+            else [eps.routes_for_agency]
+        )
         has_mtabc = any("MTABC" in p for p in paths)
         assert has_mtabc, f"No MTABC agency in routes_for_agency: {paths}"
 
@@ -335,9 +346,9 @@ class TestResolveBusIdComplete:
             actual = await resolve_bus_id(short_name)
             if actual != expected_id:
                 failures.append(f"{short_name}: {expected_id} -> {actual}")
-        assert len(failures) == 0, (
-            f"{len(failures)} NYCT routes failed: {failures[:20]}"
-        )
+        assert (
+            len(failures) == 0
+        ), f"{len(failures)} NYCT routes failed: {failures[:20]}"
 
     @pytest.mark.asyncio
     async def test_resolve_all_mtabc(self, mtabc_routes):
@@ -347,18 +358,18 @@ class TestResolveBusIdComplete:
             actual = await resolve_bus_id(short_name)
             if actual != expected_id:
                 failures.append(f"{short_name}: {expected_id} -> {actual}")
-        assert len(failures) == 0, (
-            f"{len(failures)} MTABC routes failed: {failures[:20]}"
-        )
+        assert (
+            len(failures) == 0
+        ), f"{len(failures)} MTABC routes failed: {failures[:20]}"
 
     @pytest.mark.asyncio
     async def test_already_qualified_ids_pass_through(self, all_routes):
         """IDs that already have an agency prefix should pass through unchanged."""
         for _, _, official_id in all_routes[:50]:
             result = await resolve_bus_id(official_id)
-            assert result == official_id, (
-                f"Qualified ID changed: {official_id} -> {result}"
-            )
+            assert (
+                result == official_id
+            ), f"Qualified ID changed: {official_id} -> {result}"
 
 
 # ===================================================================
@@ -374,7 +385,9 @@ class TestBusRoutesEndpointCoverage:
         """Simulate get_routes returning all 365 routes and confirm the
         endpoint passes them through correctly."""
         from fastapi.testclient import TestClient
+
         from app.main import app
+
         test_client = TestClient(app)
 
         mock_routes.return_value = [
@@ -447,6 +460,7 @@ class TestDisplayNameAllRoutes:
 # 8. PER-ROUTE PARAMETRIZED TESTS — EVERY SINGLE BUS
 # ===================================================================
 
+
 # Build the full list at module load time so @pytest.mark.parametrize works.
 # Each entry: (short_name, official_id, category)
 def _load_all_bus_routes() -> list[tuple[str, str, str]]:
@@ -457,6 +471,7 @@ def _load_all_bus_routes() -> list[tuple[str, str, str]]:
         for short_name, official_id in mapping.items():
             routes.append((short_name, official_id, category))
     return routes
+
 
 _ALL_BUS_ROUTES = _load_all_bus_routes()
 
@@ -472,142 +487,223 @@ _EXPRESS_ROUTES = [(s, o) for s, o, c in _ALL_BUS_ROUTES if c == "Express"]
 class TestEveryBrooklynBus:
     """Test every single Brooklyn bus route individually (66 routes)."""
 
-    @pytest.mark.parametrize("short_name,official_id", _BROOKLYN_ROUTES, ids=[r[0] for r in _BROOKLYN_ROUTES])
+    @pytest.mark.parametrize(
+        "short_name,official_id", _BROOKLYN_ROUTES, ids=[r[0] for r in _BROOKLYN_ROUTES]
+    )
     def test_in_route_lookup(self, short_name, official_id):
         assert short_name in ROUTE_LOOKUP, f"{short_name} not in ROUTE_LOOKUP"
         assert ROUTE_LOOKUP[short_name] == official_id
 
-    @pytest.mark.parametrize("short_name,official_id", _BROOKLYN_ROUTES, ids=[r[0] for r in _BROOKLYN_ROUTES])
+    @pytest.mark.parametrize(
+        "short_name,official_id", _BROOKLYN_ROUTES, ids=[r[0] for r in _BROOKLYN_ROUTES]
+    )
     def test_display_name_clean(self, short_name, official_id):
         display = _display_name(official_id)
-        assert "_" not in display, f"_display_name('{official_id}') = '{display}' still has prefix"
+        assert (
+            "_" not in display
+        ), f"_display_name('{official_id}') = '{display}' still has prefix"
 
-    @pytest.mark.parametrize("short_name,official_id", _BROOKLYN_ROUTES, ids=[r[0] for r in _BROOKLYN_ROUTES])
+    @pytest.mark.parametrize(
+        "short_name,official_id", _BROOKLYN_ROUTES, ids=[r[0] for r in _BROOKLYN_ROUTES]
+    )
     @pytest.mark.asyncio
     async def test_resolve_bus_id(self, short_name, official_id):
         result = await resolve_bus_id(short_name)
-        assert result == official_id, f"resolve_bus_id('{short_name}') = '{result}', expected '{official_id}'"
+        assert (
+            result == official_id
+        ), f"resolve_bus_id('{short_name}') = '{result}', expected '{official_id}'"
 
 
 class TestEveryManhattanBus:
     """Test every single Manhattan bus route individually (43 routes)."""
 
-    @pytest.mark.parametrize("short_name,official_id", _MANHATTAN_ROUTES, ids=[r[0] for r in _MANHATTAN_ROUTES])
+    @pytest.mark.parametrize(
+        "short_name,official_id",
+        _MANHATTAN_ROUTES,
+        ids=[r[0] for r in _MANHATTAN_ROUTES],
+    )
     def test_in_route_lookup(self, short_name, official_id):
         assert short_name in ROUTE_LOOKUP, f"{short_name} not in ROUTE_LOOKUP"
         assert ROUTE_LOOKUP[short_name] == official_id
 
-    @pytest.mark.parametrize("short_name,official_id", _MANHATTAN_ROUTES, ids=[r[0] for r in _MANHATTAN_ROUTES])
+    @pytest.mark.parametrize(
+        "short_name,official_id",
+        _MANHATTAN_ROUTES,
+        ids=[r[0] for r in _MANHATTAN_ROUTES],
+    )
     def test_display_name_clean(self, short_name, official_id):
         display = _display_name(official_id)
-        assert "_" not in display, f"_display_name('{official_id}') = '{display}' still has prefix"
+        assert (
+            "_" not in display
+        ), f"_display_name('{official_id}') = '{display}' still has prefix"
 
-    @pytest.mark.parametrize("short_name,official_id", _MANHATTAN_ROUTES, ids=[r[0] for r in _MANHATTAN_ROUTES])
+    @pytest.mark.parametrize(
+        "short_name,official_id",
+        _MANHATTAN_ROUTES,
+        ids=[r[0] for r in _MANHATTAN_ROUTES],
+    )
     @pytest.mark.asyncio
     async def test_resolve_bus_id(self, short_name, official_id):
         result = await resolve_bus_id(short_name)
-        assert result == official_id, f"resolve_bus_id('{short_name}') = '{result}', expected '{official_id}'"
+        assert (
+            result == official_id
+        ), f"resolve_bus_id('{short_name}') = '{result}', expected '{official_id}'"
 
 
 class TestEveryQueensBus:
     """Test every single Queens bus route individually (100 routes)."""
 
-    @pytest.mark.parametrize("short_name,official_id", _QUEENS_ROUTES, ids=[r[0] for r in _QUEENS_ROUTES])
+    @pytest.mark.parametrize(
+        "short_name,official_id", _QUEENS_ROUTES, ids=[r[0] for r in _QUEENS_ROUTES]
+    )
     def test_in_route_lookup(self, short_name, official_id):
         assert short_name in ROUTE_LOOKUP, f"{short_name} not in ROUTE_LOOKUP"
         assert ROUTE_LOOKUP[short_name] == official_id
 
-    @pytest.mark.parametrize("short_name,official_id", _QUEENS_ROUTES, ids=[r[0] for r in _QUEENS_ROUTES])
+    @pytest.mark.parametrize(
+        "short_name,official_id", _QUEENS_ROUTES, ids=[r[0] for r in _QUEENS_ROUTES]
+    )
     def test_display_name_clean(self, short_name, official_id):
         display = _display_name(official_id)
-        assert "_" not in display, f"_display_name('{official_id}') = '{display}' still has prefix"
+        assert (
+            "_" not in display
+        ), f"_display_name('{official_id}') = '{display}' still has prefix"
 
-    @pytest.mark.parametrize("short_name,official_id", _QUEENS_ROUTES, ids=[r[0] for r in _QUEENS_ROUTES])
+    @pytest.mark.parametrize(
+        "short_name,official_id", _QUEENS_ROUTES, ids=[r[0] for r in _QUEENS_ROUTES]
+    )
     @pytest.mark.asyncio
     async def test_resolve_bus_id(self, short_name, official_id):
         result = await resolve_bus_id(short_name)
-        assert result == official_id, f"resolve_bus_id('{short_name}') = '{result}', expected '{official_id}'"
+        assert (
+            result == official_id
+        ), f"resolve_bus_id('{short_name}') = '{result}', expected '{official_id}'"
 
 
 class TestEveryBronxBus:
     """Test every single Bronx bus route individually (48 routes)."""
 
-    @pytest.mark.parametrize("short_name,official_id", _BRONX_ROUTES, ids=[r[0] for r in _BRONX_ROUTES])
+    @pytest.mark.parametrize(
+        "short_name,official_id", _BRONX_ROUTES, ids=[r[0] for r in _BRONX_ROUTES]
+    )
     def test_in_route_lookup(self, short_name, official_id):
         assert short_name in ROUTE_LOOKUP, f"{short_name} not in ROUTE_LOOKUP"
         assert ROUTE_LOOKUP[short_name] == official_id
 
-    @pytest.mark.parametrize("short_name,official_id", _BRONX_ROUTES, ids=[r[0] for r in _BRONX_ROUTES])
+    @pytest.mark.parametrize(
+        "short_name,official_id", _BRONX_ROUTES, ids=[r[0] for r in _BRONX_ROUTES]
+    )
     def test_display_name_clean(self, short_name, official_id):
         display = _display_name(official_id)
-        assert "_" not in display, f"_display_name('{official_id}') = '{display}' still has prefix"
+        assert (
+            "_" not in display
+        ), f"_display_name('{official_id}') = '{display}' still has prefix"
 
-    @pytest.mark.parametrize("short_name,official_id", _BRONX_ROUTES, ids=[r[0] for r in _BRONX_ROUTES])
+    @pytest.mark.parametrize(
+        "short_name,official_id", _BRONX_ROUTES, ids=[r[0] for r in _BRONX_ROUTES]
+    )
     @pytest.mark.asyncio
     async def test_resolve_bus_id(self, short_name, official_id):
         result = await resolve_bus_id(short_name)
-        assert result == official_id, f"resolve_bus_id('{short_name}') = '{result}', expected '{official_id}'"
+        assert (
+            result == official_id
+        ), f"resolve_bus_id('{short_name}') = '{result}', expected '{official_id}'"
 
 
 class TestEveryStatenIslandBus:
     """Test every single Staten Island bus route individually (31 routes)."""
 
-    @pytest.mark.parametrize("short_name,official_id", _STATEN_ISLAND_ROUTES, ids=[r[0] for r in _STATEN_ISLAND_ROUTES])
+    @pytest.mark.parametrize(
+        "short_name,official_id",
+        _STATEN_ISLAND_ROUTES,
+        ids=[r[0] for r in _STATEN_ISLAND_ROUTES],
+    )
     def test_in_route_lookup(self, short_name, official_id):
         assert short_name in ROUTE_LOOKUP, f"{short_name} not in ROUTE_LOOKUP"
         assert ROUTE_LOOKUP[short_name] == official_id
 
-    @pytest.mark.parametrize("short_name,official_id", _STATEN_ISLAND_ROUTES, ids=[r[0] for r in _STATEN_ISLAND_ROUTES])
+    @pytest.mark.parametrize(
+        "short_name,official_id",
+        _STATEN_ISLAND_ROUTES,
+        ids=[r[0] for r in _STATEN_ISLAND_ROUTES],
+    )
     def test_display_name_clean(self, short_name, official_id):
         display = _display_name(official_id)
-        assert "_" not in display, f"_display_name('{official_id}') = '{display}' still has prefix"
+        assert (
+            "_" not in display
+        ), f"_display_name('{official_id}') = '{display}' still has prefix"
 
-    @pytest.mark.parametrize("short_name,official_id", _STATEN_ISLAND_ROUTES, ids=[r[0] for r in _STATEN_ISLAND_ROUTES])
+    @pytest.mark.parametrize(
+        "short_name,official_id",
+        _STATEN_ISLAND_ROUTES,
+        ids=[r[0] for r in _STATEN_ISLAND_ROUTES],
+    )
     @pytest.mark.asyncio
     async def test_resolve_bus_id(self, short_name, official_id):
         result = await resolve_bus_id(short_name)
-        assert result == official_id, f"resolve_bus_id('{short_name}') = '{result}', expected '{official_id}'"
+        assert (
+            result == official_id
+        ), f"resolve_bus_id('{short_name}') = '{result}', expected '{official_id}'"
 
 
 class TestEveryExpressBus:
     """Test every single Express bus route individually (77 routes)."""
 
-    @pytest.mark.parametrize("short_name,official_id", _EXPRESS_ROUTES, ids=[r[0] for r in _EXPRESS_ROUTES])
+    @pytest.mark.parametrize(
+        "short_name,official_id", _EXPRESS_ROUTES, ids=[r[0] for r in _EXPRESS_ROUTES]
+    )
     def test_in_route_lookup(self, short_name, official_id):
         assert short_name in ROUTE_LOOKUP, f"{short_name} not in ROUTE_LOOKUP"
         assert ROUTE_LOOKUP[short_name] == official_id
 
-    @pytest.mark.parametrize("short_name,official_id", _EXPRESS_ROUTES, ids=[r[0] for r in _EXPRESS_ROUTES])
+    @pytest.mark.parametrize(
+        "short_name,official_id", _EXPRESS_ROUTES, ids=[r[0] for r in _EXPRESS_ROUTES]
+    )
     def test_display_name_clean(self, short_name, official_id):
         display = _display_name(official_id)
-        assert "_" not in display, f"_display_name('{official_id}') = '{display}' still has prefix"
+        assert (
+            "_" not in display
+        ), f"_display_name('{official_id}') = '{display}' still has prefix"
 
-    @pytest.mark.parametrize("short_name,official_id", _EXPRESS_ROUTES, ids=[r[0] for r in _EXPRESS_ROUTES])
+    @pytest.mark.parametrize(
+        "short_name,official_id", _EXPRESS_ROUTES, ids=[r[0] for r in _EXPRESS_ROUTES]
+    )
     @pytest.mark.asyncio
     async def test_resolve_bus_id(self, short_name, official_id):
         result = await resolve_bus_id(short_name)
-        assert result == official_id, f"resolve_bus_id('{short_name}') = '{result}', expected '{official_id}'"
+        assert (
+            result == official_id
+        ), f"resolve_bus_id('{short_name}') = '{result}', expected '{official_id}'"
 
 
 # ===================================================================
 # 9. LOWERCASE / CASE-INSENSITIVE LOOKUP — EVERY ROUTE
 # ===================================================================
 
+
 class TestCaseInsensitiveLookup:
     """Verify every route resolves via lowercase too (e.g. 'q10' → MTABC_Q10)."""
 
-    @pytest.mark.parametrize("short_name,official_id", [(s, o) for s, o, _ in _ALL_BUS_ROUTES],
-                             ids=[s for s, _, _ in _ALL_BUS_ROUTES])
+    @pytest.mark.parametrize(
+        "short_name,official_id",
+        [(s, o) for s, o, _ in _ALL_BUS_ROUTES],
+        ids=[s for s, _, _ in _ALL_BUS_ROUTES],
+    )
     def test_lowercase_in_lookup(self, short_name, official_id):
         lc = short_name.lower()
-        assert lc in ROUTE_LOOKUP, f"'{lc}' (lowercase of '{short_name}') not in ROUTE_LOOKUP"
+        assert (
+            lc in ROUTE_LOOKUP
+        ), f"'{lc}' (lowercase of '{short_name}') not in ROUTE_LOOKUP"
 
-    @pytest.mark.parametrize("short_name,official_id", [(s, o) for s, o, _ in _ALL_BUS_ROUTES],
-                             ids=[f"{s}_lower" for s, _, _ in _ALL_BUS_ROUTES])
+    @pytest.mark.parametrize(
+        "short_name,official_id",
+        [(s, o) for s, o, _ in _ALL_BUS_ROUTES],
+        ids=[f"{s}_lower" for s, _, _ in _ALL_BUS_ROUTES],
+    )
     @pytest.mark.asyncio
     async def test_resolve_lowercase(self, short_name, official_id):
         """resolve_bus_id should handle lowercase input."""
         result = await resolve_bus_id(short_name.lower())
-        assert result == official_id, (
-            f"resolve_bus_id('{short_name.lower()}') = '{result}', expected '{official_id}'"
-        )
+        assert (
+            result == official_id
+        ), f"resolve_bus_id('{short_name.lower()}') = '{result}', expected '{official_id}'"

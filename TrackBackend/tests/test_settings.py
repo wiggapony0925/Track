@@ -1,10 +1,5 @@
-#
-# test_settings.py
-# TrackBackend
-#
-# Tests that settings.json values are properly wired into the backend
-# configuration and that the /config endpoint returns all app_settings.
-#
+"""Tests that settings.json values are properly wired into the backend
+configuration and that the /config endpoint returns all app_settings."""
 
 from __future__ import annotations
 
@@ -102,7 +97,9 @@ class TestConfigEndpoint:
         data = response.json()
 
         for key, value in expected.items():
-            assert data[key] == value, f"Mismatch for key {key}: {data.get(key)} != {value}"
+            assert (
+                data[key] == value
+            ), f"Mismatch for key {key}: {data.get(key)} != {value}"
 
 
 class TestSettingsJsonStructure:

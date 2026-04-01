@@ -27,24 +27,23 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import json
 import math
 import os
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
 
 # ── Config ────────────────────────────────────────────────────────────────
-LOCAL_BACKEND   = "http://localhost:8000"
-MTA_SIRI_BASE   = "https://bustime.mta.info/api/siri/stop-monitoring.json"
-MTA_BUS_KEY     = os.environ.get("OBA_API_KEY", "")
+LOCAL_BACKEND = "http://localhost:8000"
+MTA_SIRI_BASE = "https://bustime.mta.info/api/siri/stop-monitoring.json"
+MTA_BUS_KEY = os.environ.get("OBA_API_KEY", "")
 
 # OBA stops-for-location (to discover stop IDs near the user)
-OBA_NEARBY      = "https://bustime.mta.info/api/where/stops-for-location.json"
-OBA_KEY         = MTA_BUS_KEY
+OBA_NEARBY = "https://bustime.mta.info/api/where/stops-for-location.json"
+OBA_KEY = MTA_BUS_KEY
 
 # Default: Kew Gardens, Queens (near Q10, J/Z subway)
 DEFAULT_LAT = 40.7085
@@ -53,14 +52,15 @@ DEFAULT_LON = -73.8318
 
 # ── Helpers ──────────────────────────────────────────────────────────────
 
+
 def _minutes_until(iso_str: str | None) -> int | None:
     if not iso_str:
         return None
     try:
         dt = datetime.fromisoformat(iso_str)
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        diff = (dt - datetime.now(timezone.utc)).total_seconds()
+            dt = dt.replace(tzinfo=UTC)
+        diff = (dt - datetime.now(UTC)).total_seconds()
         return max(0, math.ceil(diff / 60))
     except Exception:
         return None
@@ -72,6 +72,7 @@ def _bar(value: int, max_val: int = 20, width: int = 15) -> str:
 
 
 # ── Step 1: get our backend's corrected arrivals ──────────────────────────
+
 
 async def fetch_track_nearby(lat: float, lon: float, radius: int) -> list[dict]:
     url = f"{LOCAL_BACKEND}/nearby?lat={lat}&lon={lon}&radius={radius}"
@@ -85,6 +86,7 @@ async def fetch_track_nearby(lat: float, lon: float, radius: int) -> list[dict]:
 
 # ── Step 2: discover nearby stops via OBA, then hit SIRI per stop ─────────
 
+
 async def fetch_nearby_stop_ids(lat: float, lon: float, radius: int) -> list[str]:
     params = {
         "key": OBA_KEY,
@@ -97,7 +99,9 @@ async def fetch_nearby_stop_ids(lat: float, lon: float, radius: int) -> list[str
         resp = await client.get(OBA_NEARBY, params=params)
         resp.raise_for_status()
     data = resp.json()
-    stops = data.get("data", {}).get("stops", []) or data.get("data", {}).get("list", [])
+    stops = data.get("data", {}).get("stops", []) or data.get("data", {}).get(
+        "list", []
+    )
     ids = []
     for s in stops:
         sid = s.get("id", "") or s.get("stopId", "")
@@ -125,8 +129,8 @@ async def fetch_siri_for_stop(stop_id: str) -> list[dict]:
 
     deliveries = (
         data.get("Siri", {})
-            .get("ServiceDelivery", {})
-            .get("StopMonitoringDelivery", [])
+        .get("ServiceDelivery", {})
+        .get("StopMonitoringDelivery", [])
     )
     if not deliveries:
         return []
@@ -138,8 +142,8 @@ async def fetch_siri_for_stop(stop_id: str) -> list[dict]:
         call = journey.get("MonitoredCall", {})
 
         expected_iso = call.get("ExpectedArrivalTime")
-        aimed_iso    = call.get("AimedArrivalTime")
-        mins         = _minutes_until(expected_iso)
+        aimed_iso = call.get("AimedArrivalTime")
+        mins = _minutes_until(expected_iso)
 
         if mins is None:
             continue
@@ -169,20 +173,23 @@ async def fetch_siri_for_stop(stop_id: str) -> list[dict]:
         elif isinstance(dest_raw, str):
             dest = dest_raw
 
-        results.append({
-            "route": route,
-            "stop_id": stop_id,
-            "raw_minutes": mins,
-            "status": status,
-            "destination": dest,
-            "expected_iso": expected_iso,
-            "dev_s": dev_s,
-        })
+        results.append(
+            {
+                "route": route,
+                "stop_id": stop_id,
+                "raw_minutes": mins,
+                "status": status,
+                "destination": dest,
+                "expected_iso": expected_iso,
+                "dev_s": dev_s,
+            }
+        )
 
     return results
 
 
 # ── Step 3: match & compare ───────────────────────────────────────────────
+
 
 def match_and_compare(
     track_arrivals: list[dict],
@@ -199,8 +206,8 @@ def match_and_compare(
 
     for t in track_arrivals:
         route = t.get("route_id", "").upper()
-        stop  = _canon_stop(t.get("stop_id", ""))
-        key   = (route, stop)
+        stop = _canon_stop(t.get("stop_id", ""))
+        key = (route, stop)
 
         ml_mins = t.get("minutes_away", -1)
 
@@ -208,41 +215,44 @@ def match_and_compare(
         if not siri_matches:
             # Try partial route match (SIRI sometimes omits agency)
             for (sr, ss), sv in siri_index.items():
-                if sr.endswith(route) or route.endswith(sr):
-                    if ss == stop:
-                        siri_matches = sv
-                        break
+                if (sr.endswith(route) or route.endswith(sr)) and ss == stop:
+                    siri_matches = sv
+                    break
 
         if siri_matches:
             # Pick closest minutes match
             best = min(siri_matches, key=lambda x: abs(x["raw_minutes"] - ml_mins))
-            rows.append({
-                "route": route,
-                "stop_id": stop,
-                "stop_name": t.get("stop_name", ""),
-                "destination": best["destination"] or t.get("destination", ""),
-                "status": best["status"],
-                "raw_mta_min":  best["raw_minutes"],
-                "ml_model_min": ml_mins,
-                "diff": ml_mins - best["raw_minutes"],
-                "dev_s":        best.get("dev_s"),
-                "expected_iso": best["expected_iso"],
-                "matched": True,
-            })
+            rows.append(
+                {
+                    "route": route,
+                    "stop_id": stop,
+                    "stop_name": t.get("stop_name", ""),
+                    "destination": best["destination"] or t.get("destination", ""),
+                    "status": best["status"],
+                    "raw_mta_min": best["raw_minutes"],
+                    "ml_model_min": ml_mins,
+                    "diff": ml_mins - best["raw_minutes"],
+                    "dev_s": best.get("dev_s"),
+                    "expected_iso": best["expected_iso"],
+                    "matched": True,
+                }
+            )
         else:
-            rows.append({
-                "route": route,
-                "stop_id": stop,
-                "stop_name": t.get("stop_name", ""),
-                "destination": t.get("destination", ""),
-                "status": t.get("status", ""),
-                "raw_mta_min":  None,
-                "ml_model_min": ml_mins,
-                "diff":         None,
-                "dev_s":        None,
-                "expected_iso": None,
-                "matched": False,
-            })
+            rows.append(
+                {
+                    "route": route,
+                    "stop_id": stop,
+                    "stop_name": t.get("stop_name", ""),
+                    "destination": t.get("destination", ""),
+                    "status": t.get("status", ""),
+                    "raw_mta_min": None,
+                    "ml_model_min": ml_mins,
+                    "diff": None,
+                    "dev_s": None,
+                    "expected_iso": None,
+                    "matched": False,
+                }
+            )
 
     return rows
 
@@ -251,11 +261,12 @@ def _canon_stop(sid: str) -> str:
     s = (sid or "").strip()
     for prefix in ("MTA_", "MTA NYCT_", "MTABC_"):
         if s.startswith(prefix):
-            s = s[len(prefix):]
+            s = s[len(prefix) :]
     return s
 
 
 # ── Printing ─────────────────────────────────────────────────────────────
+
 
 def print_table(rows: list[dict]) -> None:
     matched = [r for r in rows if r["matched"]]
@@ -271,51 +282,70 @@ def print_table(rows: list[dict]) -> None:
     print("━" * 90)
     print("  TRACK ML  vs  RAW MTA SIRI  —  Arrival Time Comparison")
     print("━" * 90)
-    print(f"  {'Route':<8} {'Stop':<22} {'MTA raw':>9} {'ML model':>9} {'Diff':>6}  {'Bar (MTA vs ML)'}")
+    print(
+        f"  {'Route':<8} {'Stop':<22} {'MTA raw':>9} {'ML model':>9} {'Diff':>6}  {'Bar (MTA vs ML)'}"
+    )
     print("  " + "─" * 87)
 
     for r in matched:
-        route    = r["route"]
-        stop     = (r["stop_name"] or r["stop_id"])[:21]
-        raw_m    = r["raw_mta_min"]
-        ml_m     = r["ml_model_min"]
-        diff     = r["diff"]
-        dev_s    = r["dev_s"]
-        dest     = r["destination"][:24] if r["destination"] else ""
+        route = r["route"]
+        stop = (r["stop_name"] or r["stop_id"])[:21]
+        raw_m = r["raw_mta_min"]
+        ml_m = r["ml_model_min"]
+        diff = r["diff"]
+        dev_s = r["dev_s"]
+        dest = r["destination"][:24] if r["destination"] else ""
 
         diff_str = f"+{diff}m" if diff > 0 else f"{diff}m"
-        dev_str  = f"  [SIRI dev {dev_s:+d}s]" if dev_s else ""
+        dev_str = f"  [SIRI dev {dev_s:+d}s]" if dev_s else ""
 
         # Visual bar: MTA time in blue░ ML extension in red█
         bar_raw = _bar(raw_m, max_val=30, width=12)
         ext_len = min(max(0, diff), 6)
         bar_ext = "▓" * ext_len
 
-        print(f"  {route:<8} {stop:<22} {raw_m:>6} min  {ml_m:>6} min  {diff_str:>5}  {bar_raw}{bar_ext}  → {dest}{dev_str}")
+        print(
+            f"  {route:<8} {stop:<22} {raw_m:>6} min  {ml_m:>6} min  {diff_str:>5}  {bar_raw}{bar_ext}  → {dest}{dev_str}"
+        )
 
     if unmatched:
-        print(f"\n  ⚠  {len(unmatched)} Track arrivals had no SIRI match (stop resolved differently or bus not in SIRI yet):")
+        print(
+            f"\n  ⚠  {len(unmatched)} Track arrivals had no SIRI match (stop resolved differently or bus not in SIRI yet):"
+        )
         for r in unmatched[:5]:
-            print(f"     {r['route']:<8} stop={r['stop_id']:<15} ml={r['ml_model_min']} min  ({r['stop_name']})")
+            print(
+                f"     {r['route']:<8} stop={r['stop_id']:<15} ml={r['ml_model_min']} min  ({r['stop_name']})"
+            )
 
     print()
     print("━" * 90)
     if diffs:
-        avg  = sum(diffs) / len(diffs)
+        avg = sum(diffs) / len(diffs)
         maxd = max(diffs)
         zero = sum(1 for d in diffs if d == 0)
         print(f"  Matched arrivals : {len(matched)}")
-        print(f"  Avg ML correction: {avg:.2f} min  (how much the model added on top of MTA raw)")
+        print(
+            f"  Avg ML correction: {avg:.2f} min  (how much the model added on top of MTA raw)"
+        )
         print(f"  Max correction   : {maxd} min")
-        print(f"  No correction    : {zero}/{len(matched)} arrivals (model agreed with MTA exactly)")
+        print(
+            f"  No correction    : {zero}/{len(matched)} arrivals (model agreed with MTA exactly)"
+        )
         print()
-        print("  ℹ  Diffs of 0 = model factor rounds to same minute (correct for reliable routes).")
-        print("  ℹ  Diffs of +1 or +2 = model correctly inflating for rush/weather/bad routes.")
-        print("  ℹ  Diffs > 3 = recency correction active (stop has logged recent late trips).")
+        print(
+            "  ℹ  Diffs of 0 = model factor rounds to same minute (correct for reliable routes)."
+        )
+        print(
+            "  ℹ  Diffs of +1 or +2 = model correctly inflating for rush/weather/bad routes."
+        )
+        print(
+            "  ℹ  Diffs > 3 = recency correction active (stop has logged recent late trips)."
+        )
     print("━" * 90)
 
 
 # ── Watch mode: re-poll and check actual vs predicted ────────────────────
+
 
 async def watch_mode(rows: list[dict], wait_seconds: int) -> None:
     """
@@ -325,7 +355,7 @@ async def watch_mode(rows: list[dict], wait_seconds: int) -> None:
     print(f"\n  ↩  Watch mode: re-polling in {wait_seconds}s to verify predictions …")
     await asyncio.sleep(wait_seconds)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     print()
     print("━" * 90)
     print(f"  RESULT CHECK after {wait_seconds}s")
@@ -337,14 +367,15 @@ async def watch_mode(rows: list[dict], wait_seconds: int) -> None:
         try:
             exp_dt = datetime.fromisoformat(r["expected_iso"])
             if exp_dt.tzinfo is None:
-                exp_dt = exp_dt.replace(tzinfo=timezone.utc)
+                exp_dt = exp_dt.replace(tzinfo=UTC)
         except Exception:
             continue
 
         # Re-query SIRI for this stop
         fresh = await fetch_siri_for_stop(r["stop_id"])
         still_there = any(
-            f["route"].upper() == r["route"] and f["raw_minutes"] <= r["raw_mta_min"] + 2
+            f["route"].upper() == r["route"]
+            and f["raw_minutes"] <= r["raw_mta_min"] + 2
             for f in fresh
         )
         actual_delta_s = (now - exp_dt).total_seconds()
@@ -352,7 +383,7 @@ async def watch_mode(rows: list[dict], wait_seconds: int) -> None:
         if not still_there and actual_delta_s > 0:
             # Bus likely arrived — how late was it?
             late_min = round(actual_delta_s / 60, 1)
-            ml_error  = abs(r["ml_model_min"] - (r["raw_mta_min"] + late_min))
+            ml_error = abs(r["ml_model_min"] - (r["raw_mta_min"] + late_min))
             raw_error = abs(late_min)
             winner = "ML ✓" if ml_error <= raw_error else "MTA raw ✓"
             print(
@@ -361,20 +392,38 @@ async def watch_mode(rows: list[dict], wait_seconds: int) -> None:
             )
         else:
             remaining = _minutes_until(r["expected_iso"])
-            print(f"  {r['route']:<6} still {remaining}m away — not yet arrived, check later")
+            print(
+                f"  {r['route']:<6} still {remaining}m away — not yet arrived, check later"
+            )
 
     print("━" * 90)
 
 
 # ── Main ──────────────────────────────────────────────────────────────────
 
+
 async def main() -> None:
-    parser = argparse.ArgumentParser(description="Compare Track ML predictions vs raw MTA SIRI times")
-    parser.add_argument("--lat",    type=float, default=DEFAULT_LAT, help="Latitude (default: Kew Gardens)")
-    parser.add_argument("--lon",    type=float, default=DEFAULT_LON, help="Longitude (default: Kew Gardens)")
-    parser.add_argument("--radius", type=int,   default=800,         help="Search radius in meters")
-    parser.add_argument("--watch",  type=int,   default=0,
-                        help="Re-poll after N seconds to check actual arrival vs prediction")
+    parser = argparse.ArgumentParser(
+        description="Compare Track ML predictions vs raw MTA SIRI times"
+    )
+    parser.add_argument(
+        "--lat", type=float, default=DEFAULT_LAT, help="Latitude (default: Kew Gardens)"
+    )
+    parser.add_argument(
+        "--lon",
+        type=float,
+        default=DEFAULT_LON,
+        help="Longitude (default: Kew Gardens)",
+    )
+    parser.add_argument(
+        "--radius", type=int, default=800, help="Search radius in meters"
+    )
+    parser.add_argument(
+        "--watch",
+        type=int,
+        default=0,
+        help="Re-poll after N seconds to check actual arrival vs prediction",
+    )
     args = parser.parse_args()
 
     print(f"\n  📍  Location: {args.lat}, {args.lon}  |  radius={args.radius}m")
@@ -388,15 +437,21 @@ async def main() -> None:
     print(f"        → {len(track_arrivals)} bus arrivals")
 
     if not track_arrivals:
-        print("\n  ⚠  No bus arrivals near this location. Try --radius 1500 or a busier location.")
-        print("     E.g.:  python scripts/accuracy_test.py --lat 40.7580 --lon -73.9855  (Times Square)")
+        print(
+            "\n  ⚠  No bus arrivals near this location. Try --radius 1500 or a busier location."
+        )
+        print(
+            "     E.g.:  python scripts/accuracy_test.py --lat 40.7580 --lon -73.9855  (Times Square)"
+        )
         return
 
     # 2. Discover stop IDs then hit SIRI directly
     print("  [2/3] Discovering nearby stops via OBA + hitting MTA SIRI …")
     stop_ids = await fetch_nearby_stop_ids(args.lat, args.lon, args.radius)
     # Also pull stop_ids directly from Track arrivals
-    track_stop_ids = list({a.get("stop_id", "") for a in track_arrivals if a.get("stop_id")})
+    track_stop_ids = list(
+        {a.get("stop_id", "") for a in track_arrivals if a.get("stop_id")}
+    )
     all_stop_ids = list(set(stop_ids + track_stop_ids))[:15]
     print(f"        → {len(all_stop_ids)} stops to query SIRI on")
 

@@ -1,14 +1,9 @@
-#
-# commuter_rail_shapes.py
-# TrackBackend
-#
-# Loads MTA GTFS static data to provide LIRR and Metro-North route polylines.
-# Mirrors subway_shapes.py but for commuter rail feeds.
-#
-# Data files:
-#   - app/data/lirr/gtfslirr/shapes.txt, routes.txt, trips.txt
-#   - app/data/metro_north/gtfsmnr/shapes.txt, routes.txt, trips.txt
-#
+"""Loads MTA GTFS static data to provide LIRR and Metro-North route polylines.
+Mirrors subway_shapes.py but for commuter rail feeds.
+
+Data files:
+- app/data/lirr/gtfslirr/shapes.txt, routes.txt, trips.txt
+- app/data/metro_north/gtfsmnr/shapes.txt, routes.txt, trips.txt."""
 
 from __future__ import annotations
 
@@ -17,13 +12,19 @@ from collections import defaultdict
 from pathlib import Path
 from typing import NamedTuple
 
-from app.utils.logger import TrackLogger
 from app.services.mapping.shape_utils import (
     ShapePoint,
+)
+from app.services.mapping.shape_utils import (
     pack_coords as _pack_coords,
+)
+from app.services.mapping.shape_utils import (
     unpack_coords as _unpack_coords,
+)
+from app.services.mapping.shape_utils import (
     unpack_point_set as _unpack_point_set,
 )
+from app.utils.logger import TrackLogger
 
 _DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
 
@@ -36,6 +37,7 @@ _DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
 # only stores the first *non-empty* result and retries on subsequent calls
 # until the data is actually available.
 # ---------------------------------------------------------------------------
+
 
 def _cache_nonempty(fn):
     """Like ``@lru_cache(maxsize=1)`` but only caches non-empty results.
@@ -57,7 +59,7 @@ def _cache_nonempty(fn):
         result = fn()
         # Determine if the result is "populated"
         is_populated = bool(result)
-        if is_populated and isinstance(result, tuple) and len(result) > 0:
+        if is_populated and isinstance(result, tuple) and result:
             is_populated = bool(result[0])
         if is_populated:
             _cached = result
@@ -72,6 +74,7 @@ def _cache_nonempty(fn):
     wrapper.__qualname__ = fn.__qualname__
     return wrapper
 
+
 _LIRR_DIR = _DATA_DIR / "lirr" / "gtfslirr"
 _MNR_DIR = _DATA_DIR / "metro_north" / "gtfsmnr"
 
@@ -84,6 +87,7 @@ class CommuterRoute(NamedTuple):
 
 class CommuterStop(NamedTuple):
     """A commuter rail stop with name + coordinates, resolved from stops.txt."""
+
     stop_id: str
     name: str
     lat: float
@@ -97,6 +101,7 @@ class CommuterStop(NamedTuple):
 # ---------------------------------------------------------------------------
 # Generic GTFS parsers
 # ---------------------------------------------------------------------------
+
 
 def _parse_shapes(shapes_path: Path) -> dict[str, bytes]:
     """Parse a GTFS shapes.txt into shape_id → packed bytes (8 bytes/point)."""
@@ -153,9 +158,11 @@ def _parse_routes(routes_path: Path) -> dict[str, CommuterRoute]:
 def _parse_trips_combined(
     trips_path: Path,
 ) -> tuple[
-    dict[str, set[str]],               # route_shapes: route_id → {shape_ids}
-    dict[str, dict[int, set[str]]],    # route_shapes_by_dir: route_id → {dir: {shape_ids}}
-    dict[str, dict[int, str]],         # headsigns: route_id → {dir: headsign}
+    dict[str, set[str]],  # route_shapes: route_id → {shape_ids}
+    dict[
+        str, dict[int, set[str]]
+    ],  # route_shapes_by_dir: route_id → {dir: {shape_ids}}
+    dict[str, dict[int, str]],  # headsigns: route_id → {dir: headsign}
 ]:
     """Single-pass parse of trips.txt returning all three data structures.
 
@@ -166,7 +173,9 @@ def _parse_trips_combined(
 
     route_shapes: dict[str, set[str]] = defaultdict(set)
     by_dir: dict[str, dict[int, set[str]]] = defaultdict(lambda: defaultdict(set))
-    headsign_counts: dict[str, dict[int, Counter]] = defaultdict(lambda: defaultdict(Counter))
+    headsign_counts: dict[str, dict[int, Counter]] = defaultdict(
+        lambda: defaultdict(Counter)
+    )
 
     if not trips_path.exists():
         TrackLogger.warning(f"trips.txt not found: {trips_path}")
@@ -238,6 +247,7 @@ def _deduplicate_shapes(
 # Stop parsing: stops.txt + stop_times.txt + trips.txt → shape_id → [stops]
 # ---------------------------------------------------------------------------
 
+
 def _parse_stops_file(stops_path: Path) -> dict[str, CommuterStop]:
     """Parse GTFS stops.txt into stop_id → CommuterStop."""
     stops: dict[str, CommuterStop] = {}
@@ -257,7 +267,10 @@ def _parse_stops_file(stops_path: Path) -> dict[str, CommuterStop]:
                 continue
             if stop_id:
                 stops[stop_id] = CommuterStop(
-                    stop_id=stop_id, name=name, lat=lat, lon=lon,
+                    stop_id=stop_id,
+                    name=name,
+                    lat=lat,
+                    lon=lon,
                 )
     return stops
 
@@ -359,6 +372,7 @@ def _resolve_stops_for_shapes(
 # LIRR
 # ---------------------------------------------------------------------------
 
+
 @_cache_nonempty
 def _lirr_shapes() -> dict[str, bytes]:
     return _parse_shapes(_LIRR_DIR / "shapes.txt")
@@ -370,7 +384,11 @@ def _lirr_routes() -> dict[str, CommuterRoute]:
 
 
 @_cache_nonempty
-def _lirr_trips() -> tuple[dict[str, set[str]], dict[str, dict[int, set[str]]], dict[str, dict[int, str]]]:
+def _lirr_trips() -> (
+    tuple[
+        dict[str, set[str]], dict[str, dict[int, set[str]]], dict[str, dict[int, str]]
+    ]
+):
     return _parse_trips_combined(_LIRR_DIR / "trips.txt")
 
 
@@ -410,14 +428,18 @@ def get_all_lirr_lines() -> list[dict]:
                 polylines.append(_unpack_coords(buf))
 
         if polylines:
-            all_stops = _resolve_stops_for_shapes(unique_sids, _lirr_shape_stop_map(), _lirr_stops())
-            results.append({
-                "route_id": f"LIRR_{route_id}",
-                "name": route.name,
-                "color_hex": route.color_hex,
-                "polylines": polylines,
-                "stops": all_stops,
-            })
+            all_stops = _resolve_stops_for_shapes(
+                unique_sids, _lirr_shape_stop_map(), _lirr_stops()
+            )
+            results.append(
+                {
+                    "route_id": f"LIRR_{route_id}",
+                    "name": route.name,
+                    "color_hex": route.color_hex,
+                    "polylines": polylines,
+                    "stops": all_stops,
+                }
+            )
 
     TrackLogger.info(f"LIRR shapes: {len(results)} branches loaded")
     return results
@@ -426,6 +448,7 @@ def get_all_lirr_lines() -> list[dict]:
 # ---------------------------------------------------------------------------
 # Metro-North
 # ---------------------------------------------------------------------------
+
 
 @_cache_nonempty
 def _mnr_shapes() -> dict[str, bytes]:
@@ -438,7 +461,11 @@ def _mnr_routes() -> dict[str, CommuterRoute]:
 
 
 @_cache_nonempty
-def _mnr_trips() -> tuple[dict[str, set[str]], dict[str, dict[int, set[str]]], dict[str, dict[int, str]]]:
+def _mnr_trips() -> (
+    tuple[
+        dict[str, set[str]], dict[str, dict[int, set[str]]], dict[str, dict[int, str]]
+    ]
+):
     return _parse_trips_combined(_MNR_DIR / "trips.txt")
 
 
@@ -478,14 +505,18 @@ def get_all_mnr_lines() -> list[dict]:
                 polylines.append(_unpack_coords(buf))
 
         if polylines:
-            all_stops = _resolve_stops_for_shapes(unique_sids, _mnr_shape_stop_map(), _mnr_stops())
-            results.append({
-                "route_id": f"MNR_{route_id}",
-                "name": route.name,
-                "color_hex": route.color_hex,
-                "polylines": polylines,
-                "stops": all_stops,
-            })
+            all_stops = _resolve_stops_for_shapes(
+                unique_sids, _mnr_shape_stop_map(), _mnr_stops()
+            )
+            results.append(
+                {
+                    "route_id": f"MNR_{route_id}",
+                    "name": route.name,
+                    "color_hex": route.color_hex,
+                    "polylines": polylines,
+                    "stops": all_stops,
+                }
+            )
 
     TrackLogger.info(f"MNR shapes: {len(results)} branches loaded")
     return results
@@ -494,6 +525,7 @@ def get_all_mnr_lines() -> list[dict]:
 # ---------------------------------------------------------------------------
 # Route name lookups (for nearby endpoint display names)
 # ---------------------------------------------------------------------------
+
 
 def get_lirr_route_name(route_id: str) -> str:
     """Return the human-readable LIRR branch name for a numeric route_id.
@@ -532,6 +564,7 @@ def get_mnr_route_color(route_id: str) -> str:
 # ---------------------------------------------------------------------------
 # Single-branch shape lookup (for route detail view)
 # ---------------------------------------------------------------------------
+
 
 def get_single_lirr_line(route_id: str) -> dict | None:
     """Return shape data for a single LIRR branch by numeric route_id.
@@ -579,12 +612,14 @@ def get_single_lirr_line(route_id: str) -> dict | None:
                 dir_polys.append(_unpack_coords(buf))
         if dir_polys:
             dir_stops = _resolve_stops_for_shapes(dir_sids, shape_stop_map, stops_data)
-            directions.append({
-                "direction_id": direction_id,
-                "headsign": headsigns.get(direction_id, ""),
-                "polylines": dir_polys,
-                "stops": dir_stops,
-            })
+            directions.append(
+                {
+                    "direction_id": direction_id,
+                    "headsign": headsigns.get(direction_id, ""),
+                    "polylines": dir_polys,
+                    "stops": dir_stops,
+                }
+            )
 
     return {
         "route_id": f"LIRR_{route_id}",
@@ -641,12 +676,14 @@ def get_single_mnr_line(route_id: str) -> dict | None:
                 dir_polys.append(_unpack_coords(buf))
         if dir_polys:
             dir_stops = _resolve_stops_for_shapes(dir_sids, shape_stop_map, stops_data)
-            directions.append({
-                "direction_id": direction_id,
-                "headsign": headsigns.get(direction_id, ""),
-                "polylines": dir_polys,
-                "stops": dir_stops,
-            })
+            directions.append(
+                {
+                    "direction_id": direction_id,
+                    "headsign": headsigns.get(direction_id, ""),
+                    "polylines": dir_polys,
+                    "stops": dir_stops,
+                }
+            )
 
     return {
         "route_id": f"MNR_{route_id}",

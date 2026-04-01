@@ -1,11 +1,6 @@
-#
-# geo_utils.py
-# TrackBackend
-#
-# Shared geographic and time utilities.
-# Deduplicates haversine (bus_client + station_lookup) and
-# minutes_until (realtime_parser + rail_client).
-#
+"""Shared geographic and time utilities.
+Deduplicates haversine (bus_client + station_lookup) and
+minutes_until (realtime_parser + rail_client)."""
 
 from __future__ import annotations
 
@@ -29,11 +24,17 @@ METERS_PER_DEG_LON_NYC = meters_per_deg_lon(40.758)  # ≈ 84_370
 
 
 def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """Haversine distance in meters between two lat/lon points.
+    """Haversine distance in metres between two lat/lon points.
 
-    Time complexity: O(1).
+    Args:
+        lat1: Latitude of the first point in degrees.
+        lon1: Longitude of the first point in degrees.
+        lat2: Latitude of the second point in degrees.
+        lon2: Longitude of the second point in degrees.
+
+    Returns:
+        Great-circle distance in metres.
     """
-    R = 6_371_000
     rlat1, rlat2 = math.radians(lat1), math.radians(lat2)
     dlat = math.radians(lat2 - lat1)
     dlon = math.radians(lon2 - lon1)
@@ -41,7 +42,7 @@ def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
         math.sin(dlat / 2) ** 2
         + math.cos(rlat1) * math.cos(rlat2) * math.sin(dlon / 2) ** 2
     )
-    return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    return _EARTH_R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
 def bounding_box_degrees(
@@ -75,9 +76,12 @@ _EARTH_R = 6_371_009.0  # mean Earth radius (same as Transit App)
 
 
 def point_to_segment_distance_m(
-    px: float, py: float,
-    ax: float, ay: float,
-    bx: float, by: float,
+    px: float,
+    py: float,
+    ax: float,
+    ay: float,
+    bx: float,
+    by: float,
 ) -> float:
     """Distance in meters from point P to line segment A→B on the Earth.
 
@@ -94,8 +98,14 @@ def point_to_segment_distance_m(
     This is significantly more accurate than the flat-earth approximation
     for segments > 1km, and only ~2× slower than the flat version.
     """
-    sin, cos, asin, acos, atan2, sqrt, radians = (
-        math.sin, math.cos, math.asin, math.acos, math.atan2, math.sqrt, math.radians,
+    sin, cos, asin, acos, atan2, _sqrt, radians = (
+        math.sin,
+        math.cos,
+        math.asin,
+        math.acos,
+        math.atan2,
+        math.sqrt,
+        math.radians,
     )
 
     # Convert to radians
@@ -134,9 +144,7 @@ def point_to_segment_distance_m(
     # If along-track falls within segment, compute precise closest point distance
     if 0 < d_along < d_ab:
         # Reconstruct closest point on A→B
-        lx_lat = asin(
-            sin(a_lat) * cos(d_along) + cos(a_lat) * sin(d_along) * cos(t_ab)
-        )
+        lx_lat = asin(sin(a_lat) * cos(d_along) + cos(a_lat) * sin(d_along) * cos(t_ab))
         lx_lon = a_lon + atan2(
             sin(t_ab) * sin(d_along) * cos(a_lat),
             cos(d_along) - sin(a_lat) * sin(lx_lat),
@@ -155,7 +163,10 @@ def _angular_dist(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Haversine angular distance (radians). Inputs already in radians."""
     dlat = lat2 - lat1
     dlon = lon2 - lon1
-    a = math.sin(dlat / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2) ** 2
+    a = (
+        math.sin(dlat / 2) ** 2
+        + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2) ** 2
+    )
     return 2 * math.asin(math.sqrt(a))
 
 
@@ -166,6 +177,7 @@ def _angular_dist(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 #
 # Uses perpendicular distance in meters for the tolerance check so the
 # algorithm works correctly at any zoom / latitude.
+
 
 def simplify_polyline(
     points: list[tuple[float, float]],
@@ -204,12 +216,11 @@ def simplify_polyline(
 
     if max_dist > tolerance_m:
         # Recursively simplify both halves
-        left = simplify_polyline(points[:max_idx + 1], tolerance_m)
+        left = simplify_polyline(points[: max_idx + 1], tolerance_m)
         right = simplify_polyline(points[max_idx:], tolerance_m)
         return left[:-1] + right
-    else:
-        # All intermediate points are within tolerance — keep only endpoints
-        return [a, b]
+    # All intermediate points are within tolerance — keep only endpoints
+    return [a, b]
 
 
 # ── Shape similarity (modified Hausdorff distance) ───────────────────────
@@ -218,6 +229,7 @@ def simplify_polyline(
 #
 # Uses modified Hausdorff distance at the 80th percentile for robust shape
 # comparison.  Useful for detecting duplicate routes/branches.
+
 
 def hausdorff_percentile_m(
     shape_a: list[tuple[float, float]],
@@ -292,8 +304,10 @@ def _percentile(values: list[float], threshold: float) -> float:
 # Creates a circular polygon from a center point + radius — useful for
 # "stations within radius" queries and geofence checks without PostGIS.
 
+
 def geofence_circle(
-    lat: float, lon: float,
+    lat: float,
+    lon: float,
     radius_m: float = 500.0,
     num_vertices: int = 16,
 ) -> list[tuple[float, float]]:
@@ -313,12 +327,17 @@ def geofence_circle(
         The first and last points are identical (closed ring per GeoJSON spec).
     """
     sin, cos, asin, atan2, pi, radians, degrees_ = (
-        math.sin, math.cos, math.asin, math.atan2, math.pi, math.radians, math.degrees,
+        math.sin,
+        math.cos,
+        math.asin,
+        math.atan2,
+        math.pi,
+        math.radians,
+        math.degrees,
     )
-    R = 6_371_009.0
     lat_c = radians(lat)
     lon_c = radians(lon)
-    d = radius_m / R
+    d = radius_m / _EARTH_R
 
     ring: list[tuple[float, float]] = []
     for i in range(num_vertices):

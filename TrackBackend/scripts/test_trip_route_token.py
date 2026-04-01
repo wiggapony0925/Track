@@ -1,4 +1,7 @@
 """Test _trip_route_token function."""
+
+from __future__ import annotations
+
 from app.routers.bus import _trip_route_token
 
 cases = [

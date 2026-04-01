@@ -1,27 +1,23 @@
-#
-# nearby.py
-# TrackBackend
-#
-# Router for the unified nearby transit endpoint.
-# Returns the nearest buses and trains with live countdowns,
-# sorted by minutes away. No trips or routing — just arrivals.
-#
-# The ``/nearby/grouped`` endpoint collapses duplicate routes into a
-# single card with swipeable direction sub-groups — so the iOS app
-# shows one entry per route instead of eight "A" trains.
-#
+"""Router for the unified nearby transit endpoint.
+Returns the nearest buses and trains with live countdowns,
+sorted by minutes away. No trips or routing — just arrivals.
+
+The ``/nearby/grouped`` endpoint collapses duplicate routes into a
+single card with swipeable direction sub-groups — so the iOS app
+shows one entry per route instead of eight "A" trains."""
 
 from __future__ import annotations
 
 import asyncio
-import csv
+import contextlib
 import re
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
 
 from fastapi import APIRouter, Query, Response
+from pydantic import TypeAdapter as _TypeAdapter
 
 from app.cache_config import (
     BUS_MAX_SIRI_STOPS,
@@ -31,37 +27,61 @@ from app.cache_config import (
     NEARBY_RESPONSE_MAX_SIZE,
     NEARBY_RESPONSE_STALE_TTL,
 )
-from app.config import get_settings
-from app.models import BusStop, DirectionArrivals, GroupedNearbyTransit, InlineAlert, NearbyTransitArrival, RESP_503
 from app.clients.bus_client import (
-    get_nearby_stops,
-    get_realtime_arrivals,
-    get_routes as get_all_bus_routes,
-    get_stops as get_bus_route_stops,
     BUS_AGENCY_PREFIXES,
     CANONICAL_BUS_DISPLAY,
+    get_nearby_stops,
+    get_realtime_arrivals,
+)
+from app.clients.bus_client import (
+    get_routes as get_all_bus_routes,
+)
+from app.clients.bus_client import (
+    get_stops as get_bus_route_stops,
+)
+from app.clients.rail_client import fetch_rail_arrivals
+from app.config import get_settings
+from app.ml.delay_model import (
+    predict_factor as _predict_factor,
+)
+from app.ml.delay_model import (
+    predict_factor_batch as _predict_factor_batch,
+)
+from app.ml.recency_model import (
+    get_weighted_error as _get_weighted_error,
+)
+from app.ml.recency_model import (
+    get_weighted_errors_batch as _get_weighted_errors_batch,
+)
+from app.models import (
+    RESP_503,
+    BusStop,
+    DirectionArrivals,
+    GroupedNearbyTransit,
+    InlineAlert,
+    NearbyTransitArrival,
 )
 from app.services.gtfs.realtime_parser import get_arrivals_for_line
+from app.services.mapping.commuter_rail_shapes import (
+    get_lirr_route_color,
+    get_lirr_route_name,
+    get_mnr_route_color,
+    get_mnr_route_name,
+)
+from app.services.mapping.subway_shapes import (
+    get_stops_for_route as get_subway_stops_for_route,
+)
+from app.services.transit.alert_service import (
+    get_alert_boost as _get_alert_boost,
+)
+from app.services.transit.alert_service import (
+    maybe_refresh as _maybe_refresh_alerts,
+)
+from app.services.transit.schedule_service import schedule_service
 from app.services.transit.station_lookup import get_nearby_stop_ids, get_stop_info
 from app.utils.geo_utils import haversine_m
 from app.utils.logger import TrackLogger
 from app.utils.transit_utils import get_subway_color
-from app.services.transit.schedule_service import schedule_service
-from app.clients.rail_client import fetch_rail_arrivals
-from app.services.mapping.subway_shapes import get_stops_for_route as get_subway_stops_for_route
-from app.services.mapping.commuter_rail_shapes import (
-    get_lirr_route_name,
-    get_mnr_route_name,
-    get_lirr_route_color,
-    get_mnr_route_color,
-)
-from app.ml.delay_model import predict_factor as _predict_factor, predict_factor_batch as _predict_factor_batch
-from app.ml.recency_model import (
-    get_weighted_error as _get_weighted_error,
-    get_weighted_errors_batch as _get_weighted_errors_batch,
-)
-from app.services.transit.alert_service import get_alert_boost as _get_alert_boost, maybe_refresh as _maybe_refresh_alerts
-import math as _math
 
 # Default bus color (MTA blue) — used when bus routes don't provide one
 _BUS_DEFAULT_COLOR = "#0039A6"
@@ -91,7 +111,9 @@ async def _schedule_arrivals_for_stop(
     """
     # GTFS DB stores bare numeric stop IDs; OBA prefixes them with "MTA_"
     bare_stop = _canonical_bus_stop_id(stop_id)
-    sched = await schedule_service.get_scheduled_arrivals_async(bare_stop, route_id=route_id, limit=limit)
+    sched = await schedule_service.get_scheduled_arrivals_async(
+        bare_stop, route_id=route_id, limit=limit
+    )
     if sched:
         out: list[NearbyTransitArrival] = []
         for s in sched:
@@ -99,7 +121,11 @@ async def _schedule_arrivals_for_stop(
             # so scheduled arrivals merge with live SIRI arrivals that use
             # DestinationName — avoids creating duplicate compass-key tabs
             # ("Northbound") alongside real destination tabs ("KINGS PLAZA").
-            if s.destination and s.destination.strip() and s.destination.strip().lower() != "unknown":
+            if (
+                s.destination
+                and s.destination.strip()
+                and s.destination.strip().lower() != "unknown"
+            ):
                 direction = s.destination.strip()
             elif s.direction and s.direction != "N/A":
                 direction = s.direction
@@ -151,7 +177,9 @@ def _canonical_bus_stop_id(stop_id: str) -> str:
 
 
 @lru_cache(maxsize=1)
-def _load_static_bus_route_stop_index() -> dict[str, tuple[float, float, str, set[str]]]:
+def _load_static_bus_route_stop_index() -> (
+    dict[str, tuple[float, float, str, set[str]]]
+):
     """Load bus stop → (lat, lon, name, {route_short}) from SQLite schedule DB.
 
     Previous implementation read 6.5M CSV rows from stop_times.txt across 5
@@ -198,17 +226,22 @@ def _load_static_bus_route_stop_index() -> dict[str, tuple[float, float, str, se
         TrackLogger.info(f"Static bus fallback DB query failed: {exc}", exc_info=True)
         return {}
 
-    TrackLogger.bus(f"Static bus fallback index loaded: {len(index)} stops (from SQLite)")
+    TrackLogger.bus(
+        f"Static bus fallback index loaded: {len(index)} stops (from SQLite)"
+    )
     return index
 
 
-def _nearby_static_bus_routes(lat: float, lon: float, radius_m: int) -> dict[str, tuple[str, float, float, str]]:
+def _nearby_static_bus_routes(
+    lat: float, lon: float, radius_m: int
+) -> dict[str, tuple[str, float, float, str]]:
     """Return route_short -> (stop_name, stop_lat, stop_lon, stop_id) for nearest nearby static stop."""
     index = _load_static_bus_route_stop_index()
     if not index:
         return {}
 
     from app.providers import get_provider as _get_provider
+
     _prov = _get_provider()
 
     lat_span = radius_m / _prov.meters_per_deg_lat
@@ -253,13 +286,11 @@ def _route_prefix(route_id: str) -> str:
 # Uses stale-while-revalidate: serve stale bytes instantly and kick a
 # background refresh so the next request gets fresh data.
 
-from pydantic import TypeAdapter as _TypeAdapter
-
 _grouped_ta = _TypeAdapter(list[GroupedNearbyTransit])
 
 _nearby_resp_cache: dict[
     tuple[float, float, int, str | None],  # (rounded_lat, rounded_lon, radius, mode)
-    tuple[float, list["GroupedNearbyTransit"], bytes],  # (timestamp, result, json_bytes)
+    tuple[float, list[GroupedNearbyTransit], bytes],  # (timestamp, result, json_bytes)
 ] = {}
 _nearby_resp_inflight: dict[tuple, asyncio.Task] = {}
 
@@ -277,7 +308,9 @@ def _describe_exception(exc: BaseException) -> str:
 # blocking a Gunicorn worker indefinitely.  45 s is generous enough
 # for a cold-cache fan-out (7 subway + bus + 2 rail) but short enough
 # that the worker is freed before the iOS 60 s resource timeout.
-_NEARBY_COMPUTE_TIMEOUT: int = get_settings().app_settings.nearby_compute_timeout_seconds
+_NEARBY_COMPUTE_TIMEOUT: int = (
+    get_settings().app_settings.nearby_compute_timeout_seconds
+)
 
 
 async def _compute_and_cache_grouped(
@@ -286,7 +319,7 @@ async def _compute_and_cache_grouped(
     lon: float,
     radius: int,
     mode: str | None,
-) -> list["GroupedNearbyTransit"]:
+) -> list[GroupedNearbyTransit]:
     import time as _time
 
     # ── Pre-load ML model in background thread ──────────────────────
@@ -296,43 +329,44 @@ async def _compute_and_cache_grouped(
     # causing _collect_all to exceed its timeout.  Loading here (before
     # the timeout wrapper) keeps the budget for actual feed fetching.
     from app.ml.delay_model import ensure_model_loaded as _eml
-    try:
+
+    with contextlib.suppress(TimeoutError, Exception):
         await asyncio.wait_for(_eml(), timeout=35.0)
-    except (asyncio.TimeoutError, Exception):
-        pass  # predict_factor falls back to heuristic internally
 
     # ── Collect arrivals ────────────────────────────────────────────
     # _collect_all internally uses asyncio.wait() with a 30 s timeout
     # and explicitly cancels + awaits all pending tasks — no zombies.
     # The outer 45 s guard catches pathological cases (e.g. the
     # cancellation itself is blocked by GIL contention).
-    _ca_task = asyncio.create_task(
-        _collect_all(lat, lon, radius, mode_filter=mode)
-    )
+    _ca_task = asyncio.create_task(_collect_all(lat, lon, radius, mode_filter=mode))
     try:
         flat = await asyncio.wait_for(
             asyncio.shield(_ca_task),
             timeout=_NEARBY_COMPUTE_TIMEOUT,
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         _ca_task.cancel()
         # Wait briefly for the cancel to propagate, but don't hang
-        try:
+        with contextlib.suppress(asyncio.TimeoutError, asyncio.CancelledError):
             await asyncio.wait_for(_ca_task, timeout=3.0)
-        except (asyncio.TimeoutError, asyncio.CancelledError):
-            pass
         TrackLogger.info(
             f"_collect_all timed out after {_NEARBY_COMPUTE_TIMEOUT}s "
             f"for ({lat:.4f}, {lon:.4f}) radius={radius} mode={mode}",
             tag="NEARBY",
         )
         # Salvage any partial results if _collect_all managed to return
-        flat = _ca_task.result() if _ca_task.done() and not _ca_task.cancelled() and _ca_task.exception() is None else []
+        flat = (
+            _ca_task.result()
+            if _ca_task.done()
+            and not _ca_task.cancelled()
+            and _ca_task.exception() is None
+            else []
+        )
 
     # ── Inline alerts (timeout-guarded) ─────────────────────────────
     try:
         alert_index = await asyncio.wait_for(_get_inline_alerts(), timeout=3.0)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         TrackLogger.info(
             "Inline alert fetch timed out after 3s — proceeding without alerts",
             tag="NEARBY",
@@ -379,7 +413,7 @@ def _nearby_cache_key(
     lat: float, lon: float, radius: int, mode: str | None
 ) -> tuple[float, float, int, str | None]:
     """Round GPS to ~111m grid cells for cache bucketing."""
-    factor = 10 ** NEARBY_GPS_DECIMALS
+    factor = 10**NEARBY_GPS_DECIMALS
     return (round(lat * factor) / factor, round(lon * factor) / factor, radius, mode)
 
 
@@ -389,23 +423,29 @@ def _find_cached_grouped_fallback(
     *,
     max_age: float,
     include_neighbor_cells: bool,
-) -> tuple[tuple[float, float, int, str | None], list["GroupedNearbyTransit"], float] | None:
+) -> (
+    tuple[tuple[float, float, int, str | None], list[GroupedNearbyTransit], float]
+    | None
+):
     """Find the freshest compatible cached response for this location key.
 
     Exact-key matches are always considered. When ``include_neighbor_cells`` is
     true, adjacent rounded GPS cells for the same radius/mode are also eligible.
     This keeps small GPS jitter from blowing away nearby/grouped cache hits.
     """
-    factor = 10 ** NEARBY_GPS_DECIMALS
+    factor = 10**NEARBY_GPS_DECIMALS
     cell_span = 1 / factor
     req_lat, req_lon, req_radius, req_mode = key
 
-    best: tuple[
-        tuple[float, float],
-        tuple[float, float, int, str | None],
-        list["GroupedNearbyTransit"],
-        bytes,
-    ] | None = None
+    best: (
+        tuple[
+            tuple[float, float],
+            tuple[float, float, int, str | None],
+            list[GroupedNearbyTransit],
+            bytes,
+        ]
+        | None
+    ) = None
     for candidate_key, (ts, data, jb) in _nearby_resp_cache.items():
         cand_lat, cand_lon, cand_radius, cand_mode = candidate_key
         if cand_radius != req_radius or cand_mode != req_mode:
@@ -416,7 +456,10 @@ def _find_cached_grouped_fallback(
         if not (lat_ok and lon_ok):
             if not include_neighbor_cells:
                 continue
-            if abs(cand_lat - req_lat) > cell_span or abs(cand_lon - req_lon) > cell_span:
+            if (
+                abs(cand_lat - req_lat) > cell_span
+                or abs(cand_lon - req_lon) > cell_span
+            ):
                 continue
 
         age = now - ts
@@ -450,9 +493,27 @@ router = APIRouter(tags=["nearby"])
 )
 async def nearby_transit(
     response: Response,
-    lat: float = Query(..., ge=-90, le=90, description="Latitude of the user's location.", examples=[40.7580]),
-    lon: float = Query(..., ge=-180, le=180, description="Longitude of the user's location.", examples=[-73.9855]),
-    radius: int | None = Query(None, ge=100, le=10000, description="Maximum search radius from the request location (in meters). Defaults to the server-configured value (~800\u202fm).", examples=[800]),
+    lat: float = Query(
+        ...,
+        ge=-90,
+        le=90,
+        description="Latitude of the user's location.",
+        examples=[40.7580],
+    ),
+    lon: float = Query(
+        ...,
+        ge=-180,
+        le=180,
+        description="Longitude of the user's location.",
+        examples=[-73.9855],
+    ),
+    radius: int | None = Query(
+        None,
+        ge=100,
+        le=10000,
+        description="Maximum search radius from the request location (in meters). Defaults to the server-configured value (~800\u202fm).",
+        examples=[800],
+    ),
 ) -> list[NearbyTransitArrival]:
     """Return the nearest buses and trains with live countdowns.
 
@@ -461,7 +522,9 @@ async def nearby_transit(
     and includes ML delay corrections.
     """
     settings = get_settings()
-    effective_radius = radius if radius is not None else settings.app_settings.search_radius_meters
+    effective_radius = (
+        radius if radius is not None else settings.app_settings.search_radius_meters
+    )
     TrackLogger.location(lat, lon, "nearby")
     response.headers["Deprecation"] = "true"
     response.headers["Link"] = '</nearby/grouped>; rel="successor-version"'
@@ -482,10 +545,32 @@ async def nearby_transit(
     responses={**RESP_503},
 )
 async def nearby_transit_grouped(
-    lat: float = Query(..., ge=-90, le=90, description="Latitude of the user's location.", examples=[40.7580]),
-    lon: float = Query(..., ge=-180, le=180, description="Longitude of the user's location.", examples=[-73.9855]),
-    radius: int | None = Query(None, ge=100, le=10000, description="Maximum search radius from the request location (in meters). Defaults to the server-configured value (~800\u202fm).", examples=[800]),
-    mode: str | None = Query(None, description="Filter results to a single transit mode. Omit for all modes.", examples=["subway", "bus", "lirr", "mnr"]),
+    lat: float = Query(
+        ...,
+        ge=-90,
+        le=90,
+        description="Latitude of the user's location.",
+        examples=[40.7580],
+    ),
+    lon: float = Query(
+        ...,
+        ge=-180,
+        le=180,
+        description="Longitude of the user's location.",
+        examples=[-73.9855],
+    ),
+    radius: int | None = Query(
+        None,
+        ge=100,
+        le=10000,
+        description="Maximum search radius from the request location (in meters). Defaults to the server-configured value (~800\u202fm).",
+        examples=[800],
+    ),
+    mode: str | None = Query(
+        None,
+        description="Filter results to a single transit mode. Omit for all modes.",
+        examples=["subway", "bus", "lirr", "mnr"],
+    ),
 ) -> list[GroupedNearbyTransit]:
     """Return nearby arrivals grouped by route with direction sub-groups.
 
@@ -513,9 +598,13 @@ async def nearby_transit_grouped(
     # (which the iOS client treats as "no transit nearby"), return
     # 503 + Retry-After so the client retries after feeds are ready.
     from app.main import is_warmed_up as _is_warmed_up  # lazy to avoid circular import
+
     if not _is_warmed_up():
         from fastapi.responses import JSONResponse
-        TrackLogger.info("[WARMUP] /nearby/grouped → 503 (feeds not ready)", tag="WARMUP")
+
+        TrackLogger.info(
+            "[WARMUP] /nearby/grouped → 503 (feeds not ready)", tag="WARMUP"
+        )
         return JSONResponse(
             status_code=503,
             content={"detail": "Feeds warming up"},
@@ -523,7 +612,9 @@ async def nearby_transit_grouped(
         )
 
     settings = get_settings()
-    effective_radius = radius if radius is not None else settings.app_settings.search_radius_meters
+    effective_radius = (
+        radius if radius is not None else settings.app_settings.search_radius_meters
+    )
     TrackLogger.location(lat, lon, "nearby/grouped")
 
     key = _nearby_cache_key(lat, lon, effective_radius, mode)
@@ -532,7 +623,7 @@ async def nearby_transit_grouped(
     # 1. Check cache
     cached = _nearby_resp_cache.get(key)
     if cached is not None:
-        ts, data, json_bytes = cached
+        ts, _data, json_bytes = cached
         age = now - ts
         if age < NEARBY_RESPONSE_FRESH_TTL:
             TrackLogger.cache(f"RESP HIT (fresh {age:.1f}s) /nearby/grouped")
@@ -540,10 +631,15 @@ async def nearby_transit_grouped(
             r.headers["X-Track-Cache"] = f"HIT-FRESH age={age:.1f}s"
             return r
         if age < NEARBY_RESPONSE_STALE_TTL:
-            TrackLogger.cache(f"RESP HIT (stale {age:.1f}s) /nearby/grouped — bg refresh")
+            TrackLogger.cache(
+                f"RESP HIT (stale {age:.1f}s) /nearby/grouped — bg refresh"
+            )
             # Kick background refresh if not already in-flight
             if key not in _nearby_resp_inflight:
-                async def _bg_refresh(k: tuple, r: int, m: str | None) -> list[GroupedNearbyTransit] | None:
+
+                async def _bg_refresh(
+                    k: tuple, r: int, m: str | None
+                ) -> list[GroupedNearbyTransit] | None:
                     try:
                         return await _compute_and_cache_grouped(k, k[0], k[1], r, m)
                     except Exception as exc:
@@ -553,23 +649,31 @@ async def nearby_transit_grouped(
                         return None
                     finally:
                         _nearby_resp_inflight.pop(k, None)
+
                 task = asyncio.create_task(_bg_refresh(key, effective_radius, mode))
                 _nearby_resp_inflight[key] = task
             resp = Response(content=json_bytes, media_type="application/json")
             resp.headers["X-Track-Cache"] = f"HIT-STALE age={age:.1f}s"
             return resp
         # Fall through — entry exists but is too old
-        TrackLogger.cache(f"RESP EXPIRED age={age:.1f}s > stale_ttl={NEARBY_RESPONSE_STALE_TTL}s")
+        TrackLogger.cache(
+            f"RESP EXPIRED age={age:.1f}s > stale_ttl={NEARBY_RESPONSE_STALE_TTL}s"
+        )
 
     nearby_fallback = _find_cached_grouped_fallback(
         key, now, max_age=NEARBY_RESPONSE_STALE_TTL, include_neighbor_cells=True
     )
     if nearby_fallback is not None:
-        fallback_key, fallback_data, fallback_age, fallback_json = nearby_fallback
+        fallback_key, _fallback_data, fallback_age, fallback_json = nearby_fallback
         fallback_kind = "exact" if fallback_key == key else "neighbor-cell"
-        TrackLogger.cache(f"RESP HIT ({fallback_kind} stale {fallback_age:.1f}s) /nearby/grouped")
+        TrackLogger.cache(
+            f"RESP HIT ({fallback_kind} stale {fallback_age:.1f}s) /nearby/grouped"
+        )
         if key not in _nearby_resp_inflight:
-            async def _bg_refresh_exact(k: tuple, req_lat: float, req_lon: float, r: int, m: str | None) -> list[GroupedNearbyTransit] | None:
+
+            async def _bg_refresh_exact(
+                k: tuple, req_lat: float, req_lon: float, r: int, m: str | None
+            ) -> list[GroupedNearbyTransit] | None:
                 try:
                     return await _compute_and_cache_grouped(k, req_lat, req_lon, r, m)
                 except Exception as exc:
@@ -580,7 +684,9 @@ async def nearby_transit_grouped(
                 finally:
                     _nearby_resp_inflight.pop(k, None)
 
-            task = asyncio.create_task(_bg_refresh_exact(key, lat, lon, effective_radius, mode))
+            task = asyncio.create_task(
+                _bg_refresh_exact(key, lat, lon, effective_radius, mode)
+            )
             _nearby_resp_inflight[key] = task
         return Response(content=fallback_json, media_type="application/json")
 
@@ -611,7 +717,9 @@ async def nearby_transit_grouped(
                 resp.headers["X-Track-Cache"] = "MISS-COMPUTED"
                 return resp
             # Shouldn't happen, but fallback to normal serialization
-            return await _compute_and_cache_grouped(key, lat, lon, effective_radius, mode)
+            return await _compute_and_cache_grouped(
+                key, lat, lon, effective_radius, mode
+            )
         except Exception as exc:
             fallback = _find_cached_grouped_fallback(
                 key,
@@ -620,7 +728,7 @@ async def nearby_transit_grouped(
                 include_neighbor_cells=True,
             )
             if fallback is not None:
-                fallback_key, fallback_data, fallback_age, _fb_json = fallback
+                fallback_key, _fallback_data, fallback_age, _fb_json = fallback
                 TrackLogger.info(
                     f"RESP STALE-IF-ERROR /nearby/grouped age={fallback_age:.1f}s "
                     f"exact={fallback_key == key} because {_describe_exception(exc)}",
@@ -642,8 +750,11 @@ async def nearby_transit_grouped(
 
 
 async def _collect_all(
-    lat: float, lon: float, radius: int | None = None,
-    *, mode_filter: str | None = None,
+    lat: float,
+    lon: float,
+    radius: int | None = None,
+    *,
+    mode_filter: str | None = None,
 ) -> list[NearbyTransitArrival]:
     """Gather subway + bus arrivals in parallel.
 
@@ -662,15 +773,19 @@ async def _collect_all(
     was budgeted.
     """
     settings = get_settings()
-    effective_radius = radius if radius is not None else settings.app_settings.search_radius_meters
+    effective_radius = (
+        radius if radius is not None else settings.app_settings.search_radius_meters
+    )
     results: list[NearbyTransitArrival] = []
 
     _WAIT_TIMEOUT = 42  # seconds — wall-clock budget for all modes
 
     import time as _t
+
     _t0 = _t.perf_counter()
 
     import time as _mono
+
     _collect_deadline = _mono.monotonic() + _WAIT_TIMEOUT
 
     # Build task dict — plain create_task, NO nested wait_for
@@ -680,6 +795,7 @@ async def _collect_all(
     async def _pre_warm() -> list:
         await _maybe_refresh_alerts()
         from app.clients.weather_client import get_current_weather
+
         await get_current_weather()
         return []  # return empty list so it blends with other results
 
@@ -687,7 +803,9 @@ async def _collect_all(
     tasks["_warm"] = asyncio.create_task(_pre_warm())
     if mode_filter is None or mode_filter == "subway":
         tasks["subway"] = asyncio.create_task(
-            _fetch_nearby_subway(lat, lon, effective_radius, _deadline=_collect_deadline)
+            _fetch_nearby_subway(
+                lat, lon, effective_radius, _deadline=_collect_deadline
+            )
         )
     if mode_filter is None or mode_filter == "bus":
         tasks["bus"] = asyncio.create_task(
@@ -709,10 +827,9 @@ async def _collect_all(
     task_to_label = {t: lbl for lbl, t in tasks.items()}
 
     # ── Wait with timeout, then forcibly cancel stragglers ──────────
-    done: set[asyncio.Task] = set()
     pending: set[asyncio.Task] = set()
     try:
-        done, pending = await asyncio.wait(
+        _done, pending = await asyncio.wait(
             tasks.values(),
             timeout=_WAIT_TIMEOUT,
             return_when=asyncio.ALL_COMPLETED,
@@ -731,13 +848,11 @@ async def _collect_all(
         # indefinitely — run_in_executor threads (protobuf parsing)
         # can't be interrupted; they'll finish in the background.
         if pending:
-            try:
+            with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(
                     asyncio.gather(*pending, return_exceptions=True),
                     timeout=2.0,
                 )
-            except asyncio.TimeoutError:
-                pass  # threads will finish in background
 
     _elapsed = _t.perf_counter() - _t0
 
@@ -757,9 +872,7 @@ async def _collect_all(
             _mode_times[label] = "CANCELLED"
         elif task.exception() is not None:
             exc = task.exception()
-            TrackLogger.info(
-                f"{label.upper()} feed failed: {_describe_exception(exc)}"
-            )
+            TrackLogger.info(f"{label.upper()} feed failed: {_describe_exception(exc)}")
             _mode_times[label] = "FAILED"
         else:
             result = task.result()
@@ -815,7 +928,7 @@ async def _collect_all(
 
 # MTA GTFS static data and SIRI real-time feeds sometimes disagree on zero-padding:
 # GTFS has "Q07" while SIRI sends "Q7". Normalise so both collapse to "Q7".
-_LEADING_ZERO_RE = re.compile(r'^([A-Za-z]+)0+(\d+)$')
+_LEADING_ZERO_RE = re.compile(r"^([A-Za-z]+)0+(\d+)$")
 
 
 def _normalize_route_display(name: str) -> str:
@@ -845,7 +958,7 @@ def _display_name(route_id: str) -> str:
     # Bus / subway: strip any known agency prefix then normalise zero-padding
     for prefix in BUS_AGENCY_PREFIXES:
         if route_id.startswith(prefix):
-            raw = _normalize_route_display(route_id[len(prefix):])
+            raw = _normalize_route_display(route_id[len(prefix) :])
             # Normalise to canonical mixed-case (e.g. "BXM2" → "BxM2")
             return CANONICAL_BUS_DISPLAY.get(raw.upper(), raw)
 
@@ -891,9 +1004,16 @@ _OPPOSITE_DIRECTION = "Outbound"
 # and Phase C bus backfill — single source of truth.
 # Values use title-case to match _DIRECTION_LABELS conventions.
 _OPPOSITE_COMPASS: dict[str, str] = {
-    "N": "S", "S": "N", "E": "W", "W": "E",
-    "NE": "SW", "SW": "NE", "NW": "SE", "SE": "NW",
-    "INBOUND": "Outbound", "OUTBOUND": "Inbound",
+    "N": "S",
+    "S": "N",
+    "E": "W",
+    "W": "E",
+    "NE": "SW",
+    "SW": "NE",
+    "NW": "SE",
+    "SE": "NW",
+    "INBOUND": "Outbound",
+    "OUTBOUND": "Inbound",
 }
 
 
@@ -911,12 +1031,14 @@ def _is_fallback_direction_key(direction: str) -> bool:
     )
 
 
-def _direction_label(direction: str, arrivals: list[NearbyTransitArrival] | None = None) -> str:
+def _direction_label(
+    direction: str, arrivals: list[NearbyTransitArrival] | None = None
+) -> str:
     """Convert a raw direction code to a human-readable label.
 
     Returns the long-form label for known compass codes (e.g. "N" → "Northbound"),
     or the original string for destination names like "Far Rockaway".
-    
+
     For subway routes grouped by "N"/"S", appends unique destination names
     (e.g. "Northbound → Inwood-207 St") so the user sees where trains go.
 
@@ -928,6 +1050,7 @@ def _direction_label(direction: str, arrivals: list[NearbyTransitArrival] | None
     when DestinationName was unavailable; in that case we try to pull
     the destination from the first arrival in the group.
     """
+
     # Best-effort terminal name for this direction bucket.
     # Prefer the soonest arrival's destination because it reflects what the
     # user sees as "where this direction goes".
@@ -936,12 +1059,15 @@ def _direction_label(direction: str, arrivals: list[NearbyTransitArrival] | None
             return None
         ordered = sorted(items, key=lambda a: a.minutes_away)
         for a in ordered:
-            if a.destination and a.destination.strip() and a.destination.strip().lower() != "unknown":
+            if (
+                a.destination
+                and a.destination.strip()
+                and a.destination.strip().lower() != "unknown"
+            ):
                 return a.destination.strip()
         return None
 
     terminal = _primary_destination(arrivals)
-    mode = arrivals[0].mode if arrivals else None
     route_id = arrivals[0].route_id if arrivals else None
 
     # For legacy numeric direction keys (DirectionRef fallback),
@@ -983,7 +1109,9 @@ def _direction_label(direction: str, arrivals: list[NearbyTransitArrival] | None
                 lookup = lookup[4:]
             else:
                 lookup = _display_name(route_id)
-            headsigns = schedule_service.get_headsigns_for_route(lookup, direction_id=did)
+            headsigns = schedule_service.get_headsigns_for_route(
+                lookup, direction_id=did
+            )
             if did in headsigns:
                 return f"{base_label} → {headsigns[did]}"
 
@@ -1018,7 +1146,7 @@ def _opposite_direction_key(mode: str, direction: str) -> str | None:
 
 # ── GTFS headsign cache for opposite-direction placeholders ──────────
 # Avoids hitting the SQLite DB on every call to _resolve_opposite_headsign().
-_headsign_cache: dict[str, dict[int, str]] = {}   # route_id → {direction_id: headsign}
+_headsign_cache: dict[str, dict[int, str]] = {}  # route_id → {direction_id: headsign}
 
 
 def _resolve_opposite_headsign(
@@ -1041,7 +1169,7 @@ def _resolve_opposite_headsign(
     lookup_id = route_id
     for prefix in BUS_AGENCY_PREFIXES:
         if lookup_id.startswith(prefix):
-            lookup_id = lookup_id[len(prefix):]
+            lookup_id = lookup_id[len(prefix) :]
             break
 
     # LIRR/MNR: strip "LIRR_" / "MNR_" prefix — GTFS stores bare numeric IDs
@@ -1056,7 +1184,9 @@ def _resolve_opposite_headsign(
         # Also try with common agency prefixes if direct lookup is empty
         if not headsigns:
             for pfx in ["MTABC_", "MTA NYCT_"]:
-                headsigns = schedule_service.get_headsigns_for_route(f"{pfx}{lookup_id}")
+                headsigns = schedule_service.get_headsigns_for_route(
+                    f"{pfx}{lookup_id}"
+                )
                 if headsigns:
                     break
         _headsign_cache[lookup_id] = headsigns
@@ -1075,19 +1205,30 @@ def _resolve_opposite_headsign(
     for did, hs in headsigns.items():
         hs_upper = hs.upper().strip()
         # Exact match or substring match (e.g. "JAMAICA" matches "Jamaica")
-        if primary_upper == hs_upper or primary_upper in hs_upper or hs_upper in primary_upper:
+        if (
+            primary_upper == hs_upper
+            or primary_upper in hs_upper
+            or hs_upper in primary_upper
+        ):
             matched_dir_id = did
             break
 
     # Try matching against arrival destinations if direction key didn't match
     if matched_dir_id is None and primary_arrivals:
         for arr in primary_arrivals:
-            if not arr.destination or arr.destination.strip().lower() in ("", "unknown"):
+            if not arr.destination or arr.destination.strip().lower() in (
+                "",
+                "unknown",
+            ):
                 continue
             dest_upper = arr.destination.upper().strip()
             for did, hs in headsigns.items():
                 hs_upper = hs.upper().strip()
-                if dest_upper == hs_upper or dest_upper in hs_upper or hs_upper in dest_upper:
+                if (
+                    dest_upper == hs_upper
+                    or dest_upper in hs_upper
+                    or hs_upper in dest_upper
+                ):
                     matched_dir_id = did
                     break
             if matched_dir_id is not None:
@@ -1103,14 +1244,18 @@ def _resolve_opposite_headsign(
     # doesn't match the primary
     if len(headsigns) == 2 and set(headsigns.keys()) == {0, 1}:
         # Pick whichever headsign is NOT similar to the primary direction
-        for did, hs in headsigns.items():
+        for _did, hs in headsigns.items():
             hs_upper = hs.upper().strip()
-            if primary_upper != hs_upper and primary_upper not in hs_upper and hs_upper not in primary_upper:
+            if (
+                primary_upper != hs_upper
+                and primary_upper not in hs_upper
+                and hs_upper not in primary_upper
+            ):
                 return hs
 
     # Last resort: return whichever headsign we have if there's only one
     # and it's different from the primary
-    for did, hs in headsigns.items():
+    for _did, hs in headsigns.items():
         hs_upper = hs.upper().strip()
         if primary_upper != hs_upper:
             return hs
@@ -1123,16 +1268,30 @@ def _resolve_opposite_headsign(
 # standard MTA order.  Routes not in this map sort alphabetically after
 # all entries that are.
 _MTA_SUBWAY_SORT: dict[str, str] = {
-    "1": "010", "2": "011", "3": "012",
-    "4": "020", "5": "021", "6": "022",
+    "1": "010",
+    "2": "011",
+    "3": "012",
+    "4": "020",
+    "5": "021",
+    "6": "022",
     "7": "030",
-    "A": "040", "C": "041", "E": "042",
-    "B": "050", "D": "051", "F": "052", "M": "053",
+    "A": "040",
+    "C": "041",
+    "E": "042",
+    "B": "050",
+    "D": "051",
+    "F": "052",
+    "M": "053",
     "G": "060",
-    "J": "070", "Z": "071",
+    "J": "070",
+    "Z": "071",
     "L": "080",
-    "N": "090", "Q": "091", "R": "092", "W": "093",
-    "S": "100", "SI": "110",
+    "N": "090",
+    "Q": "091",
+    "R": "092",
+    "W": "093",
+    "S": "100",
+    "SI": "110",
 }
 
 
@@ -1153,20 +1312,22 @@ def _sorting_key(mode: str, display: str) -> str:
 
 # ── Inline alert index (refreshed with each grouped call) ────────────
 # Keys are uppercased route display names so "A" matches alert for "A".
-_inline_alert_cache: dict[str, list["InlineAlert"]] = {}
+_inline_alert_cache: dict[str, list[InlineAlert]] = {}
 _inline_alert_ts: float = 0.0
 
 
-async def _get_inline_alerts() -> dict[str, list["InlineAlert"]]:
+async def _get_inline_alerts() -> dict[str, list[InlineAlert]]:
     """Return a dict mapping uppercased route display names to InlineAlerts."""
     global _inline_alert_cache, _inline_alert_ts
     import time as _t
+
     now = _t.time()
     if now - _inline_alert_ts < 120.0 and _inline_alert_cache:
         return _inline_alert_cache
 
     try:
         from app.services.gtfs.realtime_parser import get_alerts
+
         raw_alerts = await asyncio.wait_for(get_alerts(), timeout=3.0)
         index: dict[str, list[InlineAlert]] = defaultdict(list)
         for alert in raw_alerts:
@@ -1193,14 +1354,19 @@ async def _get_inline_alerts() -> dict[str, list["InlineAlert"]]:
                     index[key].append(inline)
         _inline_alert_cache = dict(index)
         _inline_alert_ts = now
-    except asyncio.TimeoutError:
-        TrackLogger.info("Inline alert fetch timed out after 3s — using stale cache", tag="NEARBY")
+    except TimeoutError:
+        TrackLogger.info(
+            "Inline alert fetch timed out after 3s — using stale cache", tag="NEARBY"
+        )
     except Exception as exc:
         TrackLogger.info(f"Inline alert fetch failed: {exc}")
     return _inline_alert_cache
 
 
-def _group_arrivals(flat: list[NearbyTransitArrival], alert_index: dict[str, list["InlineAlert"]] | None = None) -> list[GroupedNearbyTransit]:
+def _group_arrivals(
+    flat: list[NearbyTransitArrival],
+    alert_index: dict[str, list[InlineAlert]] | None = None,
+) -> list[GroupedNearbyTransit]:
     """Collapse a flat arrival list into one entry per route.
 
     Each route gets direction buckets (e.g. "N" / "S" for subway,
@@ -1219,8 +1385,8 @@ def _group_arrivals(flat: list[NearbyTransitArrival], alert_index: dict[str, lis
     route_meta: dict[str, tuple[str, str, str]] = {}
 
     for a in flat:
-        display = _display_name(a.route_id)          # already normalised
-        merge_key = f"{a.mode}:{display.upper()}"    # case-insensitive grouping
+        display = _display_name(a.route_id)  # already normalised
+        merge_key = f"{a.mode}:{display.upper()}"  # case-insensitive grouping
         by_route[merge_key][a.direction].append(a)
         if merge_key not in route_meta:
             # Keep the first-seen raw route_id as the canonical identifier
@@ -1233,9 +1399,13 @@ def _group_arrivals(flat: list[NearbyTransitArrival], alert_index: dict[str, lis
     single_direction_after = 0
 
     def _has_live_arrivals(direction_group: DirectionArrivals) -> bool:
-        return any(a.minutes_away < _PLACEHOLDER_MINUTES for a in direction_group.arrivals)
+        return any(
+            a.minutes_away < _PLACEHOLDER_MINUTES for a in direction_group.arrivals
+        )
 
-    def _direction_sort_key(direction_group: DirectionArrivals) -> tuple[int, int, int, str]:
+    def _direction_sort_key(
+        direction_group: DirectionArrivals,
+    ) -> tuple[int, int, int, str]:
         direction = direction_group.direction
         has_live = _has_live_arrivals(direction_group)
         is_fallback = _is_fallback_direction_key(direction)
@@ -1283,6 +1453,7 @@ def _group_arrivals(flat: list[NearbyTransitArrival], alert_index: dict[str, lis
             # (fallback: min minutes_away when distance is unknown).
             # Scheduled/GTFS-static entries (key is None) are kept as-is.
             from collections import defaultdict as _dd
+
             _veh_groups: dict[str, list] = _dd(list)
             _no_key: list[NearbyTransitArrival] = []
             for arr in arrivals:
@@ -1307,14 +1478,16 @@ def _group_arrivals(flat: list[NearbyTransitArrival], alert_index: dict[str, lis
                 deduped.append(best)
 
             deduped.sort(key=lambda a: a.minutes_away)  # re-sort by ETA
-            arrivals = deduped
+            arrivals = deduped  # noqa: PLW2901
             # ─────────────────────────────────────────────────────────────
 
-            directions.append(DirectionArrivals(
-                direction=direction,
-                direction_label=_direction_label(direction, arrivals),
-                arrivals=arrivals,
-            ))
+            directions.append(
+                DirectionArrivals(
+                    direction=direction,
+                    direction_label=_direction_label(direction, arrivals),
+                    arrivals=arrivals,
+                )
+            )
 
         # ── Cross-direction vehicle dedup ─────────────────────────────────
         # A vehicle can appear in multiple direction buckets when SIRI
@@ -1335,11 +1508,11 @@ def _group_arrivals(flat: list[NearbyTransitArrival], alert_index: dict[str, lis
                     _veh_best_dir[_vk] = (_dist, _dx)
         for _dx, _d in enumerate(directions):
             _d.arrivals = [
-                _arr for _arr in _d.arrivals
+                _arr
+                for _arr in _d.arrivals
                 if (_arr.vehicle_id or _arr.trip_id) is None
-                or _veh_best_dir.get(
-                    _arr.vehicle_id or _arr.trip_id, (None, _dx)
-                )[1] == _dx
+                or _veh_best_dir.get(_arr.vehicle_id or _arr.trip_id, (None, _dx))[1]
+                == _dx
             ]
         # ─────────────────────────────────────────────────────────────────
 
@@ -1357,13 +1530,17 @@ def _group_arrivals(flat: list[NearbyTransitArrival], alert_index: dict[str, lis
         #   3. At least one OTHER tab has real arrivals
         has_any_semantic_live = any(
             not _is_fallback_direction_key(d.direction)
-            and any(a.minutes_away < _PLACEHOLDER_MINUTES or a.arrival_ts is not None for a in d.arrivals)
+            and any(
+                a.minutes_away < _PLACEHOLDER_MINUTES or a.arrival_ts is not None
+                for a in d.arrivals
+            )
             for d in directions
         )
         if has_any_semantic_live and len(directions) > 1:
             _before_prune = len(directions)
             directions = [
-                d for d in directions
+                d
+                for d in directions
                 if not (
                     _is_fallback_direction_key(d.direction)
                     and all(
@@ -1418,7 +1595,9 @@ def _group_arrivals(flat: list[NearbyTransitArrival], alert_index: dict[str, lis
                     route_id=route_id,
                     stop_name=exemplar.stop_name if exemplar else display,
                     direction=opposite,
-                    destination=opposite if not _is_fallback_direction_key(opposite) else None,
+                    destination=(
+                        opposite if not _is_fallback_direction_key(opposite) else None
+                    ),
                     minutes_away=_PLACEHOLDER_MINUTES,
                     arrival_ts=None,
                     status="Scheduled",
@@ -1430,11 +1609,13 @@ def _group_arrivals(flat: list[NearbyTransitArrival], alert_index: dict[str, lis
                     trip_id=None,
                     distance_m=exemplar.distance_m if exemplar else None,
                 )
-                directions.append(DirectionArrivals(
-                    direction=opposite,
-                    direction_label=_direction_label(opposite, [placeholder]),
-                    arrivals=[placeholder],
-                ))
+                directions.append(
+                    DirectionArrivals(
+                        direction=opposite,
+                        direction_label=_direction_label(opposite, [placeholder]),
+                        arrivals=[placeholder],
+                    )
+                )
 
         if len(directions) == 1:
             single_direction_after += 1
@@ -1486,9 +1667,7 @@ def _group_arrivals(flat: list[NearbyTransitArrival], alert_index: dict[str, lis
 
     if single_direction_after > 0:
         # Real problem: routes that slipped through all backfill phases with only 1 direction.
-        slipped = [
-            g.route_id for g in groups if len(g.directions) == 1
-        ]
+        slipped = [g.route_id for g in groups if len(g.directions) == 1]
         TrackLogger.info(
             f"[BACKFILL GAP] {single_direction_after} route(s) still have only 1 direction "
             f"after Phase B/C and grouping fix: {slipped}"
@@ -1504,11 +1683,7 @@ def _group_arrivals(flat: list[NearbyTransitArrival], alert_index: dict[str, lis
 
 def _soonest_minutes(group: GroupedNearbyTransit) -> int:
     """Return the smallest ``minutes_away`` across all directions."""
-    mins = [
-        a.minutes_away
-        for d in group.directions
-        for a in d.arrivals
-    ]
+    mins = [a.minutes_away for d in group.directions for a in d.arrivals]
     return min(mins) if mins else 999
 
 
@@ -1518,8 +1693,11 @@ def _soonest_minutes(group: GroupedNearbyTransit) -> int:
 
 
 async def _fetch_nearby_subway(
-    lat: float, lon: float, radius: int,
-    *, _deadline: float | None = None,
+    lat: float,
+    lon: float,
+    radius: int,
+    *,
+    _deadline: float | None = None,
 ) -> list[NearbyTransitArrival]:
     """Fetch arrivals from all subway feeds, filtered to nearby stations.
 
@@ -1527,7 +1705,7 @@ async def _fetch_nearby_subway(
     are within the user's search radius, so we only return trains that
     are actually arriving at stations the user could walk to.
     """
-    settings = get_settings()
+    get_settings()
     results: list[NearbyTransitArrival] = []
 
     # Pre-compute which stop_ids are within range of the user
@@ -1539,9 +1717,7 @@ async def _fetch_nearby_subway(
         )
         return results
 
-    TrackLogger.info(
-        f"Found {len(nearby_stops)} subway stop_ids within {radius}m"
-    )
+    TrackLogger.info(f"Found {len(nearby_stops)} subway stop_ids within {radius}m")
 
     # Pick representative lines (one per feed) to avoid duplicate fetches
     feed_lines = ["A", "G", "N", "1", "B", "J", "L"]
@@ -1553,23 +1729,26 @@ async def _fetch_nearby_subway(
     # Without this, N arrivals × 3 Redis calls each = hundreds of connections.
     # Deduplication inside the batch call means repeated (route, stop) pairs
     # (e.g. "A A57S" appearing 8× for 8 upcoming A trains) cost only 3 ops total.
-    _now_dt     = datetime.now(timezone.utc)
-    _batch_dow  = (_now_dt.isoweekday() % 7) + 1
+    _now_dt = datetime.now(UTC)
+    _batch_dow = (_now_dt.isoweekday() % 7) + 1
     _batch_hour = _now_dt.hour
     _subway_recency_qs: list[tuple[str, str, int, int]] = []
-    for _ln, _arrs in zip(feed_lines, feed_results):
+    for _ln, _arrs in zip(feed_lines, feed_results, strict=False):
         if isinstance(_arrs, Exception) or not isinstance(_arrs, list):
             continue
         for _a in _arrs:
             if _a.minutes_away <= 0 or _a.station not in nearby_stops:
                 continue
-            _subway_recency_qs.append((_a.route_id or _ln, _a.station, _batch_dow, _batch_hour))
+            _subway_recency_qs.append(
+                (_a.route_id or _ln, _a.station, _batch_dow, _batch_hour)
+            )
     _subway_recency_cache = await _get_weighted_errors_batch(_subway_recency_qs)
 
     # Pre-warm alert index + weather cache so the per-arrival
     # _ml_corrected calls never block on a first-call HTTP fetch.
     await _maybe_refresh_alerts()
     from app.clients.weather_client import get_current_weather as _gcw_sub
+
     _cached_weather = await _gcw_sub()
 
     success_count = 0
@@ -1578,7 +1757,7 @@ async def _fetch_nearby_subway(
 
     # Phase 1: Collect kept arrivals (fast — no ML, no await per item)
     _kept_arrivals: list[tuple] = []  # (arrival, line, stop_info)
-    for line, arrivals in zip(feed_lines, feed_results):
+    for line, arrivals in zip(feed_lines, feed_results, strict=False):
         if isinstance(arrivals, Exception):
             TrackLogger.info(
                 f"Subway feed '{line}' failed: {_describe_exception(arrivals)}"
@@ -1605,7 +1784,9 @@ async def _fetch_nearby_subway(
         for a, ln, _ in _kept_arrivals
     ]
     _corrected_all = _ml_corrected_batch(
-        _batch_data, recency_cache=_subway_recency_cache, weather=_cached_weather,
+        _batch_data,
+        recency_cache=_subway_recency_cache,
+        weather=_cached_weather,
     )
     await asyncio.sleep(0)  # yield after batch compute
 
@@ -1634,7 +1815,7 @@ async def _fetch_nearby_subway(
             )
         )
 
-    if success_count == 0 and len(feed_lines) > 0:
+    if success_count == 0 and feed_lines:
         TrackLogger.info(
             f"All {len(feed_lines)} subway feeds failed — check MTA API key and network"
         )
@@ -1654,9 +1835,12 @@ async def _fetch_nearby_subway(
     # contention, stalling the entire event loop.  Skip it when budget is
     # tight — live arrivals are the priority.
     import time as _mono_sub
+
     _budget_ok = _deadline is None or (_deadline - _mono_sub.monotonic()) > 12
     if not _budget_ok:
-        _budget_left_s = (_deadline - _mono_sub.monotonic()) if _deadline else float("inf")
+        _budget_left_s = (
+            (_deadline - _mono_sub.monotonic()) if _deadline else float("inf")
+        )
         TrackLogger.info(
             f"Subway skipping scheduled backfill — only {_budget_left_s:.1f}s left "
             f"(returning {total_kept} live arrivals)"
@@ -1665,7 +1849,7 @@ async def _fetch_nearby_subway(
 
     stops_with_live = {a.stop_id for a in results}
     missing_stops = nearby_stops - stops_with_live
-    
+
     if missing_stops:
         # Pre-filter to subway-only stops, then fetch ALL schedules in parallel
         subway_missing = []
@@ -1678,11 +1862,14 @@ async def _fetch_nearby_subway(
         if subway_missing:
             # Parallel fetch: all schedule queries at once instead of serial
             all_scheduled = await asyncio.gather(
-                *(schedule_service.get_scheduled_arrivals_async(sid, limit=4) for sid in subway_missing)
+                *(
+                    schedule_service.get_scheduled_arrivals_async(sid, limit=4)
+                    for sid in subway_missing
+                )
             )
 
             backfill_count = 0
-            for stop_id, scheduled in zip(subway_missing, all_scheduled):
+            for _stop_id, scheduled in zip(subway_missing, all_scheduled, strict=False):
                 for s in scheduled:
                     if s.trip_id and ("GO103" in s.trip_id or "METS" in s.trip_id):
                         continue
@@ -1692,30 +1879,36 @@ async def _fetch_nearby_subway(
                     sinfo = get_stop_info(s.station)
                     sched_dir = s.destination or s.direction
                     corrected_mins = await _ml_corrected(
-                        s.minutes_away, s.route_id, "subway",
+                        s.minutes_away,
+                        s.route_id,
+                        "subway",
                         stop_id=s.station,
                         _weather=_cached_weather,
                     )
-                    results.append(NearbyTransitArrival(
-                        route_id=s.route_id,
-                        stop_name=sinfo.name if sinfo else s.station,
-                        direction=sched_dir,
-                        destination=s.destination,
-                        minutes_away=corrected_mins,
-                        arrival_ts=s.arrival_ts,
-                        status="Scheduled",
-                        mode="subway",
-                        stop_lat=sinfo.lat if sinfo else None,
-                        stop_lon=sinfo.lon if sinfo else None,
-                        stop_id=s.station,
-                        trip_id=s.trip_id
-                    ))
+                    results.append(
+                        NearbyTransitArrival(
+                            route_id=s.route_id,
+                            stop_name=sinfo.name if sinfo else s.station,
+                            direction=sched_dir,
+                            destination=s.destination,
+                            minutes_away=corrected_mins,
+                            arrival_ts=s.arrival_ts,
+                            status="Scheduled",
+                            mode="subway",
+                            stop_lat=sinfo.lat if sinfo else None,
+                            stop_lon=sinfo.lon if sinfo else None,
+                            stop_id=s.station,
+                            trip_id=s.trip_id,
+                        )
+                    )
                     backfill_count += 1
                     if backfill_count % 50 == 0:
                         await asyncio.sleep(0)
 
             if backfill_count:
-                TrackLogger.info(f"Backfilled {backfill_count} subway schedule entries for {len(subway_missing)} stops")
+                TrackLogger.info(
+                    f"Backfilled {backfill_count} subway schedule entries for {len(subway_missing)} stops"
+                )
 
     # -----------------------------------------------------------------
     # Budget gate: skip anchor phase if running low on time
@@ -1740,7 +1933,10 @@ async def _fetch_nearby_subway(
             route_stop_ids[r.route_id].add(r.stop_id)
         if r.stop_lat is not None and r.stop_lon is not None:
             d = haversine_m(lat, lon, r.stop_lat, r.stop_lon)
-            if r.route_id not in nearest_entry_dist or d < nearest_entry_dist[r.route_id]:
+            if (
+                r.route_id not in nearest_entry_dist
+                or d < nearest_entry_dist[r.route_id]
+            ):
                 nearest_entry_dist[r.route_id] = d
 
     anchor_count = 0
@@ -1772,20 +1968,22 @@ async def _fetch_nearby_subway(
             if info:
                 # Determine direction from stop_id suffix (N/S)
                 direction = "N" if best_stop_id.endswith("N") else "S"
-                results.append(NearbyTransitArrival(
-                    route_id=route_id,
-                    stop_name=info.name,
-                    direction=direction,
-                    destination=None,
-                    minutes_away=_PLACEHOLDER_MINUTES,
-                    arrival_ts=None,
-                    status="Scheduled",
-                    mode="subway",
-                    stop_lat=info.lat,
-                    stop_lon=info.lon,
-                    stop_id=best_stop_id,
-                    trip_id=None,
-                ))
+                results.append(
+                    NearbyTransitArrival(
+                        route_id=route_id,
+                        stop_name=info.name,
+                        direction=direction,
+                        destination=None,
+                        minutes_away=_PLACEHOLDER_MINUTES,
+                        arrival_ts=None,
+                        status="Scheduled",
+                        mode="subway",
+                        stop_lat=info.lat,
+                        stop_lon=info.lon,
+                        stop_id=best_stop_id,
+                        trip_id=None,
+                    )
+                )
                 route_stop_ids[route_id].add(best_stop_id)
                 anchor_count += 1
 
@@ -1804,7 +2002,9 @@ async def _fetch_nearby_subway(
 
 
 async def _fetch_nearby_buses(
-    lat: float, lon: float, radius: int | None = None,
+    lat: float,
+    lon: float,
+    radius: int | None = None,
 ) -> list[NearbyTransitArrival]:
     """Fetch bus arrivals from nearby stops.
 
@@ -1816,6 +2016,7 @@ async def _fetch_nearby_buses(
     be approaching right now.
     """
     import time as _monotonic_mod
+
     # Internal deadline: leave 5 s headroom before the per-mode timeout.
     # Phases A-F are "nice-to-have" enrichment; core SIRI results are
     # the priority.  Returning partial results is much better than
@@ -1826,11 +2027,15 @@ async def _fetch_nearby_buses(
         return _BUS_INTERNAL_DEADLINE - _monotonic_mod.monotonic()
 
     settings = get_settings()
-    effective_radius = radius if radius is not None else settings.app_settings.search_radius_meters
+    effective_radius = (
+        radius if radius is not None else settings.app_settings.search_radius_meters
+    )
     results: list[NearbyTransitArrival] = []
 
     async def _add_static_only_placeholders(reason: str) -> list[NearbyTransitArrival]:
-        static_routes = await asyncio.to_thread(_nearby_static_bus_routes, lat, lon, effective_radius)
+        static_routes = await asyncio.to_thread(
+            _nearby_static_bus_routes, lat, lon, effective_radius
+        )
         # Parallel fetch: all static-route schedule queries at once
         items = list(static_routes.items())
         if not items:
@@ -1858,6 +2063,7 @@ async def _fetch_nearby_buses(
         return out
 
     import time as _t
+
     _t_oba = _t.perf_counter()
     try:
         stops = await get_nearby_stops(lat, lon, radius_m=effective_radius)
@@ -1901,8 +2107,8 @@ async def _fetch_nearby_buses(
     )
 
     # Pre-fetch all bus recency errors in one pipeline before the correction loop.
-    _bus_now_dt     = datetime.now(timezone.utc)
-    _bus_batch_dow  = (_bus_now_dt.isoweekday() % 7) + 1
+    _bus_now_dt = datetime.now(UTC)
+    _bus_batch_dow = (_bus_now_dt.isoweekday() % 7) + 1
     _bus_batch_hour = _bus_now_dt.hour
     _bus_recency_qs: list[tuple[str, str, int, int]] = []
     for _bi, _bres in enumerate(stop_results):
@@ -1911,13 +2117,19 @@ async def _fetch_nearby_buses(
         _bstop = stops_to_query[_bi]
         for _barr in _bres:
             _bus_recency_qs.append(
-                (_display_name(_barr.route_id), _bstop.id, _bus_batch_dow, _bus_batch_hour)
+                (
+                    _display_name(_barr.route_id),
+                    _bstop.id,
+                    _bus_batch_dow,
+                    _bus_batch_hour,
+                )
             )
     _bus_recency_cache = await _get_weighted_errors_batch(_bus_recency_qs)
     await asyncio.sleep(0)  # yield so per-mode timeout can fire
 
     # Pre-warm weather for the ML loop (avoid per-item await)
     from app.clients.weather_client import get_current_weather as _gcw_bus
+
     _bus_cached_weather = await _gcw_bus()
 
     # Track which route IDs already have live data
@@ -1926,7 +2138,9 @@ async def _fetch_nearby_buses(
     # Phase 1: Collect kept bus arrivals (fast — no ML)
     fail_count = 0
     first_error: Exception | None = None
-    _bus_kept: list[tuple] = []  # (arrival, stop, minutes, normalised_route, direction, deviation_s)
+    _bus_kept: list[tuple] = (
+        []
+    )  # (arrival, stop, minutes, normalised_route, direction, deviation_s)
     for i, result in enumerate(stop_results):
         stop = stops_to_query[i]
         if isinstance(result, Exception):
@@ -1939,10 +2153,10 @@ async def _fetch_nearby_buses(
 
         for arrival in result:
             if arrival.expected_arrival:
-                now_utc = datetime.now(timezone.utc)
+                now_utc = datetime.now(UTC)
                 exp_utc = arrival.expected_arrival
                 if exp_utc.tzinfo is None:
-                    exp_utc = exp_utc.replace(tzinfo=timezone.utc)
+                    exp_utc = exp_utc.replace(tzinfo=UTC)
                 if (exp_utc - now_utc).total_seconds() < -60:
                     continue
 
@@ -1961,8 +2175,16 @@ async def _fetch_nearby_buses(
 
             routes_with_live.add(normalised_route)
             routes_with_live.add(arrival.route_id)
-            _bus_kept.append((arrival, stop, minutes, normalised_route, direction,
-                              float(arrival.schedule_deviation_s or 0)))
+            _bus_kept.append(
+                (
+                    arrival,
+                    stop,
+                    minutes,
+                    normalised_route,
+                    direction,
+                    float(arrival.schedule_deviation_s or 0),
+                )
+            )
 
     # Phase 2: Batch ML prediction — one model.predict() for all bus arrivals
     _bus_batch_data = [
@@ -1970,18 +2192,26 @@ async def _fetch_nearby_buses(
         for _, stop, mins, route, _, dev_s in _bus_kept
     ]
     _bus_corrected_all = _ml_corrected_batch(
-        _bus_batch_data, recency_cache=_bus_recency_cache, weather=_bus_cached_weather,
+        _bus_batch_data,
+        recency_cache=_bus_recency_cache,
+        weather=_bus_cached_weather,
     )
     await asyncio.sleep(0)  # yield after batch compute
 
     # Phase 3: Build result objects
-    for idx, (arrival, stop, minutes, normalised_route, direction, _) in enumerate(_bus_kept):
+    for idx, (arrival, stop, _minutes, normalised_route, direction, _) in enumerate(
+        _bus_kept
+    ):
         bus_status = arrival.status_text if arrival.is_realtime else "Scheduled"
         results.append(
             NearbyTransitArrival(
                 route_id=normalised_route,
                 stop_name=stop.name,
-                arrival_ts=int(arrival.expected_arrival.timestamp()) if arrival.expected_arrival else None,
+                arrival_ts=(
+                    int(arrival.expected_arrival.timestamp())
+                    if arrival.expected_arrival
+                    else None
+                ),
                 direction=direction,
                 minutes_away=_bus_corrected_all[idx],
                 status=bus_status,
@@ -2012,8 +2242,8 @@ async def _fetch_nearby_buses(
     # never duplicate real-time data.  They are clearly marked "Scheduled"
     # so the iOS app renders them grey and never shows a map marker.
     # -----------------------------------------------------------------
-    _MIN_TOPOFF  = 20  # target total arrivals per (route, stop, direction)
-    _MAX_SCHED   = 24  # max scheduled entries added per direction (≈12 h board)
+    _MIN_TOPOFF = 20  # target total arrivals per (route, stop, direction)
+    _MAX_SCHED = 24  # max scheduled entries added per direction (≈12 h board)
 
     _t_siri_done = _monotonic_mod.monotonic()
     TrackLogger.info(
@@ -2024,7 +2254,10 @@ async def _fetch_nearby_buses(
 
     # ── Deadline gate: skip enrichment phases if budget exhausted ────
     if _budget_left() <= 0:
-        TrackLogger.info("Bus internal deadline expired after SIRI — returning partial results", tag="NEARBY")
+        TrackLogger.info(
+            "Bus internal deadline expired after SIRI — returning partial results",
+            tag="NEARBY",
+        )
         return results
 
     # Group current bus results by (route_id, stop_id, direction)
@@ -2056,7 +2289,9 @@ async def _fetch_nearby_buses(
             )
         )
 
-        for ((_rid, _sid, _dir), _last_mins, _need), _sched_raw in zip(_topoff_tasks, _all_sched_raw):
+        for ((_rid, _sid, _dir), _last_mins, _need), _sched_raw in zip(
+            _topoff_tasks, _all_sched_raw, strict=False
+        ):
             _added = 0
             for _s in _sched_raw:
                 if _added >= _need:
@@ -2071,21 +2306,23 @@ async def _fetch_nearby_buses(
                     continue
                 _topoff_seen.add(_dk)
                 _sinfo = get_stop_info(_sid)
-                results.append(NearbyTransitArrival(
-                    route_id=_s_rid,
-                    stop_name=_sinfo.name if _sinfo else _sid,
-                    direction=_dir,
-                    destination=_s.destination,
-                    minutes_away=_s.minutes_away,
-                    arrival_ts=_s.arrival_ts,
-                    status="Scheduled",
-                    mode="bus",
-                    stop_lat=_sinfo.lat if _sinfo else None,
-                    stop_lon=_sinfo.lon if _sinfo else None,
-                    stop_id=_sid,
-                    vehicle_id=None,
-                    trip_id=_s.trip_id,
-                ))
+                results.append(
+                    NearbyTransitArrival(
+                        route_id=_s_rid,
+                        stop_name=_sinfo.name if _sinfo else _sid,
+                        direction=_dir,
+                        destination=_s.destination,
+                        minutes_away=_s.minutes_away,
+                        arrival_ts=_s.arrival_ts,
+                        status="Scheduled",
+                        mode="bus",
+                        stop_lat=_sinfo.lat if _sinfo else None,
+                        stop_lon=_sinfo.lon if _sinfo else None,
+                        stop_id=_sid,
+                        vehicle_id=None,
+                        trip_id=_s.trip_id,
+                    )
+                )
                 _added += 1
                 _topoff_added += 1
 
@@ -2125,7 +2362,8 @@ async def _fetch_nearby_buses(
             # create duplicates.
             existing_normalised = {_display_name(rid).upper() for rid in stop.route_ids}
             new_routes = [
-                rid for rid in siri_routes
+                rid
+                for rid in siri_routes
                 if _display_name(rid).upper() not in existing_normalised
             ]
             if new_routes:
@@ -2141,7 +2379,10 @@ async def _fetch_nearby_buses(
     # 1c. Enrich stop.route_ids from static schedule DB
     # -----------------------------------------------------------------
     if _budget_left() <= 2:
-        TrackLogger.info(f"Bus deadline approaching — skipping phases 1c+ (budget={_budget_left():.1f}s)", tag="NEARBY")
+        TrackLogger.info(
+            f"Bus deadline approaching — skipping phases 1c+ (budget={_budget_left():.1f}s)",
+            tag="NEARBY",
+        )
         return results
     await asyncio.sleep(0)  # yield for timeout checks
 
@@ -2154,16 +2395,20 @@ async def _fetch_nearby_buses(
     # Also enrich stops that already have SOME routes — schedule DB may
     # know about routes that neither OBA nor SIRI mentioned.
     _stops_needing_enrichment = [
-        stop for stop in stops
+        stop
+        for stop in stops
         if stop.route_ids and stop.id not in _siri_routes_per_stop
     ]
     if _stops_needing_routes or _stops_needing_enrichment:
         # Parallel fetch: all schedule-based route_id lookups at once
         _all_stops_1c = _stops_needing_routes + _stops_needing_enrichment
         _all_scheduled = await asyncio.gather(
-            *(schedule_service.get_scheduled_arrivals_async(stop.id, limit=20) for stop in _all_stops_1c)
+            *(
+                schedule_service.get_scheduled_arrivals_async(stop.id, limit=20)
+                for stop in _all_stops_1c
+            )
         )
-        for stop, scheduled in zip(_all_stops_1c, _all_scheduled):
+        for stop, scheduled in zip(_all_stops_1c, _all_scheduled, strict=False):
             inferred_routes: set[str] = set()
             for s in scheduled:
                 rid = _display_name(s.route_id)
@@ -2175,9 +2420,12 @@ async def _fetch_nearby_buses(
                 stop.route_ids = sorted(inferred_routes)
                 _schedule_backfilled += 1
             else:
-                existing_normalised = {_display_name(rid).upper() for rid in stop.route_ids}
+                existing_normalised = {
+                    _display_name(rid).upper() for rid in stop.route_ids
+                }
                 new_routes = [
-                    rid for rid in sorted(inferred_routes)
+                    rid
+                    for rid in sorted(inferred_routes)
                     if rid.upper() not in existing_normalised
                 ]
                 if new_routes:
@@ -2220,7 +2468,10 @@ async def _fetch_nearby_buses(
 
     # ── Deadline gate before Phase A (heavy schedule queries) ────────
     if _budget_left() <= 2:
-        TrackLogger.info(f"Bus deadline approaching — skipping phases A+ (budget={_budget_left():.1f}s)", tag="NEARBY")
+        TrackLogger.info(
+            f"Bus deadline approaching — skipping phases A+ (budget={_budget_left():.1f}s)",
+            tag="NEARBY",
+        )
         return results
     await asyncio.sleep(0)  # yield for timeout checks
 
@@ -2239,7 +2490,7 @@ async def _fetch_nearby_buses(
     for stop in stops:
         for rid in stop.route_ids:
             short = _display_name(rid)
-            
+
             # Track the closest physical stop for EVERY route (since `stops` is sorted by distance already)
             if short not in closest_stops_by_route:
                 closest_stops_by_route[short] = stop
@@ -2264,7 +2515,9 @@ async def _fetch_nearby_buses(
     _closest_tasks: list[tuple[str, BusStop, str]] = []  # (rid, stop, direction)
     for rid, closest_stop in closest_stops_by_route.items():
         if (rid, closest_stop.id) not in _existing_route_stop:
-            direction = route_primary_direction.get(rid) or closest_stop.direction or "N/A"
+            direction = (
+                route_primary_direction.get(rid) or closest_stop.direction or "N/A"
+            )
             _closest_tasks.append((rid, closest_stop, direction))
 
     if _closest_tasks:
@@ -2363,7 +2616,9 @@ async def _fetch_nearby_buses(
             # compass fallback tabs (would create fake extra directions).
             # But if there's only ONE semantic tab, allow compass backfill from
             # other nearby stops to surface branching directions.
-            semantic_dirs = {d for d in existing_dirs if not _is_fallback_direction_key(d)}
+            semantic_dirs = {
+                d for d in existing_dirs if not _is_fallback_direction_key(d)
+            }
             if len(semantic_dirs) >= 2:
                 continue
 
@@ -2412,7 +2667,10 @@ async def _fetch_nearby_buses(
 
     # ── Deadline gate before Phase C ────────────────────────────────
     if _budget_left() <= 2:
-        TrackLogger.info(f"Bus deadline — skipping phases C+ (budget={_budget_left():.1f}s)", tag="NEARBY")
+        TrackLogger.info(
+            f"Bus deadline — skipping phases C+ (budget={_budget_left():.1f}s)",
+            tag="NEARBY",
+        )
         return results
     await asyncio.sleep(0)
 
@@ -2480,10 +2738,12 @@ async def _fetch_nearby_buses(
                 # Try to find the compass direction from nearby stops
                 stop_compass = None
                 for s in stops:
-                    if route_id in [_display_name(rid) for rid in s.route_ids]:
-                        if s.direction:
-                            stop_compass = s.direction.upper()
-                            break
+                    if (
+                        route_id in [_display_name(rid) for rid in s.route_ids]
+                        and s.direction
+                    ):
+                        stop_compass = s.direction.upper()
+                        break
                 if stop_compass and stop_compass in _OPPOSITE_COMPASS:
                     new_dir = _OPPOSITE_COMPASS[stop_compass]
                 else:
@@ -2518,7 +2778,10 @@ async def _fetch_nearby_buses(
 
     # ── Deadline gate before Phase D (network calls to OBA) ─────────
     if _budget_left() <= 3:
-        TrackLogger.info(f"Bus deadline — skipping phases D+ (budget={_budget_left():.1f}s)", tag="NEARBY")
+        TrackLogger.info(
+            f"Bus deadline — skipping phases D+ (budget={_budget_left():.1f}s)",
+            tag="NEARBY",
+        )
         return results
     await asyncio.sleep(0)
 
@@ -2555,23 +2818,19 @@ async def _fetch_nearby_buses(
 
     # Identify routes that might benefit from an anchor
     routes_needing_anchor = [
-        rid for rid, d in nearest_entry_dist.items()
-        if d > _ANCHOR_THRESHOLD_M
+        rid for rid, d in nearest_entry_dist.items() if d > _ANCHOR_THRESHOLD_M
     ]
 
     phase_d_count = 0
     if routes_needing_anchor:
         # Resolve display names → canonical OBA IDs for the API call
         # get_bus_route_stops handles resolve_bus_id internally
-        anchor_tasks = {
-            rid: get_bus_route_stops(rid)
-            for rid in routes_needing_anchor
-        }
+        anchor_tasks = {rid: get_bus_route_stops(rid) for rid in routes_needing_anchor}
         anchor_results = await asyncio.gather(
             *anchor_tasks.values(), return_exceptions=True
         )
 
-        for rid, route_stops in zip(anchor_tasks.keys(), anchor_results):
+        for rid, route_stops in zip(anchor_tasks.keys(), anchor_results, strict=False):
             if isinstance(route_stops, Exception) or not route_stops:
                 continue
 
@@ -2596,7 +2855,9 @@ async def _fetch_nearby_buses(
                     route_id=rid,
                     stop_name=best_stop.name,
                     arrival_ts=None,
-                    direction=route_primary_direction.get(rid) or best_stop.direction or "N/A",
+                    direction=route_primary_direction.get(rid)
+                    or best_stop.direction
+                    or "N/A",
                     minutes_away=_PLACEHOLDER_MINUTES,
                     status="Scheduled",
                     mode="bus",
@@ -2619,7 +2880,10 @@ async def _fetch_nearby_buses(
 
     # ── Deadline gate before Phase E (synchronous SQLite) ───────────
     if _budget_left() <= 2:
-        TrackLogger.info(f"Bus deadline — skipping phases E+ (budget={_budget_left():.1f}s)", tag="NEARBY")
+        TrackLogger.info(
+            f"Bus deadline — skipping phases E+ (budget={_budget_left():.1f}s)",
+            tag="NEARBY",
+        )
         return results
     await asyncio.sleep(0)
 
@@ -2633,7 +2897,9 @@ async def _fetch_nearby_buses(
     # to avoid over-inflating direction/tab expectations in normal mode.
     run_phase_e = fail_count > 0 or any(not s.route_ids for s in stops)
     if run_phase_e:
-        static_routes = await asyncio.to_thread(_nearby_static_bus_routes, lat, lon, effective_radius)
+        static_routes = await asyncio.to_thread(
+            _nearby_static_bus_routes, lat, lon, effective_radius
+        )
         existing_routes = {r.route_id for r in results if r.mode == "bus"}
         phase_e_count = 0
         for route_id, (stop_name, stop_lat, stop_lon, stop_id) in static_routes.items():
@@ -2666,7 +2932,10 @@ async def _fetch_nearby_buses(
 
     # ── Deadline gate before Phase F (up to 160 OBA HTTP requests) ──
     if _budget_left() <= 3:
-        TrackLogger.info(f"Bus deadline — skipping Phase F (budget={_budget_left():.1f}s)", tag="NEARBY")
+        TrackLogger.info(
+            f"Bus deadline — skipping Phase F (budget={_budget_left():.1f}s)",
+            tag="NEARBY",
+        )
         return results
     await asyncio.sleep(0)
 
@@ -2708,10 +2977,14 @@ async def _fetch_nearby_buses(
         phase_f_count = 0
         existing_routes = {r.route_id for r in results if r.mode == "bus"}
         if candidate_route_ids:
-            scan_tasks = [get_bus_route_stops(route_id) for route_id in candidate_route_ids]
+            scan_tasks = [
+                get_bus_route_stops(route_id) for route_id in candidate_route_ids
+            ]
             scan_results = await asyncio.gather(*scan_tasks, return_exceptions=True)
 
-            for route_id, route_stops in zip(candidate_route_ids, scan_results):
+            for route_id, route_stops in zip(
+                candidate_route_ids, scan_results, strict=False
+            ):
                 if route_id in existing_routes:
                     continue
                 if isinstance(route_stops, Exception) or not route_stops:
@@ -2733,7 +3006,9 @@ async def _fetch_nearby_buses(
                         route_id=route_id,
                         stop_name=best_stop.name,
                         arrival_ts=None,
-                        direction=route_primary_direction.get(route_id) or best_stop.direction or "N/A",
+                        direction=route_primary_direction.get(route_id)
+                        or best_stop.direction
+                        or "N/A",
                         minutes_away=_PLACEHOLDER_MINUTES,
                         status="Scheduled",
                         mode="bus",
@@ -2756,7 +3031,6 @@ async def _fetch_nearby_buses(
     return results
 
 
-
 # ---------------------------------------------------------------------------
 # Rail helpers
 # ---------------------------------------------------------------------------
@@ -2767,15 +3041,15 @@ async def _fetch_nearby_rail(
 ) -> list[NearbyTransitArrival]:
     """Fetch arrivals for LIRR or Metro-North, filtered to nearby stations."""
     results: list[NearbyTransitArrival] = []
-    
+
     # Map agency parameter to the feed name used by rail_client
     feed_agency = agency
     if agency == "mnr":
         feed_agency = "metro_north"
-    
+
     # Determine prefix for route_id namespacing (e.g. "LIRR_9", "MNR_1")
     prefix = "LIRR_" if agency == "lirr" else "MNR_"
-    
+
     # Pre-compute which stop_ids are within range of the user for this agency
     nearby_stops = get_nearby_stop_ids(lat, lon, float(radius), agency=agency)
     if not nearby_stops:
@@ -2801,12 +3075,12 @@ async def _fetch_nearby_rail(
         _rail_kept += 1
         if _rail_kept % 50 == 0:
             await asyncio.sleep(0)
-            
+
         stop_info = get_stop_info(arrival.station, agency=agency)
-        
+
         # Prefix route_id so client can distinguish LIRR "9" from subway "9"
         prefixed_route_id = f"{prefix}{arrival.route_id}"
-        
+
         results.append(
             NearbyTransitArrival(
                 route_id=prefixed_route_id,
@@ -2837,17 +3111,24 @@ async def _fetch_nearby_rail(
 
     if missing_stops:
         # Pre-filter to stops with valid stop_info
-        _rail_valid = [(sid, get_stop_info(sid, agency=agency)) for sid in missing_stops]
+        _rail_valid = [
+            (sid, get_stop_info(sid, agency=agency)) for sid in missing_stops
+        ]
         _rail_valid = [(sid, si) for sid, si in _rail_valid if si is not None]
 
         if _rail_valid:
             # Parallel fetch: all rail schedule queries at once
             _rail_scheduled = await asyncio.gather(
-                *(schedule_service.get_scheduled_arrivals_async(sid, limit=6) for sid, _ in _rail_valid)
+                *(
+                    schedule_service.get_scheduled_arrivals_async(sid, limit=6)
+                    for sid, _ in _rail_valid
+                )
             )
 
             fallback_count = 0
-            for (stop_id, stop_info), scheduled in zip(_rail_valid, _rail_scheduled):
+            for (stop_id, stop_info), scheduled in zip(
+                _rail_valid, _rail_scheduled, strict=False
+            ):
                 for s in scheduled:
                     if not s.route_id:
                         continue
@@ -2878,7 +3159,7 @@ async def _fetch_nearby_rail(
                     f"{agency.upper()}: Backfilled {fallback_count} scheduled entries "
                     f"for {len(missing_stops)} nearby stops with no live trains"
                 )
-        
+
     return results
 
 
@@ -2886,9 +3167,9 @@ def _bus_minutes_away(expected: datetime | None) -> int:
     """Calculate minutes until a bus arrival."""
     if expected is None:
         return 99
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if expected.tzinfo is None:
-        expected = expected.replace(tzinfo=timezone.utc)
+        expected = expected.replace(tzinfo=UTC)
     diff = (expected - now).total_seconds()
     return max(0, int(diff // 60))
 
@@ -2929,9 +3210,9 @@ async def _ml_corrected(
     """
     if minutes_away <= 0 or minutes_away >= 99:
         return minutes_away
-    now_utc = datetime.now(timezone.utc)
+    now_utc = datetime.now(UTC)
     hour = now_utc.hour
-    dow = (now_utc.isoweekday() % 7) + 1   # Mon=2 … Sun=1
+    dow = (now_utc.isoweekday() % 7) + 1  # Mon=2 … Sun=1
 
     # 1. Alert index — non-blocking refresh if stale, O(1) read
     await _maybe_refresh_alerts()
@@ -2941,6 +3222,7 @@ async def _ml_corrected(
     #    (falls back to "clear" if the weather client hasn't fetched yet)
     if _weather is None:
         from app.clients.weather_client import get_current_weather
+
         _weather = await get_current_weather()
     factor, _ = _predict_factor(
         route_id=route_id,
@@ -2964,10 +3246,10 @@ async def _ml_corrected(
             recency_s = max(-300.0, min(300.0, err))  # cap ±5 min
 
     # 4. Blend
-    base_seconds  = max(0.0, minutes_away * 60.0 + recency_s)
-    final_factor  = min(2.0, factor * (1.0 + alert_boost))
-    corrected     = base_seconds * final_factor / 60.0
-    result        = round(corrected)
+    base_seconds = max(0.0, minutes_away * 60.0 + recency_s)
+    final_factor = min(2.0, factor * (1.0 + alert_boost))
+    corrected = base_seconds * final_factor / 60.0
+    result = round(corrected)
 
     # 5. Horizon-scaled correction cap — addresses the +2.4 min over-inflation
     #    bias observed on 25–50 min arrivals (GBR factor ×1.15 on raw 1800–3000s
@@ -2976,7 +3258,7 @@ async def _ml_corrected(
     #      ≤ 25 min horizon → ±3 min
     #      > 25 min horizon → ±4 min  (allow larger shift but clip the extreme)
     max_delta = 2 if minutes_away <= 10 else (3 if minutes_away <= 25 else 4)
-    result    = max(minutes_away - max_delta, min(minutes_away + max_delta, result))
+    result = max(minutes_away - max_delta, min(minutes_away + max_delta, result))
     return max(0, result)
 
 
@@ -2995,29 +3277,26 @@ def _ml_corrected_batch(
     - N×2 await statements (alert refresh + weather fetch)
     - N event-loop context switches
     """
-    now_utc = datetime.now(timezone.utc)
+    now_utc = datetime.now(UTC)
     hour = now_utc.hour
     dow = (now_utc.isoweekday() % 7) + 1
 
     # Build batch prediction inputs — only for items that need prediction
     pred_indices: list[int] = []
     pred_inputs: list[tuple[str, int, int, str, str, float]] = []
-    for i, (mins, route_id, mode, stop_id, dev_s) in enumerate(arrivals_data):
+    for i, (mins, route_id, mode, _stop_id, dev_s) in enumerate(arrivals_data):
         if mins <= 0 or mins >= 99:
             continue
         pred_indices.append(i)
         pred_inputs.append((route_id, hour, dow, weather, mode, dev_s))
 
     # One batch predict call
-    if pred_inputs:
-        batch_results = _predict_factor_batch(pred_inputs)
-    else:
-        batch_results = []
+    batch_results = _predict_factor_batch(pred_inputs) if pred_inputs else []
 
     # Build results
     results: list[int] = []
     pred_idx = 0
-    for i, (mins, route_id, mode, stop_id, dev_s) in enumerate(arrivals_data):
+    for _i, (mins, route_id, _mode, stop_id, _dev_s) in enumerate(arrivals_data):
         if mins <= 0 or mins >= 99:
             results.append(mins)
             continue

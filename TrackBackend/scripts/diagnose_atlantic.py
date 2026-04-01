@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
 """Diagnose polyline artifacts near Atlantic Ave / Downtown Brooklyn."""
+
+from __future__ import annotations
+
 import json
 import math
 import os
 
-CACHE = os.path.join(os.path.dirname(__file__), "..", "app", "data", "_cache_shapes_all.json")
+CACHE = os.path.join(
+    os.path.dirname(__file__), "..", "app", "data", "_cache_shapes_all.json"
+)
+
 
 def decode_polyline(encoded):
     coords = []
@@ -41,11 +47,11 @@ def turn_angle(lat0, lon0, lat1, lon1, lat2, lon2):
     dy1 = lat1 - lat0
     dx2 = lon2 - lon1
     dy2 = lat2 - lat1
-    mag1 = math.sqrt(dx1*dx1 + dy1*dy1)
-    mag2 = math.sqrt(dx2*dx2 + dy2*dy2)
+    mag1 = math.sqrt(dx1 * dx1 + dy1 * dy1)
+    mag2 = math.sqrt(dx2 * dx2 + dy2 * dy2)
     if mag1 < 1e-12 or mag2 < 1e-12:
         return 0
-    dot = (dx1*dx2 + dy1*dy2) / (mag1 * mag2)
+    dot = (dx1 * dx2 + dy1 * dy2) / (mag1 * mag2)
     dot = max(-1, min(1, dot))
     return math.degrees(math.acos(dot))
 
@@ -71,14 +77,17 @@ def main():
         for pi, poly_enc in enumerate(trunk["polylines"]):
             coords = decode_polyline(poly_enc)
             nearby_indices = [
-                i for i, (lat, lon) in enumerate(coords)
+                i
+                for i, (lat, lon) in enumerate(coords)
                 if lat_min <= lat <= lat_max and lon_min <= lon <= lon_max
             ]
             if not nearby_indices:
                 continue
             offset = offsets[pi] if pi < len(offsets) else "?"
-            print(f"\n  Trunk {tidx} ({','.join(rids)}) poly[{pi}]: "
-                  f"{len(coords)} pts total, {len(nearby_indices)} near Atlantic, offset={offset}")
+            print(
+                f"\n  Trunk {tidx} ({','.join(rids)}) poly[{pi}]: "
+                f"{len(coords)} pts total, {len(nearby_indices)} near Atlantic, offset={offset}"
+            )
 
             # Check for sharp turns in the nearby region
             sharp_turns = []
@@ -86,45 +95,54 @@ def main():
                 if idx < 1 or idx >= len(coords) - 1:
                     continue
                 ta = turn_angle(
-                    coords[idx-1][0], coords[idx-1][1],
-                    coords[idx][0], coords[idx][1],
-                    coords[idx+1][0], coords[idx+1][1],
+                    coords[idx - 1][0],
+                    coords[idx - 1][1],
+                    coords[idx][0],
+                    coords[idx][1],
+                    coords[idx + 1][0],
+                    coords[idx + 1][1],
                 )
                 if ta > 60:  # > 60 degree turn
                     sharp_turns.append((idx, ta, coords[idx]))
-            
+
             if sharp_turns:
                 print(f"  ⚠️  {len(sharp_turns)} SHARP TURNS (>60°) in area:")
                 for idx, angle, (lat, lon) in sharp_turns[:10]:
                     print(f"    idx={idx}: {angle:.1f}° turn at ({lat:.6f}, {lon:.6f})")
                 if len(sharp_turns) > 10:
                     print(f"    ... and {len(sharp_turns)-10} more")
-            
+
             # Check for near-reversals (>150°)
             reversals = [(i, a, c) for i, a, c in sharp_turns if a > 150]
             if reversals:
-                print(f"  🔴 {len(reversals)} REVERSALS (>150°!) — these create spikes:")
-                for idx, angle, (lat, lon) in reversals:
+                print(
+                    f"  🔴 {len(reversals)} REVERSALS (>150°!) — these create spikes:"
+                )
+                for idx, _angle, (_lat, _lon) in reversals:
                     # Show context
                     context_start = max(0, idx - 2)
                     context_end = min(len(coords), idx + 3)
                     for ci in range(context_start, context_end):
                         marker = " >>>" if ci == idx else "    "
-                        print(f"  {marker} [{ci}] ({coords[ci][0]:.6f}, {coords[ci][1]:.6f})")
+                        print(
+                            f"  {marker} [{ci}] ({coords[ci][0]:.6f}, {coords[ci][1]:.6f})"
+                        )
 
             # Check point density (are there too many clustered points?)
             nearby_coords = [coords[i] for i in nearby_indices]
             if len(nearby_coords) >= 2:
                 dists = []
                 for j in range(len(nearby_coords) - 1):
-                    dx = nearby_coords[j+1][1] - nearby_coords[j][1]
-                    dy = nearby_coords[j+1][0] - nearby_coords[j][0]
-                    dists.append(math.sqrt(dx*dx + dy*dy))
+                    dx = nearby_coords[j + 1][1] - nearby_coords[j][1]
+                    dy = nearby_coords[j + 1][0] - nearby_coords[j][0]
+                    dists.append(math.sqrt(dx * dx + dy * dy))
                 avg_spacing = sum(dists) / len(dists)
                 min_spacing = min(dists)
                 max_spacing = max(dists)
-                print(f"  Point spacing in area: avg={avg_spacing*111000:.1f}m, "
-                      f"min={min_spacing*111000:.1f}m, max={max_spacing*111000:.1f}m")
+                print(
+                    f"  Point spacing in area: avg={avg_spacing*111000:.1f}m, "
+                    f"min={min_spacing*111000:.1f}m, max={max_spacing*111000:.1f}m"
+                )
 
     print("\n── PER-ROUTE POLYLINES ──")
     for line in data["lines"]:
@@ -132,11 +150,14 @@ def main():
         for pi, poly_enc in enumerate(line["polylines"]):
             coords = decode_polyline(poly_enc)
             nearby = [
-                (lat, lon) for lat, lon in coords
+                (lat, lon)
+                for lat, lon in coords
                 if lat_min <= lat <= lat_max and lon_min <= lon <= lon_max
             ]
             if nearby:
-                print(f"  Route {rid} poly[{pi}]: {len(coords)} pts total, {len(nearby)} near Atlantic")
+                print(
+                    f"  Route {rid} poly[{pi}]: {len(coords)} pts total, {len(nearby)} near Atlantic"
+                )
 
 
 if __name__ == "__main__":

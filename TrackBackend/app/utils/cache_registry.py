@@ -1,22 +1,18 @@
-#
-# cache_registry.py
-# app/utils/cache_registry.py
-#
-# Central registry for @lru_cache'd functions.
-#
-# Problem: gtfs_refresh.py had to import 17 individual cached functions by
-# name just to call .cache_clear() on each one.  Adding a new cache anywhere
-# required remembering to update the import list — easy to forget.
-#
-# Solution (inspired by Transit App's config patterns): a decorator that
-# wraps functools.lru_cache AND auto-registers the wrapped function.
-# Clearing all caches is now a single call: clear_all_caches().
-#
+"""Central registry for @lru_cache'd functions.
+
+Problem: gtfs_refresh.py had to import 17 individual cached functions by
+name just to call .cache_clear() on each one.  Adding a new cache anywhere
+required remembering to update the import list — easy to forget.
+
+Solution (inspired by Transit App's config patterns): a decorator that
+wraps functools.lru_cache AND auto-registers the wrapped function.
+Clearing all caches is now a single call: clear_all_caches()."""
 
 from __future__ import annotations
 
 import functools
-from typing import Any, Callable, TypeVar
+from collections.abc import Callable
+from typing import Any, TypeVar
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -36,10 +32,12 @@ def tracked_cache(maxsize: int | None = 128, typed: bool = False) -> Callable[[F
         from app.utils.cache_registry import clear_all_caches
         clear_all_caches()   # clears every tracked cache at once
     """
+
     def decorator(fn: F) -> F:
         wrapped = functools.lru_cache(maxsize=maxsize, typed=typed)(fn)
         _REGISTRY.append(wrapped)
         return wrapped  # type: ignore[return-value]
+
     return decorator
 
 
@@ -59,11 +57,17 @@ def cache_stats() -> list[dict[str, Any]]:
     for fn in _REGISTRY:
         if hasattr(fn, "cache_info"):
             info = fn.cache_info()
-            stats.append({
-                "function": fn.__wrapped__.__qualname__ if hasattr(fn, "__wrapped__") else fn.__qualname__,
-                "hits": info.hits,
-                "misses": info.misses,
-                "maxsize": info.maxsize,
-                "currsize": info.currsize,
-            })
+            stats.append(
+                {
+                    "function": (
+                        fn.__wrapped__.__qualname__
+                        if hasattr(fn, "__wrapped__")
+                        else fn.__qualname__
+                    ),
+                    "hits": info.hits,
+                    "misses": info.misses,
+                    "maxsize": info.maxsize,
+                    "currsize": info.currsize,
+                }
+            )
     return stats

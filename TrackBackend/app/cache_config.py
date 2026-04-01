@@ -1,34 +1,30 @@
-#
-# cache_config.py
-# TrackBackend
-#
-# ══════════════════════════════════════════════════════════════════
-# SINGLE SOURCE OF TRUTH for every cache TTL, size, and concurrency
-# limit across the entire backend.
-#
-# Values are loaded from the "cache" section of settings.json when
-# present; otherwise the defaults below are used.
-#
-# Edit settings.json (production-friendly) OR this file (dev) to
-# tune caching — no need to hunt through bus_client / mta_client.
-# ══════════════════════════════════════════════════════════════════
-#
-# Data freshness tiers:
-#
-#   STATIC   — shapes, stops, routes, stations.  Rarely change.
-#              Cache for hours/days.  Safe to serve stale for a week.
-#
-#   LIVE     — GTFS-RT subway feeds, SIRI bus arrivals/vehicles.
-#              Cache for seconds.  Shared across all users so one
-#              upstream fetch serves thousands of concurrent requests.
-#
-#   NEARBY   — OBA stops-for-location.  Semi-static (bus stops don't
-#              move) but keyed by GPS grid, so moderate TTL.
-#
+"""══════════════════════════════════════════════════════════════════
+SINGLE SOURCE OF TRUTH for every cache TTL, size, and concurrency
+limit across the entire backend.
+
+Values are loaded from the "cache" section of settings.json when
+present; otherwise the defaults below are used.
+
+Edit settings.json (production-friendly) OR this file (dev) to
+tune caching — no need to hunt through bus_client / mta_client.
+══════════════════════════════════════════════════════════════════
+
+Data freshness tiers:
+
+STATIC   — shapes, stops, routes, stations.  Rarely change.
+Cache for hours/days.  Safe to serve stale for a week.
+
+LIVE     — GTFS-RT subway feeds, SIRI bus arrivals/vehicles.
+Cache for seconds.  Shared across all users so one
+upstream fetch serves thousands of concurrent requests.
+
+NEARBY   — OBA stops-for-location.  Semi-static (bus stops don't
+move) but keyed by GPS grid, so moderate TTL."""
 
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 
 _SETTINGS_PATH = Path(__file__).resolve().parent.parent / "settings.json"
@@ -39,10 +35,9 @@ def _load_cache_overrides() -> dict:
     try:
         raw = json.loads(_SETTINGS_PATH.read_text(encoding="utf-8"))
         return raw.get("cache", {})
-    except Exception:
+    except (FileNotFoundError, json.JSONDecodeError, KeyError, ValueError):
         # settings.json missing or malformed — use built-in defaults
-        import logging as _logging
-        _logging.getLogger("track").warning(
+        logging.getLogger("track").warning(
             "Failed to load cache overrides from settings.json, using defaults",
             extra={"tag": "CONFIG"},
         )
@@ -141,5 +136,5 @@ NEARBY_GPS_DECIMALS: int = _ovr.get("nearby_gps_decimals", 4)
 # │  stable within a single hour window.                │
 # └─────────────────────────────────────────────────────┘
 
-PREDICT_FACTOR_TTL: float = _ovr.get("predict_factor_ttl", 3600.0)   # 1 hour
+PREDICT_FACTOR_TTL: float = _ovr.get("predict_factor_ttl", 3600.0)  # 1 hour
 PREDICT_FACTOR_MAX_SIZE: int = _ovr.get("predict_factor_max_size", 512)

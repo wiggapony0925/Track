@@ -1,32 +1,27 @@
-#
-# test_route_shapes.py
-# TrackBackend
-#
-# Tests that EVERY subway line, LIRR branch, and MNR line returns actual
-# track geometry (polylines) when tapped. Also tests bus route shape
-# endpoint returns polylines + stops.
-#
-# This validates the full "tap → track" pipeline: the shape endpoints
-# must never return empty polylines for known routes.
-#
+"""Tests that EVERY subway line, LIRR branch, and MNR line returns actual
+track geometry (polylines) when tapped. Also tests bus route shape
+endpoint returns polylines + stops.
+
+This validates the full "tap → track" pipeline: the shape endpoints
+must never return empty polylines for known routes."""
 
 from __future__ import annotations
 
-import pytest
 from unittest.mock import AsyncMock, patch
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
 from app.models import BusStop, RouteShape
-from app.services.mapping.subway_shapes import get_subway_route_shape
 from app.services.mapping.commuter_rail_shapes import (
     get_all_lirr_lines,
     get_all_mnr_lines,
     get_single_lirr_line,
     get_single_mnr_line,
 )
-from app.utils.transit_utils import get_all_subway_lines, get_subway_color
+from app.services.mapping.subway_shapes import get_subway_route_shape
+from app.utils.transit_utils import get_subway_color
 
 client = TestClient(app)
 
@@ -38,9 +33,28 @@ client = TestClient(app)
 # The canonical subway lines that users can tap on.
 # Express/shuttle variants share tracks so the main list is what matters.
 SUBWAY_LINES_CORE = [
-    "1", "2", "3", "4", "5", "6",
-    "7", "A", "C", "E", "B", "D", "F", "M",
-    "G", "J", "Z", "L", "N", "Q", "R", "W",
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6",
+    "7",
+    "A",
+    "C",
+    "E",
+    "B",
+    "D",
+    "F",
+    "M",
+    "G",
+    "J",
+    "Z",
+    "L",
+    "N",
+    "Q",
+    "R",
+    "W",
 ]
 
 # Shuttles and express overlays may not have separate shapes
@@ -72,8 +86,12 @@ class TestSubwayShapeData:
             assert stop.lat != 0.0, f"Subway {line_id} stop {stop.name}: lat is 0"
             assert stop.lon != 0.0, f"Subway {line_id} stop {stop.name}: lon is 0"
             # NYC bounding box check
-            assert 40.4 < stop.lat < 41.0, f"Subway {line_id} stop {stop.name}: lat {stop.lat} out of NYC"
-            assert -74.3 < stop.lon < -73.6, f"Subway {line_id} stop {stop.name}: lon {stop.lon} out of NYC"
+            assert (
+                40.4 < stop.lat < 41.0
+            ), f"Subway {line_id} stop {stop.name}: lat {stop.lat} out of NYC"
+            assert (
+                -74.3 < stop.lon < -73.6
+            ), f"Subway {line_id} stop {stop.name}: lon {stop.lon} out of NYC"
 
 
 class TestSubwayBranches:
@@ -157,18 +175,24 @@ class TestSubwayShapeEndpoint:
     def test_subway_shape_endpoint_returns_200(self, line_id: str):
         """GET /subway/shape/{line} must return 200 with polylines + directions."""
         response = client.get(f"/subway/shape/{line_id}")
-        assert response.status_code == 200, f"Subway shape /{line_id} returned {response.status_code}"
+        assert (
+            response.status_code == 200
+        ), f"Subway shape /{line_id} returned {response.status_code}"
         data = response.json()
         assert data["route_id"] == line_id
         assert len(data["polylines"]) > 0, f"Subway shape /{line_id}: empty polylines"
         assert len(data["stops"]) > 0, f"Subway shape /{line_id}: no stops"
         # Direction data must be present
         assert "directions" in data, f"Subway shape /{line_id}: missing directions"
-        assert len(data["directions"]) >= 1, f"Subway shape /{line_id}: no direction entries"
+        assert (
+            len(data["directions"]) >= 1
+        ), f"Subway shape /{line_id}: no direction entries"
         for d in data["directions"]:
             assert "direction_id" in d
             assert "polylines" in d
-            assert len(d["polylines"]) > 0, f"Subway {line_id} direction {d['direction_id']}: empty polylines"
+            assert (
+                len(d["polylines"]) > 0
+            ), f"Subway {line_id} direction {d['direction_id']}: empty polylines"
 
     @pytest.mark.parametrize("line_id", SUBWAY_LINES_CORE)
     def test_subway_shape_polylines_are_encoded_strings(self, line_id: str):
@@ -176,7 +200,9 @@ class TestSubwayShapeEndpoint:
         data = client.get(f"/subway/shape/{line_id}").json()
         for i, poly in enumerate(data["polylines"]):
             assert isinstance(poly, str), f"Subway {line_id} polyline[{i}] not a string"
-            assert len(poly) > 10, f"Subway {line_id} polyline[{i}] too short ({len(poly)} chars)"
+            assert (
+                len(poly) > 10
+            ), f"Subway {line_id} polyline[{i}] too short ({len(poly)} chars)"
 
 
 class TestSubwayShapeColors:
@@ -218,7 +244,9 @@ class TestLIRRShapeData:
     def test_lirr_branch_has_shape(self, route_id: str, branch: str):
         """Every LIRR branch must have polyline data."""
         result = get_single_lirr_line(route_id)
-        assert result is not None, f"LIRR branch {branch} (route_id={route_id}): no shape data"
+        assert (
+            result is not None
+        ), f"LIRR branch {branch} (route_id={route_id}): no shape data"
         assert len(result["polylines"]) > 0, f"LIRR {branch}: empty polylines"
         total_points = sum(len(p) for p in result["polylines"])
         assert total_points > 2, f"LIRR {branch}: only {total_points} points"
@@ -230,7 +258,9 @@ class TestLIRRShapeData:
         assert result is not None
         assert result["name"], f"LIRR {branch}: empty name"
         assert result["color_hex"], f"LIRR {branch}: empty color"
-        assert result["route_id"].startswith("LIRR_"), f"LIRR {branch}: route_id not prefixed"
+        assert result["route_id"].startswith(
+            "LIRR_"
+        ), f"LIRR {branch}: route_id not prefixed"
 
     def test_lirr_shapes_all_returns_branches(self):
         """get_all_lirr_lines must return at least 9 major branches."""
@@ -248,13 +278,21 @@ class TestLIRRShapeEndpoint:
     def test_lirr_shape_endpoint_returns_200(self, route_id: str, branch: str):
         """GET /lirr/shape/{id} must return 200 with polylines + directions."""
         response = client.get(f"/lirr/shape/{route_id}")
-        assert response.status_code == 200, f"LIRR /{route_id} ({branch}) returned {response.status_code}"
+        assert (
+            response.status_code == 200
+        ), f"LIRR /{route_id} ({branch}) returned {response.status_code}"
         data = response.json()
-        assert len(data["polylines"]) > 0, f"LIRR /{route_id} ({branch}): empty polylines"
+        assert (
+            len(data["polylines"]) > 0
+        ), f"LIRR /{route_id} ({branch}): empty polylines"
         # Direction data must be present for commuter rail
-        assert len(data["directions"]) >= 1, f"LIRR /{route_id} ({branch}): no directions"
+        assert (
+            len(data["directions"]) >= 1
+        ), f"LIRR /{route_id} ({branch}): no directions"
         for d in data["directions"]:
-            assert len(d["polylines"]) > 0, f"LIRR {branch} dir {d['direction_id']}: empty polylines"
+            assert (
+                len(d["polylines"]) > 0
+            ), f"LIRR {branch} dir {d['direction_id']}: empty polylines"
 
     @pytest.mark.parametrize("route_id", list(LIRR_BRANCHES.keys()))
     def test_lirr_shape_accepts_prefixed_id(self, route_id: str):
@@ -299,7 +337,9 @@ class TestMNRShapeData:
     def test_mnr_line_has_shape(self, route_id: str, line_name: str):
         """Every MNR line must have polyline data."""
         result = get_single_mnr_line(route_id)
-        assert result is not None, f"MNR {line_name} (route_id={route_id}): no shape data"
+        assert (
+            result is not None
+        ), f"MNR {line_name} (route_id={route_id}): no shape data"
         assert len(result["polylines"]) > 0, f"MNR {line_name}: empty polylines"
         total_points = sum(len(p) for p in result["polylines"])
         assert total_points > 2, f"MNR {line_name}: only {total_points} points"
@@ -310,7 +350,9 @@ class TestMNRShapeData:
         assert result is not None
         assert result["name"], f"MNR {line_name}: empty name"
         assert result["color_hex"], f"MNR {line_name}: empty color"
-        assert result["route_id"].startswith("MNR_"), f"MNR {line_name}: route_id not prefixed"
+        assert result["route_id"].startswith(
+            "MNR_"
+        ), f"MNR {line_name}: route_id not prefixed"
 
     def test_mnr_shapes_all_returns_lines(self):
         lines = get_all_mnr_lines()
@@ -325,13 +367,21 @@ class TestMNRShapeEndpoint:
     @pytest.mark.parametrize("route_id,line_name", list(MNR_LINES.items()))
     def test_mnr_shape_endpoint_returns_200(self, route_id: str, line_name: str):
         response = client.get(f"/mnr/shape/{route_id}")
-        assert response.status_code == 200, f"MNR /{route_id} ({line_name}) returned {response.status_code}"
+        assert (
+            response.status_code == 200
+        ), f"MNR /{route_id} ({line_name}) returned {response.status_code}"
         data = response.json()
-        assert len(data["polylines"]) > 0, f"MNR /{route_id} ({line_name}): empty polylines"
+        assert (
+            len(data["polylines"]) > 0
+        ), f"MNR /{route_id} ({line_name}): empty polylines"
         # Direction data must be present for commuter rail
-        assert len(data["directions"]) >= 1, f"MNR /{route_id} ({line_name}): no directions"
+        assert (
+            len(data["directions"]) >= 1
+        ), f"MNR /{route_id} ({line_name}): no directions"
         for d in data["directions"]:
-            assert len(d["polylines"]) > 0, f"MNR {line_name} dir {d['direction_id']}: empty polylines"
+            assert (
+                len(d["polylines"]) > 0
+            ), f"MNR {line_name} dir {d['direction_id']}: empty polylines"
 
     @pytest.mark.parametrize("route_id", list(MNR_LINES.keys()))
     def test_mnr_shape_accepts_prefixed_id(self, route_id: str):
@@ -370,7 +420,9 @@ class TestBusRouteShapeEndpoint:
                 "gsqwFn`ubMcAcBcCcDcEcFcGcHcIcJcKcLcMcNcOcPcQcRcScTcUcVcWcXcYcZ",
             ],
             stops=[
-                BusStop(id="MTA_308214", name="5 Av / Union St", lat=40.6728, lon=-73.9894),
+                BusStop(
+                    id="MTA_308214", name="5 Av / Union St", lat=40.6728, lon=-73.9894
+                ),
                 BusStop(id="MTA_308215", name="5 Av / 9 St", lat=40.6704, lon=-73.9883),
                 BusStop(id="MTA_308216", name="5 Av / 3 St", lat=40.6756, lon=-73.9906),
             ],
@@ -403,7 +455,9 @@ class TestBusRouteShapeEndpoint:
     def test_bus_shape_empty_returns_gracefully(self, mock_shape):
         """An unknown bus route should still return 200 with empty data."""
         mock_shape.return_value = RouteShape(
-            route_id="UNKNOWN", polylines=[], stops=[],
+            route_id="UNKNOWN",
+            polylines=[],
+            stops=[],
         )
         response = client.get("/bus/route-shape/UNKNOWN")
         assert response.status_code == 200
@@ -428,9 +482,9 @@ class TestRouteTapDispatching:
         """
         # LIRR_5 hitting the subway endpoint should 404 or return wrong data
         subway_resp = client.get("/subway/shape/LIRR_5")
-        assert subway_resp.status_code == 404, (
-            "Subway shape endpoint should NOT match 'LIRR_5'"
-        )
+        assert (
+            subway_resp.status_code == 404
+        ), "Subway shape endpoint should NOT match 'LIRR_5'"
 
         # But the LIRR endpoint must return real Montauk data
         lirr_resp = client.get("/lirr/shape/5")
@@ -464,9 +518,9 @@ class TestRouteTapDispatching:
             lirr_data = lirr_resp.json()
             assert lirr_data["route_id"].startswith("LIRR_")
             # The polylines must be DIFFERENT from the subway version
-            assert lirr_data["polylines"] != subway_data["polylines"], (
-                f"LIRR shape for route {route_id} should differ from subway shape"
-            )
+            assert (
+                lirr_data["polylines"] != subway_data["polylines"]
+            ), f"LIRR shape for route {route_id} should differ from subway shape"
 
 
 class TestShapeEndpoint404s:
@@ -524,7 +578,9 @@ class TestPolylineQuality:
             assert len(coords) > 2, f"Subway {line_id}: decoded polyline has < 3 points"
             for lat, lon in coords:
                 assert 40.0 < lat < 41.5, f"Subway {line_id}: lat {lat} out of NYC area"
-                assert -74.5 < lon < -73.0, f"Subway {line_id}: lon {lon} out of NYC area"
+                assert (
+                    -74.5 < lon < -73.0
+                ), f"Subway {line_id}: lon {lon} out of NYC area"
 
     def test_lirr_polyline_decodes_to_long_island(self):
         data = client.get("/lirr/shape/5").json()  # Montauk
@@ -562,28 +618,31 @@ class TestSystemMapBranchPreservation:
     def test_system_map_a_train_has_branches(self):
         """A train should have 3 polylines (3 branches) on the system map."""
         data = client.get("/subway/shapes/all").json()
-        a_lines = [l for l in data["lines"] if l["route_id"] == "A"]
+        a_lines = [entry for entry in data["lines"] if entry["route_id"] == "A"]
         assert len(a_lines) == 1, "A train should be in system map"
         poly_count = len(a_lines[0]["polylines"])
-        assert poly_count >= 3, (
-            f"A train system map should have ≥3 polylines (branches), got {poly_count}"
-        )
+        assert (
+            poly_count >= 3
+        ), f"A train system map should have ≥3 polylines (branches), got {poly_count}"
 
-    @pytest.mark.parametrize("route_id,min_branches", [
-        ("A", 3),   # Far Rockaway, Lefferts Blvd, Rockaway Park
-        ("N", 3),   # Astoria, Sea Beach, and another
-        ("5", 3),   # Dyre Ave, Flatbush, etc.
-        ("2", 2),   # Wakefield, New Lots
-    ])
+    @pytest.mark.parametrize(
+        "route_id,min_branches",
+        [
+            ("A", 3),  # Far Rockaway, Lefferts Blvd, Rockaway Park
+            ("N", 3),  # Astoria, Sea Beach, and another
+            ("5", 3),  # Dyre Ave, Flatbush, etc.
+            ("2", 2),  # Wakefield, New Lots
+        ],
+    )
     def test_system_map_branching_lines(self, route_id: str, min_branches: int):
         """Branching lines should have multiple polylines on the system map."""
         data = client.get("/subway/shapes/all").json()
-        lines = [l for l in data["lines"] if l["route_id"] == route_id]
+        lines = [entry for entry in data["lines"] if entry["route_id"] == route_id]
         assert len(lines) == 1, f"{route_id} train should be in system map"
         poly_count = len(lines[0]["polylines"])
-        assert poly_count >= min_branches, (
-            f"{route_id} train: expected ≥{min_branches} polylines, got {poly_count}"
-        )
+        assert (
+            poly_count >= min_branches
+        ), f"{route_id} train: expected ≥{min_branches} polylines, got {poly_count}"
 
     def test_system_map_non_branching_line_has_single_polyline(self):
         """L train has no branches — should have few polylines (≤5).
@@ -593,7 +652,7 @@ class TestSystemMapBranchPreservation:
         not explode into many fragments.
         """
         data = client.get("/subway/shapes/all").json()
-        l_lines = [l for l in data["lines"] if l["route_id"] == "L"]
+        l_lines = [entry for entry in data["lines"] if entry["route_id"] == "L"]
         assert len(l_lines) == 1
         assert len(l_lines[0]["polylines"]) <= 5, (
             f"L train (no branches) should have ≤5 polylines, "
@@ -604,15 +663,15 @@ class TestSystemMapBranchPreservation:
         """Every line in the system map response must have ≥1 polyline."""
         data = client.get("/subway/shapes/all").json()
         for line in data["lines"]:
-            assert len(line["polylines"]) >= 1, (
-                f"System map line {line['route_id']} has no polylines"
-            )
+            assert (
+                len(line["polylines"]) >= 1
+            ), f"System map line {line['route_id']} has no polylines"
 
     def test_system_map_total_polylines_increased_with_branches(self):
         """Total polyline count should be > number of lines (branches add extras)."""
         data = client.get("/subway/shapes/all").json()
         n_lines = len(data["lines"])
-        total_polys = sum(len(l["polylines"]) for l in data["lines"])
+        total_polys = sum(len(entry["polylines"]) for entry in data["lines"])
         assert total_polys > n_lines, (
             f"System map has {total_polys} polylines for {n_lines} lines — "
             f"expected more due to branches"
@@ -629,7 +688,9 @@ class TestNearbyStationsEndpoint:
 
     def test_nearby_stations_returns_200(self):
         """Endpoint should return 200 with valid coordinates."""
-        response = client.get("/subway/stations/nearby?lat=40.758&lon=-73.985&radius=1000")
+        response = client.get(
+            "/subway/stations/nearby?lat=40.758&lon=-73.985&radius=1000"
+        )
         assert response.status_code == 200
         data = response.json()
         assert "stations" in data
@@ -637,21 +698,28 @@ class TestNearbyStationsEndpoint:
     def test_nearby_stations_fewer_than_all(self):
         """Nearby endpoint should return fewer stations than the /all endpoint."""
         all_resp = client.get("/subway/stations/all").json()
-        nearby_resp = client.get("/subway/stations/nearby?lat=40.758&lon=-73.985&radius=500").json()
-        assert len(nearby_resp["stations"]) < len(all_resp["stations"]), (
-            "Nearby stations should be a subset of all stations"
-        )
+        nearby_resp = client.get(
+            "/subway/stations/nearby?lat=40.758&lon=-73.985&radius=500"
+        ).json()
+        assert len(nearby_resp["stations"]) < len(
+            all_resp["stations"]
+        ), "Nearby stations should be a subset of all stations"
 
     def test_nearby_stations_are_within_radius(self):
         """All returned stations should be within the specified radius."""
-        from math import radians, cos, sqrt
+        from math import cos, radians, sqrt
+
         lat, lon, radius = 40.758, -73.985, 1000
-        resp = client.get(f"/subway/stations/nearby?lat={lat}&lon={lon}&radius={radius}").json()
+        resp = client.get(
+            f"/subway/stations/nearby?lat={lat}&lon={lon}&radius={radius}"
+        ).json()
         for s in resp["stations"]:
             dlat = (s["lat"] - lat) * 111_000
             dlon = (s["lon"] - lon) * 111_000 * cos(radians(lat))
             dist = sqrt(dlat * dlat + dlon * dlon)
-            assert dist <= radius * 1.05, (  # 5% tolerance for float math
+            assert (
+                dist <= radius * 1.05
+            ), (  # 5% tolerance for float math
                 f"Station {s['name']} at distance {dist:.0f}m exceeds radius {radius}m"
             )
 
@@ -684,9 +752,9 @@ class TestGroupedModeFilter:
         resp = client.get("/nearby/grouped?lat=40.7&lon=-73.9&mode=subway")
         data = resp.json()
         for group in data:
-            assert group["mode"] == "subway", (
-                f"Expected mode='subway', got '{group['mode']}' for route {group['route_id']}"
-            )
+            assert (
+                group["mode"] == "subway"
+            ), f"Expected mode='subway', got '{group['mode']}' for route {group['route_id']}"
 
     def test_no_mode_filter_returns_all(self):
         """Without mode filter, all modes should be returned."""

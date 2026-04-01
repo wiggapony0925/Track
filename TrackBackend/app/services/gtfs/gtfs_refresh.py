@@ -1,33 +1,26 @@
-#
-# gtfs_refresh.py
-# TrackBackend
-#
-# Automatic GTFS static data refresh.  Detects when the MTA has published
-# updated GTFS feeds by checking HTTP Last-Modified headers, then:
-#
-#   1. Downloads new .zip files from web.mta.info
-#   2. Extracts into app/data/
-#   3. Rebuilds transit_schedule.db (if bus/schedule feeds changed)
-#   4. Uploads changed archives to Supabase Storage
-#   5. Clears all @lru_cache'd GTFS data so live server uses fresh data
-#
-# Can be run:
-#   - At server startup  (await check_and_refresh_gtfs())
-#   - Periodically       (background task every 24 hours)
-#   - Manually           (python -m app.services.gtfs.gtfs_refresh)
-#
+"""Automatic GTFS static data refresh.  Detects when the MTA has published
+updated GTFS feeds by checking HTTP Last-Modified headers, then:
+
+1. Downloads new .zip files from web.mta.info
+2. Extracts into app/data/
+3. Rebuilds transit_schedule.db (if bus/schedule feeds changed)
+4. Uploads changed archives to Supabase Storage
+5. Clears all @lru_cache'd GTFS data so live server uses fresh data
+
+Can be run:
+- At server startup  (await check_and_refresh_gtfs())
+- Periodically       (background task every 24 hours)
+- Manually           (python -m app.services.gtfs.gtfs_refresh)."""
 
 from __future__ import annotations
 
 import csv
 import io
-import json
 import os
+import shutil
 import sqlite3
 import time
 import zipfile
-from datetime import datetime, timezone
-from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -111,6 +104,7 @@ QUICK_CHECK_FEEDS = ["subway", "lirr", "metro_north"]
 # Last-Modified tracking
 # ---------------------------------------------------------------------------
 
+
 def _last_modified_path(feed_name: str) -> Path:
     return _META_DIR / f"{feed_name}.last_modified"
 
@@ -130,6 +124,7 @@ def _write_last_modified(feed_name: str, value: str) -> None:
 # ---------------------------------------------------------------------------
 # Check for updates (HEAD request only — no download)
 # ---------------------------------------------------------------------------
+
 
 def _check_feed_freshness(
     client: httpx.Client, feed_name: str
@@ -167,6 +162,7 @@ def _check_feed_freshness(
 # Download + extract a single feed
 # ---------------------------------------------------------------------------
 
+
 def _download_feed(client: httpx.Client, feed_name: str) -> bool:
     """Download and extract a single GTFS zip feed.  Returns True on success."""
     feed = GTFS_FEEDS[feed_name]
@@ -198,9 +194,7 @@ def _download_feed(client: httpx.Client, feed_name: str) -> bool:
         return True
 
     except Exception as exc:
-        TrackLogger.error(
-            f"[GTFS] Failed to download {feed_name}: {exc}", tag="GTFS"
-        )
+        TrackLogger.error(f"[GTFS] Failed to download {feed_name}: {exc}", tag="GTFS")
         return False
 
 
@@ -209,7 +203,6 @@ def _copy_subway_root_files(subway_dir: Path) -> None:
 
     subway_shapes.py reads these from the root data dir, not the subway subdir.
     """
-    import shutil
     for fname in ("shapes.txt", "trips.txt", "stops.txt"):
         src = subway_dir / fname
         dst = _DATA_DIR / fname
@@ -220,6 +213,7 @@ def _copy_subway_root_files(subway_dir: Path) -> None:
 # ---------------------------------------------------------------------------
 # Rebuild transit_schedule.db
 # ---------------------------------------------------------------------------
+
 
 def _rebuild_schedule_db() -> bool:
     """Rebuild the SQLite schedule database from extracted GTFS files.
@@ -232,34 +226,48 @@ def _rebuild_schedule_db() -> bool:
 
     TABLE_MAPPINGS = {
         "stops": {
-            "stop_id": "stop_id", "stop_name": "stop_name",
-            "stop_lat": "stop_lat", "stop_lon": "stop_lon",
+            "stop_id": "stop_id",
+            "stop_name": "stop_name",
+            "stop_lat": "stop_lat",
+            "stop_lon": "stop_lon",
         },
         "routes": {
-            "route_id": "route_id", "route_short_name": "route_short_name",
-            "route_long_name": "route_long_name", "route_color": "route_color",
+            "route_id": "route_id",
+            "route_short_name": "route_short_name",
+            "route_long_name": "route_long_name",
+            "route_color": "route_color",
             "route_type": "route_type",
         },
         "trips": {
-            "trip_id": "trip_id", "route_id": "route_id",
-            "service_id": "service_id", "trip_headsign": "trip_headsign",
+            "trip_id": "trip_id",
+            "route_id": "route_id",
+            "service_id": "service_id",
+            "trip_headsign": "trip_headsign",
             "direction_id": "direction_id",
         },
         "stop_times": {
-            "trip_id": "trip_id", "arrival_time": "arrival_time",
-            "departure_time": "departure_time", "stop_id": "stop_id",
+            "trip_id": "trip_id",
+            "arrival_time": "arrival_time",
+            "departure_time": "departure_time",
+            "stop_id": "stop_id",
             "stop_sequence": "stop_sequence",
         },
         "calendar_dates": {
-            "service_id": "service_id", "date": "date",
+            "service_id": "service_id",
+            "date": "date",
             "exception_type": "exception_type",
         },
         "calendar": {
             "service_id": "service_id",
-            "monday": "monday", "tuesday": "tuesday",
-            "wednesday": "wednesday", "thursday": "thursday",
-            "friday": "friday", "saturday": "saturday", "sunday": "sunday",
-            "start_date": "start_date", "end_date": "end_date",
+            "monday": "monday",
+            "tuesday": "tuesday",
+            "wednesday": "wednesday",
+            "thursday": "thursday",
+            "friday": "friday",
+            "saturday": "saturday",
+            "sunday": "sunday",
+            "start_date": "start_date",
+            "end_date": "end_date",
         },
     }
 
@@ -292,7 +300,7 @@ def _rebuild_schedule_db() -> bool:
         ]
 
         total_rows = 0
-        for feed_dir, label in feed_dirs:
+        for feed_dir, _label in feed_dirs:
             if not feed_dir.exists():
                 continue
             for table_name, mapping in TABLE_MAPPINGS.items():
@@ -308,16 +316,25 @@ def _rebuild_schedule_db() -> bool:
                 total_rows += rows
 
         # Create indices
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_stop_times_stop ON stop_times(stop_id)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_stop_times_arrival ON stop_times(arrival_time)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_trips_service ON trips(service_id)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_calendar_date ON calendar_dates(date)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_calendar_service ON calendar(service_id)")
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_stop_times_stop ON stop_times(stop_id)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_stop_times_arrival ON stop_times(arrival_time)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_trips_service ON trips(service_id)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_calendar_date ON calendar_dates(date)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_calendar_service ON calendar(service_id)"
+        )
         conn.commit()
         conn.close()
 
         # Atomic swap
-        import shutil
         shutil.move(str(db_tmp), str(db_path))
 
         elapsed = time.monotonic() - t0
@@ -330,7 +347,9 @@ def _rebuild_schedule_db() -> bool:
         return True
 
     except Exception as exc:
-        TrackLogger.error(f"[GTFS] Failed to rebuild schedule DB: {exc}", tag="GTFS", exc_info=True)
+        TrackLogger.error(
+            f"[GTFS] Failed to rebuild schedule DB: {exc}", tag="GTFS", exc_info=True
+        )
         if db_tmp.exists():
             db_tmp.unlink(missing_ok=True)
         return False
@@ -411,14 +430,14 @@ def _ingest_csv(
 # Upload changed archives to Supabase
 # ---------------------------------------------------------------------------
 
+
 def _upload_to_supabase(archive_names: set[str]) -> None:
     """Upload specific archives to Supabase Storage after a data refresh."""
     if not archive_names:
         return
 
-    supabase_key = (
-        os.environ.get("SUPABASE_SERVICE_KEY")
-        or os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+    supabase_key = os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get(
+        "SUPABASE_SERVICE_ROLE_KEY", ""
     )
     if not supabase_key:
         TrackLogger.warning(
@@ -431,6 +450,7 @@ def _upload_to_supabase(archive_names: set[str]) -> None:
     try:
         # Import from the upload script
         import sys
+
         scripts_dir = Path(__file__).resolve().parent.parent.parent.parent / "scripts"
         sys.path.insert(0, str(scripts_dir))
 
@@ -470,7 +490,9 @@ def _upload_to_supabase(archive_names: set[str]) -> None:
             # pkl happens to be on the running server).
         }
 
-        with httpx.Client(timeout=httpx.Timeout(connect=10, read=300, write=300, pool=10)) as client:
+        with httpx.Client(
+            timeout=httpx.Timeout(connect=10, read=300, write=300, pool=10)
+        ) as client:
             for name in archive_names:
                 members = ARCHIVE_DEFS.get(name)
                 if not members:
@@ -506,7 +528,9 @@ def _upload_to_supabase(archive_names: set[str]) -> None:
                 os.unlink(tmp_path)
 
                 if resp.status_code in (200, 201):
-                    TrackLogger.info(f"[GTFS] Uploaded {obj_name} to Supabase", tag="GTFS")
+                    TrackLogger.info(
+                        f"[GTFS] Uploaded {obj_name} to Supabase", tag="GTFS"
+                    )
                 else:
                     TrackLogger.warning(
                         f"[GTFS] Supabase upload failed for {obj_name}: "
@@ -515,12 +539,15 @@ def _upload_to_supabase(archive_names: set[str]) -> None:
                     )
 
     except Exception as exc:
-        TrackLogger.error(f"[GTFS] Supabase upload error: {exc}", tag="GTFS", exc_info=True)
+        TrackLogger.error(
+            f"[GTFS] Supabase upload error: {exc}", tag="GTFS", exc_info=True
+        )
 
 
 # ---------------------------------------------------------------------------
 # Clear all GTFS @lru_cache entries
 # ---------------------------------------------------------------------------
+
 
 def _clear_gtfs_caches() -> None:
     """Clear all @lru_cache'd GTFS data so the running server picks up fresh files.
@@ -532,12 +559,36 @@ def _clear_gtfs_caches() -> None:
     # ── Phase 1: central registry (covers all @tracked_cache functions) ──
     try:
         from app.utils.cache_registry import clear_all_caches
+
         registry_cleared = clear_all_caches()
     except ImportError:
         registry_cleared = 0
 
     # ── Phase 2: legacy manual list (safe to double-clear; .cache_clear is idempotent) ──
+    from app.services.mapping.commuter_rail_shapes import (
+        _lirr_routes,
+        _lirr_shape_stop_map,
+        _lirr_shapes,
+        _lirr_stops,
+        _lirr_trips,
+        _mnr_routes,
+        _mnr_shape_stop_map,
+        _mnr_shapes,
+        _mnr_stops,
+        _mnr_trips,
+    )
     from app.services.mapping.subway_shapes import (
+        _get_stops_for_shape,
+        _load_direction_headsigns,
+        _load_route_shapes,
+        _load_service_types,
+        _load_shape_stops,
+        _load_shapes,
+        _parse_trips,
+    )
+    from app.services.transit.station_lookup import _load_stops
+
+    caches = [
         _load_shapes,
         _parse_trips,
         _load_route_shapes,
@@ -545,24 +596,17 @@ def _clear_gtfs_caches() -> None:
         _load_direction_headsigns,
         _get_stops_for_shape,
         _load_service_types,
-    )
-    from app.services.transit.station_lookup import _load_stops
-    from app.services.mapping.commuter_rail_shapes import (
-        _lirr_shapes, _lirr_routes, _lirr_trips,
-        _lirr_stops, _lirr_shape_stop_map,
-        _mnr_shapes, _mnr_routes, _mnr_trips,
-        _mnr_stops, _mnr_shape_stop_map,
-    )
-
-    caches = [
-        _load_shapes, _parse_trips, _load_route_shapes,
-        _load_shape_stops, _load_direction_headsigns,
-        _get_stops_for_shape, _load_service_types,
         _load_stops,
-        _lirr_shapes, _lirr_routes, _lirr_trips,
-        _lirr_stops, _lirr_shape_stop_map,
-        _mnr_shapes, _mnr_routes, _mnr_trips,
-        _mnr_stops, _mnr_shape_stop_map,
+        _lirr_shapes,
+        _lirr_routes,
+        _lirr_trips,
+        _lirr_stops,
+        _lirr_shape_stop_map,
+        _mnr_shapes,
+        _mnr_routes,
+        _mnr_trips,
+        _mnr_stops,
+        _mnr_shape_stop_map,
     ]
 
     legacy_cleared = 0
@@ -582,6 +626,7 @@ def _clear_gtfs_caches() -> None:
 # Public API
 # ---------------------------------------------------------------------------
 
+
 async def check_and_refresh_gtfs(full_check: bool = False) -> dict[str, str]:
     """Check if MTA GTFS feeds have been updated and refresh if needed.
 
@@ -594,6 +639,7 @@ async def check_and_refresh_gtfs(full_check: bool = False) -> dict[str, str]:
         "up-to-date", "updated", "failed", "skipped"
     """
     import asyncio
+
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, _sync_check_and_refresh, full_check)
 
@@ -692,6 +738,7 @@ async def rebuild_schedule_db_if_missing() -> None:
         tag="GTFS",
     )
     import asyncio
+
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, _rebuild_schedule_db)
 
@@ -723,5 +770,10 @@ if __name__ == "__main__":
 
     results = asyncio.run(check_and_refresh_gtfs(full_check=full))
     for name, status in results.items():
-        icon = {"up-to-date": "✅", "updated": "🔄", "failed": "❌", "skipped": "⏭️"}.get(status, "?")
+        icon = {
+            "up-to-date": "✅",
+            "updated": "🔄",
+            "failed": "❌",
+            "skipped": "⏭️",
+        }.get(status, "?")
         print(f"  {icon} {name}: {status}")

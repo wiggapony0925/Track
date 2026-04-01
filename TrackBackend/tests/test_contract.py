@@ -1,29 +1,21 @@
-#
-# test_contract.py
-# TrackBackend
-#
-# Contract tests that ensure data integrity between the backend API
-# and the iOS frontend.  These tests verify:
-#   1. Bus arrivals always have proper direction grouping (DirectionRef)
-#   2. LIRR/MNR stop_id namespacing prevents cross-contamination
-#   3. Rail direction inference works for feeds without direction_id
-#   4. GroupedNearbyTransit schema matches iOS Codable contracts
-#   5. Bus nearby reliability (OBA stops + SIRI arrivals)
-#   6. Station lookup correctness with overlapping stop_ids
-#
+"""Contract tests that ensure data integrity between the backend API
+and the iOS frontend.  These tests verify:
+1. Bus arrivals always have proper direction grouping (DirectionRef)
+2. LIRR/MNR stop_id namespacing prevents cross-contamination
+3. Rail direction inference works for feeds without direction_id
+4. GroupedNearbyTransit schema matches iOS Codable contracts
+5. Bus nearby reliability (OBA stops + SIRI arrivals)
+6. Station lookup correctness with overlapping stop_ids."""
 
 from __future__ import annotations
 
 import asyncio
-from collections import defaultdict
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, patch
+from datetime import UTC, datetime
 
 import pytest
 
 from app.models import (
     BusArrival,
-    BusStop,
     BusVehicle,
     DirectionArrivals,
     GroupedNearbyTransit,
@@ -45,10 +37,10 @@ from app.services.transit.station_lookup import (
     get_stop_name,
 )
 
-
 # ===================================================================
 # HELPERS
 # ===================================================================
+
 
 def _make_bus_arrival(
     route_id: str = "Q43",
@@ -64,7 +56,7 @@ def _make_bus_arrival(
         direction=direction,
         destination=destination_name,
         minutes_away=kwargs.get("minutes_away", 5),
-        arrival_ts=kwargs.get("arrival_ts", int(datetime.now(timezone.utc).timestamp())),
+        arrival_ts=kwargs.get("arrival_ts", int(datetime.now(UTC).timestamp())),
         status=kwargs.get("status", "1 stop away"),
         mode="bus",
         stop_lat=40.70,
@@ -88,7 +80,7 @@ def _make_rail_arrival(
         direction=direction,
         destination=destination,
         minutes_away=kwargs.get("minutes_away", 10),
-        arrival_ts=kwargs.get("arrival_ts", int(datetime.now(timezone.utc).timestamp())),
+        arrival_ts=kwargs.get("arrival_ts", int(datetime.now(UTC).timestamp())),
         status="On Time",
         mode=mode,
         stop_lat=40.70,
@@ -108,10 +100,24 @@ class TestBusDirectionGrouping:
     def test_two_directions_per_route(self):
         """A bus route with arrivals in both directions should produce 2 direction groups."""
         arrivals = [
-            _make_bus_arrival(route_id="Q43", direction_ref=0, destination_name="FLORAL PARK"),
-            _make_bus_arrival(route_id="Q43", direction_ref=0, destination_name="FLORAL PARK", minutes_away=8),
-            _make_bus_arrival(route_id="Q43", direction_ref=1, destination_name="JAMAICA LIRR"),
-            _make_bus_arrival(route_id="Q43", direction_ref=1, destination_name="JAMAICA LIRR", minutes_away=12),
+            _make_bus_arrival(
+                route_id="Q43", direction_ref=0, destination_name="FLORAL PARK"
+            ),
+            _make_bus_arrival(
+                route_id="Q43",
+                direction_ref=0,
+                destination_name="FLORAL PARK",
+                minutes_away=8,
+            ),
+            _make_bus_arrival(
+                route_id="Q43", direction_ref=1, destination_name="JAMAICA LIRR"
+            ),
+            _make_bus_arrival(
+                route_id="Q43",
+                direction_ref=1,
+                destination_name="JAMAICA LIRR",
+                minutes_away=12,
+            ),
         ]
         groups = _group_arrivals(arrivals)
         assert len(groups) == 1, "Should be 1 route group for Q43"
@@ -120,8 +126,12 @@ class TestBusDirectionGrouping:
     def test_direction_labels_use_destination(self):
         """Direction labels for bus DirectionRef '0'/'1' should use DestinationName."""
         arrivals = [
-            _make_bus_arrival(route_id="Q56", direction_ref=0, destination_name="JAMAICA 170 ST"),
-            _make_bus_arrival(route_id="Q56", direction_ref=1, destination_name="BROADWAY JUNCTION"),
+            _make_bus_arrival(
+                route_id="Q56", direction_ref=0, destination_name="JAMAICA 170 ST"
+            ),
+            _make_bus_arrival(
+                route_id="Q56", direction_ref=1, destination_name="BROADWAY JUNCTION"
+            ),
         ]
         groups = _group_arrivals(arrivals)
         labels = {d.direction_label for d in groups[0].directions}
@@ -131,7 +141,9 @@ class TestBusDirectionGrouping:
     def test_direction_ref_none_falls_back(self):
         """When DirectionRef is None, direction should fallback to 'Loop'."""
         arrivals = [
-            _make_bus_arrival(route_id="X99", direction_ref=None, destination_name=None),
+            _make_bus_arrival(
+                route_id="X99", direction_ref=None, destination_name=None
+            ),
         ]
         # direction is "Loop" when direction_ref is None
         assert arrivals[0].direction == "Loop"
@@ -142,12 +154,30 @@ class TestBusDirectionGrouping:
     def test_same_direction_ref_merges(self):
         """All arrivals from multiple stops with the same DirectionRef merge."""
         arrivals = [
-            _make_bus_arrival(route_id="Q54", direction_ref=0, stop_id="MTA_001", stop_name="Stop A", vehicle_id="MTABC_1111"),
-            _make_bus_arrival(route_id="Q54", direction_ref=0, stop_id="MTA_002", stop_name="Stop B", vehicle_id="MTABC_2222"),
-            _make_bus_arrival(route_id="Q54", direction_ref=1, stop_id="MTA_003", stop_name="Stop C", vehicle_id="MTABC_3333"),
+            _make_bus_arrival(
+                route_id="Q54",
+                direction_ref=0,
+                stop_id="MTA_001",
+                stop_name="Stop A",
+                vehicle_id="MTABC_1111",
+            ),
+            _make_bus_arrival(
+                route_id="Q54",
+                direction_ref=0,
+                stop_id="MTA_002",
+                stop_name="Stop B",
+                vehicle_id="MTABC_2222",
+            ),
+            _make_bus_arrival(
+                route_id="Q54",
+                direction_ref=1,
+                stop_id="MTA_003",
+                stop_name="Stop C",
+                vehicle_id="MTABC_3333",
+            ),
         ]
         groups = _group_arrivals(arrivals)
-        dir0 = [d for d in groups[0].directions if d.direction == "0"][0]
+        dir0 = next(d for d in groups[0].directions if d.direction == "0")
         assert len(dir0.arrivals) == 2, "Dir 0 should merge arrivals from both stops"
 
     def test_bus_mode_set_correctly(self):
@@ -176,18 +206,21 @@ class TestBusDirectionGrouping:
 class TestDirectionLabel:
     """Verify _direction_label() resolves all known direction codes."""
 
-    @pytest.mark.parametrize("code,expected", [
-        ("N", "Northbound"),
-        ("S", "Southbound"),
-        ("E", "Eastbound"),
-        ("W", "Westbound"),
-        ("NE", "Northeast"),
-        ("NW", "Northwest"),
-        ("SE", "Southeast"),
-        ("SW", "Southwest"),
-        ("Inbound", "Inbound"),
-        ("Outbound", "Outbound"),
-    ])
+    @pytest.mark.parametrize(
+        "code,expected",
+        [
+            ("N", "Northbound"),
+            ("S", "Southbound"),
+            ("E", "Eastbound"),
+            ("W", "Westbound"),
+            ("NE", "Northeast"),
+            ("NW", "Northwest"),
+            ("SE", "Southeast"),
+            ("SW", "Southwest"),
+            ("Inbound", "Inbound"),
+            ("Outbound", "Outbound"),
+        ],
+    )
     def test_compass_codes(self, code: str, expected: str):
         assert _direction_label(code) == expected
 
@@ -225,9 +258,9 @@ class TestStopIdNamespacing:
         # Both should resolve, to different stations
         assert lirr_info is not None, "LIRR stop_id '1' not found"
         assert mnr_info is not None, "MNR stop_id '1' not found"
-        assert lirr_info.name != mnr_info.name, (
-            f"LIRR and MNR stop_id '1' resolved to same name: {lirr_info.name}"
-        )
+        assert (
+            lirr_info.name != mnr_info.name
+        ), f"LIRR and MNR stop_id '1' resolved to same name: {lirr_info.name}"
         # LIRR stop_id 1 = Albertson, MNR stop_id 1 = Grand Central
         assert lirr_info.agency == "lirr"
         assert mnr_info.agency == "mnr"
@@ -255,12 +288,12 @@ class TestStopIdNamespacing:
         """get_nearby_stop_ids with agency filter returns only that agency's stops."""
         # Jamaica area — should find LIRR stops, not MNR
         lirr_stops = get_nearby_stop_ids(40.699, -73.808, 5000.0, agency="lirr")
-        mnr_stops = get_nearby_stop_ids(40.699, -73.808, 5000.0, agency="mnr")
-        
+        get_nearby_stop_ids(40.699, -73.808, 5000.0, agency="mnr")
+
         # Jamaica is an LIRR hub, not MNR
         assert len(lirr_stops) > 0, "Should find LIRR stops near Jamaica"
         # MNR might have 0 stops near Jamaica (it's mostly Manhattan/Bronx-north)
-        
+
         # Grand Central area — should find MNR stops
         mnr_gc = get_nearby_stop_ids(40.753, -73.977, 2000.0, agency="mnr")
         assert len(mnr_gc) > 0, "Should find MNR stops near Grand Central"
@@ -277,18 +310,34 @@ class TestRailDirectionInference:
     def test_mnr_grouped_has_directions(self):
         """MNR arrivals should NOT all be in a single 'N/A' direction."""
         arrivals = [
-            _make_rail_arrival(route_id="MNR_1", direction="Grand Central", destination="Grand Central", mode="mnr"),
-            _make_rail_arrival(route_id="MNR_1", direction="Poughkeepsie", destination="Poughkeepsie", mode="mnr"),
+            _make_rail_arrival(
+                route_id="MNR_1",
+                direction="Grand Central",
+                destination="Grand Central",
+                mode="mnr",
+            ),
+            _make_rail_arrival(
+                route_id="MNR_1",
+                direction="Poughkeepsie",
+                destination="Poughkeepsie",
+                mode="mnr",
+            ),
         ]
         groups = _group_arrivals(arrivals)
         assert len(groups) == 1
-        assert len(groups[0].directions) == 2, "MNR should have 2 directions (Inbound/Outbound)"
+        assert (
+            len(groups[0].directions) == 2
+        ), "MNR should have 2 directions (Inbound/Outbound)"
 
     def test_lirr_has_outbound_inbound(self):
         """LIRR arrivals should have Inbound and Outbound directions."""
         arrivals = [
-            _make_rail_arrival(route_id="LIRR_10", direction="Penn Station", destination="Penn Station"),
-            _make_rail_arrival(route_id="LIRR_10", direction="Babylon", destination="Babylon"),
+            _make_rail_arrival(
+                route_id="LIRR_10", direction="Penn Station", destination="Penn Station"
+            ),
+            _make_rail_arrival(
+                route_id="LIRR_10", direction="Babylon", destination="Babylon"
+            ),
         ]
         groups = _group_arrivals(arrivals)
         dirs = {d.direction for d in groups[0].directions}
@@ -320,7 +369,13 @@ class TestGroupedTransitSchema:
         )
         data = group.model_dump()
         # These keys map to iOS CodingKeys
-        ios_expected_keys = ["route_id", "display_name", "mode", "color_hex", "directions"]
+        ios_expected_keys = [
+            "route_id",
+            "display_name",
+            "mode",
+            "color_hex",
+            "directions",
+        ]
         for key in ios_expected_keys:
             assert key in data, f"Missing key for iOS contract: {key}"
 
@@ -355,9 +410,19 @@ class TestGroupedTransitSchema:
         )
         data = arrival.model_dump()
         ios_keys = [
-            "route_id", "stop_name", "direction", "destination",
-            "minutes_away", "arrival_ts", "status", "mode",
-            "stop_lat", "stop_lon", "stop_id", "vehicle_id", "trip_id",
+            "route_id",
+            "stop_name",
+            "direction",
+            "destination",
+            "minutes_away",
+            "arrival_ts",
+            "status",
+            "mode",
+            "stop_lat",
+            "stop_lon",
+            "stop_id",
+            "vehicle_id",
+            "trip_id",
         ]
         for key in ios_keys:
             assert key in data, f"Missing key for iOS contract: {key}"
@@ -389,7 +454,7 @@ class TestGroupedTransitSchema:
             next_stop="Lefferts Blvd/Rockaway Blvd",
             status_text="< 1 stop away",
             direction_ref=0,
-            expected_arrival=datetime(2026, 2, 18, 1, 0, 0, tzinfo=timezone.utc),
+            expected_arrival=datetime(2026, 2, 18, 1, 0, 0, tzinfo=UTC),
         )
         data = vehicle.model_dump()
         assert "expected_arrival" in data
@@ -460,8 +525,11 @@ class TestSoonestMinutes:
                     direction_label="Northbound",
                     arrivals=[
                         NearbyTransitArrival(
-                            route_id="A", stop_name="S", direction="N",
-                            minutes_away=10, mode="subway",
+                            route_id="A",
+                            stop_name="S",
+                            direction="N",
+                            minutes_away=10,
+                            mode="subway",
                         ),
                     ],
                 ),
@@ -470,8 +538,11 @@ class TestSoonestMinutes:
                     direction_label="Southbound",
                     arrivals=[
                         NearbyTransitArrival(
-                            route_id="A", stop_name="S", direction="S",
-                            minutes_away=3, mode="subway",
+                            route_id="A",
+                            stop_name="S",
+                            direction="S",
+                            minutes_away=3,
+                            mode="subway",
                         ),
                     ],
                 ),
@@ -497,7 +568,7 @@ class TestSoonestMinutes:
 @pytest.mark.integration
 class TestLiveDataIntegration:
     """These tests hit real MTA APIs to verify data contracts.
-    
+
     Run with: pytest -m integration tests/test_contract.py
     Skip in CI with: pytest -m "not integration"
     """
@@ -556,10 +627,13 @@ class TestLiveDataIntegration:
         loop = asyncio.new_event_loop()
         try:
             from app.clients.bus_client import get_realtime_arrivals
+
             arrivals = loop.run_until_complete(get_realtime_arrivals("MTA_500249"))
             if arrivals:
                 has_dir = any(a.direction_ref is not None for a in arrivals)
-                assert has_dir, "No arrivals have direction_ref — is SIRI detail level 'minimum'?"
+                assert (
+                    has_dir
+                ), "No arrivals have direction_ref — is SIRI detail level 'minimum'?"
         finally:
             loop.close()
 
@@ -568,6 +642,7 @@ class TestLiveDataIntegration:
         loop = asyncio.new_event_loop()
         try:
             from app.clients.bus_client import get_realtime_arrivals
+
             arrivals = loop.run_until_complete(get_realtime_arrivals("MTA_500249"))
             if arrivals:
                 has_dest = any(a.destination_name is not None for a in arrivals)
@@ -580,22 +655,29 @@ class TestLiveDataIntegration:
         loop = asyncio.new_event_loop()
         try:
             from app.clients.rail_client import fetch_rail_arrivals
+
             arrivals = loop.run_until_complete(fetch_rail_arrivals("lirr"))
-            
+
             # Known MNR-only destinations that should NOT appear in LIRR
             mnr_only = {
-                "Grand Central", "Croton-Harmon", "Poughkeepsie", "Danbury",
-                "Tarrytown", "Brewster", "Bronxville", "Bethel",
+                "Grand Central",
+                "Croton-Harmon",
+                "Poughkeepsie",
+                "Danbury",
+                "Tarrytown",
+                "Brewster",
+                "Bronxville",
+                "Bethel",
             }
             # Note: "Grand Central" IS valid for LIRR (direct GCT service),
             # but the others are MNR-only
             mnr_only_strict = mnr_only - {"Grand Central"}
-            
+
             dests = {a.destination for a in arrivals}
             cross_contaminated = dests & mnr_only_strict
-            assert len(cross_contaminated) == 0, (
-                f"LIRR has MNR-only destinations: {cross_contaminated}"
-            )
+            assert (
+                len(cross_contaminated) == 0
+            ), f"LIRR has MNR-only destinations: {cross_contaminated}"
         finally:
             loop.close()
 
@@ -604,19 +686,26 @@ class TestLiveDataIntegration:
         loop = asyncio.new_event_loop()
         try:
             from app.clients.rail_client import fetch_rail_arrivals
+
             arrivals = loop.run_until_complete(fetch_rail_arrivals("metro_north"))
-            
+
             # Known LIRR-only destinations that should NOT appear in MNR
             lirr_only = {
-                "Montauk", "Babylon", "Far Rockaway", "Long Beach",
-                "Oyster Bay", "Port Jefferson", "Port Washington", "Ronkonkoma",
+                "Montauk",
+                "Babylon",
+                "Far Rockaway",
+                "Long Beach",
+                "Oyster Bay",
+                "Port Jefferson",
+                "Port Washington",
+                "Ronkonkoma",
             }
-            
+
             dests = {a.destination for a in arrivals}
             cross_contaminated = dests & lirr_only
-            assert len(cross_contaminated) == 0, (
-                f"MNR has LIRR-only destinations: {cross_contaminated}"
-            )
+            assert (
+                len(cross_contaminated) == 0
+            ), f"MNR has LIRR-only destinations: {cross_contaminated}"
         finally:
             loop.close()
 
@@ -625,6 +714,7 @@ class TestLiveDataIntegration:
         loop = asyncio.new_event_loop()
         try:
             from app.routers.nearby import _fetch_nearby_rail
+
             results = loop.run_until_complete(
                 _fetch_nearby_rail(40.699, -73.808, 5000, "lirr")
             )
@@ -637,6 +727,7 @@ class TestLiveDataIntegration:
         loop = asyncio.new_event_loop()
         try:
             from app.routers.nearby import _fetch_nearby_rail
+
             results = loop.run_until_complete(
                 _fetch_nearby_rail(40.753, -73.977, 5000, "mnr")
             )
@@ -649,13 +740,16 @@ class TestLiveDataIntegration:
         loop = asyncio.new_event_loop()
         try:
             from app.clients.bus_client import get_nearby_stops
+
             stops = loop.run_until_complete(
                 get_nearby_stops(40.699, -73.808, radius_m=2000)
             )
             assert len(stops) > 0, "No bus stops found near Jamaica"
             # All stops should have direction field
             for s in stops:
-                assert s.direction is not None, f"Stop {s.id} ({s.name}) has no direction"
+                assert (
+                    s.direction is not None
+                ), f"Stop {s.id} ({s.name}) has no direction"
         finally:
             loop.close()
 
@@ -664,17 +758,16 @@ class TestLiveDataIntegration:
         loop = asyncio.new_event_loop()
         try:
             from app.routers.nearby import _fetch_nearby_buses, _group_arrivals
+
             arrivals = loop.run_until_complete(
                 _fetch_nearby_buses(40.699, -73.808, 2000)
             )
             groups = _group_arrivals(arrivals)
-            
-            routes_with_two_dirs = [
-                g for g in groups if len(g.directions) >= 2
-            ]
-            assert len(routes_with_two_dirs) > 0, (
-                "No bus routes have 2+ directions — DirectionRef grouping may be broken"
-            )
+
+            routes_with_two_dirs = [g for g in groups if len(g.directions) >= 2]
+            assert (
+                len(routes_with_two_dirs) > 0
+            ), "No bus routes have 2+ directions — DirectionRef grouping may be broken"
         finally:
             loop.close()
 
@@ -859,12 +952,18 @@ class TestSortingKey:
         """_group_arrivals() should set sorting_key on each group."""
         arrivals = [
             NearbyTransitArrival(
-                route_id="L", stop_name="Bedford Ave", direction="N",
-                minutes_away=3, mode="subway",
+                route_id="L",
+                stop_name="Bedford Ave",
+                direction="N",
+                minutes_away=3,
+                mode="subway",
             ),
             NearbyTransitArrival(
-                route_id="A", stop_name="Fulton St", direction="N",
-                minutes_away=5, mode="subway",
+                route_id="A",
+                stop_name="Fulton St",
+                direction="N",
+                minutes_away=5,
+                mode="subway",
             ),
         ]
         groups = _group_arrivals(arrivals)
@@ -947,12 +1046,17 @@ class TestInlineAlerts:
         """_group_arrivals() embeds alerts from the alert index."""
         arrivals = [
             NearbyTransitArrival(
-                route_id="A", stop_name="Fulton St", direction="N",
-                minutes_away=5, mode="subway",
+                route_id="A",
+                stop_name="Fulton St",
+                direction="N",
+                minutes_away=5,
+                mode="subway",
             ),
         ]
         alert_index = {
-            "A": [InlineAlert(title="Delays", severity="warning", affected_routes=["A"])],
+            "A": [
+                InlineAlert(title="Delays", severity="warning", affected_routes=["A"])
+            ],
         }
         groups = _group_arrivals(arrivals, alert_index=alert_index)
         a_group = next(g for g in groups if g.display_name == "A")
@@ -963,8 +1067,11 @@ class TestInlineAlerts:
         """_group_arrivals() works with no alert_index (backward compat)."""
         arrivals = [
             NearbyTransitArrival(
-                route_id="L", stop_name="Bedford Ave", direction="N",
-                minutes_away=3, mode="subway",
+                route_id="L",
+                stop_name="Bedford Ave",
+                direction="N",
+                minutes_away=3,
+                mode="subway",
             ),
         ]
         groups = _group_arrivals(arrivals)
@@ -974,12 +1081,17 @@ class TestInlineAlerts:
         """Routes not in the alert index get empty alerts."""
         arrivals = [
             NearbyTransitArrival(
-                route_id="7", stop_name="Times Sq", direction="N",
-                minutes_away=2, mode="subway",
+                route_id="7",
+                stop_name="Times Sq",
+                direction="N",
+                minutes_away=2,
+                mode="subway",
             ),
         ]
         alert_index = {
-            "A": [InlineAlert(title="Delays", severity="severe", affected_routes=["A"])],
+            "A": [
+                InlineAlert(title="Delays", severity="severe", affected_routes=["A"])
+            ],
         }
         groups = _group_arrivals(arrivals, alert_index=alert_index)
         assert groups[0].alerts == []
@@ -1006,13 +1118,20 @@ class TestGroupedSchemaV2:
                     direction_label="Northbound",
                     arrivals=[
                         NearbyTransitArrival(
-                            route_id="A", stop_name="Fulton St",
-                            direction="N", destination="Inwood-207 St",
-                            minutes_away=3, arrival_ts=1700000000,
-                            status="On Time", mode="subway",
-                            stop_lat=40.71, stop_lon=-74.0,
-                            stop_id="A28N", trip_id="trip123",
-                            is_real_time=True, is_cancelled=False,
+                            route_id="A",
+                            stop_name="Fulton St",
+                            direction="N",
+                            destination="Inwood-207 St",
+                            minutes_away=3,
+                            arrival_ts=1700000000,
+                            status="On Time",
+                            mode="subway",
+                            stop_lat=40.71,
+                            stop_lon=-74.0,
+                            stop_id="A28N",
+                            trip_id="trip123",
+                            is_real_time=True,
+                            is_cancelled=False,
                         ),
                     ],
                 ),
@@ -1025,49 +1144,76 @@ class TestGroupedSchemaV2:
         data = group.model_dump(mode="json")
 
         # GroupedNearbyTransitResponse CodingKeys
-        grouped_keys = {"route_id", "display_name", "mode", "color_hex",
-                        "directions", "sorting_key", "alerts"}
-        assert grouped_keys.issubset(set(data.keys())), (
-            f"Missing grouped keys: {grouped_keys - set(data.keys())}"
-        )
+        grouped_keys = {
+            "route_id",
+            "display_name",
+            "mode",
+            "color_hex",
+            "directions",
+            "sorting_key",
+            "alerts",
+        }
+        assert grouped_keys.issubset(
+            set(data.keys())
+        ), f"Missing grouped keys: {grouped_keys - set(data.keys())}"
 
         # DirectionArrivalsResponse CodingKeys
         dir_data = data["directions"][0]
         dir_keys = {"direction", "direction_label", "arrivals"}
-        assert dir_keys.issubset(set(dir_data.keys())), (
-            f"Missing direction keys: {dir_keys - set(dir_data.keys())}"
-        )
+        assert dir_keys.issubset(
+            set(dir_data.keys())
+        ), f"Missing direction keys: {dir_keys - set(dir_data.keys())}"
 
         # NearbyTransitResponse CodingKeys
         arr_data = dir_data["arrivals"][0]
         arrival_keys = {
-            "route_id", "stop_name", "direction", "destination",
-            "minutes_away", "arrival_ts", "status", "mode",
-            "stop_lat", "stop_lon", "stop_id", "vehicle_id", "trip_id",
-            "distance_m", "is_real_time", "is_cancelled",
+            "route_id",
+            "stop_name",
+            "direction",
+            "destination",
+            "minutes_away",
+            "arrival_ts",
+            "status",
+            "mode",
+            "stop_lat",
+            "stop_lon",
+            "stop_id",
+            "vehicle_id",
+            "trip_id",
+            "distance_m",
+            "is_real_time",
+            "is_cancelled",
         }
-        assert arrival_keys.issubset(set(arr_data.keys())), (
-            f"Missing arrival keys: {arrival_keys - set(arr_data.keys())}"
-        )
+        assert arrival_keys.issubset(
+            set(arr_data.keys())
+        ), f"Missing arrival keys: {arrival_keys - set(arr_data.keys())}"
 
         # InlineAlertResponse CodingKeys
         alert_data = data["alerts"][0]
         alert_keys = {"title", "severity", "affected_routes"}
-        assert alert_keys.issubset(set(alert_data.keys())), (
-            f"Missing alert keys: {alert_keys - set(alert_data.keys())}"
-        )
+        assert alert_keys.issubset(
+            set(alert_data.keys())
+        ), f"Missing alert keys: {alert_keys - set(alert_data.keys())}"
 
     def test_field_types_match_ios(self):
         """Verify JSON value types match what Swift Codable expects."""
         arrival = NearbyTransitArrival(
-            route_id="L", stop_name="Bedford Ave",
-            direction="N", destination="Rockaway Pkwy",
-            minutes_away=2, arrival_ts=1700000000,
-            status="On Time", mode="subway",
-            stop_lat=40.71, stop_lon=-74.0,
-            stop_id="L06N", vehicle_id=None,
-            trip_id="trip456", distance_m=150.5,
-            is_real_time=True, is_cancelled=False,
+            route_id="L",
+            stop_name="Bedford Ave",
+            direction="N",
+            destination="Rockaway Pkwy",
+            minutes_away=2,
+            arrival_ts=1700000000,
+            status="On Time",
+            mode="subway",
+            stop_lat=40.71,
+            stop_lon=-74.0,
+            stop_id="L06N",
+            vehicle_id=None,
+            trip_id="trip456",
+            distance_m=150.5,
+            is_real_time=True,
+            is_cancelled=False,
         )
         data = arrival.model_dump(mode="json")
 
@@ -1138,13 +1284,20 @@ class TestTrackArrivalContract:
         )
         data = arrival.model_dump(mode="json")
         ios_keys = {
-            "route_id", "station", "station_name", "direction",
-            "destination", "minutes_away", "arrival_ts", "status",
-            "trip_id", "is_cancelled",
+            "route_id",
+            "station",
+            "station_name",
+            "direction",
+            "destination",
+            "minutes_away",
+            "arrival_ts",
+            "status",
+            "trip_id",
+            "is_cancelled",
         }
-        assert ios_keys.issubset(set(data.keys())), (
-            f"Missing keys: {ios_keys - set(data.keys())}"
-        )
+        assert ios_keys.issubset(
+            set(data.keys())
+        ), f"Missing keys: {ios_keys - set(data.keys())}"
 
     def test_cancelled_arrival_json(self):
         """Cancelled arrival serializes correctly for iOS."""
@@ -1187,10 +1340,13 @@ class TestLiveNewFieldsIntegration:
         """Live /nearby/grouped response includes sorting_key on each group."""
         loop = asyncio.new_event_loop()
         try:
-            from app.routers.nearby import _collect_all, _group_arrivals, _get_inline_alerts
-            flat = loop.run_until_complete(
-                _collect_all(40.7505, -73.9934, 1000)
+            from app.routers.nearby import (
+                _collect_all,
+                _get_inline_alerts,
+                _group_arrivals,
             )
+
+            flat = loop.run_until_complete(_collect_all(40.7505, -73.9934, 1000))
             alert_index = loop.run_until_complete(_get_inline_alerts())
             groups = _group_arrivals(flat, alert_index=alert_index)
             assert len(groups) > 0, "No grouped arrivals near Penn Station"
@@ -1206,18 +1362,17 @@ class TestLiveNewFieldsIntegration:
         loop = asyncio.new_event_loop()
         try:
             from app.routers.nearby import _collect_all, _group_arrivals
-            flat = loop.run_until_complete(
-                _collect_all(40.7505, -73.9934, 1000)
-            )
+
+            flat = loop.run_until_complete(_collect_all(40.7505, -73.9934, 1000))
             groups = _group_arrivals(flat)
             subway_groups = [g for g in groups if g.mode == "subway"]
             bus_groups = [g for g in groups if g.mode == "bus"]
             if subway_groups and bus_groups:
                 last_subway_key = max(g.sorting_key for g in subway_groups)
                 first_bus_key = min(g.sorting_key for g in bus_groups)
-                assert last_subway_key < first_bus_key, (
-                    f"Subway sorting_key ({last_subway_key}) should be < bus ({first_bus_key})"
-                )
+                assert (
+                    last_subway_key < first_bus_key
+                ), f"Subway sorting_key ({last_subway_key}) should be < bus ({first_bus_key})"
         finally:
             loop.close()
 
@@ -1226,9 +1381,8 @@ class TestLiveNewFieldsIntegration:
         loop = asyncio.new_event_loop()
         try:
             from app.routers.nearby import _collect_all, _group_arrivals
-            flat = loop.run_until_complete(
-                _collect_all(40.7505, -73.9934, 1000)
-            )
+
+            flat = loop.run_until_complete(_collect_all(40.7505, -73.9934, 1000))
             groups = _group_arrivals(flat)
             for g in groups:
                 assert isinstance(g.alerts, list), f"alerts not a list on {g.route_id}"
@@ -1241,9 +1395,8 @@ class TestLiveNewFieldsIntegration:
         loop = asyncio.new_event_loop()
         try:
             from app.routers.nearby import _collect_all
-            flat = loop.run_until_complete(
-                _collect_all(40.7505, -73.9934, 1000)
-            )
+
+            flat = loop.run_until_complete(_collect_all(40.7505, -73.9934, 1000))
             subway = [a for a in flat if a.mode == "subway"]
             assert len(subway) > 0, "No subway arrivals near Penn Station"
             realtime_count = sum(1 for a in subway if a.is_real_time)
@@ -1256,10 +1409,11 @@ class TestLiveNewFieldsIntegration:
         loop = asyncio.new_event_loop()
         try:
             from app.services.gtfs.realtime_parser import get_arrivals_for_line
+
             arrivals = loop.run_until_complete(get_arrivals_for_line("A"))
             assert len(arrivals) > 0, "No arrivals from A train feed"
             for a in arrivals:
-                assert hasattr(a, "is_cancelled"), f"Missing is_cancelled on arrival"
+                assert hasattr(a, "is_cancelled"), "Missing is_cancelled on arrival"
                 assert isinstance(a.is_cancelled, bool)
         finally:
             loop.close()
@@ -1269,10 +1423,13 @@ class TestLiveNewFieldsIntegration:
         loop = asyncio.new_event_loop()
         try:
             from app.clients.rail_client import fetch_rail_arrivals
+
             arrivals = loop.run_until_complete(fetch_rail_arrivals("lirr"))
             assert len(arrivals) > 0, "No LIRR arrivals"
             for a in arrivals:
-                assert hasattr(a, "is_cancelled"), f"Missing is_cancelled on LIRR arrival"
+                assert hasattr(
+                    a, "is_cancelled"
+                ), "Missing is_cancelled on LIRR arrival"
                 assert isinstance(a.is_cancelled, bool)
         finally:
             loop.close()
@@ -1282,10 +1439,11 @@ class TestLiveNewFieldsIntegration:
         loop = asyncio.new_event_loop()
         try:
             from app.clients.rail_client import fetch_rail_arrivals
+
             arrivals = loop.run_until_complete(fetch_rail_arrivals("metro_north"))
             assert len(arrivals) > 0, "No MNR arrivals"
             for a in arrivals:
-                assert hasattr(a, "is_cancelled"), f"Missing is_cancelled on MNR arrival"
+                assert hasattr(a, "is_cancelled"), "Missing is_cancelled on MNR arrival"
                 assert isinstance(a.is_cancelled, bool)
         finally:
             loop.close()

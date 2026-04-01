@@ -14,8 +14,10 @@ Usage:
     python scripts/refine_polylines.py          # OSM alignment + dedup
 """
 
-import sys
+from __future__ import annotations
+
 import json
+import sys
 from pathlib import Path
 
 # Add parent directory to path for imports
@@ -26,29 +28,31 @@ from app.services.gtfs.gtfs_parser import generate_bundle
 
 def main():
     print("🚇 Generating static GTFS bundle for iOS...")
-    
+
     # Generate the bundle from GTFS shapes
     bundle = generate_bundle()
-    
+
     # Output paths - changed to Track/Data folder
     output_dir = Path(__file__).parent.parent.parent / "Track" / "Data"
     output_file = output_dir / "subway_bundle.json"
-    
+
     # Ensure output directory exists
     output_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # Write JSON file (compact for app size)
-    with open(output_file, 'w', encoding='utf-8') as f:
-        json.dump(bundle, f, separators=(',', ':'))
-    
+    with open(output_file, "w", encoding="utf-8") as f:
+        json.dump(bundle, f, separators=(",", ":"))
+
     # Print stats with branch count for multi-branch routes
-    routes = bundle.get('routes', {})
+    routes = bundle.get("routes", {})
     total_branches = sum(len(branches) for branches in routes.values())
-    stats = bundle.get('stats', {})
-    
-    print(f"\n✅ Bundle generated!")
+    bundle.get("stats", {})
+
+    print("\n✅ Bundle generated!")
     print(f"   Routes: {len(routes)}")
-    print(f"   Branches: {total_branches} (multi-terminus routes like A train include all variants)")
+    print(
+        f"   Branches: {total_branches} (multi-terminus routes like A train include all variants)"
+    )
     print(f"   Stops: {len(bundle.get('stops', []))}")
     print(f"   Colors: {len(bundle.get('colors', {}))}")
     print(f"   Version: {bundle.get('version', '?')}")

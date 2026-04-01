@@ -3,7 +3,9 @@ from __future__ import annotations
 from app.services.mapping.corridor_pipeline import _segment_export_path_by_lane_offset
 
 
-def _straight_path(point_count: int, spacing_m: float = 20.0) -> list[tuple[float, float]]:
+def _straight_path(
+    point_count: int, spacing_m: float = 20.0
+) -> list[tuple[float, float]]:
     return [(idx * spacing_m, 0.0) for idx in range(point_count)]
 
 

@@ -1,20 +1,23 @@
-#
-# status.py
-# TrackBackend
-#
-# Router for service alerts and elevator/escalator accessibility status.
-#
+"""Router for service alerts and elevator/escalator accessibility status."""
 
 from __future__ import annotations
 
 import asyncio
 import time
+from typing import Any
 
+import httpx
 from fastapi import APIRouter, HTTPException, Query
 
-from app.models import ElevatorStatus, TransitAlert, RESP_502
+from app.models import RESP_502, ElevatorStatus, TransitAlert
 from app.services.gtfs.realtime_parser import get_alerts, get_broken_elevators
 from app.utils.logger import TrackLogger
+
+# Strong references to fire-and-forget tasks so the GC won't collect them.
+_background_tasks: set[asyncio.Task[Any]] = set()
+
+_ACCESSIBILITY_FETCH_TIMEOUT = 30.0
+_ALERTS_TIMEOUT = 8.0
 
 router = APIRouter(tags=["status"])
 
@@ -36,19 +39,21 @@ async def _refresh_accessibility_cache() -> None:
     """
     global _accessibility_cache, _accessibility_cached_at, _accessibility_refreshing
     try:
-        result = await asyncio.wait_for(get_broken_elevators(), timeout=30.0)
+        result = await asyncio.wait_for(
+            get_broken_elevators(), timeout=_ACCESSIBILITY_FETCH_TIMEOUT
+        )
         _accessibility_cache = result
         _accessibility_cached_at = time.monotonic()
         TrackLogger.info(
             f"[ACCESSIBILITY] Cache refreshed -- {len(result)} outages",
             tag="ALERTS",
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         TrackLogger.warning(
             "[ACCESSIBILITY] Background refresh timed out (30s) -- keeping stale cache",
             tag="ALERTS",
         )
-    except Exception as exc:
+    except (httpx.HTTPError, OSError, ValueError, KeyError) as exc:
         TrackLogger.error(
             f"[ACCESSIBILITY] Background refresh failed: {exc}",
             tag="ALERTS",
@@ -87,8 +92,8 @@ async def alerts(
     Returns an empty array (not an error) if the MTA feed times out.
     """
     try:
-        return await asyncio.wait_for(get_alerts(mode=mode), timeout=8.0)
-    except asyncio.TimeoutError:
+        return await asyncio.wait_for(get_alerts(mode=mode), timeout=_ALERTS_TIMEOUT)
+    except TimeoutError:
         TrackLogger.info(
             f"[ALERTS] /alerts timed out after 8s (mode={mode}) -- returning empty",
             tag="ALERTS",
@@ -96,7 +101,9 @@ async def alerts(
         return []
     except (OSError, ConnectionError) as exc:
         # Network-level failures -- expected when MTA is down
-        TrackLogger.info(f"[ALERTS] Upstream unreachable (mode={mode}): {exc}", tag="ALERTS")
+        TrackLogger.info(
+            f"[ALERTS] Upstream unreachable (mode={mode}): {exc}", tag="ALERTS"
+        )
         return []
     except Exception as exc:
         # Unexpected errors (parsing bugs, KeyError, etc.) -- log at warning
@@ -142,7 +149,9 @@ async def accessibility() -> list[ElevatorStatus]:
     if _accessibility_cache is not None:
         if not _accessibility_refreshing:
             _accessibility_refreshing = True
-            asyncio.create_task(_refresh_accessibility_cache())
+            task = asyncio.create_task(_refresh_accessibility_cache())
+            _background_tasks.add(task)
+            task.add_done_callback(_background_tasks.discard)
             TrackLogger.info(
                 f"[ACCESSIBILITY] Serving stale cache (age={age:.0f}s), bg refresh started",
                 tag="ALERTS",
@@ -153,11 +162,13 @@ async def accessibility() -> list[ElevatorStatus]:
     if not _accessibility_refreshing:
         _accessibility_refreshing = True
         try:
-            result = await asyncio.wait_for(get_broken_elevators(), timeout=30.0)
+            result = await asyncio.wait_for(
+                get_broken_elevators(), timeout=_ACCESSIBILITY_FETCH_TIMEOUT
+            )
             _accessibility_cache = result
             _accessibility_cached_at = time.monotonic()
             return result
-        except asyncio.TimeoutError:
+        except TimeoutError:
             TrackLogger.warning(
                 "[ACCESSIBILITY] Cold-start fetch timed out (30s) -- returning empty",
                 tag="ALERTS",

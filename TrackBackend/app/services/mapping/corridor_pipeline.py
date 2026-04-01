@@ -1,52 +1,52 @@
-#
-# corridor_pipeline.py  —  v3.2 arc-based parallel offsets
-# TrackBackend
-#
-# 5-phase pipeline:
-#   Phase 1 – Trunk Merge:      Pool same-colour routes, unify into continuous paths
-#   Phase 2 – Corridor Detect:  Find where different trunk groups share track
-#   Phase 3 – Arc Offset:       Densify → arc-offset → despike → RDP-simplify
-#   Phase 4 – Export:           Reproject to WGS84, encode polylines
-#   Phase 5 – Stop Snap:        Snap GTFS stops onto offset paths
-#
-# ═══════════════════════════════════════════════════════════════════════════════
-# ARCHITECTURE CHANGE (v3.1 → v3.2)
-#
-#   v1  Used Shapely offset_curve() → EKG spikes, bowties, Columbus Circle bubble
-#   v2  Unified skeleton from ALL 23 routes → 1 124 edges, 397 tiny fragments
-#       (avg 5 pts each), catastrophic fragmentation, 361 edges with zero routes.
-#   v3  Trunk-group level offsets → 11 groups, ~25-35 continuous polylines,
-#       each with ~50-350 points.
-#   v3.1 Per-route GTFS preservation — transfer trunk offsets via nearest-neighbour.
-#   v3.2 Arc-based offsets — circular arc segments at bends maintain constant
-#       perpendicular distance.  Lines sharing a corridor never overlap at turns.
-#       Also: vertex densification, cosine-blended corridor transitions,
-#       and post-offset Douglas-Peucker simplification.
-#
-# KEY INSIGHT: the iOS client renders ONE polyline per trunk colour group (not
-# per route).  Routes A/C/E are all blue and get merged into one polyline by
-# MapSystemViewModel.computeFlattenedPolylines().  The server only needs to
-# produce parallel offsets between *different colour groups* that share track.
-#
-# Running routes in the *same* trunk group on the *same* track is correct —
-# the client expects overlapping same-colour polylines and unifies them.
-# ═══════════════════════════════════════════════════════════════════════════════
+"""corridor_pipeline.py  —  v3.2 arc-based parallel offsets
+
+5-phase pipeline:
+Phase 1 – Trunk Merge:      Pool same-colour routes, unify into continuous paths
+Phase 2 – Corridor Detect:  Find where different trunk groups share track
+Phase 3 – Arc Offset:       Densify → arc-offset → despike → RDP-simplify
+Phase 4 – Export:           Reproject to WGS84, encode polylines
+Phase 5 – Stop Snap:        Snap GTFS stops onto offset paths
+
+═══════════════════════════════════════════════════════════════════════════════
+ARCHITECTURE CHANGE (v3.1 → v3.2)
+
+v1  Used Shapely offset_curve() → EKG spikes, bowties, Columbus Circle bubble
+v2  Unified skeleton from ALL 23 routes → 1 124 edges, 397 tiny fragments
+(avg 5 pts each), catastrophic fragmentation, 361 edges with zero routes.
+v3  Trunk-group level offsets → 11 groups, ~25-35 continuous polylines,
+each with ~50-350 points.
+v3.1 Per-route GTFS preservation — transfer trunk offsets via nearest-neighbour.
+v3.2 Arc-based offsets — circular arc segments at bends maintain constant
+perpendicular distance.  Lines sharing a corridor never overlap at turns.
+Also: vertex densification, cosine-blended corridor transitions,
+and post-offset Douglas-Peucker simplification.
+
+KEY INSIGHT: the iOS client renders ONE polyline per trunk colour group (not
+per route).  Routes A/C/E are all blue and get merged into one polyline by
+MapSystemViewModel.computeFlattenedPolylines().  The server only needs to
+produce parallel offsets between *different colour groups* that share track.
+
+Running routes in the *same* trunk group on the *same* track is correct —
+the client expects overlapping same-colour polylines and unifies them.
+═══════════════════════════════════════════════════════════════════════════════."""
 
 from __future__ import annotations
 
 import math
 from collections import defaultdict
 from itertools import permutations
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 
 from pyproj import Transformer
-from shapely.geometry import LineString, Point
 from shapely import STRtree
+from shapely.geometry import LineString, Point
 from shapely.ops import substring
 
 from app.utils.logger import TrackLogger
 from app.utils.polyline_utils import decode_polyline, encode_polyline
 
+if TYPE_CHECKING:
+    from app.models import SubwayLineOverlay
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Constants
@@ -142,19 +142,19 @@ RDP_TOLERANCE: float = 1.5
 # ═══════════════════════════════════════════════════════════════════════════════
 
 TRUNK_GROUPS: list[list[str]] = [
-    ["1", "2", "3"],               # 0: Red — 7th Ave / Broadway
-    ["4", "5", "6", "6X"],         # 1: Green — Lexington Ave
-    ["7", "7X"],                   # 2: Purple — Flushing
-    ["A", "C", "E"],              # 3: Blue — 8th Ave
-    ["B", "D", "F", "FX", "M"],   # 4: Orange — 6th Ave
-    ["G"],                          # 5: Lime Green — Crosstown
-    ["J", "Z"],                    # 6: Brown — Nassau St
-    ["L"],                          # 7: Gray — 14th St / Canarsie
-    ["N", "Q", "R", "W"],         # 8: Yellow — Broadway BMT
-    ["GS"],                        # 9: 42nd St Shuttle (Grand Central ↔ Times Sq)
-    ["SI"],                        # 10: Staten Island Railway
-    ["FS"],                        # 11: Franklin Ave Shuttle
-    ["H"],                         # 12: Rockaway Park Shuttle
+    ["1", "2", "3"],  # 0: Red — 7th Ave / Broadway
+    ["4", "5", "6", "6X"],  # 1: Green — Lexington Ave
+    ["7", "7X"],  # 2: Purple — Flushing
+    ["A", "C", "E"],  # 3: Blue — 8th Ave
+    ["B", "D", "F", "FX", "M"],  # 4: Orange — 6th Ave
+    ["G"],  # 5: Lime Green — Crosstown
+    ["J", "Z"],  # 6: Brown — Nassau St
+    ["L"],  # 7: Gray — 14th St / Canarsie
+    ["N", "Q", "R", "W"],  # 8: Yellow — Broadway BMT
+    ["GS"],  # 9: 42nd St Shuttle (Grand Central ↔ Times Sq)
+    ["SI"],  # 10: Staten Island Railway
+    ["FS"],  # 11: Franklin Ave Shuttle
+    ["H"],  # 12: Rockaway Park Shuttle
 ]
 
 ROUTE_TO_TRUNK: dict[str, int] = {}
@@ -185,13 +185,16 @@ def project_to_wgs84(coords: list[tuple[float, float]]) -> list[tuple[float, flo
 # Geometry helpers
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 def _point_dist(a: tuple[float, float], b: tuple[float, float]) -> float:
     dx = a[0] - b[0]
     dy = a[1] - b[1]
     return math.sqrt(dx * dx + dy * dy)
 
 
-def _unit_normal(p0: tuple[float, float], p1: tuple[float, float]) -> tuple[float, float]:
+def _unit_normal(
+    p0: tuple[float, float], p1: tuple[float, float]
+) -> tuple[float, float]:
     """Left-hand perpendicular unit normal of the segment p0→p1."""
     dx = p1[0] - p0[0]
     dy = p1[1] - p0[1]
@@ -202,7 +205,8 @@ def _unit_normal(p0: tuple[float, float], p1: tuple[float, float]) -> tuple[floa
 
 
 def _local_direction(
-    coords: list[tuple[float, float]], idx: int,
+    coords: list[tuple[float, float]],
+    idx: int,
 ) -> tuple[float, float]:
     """Unit direction vector at vertex *idx* (averaged from adjacent segments)."""
     n = len(coords)
@@ -415,7 +419,10 @@ def _snap_paths_to_stations(
                     s_dist, sx, sy = snap_insertions[snap_idx]
                     if s_dist <= cum_dist + 1e-3:
                         # Avoid duplicating if very close to an existing vertex
-                        if not new_coords or _point_dist(new_coords[-1], (sx, sy)) > 2.0:
+                        if (
+                            not new_coords
+                            or _point_dist(new_coords[-1], (sx, sy)) > 2.0
+                        ):
                             new_coords.append((sx, sy))
                             total_snapped += 1
                         snap_idx += 1
@@ -523,7 +530,7 @@ def _group_and_merge_trunks(
         if unified:
             trunk_paths[trunk_idx] = unified
         else:
-            trunk_paths[trunk_idx] = [max(lines, key=lambda l: l.length)]
+            trunk_paths[trunk_idx] = [max(lines, key=lambda ls: ls.length)]
 
     return trunk_paths
 
@@ -538,14 +545,13 @@ def _unify_via_grid(
     - Subsequent lines checked for coverage ratio.
     - Branch stubs extracted from partially-covered lines.
     """
-    sorted_lines = sorted(lines, key=lambda l: l.length, reverse=True)
+    sorted_lines = sorted(lines, key=lambda ls: ls.length, reverse=True)
 
     # ── Spatial grid ──
     grid: set[tuple[int, int]] = set()
 
     def _cell(x: float, y: float) -> tuple[int, int]:
-        return (int(math.floor(x / _GRID_CELL_M)),
-                int(math.floor(y / _GRID_CELL_M)))
+        return (math.floor(x / _GRID_CELL_M), math.floor(y / _GRID_CELL_M))
 
     def _add_line(line: LineString) -> None:
         for x, y in line.coords:
@@ -683,19 +689,23 @@ def _unify_via_grid(
             # parallel to Far Rockaway within 250 m).
             r_mid = (r_start + r_end) // 2
             run_len = r_end - r_start + 1
-            all_near = (_is_near(*coords[r_start]) and
-                        _is_near(*coords[r_mid]) and
-                        _is_near(*coords[r_end]))
-            if all_near:
-                # Additional check: does the run diverge in direction?
+            all_near = (
+                _is_near(*coords[r_start])
+                and _is_near(*coords[r_mid])
+                and _is_near(*coords[r_end])
+            )
+            if (
+                all_near
+                and run_len >= 20
+                and not _run_diverges_from_trunk(coords, r_start, r_end, trunk_baseline)
+            ):
                 # Only reject as a corridor variant if the run is long
                 # enough (≥ 20 vertices) to represent genuine parallel
                 # express/local service.  Short near-runs (< 20 pts)
                 # are more likely coverage gaps in the trunk grid —
                 # e.g. the missing BDFM segment before 47-50 St
                 # Rockefeller Center — and should be kept.
-                if run_len >= 20 and not _run_diverges_from_trunk(coords, r_start, r_end, trunk_baseline):
-                    continue  # corridor variant — skip
+                continue  # corridor variant — skip
 
             # Extend into covered zone using distance-based approach.
             # Instead of a fixed ±5 vertices, keep extending along the
@@ -733,7 +743,7 @@ def _unify_via_grid(
             ext_start = max(0, ext_start - 3)
             ext_end = min(n - 1, ext_end + 3)
 
-            snap_limit_sq = _MAX_SNAP_DIST_M ** 2
+            snap_limit_sq = _MAX_SNAP_DIST_M**2
 
             stub_coords: list[tuple[float, float]] = []
             for j in range(ext_start, ext_end + 1):
@@ -830,8 +840,8 @@ def _remove_self_intersections(
         # positives from parallel tracks 200+ m apart.
         cell_size = 100.0
 
-        def _cell(x: float, y: float) -> tuple[int, int]:
-            return (int(math.floor(x / cell_size)), int(math.floor(y / cell_size)))
+        def _cell(x: float, y: float, _cs: float = cell_size) -> tuple[int, int]:
+            return (math.floor(x / _cs), math.floor(y / _cs))
 
         # Record first and last index that visits each cell
         first_visit: dict[tuple[int, int], int] = {}
@@ -1035,9 +1045,7 @@ def _inject_trunk_stems(
                             dot = stub_dx * stem_dx + stub_dy * stem_dy
                             if dot < 0:
                                 # Antiparallel → try stem in other direction
-                                stem_begin_alt = max(
-                                    0.0, proj - _STEM_LENGTH_M
-                                )
+                                stem_begin_alt = max(0.0, proj - _STEM_LENGTH_M)
                                 if proj - stem_begin_alt > 50.0:
                                     seg_alt = substring(
                                         anchor_end, stem_begin_alt, proj
@@ -1107,9 +1115,7 @@ def _inject_trunk_stems(
 
                     # Create short stem segments at the split point
                     stem_before = max(0.0, proj - _STEM_LENGTH_M)
-                    stem_after = min(
-                        best_interior_anchor.length, proj + _STEM_LENGTH_M
-                    )
+                    stem_after = min(best_interior_anchor.length, proj + _STEM_LENGTH_M)
 
                     for half in (half_a, half_b):
                         if len(half) < 2:
@@ -1120,16 +1126,12 @@ def _inject_trunk_stems(
                         h_append: list[tuple[float, float]] = []
                         try:
                             if half is half_a:
-                                seg = substring(
-                                    best_interior_anchor, proj, stem_after
-                                )
+                                seg = substring(best_interior_anchor, proj, stem_after)
                                 seg_c = list(seg.coords)
                                 if len(seg_c) >= 2:
                                     h_append = seg_c
                             else:
-                                seg = substring(
-                                    best_interior_anchor, stem_before, proj
-                                )
+                                seg = substring(best_interior_anchor, stem_before, proj)
                                 seg_c = list(seg.coords)
                                 if len(seg_c) >= 2:
                                     h_prepend = seg_c
@@ -1180,13 +1182,14 @@ def _validate_stub(coords: list[tuple[float, float]]) -> bool:
     for i in range(1, len(coords)):
         dx = coords[i][0] - coords[i - 1][0]
         dy = coords[i][1] - coords[i - 1][1]
-        if dx * dx + dy * dy > _MAX_STUB_GAP_M ** 2:
+        if dx * dx + dy * dy > _MAX_STUB_GAP_M**2:
             return False
     return True
 
 
 def _chain_merge(
-    segments: list[LineString], tolerance: float,
+    segments: list[LineString],
+    tolerance: float,
 ) -> list[LineString]:
     """Greedy endpoint-proximity merge of LineString fragments."""
     if len(segments) <= 1:
@@ -1235,6 +1238,7 @@ def _try_join(
 # ═══════════════════════════════════════════════════════════════════════════════
 # Phase 2 — Corridor Detection & Per-Vertex Offset Computation
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 class _TrunkPathInfo(NamedTuple):
     trunk_idx: int
@@ -1286,9 +1290,13 @@ def _collect_neighbor_observations(
         signed_lateral = vx * left_normal[0] + vy * left_normal[1]
 
         best = observations.get(info.trunk_idx)
-        if best is None or dist_to_path < best.distance or (
-            abs(dist_to_path - best.distance) < 1e-6
-            and abs(signed_lateral) > abs(best.signed_lateral)
+        if (
+            best is None
+            or dist_to_path < best.distance
+            or (
+                abs(dist_to_path - best.distance) < 1e-6
+                and abs(signed_lateral) > abs(best.signed_lateral)
+            )
         ):
             observations[info.trunk_idx] = _NeighborObservation(
                 trunk_idx=info.trunk_idx,
@@ -1300,7 +1308,9 @@ def _collect_neighbor_observations(
 
 
 def _compute_lane_order_preferences(
-    validated_neighbors: dict[int, dict[int, dict[int, dict[int, _NeighborObservation]]]],
+    validated_neighbors: dict[
+        int, dict[int, dict[int, dict[int, _NeighborObservation]]]
+    ],
 ) -> dict[int, dict[int, float]]:
     """Aggregate pairwise left/right preferences from corridor observations."""
     pairwise: defaultdict[int, defaultdict[int, float]] = defaultdict(
@@ -1319,7 +1329,10 @@ def _compute_lane_order_preferences(
                     # Reward clearer geometric separation a bit more than
                     # barely-above-threshold votes, but keep all weights in
                     # the same rough range so long corridors dominate.
-                    weight = 1.0 + min(abs(signed), CORRIDOR_DETECT_DIST) / CORRIDOR_DETECT_DIST
+                    weight = (
+                        1.0
+                        + min(abs(signed), CORRIDOR_DETECT_DIST) / CORRIDOR_DETECT_DIST
+                    )
                     if signed > 0.0:
                         pairwise[neighbor_idx][trunk_idx] += weight
                     else:
@@ -1331,10 +1344,7 @@ def _compute_lane_order_preferences(
             f"[LaneOrder] Collected {evidence_count} pairwise side observations"
         )
 
-    return {
-        trunk: dict(targets)
-        for trunk, targets in pairwise.items()
-    }
+    return {trunk: dict(targets) for trunk, targets in pairwise.items()}
 
 
 def _compute_lane_order_scores(
@@ -1369,7 +1379,7 @@ def _lane_order_penalty(
     """
     penalty = 0.0
     for idx, left_trunk in enumerate(order):
-        for right_trunk in order[idx + 1:]:
+        for right_trunk in order[idx + 1 :]:
             penalty += pairwise_preferences.get(right_trunk, {}).get(left_trunk, 0.0)
     return penalty
 
@@ -1404,8 +1414,7 @@ def _solve_lane_order(
     for perm in permutations(baseline):
         penalty = _lane_order_penalty(perm, pairwise_preferences)
         deviation = sum(
-            abs(idx - baseline_rank[trunk_idx])
-            for idx, trunk_idx in enumerate(perm)
+            abs(idx - baseline_rank[trunk_idx]) for idx, trunk_idx in enumerate(perm)
         )
 
         if penalty < best_penalty - 1e-6:
@@ -1414,12 +1423,12 @@ def _solve_lane_order(
             best_deviation = deviation
             continue
 
-        if abs(penalty - best_penalty) <= 1e-6:
-            if deviation < best_deviation or (
-                deviation == best_deviation and perm < best_order
-            ):
-                best_order = perm
-                best_deviation = deviation
+        if abs(penalty - best_penalty) <= 1e-6 and (
+            deviation < best_deviation
+            or (deviation == best_deviation and perm < best_order)
+        ):
+            best_order = perm
+            best_deviation = deviation
 
     if cache is not None:
         cache[key] = best_order
@@ -1465,7 +1474,9 @@ def _compute_corridor_offsets(
     global _corridor_neighbors_cache
     _corridor_neighbors_cache = {}
 
-    validated_neighbors: dict[int, dict[int, dict[int, dict[int, _NeighborObservation]]]] = {}
+    validated_neighbors: dict[
+        int, dict[int, dict[int, dict[int, _NeighborObservation]]]
+    ] = {}
     path_lengths: dict[int, dict[int, int]] = {}
 
     # Pass 1: detect nearby trunks and keep the best lateral observation
@@ -1505,13 +1516,12 @@ def _compute_corridor_offsets(
             trunk_local_valid: dict[int, list[bool]] = {}
             for neighbor_trunk in detected_trunks_all:
                 detections = [
-                    neighbor_trunk in per_vertex_neighbors.get(i, {})
-                    for i in range(n)
+                    neighbor_trunk in per_vertex_neighbors.get(i, {}) for i in range(n)
                 ]
 
                 half = LOCAL_WINDOW // 2
                 valid = [False] * n
-                win_sum = sum(1 for d in detections[:min(half, n)] if d)
+                win_sum = sum(1 for d in detections[: min(half, n)] if d)
                 for i in range(n):
                     right = i + half
                     if right < n and detections[right]:
@@ -1563,7 +1573,9 @@ def _compute_corridor_offsets(
                     continue
 
                 # Track corridor neighbor relationships (bidirectional)
-                _corridor_neighbors_cache.setdefault(trunk_idx, set()).update(corridor_trunks)
+                _corridor_neighbors_cache.setdefault(trunk_idx, set()).update(
+                    corridor_trunks
+                )
                 for ft in corridor_trunks:
                     _corridor_neighbors_cache.setdefault(ft, set()).add(trunk_idx)
 
@@ -1591,7 +1603,7 @@ def _compute_corridor_offsets(
 
     # Log summary
     corridors_found = 0
-    for t, pd in results.items():
+    for _t, pd in results.items():
         for _, offs in pd.items():
             if any(abs(o) > 0.01 for o in offs):
                 corridors_found += 1
@@ -1695,292 +1707,6 @@ def _smooth_offsets(raw: list[float]) -> list[float]:
 # just render.
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def _remove_near_duplicates_wgs84(
-    coords: list[tuple[float, float]],
-    min_spacing: float = 0.00004,
-) -> list[tuple[float, float]]:
-    """Remove near-duplicate points (micro-clusters from station-snap).
-
-    Works in WGS84 degree space.  Coords are (lat, lon) tuples.
-    """
-    if len(coords) < 2:
-        return list(coords)
-    result = [coords[0]]
-    for i in range(1, len(coords)):
-        dlat = coords[i][0] - result[-1][0]
-        dlon = coords[i][1] - result[-1][1]
-        if math.sqrt(dlat * dlat + dlon * dlon) >= min_spacing:
-            result.append(coords[i])
-    # Always keep the last point
-    if len(result) >= 2 and result[-1] != coords[-1]:
-        result.append(coords[-1])
-    elif len(result) < 2:
-        return list(coords)
-    return result
-
-
-def _junction_fillet_wgs84(
-    coords: list[tuple[float, float]],
-    lane_offset: float = 0.0,
-    angle_threshold: float = 10.0,
-    base_radius_deg: float = 0.00045,
-    scale_factor: float = 0.00030,
-    arc_points: int = 16,
-) -> list[tuple[float, float]]:
-    """Apply circular-arc fillet to vertices with sharp turns.
-
-    Port of the iOS ``junctionAwareFillet`` + ``circularArcFillet`` functions.
-    Works in WGS84 degree space.  Coords are (lat, lon) tuples where
-    lat ↔ y-axis and lon ↔ x-axis.
-
-    Parameters match the iOS call-site defaults used in
-    ``computeFlattenedPolylinesAsync()``.
-    """
-    if len(coords) < 3:
-        return list(coords)
-
-    n = len(coords)
-    cos_threshold = math.cos(math.radians(angle_threshold))
-    R = max(base_radius_deg, abs(lane_offset) * scale_factor)
-
-    # ── Pass 1: ideal tangent distance for every interior vertex ──
-    edge_len = [0.0] * (n - 1)
-    for i in range(n - 1):
-        dx = coords[i + 1][1] - coords[i][1]   # longitude (x)
-        dy = coords[i + 1][0] - coords[i][0]   # latitude  (y)
-        edge_len[i] = math.sqrt(dx * dx + dy * dy)
-
-    tangent_dist = [0.0] * n
-    tan_half     = [0.0] * n
-    needs_fillet = [False] * n
-
-    for i in range(1, n - 1):
-        len1, len2 = edge_len[i - 1], edge_len[i]
-        if len1 < 1e-10 or len2 < 1e-10:
-            continue
-
-        prev, curr, nxt = coords[i - 1], coords[i], coords[i + 1]
-        dx1 = curr[1] - prev[1];  dy1 = curr[0] - prev[0]
-        dx2 = nxt[1]  - curr[1];  dy2 = nxt[0]  - curr[0]
-
-        dot = (dx1 * dx2 + dy1 * dy2) / (len1 * len2)
-        if dot > cos_threshold:
-            continue
-
-        clamped_dot = max(-0.9999, min(0.9999, dot))
-        turn_angle  = math.acos(clamped_dot)
-        half_angle  = (math.pi - turn_angle) / 2.0
-        if half_angle < 1e-6:
-            continue
-
-        th = math.tan(half_angle)
-        if th < 1e-10:
-            continue
-
-        ideal_dist = R / th
-        solo_clamped = min(ideal_dist, 0.40 * min(len1, len2))
-        tangent_dist[i] = solo_clamped
-        tan_half[i]     = th
-        needs_fillet[i]  = True
-
-    # ── Pass 1.5: budget adjacent fillets so they never overlap ──
-    for e in range(n - 1):
-        want_left  = tangent_dist[e]     if needs_fillet[e]     else 0.0
-        want_right = tangent_dist[e + 1] if needs_fillet[e + 1] else 0.0
-        total = want_left + want_right
-        if total <= edge_len[e] * 0.90:
-            continue
-        budget = edge_len[e] * 0.90
-        scale = budget / total if total > 0 else 0.0
-        if needs_fillet[e]:
-            tangent_dist[e] = want_left * scale
-        if needs_fillet[e + 1]:
-            tangent_dist[e + 1] = want_right * scale
-
-    # ── Pass 2: emit arc geometry ──
-    result: list[tuple[float, float]] = [coords[0]]
-
-    for i in range(1, n - 1):
-        if not needs_fillet[i]:
-            result.append(coords[i])
-            continue
-
-        prev, curr, nxt = coords[i - 1], coords[i], coords[i + 1]
-        # x = longitude (index 1), y = latitude (index 0)
-        dx1 = curr[1] - prev[1];  dy1 = curr[0] - prev[0]
-        dx2 = nxt[1]  - curr[1];  dy2 = nxt[0]  - curr[0]
-
-        len1 = edge_len[i - 1]
-        len2 = edge_len[i]
-
-        budgeted_dist = tangent_dist[i]
-        effective_r = budgeted_dist * tan_half[i]
-
-        if effective_r < 1e-10 or budgeted_dist < 1e-10:
-            result.append(curr)
-            continue
-
-        u1x = dx1 / len1;  u1y = dy1 / len1
-        u2x = dx2 / len2;  u2y = dy2 / len2
-
-        # Tangent points A, D
-        a_lon = curr[1] - u1x * budgeted_dist
-        a_lat = curr[0] - u1y * budgeted_dist
-        d_lon = curr[1] + u2x * budgeted_dist
-        d_lat = curr[0] + u2y * budgeted_dist
-
-        cross = u1x * u2y - u1y * u2x
-
-        if cross > 0:
-            perp_x, perp_y = -u1y,  u1x
-        else:
-            perp_x, perp_y =  u1y, -u1x
-
-        c_lon = a_lon + perp_x * effective_r
-        c_lat = a_lat + perp_y * effective_r
-
-        start_angle = math.atan2(a_lat - c_lat, a_lon - c_lon)
-        end_angle   = math.atan2(d_lat - c_lat, d_lon - c_lon)
-
-        sweep = end_angle - start_angle
-        if cross > 0:
-            if sweep > 0:
-                sweep -= 2.0 * math.pi
-        else:
-            if sweep < 0:
-                sweep += 2.0 * math.pi
-
-        # Safety: skip arcs that sweep > 180° (near-reversal)
-        if abs(sweep) > math.pi:
-            result.append(curr)
-            continue
-
-        for step in range(arc_points + 1):
-            t = step / arc_points
-            angle = start_angle + t * sweep
-            p_lon = c_lon + effective_r * math.cos(angle)
-            p_lat = c_lat + effective_r * math.sin(angle)
-            result.append((p_lat, p_lon))
-
-    result.append(coords[-1])
-    return result
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# Trunk Crossing Detection
-#
-# Detects where polylines from different trunk groups physically cross
-# (not run parallel in corridors).  Crossing points are exported so the
-# client can render casing breaks — making it visually clear which line
-# passes over which at intersections.
-# ═══════════════════════════════════════════════════════════════════════════════
-
-def _crossing_angle_at(
-    path_a: LineString,
-    path_b: LineString,
-    point,
-    epsilon: float = 15.0,
-) -> float:
-    """Compute crossing angle (0–90°) between two paths at an intersection point."""
-    from shapely.geometry import Point as _Pt
-
-    dist_a = path_a.project(point)
-    p_a1 = path_a.interpolate(max(0, dist_a - epsilon))
-    p_a2 = path_a.interpolate(min(path_a.length, dist_a + epsilon))
-
-    dist_b = path_b.project(point)
-    p_b1 = path_b.interpolate(max(0, dist_b - epsilon))
-    p_b2 = path_b.interpolate(min(path_b.length, dist_b + epsilon))
-
-    dx_a = p_a2.x - p_a1.x;  dy_a = p_a2.y - p_a1.y
-    dx_b = p_b2.x - p_b1.x;  dy_b = p_b2.y - p_b1.y
-
-    len_a = math.sqrt(dx_a ** 2 + dy_a ** 2)
-    len_b = math.sqrt(dx_b ** 2 + dy_b ** 2)
-    if len_a < 1e-6 or len_b < 1e-6:
-        return 0.0
-
-    dot = (dx_a * dx_b + dy_a * dy_b) / (len_a * len_b)
-    angle_rad = math.acos(min(1.0, max(-1.0, abs(dot))))
-    return math.degrees(angle_rad)
-
-
-def _detect_trunk_crossings(
-    min_crossing_angle: float = 25.0,
-) -> list[dict]:
-    """Detect crossing points between different trunk groups.
-
-    Uses projected meter-space LineStrings from the pipeline cache.
-    Returns a list of dicts:
-      [{"lat": float, "lng": float, "trunk_indices": [int, int]}, ...]
-
-    Only includes crossings where the angle between the two polylines
-    exceeds *min_crossing_angle* degrees — filtering out near-parallel
-    corridor overlaps.
-    """
-    from shapely.geometry import Point as _Pt, MultiPoint as _MPt
-
-    raw_paths = _trunk_raw_paths_cache
-    if not raw_paths:
-        return []
-
-    trunk_indices = sorted(raw_paths.keys())
-    crossings: list[dict] = []
-    seen_cells: set[tuple[int, int, int]] = set()   # (ti, tj, grid_cell) dedup
-
-    for i_pos, ti in enumerate(trunk_indices):
-        for tj in trunk_indices[i_pos + 1:]:
-            for path_i in raw_paths[ti]:
-                for path_j in raw_paths[tj]:
-                    try:
-                        ix = path_i.intersection(path_j)
-                    except Exception:
-                        continue
-
-                    if ix.is_empty:
-                        continue
-
-                    # Only Point / MultiPoint — LineString means parallel overlap
-                    if isinstance(ix, _Pt):
-                        pts = [ix]
-                    elif isinstance(ix, _MPt):
-                        pts = list(ix.geoms)
-                    else:
-                        continue
-
-                    for pt in pts:
-                        # Grid-cell dedup (~100 m granularity)
-                        cell = (ti, tj, int(pt.x // 100) * 10000 + int(pt.y // 100))
-                        if cell in seen_cells:
-                            continue
-                        seen_cells.add(cell)
-
-                        angle = _crossing_angle_at(path_i, path_j, pt)
-                        if angle < min_crossing_angle:
-                            continue
-
-                        wgs_pt = project_to_wgs84([(pt.x, pt.y)])[0]
-                        crossings.append({
-                            "lat": round(wgs_pt[0], 6),
-                            "lng": round(wgs_pt[1], 6),
-                            "trunk_indices": sorted([ti, tj]),
-                        })
-
-    TrackLogger.info(f"[Crossings] Detected {len(crossings)} trunk crossing points")
-    return crossings
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# WGS-84 Junction-Aware Fillet  (exported polyline smoothing)
-#
-# Replaces sharp vertices in WGS84, degree-space polylines with circular arc
-# segments.  Matches the iOS circularArcFillet() algorithm exactly so the
-# backend-produced smoothing is pixel-identical to what the client used to do.
-#
-# Applied to trunk export polylines AFTER project_to_wgs84() and BEFORE
-# encode_polyline() — the client can then skip all geometry processing and
-# just render.
-# ═══════════════════════════════════════════════════════════════════════════════
 
 def _remove_near_duplicates_wgs84(
     coords: list[tuple[float, float]],
@@ -2033,12 +1759,12 @@ def _junction_fillet_wgs84(
     # ── Pass 1: ideal tangent distance for every interior vertex ──
     edge_len = [0.0] * (n - 1)
     for i in range(n - 1):
-        dx = coords[i + 1][1] - coords[i][1]   # longitude (x)
-        dy = coords[i + 1][0] - coords[i][0]   # latitude  (y)
+        dx = coords[i + 1][1] - coords[i][1]  # longitude (x)
+        dy = coords[i + 1][0] - coords[i][0]  # latitude  (y)
         edge_len[i] = math.sqrt(dx * dx + dy * dy)
 
     tangent_dist = [0.0] * n
-    tan_half     = [0.0] * n
+    tan_half = [0.0] * n
     needs_fillet = [False] * n
 
     for i in range(1, n - 1):
@@ -2047,16 +1773,18 @@ def _junction_fillet_wgs84(
             continue
 
         prev, curr, nxt = coords[i - 1], coords[i], coords[i + 1]
-        dx1 = curr[1] - prev[1];  dy1 = curr[0] - prev[0]
-        dx2 = nxt[1]  - curr[1];  dy2 = nxt[0]  - curr[0]
+        dx1 = curr[1] - prev[1]
+        dy1 = curr[0] - prev[0]
+        dx2 = nxt[1] - curr[1]
+        dy2 = nxt[0] - curr[0]
 
         dot = (dx1 * dx2 + dy1 * dy2) / (len1 * len2)
         if dot > cos_threshold:
             continue
 
         clamped_dot = max(-0.9999, min(0.9999, dot))
-        turn_angle  = math.acos(clamped_dot)
-        half_angle  = (math.pi - turn_angle) / 2.0
+        turn_angle = math.acos(clamped_dot)
+        half_angle = (math.pi - turn_angle) / 2.0
         if half_angle < 1e-6:
             continue
 
@@ -2067,12 +1795,12 @@ def _junction_fillet_wgs84(
         ideal_dist = R / th
         solo_clamped = min(ideal_dist, 0.40 * min(len1, len2))
         tangent_dist[i] = solo_clamped
-        tan_half[i]     = th
-        needs_fillet[i]  = True
+        tan_half[i] = th
+        needs_fillet[i] = True
 
     # ── Pass 1.5: budget adjacent fillets so they never overlap ──
     for e in range(n - 1):
-        want_left  = tangent_dist[e]     if needs_fillet[e]     else 0.0
+        want_left = tangent_dist[e] if needs_fillet[e] else 0.0
         want_right = tangent_dist[e + 1] if needs_fillet[e + 1] else 0.0
         total = want_left + want_right
         if total <= edge_len[e] * 0.90:
@@ -2094,8 +1822,10 @@ def _junction_fillet_wgs84(
 
         prev, curr, nxt = coords[i - 1], coords[i], coords[i + 1]
         # x = longitude (index 1), y = latitude (index 0)
-        dx1 = curr[1] - prev[1];  dy1 = curr[0] - prev[0]
-        dx2 = nxt[1]  - curr[1];  dy2 = nxt[0]  - curr[0]
+        dx1 = curr[1] - prev[1]
+        dy1 = curr[0] - prev[0]
+        dx2 = nxt[1] - curr[1]
+        dy2 = nxt[0] - curr[0]
 
         len1 = edge_len[i - 1]
         len2 = edge_len[i]
@@ -2107,8 +1837,10 @@ def _junction_fillet_wgs84(
             result.append(curr)
             continue
 
-        u1x = dx1 / len1;  u1y = dy1 / len1
-        u2x = dx2 / len2;  u2y = dy2 / len2
+        u1x = dx1 / len1
+        u1y = dy1 / len1
+        u2x = dx2 / len2
+        u2y = dy2 / len2
 
         # Tangent points A, D
         a_lon = curr[1] - u1x * budgeted_dist
@@ -2119,15 +1851,15 @@ def _junction_fillet_wgs84(
         cross = u1x * u2y - u1y * u2x
 
         if cross > 0:
-            perp_x, perp_y = -u1y,  u1x
+            perp_x, perp_y = -u1y, u1x
         else:
-            perp_x, perp_y =  u1y, -u1x
+            perp_x, perp_y = u1y, -u1x
 
         c_lon = a_lon + perp_x * effective_r
         c_lat = a_lat + perp_y * effective_r
 
         start_angle = math.atan2(a_lat - c_lat, a_lon - c_lon)
-        end_angle   = math.atan2(d_lat - c_lat, d_lon - c_lon)
+        end_angle = math.atan2(d_lat - c_lat, d_lon - c_lon)
 
         sweep = end_angle - start_angle
         if cross > 0:
@@ -2162,6 +1894,7 @@ def _junction_fillet_wgs84(
 # passes over which at intersections.
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 def _crossing_angle_at(
     path_a: LineString,
     path_b: LineString,
@@ -2169,7 +1902,6 @@ def _crossing_angle_at(
     epsilon: float = 15.0,
 ) -> float:
     """Compute crossing angle (0–90°) between two paths at an intersection point."""
-    from shapely.geometry import Point as _Pt
 
     dist_a = path_a.project(point)
     p_a1 = path_a.interpolate(max(0, dist_a - epsilon))
@@ -2179,11 +1911,13 @@ def _crossing_angle_at(
     p_b1 = path_b.interpolate(max(0, dist_b - epsilon))
     p_b2 = path_b.interpolate(min(path_b.length, dist_b + epsilon))
 
-    dx_a = p_a2.x - p_a1.x;  dy_a = p_a2.y - p_a1.y
-    dx_b = p_b2.x - p_b1.x;  dy_b = p_b2.y - p_b1.y
+    dx_a = p_a2.x - p_a1.x
+    dy_a = p_a2.y - p_a1.y
+    dx_b = p_b2.x - p_b1.x
+    dy_b = p_b2.y - p_b1.y
 
-    len_a = math.sqrt(dx_a ** 2 + dy_a ** 2)
-    len_b = math.sqrt(dx_b ** 2 + dy_b ** 2)
+    len_a = math.sqrt(dx_a**2 + dy_a**2)
+    len_b = math.sqrt(dx_b**2 + dy_b**2)
     if len_a < 1e-6 or len_b < 1e-6:
         return 0.0
 
@@ -2205,7 +1939,8 @@ def _detect_trunk_crossings(
     exceeds *min_crossing_angle* degrees — filtering out near-parallel
     corridor overlaps.
     """
-    from shapely.geometry import Point as _Pt, MultiPoint as _MPt
+    from shapely.geometry import MultiPoint as _MPt
+    from shapely.geometry import Point as _Pt
 
     raw_paths = _trunk_raw_paths_cache
     if not raw_paths:
@@ -2213,10 +1948,10 @@ def _detect_trunk_crossings(
 
     trunk_indices = sorted(raw_paths.keys())
     crossings: list[dict] = []
-    seen_cells: set[tuple[int, int, int]] = set()   # (ti, tj, grid_cell) dedup
+    seen_cells: set[tuple[int, int, int]] = set()  # (ti, tj, grid_cell) dedup
 
     for i_pos, ti in enumerate(trunk_indices):
-        for tj in trunk_indices[i_pos + 1:]:
+        for tj in trunk_indices[i_pos + 1 :]:
             for path_i in raw_paths[ti]:
                 for path_j in raw_paths[tj]:
                     try:
@@ -2247,11 +1982,13 @@ def _detect_trunk_crossings(
                             continue
 
                         wgs_pt = project_to_wgs84([(pt.x, pt.y)])[0]
-                        crossings.append({
-                            "lat": round(wgs_pt[0], 6),
-                            "lng": round(wgs_pt[1], 6),
-                            "trunk_indices": sorted([ti, tj]),
-                        })
+                        crossings.append(
+                            {
+                                "lat": round(wgs_pt[0], 6),
+                                "lng": round(wgs_pt[1], 6),
+                                "trunk_indices": sorted([ti, tj]),
+                            }
+                        )
 
     TrackLogger.info(f"[Crossings] Detected {len(crossings)} trunk crossing points")
     return crossings
@@ -2265,6 +2002,7 @@ def _detect_trunk_crossings(
 #
 # Pipeline:  densify → arc-offset → despike → RDP-simplify
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 def _densify_with_offsets(
     coords: list[tuple[float, float]],
@@ -2293,13 +2031,15 @@ def _densify_with_offsets(
         dist = _point_dist(prev_c, curr_c)
 
         if dist > max_spacing:
-            n_sub = int(math.ceil(dist / max_spacing))
+            n_sub = math.ceil(dist / max_spacing)
             for j in range(1, n_sub):
                 t = j / n_sub
-                result_c.append((
-                    prev_c[0] + t * (curr_c[0] - prev_c[0]),
-                    prev_c[1] + t * (curr_c[1] - prev_c[1]),
-                ))
+                result_c.append(
+                    (
+                        prev_c[0] + t * (curr_c[0] - prev_c[0]),
+                        prev_c[1] + t * (curr_c[1] - prev_c[1]),
+                    )
+                )
                 result_o.append(prev_o + t * (curr_o - prev_o))
 
         result_c.append(curr_c)
@@ -2358,12 +2098,12 @@ def _apply_arc_offset(
             continue
 
         # ── Interior vertex: compute turning angle ──
-        n1x, n1y = seg_normals[i - 1]   # incoming segment normal
-        n2x, n2y = seg_normals[i]       # outgoing segment normal
+        n1x, n1y = seg_normals[i - 1]  # incoming segment normal
+        n2x, n2y = seg_normals[i]  # outgoing segment normal
 
         dot = max(-1.0, min(1.0, n1x * n2x + n1y * n2y))
         cross = n1x * n2y - n1y * n2x
-        angle = math.acos(dot)          # always in [0, π]
+        angle = math.acos(dot)  # always in [0, π]
 
         # Small angle → averaged normal (nearly straight segment)
         if angle < min_angle_rad:
@@ -2392,22 +2132,24 @@ def _apply_arc_offset(
             # Angular sweep matching the turn direction
             sweep = angle2 - angle1
             if sweep > math.pi:
-                sweep -= 2. * math.pi
+                sweep -= 2.0 * math.pi
             elif sweep < -math.pi:
-                sweep += 2. * math.pi
+                sweep += 2.0 * math.pi
 
             n_arc = min(
                 ARC_MAX_POINTS,
-                max(2, int(math.ceil(abs(sweep) / math.radians(10)))),
+                max(2, math.ceil(abs(sweep) / math.radians(10))),
             )
 
             for j in range(n_arc + 1):
                 t = j / n_arc
                 a = angle1 + t * sweep
-                result.append((
-                    cx + offset * math.cos(a),
-                    cy + offset * math.sin(a),
-                ))
+                result.append(
+                    (
+                        cx + offset * math.cos(a),
+                        cy + offset * math.sin(a),
+                    )
+                )
         else:
             # INSIDE: clamped miter join (path is shorter on inside).
             mx = n1x + n2x
@@ -2452,69 +2194,6 @@ def _rdp_simplify(
     return out if len(out) >= 2 else list(coords)
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# Phase 3 — Apply Perpendicular Offsets  (legacy miter-join, kept for reference)
-# ═══════════════════════════════════════════════════════════════════════════════
-
-def _apply_perpendicular_offset(
-    coords: list[tuple[float, float]],
-    offsets: list[float],
-) -> list[tuple[float, float]]:
-    """Displace each vertex perpendicular to the path by per-vertex offsets.
-
-    Uses clamped miter joins at interior vertices — same math as v2 but
-    applied to trunk-level continuous paths instead of skeleton edge fragments.
-    """
-    n = len(coords)
-    if n < 2:
-        return list(coords)
-
-    # Per-segment normals
-    seg_normals: list[tuple[float, float]] = []
-    for i in range(n - 1):
-        seg_normals.append(_unit_normal(coords[i], coords[i + 1]))
-
-    result: list[tuple[float, float]] = []
-
-    for i in range(n):
-        offset = offsets[i] if i < len(offsets) else 0.0
-
-        if abs(offset) < 0.01:
-            result.append(coords[i])
-            continue
-
-        if i == 0:
-            nx_, ny = seg_normals[0]
-        elif i == n - 1:
-            nx_, ny = seg_normals[-1]
-        else:
-            n1x, n1y = seg_normals[i - 1]
-            n2x, n2y = seg_normals[i]
-            mx = n1x + n2x
-            my = n1y + n2y
-            mlen = math.sqrt(mx * mx + my * my)
-
-            if mlen > 1e-10:
-                mx /= mlen
-                my /= mlen
-                dot = mx * n1x + my * n1y
-                if abs(dot) > 0.01:
-                    scale = min(1.0 / abs(dot), MITER_CLAMP)
-                else:
-                    scale = MITER_CLAMP
-                nx_ = mx * scale
-                ny = my * scale
-            else:
-                nx_, ny = seg_normals[i - 1]
-
-        result.append((
-            coords[i][0] + nx_ * offset,
-            coords[i][1] + ny * offset,
-        ))
-
-    return result
-
-
 def _despike_coords(
     coords: list[tuple[float, float]],
     min_angle_deg: float | None = None,
@@ -2529,7 +2208,9 @@ def _despike_coords(
     if len(coords) <= 3:
         return coords
 
-    min_angle_rad = math.radians(min_angle_deg if min_angle_deg is not None else DESPIKE_MIN_ANGLE_DEG)
+    min_angle_rad = math.radians(
+        min_angle_deg if min_angle_deg is not None else DESPIKE_MIN_ANGLE_DEG
+    )
     keep: list[tuple[float, float]] = [coords[0]]
 
     for i in range(1, len(coords) - 1):
@@ -2551,9 +2232,7 @@ def _despike_coords(
         chord_dy = nxt[1] - prev[1]
         chord_len = math.sqrt(chord_dx * chord_dx + chord_dy * chord_dy)
         if chord_len > 1e-6:
-            cross = abs(
-                chord_dx * (prev[1] - curr[1]) - chord_dy * (prev[0] - curr[0])
-            )
+            cross = abs(chord_dx * (prev[1] - curr[1]) - chord_dy * (prev[0] - curr[0]))
             if cross / chord_len / chord_len > DESPIKE_MAX_EXCURSION:
                 continue
 
@@ -2566,6 +2245,7 @@ def _despike_coords(
 # ═══════════════════════════════════════════════════════════════════════════════
 # Phase 4 — Export: Reproject + Encode
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 def _export_trunk_paths(
     trunk_offset_paths: dict[int, list[LineString]],
@@ -2739,7 +2419,9 @@ def _visual_offset_run_length_m(
     return length
 
 
-def _is_visual_y_transition(prev_offset: float, current_offset: float, next_offset: float) -> bool:
+def _is_visual_y_transition(
+    prev_offset: float, current_offset: float, next_offset: float
+) -> bool:
     """True when a run is the visible half-lane fan-out step in a Y split."""
     if abs(current_offset) < 1e-9:
         return False
@@ -2756,8 +2438,7 @@ def _is_visual_y_transition(prev_offset: float, current_offset: float, next_offs
     current_abs = abs(current_offset)
     next_abs = abs(next_offset)
     abs_monotonic = (
-        prev_abs < current_abs < next_abs
-        or prev_abs > current_abs > next_abs
+        prev_abs < current_abs < next_abs or prev_abs > current_abs > next_abs
     )
     if not abs_monotonic:
         return False
@@ -2848,8 +2529,7 @@ def _should_preserve_visual_transition_run(
         prev_abs = abs(prev_run.offset)
         next_abs = abs(next_run.offset)
         abs_monotonic = (
-            prev_abs < current_abs < next_abs
-            or prev_abs > current_abs > next_abs
+            prev_abs < current_abs < next_abs or prev_abs > current_abs > next_abs
         )
         if not abs_monotonic:
             return False
@@ -2983,9 +2663,7 @@ def _stabilize_visual_lane_offsets(
                 (prev_run.offset, next_run.offset),
                 key=lambda candidate: (
                     abs(candidate - current_run.offset),
-                    -(
-                        prev_length if candidate == prev_run.offset else next_length
-                    ),
+                    -(prev_length if candidate == prev_run.offset else next_length),
                     -abs(candidate),
                 ),
             )
@@ -3032,7 +2710,7 @@ def _segment_export_path_by_lane_offset(
         if next_offset == current_offset:
             continue
 
-        segment_coords = coords_m[start_idx:idx + 1]
+        segment_coords = coords_m[start_idx : idx + 1]
         if len(segment_coords) >= 2:
             segments.append((segment_coords, current_offset))
         start_idx = idx
@@ -3098,13 +2776,17 @@ def get_processed_stops() -> list[dict]:
             if trunk is not None:
                 trunk_groups.add(trunk)
         if not positions:
-            positions.append({"route_id": routes[0] if routes else "", "lat": lat, "lon": lon})
-        results.append({
-            "station_id": station["id"],
-            "name": station["name"],
-            "is_transfer": len(trunk_groups) >= 2,
-            "positions": positions,
-        })
+            positions.append(
+                {"route_id": routes[0] if routes else "", "lat": lat, "lon": lon}
+            )
+        results.append(
+            {
+                "station_id": station["id"],
+                "name": station["name"],
+                "is_transfer": len(trunk_groups) >= 2,
+                "positions": positions,
+            }
+        )
     TrackLogger.info(
         f"[StopSnap] Cache empty — returned {len(results)} raw GTFS positions"
     )
@@ -3181,9 +2863,10 @@ def _compute_all_trunk_lane_offsets() -> dict[int, float]:
         # Find the highest placed offset among corridor neighbors
         max_nbr_offset: float | None = None
         for prev_t, prev_val in placed.items():
-            if prev_t in ti_nbrs:
-                if max_nbr_offset is None or prev_val > max_nbr_offset:
-                    max_nbr_offset = prev_val
+            if prev_t in ti_nbrs and (
+                max_nbr_offset is None or prev_val > max_nbr_offset
+            ):
+                max_nbr_offset = prev_val
         if max_nbr_offset is not None:
             min_required = max_nbr_offset + MIN_TRUNK_DELTA
             if val < min_required:
@@ -3263,7 +2946,9 @@ def get_trunk_polylines() -> list[dict]:
                 if len(coords_m) < 2:
                     continue
                 offsets_m = offset_map.get(path_idx, [0.0] * len(coords_m))
-                for segment_coords, lane_offset in _segment_export_path_by_lane_offset(coords_m, offsets_m):
+                for segment_coords, lane_offset in _segment_export_path_by_lane_offset(
+                    coords_m, offsets_m
+                ):
                     if len(segment_coords) < 2:
                         continue
                     segmented_lines.append((LineString(segment_coords), lane_offset))
@@ -3272,7 +2957,9 @@ def get_trunk_polylines() -> list[dict]:
                 export_paths[trunk_idx] = segmented_lines
     else:
         for trunk_idx, line_strings in paths.items():
-            export_paths[trunk_idx] = [(ls, 0.0) for ls in line_strings if len(ls.coords) >= 2]
+            export_paths[trunk_idx] = [
+                (ls, 0.0) for ls in line_strings if len(ls.coords) >= 2
+            ]
 
     if raw_paths is not None and export_paths:
         try:
@@ -3287,7 +2974,9 @@ def get_trunk_polylines() -> list[dict]:
                     continue
                 export_paths[trunk_idx] = [
                     (snapped_line, lane_offset)
-                    for snapped_line, (_, lane_offset) in zip(snapped_lines, items)
+                    for snapped_line, (_, lane_offset) in zip(
+                        snapped_lines, items, strict=False
+                    )
                     if len(snapped_line.coords) >= 2
                 ]
         except Exception as exc:
@@ -3334,14 +3023,16 @@ def get_trunk_polylines() -> list[dict]:
                 continue
 
         if encoded:
-            result.append({
-                "trunk_index": trunk_idx,
-                "color_hex": color,
-                "route_ids": group,
-                "polylines": encoded,
-                "lane_offset": separated_offsets.get(trunk_idx, 0.0),
-                "polyline_lane_offsets": polyline_lane_offsets,
-            })
+            result.append(
+                {
+                    "trunk_index": trunk_idx,
+                    "color_hex": color,
+                    "route_ids": group,
+                    "polylines": encoded,
+                    "lane_offset": separated_offsets.get(trunk_idx, 0.0),
+                    "polyline_lane_offsets": polyline_lane_offsets,
+                }
+            )
 
     return result
 
@@ -3396,18 +3087,22 @@ def _process_stop_positions(
             positions.append({"route_id": rid, "lat": lat, "lon": lon})
 
         if not positions:
-            positions.append({
-                "route_id": routes[0] if routes else "",
-                "lat": lat,
-                "lon": lon,
-            })
+            positions.append(
+                {
+                    "route_id": routes[0] if routes else "",
+                    "lat": lat,
+                    "lon": lon,
+                }
+            )
 
-        results.append({
-            "station_id": station_id,
-            "name": name,
-            "is_transfer": len(trunk_groups_seen) >= 2,
-            "positions": positions,
-        })
+        results.append(
+            {
+                "station_id": station_id,
+                "name": name,
+                "is_transfer": len(trunk_groups_seen) >= 2,
+                "positions": positions,
+            }
+        )
 
     TrackLogger.info(
         f"[StopProcess] Processed {len(results)} stations "
@@ -3420,6 +3115,7 @@ def _process_stop_positions(
 # ═══════════════════════════════════════════════════════════════════════════════
 # MAIN ENTRY POINT
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 def apply_topological_offsets(
     overlays: list,
@@ -3435,7 +3131,6 @@ def apply_topological_offsets(
     or by the first user request to ``/subway/shapes/all``.
     """
     global _pipeline_result_cache
-    from app.models import SubwayLineOverlay
 
     if not overlays:
         return overlays
@@ -3461,8 +3156,7 @@ def apply_topological_offsets(
 
     total_paths = sum(len(p) for p in trunk_paths.values())
     total_pts = sum(
-        sum(len(path.coords) for path in paths)
-        for paths in trunk_paths.values()
+        sum(len(path.coords) for path in paths) for paths in trunk_paths.values()
     )
     TrackLogger.info(
         f"[Pipeline] Phase 1 — {len(trunk_paths)} trunk groups, "
@@ -3475,9 +3169,7 @@ def apply_topological_offsets(
     try:
         trunk_paths = _snap_paths_to_stations(trunk_paths)
     except Exception as exc:
-        TrackLogger.warning(
-            f"[Pipeline] Phase 1.5 (Station snap) failed: {exc}"
-        )
+        TrackLogger.warning(f"[Pipeline] Phase 1.5 (Station snap) failed: {exc}")
 
     # Normalize polyline direction (south→north / west→east) so that
     # MapLibre lineOffset pushes parallel trunks in consistent directions.
@@ -3537,9 +3229,13 @@ def apply_topological_offsets(
     # ── Phase 5: Stop processing ──
     global _processed_stops_cache, _trunk_offset_paths_cache, _trunk_raw_paths_cache, _vertex_offsets_cache, _all_trunk_lane_offsets_cache
     _trunk_offset_paths_cache = trunk_offset_paths
-    _trunk_raw_paths_cache = trunk_paths  # Pre-offset geometry (passes through stations)
+    _trunk_raw_paths_cache = (
+        trunk_paths  # Pre-offset geometry (passes through stations)
+    )
     _vertex_offsets_cache = vertex_offsets
-    _all_trunk_lane_offsets_cache = None  # Reset — will be computed on first call to get_trunk_polylines
+    _all_trunk_lane_offsets_cache = (
+        None  # Reset — will be computed on first call to get_trunk_polylines
+    )
     try:
         # v4 fix: snap stop positions onto the RAW (pre-offset) trunk paths
         # — the same geometry exported by get_trunk_polylines().  Previously
@@ -3547,9 +3243,7 @@ def apply_topological_offsets(
         # lane offsets, causing station dots to float off the rendered lines.
         _processed_stops_cache = _process_stop_positions(trunk_paths)
     except Exception as exc:
-        TrackLogger.warning(
-            f"[Pipeline] Phase 5 (Stop snap) failed: {exc}"
-        )
+        TrackLogger.warning(f"[Pipeline] Phase 5 (Stop snap) failed: {exc}")
         _processed_stops_cache = None
 
     # ── Phase 4: Per-route export (v4 — no geographic offset) ──

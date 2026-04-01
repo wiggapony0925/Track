@@ -1,21 +1,16 @@
-#
-# weather.py
-# TrackBackend
-#
-# Lightweight endpoint that exposes the cached Open-Meteo weather for the
-# iOS app to use as a fallback when WeatherKit is unavailable (e.g. in the
-# Simulator where Apple's JWT authenticator fails).
-#
-# Returns temperature, WMO code, SF Symbol name, condition description, and
-# the delay-model category ("clear" / "rain" / "snow").
-#
+"""Lightweight endpoint that exposes the cached Open-Meteo weather for the
+iOS app to use as a fallback when WeatherKit is unavailable (e.g. in the
+Simulator where Apple's JWT authenticator fails).
+
+Returns temperature, WMO code, SF Symbol name, condition description, and
+the delay-model category ("clear" / "rain" / "snow")."""
 
 from __future__ import annotations
 
 from fastapi import APIRouter, Query
 
-from app.clients.weather_client import get_current_weather, get_cached_weather_details
-from app.models import WeatherResponse, RESP_502
+from app.clients.weather_client import get_cached_weather_details, get_current_weather
+from app.models import RESP_502, WeatherResponse
 
 router = APIRouter(tags=["weather"])
 
@@ -30,34 +25,42 @@ router = APIRouter(tags=["weather"])
 # precipitation and overcast symbols are the same day and night.
 _WMO_TO_SYMBOL: dict[int, tuple[str, str, str]] = {
     # (SF Symbol day, SF Symbol night, human-readable description)
-    0:  ("sun.max.fill",         "moon.stars.fill",       "Clear sky"),
-    1:  ("sun.min.fill",         "moon.fill",             "Mainly clear"),
-    2:  ("cloud.sun.fill",       "cloud.moon.fill",       "Partly cloudy"),
-    3:  ("cloud.fill",           "cloud.fill",            "Overcast"),
-    45: ("cloud.fog.fill",       "cloud.fog.fill",        "Fog"),
-    48: ("cloud.fog.fill",       "cloud.fog.fill",        "Depositing rime fog"),
-    51: ("cloud.drizzle.fill",   "cloud.drizzle.fill",    "Light drizzle"),
-    53: ("cloud.drizzle.fill",   "cloud.drizzle.fill",    "Moderate drizzle"),
-    55: ("cloud.drizzle.fill",   "cloud.drizzle.fill",    "Dense drizzle"),
-    56: ("cloud.sleet.fill",     "cloud.sleet.fill",      "Light freezing drizzle"),
-    57: ("cloud.sleet.fill",     "cloud.sleet.fill",      "Dense freezing drizzle"),
-    61: ("cloud.rain.fill",      "cloud.rain.fill",       "Slight rain"),
-    63: ("cloud.rain.fill",      "cloud.rain.fill",       "Moderate rain"),
-    65: ("cloud.heavyrain.fill", "cloud.heavyrain.fill",  "Heavy rain"),
-    66: ("cloud.sleet.fill",     "cloud.sleet.fill",      "Light freezing rain"),
-    67: ("cloud.sleet.fill",     "cloud.sleet.fill",      "Heavy freezing rain"),
-    71: ("cloud.snow.fill",      "cloud.snow.fill",       "Slight snow fall"),
-    73: ("cloud.snow.fill",      "cloud.snow.fill",       "Moderate snow fall"),
-    75: ("cloud.snow.fill",      "cloud.snow.fill",       "Heavy snow fall"),
-    77: ("cloud.snow.fill",      "cloud.snow.fill",       "Snow grains"),
-    80: ("cloud.rain.fill",      "cloud.rain.fill",       "Slight rain showers"),
-    81: ("cloud.rain.fill",      "cloud.rain.fill",       "Moderate rain showers"),
-    82: ("cloud.heavyrain.fill", "cloud.heavyrain.fill",  "Violent rain showers"),
-    85: ("cloud.snow.fill",      "cloud.snow.fill",       "Slight snow showers"),
-    86: ("cloud.snow.fill",      "cloud.snow.fill",       "Heavy snow showers"),
-    95: ("cloud.bolt.rain.fill", "cloud.bolt.rain.fill",  "Thunderstorm"),
-    96: ("cloud.bolt.rain.fill", "cloud.bolt.rain.fill",  "Thunderstorm with slight hail"),
-    99: ("cloud.bolt.rain.fill", "cloud.bolt.rain.fill",  "Thunderstorm with heavy hail"),
+    0: ("sun.max.fill", "moon.stars.fill", "Clear sky"),
+    1: ("sun.min.fill", "moon.fill", "Mainly clear"),
+    2: ("cloud.sun.fill", "cloud.moon.fill", "Partly cloudy"),
+    3: ("cloud.fill", "cloud.fill", "Overcast"),
+    45: ("cloud.fog.fill", "cloud.fog.fill", "Fog"),
+    48: ("cloud.fog.fill", "cloud.fog.fill", "Depositing rime fog"),
+    51: ("cloud.drizzle.fill", "cloud.drizzle.fill", "Light drizzle"),
+    53: ("cloud.drizzle.fill", "cloud.drizzle.fill", "Moderate drizzle"),
+    55: ("cloud.drizzle.fill", "cloud.drizzle.fill", "Dense drizzle"),
+    56: ("cloud.sleet.fill", "cloud.sleet.fill", "Light freezing drizzle"),
+    57: ("cloud.sleet.fill", "cloud.sleet.fill", "Dense freezing drizzle"),
+    61: ("cloud.rain.fill", "cloud.rain.fill", "Slight rain"),
+    63: ("cloud.rain.fill", "cloud.rain.fill", "Moderate rain"),
+    65: ("cloud.heavyrain.fill", "cloud.heavyrain.fill", "Heavy rain"),
+    66: ("cloud.sleet.fill", "cloud.sleet.fill", "Light freezing rain"),
+    67: ("cloud.sleet.fill", "cloud.sleet.fill", "Heavy freezing rain"),
+    71: ("cloud.snow.fill", "cloud.snow.fill", "Slight snow fall"),
+    73: ("cloud.snow.fill", "cloud.snow.fill", "Moderate snow fall"),
+    75: ("cloud.snow.fill", "cloud.snow.fill", "Heavy snow fall"),
+    77: ("cloud.snow.fill", "cloud.snow.fill", "Snow grains"),
+    80: ("cloud.rain.fill", "cloud.rain.fill", "Slight rain showers"),
+    81: ("cloud.rain.fill", "cloud.rain.fill", "Moderate rain showers"),
+    82: ("cloud.heavyrain.fill", "cloud.heavyrain.fill", "Violent rain showers"),
+    85: ("cloud.snow.fill", "cloud.snow.fill", "Slight snow showers"),
+    86: ("cloud.snow.fill", "cloud.snow.fill", "Heavy snow showers"),
+    95: ("cloud.bolt.rain.fill", "cloud.bolt.rain.fill", "Thunderstorm"),
+    96: (
+        "cloud.bolt.rain.fill",
+        "cloud.bolt.rain.fill",
+        "Thunderstorm with slight hail",
+    ),
+    99: (
+        "cloud.bolt.rain.fill",
+        "cloud.bolt.rain.fill",
+        "Thunderstorm with heavy hail",
+    ),
 }
 
 _DEFAULT_SYMBOL = ("cloud.fill", "cloud.fill", "Unknown")
@@ -76,8 +79,16 @@ _DEFAULT_SYMBOL = ("cloud.fill", "cloud.fill", "Unknown")
     responses={**RESP_502},
 )
 async def get_weather(
-    lat: float = Query(40.7128, description="Latitude of the location. Defaults to New York City.", examples=[40.7128]),
-    lon: float = Query(-74.006, description="Longitude of the location. Defaults to New York City.", examples=[-74.006]),
+    lat: float = Query(
+        40.7128,
+        description="Latitude of the location. Defaults to New York City.",
+        examples=[40.7128],
+    ),
+    lon: float = Query(
+        -74.006,
+        description="Longitude of the location. Defaults to New York City.",
+        examples=[-74.006],
+    ),
 ) -> WeatherResponse:
     """Return current weather conditions.
 
@@ -103,7 +114,9 @@ async def get_weather(
     windspeed = details.get("windspeed_kmh") if details else None
     is_day = details.get("is_day", True) if details else True
 
-    day_symbol, night_symbol, description = _WMO_TO_SYMBOL.get(wmo_code, _DEFAULT_SYMBOL)
+    day_symbol, night_symbol, description = _WMO_TO_SYMBOL.get(
+        wmo_code, _DEFAULT_SYMBOL
+    )
     symbol = day_symbol if is_day else night_symbol
 
     return WeatherResponse(

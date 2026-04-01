@@ -36,7 +36,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import sys
 import time
 from pathlib import Path
 
@@ -70,7 +69,6 @@ TRAINING_DIR = Path(__file__).resolve().parent.parent / "app" / "data" / "traini
 #         faster to query than segment speeds; good for route-level reliability
 #
 DATASETS: dict[str, dict] = {
-
     # ── Bus: segment-level travel time per route × hour × dow ────────────
     # max_rows=500_000 — dataset has 15M+ rows total; 500k gives full route
     # coverage across all hours/days without exhausting RAM or taking hours
@@ -78,7 +76,7 @@ DATASETS: dict[str, dict] = {
         "id": "58t6-89vi",
         "filename": "bus_segment_speeds_2023_2024.json",
         "columns": "route_id,direction,hour_of_day,day_of_week,month,year,"
-                   "average_travel_time,average_road_speed,bus_trip_count,route_type,borough",
+        "average_travel_time,average_road_speed,bus_trip_count,route_type,borough",
         "label": "Bus Route Segment Speeds 2023–2024",
         "limit": 50_000,
         "max_rows": 500_000,
@@ -87,28 +85,26 @@ DATASETS: dict[str, dict] = {
         "id": "kufs-yh3x",
         "filename": "bus_segment_speeds_2025.json",
         "columns": "route_id,direction,hour_of_day,day_of_week,month,year,"
-                   "average_travel_time,average_road_speed,bus_trip_count,route_type,borough",
+        "average_travel_time,average_road_speed,bus_trip_count,route_type,borough",
         "label": "Bus Route Segment Speeds Beginning 2025",
         "limit": 50_000,
         "max_rows": 500_000,
     },
-
     # ── Bus: route-level speed summary (smaller, good for route reliability) ─
     "bus_speeds_summary": {
         "id": "cudb-vcni",
         "filename": "bus_speeds_summary.json",
         "columns": "route_id,trip_type,day_type,period,month,average_speed,"
-                   "total_mileage,total_operating_time,borough",
+        "total_mileage,total_operating_time,borough",
         "label": "Bus Speeds Beginning 2015",
         "limit": 50_000,
     },
-
     # ── Subway: terminal on-time performance per line per month ───────────
     "subway_otp_2015_2019": {
         "id": "f6rf-2a3t",
         "filename": "subway_otp_2015_2019.json",
         "columns": "line,month,day_type,terminal_on_time_performance,"
-                   "num_sched_trips,num_on_time_trips,division",
+        "num_sched_trips,num_on_time_trips,division",
         "label": "Subway Terminal On-Time Performance 2015–2019",
         "limit": 50_000,
     },
@@ -116,7 +112,7 @@ DATASETS: dict[str, dict] = {
         "id": "vtvh-gimj",
         "filename": "subway_otp_2020_2024.json",
         "columns": "line,month,day_type,terminal_on_time_performance,"
-                   "num_sched_trips,num_on_time_trips,division",
+        "num_sched_trips,num_on_time_trips,division",
         "label": "Subway Terminal On-Time Performance 2020–2024",
         "limit": 50_000,
     },
@@ -124,11 +120,10 @@ DATASETS: dict[str, dict] = {
         "id": "ks33-g5ze",
         "filename": "subway_otp_2025.json",
         "columns": "line,month,day_type,terminal_on_time_performance,"
-                   "num_sched_trips,num_on_time_trips,division",
+        "num_sched_trips,num_on_time_trips,division",
         "label": "Subway Terminal On-Time Performance Beginning 2025",
         "limit": 50_000,
     },
-
     # ── Subway: service delivered (% of scheduled trains that actually ran) ─
     # Tells the model which lines routinely run fewer trains than scheduled
     # → used to scale down confidence in predicted arrival for unreliable lines
@@ -136,7 +131,7 @@ DATASETS: dict[str, dict] = {
         "id": "32ch-sei3",
         "filename": "subway_service_delivered_2015_2019.json",
         "columns": "line,month,day_type,num_sched_trains,num_actual_trains,"
-                   "service_delivered,division",
+        "service_delivered,division",
         "label": "Subway Service Delivered 2015–2019",
         "limit": 50_000,
     },
@@ -144,7 +139,7 @@ DATASETS: dict[str, dict] = {
         "id": "bg59-42xi",
         "filename": "subway_service_delivered_2020_2024.json",
         "columns": "line,month,day_type,num_sched_trains,num_actual_trains,"
-                   "service_delivered,division",
+        "service_delivered,division",
         "label": "Subway Service Delivered 2020–2024",
         "limit": 50_000,
     },
@@ -152,11 +147,10 @@ DATASETS: dict[str, dict] = {
         "id": "nmu4-7tz9",
         "filename": "subway_service_delivered_2025.json",
         "columns": "line,month,day_type,num_sched_trains,num_actual_trains,"
-                   "service_delivered,division",
+        "service_delivered,division",
         "label": "Subway Service Delivered Beginning 2025",
         "limit": 50_000,
     },
-
     # ── Subway: delay-causing incidents per line × month × category ───────
     # Tells the model HOW OFTEN and WHY delays happen on each line
     # → adds an incident_rate feature per route (incidents / scheduled_trips)
@@ -169,7 +163,6 @@ DATASETS: dict[str, dict] = {
         "label": "Subway Delay-Causing Incidents Beginning 2020",
         "limit": 50_000,
     },
-
     # ── Subway: major incidents (delayed 50+ trains) per line × month ─────
     # These are the worst events — signals, track, subway car failures
     # → used as a heavy-tail multiplier: if a line averages N major
@@ -195,7 +188,6 @@ DATASETS: dict[str, dict] = {
         "label": "Subway Major Incidents Beginning 2025",
         "limit": 50_000,
     },
-
     # ── Subway: total trains delayed per line × month × delay category ────
     # Complements major incidents — captures ALL delays not just worst ones
     # → ratio delays/scheduled_runs gives a per-line delay probability
@@ -206,7 +198,6 @@ DATASETS: dict[str, dict] = {
         "label": "Subway Trains Delayed Beginning 2020",
         "limit": 50_000,
     },
-
     # ── Subway: hourly ridership per station complex ───────────────────────
     # Tells the model how crowded each station is at each hour
     # → crowding_index feature: high ridership → longer dwell times → more
@@ -216,7 +207,7 @@ DATASETS: dict[str, dict] = {
         "id": "t69i-h2me",
         "filename": "subway_ridership_2017_2019.json",
         "columns": "station_complex_id,station_complex,transit_timestamp,"
-                   "ridership,transit_mode,borough",
+        "ridership,transit_mode,borough",
         "label": "Subway Hourly Ridership 2017–2019",
         "limit": 50_000,
         "max_rows": 1_000_000,
@@ -225,7 +216,7 @@ DATASETS: dict[str, dict] = {
         "id": "wujg-7c2s",
         "filename": "subway_ridership_2020_2024.json",
         "columns": "station_complex_id,station_complex,transit_timestamp,"
-                   "ridership,transit_mode,borough",
+        "ridership,transit_mode,borough",
         "label": "Subway Hourly Ridership 2020–2024",
         "limit": 50_000,
         "max_rows": 1_000_000,
@@ -234,12 +225,11 @@ DATASETS: dict[str, dict] = {
         "id": "5wq4-mkjj",
         "filename": "subway_ridership_2025.json",
         "columns": "station_complex_id,station_complex,transit_timestamp,"
-                   "ridership,transit_mode,borough",
+        "ridership,transit_mode,borough",
         "label": "Subway Hourly Ridership Beginning 2025",
         "limit": 50_000,
         "max_rows": 500_000,
     },
-
     # ── Bus: wait assessment (% of buses no more than 3 min over interval) ─
     # Bunching metric: low wait_assessment → buses bunch → arrival times
     # widely scattered → raise predicted factor for that route
@@ -247,12 +237,11 @@ DATASETS: dict[str, dict] = {
         "id": "v4z4-2h6n",
         "filename": "bus_wait_assessment.json",
         "columns": "route_id,month,period,day_type,trip_type,borough,"
-                   "wait_assessment,number_of_scheduled_trips,"
-                   "number_of_trips_passing_wait",
+        "wait_assessment,number_of_scheduled_trips,"
+        "number_of_trips_passing_wait",
         "label": "Bus Wait Assessment Beginning 2015",
         "limit": 50_000,
     },
-
     # ── Bus: service delivered (% of peak buses actually provided) ─────────
     # Same concept as subway_service_delivered — ghost bus detection
     # → routes with low service_delivered get a reliability penalty in training
@@ -260,11 +249,10 @@ DATASETS: dict[str, dict] = {
         "id": "6qwi-vjde",
         "filename": "bus_service_delivered.json",
         "columns": "route_id,month,period,day_type,trip_type,borough,"
-                   "actual_number_of_buses,scheduled_number_of_buses,service_delivered",
+        "actual_number_of_buses,scheduled_number_of_buses,service_delivered",
         "label": "Bus Service Delivered Beginning 2015",
         "limit": 50_000,
     },
-
     # ── Bus: customer journey time performance ────────────────────────────
     # additional_travel_time and additional_bus_stop_time are DIRECT measures
     # of how many extra minutes riders experience vs schedule
@@ -274,12 +262,11 @@ DATASETS: dict[str, dict] = {
         "id": "8mkn-d32t",
         "filename": "bus_customer_journey.json",
         "columns": "route_id,month,period,trip_type,borough,"
-                   "customer_journey_time,additional_travel_time,"
-                   "additional_bus_stop_time,number_of_customers",
+        "customer_journey_time,additional_travel_time,"
+        "additional_bus_stop_time,number_of_customers",
         "label": "Bus Customer Journey-Focused Metrics Beginning 2017",
         "limit": 50_000,
     },
-
     # ── Subway: customer journey metrics per line × month × period ────────
     # additional_platform_time (APT) = avg extra wait above schedule (min)
     # additional_train_time (ATT)    = avg extra ride time above schedule (min)
@@ -291,8 +278,8 @@ DATASETS: dict[str, dict] = {
         "id": "r7qk-6tcy",
         "filename": "subway_customer_journey_2015_2019.json",
         "columns": "line,month,period,division,"
-                   "additional_platform_time,additional_train_time,"
-                   "customer_journey_time,over_five_mins_perc,num_passengers",
+        "additional_platform_time,additional_train_time,"
+        "customer_journey_time,over_five_mins_perc,num_passengers",
         "label": "Subway Customer Journey-Focused Metrics 2015–2019",
         "limit": 50_000,
     },
@@ -300,8 +287,8 @@ DATASETS: dict[str, dict] = {
         "id": "4apg-4kt9",
         "filename": "subway_customer_journey_2020_2024.json",
         "columns": "line,month,period,division,"
-                   "additional_platform_time,additional_train_time,"
-                   "customer_journey_time,over_five_mins_perc,num_passengers",
+        "additional_platform_time,additional_train_time,"
+        "customer_journey_time,over_five_mins_perc,num_passengers",
         "label": "Subway Customer Journey-Focused Metrics 2020–2024",
         "limit": 50_000,
     },
@@ -309,12 +296,11 @@ DATASETS: dict[str, dict] = {
         "id": "s4u6-t435",
         "filename": "subway_customer_journey_2025.json",
         "columns": "line,month,period,division,"
-                   "additional_platform_time,additional_train_time,"
-                   "customer_journey_time,over_five_mins_perc,num_passengers",
+        "additional_platform_time,additional_train_time,"
+        "customer_journey_time,over_five_mins_perc,num_passengers",
         "label": "Subway Customer Journey-Focused Metrics Beginning 2025",
         "limit": 50_000,
     },
-
     # ── LIRR: on-time performance by branch × month × period ─────────────
     # OTP = % trains arriving at final destination within 5:59 of schedule
     # Covers all LIRR branches (Babylon, Ronkonkoma, Port Washington, etc.)
@@ -327,7 +313,6 @@ DATASETS: dict[str, dict] = {
         "label": "MTA LIRR On-Time Performance Beginning 2015",
         "limit": 50_000,
     },
-
     # ── Metro-North: on-time performance by line × month × period ────────
     # Same structure as LIRR OTP — covers Harlem, Hudson, New Haven lines
     # → replaces hand-coded Metro-North reliability tier with real OTP
@@ -338,7 +323,6 @@ DATASETS: dict[str, dict] = {
         "label": "MTA Metro-North On-Time Performance Beginning 2020",
         "limit": 50_000,
     },
-
     # ── Subway: elevator and escalator availability per station × month ───
     # Outages increase effective walk time to/from platforms
     # → stations with high outage rates (e.g. 23rd St, 59th St Columbus)
@@ -347,12 +331,11 @@ DATASETS: dict[str, dict] = {
         "id": "rc78-7x78",
         "filename": "subway_elevator_escalator.json",
         "columns": "station_complex_name,station_name,borough,equipment_type,"
-                   "month,_24_hour_availability,am_peak_availability,"
-                   "pm_peak_availability,unscheduled_outages,total_outages",
+        "month,_24_hour_availability,am_peak_availability,"
+        "pm_peak_availability,unscheduled_outages,total_outages",
         "label": "Subway Elevator and Escalator Availability Beginning 2015",
         "limit": 50_000,
     },
-
     # ── MTA: service alerts archive by line/agency ─────────────────────────
     # Every alert ever published — type, affected routes, date, description
     # → allows model to learn: line X had N alerts/month historically → scale
@@ -367,7 +350,6 @@ DATASETS: dict[str, dict] = {
         "limit": 50_000,
         "max_rows": 500_000,
     },
-
     # ── MTA: daily ridership all modes 2020–present ────────────────────────
     # Updated daily — gives systemwide demand level by day and mode
     # → normalize hourly predictions by daily_ridership / baseline to capture
@@ -379,7 +361,6 @@ DATASETS: dict[str, dict] = {
         "label": "MTA Daily Ridership and Traffic Beginning 2020",
         "limit": 50_000,
     },
-
     # ── Bus: hourly ridership by route × fare type ────────────────────────
     # Hour-level demand per route (bus_route, transit_timestamp, ridership)
     # → crowding feature for bus: high ridership hours see higher dwell time
@@ -389,7 +370,7 @@ DATASETS: dict[str, dict] = {
         "id": "kv7t-n8in",
         "filename": "bus_hourly_ridership_2020_2024.json",
         "columns": "transit_timestamp,bus_route,ridership,transfers,"
-                   "fare_class_category",
+        "fare_class_category",
         "label": "MTA Bus Hourly Ridership 2020–2024",
         "limit": 50_000,
         "max_rows": 500_000,
@@ -398,7 +379,7 @@ DATASETS: dict[str, dict] = {
         "id": "gxb3-akrn",
         "filename": "bus_hourly_ridership_2025.json",
         "columns": "transit_timestamp,bus_route,ridership,transfers,"
-                   "fare_class_category",
+        "fare_class_category",
         "label": "MTA Bus Hourly Ridership Beginning 2025",
         "limit": 50_000,
         "max_rows": 500_000,
@@ -408,8 +389,13 @@ DATASETS: dict[str, dict] = {
 BASE_URL = "https://data.ny.gov/resource/{id}.json"
 
 
-def _fetch_all(dataset_id: str, columns: str, limit: int, token: str | None,
-               max_rows: int | None = None) -> list[dict]:
+def _fetch_all(
+    dataset_id: str,
+    columns: str,
+    limit: int,
+    token: str | None,
+    max_rows: int | None = None,
+) -> list[dict]:
     """Paginate through a Socrata dataset and return rows.
 
     If max_rows is set, stops after collecting that many rows — useful for
@@ -477,8 +463,13 @@ def download(names: list[str], token: str | None) -> None:
         print(f"{'='*60}")
 
         try:
-            rows = _fetch_all(meta["id"], meta["columns"], meta["limit"], token,
-                              max_rows=meta.get("max_rows"))
+            rows = _fetch_all(
+                meta["id"],
+                meta["columns"],
+                meta["limit"],
+                token,
+                max_rows=meta.get("max_rows"),
+            )
         except Exception as exc:
             print(f"  ✗ FAILED: {exc}")
             continue
@@ -499,7 +490,9 @@ def check() -> None:
             with open(path) as f:
                 data = json.load(f)
             size_kb = path.stat().st_size / 1024
-            print(f"  ✓ {name:<28}  {len(data):>8,} rows  {size_kb:>8,.0f} KB  {meta['filename']}")
+            print(
+                f"  ✓ {name:<28}  {len(data):>8,} rows  {size_kb:>8,.0f} KB  {meta['filename']}"
+            )
         else:
             print(f"  ✗ {name:<28}  NOT DOWNLOADED")
     print()
@@ -512,7 +505,8 @@ def main() -> None:
         epilog=__doc__,
     )
     parser.add_argument(
-        "--dataset", "-d",
+        "--dataset",
+        "-d",
         choices=list(DATASETS.keys()),
         action="append",
         dest="datasets",
@@ -520,16 +514,18 @@ def main() -> None:
         help=f"Download only this dataset. Repeatable. Choices: {', '.join(DATASETS)}",
     )
     parser.add_argument(
-        "--check", "-c",
+        "--check",
+        "-c",
         action="store_true",
         help="Show what files are already downloaded, then exit.",
     )
     parser.add_argument(
-        "--token", "-t",
+        "--token",
+        "-t",
         default=os.environ.get("SOCRATA_APP_TOKEN"),
         metavar="TOKEN",
         help="Socrata app token (optional, raises rate limit). "
-             "Defaults to $SOCRATA_APP_TOKEN env var.",
+        "Defaults to $SOCRATA_APP_TOKEN env var.",
     )
     args = parser.parse_args()
 
@@ -543,8 +539,10 @@ def main() -> None:
     if args.token:
         print(f"Using app token: {args.token[:8]}...")
     else:
-        print("No app token — rate-limited to ~1000 req/hr. "
-              "Register free at https://data.ny.gov/profile/app_tokens")
+        print(
+            "No app token — rate-limited to ~1000 req/hr. "
+            "Register free at https://data.ny.gov/profile/app_tokens"
+        )
 
     download(targets, args.token)
 

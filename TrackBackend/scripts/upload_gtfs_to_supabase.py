@@ -83,7 +83,7 @@ ARCHIVES: dict[str, list[tuple[str, str | None]]] = {
 
 def _build_archive(name: str, members: list[tuple[str, str | None]]) -> Path:
     """Create a .tar.gz archive and return its temp file path."""
-    tmp = tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False)
+    tmp = tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False)  # noqa: SIM115
     tmp_path = tmp.name
     tmp.close()
 
@@ -135,9 +135,8 @@ def _upload_to_supabase(file_path: Path, object_name: str) -> bool:
     if resp.status_code in (200, 201):
         print(f"  ✅ Uploaded {object_name}")
         return True
-    else:
-        print(f"  ❌ Upload failed: HTTP {resp.status_code} — {resp.text[:200]}")
-        return False
+    print(f"  ❌ Upload failed: HTTP {resp.status_code} — {resp.text[:200]}")
+    return False
 
 
 def _ensure_bucket_exists() -> bool:
@@ -170,9 +169,8 @@ def _ensure_bucket_exists() -> bool:
     if resp.status_code in (200, 201):
         print(f"✅ Bucket '{BUCKET}' created.")
         return True
-    else:
-        print(f"❌ Could not create bucket: {resp.status_code} — {resp.text[:200]}")
-        return False
+    print(f"❌ Could not create bucket: {resp.status_code} — {resp.text[:200]}")
+    return False
 
 
 def main():

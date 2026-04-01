@@ -1,34 +1,50 @@
 #!/usr/bin/env python3
 """Accuracy audit: compare pipeline output to GTFS stop positions."""
-import sys, os, math, csv
+
+from __future__ import annotations
+
+import csv
+import math
+import os
+import sys
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+from app.models import SubwayLineOverlay
+from app.services.mapping.corridor_pipeline import apply_topological_offsets
 from app.services.mapping.subway_shapes import (
-    _load_route_shapes, _load_shapes, _unpack_coords, _load_shape_stops,
+    _load_route_shapes,
+    _load_shape_stops,
+    _load_shapes,
+    _unpack_coords,
     get_stops_for_route,
 )
-from app.services.mapping.corridor_pipeline import apply_topological_offsets
 from app.utils.polyline_utils import decode_polyline, encode_polyline
-from app.models import SubwayLineOverlay
 from app.utils.transit_utils import get_all_subway_lines, get_subway_color
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "app", "data")
+
 
 def haversine_m(lat1, lon1, lat2, lon2):
     R = 6371000
     dlat = math.radians(lat2 - lat1)
     dlon = math.radians(lon2 - lon1)
-    a = (math.sin(dlat/2)**2 +
-         math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) *
-         math.sin(dlon/2)**2)
+    a = (
+        math.sin(dlat / 2) ** 2
+        + math.cos(math.radians(lat1))
+        * math.cos(math.radians(lat2))
+        * math.sin(dlon / 2) ** 2
+    )
     return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
 
 def _station_id(sid):
     return sid[:-1] if sid and sid[-1] in ("N", "S") else sid
 
+
 # Build full pipeline (matching subway.py)
 skip_variants = {"6X", "7X", "FX", "FS", "GS", "SR"}
-lines = [l for l in get_all_subway_lines() if l not in skip_variants]
+lines = [ln for ln in get_all_subway_lines() if ln not in skip_variants]
 route_shapes = _load_route_shapes()
 shapes_data = _load_shapes()
 shape_stops_map = _load_shape_stops()
@@ -50,7 +66,11 @@ for line in lines:
     if not polylines_raw:
         continue
     encoded = [encode_polyline(c) for c in polylines_raw]
-    overlays.append(SubwayLineOverlay(route_id=line, color_hex=get_subway_color(line), polylines=encoded))
+    overlays.append(
+        SubwayLineOverlay(
+            route_id=line, color_hex=get_subway_color(line), polylines=encoded
+        )
+    )
 
     covered_stations = set()
     for sid in shape_ids:
@@ -86,14 +106,18 @@ stops_file = os.path.join(DATA_DIR, "stops.txt")
 stop_pos = {}
 with open(stops_file) as f:
     for row in csv.DictReader(f):
-        stop_pos[row["stop_id"]] = (float(row["stop_lat"]), float(row["stop_lon"]), row.get("stop_name", ""))
+        stop_pos[row["stop_id"]] = (
+            float(row["stop_lat"]),
+            float(row["stop_lon"]),
+            row.get("stop_name", ""),
+        )
 
 # Also load raw GTFS shapes for comparison
 raw_all_coords = {}
 for line in lines:
     direction_shapes = route_shapes.get(line, {})
     all_pts = []
-    for dir_id, sids in direction_shapes.items():
+    for _dir_id, sids in direction_shapes.items():
         for sid in sids:
             buf = shapes_data.get(sid)
             if buf:
@@ -111,7 +135,7 @@ for route_id in sorted(pipeline_coords.keys()):
     parent_stops = set()
     for s in stops:
         parent_stops.add(s)
-        if s.endswith("N") or s.endswith("S"):
+        if s.endswith(("N", "S")):
             parent_stops.add(s[:-1])
 
     route_dists = []
@@ -158,47 +182,55 @@ for route_id in sorted(pipeline_coords.keys()):
 all_dists.sort()
 n = len(all_dists)
 
+
 def percentile(data, p):
     k = int(p / 100 * (len(data) - 1))
     return data[k]
+
 
 print("=" * 70)
 print("ACCURACY REPORT — RAW GTFS PRESERVED PIPELINE")
 print("=" * 70)
 print(f"Total route-stop pairs measured: {n}")
-print(f"")
-print(f"Overall statistics:")
+print("")
+print("Overall statistics:")
 print(f"  Average:  {sum(all_dists)/n:7.1f} m")
 print(f"  Median:   {percentile(all_dists, 50):7.1f} m")
 print(f"  P90:      {percentile(all_dists, 90):7.1f} m")
 print(f"  P95:      {percentile(all_dists, 95):7.1f} m")
 print(f"  P99:      {percentile(all_dists, 99):7.1f} m")
 print(f"  Max:      {max(all_dists):7.1f} m")
-print(f"")
-print(f"Coverage thresholds:")
+print("")
+print("Coverage thresholds:")
 for t in [5, 10, 20, 30, 50]:
     cnt = sum(1 for d in all_dists if d <= t)
     pct = cnt / n * 100
     print(f"  ≤ {t:2d} m: {pct:6.1f}% ({cnt}/{n})")
 
-print(f"\nPer-route worst-case (max distance):")
+print("\nPer-route worst-case (max distance):")
 for route_id in sorted(per_route.keys()):
     dists = per_route[route_id]
     mx = max(dists)
-    avg = sum(dists)/len(dists)
+    avg = sum(dists) / len(dists)
     cnt = len(dists)
     status = "OK" if mx <= 30 else ("WARN" if mx <= 50 else "BAD")
-    print(f"  {route_id:>3s}: avg={avg:5.1f}m  max={mx:5.1f}m  stops={cnt:3d}  [{status}]")
+    print(
+        f"  {route_id:>3s}: avg={avg:5.1f}m  max={mx:5.1f}m  stops={cnt:3d}  [{status}]"
+    )
 
 if gap_stops:
     print(f"\nStops >30m ({len(gap_stops)}):")
-    for route_id, pipe_d, raw_d, cause, sid, sname in sorted(gap_stops, key=lambda x: -x[1]):
-        print(f"  {route_id:>3s} {pipe_d:6.1f}m (raw={raw_d:5.1f}m) {cause:>12s}  {sid:>6s}  {sname}")
+    for route_id, pipe_d, raw_d, cause, sid, sname in sorted(
+        gap_stops, key=lambda x: -x[1]
+    ):
+        print(
+            f"  {route_id:>3s} {pipe_d:6.1f}m (raw={raw_d:5.1f}m) {cause:>12s}  {sid:>6s}  {sname}"
+        )
 else:
     print(f"\nNo stops >30m! All {n} route-stop pairs within 30m.")
 
 # Per-line polyline counts
-print(f"\nPer-line polyline counts:")
+print("\nPer-line polyline counts:")
 total_polys = 0
 for ov in sorted(overlays, key=lambda o: o.route_id):
     total_polys += len(ov.polylines)

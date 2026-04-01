@@ -1,8 +1,14 @@
 #!/usr/bin/env python3
 """Simulate the iOS client's routesNear grid check for A/C/E near Sutphin."""
+
+from __future__ import annotations
+
 import math
+
 from app.services.mapping.subway_shapes import (
-    _load_route_shapes, _load_shapes, _unpack_coords,
+    _load_route_shapes,
+    _load_shapes,
+    _unpack_coords,
 )
 
 SUTPHIN_LAT = 40.7005
@@ -11,14 +17,14 @@ ROUTE_GRID_CELL = 0.002  # Must match iOS MapSystemViewModel
 
 
 def route_grid_key(lat: float, lon: float) -> int:
-    lat_cell = int(math.floor(lat / ROUTE_GRID_CELL))
-    lon_cell = int(math.floor(lon / ROUTE_GRID_CELL))
+    lat_cell = math.floor(lat / ROUTE_GRID_CELL)
+    lon_cell = math.floor(lon / ROUTE_GRID_CELL)
     return lat_cell * 10_000_000 + lon_cell
 
 
 def routes_near(lat: float, lon: float, per_route_grid: dict) -> list:
-    lat_cell = int(math.floor(lat / ROUTE_GRID_CELL))
-    lon_cell = int(math.floor(lon / ROUTE_GRID_CELL))
+    lat_cell = math.floor(lat / ROUTE_GRID_CELL)
+    lon_cell = math.floor(lon / ROUTE_GRID_CELL)
     nearby = []
     for route_id, grid in per_route_grid.items():
         found = False
@@ -64,12 +70,14 @@ def main():
                 grid.add(route_grid_key(lat, lon))
         per_route_grid[route_id] = grid
         total_pts = sum(len(b) for b in branches)
-        print(f"{route_id}: {len(grid)} grid cells, {len(branches)} branches, {total_pts} pts")
+        print(
+            f"{route_id}: {len(grid)} grid cells, {len(branches)} branches, {total_pts} pts"
+        )
 
     # Check routesNear for Sutphin
     print(f"\nSutphin coords: ({SUTPHIN_LAT}, {SUTPHIN_LON})")
-    lat_cell = int(math.floor(SUTPHIN_LAT / ROUTE_GRID_CELL))
-    lon_cell = int(math.floor(SUTPHIN_LON / ROUTE_GRID_CELL))
+    lat_cell = math.floor(SUTPHIN_LAT / ROUTE_GRID_CELL)
+    lon_cell = math.floor(SUTPHIN_LON / ROUTE_GRID_CELL)
     print(f"Grid cell: lat={lat_cell}, lon={lon_cell}")
 
     nearby = routes_near(SUTPHIN_LAT, SUTPHIN_LON, per_route_grid)
@@ -85,37 +93,44 @@ def main():
         for branch in route_polylines[route_id]:
             for lat, lon in branch:
                 dlat = (lat - SUTPHIN_LAT) * 111000
-                dlon = (lon - SUTPHIN_LON) * 111000 * math.cos(math.radians(SUTPHIN_LAT))
+                dlon = (
+                    (lon - SUTPHIN_LON) * 111000 * math.cos(math.radians(SUTPHIN_LAT))
+                )
                 d = math.sqrt(dlat * dlat + dlon * dlon)
                 if d < min_dist:
                     min_dist = d
                     closest = (lat, lon)
-        print(f"{route_id}: closest approach = {min_dist:.0f}m at ({closest[0]:.5f}, {closest[1]:.5f})")
+        print(
+            f"{route_id}: closest approach = {min_dist:.0f}m at ({closest[0]:.5f}, {closest[1]:.5f})"
+        )
 
     # Now simulate AFTER corridor pipeline — check what the server actually returns
     print("\n" + "=" * 60)
     print("After corridor pipeline (actual server output):")
     print("=" * 60)
 
-    from app.services.mapping.corridor_pipeline import apply_topological_offsets
     from app.models import SubwayLineOverlay
-    from app.utils.transit_utils import get_subway_color
+    from app.services.mapping.corridor_pipeline import apply_topological_offsets
     from app.utils.polyline_utils import encode_polyline as _encode_polyline
+    from app.utils.transit_utils import get_subway_color
 
     overlays = []
     for line in ["A", "C", "E"]:
         encoded = [_encode_polyline(coords) for coords in route_polylines[line]]
         color = get_subway_color(line)
-        overlays.append(SubwayLineOverlay(
-            route_id=line,
-            color_hex=color,
-            polylines=encoded,
-        ))
+        overlays.append(
+            SubwayLineOverlay(
+                route_id=line,
+                color_hex=color,
+                polylines=encoded,
+            )
+        )
 
     result_overlays = apply_topological_offsets(overlays)
 
     # Rebuild grids from pipeline output
     from app.utils.polyline_utils import decode_polyline as _decode_polyline
+
     per_route_grid_post = {}
     for overlay in result_overlays:
         grid = set()
@@ -126,7 +141,9 @@ def main():
             for lat, lon in coords:
                 grid.add(route_grid_key(lat, lon))
         per_route_grid_post[overlay.route_id] = grid
-        print(f"{overlay.route_id}: {len(grid)} grid cells, {len(overlay.polylines)} polylines, {total_pts} pts")
+        print(
+            f"{overlay.route_id}: {len(grid)} grid cells, {len(overlay.polylines)} polylines, {total_pts} pts"
+        )
 
     nearby_post = routes_near(SUTPHIN_LAT, SUTPHIN_LON, per_route_grid_post)
     print(f"\nroutesNear (post-pipeline): {nearby_post}")
@@ -140,7 +157,9 @@ def main():
             coords = _decode_polyline(enc)
             for lat, lon in coords:
                 dlat = (lat - SUTPHIN_LAT) * 111000
-                dlon = (lon - SUTPHIN_LON) * 111000 * math.cos(math.radians(SUTPHIN_LAT))
+                dlon = (
+                    (lon - SUTPHIN_LON) * 111000 * math.cos(math.radians(SUTPHIN_LAT))
+                )
                 d = math.sqrt(dlat * dlat + dlon * dlon)
                 if d < min_dist:
                     min_dist = d

@@ -1,19 +1,17 @@
-#
-# test_corridor_offsets.py
-# TrackBackend
-#
-# Tests for the topological graph pipeline (corridor_pipeline.py).
-# Validates that co-located subway lines are fanned out perpendicular
-# to the track so they don't stack on the same pixel.
-#
+"""Tests for the topological graph pipeline (corridor_pipeline.py).
+Validates that co-located subway lines are fanned out perpendicular
+to the track so they don't stack on the same pixel."""
 
 from __future__ import annotations
 
-import pytest
-
 from app.models import SubwayLineOverlay
 from app.services.mapping.corridor_pipeline import apply_topological_offsets
-from app.utils.polyline_utils import decode_polyline as _decode_polyline, encode_polyline as _encode_polyline
+from app.utils.polyline_utils import (
+    decode_polyline as _decode_polyline,
+)
+from app.utils.polyline_utils import (
+    encode_polyline as _encode_polyline,
+)
 
 
 class TestDecodePolyline:
@@ -24,7 +22,7 @@ class TestDecodePolyline:
         encoded = _encode_polyline(coords)
         decoded = _decode_polyline(encoded)
         assert len(decoded) == len(coords)
-        for (elat, elon), (dlat, dlon) in zip(coords, decoded):
+        for (elat, elon), (dlat, dlon) in zip(coords, decoded, strict=False):
             assert abs(elat - dlat) < 1e-4
             assert abs(elon - dlon) < 1e-4
 
@@ -43,7 +41,9 @@ class TestDecodePolyline:
 class TestApplyTopologicalOffsets:
     """Tests for the topological graph pipeline."""
 
-    def _make_overlay(self, route_id: str, coords: list[list[tuple[float, float]]]) -> SubwayLineOverlay:
+    def _make_overlay(
+        self, route_id: str, coords: list[list[tuple[float, float]]]
+    ) -> SubwayLineOverlay:
         """Helper: create a SubwayLineOverlay with encoded polylines."""
         return SubwayLineOverlay(
             route_id=route_id,
@@ -100,8 +100,9 @@ class TestApplyTopologicalOffsets:
         """Offsets should preserve route_id and color_hex."""
         coords = [(40.70 + i * 0.002, -73.90) for i in range(10)]
         overlays = [
-            SubwayLineOverlay(route_id="G", color_hex="#799534",
-                              polylines=[_encode_polyline(coords)]),
+            SubwayLineOverlay(
+                route_id="G", color_hex="#799534", polylines=[_encode_polyline(coords)]
+            ),
         ]
         result = apply_topological_offsets(overlays)
         assert result[0].route_id == "G"
@@ -131,8 +132,9 @@ class TestArcOffset:
     def test_arc_offset_maintains_distance_at_90_degree_bend(self):
         """At a 90° bend, arc offset points should maintain constant distance
         from the original vertex (no miter squeeze)."""
-        from app.services.mapping.corridor_pipeline import _apply_arc_offset
         import math
+
+        from app.services.mapping.corridor_pipeline import _apply_arc_offset
 
         # L-shaped path: east then north (90° left turn at index 1)
         coords = [(0.0, 0.0), (100.0, 0.0), (100.0, 100.0)]
@@ -189,8 +191,15 @@ class TestArcOffset:
 
         # L-shape with extra colinear points
         coords = [
-            (0.0, 0.0), (25.0, 0.0), (50.0, 0.0), (75.0, 0.0), (100.0, 0.0),
-            (100.0, 25.0), (100.0, 50.0), (100.0, 75.0), (100.0, 100.0),
+            (0.0, 0.0),
+            (25.0, 0.0),
+            (50.0, 0.0),
+            (75.0, 0.0),
+            (100.0, 0.0),
+            (100.0, 25.0),
+            (100.0, 50.0),
+            (100.0, 75.0),
+            (100.0, 100.0),
         ]
         result = _rdp_simplify(coords, tolerance=1.0)
 

@@ -1,30 +1,25 @@
-#
-# mnr.py
-# TrackBackend
-#
-# Router for Metro-North Railroad arrivals and route shapes.
-#
+"""Router for Metro-North Railroad arrivals and route shapes."""
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Path, Response
+from fastapi import APIRouter, Path, Response
 
 from app.models import (
-    AllCommuterRailLinesResponse,
-    BusStop,
-    CommuterRailLineOverlay,
-    CommuterRailStop,
-    DirectionShape,
     RESP_404,
     RESP_502,
+    AllCommuterRailLinesResponse,
     RouteShape,
     TrackArrival,
 )
-from app.services.mapping.commuter_rail_shapes import get_all_mnr_lines, get_single_mnr_line
-from app.services.mapping.subway_shapes import enrich_stops_with_transfers
-from app.clients.rail_client import fetch_rail_arrivals, filter_fresh_arrivals
-from app.utils.logger import TrackLogger
-from app.utils.polyline_utils import encode_polyline as _encode_polyline
+from app.routers._commuter_rail import (
+    build_all_lines,
+    build_single_line,
+    fetch_arrivals,
+)
+from app.services.mapping.commuter_rail_shapes import (
+    get_all_mnr_lines,
+    get_single_mnr_line,
+)
 
 router = APIRouter(tags=["mnr"])
 
@@ -37,33 +32,14 @@ router = APIRouter(tags=["mnr"])
     response_model=AllCommuterRailLinesResponse,
     summary="Get all Metro-North line shapes",
     description=(
-        "Returns encoded polylines for every Metro-North line — used to draw the full MNR system map. "
-        "Each line includes station markers with coordinates."
+        "Returns encoded polylines for every Metro-North line \u2014 used to draw "
+        "the full MNR system map. Each line includes station markers with "
+        "coordinates."
     ),
 )
 async def mnr_shapes_all() -> AllCommuterRailLinesResponse:
-    """Return polylines for ALL Metro-North lines.
-
-    Each line includes `route_id`, `name`, `color_hex`, `polylines`,
-    and `stops` (all stations on the line).
-    """
-    lines_data = get_all_mnr_lines()
-    overlays: list[CommuterRailLineOverlay] = []
-    for line in lines_data:
-        encoded = [_encode_polyline(coords) for coords in line["polylines"]]
-        stops = [
-            CommuterRailStop(stop_id=s.stop_id, name=s.name, lat=s.lat, lon=s.lon)
-            for s in line.get("stops", [])
-        ]
-        overlays.append(CommuterRailLineOverlay(
-            route_id=line["route_id"],
-            name=line["name"],
-            color_hex=line["color_hex"],
-            polylines=encoded,
-            mode="mnr",
-            stops=stops,
-        ))
-    return AllCommuterRailLinesResponse(lines=overlays)
+    """Return polylines for ALL Metro-North lines."""
+    return build_all_lines(get_all_mnr_lines, mode="mnr")
 
 
 @router.get(
@@ -71,69 +47,25 @@ async def mnr_shapes_all() -> AllCommuterRailLinesResponse:
     response_model=RouteShape,
     summary="Get single Metro-North line shape",
     description=(
-        "Returns the polyline geometry, ordered stops, and per-direction shapes for a single Metro-North line. "
-        "Accepts numeric GTFS route ID, prefixed form (e.g. `MNR_1`), or line name (e.g. `Hudson`)."
+        "Returns polyline geometry, ordered stops, and per-direction shapes "
+        "for a single Metro-North line. Accepts numeric GTFS route ID, "
+        "prefixed form (e.g. `MNR_1`), or line name (e.g. `Hudson`)."
     ),
     responses={**RESP_404},
 )
-async def mnr_shape(route_id: str = Path(..., description="Metro-North GTFS route ID, prefixed form, or line name.", examples=["1", "MNR_1", "Hudson"])) -> RouteShape:
-    """Return the polyline for a single Metro-North line.
-
-    **Path parameter:** Numeric GTFS route ID (e.g. `1` for Hudson),
-    the prefixed form `MNR_1`, or the line name (e.g. `Hudson`).
-
-    Response includes:
-    - `polylines` — encoded polylines for the line geometry
-    - `stops` — ordered station list with transfer info
-    - `directions` — per-direction shapes split by GTFS `direction_id`
-    """
-    numeric_id = route_id.removeprefix("MNR_")
-
-    line_data = get_single_mnr_line(numeric_id)
-
-    # Fallback: resolve by line name (e.g. "Hudson" → route 1)
-    if line_data is None:
-        query = route_id.lower().strip()
-        for line in get_all_mnr_lines():
-            name = line["name"].lower().strip()
-            if name == query or name.startswith(query):
-                numeric_id = line["route_id"].removeprefix("MNR_")
-                line_data = get_single_mnr_line(numeric_id)
-                break
-
-    if line_data is None:
-        raise HTTPException(status_code=404, detail=f"MNR line '{route_id}' not found")
-
-    encoded = [_encode_polyline(coords) for coords in line_data["polylines"]]
-
-    # Resolve stops from GTFS stops.txt + stop_times.txt
-    all_stops = [
-        BusStop(id=s.stop_id, name=s.name, lat=s.lat, lon=s.lon)
-        for s in line_data.get("stops", [])
-    ]
-    enrich_stops_with_transfers(all_stops, current_route=f"MNR_{numeric_id}")
-
-    # Build per-direction shapes
-    directions: list[DirectionShape] = []
-    for dd in line_data.get("directions", []):
-        dir_encoded = [_encode_polyline(coords) for coords in dd["polylines"]]
-        dir_stops = [
-            BusStop(id=s.stop_id, name=s.name, lat=s.lat, lon=s.lon)
-            for s in dd.get("stops", [])
-        ]
-        enrich_stops_with_transfers(dir_stops, current_route=f"MNR_{numeric_id}")
-        directions.append(DirectionShape(
-            direction_id=dd["direction_id"],
-            headsign=dd.get("headsign", ""),
-            polylines=dir_encoded,
-            stops=dir_stops,
-        ))
-
-    return RouteShape(
-        route_id=line_data["route_id"],
-        polylines=encoded,
-        stops=all_stops,
-        directions=directions,
+async def mnr_shape(
+    route_id: str = Path(
+        ...,
+        description="Metro-North GTFS route ID, prefixed form, or line name.",
+        examples=["1", "MNR_1", "Hudson"],
+    )
+) -> RouteShape:
+    """Return the polyline for a single Metro-North line."""
+    return build_single_line(
+        route_id,
+        prefix="MNR",
+        get_all_fn=get_all_mnr_lines,
+        get_single_fn=get_single_mnr_line,
     )
 
 
@@ -142,26 +74,13 @@ async def mnr_shape(route_id: str = Path(..., description="Metro-North GTFS rout
     response_model=list[TrackArrival],
     summary="Get real-time Metro-North arrivals",
     description=(
-        "Returns upcoming real-time Metro-North arrivals from the GTFS-Realtime feed. "
-        "Each arrival includes station, direction, destination, minutes away, and cancellation status. "
-        "Returns an empty array if the MTA feed is temporarily unavailable."
+        "Returns upcoming real-time Metro-North arrivals from the GTFS-Realtime "
+        "feed. Each arrival includes station, direction, destination, "
+        "minutes away, and cancellation status. Returns an empty array if "
+        "the MTA feed is temporarily unavailable."
     ),
     responses={**RESP_502},
 )
 async def mnr_arrivals(response: Response) -> list[TrackArrival]:
-    """Return upcoming Metro-North arrivals.
-
-    Each arrival includes `route_id`, `station_name`, `direction`,
-    `destination`, `minutes_away`, `arrival_ts` (epoch), and `status`.
-
-    Returns an empty array if the MTA feed is temporarily unavailable.
-    """
-    try:
-        return filter_fresh_arrivals(await fetch_rail_arrivals("metro_north"))
-    except Exception as exc:
-        TrackLogger.warning(
-            f"[MNR] /mnr: feed error ({exc}) — returning empty fallback",
-            tag="MNR",
-        )
-        response.headers["X-Track-Degraded"] = "mnr-arrivals-fallback"
-        return []
+    """Return upcoming Metro-North arrivals."""
+    return await fetch_arrivals("metro_north", tag="MNR", response=response)

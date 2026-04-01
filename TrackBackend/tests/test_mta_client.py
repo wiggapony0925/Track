@@ -16,7 +16,9 @@ class _FakeAsyncClient:
         self._responses = responses
         self.calls = 0
 
-    async def get(self, url: str, headers: dict[str, str] | None = None) -> httpx.Response:
+    async def get(
+        self, url: str, headers: dict[str, str] | None = None
+    ) -> httpx.Response:
         response = self._responses[self.calls]
         self.calls += 1
         if isinstance(response, Exception):
@@ -39,16 +41,22 @@ def _fake_settings(*, retries: int = 2, delay: float = 0.0) -> SimpleNamespace:
 @pytest.mark.asyncio
 async def test_fetch_from_upstream_retries_connect_timeout_then_succeeds(monkeypatch):
     request = httpx.Request("GET", "https://example.com/feed")
-    client = _FakeAsyncClient([
-        httpx.ConnectTimeout("upstream timed out", request=request),
-        httpx.Response(200, request=request, content=b"ok"),
-    ])
+    client = _FakeAsyncClient(
+        [
+            httpx.ConnectTimeout("upstream timed out", request=request),
+            httpx.Response(200, request=request, content=b"ok"),
+        ]
+    )
 
     monkeypatch.setattr(mta_client, "get_settings", lambda: _fake_settings(retries=2))
     monkeypatch.setattr(mta_client, "_get_client", lambda: client)
-    monkeypatch.setattr(mta_client, "_get_upstream_semaphore", lambda: asyncio.Semaphore(1))
+    monkeypatch.setattr(
+        mta_client, "_get_upstream_semaphore", lambda: asyncio.Semaphore(1)
+    )
 
-    data = await mta_client._fetch_from_upstream("https://example.com/feed", parse_json=False)
+    data = await mta_client._fetch_from_upstream(
+        "https://example.com/feed", parse_json=False
+    )
 
     assert data == b"ok"
     assert client.calls == 2
@@ -57,16 +65,22 @@ async def test_fetch_from_upstream_retries_connect_timeout_then_succeeds(monkeyp
 @pytest.mark.asyncio
 async def test_fetch_from_upstream_does_not_retry_non_retryable_status(monkeypatch):
     request = httpx.Request("GET", "https://example.com/feed")
-    client = _FakeAsyncClient([
-        httpx.Response(403, request=request, content=b"forbidden"),
-    ])
+    client = _FakeAsyncClient(
+        [
+            httpx.Response(403, request=request, content=b"forbidden"),
+        ]
+    )
 
     monkeypatch.setattr(mta_client, "get_settings", lambda: _fake_settings(retries=2))
     monkeypatch.setattr(mta_client, "_get_client", lambda: client)
-    monkeypatch.setattr(mta_client, "_get_upstream_semaphore", lambda: asyncio.Semaphore(1))
+    monkeypatch.setattr(
+        mta_client, "_get_upstream_semaphore", lambda: asyncio.Semaphore(1)
+    )
 
     with pytest.raises(httpx.HTTPStatusError):
-        await mta_client._fetch_from_upstream("https://example.com/feed", parse_json=False)
+        await mta_client._fetch_from_upstream(
+            "https://example.com/feed", parse_json=False
+        )
 
     assert client.calls == 1
 

@@ -15,20 +15,16 @@ Superior to Transit App's py-gtfs-loader/schema.py + schema_classes.py:
 from __future__ import annotations
 
 import copy
+import typing
 from functools import cached_property
 from typing import (
     Any,
     ClassVar,
-    Dict,
-    Iterator,
-    List,
-    Optional,
-    Sequence,
-    Type,
     get_type_hints,
 )
 
 from app.services.gtfs.gtfs_types import (
+    BikesAllowed,
     ContinuousDropOff,
     ContinuousPickup,
     DirectionId,
@@ -43,7 +39,6 @@ from app.services.gtfs.gtfs_types import (
     Timepoint,
     TransferType,
     WheelchairAccessible,
-    BikesAllowed,
 )
 
 
@@ -66,8 +61,12 @@ class FieldSpec:
     """
 
     __slots__ = (
-        "required", "default", "min_val", "max_val",
-        "foreign_key", "description",
+        "default",
+        "description",
+        "foreign_key",
+        "max_val",
+        "min_val",
+        "required",
     )
 
     def __init__(
@@ -90,10 +89,10 @@ class FieldSpec:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  Schema registry — populated automatically via __init_subclass__
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-_ENTITY_REGISTRY: Dict[str, Type[Entity]] = {}  # filename → class
+_ENTITY_REGISTRY: dict[str, type[Entity]] = {}  # filename → class
 
 
-def get_entity_registry() -> Dict[str, Type[Entity]]:
+def get_entity_registry() -> dict[str, type[Entity]]:
     """Return a copy of the {gtfs_filename: EntityClass} registry."""
     return dict(_ENTITY_REGISTRY)
 
@@ -110,7 +109,7 @@ class EntityTable(dict):
 
     def __init__(self, *args: Any, **kwargs: Any):
         super().__init__(*args, **kwargs)
-        self._resolved_fields: Dict[str, _ResolvedField] = {}
+        self._resolved_fields: dict[str, _ResolvedField] = {}
 
 
 class GroupedTable(dict):
@@ -121,18 +120,21 @@ class GroupedTable(dict):
 
     def __init__(self, *args: Any, **kwargs: Any):
         super().__init__(*args, **kwargs)
-        self._resolved_fields: Dict[str, _ResolvedField] = {}
+        self._resolved_fields: dict[str, _ResolvedField] = {}
 
 
 class _ResolvedField:
     """Merged header+schema field info carried through load → save."""
-    __slots__ = ("type_", "required", "default", "from_schema")
+
+    __slots__ = ("default", "from_schema", "required", "type_")
 
     def __init__(self, type_: type, required: bool, default: Any, from_schema: bool):
         self.type_ = type_
         self.required = required
         self.default = default
-        self.from_schema = from_schema  # True if declared in Entity, False if extra CSV column
+        self.from_schema = (
+            from_schema  # True if declared in Entity, False if extra CSV column
+        )
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -156,7 +158,7 @@ class Entity:
     # ── subclass configuration (overridden by concrete entities) ─
     __gtfs_filename__: ClassVar[str] = ""
     __primary_key__: ClassVar[str] = ""
-    __group_by__: ClassVar[Optional[str]] = None
+    __group_by__: ClassVar[str | None] = None
     __required_file__: ClassVar[bool] = False
 
     # ── back-reference to the feed (set during load) ────────────
@@ -184,9 +186,9 @@ class Entity:
         return names
 
     @classmethod
-    def _field_specs(cls) -> Dict[str, FieldSpec]:
+    def _field_specs(cls) -> dict[str, FieldSpec]:
         """Return {name: FieldSpec} for all declared fields."""
-        specs: Dict[str, FieldSpec] = {}
+        specs: dict[str, FieldSpec] = {}
         for name in cls._field_names():
             val = getattr(cls, name, None)
             if isinstance(val, FieldSpec):
@@ -197,14 +199,12 @@ class Entity:
         return specs
 
     @classmethod
-    def _field_types(cls) -> Dict[str, type]:
+    def _field_types(cls) -> dict[str, type]:
         """Return {name: python_type} from annotations, resolving Optional.
 
         Uses ``get_type_hints()`` to resolve **PEP 563** stringified annotations
         (caused by ``from __future__ import annotations``) back to real types.
         """
-        import typing
-
         # get_type_hints resolves string annotations to actual types
         try:
             hints = get_type_hints(cls)
@@ -214,7 +214,7 @@ class Entity:
             for klass in reversed(cls.__mro__):
                 hints.update(getattr(klass, "__annotations__", {}))
 
-        result: Dict[str, type] = {}
+        result: dict[str, type] = {}
         for name, hint in hints.items():
             if name.startswith("_"):
                 continue
@@ -228,9 +228,9 @@ class Entity:
         return result
 
     @classmethod
-    def _foreign_keys(cls) -> Dict[str, str]:
+    def _foreign_keys(cls) -> dict[str, str]:
         """Return {field_name: 'table.column'} for FK-declared fields."""
-        fks: Dict[str, str] = {}
+        fks: dict[str, str] = {}
         for name, spec in cls._field_specs().items():
             if spec.foreign_key:
                 fks[name] = spec.foreign_key
@@ -240,8 +240,8 @@ class Entity:
     def __getitem__(self, key: str) -> Any:
         try:
             return getattr(self, key)
-        except AttributeError:
-            raise KeyError(key)
+        except AttributeError as err:
+            raise KeyError(key) from err
 
     def __setitem__(self, key: str, value: Any) -> None:
         setattr(self, key, value)
@@ -249,8 +249,8 @@ class Entity:
     def __delitem__(self, key: str) -> None:
         try:
             delattr(self, key)
-        except AttributeError:
-            raise KeyError(key)
+        except AttributeError as err:
+            raise KeyError(key) from err
 
     def __contains__(self, key: object) -> bool:
         return hasattr(self, str(key))
@@ -275,9 +275,9 @@ class Entity:
     def clone(self, **overrides: Any) -> Entity:
         """Deep-copy this entity, optionally overriding fields."""
         new = self.__class__.__new__(self.__class__)
-        new.__dict__.update(copy.deepcopy(
-            {k: v for k, v in self.__dict__.items() if k != "_feed"}
-        ))
+        new.__dict__.update(
+            copy.deepcopy({k: v for k, v in self.__dict__.items() if k != "_feed"})
+        )
         new._feed = self._feed
         for k, v in overrides.items():
             setattr(new, k, v)
@@ -294,8 +294,9 @@ class Entity:
         if not isinstance(other, Entity):
             return NotImplemented
         pk = self.__class__.__primary_key__
-        return (type(self) is type(other)
-                and getattr(self, pk, None) == getattr(other, pk, None))
+        return type(self) is type(other) and getattr(self, pk, None) == getattr(
+            other, pk, None
+        )
 
     def __hash__(self) -> int:
         pk = self.__class__.__primary_key__
@@ -312,6 +313,7 @@ class Entity:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  Concrete GTFS Entities
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 
 # ────────────────────── agency.txt ──────────────────────────────
 class Agency(Entity):
@@ -345,8 +347,15 @@ class Calendar(Entity):
     start_date: GTFSDate = FieldSpec(required=True)
     end_date: GTFSDate = FieldSpec(required=True)
 
-    _WEEKDAY_ATTRS = ("monday", "tuesday", "wednesday",
-                      "thursday", "friday", "saturday", "sunday")
+    _WEEKDAY_ATTRS = (
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+        "saturday",
+        "sunday",
+    )
 
     def is_active_on(self, d: GTFSDate) -> bool:
         """Check if this service pattern is active on a given date."""
@@ -401,11 +410,12 @@ class Trip(Entity):
     service_id: str = FieldSpec(required=True, foreign_key="calendar.service_id")
     trip_headsign: str = FieldSpec(default="")
     trip_short_name: str = FieldSpec(default="")
-    direction_id: Optional[DirectionId] = FieldSpec(default=None)
+    direction_id: DirectionId | None = FieldSpec(default=None)
     block_id: str = FieldSpec(default="")
     shape_id: str = FieldSpec(default="", foreign_key="shapes.shape_id")
     wheelchair_accessible: WheelchairAccessible = FieldSpec(
-        default=WheelchairAccessible.UNKNOWN)
+        default=WheelchairAccessible.UNKNOWN
+    )
     bikes_allowed: BikesAllowed = FieldSpec(default=BikesAllowed.UNKNOWN)
 
     # ── cross-entity navigation ─────────────────────────────────
@@ -418,26 +428,26 @@ class Trip(Entity):
         return self._feed.stop_times.get(self.trip_id, [])
 
     @cached_property
-    def first_departure(self) -> Optional[GTFSTime]:
+    def first_departure(self) -> GTFSTime | None:
         sts = self.stop_times_list
         if not sts:
             return None
         return sts[0].departure_time
 
     @cached_property
-    def last_arrival(self) -> Optional[GTFSTime]:
+    def last_arrival(self) -> GTFSTime | None:
         sts = self.stop_times_list
         if not sts:
             return None
         return sts[-1].arrival_time
 
     @cached_property
-    def first_stop(self) -> Optional[Stop]:
+    def first_stop(self) -> Stop | None:
         sts = self.stop_times_list
         return sts[0].stop if sts else None
 
     @cached_property
-    def last_stop(self) -> Optional[Stop]:
+    def last_stop(self) -> Stop | None:
         sts = self.stop_times_list
         return sts[-1].stop if sts else None
 
@@ -460,7 +470,8 @@ class Stop(Entity):
     parent_station: str = FieldSpec(default="", foreign_key="stops.stop_id")
     stop_timezone: str = FieldSpec(default="")
     wheelchair_boarding: WheelchairAccessible = FieldSpec(
-        default=WheelchairAccessible.UNKNOWN)
+        default=WheelchairAccessible.UNKNOWN
+    )
     platform_code: str = FieldSpec(default="")
 
     @cached_property
@@ -476,8 +487,8 @@ class StopTime(Entity):
     __required_file__ = True
 
     trip_id: str = FieldSpec(required=True, foreign_key="trips.trip_id")
-    arrival_time: Optional[GTFSTime] = FieldSpec(default=None)
-    departure_time: Optional[GTFSTime] = FieldSpec(default=None)
+    arrival_time: GTFSTime | None = FieldSpec(default=None)
+    departure_time: GTFSTime | None = FieldSpec(default=None)
     stop_id: str = FieldSpec(required=True, foreign_key="stops.stop_id")
     stop_sequence: int = FieldSpec(required=True, min_val=0)
     stop_headsign: str = FieldSpec(default="")
@@ -485,7 +496,7 @@ class StopTime(Entity):
     drop_off_type: DropOffType = FieldSpec(default=DropOffType.REGULAR)
     continuous_pickup: ContinuousPickup = FieldSpec(default=ContinuousPickup.NONE)
     continuous_drop_off: ContinuousDropOff = FieldSpec(default=ContinuousDropOff.NONE)
-    shape_dist_traveled: Optional[float] = FieldSpec(default=None)
+    shape_dist_traveled: float | None = FieldSpec(default=None)
     timepoint: Timepoint = FieldSpec(default=Timepoint.EXACT)
 
     @cached_property
@@ -507,7 +518,7 @@ class Shape(Entity):
     shape_pt_lat: float = FieldSpec(required=True, min_val=-90.0, max_val=90.0)
     shape_pt_lon: float = FieldSpec(required=True, min_val=-180.0, max_val=180.0)
     shape_pt_sequence: int = FieldSpec(required=True, min_val=0)
-    shape_dist_traveled: Optional[float] = FieldSpec(default=None)
+    shape_dist_traveled: float | None = FieldSpec(default=None)
 
     @cached_property
     def location(self) -> LatLon:
@@ -523,7 +534,7 @@ class Transfer(Entity):
     from_stop_id: str = FieldSpec(required=True, foreign_key="stops.stop_id")
     to_stop_id: str = FieldSpec(required=True, foreign_key="stops.stop_id")
     transfer_type: TransferType = FieldSpec(default=TransferType.RECOMMENDED)
-    min_transfer_time: Optional[int] = FieldSpec(default=None, min_val=0)
+    min_transfer_time: int | None = FieldSpec(default=None, min_val=0)
     from_trip_id: str = FieldSpec(default="", foreign_key="trips.trip_id")
     to_trip_id: str = FieldSpec(default="", foreign_key="trips.trip_id")
     from_route_id: str = FieldSpec(default="", foreign_key="routes.route_id")
@@ -538,8 +549,8 @@ class FeedInfo(Entity):
     feed_publisher_name: str = FieldSpec(required=True)
     feed_publisher_url: str = FieldSpec(required=True)
     feed_lang: str = FieldSpec(required=True)
-    feed_start_date: Optional[GTFSDate] = FieldSpec(default=None)
-    feed_end_date: Optional[GTFSDate] = FieldSpec(default=None)
+    feed_start_date: GTFSDate | None = FieldSpec(default=None)
+    feed_end_date: GTFSDate | None = FieldSpec(default=None)
     feed_version: str = FieldSpec(default="")
     feed_contact_email: str = FieldSpec(default="")
     feed_contact_url: str = FieldSpec(default="")

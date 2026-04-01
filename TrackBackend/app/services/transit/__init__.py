@@ -7,6 +7,8 @@ Modules:
     station_lookup     – Spatial nearest-stop queries for nearby endpoints
 """
 
+from __future__ import annotations
+
 __all__ = [
     "alert_service",
     "schedule_service",

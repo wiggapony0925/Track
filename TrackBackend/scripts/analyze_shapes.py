@@ -1,10 +1,19 @@
 #!/usr/bin/env python3
 """Analyze which polyline segments are missing from the shapes/all response."""
+
+from __future__ import annotations
+
 import sys
+
 sys.path.insert(0, "/Users/jeffreyfernandez/code/Track/TrackBackend")
 
-from app.services.mapping.subway_shapes import _load_route_shapes, _load_shape_stops, _load_shapes, _unpack_coords
-from app.services.mapping.corridor_pipeline import TRUNK_GROUPS, ROUTE_TO_TRUNK
+from app.services.mapping.corridor_pipeline import TRUNK_GROUPS
+from app.services.mapping.subway_shapes import (
+    _load_route_shapes,
+    _load_shape_stops,
+    _load_shapes,
+    _unpack_coords,
+)
 
 route_shapes = _load_route_shapes()
 shape_stops = _load_shape_stops()
@@ -55,7 +64,9 @@ for route_id in sorted(route_shapes.keys()):
         unique = other_stations - covered
         status = "KEPT" if len(unique) >= 2 else "DROPPED" if unique else "no-unique"
         if unique:
-            print(f"  {route_id} dir-{other_dir} shape {sid}: {len(unique)} unique → {status}: {sorted(unique)[:5]}")
+            print(
+                f"  {route_id} dir-{other_dir} shape {sid}: {len(unique)} unique → {status}: {sorted(unique)[:5]}"
+            )
 
 print()
 print("=== Trunk group coverage ===")

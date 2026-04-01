@@ -17,7 +17,7 @@ import json
 import math
 from datetime import date, datetime, time, timedelta
 from enum import IntEnum
-from typing import Any, Sequence
+from typing import Any
 
 # ─────────────────────────── constants ────────────────────────────
 EARTH_RADIUS_M = 6_371_008.8
@@ -47,7 +47,9 @@ class GTFSTime(int):
         if isinstance(value, str):
             value = value.strip()
             if value == "":
-                raise ValueError("empty time string — use Optional[GTFSTime] for nullable times")
+                raise ValueError(
+                    "empty time string — use Optional[GTFSTime] for nullable times"
+                )
             parts = value.split(":")
             if len(parts) != 3:
                 raise ValueError(f"expected HH:MM:SS, got {value!r}")
@@ -145,8 +147,15 @@ class GTFSDate(date):
 
     @property
     def weekday_name(self) -> str:
-        return ("monday", "tuesday", "wednesday", "thursday",
-                "friday", "saturday", "sunday")[self.weekday()]
+        return (
+            "monday",
+            "tuesday",
+            "wednesday",
+            "thursday",
+            "friday",
+            "saturday",
+            "sunday",
+        )[self.weekday()]
 
     # ── range generator ─────────────────────────────────────────
     @staticmethod
@@ -195,8 +204,10 @@ class LatLon:
         """Haversine angular distance in radians."""
         dlat = other.lat - self.lat
         dlon = other.lon - self.lon
-        a = (math.sin(dlat / 2) ** 2
-             + math.cos(self.lat) * math.cos(other.lat) * math.sin(dlon / 2) ** 2)
+        a = (
+            math.sin(dlat / 2) ** 2
+            + math.cos(self.lat) * math.cos(other.lat) * math.sin(dlon / 2) ** 2
+        )
         return 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
     def distance_m(self, other: LatLon) -> float:
@@ -207,8 +218,9 @@ class LatLon:
         """Initial bearing in radians, north = 0, clockwise."""
         dlon = other.lon - self.lon
         x = math.sin(dlon) * math.cos(other.lat)
-        y = (math.cos(self.lat) * math.sin(other.lat)
-             - math.sin(self.lat) * math.cos(other.lat) * math.cos(dlon))
+        y = math.cos(self.lat) * math.sin(other.lat) - math.sin(self.lat) * math.cos(
+            other.lat
+        ) * math.cos(dlon)
         return math.atan2(x, y) % (2 * math.pi)
 
     @staticmethod

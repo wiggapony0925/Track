@@ -1,42 +1,37 @@
-#
-# predict.py
-# TrackBackend
-#
-# Router for delay prediction.
-#
-# Replaces the old client-side heuristic (DelayCalculator.swift) with a
-# server-side GradientBoosting model that can be retrained without any
-# app update.
-#
-# ── How it works ──────────────────────────────────────────────────────────
-#
-#  1. iOS calls  GET /predict/delay  with:
-#       minutes_away, route_id, hour, day_of_week, weather[, mode]
-#
-#  2. We compute delay_factor for the context (route + hour + dow +
-#     weather + mode) using DelayModel.predict_factor().
-#
-#  3. adjusted_minutes = ceil(minutes_away × factor)
-#
-# ── Caching ───────────────────────────────────────────────────────────────
-#
-#  factor is keyed ONLY on (route_id, hour, dow, weather, mode) —
-#  NOT on minutes_away.  This is intentional:
-#
-#  • The factor answers "how much slower is the 7-train on a rainy
-#    Wednesday at 8 PM?" — independent of whether this specific train
-#    is 3 min or 15 min away.
-#
-#  • 1,000 users watching the same route in the same conditions all
-#    share one cached factor.  One compute → thousands served instantly.
-#
-#  • TTL = 1 hour.  Rush-hour transitions & weather buckets are stable
-#    within a single hour window.
-#
-#  Cache layers:
-#    L1  In-process LRU dict  (zero-latency, same Render instance)
-#    L2  Redis               (shared across all Render instances + deploys)
-#
+"""Router for delay prediction.
+
+Replaces the old client-side heuristic (DelayCalculator.swift) with a
+server-side GradientBoosting model that can be retrained without any
+app update.
+
+── How it works ──────────────────────────────────────────────────────────
+
+1. iOS calls  GET /predict/delay  with:
+minutes_away, route_id, hour, day_of_week, weather[, mode]
+
+2. We compute delay_factor for the context (route + hour + dow +
+weather + mode) using DelayModel.predict_factor().
+
+3. adjusted_minutes = ceil(minutes_away × factor)
+
+── Caching ───────────────────────────────────────────────────────────────
+
+factor is keyed ONLY on (route_id, hour, dow, weather, mode) —
+NOT on minutes_away.  This is intentional:
+
+• The factor answers "how much slower is the 7-train on a rainy
+Wednesday at 8 PM?" — independent of whether this specific train
+is 3 min or 15 min away.
+
+• 1,000 users watching the same route in the same conditions all
+share one cached factor.  One compute → thousands served instantly.
+
+• TTL = 1 hour.  Rush-hour transitions & weather buckets are stable
+within a single hour window.
+
+Cache layers:
+L1  In-process LRU dict  (zero-latency, same Render instance)
+L2  Redis               (shared across all Render instances + deploys)."""
 
 from __future__ import annotations
 
@@ -46,18 +41,19 @@ import os
 import time
 from collections import OrderedDict
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.cache_config import PREDICT_FACTOR_MAX_SIZE, PREDICT_FACTOR_TTL
+from app.clients import redis_client as _redis
 from app.ml.delay_model import predict_factor
 from app.ml.recency_model import get_weighted_error
 from app.models import ReloadModelResponse
-from app.clients import redis_client as _redis
 from app.utils.logger import TrackLogger
-from app.utils.metrics import ML_PREDICTIONS_TOTAL, ML_PREDICTION_FACTOR
+from app.utils.metrics import ML_PREDICTION_FACTOR, ML_PREDICTIONS_TOTAL
 
 router = APIRouter(tags=["predict"])
+
 
 # ── Feature flag ──────────────────────────────────────────────────────────
 # Set  ARRIVING_PREDICTION_MODEL=false  in your Render env vars to instantly
@@ -69,8 +65,9 @@ def _ml_enabled() -> bool:
     val = os.environ.get("ARRIVING_PREDICTION_MODEL", "true").strip().lower()
     return val not in ("false", "0", "off", "no", "disabled")
 
+
 # ── In-process L1 LRU cache ───────────────────────────────────────────────
-_L1: "OrderedDict[str, tuple[float, float]]" = OrderedDict()  # key → (factor, stored_at)
+_L1: OrderedDict[str, tuple[float, float]] = OrderedDict()  # key → (factor, stored_at)
 
 # ── Inflight coalescing for contextual cache misses ───────────────────────
 # Prevents thundering herd: if 50 requests hit the same expired key
@@ -98,6 +95,7 @@ def _l1_set(key: str, factor: float) -> None:
 
 # ── Redis helpers ─────────────────────────────────────────────────────────
 _REDIS_PREFIX = "track:predict:factor"
+_MAX_RECENCY_CORRECTION_S = 300.0
 
 
 async def _redis_get(key: str) -> float | None:
@@ -107,7 +105,7 @@ async def _redis_get(key: str) -> float | None:
     try:
         raw = await client.get(f"{_REDIS_PREFIX}:{key}")
         return float(raw) if raw is not None else None
-    except Exception as exc:
+    except (ConnectionError, TimeoutError, OSError) as exc:
         TrackLogger.warning(f"[PREDICT CACHE] Redis GET error: {exc}", tag="ML")
         return None
 
@@ -122,7 +120,7 @@ async def _redis_set(key: str, factor: float) -> None:
             str(factor),
             ex=max(1, int(PREDICT_FACTOR_TTL)),
         )
-    except Exception as exc:
+    except (ConnectionError, TimeoutError, OSError) as exc:
         TrackLogger.warning(f"[PREDICT CACHE] Redis SET error: {exc}", tag="ML")
 
 
@@ -130,25 +128,46 @@ async def _redis_set(key: str, factor: float) -> None:
 class DelayPrediction(BaseModel):
     """Predicted arrival adjustment returned to the iOS app."""
 
-    model_config = ConfigDict(json_schema_extra={"examples": [{
-        "adjusted_minutes": 9,
-        "original_minutes": 8,
-        "delay_factor": 1.15,
-        "adjustment_reason": "Rush-hour slowdown pattern on this line",
-        "model_source": "model_live",
-        "recency_error_seconds": 32.5,
-        "is_rush_hour": True,
-        "weather_condition": "clear",
-    }]})
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "adjusted_minutes": 9,
+                    "original_minutes": 8,
+                    "delay_factor": 1.15,
+                    "adjustment_reason": "Rush-hour slowdown pattern on this line",
+                    "model_source": "model_live",
+                    "recency_error_seconds": 32.5,
+                    "is_rush_hour": True,
+                    "weather_condition": "clear",
+                }
+            ]
+        }
+    )
 
-    adjusted_minutes: int = Field(..., description="Delay-adjusted minutes until arrival.")
+    adjusted_minutes: int = Field(
+        ..., description="Delay-adjusted minutes until arrival."
+    )
     original_minutes: int = Field(..., description="Original MTA-predicted minutes.")
-    delay_factor: float = Field(..., description="Multiplicative delay factor applied (e.g. 1.15 = 15% slower).")
-    adjustment_reason: str | None = Field(None, description="Human-readable reason for the adjustment.")
-    model_source: str = Field("heuristic", description="Prediction source: 'model', 'model_live', 'heuristic', 'heuristic_live', 'l1_hit', 'l2_hit', 'coalesced', or 'disabled'.")
-    recency_error_seconds: float = Field(0.0, description="Signed correction from recency model in seconds (positive = late).")
+    delay_factor: float = Field(
+        ..., description="Multiplicative delay factor applied (e.g. 1.15 = 15% slower)."
+    )
+    adjustment_reason: str | None = Field(
+        None, description="Human-readable reason for the adjustment."
+    )
+    model_source: str = Field(
+        "heuristic",
+        description="Prediction source: 'model', 'model_live', 'heuristic', 'heuristic_live', 'l1_hit', 'l2_hit', 'coalesced', or 'disabled'.",
+    )
+    recency_error_seconds: float = Field(
+        0.0,
+        description="Signed correction from recency model in seconds (positive = late).",
+    )
     is_rush_hour: bool = Field(False, description="True during rush hour periods.")
-    weather_condition: str = Field("clear", description="Weather condition used for prediction (e.g. 'clear', 'rain', 'snow').")
+    weather_condition: str = Field(
+        "clear",
+        description="Weather condition used for prediction (e.g. 'clear', 'rain', 'snow').",
+    )
 
 
 # ── Endpoint ──────────────────────────────────────────────────────────────
@@ -166,13 +185,46 @@ class DelayPrediction(BaseModel):
     ),
 )
 async def predict_delay(
-    minutes_away: int = Query(..., ge=0, description="MTA-predicted minutes until arrival (from GTFS-RT or SIRI feed).", examples=[8]),
-    route_id: str = Query(..., description="Transit route ID (e.g. subway line or bus route).", examples=["7", "A", "B63"]),
-    hour: int = Query(..., ge=0, le=23, description="Current hour of the day (0–23, 24-hour format).", examples=[17]),
-    day_of_week: int = Query(..., ge=1, le=7, description="Day of week (1=Sunday, 2=Monday, … 7=Saturday).", examples=[3]),
-    weather: str | None = Query(None, description="Weather condition code. If omitted, auto-detected from the Open-Meteo cache.", examples=["clear", "rain", "snow"]),
-    mode: str = Query("subway", description="Transit mode for selecting the correct prediction model.", examples=["subway", "bus", "lirr", "mnr"]),
-    stop_id: str | None = Query(None, description="GTFS stop_id — enables per-stop recency error correction for higher accuracy.", examples=["726S", "127N"]),
+    minutes_away: int = Query(
+        ...,
+        ge=0,
+        description="MTA-predicted minutes until arrival (from GTFS-RT or SIRI feed).",
+        examples=[8],
+    ),
+    route_id: str = Query(
+        ...,
+        description="Transit route ID (e.g. subway line or bus route).",
+        examples=["7", "A", "B63"],
+    ),
+    hour: int = Query(
+        ...,
+        ge=0,
+        le=23,
+        description="Current hour of the day (0–23, 24-hour format).",
+        examples=[17],
+    ),
+    day_of_week: int = Query(
+        ...,
+        ge=1,
+        le=7,
+        description="Day of week (1=Sunday, 2=Monday, … 7=Saturday).",
+        examples=[3],
+    ),
+    weather: str | None = Query(
+        None,
+        description="Weather condition code. If omitted, auto-detected from the Open-Meteo cache.",
+        examples=["clear", "rain", "snow"],
+    ),
+    mode: str = Query(
+        "subway",
+        description="Transit mode for selecting the correct prediction model.",
+        examples=["subway", "bus", "lirr", "mnr"],
+    ),
+    stop_id: str | None = Query(
+        None,
+        description="GTFS stop_id — enables per-stop recency error correction for higher accuracy.",
+        examples=["726S", "127N"],
+    ),
     schedule_deviation_s: int | None = Query(
         None,
         description=(
@@ -205,6 +257,7 @@ async def predict_delay(
     # Auto-detect weather from Open-Meteo if the client didn't supply it
     if weather is None:
         from app.clients.weather_client import get_current_weather
+
         weather = await get_current_weather()
     weather_lower = weather.lower()
     mode_lower = mode.lower()
@@ -235,7 +288,9 @@ async def predict_delay(
     #     NOT cached — each vehicle has its own current running delay.
     #   • Contextual (no deviation): shared cache keyed on route+hour+dow+
     #     weather+mode.  One compute → every user on this route served.
-    factor_cache_key = f"{route_id.upper()}:{hour}:{day_of_week}:{weather_lower}:{mode_lower}"
+    factor_cache_key = (
+        f"{route_id.upper()}:{hour}:{day_of_week}:{weather_lower}:{mode_lower}"
+    )
     live_deviation = float(schedule_deviation_s) if schedule_deviation_s else 0.0
     use_live = live_deviation != 0.0
 
@@ -271,6 +326,7 @@ async def predict_delay(
                     factor, source = await inflight
                     source = "coalesced"
                 else:
+
                     async def _compute_and_store(k: str) -> tuple[float, str]:
                         try:
                             f, s = predict_factor(
@@ -304,7 +360,9 @@ async def predict_delay(
         if error is not None:
             # Cap recency correction at ±5 minutes — guards against stale
             # or outlier data corrupting the displayed ETA.
-            recency_error_s = max(-300.0, min(300.0, error))
+            recency_error_s = max(
+                -_MAX_RECENCY_CORRECTION_S, min(_MAX_RECENCY_CORRECTION_S, error)
+            )
 
     # ── 3. Blend: apply recency first, then multiply by LightGBM factor ──
     # Recency corrects the base seconds (additive: "this stop runs +90s late")
@@ -317,9 +375,13 @@ async def predict_delay(
     # ── 4. Reason string ─────────────────────────────────────────────────
     reason_parts: list[str] = []
     if recency_error_s > 15:
-        reason_parts.append(f"running +{round(recency_error_s / 60, 1)} min late (recent trips)")
+        reason_parts.append(
+            f"running +{round(recency_error_s / 60, 1)} min late (recent trips)"
+        )
     elif recency_error_s < -15:
-        reason_parts.append(f"running {round(recency_error_s / 60, 1)} min early (recent trips)")
+        reason_parts.append(
+            f"running {round(recency_error_s / 60, 1)} min early (recent trips)"
+        )
     if factor > 1.02:
         pct = round((factor - 1.0) * 100)
         rush_label = "rush hour" if _is_rush(hour, day_of_week) else "off-peak"
@@ -374,14 +436,17 @@ async def reload_model_endpoint(request: Request) -> ReloadModelResponse:
     """
     client = request.client
     if client and client.host not in ("127.0.0.1", "::1", "localhost"):
-        from fastapi import HTTPException
         raise HTTPException(status_code=403, detail="localhost only")
 
     from app.ml.delay_model import reload_model
+
     _L1.clear()  # flush L1 so stale factors are recomputed
     success = reload_model()
     return ReloadModelResponse(
         success=success,
-        message="Model reloaded — L1 cache cleared." if success
-                else "No model file found. Using heuristic.",
+        message=(
+            "Model reloaded — L1 cache cleared."
+            if success
+            else "No model file found. Using heuristic."
+        ),
     )

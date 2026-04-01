@@ -20,52 +20,53 @@ Modules:
     data_loader      – GTFS archive download from Supabase / Docker volumes
 """
 
-# Re-export the public API for convenient imports
-from app.services.gtfs.gtfs_types import (  # noqa: F401
-    GTFSTime,
-    GTFSDate,
-    LatLon,
-    RouteType,
-    LocationType,
-    PickupType,
-    DropOffType,
-    ExceptionType,
-    TransferType,
-    DirectionId,
-    WheelchairAccessible,
-    BikesAllowed,
-    ContinuousPickup,
-    ContinuousDropOff,
-    Timepoint,
-    serialize,
-)
+from __future__ import annotations
 
 from app.services.gtfs.gtfs_entities import (  # noqa: F401
-    Entity,
-    EntityTable,
-    GroupedTable,
-    FieldSpec,
     Agency,
     Calendar,
     CalendarDate,
+    Entity,
+    EntityTable,
+    FeedInfo,
+    FieldSpec,
+    Frequency,
+    GroupedTable,
     Route,
+    Shape,
     Stop,
     StopTime,
-    Trip,
-    Shape,
     Transfer,
-    FeedInfo,
-    Frequency,
+    Trip,
     get_entity_registry,
 )
-
 from app.services.gtfs.gtfs_loader import (  # noqa: F401
     GTFSFeed,
-    load_feed,
-    load_stops,
-    load_shapes,
-    load_routes,
-    load_trips,
     LoadProblem,
     Severity,
+    load_feed,
+    load_routes,
+    load_shapes,
+    load_stops,
+    load_trips,
+)
+
+# Re-export the public API for convenient imports
+from app.services.gtfs.gtfs_types import (  # noqa: F401
+    BikesAllowed,
+    ContinuousDropOff,
+    ContinuousPickup,
+    DirectionId,
+    DropOffType,
+    ExceptionType,
+    GTFSDate,
+    GTFSTime,
+    LatLon,
+    LocationType,
+    PickupType,
+    RouteType,
+    Timepoint,
+    TransferType,
+    WheelchairAccessible,
+    serialize,
 )

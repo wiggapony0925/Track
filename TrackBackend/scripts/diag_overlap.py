@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
 """Diagnostic: Check for overlapping same-colour polylines in the system map output."""
 
-import sys, os
+from __future__ import annotations
+
+import os
+import sys
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+import asyncio
+from collections import defaultdict
 
 from app.routers.subway import subway_shapes_all
 from app.utils.polyline_utils import decode_polyline
-import asyncio
-from collections import defaultdict
 
 # Same trunk groups as server/client
 TRUNK_GROUPS = [
@@ -34,7 +39,9 @@ async def main():
     response = await subway_shapes_all()
 
     # Group polylines by trunk colour
-    trunk_polylines: dict[int, list[tuple[str, list[tuple[float, float]]]]] = defaultdict(list)
+    trunk_polylines: dict[int, list[tuple[str, list[tuple[float, float]]]]] = (
+        defaultdict(list)
+    )
 
     for overlay in response.lines:
         tid = ROUTE_TO_TRUNK.get(overlay.route_id, -1)
@@ -55,7 +62,7 @@ async def main():
         if not polys:
             continue
 
-        routes_seen = set(p[0] for p in polys)
+        routes_seen = {p[0] for p in polys}
         total_pts = sum(len(p[1]) for p in polys)
 
         # Check overlap between polylines in this group
@@ -71,8 +78,8 @@ async def main():
         overlap_pairs = []
         for i in range(len(grids)):
             for j in range(i + 1, len(grids)):
-                r1, g1, n1 = grids[i]
-                r2, g2, n2 = grids[j]
+                r1, g1, _n1 = grids[i]
+                r2, g2, _n2 = grids[j]
                 shared = len(g1 & g2)
                 ratio1 = shared / max(1, len(g1))
                 ratio2 = shared / max(1, len(g2))
@@ -80,14 +87,20 @@ async def main():
                     overlap_pairs.append((r1, r2, shared, ratio1, ratio2))
 
         label = "/".join(group)
-        print(f"\n{label}: {len(polys)} polylines from routes {sorted(routes_seen)}, {total_pts} total points")
+        print(
+            f"\n{label}: {len(polys)} polylines from routes {sorted(routes_seen)}, {total_pts} total points"
+        )
 
         if overlap_pairs:
             print(f"  ⚠️  {len(overlap_pairs)} overlapping polyline pairs:")
-            for r1, r2, shared, rat1, rat2 in sorted(overlap_pairs, key=lambda x: -x[2]):
-                print(f"    {r1} ↔ {r2}: {shared} shared cells ({rat1:.0%} of {r1}, {rat2:.0%} of {r2})")
+            for r1, r2, shared, rat1, rat2 in sorted(
+                overlap_pairs, key=lambda x: -x[2]
+            ):
+                print(
+                    f"    {r1} ↔ {r2}: {shared} shared cells ({rat1:.0%} of {r1}, {rat2:.0%} of {r2})"
+                )
         else:
-            print(f"  ✅ No significant overlap")
+            print("  ✅ No significant overlap")
 
     # Check direction-1 extras (raw GTFS, no offset)
     print("\n" + "=" * 70)

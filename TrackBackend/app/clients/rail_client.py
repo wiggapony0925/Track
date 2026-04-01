@@ -1,27 +1,25 @@
-#
-# rail_client.py
-# TrackBackend
-#
-# Client for fetching real-time arrivals from LIRR and Metro-North GTFS-RT feeds.
-#
+"""Client for fetching real-time arrivals from LIRR and Metro-North GTFS-RT feeds."""
 
 from __future__ import annotations
 
+import time as _time
+
 from google.transit import gtfs_realtime_pb2  # type: ignore[import-untyped]
 
+from app.clients.mta_client import fetch_protobuf
 from app.config import get_settings
 from app.models import TrackArrival
-from app.clients.mta_client import fetch_protobuf
 from app.services.transit.station_lookup import get_stop_info, get_stop_name
 from app.utils.geo_utils import minutes_until as _minutes_until
 from app.utils.logger import TrackLogger
-import time as _time
 
 # ── Parsed-arrivals cache ────────────────────────────────────────
 # Keyed by feed URL.  Background refresh populates it; user requests
 # return the cached list in < 1 µs — zero thread pool, zero CPU.
 _RAIL_PARSED_CACHE: dict[str, tuple[float, list, int]] = {}
 _RAIL_PARSED_CACHE_TTL = 60.0  # must outlive bg refresh cycle + interval (~30s)
+_LATE_THRESHOLD_SECS = 360
+_DELAYED_THRESHOLD_SECS = 60
 
 # Known terminal stop_ids for direction inference when direction_id is absent.
 # MNR: Grand Central = "1"; LIRR: Penn Station = "237", Atlantic Terminal = "12"
@@ -33,6 +31,13 @@ def filter_fresh_arrivals(arrivals: list) -> list:
 
     Used identically by the LIRR and MNR routers — extracted here to avoid
     copy-pasting the same four lines in two places.
+
+    Args:
+        arrivals: List of TrackArrival objects with ``arrival_ts`` set.
+
+    Returns:
+        Filtered list containing only future arrivals with updated
+        ``minutes_away`` values.
     """
     now = int(_time.time())
     fresh = [a for a in arrivals if a.arrival_ts and a.arrival_ts > now]
@@ -42,11 +47,21 @@ def filter_fresh_arrivals(arrivals: list) -> list:
 
 
 def _parse_rail_feed_sync(
-    raw: bytes, agency: str, lookup_agency: str,
-) -> tuple[list["TrackArrival"], int]:
+    raw: bytes,
+    agency: str,
+    lookup_agency: str,
+) -> tuple[list[TrackArrival], int]:
     """Parse a rail GTFS-RT feed — **runs in a thread**.
 
-    Returns (arrivals, entity_count).
+    Args:
+        raw: Raw protobuf bytes from the GTFS-RT feed.
+        agency: Agency identifier (e.g. ``"lirr"``, ``"metro_north"``).
+        lookup_agency: Agency key for station lookups (``"mnr"`` for
+            Metro-North, ``"lirr"`` for LIRR).
+
+    Returns:
+        Tuple of (arrivals, entity_count) where arrivals is a list of
+        TrackArrival objects and entity_count is the total feed entities.
     """
     feed = gtfs_realtime_pb2.FeedMessage()
     feed.ParseFromString(raw)
@@ -101,9 +116,9 @@ def _parse_rail_feed_sync(
             elif stu.HasField("departure") and stu.departure.HasField("delay"):
                 delay_secs = stu.departure.delay
 
-            if delay_secs >= 360:
+            if delay_secs >= _LATE_THRESHOLD_SECS:
                 status = f"Late ({delay_secs // 60}m)"
-            elif delay_secs >= 60:
+            elif delay_secs >= _DELAYED_THRESHOLD_SECS:
                 status = f"Delayed ({delay_secs // 60}m)"
             else:
                 status = "On Time"
@@ -129,9 +144,19 @@ def _parse_rail_feed_sync(
 
 
 async def fetch_rail_arrivals(
-    agency: str, *, force_refresh: bool = False,
+    agency: str,
+    *,
+    force_refresh: bool = False,
 ) -> list[TrackArrival]:
-    """Fetch & clean arrivals for a rail agency ('lirr' or 'metro_north')."""
+    """Fetch and parse arrivals for a rail agency.
+
+    Args:
+        agency: ``"lirr"`` or ``"metro_north"``.
+        force_refresh: Bypass the parsed-arrivals cache if True.
+
+    Returns:
+        List of TrackArrival objects sorted by arrival time.
+    """
     settings = get_settings()
 
     if agency == "lirr":
@@ -156,6 +181,7 @@ async def fetch_rail_arrivals(
     # Offload ALL CPU-bound work (protobuf parsing + entity iteration)
     # to the thread-pool so the event loop stays responsive.
     import asyncio as _asyncio
+
     lookup_agency = "mnr" if agency == "metro_north" else agency
     loop = _asyncio.get_running_loop()
     arrivals, entity_count = await loop.run_in_executor(
