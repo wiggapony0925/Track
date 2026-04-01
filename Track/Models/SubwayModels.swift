@@ -84,6 +84,20 @@ struct SubwayLineOverlay: Codable, Identifiable {
     }
 }
 
+/// A point where two trunk groups cross at a significant angle.
+/// Used by the client to render casing breaks — small gaps in the
+/// lower trunk's casing layer that create an over/under visual effect.
+struct CrossingPoint: Codable {
+    let lat: Double
+    let lng: Double
+    let trunkIndices: [Int]
+
+    enum CodingKeys: String, CodingKey {
+        case lat, lng
+        case trunkIndices = "trunk_indices"
+    }
+}
+
 /// Response containing all subway lines for the system map.
 struct AllSubwayLinesResponse: Codable {
     let lines: [SubwayLineOverlay]
@@ -92,10 +106,14 @@ struct AllSubwayLinesResponse: Codable {
     /// per-route GTFS shapes — eliminating duplicate stacked lines and
     /// ensuring polylines pass through snapped station positions.
     let trunkPolylines: [TrunkGroupPolylines]?
+    /// Crossing points where different trunk groups intersect.
+    /// Used for casing-break rendering (over/under effect).
+    let crossings: [CrossingPoint]?
 
     enum CodingKeys: String, CodingKey {
         case lines
         case trunkPolylines = "trunk_polylines"
+        case crossings
     }
 }
 

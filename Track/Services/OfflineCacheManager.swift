@@ -46,7 +46,7 @@ final class OfflineCacheManager: ObservableObject {
         static let subwayShapes = "cached_subway_shapes"
         static let subwayShapesCachedAt = "cached_subway_shapes_timestamp"
         static let flattenedPolylines = "cached_flattened_polylines"
-        static let flattenedPolylinesCachedAt = "cached_flattened_polylines_timestamp_v9"
+        static let flattenedPolylinesCachedAt = "cached_flattened_polylines_timestamp_v10"
     }
 
     /// Bump this whenever the station consolidation logic or hash
@@ -249,11 +249,11 @@ final class OfflineCacheManager: ObservableObject {
         guard let data = try? JSONEncoder().encode(bundle) else { return }
         // Use file-based cache for large data instead of UserDefaults
         guard let dir = flattenedCacheDirectory() else { return }
-        let fileURL = dir.appendingPathComponent("flattened_polylines_v9.json")
+        let fileURL = dir.appendingPathComponent("flattened_polylines_v10.json")
         try? data.write(to: fileURL, options: .atomic)
         userDefaults.set(Date(), forKey: CacheKey.flattenedPolylinesCachedAt)
         // Clean up old cache versions
-        for old in ["flattened_polylines.json", "flattened_polylines_v5.json", "flattened_polylines_v6.json", "flattened_polylines_v7.json", "flattened_polylines_v8.json"] {
+        for old in ["flattened_polylines.json", "flattened_polylines_v5.json", "flattened_polylines_v6.json", "flattened_polylines_v7.json", "flattened_polylines_v8.json", "flattened_polylines_v9.json"] {
             try? FileManager.default.removeItem(at: dir.appendingPathComponent(old))
         }
     }
@@ -261,7 +261,7 @@ final class OfflineCacheManager: ObservableObject {
     /// Get pre-computed flattened polylines (nil if never cached).
     func getCachedFlattenedPolylines() -> CachedFlattenedBundle? {
         guard let dir = flattenedCacheDirectory() else { return nil }
-        let fileURL = dir.appendingPathComponent("flattened_polylines_v9.json")
+        let fileURL = dir.appendingPathComponent("flattened_polylines_v10.json")
         guard let data = try? Data(contentsOf: fileURL) else { return nil }
         return try? JSONDecoder().decode(CachedFlattenedBundle.self, from: data)
     }

@@ -136,6 +136,7 @@ struct MapLibreTrackMapView: View {
                 busVehicles: viewModel.filteredBusVehicles,
                 trainVehicles: viewModel.filteredTrainVehicles,
                 transferConnectors: _cachedTransferConnectors,
+                crossings: viewModel.mapSystem.cachedCrossings,
                 hasActiveRoute: viewModel.routeShape != nil,
                 reroutedRouteIDs: viewModel.mapSystem.reroutedRouteIDs,
                 isDarkMode: colorScheme == .dark,

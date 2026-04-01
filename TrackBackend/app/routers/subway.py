@@ -33,7 +33,7 @@ from app.services.mapping.subway_shapes import get_all_subway_stations, get_subw
 from app.services.transit.station_lookup import get_nearby_stop_ids, get_stop_info
 from app.utils.logger import TrackLogger
 from app.utils.polyline_utils import decode_polyline as _decode_polyline, encode_polyline as _encode_polyline, densify_wgs84 as _densify_wgs84, simplify_polyline as _simplify_polyline
-from app.services.mapping.corridor_pipeline import apply_topological_offsets, get_processed_stops, get_trunk_polylines, ROUTE_TO_TRUNK
+from app.services.mapping.corridor_pipeline import apply_topological_offsets, get_processed_stops, get_trunk_polylines, get_trunk_crossings, ROUTE_TO_TRUNK
 from app.config import get_settings
 from app.utils.transit_utils import (
     clean_route_id,
@@ -356,13 +356,19 @@ def _build_shapes_all_sync() -> AllSubwayLinesResponse:
         TrunkGroupPolylines(**tp) for tp in trunk_polys_raw
     ]
 
+    # Detect crossing points between different trunk groups
+    crossings_raw = get_trunk_crossings()
+    from app.models import CrossingPoint
+    crossing_points = [CrossingPoint(**c) for c in crossings_raw]
+
     total_polys = sum(len(o.polylines) for o in overlays)
     total_trunk = sum(len(tp.polylines) for tp in trunk_polylines)
     TrackLogger.info(
         f"Subway shapes/all: {len(overlays)} lines, {total_polys} per-route polylines, "
-        f"{len(trunk_polylines)} trunk groups, {total_trunk} trunk polylines"
+        f"{len(trunk_polylines)} trunk groups, {total_trunk} trunk polylines, "
+        f"{len(crossing_points)} crossing points"
     )
-    return AllSubwayLinesResponse(lines=overlays, trunk_polylines=trunk_polylines)
+    return AllSubwayLinesResponse(lines=overlays, trunk_polylines=trunk_polylines, crossings=crossing_points)
 
 
 def set_shapes_all_cache(resp: AllSubwayLinesResponse) -> None:

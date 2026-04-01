@@ -296,11 +296,24 @@ class TrunkGroupPolylines(BaseModel):
     polyline_lane_offsets: list[float] = Field([], description="Per-polyline local lane offsets for zoom-dependent rendering.")
 
 
+class CrossingPoint(BaseModel):
+    """A point where two trunk groups cross at a significant angle.
+
+    Used by the client to render casing breaks — small gaps in the
+    lower trunk's casing layer that create an over/under visual effect.
+    """
+
+    lat: float = Field(..., description="Crossing latitude (WGS 84).")
+    lng: float = Field(..., description="Crossing longitude (WGS 84).")
+    trunk_indices: list[int] = Field(..., description="The two trunk group indices that cross here.")
+
+
 class AllSubwayLinesResponse(BaseModel):
     """All subway line overlays for drawing the full system map."""
 
     lines: list[SubwayLineOverlay] = Field(..., description="Per-route subway line overlays.")
     trunk_polylines: list[TrunkGroupPolylines] = Field([], description="Pre-merged trunk geometry for multi-line corridors.")
+    crossings: list[CrossingPoint] = Field([], description="Trunk crossing points for casing-break rendering.")
 
 
 class SubwayStation(BaseModel):

@@ -132,6 +132,9 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
     /// Transfer connectors between station complexes.
     var transferConnectors: [TransferConnector]
 
+    /// Crossing points for casing-break rendering.
+    var crossings: [CrossingPoint]
+
     /// Whether a route is currently selected (dims system map).
     var hasActiveRoute: Bool
 
@@ -711,7 +714,8 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 opacity: commuterCasingOpacity,
                 color: .constant(isDark ? UIColor(red: 0.75, green: 0.72, blue: 0.88, alpha: 0.18) : UIColor.white),
                 cap: "butt", join: "round",
-                dashPattern: [3, 2]
+                dashPattern: [3, 2],
+                blur: MapLibreStyleConfig.commuterCasingBlur
             )
             ensureLineLayer(
                 style: style,
@@ -737,24 +741,26 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 !isEffectivelyElevated($0, reroutedRouteIDs: representable.reroutedRouteIDs)
             }
             let subwayFeatures = buildPolylineFeatures(subwayOnly)
+            let subwayCasingFeatures = buildCasingFeatures(subwayOnly, crossings: representable.crossings)
 
             ensureLineLayer(
                 style: style,
-                sourceID: MapLibreStyleConfig.srcSubway,
+                sourceID: MapLibreStyleConfig.srcSubwayCasing,
                 layerID: MapLibreStyleConfig.layerSubwayCasing,
-                features: subwayFeatures,
+                features: subwayCasingFeatures,
                 width: MapLibreStyleConfig.subwayCasingWidth,
                 opacity: subwayCasingOpacity,
                 color: .constant(isDark ? UIColor(red: 0.78, green: 0.74, blue: 0.95, alpha: 0.28) : UIColor.white),
                 cap: "round", join: "round",
                 applyLaneOffset: true,
-                sortByTrunkIndex: true
+                sortByTrunkIndex: true,
+                blur: MapLibreStyleConfig.subwayCasingBlur
             )
             ensureLineLayer(
                 style: style,
                 sourceID: MapLibreStyleConfig.srcSubway,
                 layerID: MapLibreStyleConfig.layerSubwayFill,
-                features: nil,
+                features: subwayFeatures,
                 width: MapLibreStyleConfig.subwayFillWidth,
                 opacity: subwayOpacity,
                 color: .dataDriven,
@@ -763,11 +769,12 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 sortByTrunkIndex: true
             )
 
-            // ── ELEVATED (shared source — 3 GL layers with shadow) ──
+            // ── ELEVATED (separate casing source for crossing breaks) ──
             let elevated = representable.subwayPolylines.filter {
                 isEffectivelyElevated($0, reroutedRouteIDs: representable.reroutedRouteIDs)
             }
             let elevatedFeatures = buildPolylineFeatures(elevated)
+            let elevatedCasingFeatures = buildCasingFeatures(elevated, crossings: representable.crossings)
 
             ensureLineLayer(
                 style: style,
@@ -778,19 +785,21 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 opacity: elevatedShadowOpacity,
                 color: .constant(UIColor.black),
                 cap: "round", join: "round",
-                translatePixels: CGPoint(x: 1.5, y: 3)
+                translatePixels: CGPoint(x: 1.5, y: 3),
+                blur: MapLibreStyleConfig.elevatedShadowBlur
             )
             ensureLineLayer(
                 style: style,
-                sourceID: MapLibreStyleConfig.srcElevated,
+                sourceID: MapLibreStyleConfig.srcElevatedCasing,
                 layerID: MapLibreStyleConfig.layerElevatedCasing,
-                features: nil,
+                features: elevatedCasingFeatures,
                 width: MapLibreStyleConfig.elevatedCasingWidth,
                 opacity: subwayCasingOpacity,
                 color: .constant(isDark ? UIColor(red: 0.78, green: 0.74, blue: 0.95, alpha: 0.32) : UIColor.white),
                 cap: "round", join: "round",
                 applyLaneOffset: true,
-                sortByTrunkIndex: true
+                sortByTrunkIndex: true,
+                blur: MapLibreStyleConfig.elevatedCasingBlur
             )
             ensureLineLayer(
                 style: style,
@@ -1227,7 +1236,9 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 glow.lineWidth = MapLibreStyleConfig.walkingRouteGlowWidth
                 glow.lineCap = NSExpression(forConstantValue: "round")
                 glow.lineJoin = NSExpression(forConstantValue: "round")
+                glow.lineMiterLimit = NSExpression(forConstantValue: 1.05)
                 glow.lineDashPattern = NSExpression(forConstantValue: [0, 3])
+                glow.lineBlur = NSExpression(forConstantValue: 1.5)
                 style.addLayer(glow)
 
                 let dash = MLNLineStyleLayer(identifier: dashLayerID, source: source)
@@ -1235,6 +1246,7 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 dash.lineWidth = MapLibreStyleConfig.walkingRouteWidth
                 dash.lineCap = NSExpression(forConstantValue: "round")
                 dash.lineJoin = NSExpression(forConstantValue: "round")
+                dash.lineMiterLimit = NSExpression(forConstantValue: 1.05)
                 dash.lineDashPattern = NSExpression(forConstantValue: [0, 3])
                 style.addLayer(dash)
             }
@@ -1368,6 +1380,104 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             return features
         }
 
+        /// Builds casing features with gaps at crossing points.
+        ///
+        /// For each polyline, if it passes near a crossing point where a
+        /// HIGHER trunk_index crosses, the casing is split into two segments
+        /// with a small gap.  This creates an over/under visual effect.
+        private func buildCasingFeatures(
+            _ polylines: [MapSystemViewModel.FlattenedMapPolyline],
+            crossings: [CrossingPoint]
+        ) -> [MLNPolylineFeature] {
+            guard !crossings.isEmpty else {
+                return buildPolylineFeatures(polylines)
+            }
+
+            var features: [MLNPolylineFeature] = []
+
+            for polyline in polylines {
+                guard polyline.coordinates.count >= 2 else { continue }
+
+                let isLIRR = polyline.routeIds.contains(where: { $0.uppercased().hasPrefix("LIRR") })
+                let isMNR = polyline.routeIds.contains(where: { $0.uppercased().hasPrefix("MNR") })
+                let attrs: [String: Any] = [
+                    "color": polyline.color.toHex(),
+                    "trunk_index": NSNumber(value: polyline.trunkIndex),
+                    "lane_offset": NSNumber(value: Double(polyline.laneOffset)),
+                    "isLIRR": NSNumber(value: isLIRR),
+                    "isMNR": NSNumber(value: isMNR)
+                ]
+
+                // Find crossing indices where this trunk is the LOWER one
+                var breakIndices: [Int] = []
+                let coords = polyline.coordinates
+
+                for crossing in crossings {
+                    guard crossing.trunkIndices.count >= 2 else { continue }
+                    let myTrunk = polyline.trunkIndex
+                    guard crossing.trunkIndices.contains(myTrunk) else { continue }
+                    let otherTrunk = crossing.trunkIndices.first(where: { $0 != myTrunk }) ?? myTrunk
+                    // Only break the LOWER trunk's casing
+                    guard myTrunk < otherTrunk else { continue }
+
+                    // Find nearest vertex to crossing
+                    let cLat = crossing.lat
+                    let cLng = crossing.lng
+                    var bestDist = Double.infinity
+                    var bestIdx = -1
+
+                    for i in coords.indices {
+                        let dLat = coords[i].latitude - cLat
+                        let dLng = coords[i].longitude - cLng
+                        let dist = dLat * dLat + dLng * dLng
+                        if dist < bestDist {
+                            bestDist = dist
+                            bestIdx = i
+                        }
+                    }
+
+                    // ~50m threshold (in degrees²: 0.00045² ≈ 2e-7)
+                    if bestDist < 2.0e-7 && bestIdx > 1 && bestIdx < coords.count - 2 {
+                        breakIndices.append(bestIdx)
+                    }
+                }
+
+                if breakIndices.isEmpty {
+                    // No breaks — emit full polyline
+                    var mutableCoords = coords
+                    let feature = MLNPolylineFeature(coordinates: &mutableCoords, count: UInt(mutableCoords.count))
+                    feature.attributes = attrs
+                    features.append(feature)
+                } else {
+                    // Split polyline at break points with small gaps
+                    let sorted = breakIndices.sorted()
+                    let gapSize = 2  // skip 2 vertices each side of crossing
+                    var segStart = 0
+
+                    for breakIdx in sorted {
+                        let segEnd = max(segStart, breakIdx - gapSize)
+                        if segEnd > segStart + 1 {
+                            var segment = Array(coords[segStart...segEnd])
+                            let feature = MLNPolylineFeature(coordinates: &segment, count: UInt(segment.count))
+                            feature.attributes = attrs
+                            features.append(feature)
+                        }
+                        segStart = min(coords.count - 1, breakIdx + gapSize)
+                    }
+
+                    // Emit trailing segment
+                    if segStart < coords.count - 1 {
+                        var segment = Array(coords[segStart...])
+                        let feature = MLNPolylineFeature(coordinates: &segment, count: UInt(segment.count))
+                        feature.attributes = attrs
+                        features.append(feature)
+                    }
+                }
+            }
+
+            return features
+        }
+
         // MARK: - Helpers: Layer Creation
 
         /// Color mode for ensureLineLayer.
@@ -1391,7 +1501,8 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             translatePixels: CGPoint? = nil,
             dashPattern: [NSNumber]? = nil,
             applyLaneOffset: Bool = false,
-            sortByTrunkIndex: Bool = false
+            sortByTrunkIndex: Bool = false,
+            blur: NSExpression? = nil
         ) {
             // Update or create source
             if let features {
@@ -1446,6 +1557,18 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                     layer.lineSortKey = NSExpression(forKeyPath: "trunk_index")
                 }
 
+                // Soft feathered edge — makes casings feel like they float
+                // above the map (Transit app signature look).  Applied only
+                // to casing layers via the blur parameter.
+                if let blur {
+                    layer.lineBlur = blur
+                }
+
+                // Tight miter limit prevents spike artifacts at acute joins.
+                // Default MapLibre miter limit is 2.0; lowering to 1.05
+                // means any join sharper than ~57° automatically rounds off.
+                layer.lineMiterLimit = NSExpression(forConstantValue: 1.05)
+
                 style.addLayer(layer)
             }
 
@@ -1493,6 +1616,8 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 casing.lineWidth = casingWidth
                 casing.lineCap = NSExpression(forConstantValue: "round")
                 casing.lineJoin = NSExpression(forConstantValue: "round")
+                casing.lineMiterLimit = NSExpression(forConstantValue: 1.05)
+                casing.lineBlur = MapLibreStyleConfig.routeCasingBlur
                 style.addLayer(casing)
 
                 let fill = MLNLineStyleLayer(identifier: fillLayerID, source: source)
@@ -1500,6 +1625,7 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 fill.lineWidth = fillWidth
                 fill.lineCap = NSExpression(forConstantValue: "round")
                 fill.lineJoin = NSExpression(forConstantValue: "round")
+                fill.lineMiterLimit = NSExpression(forConstantValue: 1.05)
                 style.addLayer(fill)
             }
 

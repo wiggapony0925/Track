@@ -250,6 +250,26 @@ enum MapLibreStyleConfig {
         stops: [8: 1.5, 9: 2.0, 10: 3.0, 11: 3.6, 12: 4.6, 13: 5.6, 14: 7.0, 15: 8.0, 16: 9.5, 17: 11.0, 18: 13.0]
     )
 
+    /// Subway casing blur — feathers the casing edge outward for a soft
+    /// "floating above map" effect.  Scales with zoom so it stays subtle
+    /// at overview zooms and becomes a visible soft glow when zoomed in.
+    static let subwayCasingBlur = zoomInterpolate(
+        base: 1.4,
+        stops: [8: 0.4, 10: 0.6, 12: 0.8, 14: 1.0, 16: 1.2, 18: 1.5]
+    )
+
+    /// Elevated casing blur — slightly stronger than subway for depth.
+    static let elevatedCasingBlur = zoomInterpolate(
+        base: 1.4,
+        stops: [10: 0.8, 12: 1.0, 14: 1.2, 16: 1.5, 18: 2.0]
+    )
+
+    /// Elevated shadow blur — very diffuse for a natural drop-shadow.
+    static let elevatedShadowBlur = zoomInterpolate(
+        base: 1.4,
+        stops: [10: 1.5, 12: 2.0, 14: 2.5, 16: 3.0, 18: 4.0]
+    )
+
     /// Elevated line fill width — matches subway for visual consistency.
     static let elevatedFillWidth = subwayFillWidth
 
@@ -273,6 +293,13 @@ enum MapLibreStyleConfig {
         stops: [10: 1.8, 11: 2.2, 12: 3.0, 13: 3.5, 14: 4.5, 16: 6.0, 18: 7.5]
     )
 
+    /// Commuter rail casing blur — lighter blur than subway since commuter
+    /// lines are thinner and dashed; too much blur dissolves the pattern.
+    static let commuterCasingBlur = zoomInterpolate(
+        base: 1.4,
+        stops: [10: 0.3, 12: 0.5, 14: 0.7, 16: 0.9, 18: 1.2]
+    )
+
     /// Active route fill width (when a specific route is selected) — extra bold
     /// so the selected route clearly dominates the dimmed system map.
     /// Must stay wider than subway fill for clear visual hierarchy.
@@ -285,6 +312,14 @@ enum MapLibreStyleConfig {
     static let routeCasingWidth = zoomInterpolate(
         base: 1.6,
         stops: [10: 6.0, 12: 8.5, 14: 11.0, 16: 13.0, 18: 15.5]
+    )
+
+    /// Active route casing blur — generous blur for an elevated, premium feel
+    /// on the selected route. Slightly stronger than subway since the route
+    /// dominates the screen and benefits from more visual weight.
+    static let routeCasingBlur = zoomInterpolate(
+        base: 1.4,
+        stops: [10: 0.5, 12: 0.8, 14: 1.0, 16: 1.4, 18: 1.8]
     )
 
     /// Station circle dot radius — single-line stops, visible from zoom 11.
@@ -695,7 +730,9 @@ enum MapLibreStyleConfig {
     // Source IDs
     static let srcCommRail = "commuter-src"
     static let srcSubway = "subway-src"
+    static let srcSubwayCasing = "subway-casing-src"
     static let srcElevated = "elevated-src"
+    static let srcElevatedCasing = "elevated-casing-src"
     static let srcTransferConn = "transfer-conn-src"
     static let srcStations = "stations-src"
 

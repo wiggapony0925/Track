@@ -160,6 +160,10 @@ final class MapSystemViewModel {
     /// stacked lines and ensuring polylines align with snapped station dots.
     var cachedTrunkPolylines: [TrunkGroupPolylines]?
 
+    /// Crossing points where different trunk groups intersect.
+    /// Populated from the server's corridor pipeline.
+    var cachedCrossings: [CrossingPoint] = []
+
     /// Pre-computed flattened subway polylines for the system map view.
     /// Uses stable IDs and avoids nested ForEach for optimal MapLibre rendering.
     /// A single fine-detail geometry set is used at ALL zoom levels.
@@ -451,6 +455,7 @@ final class MapSystemViewModel {
 
         self.cachedSystemMap = decoded
         self.cachedTrunkPolylines = subwayResponse.trunkPolylines
+        self.cachedCrossings = subwayResponse.crossings ?? []
         self.computeSubwayOffsets()
         return true
     }
@@ -593,6 +598,7 @@ final class MapSystemViewModel {
 
             self.cachedSystemMap = decoded
             self.cachedTrunkPolylines = response.trunkPolylines
+            self.cachedCrossings = response.crossings ?? []
             self.computeSubwayOffsets(forceReflatten: true)
 
             // Re-flatten commuter rail after cachedSystemMap was replaced
@@ -1168,83 +1174,75 @@ final class MapSystemViewModel {
                 branchIndex: origin.branchIndex
             )
 
-            // Locally offset corridor segments carry the extra geometry that
-            // makes dense junctions look rail-like instead of flattened.
-            let simplified: [CLLocationCoordinate2D]
-            if abs(localLaneOffset) > 0.01 {
-                let preserveFanOutShape = isTransitionRampOffset(localLaneOffset)
-                if preserveFanOutShape && item.coordinates.count <= 96 {
-                    simplified = item.coordinates
-                } else if item.coordinates.count <= 24 {
-                    simplified = item.coordinates
-                } else {
-                    simplified = simplifyPolyline(
-                        item.coordinates,
-                        tolerance: preserveFanOutShape ? 0.00001 : 0.000015
-                    )
+            // ── v10: Server trunk polylines are pre-processed ──
+            //
+            // When using server trunks, the backend already ran the full
+            // geometry pipeline: merge → station snap → dedup → fillet.
+            // Applying client-side RDP/backtrack/spike would DEGRADE the
+            // server's precision-6 output (client RDP tolerance is 4.4m
+            // vs server's 1.5m).  Just pass coordinates through directly.
+            //
+            // The legacy client fallback (when server trunks are unavailable)
+            // still runs the full processing chain.
+            let finalCoordinates: [CLLocationCoordinate2D]
+
+            if useTrunkPolylines {
+                // Server trunk path: zero processing — decode → render
+                guard item.coordinates.count >= 2 else {
+                    AppLogger.shared.log("POLYLINE_DROP", message: "Dropped branch \(origin.branchIndex) of group \(item.groupIndex) — too few points (\(item.coordinates.count))")
+                    continue
                 }
+                finalCoordinates = item.coordinates
             } else {
-                simplified = simplifyPolyline(item.coordinates, tolerance: 0.00004)
-            }
+                // Legacy client fallback: full processing chain
+                let simplified: [CLLocationCoordinate2D]
+                if abs(localLaneOffset) > 0.01 {
+                    let preserveFanOutShape = isTransitionRampOffset(localLaneOffset)
+                    if preserveFanOutShape && item.coordinates.count <= 96 {
+                        simplified = item.coordinates
+                    } else if item.coordinates.count <= 24 {
+                        simplified = item.coordinates
+                    } else {
+                        simplified = simplifyPolyline(
+                            item.coordinates,
+                            tolerance: preserveFanOutShape ? 0.00001 : 0.000015
+                        )
+                    }
+                } else {
+                    simplified = simplifyPolyline(item.coordinates, tolerance: 0.00004)
+                }
 
-            guard simplified.count >= 2 else {
-                AppLogger.shared.log("POLYLINE_DROP", message: "Dropped branch \(origin.branchIndex) of group \(item.groupIndex) after simplification (\(item.coordinates.count) → \(simplified.count) points)")
-                continue
-            }
+                guard simplified.count >= 2 else {
+                    AppLogger.shared.log("POLYLINE_DROP", message: "Dropped branch \(origin.branchIndex) of group \(item.groupIndex) after simplification (\(item.coordinates.count) → \(simplified.count) points)")
+                    continue
+                }
 
-            // ── Backtrack & Spike Removal ──
-            // Remove self-intersecting loops that stem injection may
-            // create (e.g. 7/7X express overlay near Hudson Yards),
-            // then remove V-shaped spikes from mis-joined segments
-            // (e.g. 3 train near 145 St where branches converge).
-            // Must run before the fillet to prevent arc amplification.
-            let cleaned = removeSpikes(removePolylineBacktracks(simplified))
-            guard cleaned.count >= 2 else {
-                AppLogger.shared.log("POLYLINE_DROP", message: "Dropped branch \(origin.branchIndex) of group \(item.groupIndex) after backtrack/spike removal (\(simplified.count) → \(cleaned.count) points)")
-                continue
-            }
+                let cleaned = removeSpikes(removePolylineBacktracks(simplified))
+                guard cleaned.count >= 2 else {
+                    AppLogger.shared.log("POLYLINE_DROP", message: "Dropped branch \(origin.branchIndex) of group \(item.groupIndex) after backtrack/spike removal (\(simplified.count) → \(cleaned.count) points)")
+                    continue
+                }
 
-            // ── Offset-Adaptive Circular-Arc Fillet ──
-            //
-            // Replace sharp vertices with true circular arcs whose minimum
-            // radius scales with |laneOffset| (corridor width).  This is
-            // the key mathematical insight: a circle arc offset by d
-            // produces another circle arc of radius R±d.  By ensuring
-            // R_min > |laneOffset| × scale, EVERY parallel-offset copy
-            // of this polyline (rendered via MapLibre lineOffset) stays
-            // smooth — no cusps, no self-intersections, no pinching at
-            // junction Y-splits.
-            //
-            // • Junction vertices (laneOffset ≠ 0): wider radius to
-            //   accommodate N parallel lines fanning out.
-            // • Plain bends (laneOffset = 0): small base radius — just
-            //   enough to round the sharpest tunnel curves.
-            // • Straight segments: untouched (zero added points).
-            //
-            // Station coordinates are safe because the tangent pull-back
-            // is clamped to 40% of the shorter incident edge — station
-            // vertices always have >200 m edges so the max pull is <80 m.
-            // Remove near-duplicate points (micro-clusters from station-snap)
-            // before filleting — prevents arc distortion at tiny edges.
-            let deduplicated = removeNearDuplicates(cleaned, minSpacing: 0.00004)
-            guard deduplicated.count >= 2 else {
-                AppLogger.shared.log("POLYLINE_DROP", message: "Dropped branch \(origin.branchIndex) of group \(item.groupIndex) after dedup (\(cleaned.count) → \(deduplicated.count) points)")
-                continue
-            }
+                let deduplicated = removeNearDuplicates(cleaned, minSpacing: 0.00004)
+                guard deduplicated.count >= 2 else {
+                    AppLogger.shared.log("POLYLINE_DROP", message: "Dropped branch \(origin.branchIndex) of group \(item.groupIndex) after dedup (\(cleaned.count) → \(deduplicated.count) points)")
+                    continue
+                }
 
-            let fillet = junctionAwareFillet(
-                deduplicated,
-                laneOffset: Double(localLaneOffset),
-                angleThreshold: 10.0,
-                baseRadiusDeg: 0.00045,
-                scaleFactor: 0.00030,
-                arcPoints: 16
-            )
+                finalCoordinates = junctionAwareFillet(
+                    deduplicated,
+                    laneOffset: Double(localLaneOffset),
+                    angleThreshold: 10.0,
+                    baseRadiusDeg: 0.00045,
+                    scaleFactor: 0.00030,
+                    arcPoints: 16
+                )
+            }
 
             finalOffsetPolylines.append(PreparedPolyline(
                 origin: origin,
                 groupIndex: item.groupIndex,
-                coordinates: fillet,
+                coordinates: finalCoordinates,
                 localLaneOffset: localLaneOffset
             ))
         }

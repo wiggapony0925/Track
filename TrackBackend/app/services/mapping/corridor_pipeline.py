@@ -1684,6 +1684,580 @@ def _smooth_offsets(raw: list[float]) -> list[float]:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# WGS-84 Junction-Aware Fillet  (exported polyline smoothing)
+#
+# Replaces sharp vertices in WGS84, degree-space polylines with circular arc
+# segments.  Matches the iOS circularArcFillet() algorithm exactly so the
+# backend-produced smoothing is pixel-identical to what the client used to do.
+#
+# Applied to trunk export polylines AFTER project_to_wgs84() and BEFORE
+# encode_polyline() — the client can then skip all geometry processing and
+# just render.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _remove_near_duplicates_wgs84(
+    coords: list[tuple[float, float]],
+    min_spacing: float = 0.00004,
+) -> list[tuple[float, float]]:
+    """Remove near-duplicate points (micro-clusters from station-snap).
+
+    Works in WGS84 degree space.  Coords are (lat, lon) tuples.
+    """
+    if len(coords) < 2:
+        return list(coords)
+    result = [coords[0]]
+    for i in range(1, len(coords)):
+        dlat = coords[i][0] - result[-1][0]
+        dlon = coords[i][1] - result[-1][1]
+        if math.sqrt(dlat * dlat + dlon * dlon) >= min_spacing:
+            result.append(coords[i])
+    # Always keep the last point
+    if len(result) >= 2 and result[-1] != coords[-1]:
+        result.append(coords[-1])
+    elif len(result) < 2:
+        return list(coords)
+    return result
+
+
+def _junction_fillet_wgs84(
+    coords: list[tuple[float, float]],
+    lane_offset: float = 0.0,
+    angle_threshold: float = 10.0,
+    base_radius_deg: float = 0.00045,
+    scale_factor: float = 0.00030,
+    arc_points: int = 16,
+) -> list[tuple[float, float]]:
+    """Apply circular-arc fillet to vertices with sharp turns.
+
+    Port of the iOS ``junctionAwareFillet`` + ``circularArcFillet`` functions.
+    Works in WGS84 degree space.  Coords are (lat, lon) tuples where
+    lat ↔ y-axis and lon ↔ x-axis.
+
+    Parameters match the iOS call-site defaults used in
+    ``computeFlattenedPolylinesAsync()``.
+    """
+    if len(coords) < 3:
+        return list(coords)
+
+    n = len(coords)
+    cos_threshold = math.cos(math.radians(angle_threshold))
+    R = max(base_radius_deg, abs(lane_offset) * scale_factor)
+
+    # ── Pass 1: ideal tangent distance for every interior vertex ──
+    edge_len = [0.0] * (n - 1)
+    for i in range(n - 1):
+        dx = coords[i + 1][1] - coords[i][1]   # longitude (x)
+        dy = coords[i + 1][0] - coords[i][0]   # latitude  (y)
+        edge_len[i] = math.sqrt(dx * dx + dy * dy)
+
+    tangent_dist = [0.0] * n
+    tan_half     = [0.0] * n
+    needs_fillet = [False] * n
+
+    for i in range(1, n - 1):
+        len1, len2 = edge_len[i - 1], edge_len[i]
+        if len1 < 1e-10 or len2 < 1e-10:
+            continue
+
+        prev, curr, nxt = coords[i - 1], coords[i], coords[i + 1]
+        dx1 = curr[1] - prev[1];  dy1 = curr[0] - prev[0]
+        dx2 = nxt[1]  - curr[1];  dy2 = nxt[0]  - curr[0]
+
+        dot = (dx1 * dx2 + dy1 * dy2) / (len1 * len2)
+        if dot > cos_threshold:
+            continue
+
+        clamped_dot = max(-0.9999, min(0.9999, dot))
+        turn_angle  = math.acos(clamped_dot)
+        half_angle  = (math.pi - turn_angle) / 2.0
+        if half_angle < 1e-6:
+            continue
+
+        th = math.tan(half_angle)
+        if th < 1e-10:
+            continue
+
+        ideal_dist = R / th
+        solo_clamped = min(ideal_dist, 0.40 * min(len1, len2))
+        tangent_dist[i] = solo_clamped
+        tan_half[i]     = th
+        needs_fillet[i]  = True
+
+    # ── Pass 1.5: budget adjacent fillets so they never overlap ──
+    for e in range(n - 1):
+        want_left  = tangent_dist[e]     if needs_fillet[e]     else 0.0
+        want_right = tangent_dist[e + 1] if needs_fillet[e + 1] else 0.0
+        total = want_left + want_right
+        if total <= edge_len[e] * 0.90:
+            continue
+        budget = edge_len[e] * 0.90
+        scale = budget / total if total > 0 else 0.0
+        if needs_fillet[e]:
+            tangent_dist[e] = want_left * scale
+        if needs_fillet[e + 1]:
+            tangent_dist[e + 1] = want_right * scale
+
+    # ── Pass 2: emit arc geometry ──
+    result: list[tuple[float, float]] = [coords[0]]
+
+    for i in range(1, n - 1):
+        if not needs_fillet[i]:
+            result.append(coords[i])
+            continue
+
+        prev, curr, nxt = coords[i - 1], coords[i], coords[i + 1]
+        # x = longitude (index 1), y = latitude (index 0)
+        dx1 = curr[1] - prev[1];  dy1 = curr[0] - prev[0]
+        dx2 = nxt[1]  - curr[1];  dy2 = nxt[0]  - curr[0]
+
+        len1 = edge_len[i - 1]
+        len2 = edge_len[i]
+
+        budgeted_dist = tangent_dist[i]
+        effective_r = budgeted_dist * tan_half[i]
+
+        if effective_r < 1e-10 or budgeted_dist < 1e-10:
+            result.append(curr)
+            continue
+
+        u1x = dx1 / len1;  u1y = dy1 / len1
+        u2x = dx2 / len2;  u2y = dy2 / len2
+
+        # Tangent points A, D
+        a_lon = curr[1] - u1x * budgeted_dist
+        a_lat = curr[0] - u1y * budgeted_dist
+        d_lon = curr[1] + u2x * budgeted_dist
+        d_lat = curr[0] + u2y * budgeted_dist
+
+        cross = u1x * u2y - u1y * u2x
+
+        if cross > 0:
+            perp_x, perp_y = -u1y,  u1x
+        else:
+            perp_x, perp_y =  u1y, -u1x
+
+        c_lon = a_lon + perp_x * effective_r
+        c_lat = a_lat + perp_y * effective_r
+
+        start_angle = math.atan2(a_lat - c_lat, a_lon - c_lon)
+        end_angle   = math.atan2(d_lat - c_lat, d_lon - c_lon)
+
+        sweep = end_angle - start_angle
+        if cross > 0:
+            if sweep > 0:
+                sweep -= 2.0 * math.pi
+        else:
+            if sweep < 0:
+                sweep += 2.0 * math.pi
+
+        # Safety: skip arcs that sweep > 180° (near-reversal)
+        if abs(sweep) > math.pi:
+            result.append(curr)
+            continue
+
+        for step in range(arc_points + 1):
+            t = step / arc_points
+            angle = start_angle + t * sweep
+            p_lon = c_lon + effective_r * math.cos(angle)
+            p_lat = c_lat + effective_r * math.sin(angle)
+            result.append((p_lat, p_lon))
+
+    result.append(coords[-1])
+    return result
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Trunk Crossing Detection
+#
+# Detects where polylines from different trunk groups physically cross
+# (not run parallel in corridors).  Crossing points are exported so the
+# client can render casing breaks — making it visually clear which line
+# passes over which at intersections.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _crossing_angle_at(
+    path_a: LineString,
+    path_b: LineString,
+    point,
+    epsilon: float = 15.0,
+) -> float:
+    """Compute crossing angle (0–90°) between two paths at an intersection point."""
+    from shapely.geometry import Point as _Pt
+
+    dist_a = path_a.project(point)
+    p_a1 = path_a.interpolate(max(0, dist_a - epsilon))
+    p_a2 = path_a.interpolate(min(path_a.length, dist_a + epsilon))
+
+    dist_b = path_b.project(point)
+    p_b1 = path_b.interpolate(max(0, dist_b - epsilon))
+    p_b2 = path_b.interpolate(min(path_b.length, dist_b + epsilon))
+
+    dx_a = p_a2.x - p_a1.x;  dy_a = p_a2.y - p_a1.y
+    dx_b = p_b2.x - p_b1.x;  dy_b = p_b2.y - p_b1.y
+
+    len_a = math.sqrt(dx_a ** 2 + dy_a ** 2)
+    len_b = math.sqrt(dx_b ** 2 + dy_b ** 2)
+    if len_a < 1e-6 or len_b < 1e-6:
+        return 0.0
+
+    dot = (dx_a * dx_b + dy_a * dy_b) / (len_a * len_b)
+    angle_rad = math.acos(min(1.0, max(-1.0, abs(dot))))
+    return math.degrees(angle_rad)
+
+
+def _detect_trunk_crossings(
+    min_crossing_angle: float = 25.0,
+) -> list[dict]:
+    """Detect crossing points between different trunk groups.
+
+    Uses projected meter-space LineStrings from the pipeline cache.
+    Returns a list of dicts:
+      [{"lat": float, "lng": float, "trunk_indices": [int, int]}, ...]
+
+    Only includes crossings where the angle between the two polylines
+    exceeds *min_crossing_angle* degrees — filtering out near-parallel
+    corridor overlaps.
+    """
+    from shapely.geometry import Point as _Pt, MultiPoint as _MPt
+
+    raw_paths = _trunk_raw_paths_cache
+    if not raw_paths:
+        return []
+
+    trunk_indices = sorted(raw_paths.keys())
+    crossings: list[dict] = []
+    seen_cells: set[tuple[int, int, int]] = set()   # (ti, tj, grid_cell) dedup
+
+    for i_pos, ti in enumerate(trunk_indices):
+        for tj in trunk_indices[i_pos + 1:]:
+            for path_i in raw_paths[ti]:
+                for path_j in raw_paths[tj]:
+                    try:
+                        ix = path_i.intersection(path_j)
+                    except Exception:
+                        continue
+
+                    if ix.is_empty:
+                        continue
+
+                    # Only Point / MultiPoint — LineString means parallel overlap
+                    if isinstance(ix, _Pt):
+                        pts = [ix]
+                    elif isinstance(ix, _MPt):
+                        pts = list(ix.geoms)
+                    else:
+                        continue
+
+                    for pt in pts:
+                        # Grid-cell dedup (~100 m granularity)
+                        cell = (ti, tj, int(pt.x // 100) * 10000 + int(pt.y // 100))
+                        if cell in seen_cells:
+                            continue
+                        seen_cells.add(cell)
+
+                        angle = _crossing_angle_at(path_i, path_j, pt)
+                        if angle < min_crossing_angle:
+                            continue
+
+                        wgs_pt = project_to_wgs84([(pt.x, pt.y)])[0]
+                        crossings.append({
+                            "lat": round(wgs_pt[0], 6),
+                            "lng": round(wgs_pt[1], 6),
+                            "trunk_indices": sorted([ti, tj]),
+                        })
+
+    TrackLogger.info(f"[Crossings] Detected {len(crossings)} trunk crossing points")
+    return crossings
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# WGS-84 Junction-Aware Fillet  (exported polyline smoothing)
+#
+# Replaces sharp vertices in WGS84, degree-space polylines with circular arc
+# segments.  Matches the iOS circularArcFillet() algorithm exactly so the
+# backend-produced smoothing is pixel-identical to what the client used to do.
+#
+# Applied to trunk export polylines AFTER project_to_wgs84() and BEFORE
+# encode_polyline() — the client can then skip all geometry processing and
+# just render.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _remove_near_duplicates_wgs84(
+    coords: list[tuple[float, float]],
+    min_spacing: float = 0.00004,
+) -> list[tuple[float, float]]:
+    """Remove near-duplicate points (micro-clusters from station-snap).
+
+    Works in WGS84 degree space.  Coords are (lat, lon) tuples.
+    """
+    if len(coords) < 2:
+        return list(coords)
+    result = [coords[0]]
+    for i in range(1, len(coords)):
+        dlat = coords[i][0] - result[-1][0]
+        dlon = coords[i][1] - result[-1][1]
+        if math.sqrt(dlat * dlat + dlon * dlon) >= min_spacing:
+            result.append(coords[i])
+    # Always keep the last point
+    if len(result) >= 2 and result[-1] != coords[-1]:
+        result.append(coords[-1])
+    elif len(result) < 2:
+        return list(coords)
+    return result
+
+
+def _junction_fillet_wgs84(
+    coords: list[tuple[float, float]],
+    lane_offset: float = 0.0,
+    angle_threshold: float = 10.0,
+    base_radius_deg: float = 0.00045,
+    scale_factor: float = 0.00030,
+    arc_points: int = 16,
+) -> list[tuple[float, float]]:
+    """Apply circular-arc fillet to vertices with sharp turns.
+
+    Port of the iOS ``junctionAwareFillet`` + ``circularArcFillet`` functions.
+    Works in WGS84 degree space.  Coords are (lat, lon) tuples where
+    lat ↔ y-axis and lon ↔ x-axis.
+
+    Parameters match the iOS call-site defaults used in
+    ``computeFlattenedPolylinesAsync()``.
+    """
+    if len(coords) < 3:
+        return list(coords)
+
+    n = len(coords)
+    cos_threshold = math.cos(math.radians(angle_threshold))
+    R = max(base_radius_deg, abs(lane_offset) * scale_factor)
+
+    # ── Pass 1: ideal tangent distance for every interior vertex ──
+    edge_len = [0.0] * (n - 1)
+    for i in range(n - 1):
+        dx = coords[i + 1][1] - coords[i][1]   # longitude (x)
+        dy = coords[i + 1][0] - coords[i][0]   # latitude  (y)
+        edge_len[i] = math.sqrt(dx * dx + dy * dy)
+
+    tangent_dist = [0.0] * n
+    tan_half     = [0.0] * n
+    needs_fillet = [False] * n
+
+    for i in range(1, n - 1):
+        len1, len2 = edge_len[i - 1], edge_len[i]
+        if len1 < 1e-10 or len2 < 1e-10:
+            continue
+
+        prev, curr, nxt = coords[i - 1], coords[i], coords[i + 1]
+        dx1 = curr[1] - prev[1];  dy1 = curr[0] - prev[0]
+        dx2 = nxt[1]  - curr[1];  dy2 = nxt[0]  - curr[0]
+
+        dot = (dx1 * dx2 + dy1 * dy2) / (len1 * len2)
+        if dot > cos_threshold:
+            continue
+
+        clamped_dot = max(-0.9999, min(0.9999, dot))
+        turn_angle  = math.acos(clamped_dot)
+        half_angle  = (math.pi - turn_angle) / 2.0
+        if half_angle < 1e-6:
+            continue
+
+        th = math.tan(half_angle)
+        if th < 1e-10:
+            continue
+
+        ideal_dist = R / th
+        solo_clamped = min(ideal_dist, 0.40 * min(len1, len2))
+        tangent_dist[i] = solo_clamped
+        tan_half[i]     = th
+        needs_fillet[i]  = True
+
+    # ── Pass 1.5: budget adjacent fillets so they never overlap ──
+    for e in range(n - 1):
+        want_left  = tangent_dist[e]     if needs_fillet[e]     else 0.0
+        want_right = tangent_dist[e + 1] if needs_fillet[e + 1] else 0.0
+        total = want_left + want_right
+        if total <= edge_len[e] * 0.90:
+            continue
+        budget = edge_len[e] * 0.90
+        scale = budget / total if total > 0 else 0.0
+        if needs_fillet[e]:
+            tangent_dist[e] = want_left * scale
+        if needs_fillet[e + 1]:
+            tangent_dist[e + 1] = want_right * scale
+
+    # ── Pass 2: emit arc geometry ──
+    result: list[tuple[float, float]] = [coords[0]]
+
+    for i in range(1, n - 1):
+        if not needs_fillet[i]:
+            result.append(coords[i])
+            continue
+
+        prev, curr, nxt = coords[i - 1], coords[i], coords[i + 1]
+        # x = longitude (index 1), y = latitude (index 0)
+        dx1 = curr[1] - prev[1];  dy1 = curr[0] - prev[0]
+        dx2 = nxt[1]  - curr[1];  dy2 = nxt[0]  - curr[0]
+
+        len1 = edge_len[i - 1]
+        len2 = edge_len[i]
+
+        budgeted_dist = tangent_dist[i]
+        effective_r = budgeted_dist * tan_half[i]
+
+        if effective_r < 1e-10 or budgeted_dist < 1e-10:
+            result.append(curr)
+            continue
+
+        u1x = dx1 / len1;  u1y = dy1 / len1
+        u2x = dx2 / len2;  u2y = dy2 / len2
+
+        # Tangent points A, D
+        a_lon = curr[1] - u1x * budgeted_dist
+        a_lat = curr[0] - u1y * budgeted_dist
+        d_lon = curr[1] + u2x * budgeted_dist
+        d_lat = curr[0] + u2y * budgeted_dist
+
+        cross = u1x * u2y - u1y * u2x
+
+        if cross > 0:
+            perp_x, perp_y = -u1y,  u1x
+        else:
+            perp_x, perp_y =  u1y, -u1x
+
+        c_lon = a_lon + perp_x * effective_r
+        c_lat = a_lat + perp_y * effective_r
+
+        start_angle = math.atan2(a_lat - c_lat, a_lon - c_lon)
+        end_angle   = math.atan2(d_lat - c_lat, d_lon - c_lon)
+
+        sweep = end_angle - start_angle
+        if cross > 0:
+            if sweep > 0:
+                sweep -= 2.0 * math.pi
+        else:
+            if sweep < 0:
+                sweep += 2.0 * math.pi
+
+        # Safety: skip arcs that sweep > 180° (near-reversal)
+        if abs(sweep) > math.pi:
+            result.append(curr)
+            continue
+
+        for step in range(arc_points + 1):
+            t = step / arc_points
+            angle = start_angle + t * sweep
+            p_lon = c_lon + effective_r * math.cos(angle)
+            p_lat = c_lat + effective_r * math.sin(angle)
+            result.append((p_lat, p_lon))
+
+    result.append(coords[-1])
+    return result
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Trunk Crossing Detection
+#
+# Detects where polylines from different trunk groups physically cross
+# (not run parallel in corridors).  Crossing points are exported so the
+# client can render casing breaks — making it visually clear which line
+# passes over which at intersections.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _crossing_angle_at(
+    path_a: LineString,
+    path_b: LineString,
+    point,
+    epsilon: float = 15.0,
+) -> float:
+    """Compute crossing angle (0–90°) between two paths at an intersection point."""
+    from shapely.geometry import Point as _Pt
+
+    dist_a = path_a.project(point)
+    p_a1 = path_a.interpolate(max(0, dist_a - epsilon))
+    p_a2 = path_a.interpolate(min(path_a.length, dist_a + epsilon))
+
+    dist_b = path_b.project(point)
+    p_b1 = path_b.interpolate(max(0, dist_b - epsilon))
+    p_b2 = path_b.interpolate(min(path_b.length, dist_b + epsilon))
+
+    dx_a = p_a2.x - p_a1.x;  dy_a = p_a2.y - p_a1.y
+    dx_b = p_b2.x - p_b1.x;  dy_b = p_b2.y - p_b1.y
+
+    len_a = math.sqrt(dx_a ** 2 + dy_a ** 2)
+    len_b = math.sqrt(dx_b ** 2 + dy_b ** 2)
+    if len_a < 1e-6 or len_b < 1e-6:
+        return 0.0
+
+    dot = (dx_a * dx_b + dy_a * dy_b) / (len_a * len_b)
+    angle_rad = math.acos(min(1.0, max(-1.0, abs(dot))))
+    return math.degrees(angle_rad)
+
+
+def _detect_trunk_crossings(
+    min_crossing_angle: float = 25.0,
+) -> list[dict]:
+    """Detect crossing points between different trunk groups.
+
+    Uses projected meter-space LineStrings from the pipeline cache.
+    Returns a list of dicts:
+      [{"lat": float, "lng": float, "trunk_indices": [int, int]}, ...]
+
+    Only includes crossings where the angle between the two polylines
+    exceeds *min_crossing_angle* degrees — filtering out near-parallel
+    corridor overlaps.
+    """
+    from shapely.geometry import Point as _Pt, MultiPoint as _MPt
+
+    raw_paths = _trunk_raw_paths_cache
+    if not raw_paths:
+        return []
+
+    trunk_indices = sorted(raw_paths.keys())
+    crossings: list[dict] = []
+    seen_cells: set[tuple[int, int, int]] = set()   # (ti, tj, grid_cell) dedup
+
+    for i_pos, ti in enumerate(trunk_indices):
+        for tj in trunk_indices[i_pos + 1:]:
+            for path_i in raw_paths[ti]:
+                for path_j in raw_paths[tj]:
+                    try:
+                        ix = path_i.intersection(path_j)
+                    except Exception:
+                        continue
+
+                    if ix.is_empty:
+                        continue
+
+                    # Only Point / MultiPoint — LineString means parallel overlap
+                    if isinstance(ix, _Pt):
+                        pts = [ix]
+                    elif isinstance(ix, _MPt):
+                        pts = list(ix.geoms)
+                    else:
+                        continue
+
+                    for pt in pts:
+                        # Grid-cell dedup (~100 m granularity)
+                        cell = (ti, tj, int(pt.x // 100) * 10000 + int(pt.y // 100))
+                        if cell in seen_cells:
+                            continue
+                        seen_cells.add(cell)
+
+                        angle = _crossing_angle_at(path_i, path_j, pt)
+                        if angle < min_crossing_angle:
+                            continue
+
+                        wgs_pt = project_to_wgs84([(pt.x, pt.y)])[0]
+                        crossings.append({
+                            "lat": round(wgs_pt[0], 6),
+                            "lng": round(wgs_pt[1], 6),
+                            "trunk_indices": sorted([ti, tj]),
+                        })
+
+    TrackLogger.info(f"[Crossings] Detected {len(crossings)} trunk crossing points")
+    return crossings
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # Arc-Based Offset Engine (v3.2)
 #
 # Transit-app-quality parallel lines: circular arc segments at every bend
@@ -2742,6 +3316,18 @@ def get_trunk_polylines() -> list[dict]:
 
             try:
                 coords_wgs = project_to_wgs84(coords_m)
+                # v5: Server-side fillet — client no longer needs to
+                # process geometry at all (decode → render).
+                coords_wgs = _remove_near_duplicates_wgs84(coords_wgs)
+                if len(coords_wgs) >= 3:
+                    coords_wgs = _junction_fillet_wgs84(
+                        coords_wgs,
+                        lane_offset=local_lane_offset,
+                        angle_threshold=10.0,
+                        base_radius_deg=0.00045,
+                        scale_factor=0.00030,
+                        arc_points=16,
+                    )
                 encoded.append(encode_polyline(coords_wgs))
                 polyline_lane_offsets.append(local_lane_offset)
             except Exception:
@@ -2758,6 +3344,20 @@ def get_trunk_polylines() -> list[dict]:
             })
 
     return result
+
+
+def get_trunk_crossings() -> list[dict]:
+    """Export trunk crossing points for client casing-break rendering.
+
+    Returns a list of dicts:
+      [{"lat": float, "lng": float, "trunk_indices": [int, int]}, ...]
+
+    Each entry represents a point where two different trunk groups cross
+    at a significant angle (>25°).  The client uses these to introduce
+    small gaps in the CASING layer of the lower-z-order trunk, creating
+    a visual over/under effect at intersections.
+    """
+    return _detect_trunk_crossings()
 
 
 def _process_stop_positions(
