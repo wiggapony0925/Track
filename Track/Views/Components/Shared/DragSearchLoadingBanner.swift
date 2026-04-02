@@ -1,11 +1,6 @@
-//
-//  DragSearchLoadingBanner.swift
-//  Track
-//
-//  A compact loading banner shown at the top of the bottom sheet
-//  when drag-to-search is fetching transit data for a new area.
-//  Styled to match the app's glassmorphism design language.
-//
+// A compact loading banner shown at the top of the bottom sheet
+// when drag-to-search is fetching transit data for a new area.
+// Styled to match the app's glassmorphism design language.
 
 import SwiftUI
 

@@ -1,10 +1,5 @@
-//
-//  TransportModeToggle.swift
-//  Track
-//
-//  A floating capsule segment control for switching between Nearby, Subway, and Bus modes.
-//  Sits at the bottom center of the map overlay.
-//
+// A floating capsule segment control for switching between Nearby, Subway, and Bus modes.
+// Sits at the bottom center of the map overlay.
 
 import SwiftUI
 

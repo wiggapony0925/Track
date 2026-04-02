@@ -1,9 +1,4 @@
-//
-//  Station.swift
-//  Shared
-//
-//  SwiftData model representing an NYC transit station.
-//
+// SwiftData model representing an NYC transit station.
 
 import Foundation
 import SwiftData
@@ -16,7 +11,13 @@ final class Station {
     var longitude: Double
     var routeIDs: [String]
 
-    init(stationID: String, name: String, latitude: Double, longitude: Double, routeIDs: [String] = []) {
+    init(
+        stationID: String,
+        name: String,
+        latitude: Double,
+        longitude: Double,
+        routeIDs: [String] = []
+    ) {
         self.stationID = stationID
         self.name = name
         self.latitude = latitude

@@ -201,7 +201,8 @@ struct DirectionVisibilityTests {
             ]),
         ]
         let visible = ArrivalHelpers.visibleDirections(for: directions)
-        #expect(visible.count == 1, "SW compass placeholder with no real arrivals should be dropped")
+        let msg = "SW compass placeholder with no real arrivals should be dropped"
+        #expect(visible.count == 1, msg)
     }
 
     @Test func compassCodePlaceholders_allDropped() {
@@ -455,10 +456,18 @@ struct DirectionVisibilityTests {
 
     @Test func lirrFourDirections_allVisible() {
         let directions = [
-            dir("Babylon", arrivals: [liveArrival(routeId: "LIRR_1", minutesAway: 20, mode: "lirr")]),
-            dir("Grand Central", arrivals: [liveArrival(routeId: "LIRR_1", minutesAway: 25, mode: "lirr")]),
-            dir("Massapequa", arrivals: [liveArrival(routeId: "LIRR_1", minutesAway: 40, mode: "lirr")]),
-            dir("Penn Station", arrivals: [liveArrival(routeId: "LIRR_1", minutesAway: 15, mode: "lirr")]),
+            dir("Babylon", arrivals: [
+                liveArrival(routeId: "LIRR_1", minutesAway: 20, mode: "lirr")
+            ]),
+            dir("Grand Central", arrivals: [
+                liveArrival(routeId: "LIRR_1", minutesAway: 25, mode: "lirr")
+            ]),
+            dir("Massapequa", arrivals: [
+                liveArrival(routeId: "LIRR_1", minutesAway: 40, mode: "lirr")
+            ]),
+            dir("Penn Station", arrivals: [
+                liveArrival(routeId: "LIRR_1", minutesAway: 15, mode: "lirr")
+            ]),
         ]
         let visible = ArrivalHelpers.visibleDirections(for: directions)
         #expect(visible.count == 4, "LIRR with 4 directions → all 4 visible")
@@ -474,7 +483,8 @@ struct DirectionVisibilityTests {
         //
         // Note: first request may trigger Render cold-start (~30-90s).
         // We make a warm-up request first, then the real one.
-        let baseURL = "https://track-vkrr.onrender.com/nearby/grouped?lat=40.67504&lon=-73.81264&radius=8047"
+        let baseURL = "https://track-vkrr.onrender.com"
+            + "/nearby/grouped?lat=40.67504&lon=-73.81264&radius=8047"
         let url = URL(string: baseURL)!
 
         // Warm-up request (tolerates failure)

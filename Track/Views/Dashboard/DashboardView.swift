@@ -1,11 +1,6 @@
-//
-//  DashboardView.swift
-//  Track
-//
-//  Main dashboard content displayed in the bottom sheet.
-//  Contains the modal navbar, transport mode-specific content,
-//  service alerts, and other dashboard sections.
-//
+// Main dashboard content displayed in the bottom sheet.
+// Contains the modal navbar, transport mode-specific content,
+// service alerts, and other dashboard sections.
 
 import SwiftUI
 import CoreLocation
@@ -60,7 +55,9 @@ struct DashboardView: View {
                     // Shown immediately on load alongside the transit skeleton
                     // so both placeholders are visible at the same time.
                     // Transitions to the real section once favorites have loaded.
-                    if initialLoad || (favoritesManager.isLoading && favoritesManager.favorites.isEmpty) {
+                    let favsLoading = favoritesManager.isLoading
+                        && favoritesManager.favorites.isEmpty
+                    if initialLoad || favsLoading {
                         FavoritesSectionSkeleton()
                             .transition(.opacity)
                     } else {
@@ -69,9 +66,18 @@ struct DashboardView: View {
                             userLocation: locationManager.currentLocation,
                             sheetNavigator: sheetNavigator,
                             onSelect: { group, directionIndex in
-                                sheetNavigator.navigate(to: .routeDetail(group: group, directionIndex: directionIndex))
+                                sheetNavigator.navigate(
+                                    to: .routeDetail(
+                                        group: group,
+                                        directionIndex: directionIndex
+                                    )
+                                )
                                 Task {
-                                    await viewModel.handleRouteSelection(group, directionIndex: directionIndex, userLocation: locationManager.currentLocation)
+                                    await viewModel.handleRouteSelection(
+                                        group,
+                                        directionIndex: directionIndex,
+                                        userLocation: locationManager.currentLocation
+                                    )
                                 }
                             },
                             selectedMode: viewModel.selectedMode,
@@ -132,7 +138,10 @@ struct DashboardView: View {
                                 .transition(.move(edge: .bottom).combined(with: .opacity))
                             }
                         }
-                        .animation(.spring(response: 0.4, dampingFraction: 0.7), value: viewModel.selectedMode)
+                        .animation(
+                            .spring(response: 0.4, dampingFraction: 0.7),
+                            value: viewModel.selectedMode
+                        )
                     }
 
                     // ── Service alerts, errors, outages ───────────────────────

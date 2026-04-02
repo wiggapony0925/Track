@@ -1,11 +1,6 @@
-//
-//  SubwayDashboard.swift
-//  Track
-//
-//  Dashboard content for the "Subway" transport mode.
-//  Shows nearby subway arrivals split into "Near You" and "A Little
-//  Farther Away" sections — same distance-based pattern as the Nearby tab.
-//
+// Dashboard content for the "Subway" transport mode.
+// Shows nearby subway arrivals split into "Near You" and "A Little
+// Farther Away" sections — same distance-based pattern as the Nearby tab.
 
 import SwiftUI
 import CoreLocation
@@ -32,7 +27,10 @@ struct SubwayDashboard: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            let refLocation: CLLocation? = viewModel.effectiveLocation(userLocation: locationManager.currentLocation)
+            let refLocation: CLLocation? = viewModel
+                .effectiveLocation(
+                    userLocation: locationManager.currentLocation
+                )
             
             if !groupedArrivals.isEmpty {
                 bucketedContent(referenceLocation: refLocation)
@@ -91,7 +89,9 @@ struct SubwayDashboard: View {
                     EmptyTierHint()
                 }
                 
-                if nearYou.isEmpty && fartherAway.isEmpty && muchFarther.isEmpty && !viewModel.searchText.isEmpty {
+                if nearYou.isEmpty && fartherAway.isEmpty
+                    && muchFarther.isEmpty
+                    && !viewModel.searchText.isEmpty {
                     EmptyStateView(
                         icon: "magnifyingglass",
                         message: "No subway results for \"\(viewModel.searchText)\""
@@ -111,7 +111,9 @@ struct SubwayDashboard: View {
                         .noService(
                             icon: "tram.fill",
                             title: "No Subway Nearby",
-                            message: "We couldn't find any subway arrivals within your search radius. Try expanding your radius in Settings.",
+                            message: "We couldn't find any subway arrivals"
+                                + " within your search radius."
+                                + " Try expanding your radius in Settings.",
                             brandColor: AppTheme.Colors.mtaBlue
                         ),
                         compact: true

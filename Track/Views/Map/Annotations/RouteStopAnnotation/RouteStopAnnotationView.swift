@@ -14,7 +14,11 @@ struct RouteStopMarker: View, Equatable {
     var showLabel: Bool = false
 
     static func == (lhs: RouteStopMarker, rhs: RouteStopMarker) -> Bool {
-        lhs.isBusRoute == rhs.isBusRoute && lhs.isSelected == rhs.isSelected && lhs.isBehind == rhs.isBehind && lhs.stopName == rhs.stopName && lhs.showLabel == rhs.showLabel
+        lhs.isBusRoute == rhs.isBusRoute
+            && lhs.isSelected == rhs.isSelected
+            && lhs.isBehind == rhs.isBehind
+            && lhs.stopName == rhs.stopName
+            && lhs.showLabel == rhs.showLabel
     }
 
     var body: some View {
@@ -53,7 +57,10 @@ struct RouteStopMarker: View, Equatable {
 
             if showLabel {
                 Text(stopName)
-                    .font(.system(size: isSelected ? 11 : 10, weight: isSelected ? .bold : .semibold))
+                    .font(.system(
+                        size: isSelected ? 11 : 10,
+                        weight: isSelected ? .bold : .semibold
+                    ))
                     .foregroundColor(AppTheme.Colors.textPrimary)
                     .lineLimit(1)
                     .fixedSize()
@@ -62,7 +69,10 @@ struct RouteStopMarker: View, Equatable {
                     .background(
                         Capsule()
                             .fill(AppTheme.Colors.cardFloating.opacity(0.88))
-                            .shadow(color: AppTheme.Colors.shadow.opacity(0.12), radius: 2, x: 0, y: 1)
+                            .shadow(
+                                color: AppTheme.Colors.shadow.opacity(0.12),
+                                radius: 2, x: 0, y: 1
+                            )
                     )
             }
         }

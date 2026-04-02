@@ -1,13 +1,7 @@
-//
-//  MapLibreCameraState.swift
-//  Track
-//
-//  Bridge between `TrackCameraPosition` and MapLibre's camera system.
-//  Converts our renderer-agnostic camera type (distance, pitch, heading)
-//  to MapLibre equivalents (zoom level, pitch, bearing) and vice versa.
-//
-//  No MapKit dependency — all conversions are O(1) arithmetic operations.
-//
+// Bridge between `TrackCameraPosition` and MapLibre's camera system.
+// Converts our renderer-agnostic camera type (distance, pitch, heading)
+// to MapLibre equivalents (zoom level, pitch, bearing) and vice versa.
+// No MapKit dependency — all conversions are O(1) arithmetic operations.
 
 import CoreLocation
 import Foundation

@@ -1,15 +1,11 @@
-//
-//  MapCameraPresets.swift
-//  Track
-//
-//  Reusable map camera helpers for the Track NYC Transit App.
-//  Every view that sets `cameraPosition` should use these presets
-//  instead of constructing TrackCamera(...) inline.
-//
-//  Usage:
-//      cameraPosition = MapCameraPresets.center(on: coord, is3D: is3DMode)
-//      cameraPosition = MapCameraPresets.fitWalkingPath(user: userCoord, stop: stopCoord, is3D: true)
-//
+// Reusable map camera helpers for the Track NYC Transit App.
+// Every view that sets `cameraPosition` should use these presets
+// instead of constructing TrackCamera(...) inline.
+// Usage:
+//     cameraPosition = MapCameraPresets.center(on: coord, is3D: is3DMode)
+//     cameraPosition = MapCameraPresets.fitWalkingPath(
+//         user: userCoord, stop: stopCoord, is3D: true
+//     )
 
 import SwiftUI
 import CoreLocation
@@ -63,7 +59,11 @@ enum MapCameraPresets {
     }
 
     /// Center the map on a coordinate at a specific distance.
-    static func center(on coordinate: CLLocationCoordinate2D, distance: Double, is3D: Bool) -> TrackCameraPosition {
+    static func center(
+        on coordinate: CLLocationCoordinate2D,
+        distance: Double,
+        is3D: Bool
+    ) -> TrackCameraPosition {
         .camera(TrackCamera(
             centerCoordinate: coordinate,
             distance: distance,
@@ -73,7 +73,10 @@ enum MapCameraPresets {
     }
 
     /// Focus on a vehicle marker — tighter zoom at `vehicleFocusDistance`.
-    static func focusVehicle(at coordinate: CLLocationCoordinate2D, is3D: Bool) -> TrackCameraPosition {
+    static func focusVehicle(
+        at coordinate: CLLocationCoordinate2D,
+        is3D: Bool
+    ) -> TrackCameraPosition {
         .camera(TrackCamera(
             centerCoordinate: coordinate,
             distance: vehicleFocusDistance,
@@ -165,7 +168,11 @@ enum MapCameraPresets {
         is3D: Bool
     ) -> TrackCameraPosition {
         let geo = walkingGeometry(user: userCoord, stop: stopCoord)
-        let distance = max(walkingMinAltitude, min(geo.spanMeters * geo.basePadding, walkingMaxAltitude))
+        let distance = max(
+            walkingMinAltitude,
+            min(geo.spanMeters * geo.basePadding,
+                walkingMaxAltitude)
+        )
 
         let bias = s.walkingCenterBias
         let biasedLat = geo.centerLat + (stopCoord.latitude - geo.centerLat) * bias

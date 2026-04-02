@@ -1,9 +1,4 @@
-//
-//  ArrivalRowSkeleton.swift
-//  Track
-//
-//  Shimmer skeleton for arrival rows while data loads.
-//
+// Shimmer skeleton for arrival rows while data loads.
 
 import SwiftUI
 

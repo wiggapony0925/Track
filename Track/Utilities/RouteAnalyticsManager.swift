@@ -1,12 +1,7 @@
-//
-//  RouteAnalyticsManager.swift
-//  Track
-//
-//  Tracks user interactions with transit routes to surface frequently used
-//  lines in the widget and smart suggestions.
-//  Uses App Group UserDefaults to share data with the Widget.
-//  Also syncs to Supabase for global popularity rankings.
-//
+// Tracks user interactions with transit routes to surface frequently used
+// lines in the widget and smart suggestions.
+// Uses App Group UserDefaults to share data with the Widget.
+// Also syncs to Supabase for global popularity rankings.
 
 import Foundation
 import CoreLocation
@@ -15,14 +10,21 @@ import CoreLocation
 class RouteAnalyticsManager {
     static let shared = RouteAnalyticsManager()
     
-    private let defaults = UserDefaults(suiteName: kAppGroupIdentifier) ?? UserDefaults.standard
+    private let defaults = UserDefaults(suiteName: appGroupIdentifier) ?? UserDefaults.standard
     private let key = "route_interaction_stats"
     
     // In-memory cache
     private var stats: [String: Int] = [:]
     
     // Debounce queue for cloud sync to avoid excessive network requests
-    private var pendingCloudSync: [(routeId: String, displayName: String?, mode: String, type: String, latitude: Double?, longitude: Double?)] = []
+    private var pendingCloudSync: [(
+        routeId: String,
+        displayName: String?,
+        mode: String,
+        type: String,
+        latitude: Double?,
+        longitude: Double?
+    )] = []
     private var syncTask: Task<Void, Never>?
     private let syncDebounceInterval: TimeInterval = 2.0
     

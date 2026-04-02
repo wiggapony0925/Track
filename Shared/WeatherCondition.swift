@@ -1,9 +1,4 @@
-//
-//  WeatherCondition.swift
-//  Shared
-//
-//  Weather condition enum used as a feature for delay prediction.
-//
+// Weather condition enum used as a feature for delay prediction.
 
 import Foundation
 

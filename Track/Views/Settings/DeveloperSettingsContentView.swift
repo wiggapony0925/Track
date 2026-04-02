@@ -1,10 +1,5 @@
-//
-//  DeveloperSettingsContentView.swift
-//  Track
-//
-//  Dedicated developer settings page for local backend controls and connectivity
-//  diagnostics. This page is only reachable in debug builds.
-//
+// Dedicated developer settings page for local backend controls and connectivity
+// diagnostics. This page is only reachable in debug builds.
 
 import SwiftUI
 

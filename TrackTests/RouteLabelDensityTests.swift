@@ -16,9 +16,24 @@ struct RouteLabelDensityTests {
     @Test("Repeated identical route tags collapse to one in a dense cluster")
     func repeatedSignatureClusterIsThinned() {
         let placements: [ProjectedRouteLabelPlacement] = [
-            .init(id: "center", point: CGPoint(x: 200, y: 400), routeIds: ["N", "Q", "R", "W"], color: .yellow),
-            .init(id: "nearby-1", point: CGPoint(x: 250, y: 402), routeIds: ["N", "Q", "R", "W"], color: .yellow),
-            .init(id: "nearby-2", point: CGPoint(x: 305, y: 399), routeIds: ["N", "Q", "R", "W"], color: .yellow),
+            .init(
+                id: "center",
+                point: CGPoint(x: 200, y: 400),
+                routeIds: ["N", "Q", "R", "W"],
+                color: .yellow
+            ),
+            .init(
+                id: "nearby-1",
+                point: CGPoint(x: 250, y: 402),
+                routeIds: ["N", "Q", "R", "W"],
+                color: .yellow
+            ),
+            .init(
+                id: "nearby-2",
+                point: CGPoint(x: 305, y: 399),
+                routeIds: ["N", "Q", "R", "W"],
+                color: .yellow
+            ),
         ]
 
         let kept = cullRouteLabelPlacements(
@@ -51,8 +66,18 @@ struct RouteLabelDensityTests {
     @Test("Overlapping mixed route tags choose the center-priority candidate")
     func overlappingMixedTagsPreferViewportCenter() {
         let placements: [ProjectedRouteLabelPlacement] = [
-            .init(id: "center", point: CGPoint(x: 200, y: 400), routeIds: ["B", "D"], color: .orange),
-            .init(id: "offcenter", point: CGPoint(x: 214, y: 407), routeIds: ["N", "Q", "R", "W"], color: .yellow),
+            .init(
+                id: "center",
+                point: CGPoint(x: 200, y: 400),
+                routeIds: ["B", "D"],
+                color: .orange
+            ),
+            .init(
+                id: "offcenter",
+                point: CGPoint(x: 214, y: 407),
+                routeIds: ["N", "Q", "R", "W"],
+                color: .yellow
+            ),
         ]
 
         let kept = cullRouteLabelPlacements(

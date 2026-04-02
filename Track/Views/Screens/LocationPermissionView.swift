@@ -1,11 +1,6 @@
-//
-//  LocationPermissionView.swift
-//  Track
-//
-//  Premium location-permission gate. Shown when the user hasn't granted
-//  location access yet. Supports both not-determined (first ask) and
-//  denied (redirect to Settings) states.
-//
+// Premium location-permission gate. Shown when the user hasn't granted
+// location access yet. Supports both not-determined (first ask) and
+// denied (redirect to Settings) states.
 
 import SwiftUI
 import CoreLocation
@@ -65,11 +60,19 @@ struct LocationPermissionView: View {
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 32)
 
-                Text(
-                    isDenied
-                        ? "You've denied location access. Open Settings and enable \"While Using the App\" to see nearby transit."
-                        : "To show real-time arrivals and your nearest stops, Track needs to know where you are. Your location never leaves your device."
-                )
+                let deniedMessage = """
+                    You've denied location access. \
+                    Open Settings and enable \
+                    "While Using the App" to \
+                    see nearby transit.
+                    """
+                let promptMessage = """
+                    To show real-time arrivals and \
+                    your nearest stops, Track needs \
+                    to know where you are. Your \
+                    location never leaves your device.
+                    """
+                Text(isDenied ? deniedMessage : promptMessage)
                 .font(.system(size: 16, weight: .regular))
                 .foregroundStyle(AppTheme.Colors.textSecondary)
                 .multilineTextAlignment(.center)

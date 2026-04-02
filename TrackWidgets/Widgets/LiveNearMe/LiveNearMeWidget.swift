@@ -1,10 +1,5 @@
-//
-//  LiveNearMeWidget.swift
-//  Widgets
-//
-//  Scheduled widget that shows nearby transit at user-configured times.
-//  Activates for a specific duration (default 15 min) when scheduled.
-//
+// Scheduled widget that shows nearby transit at user-configured times.
+// Activates for a specific duration (default 15 min) when scheduled.
 
 import SwiftUI
 @preconcurrency import WidgetKit
@@ -32,7 +27,10 @@ struct LiveNearMeProvider: TimelineProvider {
         }
     }
 
-    func getTimeline(in context: Context, completion: @escaping (Timeline<LiveNearMeEntry>) -> Void) {
+    func getTimeline(
+        in context: Context,
+        completion: @escaping (Timeline<LiveNearMeEntry>) -> Void
+    ) {
         let schedules = WidgetSchedule.loadAll()
         let now = Date()
 
@@ -70,7 +68,10 @@ struct LiveNearMeProvider: TimelineProvider {
             // Calculate next activation
             if let nextActivation = schedules.nextActivation(after: now) {
                 // Refresh 1 minute before next activation to prepare
-                let wakeTime = Calendar.current.date(byAdding: .minute, value: -1, to: nextActivation) ?? nextActivation
+                let wakeTime = Calendar.current.date(
+                    byAdding: .minute, value: -1,
+                    to: nextActivation
+                ) ?? nextActivation
                 let timeline = Timeline(entries: [inactiveEntry], policy: .after(wakeTime))
                 completion(timeline)
             } else {
@@ -83,8 +84,11 @@ struct LiveNearMeProvider: TimelineProvider {
     }
 
     /// Fetches live nearby transit data from the backend API.
-    private func fetchLiveEntry(maxRoutes: Int, completion: @Sendable @escaping (LiveNearMeEntry?) -> Void) {
-        let defaults = UserDefaults(suiteName: kAppGroupIdentifier) ?? UserDefaults.standard
+    private func fetchLiveEntry(
+        maxRoutes: Int,
+        completion: @Sendable @escaping (LiveNearMeEntry?) -> Void
+    ) {
+        let defaults = UserDefaults(suiteName: appGroupIdentifier) ?? UserDefaults.standard
         let lat = defaults.double(forKey: "lastLatitude")
         let lon = defaults.double(forKey: "lastLongitude")
         let hasLocation = defaults.bool(forKey: "hasLastLocation")
@@ -133,7 +137,9 @@ struct LiveNearMeProvider: TimelineProvider {
 
         // Pre-read interaction stats before the @Sendable URLSession closure
         // to avoid capturing the non-Sendable UserDefaults instance.
-        let stats: [String: Int] = defaults.dictionary(forKey: "route_interaction_stats") as? [String: Int] ?? [:]
+        let stats: [String: Int] = defaults.dictionary(
+            forKey: "route_interaction_stats"
+        ) as? [String: Int] ?? [:]
 
         let task = URLSession.shared.dataTask(with: url) { data, response, error in
             guard let data = data,
@@ -207,12 +213,42 @@ struct LiveNearMeEntry: TimelineEntry {
     static let placeholder = LiveNearMeEntry(
         date: Date(),
         state: .active(arrivals: [
-            NearbyArrival(routeId: "L", stopName: "1st Avenue", direction: "Manhattan", minutesAway: 2, status: "Arriving", mode: "subway", arrivalTime: Date().addingTimeInterval(120)),
-            NearbyArrival(routeId: "B63", stopName: "5 Av / Union St", direction: "Cobble Hill", minutesAway: 4, status: "On Time", mode: "bus", arrivalTime: Date().addingTimeInterval(240)),
-            NearbyArrival(routeId: "G", stopName: "Metropolitan Av", direction: "Church Av", minutesAway: 6, status: "On Time", mode: "subway", arrivalTime: Date().addingTimeInterval(360)),
-            NearbyArrival(routeId: "A", stopName: "Fulton St", direction: "Far Rockaway", minutesAway: 8, status: "On Time", mode: "subway", arrivalTime: Date().addingTimeInterval(480)),
-            NearbyArrival(routeId: "4", stopName: "Bowling Green", direction: "Woodlawn", minutesAway: 11, status: "On Time", mode: "subway", arrivalTime: Date().addingTimeInterval(660)),
-            NearbyArrival(routeId: "N", stopName: "Times Square", direction: "Astoria", minutesAway: 13, status: "On Time", mode: "subway", arrivalTime: Date().addingTimeInterval(780)),
+            NearbyArrival(
+                routeId: "L", stopName: "1st Avenue",
+                direction: "Manhattan", minutesAway: 2,
+                status: "Arriving", mode: "subway",
+                arrivalTime: Date().addingTimeInterval(120)
+            ),
+            NearbyArrival(
+                routeId: "B63", stopName: "5 Av / Union St",
+                direction: "Cobble Hill", minutesAway: 4,
+                status: "On Time", mode: "bus",
+                arrivalTime: Date().addingTimeInterval(240)
+            ),
+            NearbyArrival(
+                routeId: "G", stopName: "Metropolitan Av",
+                direction: "Church Av", minutesAway: 6,
+                status: "On Time", mode: "subway",
+                arrivalTime: Date().addingTimeInterval(360)
+            ),
+            NearbyArrival(
+                routeId: "A", stopName: "Fulton St",
+                direction: "Far Rockaway", minutesAway: 8,
+                status: "On Time", mode: "subway",
+                arrivalTime: Date().addingTimeInterval(480)
+            ),
+            NearbyArrival(
+                routeId: "4", stopName: "Bowling Green",
+                direction: "Woodlawn", minutesAway: 11,
+                status: "On Time", mode: "subway",
+                arrivalTime: Date().addingTimeInterval(660)
+            ),
+            NearbyArrival(
+                routeId: "N", stopName: "Times Square",
+                direction: "Astoria", minutesAway: 13,
+                status: "On Time", mode: "subway",
+                arrivalTime: Date().addingTimeInterval(780)
+            ),
         ]),
         relevance: TimelineEntryRelevance(score: 100)
     )
@@ -300,7 +336,11 @@ struct LiveNearMeWidgetView: View {
                         .foregroundColor(AppTheme.Colors.textPrimary)
                     if let activeUntil = calculateActiveUntil() {
                         Text("Until \(activeUntil, style: .time)")
-                            .font(.system(size: isLarge ? 9 : 8, weight: .semibold, design: .rounded))
+                            .font(.system(
+                                size: isLarge ? 9 : 8,
+                                weight: .semibold,
+                                design: .rounded
+                            ))
                             .foregroundColor(AppTheme.Colors.successGreen)
                     }
                 }
@@ -326,7 +366,10 @@ struct LiveNearMeWidgetView: View {
                 // Route cards
                 if isLarge {
                     VStack(spacing: 8) {
-                        ForEach(Array(arrivals.prefix(5).enumerated()), id: \.offset) { index, arrival in
+                        ForEach(
+                            Array(arrivals.prefix(5).enumerated()),
+                            id: \.offset
+                        ) { index, arrival in
                             largeArrivalRow(arrival, index: index)
                         }
                     }
@@ -337,7 +380,10 @@ struct LiveNearMeWidgetView: View {
                     ]
 
                     LazyVGrid(columns: columns, spacing: 8) {
-                        ForEach(Array(arrivals.prefix(4).enumerated()), id: \.offset) { index, arrival in
+                        ForEach(
+                            Array(arrivals.prefix(4).enumerated()),
+                            id: \.offset
+                        ) { index, arrival in
                             mediumArrivalCard(arrival)
                         }
                     }
@@ -350,7 +396,10 @@ struct LiveNearMeWidgetView: View {
 
     // MARK: - Inactive State
 
-    private func inactiveStateView(nextActivation: Date?, schedules: [WidgetSchedule]) -> some View {
+    private func inactiveStateView(
+        nextActivation: Date?,
+        schedules: [WidgetSchedule]
+    ) -> some View {
         VStack(spacing: 12) {
             ZStack {
                 Circle()
@@ -474,12 +523,22 @@ struct LiveNearMeWidgetView: View {
             .frame(minWidth: size, minHeight: size)
             .background(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(arrival.isLIRR ? AppTheme.CommuterRailColors.lirrBlue : AppTheme.CommuterRailColors.mnrBlue)
+                    .fill(
+                        arrival.isLIRR
+                            ? AppTheme.CommuterRailColors.lirrBlue
+                            : AppTheme.CommuterRailColors.mnrBlue
+                    )
             )
         } else {
             ZStack {
                 Circle()
-                    .fill(arrival.isBus ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: arrival.displayName))
+                    .fill(
+                        arrival.isBus
+                            ? AppTheme.Colors.mtaBlue
+                            : AppTheme.SubwayColors.color(
+                                for: arrival.displayName
+                            )
+                    )
                     .frame(width: size, height: size)
 
                 if arrival.isBus {

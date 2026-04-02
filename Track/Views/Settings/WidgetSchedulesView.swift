@@ -1,10 +1,5 @@
-//
-//  WidgetSchedulesView.swift
-//  Track
-//
-//  Manages activation schedules for the LiveNearMeWidget.
-//  Users can add, edit, delete, and reorder schedules.
-//
+// Manages activation schedules for the LiveNearMeWidget.
+// Users can add, edit, delete, and reorder schedules.
 
 import SwiftUI
 import WidgetKit
@@ -48,7 +43,11 @@ struct WidgetSchedulesView: View {
             } header: {
                 Text("Active Schedules")
             } footer: {
-                Text("Widget will activate at these times to show nearby transit for the configured duration.")
+                Text(
+                    "Widget will activate at these times"
+                    + " to show nearby transit"
+                    + " for the configured duration."
+                )
                     .font(.custom("Helvetica", size: 12))
             }
 
@@ -56,7 +55,11 @@ struct WidgetSchedulesView: View {
                 HStack {
                     Image(systemName: "lightbulb.fill")
                         .foregroundColor(AppTheme.Colors.mtaBlue)
-                    Text("Tip: Add schedules for your commute times to see nearby transit automatically.")
+                    Text(
+                        "Tip: Add schedules for your commute"
+                        + " times to see nearby transit"
+                        + " automatically."
+                    )
                         .font(.custom("Helvetica", size: 12))
                         .foregroundColor(AppTheme.Colors.textSecondary)
                 }
@@ -101,9 +104,19 @@ struct WidgetSchedulesView: View {
 
                     Text(dayAbbr)
                         .font(.custom("Helvetica-Bold", size: 11))
-                        .foregroundColor(isActive ? .white : AppTheme.Colors.textSecondary.opacity(0.4))
+                        .foregroundColor(
+                            isActive
+                                ? .white
+                                : AppTheme.Colors.textSecondary
+                                    .opacity(0.4)
+                        )
                         .frame(width: 24, height: 24)
-                        .background(isActive ? AppTheme.Colors.mtaBlue : AppTheme.Colors.textSecondary.opacity(0.1))
+                        .background(
+                            isActive
+                                ? AppTheme.Colors.mtaBlue
+                                : AppTheme.Colors.textSecondary
+                                    .opacity(0.1)
+                        )
                         .cornerRadius(6)
                 }
             }

@@ -1,10 +1,5 @@
-//
-//  TrackedRoute.swift
-//  Shared
-//
-//  Model for a user-selected route being tracked in the SingleRouteWidget.
-//  Persisted to App Group UserDefaults for widget access.
-//
+// Model for a user-selected route being tracked in the SingleRouteWidget.
+// Persisted to App Group UserDefaults for widget access.
 
 import Foundation
 
@@ -30,7 +25,8 @@ struct TrackedRoute: Codable {
 
     // MARK: - Persistence
 
-    private nonisolated(unsafe) static let defaults = UserDefaults(suiteName: "group.JFMCAPITALGROUP.Track")!
+    private nonisolated(unsafe) static let defaults =
+        UserDefaults(suiteName: "group.JFMCAPITALGROUP.Track")!
 
     private enum Keys {
         static let routeId = "tracked_route_id"

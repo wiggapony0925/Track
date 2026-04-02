@@ -1,12 +1,7 @@
-//
-//  ErrorStateCard.swift
-//  Track
-//
-//  A single, reusable error / empty-state card driven by `ErrorStateKind`.
-//  Consolidates NetworkOfflineCard, BackendErrorCard, OutsideServiceAreaCard,
-//  NoNearbyArrivalsCard, NoServiceEmptyState, and NetworkErrorBanner into one
-//  place so the visual language stays consistent and nothing is duplicated.
-//
+// A single, reusable error / empty-state card driven by `ErrorStateKind`.
+// Consolidates NetworkOfflineCard, BackendErrorCard, OutsideServiceAreaCard,
+// NoNearbyArrivalsCard, NoServiceEmptyState, and NetworkErrorBanner into one
+// place so the visual language stays consistent and nothing is duplicated.
 
 import SwiftUI
 
@@ -60,8 +55,14 @@ private extension ErrorStateKind {
                 iconColor: AppTheme.Colors.alertRed,
                 iconBackgroundColor: AppTheme.Colors.alertRed.opacity(0.1),
                 title: "No Internet Connection",
-                body: "Track needs an internet connection to fetch live transit data. Check your Wi-Fi or cellular settings and try again.",
-                hint: .init(icon: "arrow.clockwise", text: "Data will reload automatically when you reconnect"),
+                body: "Track needs an internet connection"
+                    + " to fetch live transit data. Check your"
+                    + " Wi-Fi or cellular settings and try again.",
+                hint: .init(
+                    icon: "arrow.clockwise",
+                    text: "Data will reload automatically"
+                        + " when you reconnect"
+                ),
                 borderColor: AppTheme.Colors.alertRed.opacity(0.2)
             )
 
@@ -71,7 +72,9 @@ private extension ErrorStateKind {
                 iconColor: AppTheme.Colors.warningYellow,
                 iconBackgroundColor: AppTheme.Colors.warningYellow.opacity(0.12),
                 title: "Server Temporarily Unavailable",
-                body: "Our servers are waking up or experiencing a brief hiccup. This usually resolves in a few seconds.",
+                body: "Our servers are waking up or"
+                    + " experiencing a brief hiccup. This"
+                    + " usually resolves in a few seconds.",
                 hint: .init(icon: "info.circle", text: message),
                 borderColor: AppTheme.Colors.warningYellow.opacity(0.2)
             )
@@ -82,8 +85,16 @@ private extension ErrorStateKind {
                 iconColor: AppTheme.Colors.accent,
                 iconBackgroundColor: AppTheme.Colors.accent.opacity(0.1),
                 title: "You're Outside Our Coverage",
-                body: "Track currently covers the New York City metro area — subways, buses, LIRR, and Metro-North. We haven't partnered with transit agencies in this region yet.",
-                hint: .init(icon: "building.2.fill", text: "Serving the 5 boroughs, Long Island & the Hudson Valley"),
+                body: "Track currently covers the New York"
+                    + " City metro area \u{2014} subways, buses,"
+                    + " LIRR, and Metro-North. We haven\u{2019}t"
+                    + " partnered with transit agencies"
+                    + " in this region yet.",
+                hint: .init(
+                    icon: "building.2.fill",
+                    text: "Serving the 5 boroughs,"
+                        + " Long Island & the Hudson Valley"
+                ),
                 borderColor: nil
             )
 
@@ -93,7 +104,10 @@ private extension ErrorStateKind {
                 iconColor: AppTheme.Colors.accent,
                 iconBackgroundColor: AppTheme.Colors.accent.opacity(0.08),
                 title: "No Arrivals Nearby",
-                body: "There aren't any live departures in your immediate area. Try moving closer to a station or bus stop, or use the search pin to explore.",
+                body: "There aren't any live departures in"
+                    + " your immediate area. Try moving closer"
+                    + " to a station or bus stop, or use the"
+                    + " search pin to explore.",
                 hint: nil,
                 borderColor: nil
             )
@@ -243,11 +257,18 @@ struct ErrorStateCard: View {
         case .explore(let cameraPosition, let is3DMode):
             Button {
                 withAnimation(.easeInOut(duration: 1.0)) {
-                    cameraPosition.wrappedValue = MapCameraPresets.explorer(is3D: is3DMode.wrappedValue)
+                    cameraPosition.wrappedValue =
+                        MapCameraPresets.explorer(
+                            is3D: is3DMode.wrappedValue
+                        )
                 }
             } label: {
                 HStack(spacing: 6) {
-                    Image(systemName: kind == .outsideServiceArea ? "subway.fill" : "location.magnifyingglass")
+                    Image(
+                        systemName: kind == .outsideServiceArea
+                            ? "subway.fill"
+                            : "location.magnifyingglass"
+                    )
                         .font(.system(size: 13, weight: .semibold))
                     Text(kind == .outsideServiceArea ? "Explore New York City" : "Explore Nearby")
                         .font(.system(size: 15, weight: .semibold))

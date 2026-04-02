@@ -1,9 +1,4 @@
-//
-//  AppThemeUtilities.swift
-//  Shared
-//
-//  Shared palette models and adaptive color helpers used by AppTheme.
-//
+// Shared palette models and adaptive color helpers used by AppTheme.
 
 import SwiftUI
 import UIKit

@@ -1,11 +1,6 @@
-//
-//  NearbyDashboard.swift
-//  Track
-//
-//  Dashboard content for the "Nearby" transport mode.
-//  Shows unified transit arrivals (buses and trains) sorted by distance,
-//  grouped into "Near You" and "A Little Farther Away" sections.
-//
+// Dashboard content for the "Nearby" transport mode.
+// Shows unified transit arrivals (buses and trains) sorted by distance,
+// grouped into "Near You" and "A Little Farther Away" sections.
 
 import CoreLocation
 import SwiftUI
@@ -135,7 +130,8 @@ struct NearbyDashboard: View {
                         icon: "figure.walk",
                         title: "Oh no, you're far from transit!",
                         subtitle:
-                            "We couldn't find anything nearby, but we found a station a bit further out.",
+                            "We couldn't find anything nearby, "
+                            + "but we found a station a bit further out.",
                         accentColor: AppTheme.Colors.mtaBlue
                     )
 
@@ -145,7 +141,8 @@ struct NearbyDashboard: View {
                         distanceMeters: viewModel.nearestTransitDistance,
                         onCenter: { coordinate in
                             withAnimation(.easeInOut(duration: 0.6)) {
-                                cameraPosition = MapCameraPresets.center(on: coordinate, is3D: is3DMode)
+                                cameraPosition = MapCameraPresets.center(
+                                    on: coordinate, is3D: is3DMode)
                             }
                         }
                     )
@@ -293,7 +290,9 @@ struct NearYouSectionHeader: View {
             .background {
                 Capsule()
                     .fill(AppTheme.Colors.successGreen)
-                    .shadow(color: AppTheme.Colors.successGreen.opacity(0.25), radius: 6, x: 0, y: 2)
+                    .shadow(
+                        color: AppTheme.Colors.successGreen.opacity(0.25),
+                        radius: 6, x: 0, y: 2)
             }
 
             Spacer()
@@ -386,7 +385,9 @@ struct MuchFartherAwaySectionHeader: View {
             .background {
                 Capsule()
                     .fill(AppTheme.Colors.warningYellow)
-                    .shadow(color: AppTheme.Colors.warningYellow.opacity(0.20), radius: 6, x: 0, y: 2)
+                    .shadow(
+                        color: AppTheme.Colors.warningYellow.opacity(0.20),
+                        radius: 6, x: 0, y: 2)
             }
 
             Spacer()
@@ -446,7 +447,8 @@ struct GroupedRouteList: View {
                             routeId: group.displayName, mode: group.mode
                         ).isEmpty,
                     userLocation: referenceLocation,
-                    distanceMetersOverride: viewModel.displayDistanceMeters(for: group, from: referenceLocation),
+                    distanceMetersOverride: viewModel.displayDistanceMeters(
+                        for: group, from: referenceLocation),
                     smartETAProvider: { viewModel.smartETA(for: $0) },
                     initialDirectionIndex: viewModel.preferredDirectionIndex(for: group),
                     onDirectionChanged: { newIndex in
@@ -466,14 +468,20 @@ struct GroupedRouteList: View {
                         let dir = group.directions[
                             min(directionIndex, group.directions.count - 1)]
                         guard let arrival = ArrivalHelpers.countdownArrival(
-                            for: dir, userLocation: locationManager.currentLocation, provider: { viewModel.smartETA(for: $0) }
+                            for: dir,
+                            userLocation: locationManager.currentLocation,
+                            provider: { viewModel.smartETA(for: $0) }
                         ) else { return }
                         viewModel.trackNearbyArrival(
                             arrival, location: locationManager.currentLocation)
                     },
                     onAlertTapped: {
                         let directionIndex = viewModel.preferredDirectionIndex(for: group)
-                        sheetNavigator.navigate(to: .routeDetail(group: group, directionIndex: directionIndex, initialTab: .alerts))
+                        sheetNavigator.navigate(
+                            to: .routeDetail(
+                                group: group,
+                                directionIndex: directionIndex,
+                                initialTab: .alerts))
                     },
                     isStale: isStale
                 )

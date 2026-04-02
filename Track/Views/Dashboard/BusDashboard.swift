@@ -1,12 +1,7 @@
-//
-//  BusDashboard.swift
-//  Track
-//
-//  Dashboard content for the "Bus" transport mode.
-//  Shows nearby bus arrivals split into "Near You" and "A Little
-//  Farther Away" sections — same distance-based pattern as the
-//  Nearby and Subway tabs.
-//
+// Dashboard content for the "Bus" transport mode.
+// Shows nearby bus arrivals split into "Near You" and "A Little
+// Farther Away" sections — same distance-based pattern as the
+// Nearby and Subway tabs.
 
 import SwiftUI
 import CoreLocation
@@ -33,7 +28,10 @@ struct BusDashboard: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            let refLocation: CLLocation? = viewModel.effectiveLocation(userLocation: locationManager.currentLocation)
+            let refLocation: CLLocation? =
+                viewModel.effectiveLocation(
+                    userLocation: locationManager.currentLocation
+                )
             
             if !groupedArrivals.isEmpty {
                 bucketedContent(referenceLocation: refLocation)
@@ -45,7 +43,11 @@ struct BusDashboard: View {
 
     @ViewBuilder
     private func bucketedContent(referenceLocation refLocation: CLLocation?) -> some View {
-                let buckets: ([GroupedNearbyTransitResponse], [GroupedNearbyTransitResponse], [GroupedNearbyTransitResponse]) = viewModel.groupedDisplayBuckets(
+                let buckets: (
+                    [GroupedNearbyTransitResponse],
+                    [GroupedNearbyTransitResponse],
+                    [GroupedNearbyTransitResponse]
+                ) = viewModel.groupedDisplayBuckets(
                     from: groupedArrivals,
                     referenceLocation: refLocation
                 )
@@ -95,7 +97,9 @@ struct BusDashboard: View {
                     EmptyTierHint()
                 }
                 
-                if nearYou.isEmpty && fartherAway.isEmpty && muchFarther.isEmpty && !viewModel.searchText.isEmpty {
+                if nearYou.isEmpty && fartherAway.isEmpty
+                    && muchFarther.isEmpty
+                    && !viewModel.searchText.isEmpty {
                     EmptyStateView(
                         icon: "magnifyingglass",
                         message: "No bus results for \"\(viewModel.searchText)\""
@@ -115,7 +119,9 @@ struct BusDashboard: View {
                         .noService(
                             icon: "bus.fill",
                             title: "No Buses Nearby",
-                            message: "We couldn't find any bus arrivals within your search radius. Try expanding your radius in Settings.",
+                            message: "We couldn't find any bus arrivals"
+                                + " within your search radius."
+                                + " Try expanding your radius in Settings.",
                             brandColor: AppTheme.Colors.mtaBlue
                         ),
                         compact: true

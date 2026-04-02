@@ -1,15 +1,9 @@
-//
-//  WeatherChipView.swift
-//  Track
-//
-//  Reusable weather indicator with animated SF Symbol + temperature.
-//  Two sizes: .compact (section headers) and .standard (route detail).
-//
-//  The SF Symbol comes directly from WeatherKit — Apple provides ~50
-//  multicolor weather symbols (sun.max.fill, cloud.rain.fill, etc.)
-//  that render with automatic color layers (sun=yellow, cloud=gray,
-//  rain=blue) via .symbolRenderingMode(.multicolor).
-//
+// Reusable weather indicator with animated SF Symbol + temperature.
+// Two sizes: .compact (section headers) and .standard (route detail).
+// The SF Symbol comes directly from WeatherKit — Apple provides ~50
+// multicolor weather symbols (sun.max.fill, cloud.rain.fill, etc.)
+// that render with automatic color layers (sun=yellow, cloud=gray,
+// rain=blue) via .symbolRenderingMode(.multicolor).
 
 import SwiftUI
 

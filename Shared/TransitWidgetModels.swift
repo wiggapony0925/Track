@@ -1,9 +1,4 @@
-//
-//  TransitWidgetModels.swift
-//  Shared
-//
-//  Shared models for all widgets in the Track ecosystem.
-//
+// Shared models for all widgets in the Track ecosystem.
 
 import Foundation
 

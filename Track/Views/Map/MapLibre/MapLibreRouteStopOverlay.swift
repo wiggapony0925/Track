@@ -1,11 +1,6 @@
-//
-//  MapLibreRouteStopOverlay.swift
-//  Track
-//
-//  SwiftUI overlay rendering route stop markers when a specific route
-//  is selected. Positions `RouteStopMarker` views using MapLibre's
-//  coordinate → screen point projection.
-//
+// SwiftUI overlay rendering route stop markers when a specific route
+// is selected. Positions `RouteStopMarker` views using MapLibre's
+// coordinate → screen point projection.
 
 import CoreLocation
 import MapLibre
@@ -62,7 +57,10 @@ struct MapLibreRouteStopOverlay: View {
     }
 
     @ViewBuilder
-    private func stopMarkerView(for displayedStop: DisplayedRouteStop, showLabel: Bool) -> some View {
+    private func stopMarkerView(
+        for displayedStop: DisplayedRouteStop,
+        showLabel: Bool
+    ) -> some View {
         let stop: BusStop = displayedStop.stop
         let coord: CLLocationCoordinate2D = displayedStop.displayCoordinate
         let isSelected: Bool = stop.id == selectedStopId

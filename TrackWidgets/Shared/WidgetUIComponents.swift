@@ -1,9 +1,4 @@
-//
-//  WidgetUIComponents.swift
-//  TrackWidgets
-//
-//  Shared UI components and styling for all Widget extensions.
-//
+// Shared UI components and styling for all Widget extensions.
 
 import SwiftUI
 

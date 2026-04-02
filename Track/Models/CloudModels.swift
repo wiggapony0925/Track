@@ -1,10 +1,5 @@
-//
-//  CloudModels.swift
-//  Track
-//
-//  Codable model types for Supabase cloud data.
-//  These structs map directly to Supabase database tables.
-//
+// Codable model types for Supabase cloud data.
+// These structs map directly to Supabase database tables.
 
 import Foundation
 import AuthenticationServices

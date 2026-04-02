@@ -1,14 +1,8 @@
-//
-//  PillTabPicker.swift
-//  Track
-//
-//  A generic horizontal pill-style tab picker. Each tab shows an icon,
-//  label, and optional badge count. The active tab fills with a provided
-//  accent color; inactive tabs use a card background with a light border.
-//
-//  Designed to be reused anywhere a segmented-style picker is needed
-//  (route detail sheet, settings, future screens).
-//
+// A generic horizontal pill-style tab picker. Each tab shows an icon,
+// label, and optional badge count. The active tab fills with a provided
+// accent color; inactive tabs use a card background with a light border.
+// Designed to be reused anywhere a segmented-style picker is needed
+// (route detail sheet, settings, future screens).
 
 import SwiftUI
 
@@ -61,7 +55,9 @@ struct PillTabPicker: View {
             ? AppTheme.Colors.textOnColor.opacity(0.18)
             : AppTheme.Colors.borderSubtle
         let iconColor: Color = isActive ? .white : AppTheme.Colors.textSecondary
-        let textColor: Color = isActive ? AppTheme.Colors.textPrimary : AppTheme.Colors.textSecondary
+        let textColor: Color = isActive
+            ? AppTheme.Colors.textPrimary
+            : AppTheme.Colors.textSecondary
         let bgColor: Color = isActive
             ? AppTheme.Colors.glassHighlight.opacity(0.07)
             : AppTheme.Colors.cardBackground

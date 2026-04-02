@@ -1,12 +1,7 @@
-//
-//  WidgetSchedulesContentView.swift
-//  Track
-//
-//  Widget schedules content for display within the universal bottom sheet.
-//  Manages activation schedules for the LiveNearMeWidget.
-//  Includes a visual preview of the widget so users can see
-//  what their settings produce.
-//
+// Widget schedules content for display within the universal bottom sheet.
+// Manages activation schedules for the LiveNearMeWidget.
+// Includes a visual preview of the widget so users can see
+// what their settings produce.
 
 import SwiftUI
 import WidgetKit
@@ -35,7 +30,10 @@ struct WidgetSchedulesContentView: View {
                         emptyState
                     } else {
                         VStack(spacing: 0) {
-                            ForEach(Array(schedules.enumerated()), id: \.element.id) { index, schedule in
+                            ForEach(
+                                Array(schedules.enumerated()),
+                                id: \.element.id
+                            ) { index, schedule in
                                 Button {
                                     sheetNavigator.navigate(to: .scheduleEditor(schedule: schedule))
                                 } label: {
@@ -137,7 +135,11 @@ struct WidgetSchedulesContentView: View {
                 }
             }
 
-            Text("These previews match your widget layout. They update live every minute on your home screen.")
+            Text(
+                "These previews match your widget layout."
+                + " They update live every minute"
+                + " on your home screen."
+            )
                 .font(AppTheme.Typography.settingsDescription)
                 .foregroundColor(AppTheme.Colors.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -168,7 +170,10 @@ struct WidgetSchedulesContentView: View {
             ZStack {
                 Circle()
                     .fill(AppTheme.Gradients.tintWash(AppTheme.Colors.mtaBlue, intensity: 0.22))
-                    .frame(width: AppTheme.Layout.iconCircleSize, height: AppTheme.Layout.iconCircleSize)
+                    .frame(
+                        width: AppTheme.Layout.iconCircleSize,
+                        height: AppTheme.Layout.iconCircleSize
+                    )
                 Image(systemName: "clock.badge.checkmark.fill")
                     .font(.system(size: 20, weight: .semibold))
                     .foregroundColor(AppTheme.Colors.mtaBlue)
@@ -206,7 +211,10 @@ struct WidgetSchedulesContentView: View {
                 Text("No Schedules Yet")
                     .font(AppTheme.Typography.routeLabel)
                     .foregroundColor(AppTheme.Colors.textPrimary)
-                Text("Add your first schedule to automatically\nshow transit info during your commute.")
+                Text(
+                    "Add your first schedule to automatically"
+                    + "\nshow transit info during your commute."
+                )
                     .font(AppTheme.Typography.cardSubtitle)
                     .foregroundColor(AppTheme.Colors.textSecondary)
                     .multilineTextAlignment(.center)
@@ -239,11 +247,28 @@ struct WidgetSchedulesContentView: View {
             // Time indicator
             ZStack {
                 Circle()
-                    .fill(schedule.enabled ? AppTheme.Gradients.tintWash(AppTheme.Colors.mtaBlue, intensity: 0.22) : AppTheme.Gradients.tintWash(AppTheme.Colors.textSecondary, intensity: 0.12))
-                    .frame(width: AppTheme.Layout.iconCircleSize, height: AppTheme.Layout.iconCircleSize)
+                    .fill(
+                        schedule.enabled
+                        ? AppTheme.Gradients.tintWash(
+                            AppTheme.Colors.mtaBlue,
+                            intensity: 0.22
+                        )
+                        : AppTheme.Gradients.tintWash(
+                            AppTheme.Colors.textSecondary,
+                            intensity: 0.12
+                        )
+                    )
+                    .frame(
+                        width: AppTheme.Layout.iconCircleSize,
+                        height: AppTheme.Layout.iconCircleSize
+                    )
                 Image(systemName: "clock.fill")
                     .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(schedule.enabled ? AppTheme.Colors.mtaBlue : AppTheme.Colors.textSecondary)
+                    .foregroundColor(
+                        schedule.enabled
+                        ? AppTheme.Colors.mtaBlue
+                        : AppTheme.Colors.textSecondary
+                    )
             }
             
             VStack(alignment: .leading, spacing: 6) {
@@ -251,7 +276,11 @@ struct WidgetSchedulesContentView: View {
                 HStack(spacing: 8) {
                     Text(schedule.formattedStartTime)
                         .font(AppTheme.Typography.cardTitle)
-                        .foregroundColor(schedule.enabled ? AppTheme.Colors.textPrimary : AppTheme.Colors.textSecondary)
+                        .foregroundColor(
+                            schedule.enabled
+                            ? AppTheme.Colors.textPrimary
+                            : AppTheme.Colors.textSecondary
+                        )
                     
                     Text("•")
                         .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.5))
@@ -266,8 +295,14 @@ struct WidgetSchedulesContentView: View {
                     ForEach([0, 1, 2, 3, 4, 5, 6], id: \.self) { day in
                         let dayAbbr = ["S", "M", "T", "W", "T", "F", "S"][day]
                         let isActive = schedule.days.contains(day)
-                        let textColor = dayBadgeTextColor(isActive: isActive, enabled: schedule.enabled)
-                        let bgColor = dayBadgeBackgroundColor(isActive: isActive, enabled: schedule.enabled)
+                        let textColor = dayBadgeTextColor(
+                            isActive: isActive,
+                            enabled: schedule.enabled
+                        )
+                        let bgColor = dayBadgeBackgroundColor(
+                            isActive: isActive,
+                            enabled: schedule.enabled
+                        )
                         
                         Text(dayAbbr)
                             .font(.system(size: 10, weight: .bold, design: .rounded))
@@ -333,7 +368,9 @@ struct WidgetSchedulesContentView: View {
         if !isActive {
             return Color.clear
         }
-        return enabled ? AppTheme.Colors.mtaBlue.opacity(0.15) : AppTheme.Colors.textSecondary.opacity(0.1)
+        return enabled
+            ? AppTheme.Colors.mtaBlue.opacity(0.15)
+            : AppTheme.Colors.textSecondary.opacity(0.1)
     }
 }
 

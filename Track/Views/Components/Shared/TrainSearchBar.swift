@@ -1,12 +1,7 @@
-//
-//  TrainSearchBar.swift
-//  Track
-//
-//  Reusable search bar component for filtering transit results.
-//  Styled to match Apple Maps with glassmorphism navbar design.
-//  Includes magnifying glass icon, text field, and microphone button
-//  for speech-to-text input via the shared SpeechRecognitionManager.
-//
+// Reusable search bar component for filtering transit results.
+// Styled to match Apple Maps with glassmorphism navbar design.
+// Includes magnifying glass icon, text field, and microphone button
+// for speech-to-text input via the shared SpeechRecognitionManager.
 
 import SwiftUI
 
@@ -38,7 +33,11 @@ struct TrainSearchBar: View {
 
             // Microphone button for speech-to-text
             microphoneButton
-            .accessibilityLabel(speechManager.isRecording ? "Stop voice input" : "Start voice input")
+            .accessibilityLabel(
+                speechManager.isRecording
+                    ? "Stop voice input"
+                    : "Start voice input"
+            )
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 11)

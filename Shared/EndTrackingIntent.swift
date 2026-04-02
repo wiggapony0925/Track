@@ -1,10 +1,5 @@
-//
-//  EndTrackingIntent.swift
-//  Shared
-//
-//  AppIntent for the "I made it!" button in the Live Activity.
-//  Ends the current live activity and clears the tracked route.
-//
+// AppIntent for the "I made it!" button in the Live Activity.
+// Ends the current live activity and clears the tracked route.
 
 import ActivityKit
 import AppIntents
@@ -13,7 +8,8 @@ import WidgetKit
 
 struct EndTrackingIntent: LiveActivityIntent {
     static let title: LocalizedStringResource = "End Tracking"
-    static let description: IntentDescription = IntentDescription("Ends the current trip tracking session.")
+    static let description: IntentDescription =
+        IntentDescription("Ends the current trip tracking session.")
 
     @MainActor
     func perform() async throws -> some IntentResult {

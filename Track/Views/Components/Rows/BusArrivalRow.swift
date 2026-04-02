@@ -1,12 +1,7 @@
-//
-//  BusArrivalRow.swift
-//  Track
-//
-//  Displays a single bus arrival with the status text from the SIRI API.
-//  Unlike subway rows that show calculated minutes, bus rows show direct
-//  strings like "Approaching" or "3 stops away".
-//  Tapping the row starts a Live Activity to track the bus.
-//
+// Displays a single bus arrival with the status text from the SIRI API.
+// Unlike subway rows that show calculated minutes, bus rows show direct
+// strings like "Approaching" or "3 stops away".
+// Tapping the row starts a Live Activity to track the bus.
 
 import SwiftUI
 

@@ -1,9 +1,4 @@
-//
-//  CommutePattern.swift
-//  Shared
-//
-//  SwiftData model tracking user commute patterns for the Smart Suggester.
-//
+// SwiftData model tracking user commute patterns for the Smart Suggester.
 
 import Foundation
 import SwiftData

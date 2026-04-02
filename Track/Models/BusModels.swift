@@ -1,10 +1,5 @@
-//
-//  BusModels.swift
-//  Track
-//
-//  Data models for bus transit data matching the TrackBackend JSON output.
-//  Used by TrackAPI to decode responses from /bus/* endpoints.
-//
+// Data models for bus transit data matching the TrackBackend JSON output.
+// Used by TrackAPI to decode responses from /bus/* endpoints.
 
 import CoreLocation
 import Foundation
@@ -185,9 +180,13 @@ struct RouteShapeResponse: Codable, Sendable {
     }
 
     /// Returns decoded polylines for a specific direction index.
-    /// Matches by `name` against `headsign` first, then `directionId` (falling back to array position).
+    /// Matches by `name` against `headsign` first, then
+    /// `directionId` (falling back to array position).
     /// Falls back to the combined polylines if no direction data exists.
-    nonisolated func polylinesForDirection(index: Int, name: String? = nil) -> [[CLLocationCoordinate2D]] {
+    nonisolated func polylinesForDirection(
+        index: Int,
+        name: String? = nil
+    ) -> [[CLLocationCoordinate2D]] {
         matchedDirection(index: index, name: name)?.decodedPolylines ?? decodedPolylines
     }
 
@@ -230,7 +229,8 @@ struct RouteShapeResponse: Codable, Sendable {
     }
 
     /// Returns stops for a specific direction index.
-    /// Matches by `name` against `headsign` first, then `directionId` (falling back to array position).
+    /// Matches by `name` against `headsign` first, then
+    /// `directionId` (falling back to array position).
     /// Falls back to the combined stops if no direction data exists.
     nonisolated func stopsForDirection(index: Int, name: String? = nil) -> [BusStop] {
         guard !directions.isEmpty else { return stops }

@@ -308,7 +308,10 @@ struct RouteDetailAlertRow: View {
 
                         if let ts = alert.updatedAt {
                             HStack(spacing: 0) {
-                                Text(Date(timeIntervalSince1970: TimeInterval(ts)), style: .relative)
+                                let date = Date(
+                                    timeIntervalSince1970: TimeInterval(ts)
+                                )
+                                Text(date, style: .relative)
                                 Text(" ago")
                             }
                             .font(.custom("Helvetica", size: 10))

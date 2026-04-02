@@ -1,11 +1,6 @@
-//
-//  ServiceAlertsPage.swift
-//  Track
-//
-//  Full-page service alerts view navigated to from the map bell button.
-//  Shows today's alerts grouped by mode with rich detail, severity badges,
-//  and tap-to-expand descriptions. Handles empty & offline states gracefully.
-//
+// Full-page service alerts view navigated to from the map bell button.
+// Shows today's alerts grouped by mode with rich detail, severity badges,
+// and tap-to-expand descriptions. Handles empty & offline states gracefully.
 
 import SwiftUI
 
@@ -22,7 +17,10 @@ struct ServiceAlertsPage: View {
 
     /// Group alerts by mode, maintaining a consistent display order.
     /// Within each mode, sorted by severity (severe first) then recency.
-    private var groupedAlerts: [(mode: String, label: String, icon: String, alerts: [TransitAlert])] {
+    private var groupedAlerts: [(
+        mode: String, label: String,
+        icon: String, alerts: [TransitAlert]
+    )] {
         let modeOrder = ["subway", "bus", "lirr", "mnr"]
         let grouped = Dictionary(grouping: alerts, by: \.mode)
 
@@ -212,7 +210,9 @@ struct ServiceAlertsPage: View {
         VStack(spacing: 20) {
             ZStack {
                 Circle()
-                    .fill(AppTheme.Gradients.tintWash(AppTheme.Colors.successGreen, intensity: 0.18))
+                    .fill(AppTheme.Gradients.tintWash(
+                        AppTheme.Colors.successGreen,
+                        intensity: 0.18))
                     .frame(width: 96, height: 96)
 
                 Image(systemName: "checkmark.circle.fill")
@@ -252,7 +252,9 @@ struct ServiceAlertsPage: View {
         VStack(spacing: 20) {
             ZStack {
                 Circle()
-                    .fill(AppTheme.Gradients.tintWash(AppTheme.Colors.textSecondary, intensity: 0.12))
+                    .fill(AppTheme.Gradients.tintWash(
+                        AppTheme.Colors.textSecondary,
+                        intensity: 0.12))
                     .frame(width: 96, height: 96)
 
                 Image(systemName: "wifi.slash")
@@ -265,7 +267,10 @@ struct ServiceAlertsPage: View {
                     .font(.custom("Helvetica-Bold", size: 22))
                     .foregroundColor(AppTheme.Colors.textPrimary)
 
-                Text("Service alerts require an internet connection.\nPlease check your Wi-Fi or cellular signal.")
+                Text(
+                    "Service alerts require an internet connection."
+                    + "\nPlease check your Wi-Fi or cellular signal."
+                )
                     .font(.custom("Helvetica", size: 15))
                     .foregroundColor(AppTheme.Colors.textSecondary)
                     .multilineTextAlignment(.center)
@@ -298,9 +303,18 @@ struct ServiceAlertsPage: View {
 #Preview("With Alerts") {
     ServiceAlertsPage(
         alerts: [
-            TransitAlert(routeId: "A", title: "A train delays", description: "Delays due to signal problems.", severity: "warning", mode: "subway"),
-            TransitAlert(routeId: "1", title: "Service suspended", description: "Between 96 St and South Ferry.", severity: "severe", mode: "subway"),
-            TransitAlert(routeId: "B63", title: "B63 detoured", description: "Via Atlantic Ave.", severity: "warning", mode: "bus"),
+            TransitAlert(
+                routeId: "A", title: "A train delays",
+                description: "Delays due to signal problems.",
+                severity: "warning", mode: "subway"),
+            TransitAlert(
+                routeId: "1", title: "Service suspended",
+                description: "Between 96 St and South Ferry.",
+                severity: "severe", mode: "subway"),
+            TransitAlert(
+                routeId: "B63", title: "B63 detoured",
+                description: "Via Atlantic Ave.",
+                severity: "warning", mode: "bus"),
         ],
         sheetNavigator: SheetNavigator()
     )

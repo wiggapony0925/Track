@@ -1,12 +1,7 @@
-//
-//  HomeViewModel.swift
-//  Track
-//
-//  ViewModel for the HomeView. Fetches nearby transit arrivals
-//  (both subway and bus) from the TrackAPI backend based on the
-//  user's current location or a draggable search pin.
-//  Shows a unified live transit feed with bus tracking on the map.
-//
+// ViewModel for the HomeView. Fetches nearby transit arrivals
+// (both subway and bus) from the TrackAPI backend based on the
+// user's current location or a draggable search pin.
+// Shows a unified live transit feed with bus tracking on the map.
 
 import CoreLocation
 import Foundation
@@ -21,8 +16,11 @@ final class HomeViewModel {
     /// Dedup key for [BUCKETS] debug log — only prints when content changes.
     private static var _lastBucketsMessage: String?
 
-    var nearbyStations: [(stationID: String, name: String, lat: Double, lon: Double, routeIDs: [String])] =
-        []
+    var nearbyStations: [
+        (stationID: String, name: String,
+         lat: Double, lon: Double,
+         routeIDs: [String])
+    ] = []
     var upcomingArrivals: [TrainArrival] = []
     var isLoading = false
     /// True after the first successful data load. Prevents skeleton placeholders
@@ -146,7 +144,10 @@ final class HomeViewModel {
     /// Prevents the same warning from repeating on every SwiftUI render pass.
     private static var _loggedDistWarnings: Set<String> = []
 
-    func displayDistanceMeters(for group: GroupedNearbyTransitResponse, from location: CLLocation?) -> CLLocationDistance? {
+    func displayDistanceMeters(
+        for group: GroupedNearbyTransitResponse,
+        from location: CLLocation?
+    ) -> CLLocationDistance? {
         guard let location else { return nil }
 
         let result: CLLocationDistance?
@@ -164,8 +165,17 @@ final class HomeViewModel {
                 // to have no matching nearby stops because they've disappeared
                 // from the fresh API response (e.g. express buses that left the radius).
                 let isGraced = (graceMissCountBySource["bus"]?[group.routeId.uppercased()] ?? 0) > 0
-                if matchingStops.isEmpty && !nearbyBusStops.isEmpty && !isGraced && Self._loggedDistWarnings.insert(warnKey).inserted {
-                    print("[DIST] \(group.routeId) bus  ⚠️ NO matching stops (token=\(target), nearbyBusStops=\(nearbyBusStops.count))")
+                if matchingStops.isEmpty
+                    && !nearbyBusStops.isEmpty
+                    && !isGraced
+                    && Self._loggedDistWarnings.insert(warnKey).inserted
+                {
+                    print(
+                        "[DIST] \(group.routeId) bus"
+                        + "  ⚠️ NO matching stops"
+                        + " (token=\(target),"
+                        + " nearbyBusStops=\(nearbyBusStops.count))"
+                    )
                 }
             }
             #endif
@@ -175,8 +185,17 @@ final class HomeViewModel {
             // fetch radius / route-ID format) never gets silently ignored.
             let groupDist = groupMinDistance(for: group, from: location)
             if !matchingStops.isEmpty {
-                let nearbyDist = matchingStops.reduce(Double.greatestFiniteMagnitude) { best, stop in
-                    min(best, location.distance(from: CLLocation(latitude: stop.lat, longitude: stop.lon)))
+                let nearbyDist = matchingStops.reduce(
+                    Double.greatestFiniteMagnitude
+                ) { best, stop in
+                    let stopLoc = CLLocation(
+                        latitude: stop.lat,
+                        longitude: stop.lon
+                    )
+                    return min(
+                        best,
+                        location.distance(from: stopLoc)
+                    )
                 }
                 let best = min(nearbyDist, groupDist)
                 result = best.isFinite ? best : nil
@@ -195,9 +214,14 @@ final class HomeViewModel {
                     case "lirr":
                         guard lower.hasPrefix("lirr_") else { return false }
                     case "mnr":
-                        guard lower.hasPrefix("mnr_") || lower.hasPrefix("mta mnr_") else { return false }
+                        guard lower.hasPrefix("mnr_")
+                            || lower.hasPrefix("mta mnr_")
+                        else { return false }
                     default: // subway
-                        guard !lower.hasPrefix("lirr_") && !lower.hasPrefix("mnr_") && !lower.hasPrefix("mta mnr_") else { return false }
+                        guard !lower.hasPrefix("lirr_")
+                            && !lower.hasPrefix("mnr_")
+                            && !lower.hasPrefix("mta mnr_")
+                        else { return false }
                     }
                     return normalizeMTARouteToken(rawID) == target
                 }
@@ -208,16 +232,40 @@ final class HomeViewModel {
                 // Suppress the warning for graced routes — they're expected
                 // to have no matching stations because they've disappeared
                 // from the fresh API response (e.g. routes that left the radius).
-                let isGraced = (graceMissCountBySource["nearby"]?[group.routeId.uppercased()] ?? 0) > 0
-                if matchingStations.isEmpty && !nearbyStations.isEmpty && !isGraced && Self._loggedDistWarnings.insert(warnKey).inserted {
-                    print("[DIST] \(group.routeId) \(group.mode)  ⚠️ NO matching stations (token=\(target), nearbyStations=\(nearbyStations.count))")
+                let isGraced =
+                    (graceMissCountBySource["nearby"]?[
+                        group.routeId.uppercased()
+                    ] ?? 0) > 0
+                if matchingStations.isEmpty
+                    && !nearbyStations.isEmpty
+                    && !isGraced
+                    && Self._loggedDistWarnings
+                        .insert(warnKey).inserted
+                {
+                    print(
+                        "[DIST] \(group.routeId)"
+                        + " \(group.mode)  ⚠️ NO matching"
+                        + " stations"
+                        + " (token=\(target),"
+                        + " nearbyStations="
+                        + "\(nearbyStations.count))"
+                    )
                 }
             }
             #endif
             let groupDist = groupMinDistance(for: group, from: location)
             if !matchingStations.isEmpty {
-                let nearbyDist = matchingStations.reduce(Double.greatestFiniteMagnitude) { best, station in
-                    min(best, location.distance(from: CLLocation(latitude: station.lat, longitude: station.lon)))
+                let nearbyDist = matchingStations.reduce(
+                    Double.greatestFiniteMagnitude
+                ) { best, station in
+                    let stationLoc = CLLocation(
+                        latitude: station.lat,
+                        longitude: station.lon
+                    )
+                    return min(
+                        best,
+                        location.distance(from: stationLoc)
+                    )
                 }
                 let best = min(nearbyDist, groupDist)
                 result = best.isFinite ? best : nil
@@ -245,7 +293,18 @@ final class HomeViewModel {
             let bucketsMsg: String
             if let referenceLocation {
                 let src = isSearchPinActive ? "PIN" : "GPS"
-                bucketsMsg = "center=\(src) (\(String(format: "%.5f", referenceLocation.coordinate.latitude)), \(String(format: "%.5f", referenceLocation.coordinate.longitude)))  groups=\(groups.count)  nearbyBusStops=\(nearbyBusStops.count)  nearbyStations=\(nearbyStations.count)"
+                let lat = String(
+                    format: "%.5f",
+                    referenceLocation.coordinate.latitude
+                )
+                let lon = String(
+                    format: "%.5f",
+                    referenceLocation.coordinate.longitude
+                )
+                bucketsMsg = "center=\(src) (\(lat), \(lon))"
+                    + "  groups=\(groups.count)"
+                    + "  nearbyBusStops=\(nearbyBusStops.count)"
+                    + "  nearbyStations=\(nearbyStations.count)"
             } else {
                 bucketsMsg = "⚠️ referenceLocation=nil — sorting without distance"
             }
@@ -299,13 +358,29 @@ final class HomeViewModel {
         }
 
         let epsilon: CLLocationDistance = 0.5
-        let sorter: (GroupedNearbyTransitResponse, GroupedNearbyTransitResponse) -> Bool = { lhs, rhs in
-            let leftDistance = distanceCache["\(lhs.routeId)|\(lhs.mode)"] ?? .greatestFiniteMagnitude
-            let rightDistance = distanceCache["\(rhs.routeId)|\(rhs.mode)"] ?? .greatestFiniteMagnitude
-            if abs(leftDistance - rightDistance) > epsilon { return leftDistance < rightDistance }
-            if lhs.soonestMinutes != rhs.soonestMinutes { return lhs.soonestMinutes < rhs.soonestMinutes }
+        let sorter: (
+            GroupedNearbyTransitResponse,
+            GroupedNearbyTransitResponse
+        ) -> Bool = { lhs, rhs in
+            let lKey = "\(lhs.routeId)|\(lhs.mode)"
+            let rKey = "\(rhs.routeId)|\(rhs.mode)"
+            let leftDistance =
+                distanceCache[lKey]
+                ?? .greatestFiniteMagnitude
+            let rightDistance =
+                distanceCache[rKey]
+                ?? .greatestFiniteMagnitude
+            if abs(leftDistance - rightDistance) > epsilon {
+                return leftDistance < rightDistance
+            }
+            if lhs.soonestMinutes != rhs.soonestMinutes {
+                return lhs.soonestMinutes < rhs.soonestMinutes
+            }
             // Use backend's canonical MTA sorting key as tiebreaker
-            if !lhs.sortingKey.isEmpty && !rhs.sortingKey.isEmpty && lhs.sortingKey != rhs.sortingKey {
+            if !lhs.sortingKey.isEmpty
+                && !rhs.sortingKey.isEmpty
+                && lhs.sortingKey != rhs.sortingKey
+            {
                 return lhs.sortingKey < rhs.sortingKey
             }
             let leftName = lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName)
@@ -391,7 +466,9 @@ final class HomeViewModel {
                     .sorted { $0.minutesAway < $1.minutesAway }
                     .map { train -> NearbyTransitResponse in
                         var dist: Double? = nil
-                        if let sLat = train.stopLat, let sLon = train.stopLon, let ref = self.lastRefreshLocation {
+                        if let sLat = train.stopLat,
+                           let sLon = train.stopLon,
+                           let ref = self.lastRefreshLocation {
                             dist = ref.distance(from: CLLocation(latitude: sLat, longitude: sLon))
                         }
                         return NearbyTransitResponse(
@@ -480,7 +557,9 @@ final class HomeViewModel {
     /// on the very next merge.  Routes that DO reappear have their count reset
     /// by the merge logic's "reappeared" check.
     private func expireAllGraceCounters() {
-        let evictionThreshold = 3  // must match maxGraceCycles in mergeGroupedTransit() (walking speed)
+        // Must match maxGraceCycles in
+        // mergeGroupedTransit() (walking speed).
+        let evictionThreshold = 3
         let sourceArrays: [(String, [GroupedNearbyTransitResponse])] = [
             ("nearby", groupedTransit),
             ("subway", nearbyGroupedSubwayArrivals),
@@ -556,7 +635,11 @@ final class HomeViewModel {
         AppLogger.shared.log(
             "DIR_PREF",
             message:
-                "STORE route=\(group.routeId) mode=\(group.mode) idx=\(clampedIndex) dir=\(group.directions[clampedIndex].direction) key=\(directionKey)"
+                "STORE route=\(group.routeId)"
+                + " mode=\(group.mode)"
+                + " idx=\(clampedIndex)"
+                + " dir=\(group.directions[clampedIndex].direction)"
+                + " key=\(directionKey)"
         )
         #endif
     }
@@ -600,21 +683,39 @@ final class HomeViewModel {
         async let accessTask = TrackAPI.fetchAccessibility()
         do {
             let alerts = try await alertsTask
-            AppLogger.shared.log("TIMING", message: "  alerts → \(alerts.count) alerts in \(AppLogger.formatDuration(Date().timeIntervalSince(start)))")
+            let alertsDuration = AppLogger.formatDuration(
+                Date().timeIntervalSince(start))
+            AppLogger.shared.log(
+                "TIMING",
+                message: "  alerts →"
+                    + " \(alerts.count) alerts"
+                    + " in \(alertsDuration)")
             self.serviceAlerts = alerts.excludingExpired()
             AlertNotificationManager.shared.processAlerts(alerts)
             mapSystem.updateReroutedRoutes(from: serviceAlerts)
             GlobalFeedsCache.saveAlerts(alerts)
         } catch {
-            AppLogger.shared.log("TIMING", message: "  alerts → FAILED (\(error.localizedDescription))")
+            AppLogger.shared.log(
+                "TIMING",
+                message: "  alerts → FAILED"
+                    + " (\(error.localizedDescription))")
         }
         do {
             let outages = try await accessTask
-            AppLogger.shared.log("TIMING", message: "  accessibility → \(outages.count) outages in \(AppLogger.formatDuration(Date().timeIntervalSince(start)))")
+            let accessDuration = AppLogger.formatDuration(
+                Date().timeIntervalSince(start))
+            AppLogger.shared.log(
+                "TIMING",
+                message: "  accessibility →"
+                    + " \(outages.count) outages"
+                    + " in \(accessDuration)")
             self.elevatorOutages = outages
             GlobalFeedsCache.saveAccessibility(outages)
         } catch {
-            AppLogger.shared.log("TIMING", message: "  accessibility → FAILED (\(error.localizedDescription))")
+            AppLogger.shared.log(
+                "TIMING",
+                message: "  accessibility → FAILED"
+                    + " (\(error.localizedDescription))")
         }
     }
 
@@ -628,7 +729,10 @@ final class HomeViewModel {
             AlertNotificationManager.shared.processAlerts(serviceAlerts)
             mapSystem.updateReroutedRoutes(from: serviceAlerts)
         } catch {
-            AppLogger.shared.log("ALERTS", message: "refreshAlerts failed: \(error.localizedDescription)")
+            AppLogger.shared.log(
+                "ALERTS",
+                message: "refreshAlerts failed:"
+                    + " \(error.localizedDescription)")
         }
     }
 
@@ -655,7 +759,10 @@ final class HomeViewModel {
         }
     }
     var selectedDirectionName: String? {
-        guard let group = selectedGroupedRoute, selectedDirectionIndex >= 0, selectedDirectionIndex < group.directions.count else { return nil }
+        guard let group = selectedGroupedRoute,
+              selectedDirectionIndex >= 0,
+              selectedDirectionIndex < group.directions.count
+        else { return nil }
         return group.directions[selectedDirectionIndex].direction
     }
     var isRouteDetailPresented = false
@@ -722,7 +829,9 @@ final class HomeViewModel {
                 guard let self else { return }
                 // Find the best matching arrival to expand
                 // prioritize exact vehicle ID match
-                if let match = self.nearbyTransit.first(where: { $0.vehicleId == id || $0.tripId == id }) {
+                if let match = self.nearbyTransit.first(where: {
+                    $0.vehicleId == id || $0.tripId == id
+                }) {
                     // Only change if not already selected to avoid animation glitches
                     if self.selectedExpandedArrivalID != match.id {
                         withAnimation {
@@ -746,7 +855,9 @@ final class HomeViewModel {
     }
     var busVehicles: [BusVehicleResponse] = [] {
         didSet {
-            _busVehicleIndex = Dictionary(busVehicles.map { ($0.vehicleId, $0) }, uniquingKeysWith: { $1 })
+            _busVehicleIndex = Dictionary(
+                busVehicles.map { ($0.vehicleId, $0) },
+                uniquingKeysWith: { $1 })
             // Only invalidate filter ID cache when vehicle membership changes.
             // Position-only updates are automatically fresh because the filter
             // re-applies cached IDs to the live `busVehicles` array.
@@ -762,8 +873,14 @@ final class HomeViewModel {
 
     var trainVehicles: [TrainVehicle] = [] {
         didSet {
-            _trainVehicleByTrip = Dictionary(trainVehicles.compactMap { v in v.tripId.map { ($0, v) } }, uniquingKeysWith: { $1 })
-            _trainVehicleById = Dictionary(trainVehicles.map { ($0.id, $0) }, uniquingKeysWith: { $1 })
+            _trainVehicleByTrip = Dictionary(
+                trainVehicles.compactMap { v in
+                    v.tripId.map { ($0, v) }
+                },
+                uniquingKeysWith: { $1 })
+            _trainVehicleById = Dictionary(
+                trainVehicles.map { ($0.id, $0) },
+                uniquingKeysWith: { $1 })
             // Only invalidate filter ID cache when vehicle set membership changes.
             // Position updates flow through automatically because
             // filteredTrainVehicles re-applies cached IDs to live data.
@@ -795,11 +912,13 @@ final class HomeViewModel {
     @ObservationIgnored var _previousTrainPositions: [String: CLLocationCoordinate2D] = [:]
     /// Train vehicles that disappeared in the latest poll. Kept for a grace
     /// period (1 poll cycle) to avoid markers vanishing on a single GTFS-RT dropout.
-    @ObservationIgnored var _trainGraceBuffer: [String: (vehicle: TrainVehicle, missedAt: Date)] = [:]
+    @ObservationIgnored var _trainGraceBuffer:
+        [String: (vehicle: TrainVehicle, missedAt: Date)] = [:]
     /// Bus vehicles that disappeared in the latest poll. Kept for a grace
     /// period (≤12 s) to avoid markers vanishing on a single SIRI dropout,
     /// which causes the "On Route" → "Scheduled" chip flicker.
-    @ObservationIgnored var _busGraceBuffer: [String: (vehicle: BusVehicleResponse, missedAt: Date)] = [:]
+    @ObservationIgnored var _busGraceBuffer:
+        [String: (vehicle: BusVehicleResponse, missedAt: Date)] = [:]
 
     // MARK: - Route Shape LRU Cache + Disk Persistence
     //
@@ -829,7 +948,7 @@ final class HomeViewModel {
     /// Cancellation handle for the background shape prefetch task.
     @ObservationIgnored var _shapePrefetchTask: Task<Void, Never>?
 
-    // ── Disk cache helpers ──────────────────────────────────────────────
+    // ── Disk cache helpers ──────────────────────
 
     /// Directory for persisted route shapes inside the app-group container.
     private static let _shapeDiskDir: URL? = {
@@ -989,7 +1108,11 @@ final class HomeViewModel {
         _polylineRebuildTask = Task { [weak self] in
             // Jump off the main actor for heavy decode → unify → smooth work.
             let result = await Task.detached(priority: .userInitiated) {
-                () -> ([[CLLocationCoordinate2D]], [[CLLocationCoordinate2D]], [CLLocationCoordinate2D]) in
+                () -> (
+                    [[CLLocationCoordinate2D]],
+                    [[CLLocationCoordinate2D]],
+                    [CLLocationCoordinate2D]
+                ) in
 
                 // 1) Decode active-direction segments.
                 let activeRaw = shouldFilter
@@ -1023,7 +1146,8 @@ final class HomeViewModel {
                         return refineSharpBends(smoothed, angleThreshold: 30.0)
                     }
                 } else {
-                    // Train pipeline: dedup → merge → consolidate → heavy smooth → refine bends
+                    // Train pipeline: dedup → merge
+                    // → consolidate → heavy smooth → refine bends
                     let deduped = removeDuplicateSegments(activeRaw)
                     let merged = mergeAdjacentPolylines(deduped)
 
@@ -1157,7 +1281,9 @@ final class HomeViewModel {
             }
         }
 
-        let directionStops = shape.stopsForDirection(index: selectedDirectionIndex, name: selectedDirectionName)
+        let directionStops = shape.stopsForDirection(
+            index: selectedDirectionIndex,
+            name: selectedDirectionName)
         guard !directionStops.isEmpty else {
             directionalSplit = nil
             return
@@ -1165,14 +1291,23 @@ final class HomeViewModel {
 
         // Determine polyline flow direction relative to stop ordering.
         // Use the first segment's start/end vs. the first stop.
-        let firstStopLoc = CLLocation(latitude: directionStops[0].lat, longitude: directionStops[0].lon)
+        let firstStopLoc = CLLocation(
+            latitude: directionStops[0].lat,
+            longitude: directionStops[0].lon)
         let firstPoly = segments[0]
-        guard let firstPolyStart = firstPoly.first, let lastSeg = segments.last, let lastPolyEnd = lastSeg.last else {
+        guard let firstPolyStart = firstPoly.first,
+              let lastSeg = segments.last,
+              let lastPolyEnd = lastSeg.last
+        else {
             directionalSplit = nil
             return
         }
-        let firstPolyLoc = CLLocation(latitude: firstPolyStart.latitude, longitude: firstPolyStart.longitude)
-        let lastPolyLoc = CLLocation(latitude: lastPolyEnd.latitude, longitude: lastPolyEnd.longitude)
+        let firstPolyLoc = CLLocation(
+            latitude: firstPolyStart.latitude,
+            longitude: firstPolyStart.longitude)
+        let lastPolyLoc = CLLocation(
+            latitude: lastPolyEnd.latitude,
+            longitude: lastPolyEnd.longitude)
         let polyFlowsWithStops =
             firstPolyLoc.distance(from: firstStopLoc)
             <= lastPolyLoc.distance(from: firstStopLoc)
@@ -1253,7 +1388,9 @@ final class HomeViewModel {
         }
         // Also include the route shape headsign for this direction
         if let shape = routeShape {
-            let matched = shape.matchedDirection(index: selectedDirectionIndex, name: selectedDirectionName)
+            let matched = shape.matchedDirection(
+                index: selectedDirectionIndex,
+                name: selectedDirectionName)
             if let hs = matched?.headsign.uppercased(), !hs.isEmpty {
                 validDestinations.insert(hs)
             }
@@ -1387,7 +1524,8 @@ final class HomeViewModel {
             let vehicleIds = Set(selectedDir.arrivals.compactMap { $0.vehicleId?.uppercased() })
             if !tripIds.isEmpty || !vehicleIds.isEmpty {
                 let byTrip = trainVehicles.filter { vehicle in
-                    if let trip = vehicle.tripId?.uppercased(), tripIds.contains(trip) { return true }
+                    if let trip = vehicle.tripId?.uppercased(),
+                       tripIds.contains(trip) { return true }
                     if vehicleIds.contains(vehicle.id.uppercased()) { return true }
                     return false
                 }
@@ -1420,7 +1558,8 @@ final class HomeViewModel {
 
     // MARK: - System Map Forwarding (backward compatibility)
 
-    /// Forwarding properties so existing views can still use `viewModel.flattenedSubwayPolylines`, etc.
+    /// Forwarding properties so existing views can still use
+    /// `viewModel.flattenedSubwayPolylines`, etc.
     var flattenedSubwayPolylines: [MapSystemViewModel.FlattenedMapPolyline] {
         mapSystem.flattenedSubwayPolylines
     }
@@ -1535,7 +1674,9 @@ final class HomeViewModel {
             return CLLocationCoordinate2D(latitude: bus.lat, longitude: bus.lon)
         }
         // Check direction-filtered train vehicles
-        if let train = filteredTrainVehicles.first(where: { $0.tripId == vehicleId || $0.id == vehicleId }) {
+        if let train = filteredTrainVehicles.first(where: {
+            $0.tripId == vehicleId || $0.id == vehicleId
+        }) {
             return CLLocationCoordinate2D(latitude: train.lat, longitude: train.lon)
         }
         // Fallback: full index (vehicle may not be filtered yet after a refresh)
@@ -1643,7 +1784,9 @@ final class HomeViewModel {
             arrivalTs: arrival.arrivalTs,
             staticMinutes: arrival.minutesAway,
             mode: arrival.mode,
-            delayFactor: ArrivalETAEngine.cachedDelayFactor(routeId: arrival.routeId, mode: arrival.mode)
+            delayFactor: ArrivalETAEngine.cachedDelayFactor(
+                routeId: arrival.routeId,
+                mode: arrival.mode)
         )
     }
 
@@ -1682,7 +1825,10 @@ final class HomeViewModel {
         AppLogger.shared.log(
             "LOCATION",
             message:
-                "GPS outside service area (\(location.coordinate.latitude), \(location.coordinate.longitude)) — using NYC fallback"
+                "GPS outside service area"
+                    + " (\(location.coordinate.latitude),"
+                    + " \(location.coordinate.longitude))"
+                    + " — using NYC fallback"
         )
         let nyc = AppTheme.MapConfig.nycCenter
         return CLLocation(latitude: nyc.latitude, longitude: nyc.longitude)
@@ -1701,7 +1847,11 @@ final class HomeViewModel {
         let modeDate = lastRefreshDateByMode[selectedMode]
         guard hasLoadedOnce,
               let lastDate = modeDate ?? lastRefreshDate else {
-            AppLogger.shared.log("REFRESH", message: "canSkipRefresh → NO (first load or no last date for \(selectedMode))")
+            AppLogger.shared.log(
+                "REFRESH",
+                message: "canSkipRefresh → NO"
+                    + " (first load or no last date"
+                    + " for \(selectedMode))")
             return false
         }
         let elapsed = Date().timeIntervalSince(lastDate)
@@ -1713,7 +1863,13 @@ final class HomeViewModel {
         let cooldown = isTransitSpeed ? baseCooldown * 0.5 : baseCooldown
         let speedStr = String(format: "%.1f", speed)
         guard elapsed < cooldown else {
-            AppLogger.shared.log("REFRESH", message: "canSkipRefresh → NO (elapsed \(Int(elapsed))s ≥ cooldown \(Int(cooldown))s, speed=\(speedStr)m/s, mode=\(selectedMode))")
+            AppLogger.shared.log(
+                "REFRESH",
+                message: "canSkipRefresh → NO"
+                    + " (elapsed \(Int(elapsed))s"
+                    + " ≥ cooldown \(Int(cooldown))s,"
+                    + " speed=\(speedStr)m/s,"
+                    + " mode=\(selectedMode))")
             return false
         }
         // If we have a previous fetch location, require meaningful movement
@@ -1724,11 +1880,24 @@ final class HomeViewModel {
                 ? max(50, AppSettings.shared.distanceFilterMeters)
                 : AppSettings.shared.significantMovementMeters
             let skip = dist < threshold
-            AppLogger.shared.log("REFRESH", message: "canSkipRefresh → \(skip ? "YES" : "NO") (moved \(Int(dist))m, threshold \(Int(threshold))m, \(Int(elapsed))s ago, speed=\(speedStr)m/s, mode=\(selectedMode))")
+            let verdict = skip ? "YES" : "NO"
+            AppLogger.shared.log(
+                "REFRESH",
+                message: "canSkipRefresh → \(verdict)"
+                    + " (moved \(Int(dist))m,"
+                    + " threshold \(Int(threshold))m,"
+                    + " \(Int(elapsed))s ago,"
+                    + " speed=\(speedStr)m/s,"
+                    + " mode=\(selectedMode))")
             return skip
         }
         // No location to compare — trust the time guard alone
-        AppLogger.shared.log("REFRESH", message: "canSkipRefresh → YES (time guard only, \(Int(elapsed))s ago, mode=\(selectedMode))")
+        AppLogger.shared.log(
+            "REFRESH",
+            message: "canSkipRefresh → YES"
+                + " (time guard only,"
+                + " \(Int(elapsed))s ago,"
+                + " mode=\(selectedMode))")
         return true
     }
 
@@ -1804,7 +1973,12 @@ final class HomeViewModel {
         if expiredCount > 0 {
             AppLogger.shared.log(
                 "CACHE",
-                message: "📦 Session cache: \(freshCount) fresh + \(expiredCount) expired groups (\(Int(result.age))s old) — showing all as stale-while-revalidate"
+                message: "📦 Session cache:"
+                    + " \(freshCount) fresh"
+                    + " + \(expiredCount) expired groups"
+                    + " (\(Int(result.age))s old)"
+                    + " — showing all as"
+                    + " stale-while-revalidate"
             )
         }
 
@@ -1839,7 +2013,7 @@ final class HomeViewModel {
         TransitDataReadyFlag.markReady()
         NotificationCenter.default.post(name: .transitDataLoaded, object: nil)
 
-        // ── Also restore cached alerts + accessibility ──────────────
+        // ── Also restore cached alerts + accessibility ───────
         // These global feeds change slowly (MTA updates every few min).
         // Showing cached alert banners and elevator outages instantly
         // is far better than a blank state while the network fetches.
@@ -1847,23 +2021,47 @@ final class HomeViewModel {
             serviceAlerts = cachedAlerts
             AlertNotificationManager.shared.processAlerts(cachedAlerts)
             mapSystem.updateReroutedRoutes(from: cachedAlerts)
-            AppLogger.shared.log("CACHE", message: "📂 Restored \(cachedAlerts.count) alerts from disk cache")
+            AppLogger.shared.log(
+                "CACHE",
+                message: "📂 Restored"
+                    + " \(cachedAlerts.count)"
+                    + " alerts from disk cache")
         }
         if elevatorOutages.isEmpty, let cachedOutages = GlobalFeedsCache.loadAccessibility() {
             elevatorOutages = cachedOutages
-            AppLogger.shared.log("CACHE", message: "📂 Restored \(cachedOutages.count) accessibility outages from disk cache")
+            AppLogger.shared.log(
+                "CACHE",
+                message: "📂 Restored"
+                    + " \(cachedOutages.count)"
+                    + " accessibility outages"
+                    + " from disk cache")
         }
 
         if result.isLocationStale {
-            let distStr = result.distanceFromCurrent.map { "\(Int($0))m away" } ?? "unknown distance"
+            let distStr = result.distanceFromCurrent.map {
+                "\(Int($0))m away"
+            } ?? "unknown distance"
             AppLogger.shared.log(
                 "CACHE",
-                message: "⚠️ Loaded \(groupsToShow.count) cached groups (\(expiredCount) expired, \(freshCount) fresh, \(Int(result.age))s old) but location is stale (\(distStr)) — force refresh needed"
+                message: "⚠️ Loaded \(groupsToShow.count)"
+                    + " cached groups"
+                    + " (\(expiredCount) expired,"
+                    + " \(freshCount) fresh,"
+                    + " \(Int(result.age))s old)"
+                    + " but location is stale"
+                    + " (\(distStr))"
+                    + " — force refresh needed"
             )
         } else {
             AppLogger.shared.log(
                 "CACHE",
-                message: "📦 Loaded \(groupsToShow.count) route groups from \(result.groups.count) cached (\(expiredCount) expired, \(Int(result.age))s old, same area) — skipping skeletons"
+                message: "📦 Loaded"
+                    + " \(groupsToShow.count) route groups"
+                    + " from \(result.groups.count) cached"
+                    + " (\(expiredCount) expired,"
+                    + " \(Int(result.age))s old,"
+                    + " same area)"
+                    + " — skipping skeletons"
             )
         }
         return true
@@ -1916,12 +2114,21 @@ final class HomeViewModel {
         // the task alive waiting for a sibling. Without this, the user
         // stares at an error screen for minutes.
         if _refreshInFlight {
-            let stuckTooLong = _refreshStartedAt.map { Date().timeIntervalSince($0) > 60 } ?? false
+            let stuckTooLong = _refreshStartedAt.map {
+                Date().timeIntervalSince($0) > 60
+            } ?? false
             if !stuckTooLong {
-                AppLogger.shared.log("REFRESH", message: "⏭️ Skipped — refresh already in flight\(force ? " (forced)" : "")")
+                AppLogger.shared.log(
+                    "REFRESH",
+                    message: "⏭️ Skipped"
+                        + " — refresh already in flight"
+                        + "\(force ? " (forced)" : "")")
                 return false
             }
-            AppLogger.shared.log("REFRESH", message: "⚠️ Previous refresh stuck > 60 s — allowing new refresh")
+            AppLogger.shared.log(
+                "REFRESH",
+                message: "⚠️ Previous refresh stuck"
+                    + " > 60 s — allowing new refresh")
         }
 
         // Skip if data is still fresh and user hasn't moved far.
@@ -1972,7 +2179,10 @@ final class HomeViewModel {
 
         switch selectedMode {
         case .nearby:
-            await refreshNearbyTransit(location: loc, skipGlobalFeeds: skipGlobal, silent: isSilentRefresh)
+            await refreshNearbyTransit(
+                location: loc,
+                skipGlobalFeeds: skipGlobal,
+                silent: isSilentRefresh)
         case .subway:
             await refreshSubway(location: loc)
         case .bus:
@@ -2009,17 +2219,18 @@ final class HomeViewModel {
             let busStopCount = nearbyBusStops.count
 
             AppLogger.shared.log("LOADED", message: """
-            ╔══════════════════════════════════════════════════════════════╗
-            ║  EVERYTHING LOADED — T+\(AppLogger.formatDuration(totalFromLaunch)) since app launch
-            ╠══════════════════════════════════════════════════════════════╣
-            ║  Transit groups:      \(transitCount) routes
-            ║  Live arrivals:       \(arrivalCount) trains/buses
-            ║  System map:          \(mapLoaded ? "✅ \(mapSystem.flattenedSubwayPolylines.count) subway + \(mapSystem.flattenedCommuterRailPolylines.count) commuter polylines" : "❌ not loaded")
-            ║  Stations:            \(stationsLoaded ? "✅ \(mapSystem.consolidatedStations.count) consolidated" : "❌ not loaded")
-            ║  Alerts:              \(alertCount > 0 ? "✅ \(alertCount) alerts" : "⏳ loading async")
-            ║  Accessibility:       \(outageCount > 0 ? "✅ \(outageCount) outages" : "⏳ loading async")
-            ║  Nearby bus stops:    \(busStopCount > 0 ? "✅ \(busStopCount) stops" : "⏳ loading async")
-            ╚══════════════════════════════════════════════════════════════╝
+            ╔══════════════════════════════════════════════╗
+            ║  EVERYTHING LOADED
+            ║  T+\(AppLogger.formatDuration(totalFromLaunch))
+            ╠══════════════════════════════════════════════╣
+            ║  Transit groups:  \(transitCount) routes
+            ║  Live arrivals:   \(arrivalCount)
+            ║  System map:      \(mapLoaded ? "✅" : "❌")
+            ║  Stations:        \(stationsLoaded ? "✅" : "❌")
+            ║  Alerts:          \(alertCount)
+            ║  Accessibility:   \(outageCount)
+            ║  Bus stops:       \(busStopCount)
+            ╚══════════════════════════════════════════════╝
             """)
 
             TransitDataReadyFlag.markReady()
@@ -2082,7 +2293,11 @@ final class HomeViewModel {
             let now = Date()
             let currentArrival = match.expectedArrival ?? now
             let siblingTimes = busArrivals
-                .filter { $0.routeId == match.routeId && $0.stopId == match.stopId && $0.id != match.id }
+                .filter {
+                    $0.routeId == match.routeId
+                    && $0.stopId == match.stopId
+                    && $0.id != match.id
+                }
                 .compactMap(\ .expectedArrival)
 
             let siblingMinutes = TrackingTimeSync.nextArrivalMinutes(
@@ -2183,7 +2398,12 @@ final class HomeViewModel {
         AppLogger.shared.log(
             "ROUTE_DETAIL",
             message:
-                "OPEN route=\(group.routeId) mode=\(group.mode) selectedDirIdx=\(directionIndex) dirs=\(group.directions.count) snapshot=\(debugDirectionSnapshot(group))"
+                "OPEN route=\(group.routeId)"
+                + " mode=\(group.mode)"
+                + " selectedDirIdx=\(directionIndex)"
+                + " dirs=\(group.directions.count)"
+                + " snapshot="
+                + "\(debugDirectionSnapshot(group))"
         )
         #endif
 
@@ -2221,7 +2441,10 @@ final class HomeViewModel {
         if let cached = cachedShape {
             routeShape = cached
             enrichGroupWithShapeDirections(cached)
-            AppLogger.shared.log("SHAPE_CACHE", message: "INSTANT \(group.routeId) — \(cached.stops.count) stops")
+            AppLogger.shared.log(
+                "SHAPE_CACHE",
+                message: "INSTANT \(group.routeId)"
+                    + " — \(cached.stops.count) stops")
         } else {
             routeShape = nil
         }
@@ -2274,7 +2497,10 @@ final class HomeViewModel {
                         self.lastBusUpdateTime = Date()
                         return  // success — stop retrying
                     } catch {
-                        AppLogger.shared.logError("fetchBusVehicles(\(loadingRouteId)) attempt=\(attempt)", error: error)
+                        AppLogger.shared.logError(
+                            "fetchBusVehicles(\(loadingRouteId))"
+                            + " attempt=\(attempt)",
+                            error: error)
                     }
                 }
             }
@@ -2297,7 +2523,10 @@ final class HomeViewModel {
                         }
                     } catch {
                         // Stale cache is better than no shape — just log
-                        AppLogger.shared.logError("fetchRouteShape(bg-refresh \(loadingRouteId))", error: error)
+                        AppLogger.shared.logError(
+                            "fetchRouteShape"
+                            + "(bg-refresh \(loadingRouteId))",
+                            error: error)
                     }
                     return
                 }
@@ -2313,7 +2542,10 @@ final class HomeViewModel {
                         fetched = try await TrackAPI.fetchRouteShape(routeID: loadingRouteId)
                         break
                     } catch {
-                        AppLogger.shared.logError("fetchRouteShape(\(loadingRouteId)) attempt=\(attempt)", error: error)
+                        AppLogger.shared.logError(
+                            "fetchRouteShape(\(loadingRouteId))"
+                            + " attempt=\(attempt)",
+                            error: error)
                     }
                 }
                 guard let shape = fetched else { return }
@@ -2326,7 +2558,10 @@ final class HomeViewModel {
                 AppLogger.shared.log(
                     "BUS_SHAPE",
                     message:
-                        "Loaded shape for \(loadingRouteId): \(shape.polylines.count) polylines (\(totalPoints) total points), \(shape.stops.count) stops"
+                        "Loaded shape for \(loadingRouteId):"
+                            + " \(shape.polylines.count) polylines"
+                            + " (\(totalPoints) total points),"
+                            + " \(shape.stops.count) stops"
                 )
                 #endif
                 self.enrichGroupWithShapeDirections(shape)
@@ -2480,11 +2715,21 @@ final class HomeViewModel {
                 }) ?? false
 
                 if arrivalHasStop {
-                    targetStopCoord = CLLocationCoordinate2D(latitude: closest.lat, longitude: closest.lon)
+                    targetStopCoord = CLLocationCoordinate2D(
+                        latitude: closest.lat,
+                        longitude: closest.lon)
                     targetStopId = closest.id
 
                     #if DEBUG
-                    print("[WALK DIST] \(currentGroup.routeId) (\(currentGroup.mode))  source=routeShape (\(fallbackStops.count) stops)  nearest stop='\(closest.name)' id=\(closest.id)  (\(String(format: "%.5f", closest.lat)),\(String(format: "%.5f", closest.lon)))  straight-line=\(Int(minDistance))m / \(String(format: "%.2f", minDistance / 1609.34))mi  ← polyline targets this stop")
+                    print(
+                        "[WALK DIST] \(currentGroup.routeId)"
+                        + " (\(currentGroup.mode))"
+                        + "  source=routeShape"
+                        + " (\(fallbackStops.count) stops)"
+                        + "  nearest stop='\(closest.name)'"
+                        + " id=\(closest.id)"
+                        + "  straight-line=\(Int(minDistance))m"
+                        + " ← polyline targets this stop")
                     #endif
                 } else {
                     // Shape stop has no arrivals — SIRI only reports
@@ -2496,15 +2741,22 @@ final class HomeViewModel {
                     // stop-name pill, and countdown chips all agree.
                     // Falling back to the shape stop only when no
                     // arrival stop has coordinates.
-                    targetStopCoord = CLLocationCoordinate2D(latitude: closest.lat, longitude: closest.lon)
+                    targetStopCoord = CLLocationCoordinate2D(
+                        latitude: closest.lat,
+                        longitude: closest.lon)
                     targetStopId = closest.id  // default to shape stop
 
                     if let activeDir, let userRef = refLocation {
                         var bestArrival: NearbyTransitResponse?
                         var bestDist: CLLocationDistance = .greatestFiniteMagnitude
                         for arrival in activeDir.liveArrivals {
-                            guard let lat = arrival.stopLat, let lon = arrival.stopLon else { continue }
-                            let dist = userRef.distance(from: CLLocation(latitude: lat, longitude: lon))
+                            guard let lat = arrival.stopLat,
+                                  let lon = arrival.stopLon
+                            else { continue }
+                            let dist = userRef.distance(
+                                from: CLLocation(
+                                    latitude: lat,
+                                    longitude: lon))
                             if dist < bestDist { bestDist = dist; bestArrival = arrival }
                         }
                         if let best = bestArrival,
@@ -2512,21 +2764,44 @@ final class HomeViewModel {
                             // Align BOTH the walking polyline and the chip
                             // stop to the nearest arrival stop so the user
                             // sees consistent information everywhere.
-                            targetStopCoord = CLLocationCoordinate2D(latitude: bestLat, longitude: bestLon)
+                            targetStopCoord = CLLocationCoordinate2D(
+                                latitude: bestLat,
+                                longitude: bestLon)
                             targetStopId = best.stopId
                             #if DEBUG
-                            print("[WALK DIST] \(currentGroup.routeId) (\(currentGroup.mode))  source=routeShape (nearest shape stop '\(closest.name)' has no arrivals; redirected to arrival stop '\(best.stopName)')  walking polyline→(\(String(format: "%.5f", bestLat)),\(String(format: "%.5f", bestLon)))  straight-line=\(Int(bestDist))m")
+                            print(
+                                "[WALK DIST]"
+                                + " \(currentGroup.routeId)"
+                                + " (\(currentGroup.mode))"
+                                + "  redirected to arrival"
+                                + " stop '\(best.stopName)'"
+                                + "  dist=\(Int(bestDist))m")
                             #endif
                         } else if let best = bestArrival {
                             // Arrival stop has no coords — keep shape stop
                             // for walking but use arrival stop for chips.
                             targetStopId = best.stopId
                             #if DEBUG
-                            print("[WALK DIST] \(currentGroup.routeId) (\(currentGroup.mode))  source=routeShape (nearest shape stop '\(closest.name)' has no arrivals; chips→'\(best.stopName)' but no coords — walking stays at shape stop)")
+                            print(
+                                "[WALK DIST]"
+                                + " \(currentGroup.routeId)"
+                                + " (\(currentGroup.mode))"
+                                + "  no coords for"
+                                + " '\(best.stopName)'"
+                                + " — walking stays at"
+                                + " shape stop")
                             #endif
                         } else {
                             #if DEBUG
-                            print("[WALK DIST] \(currentGroup.routeId) (\(currentGroup.mode))  source=routeShape (\(fallbackStops.count) stops)  nearest stop='\(closest.name)' id=\(closest.id)  (\(String(format: "%.5f", closest.lat)),\(String(format: "%.5f", closest.lon)))  straight-line=\(Int(minDistance))m / \(String(format: "%.2f", minDistance / 1609.34))mi  ← polyline targets this stop (no arrival match)")
+                            print(
+                                "[WALK DIST]"
+                                + " \(currentGroup.routeId)"
+                                + " (\(currentGroup.mode))"
+                                + "  source=routeShape"
+                                + " (\(fallbackStops.count) stops)"
+                                + "  nearest='\(closest.name)'"
+                                + " dist=\(Int(minDistance))m"
+                                + " (no arrival match)")
                             #endif
                         }
                     }
@@ -2537,7 +2812,11 @@ final class HomeViewModel {
         // Fallback: zoom to the first arrival's stop coordinates when
         // route shape data is unavailable or user location is missing.
         if targetStopCoord == nil {
-            let activeDirection = currentGroup.directions.indices.contains(selectedDirectionIndex) ? currentGroup.directions[selectedDirectionIndex] : currentGroup.directions.first
+            let activeDirection =
+                currentGroup.directions.indices.contains(
+                    selectedDirectionIndex)
+                ? currentGroup.directions[selectedDirectionIndex]
+                : currentGroup.directions.first
             if let first = activeDirection?.arrivals.first,
                 let lat = first.stopLat, let lon = first.stopLon
             {
@@ -2546,8 +2825,17 @@ final class HomeViewModel {
 
                 #if DEBUG
                 if let userLoc = refLocation {
-                    let fallbackDist = userLoc.distance(from: CLLocation(latitude: lat, longitude: lon))
-                    print("[WALK DIST] \(currentGroup.routeId) (\(currentGroup.mode))  source=arrivalFallback (no shape stops)  stop='\(first.stopName)'  (\(String(format: "%.5f", lat)),\(String(format: "%.5f", lon)))  straight-line=\(Int(fallbackDist))m / \(String(format: "%.2f", fallbackDist / 1609.34))mi  ← polyline targets this stop")
+                    let fallbackDist = userLoc.distance(
+                        from: CLLocation(
+                            latitude: lat,
+                            longitude: lon))
+                    print(
+                        "[WALK DIST]"
+                        + " \(currentGroup.routeId)"
+                        + " (\(currentGroup.mode))"
+                        + "  source=arrivalFallback"
+                        + "  stop='\(first.stopName)'"
+                        + "  dist=\(Int(fallbackDist))m")
                 }
                 #endif
             }
@@ -2571,7 +2859,10 @@ final class HomeViewModel {
             AppLogger.shared.log(
                 "ROUTE_DETAIL",
                 message:
-                    "READY route=\(selected.routeId) mode=\(selected.mode) selectedDirIdx=\(selectedDirectionIndex) snapshot=\(debugDirectionSnapshot(selected))"
+                    "READY route=\(selected.routeId)"
+                    + " mode=\(selected.mode)"
+                    + " selectedDirIdx=\(selectedDirectionIndex)"
+                    + " snapshot=\(debugDirectionSnapshot(selected))"
             )
         }
         #endif
@@ -2644,7 +2935,10 @@ final class HomeViewModel {
             AppLogger.shared.log(
                 "ROUTE_DETAIL",
                 message:
-                    "SKIP enrichment: shape route '\(shape.routeId)' does not match selected route '\(group.routeId)' (display: \(group.displayName))"
+                    "SKIP enrichment: shape route"
+                    + " '\(shape.routeId)' does not match"
+                    + " selected route '\(group.routeId)'"
+                    + " (display: \(group.displayName))"
             )
             return
         }
@@ -2726,8 +3020,12 @@ final class HomeViewModel {
                     // from OBA data leaking into a bus route).
                     let existing = group.directions[pidx]
                     let hsLower = shapeDir.headsign.lowercased()
-                    let isCrossMode = (group.isBus && (hsLower.contains("train") || hsLower.contains("subway")))
-                        || (group.isCommuterRail && hsLower.contains("bus"))
+                    let isCrossMode =
+                        (group.isBus
+                            && (hsLower.contains("train")
+                                || hsLower.contains("subway")))
+                        || (group.isCommuterRail
+                            && hsLower.contains("bus"))
                     let directionString =
                         shapeDir.headsign.isEmpty || isCrossMode
                         ? existing.direction
@@ -2735,7 +3033,9 @@ final class HomeViewModel {
                     orderedDirections.append(
                         DirectionArrivalsResponse(
                             direction: directionString,
-                            directionLabel: shapeDir.headsign.isEmpty ? existing.directionLabel : "→ \(shapeDir.headsign)",
+                            directionLabel: shapeDir.headsign.isEmpty
+                                ? existing.directionLabel
+                                : "→ \(shapeDir.headsign)",
                             arrivals: existing.arrivals
                         ))
                     usedExistingIndices.insert(pidx)
@@ -2748,7 +3048,9 @@ final class HomeViewModel {
                     orderedDirections.append(
                         DirectionArrivalsResponse(
                             direction: directionString,
-                            directionLabel: shapeDir.headsign.isEmpty ? nil : "→ \(shapeDir.headsign)",
+                            directionLabel: shapeDir.headsign.isEmpty
+                                ? nil
+                                : "→ \(shapeDir.headsign)",
                             arrivals: []
                         ))
                 }
@@ -2765,7 +3067,11 @@ final class HomeViewModel {
             let hasLive = !dir.liveArrivals.isEmpty
             if isCompass && !hasLive {
                 #if DEBUG
-                print("[ENRICH] Dropping empty compass direction '\(dir.direction)' from \(group.routeId)")
+                print(
+                    "[ENRICH] Dropping empty compass"
+                    + " direction '\(dir.direction)'"
+                    + " from \(group.routeId)"
+                )
                 #endif
                 continue
             }
@@ -2809,7 +3115,12 @@ final class HomeViewModel {
                     AppLogger.shared.log(
                         "DIR_PREF",
                         message:
-                            "RESTORE route=\(updatedGroup.routeId) mode=\(updatedGroup.mode) oldIdx=\(previousIndex) newIdx=\(resolvedIndex) oldKey=\(key) newDir=\(updatedGroup.directions[resolvedIndex].direction)"
+                            "RESTORE route=\(updatedGroup.routeId)"
+                            + " mode=\(updatedGroup.mode)"
+                            + " oldIdx=\(previousIndex)"
+                            + " newIdx=\(resolvedIndex)"
+                            + " oldKey=\(key)"
+                            + " newDir=\(updatedGroup.directions[resolvedIndex].direction)"
                     )
                     #endif
                 }
@@ -2826,7 +3137,12 @@ final class HomeViewModel {
                     AppLogger.shared.log(
                         "DIR_PREF",
                         message:
-                            "RESTORE_FALLBACK route=\(updatedGroup.routeId) mode=\(updatedGroup.mode) oldIdx=\(previousIndex) newIdx=\(clamped) reason=no-key-match"
+                            "RESTORE_FALLBACK"
+                            + " route=\(updatedGroup.routeId)"
+                            + " mode=\(updatedGroup.mode)"
+                            + " oldIdx=\(previousIndex)"
+                            + " newIdx=\(clamped)"
+                            + " reason=no-key-match"
                     )
                     #endif
                 }
@@ -2840,7 +3156,10 @@ final class HomeViewModel {
             AppLogger.shared.log(
                 "ROUTE_DETAIL",
                 message:
-                    "Enriched \(group.displayName) from \(existingCount) → \(orderedDirections.count) directions (ordered by shape direction_id)"
+                    "Enriched \(group.displayName)"
+                    + " from \(existingCount)"
+                    + " → \(orderedDirections.count) directions"
+                    + " (ordered by shape direction_id)"
             )
             #endif
         }

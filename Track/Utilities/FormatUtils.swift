@@ -1,11 +1,6 @@
-//
-//  FormatUtils.swift
-//  Track
-//
-//  Shared formatting utilities used across multiple views and components.
-//  Consolidates duplicated formatting logic for arrival times, distances,
-//  route names, and transit status colors.
-//
+// Shared formatting utilities used across multiple views and components.
+// Consolidates duplicated formatting logic for arrival times, distances,
+// route names, and transit status colors.
 
 import SwiftUI
 

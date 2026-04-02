@@ -1,11 +1,6 @@
-//
-//  DirectionUtils.swift
-//  Track
-//
-//  Single source of truth for compass-direction constants, labels,
-//  and matching helpers used throughout the app (HomeViewModel, API
-//  sync, route detail sheet, grouped rows, etc.).
-//
+// Single source of truth for compass-direction constants, labels,
+// and matching helpers used throughout the app (HomeViewModel, API
+// sync, route detail sheet, grouped rows, etc.).
 
 import Foundation
 

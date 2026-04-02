@@ -1,10 +1,5 @@
-//
-//  ArrivalRow.swift
-//  Track
-//
-//  Displays a single train arrival with delay-adjusted timing.
-//  Tapping the row starts a Live Activity to track the arrival.
-//
+// Displays a single train arrival with delay-adjusted timing.
+// Tapping the row starts a Live Activity to track the arrival.
 
 import SwiftUI
 
@@ -98,8 +93,16 @@ struct ArrivalRow: View {
             }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(arrival.routeID) train, \(arrival.direction), \(arrival.minutesAway) minutes away")
-        .accessibilityHint(isExpanded ? "Expanded. Shows arrival details." : "Tap to see arrival details")
+        .accessibilityLabel(
+            "\(arrival.routeID) train, "
+            + "\(arrival.direction), "
+            + "\(arrival.minutesAway) minutes away"
+        )
+        .accessibilityHint(
+            isExpanded
+                ? "Expanded. Shows arrival details."
+                : "Tap to see arrival details"
+        )
     }
 
     // MARK: - Expanded Detail

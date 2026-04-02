@@ -1,19 +1,12 @@
-//
-//  MapLibreVehicleOverlay.swift
-//  Track
-//
-//  SwiftUI overlay that positions vehicle markers (bus, subway, LIRR, MNR)
-//  on top of the MapLibre GL map using coordinate-to-screen-point projection.
-//
-//  Why an overlay instead of MLNAnnotationView?
-//  MapLibre's annotation system is UIKit-based and can't render complex
-//  SwiftUI views (spring animations, SF Symbols, gradient shadows).
-//  By projecting lat/lon → screen points we get full SwiftUI rendering
-//  with zero UIKit bridging overhead per marker.
-//
-//  Performance: O(n) per frame where n = visible vehicles (typically < 50).
-//  The projection math is a single matrix multiply per coordinate.
-//
+// SwiftUI overlay that positions vehicle markers (bus, subway, LIRR, MNR)
+// on top of the MapLibre GL map using coordinate-to-screen-point projection.
+// Why an overlay instead of MLNAnnotationView?
+// MapLibre's annotation system is UIKit-based and can't render complex
+// SwiftUI views (spring animations, SF Symbols, gradient shadows).
+// By projecting lat/lon → screen points we get full SwiftUI rendering
+// with zero UIKit bridging overhead per marker.
+// Performance: O(n) per frame where n = visible vehicles (typically < 50).
+// The projection math is a single matrix multiply per coordinate.
 
 import CoreLocation
 import MapLibre
@@ -57,7 +50,10 @@ struct MapLibreVehicleOverlay: View {
 
     private var busVehicleMarkers: some View {
         ForEach(busVehicles) { vehicle in
-            let coord: CLLocationCoordinate2D = CLLocationCoordinate2D(latitude: vehicle.lat, longitude: vehicle.lon)
+            let coord = CLLocationCoordinate2D(
+                latitude: vehicle.lat,
+                longitude: vehicle.lon
+            )
             let isHighlighted: Bool = tappedVehicleId == vehicle.vehicleId
             let isStale: Bool = {
                 guard let recorded = vehicle.positionRecordedAt else { return false }

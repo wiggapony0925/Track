@@ -1,9 +1,4 @@
-//
-//  ScheduleEditorView.swift
-//  Track
-//
-//  Editor for creating and modifying widget activation schedules.
-//
+// Editor for creating and modifying widget activation schedules.
 
 import SwiftUI
 
@@ -36,7 +31,11 @@ struct ScheduleEditorView: View {
                 var dateComponents = DateComponents()
                 dateComponents.hour = hour
                 dateComponents.minute = minute
-                _startTime = State(initialValue: Calendar.current.date(from: dateComponents) ?? Date())
+                let parsed = Calendar.current
+                    .date(from: dateComponents)
+                _startTime = State(
+                    initialValue: parsed ?? Date()
+                )
             } else {
                 _startTime = State(initialValue: Date())
             }
@@ -188,7 +187,11 @@ struct ScheduleEditorView: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 12)
-            .background(isSelected ? AppTheme.Colors.mtaBlue : AppTheme.Colors.textSecondary.opacity(0.1))
+            .background(
+                isSelected
+                    ? AppTheme.Colors.mtaBlue
+                    : AppTheme.Colors.textSecondary.opacity(0.1)
+            )
             .cornerRadius(10)
         }
         .buttonStyle(.plain)
@@ -197,7 +200,11 @@ struct ScheduleEditorView: View {
     // MARK: - Helpers
 
     private var previewText: String {
-        let dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+        let dayNames = [
+            "Sunday", "Monday", "Tuesday",
+            "Wednesday", "Thursday",
+            "Friday", "Saturday",
+        ]
         let sortedDays = selectedDays.sorted()
 
         let daysText: String
@@ -210,7 +217,13 @@ struct ScheduleEditorView: View {
         } else if sortedDays.count == 1 {
             daysText = dayNames[sortedDays[0]]
         } else {
-            daysText = sortedDays.map { ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][$0] }.joined(separator: ", ")
+            let abbrevs = [
+                "Sun", "Mon", "Tue", "Wed",
+                "Thu", "Fri", "Sat",
+            ]
+            daysText = sortedDays
+                .map { abbrevs[$0] }
+                .joined(separator: ", ")
         }
 
         let timeFormatter = DateFormatter()

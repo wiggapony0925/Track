@@ -1,11 +1,6 @@
-//
-//  CacheModels.swift
-//  Track
-//
-//  Simplified data models used for offline caching.
-//  These lightweight Codable structs are stored in UserDefaults
-//  for offline access when underground or without connectivity.
-//
+// Simplified data models used for offline caching.
+// These lightweight Codable structs are stored in UserDefaults
+// for offline access when underground or without connectivity.
 
 import Foundation
 

@@ -13,13 +13,19 @@ struct ProfileSettingsContentView: View {
     private var currentProfile: UserProfile? { supabase.currentUser }
 
     private var fallbackDisplayName: String {
-        if let fullName = currentProfile?.fullName?.trimmingCharacters(in: .whitespacesAndNewlines), !fullName.isEmpty {
+        if let fullName = currentProfile?.fullName?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+            !fullName.isEmpty {
             return fullName
         }
-        if let givenName = currentProfile?.givenName?.trimmingCharacters(in: .whitespacesAndNewlines), !givenName.isEmpty {
+        if let givenName = currentProfile?.givenName?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+            !givenName.isEmpty {
             return givenName
         }
-        if let username = currentProfile?.username?.trimmingCharacters(in: .whitespacesAndNewlines), !username.isEmpty {
+        if let username = currentProfile?.username?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+            !username.isEmpty {
             return username
         }
         if let email = currentProfile?.email, !email.isEmpty {
@@ -122,7 +128,10 @@ struct ProfileSettingsContentView: View {
     @ViewBuilder
     private var saveMessageView: some View {
                     if let saveMessage {
-                        let messageColor: Color = saveMessageIsError ? AppTheme.Colors.alertRed : AppTheme.Colors.successGreen
+                        let messageColor: Color =
+                            saveMessageIsError
+                            ? AppTheme.Colors.alertRed
+                            : AppTheme.Colors.successGreen
                         Text(saveMessage)
                             .font(.system(size: 12, weight: .medium))
                             .foregroundColor(messageColor)

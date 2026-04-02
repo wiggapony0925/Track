@@ -1,10 +1,5 @@
-//
-//  OnboardingView.swift
-//  Track
-//
-//  A 3-page swipeable onboarding flow shown on first launch.
-//  Requests Location and Live Activity permissions gracefully.
-//
+// A 3-page swipeable onboarding flow shown on first launch.
+// Requests Location and Live Activity permissions gracefully.
 
 import SwiftUI
 import ActivityKit

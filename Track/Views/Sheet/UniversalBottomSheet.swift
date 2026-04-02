@@ -1,30 +1,25 @@
-//
-//  UniversalBottomSheet.swift
-//  Track
-//
-//  A reusable bottom sheet container that manages all sheet-based navigation
-//  in the app. This provides a consistent single-sheet experience where all
-//  views (dashboard, route details, settings) are displayed within the same
-//  modal, maintaining visual consistency and smooth transitions.
-//
-//  Usage:
-//    UniversalBottomSheet(
-//        navigator: sheetNavigator,
-//        sheetDetent: $sheetDetent
-//    ) { page in
-//        switch page {
-//        case .dashboard: DashboardView()
-//        case .settings: SettingsContentView()
-//        // etc.
-//        }
-//    }
-//
+// A reusable bottom sheet container that manages all sheet-based navigation
+// in the app. This provides a consistent single-sheet experience where all
+// views (dashboard, route details, settings) are displayed within the same
+// modal, maintaining visual consistency and smooth transitions.
+// Usage:
+//   UniversalBottomSheet(
+//       navigator: sheetNavigator,
+//       sheetDetent: $sheetDetent
+//   ) { page in
+//       switch page {
+//       case .dashboard: DashboardView()
+//       case .settings: SettingsContentView()
+//       // etc.
+//       }
+//   }
 
 import SwiftUI
 
 /// Universal bottom sheet container that hosts all in-sheet navigation.
 /// Provides consistent presentation, detents, and transition animations.
-/// Note: Individual pages are responsible for their own navigation UI (back buttons, close buttons).
+/// Note: Individual pages are responsible for their own
+/// navigation UI (back buttons, close buttons).
 struct UniversalBottomSheet<Content: View>: View {
     /// Navigation state manager
     let navigator: SheetNavigator

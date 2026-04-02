@@ -1,11 +1,6 @@
-//
-//  LiveActivityManager.swift
-//  Track
-//
-//  Singleton that manages the lifecycle of Live Activities.
-//  Handles starting, updating, and ending trip tracking activities
-//  that appear on the Dynamic Island and Lock Screen.
-//
+// Singleton that manages the lifecycle of Live Activities.
+// Handles starting, updating, and ending trip tracking activities
+// that appear on the Dynamic Island and Lock Screen.
 
 import Foundation
 import ActivityKit
@@ -41,14 +36,21 @@ final class LiveActivityManager {
         // adopt the first matching activity instead of killing it.
         if let saved = TrackedRoute.load(), let match = existing.first(where: { _ in true }) {
             currentActivityID = match.id
-            AppLogger.shared.log("LIVE_ACTIVITY", message: "Adopted orphaned activity \(match.id) for \(saved.routeId)")
+            AppLogger.shared.log(
+                "LIVE_ACTIVITY",
+                message: "Adopted orphaned activity"
+                    + " \(match.id) for \(saved.routeId)"
+            )
             // End any extras beyond the adopted one
             let extras = existing.filter { $0.id != match.id }
             if !extras.isEmpty {
                 Task {
                     for activity in extras {
                         await activity.end(nil, dismissalPolicy: .immediate)
-                        AppLogger.shared.log("LIVE_ACTIVITY", message: "Ended extra orphan \(activity.id)")
+                        AppLogger.shared.log(
+                            "LIVE_ACTIVITY",
+                            message: "Ended extra orphan \(activity.id)"
+                        )
                     }
                 }
             }
@@ -57,7 +59,10 @@ final class LiveActivityManager {
             Task {
                 for activity in existing {
                     await activity.end(nil, dismissalPolicy: .immediate)
-                    AppLogger.shared.log("LIVE_ACTIVITY", message: "Ended orphaned activity \(activity.id)")
+                    AppLogger.shared.log(
+                        "LIVE_ACTIVITY",
+                        message: "Ended orphaned activity \(activity.id)"
+                    )
                 }
             }
         }
@@ -93,7 +98,11 @@ final class LiveActivityManager {
         await endAllActivities()
 
         guard ActivityAuthorizationInfo().areActivitiesEnabled else {
-            AppLogger.shared.log("LIVE_ACTIVITY", message: "Live Activities not enabled on this device")
+            AppLogger.shared.log(
+                "LIVE_ACTIVITY",
+                message: "Live Activities not enabled"
+                    + " on this device"
+            )
             return
         }
 
@@ -114,9 +123,15 @@ final class LiveActivityManager {
         )
 
         do {
+            let staleDate = arrivalTime.addingTimeInterval(
+                AppSettings.shared.liveActivityStaleDateSeconds
+            )
             let activity = try Activity.request(
                 attributes: attributes,
-                content: .init(state: initialState, staleDate: arrivalTime.addingTimeInterval(AppSettings.shared.liveActivityStaleDateSeconds)),
+                content: .init(
+                    state: initialState,
+                    staleDate: staleDate
+                ),
                 pushType: nil
             )
             currentActivityID = activity.id
@@ -162,10 +177,17 @@ final class LiveActivityManager {
             isHurryUp: isHurryUp
         )
 
+        let staleDate = arrivalTime.addingTimeInterval(
+            AppSettings.shared.liveActivityStaleDateSeconds
+        )
         Task {
-            for activity in Activity<TrackActivityAttributes>.activities where activity.id == activityID {
+            for activity in Activity<TrackActivityAttributes>
+                .activities where activity.id == activityID {
                 await activity.update(
-                    ActivityContent(state: updatedState, staleDate: arrivalTime.addingTimeInterval(AppSettings.shared.liveActivityStaleDateSeconds))
+                    ActivityContent(
+                        state: updatedState,
+                        staleDate: staleDate
+                    )
                 )
             }
         }
@@ -209,10 +231,16 @@ final class LiveActivityManager {
                 walkMinutes: nil,
                 isHurryUp: false
             )
+            let dismissAfter = Date.now.addingTimeInterval(
+                AppSettings.shared.liveActivityDismissalSeconds
+            )
             for activity in snapshot {
                 await activity.end(
-                    ActivityContent(state: finalState, staleDate: nil),
-                    dismissalPolicy: .after(Date.now.addingTimeInterval(AppSettings.shared.liveActivityDismissalSeconds))
+                    ActivityContent(
+                        state: finalState,
+                        staleDate: nil
+                    ),
+                    dismissalPolicy: .after(dismissAfter)
                 )
                 AppLogger.shared.log("LIVE_ACTIVITY", message: "Ended activity \(activity.id)")
             }
@@ -230,7 +258,11 @@ final class LiveActivityManager {
 
         for activity in existing {
             await activity.end(nil, dismissalPolicy: .immediate)
-            AppLogger.shared.log("LIVE_ACTIVITY", message: "Cleared activity \(activity.id) before new start")
+            AppLogger.shared.log(
+                "LIVE_ACTIVITY",
+                message: "Cleared activity"
+                    + " \(activity.id) before new start"
+            )
         }
     }
 }

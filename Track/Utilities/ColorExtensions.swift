@@ -1,10 +1,5 @@
-//
-//  ColorExtensions.swift
-//  Track
-//
-//  Color extensions used across the app. Extracted from RouteDetailSheet
-//  so the hex initializer is available to any component that needs it.
-//
+// Color extensions used across the app. Extracted from RouteDetailSheet
+// so the hex initializer is available to any component that needs it.
 
 import SwiftUI
 

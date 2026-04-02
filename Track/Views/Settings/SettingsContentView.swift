@@ -1,12 +1,7 @@
-//
-//  SettingsContentView.swift
-//  Track
-//
-//  Settings content that can be displayed within the universal bottom sheet.
-//  This view contains the same settings functionality as SettingsView but
-//  without the NavigationStack wrapper, allowing it to work within the
-//  sheet's own navigation system.
-//
+// Settings content that can be displayed within the universal bottom sheet.
+// This view contains the same settings functionality as SettingsView but
+// without the NavigationStack wrapper, allowing it to work within the
+// sheet's own navigation system.
 
 import SwiftUI
 
@@ -46,13 +41,19 @@ struct SettingsContentView: View {
     private var currentProfile: UserProfile? { supabase.currentUser }
 
     private var displayNameForWelcome: String {
-        if let fullName = currentProfile?.fullName?.trimmingCharacters(in: .whitespacesAndNewlines), !fullName.isEmpty {
+        if let fullName = currentProfile?.fullName?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !fullName.isEmpty {
             return fullName
         }
-        if let givenName = currentProfile?.givenName?.trimmingCharacters(in: .whitespacesAndNewlines), !givenName.isEmpty {
+        if let givenName = currentProfile?.givenName?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !givenName.isEmpty {
             return givenName
         }
-        if let username = currentProfile?.username?.trimmingCharacters(in: .whitespacesAndNewlines), !username.isEmpty {
+        if let username = currentProfile?.username?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !username.isEmpty {
             return username
         }
         if let email = currentProfile?.email, !email.isEmpty {
@@ -63,8 +64,14 @@ struct SettingsContentView: View {
     
     var body: some View {
         bodyWithOverlay
-            .animation(.spring(response: 0.35, dampingFraction: 0.8), value: hasUnappliedChanges)
-            .animation(.spring(response: 0.3, dampingFraction: 0.85), value: showAppliedConfirmation)
+            .animation(
+                .spring(response: 0.35, dampingFraction: 0.8),
+                value: hasUnappliedChanges
+            )
+            .animation(
+                .spring(response: 0.3, dampingFraction: 0.85),
+                value: showAppliedConfirmation
+            )
     }
 
     private var bodyWithOverlay: some View {
@@ -131,12 +138,19 @@ struct SettingsContentView: View {
     // MARK: - Profile Section
 
     private var profileSection: some View {
-        settingsSection(title: "Profile", icon: "person.crop.circle.fill", iconColor: AppTheme.Colors.mtaBlue) {
+        settingsSection(
+            title: "Profile",
+            icon: "person.crop.circle.fill",
+            iconColor: AppTheme.Colors.mtaBlue
+        ) {
                         VStack(spacing: 0) {
                             HStack(spacing: 10) {
                                 ZStack {
                                     Circle()
-                                        .fill(AppTheme.Gradients.tintWash(AppTheme.Colors.mtaBlue, intensity: 0.22))
+                                        .fill(AppTheme.Gradients.tintWash(
+                                            AppTheme.Colors.mtaBlue,
+                                            intensity: 0.22
+                                        ))
                                         .frame(width: 38, height: 38)
                                     Image(systemName: "person.fill")
                                         .font(.system(size: 16, weight: .bold))
@@ -172,7 +186,10 @@ struct SettingsContentView: View {
                                             .foregroundColor(AppTheme.Colors.textPrimary)
                                         Text("Name, username, account details")
                                             .font(.system(size: 11))
-                                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
+                                            .foregroundColor(
+                                                AppTheme.Colors.textSecondary
+                                                    .opacity(0.6)
+                                            )
                                     }
                                     Spacer()
                                     Image(systemName: "chevron.right")
@@ -191,7 +208,11 @@ struct SettingsContentView: View {
     // MARK: - Appearance Section
 
     private var appearanceSection: some View {
-                    settingsSection(title: "Appearance", icon: "paintbrush.fill", iconColor: .purple) {
+                    settingsSection(
+                        title: "Appearance",
+                        icon: "paintbrush.fill",
+                        iconColor: .purple
+                    ) {
                         VStack(spacing: 0) {
                             // Theme picker
                             settingsRow(
@@ -230,20 +251,30 @@ struct SettingsContentView: View {
     // MARK: - Widgets Section
     
     private var widgetsSection: some View {
-                    settingsSection(title: "Widgets", icon: "rectangle.3.group.fill", iconColor: .cyan) {
+                    settingsSection(
+                        title: "Widgets",
+                        icon: "rectangle.3.group.fill",
+                        iconColor: .cyan
+                    ) {
                         VStack(spacing: 0) {
                             Button {
                                 sheetNavigator.navigate(to: .widgetSchedules)
                             } label: {
                                 HStack {
-                                    settingsIcon("calendar.badge.clock", color: AppTheme.Colors.mtaBlue)
+                                    settingsIcon(
+                                        "calendar.badge.clock",
+                                        color: AppTheme.Colors.mtaBlue
+                                    )
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text("Widget Schedules")
                                             .font(.custom("Helvetica", size: 15))
                                             .foregroundColor(AppTheme.Colors.textPrimary)
                                         Text("Configure home screen widgets")
                                             .font(.system(size: 11))
-                                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
+                                            .foregroundColor(
+                                                AppTheme.Colors.textSecondary
+                                                    .opacity(0.6)
+                                            )
                                     }
                                     Spacer()
                                     Image(systemName: "chevron.right")
@@ -262,7 +293,11 @@ struct SettingsContentView: View {
     // MARK: - Search Radius Section
 
     private var searchRadiusSection: some View {
-                    settingsSection(title: "Search Radius", icon: "scope", iconColor: AppTheme.Colors.mtaBlue) {
+                    settingsSection(
+                        title: "Search Radius",
+                        icon: "scope",
+                        iconColor: AppTheme.Colors.mtaBlue
+                    ) {
                         VStack(spacing: 0) {
                             // Main radius slider
                             VStack(alignment: .leading, spacing: 8) {
@@ -273,11 +308,20 @@ struct SettingsContentView: View {
                                         .foregroundColor(AppTheme.Colors.textPrimary)
                                     Spacer()
                                     Text(formatDistanceMiles(draftRadius))
-                                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                                        .font(.system(
+                                            size: 13,
+                                            weight: .semibold,
+                                            design: .rounded
+                                        ))
                                         .foregroundColor(AppTheme.Colors.mtaBlue)
                                         .padding(.horizontal, 8)
                                         .padding(.vertical, 3)
-                                        .background(AppTheme.Gradients.tintWash(AppTheme.Colors.mtaBlue, intensity: 0.18))
+                                        .background(
+                                            AppTheme.Gradients.tintWash(
+                                                AppTheme.Colors.mtaBlue,
+                                                intensity: 0.18
+                                            )
+                                        )
                                         .clipShape(Capsule())
                                 }
                                 
@@ -386,7 +430,13 @@ struct SettingsContentView: View {
                                 Image(systemName: "info.circle")
                                     .font(.system(size: 13))
                                     .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
-                                Text("Drag the slider to set how far out to search. Arrivals are automatically grouped into three distance tiers in the Nearby tab.")
+                                Text(
+                                    "Drag the slider to set how"
+                                    + " far out to search. Arrivals"
+                                    + " are automatically grouped"
+                                    + " into three distance tiers"
+                                    + " in the Nearby tab."
+                                )
                                     .font(.system(size: 12))
                                     .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
                             }
@@ -414,9 +464,18 @@ struct SettingsContentView: View {
                             if draftShowSearchRadius {
                                 // Color legend for the 3 radius tiers
                                 HStack(spacing: 16) {
-                                    radiusLegendDot(color: AppTheme.Colors.successGreen, label: "Near")
-                                    radiusLegendDot(color: AppTheme.Colors.mtaBlue, label: "Farther")
-                                    radiusLegendDot(color: AppTheme.Colors.warningYellow, label: "Much Farther")
+                                    radiusLegendDot(
+                                        color: AppTheme.Colors.successGreen,
+                                        label: "Near"
+                                    )
+                                    radiusLegendDot(
+                                        color: AppTheme.Colors.mtaBlue,
+                                        label: "Farther"
+                                    )
+                                    radiusLegendDot(
+                                        color: AppTheme.Colors.warningYellow,
+                                        label: "Much Farther"
+                                    )
                                 }
                                 .padding(.horizontal, AppTheme.Layout.cardPadding)
                                 .padding(.bottom, 10)
@@ -451,14 +510,21 @@ struct SettingsContentView: View {
     // MARK: - Account Section
 
     private var accountSection: some View {
-                    settingsSection(title: "Account", icon: "person.crop.circle.fill", iconColor: AppTheme.Colors.mtaBlue) {
+                    settingsSection(
+                        title: "Account",
+                        icon: "person.crop.circle.fill",
+                        iconColor: AppTheme.Colors.mtaBlue
+                    ) {
                         VStack(spacing: 0) {
                             Button {
                                 SupabaseManager.shared.signOut()
                                 sheetNavigator.popToRoot()
                             } label: {
                                 HStack {
-                                    settingsIcon("rectangle.portrait.and.arrow.right", color: AppTheme.Colors.alertRed)
+                                    settingsIcon(
+                                        "rectangle.portrait.and.arrow.right",
+                                        color: AppTheme.Colors.alertRed
+                                    )
                                     Text("Sign Out")
                                         .font(.custom("Helvetica", size: 15))
                                         .foregroundColor(AppTheme.Colors.alertRed)
@@ -732,7 +798,10 @@ struct SettingsContentView: View {
     }
     
     /// Read-only tier indicator row showing icon, label, and distance
-    private func tierIndicator(icon: String, label: String, meters: Double, color: Color) -> some View {
+    private func tierIndicator(
+        icon: String, label: String,
+        meters: Double, color: Color
+    ) -> some View {
         HStack(spacing: 10) {
             Image(systemName: icon)
                 .font(.system(size: 12, weight: .semibold))
@@ -806,7 +875,11 @@ struct SettingsContentView: View {
     // MARK: - About Section (redesigned)
 
     private var aboutSection: some View {
-        settingsSection(title: "About", icon: "info.circle.fill", iconColor: AppTheme.Colors.mtaBlue) {
+        settingsSection(
+            title: "About",
+            icon: "info.circle.fill",
+            iconColor: AppTheme.Colors.mtaBlue
+        ) {
             VStack(spacing: 0) {
 
                 aboutHeroIdentity
@@ -892,8 +965,16 @@ struct SettingsContentView: View {
             HStack(spacing: 10) {
                 transitModeCard(icon: "tram.fill", label: "Subway", color: AppTheme.Colors.mtaBlue)
                 transitModeCard(icon: "bus.fill", label: "Bus", color: AppTheme.BusColors.localBlue)
-                transitModeCard(icon: "train.side.front.car", label: "LIRR", color: AppTheme.CommuterRailColors.lirrBlue)
-                transitModeCard(icon: "train.side.front.car", label: "MNR", color: AppTheme.CommuterRailColors.mnrBlue)
+                transitModeCard(
+                    icon: "train.side.front.car",
+                    label: "LIRR",
+                    color: AppTheme.CommuterRailColors.lirrBlue
+                )
+                transitModeCard(
+                    icon: "train.side.front.car",
+                    label: "MNR",
+                    color: AppTheme.CommuterRailColors.mnrBlue
+                )
             }
             .padding(.horizontal, AppTheme.Layout.cardPadding)
         }
@@ -928,7 +1009,9 @@ struct SettingsContentView: View {
                 title: "Rate on the App Store",
                 subtitle: "Your review helps us grow"
             ) {
-                if let url = URL(string: "itms-apps://itunes.apple.com/app/id6743892498?action=write-review") {
+                if let url = URL(
+                    string: "itms-apps://itunes.apple.com/app/id6743892498?action=write-review"
+                ) {
                     UIApplication.shared.open(url)
                 }
             }
@@ -989,7 +1072,14 @@ struct SettingsContentView: View {
                         .foregroundColor(AppTheme.Colors.warningYellow)
                         .padding(.top, 1)
 
-                    Text("Transit data is obtained from the Metropolitan Transportation Authority (MTA) and redistributed through Track's servers. This app is not licensed by, endorsed by, or affiliated with the MTA.")
+                    Text(
+                        "Transit data is obtained from"
+                        + " the Metropolitan Transportation"
+                        + " Authority (MTA) and redistributed"
+                        + " through Track's servers. This app"
+                        + " is not licensed by, endorsed by,"
+                        + " or affiliated with the MTA."
+                    )
                         .font(.system(size: 11, weight: .medium))
                         .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
                         .fixedSize(horizontal: false, vertical: true)
@@ -1001,7 +1091,15 @@ struct SettingsContentView: View {
                         .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.5))
                         .padding(.top, 1)
 
-                    Text("Data is provided \"as is\" and may not be accurate, complete, or timely. Arrival times may be delayed due to caching and network conditions. Information shown may not reflect real-time conditions.")
+                    Text(
+                        "Data is provided \"as is\" and may"
+                        + " not be accurate, complete, or"
+                        + " timely. Arrival times may be"
+                        + " delayed due to caching and"
+                        + " network conditions. Information"
+                        + " shown may not reflect real-time"
+                        + " conditions."
+                    )
                         .font(.system(size: 11, weight: .medium))
                         .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
                         .fixedSize(horizontal: false, vertical: true)

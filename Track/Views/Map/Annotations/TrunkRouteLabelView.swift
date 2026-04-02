@@ -1,11 +1,6 @@
-//
-//  TrunkRouteLabelView.swift
-//  Track
-//
-//  Apple Maps–style route bullet labels that appear at intervals along
-//  trunk polylines. Shows small colored circles with white route letters
-//  to indicate which trains run on a given section.
-//
+// Apple Maps–style route bullet labels that appear at intervals along
+// trunk polylines. Shows small colored circles with white route letters
+// to indicate which trains run on a given section.
 
 import SwiftUI
 

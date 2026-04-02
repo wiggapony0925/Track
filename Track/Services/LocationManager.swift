@@ -1,9 +1,4 @@
-//
-//  LocationManager.swift
-//  Track
-//
-//  Manages user GPS location using CoreLocation.
-//
+// Manages user GPS location using CoreLocation.
 
 import Foundation
 import CoreLocation
@@ -94,13 +89,16 @@ final class LocationManager: NSObject, CLLocationManagerDelegate {
 
     // MARK: - CLLocationManagerDelegate
 
-    nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+    nonisolated func locationManager(
+        _ manager: CLLocationManager,
+        didUpdateLocations locations: [CLLocation]
+    ) {
         let latest = locations.last
         Task { @MainActor in
             currentLocation = latest
             // Cache location for widget access via App Group
             if let location = latest {
-                let defaults = UserDefaults(suiteName: kAppGroupIdentifier) ?? UserDefaults.standard
+                let defaults = UserDefaults(suiteName: appGroupIdentifier) ?? UserDefaults.standard
                 defaults.set(location.coordinate.latitude, forKey: "lastLatitude")
                 defaults.set(location.coordinate.longitude, forKey: "lastLongitude")
                 defaults.set(true, forKey: "hasLastLocation")
@@ -108,7 +106,10 @@ final class LocationManager: NSObject, CLLocationManagerDelegate {
         }
     }
 
-    nonisolated func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
+    nonisolated func locationManager(
+        _ manager: CLLocationManager,
+        didChangeAuthorization status: CLAuthorizationStatus
+    ) {
         // Start location updates outside the Task so that the non-Sendable
         // CLLocationManager parameter is not captured across isolation boundaries.
         if status == .authorizedWhenInUse || status == .authorizedAlways {

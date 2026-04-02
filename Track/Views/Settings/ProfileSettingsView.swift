@@ -40,15 +40,35 @@ struct ProfileSettingsView: View {
     private var profileFieldsSection: some View {
         settingsSection(title: "Profile", icon: "person.fill", iconColor: AppTheme.Colors.mtaBlue) {
             VStack(spacing: 0) {
-                rowLabel(icon: "envelope.fill", iconColor: .mint, title: "Email", value: currentProfile?.email ?? "Not available")
+                rowLabel(
+                    icon: "envelope.fill",
+                    iconColor: .mint,
+                    title: "Email",
+                    value: currentProfile?.email
+                        ?? "Not available"
+                )
 
                 settingsDivider
 
-                editableField(icon: "textformat", iconColor: .purple, title: "Full Name", placeholder: "Add your full name", text: $fullNameDraft, capitalization: .words)
+                editableField(
+                    icon: "textformat",
+                    iconColor: .purple,
+                    title: "Full Name",
+                    placeholder: "Add your full name",
+                    text: $fullNameDraft,
+                    capitalization: .words
+                )
 
                 settingsDivider
 
-                editableField(icon: "at", iconColor: .indigo, title: "Username", placeholder: "Optional display username", text: $usernameDraft, capitalization: .none)
+                editableField(
+                    icon: "at",
+                    iconColor: .indigo,
+                    title: "Username",
+                    placeholder: "Optional display username",
+                    text: $usernameDraft,
+                    capitalization: .none
+                )
             }
         }
     }
@@ -84,7 +104,9 @@ struct ProfileSettingsView: View {
     @ViewBuilder
     private var saveMessageLabel: some View {
         if let saveMessage {
-            let messageColor: Color = saveMessageIsError ? AppTheme.Colors.alertRed : AppTheme.Colors.successGreen
+            let messageColor: Color = saveMessageIsError
+                ? AppTheme.Colors.alertRed
+                : AppTheme.Colors.successGreen
             Text(saveMessage)
                 .font(.system(size: 12, weight: .medium))
                 .foregroundColor(messageColor)
@@ -140,7 +162,12 @@ struct ProfileSettingsView: View {
             .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 
-    private func rowLabel(icon: String, iconColor: Color, title: String, value: String) -> some View {
+    private func rowLabel(
+        icon: String,
+        iconColor: Color,
+        title: String,
+        value: String
+    ) -> some View {
         HStack {
             settingsIcon(icon, color: iconColor)
             Text(title)

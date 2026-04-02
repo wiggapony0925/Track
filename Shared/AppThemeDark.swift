@@ -1,9 +1,4 @@
-//
-//  AppThemeDark.swift
-//  Shared
-//
-//  Dark mode palette for the shared transit theme.
-//
+// Dark mode palette for the shared transit theme.
 
 import UIKit
 

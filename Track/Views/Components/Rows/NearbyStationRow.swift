@@ -1,9 +1,4 @@
-//
-//  NearbyStationRow.swift
-//  Track
-//
-//  Displays a nearby station with distance and available routes.
-//
+// Displays a nearby station with distance and available routes.
 
 import SwiftUI
 
@@ -17,7 +12,10 @@ struct NearbyStationRow: View {
             Image(systemName: "tram.fill")
                 .font(.system(size: 18))
                 .foregroundColor(AppTheme.Colors.mtaBlue)
-                .frame(width: AppTheme.Layout.badgeSizeMedium, height: AppTheme.Layout.badgeSizeMedium)
+                .frame(
+                    width: AppTheme.Layout.badgeSizeMedium,
+                    height: AppTheme.Layout.badgeSizeMedium
+                )
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 2) {
@@ -44,7 +42,11 @@ struct NearbyStationRow: View {
         .padding(.vertical, 8)
         .padding(.horizontal, AppTheme.Layout.margin)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(name) station, routes \(routeIDs.joined(separator: ", ")), \(formattedDistance) away")
+        .accessibilityLabel(
+            "\(name) station, routes "
+            + "\(routeIDs.joined(separator: ", ")), "
+            + "\(formattedDistance) away"
+        )
     }
 
     private var formattedDistance: String {

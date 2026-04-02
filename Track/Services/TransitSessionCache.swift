@@ -1,24 +1,17 @@
-//
-//  TransitSessionCache.swift
-//  Track
-//
-//  Persists the most recent grouped transit response to the App Group
-//  container so the next cold launch can display route cards instantly
-//  (~5ms disk read) instead of skeleton placeholders for 5+ seconds.
-//
-//  Data flow:
-//    1. After each successful /nearby/grouped fetch → `save()`
-//    2. On next cold launch → `load()` returns cached route cards
-//    3. ViewModel sets hasLoadedOnce = true → skeletons never appear
-//    4. Background network fetch silently replaces stale data
-//
-//  Location awareness:
-//    The cache envelope stores the GPS coordinates and timestamp of the
-//    data.  On load, the caller can compare the cached location against
-//    the current GPS fix.  If the user has moved significantly (e.g.
-//    phone was off, commuted home), the cache is still returned for
-//    instant display but flagged so the caller knows to force-refresh.
-//
+// Persists the most recent grouped transit response to the App Group
+// container so the next cold launch can display route cards instantly
+// (~5ms disk read) instead of skeleton placeholders for 5+ seconds.
+// Data flow:
+//   1. After each successful /nearby/grouped fetch → `save()`
+//   2. On next cold launch → `load()` returns cached route cards
+//   3. ViewModel sets hasLoadedOnce = true → skeletons never appear
+//   4. Background network fetch silently replaces stale data
+// Location awareness:
+//   The cache envelope stores the GPS coordinates and timestamp of the
+//   data.  On load, the caller can compare the cached location against
+//   the current GPS fix.  If the user has moved significantly (e.g.
+//   phone was off, commuted home), the cache is still returned for
+//   instant display but flagged so the caller knows to force-refresh.
 
 import CoreLocation
 import Foundation
@@ -53,7 +46,7 @@ enum TransitSessionCache {
 
     private static var fileURL: URL? {
         FileManager.default
-            .containerURL(forSecurityApplicationGroupIdentifier: kAppGroupIdentifier)?
+            .containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier)?
             .appendingPathComponent(fileName)
     }
 
@@ -134,7 +127,8 @@ enum TransitSessionCache {
             // Discard entirely stale data (e.g. from yesterday)
             guard age < maxAge else {
                 #if DEBUG
-                print("[CACHE] 🗑️ Session cache too old (\(Int(age))s > \(Int(maxAge))s) — discarding")
+                let reason = "(\(Int(age))s > \(Int(maxAge))s)"
+                print("[CACHE] 🗑️ Session cache too old \(reason) — discarding")
                 #endif
                 return nil
             }
@@ -184,7 +178,7 @@ enum TransitSessionCache {
         try? FileManager.default.removeItem(at: url)
         // Also clean up legacy file
         if let legacyURL = FileManager.default
-            .containerURL(forSecurityApplicationGroupIdentifier: kAppGroupIdentifier)?
+            .containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier)?
             .appendingPathComponent("session_grouped_transit.json") {
             try? FileManager.default.removeItem(at: legacyURL)
         }

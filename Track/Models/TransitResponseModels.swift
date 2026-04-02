@@ -224,7 +224,13 @@ struct InlineAlertResponse: Codable, Equatable {
         sortOrder = try container.decodeIfPresent(Int.self, forKey: .sortOrder) ?? 0
     }
 
-    init(title: String, severity: String, affectedRoutes: [String] = [], alertType: String? = nil, sortOrder: Int = 0) {
+    init(
+        title: String,
+        severity: String,
+        affectedRoutes: [String] = [],
+        alertType: String? = nil,
+        sortOrder: Int = 0
+    ) {
         self.title = title
         self.severity = severity
         self.affectedRoutes = affectedRoutes

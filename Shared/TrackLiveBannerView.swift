@@ -1,13 +1,8 @@
-//
-//  TrackLiveBannerView.swift
-//  Shared
-//
-//  A shared view that replicates the iOS Lock Screen Live Activity banner.
-//  Used by:
-//  1. The actual Live Activity (TrackWidgetLiveActivity)
-//  2. Medium-sized Home Screen Widgets
-//  3. The Widget settings preview page
-//
+// A shared view that replicates the iOS Lock Screen Live Activity banner.
+// Used by:
+// 1. The actual Live Activity (TrackWidgetLiveActivity)
+// 2. Medium-sized Home Screen Widgets
+// 3. The Widget settings preview page
 
 import SwiftUI
 import AppIntents
@@ -172,7 +167,10 @@ struct TrackLiveBannerView: View {
                 .font(.system(size: 40, weight: .black, design: .rounded))
                 .monospacedDigit()
                 .foregroundStyle(.white)
-                // .contentTransition(.numericText(countsDown: true)) // Requires iOS 16.2+, safe to omit in shared view or wrap in available check if needed. We'll leave it simple for widgets.
+                // .contentTransition(.numericText(countsDown: true))
+                // Requires iOS 16.2+, safe to omit in shared
+                // view or wrap in available check if needed.
+                // We'll leave it simple for widgets.
                 .frame(minWidth: 80)
                 .minimumScaleFactor(0.8)
 

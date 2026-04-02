@@ -1,9 +1,4 @@
-//
-//  RouteInfoFooterSkeleton.swift
-//  Track
-//
-//  Shimmer skeleton for the route info footer.
-//
+// Shimmer skeleton for the route info footer.
 
 import SwiftUI
 

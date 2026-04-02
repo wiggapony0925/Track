@@ -1,17 +1,11 @@
-//
-//  SyncManager.swift
-//  Track
-//
-//  Manages synchronization between local storage and Supabase cloud.
-//  Implements an offline-first approach where data is always available
-//  locally and synced to the cloud when connected.
-//
-//  Currently syncs:
-//  - Widget schedules (cross-device sync)
-//  - User settings (cross-device sync)
-//  - Favorites (cross-device sync)
-//  - Commute patterns (smart suggestions)
-//
+// Manages synchronization between local storage and Supabase cloud.
+// Implements an offline-first approach where data is always available
+// locally and synced to the cloud when connected.
+// Currently syncs:
+// - Widget schedules (cross-device sync)
+// - User settings (cross-device sync)
+// - Favorites (cross-device sync)
+// - Commute patterns (smart suggestions)
 
 import Foundation
 import Combine
@@ -27,7 +21,7 @@ class SyncManager: ObservableObject {
     private(set) var lastSyncDate: Date?
     private(set) var syncError: String?
     
-    private let defaults = UserDefaults(suiteName: kAppGroupIdentifier) ?? .standard
+    private let defaults = UserDefaults(suiteName: appGroupIdentifier) ?? .standard
     private let lastSyncKey = "last_sync_date"
     
     private init() {
@@ -268,7 +262,9 @@ class SyncManager: ObservableObject {
         do {
             try await SupabaseManager.shared.saveUserSettings(settings)
         } catch {
-            AppLogger.shared.log("SYNC", message: "Failed to push settings: \(error.localizedDescription)")
+            let msg = "Failed to push settings: "
+                + "\(error.localizedDescription)"
+            AppLogger.shared.log("SYNC", message: msg)
         }
     }
     

@@ -1,12 +1,7 @@
-//
-//  GroupedRouteRow.swift
-//  Track
-//
-//  A compact row for a grouped route card. Shows the route badge,
-//  display name, direction count, and soonest arrival countdown.
-//  Tapping opens the RouteDetailSheet.
-//  Extracted from HomeView for reusability.
-//
+// A compact row for a grouped route card. Shows the route badge,
+// display name, direction count, and soonest arrival countdown.
+// Tapping opens the RouteDetailSheet.
+// Extracted from HomeView for reusability.
 
 import CoreLocation
 import SwiftUI
@@ -122,7 +117,9 @@ struct  GroupedRouteRow: View {
 
     /// Delegates to `ArrivalHelpers.countdownArrival` — the shared,
     /// canonical implementation used by both the row and the detail sheet.
-    private func countdownArrival(for direction: DirectionArrivalsResponse) -> NearbyTransitResponse? {
+    private func countdownArrival(
+        for direction: DirectionArrivalsResponse
+    ) -> NearbyTransitResponse? {
         ArrivalHelpers.countdownArrival(
             for: direction,
             userLocation: userLocation,
@@ -175,7 +172,9 @@ struct  GroupedRouteRow: View {
             let vid = a.vehicleId ?? a.tripId ?? "?"
             return "\(eta.minutesRemaining)m(raw=\(a.minutesAway),id=\(vid.suffix(6)))"
         }
-        let msg = "[HOME_ROW] \(mode) \(group.displayName) → \(dirLabel)  countdown=\(countdownMin)  arrivals=[\(allMins.joined(separator: ", "))]"
+        let msg = "[HOME_ROW] \(mode) \(group.displayName)"
+            + " → \(dirLabel)  countdown=\(countdownMin)"
+            + "  arrivals=[\(allMins.joined(separator: ", "))]"
         let key = group.id
         if Self._lastHomeRowMessage[key] != msg {
             Self._lastHomeRowMessage[key] = msg
@@ -284,7 +283,9 @@ struct  GroupedRouteRow: View {
     }
 
     private var mainRowAccessibilityLabel: String {
-        let mode: String = group.isLIRR ? "LIRR" : group.isMNR ? "Metro-North" : group.isBus ? "Bus" : "Train"
+        let mode: String = group.isLIRR ? "LIRR"
+            : group.isMNR ? "Metro-North"
+            : group.isBus ? "Bus" : "Train"
         return "\(mode) \(group.displayName), swipe for directions"
     }
 
@@ -354,7 +355,10 @@ struct  GroupedRouteRow: View {
     private var directionTabView: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             LazyHStack(spacing: 0) {
-                ForEach(Array(visibleDirections.enumerated()), id: \.element.id) { index, direction in
+                ForEach(
+                    Array(visibleDirections.enumerated()),
+                    id: \.element.id
+                ) { index, direction in
                     let label: String = ArrivalHelpers.resolveDirectionLabel(for: direction)
 
                     VStack(alignment: .leading, spacing: 5) {
@@ -456,7 +460,10 @@ struct  GroupedRouteRow: View {
     @ViewBuilder
     private var alertBannerRow: some View {
         if let topAlert = group.alerts.first {
-            let severityColor: Color = topAlert.severity == "severe" ? AppTheme.Colors.alertRed : AppTheme.Colors.warningYellow
+            let severityColor: Color =
+                topAlert.severity == "severe"
+                ? AppTheme.Colors.alertRed
+                : AppTheme.Colors.warningYellow
             let extraCount: Int = group.alerts.count - 1
             Button {
                 HapticManager.selection()
@@ -594,14 +601,23 @@ struct  GroupedRouteRow: View {
 
                         HStack(alignment: .firstTextBaseline, spacing: 1) {
                             Text(isNow ? "Now" : "\(mins)")
-                                .font(.system(size: isNow ? 20 : 26, weight: .heavy, design: .rounded))
-                                .foregroundColor(isSched ? AppTheme.Colors.textSecondary.opacity(0.55) : AppTheme.Colors.textPrimary)
+                                .font(.system(
+                                    size: isNow ? 20 : 26,
+                                    weight: .heavy,
+                                    design: .rounded))
+                                .foregroundColor(
+                                    isSched
+                                    ? AppTheme.Colors.textSecondary.opacity(0.55)
+                                    : AppTheme.Colors.textPrimary)
                                 .contentTransition(.numericText())
 
                             if !isNow {
                                 Text("min")
                                     .font(.system(size: 10, weight: .bold, design: .rounded))
-                                    .foregroundColor(isSched ? AppTheme.Colors.textTertiary.opacity(0.5) : AppTheme.Colors.textTertiary)
+                                    .foregroundColor(
+                                        isSched
+                                        ? AppTheme.Colors.textTertiary.opacity(0.5)
+                                        : AppTheme.Colors.textTertiary)
                                     .padding(.leading, 1)
                             }
                         }

@@ -91,7 +91,10 @@ struct TransitArrivalContractTests {
             "arrival_ts": nil,
             "is_cancelled": false,
         ]
-        let result = try decoder.decode(TransitArrivalResponse.self, from: jsonData(json as [String: Any]))
+        let result = try decoder.decode(
+            TransitArrivalResponse.self,
+            from: jsonData(json as [String: Any])
+        )
         #expect(result.destination == nil)
         #expect(result.tripId == nil)
         #expect(result.arrivalTs == nil)
@@ -401,7 +404,10 @@ struct GroupedNearbyTransitContractTests {
             "sorting_key": "",
             "alerts": [] as [[String: Any]],
         ]
-        let results = try decoder.decode([GroupedNearbyTransitResponse].self, from: jsonData([group]))
+        let results = try decoder.decode(
+            [GroupedNearbyTransitResponse].self,
+            from: jsonData([group])
+        )
         #expect(results.count == 1)
     }
 }
@@ -876,7 +882,11 @@ struct SubwayStationContractTests {
     @Test func decodesAllStationsResponse() throws {
         let json: [String: Any] = [
             "stations": [
-                ["id": "A27", "name": "59 St", "lat": 40.768, "lon": -73.981, "routes": ["A"]] as [String: Any],
+                [
+                    "id": "A27", "name": "59 St",
+                    "lat": 40.768, "lon": -73.981,
+                    "routes": ["A"],
+                ] as [String: Any],
             ],
         ]
         let result = try decoder.decode(AllSubwayStationsResponse.self, from: jsonData(json))

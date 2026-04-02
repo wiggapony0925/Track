@@ -1,14 +1,9 @@
-//
-//  TrackActivityAttributes.swift
-//  Track
-//
-//  ActivityKit model defining the data for Live Activities.
-//  Used by both the main app (to start/update activities) and
-//  the widget extension (to render the Dynamic Island & Lock Screen).
-//
-//  ✅ SINGLE SOURCE OF TRUTH — lives in Shared/ so both the Track target
-//  and the TrackWidgetsExtension target compile the same definition.
-//  Do NOT duplicate this file in Track/Models/ or TrackWidgets/Shared/.
+// ActivityKit model defining the data for Live Activities.
+// Used by both the main app (to start/update activities) and
+// the widget extension (to render the Dynamic Island & Lock Screen).
+// ✅ SINGLE SOURCE OF TRUTH — lives in Shared/ so both the Track target
+// and the TrackWidgetsExtension target compile the same definition.
+// Do NOT duplicate this file in Track/Models/ or TrackWidgets/Shared/.
 
 import Foundation
 import ActivityKit

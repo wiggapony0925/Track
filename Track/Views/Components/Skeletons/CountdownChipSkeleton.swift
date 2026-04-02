@@ -1,9 +1,4 @@
-//
-//  CountdownChipSkeleton.swift
-//  Track
-//
-//  Shimmer skeleton for countdown chips while route data loads.
-//
+// Shimmer skeleton for countdown chips while route data loads.
 
 import SwiftUI
 

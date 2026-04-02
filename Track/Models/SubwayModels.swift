@@ -150,7 +150,10 @@ struct TrunkGroupPolylines: Codable {
         routeIds = try container.decode([String].self, forKey: .routeIds)
         polylines = try container.decode([String].self, forKey: .polylines)
         laneOffset = try container.decodeIfPresent(CGFloat.self, forKey: .laneOffset) ?? 0.0
-        polylineLaneOffsets = try container.decodeIfPresent([CGFloat].self, forKey: .polylineLaneOffsets) ?? []
+        polylineLaneOffsets = try container.decodeIfPresent(
+            [CGFloat].self,
+            forKey: .polylineLaneOffsets
+        ) ?? []
     }
 
     /// Decodes polylines on demand.

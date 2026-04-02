@@ -1,10 +1,5 @@
-//
-//  MapLibreStationOverlay.swift
-//  Track
-//
-//  SwiftUI overlay rendering route label bubbles on top of the
-//  MapLibre GL map. Uses coordinate-to-screen-point projection.
-//
+// SwiftUI overlay rendering route label bubbles on top of the
+// MapLibre GL map. Uses coordinate-to-screen-point projection.
 
 import CoreLocation
 import MapLibre
@@ -121,7 +116,9 @@ func cullRouteLabelPlacements(
                 guard let indices = grid[key] else { continue }
                 for idx in indices {
                     let existing: ProjectedRouteLabelPlacement = kept[idx]
-                    let existingSize: CGSize = routeLabelVisualSize(routeCount: existing.routeIds.count)
+                    let existingSize: CGSize = routeLabelVisualSize(
+                        routeCount: existing.routeIds.count
+                    )
                     let dx: CGFloat = abs(candidate.point.x - existing.point.x)
                     let dy: CGFloat = abs(candidate.point.y - existing.point.y)
                     let sameSignature: Bool = candidate.routeSignature == existing.routeSignature
@@ -139,7 +136,9 @@ func cullRouteLabelPlacements(
                     }
 
                     if sameSignature {
-                        let minSpacing: CGFloat = max(candidateSize.width * 2.2, 120.0) * spacingScale
+                        let minSpacing: CGFloat =
+                            max(candidateSize.width * 2.2, 120.0)
+                            * spacingScale
                         let dist: CGFloat = hypot(dx, dy)
                         if dist < minSpacing {
                             collides = true

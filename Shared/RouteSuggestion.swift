@@ -1,10 +1,5 @@
-//
-//  RouteSuggestion.swift
-//  Shared
-//
-//  Model representing a suggested route based on commute patterns.
-//  Used by SmartSuggester for predictions and SmartSuggestionCard for display.
-//
+// Model representing a suggested route based on commute patterns.
+// Used by SmartSuggester for predictions and SmartSuggestionCard for display.
 
 import Foundation
 

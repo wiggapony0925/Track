@@ -1,9 +1,4 @@
-//
-//  AppThemeLight.swift
-//  Shared
-//
-//  Light mode palette for the shared transit theme.
-//
+// Light mode palette for the shared transit theme.
 
 import UIKit
 

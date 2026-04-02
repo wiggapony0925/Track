@@ -1,20 +1,13 @@
-//
-//  MapLibreStyleConfig.swift
-//  Track
-//
-//  OpenStreetMap tile source configuration for MapLibre GL.
-//  Supports MapTiler vector tiles (free tier) with a muted transit
-//  style that mirrors the Apple Maps "standard muted" look.
-//
-//  The app uses OSM data through MapTiler's vector tile API, which
-//  provides pre-rendered OpenStreetMap tiles optimized for mobile
-//  rendering via MapLibre's GPU-accelerated pipeline.
-//
-//  References:
-//  - MapTiler API: https://docs.maptiler.com/cloud/api/maps/
-//  - MapLibre Style Spec: https://maplibre.org/maplibre-style-spec/
-//  - OSM tile usage: https://wiki.openstreetmap.org/wiki/Raster_tile_providers
-//
+// OpenStreetMap tile source configuration for MapLibre GL.
+// Supports MapTiler vector tiles (free tier) with a muted transit
+// style that mirrors the Apple Maps "standard muted" look.
+// The app uses OSM data through MapTiler's vector tile API, which
+// provides pre-rendered OpenStreetMap tiles optimized for mobile
+// rendering via MapLibre's GPU-accelerated pipeline.
+// References:
+// - MapTiler API: https://docs.maptiler.com/cloud/api/maps/
+// - MapLibre Style Spec: https://maplibre.org/maplibre-style-spec/
+// - OSM tile usage: https://wiki.openstreetmap.org/wiki/Raster_tile_providers
 
 import Foundation
 import MapLibre
@@ -119,14 +112,20 @@ enum MapLibreStyleConfig {
     /// and subtle building footprints. Better typography than pastel and
     /// enough detail for navigation without competing with transit overlays.
     static var lightStyleURL: URL? {
-        URL(string: "https://api.maptiler.com/maps/streets-v2-light/style.json?key=\(mapTilerAPIKey)")
+        let base = "https://api.maptiler.com/maps"
+        return URL(
+            string: "\(base)/streets-v2-light/style.json?key=\(mapTilerAPIKey)"
+        )
     }
 
     /// MapTiler Streets v2 Dark — rich dark blue-gray base with clear road
     /// contrast and visible water features. Transit lines pop against the
     /// dark background with excellent readability.
     static var darkStyleURL: URL? {
-        URL(string: "https://api.maptiler.com/maps/streets-v2-dark/style.json?key=\(mapTilerAPIKey)")
+        let base = "https://api.maptiler.com/maps"
+        return URL(
+            string: "\(base)/streets-v2-dark/style.json?key=\(mapTilerAPIKey)"
+        )
     }
 
     /// The default style URL used by the app.
@@ -169,7 +168,10 @@ enum MapLibreStyleConfig {
                 ] as [String: Any]
             ]
         ]
-        guard let data = try? JSONSerialization.data(withJSONObject: style, options: .prettyPrinted) else {
+        guard let data = try? JSONSerialization.data(
+            withJSONObject: style,
+            options: .prettyPrinted
+        ) else {
             return nil
         }
         let tmpDir = FileManager.default.temporaryDirectory
@@ -247,7 +249,11 @@ enum MapLibreStyleConfig {
     /// Extended to zoom 8 to match fill width coverage.
     static let subwayCasingWidth = zoomInterpolate(
         base: subwayLineInterpolationBase,
-        stops: [8: 1.5, 9: 2.0, 10: 3.0, 11: 3.6, 12: 4.6, 13: 5.6, 14: 7.0, 15: 8.0, 16: 9.5, 17: 11.0, 18: 13.0]
+        stops: [
+            8: 1.5, 9: 2.0, 10: 3.0, 11: 3.6,
+            12: 4.6, 13: 5.6, 14: 7.0, 15: 8.0,
+            16: 9.5, 17: 11.0, 18: 13.0
+        ]
     )
 
     /// Subway casing blur — feathers the casing edge outward for a soft
@@ -341,7 +347,11 @@ enum MapLibreStyleConfig {
     /// `base: 1.0` (linear) gives visually uniform scaling across zooms.
     static let transferPillIconSize = zoomInterpolate(
         base: 1.0,
-        stops: [10: 0.08, 11: 0.13, 12: 0.18, 13: 0.22, 14: 0.27, 15: 0.33, 16: 0.43, 17: 0.53, 18: 0.67]
+        stops: [
+            10: 0.08, 11: 0.13, 12: 0.18,
+            13: 0.22, 14: 0.27, 15: 0.33,
+            16: 0.43, 17: 0.53, 18: 0.67
+        ]
     )
 
     /// Station label font size — legible from zoom 14.
@@ -468,7 +478,10 @@ enum MapLibreStyleConfig {
     ) {
         guard let config = MapStyleLoader.config(isDarkMode: isDarkMode) else {
             #if DEBUG
-            print("[MapLibreStyleConfig] No map style JSON loaded — skipping base style customization")
+            print(
+                "[MapLibreStyleConfig] No map style JSON loaded"
+                + " — skipping base style customization"
+            )
             #endif
             return
         }
@@ -485,14 +498,26 @@ enum MapLibreStyleConfig {
 
         if let rc = routeColor {
             let wash = desaturateForTint(rc, isDarkMode: isDarkMode)
-            water      = blendColor(base: config.waterColor,      overlay: wash, t: config.tintWater)
+            water      = blendColor(
+                base: config.waterColor,
+                overlay: wash, t: config.tintWater
+            )
             park       = blendColor(base: config.parkColor,       overlay: wash, t: config.tintPark)
             land       = blendColor(base: config.landColor,       overlay: wash, t: config.tintLand)
             road       = blendColor(base: config.roadColor,       overlay: wash, t: config.tintRoad)
             roadCasing = blendColor(base: config.roadCasingColor, overlay: wash, t: config.tintRoad)
-            building   = blendColor(base: config.buildingColor,   overlay: wash, t: config.tintBuilding)
-            roadLabel  = blendColor(base: config.roadLabelColor,  overlay: wash, t: config.tintRoadLabel)
-            placeLabel = blendColor(base: config.placeLabelColor, overlay: wash, t: config.tintPlaceLabel)
+            building   = blendColor(
+                base: config.buildingColor,
+                overlay: wash, t: config.tintBuilding
+            )
+            roadLabel  = blendColor(
+                base: config.roadLabelColor,
+                overlay: wash, t: config.tintRoadLabel
+            )
+            placeLabel = blendColor(
+                base: config.placeLabelColor,
+                overlay: wash, t: config.tintPlaceLabel
+            )
         } else {
             water      = config.waterColor
             park       = config.parkColor
@@ -612,8 +637,12 @@ enum MapLibreStyleConfig {
             if id.contains("place") && (id.contains("label") || id.contains("name")) {
                 if let symbol = layer as? MLNSymbolStyleLayer {
                     symbol.textColor = NSExpression(forConstantValue: placeLabel)
-                    symbol.textHaloColor = NSExpression(forConstantValue: config.placeLabelHaloColor)
-                    symbol.textHaloWidth = NSExpression(forConstantValue: config.placeLabelHaloWidth)
+                    symbol.textHaloColor = NSExpression(
+                        forConstantValue: config.placeLabelHaloColor
+                    )
+                    symbol.textHaloWidth = NSExpression(
+                        forConstantValue: config.placeLabelHaloWidth
+                    )
                     symbol.textHaloBlur = NSExpression(forConstantValue: config.placeLabelHaloBlur)
                 }
             }
@@ -633,7 +662,9 @@ enum MapLibreStyleConfig {
                 base: isDarkMode ? buildingColorDark : buildingColorLight,
                 overlay: wash, t: config.tintBuilding
             )
-            if let extrusion = style.layer(withIdentifier: layerBuilding3D) as? MLNFillExtrusionStyleLayer {
+            if let extrusion = style.layer(
+                withIdentifier: layerBuilding3D
+            ) as? MLNFillExtrusionStyleLayer {
                 extrusion.fillExtrusionColor = NSExpression(forConstantValue: tintedBldg3D)
             }
         }

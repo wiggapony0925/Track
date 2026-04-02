@@ -1,10 +1,5 @@
-//
-//  SplashLoadingView.swift
-//  Track
-//
-//  Branded splash screen shown while restoring the user session.
-//  Transit 6.0–inspired: cinematic glow, refined typography, smooth entrance.
-//
+// Branded splash screen shown while restoring the user session.
+// Transit 6.0–inspired: cinematic glow, refined typography, smooth entrance.
 
 import SwiftUI
 

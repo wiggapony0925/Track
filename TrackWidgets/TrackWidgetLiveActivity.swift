@@ -1,11 +1,6 @@
-//
-//  TrackWidgetLiveActivity.swift
-//  TrackWidgets
-//
-//  Live Activity views for the Dynamic Island and Lock Screen.
-//  Redesigned with an Apple Maps navigation feel: glass material,
-//  live progress slider, proximity language, and upcoming arrivals.
-//
+// Live Activity views for the Dynamic Island and Lock Screen.
+// Redesigned with an Apple Maps navigation feel: glass material,
+// live progress slider, proximity language, and upcoming arrivals.
 
 import ActivityKit
 import AppIntents
@@ -16,8 +11,14 @@ struct TrackWidgetLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: TrackActivityAttributes.self) { context in
             // Lock Screen banner
+            let encodedId = context.attributes.lineId
+                .addingPercentEncoding(
+                    withAllowedCharacters: .urlPathAllowed
+                ) ?? context.attributes.lineId
             lockScreenView(context: context)
-                .widgetURL(URL(string: "track://route/\(context.attributes.lineId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? context.attributes.lineId)"))
+                .widgetURL(
+                    URL(string: "track://route/\(encodedId)")
+                )
         } dynamicIsland: { context in
             DynamicIsland {
                 // Expanded view regions
@@ -91,7 +92,15 @@ struct TrackWidgetLiveActivity: Widget {
             } minimal: {
                 compactLineBadge(context: context)
             }
-            .widgetURL(URL(string: "track://route/\(context.attributes.lineId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? context.attributes.lineId)"))
+            .widgetURL({
+                let eid = context.attributes.lineId
+                    .addingPercentEncoding(
+                        withAllowedCharacters: .urlPathAllowed
+                    ) ?? context.attributes.lineId
+                return URL(
+                    string: "track://route/\(eid)"
+                )
+            }())
         }
     }
 

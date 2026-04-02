@@ -326,7 +326,11 @@ struct StopRowView: View {
         } else {
             // Normal stop: filled circle on the line
             Circle()
-                .fill(stop.isPassed ? AppTheme.Colors.textSecondary.opacity(0.3) : routeColor.opacity(0.8))
+                .fill(
+                    stop.isPassed
+                        ? AppTheme.Colors.textSecondary.opacity(0.3)
+                        : routeColor.opacity(0.8)
+                )
                 .frame(width: 10, height: 10)
                 .overlay(
                     Circle()
@@ -362,7 +366,12 @@ struct StopRowView: View {
     /// Individual transfer badge — subway gets circles, buses get compact pills.
     @ViewBuilder
     private func transferBadge(_ route: String) -> some View {
-        let subwayIDs: Set<String> = ["1","2","3","4","5","6","7","A","C","E","B","D","F","M","G","J","Z","L","N","Q","R","W","S","SI"]
+        let subwayIDs: Set<String> = [
+            "1", "2", "3", "4", "5", "6", "7",
+            "A", "C", "E", "B", "D", "F", "M",
+            "G", "J", "Z", "L",
+            "N", "Q", "R", "W", "S", "SI",
+        ]
         let isSubway = subwayIDs.contains(route.uppercased())
         if isSubway {
             RouteBadge(routeID: route, size: .custom(18, 10))
@@ -404,7 +413,10 @@ struct StopRowView: View {
                     if let ts = stop.nextArrivalTimestamp {
                         Text(Date(timeIntervalSince1970: Double(ts)), style: .time)
                             .font(.system(size: 10, weight: .medium, design: .rounded))
-                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(stop.isPassed ? 0.3 : 0.5))
+                            .foregroundColor(
+                                AppTheme.Colors.textSecondary
+                                    .opacity(stop.isPassed ? 0.3 : 0.5)
+                            )
                     }
                 }
             }

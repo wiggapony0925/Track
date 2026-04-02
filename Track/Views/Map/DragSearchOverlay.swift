@@ -1,12 +1,7 @@
-//
-//  DragSearchOverlay.swift
-//  Track
-//
-//  Live drag-to-search overlay. When the user pans the map away from
-//  their real location, a subtle dim covers the map, a blue dot appears
-//  at the screen center, and the bottom sheet shows a loading state.
-//  The API fires automatically after panning stops.
-//
+// Live drag-to-search overlay. When the user pans the map away from
+// their real location, a subtle dim covers the map, a blue dot appears
+// at the screen center, and the bottom sheet shows a loading state.
+// The API fires automatically after panning stops.
 
 import SwiftUI
 
@@ -107,7 +102,11 @@ struct DragSearchOverlay: View {
                 .fill(AppTheme.Colors.mtaBlue)
                 .frame(width: 16, height: 16)
                 .scaleEffect(isSearching ? 1.15 : 1.0)
-                .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: isSearching)
+                .animation(
+                    .easeInOut(duration: 0.6)
+                        .repeatForever(autoreverses: true),
+                    value: isSearching
+                )
         }
     }
     

@@ -1,15 +1,8 @@
-//
-//  DataController.swift
-//  Shared
-//
-//  Shared data container using App Groups so both the main app
-//  and the Widget Extension can access the same SwiftData store.
-//
-//  Best Practices:
-//  - Uses isDirectory: false for file URLs to avoid blocking I/O
-//
-//  Target Membership: Track AND TrackWidgets
-//
+// Shared data container using App Groups so both the main app
+// and the Widget Extension can access the same SwiftData store.
+// Best Practices:
+// - Uses isDirectory: false for file URLs to avoid blocking I/O
+// Target Membership: Track AND TrackWidgets
 
 import Foundation
 import SwiftData
@@ -30,7 +23,7 @@ struct DataController {
 
         // Point to the Shared App Group container
         let groupURL = FileManager.default.containerURL(
-            forSecurityApplicationGroupIdentifier: kAppGroupIdentifier
+            forSecurityApplicationGroupIdentifier: appGroupIdentifier
         )
 
         let config: ModelConfiguration

@@ -1,11 +1,6 @@
-//
-//  ShimmerEffect.swift
-//  Track
-//
-//  Reusable shimmer / skeleton loading effect used across the app
-//  while async data is loading. Matches the existing TransitLoadingSkeleton
-//  style from DashboardView but as a composable View + ViewModifier.
-//
+// Reusable shimmer / skeleton loading effect used across the app
+// while async data is loading. Matches the existing TransitLoadingSkeleton
+// style from DashboardView but as a composable View + ViewModifier.
 
 import SwiftUI
 

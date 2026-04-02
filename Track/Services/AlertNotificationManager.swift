@@ -1,11 +1,6 @@
-//
-//  AlertNotificationManager.swift
-//  Track
-//
-//  Manages local push notifications for MTA service alerts.
-//  Tracks which alerts have already been notified so users only
-//  receive one notification per new alert.
-//
+// Manages local push notifications for MTA service alerts.
+// Tracks which alerts have already been notified so users only
+// receive one notification per new alert.
 
 import Foundation
 @preconcurrency import UserNotifications

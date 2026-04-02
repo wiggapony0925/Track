@@ -1,10 +1,5 @@
-//
-//  LocationExtensions.swift
-//  Track
-//
-//  CLLocation extensions for bearing calculations and distance utilities.
-//  Extracted from HomeViewModel so they can be reused across the app.
-//
+// CLLocation extensions for bearing calculations and distance utilities.
+// Extracted from HomeViewModel so they can be reused across the app.
 
 import CoreLocation
 

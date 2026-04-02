@@ -1,10 +1,5 @@
-//
-//  ServiceModels.swift
-//  Track
-//
-//  Data models for service alerts, accessibility status, and bus routes
-//  matching the TrackBackend JSON output.
-//
+// Data models for service alerts, accessibility status, and bus routes
+// matching the TrackBackend JSON output.
 
 import Foundation
 
@@ -23,7 +18,9 @@ struct TransitAlert: Identifiable, Codable {
     // MTA Mercury extension fields
     let alertType: String?              // e.g. "Delays", "Planned - Suspended"
     let sortOrder: Int                  // MTA severity rank (higher = more severe)
-    let displayBeforeActive: Int?       // seconds before active_period to show (null = don't show in status box)
+    // seconds before active_period to show
+    // (null = don't show in status box)
+    let displayBeforeActive: Int?
     let activePeriodEnd: Int?           // epoch seconds – when the alert expires
 
     enum CodingKeys: String, CodingKey {
@@ -40,7 +37,19 @@ struct TransitAlert: Identifiable, Codable {
         case activePeriodEnd = "active_period_end"
     }
     
-    init(routeId: String? = nil, title: String, description: String, severity: String, mode: String, updatedAt: Int? = nil, affectedRoutes: [String]? = nil, alertType: String? = nil, sortOrder: Int = 0, displayBeforeActive: Int? = nil, activePeriodEnd: Int? = nil) {
+    init(
+        routeId: String? = nil,
+        title: String,
+        description: String,
+        severity: String,
+        mode: String,
+        updatedAt: Int? = nil,
+        affectedRoutes: [String]? = nil,
+        alertType: String? = nil,
+        sortOrder: Int = 0,
+        displayBeforeActive: Int? = nil,
+        activePeriodEnd: Int? = nil
+    ) {
         self.routeId = routeId
         self.title = title
         self.description = description
@@ -62,7 +71,9 @@ struct TransitAlert: Identifiable, Codable {
         severity = try container.decode(String.self, forKey: .severity)
         mode = try container.decodeIfPresent(String.self, forKey: .mode) ?? "subway"
         updatedAt = try container.decodeIfPresent(Int.self, forKey: .updatedAt)
-        affectedRoutes = try container.decodeIfPresent([String].self, forKey: .affectedRoutes) ?? (routeId.map { [$0] } ?? [])
+        affectedRoutes = try container.decodeIfPresent(
+            [String].self, forKey: .affectedRoutes
+        ) ?? (routeId.map { [$0] } ?? [])
         alertType = try container.decodeIfPresent(String.self, forKey: .alertType)
         sortOrder = try container.decodeIfPresent(Int.self, forKey: .sortOrder) ?? 0
         displayBeforeActive = try container.decodeIfPresent(Int.self, forKey: .displayBeforeActive)
@@ -157,7 +168,11 @@ extension Array where Element == TransitAlert {
 
             // Prefix-agnostic match via shared route token normalization
             if normalizeMTARouteToken(alertRoute).lowercased() == queryNormalized { return true }
-            if affected.contains(where: { normalizeMTARouteToken($0).lowercased() == queryNormalized }) {
+            let matchesAffected = affected.contains {
+                normalizeMTARouteToken($0).lowercased()
+                    == queryNormalized
+            }
+            if matchesAffected {
                 return true
             }
             

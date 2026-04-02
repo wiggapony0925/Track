@@ -1,9 +1,4 @@
-//
-//  Route.swift
-//  Shared
-//
-//  SwiftData model representing a transit route (e.g., "L", "4", "A").
-//
+// SwiftData model representing a transit route (e.g., "L", "4", "A").
 
 import Foundation
 import SwiftData

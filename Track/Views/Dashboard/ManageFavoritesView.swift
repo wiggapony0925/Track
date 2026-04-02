@@ -1,10 +1,5 @@
-//
-//  ManageFavoritesView.swift
-//  Track
-//
-//  Sheet page for viewing and managing saved favorites.
-//  Supports search, mode filtering, and multi-select batch removal.
-//
+// Sheet page for viewing and managing saved favorites.
+// Supports search, mode filtering, and multi-select batch removal.
 
 import SwiftUI
 import CoreLocation
@@ -50,8 +45,11 @@ struct ManageFavoritesView: View {
         favoritesManager.favorites.filter { fav in
             let modeOK = modeFilter == "all" || fav.mode == modeFilter
             let searchOK = searchText.isEmpty
-                || fav.routeDisplayName.localizedCaseInsensitiveContains(searchText)
-                || (!fav.stopName.isEmpty && fav.stopName.localizedCaseInsensitiveContains(searchText))
+                || fav.routeDisplayName
+                    .localizedCaseInsensitiveContains(searchText)
+                || (!fav.stopName.isEmpty
+                    && fav.stopName
+                        .localizedCaseInsensitiveContains(searchText))
                 || (fav.destination?.localizedCaseInsensitiveContains(searchText) ?? false)
             return modeOK && searchOK
         }
@@ -75,12 +73,18 @@ struct ManageFavoritesView: View {
             case let (ag?, bg?):
                 // Sort purely by distance — same logic as FavoritesSection.
                 guard let loc = userLocation else {
-                    return ag.displayName.localizedCaseInsensitiveCompare(bg.displayName) == .orderedAscending
+                    return ag.displayName
+                        .localizedCaseInsensitiveCompare(
+                            bg.displayName
+                        ) == .orderedAscending
                 }
                 let aDist = groupMinDistance(for: ag, from: loc)
                 let bDist = groupMinDistance(for: bg, from: loc)
                 if abs(aDist - bDist) > 0.5 { return aDist < bDist }
-                return ag.displayName.localizedCaseInsensitiveCompare(bg.displayName) == .orderedAscending
+                return ag.displayName
+                    .localizedCaseInsensitiveCompare(
+                        bg.displayName
+                    ) == .orderedAscending
             case (.some, .none): return true
             case (.none, .some): return false
             case (.none, .none): return (a.displayOrder ?? 0) < (b.displayOrder ?? 0)
@@ -286,11 +290,14 @@ struct ManageFavoritesView: View {
             Image(systemName: searchText.isEmpty ? "heart.slash" : "magnifyingglass")
                 .font(.system(size: 32, weight: .light))
                 .foregroundColor(AppTheme.Colors.mtaBlue)
+            let modeLabel = Self.modes
+                .first { $0.id == modeFilter }?
+                .label ?? modeFilter
             Text(
                 searchText.isEmpty
                     ? (modeFilter == "all"
                         ? "No favorites yet"
-                        : "No \(Self.modes.first { $0.id == modeFilter }?.label ?? modeFilter) favorites")
+                        : "No \(modeLabel) favorites")
                     : "No results for \"\(searchText)\""
             )
             .font(.system(size: 15, weight: .medium))
@@ -356,7 +363,13 @@ struct ManageFavoritesView: View {
                             onTrack?(group, directionIndex)
                         },
                         onAlertTapped: isEditing ? nil : {
-                            sheetNavigator.navigate(to: .routeDetail(group: group, directionIndex: 0, initialTab: .alerts))
+                            sheetNavigator.navigate(
+                                to: .routeDetail(
+                                    group: group,
+                                    directionIndex: 0,
+                                    initialTab: .alerts
+                                )
+                            )
                         },
                         presentation: .favorite,
                         isStale: isStale
@@ -369,7 +382,11 @@ struct ManageFavoritesView: View {
         }
         .background(
             RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .fill(isEditing && isSelected ? AppTheme.Colors.alertRed.opacity(0.08) : Color.clear)
+                .fill(
+                    isEditing && isSelected
+                        ? AppTheme.Colors.alertRed.opacity(0.08)
+                        : Color.clear
+                )
         )
         .overlay {
             RoundedRectangle(cornerRadius: 28, style: .continuous)
@@ -467,7 +484,8 @@ struct ManageFavoritesView: View {
                     Text(
                         isRemoving
                             ? "Removing…"
-                            : "Remove \(selectedIds.count) Route\(selectedIds.count == 1 ? "" : "s")"
+                            : "Remove \(selectedIds.count)"
+                                + " Route\(selectedIds.count == 1 ? "" : "s")"
                     )
                     .font(.system(size: 16, weight: .semibold))
                 }
@@ -477,7 +495,11 @@ struct ManageFavoritesView: View {
                 .background(
                     RoundedRectangle(cornerRadius: 20, style: .continuous)
                         .fill(AppTheme.Colors.alertRed)
-                        .shadow(color: AppTheme.Colors.alertRed.opacity(0.28), radius: 12, x: 0, y: 6)
+                        .shadow(
+                            color: AppTheme.Colors.alertRed
+                                .opacity(0.28),
+                            radius: 12, x: 0, y: 6
+                        )
                 )
             }
             .disabled(isRemoving)

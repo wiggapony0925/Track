@@ -1,9 +1,4 @@
-//
-//  StopsListSkeleton.swift
-//  Track
-//
-//  Shimmer skeleton for the stops list while route shape loads.
-//
+// Shimmer skeleton for the stops list while route shape loads.
 
 import SwiftUI
 

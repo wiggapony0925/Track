@@ -1,23 +1,14 @@
-//
-//  WeatherService.swift
-//  Track
-//
-//  Fetches current weather conditions for the weather chip UI.
-//
-//  Primary source:  Apple WeatherKit  (beautiful data, native SF Symbols)
-//  Fallback source: Track backend /weather endpoint (Open-Meteo via server)
-//
-//  WeatherKit fails on the iOS Simulator because the JWT authenticator
-//  can't generate device-level tokens.  When that happens, this service
-//  automatically falls back to the backend Open-Meteo endpoint so the
-//  weather chip still works during development.
-//
-//  On real devices WeatherKit succeeds and the backend is never called.
-//
-//  Results are cached for 10 minutes.  Repeated failures use exponential
-//  backoff (30 s → 1 min → 2 min → 4 min → cap 5 min) to avoid flooding
-//  the console with error logs every 20 seconds.
-//
+// Fetches current weather conditions for the weather chip UI.
+// Primary source:  Apple WeatherKit  (beautiful data, native SF Symbols)
+// Fallback source: Track backend /weather endpoint (Open-Meteo via server)
+// WeatherKit fails on the iOS Simulator because the JWT authenticator
+// can't generate device-level tokens.  When that happens, this service
+// automatically falls back to the backend Open-Meteo endpoint so the
+// weather chip still works during development.
+// On real devices WeatherKit succeeds and the backend is never called.
+// Results are cached for 10 minutes.  Repeated failures use exponential
+// backoff (30 s → 1 min → 2 min → 4 min → cap 5 min) to avoid flooding
+// the console with error logs every 20 seconds.
 
 import CoreLocation
 import Foundation
@@ -111,7 +102,11 @@ final class WeatherService {
             }
             // WeatherKit not available — switch to backend for this session.
             weatherKitUnavailable = true
-            AppLogger.shared.log("WEATHER", message: "Using backend fallback (WeatherKit not available on this device)")
+            AppLogger.shared.log(
+                "WEATHER",
+                message: "Using backend fallback"
+                    + " (WeatherKit not available on this device)"
+            )
         }
 
         // ── Fallback: Track backend /weather ─────────────────────────────
@@ -123,7 +118,10 @@ final class WeatherService {
         // Both sources failed
         consecutiveFailures += 1
         lastFailureDate = Date()
-        AppLogger.shared.log("WEATHER", message: "All weather sources failed (attempt \(consecutiveFailures), next retry in \(Int(backoffInterval))s)")
+        let msg = "All weather sources failed"
+            + " (attempt \(consecutiveFailures),"
+            + " next retry in \(Int(backoffInterval))s)"
+        AppLogger.shared.log("WEATHER", message: msg)
     }
 
     private func applySnapshot(_ snapshot: WeatherSnapshot, location: CLLocation) {
@@ -238,7 +236,11 @@ final class WeatherService {
                 fetchedAt: Date()
             )
         } catch {
-            AppLogger.shared.log("WEATHER", message: "Backend /weather failed: \(error.localizedDescription)")
+            AppLogger.shared.log(
+                "WEATHER",
+                message: "Backend /weather failed:"
+                    + " \(error.localizedDescription)"
+            )
             return nil
         }
     }

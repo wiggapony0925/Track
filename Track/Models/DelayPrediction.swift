@@ -1,10 +1,5 @@
-//
-//  DelayPrediction.swift
-//  Track
-//
-//  Response model for the /predict/delay backend endpoint.
-//  Maps the server's snake_case JSON to Swift camelCase properties.
-//
+// Response model for the /predict/delay backend endpoint.
+// Maps the server's snake_case JSON to Swift camelCase properties.
 
 import Foundation
 

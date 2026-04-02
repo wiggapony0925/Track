@@ -1,10 +1,5 @@
-//
-//  FavoriteCardSkeleton.swift
-//  Track
-//
-//  Shimmer placeholder shown while favorites are being fetched from Supabase.
-//  Matches the exact dimensions of FavoriteCard for a seamless transition.
-//
+// Shimmer placeholder shown while favorites are being fetched from Supabase.
+// Matches the exact dimensions of FavoriteCard for a seamless transition.
 
 import SwiftUI
 
@@ -14,7 +9,10 @@ struct FavoriteCardSkeleton: View {
         VStack(alignment: .leading, spacing: 8) {
             // Badge + countdown row
             HStack(spacing: 8) {
-                SkeletonBar(width: AppTheme.Layout.badgeSizeMedium, height: AppTheme.Layout.badgeSizeMedium)
+                SkeletonBar(
+                    width: AppTheme.Layout.badgeSizeMedium,
+                    height: AppTheme.Layout.badgeSizeMedium
+                )
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                 SkeletonBar(width: 48, height: 16)
             }

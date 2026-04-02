@@ -1,9 +1,4 @@
-//
-//  SmartSuggestionCard.swift
-//  Track
-//
-//  The "Magic Card" that shows the predicted route or nearby stations.
-//
+// The "Magic Card" that shows the predicted route or nearby stations.
 
 import SwiftUI
 
@@ -83,7 +78,11 @@ struct SmartSuggestionCard: View {
         .padding(AppTheme.Layout.margin)
         .trackCardBackground(cornerRadius: AppTheme.Layout.cornerRadius)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Predicted route: \(suggestion.routeID) train to \(suggestion.destinationName), \(minutesAway) minutes away")
+        .accessibilityLabel(
+            "Predicted route: \(suggestion.routeID) train to "
+            + "\(suggestion.destinationName), "
+            + "\(minutesAway) minutes away"
+        )
     }
 
     // MARK: - State 2: No Prediction

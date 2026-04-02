@@ -1,10 +1,5 @@
-//
-//  OfflineCacheManager.swift
-//  Track
-//
-//  Manages offline caching and network reachability for subway underground scenarios.
-//  Caches arrivals, routes, and provides fallback data when no WiFi is available.
-//
+// Manages offline caching and network reachability for subway underground scenarios.
+// Caches arrivals, routes, and provides fallback data when no WiFi is available.
 
 import Foundation
 import Network
@@ -58,7 +53,7 @@ final class OfflineCacheManager: ObservableObject {
     
     private init() {
         // Use App Group for widget access
-        if let groupDefaults = UserDefaults(suiteName: kAppGroupIdentifier) {
+        if let groupDefaults = UserDefaults(suiteName: appGroupIdentifier) {
             self.userDefaults = groupDefaults
         } else {
             self.userDefaults = .standard
@@ -193,7 +188,9 @@ final class OfflineCacheManager: ObservableObject {
     /// backend was also cold.  7 days matches Transit app's approach:
     /// cache shapes semi-permanently, refresh opportunistically.
     var isSubwayShapesCacheStale: Bool {
-        guard let ts = userDefaults.object(forKey: CacheKey.subwayShapesCachedAt) as? Date else { return true }
+        guard let ts = userDefaults.object(
+            forKey: CacheKey.subwayShapesCachedAt
+        ) as? Date else { return true }
         return Date().timeIntervalSince(ts) > 604_800  // 7 days
     }
 
@@ -253,7 +250,15 @@ final class OfflineCacheManager: ObservableObject {
         try? data.write(to: fileURL, options: .atomic)
         userDefaults.set(Date(), forKey: CacheKey.flattenedPolylinesCachedAt)
         // Clean up old cache versions
-        for old in ["flattened_polylines.json", "flattened_polylines_v5.json", "flattened_polylines_v6.json", "flattened_polylines_v7.json", "flattened_polylines_v8.json", "flattened_polylines_v9.json"] {
+        let oldFiles = [
+            "flattened_polylines.json",
+            "flattened_polylines_v5.json",
+            "flattened_polylines_v6.json",
+            "flattened_polylines_v7.json",
+            "flattened_polylines_v8.json",
+            "flattened_polylines_v9.json",
+        ]
+        for old in oldFiles {
             try? FileManager.default.removeItem(at: dir.appendingPathComponent(old))
         }
     }
@@ -272,13 +277,15 @@ final class OfflineCacheManager: ObservableObject {
     /// 24-hour TTL meant the expensive decode → unify → simplify → fillet
     /// pipeline ran on every launch after a day of not using the app.
     var isFlattenedPolylinesCacheStale: Bool {
-        guard let ts = userDefaults.object(forKey: CacheKey.flattenedPolylinesCachedAt) as? Date else { return true }
+        guard let ts = userDefaults.object(
+            forKey: CacheKey.flattenedPolylinesCachedAt
+        ) as? Date else { return true }
         return Date().timeIntervalSince(ts) > 604_800  // 7 days
     }
 
     private func flattenedCacheDirectory() -> URL? {
         guard let container = FileManager.default.containerURL(
-            forSecurityApplicationGroupIdentifier: kAppGroupIdentifier
+            forSecurityApplicationGroupIdentifier: appGroupIdentifier
         ) else { return nil }
         let dir = container.appendingPathComponent("FlattenedPolylineCache", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

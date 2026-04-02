@@ -1,10 +1,5 @@
-//
-//  BranchNames.swift
-//  Track
-//
-//  Static lookup tables for LIRR branch names and Metro-North line names.
-//  Maps numeric route IDs to human-readable display names.
-//
+// Static lookup tables for LIRR branch names and Metro-North line names.
+// Maps numeric route IDs to human-readable display names.
 
 import Foundation
 

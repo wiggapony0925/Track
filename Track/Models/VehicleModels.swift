@@ -1,11 +1,6 @@
-//
-//  VehicleModels.swift
-//  Track
-//
-//  Data models for live vehicle positions on the map.
-//  Used by HomeViewModel for tracking subway trains, LIRR,
-//  Metro-North, and bus vehicles in real-time.
-//
+// Data models for live vehicle positions on the map.
+// Used by HomeViewModel for tracking subway trains, LIRR,
+// Metro-North, and bus vehicles in real-time.
 
 import Foundation
 

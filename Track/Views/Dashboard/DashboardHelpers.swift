@@ -1,10 +1,5 @@
-//
-//  DashboardHelpers.swift
-//  Track
-//
-//  Shared helper views used across dashboard components.
-//  Includes section headers, empty states, alerts, and outages sections.
-//
+// Shared helper views used across dashboard components.
+// Includes section headers, empty states, alerts, and outages sections.
 
 import SwiftUI
 
@@ -75,7 +70,13 @@ struct ElevatorOutagesSection: View {
                 DashboardSectionHeader(title: "Elevator & Escalator Outages")
                 
                 VStack(spacing: 0) {
-                    ForEach(Array(outages.prefix(AppSettings.shared.maxElevatorOutages).enumerated()), id: \.element.id) { index, outage in
+                    let limited = outages.prefix(
+                        AppSettings.shared.maxElevatorOutages
+                    )
+                    let items = Array(
+                        limited.enumerated()
+                    )
+                    ForEach(items, id: \.element.id) { index, outage in
                         HStack(spacing: 10) {
                             Image(systemName: outage.equipmentType.lowercased().contains("elevator")
                                   ? "arrow.up.arrow.down.circle.fill"
@@ -228,8 +229,12 @@ struct CommuterRailArrivalRow: View {
                 Text(arrival.isCancelled ? "Cancelled" : arrival.status)
                     .font(.system(size: 11, weight: .medium))
                     .foregroundColor(
-                        arrival.isCancelled ? AppTheme.Colors.alertRed :
-                        arrival.status.lowercased().contains("on time") ? AppTheme.Colors.successGreen : AppTheme.Colors.textSecondary
+                        arrival.isCancelled
+                        ? AppTheme.Colors.alertRed
+                        : arrival.status.lowercased()
+                            .contains("on time")
+                            ? AppTheme.Colors.successGreen
+                            : AppTheme.Colors.textSecondary
                     )
             }
         }

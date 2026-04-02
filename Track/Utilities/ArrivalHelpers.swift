@@ -1,12 +1,7 @@
-//
-//  ArrivalHelpers.swift
-//  Track
-//
-//  Single source of truth for arrival-related logic shared between
-//  GroupedRouteRow (home screen) and RouteDetailSheet (route detail).
-//  Keeps both views in perfect sync — same ETA, same direction label,
-//  same nearest-stop selection, same sorting.
-//
+// Single source of truth for arrival-related logic shared between
+// GroupedRouteRow (home screen) and RouteDetailSheet (route detail).
+// Keeps both views in perfect sync — same ETA, same direction label,
+// same nearest-stop selection, same sorting.
 
 import CoreLocation
 import Foundation
@@ -140,7 +135,10 @@ enum ArrivalHelpers {
 
         // 5. First non-placeholder arrival's destination
         if let dest = direction.arrivals.first(where: { arrival in
-            guard !arrival.isPlaceholder, let d = arrival.destination, !d.isEmpty else { return false }
+            guard !arrival.isPlaceholder,
+                  let d = arrival.destination,
+                  !d.isEmpty
+            else { return false }
             return true
         })?.destination {
             return dest

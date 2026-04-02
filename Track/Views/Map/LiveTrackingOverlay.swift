@@ -1,20 +1,13 @@
-//
-//  LiveTrackingOverlay.swift
-//  Track
-//
-//  The "GO" mode overlay that appears when a user is actively tracking
-//  a transit vehicle. Inspired by the Transit app's hands-free cockpit view.
-//
-//  Features:
-//  - Pulsing countdown with the largest text element
-//  - Auto-scrolling stop checklist that dims passed stops
-//  - "Get Off" button to end tracking instantly
-//  - Progressive disclosure: shows relevant info per tracking phase
-//
-//  References:
-//  - MKMapItem: https://developer.apple.com/documentation/mapkit/mkmapitem/init(placemark:)
-//  - MKDirections: https://developer.apple.com/documentation/mapkit/mkdirections
-//
+// The "GO" mode overlay that appears when a user is actively tracking
+// a transit vehicle. Inspired by the Transit app's hands-free cockpit view.
+// Features:
+// - Pulsing countdown with the largest text element
+// - Auto-scrolling stop checklist that dims passed stops
+// - "Get Off" button to end tracking instantly
+// - Progressive disclosure: shows relevant info per tracking phase
+// References:
+// - MKMapItem: https://developer.apple.com/documentation/mapkit/mkmapitem/init(placemark:)
+// - MKDirections: https://developer.apple.com/documentation/mapkit/mkdirections
 
 import SwiftUI
 
@@ -197,17 +190,30 @@ private struct StopChecklistItem: View {
                     .frame(width: 60, height: 3)
 
                 Circle()
-                    .fill(isPassed ? AppTheme.Colors.textSecondary.opacity(0.35) : AppTheme.Colors.cardFloating)
+                    .fill(
+                        isPassed
+                            ? AppTheme.Colors.textSecondary.opacity(0.35)
+                            : AppTheme.Colors.cardFloating
+                    )
                     .frame(width: 10, height: 10)
                     .overlay(
                         Circle()
-                            .stroke(isPassed ? AppTheme.Colors.textSecondary.opacity(0.3) : routeColor, lineWidth: 2)
+                            .stroke(
+                                isPassed
+                                    ? AppTheme.Colors.textSecondary.opacity(0.3)
+                                    : routeColor,
+                                lineWidth: 2
+                            )
                     )
             }
 
             Text(stopName)
                 .font(.system(size: 10, weight: isPassed ? .regular : .semibold))
-                .foregroundColor(isPassed ? AppTheme.Colors.textSecondary.opacity(0.5) : AppTheme.Colors.textPrimary)
+                .foregroundColor(
+                    isPassed
+                        ? AppTheme.Colors.textSecondary.opacity(0.5)
+                        : AppTheme.Colors.textPrimary
+                )
                 .lineLimit(1)
                 .frame(width: 60)
         }

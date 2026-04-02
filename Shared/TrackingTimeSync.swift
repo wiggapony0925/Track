@@ -1,10 +1,5 @@
-//
-//  TrackingTimeSync.swift
-//  Shared
-//
-//  Shared timing helpers for tracking surfaces (app + widgets + live activity).
-//  Keeps countdown, progress, and "next arrivals" logic consistent everywhere.
-//
+// Shared timing helpers for tracking surfaces (app + widgets + live activity).
+// Keeps countdown, progress, and "next arrivals" logic consistent everywhere.
 
 import Foundation
 
@@ -19,7 +14,11 @@ enum TrackingTimeSync {
 
     /// Progress in [0, 1], where 0 = far and 1 = arriving.
     /// Uses a 20-minute default window to match existing tracking UI semantics.
-    static func progress(until arrivalTime: Date, maxWindowMinutes: Double = 20, now: Date = .now) -> Double {
+    static func progress(
+        until arrivalTime: Date,
+        maxWindowMinutes: Double = 20,
+        now: Date = .now
+    ) -> Double {
         let maxSeconds = max(60, maxWindowMinutes * 60)
         let remaining = min(maxSeconds, remainingSeconds(until: arrivalTime, now: now))
         return max(0, min(1, 1 - (remaining / maxSeconds)))

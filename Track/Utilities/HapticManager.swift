@@ -1,10 +1,5 @@
-//
-//  HapticManager.swift
-//  Track
-//
-//  Provides tactile feedback for key interactions.
-//  Makes the app feel mechanical and responsive, like a turnstile.
-//
+// Provides tactile feedback for key interactions.
+// Makes the app feel mechanical and responsive, like a turnstile.
 
 import UIKit
 import Foundation

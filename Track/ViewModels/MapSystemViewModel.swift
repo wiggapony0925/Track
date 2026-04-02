@@ -1,11 +1,6 @@
-//
-//  MapSystemViewModel.swift
-//  Track
-//
-//  ViewModel for loading and caching the full transit system map,
-//  including subway, LIRR, and Metro-North polylines and stations.
-//  Extracted from HomeViewModel for separation of concerns.
-//
+// ViewModel for loading and caching the full transit system map,
+// including subway, LIRR, and Metro-North polylines and stations.
+// Extracted from HomeViewModel for separation of concerns.
 
 import CoreLocation
 import Foundation
@@ -284,7 +279,18 @@ final class MapSystemViewModel {
             _ = await (mapTask, stationsTask)
 
             let mapLoadElapsed = Date().timeIntervalSince(mapLoadStart)
-            AppLogger.shared.log("TIMING", message: "MapSystemViewModel loaded in \(AppLogger.formatDuration(mapLoadElapsed)) — \(flattenedSubwayPolylines.count) subway + \(flattenedCommuterRailPolylines.count) commuter polylines, \(cachedStations.count) stations (T+\(AppLogger.shared.timeSinceLaunchFormatted))")
+            let subwayCount = flattenedSubwayPolylines.count
+            let commuterCount = flattenedCommuterRailPolylines.count
+            let stationCount = cachedStations.count
+            let elapsed = AppLogger.formatDuration(mapLoadElapsed)
+            let sinceL = AppLogger.shared.timeSinceLaunchFormatted
+            AppLogger.shared.log(
+                "TIMING",
+                message: "MapSystemViewModel loaded in"
+                    + " \(elapsed) — \(subwayCount) subway"
+                    + " + \(commuterCount) commuter polylines,"
+                    + " \(stationCount) stations"
+                    + " (T+\(sinceL))")
 
             // Both tasks ran in parallel so stations may have been
             // consolidated before offset polylines were ready.
@@ -336,7 +342,10 @@ final class MapSystemViewModel {
         let diskCacheMgr = OfflineCacheManager.shared
         let flattenedRestored = loadFlattenedFromDiskCache()
         if flattenedRestored {
-            AppLogger.shared.log("SYSTEM_MAP", message: "⚡ Instant render from flattened polyline cache")
+            AppLogger.shared.log(
+                "SYSTEM_MAP",
+                message: "⚡ Instant render from flattened"
+                    + " polyline cache")
         }
 
         // ── Phase 1: Instant render from disk cache ──
@@ -451,7 +460,9 @@ final class MapSystemViewModel {
         let commuterCount = decoded.count - subwayCount
         AppLogger.shared.log(
             "SYSTEM_MAP",
-            message: "Disk cache → \(subwayCount) subway + \(commuterCount) commuter rail lines (instant render)")
+            message: "Disk cache → \(subwayCount) subway"
+                + " + \(commuterCount) commuter rail lines"
+                + " (instant render)")
 
         self.cachedSystemMap = decoded
         self.cachedTrunkPolylines = subwayResponse.trunkPolylines
@@ -475,12 +486,28 @@ final class MapSystemViewModel {
             // Subway is required; LIRR and MNR are optional (logged on failure).
             async let subwayTask = TrackAPI.fetchAllSubwayShapes()
             async let lirrTask: AllCommuterRailLinesResponse? = {
-                do { return try await TrackAPI.fetchAllLIRRShapes() }
-                catch { await MainActor.run { AppLogger.shared.logError("LIRR shapes failed", error: error) }; return nil }
+                do {
+                    return try await TrackAPI.fetchAllLIRRShapes()
+                } catch {
+                    await MainActor.run {
+                        AppLogger.shared.logError(
+                            "LIRR shapes failed",
+                            error: error)
+                    }
+                    return nil
+                }
             }()
             async let mnrTask: AllCommuterRailLinesResponse? = {
-                do { return try await TrackAPI.fetchAllMNRShapes() }
-                catch { await MainActor.run { AppLogger.shared.logError("MNR shapes failed", error: error) }; return nil }
+                do {
+                    return try await TrackAPI.fetchAllMNRShapes()
+                } catch {
+                    await MainActor.run {
+                        AppLogger.shared.logError(
+                            "MNR shapes failed",
+                            error: error)
+                    }
+                    return nil
+                }
             }()
 
             // ── Phase A: Commuter rail (fast — usually cache hit) ──
@@ -508,15 +535,20 @@ final class MapSystemViewModel {
                 OfflineCacheManager.shared.cacheLIRRShapes(lirrResponse)
                 for line in lirrResponse.lines {
                     for stop in line.stops {
+                        let coord = CLLocationCoordinate2D(
+                            latitude: stop.lat,
+                            longitude: stop.lon)
                         commuterStops.append(CachedSubwayStation(
                             id: stop.stopId,
                             name: stop.name,
-                            coordinate: CLLocationCoordinate2D(latitude: stop.lat, longitude: stop.lon),
+                            coordinate: coord,
                             routes: [line.routeId]
                         ))
                     }
                 }
-                AppLogger.shared.log("SYSTEM_MAP", message: "LIRR: \(lirrLines.count) lines loaded")
+                AppLogger.shared.log(
+                    "SYSTEM_MAP",
+                    message: "LIRR: \(lirrLines.count) lines loaded")
             }
 
             if let mnrResponse {
@@ -532,15 +564,20 @@ final class MapSystemViewModel {
                 OfflineCacheManager.shared.cacheMNRShapes(mnrResponse)
                 for line in mnrResponse.lines {
                     for stop in line.stops {
+                        let coord = CLLocationCoordinate2D(
+                            latitude: stop.lat,
+                            longitude: stop.lon)
                         commuterStops.append(CachedSubwayStation(
                             id: stop.stopId,
                             name: stop.name,
-                            coordinate: CLLocationCoordinate2D(latitude: stop.lat, longitude: stop.lon),
+                            coordinate: coord,
                             routes: [line.routeId]
                         ))
                     }
                 }
-                AppLogger.shared.log("SYSTEM_MAP", message: "MNR: \(mnrLines.count) lines loaded")
+                AppLogger.shared.log(
+                    "SYSTEM_MAP",
+                    message: "MNR: \(mnrLines.count) lines loaded")
             }
 
             // Render commuter rail NOW — don't wait for subway.
@@ -571,17 +608,30 @@ final class MapSystemViewModel {
                     let dedupedStops = Array(stopMap.values)
                     self.cachedStations.append(contentsOf: dedupedStops)
                     self.consolidateStations()
+                    let rawCount = commuterStops.count
                     AppLogger.shared.log(
                         "STATIONS",
-                        message: "Added \(dedupedStops.count) commuter-rail stops (\(commuterStops.count) raw)")
+                        message: "Added"
+                            + " \(dedupedStops.count)"
+                            + " commuter-rail stops"
+                            + " (\(rawCount) raw)")
                 }
-                AppLogger.shared.log("SYSTEM_MAP", message: "Commuter rail rendered (\(commuterLines.count) lines) — awaiting subway…")
+                AppLogger.shared.log(
+                    "SYSTEM_MAP",
+                    message: "Commuter rail rendered"
+                        + " (\(commuterLines.count) lines)"
+                        + " — awaiting subway…")
             }
 
             // ── Phase B: Subway (may be slow during cold start) ─────
             let response = try await subwayTask
             let subwayElapsed = Date().timeIntervalSince(networkStart)
-            AppLogger.shared.log("TIMING", message: "  subway/shapes/all → \(response.lines.count) lines in \(AppLogger.formatDuration(subwayElapsed))")
+            let elapsed = AppLogger.formatDuration(subwayElapsed)
+            AppLogger.shared.log(
+                "TIMING",
+                message: "  subway/shapes/all →"
+                    + " \(response.lines.count) lines"
+                    + " in \(elapsed)")
 
             OfflineCacheManager.shared.cacheSubwayShapes(response)
 
@@ -615,20 +665,34 @@ final class MapSystemViewModel {
             let refreshTag = isBackgroundRefresh ? "(background refresh)" : ""
             AppLogger.shared.log(
                 "SYSTEM_MAP",
-                message:
-                    "Loaded \(decoded.count) transit lines (\(subwayCount) subway, \(lirrCount) LIRR, \(mnrCount) MNR) — \(totalBranches) branches, \(totalPoints) total points \(refreshTag)"
-            )
+                message: "Loaded \(decoded.count) transit lines"
+                    + " (\(subwayCount) subway,"
+                    + " \(lirrCount) LIRR,"
+                    + " \(mnrCount) MNR) —"
+                    + " \(totalBranches) branches,"
+                    + " \(totalPoints) total points"
+                    + " \(refreshTag)")
 
-            // ── Commuter-rail retry ─────────────────────────────────
+            // ── Commuter-rail retry ──
             // If LIRR/MNR both failed in Phase A, schedule retries.
             if lirrCount == 0 || mnrCount == 0 {
-                let missingModes = [lirrCount == 0 ? "LIRR" : nil, mnrCount == 0 ? "MNR" : nil].compactMap { $0 }.joined(separator: "+")
-                AppLogger.shared.log("SYSTEM_MAP", message: "⚠️ Missing \(missingModes) — scheduling commuter-rail retry")
+                let missingModes = [
+                    lirrCount == 0 ? "LIRR" : nil,
+                    mnrCount == 0 ? "MNR" : nil,
+                ].compactMap { $0 }.joined(separator: "+")
+                AppLogger.shared.log(
+                    "SYSTEM_MAP",
+                    message: "⚠️ Missing \(missingModes)"
+                        + " — scheduling commuter-rail retry")
                 let commuterRetryDelays: [UInt64] = [8, 25, 50]
                 for (attempt, delay) in commuterRetryDelays.enumerated() {
                     try? await Task.sleep(nanoseconds: delay * 1_000_000_000)
                     guard !Task.isCancelled else { return }
-                    AppLogger.shared.log("SYSTEM_MAP", message: "🔄 Commuter-rail retry \(attempt + 1)/\(commuterRetryDelays.count)…")
+                    AppLogger.shared.log(
+                        "SYSTEM_MAP",
+                        message: "🔄 Commuter-rail retry"
+                            + " \(attempt + 1)"
+                            + "/\(commuterRetryDelays.count)…")
 
                     var addedLines: [CachedTransitLine] = []
                     var addedStops: [CachedSubwayStation] = []
@@ -636,13 +700,24 @@ final class MapSystemViewModel {
                     if !cachedSystemMap.contains(where: { $0.mode == .lirr }) {
                         if let lirrResp = try? await TrackAPI.fetchAllLIRRShapes() {
                             let lines = lirrResp.lines.map { line in
-                                CachedTransitLine(id: line.routeId, color: Color(hex: line.colorHex), coordinates: line.decodedPolylines, mode: .lirr)
+                                CachedTransitLine(
+                                    id: line.routeId,
+                                    color: Color(hex: line.colorHex),
+                                    coordinates: line.decodedPolylines,
+                                    mode: .lirr)
                             }
                             addedLines.append(contentsOf: lines)
                             OfflineCacheManager.shared.cacheLIRRShapes(lirrResp)
                             for line in lirrResp.lines {
                                 for stop in line.stops {
-                                    addedStops.append(CachedSubwayStation(id: stop.stopId, name: stop.name, coordinate: CLLocationCoordinate2D(latitude: stop.lat, longitude: stop.lon), routes: [line.routeId]))
+                                    let coord = CLLocationCoordinate2D(
+                                        latitude: stop.lat,
+                                        longitude: stop.lon)
+                                    addedStops.append(CachedSubwayStation(
+                                        id: stop.stopId,
+                                        name: stop.name,
+                                        coordinate: coord,
+                                        routes: [line.routeId]))
                                 }
                             }
                         }
@@ -651,13 +726,24 @@ final class MapSystemViewModel {
                     if !cachedSystemMap.contains(where: { $0.mode == .mnr }) {
                         if let mnrResp = try? await TrackAPI.fetchAllMNRShapes() {
                             let lines = mnrResp.lines.map { line in
-                                CachedTransitLine(id: line.routeId, color: Color(hex: line.colorHex), coordinates: line.decodedPolylines, mode: .mnr)
+                                CachedTransitLine(
+                                    id: line.routeId,
+                                    color: Color(hex: line.colorHex),
+                                    coordinates: line.decodedPolylines,
+                                    mode: .mnr)
                             }
                             addedLines.append(contentsOf: lines)
                             OfflineCacheManager.shared.cacheMNRShapes(mnrResp)
                             for line in mnrResp.lines {
                                 for stop in line.stops {
-                                    addedStops.append(CachedSubwayStation(id: stop.stopId, name: stop.name, coordinate: CLLocationCoordinate2D(latitude: stop.lat, longitude: stop.lon), routes: [line.routeId]))
+                                    let coord = CLLocationCoordinate2D(
+                                        latitude: stop.lat,
+                                        longitude: stop.lon)
+                                    addedStops.append(CachedSubwayStation(
+                                        id: stop.stopId,
+                                        name: stop.name,
+                                        coordinate: coord,
+                                        routes: [line.routeId]))
                                 }
                             }
                         }
@@ -672,10 +758,19 @@ final class MapSystemViewModel {
                         flattenCommuterRailPolylines()
                         let hasLIRR = cachedSystemMap.contains(where: { $0.mode == .lirr })
                         let hasMNR = cachedSystemMap.contains(where: { $0.mode == .mnr })
-                        AppLogger.shared.log("SYSTEM_MAP", message: "✅ Commuter-rail retry \(attempt + 1) added \(addedLines.count) lines (LIRR: \(hasLIRR), MNR: \(hasMNR))")
+                        AppLogger.shared.log(
+                            "SYSTEM_MAP",
+                            message: "✅ Commuter-rail retry"
+                                + " \(attempt + 1) added"
+                                + " \(addedLines.count) lines"
+                                + " (LIRR: \(hasLIRR),"
+                                + " MNR: \(hasMNR))")
                         if hasLIRR && hasMNR { return }
                     } else {
-                        AppLogger.shared.log("SYSTEM_MAP", message: "⚠️ Commuter-rail retry \(attempt + 1) — still no data")
+                        AppLogger.shared.log(
+                            "SYSTEM_MAP",
+                            message: "⚠️ Commuter-rail retry"
+                                + " \(attempt + 1) — still no data")
                     }
                 }
             }
@@ -687,24 +782,46 @@ final class MapSystemViewModel {
                 await loadOfflineSystemMap()
             }
 
-            // ── Retry with backoff ──────────────────────────────────
+            // ── Retry with backoff ──
             // The initial fetch often fails during Render cold start
-            // (502/timeout while corridor pipeline builds).  Schedule a
-            // background retry so the map eventually gets fresh polylines
-            // — even if the first attempt hit stale offline data.
-            let retryDelays: [UInt64] = [10, 30, 60] // seconds
+            // (502/timeout while corridor pipeline builds).  Schedule
+            // a background retry so the map eventually gets fresh
+            // polylines — even if the first attempt hit stale
+            // offline data.
+            let retryDelays: [UInt64] = [10, 30, 60]  // seconds
             for (attempt, delay) in retryDelays.enumerated() {
                 try? await Task.sleep(nanoseconds: delay * 1_000_000_000)
                 guard !Task.isCancelled else { return }
-                AppLogger.shared.log("SYSTEM_MAP", message: "🔄 Retry \(attempt + 1)/\(retryDelays.count) fetching shapes…")
-                let countBefore = flattenedSubwayPolylines.count + flattenedCommuterRailPolylines.count
-                await fetchAndRenderFromNetwork(isBackgroundRefresh: true)
-                let countAfter = flattenedSubwayPolylines.count + flattenedCommuterRailPolylines.count
-                if countAfter > countBefore || cachedSystemMap.contains(where: { $0.mode == .lirr || $0.mode == .mnr }) {
-                    AppLogger.shared.log("SYSTEM_MAP", message: "✅ Shapes retry \(attempt + 1) succeeded — \(cachedSystemMap.count) lines loaded")
+                AppLogger.shared.log(
+                    "SYSTEM_MAP",
+                    message: "🔄 Retry \(attempt + 1)"
+                        + "/\(retryDelays.count)"
+                        + " fetching shapes…")
+                let countBefore = (
+                    flattenedSubwayPolylines.count
+                    + flattenedCommuterRailPolylines.count)
+                await fetchAndRenderFromNetwork(
+                    isBackgroundRefresh: true)
+                let countAfter = (
+                    flattenedSubwayPolylines.count
+                    + flattenedCommuterRailPolylines.count)
+                let hasCommuter = cachedSystemMap.contains {
+                    $0.mode == .lirr || $0.mode == .mnr
+                }
+                if countAfter > countBefore || hasCommuter {
+                    AppLogger.shared.log(
+                        "SYSTEM_MAP",
+                        message: "✅ Shapes retry"
+                            + " \(attempt + 1) succeeded —"
+                            + " \(cachedSystemMap.count)"
+                            + " lines loaded")
                     return
                 }
-                AppLogger.shared.log("SYSTEM_MAP", message: "⚠️ Shapes retry \(attempt + 1) — no new data yet")
+                AppLogger.shared.log(
+                    "SYSTEM_MAP",
+                    message: "⚠️ Shapes retry"
+                        + " \(attempt + 1)"
+                        + " — no new data yet")
             }
         }
     }
@@ -827,7 +944,10 @@ final class MapSystemViewModel {
         AppLogger.shared.log(
             "OFFLINE",
             message:
-                "Loaded \(offlineLines.count) offline transit routes (\(subwayCount) subway, \(lirrCount) LIRR, \(mnrCount) MNR, \(totalBranches) total branches)"
+                "Loaded \(offlineLines.count) offline transit"
+                + " routes (\(subwayCount) subway,"
+                + " \(lirrCount) LIRR, \(mnrCount) MNR,"
+                + " \(totalBranches) total branches)"
         )
     }
 
@@ -865,7 +985,11 @@ final class MapSystemViewModel {
             if hasOffsets && hasEnoughPolylines {
                 AppLogger.shared.log(
                     "SYSTEM_MAP",
-                    message: "Keeping \(flattenedSubwayPolylines.count) existing flattened polylines with valid offsets (skip re-flatten)")
+                    message: "Keeping"
+                        + " \(flattenedSubwayPolylines.count)"
+                        + " existing flattened polylines"
+                        + " with valid offsets"
+                        + " (skip re-flatten)")
                 return
             }
         }
@@ -915,7 +1039,9 @@ final class MapSystemViewModel {
             let points = commuterFlat.reduce(0) { $0 + $1.coordinates.count }
             AppLogger.shared.log(
                 "SYSTEM_MAP",
-                message: "Flattened \(commuterFlat.count) commuter rail polylines (\(points) points)")
+                message: "Flattened"
+                    + " \(commuterFlat.count) commuter rail"
+                    + " polylines (\(points) points)")
         }
     }
 
@@ -990,7 +1116,8 @@ final class MapSystemViewModel {
 
         if useTrunkPolylines, let trunkGroups = cachedTrunkPolylines {
             for trunk in trunkGroups {
-                let decoded: [[CLLocationCoordinate2D]] = trunk.decodedPolylines.filter { $0.count >= 2 }
+                let decoded: [[CLLocationCoordinate2D]] = (
+                    trunk.decodedPolylines.filter { $0.count >= 2 })
                 guard !decoded.isEmpty else { continue }
                 let decodedCount: Int = decoded.reduce(0) { $0 + $1.count }
                 originalSubwayPoints += decodedCount
@@ -1003,7 +1130,11 @@ final class MapSystemViewModel {
                     .joined(separator: ", ")
                 AppLogger.shared.log(
                     "POLYLINE_TRUNK",
-                    message: "[\(trunk.routeIds.joined(separator: "/"))]: \(decoded.count) trunk polylines, laneOffset=\(String(format: "%.3f", Double(trunk.laneOffset))), localOffsets=[\(localOffsets)] (server-merged)")
+                    message: "[\(trunk.routeIds.joined(separator: "/"))]"
+                        + ": \(decoded.count) trunk polylines,"
+                        + " laneOffset=\(String(format: "%.3f", Double(trunk.laneOffset))),"
+                        + " localOffsets=[\(localOffsets)]"
+                        + " (server-merged)")
                 #endif
 
                 colorGroupResults.append(ColorGroupResult(
@@ -1041,7 +1172,10 @@ final class MapSystemViewModel {
 
                 AppLogger.shared.log(
                     "POLYLINE_UNIFY",
-                    message: "[\(activeRoutes.joined(separator: "/"))]: \(pooledSegments.count) segments → \(unified.count) polylines (trunk + branch stubs)")
+                    message: "[\(activeRoutes.joined(separator: "/"))]:"
+                        + " \(pooledSegments.count) segments"
+                        + " → \(unified.count) polylines"
+                        + " (trunk + branch stubs)")
 
                 colorGroupResults.append(ColorGroupResult(
                     groupIndex: groupIndex,
@@ -1066,7 +1200,9 @@ final class MapSystemViewModel {
         if allOffsetsZero && colorGroupResults.count >= 2 {
             AppLogger.shared.log(
                 "CORRIDOR_FALLBACK",
-                message: "All \(colorGroupResults.count) trunk offsets are zero — running client corridor detection")
+                message: "All \(colorGroupResults.count)"
+                    + " trunk offsets are zero"
+                    + " — running client corridor detection")
             let polylinesByGroup = Dictionary(
                 uniqueKeysWithValues: colorGroupResults.map { ($0.groupIndex, $0.polylines) }
             )
@@ -1189,7 +1325,13 @@ final class MapSystemViewModel {
             if useTrunkPolylines {
                 // Server trunk path: zero processing — decode → render
                 guard item.coordinates.count >= 2 else {
-                    AppLogger.shared.log("POLYLINE_DROP", message: "Dropped branch \(origin.branchIndex) of group \(item.groupIndex) — too few points (\(item.coordinates.count))")
+                    AppLogger.shared.log(
+                        "POLYLINE_DROP",
+                        message: "Dropped branch"
+                            + " \(origin.branchIndex)"
+                            + " of group \(item.groupIndex)"
+                            + " — too few points"
+                            + " (\(item.coordinates.count))")
                     continue
                 }
                 finalCoordinates = item.coordinates
@@ -1213,19 +1355,40 @@ final class MapSystemViewModel {
                 }
 
                 guard simplified.count >= 2 else {
-                    AppLogger.shared.log("POLYLINE_DROP", message: "Dropped branch \(origin.branchIndex) of group \(item.groupIndex) after simplification (\(item.coordinates.count) → \(simplified.count) points)")
+                    AppLogger.shared.log(
+                        "POLYLINE_DROP",
+                        message: "Dropped branch"
+                            + " \(origin.branchIndex)"
+                            + " of group \(item.groupIndex)"
+                            + " after simplification"
+                            + " (\(item.coordinates.count)"
+                            + " → \(simplified.count) points)")
                     continue
                 }
 
                 let cleaned = removeSpikes(removePolylineBacktracks(simplified))
                 guard cleaned.count >= 2 else {
-                    AppLogger.shared.log("POLYLINE_DROP", message: "Dropped branch \(origin.branchIndex) of group \(item.groupIndex) after backtrack/spike removal (\(simplified.count) → \(cleaned.count) points)")
+                    AppLogger.shared.log(
+                        "POLYLINE_DROP",
+                        message: "Dropped branch"
+                            + " \(origin.branchIndex)"
+                            + " of group \(item.groupIndex)"
+                            + " after backtrack/spike removal"
+                            + " (\(simplified.count)"
+                            + " → \(cleaned.count) points)")
                     continue
                 }
 
                 let deduplicated = removeNearDuplicates(cleaned, minSpacing: 0.00004)
                 guard deduplicated.count >= 2 else {
-                    AppLogger.shared.log("POLYLINE_DROP", message: "Dropped branch \(origin.branchIndex) of group \(item.groupIndex) after dedup (\(cleaned.count) → \(deduplicated.count) points)")
+                    AppLogger.shared.log(
+                        "POLYLINE_DROP",
+                        message: "Dropped branch"
+                            + " \(origin.branchIndex)"
+                            + " of group \(item.groupIndex)"
+                            + " after dedup"
+                            + " (\(cleaned.count)"
+                            + " → \(deduplicated.count) points)")
                     continue
                 }
 
@@ -1253,7 +1416,12 @@ final class MapSystemViewModel {
             let groupResult = colorGroupResults[origin.resultIndex]
             let groupKey: String = groupResult.routeIds.joined(separator: "-")
             guard prepared.coordinates.count >= 2 else {
-                AppLogger.shared.log("POLYLINE_DROP", message: "Dropped polyline trunk_\(groupKey)_\(origin.branchIndex) after fillet (\(prepared.coordinates.count) points)")
+                AppLogger.shared.log(
+                    "POLYLINE_DROP",
+                    message: "Dropped polyline"
+                        + " trunk_\(groupKey)_\(origin.branchIndex)"
+                        + " after fillet"
+                        + " (\(prepared.coordinates.count) points)")
                 continue
             }
             let localLaneOffset = prepared.localLaneOffset
@@ -1303,7 +1471,9 @@ final class MapSystemViewModel {
         } else {
             AppLogger.shared.log(
                 "LANE_OFFSET",
-                message: "⚠️ NO polylines have non-zero lane offsets — all lines will overlap!")
+                message: "⚠️ NO polylines have"
+                    + " non-zero lane offsets"
+                    + " — all lines will overlap!")
         }
         #endif
 
@@ -1336,7 +1506,10 @@ final class MapSystemViewModel {
             // Build per-route spatial grid for this color group
             var perRouteGrid: [String: Set<Int64>] = [:]
             for routeId in groupResult.routeIds {
-                guard let line = linesByRouteId[routeId.uppercased()] ?? linesByRouteId[routeId] else { continue }
+                let key = routeId.uppercased()
+                guard let line = linesByRouteId[key]
+                    ?? linesByRouteId[routeId]
+                else { continue }
                 var grid = Set<Int64>()
                 for branch in line.coordinates {
                     for pt in branch {
@@ -1419,12 +1592,19 @@ final class MapSystemViewModel {
             flattenedSubwayPolylines.reduce(0) { $0 + $1.coordinates.count }
             + flattenedCommuterRailPolylines.reduce(0) { $0 + $1.coordinates.count }
         let reductionPercent = originalSubwayPoints > 0
-            ? Int(Double(originalSubwayPoints - simplifiedPoints) / Double(originalSubwayPoints) * 100)
+            ? Int(
+                Double(originalSubwayPoints - simplifiedPoints)
+                / Double(originalSubwayPoints) * 100
+            )
             : 0
         AppLogger.shared.log(
             "SYSTEM_MAP",
             message:
-                "Flattened \(totalPolylines) polylines (\(subwayNearCount) subway, \(commuterCount) commuter rail) — \(simplifiedPoints) points (simplified \(reductionPercent)%)"
+                "Flattened \(totalPolylines) polylines"
+                + " (\(subwayNearCount) subway,"
+                + " \(commuterCount) commuter rail)"
+                + " — \(simplifiedPoints) points"
+                + " (simplified \(reductionPercent)%)"
         )
 
         // Persist pre-computed flattened polylines to disk so the next
@@ -1432,7 +1612,10 @@ final class MapSystemViewModel {
         // Skip persistence if this task was cancelled (a newer flatten is
         // running with fresher data — don't overwrite with stale results).
         guard !Task.isCancelled else {
-            AppLogger.shared.log("SYSTEM_MAP", message: "Flatten task cancelled — skipping disk persist")
+            AppLogger.shared.log(
+                "SYSTEM_MAP",
+                message: "Flatten task cancelled"
+                    + " — skipping disk persist")
             return
         }
         persistFlattenedToDisk()
@@ -1655,7 +1838,10 @@ final class MapSystemViewModel {
             + commuter.reduce(0) { $0 + $1.coordinates.count }
         AppLogger.shared.log(
             "SYSTEM_MAP",
-            message: "Restored \(subway.count + commuter.count) flattened polylines from disk cache (\(totalPoints) points)")
+            message: "Restored"
+                + " \(subway.count + commuter.count)"
+                + " flattened polylines from disk"
+                + " cache (\(totalPoints) points)")
         return true
     }
 
@@ -1690,7 +1876,10 @@ final class MapSystemViewModel {
         Task.detached(priority: .utility) {
             await OfflineCacheManager.shared.cacheFlattenedPolylines(bundle)
             await MainActor.run {
-                AppLogger.shared.log("SYSTEM_MAP", message: "Persisted flattened polylines to disk cache")
+                AppLogger.shared.log(
+                    "SYSTEM_MAP",
+                    message: "Persisted flattened"
+                        + " polylines to disk cache")
             }
         }
     }
@@ -1717,12 +1906,16 @@ final class MapSystemViewModel {
         // Station positions rarely change (MTA updates a few times per
         // year).  Show cached stations instantly — like Transit app does —
         // and refresh from the network in the background.
-        if let cachedOnDisk = OfflineCacheManager.shared.getCachedStations(), !cachedOnDisk.isEmpty {
+        let cachedOnDisk = OfflineCacheManager.shared.getCachedStations()
+        if let cachedOnDisk, !cachedOnDisk.isEmpty {
             let restored = cachedOnDisk.map { s in
                 CachedSubwayStation(
                     id: s.id,
                     name: s.name,
-                    coordinate: CLLocationCoordinate2D(latitude: s.latitude, longitude: s.longitude),
+                    coordinate: CLLocationCoordinate2D(
+                        latitude: s.latitude,
+                        longitude: s.longitude
+                    ),
                     routes: s.routes
                 )
             }
@@ -1732,12 +1925,22 @@ final class MapSystemViewModel {
             }
             self.cachedStations = restored + commuterStops
             self.consolidateStations()
-            AppLogger.shared.log("STATIONS", message: "Restored \(restored.count) stations from disk cache (instant)")
+            AppLogger.shared.log(
+                "STATIONS",
+                message: "Restored \(restored.count)"
+                    + " stations from disk cache"
+                    + " (instant)")
         }
 
         // If offline, use bundled static data (only if disk cache was empty)
         if !OfflineCacheManager.shared.isOnline {
-            if cachedStations.isEmpty || cachedStations.allSatisfy({ $0.routes.contains(where: { $0.hasPrefix("LIRR") || $0.hasPrefix("MNR") }) }) {
+            let allCommuter = cachedStations.allSatisfy { station in
+                station.routes.contains { route in
+                    route.hasPrefix("LIRR")
+                    || route.hasPrefix("MNR")
+                }
+            }
+            if cachedStations.isEmpty || allCommuter {
                 loadOfflineStations()
             }
             return
@@ -1811,7 +2014,7 @@ final class MapSystemViewModel {
 
     // MARK: - Station Consolidation
 
-    // ── Transfer stop placement helpers ──────────────────────────────────
+    // ── Transfer stop placement helpers ──────────────────
     //
     // Transfer stations (≥ 2 trunk color groups) are placed at the
     // geometric intersection of serving polylines, rather than at the
@@ -1909,7 +2112,9 @@ final class MapSystemViewModel {
                     let minLon: Double = min(a.longitude, b.longitude) - searchRadius
                     let maxLon: Double = max(a.longitude, b.longitude) + searchRadius
                     guard centroid.latitude >= minLat && centroid.latitude <= maxLat &&
-                          centroid.longitude >= minLon && centroid.longitude <= maxLon else { continue }
+                          centroid.longitude >= minLon,
+                          centroid.longitude <= maxLon
+                    else { continue }
 
                     trunkSegs[tidx, default: []].append(
                         Seg(aLat: a.latitude, aLon: a.longitude,
@@ -2196,8 +2401,12 @@ final class MapSystemViewModel {
 
                 // Same complex + same structure → merge only if close enough
                 if ki.complexID == kj.complexID && ki.structure == kj.structure {
-                    let dx: Double = stations[i].coordinate.longitude - stations[j].coordinate.longitude
-                    let dy: Double = stations[i].coordinate.latitude - stations[j].coordinate.latitude
+                    let dx: Double =
+                        stations[i].coordinate.longitude
+                        - stations[j].coordinate.longitude
+                    let dy: Double =
+                        stations[i].coordinate.latitude
+                        - stations[j].coordinate.latitude
                     if dx * dx + dy * dy <= complexMergeRadiusSq {
                         union(i, j)
                     }

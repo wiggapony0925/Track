@@ -1,19 +1,13 @@
-//
-//  HomeView.swift
-//  Track
-//
-//  Main dashboard view showing nearby transit arrivals.
-//  Displays real-time subway and bus data based on the user's
-//  current location or a draggable search pin. When a bus route
-//  is selected, shows live vehicle positions and the route path
-//  on the map.
-//
-//  REFACTORED: This view now delegates to extracted components:
-//  - TrackMapView: All MapKit rendering (annotations, polylines)
-//  - MapControlsOverlay: Floating controls (3D toggle, recenter)
-//  - UniversalBottomSheet: Single sheet for all navigation
-//  - DashboardView: Dashboard content with mode-specific views
-//
+// Main dashboard view showing nearby transit arrivals.
+// Displays real-time subway and bus data based on the user's
+// current location or a draggable search pin. When a bus route
+// is selected, shows live vehicle positions and the route path
+// on the map.
+// REFACTORED: This view now delegates to extracted components:
+// - TrackMapView: All MapKit rendering (annotations, polylines)
+// - MapControlsOverlay: Floating controls (3D toggle, recenter)
+// - UniversalBottomSheet: Single sheet for all navigation
+// - DashboardView: Dashboard content with mode-specific views
 
 import CoreLocation
 import SwiftUI
@@ -134,7 +128,9 @@ struct HomeView: View {
                 suppressWalkingRouteZoom = false
             }
             .onChange(of: viewModel.groupedTransit.count) { attemptDeepLinkNavigation() }
-            .onChange(of: viewModel.tappedVehicleId) { _, newValue in handleTappedVehicle(newValue) }
+            .onChange(of: viewModel.tappedVehicleId) { _, newValue in
+                handleTappedVehicle(newValue)
+            }
             .onReceive(NotificationCenter.default.publisher(for: .radiusSettingsChanged)) { _ in
                 Task {
                     await viewModel.refresh(location: effectiveLocation, force: true)
@@ -250,7 +246,7 @@ struct HomeView: View {
         // handleLocationUpdate force-refreshes with accurate coordinates.
         // This eliminates the 2-8s dead wait that otherwise shows skeletons.
         if !hasLoadedInitialData {
-            let defaults = UserDefaults(suiteName: kAppGroupIdentifier) ?? .standard
+            let defaults = UserDefaults(suiteName: appGroupIdentifier) ?? .standard
             let lat = defaults.double(forKey: "lastLatitude")
             let lon = defaults.double(forKey: "lastLongitude")
             if lat != 0 && lon != 0 {
@@ -282,9 +278,12 @@ struct HomeView: View {
                 usedSpeculativeLocation = true
                 let nyc = AppTheme.MapConfig.nycCenter
                 let speculativeLoc = CLLocation(latitude: nyc.latitude, longitude: nyc.longitude)
+                let lat = nyc.latitude
+                let lng = nyc.longitude
                 AppLogger.shared.log(
                     "SPECULATIVE",
-                    message: "No cached GPS — starting speculative fetch with NYC center (\(nyc.latitude), \(nyc.longitude))")
+                    message: "No cached GPS — starting speculative"
+                        + " fetch with NYC center (\(lat), \(lng))")
                 Task {
                     await viewModel.refresh(location: speculativeLoc, force: true)
                     lastUpdated = Date()
@@ -333,7 +332,8 @@ struct HomeView: View {
                     }
                 } else if let live = locationManager.currentLocation,
                           let lastRefresh = viewModel.lastRefreshLocation,
-                          live.distance(from: lastRefresh) >= AppSettings.shared.significantMovementMeters {
+                          live.distance(from: lastRefresh)
+                            >= AppSettings.shared.significantMovementMeters {
                     // GPS is stale but clearly at a different location
                     // than the last fetch — force refresh now.
                     Task {
@@ -541,7 +541,9 @@ struct HomeView: View {
                     if viewModel.isVehicleLiveOnMap(arrival),
                        let coord = viewModel.trackedVehicleCoordinate {
                         withAnimation(MapCameraPresets.flyAnimation) {
-                            cameraPosition = aboveSheet(MapCameraPresets.focusVehicle(at: coord, is3D: is3DMode))
+                            let preset = MapCameraPresets
+                                .focusVehicle(at: coord, is3D: is3DMode)
+                            cameraPosition = aboveSheet(preset)
                         }
                     }
                 },
@@ -571,7 +573,9 @@ struct HomeView: View {
                     // Zoom to the marker if a key was provided
                     if let key, let coord = viewModel.coordinateForTappedVehicle(key) {
                         withAnimation(MapCameraPresets.flyAnimation) {
-                            cameraPosition = aboveSheet(MapCameraPresets.focusVehicle(at: coord, is3D: is3DMode))
+                            let preset = MapCameraPresets
+                                .focusVehicle(at: coord, is3D: is3DMode)
+                            cameraPosition = aboveSheet(preset)
                         }
                     }
                 },
@@ -676,7 +680,10 @@ struct HomeView: View {
                 groupedTransit: viewModel.groupedTransit,
                 userLocation: locationManager.currentLocation,
                 onSelect: { group, directionIndex in
-                    sheetNavigator.navigate(to: .routeDetail(group: group, directionIndex: directionIndex))
+                    sheetNavigator.navigate(
+                        to: .routeDetail(
+                            group: group,
+                            directionIndex: directionIndex))
                     Task {
                         await viewModel.handleRouteSelection(
                             group, directionIndex: directionIndex,
@@ -687,7 +694,9 @@ struct HomeView: View {
                     viewModel.setPreferredDirectionIndex(directionIndex, for: group)
                     let dir = group.directions[min(directionIndex, group.directions.count - 1)]
                     guard let arrival = ArrivalHelpers.countdownArrival(
-                        for: dir, userLocation: locationManager.currentLocation, provider: { viewModel.smartETA(for: $0) }
+                        for: dir,
+                        userLocation: locationManager.currentLocation,
+                        provider: { viewModel.smartETA(for: $0) }
                     ) else { return }
                     viewModel.trackNearbyArrival(arrival, location: locationManager.currentLocation)
                 },
@@ -790,7 +799,9 @@ struct HomeView: View {
                         // Buses: MTA SIRI updates GPS every ~30s.
                         // Poll every 10s for fresh data, interpolate on other ticks.
                         // Back off on errors: skip network calls after 3+ failures.
-                        let pollInterval = consecutiveErrors >= 3 ? 30 : 10 // ticks (×1s = 10s / 30s)
+                        // ticks (×1s = 10s / 30s)
+                        let pollInterval = consecutiveErrors >= 3
+                            ? 30 : 10
                         if tick % pollInterval == 0 {
                             await viewModel.refreshBusVehicles()
                             if viewModel.errorMessage != nil {
@@ -878,7 +889,10 @@ struct HomeView: View {
             cameraPosition = MapCameraPresets.center(on: loc.coordinate, is3D: false)
             AppLogger.shared.log(
                 "SPECULATIVE",
-                message: "Real GPS fix arrived (\(String(format: "%.4f", loc.coordinate.latitude)), \(String(format: "%.4f", loc.coordinate.longitude))) — replacing speculative data")
+                message: "Real GPS fix arrived"
+                    + " (\(String(format: "%.4f", loc.coordinate.latitude)),"
+                    + " \(String(format: "%.4f", loc.coordinate.longitude)))"
+                    + " — replacing speculative data")
             Task {
                 await viewModel.refresh(location: loc, force: true)
                 lastUpdated = Date()
@@ -924,7 +938,10 @@ struct HomeView: View {
 
             AppLogger.shared.log(
                 "LOCATION",
-                message: "📍 GPS fix shows \(Int(moved))m drift from last fetch (threshold=\(Int(threshold))m, fixAge=\(String(format: "%.1f", fixAge))s) — re-fetching"
+                message: "📍 GPS fix shows \(Int(moved))m drift"
+                    + " from last fetch (threshold=\(Int(threshold))m,"
+                    + " fixAge=\(String(format: "%.1f", fixAge))s)"
+                    + " — re-fetching"
             )
             Task {
                 await viewModel.refresh(location: loc, force: true)
@@ -995,7 +1012,9 @@ struct HomeView: View {
             // far enough that drag-to-search is about to activate.
             if !hasFiredDragHaptic,
                let userCoord = locationManager.currentLocation?.coordinate {
-                let userLoc = CLLocation(latitude: userCoord.latitude, longitude: userCoord.longitude)
+                let userLoc = CLLocation(
+                    latitude: userCoord.latitude,
+                    longitude: userCoord.longitude)
                 let panLoc = CLLocation(latitude: center.latitude, longitude: center.longitude)
                 if userLoc.distance(from: panLoc) > 60 {
                     hasFiredDragHaptic = true
@@ -1127,11 +1146,15 @@ struct HomeView: View {
         
         if let destination = target, let ref = refCoord {
             withAnimation(MapCameraPresets.smoothAnimation) {
-                cameraPosition = aboveSheet(MapCameraPresets.fitTwoPoints(from: ref, to: destination, is3D: is3DMode))
+                let preset = MapCameraPresets.fitTwoPoints(
+                    from: ref, to: destination, is3D: is3DMode)
+                cameraPosition = aboveSheet(preset)
             }
         } else {
             withAnimation(MapCameraPresets.smoothAnimation) {
-                cameraPosition = aboveSheet(MapCameraPresets.center(on: finalTarget, is3D: is3DMode))
+                let preset = MapCameraPresets.center(
+                    on: finalTarget, is3D: is3DMode)
+                cameraPosition = aboveSheet(preset)
             }
         }
     }

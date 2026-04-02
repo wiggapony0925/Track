@@ -1,10 +1,5 @@
-//
-//  FavoritesSection.swift
-//  Track
-//
-//  Displays the user's favorited routes/stops as compact cards
-//  on the dashboard. Tapping a favorite navigates to the route detail.
-//
+// Displays the user's favorited routes/stops as compact cards
+// on the dashboard. Tapping a favorite navigates to the route detail.
 
 import SwiftUI
 import CoreLocation
@@ -55,13 +50,19 @@ struct FavoritesSection: View {
             case let (.some(ag), .some(bg)):
                 // Both matched — sort by nearest stop on route (route-level).
                 guard let loc = userLocation else {
-                    return ag.displayName.localizedCaseInsensitiveCompare(bg.displayName) == .orderedAscending
+                    return ag.displayName
+                        .localizedCaseInsensitiveCompare(
+                            bg.displayName
+                        ) == .orderedAscending
                 }
                 let aDist = groupMinDistance(for: ag, from: loc)
                 let bDist = groupMinDistance(for: bg, from: loc)
                 if abs(aDist - bDist) > 0.5 { return aDist < bDist }
                 // Exact tie — stable alpha tiebreak
-                return ag.displayName.localizedCaseInsensitiveCompare(bg.displayName) == .orderedAscending
+                return ag.displayName
+                    .localizedCaseInsensitiveCompare(
+                        bg.displayName
+                    ) == .orderedAscending
             case (.some, .none):
                 return true   // matched routes come before unmatched
             case (.none, .some):
@@ -112,7 +113,9 @@ struct FavoritesSection: View {
                         ForEach(sortedFavorites) { favorite in
                             FavoriteCard(
                                 favorite: favorite,
-                                matchedGroup: groupedTransit.first { $0.routeId == favorite.routeId },
+                                matchedGroup: groupedTransit.first {
+                                    $0.routeId == favorite.routeId
+                                },
                                 onTap: onSelect,
                                 userLocation: userLocation,
                                 smartETAProvider: smartETAProvider,
@@ -411,7 +414,11 @@ struct FavoriteCard: View {
                     }
                     Text(isNow ? "Now" : "\(eta.minutesRemaining) min")
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(eta.minutesRemaining <= 2 ? .white : AppTheme.Colors.mtaBlue)
+                        .foregroundColor(
+                            eta.minutesRemaining <= 2
+                                ? .white
+                                : AppTheme.Colors.mtaBlue
+                        )
                 }
                 .padding(.horizontal, 9)
                 .padding(.vertical, 4)

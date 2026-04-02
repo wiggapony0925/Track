@@ -1,33 +1,26 @@
-//
-//  ArrivalETAEngine.swift
-//  Track
-//
-//  Smart ETA calculator that uses live vehicle positions, route polyline
-//  distance, and real-time speed estimation to compute accurate arrival
-//  times. Falls back to the feed's arrivalTs when no vehicle position
-//  is available.
-//
-//  Algorithm summary
-//  -----------------
-//  1. If a live vehicle GPS coord + a route polyline exist:
-//     a. Measure distance along the polyline from vehicle → stop.
-//     b. Estimate speed from recent position history (or use mode defaults).
-//     c. If vehicle is dwelling near a preceding stop, subtract expected
-//        dwell time so the timer does not stall.
-//     d. If vehicle is within 50 m of the TARGET stop → "Now".
-//     e. Blend position-based ETA with the feed's arrivalTs countdown:
-//        - Close stop (< 500 m): 70% position / 30% feed.
-//        - Mid range (500 m–2 km): linear blend.
-//        - Far (> 2 km): 30% position / 70% feed.
-//     f. Smooth the result against the previous blended ETA to prevent
-//        the timer jumping backwards when a vehicle dwells at an
-//        intermediate stop.
-//  2. Fall back to arrivalTs countdown (pure feed).
-//  3. Fall back to static minutesAway.
-//
-//  Uses VehicleInterpolator (already in Utilities/) to snap vehicles
-//  to polylines and measure distance along the actual route path.
-//
+// Smart ETA calculator that uses live vehicle positions, route polyline
+// distance, and real-time speed estimation to compute accurate arrival
+// times. Falls back to the feed's arrivalTs when no vehicle position
+// is available.
+// Algorithm summary
+// -----------------
+// 1. If a live vehicle GPS coord + a route polyline exist:
+//    a. Measure distance along the polyline from vehicle → stop.
+//    b. Estimate speed from recent position history (or use mode defaults).
+//    c. If vehicle is dwelling near a preceding stop, subtract expected
+//       dwell time so the timer does not stall.
+//    d. If vehicle is within 50 m of the TARGET stop → "Now".
+//    e. Blend position-based ETA with the feed's arrivalTs countdown:
+//       - Close stop (< 500 m): 70% position / 30% feed.
+//       - Mid range (500 m–2 km): linear blend.
+//       - Far (> 2 km): 30% position / 70% feed.
+//    f. Smooth the result against the previous blended ETA to prevent
+//       the timer jumping backwards when a vehicle dwells at an
+//       intermediate stop.
+// 2. Fall back to arrivalTs countdown (pure feed).
+// 3. Fall back to static minutesAway.
+// Uses VehicleInterpolator (already in Utilities/) to snap vehicles
+// to polylines and measure distance along the actual route path.
 
 import CoreLocation
 import Foundation
@@ -205,7 +198,10 @@ enum ArrivalETAEngine {
                 ($0.value.last?.timestamp ?? .distantPast)
                     > ($1.value.last?.timestamp ?? .distantPast)
             }
-            positionHistory = Dictionary(uniqueKeysWithValues: sorted.prefix(maxCacheKeys).map { ($0.key, $0.value) })
+            positionHistory = Dictionary(
+                uniqueKeysWithValues: sorted.prefix(maxCacheKeys)
+                    .map { ($0.key, $0.value) }
+            )
         }
 
         // ── smoothedETA ──
@@ -214,7 +210,10 @@ enum ArrivalETAEngine {
         }
         if smoothedETA.count > maxCacheKeys {
             let sorted = smoothedETA.sorted { $0.value.timestamp > $1.value.timestamp }
-            smoothedETA = Dictionary(uniqueKeysWithValues: sorted.prefix(maxCacheKeys).map { ($0.key, $0.value) })
+            smoothedETA = Dictionary(
+                uniqueKeysWithValues: sorted.prefix(maxCacheKeys)
+                    .map { ($0.key, $0.value) }
+            )
         }
 
         // ── delayFactorCache ──
@@ -443,8 +442,13 @@ enum ArrivalETAEngine {
             let dt = curr.timestamp.timeIntervalSince(prev.timestamp)
             guard dt > 0 else { continue }
 
-            let dist = CLLocation(latitude: prev.coordinate.latitude, longitude: prev.coordinate.longitude)
-                .distance(from: CLLocation(latitude: curr.coordinate.latitude, longitude: curr.coordinate.longitude))
+            let dist = CLLocation(
+                latitude: prev.coordinate.latitude,
+                longitude: prev.coordinate.longitude
+            ).distance(from: CLLocation(
+                latitude: curr.coordinate.latitude,
+                longitude: curr.coordinate.longitude
+            ))
             let segmentSpeed = dist / dt
             if segmentSpeed.isFinite {
                 segmentSpeeds.append(segmentSpeed)
@@ -504,17 +508,29 @@ enum ArrivalETAEngine {
             }
             return 0.6
         }()
-        let confidence = max(0.1, min(1.0, 0.45 * variabilityScore + 0.35 * historyScore + 0.20 * distanceScore))
+        let confidence = max(0.1, min(
+            1.0,
+            0.45 * variabilityScore
+                + 0.35 * historyScore
+                + 0.20 * distanceScore
+        ))
 
         // Sanity bounds: if measured speed is near-zero the vehicle is stopped.
         // If it's unrealistically fast (>40 m/s ≈ 90mph), cap it.
         if measuredSpeed < 0.5 {
             // Vehicle appears stopped — check if it's been stopped for a while
             if totalTime > 15 {
-                return SpeedEstimate(speedMps: 0, confidence: max(confidence, 0.75), isStopped: true)  // Stopped for 15+ s → definitely dwelling
+                // Stopped for 15+ s — definitely dwelling
+                return SpeedEstimate(
+                    speedMps: 0,
+                    confidence: max(confidence, 0.75),
+                    isStopped: true)
             }
             // Might just be a brief pause — use a fraction of default
-            return SpeedEstimate(speedMps: defaultSpeedMps * 0.3, confidence: max(0.15, confidence * 0.5), isStopped: false)
+            return SpeedEstimate(
+                speedMps: defaultSpeedMps * 0.3,
+                confidence: max(0.15, confidence * 0.5),
+                isStopped: false)
         }
 
         return SpeedEstimate(speedMps: measuredSpeed, confidence: confidence, isStopped: false)
@@ -702,7 +718,9 @@ enum ArrivalETAEngine {
         let directional = (cosine + 1) / 2
 
         // Distance trend signal: if distance is shrinking, boost confidence.
-        let prevDist = CLLocation(latitude: prev.coordinate.latitude, longitude: prev.coordinate.longitude)
+        let prevDist = CLLocation(
+            latitude: prev.coordinate.latitude,
+            longitude: prev.coordinate.longitude)
             .distance(from: CLLocation(latitude: stop.latitude, longitude: stop.longitude))
         let currDist = CLLocation(latitude: current.latitude, longitude: current.longitude)
             .distance(from: CLLocation(latitude: stop.latitude, longitude: stop.longitude))

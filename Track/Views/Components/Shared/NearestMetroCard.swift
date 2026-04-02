@@ -1,11 +1,6 @@
-//
-//  NearestMetroCard.swift
-//  Track
-//
-//  Shows the nearest transit stop when no transit is within walking
-//  distance. Displays route, stop name, distance, and a button
-//  to center the map on that stop.
-//
+// Shows the nearest transit stop when no transit is within walking
+// distance. Displays route, stop name, distance, and a button
+// to center the map on that stop.
 
 import SwiftUI
 import CoreLocation

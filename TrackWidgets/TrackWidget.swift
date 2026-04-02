@@ -1,12 +1,7 @@
-//
-//  TrackWidget.swift
-//  TrackWidgets
-//
-//  Home Screen / Lock Screen widget showing the nearest live transit.
-//  Displays buses and trains sorted by arrival time, refreshing every
-//  5 minutes. Uses the /nearby backend endpoint for real-time data
-//  and falls back to SmartSuggester predictions when offline.
-//
+// Home Screen / Lock Screen widget showing the nearest live transit.
+// Displays buses and trains sorted by arrival time, refreshing every
+// 5 minutes. Uses the /nearby backend endpoint for real-time data
+// and falls back to SmartSuggester predictions when offline.
 
 import SwiftUI
 import SwiftData
@@ -30,7 +25,10 @@ struct TrackWidgetProvider: TimelineProvider {
         }
     }
 
-    func getTimeline(in context: Context, completion: @escaping (Timeline<TrackWidgetEntry>) -> Void) {
+    func getTimeline(
+        in context: Context,
+        completion: @escaping (Timeline<TrackWidgetEntry>) -> Void
+    ) {
         let schedules = WidgetSchedule.loadAll()
         let isActive = schedules.isEmpty || schedules.hasActiveSchedule()
 
@@ -51,7 +49,10 @@ struct TrackWidgetProvider: TimelineProvider {
             let refreshDate = min(nextActivation, maxSleep)
             
             #if DEBUG
-            print("[TrackWidget] Paused. Next activation estimated: \(nextActivation), actually refreshing at: \(refreshDate)")
+            print(
+                "[TrackWidget] Paused. Next activation estimated: "
+                + "\(nextActivation), actually refreshing at: \(refreshDate)"
+            )
             #endif
 
             let entry = TrackWidgetEntry(date: Date(), arrivals: [], isActive: false)
@@ -64,7 +65,11 @@ struct TrackWidgetProvider: TimelineProvider {
         #endif
         fetchLiveEntry { entry in
             var resolvedEntry = entry ?? buildSmartEntry() ?? .placeholder
-            resolvedEntry = TrackWidgetEntry(date: resolvedEntry.date, arrivals: resolvedEntry.arrivals, isActive: true)
+            resolvedEntry = TrackWidgetEntry(
+                date: resolvedEntry.date,
+                arrivals: resolvedEntry.arrivals,
+                isActive: true
+            )
 
             // Refresh every 5 minutes while active
             let refreshDate = Calendar.current.date(byAdding: .minute, value: 5, to: Date())
@@ -78,7 +83,7 @@ struct TrackWidgetProvider: TimelineProvider {
     /// Uses the user's last known location from shared UserDefaults.
     private func fetchLiveEntry(completion: @Sendable @escaping (TrackWidgetEntry?) -> Void) {
         // Read cached location from App Group UserDefaults
-        let defaults = UserDefaults(suiteName: kAppGroupIdentifier) ?? UserDefaults.standard
+        let defaults = UserDefaults(suiteName: appGroupIdentifier) ?? UserDefaults.standard
         let lat = defaults.double(forKey: "lastLatitude")
         let lon = defaults.double(forKey: "lastLongitude")
         let hasLocation = defaults.bool(forKey: "hasLastLocation")
@@ -127,9 +132,13 @@ struct TrackWidgetProvider: TimelineProvider {
 
         // Pre-read interaction stats before the @Sendable URLSession closure
         // to avoid capturing the non-Sendable UserDefaults instance.
-        let stats: [String: Int] = defaults.dictionary(forKey: "route_interaction_stats") as? [String: Int] ?? [:]
+        let stats: [String: Int] = defaults.dictionary(
+            forKey: "route_interaction_stats"
+        ) as? [String: Int] ?? [:]
 
-        let task = URLSession.shared.dataTask(with: url) { (data: Data?, response: URLResponse?, error: Error?) in
+        let task = URLSession.shared.dataTask(
+            with: url
+        ) { (data: Data?, response: URLResponse?, error: Error?) in
             guard let data = data,
                   let http = response as? HTTPURLResponse,
                   (200...299).contains(http.statusCode),
@@ -168,7 +177,11 @@ struct TrackWidgetProvider: TimelineProvider {
                 }
                 .prefix(5)
 
-                completion(TrackWidgetEntry(date: Date(), arrivals: Array(arrivals), isActive: true))
+                completion(TrackWidgetEntry(
+                    date: Date(),
+                    arrivals: Array(arrivals),
+                    isActive: true
+                ))
             } catch {
                 completion(nil)
             }
@@ -210,11 +223,51 @@ struct TrackWidgetEntry: TimelineEntry {
     static let placeholder = TrackWidgetEntry(
         date: Date(),
         arrivals: [
-            NearbyArrival(routeId: "L", stopName: "1st Avenue", direction: "Manhattan", minutesAway: 3, status: "On Time", mode: "subway", arrivalTime: Date().addingTimeInterval(180)),
-            NearbyArrival(routeId: "B63", stopName: "5 Av / Union St", direction: "Cobble Hill", minutesAway: 5, status: "Approaching", mode: "bus", arrivalTime: Date().addingTimeInterval(300)),
-            NearbyArrival(routeId: "G", stopName: "Metropolitan Av", direction: "Church Av", minutesAway: 8, status: "On Time", mode: "subway", arrivalTime: Date().addingTimeInterval(480)),
-            NearbyArrival(routeId: "A", stopName: "Fulton St", direction: "Far Rockaway", minutesAway: 11, status: "On Time", mode: "subway", arrivalTime: Date().addingTimeInterval(660)),
-            NearbyArrival(routeId: "4", stopName: "Bowling Green", direction: "Woodlawn", minutesAway: 14, status: "On Time", mode: "subway", arrivalTime: Date().addingTimeInterval(840)),
+            NearbyArrival(
+                routeId: "L",
+                stopName: "1st Avenue",
+                direction: "Manhattan",
+                minutesAway: 3,
+                status: "On Time",
+                mode: "subway",
+                arrivalTime: Date().addingTimeInterval(180)
+            ),
+            NearbyArrival(
+                routeId: "B63",
+                stopName: "5 Av / Union St",
+                direction: "Cobble Hill",
+                minutesAway: 5,
+                status: "Approaching",
+                mode: "bus",
+                arrivalTime: Date().addingTimeInterval(300)
+            ),
+            NearbyArrival(
+                routeId: "G",
+                stopName: "Metropolitan Av",
+                direction: "Church Av",
+                minutesAway: 8,
+                status: "On Time",
+                mode: "subway",
+                arrivalTime: Date().addingTimeInterval(480)
+            ),
+            NearbyArrival(
+                routeId: "A",
+                stopName: "Fulton St",
+                direction: "Far Rockaway",
+                minutesAway: 11,
+                status: "On Time",
+                mode: "subway",
+                arrivalTime: Date().addingTimeInterval(660)
+            ),
+            NearbyArrival(
+                routeId: "4",
+                stopName: "Bowling Green",
+                direction: "Woodlawn",
+                minutesAway: 14,
+                status: "On Time",
+                mode: "subway",
+                arrivalTime: Date().addingTimeInterval(840)
+            ),
         ],
         isActive: true
     )
@@ -302,7 +355,12 @@ struct TrackWidgetEntryView: View {
     // MARK: - Medium Widget
 
     private var mediumView: some View {
-        NearbyListWidgetView(arrivals: entry.arrivals, maxVisible: 3, date: entry.date, isActive: entry.isActive)
+        NearbyListWidgetView(
+            arrivals: entry.arrivals,
+            maxVisible: 3,
+            date: entry.date,
+            isActive: entry.isActive
+        )
             .containerBackground(for: .widget) {
                 WidgetBackground()
             }
@@ -311,7 +369,12 @@ struct TrackWidgetEntryView: View {
     // MARK: - Large Widget
 
     private var largeView: some View {
-        NearbyListWidgetView(arrivals: entry.arrivals, maxVisible: 6, date: entry.date, isActive: entry.isActive)
+        NearbyListWidgetView(
+            arrivals: entry.arrivals,
+            maxVisible: 6,
+            date: entry.date,
+            isActive: entry.isActive
+        )
             .containerBackground(for: .widget) {
                 WidgetBackground()
             }
@@ -330,7 +393,10 @@ struct TrackWidget: Widget {
         }
         .configurationDisplayName("Nearby Transit")
         .description("Live countdowns for the nearest buses and trains.")
-        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge, .accessoryRectangular, .accessoryInline])
+        .supportedFamilies([
+            .systemSmall, .systemMedium, .systemLarge,
+            .accessoryRectangular, .accessoryInline,
+        ])
     }
 }
 

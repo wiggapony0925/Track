@@ -1,11 +1,6 @@
-//
-//  GoModeViewModel.swift
-//  Track
-//
-//  ViewModel for "GO" mode — live transit tracking that replaces the
-//  standard blue dot with a pulsing vehicle icon, auto-pans the map,
-//  and dims already-passed stops. Extracted from HomeViewModel.
-//
+// ViewModel for "GO" mode — live transit tracking that replaces the
+// standard blue dot with a pulsing vehicle icon, auto-pans the map,
+// and dims already-passed stops. Extracted from HomeViewModel.
 
 import CoreLocation
 import Foundation

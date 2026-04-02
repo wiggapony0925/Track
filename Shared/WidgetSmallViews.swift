@@ -1,14 +1,8 @@
-//
-//  WidgetSmallViews.swift
-//  Shared
-//
-//  The actual small-widget content views, shared between the TrackWidgets
-//  extension and the main app (for live in-settings previews).
-//
-//  No WidgetKit import — these are plain SwiftUI so they compile in both
-//  targets. Each widget wraps these in .containerBackground(...) in the
-//  extension; the main app renders them directly inside a clipped frame.
-//
+// The actual small-widget content views, shared between the TrackWidgets
+// extension and the main app (for live in-settings previews).
+// No WidgetKit import — these are plain SwiftUI so they compile in both
+// targets. Each widget wraps these in .containerBackground(...) in the
+// extension; the main app renders them directly inside a clipped frame.
 
 import SwiftUI
 
@@ -76,7 +70,10 @@ struct NearbySmallWidgetView: View {
                     } else {
                         Text(arrival.arrivalTime, style: .timer)
                             .font(.system(size: 32, weight: .bold, design: .rounded))
-                            .foregroundColor(AppTheme.Colors.countdown(TrackingTimeSync.remainingMinutes(until: arrival.arrivalTime)))
+                            .foregroundColor(
+                                AppTheme.Colors.countdown(
+                                    TrackingTimeSync.remainingMinutes(
+                                        until: arrival.arrivalTime)))
                             .multilineTextAlignment(.center)
                             .frame(maxWidth: .infinity)
                             .minimumScaleFactor(0.7)
@@ -107,7 +104,11 @@ struct NearbySmallWidgetView: View {
                                 .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
                             Text(next.displayName)
                                 .font(.system(size: 9, weight: .bold))
-                                .foregroundColor(next.isBus ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: next.displayName))
+                                .foregroundColor(
+                                    next.isBus
+                                    ? AppTheme.Colors.mtaBlue
+                                    : AppTheme.SubwayColors.color(
+                                        for: next.displayName))
                             Text(next.arrivalTime, style: .timer)
                                 .font(.system(size: 9, weight: .bold))
                                 .foregroundColor(AppTheme.Colors.textSecondary)
@@ -138,15 +139,37 @@ struct NearbySmallWidgetView: View {
             .frame(minWidth: size, minHeight: size)
             .background(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(arrival.isLIRR ? AppTheme.CommuterRailColors.lirrBlue : AppTheme.CommuterRailColors.mnrBlue)
-                    .shadow(color: (arrival.isLIRR ? AppTheme.CommuterRailColors.lirrBlue : AppTheme.CommuterRailColors.mnrBlue).opacity(0.3), radius: 6, x: 0, y: 3)
+                    .fill(
+                        arrival.isLIRR
+                        ? AppTheme.CommuterRailColors.lirrBlue
+                        : AppTheme.CommuterRailColors.mnrBlue
+                    )
+                    .shadow(
+                        color: (arrival.isLIRR
+                            ? AppTheme.CommuterRailColors.lirrBlue
+                            : AppTheme.CommuterRailColors.mnrBlue
+                        ).opacity(0.3),
+                        radius: 6, x: 0, y: 3
+                    )
             )
         } else {
             ZStack {
                 Circle()
-                    .fill(arrival.isBus ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: arrival.displayName))
+                    .fill(
+                        arrival.isBus
+                        ? AppTheme.Colors.mtaBlue
+                        : AppTheme.SubwayColors.color(
+                            for: arrival.displayName)
+                    )
                     .frame(width: size, height: size)
-                    .shadow(color: (arrival.isBus ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: arrival.displayName)).opacity(0.3), radius: 6, x: 0, y: 3)
+                    .shadow(
+                        color: (arrival.isBus
+                            ? AppTheme.Colors.mtaBlue
+                            : AppTheme.SubwayColors.color(
+                                for: arrival.displayName)
+                        ).opacity(0.3),
+                        radius: 6, x: 0, y: 3
+                    )
 
                 if arrival.isBus {
                     Image(systemName: "bus.fill")
@@ -238,7 +261,10 @@ struct NearbyListWidgetView: View {
                 Spacer()
             } else {
                 VStack(spacing: 8) {
-                    ForEach(Array(arrivals.prefix(maxVisible).enumerated()), id: \.offset) { _, arrival in
+                    ForEach(
+                        Array(arrivals.prefix(maxVisible).enumerated()),
+                        id: \.offset
+                    ) { _, arrival in
                         NearbyWidgetRowView(arrival: arrival)
                         if arrival != arrivals.prefix(maxVisible).last {
                             Rectangle()
@@ -276,15 +302,37 @@ struct NearbyWidgetRowView: View {
                 .frame(minWidth: 32, minHeight: 24)
                 .background(
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(arrival.isLIRR ? AppTheme.CommuterRailColors.lirrBlue : AppTheme.CommuterRailColors.mnrBlue)
-                        .shadow(color: (arrival.isLIRR ? AppTheme.CommuterRailColors.lirrBlue : AppTheme.CommuterRailColors.mnrBlue).opacity(0.3), radius: 3)
+                        .fill(
+                            arrival.isLIRR
+                            ? AppTheme.CommuterRailColors.lirrBlue
+                            : AppTheme.CommuterRailColors.mnrBlue
+                        )
+                        .shadow(
+                            color: (arrival.isLIRR
+                                ? AppTheme.CommuterRailColors.lirrBlue
+                                : AppTheme.CommuterRailColors.mnrBlue
+                            ).opacity(0.3),
+                            radius: 3
+                        )
                 )
             } else {
                 ZStack {
                     Circle()
-                        .fill(arrival.isBus ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: arrival.displayName))
+                        .fill(
+                            arrival.isBus
+                            ? AppTheme.Colors.mtaBlue
+                            : AppTheme.SubwayColors.color(
+                                for: arrival.displayName)
+                        )
                         .frame(width: 28, height: 28)
-                        .shadow(color: (arrival.isBus ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: arrival.displayName)).opacity(0.3), radius: 3, x: 0, y: 1)
+                        .shadow(
+                            color: (arrival.isBus
+                                ? AppTheme.Colors.mtaBlue
+                                : AppTheme.SubwayColors.color(
+                                    for: arrival.displayName)
+                            ).opacity(0.3),
+                            radius: 3, x: 0, y: 1
+                        )
                     
                     if arrival.isBus {
                         Image(systemName: "bus.fill")
@@ -293,7 +341,9 @@ struct NearbyWidgetRowView: View {
                     } else {
                         Text(arrival.displayName)
                             .font(.system(size: 14, weight: .heavy, design: .rounded))
-                            .foregroundColor(AppTheme.SubwayColors.textColor(for: arrival.displayName))
+                            .foregroundColor(
+                                AppTheme.SubwayColors.textColor(
+                                    for: arrival.displayName))
                             .minimumScaleFactor(0.4)
                     }
                 }
@@ -325,11 +375,18 @@ struct NearbyWidgetRowView: View {
             VStack(alignment: .trailing, spacing: 4) {
                 Text(arrival.arrivalTime, style: .timer)
                     .font(.custom("Helvetica-Bold", size: 18))
-                    .foregroundColor(AppTheme.Colors.countdown(TrackingTimeSync.remainingMinutes(until: arrival.arrivalTime)))
+                    .foregroundColor(
+                        AppTheme.Colors.countdown(
+                            TrackingTimeSync.remainingMinutes(
+                                until: arrival.arrivalTime)))
                     .monospacedDigit()
                 
                 if !arrival.status.isEmpty {
-                    Text(arrival.status.prefix(4).uppercased() + (arrival.status.count > 4 ? "." : ""))
+                    Text(
+                        arrival.status.prefix(4).uppercased()
+                        + (arrival.status.count > 4
+                            ? "." : "")
+                    )
                         .font(.custom("Helvetica-Bold", size: 8))
                         .foregroundColor(statusTextColor(arrival.status))
                         .padding(.horizontal, 4)
@@ -412,7 +469,11 @@ struct TrackRouteSmallWidgetView: View {
                     } else {
                         Text(firstArrival.arrivalTime, style: .timer)
                             .font(.system(size: 30, weight: .bold, design: .rounded))
-                            .foregroundColor(AppTheme.Colors.countdown(TrackingTimeSync.remainingMinutes(until: firstArrival.arrivalTime)))
+                            .foregroundColor(
+                                AppTheme.Colors.countdown(
+                                    TrackingTimeSync.remainingMinutes(
+                                        until: firstArrival.arrivalTime
+                                    )))
                             .monospacedDigit()
                             .multilineTextAlignment(.center)
                             .frame(maxWidth: .infinity)
@@ -474,14 +535,30 @@ struct TrackRouteSmallWidgetView: View {
             .frame(minWidth: size, minHeight: size)
             .background(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(route.isLIRR ? AppTheme.CommuterRailColors.lirrBlue : AppTheme.CommuterRailColors.mnrBlue)
+                    .fill(
+                        route.isLIRR
+                        ? AppTheme.CommuterRailColors.lirrBlue
+                        : AppTheme.CommuterRailColors.mnrBlue
+                    )
             )
         } else {
             ZStack {
                 Circle()
-                    .fill(route.isBus ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: route.cleanDisplayName))
+                    .fill(
+                        route.isBus
+                        ? AppTheme.Colors.mtaBlue
+                        : AppTheme.SubwayColors.color(
+                            for: route.cleanDisplayName)
+                    )
                     .frame(width: size, height: size)
-                    .shadow(color: (route.isBus ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: route.cleanDisplayName)).opacity(0.3), radius: 6, x: 0, y: 3)
+                    .shadow(
+                        color: (route.isBus
+                            ? AppTheme.Colors.mtaBlue
+                            : AppTheme.SubwayColors.color(
+                                for: route.cleanDisplayName)
+                        ).opacity(0.3),
+                        radius: 6, x: 0, y: 3
+                    )
                 if route.isBus {
                     Image(systemName: "bus.fill")
                         .font(.system(size: size * 0.4, weight: .bold))
@@ -489,7 +566,9 @@ struct TrackRouteSmallWidgetView: View {
                 } else {
                     Text(route.cleanDisplayName)
                         .font(.system(size: size * 0.45, weight: .heavy, design: .rounded))
-                        .foregroundColor(AppTheme.SubwayColors.textColor(for: route.cleanDisplayName))
+                        .foregroundColor(
+                            AppTheme.SubwayColors.textColor(
+                                for: route.cleanDisplayName))
                         .minimumScaleFactor(0.4)
                         .lineLimit(1)
                 }
@@ -516,9 +595,36 @@ extension NearbySmallWidgetView {
     static var placeholder: NearbySmallWidgetView {
         NearbySmallWidgetView(
             arrivals: [
-                NearbyArrival(routeId: "MTA NYCT_A", stopName: "Jay St-MetroTech", direction: "Manhattan", minutesAway: 3, status: "On Time", mode: "subway", arrivalTime: Date().addingTimeInterval(180)),
-                NearbyArrival(routeId: "MTA NYCT_C", stopName: "Jay St-MetroTech", direction: "Manhattan", minutesAway: 7, status: "On Time", mode: "subway", arrivalTime: Date().addingTimeInterval(420)),
-                NearbyArrival(routeId: "MTA NYCT_F", stopName: "Jay St-MetroTech", direction: "Manhattan", minutesAway: 11, status: "On Time", mode: "subway", arrivalTime: Date().addingTimeInterval(660)),
+                NearbyArrival(
+                    routeId: "MTA NYCT_A",
+                    stopName: "Jay St-MetroTech",
+                    direction: "Manhattan",
+                    minutesAway: 3,
+                    status: "On Time",
+                    mode: "subway",
+                    arrivalTime: Date()
+                        .addingTimeInterval(180)
+                ),
+                NearbyArrival(
+                    routeId: "MTA NYCT_C",
+                    stopName: "Jay St-MetroTech",
+                    direction: "Manhattan",
+                    minutesAway: 7,
+                    status: "On Time",
+                    mode: "subway",
+                    arrivalTime: Date()
+                        .addingTimeInterval(420)
+                ),
+                NearbyArrival(
+                    routeId: "MTA NYCT_F",
+                    stopName: "Jay St-MetroTech",
+                    direction: "Manhattan",
+                    minutesAway: 11,
+                    status: "On Time",
+                    mode: "subway",
+                    arrivalTime: Date()
+                        .addingTimeInterval(660)
+                ),
             ]
         )
     }
@@ -547,8 +653,26 @@ extension TrackRouteSmallWidgetView {
                 trackedAt: Date()
             ),
             arrivals: [
-                NearbyArrival(routeId: "L", stopName: "1st Avenue", direction: "Manhattan", minutesAway: 4, status: "On Time", mode: "subway", arrivalTime: Date().addingTimeInterval(240)),
-                NearbyArrival(routeId: "L", stopName: "1st Avenue", direction: "Manhattan", minutesAway: 12, status: "On Time", mode: "subway", arrivalTime: Date().addingTimeInterval(720)),
+                NearbyArrival(
+                    routeId: "L",
+                    stopName: "1st Avenue",
+                    direction: "Manhattan",
+                    minutesAway: 4,
+                    status: "On Time",
+                    mode: "subway",
+                    arrivalTime: Date()
+                        .addingTimeInterval(240)
+                ),
+                NearbyArrival(
+                    routeId: "L",
+                    stopName: "1st Avenue",
+                    direction: "Manhattan",
+                    minutesAway: 12,
+                    status: "On Time",
+                    mode: "subway",
+                    arrivalTime: Date()
+                        .addingTimeInterval(720)
+                ),
             ]
         )
     }

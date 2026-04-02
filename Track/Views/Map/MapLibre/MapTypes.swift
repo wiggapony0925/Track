@@ -1,9 +1,4 @@
-//
-//  MapTypes.swift
-//  Track
-//
-//  Shared types and helpers for the MapLibre GL rendering pipeline.
-//
+// Shared types and helpers for the MapLibre GL rendering pipeline.
 
 import CoreLocation
 import Foundation

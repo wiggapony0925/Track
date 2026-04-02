@@ -1,10 +1,5 @@
-//
-//  TrainArrival.swift
-//  Track
-//
-//  Model representing a single upcoming train arrival at a station.
-//  Used by TransitRepository and displayed in the subway dashboard.
-//
+// Model representing a single upcoming train arrival at a station.
+// Used by TransitRepository and displayed in the subway dashboard.
 
 import Foundation
 

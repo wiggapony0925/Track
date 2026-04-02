@@ -1,13 +1,7 @@
-//
-//  ArrivalChipView.swift
-//  Track
-//
-//  A single countdown chip showing a transit arrival's ETA, status,
-//  and clock time. Designed for horizontal ScrollView strips.
-//
-//  Extracted from RouteDetailSheet to be reusable across any context
-//  that needs to display arrival chips (detail sheet, widgets, etc.).
-//
+// A single countdown chip showing a transit arrival's ETA, status,
+// and clock time. Designed for horizontal ScrollView strips.
+// Extracted from RouteDetailSheet to be reusable across any context
+// that needs to display arrival chips (detail sheet, widgets, etc.).
 
 import SwiftUI
 
@@ -116,7 +110,10 @@ struct ArrivalChipView: View {
                 isSched
                     ? AnyShapeStyle(chipAccent.opacity(0.2))
                     : AnyShapeStyle(LinearGradient(
-                        colors: [chipAccent.opacity(isFirst ? 0.9 : 0.65), chipAccent.opacity(isFirst ? 0.5 : 0.3)],
+                        colors: [
+                            chipAccent.opacity(isFirst ? 0.9 : 0.65),
+                            chipAccent.opacity(isFirst ? 0.5 : 0.3)
+                        ],
                         startPoint: .leading,
                         endPoint: .trailing
                       ))

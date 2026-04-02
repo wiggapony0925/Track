@@ -220,8 +220,13 @@ struct VehicleInterpolatorCoreTests {
             progress: 0.0,
             along: NYCFixtures.seventhAvenue)
         // Should be at or very near 23rd St
-        let dist = CLLocation(latitude: result.coordinate.latitude, longitude: result.coordinate.longitude)
-            .distance(from: CLLocation(latitude: NYCFixtures.stop23rd.latitude, longitude: NYCFixtures.stop23rd.longitude))
+        let dist = CLLocation(
+            latitude: result.coordinate.latitude,
+            longitude: result.coordinate.longitude
+        ).distance(from: CLLocation(
+            latitude: NYCFixtures.stop23rd.latitude,
+            longitude: NYCFixtures.stop23rd.longitude
+        ))
         #expect(dist < 50, "At progress=0 should be within 50m of fromStop, got \(dist)m")
     }
 
@@ -231,8 +236,13 @@ struct VehicleInterpolatorCoreTests {
             to: NYCFixtures.stop34th,
             progress: 1.0,
             along: NYCFixtures.seventhAvenue)
-        let dist = CLLocation(latitude: result.coordinate.latitude, longitude: result.coordinate.longitude)
-            .distance(from: CLLocation(latitude: NYCFixtures.stop34th.latitude, longitude: NYCFixtures.stop34th.longitude))
+        let dist = CLLocation(
+            latitude: result.coordinate.latitude,
+            longitude: result.coordinate.longitude
+        ).distance(from: CLLocation(
+            latitude: NYCFixtures.stop34th.latitude,
+            longitude: NYCFixtures.stop34th.longitude
+        ))
         #expect(dist < 50, "At progress=1 should be within 50m of toStop, got \(dist)m")
     }
 
@@ -247,7 +257,9 @@ struct VehicleInterpolatorCoreTests {
                 progress: p,
                 along: NYCFixtures.seventhAvenue)
             #expect(result.coordinate.latitude >= prevLat,
-                    "At progress=\(p) lat=\(result.coordinate.latitude) should be >= prevLat=\(prevLat)")
+                    "At progress=\(p) "
+                    + "lat=\(result.coordinate.latitude) "
+                    + "should be >= prevLat=\(prevLat)")
             prevLat = result.coordinate.latitude
         }
     }
@@ -290,7 +302,8 @@ struct SpanGuardTests {
         #expect(snapResult != nil)
         // The interpolated point should be very close to the polyline (< 10m)
         #expect(snapResult!.distanceFromPolyline < 10,
-                "Express route midpoint should be on-polyline, got \(snapResult!.distanceFromPolyline)m off")
+                "Express route midpoint should be "
+                + "on-polyline, got \(snapResult!.distanceFromPolyline)m off")
     }
 
     @Test func expressRouteSpan90PercentStillFollowsPolyline() {
@@ -471,10 +484,20 @@ struct BlendConvergenceTests {
         let farTarget = CLLocationCoordinate2D(latitude: 40.7600, longitude: -73.9920)  // ~1.1 km
 
         let after1 = simulateBlend(from: start, to: farTarget, ticks: 1)
-        let initialDist = CLLocation(latitude: start.latitude, longitude: start.longitude)
-            .distance(from: CLLocation(latitude: farTarget.latitude, longitude: farTarget.longitude))
-        let after1Dist = CLLocation(latitude: after1.latitude, longitude: after1.longitude)
-            .distance(from: CLLocation(latitude: farTarget.latitude, longitude: farTarget.longitude))
+        let initialDist = CLLocation(
+            latitude: start.latitude,
+            longitude: start.longitude
+        ).distance(from: CLLocation(
+            latitude: farTarget.latitude,
+            longitude: farTarget.longitude
+        ))
+        let after1Dist = CLLocation(
+            latitude: after1.latitude,
+            longitude: after1.longitude
+        ).distance(from: CLLocation(
+            latitude: farTarget.latitude,
+            longitude: farTarget.longitude
+        ))
 
         // With 0.7 blend on first tick, should cover 70%
         let firstTickCoverage = (initialDist - after1Dist) / initialDist
@@ -762,7 +785,10 @@ struct LiveArrivalsFilteringTests {
     @Test func filtersScheduledZeroMinNoTs() {
         let sched = arrival(minutesAway: 0, status: "scheduled", arrivalTs: nil)
         let direction = makeDirection(arrivals: [sched])
-        #expect(direction.liveArrivals.isEmpty, "Scheduled 0-min with no arrivalTs should be filtered")
+        #expect(
+            direction.liveArrivals.isEmpty,
+            "Scheduled 0-min with no arrivalTs should be filtered"
+        )
     }
 
     @Test func keepsScheduledWithArrivalTs() {
@@ -785,11 +811,28 @@ struct LiveArrivalsFilteringTests {
         let oldTs = Int(Date.now.timeIntervalSince1970) - 200
 
         let arrivals = [
-            arrival(minutesAway: 5, arrivalTs: futureTs, vehicleId: "V1", tripId: "T1"),      // keep
-            arrival(minutesAway: 99, vehicleId: nil, tripId: nil),      // placeholder → drop
-            arrival(minutesAway: 3, arrivalTs: oldTs, vehicleId: "V2", tripId: "T2"),          // old ts → drop
-            arrival(minutesAway: 0, status: "scheduled", arrivalTs: nil, vehicleId: "V3", tripId: "T3"),  // sched 0 → drop
-            arrival(minutesAway: 8, arrivalTs: futureTs2, vehicleId: "V4", tripId: "T4"),      // keep
+            // keep
+            arrival(
+                minutesAway: 5, arrivalTs: futureTs,
+                vehicleId: "V1", tripId: "T1"
+            ),
+            // placeholder → drop
+            arrival(minutesAway: 99, vehicleId: nil, tripId: nil),
+            // old ts → drop
+            arrival(
+                minutesAway: 3, arrivalTs: oldTs,
+                vehicleId: "V2", tripId: "T2"
+            ),
+            // sched 0 → drop
+            arrival(
+                minutesAway: 0, status: "scheduled",
+                arrivalTs: nil, vehicleId: "V3", tripId: "T3"
+            ),
+            // keep
+            arrival(
+                minutesAway: 8, arrivalTs: futureTs2,
+                vehicleId: "V4", tripId: "T4"
+            ),
         ]
         let direction = makeDirection(arrivals: arrivals)
         #expect(direction.liveArrivals.count == 2)
@@ -822,9 +865,18 @@ struct MultipleVehiclesTests {
         // All positions should be distinct
         for i in 0..<positions.count {
             for j in (i + 1)..<positions.count {
-                let dist = CLLocation(latitude: positions[i].latitude, longitude: positions[i].longitude)
-                    .distance(from: CLLocation(latitude: positions[j].latitude, longitude: positions[j].longitude))
-                #expect(dist > 1, "Buses at different progress should have different positions (\(i) vs \(j))")
+                let dist = CLLocation(
+                    latitude: positions[i].latitude,
+                    longitude: positions[i].longitude
+                ).distance(from: CLLocation(
+                    latitude: positions[j].latitude,
+                    longitude: positions[j].longitude
+                ))
+                #expect(
+                    dist > 1,
+                    "Buses at different progress should have "
+                    + "different positions (\(i) vs \(j))"
+                )
             }
         }
 
@@ -856,17 +908,35 @@ struct MultipleVehiclesTests {
         for i in 0..<3 {
             var current = starts[i]
             for _ in 0..<3 {
-                let distance = CLLocation(latitude: current.latitude, longitude: current.longitude)
-                    .distance(from: CLLocation(latitude: targets[i].latitude, longitude: targets[i].longitude))
+                let distance = CLLocation(
+                    latitude: current.latitude,
+                    longitude: current.longitude
+                ).distance(from: CLLocation(
+                    latitude: targets[i].latitude,
+                    longitude: targets[i].longitude
+                ))
                 let blendFactor = distance > 200 ? 0.7 : 0.55
+                let tLat = targets[i].latitude
+                let tLon = targets[i].longitude
                 current = CLLocationCoordinate2D(
-                    latitude: current.latitude + (targets[i].latitude - current.latitude) * blendFactor,
-                    longitude: current.longitude + (targets[i].longitude - current.longitude) * blendFactor
+                    latitude: current.latitude
+                        + (tLat - current.latitude) * blendFactor,
+                    longitude: current.longitude
+                        + (tLon - current.longitude) * blendFactor
                 )
             }
-            let finalDist = CLLocation(latitude: current.latitude, longitude: current.longitude)
-                .distance(from: CLLocation(latitude: targets[i].latitude, longitude: targets[i].longitude))
-            #expect(finalDist < 50, "Train \(i) should converge within 50m after 3 ticks, got \(finalDist)m")
+            let finalDist = CLLocation(
+                latitude: current.latitude,
+                longitude: current.longitude
+            ).distance(from: CLLocation(
+                latitude: targets[i].latitude,
+                longitude: targets[i].longitude
+            ))
+            #expect(
+                finalDist < 50,
+                "Train \(i) should converge within 50m "
+                + "after 3 ticks, got \(finalDist)m"
+            )
         }
     }
 
@@ -925,8 +995,13 @@ struct SmoothBusPositionTests {
             previous: prev, current: current,
             elapsed: 0, duration: 10,
             along: NYCFixtures.busRoute)
-        let dist = CLLocation(latitude: result.coordinate.latitude, longitude: result.coordinate.longitude)
-            .distance(from: CLLocation(latitude: prev.latitude, longitude: prev.longitude))
+        let dist = CLLocation(
+            latitude: result.coordinate.latitude,
+            longitude: result.coordinate.longitude
+        ).distance(from: CLLocation(
+            latitude: prev.latitude,
+            longitude: prev.longitude
+        ))
         #expect(dist < 30, "At elapsed=0 should be near previous position")
     }
 
@@ -937,8 +1012,13 @@ struct SmoothBusPositionTests {
             previous: prev, current: current,
             elapsed: 10, duration: 10,
             along: NYCFixtures.busRoute)
-        let dist = CLLocation(latitude: result.coordinate.latitude, longitude: result.coordinate.longitude)
-            .distance(from: CLLocation(latitude: current.latitude, longitude: current.longitude))
+        let dist = CLLocation(
+            latitude: result.coordinate.latitude,
+            longitude: result.coordinate.longitude
+        ).distance(from: CLLocation(
+            latitude: current.latitude,
+            longitude: current.longitude
+        ))
         #expect(dist < 30, "At elapsed=duration should be near current position")
     }
 
@@ -952,7 +1032,10 @@ struct SmoothBusPositionTests {
                 previous: prev, current: current,
                 elapsed: elapsed, duration: 10,
                 along: NYCFixtures.busRoute)
-            let snap = VehicleInterpolator.snap(coordinate: result.coordinate, to: NYCFixtures.busRoute)!
+            let snap = VehicleInterpolator.snap(
+                coordinate: result.coordinate,
+                to: NYCFixtures.busRoute
+            )!
             #expect(snap.fractionAlongPolyline >= prevFrac - 0.01,
                     "Should move forward at elapsed=\(elapsed)")
             prevFrac = snap.fractionAlongPolyline
@@ -1016,8 +1099,13 @@ struct PerformanceTests {
                 latitude: 40.70 + Double(v) * 0.005 + 0.01,
                 longitude: -73.99)
             for _ in 0..<50 {
-                let dist = CLLocation(latitude: current.latitude, longitude: current.longitude)
-                    .distance(from: CLLocation(latitude: target.latitude, longitude: target.longitude))
+                let dist = CLLocation(
+                    latitude: current.latitude,
+                    longitude: current.longitude
+                ).distance(from: CLLocation(
+                    latitude: target.latitude,
+                    longitude: target.longitude
+                ))
                 let blend = dist > 200 ? 0.7 : 0.55
                 current = CLLocationCoordinate2D(
                     latitude: current.latitude + (target.latitude - current.latitude) * blend,
@@ -1203,7 +1291,11 @@ struct FullTickSimulationTests {
         let polyline = NYCFixtures.seventhAvenue
 
         // Train configs: (fromStop, toStop, initial minutes away)
-        let configs: [(from: CLLocationCoordinate2D, to: CLLocationCoordinate2D, minutesAway: Double)] = [
+        let configs: [(
+            from: CLLocationCoordinate2D,
+            to: CLLocationCoordinate2D,
+            minutesAway: Double
+        )] = [
             (NYCFixtures.stop23rd, NYCFixtures.stop34th, 2.0),
             (NYCFixtures.stop34th, NYCFixtures.stop42nd, 1.5),
             (NYCFixtures.stop42nd, NYCFixtures.stop50th, 3.0),
@@ -1218,8 +1310,13 @@ struct FullTickSimulationTests {
                 let minutesRemaining = max(0, config.minutesAway - Double(tick) * (1.0 / 60.0))
 
                 // Dynamic travel time
-                let dist = CLLocation(latitude: config.from.latitude, longitude: config.from.longitude)
-                    .distance(from: CLLocation(latitude: config.to.latitude, longitude: config.to.longitude))
+                let dist = CLLocation(
+                    latitude: config.from.latitude,
+                    longitude: config.from.longitude
+                ).distance(from: CLLocation(
+                    latitude: config.to.latitude,
+                    longitude: config.to.longitude
+                ))
                 let speedMpm: Double = dist > 2000 ? 750 : 500
                 let travelTime = max(1.0, dist / speedMpm)
 
@@ -1248,13 +1345,16 @@ struct FullTickSimulationTests {
                 // Verify the position is on or near the polyline
                 let snap = VehicleInterpolator.snap(coordinate: finalPos, to: polyline)!
                 #expect(snap.distanceFromPolyline < 100,
-                        "Train \(configIdx) tick \(tick): should be near polyline, got \(snap.distanceFromPolyline)m off")
+                        "Train \(configIdx) tick \(tick): "
+                        + "should be near polyline, "
+                        + "got \(snap.distanceFromPolyline)m off")
 
                 // Verify monotonic progress along polyline
                 if prevFraction >= 0 {
                     // Allow tiny regression from blend smoothing, but not large backwards jumps
                     #expect(snap.fractionAlongPolyline >= prevFraction - 0.02,
-                            "Train \(configIdx) tick \(tick): should not jump backwards significantly")
+                            "Train \(configIdx) tick \(tick): "
+                            + "should not jump backwards significantly")
                 }
 
                 prevPosition = finalPos
@@ -1302,17 +1402,29 @@ struct FullTickSimulationTests {
         for poll in 0..<3 {
             // 6 ticks per poll cycle
             for tick in 0..<6 {
-                let dist = CLLocation(latitude: currentPos.latitude, longitude: currentPos.longitude)
-                    .distance(from: CLLocation(latitude: target.latitude, longitude: target.longitude))
+                let dist = CLLocation(
+                    latitude: currentPos.latitude,
+                    longitude: currentPos.longitude
+                ).distance(from: CLLocation(
+                    latitude: target.latitude,
+                    longitude: target.longitude
+                ))
                 let blend = dist > 200 ? 0.7 : 0.55
                 currentPos = CLLocationCoordinate2D(
-                    latitude: currentPos.latitude + (target.latitude - currentPos.latitude) * blend,
-                    longitude: currentPos.longitude + (target.longitude - currentPos.longitude) * blend
+                    latitude: currentPos.latitude
+                        + (target.latitude - currentPos.latitude) * blend,
+                    longitude: currentPos.longitude
+                        + (target.longitude - currentPos.longitude) * blend
                 )
 
                 // Verify we're always heading toward target
-                let newDist = CLLocation(latitude: currentPos.latitude, longitude: currentPos.longitude)
-                    .distance(from: CLLocation(latitude: target.latitude, longitude: target.longitude))
+                let newDist = CLLocation(
+                    latitude: currentPos.latitude,
+                    longitude: currentPos.longitude
+                ).distance(from: CLLocation(
+                    latitude: target.latitude,
+                    longitude: target.longitude
+                ))
                 if tick > 0 {
                     #expect(newDist <= dist + 1,
                             "Poll \(poll) tick \(tick): should converge, not diverge")
@@ -1320,9 +1432,18 @@ struct FullTickSimulationTests {
             }
 
             // After 6 ticks, shift target forward (new poll)
-            let distAfterPoll = CLLocation(latitude: currentPos.latitude, longitude: currentPos.longitude)
-                .distance(from: CLLocation(latitude: target.latitude, longitude: target.longitude))
-            #expect(distAfterPoll < 30, "Should be within 30m of target after 6 ticks, got \(distAfterPoll)m")
+            let distAfterPoll = CLLocation(
+                latitude: currentPos.latitude,
+                longitude: currentPos.longitude
+            ).distance(from: CLLocation(
+                latitude: target.latitude,
+                longitude: target.longitude
+            ))
+            #expect(
+                distAfterPoll < 30,
+                "Should be within 30m of target after 6 ticks, "
+                + "got \(distAfterPoll)m"
+            )
 
             // New target 200m further north
             target = CLLocationCoordinate2D(

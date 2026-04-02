@@ -577,7 +577,8 @@ struct DistanceBucketUtilsTests {
         #expect((result ?? 0) < 900)
     }
 
-    @Test func busDisplayDistanceFallsBackToGroupedStopsWhenNearbyStopMetadataMissing() async throws {
+    @Test func busDisplayDistanceFallsBackToGroupedStopsWhenNearbyStopMetadataMissing(
+    ) async throws {
         let origin = CLLocation(latitude: 40.7128, longitude: -74.0060)
         let viewModel = HomeViewModel()
         viewModel.nearbyBusStops = []
@@ -648,7 +649,9 @@ struct DistanceBucketUtilsTests {
 
         // nearbyStations has no station serving the G train.
         viewModel.nearbyStations = [
-            (stationID: "A27", name: "Chambers St", lat: 40.7128, lon: -74.0060, routeIDs: ["A", "C", "E"])
+            (stationID: "A27", name: "Chambers St",
+             lat: 40.7128, lon: -74.0060,
+             routeIDs: ["A", "C", "E"])
         ]
 
         let group = GroupedNearbyTransitResponse(
@@ -733,7 +736,11 @@ struct DistanceBucketUtilsTests {
         #expect((result ?? 0) < 400)
     }
 
-    private func makeArrivalSubway(routeId: String, distanceMeters: Double, origin: CLLocation) -> NearbyTransitResponse {
+    private func makeArrivalSubway(
+        routeId: String,
+        distanceMeters: Double,
+        origin: CLLocation
+    ) -> NearbyTransitResponse {
         let stopCoordinate = CLLocationCoordinate2D(
             latitude: origin.coordinate.latitude + (distanceMeters / 111_111.0),
             longitude: origin.coordinate.longitude
@@ -757,7 +764,10 @@ struct DistanceBucketUtilsTests {
 
     // MARK: - Distance assertion helpers
 
-    private func assertAscendingDistance(_ groups: [GroupedNearbyTransitResponse], from origin: CLLocation) {
+    private func assertAscendingDistance(
+        _ groups: [GroupedNearbyTransitResponse],
+        from origin: CLLocation
+    ) {
         guard groups.count > 1 else { return }
         let distances = groups.map { groupMinDistance(for: $0, from: origin) }
         for index in 1..<distances.count {
@@ -775,7 +785,10 @@ struct DistanceBucketUtilsTests {
         return max(near + 400, derived)
     }
 
-    private func assertAscendingFlatDistance(_ arrivals: [NearbyTransitResponse], from origin: CLLocation) {
+    private func assertAscendingFlatDistance(
+        _ arrivals: [NearbyTransitResponse],
+        from origin: CLLocation
+    ) {
         guard arrivals.count > 1 else { return }
         let distances = arrivals.map { arrivalDistance(for: $0, from: origin) }
         for index in 1..<distances.count {
@@ -783,7 +796,11 @@ struct DistanceBucketUtilsTests {
         }
     }
 
-    private func makeGroup(routeId: String, distanceMeters: Double, origin: CLLocation) -> GroupedNearbyTransitResponse {
+    private func makeGroup(
+        routeId: String,
+        distanceMeters: Double,
+        origin: CLLocation
+    ) -> GroupedNearbyTransitResponse {
         let stopCoordinate = CLLocationCoordinate2D(
             latitude: origin.coordinate.latitude + (distanceMeters / 111_111.0),
             longitude: origin.coordinate.longitude
@@ -820,7 +837,11 @@ struct DistanceBucketUtilsTests {
         )
     }
 
-    private func makeArrival(routeId: String, distanceMeters: Double, origin: CLLocation) -> NearbyTransitResponse {
+    private func makeArrival(
+        routeId: String,
+        distanceMeters: Double,
+        origin: CLLocation
+    ) -> NearbyTransitResponse {
         let stopCoordinate = CLLocationCoordinate2D(
             latitude: origin.coordinate.latitude + (distanceMeters / 111_111.0),
             longitude: origin.coordinate.longitude

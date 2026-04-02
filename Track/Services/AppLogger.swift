@@ -1,15 +1,9 @@
-//
-//  AppLogger.swift
-//  Track
-//
-//  File-based logger that writes each API call, response JSON,
-//  and app event to a log.app text file in the Documents directory.
-//  The log file is cleared on every app launch.
-//
-//  Best Practices:
-//  - Uses isDirectory: false for file URLs to avoid blocking I/O
-//  - Performs file writes asynchronously on a background queue
-//
+// File-based logger that writes each API call, response JSON,
+// and app event to a log.app text file in the Documents directory.
+// The log file is cleared on every app launch.
+// Best Practices:
+// - Uses isDirectory: false for file URLs to avoid blocking I/O
+// - Performs file writes asynchronously on a background queue
 
 import Foundation
 
@@ -97,7 +91,8 @@ final class AppLogger: @unchecked Sendable {
                             try handle.close()
                         } catch {
                             // Log close failure to console only (avoid recursive logging)
-                            print("[AppLogger] Failed to close file handle: \(error.localizedDescription)")
+                            let msg = error.localizedDescription
+                            print("[AppLogger] Failed to close file handle: \(msg)")
                         }
                     }
                     handle.seekToEndOfFile()

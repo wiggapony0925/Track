@@ -1,13 +1,7 @@
-//
-//  MapLibreSearchRadiusLayer.swift
-//  Track
-//
-//  Renders the three concentric search radius circles on the MapLibre map
-//  using MLNCircleStyleLayer / MLNFillStyleLayer with GeoJSON polygon sources.
-//
-//  Native GL circle/fill layer for the drag-to-search radius ring.
-//  Uses the same color scheme: green (near), blue (farther), yellow (much farther).
-//
+// Renders the three concentric search radius circles on the MapLibre map
+// using MLNCircleStyleLayer / MLNFillStyleLayer with GeoJSON polygon sources.
+// Native GL circle/fill layer for the drag-to-search radius ring.
+// Uses the same color scheme: green (near), blue (farther), yellow (much farther).
 
 import CoreLocation
 import Foundation

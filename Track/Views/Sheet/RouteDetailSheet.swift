@@ -1,12 +1,7 @@
-//
-//  RouteDetailSheet.swift
-//  Track
-//
-//  Route detail view presented when tapping a grouped route card.
-//  Uses the same AppTheme design system, RouteBadge, and card layout
-//  patterns as the rest of the app. No separate map — the MAIN map
-//  behind this sheet draws the route polylines and live vehicles.
-//
+// Route detail view presented when tapping a grouped route card.
+// Uses the same AppTheme design system, RouteBadge, and card layout
+// patterns as the rest of the app. No separate map — the MAIN map
+// behind this sheet draws the route polylines and live vehicles.
 
 import CoreLocation
 import SwiftUI
@@ -291,7 +286,9 @@ struct RouteDetailSheet: View {
 
     /// The name of the currently selected direction, used to match headsigns in RouteShape.
     private var selectedDirectionName: String? {
-        guard selectedDirectionIndex >= 0, selectedDirectionIndex < group.directions.count else { return nil }
+        guard selectedDirectionIndex >= 0,
+            selectedDirectionIndex < group.directions.count
+        else { return nil }
         return group.directions[selectedDirectionIndex].direction
     }
 
@@ -308,8 +305,13 @@ struct RouteDetailSheet: View {
     /// ("Southbound → Far Rockaway / Lefferts Blvd") which causes duplicated
     /// or overly long labels.  The headsign/last-stop approach gives ONE clean
     /// terminal name per direction pill.
-    private func resolvedDirectionLabel(for dir: DirectionArrivalsResponse, at index: Int) -> String {
-        let matchedDir = routeShape?.matchedDirection(index: index, name: dir.direction)
+    private func resolvedDirectionLabel(
+        for dir: DirectionArrivalsResponse,
+        at index: Int
+    ) -> String {
+        let matchedDir = routeShape?.matchedDirection(
+            index: index, name: dir.direction
+        )
         return ArrivalHelpers.resolveDirectionLabel(
             for: dir,
             shapeHeadsign: matchedDir?.headsign,
@@ -423,7 +425,11 @@ struct RouteDetailSheet: View {
             .alert("Sign In to Save Favorites", isPresented: $showSignInPrompt) {
                 Button("OK", role: .cancel) {}
             } message: {
-                Text("Create a free account to save your favorite routes and access them across all your devices.")
+                Text(
+                    "Create a free account to save"
+                    + " your favorite routes and access"
+                    + " them across all your devices."
+                )
             }
     }
 
@@ -579,7 +585,9 @@ struct RouteDetailSheet: View {
         AppLogger.shared.log(
             "ROUTE_DETAIL",
             message:
-                "VIEW_OPEN route=\(group.routeId) dir=\(safeDirection.direction) live=\(safeDirection.liveArrivals.count)"
+                "VIEW_OPEN route=\(group.routeId)"
+                + " dir=\(safeDirection.direction)"
+                + " live=\(safeDirection.liveArrivals.count)"
         )
         #endif
     }
@@ -629,7 +637,11 @@ struct RouteDetailSheet: View {
                 stableNearestArrivals = fresh
                 lastStableRefreshDate = .now
                 #if DEBUG
-                print("[STABLE_CHIPS] ♻️ FORCE-REFRESH: all \(stableNearestArrivals.count) stable arrivals are past due")
+                print(
+                    "[STABLE_CHIPS] ♻️ FORCE-REFRESH:"
+                    + " all \(stableNearestArrivals.count)"
+                    + " stable arrivals are past due"
+                )
                 #endif
             }
         }
@@ -643,12 +655,31 @@ struct RouteDetailSheet: View {
         lastStableRefreshDate = .now
         #if DEBUG
         if let sid = inSheetSelectedStopId {
-            let stopName = routeShape?.stopsForDirection(index: selectedDirectionIndex, name: selectedDirectionName)
-                .first(where: { $0.id == sid })?.name ?? sid
-            let etas = fresh.map { "\($0.minutesAway)m(\($0.isRealTime ? "LIVE" : "SCHED"))" }.joined(separator: ",")
-            print("[STOP_SELECT] route=\(group.routeId) stop='\(stopName)' id=\(sid) chips=\(fresh.count) etas=[\(etas)]")
+            let stopName = routeShape?
+                .stopsForDirection(
+                    index: selectedDirectionIndex,
+                    name: selectedDirectionName
+                )
+                .first(where: { $0.id == sid })?
+                .name ?? sid
+            let etas = fresh.map {
+                "\($0.minutesAway)m"
+                + "(\($0.isRealTime ? "LIVE" : "SCHED"))"
+            }.joined(separator: ",")
+            print(
+                "[STOP_SELECT]"
+                + " route=\(group.routeId)"
+                + " stop='\(stopName)'"
+                + " id=\(sid)"
+                + " chips=\(fresh.count)"
+                + " etas=[\(etas)]"
+            )
         } else {
-            print("[STOP_SELECT] route=\(group.routeId) CLEARED → chips=\(fresh.count)")
+            print(
+                "[STOP_SELECT]"
+                + " route=\(group.routeId)"
+                + " CLEARED → chips=\(fresh.count)"
+            )
         }
         #endif
     }
@@ -669,7 +700,13 @@ struct RouteDetailSheet: View {
         AppLogger.shared.log(
             "ROUTE_DETAIL",
             message:
-                "DIR_CHANGE route=\(group.routeId) mode=\(group.mode) selectedDirIdx=\(selectedDirectionIndex) dir=\(direction.direction) all=\(direction.arrivals.count) live=\(direction.liveArrivals.count)"
+                "DIR_CHANGE"
+                + " route=\(group.routeId)"
+                + " mode=\(group.mode)"
+                + " selectedDirIdx=\(selectedDirectionIndex)"
+                + " dir=\(direction.direction)"
+                + " all=\(direction.arrivals.count)"
+                + " live=\(direction.liveArrivals.count)"
         )
         #endif
         logETAParity(reason: "dir_change")
@@ -766,10 +803,20 @@ struct RouteDetailSheet: View {
                         .frame(width: 72, height: 72)
                         .blur(radius: 16)
                     RouteBadge(
-                        routeID: group.displayName, size: .large, hexColor: group.colorHex, mode: group.mode
+                        routeID: group.displayName,
+                        size: .large,
+                        hexColor: group.colorHex,
+                        mode: group.mode
                     )
-                    .shadow(color: routeColor.opacity(0.45), radius: 12, x: 0, y: 6)
-                    .shadow(color: AppTheme.Colors.shadowStrong.opacity(0.10), radius: 18, x: 0, y: 10)
+                    .shadow(
+                        color: routeColor.opacity(0.45),
+                        radius: 12, x: 0, y: 6
+                    )
+                    .shadow(
+                        color: AppTheme.Colors.shadowStrong
+                            .opacity(0.10),
+                        radius: 18, x: 0, y: 10
+                    )
                 }
 
                 VStack(alignment: .leading, spacing: 5) {
@@ -781,7 +828,11 @@ struct RouteDetailSheet: View {
 
                     if group.directions.indices.contains(selectedDirectionIndex) {
                         let dir = group.directions[selectedDirectionIndex]
-                        let subtitle = "→ \(resolvedDirectionLabel(for: dir, at: selectedDirectionIndex))"
+                        let label = resolvedDirectionLabel(
+                            for: dir,
+                            at: selectedDirectionIndex
+                        )
+                        let subtitle = "→ \(label)"
                         Text(subtitle)
                             .font(AppTheme.Typography.cardSubtitle)
                             .foregroundColor(AppTheme.Colors.textSecondary)
@@ -825,14 +876,28 @@ struct RouteDetailSheet: View {
                         ZStack {
                         Circle()
                             .fill(AppTheme.Gradients.accentSurface)
-                            .overlay { Circle().stroke(AppTheme.Colors.borderAccent.opacity(0.42), lineWidth: 1) }
+                            .overlay {
+                                Circle().stroke(
+                                    AppTheme.Colors.borderAccent
+                                        .opacity(0.42),
+                                    lineWidth: 1
+                                )
+                            }
                         Image(systemName: "location.fill")
                             .font(.system(size: 14, weight: .bold))
                             .foregroundColor(AppTheme.Colors.mtaBlue)
                     }
                     .frame(width: 34, height: 34)
-                    .shadow(color: AppTheme.Colors.shadow.opacity(0.16), radius: 6, y: 2)
-                    .shadow(color: AppTheme.Colors.mtaBlue.opacity(0.12), radius: 4, y: 2)
+                    .shadow(
+                        color: AppTheme.Colors.shadow
+                            .opacity(0.16),
+                        radius: 6, y: 2
+                    )
+                    .shadow(
+                        color: AppTheme.Colors.mtaBlue
+                            .opacity(0.12),
+                        radius: 4, y: 2
+                    )
                     }
                     .accessibilityLabel("Recenter on my location")
                 }
@@ -859,16 +924,24 @@ struct RouteDetailSheet: View {
                         Circle()
                             .fill(
                                 isFavorited
-                                    ? AnyShapeStyle(AppTheme.Gradients.tintWash(.red, intensity: 0.22))
-                                    : AnyShapeStyle(AppTheme.Gradients.controlSurface)
+                                    ? AnyShapeStyle(
+                                        AppTheme.Gradients.tintWash(
+                                            .red, intensity: 0.22))
+                                    : AnyShapeStyle(
+                                        AppTheme.Gradients.controlSurface)
                             )
                             .overlay {
                                 Circle().stroke(
-                                    isFavorited ? Color.red.opacity(0.28) : AppTheme.Colors.borderSubtle,
+                                    isFavorited
+                                        ? Color.red.opacity(0.28)
+                                        : AppTheme.Colors.borderSubtle,
                                     lineWidth: 1
                                 )
                             }
-                        Image(systemName: isFavorited ? "heart.fill" : "heart")
+                        Image(
+                            systemName: isFavorited
+                                ? "heart.fill" : "heart"
+                        )
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundColor(isFavorited ? .red : AppTheme.Colors.textSecondary)
                             .symbolEffect(.bounce, value: isFavorited)
@@ -994,7 +1067,10 @@ struct RouteDetailSheet: View {
     /// Builds the direction polyline and stop fraction used by the passed-stop
     /// filter and polyline-distance sort.  Uses `cachedDirectionPolyline` to
     /// avoid re-decoding Google-encoded polylines on every body evaluation.
-    private var directionPolylineAndStopFraction: (polyline: [CLLocationCoordinate2D], stopFraction: Double?) {
+    private var directionPolylineAndStopFraction: (
+        polyline: [CLLocationCoordinate2D],
+        stopFraction: Double?
+    ) {
         let polyline: [CLLocationCoordinate2D] = cachedDirectionPolyline
 
         let liveOnly = safeDirection.liveArrivals
@@ -1031,7 +1107,10 @@ struct RouteDetailSheet: View {
                         return CLLocationCoordinate2D(latitude: lat, longitude: lon)
                     }
                     if let shape = routeShape {
-                        let stops = shape.stopsForDirection(index: selectedDirectionIndex, name: selectedDirectionName)
+                        let stops = shape.stopsForDirection(
+                            index: selectedDirectionIndex,
+                            name: selectedDirectionName
+                        )
                         if let s = stops.first(where: { $0.id == nk || $0.name == nk }) {
                             return CLLocationCoordinate2D(latitude: s.lat, longitude: s.lon)
                         }
@@ -1070,7 +1149,13 @@ struct RouteDetailSheet: View {
         // ── Pre-filter: remove vehicles that have passed the stop ──
         let reachable: [NearbyTransitResponse]
         if let sf = stopFraction {
-            reachable = liveOnly.filter { !hasVehiclePassedStop($0, stopFraction: sf, polyline: polyline) }
+            reachable = liveOnly.filter {
+                !hasVehiclePassedStop(
+                    $0,
+                    stopFraction: sf,
+                    polyline: polyline
+                )
+            }
         } else {
             reachable = liveOnly
         }
@@ -1156,7 +1241,13 @@ struct RouteDetailSheet: View {
         let (polyline, stopFraction) = directionPolylineAndStopFraction
         let live: [NearbyTransitResponse]
         if let sf = stopFraction {
-            let filtered = raw.filter { !hasVehiclePassedStop($0, stopFraction: sf, polyline: polyline) }
+            let filtered = raw.filter {
+                !hasVehiclePassedStop(
+                    $0,
+                    stopFraction: sf,
+                    polyline: polyline
+                )
+            }
             // Safety net: never drop ALL arrivals — if the polyline filter
             // removed everything, fall back to the unfiltered list so the
             // user never sees chips=0 when arrivals actually exist.
@@ -1194,13 +1285,25 @@ struct RouteDetailSheet: View {
             let atSelected = deduped(live.filter { arrivalMatchesStop($0, stopId: userStop) })
 
             #if DEBUG
-            let stopName = routeShape?.stopsForDirection(index: selectedDirectionIndex, name: selectedDirectionName)
-                .first(where: { $0.id == userStop })?.name ?? userStop
+            let stopName = routeShape?
+                .stopsForDirection(
+                    index: selectedDirectionIndex,
+                    name: selectedDirectionName
+                )
+                .first(where: { $0.id == userStop })?
+                .name ?? userStop
             let etas = atSelected.map { "\($0.minutesAway)m" }.joined(separator: ",")
             let stopTapKey = "\(group.routeId)_\(userStop)_\(atSelected.count)_\(etas)"
             if stopTapKey != Self._lastStopTapLog {
                 Self._lastStopTapLog = stopTapKey
-                print("[STOP_TAP] route=\(group.routeId) stop=\(stopName) id=\(userStop) liveHits=\(atSelected.count) etas=[\(etas)]")
+                print(
+                    "[STOP_TAP]"
+                    + " route=\(group.routeId)"
+                    + " stop=\(stopName)"
+                    + " id=\(userStop)"
+                    + " liveHits=\(atSelected.count)"
+                    + " etas=[\(etas)]"
+                )
             }
             #endif
 
@@ -1313,12 +1416,29 @@ struct RouteDetailSheet: View {
         #if DEBUG
         do {
             let effectiveBusSchedule = stableBusSchedule ?? busSchedule
-            let effectiveTrainArrivals = stableTrainArrivals.isEmpty ? cachedTrainArrivals : stableTrainArrivals
-            let schedLogKey = "\(group.routeId)_\(direction.direction.prefix(30))_\(allSchedItems.count)_\(schedItems.count)_\(effectiveBusSchedule != nil)"
+            let effectiveTrainArrivals =
+                stableTrainArrivals.isEmpty
+                ? cachedTrainArrivals
+                : stableTrainArrivals
+            let schedLogKey = "\(group.routeId)"
+                + "_\(direction.direction.prefix(30))"
+                + "_\(allSchedItems.count)"
+                + "_\(schedItems.count)"
+                + "_\(effectiveBusSchedule != nil)"
             if schedLogKey != Self._lastChipsSchedLog {
                 Self._lastChipsSchedLog = schedLogKey
                 if allSchedItems.isEmpty {
-                    print("[CHIPS_SCHED] route=\(group.routeId) dir=\(direction.direction.prefix(30))  scheduledDeparturesForCurrentDirection is EMPTY — busSchedule=\(effectiveBusSchedule != nil ? "loaded" : "nil") stableSched=\(stableBusSchedule != nil) cachedTrainArrivals=\(effectiveTrainArrivals.count) stableTrains=\(stableTrainArrivals.count)")
+                    print(
+                        "[CHIPS_SCHED]"
+                        + " route=\(group.routeId)"
+                        + " dir=\(direction.direction.prefix(30))"
+                        + " scheduledDeparturesForCurrentDirection"
+                        + " is EMPTY"
+                        + " — busSchedule=\(effectiveBusSchedule != nil ? "loaded" : "nil")"
+                        + " stableSched=\(stableBusSchedule != nil)"
+                        + " cachedTrainArrivals=\(effectiveTrainArrivals.count)"
+                        + " stableTrains=\(stableTrainArrivals.count)"
+                    )
                 }
             }
         }
@@ -1357,15 +1477,30 @@ struct RouteDetailSheet: View {
         let appendedCount = schedChips.count
         let totalSched = scheduledDeparturesForCurrentDirection.count
         if !baseChips.isEmpty || !schedChips.isEmpty {
-            let chipsKey = "\(group.routeId)_\(liveCount)_\(apiSchedCount)_\(appendedCount)_\(totalSched)_\((baseChips + schedChips).map { $0.minutesAway }.description)"
+            let chipsKey = "\(group.routeId)"
+                + "_\(liveCount)"
+                + "_\(apiSchedCount)"
+                + "_\(appendedCount)"
+                + "_\(totalSched)"
+                + "_\((baseChips + schedChips).map { $0.minutesAway }.description)"
             if chipsKey != Self._lastChipsLog {
                 Self._lastChipsLog = chipsKey
                 let chipDesc = (baseChips + schedChips).map { a -> String in
                     let tag = a.isRealTime ? "LIVE" : "SCHED"
                     let vid = a.vehicleId ?? a.tripId ?? "?"
-                    return "\(a.minutesAway)m(\(tag),\(vid.suffix(12)))"
+                    return "\(a.minutesAway)m"
+                        + "(\(tag),\(vid.suffix(12)))"
                 }
-                print("[CHIPS] route=\(group.routeId) dir=\(direction.direction.prefix(30))  live=\(liveCount) apiSched=\(apiSchedCount) appendedSched=\(appendedCount) (of \(totalSched) available)  chips=[\(chipDesc.joined(separator: ", "))]")
+                print(
+                    "[CHIPS]"
+                    + " route=\(group.routeId)"
+                    + " dir=\(direction.direction.prefix(30))"
+                    + "  live=\(liveCount)"
+                    + " apiSched=\(apiSchedCount)"
+                    + " appendedSched=\(appendedCount)"
+                    + " (of \(totalSched) available)"
+                    + "  chips=[\(chipDesc.joined(separator: ", "))]"
+                )
             }
         }
         #endif
@@ -1381,10 +1516,18 @@ struct RouteDetailSheet: View {
 
     /// Mirrors `GroupedRouteRow.countdownArrival(for:)` exactly by delegating
     /// to the shared `ArrivalHelpers.countdownArrival` — single source of truth.
-    private func rowComparableCountdownArrival(for direction: DirectionArrivalsResponse) -> NearbyTransitResponse? {
+    private func rowComparableCountdownArrival(
+        for direction: DirectionArrivalsResponse
+    ) -> NearbyTransitResponse? {
         let refCoord = currentLocation ?? searchCenter
-        let refLoc = refCoord.map { CLLocation(latitude: $0.latitude, longitude: $0.longitude) }
-        return ArrivalHelpers.countdownArrival(for: direction, userLocation: refLoc, provider: smartETA)
+        let refLoc = refCoord.map {
+            CLLocation(latitude: $0.latitude, longitude: $0.longitude)
+        }
+        return ArrivalHelpers.countdownArrival(
+            for: direction,
+            userLocation: refLoc,
+            provider: smartETA
+        )
     }
 
     // MARK: - Arrival diff logging
@@ -1401,7 +1544,11 @@ struct RouteDetailSheet: View {
         label: String
     ) {
         #if DEBUG
-        let ts = String(format: "%.1f", Date().timeIntervalSince1970.truncatingRemainder(dividingBy: 10000))
+        let ts = String(
+            format: "%.1f",
+            Date().timeIntervalSince1970
+                .truncatingRemainder(dividingBy: 10000)
+        )
         let route = group.routeId
         let dir = safeDirection.direction
         let lockInfo = lockedNearestStopKey.map { "lock:\($0)" } ?? "lock:none"
@@ -1434,7 +1581,10 @@ struct RouteDetailSheet: View {
                     return " (no GPS match)"
                 }()
 
-                return "  \(tag) \(a.minutesAway)m @ \(clockTime)  id=\(vid)  stop=\(a.stopName)\(coords)"
+                return "  \(tag) \(a.minutesAway)m"
+                    + " @ \(clockTime)"
+                    + "  id=\(vid)"
+                    + "  stop=\(a.stopName)\(coords)"
             }
         }
 
@@ -1453,8 +1603,10 @@ struct RouteDetailSheet: View {
         for l in oldLines { out += "\n│ \(l)" }
         out += "\n│  ── NEW (\(new.count)) ──────────────────────────────────────"
         for l in newLines { out += "\n│ \(l)" }
-        out += "\n│  APPEARED (\(appeared.count)): \(appeared.isEmpty ? "none" : appeared.joined(separator: ", "))"
-        out += "\n│  VANISHED (\(vanished.count)): \(vanished.isEmpty ? "none" : vanished.joined(separator: ", "))"
+        out += "\n│  APPEARED (\(appeared.count)): "
+            + "\(appeared.isEmpty ? "none" : appeared.joined(separator: ", "))"
+        out += "\n│  VANISHED (\(vanished.count)): "
+            + "\(vanished.isEmpty ? "none" : vanished.joined(separator: ", "))"
         out += "\n└─────────────────────────────────────────────────────────────────"
         print(out)
         #endif
@@ -1494,7 +1646,13 @@ struct RouteDetailSheet: View {
         if newCount < oldCount / 2 && oldCount >= 4 {
             if elapsed < 30 {
                 #if DEBUG
-                print("[STABLE_CHIPS] ⏳ ANTI-FLAP: blocking count drop \(oldCount)→\(newCount), \(String(format: "%.0f", elapsed))s since last refresh")
+                print(
+                    "[STABLE_CHIPS] ⏳ ANTI-FLAP:"
+                    + " blocking count drop"
+                    + " \(oldCount)→\(newCount),"
+                    + " \(String(format: "%.0f", elapsed))s"
+                    + " since last refresh"
+                )
                 #endif
                 return false
             }
@@ -1517,7 +1675,13 @@ struct RouteDetailSheet: View {
         if !vanished.isEmpty && appeared.isEmpty {
             if elapsed < 25 {
                 #if DEBUG
-                print("[STABLE_CHIPS] ⏳ ANTI-FLAP: blocking vanished=\(vanished) with no new arrivals, \(String(format: "%.0f", elapsed))s since last refresh")
+                print(
+                    "[STABLE_CHIPS] ⏳ ANTI-FLAP:"
+                    + " blocking vanished=\(vanished)"
+                    + " with no new arrivals,"
+                    + " \(String(format: "%.0f", elapsed))s"
+                    + " since last refresh"
+                )
                 #endif
                 return false
             }
@@ -1546,7 +1710,11 @@ struct RouteDetailSheet: View {
         else {
             AppLogger.shared.log(
                 "ETA_PARITY",
-                message: "reason=\(reason) route=\(group.routeId) dir=\(direction.direction) unavailable"
+                message:
+                    "reason=\(reason)"
+                    + " route=\(group.routeId)"
+                    + " dir=\(direction.direction)"
+                    + " unavailable"
             )
             return
         }
@@ -1558,7 +1726,14 @@ struct RouteDetailSheet: View {
         AppLogger.shared.log(
             "ETA_PARITY",
             message:
-                "reason=\(reason) route=\(group.routeId) dir=\(direction.direction) row=\(rowETA.minutesRemaining)m detail=\(detailETA.minutesRemaining)m delta=\(deltaSeconds)s rowStop=\(rowArrival.stopName) detailStop=\(detailArrival.stopName)"
+                "reason=\(reason)"
+                    + " route=\(group.routeId)"
+                    + " dir=\(direction.direction)"
+                    + " row=\(rowETA.minutesRemaining)m"
+                    + " detail=\(detailETA.minutesRemaining)m"
+                    + " delta=\(deltaSeconds)s"
+                    + " rowStop=\(rowArrival.stopName)"
+                    + " detailStop=\(detailArrival.stopName)"
         )
 
         // Log the full arrival lists from both sides so discrepancies are visible.
@@ -1568,17 +1743,31 @@ struct RouteDetailSheet: View {
             let eta = smartETA(for: a)
             let vid = a.vehicleId ?? a.tripId ?? "?"
             let rtTag = a.isRealTime ? "LIVE" : "SCHED"
-            return "\(eta.minutesRemaining)m(raw=\(a.minutesAway),\(rtTag),id=\(vid.suffix(6)),stop=\(a.stopName))"
+            return "\(eta.minutesRemaining)m"
+                + "(raw=\(a.minutesAway)"
+                + ",\(rtTag)"
+                + ",id=\(vid.suffix(6))"
+                + ",stop=\(a.stopName))"
         }
-        // Detail side: the stable nearest-stop arrivals (what the user sees as chips)
+        // Detail side: the stable nearest-stop arrivals
+        // (what the user sees as chips)
         let detailChips = stableNearestArrivals
         let detailMins = detailChips.map { a -> String in
             let eta = smartETA(for: a)
             let vid = a.vehicleId ?? a.tripId ?? "?"
             let rtTag = a.isRealTime ? "LIVE" : "SCHED"
-            return "\(eta.minutesRemaining)m(raw=\(a.minutesAway),\(rtTag),id=\(vid.suffix(6)),stop=\(a.stopName))"
+            return "\(eta.minutesRemaining)m"
+                + "(raw=\(a.minutesAway)"
+                + ",\(rtTag)"
+                + ",id=\(vid.suffix(6))"
+                + ",stop=\(a.stopName))"
         }
-        print("[DETAIL_ARRIVALS] route=\(group.routeId)  row=[\(rowMins.joined(separator: ", "))]  detail=[\(detailMins.joined(separator: ", "))]")
+        print(
+            "[DETAIL_ARRIVALS]"
+            + " route=\(group.routeId)"
+            + "  row=[\(rowMins.joined(separator: ", "))]"
+            + "  detail=[\(detailMins.joined(separator: ", "))]"
+        )
         #endif
     }
 
@@ -1611,8 +1800,10 @@ struct RouteDetailSheet: View {
     /// Checks if an arrival's stop name matches the name of a route shape stop by ID.
     private func matchesByName(arrivalStopName: String, shapeStopId: String) -> Bool {
         guard let shape = routeShape else { return false }
-        let allStops = shape.stopsForDirection(index: selectedDirectionIndex, name: selectedDirectionName)
-        // Try exact ID match first, then parent station ID match
+        let allStops = shape.stopsForDirection(
+            index: selectedDirectionIndex,
+            name: selectedDirectionName
+        )
         let shapeStop = allStops.first(where: { $0.id == shapeStopId })
             ?? allStops.first(where: { normalizeStopId($0.id) == normalizeStopId(shapeStopId) })
         guard let shapeStop else { return false }
@@ -1624,14 +1815,20 @@ struct RouteDetailSheet: View {
 
     /// Calculates distance from a user location to an arrival's stop.
     /// Uses stop lat/lon from the arrival, or tries to look up from route shape.
-    private func arrivalDistance(_ arrival: NearbyTransitResponse, from userLoc: CLLocation) -> CLLocationDistance {
+    private func arrivalDistance(
+        _ arrival: NearbyTransitResponse,
+        from userLoc: CLLocation
+    ) -> CLLocationDistance {
         // Use arrival's own coordinates if available
         if let lat = arrival.stopLat, let lon = arrival.stopLon {
             return userLoc.distance(from: CLLocation(latitude: lat, longitude: lon))
         }
         // Try to look up coordinates from route shape stops
         if let stopId = arrival.stopId, let shape = routeShape {
-            let allStops = shape.stopsForDirection(index: selectedDirectionIndex, name: selectedDirectionName)
+            let allStops = shape.stopsForDirection(
+                index: selectedDirectionIndex,
+                name: selectedDirectionName
+            )
             if let stop = allStops.first(where: { $0.id == stopId }) {
                 return userLoc.distance(from: CLLocation(latitude: stop.lat, longitude: stop.lon))
             }
@@ -1643,8 +1840,13 @@ struct RouteDetailSheet: View {
         }
         // Try name-based lookup
         if let shape = routeShape {
-            let allStops = shape.stopsForDirection(index: selectedDirectionIndex, name: selectedDirectionName)
-            if let stop = allStops.first(where: { $0.name.lowercased() == arrival.stopName.lowercased() }) {
+            let allStops = shape.stopsForDirection(
+                index: selectedDirectionIndex,
+                name: selectedDirectionName
+            )
+            if let stop = allStops.first(where: {
+                $0.name.lowercased() == arrival.stopName.lowercased()
+            }) {
                 return userLoc.distance(from: CLLocation(latitude: stop.lat, longitude: stop.lon))
             }
         }
@@ -1695,7 +1897,10 @@ struct RouteDetailSheet: View {
             }
             // Try route shape lookup
             if let sid = arrival.stopId, let shape = routeShape {
-                let stops = shape.stopsForDirection(index: selectedDirectionIndex, name: selectedDirectionName)
+                let stops = shape.stopsForDirection(
+                    index: selectedDirectionIndex,
+                    name: selectedDirectionName
+                )
                 if let s = stops.first(where: { $0.id == sid }) {
                     return CLLocationCoordinate2D(latitude: s.lat, longitude: s.lon)
                 }
@@ -1749,7 +1954,11 @@ struct RouteDetailSheet: View {
         )
     }
 
-    private func arrivalCard(arrival: NearbyTransitResponse, index: Int, eta: SmartETA) -> some View {
+    private func arrivalCard(
+        arrival: NearbyTransitResponse,
+        index: Int,
+        eta: SmartETA
+    ) -> some View {
         let chip = makeChipData(arrival: arrival, eta: eta)
         let isSched = chip.isScheduled
         let accent: Color = chip.isCancelled
@@ -1784,7 +1993,10 @@ struct RouteDetailSheet: View {
         // 1) User-selected stop — resolve name from shape or arrivals
         if let userStop = inSheetSelectedStopId, !userStop.isEmpty {
             if let shape = routeShape {
-                let stops = shape.stopsForDirection(index: selectedDirectionIndex, name: selectedDirectionName)
+                let stops = shape.stopsForDirection(
+                    index: selectedDirectionIndex,
+                    name: selectedDirectionName
+                )
                 let parentId = normalizeStopId(userStop)
                 if let name = stops.first(where: { $0.id == userStop })?.name
                     ?? stops.first(where: { normalizeStopId($0.id) == parentId })?.name {
@@ -1797,7 +2009,10 @@ struct RouteDetailSheet: View {
         if let stopId = selectedStopId, !stopId.isEmpty {
             if let name = source.first?.stopName { return name }
             if let shape = routeShape {
-                let stops = shape.stopsForDirection(index: selectedDirectionIndex, name: selectedDirectionName)
+                let stops = shape.stopsForDirection(
+                    index: selectedDirectionIndex,
+                    name: selectedDirectionName
+                )
                 let parentId = normalizeStopId(stopId)
                 return stops.first(where: { $0.id == stopId })?.name
                     ?? stops.first(where: { normalizeStopId($0.id) == parentId })?.name
@@ -1807,7 +2022,9 @@ struct RouteDetailSheet: View {
     }
 
     /// Build ordered chips array from arrivals, partitioned live-first then scheduled.
-    private func buildOrderedChips(from arrivals: [NearbyTransitResponse]) -> [(arrival: NearbyTransitResponse, eta: SmartETA)] {
+    private func buildOrderedChips(
+        from arrivals: [NearbyTransitResponse]
+    ) -> [(arrival: NearbyTransitResponse, eta: SmartETA)] {
         // Partition into live and scheduled buckets, then sort each by ETA.
         // Live chips appear first (left) — matching Transit app behavior —
         // then scheduled chips follow, each group sorted by time.
@@ -2041,7 +2258,9 @@ struct RouteDetailSheet: View {
     }
 
     /// Single horizontal row of arrival chips.
-    private func countdownChipRow(chips: [(arrival: NearbyTransitResponse, eta: SmartETA)]) -> some View {
+    private func countdownChipRow(
+        chips: [(arrival: NearbyTransitResponse, eta: SmartETA)]
+    ) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(alignment: .top, spacing: 10) {
                 ForEach(Array(chips.enumerated()), id: \.element.arrival.id) { index, pair in
@@ -2077,7 +2296,17 @@ struct RouteDetailSheet: View {
             let ts = a.arrivalTs.map { String($0) } ?? "nil"
             let dist = a.distanceM.map { String(Int($0)) + "m" } ?? "nil"
             let isNow = eta.isAtStop || eta.secondsRemaining <= 15
-            print("  [\(i)] \(type) | \(isNow ? "NOW" : "\(mins)min") (\(secs)s) | vid=\(vid) tid=\(tid) | stop=\(a.stopName) sid=\(sid) | dest=\(dest) | status=\(status) | arrTs=\(ts) | dist=\(dist)")
+            print(
+                "  [\(i)] \(type)"
+                + " | \(isNow ? "NOW" : "\(mins)min")"
+                + " (\(secs)s)"
+                + " | vid=\(vid) tid=\(tid)"
+                + " | stop=\(a.stopName) sid=\(sid)"
+                + " | dest=\(dest)"
+                + " | status=\(status)"
+                + " | arrTs=\(ts)"
+                + " | dist=\(dist)"
+            )
         }
         print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
         #endif
@@ -2112,7 +2341,10 @@ struct RouteDetailSheet: View {
         // after props are captured).  Fall back to props for the initial
         // render before handleScheduleChange() populates the @State.
         let effectiveBusSchedule = stableBusSchedule ?? busSchedule
-        let effectiveTrainArrivals = stableTrainArrivals.isEmpty ? cachedTrainArrivals : stableTrainArrivals
+        let effectiveTrainArrivals =
+            stableTrainArrivals.isEmpty
+            ? cachedTrainArrivals
+            : stableTrainArrivals
 
         // --- Bus schedule ---
         if group.isBus, let schedule = effectiveBusSchedule {
@@ -2140,8 +2372,12 @@ struct RouteDetailSheet: View {
                         CLLocation(latitude: $0.latitude, longitude: $0.longitude)
                     }
                     if let refLoc {
-                        let shapeDir = shape.matchedDirection(index: selectedDirectionIndex, name: direction.direction)
-                        let stops = shapeDir?.stops ?? shape.stops
+                        let shapeDir = shape.matchedDirection(
+                            index: selectedDirectionIndex,
+                            name: direction.direction
+                        )
+                        let stops = shapeDir?.stops
+                            ?? shape.stops
                         return stops.min(by: {
                             refLoc.distance(from: CLLocation(latitude: $0.lat, longitude: $0.lon))
                             < refLoc.distance(from: CLLocation(latitude: $1.lat, longitude: $1.lon))
@@ -2171,8 +2407,16 @@ struct RouteDetailSheet: View {
                     if arrDir == dirLower || arrDest == dirLower { return true }
                     // Only allow substring matching for strings >= 3 chars
                     // to avoid single-char compass codes ("n","s") false-matching
-                    if arrDir.count >= 3 && (dirLower.contains(arrDir) || arrDir.contains(dirLower)) { return true }
-                    if arrDest.count >= 3 && (dirLower.contains(arrDest) || arrDest.contains(dirLower)) { return true }
+                    if arrDir.count >= 3
+                        && (dirLower.contains(arrDir)
+                            || arrDir.contains(dirLower)) {
+                        return true
+                    }
+                    if arrDest.count >= 3
+                        && (dirLower.contains(arrDest)
+                            || arrDest.contains(dirLower)) {
+                        return true
+                    }
                     return false
                 }()
                 guard dirMatch else { return false }
@@ -2222,14 +2466,21 @@ struct RouteDetailSheet: View {
                 let schedDirLower: String = schedDir.direction.lowercased()
                 let hsLower: String = schedDir.headsign.lowercased()
                 if schedDirLower == dirLower { return true }
-                if !hsLower.isEmpty && (hsLower.contains(dirLower) || dirLower.contains(hsLower)) { return true }
+                if !hsLower.isEmpty
+                    && (hsLower.contains(dirLower)
+                        || dirLower.contains(hsLower)) {
+                    return true
+                }
                 if !hsLower.isEmpty {
                     let hsTokens: Set<String> = Set(
                         hsLower.split(whereSeparator: { !$0.isLetter && !$0.isNumber })
                             .map(String.init)
                     ).subtracting(stopWords)
                     let overlap: Set<String> = dirTokens.intersection(hsTokens)
-                    if !hsTokens.isEmpty && overlap.count >= max(1, hsTokens.count - 1) { return true }
+                    if !hsTokens.isEmpty
+                        && overlap.count >= max(1, hsTokens.count - 1) {
+                        return true
+                    }
                 }
                 return false
             }
@@ -2239,8 +2490,12 @@ struct RouteDetailSheet: View {
             // then match the schedule direction that corresponds to the same direction_id.
             ?? {
                 guard let shape = routeShape, !shape.directions.isEmpty else { return nil }
-                let shapeDir = shape.matchedDirection(index: selectedDirectionIndex, name: direction.direction)
-                guard let shapeDirId = shapeDir?.directionId else { return nil }
+                let shapeDir = shape.matchedDirection(
+                    index: selectedDirectionIndex,
+                    name: direction.direction
+                )
+                guard let shapeDirId = shapeDir?.directionId
+                else { return nil }
                 // Schedule directions are ordered by direction_id (0 first, 1 second).
                 // Match by positional alignment: schedule dir at index N = direction_id N.
                 let schedIdx = min(shapeDirId, schedule.directions.count - 1)
@@ -2250,23 +2505,40 @@ struct RouteDetailSheet: View {
             // Fallback: positional index match (last resort — may not align if
             // group has more directions than the schedule)
             ?? schedule.directions.first { (schedDir: BusScheduleDirection) -> Bool in
-                let idx: Int? = schedule.directions.firstIndex(where: { $0.direction == schedDir.direction })
+                let idx: Int? = schedule.directions.firstIndex(
+                    where: { $0.direction == schedDir.direction }
+                )
                 return idx == selectedDirectionIndex
             }
 
         #if DEBUG
         do {
             let depCount: Int = matched?.departures.count ?? -1
-            let matchKey: String = "\(group.routeId)_\(dirLower)_\(matched?.direction ?? "nil")_\(depCount)"
+            let matchKey: String =
+                "\(group.routeId)_\(dirLower)"
+                + "_\(matched?.direction ?? "nil")"
+                + "_\(depCount)"
             if matchKey != Self._lastSchedMatchLog {
                 Self._lastSchedMatchLog = matchKey
                 if matched == nil {
                     let availDirs: [String] = schedule.directions.map {
                         "dir='\($0.direction)' hs='\($0.headsign)' deps=\($0.departures.count)"
                     }
-                    print("[SCHED_MATCH] FAILED route=\(group.routeId) looking for '\(dirLower)' in [\(availDirs.joined(separator: ", "))]")
+                    print(
+                        "[SCHED_MATCH] FAILED"
+                        + " route=\(group.routeId)"
+                        + " looking for '\(dirLower)'"
+                        + " in [\(availDirs.joined(separator: ", "))]"
+                    )
                 } else if let m = matched {
-                    print("[SCHED_MATCH] OK route=\(group.routeId) dir='\(dirLower)' → sched dir='\(m.direction)' hs='\(m.headsign)' deps=\(m.departures.count)")
+                    print(
+                        "[SCHED_MATCH] OK"
+                        + " route=\(group.routeId)"
+                        + " dir='\(dirLower)'"
+                        + " \u{2192} sched dir='\(m.direction)'"
+                        + " hs='\(m.headsign)'"
+                        + " deps=\(m.departures.count)"
+                    )
                 }
             }
         }
@@ -2472,14 +2744,22 @@ struct RouteDetailSheet: View {
             let badge: Int = {
                 switch tab {
                 case .stops:
-                    return routeShape?.stopsForDirection(index: selectedDirectionIndex, name: selectedDirectionName).count ?? 0
+                    return routeShape?.stopsForDirection(
+                        index: selectedDirectionIndex,
+                        name: selectedDirectionName
+                    ).count ?? 0
                 case .departures:
                     return cachedDepartureCount
                 case .alerts:
                     return routeAlerts.count
                 }
             }()
-            return PillTab(id: tab.rawValue, label: tab.rawValue, icon: tabIcon(for: tab), badgeCount: badge)
+            return PillTab(
+                id: tab.rawValue,
+                label: tab.rawValue,
+                icon: tabIcon(for: tab),
+                badgeCount: badge
+            )
         }
 
         return PillTabPicker(
@@ -2551,7 +2831,10 @@ struct RouteDetailSheet: View {
                 isSelected: inSheetSelectedStopId == stop.id,
                 transfers: transfers,
                 accessibilityOutages: outages.map(\.description),
-                hasElevatorOutage: outages.contains { $0.equipmentType.lowercased().contains("elevator") },
+                hasElevatorOutage: outages.contains {
+                    $0.equipmentType.lowercased()
+                        .contains("elevator")
+                },
                 nextArrivalMinutes: nextArrival.flatMap { $0.isPlaceholder ? nil : $0.minutesAway },
                 nextArrivalIsScheduled: nextArrival?.isScheduledOnly ?? true,
                 nextArrivalIsAtStop: (nextArrival?.minutesAway ?? 1) <= 0,
@@ -2656,12 +2939,16 @@ struct RouteDetailSheet: View {
             let stopNameKey = stop.name.lowercased().trimmingCharacters(in: .whitespaces)
             for direction in shape.directions {
                 for candidate in direction.stops {
-                    guard let candidateRouteIds = candidate.routeIds, !candidateRouteIds.isEmpty else {
+                    guard let candidateRouteIds = candidate.routeIds,
+                          !candidateRouteIds.isEmpty
+                    else {
                         continue
                     }
                     let candidateLoc = CLLocation(latitude: candidate.lat, longitude: candidate.lon)
                     let isNearby = here.distance(from: candidateLoc) <= 80
-                    let isSameName = candidate.name.lowercased().trimmingCharacters(in: .whitespaces) == stopNameKey
+                    let isSameName = candidate.name.lowercased()
+                        .trimmingCharacters(in: .whitespaces)
+                        == stopNameKey
                     guard isNearby || isSameName else { continue }
 
                     for rawId in candidateRouteIds {
@@ -2685,7 +2972,12 @@ struct RouteDetailSheet: View {
         }
 
         // Sort: subway lines first (numeric then alpha), then buses
-        let subwayIDs: Set<String> = ["1","2","3","4","5","6","6X","7","7X","A","C","E","B","D","F","FX","M","G","J","Z","L","N","Q","R","W","GS","FS","SI"]
+        let subwayIDs: Set<String> = [
+            "1", "2", "3", "4", "5", "6", "6X",
+            "7", "7X", "A", "C", "E", "B", "D",
+            "F", "FX", "M", "G", "J", "Z", "L",
+            "N", "Q", "R", "W", "GS", "FS", "SI",
+        ]
         return routes.sorted { a, b in
             let aIsSubway = subwayIDs.contains(a.uppercased())
             let bIsSubway = subwayIDs.contains(b.uppercased())
@@ -2788,7 +3080,10 @@ struct RouteDetailSheet: View {
         } else if hasStops || hasVehicles {
             HStack(spacing: 10) {
                 if let shape, hasStops {
-                    let dirStops = shape.stopsForDirection(index: selectedDirectionIndex, name: selectedDirectionName)
+                    let dirStops = shape.stopsForDirection(
+                        index: selectedDirectionIndex,
+                        name: selectedDirectionName
+                    )
                     HStack(spacing: 6) {
                         Image(systemName: "mappin.and.ellipse")
                             .font(.system(size: 11, weight: .semibold))
@@ -2823,11 +3118,15 @@ struct RouteDetailSheet: View {
                                     .opacity(liveDotPulse ? 0 : 0.6)
                             )
                             .onAppear {
-                                withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: false)) {
+                                withAnimation(
+                                    .easeInOut(duration: 1.2)
+                                        .repeatForever(autoreverses: false)
+                                ) {
                                     liveDotPulse = true
                                 }
                             }
-                        Text("\(directionLiveVehicleCount) live \(group.isBus ? "buses" : "trains")")
+                        let label = group.isBus ? "buses" : "trains"
+                        Text("\(directionLiveVehicleCount) live \(label)")
                             .font(.custom("Helvetica-Bold", size: 12))
                             .foregroundColor(AppTheme.Colors.successGreen)
                     }
@@ -2838,7 +3137,11 @@ struct RouteDetailSheet: View {
                             .fill(AppTheme.Colors.successGreen.opacity(0.06))
                             .overlay(
                                 Capsule()
-                                    .strokeBorder(AppTheme.Colors.successGreen.opacity(0.12), lineWidth: 0.5)
+                                    .strokeBorder(
+                                        AppTheme.Colors.successGreen
+                                            .opacity(0.12),
+                                        lineWidth: 0.5
+                                    )
                                 )
                     )
                 }

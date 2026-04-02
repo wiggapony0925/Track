@@ -1,10 +1,5 @@
-//
-//  ContentView.swift
-//  Track
-//
-//  Root view of the Track NYC Transit app.
-//  Hosts login, onboarding, location gate, and the main dashboard.
-//
+// Root view of the Track NYC Transit app.
+// Hosts login, onboarding, location gate, and the main dashboard.
 
 @preconcurrency import ObjectiveC
 import SwiftUI

@@ -1,11 +1,6 @@
-//
-//  AppTheme.swift
-//  Shared
-//
-//  Central public design system for the Track NYC Transit App.
-//  Views should reference AppTheme tokens instead of hardcoding colors,
-//  gradients, spacing, or typography.
-//
+// Central public design system for the Track NYC Transit App.
+// Views should reference AppTheme tokens instead of hardcoding colors,
+// gradients, spacing, or typography.
 
 import CoreLocation
 import SwiftUI
@@ -303,7 +298,12 @@ enum AppTheme {
             case "1", "2", "3":
                 return Color(red: 216 / 255, green: 34 / 255, blue: 51 / 255)     // Red #D82233
             case "4", "5", "6":
-                return Color(red: 0 / 255, green: 153 / 255, blue: 82 / 255)      // Dark Green #009952
+                // Dark Green #009952
+                return Color(
+                    red: 0 / 255,
+                    green: 153 / 255,
+                    blue: 82 / 255
+                )
             case "7":
                 return Color(red: 154 / 255, green: 56 / 255, blue: 161 / 255)    // Purple #9A38A1
             case "A", "C", "E":
@@ -311,7 +311,12 @@ enum AppTheme {
             case "B", "D", "F", "M":
                 return Color(red: 235 / 255, green: 104 / 255, blue: 0 / 255)     // Orange #EB6800
             case "G":
-                return Color(red: 121 / 255, green: 149 / 255, blue: 52 / 255)    // Light Green #799534
+                // Light Green #799534
+                return Color(
+                    red: 121 / 255,
+                    green: 149 / 255,
+                    blue: 52 / 255
+                )
             case "J", "Z":
                 return Color(red: 142 / 255, green: 92 / 255, blue: 51 / 255)     // Brown #8E5C33
             case "L":
@@ -398,7 +403,10 @@ enum AppTheme {
         private static let s = AppSettings.shared
 
         /// Center of the NYC 5 boroughs + Long Island bounding box.
-        static let boundsCenter = CLLocationCoordinate2D(latitude: s.boundsCenterLat, longitude: s.boundsCenterLon)
+        static let boundsCenter = CLLocationCoordinate2D(
+            latitude: s.boundsCenterLat,
+            longitude: s.boundsCenterLon
+        )
 
         /// Bounds lat/lon deltas (used by MapLibre for clamping).
         static let boundsLatDelta: Double = s.boundsLatDelta
@@ -413,7 +421,10 @@ enum AppTheme {
 
         /// Fallback center (Midtown Manhattan) shown before CoreLocation
         /// delivers the first fix.
-        static let nycCenter = CLLocationCoordinate2D(latitude: s.nycCenterLat, longitude: s.nycCenterLon)
+        static let nycCenter = CLLocationCoordinate2D(
+            latitude: s.nycCenterLat,
+            longitude: s.nycCenterLon
+        )
 
         // MARK: - Service Area Validation
 

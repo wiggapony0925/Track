@@ -1,17 +1,10 @@
-//
-//  GlobalFeedsCache.swift
-//  Track
-//
-//  Persists alerts and accessibility data to disk so the next cold
-//  launch can display alert banners and elevator outages instantly
-//  instead of waiting 1-3s for the network.
-//
-//  Mirrors TransitSessionCache's approach: save after every successful
-//  fetch, load on next cold launch, background refresh replaces stale data.
-//
-//  maxAge = 4 hours — alerts change more frequently than route structure,
-//  so we keep a shorter window than TransitSessionCache (24h).
-//
+// Persists alerts and accessibility data to disk so the next cold
+// launch can display alert banners and elevator outages instantly
+// instead of waiting 1-3s for the network.
+// Mirrors TransitSessionCache's approach: save after every successful
+// fetch, load on next cold launch, background refresh replaces stale data.
+// maxAge = 4 hours — alerts change more frequently than route structure,
+// so we keep a shorter window than TransitSessionCache (24h).
 
 import Foundation
 
@@ -33,13 +26,13 @@ enum GlobalFeedsCache {
 
     private static var alertsURL: URL? {
         FileManager.default
-            .containerURL(forSecurityApplicationGroupIdentifier: kAppGroupIdentifier)?
+            .containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier)?
             .appendingPathComponent(alertsFileName)
     }
 
     private static var accessibilityURL: URL? {
         FileManager.default
-            .containerURL(forSecurityApplicationGroupIdentifier: kAppGroupIdentifier)?
+            .containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier)?
             .appendingPathComponent(accessibilityFileName)
     }
 
@@ -80,7 +73,11 @@ enum GlobalFeedsCache {
         load(from: accessibilityURL, maxAge: maxAge, label: "accessibility")
     }
 
-    private static func load<T: Codable>(from url: URL?, maxAge: TimeInterval, label: String) -> T? {
+    private static func load<T: Codable>(
+        from url: URL?,
+        maxAge: TimeInterval,
+        label: String
+    ) -> T? {
         guard let url,
               FileManager.default.fileExists(atPath: url.path),
               let data = try? Data(contentsOf: url),

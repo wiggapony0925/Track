@@ -1,12 +1,7 @@
-//
-//  DistanceBucketUtils.swift
-//  Track
-//
-//  Shared distance-bucketing logic used by NearbyDashboard, SubwayDashboard,
-//  BusDashboard, LIRRDashboard, and MNRDashboard. Centralised here so that
-//  strict-ring enforcement, adaptive promotion, and radius-reading all live
-//  in exactly one place.
-//
+// Shared distance-bucketing logic used by NearbyDashboard, SubwayDashboard,
+// BusDashboard, LIRRDashboard, and MNRDashboard. Centralised here so that
+// strict-ring enforcement, adaptive promotion, and radius-reading all live
+// in exactly one place.
 
 import CoreLocation
 
@@ -35,7 +30,9 @@ func sortGroupedByDistance(
 ) -> [GroupedNearbyTransitResponse] {
     guard let location else {
         return groups.sorted {
-            if $0.soonestMinutes != $1.soonestMinutes { return $0.soonestMinutes < $1.soonestMinutes }
+            if $0.soonestMinutes != $1.soonestMinutes {
+                return $0.soonestMinutes < $1.soonestMinutes
+            }
             let leftName = $0.displayName.localizedCaseInsensitiveCompare($1.displayName)
             if leftName != .orderedSame { return leftName == .orderedAscending }
             return $0.routeId.localizedCaseInsensitiveCompare($1.routeId) == .orderedAscending
@@ -51,7 +48,14 @@ func sortGroupedByDistance(
             let allArrivals = group.directions.flatMap { $0.arrivals }
             let stop = allArrivals.first?.stopId ?? allArrivals.first?.stopName ?? "?"
             let src = allArrivals.first(where: { $0.distanceM != nil }) != nil ? "server" : "client"
-            print("[DISTANCE] \(group.displayName) (\(group.mode)) → \(Int(d))m / \(Int(feet))ft / \(String(format: "%.2f", miles))mi  via=\(src)  stop=\(stop)  arrivals=\(allArrivals.count)")
+            let distStr = "\(Int(d))m / \(Int(feet))ft"
+            let miStr = "\(String(format: "%.2f", miles))mi"
+            print(
+                "[DISTANCE] \(group.displayName)"
+                + " (\(group.mode)) → \(distStr) / \(miStr)"
+                + "  via=\(src)  stop=\(stop)"
+                + "  arrivals=\(allArrivals.count)"
+            )
         }
     }
     #endif
@@ -185,13 +189,32 @@ func separateGroupsByDistance(
     let tierLog: (String, [GroupedNearbyTransitResponse]) -> Void = { tier, items in
         for g in items {
             let d = groupMinDistance(for: g, from: location)
-            let hasCoords = g.directions.flatMap(\.arrivals).contains { $0.stopLat != nil && $0.stopLon != nil }
+            let hasCoords = g.directions
+                .flatMap(\.arrivals)
+                .contains { $0.stopLat != nil && $0.stopLon != nil }
             let distLabel = d < 1_000_000 ? "\(Int(d))m" : "∞"
-            AppLogger.shared.log("SORT", message: "\(tier) | \(g.displayName) (\(g.routeId)) → \(distLabel)  coords=\(hasCoords)")
+            AppLogger.shared.log(
+                "SORT",
+                message: "\(tier) | \(g.displayName)"
+                    + " (\(g.routeId)) → \(distLabel)"
+                    + "  coords=\(hasCoords)"
+            )
         }
     }
     if !nearYou.isEmpty || !fartherAway.isEmpty || !muchFarther.isEmpty {
-        AppLogger.shared.log("SORT", message: "── Tier breakdown  R1=\(Int(r1))m  R2=\(Int(r2))m  R3=\(Int(r3))m  ref=(\(String(format: "%.5f", location.coordinate.latitude)), \(String(format: "%.5f", location.coordinate.longitude))) ──")
+        let latStr = String(
+            format: "%.5f", location.coordinate.latitude
+        )
+        let lonStr = String(
+            format: "%.5f", location.coordinate.longitude
+        )
+        AppLogger.shared.log(
+            "SORT",
+            message: "── Tier breakdown"
+                + "  R1=\(Int(r1))m  R2=\(Int(r2))m"
+                + "  R3=\(Int(r3))m"
+                + "  ref=(\(latStr), \(lonStr)) ──"
+        )
         tierLog("Near You     ", nearYou)
         tierLog("A Bit Farther", fartherAway)
         tierLog("Much Farther ", muchFarther)

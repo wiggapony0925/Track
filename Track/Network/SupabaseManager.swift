@@ -1,14 +1,8 @@
-//
-//  SupabaseManager.swift
-//  Track
-//
-//  Manages all Supabase interactions including authentication,
-//  database operations, and data synchronization.
-//
-//  Setup:
-//  1. Add Supabase SDK: File > Add Packages > https://github.com/supabase-community/supabase-swift
-//  2. Configure credentials below or in environment
-//
+// Manages all Supabase interactions including authentication,
+// database operations, and data synchronization.
+// Setup:
+// 1. Add Supabase SDK: File > Add Packages > https://github.com/supabase-community/supabase-swift
+// 2. Configure credentials below or in environment
 
 import Foundation
 import Combine
@@ -25,7 +19,9 @@ import Combine
 /// but should still not be committed to public repositories.
 enum SupabaseConfig {
     static var url: String {
-        guard let url = Bundle.main.object(forInfoDictionaryKey: "SUPABASE_URL") as? String, !url.isEmpty else {
+        guard let url = Bundle.main.object(
+            forInfoDictionaryKey: "SUPABASE_URL"
+        ) as? String, !url.isEmpty else {
             #if DEBUG
             // Development fallback — NEVER ships in release builds
             return "https://octpebjxadbufiplgjqg.supabase.co"
@@ -37,7 +33,9 @@ enum SupabaseConfig {
     }
 
     static var anonKey: String {
-        guard let key = Bundle.main.object(forInfoDictionaryKey: "SUPABASE_ANON_KEY") as? String, !key.isEmpty else {
+        guard let key = Bundle.main.object(
+            forInfoDictionaryKey: "SUPABASE_ANON_KEY"
+        ) as? String, !key.isEmpty else {
             #if DEBUG
             // Development fallback — NEVER ships in release builds
             return "sb_publishable_lAEZ_x8O4vjdGaw-I-QUMg_oS5iWKIn"
@@ -93,7 +91,7 @@ class SupabaseManager: ObservableObject {
     private var activeRefreshTask: Task<Bool, Never>?
     
     private var defaults: UserDefaults {
-        UserDefaults(suiteName: kAppGroupIdentifier) ?? .standard
+        UserDefaults(suiteName: appGroupIdentifier) ?? .standard
     }
     
     // MARK: - URL Helpers
@@ -131,7 +129,10 @@ class SupabaseManager: ObservableObject {
             let container = try decoder.singleValueContainer()
             let string = try container.decode(String.self)
             if let date = SupabaseManager.parseISO8601Date(string) { return date }
-            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Cannot decode date: \(string)")
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Cannot decode date: \(string)"
+            )
         }
         return decoder
     }()
@@ -150,7 +151,10 @@ class SupabaseManager: ObservableObject {
         let urlString = SupabaseConfig.url
         guard let url = URL(string: urlString) else {
             #if DEBUG
-            fatalError("[SupabaseManager] Invalid SUPABASE_URL: '\(urlString)'. Check Info.plist configuration.")
+            fatalError(
+                "[SupabaseManager] Invalid SUPABASE_URL: " +
+                "'\(urlString)'. Check Info.plist configuration."
+            )
             #else
             AppLogger.shared.logError("SupabaseManager.init", error: NSError(
                 domain: "SupabaseManager", code: -1,
@@ -318,7 +322,10 @@ class SupabaseManager: ObservableObject {
 
             do {
                 // Ensure profile exists and is readable before finalizing auth state.
-                AppLogger.shared.log("AUTH", message: "Auth succeeded for userId: \(userId). Updating profile...")
+                AppLogger.shared.log(
+                    "AUTH",
+                    message: "Auth succeeded for userId: \(userId). Updating profile..."
+                )
                 try await updateProfileWithAppleData(
                     credentials: credentials,
                     tokenClaims: tokenClaims,
@@ -328,13 +335,18 @@ class SupabaseManager: ObservableObject {
                 AppLogger.shared.log("AUTH", message: "Profile updated. Fetching profile...")
 
                 let profile = try await fetchProfile(userId: userId)
-                AppLogger.shared.log("AUTH", message: "Profile fetched: \(profile.email ?? "no email")")
+                AppLogger.shared.log(
+                    "AUTH",
+                    message: "Profile fetched: \(profile.email ?? "no email")"
+                )
                 currentUser = profile
                 isAuthenticated = true
             } catch {
                 AppLogger.shared.logError("Post-auth profile setup", error: error)
                 signOut()
-                throw SupabaseError.authFailed("Unable to complete account setup: \(error.localizedDescription)")
+                throw SupabaseError.authFailed(
+                    "Unable to complete account setup: \(error.localizedDescription)"
+                )
             }
         } else {
             throw authError(from: data, statusCode: httpResponse.statusCode)
@@ -381,12 +393,18 @@ class SupabaseManager: ObservableObject {
             case .unauthorized:
                 // Try refreshing the token before giving up — but only once
                 guard retryCount == 0, await refreshAccessToken() else {
-                    AppLogger.shared.log("AUTH", message: "Unauthorized and refresh failed. Signing out.")
+                    AppLogger.shared.log(
+                        "AUTH",
+                        message: "Unauthorized and refresh failed. Signing out."
+                    )
                     errorMessage = "Your session is no longer valid. Please sign in again."
                     signOut()
                     return
                 }
-                AppLogger.shared.log("AUTH", message: "Token refreshed successfully, retrying profile fetch")
+                AppLogger.shared.log(
+                    "AUTH",
+                    message: "Token refreshed successfully, retrying profile fetch"
+                )
                 await loadCurrentUser(retryCount: retryCount + 1)
             default:
                 AppLogger.shared.logError("Failed to load user profile", error: supabaseError)
@@ -450,7 +468,9 @@ class SupabaseManager: ObservableObject {
         }
 
         let url = baseURL.appendingPathComponent("auth/v1/token")
-        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return false }
+        guard var components = URLComponents(
+            url: url, resolvingAgainstBaseURL: false
+        ) else { return false }
         components.queryItems = [URLQueryItem(name: "grant_type", value: "refresh_token")]
 
         guard let requestURL = components.url else { return false }
@@ -552,7 +572,10 @@ class SupabaseManager: ObservableObject {
         }
         
         let responseBody = String(data: data, encoding: .utf8) ?? "nil"
-        AppLogger.shared.log("SUPABASE", message: "Upsert response: \(httpResponse.statusCode) — \(responseBody)")
+        AppLogger.shared.log(
+            "SUPABASE",
+            message: "Upsert response: \(httpResponse.statusCode) — \(responseBody)"
+        )
         
         guard (200...299).contains(httpResponse.statusCode) else {
             throw SupabaseError.upsertFailed
@@ -592,9 +615,12 @@ class SupabaseManager: ObservableObject {
     private func bootstrapProfileFromSession(userId: UUID) async throws -> UserProfile {
         let authUser = try await fetchAuthenticatedUserIdentity()
 
-        let fullName = authUser.userMetadata?.fullName?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let givenName = authUser.userMetadata?.givenName?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let familyName = authUser.userMetadata?.familyName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let fullName = authUser.userMetadata?.fullName?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let givenName = authUser.userMetadata?.givenName?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let familyName = authUser.userMetadata?.familyName?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
 
         let profile = UserProfile(
             id: userId,
@@ -699,7 +725,9 @@ class SupabaseManager: ObservableObject {
         authUser: AuthUser,
         existingProfile: UserProfile?
     ) -> ResolvedAppleProfile {
-        let appleFullName: String? = credentials.fullName?.formatted().trimmingCharacters(in: .whitespacesAndNewlines)
+        let appleFullName: String? = credentials.fullName?
+            .formatted()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
         let resolvedFullName: String? = (appleFullName?.isEmpty == false ? appleFullName : nil)
 
         // Break email chain into explicit steps to reduce type-checker load
@@ -724,7 +752,8 @@ class SupabaseManager: ObservableObject {
         let familyName: String? = credFamily ?? claimFamily ?? metaFamily ?? profileFamily
 
         let combinedNameFromParts: String? = {
-            let parts: [String] = [givenName, familyName].compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            let parts: [String] = [givenName, familyName]
+                .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
             guard !parts.isEmpty else { return nil }
             return parts.joined(separator: " ")
         }()
@@ -737,7 +766,9 @@ class SupabaseManager: ObservableObject {
         let claimName: String? = tokenClaims?.name
         let metaName: String? = authUser.userMetadata?.fullName
         let profileName: String? = existingProfile?.fullName
-        let finalFullName: String? = resolvedFullName ?? claimName ?? metaName ?? combinedNameFromParts ?? profileName
+        let finalFullName: String? =
+            resolvedFullName ?? claimName ?? metaName
+            ?? combinedNameFromParts ?? profileName
 
         return ResolvedAppleProfile(
             email: email,
@@ -780,7 +811,10 @@ class SupabaseManager: ObservableObject {
         }
         
         guard let userId = defaults.string(forKey: userIdKey), !userId.isEmpty else {
-            AppLogger.shared.log("ANALYTICS", message: "Skipping route interaction insert: missing authenticated user_id")
+            AppLogger.shared.log(
+                "ANALYTICS",
+                message: "Skipping route interaction insert: missing authenticated user_id"
+            )
             return
         }
         body["user_id"] = userId
@@ -1015,7 +1049,10 @@ class SupabaseManager: ObservableObject {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(apiKey, forHTTPHeaderField: "apikey")
-        request.setValue("return=representation,resolution=merge-duplicates", forHTTPHeaderField: "Prefer")
+        request.setValue(
+            "return=representation,resolution=merge-duplicates",
+            forHTTPHeaderField: "Prefer"
+        )
         if let token = accessToken {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
@@ -1027,7 +1064,10 @@ class SupabaseManager: ObservableObject {
               (200...299).contains(httpResponse.statusCode) else {
             let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
             let body = String(data: data, encoding: .utf8) ?? "<non-UTF8>"
-            AppLogger.shared.log("SUPABASE", message: "saveUserSettings failed — HTTP \(statusCode): \(body)")
+            AppLogger.shared.log(
+                "SUPABASE",
+                message: "saveUserSettings failed — HTTP \(statusCode): \(body)"
+            )
             throw SupabaseError.upsertFailed
         }
     }
@@ -1056,7 +1096,10 @@ class SupabaseManager: ObservableObject {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(apiKey, forHTTPHeaderField: "apikey")
-        request.setValue("return=representation,resolution=merge-duplicates", forHTTPHeaderField: "Prefer")
+        request.setValue(
+            "return=representation,resolution=merge-duplicates",
+            forHTTPHeaderField: "Prefer"
+        )
         if let token = accessToken {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }

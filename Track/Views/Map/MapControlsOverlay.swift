@@ -1,10 +1,5 @@
-//
-//  MapControlsOverlay.swift
-//  Track
-//
-//  Floating overlay controls for the map including 3D toggle,
-//  recenter button, search pin banner, and selected route banner.
-//
+// Floating overlay controls for the map including 3D toggle,
+// recenter button, search pin banner, and selected route banner.
 
 import CoreLocation
 import SwiftUI
@@ -79,7 +74,8 @@ struct MapControlsOverlay: View {
 
             mapControlButton(
                 icon: is3DMode ? "view.2d" : "view.3d",
-                foregroundColor: is3DMode ? AppTheme.Colors.textPrimary : AppTheme.Colors.textPrimary, // Changed color logic to match since background is gone
+                // Color logic matches since background is gone
+                foregroundColor: AppTheme.Colors.textPrimary,
                 accessibilityLabel: is3DMode ? "Switch to 2D" : "Switch to 3D"
             ) {
                 toggle3DMode()
@@ -138,7 +134,9 @@ struct MapControlsOverlay: View {
             return Color(hex: hex)
         }
         if let group = viewModel.selectedGroupedRoute {
-            return group.isBus ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: group.displayName)
+            return group.isBus
+                ? AppTheme.Colors.mtaBlue
+                : AppTheme.SubwayColors.color(for: group.displayName)
         }
         return AppTheme.Colors.mtaBlue
     }
@@ -149,7 +147,9 @@ struct MapControlsOverlay: View {
         withAnimation(MapCameraPresets.smoothAnimation) {
             is3DMode.toggle()
             
-            let center = currentMapCenter ?? locationManager.currentLocation?.coordinate ?? AppTheme.MapConfig.nycCenter
+            let center = currentMapCenter
+                ?? locationManager.currentLocation?.coordinate
+                ?? AppTheme.MapConfig.nycCenter
             let distance = currentMapDistance ?? MapCameraPresets.defaultDistance
             
             cameraPosition = MapCameraPresets.center(on: center, distance: distance, is3D: is3DMode)

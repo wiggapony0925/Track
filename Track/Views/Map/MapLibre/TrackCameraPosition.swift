@@ -1,20 +1,13 @@
-//
-//  TrackCameraPosition.swift
-//  Track
-//
-//  Renderer-agnostic camera position type that replaces MapKit's
-//  `MapCameraPosition` for the MapLibre GL migration.
-//
-//  This type flows through all view bindings (@State/@Binding) and
-//  is converted to MapLibre camera parameters by MapLibreCameraState.
-//  No MapKit import required — the entire camera pipeline is now
-//  independent of Apple's map renderer.
-//
-//  Usage:
-//      @State var camera: TrackCameraPosition = .nyc
-//      camera = .center(on: coordinate)
-//      camera = .fitPoints(from: a, to: b)
-//
+// Renderer-agnostic camera position type that replaces MapKit's
+// `MapCameraPosition` for the MapLibre GL migration.
+// This type flows through all view bindings (@State/@Binding) and
+// is converted to MapLibre camera parameters by MapLibreCameraState.
+// No MapKit import required — the entire camera pipeline is now
+// independent of Apple's map renderer.
+// Usage:
+//     @State var camera: TrackCameraPosition = .nyc
+//     camera = .center(on: coordinate)
+//     camera = .fitPoints(from: a, to: b)
 
 import CoreLocation
 import Foundation

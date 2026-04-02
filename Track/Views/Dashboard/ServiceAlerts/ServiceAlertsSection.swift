@@ -1,12 +1,7 @@
-//
-//  ServiceAlertsSection.swift
-//  Track
-//
-//  A modern, grouped service alerts section displayed in the dashboard.
-//  Alerts are grouped by transit mode (Subway, Bus, LIRR, Metro-North)
-//  and displayed in expandable cards with severity-based color coding.
-//  Follows the app's glassmorphic card design system.
-//
+// A modern, grouped service alerts section displayed in the dashboard.
+// Alerts are grouped by transit mode (Subway, Bus, LIRR, Metro-North)
+// and displayed in expandable cards with severity-based color coding.
+// Follows the app's glassmorphic card design system.
 
 import SwiftUI
 
@@ -19,7 +14,10 @@ struct ServiceAlertsSection: View {
     
     /// Group alerts by mode, maintaining a consistent display order.
     /// Within each mode, alerts are sorted by severity (severe first) then recency.
-    private var groupedAlerts: [(mode: String, label: String, icon: String, alerts: [TransitAlert])] {
+    private var groupedAlerts: [
+        (mode: String, label: String,
+         icon: String, alerts: [TransitAlert])
+    ] {
         let modeOrder = ["subway", "bus", "lirr", "mnr"]
         let grouped = Dictionary(grouping: alerts, by: \.mode)
         
@@ -130,7 +128,10 @@ struct ServiceAlertModeGroup: View {
     
     /// Group alerts by borough, in a consistent order.
     private var boroughGroups: [(borough: String, alerts: [TransitAlert])] {
-        let boroughOrder = ["Manhattan", "Brooklyn", "Queens", "Bronx", "Staten Island", "System-Wide"]
+        let boroughOrder = [
+            "Manhattan", "Brooklyn", "Queens",
+            "Bronx", "Staten Island", "System-Wide",
+        ]
         let grouped = Dictionary(grouping: alerts) { BoroughMapper.borough(for: $0) }
         return boroughOrder.compactMap { borough in
             guard let boroughAlerts = grouped[borough], !boroughAlerts.isEmpty else { return nil }
@@ -334,7 +335,12 @@ enum BoroughMapper {
     private static func boroughForBusRoute(_ routeId: String) -> String {
         let upper = routeId.uppercased()
         if upper.hasPrefix("BX") { return "Bronx" }
-        if upper.hasPrefix("SIM") || (upper.hasPrefix("S") && !upper.hasPrefix("SI") && upper.dropFirst().first?.isNumber == true && upper.count <= 4) {
+        let isSIM = upper.hasPrefix("SIM")
+        let isSDigit = upper.hasPrefix("S")
+            && !upper.hasPrefix("SI")
+            && upper.dropFirst().first?.isNumber == true
+            && upper.count <= 4
+        if isSIM || isSDigit {
             // S + number with short length could be Staten Island or shuttle
             // SIM is definitely Staten Island
             return "Staten Island"
@@ -448,7 +454,13 @@ struct ServiceAlertRow: View {
                         
                         if let ts = alert.updatedAt {
                             HStack(spacing: 0) {
-                                Text(Date(timeIntervalSince1970: TimeInterval(ts)), style: .relative)
+                                Text(
+                                    Date(
+                                        timeIntervalSince1970:
+                                            TimeInterval(ts)
+                                    ),
+                                    style: .relative
+                                )
                                 Text(" ago")
                             }
                             .font(.custom("Helvetica", size: 10))
@@ -494,28 +506,37 @@ struct ServiceAlertRow: View {
             TransitAlert(
                 routeId: "A",
                 title: "A train running with delays",
-                description: "Southbound A trains are running with delays due to signal problems at 59 St-Columbus Circle.",
+                description: "Southbound A trains are running"
+                    + " with delays due to signal problems"
+                    + " at 59 St-Columbus Circle.",
                 severity: "warning",
                 mode: "subway"
             ),
             TransitAlert(
                 routeId: "1",
                 title: "Service suspended between 96 St and South Ferry",
-                description: "1 train service is suspended in both directions between 96 St and South Ferry due to a signal malfunction.",
+                description: "1 train service is suspended"
+                    + " in both directions between 96 St"
+                    + " and South Ferry due to a signal"
+                    + " malfunction.",
                 severity: "severe",
                 mode: "subway"
             ),
             TransitAlert(
                 routeId: "B63",
                 title: "B63 route detoured",
-                description: "B63 buses are detoured in both directions via Atlantic Ave due to road construction.",
+                description: "B63 buses are detoured"
+                    + " in both directions via Atlantic"
+                    + " Ave due to road construction.",
                 severity: "warning",
                 mode: "bus"
             ),
             TransitAlert(
                 routeId: "LIRR_1",
                 title: "Babylon Branch delays up to 20 min",
-                description: "Trains on the Babylon Branch are experiencing delays of up to 20 minutes.",
+                description: "Trains on the Babylon Branch"
+                    + " are experiencing delays"
+                    + " of up to 20 minutes.",
                 severity: "severe",
                 mode: "lirr"
             ),

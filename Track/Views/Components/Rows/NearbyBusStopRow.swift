@@ -1,10 +1,5 @@
-//
-//  NearbyBusStopRow.swift
-//  Track
-//
-//  Displays a nearby bus stop in a list. Tapping selects it to
-//  fetch live arrivals. Extracted from HomeView for reusability.
-//
+// Displays a nearby bus stop in a list. Tapping selects it to
+// fetch live arrivals. Extracted from HomeView for reusability.
 
 import SwiftUI
 
@@ -16,7 +11,10 @@ struct NearbyBusStopRow: View {
             ZStack {
                 Circle()
                     .fill(AppTheme.Colors.mtaBlue)
-                    .frame(width: AppTheme.Layout.badgeSizeMedium, height: AppTheme.Layout.badgeSizeMedium)
+                    .frame(
+                        width: AppTheme.Layout.badgeSizeMedium,
+                        height: AppTheme.Layout.badgeSizeMedium
+                    )
                 Image(systemName: "bus.fill")
                     .font(.custom("Helvetica-Bold", size: AppTheme.Layout.badgeFontMedium))
                     .foregroundColor(AppTheme.Colors.textOnColor)

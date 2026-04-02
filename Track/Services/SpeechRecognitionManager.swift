@@ -1,12 +1,7 @@
-//
-//  SpeechRecognitionManager.swift
-//  Track
-//
-//  Shared speech-to-text manager used by the search bar and any
-//  future voice input features. Centralises AVAudioEngine and
-//  SFSpeechRecognizer handling so multiple views don't duplicate
-//  the same boilerplate.
-//
+// Shared speech-to-text manager used by the search bar and any
+// future voice input features. Centralises AVAudioEngine and
+// SFSpeechRecognizer handling so multiple views don't duplicate
+// the same boilerplate.
 
 import Foundation
 import Speech
@@ -74,7 +69,9 @@ final class SpeechRecognitionManager {
 
         let inputNode = audioEngine.inputNode
 
-        recognitionTask = speechRecognizer?.recognitionTask(with: request) { [weak self] result, error in
+        recognitionTask = speechRecognizer?.recognitionTask(
+            with: request
+        ) { [weak self] result, error in
             if let result = result {
                 Task { @MainActor in
                     self?.onTranscription?(result.bestTranscription.formattedString)

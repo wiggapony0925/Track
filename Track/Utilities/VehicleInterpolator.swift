@@ -1,14 +1,8 @@
-//
-//  VehicleInterpolator.swift
-//  Track
-//
-//  Polyline-aware interpolation engine for smooth vehicle movement.
-//  Snaps vehicle positions to the nearest point on a route polyline
-//  and interpolates along the actual route path between stops.
-//
-//  Used by HomeViewModel to animate subway trains, buses, and
-//  commuter rail vehicles along their real-world routes.
-//
+// Polyline-aware interpolation engine for smooth vehicle movement.
+// Snaps vehicle positions to the nearest point on a route polyline
+// and interpolates along the actual route path between stops.
+// Used by HomeViewModel to animate subway trains, buses, and
+// commuter rail vehicles along their real-world routes.
 
 import CoreLocation
 import Foundation

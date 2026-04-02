@@ -1,30 +1,22 @@
-//
-//  StationComplexLookup.swift
-//  Track
-//
-//  Hybrid station classifier: JSON-driven complex registry +
-//  geographic structure inference.
-//
-//  DATA LIFECYCLE
-//  ┌───────────────────┬───────────────┬───────────────────────┐
-//  │ Component         │ Storage       │ Update Frequency      │
-//  ├───────────────────┼───────────────┼───────────────────────┤
-//  │ Complex Registry  │ Bundled JSON  │ Yearly (MTA renovate) │
-//  │ Structure Type    │ Inferred      │ Never (geography)     │
-//  │ Reroute Override  │ Live alerts   │ Every 30 s            │
-//  │ Colors            │ xcassets      │ Never                 │
-//  │ Station Names     │ Remote+Cache  │ Per-session           │
-//  │ Polylines         │ Remote+Cache  │ Per-session           │
-//  └───────────────────┴───────────────┴───────────────────────┘
-//
-//  The JSON file `station_complexes.json` holds ONLY the ~20
-//  multi-level transfer complexes (~60 stop IDs).  Everything
-//  else — elevated, open-cut, at-grade — is derived at runtime
-//  from route IDs + lat/lon using well-known NYC topology rules.
-//
-//  To add a new complex (e.g., future IBX station), edit the JSON —
-//  no recompilation needed for TestFlight / App Store builds.
-//
+// Hybrid station classifier: JSON-driven complex registry +
+// geographic structure inference.
+// DATA LIFECYCLE
+// ┌───────────────────┬───────────────┬───────────────────────┐
+// │ Component         │ Storage       │ Update Frequency      │
+// ├───────────────────┼───────────────┼───────────────────────┤
+// │ Complex Registry  │ Bundled JSON  │ Yearly (MTA renovate) │
+// │ Structure Type    │ Inferred      │ Never (geography)     │
+// │ Reroute Override  │ Live alerts   │ Every 30 s            │
+// │ Colors            │ xcassets      │ Never                 │
+// │ Station Names     │ Remote+Cache  │ Per-session           │
+// │ Polylines         │ Remote+Cache  │ Per-session           │
+// └───────────────────┴───────────────┴───────────────────────┘
+// The JSON file `station_complexes.json` holds ONLY the ~20
+// multi-level transfer complexes (~60 stop IDs).  Everything
+// else — elevated, open-cut, at-grade — is derived at runtime
+// from route IDs + lat/lon using well-known NYC topology rules.
+// To add a new complex (e.g., future IBX station), edit the JSON —
+// no recompilation needed for TestFlight / App Store builds.
 
 import Foundation
 

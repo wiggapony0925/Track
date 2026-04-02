@@ -1,11 +1,6 @@
-//
-//  FavoritesManager.swift
-//  Track
-//
-//  Manages the user's favorite routes/stops.
-//  Keeps an in-memory cache synced with Supabase and persists
-//  locally in UserDefaults so favorites are available offline.
-//
+// Manages the user's favorite routes/stops.
+// Keeps an in-memory cache synced with Supabase and persists
+// locally in UserDefaults so favorites are available offline.
 
 import Foundation
 import Combine
@@ -23,7 +18,7 @@ class FavoritesManager: ObservableObject {
     
     // MARK: - Private
     
-    private let defaults = UserDefaults(suiteName: kAppGroupIdentifier) ?? .standard
+    private let defaults = UserDefaults(suiteName: appGroupIdentifier) ?? .standard
     private let cacheKey = "cached_favorites"
     private var refreshTask: Task<Void, Never>?
     private var lastRefreshDate: Date?
@@ -185,7 +180,7 @@ class FavoritesManager: ObservableObject {
     ) async {
         // Use currentUser if loaded, otherwise fall back to the stored UUID in UserDefaults
         let userId: UUID? = SupabaseManager.shared.currentUser?.id ?? {
-            let defaults = UserDefaults(suiteName: kAppGroupIdentifier) ?? .standard
+            let defaults = UserDefaults(suiteName: appGroupIdentifier) ?? .standard
             if let str = defaults.string(forKey: "supabase_user_id") {
                 return UUID(uuidString: str)
             }

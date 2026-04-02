@@ -1,11 +1,6 @@
-//
-//  SheetNavigator.swift
-//  Track
-//
-//  Observable navigation state manager for the universal bottom sheet.
-//  Provides a navigation stack within the sheet, allowing pages to be
-//  pushed and popped while maintaining consistent sheet behavior.
-//
+// Observable navigation state manager for the universal bottom sheet.
+// Provides a navigation stack within the sheet, allowing pages to be
+// pushed and popped while maintaining consistent sheet behavior.
 
 import SwiftUI
 

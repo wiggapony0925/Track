@@ -1,14 +1,9 @@
-//
-//  RouteBadge.swift
-//  Track
-//
-//  Reusable route badge component used across all views.
-//  Displays a route ID with distinct visual styles:
-//  - Subway: Circle with official MTA route colors
-//  - Bus: Rounded pill/capsule shape (Blue for local, Purple for SBS)
-//  - LIRR: Rounded rectangle with train icon, LIRR blue
-//  - Metro-North: Rounded rectangle with train icon, MNR blue
-//
+// Reusable route badge component used across all views.
+// Displays a route ID with distinct visual styles:
+// - Subway: Circle with official MTA route colors
+// - Bus: Rounded pill/capsule shape (Blue for local, Purple for SBS)
+// - LIRR: Rounded rectangle with train icon, LIRR blue
+// - Metro-North: Rounded rectangle with train icon, MNR blue
 
 import SwiftUI
 

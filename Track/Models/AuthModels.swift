@@ -1,10 +1,5 @@
-//
-//  AuthModels.swift
-//  Track
-//
-//  Codable model types for Supabase authentication responses.
-//  These structs map to the JSON returned by the Supabase Auth API.
-//
+// Codable model types for Supabase authentication responses.
+// These structs map to the JSON returned by the Supabase Auth API.
 
 import Foundation
 

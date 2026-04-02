@@ -1,12 +1,7 @@
-//
-//  HomeViewModel+API.swift
-//  Track
-//
-//  Route selection, vehicle refresh, nearby transit, and tracking methods
-//  extracted from HomeViewModel. All API calls and data loading live here.
-//  Note: busSchedule and cachedTrainArrivals stored properties live in
-//  HomeViewModel.swift so @Observable can instrument them.
-//
+// Route selection, vehicle refresh, nearby transit, and tracking methods
+// extracted from HomeViewModel. All API calls and data loading live here.
+// Note: busSchedule and cachedTrainArrivals stored properties live in
+// HomeViewModel.swift so @Observable can instrument them.
 
 import CoreLocation
 import Foundation
@@ -27,12 +22,18 @@ extension HomeViewModel {
             await selectGroupedRoute(
                 existingGroup, directionIndex: dirIndex, userLocation: userLocation)
         } else {
-            // Attempt to fetch fresh data for this route to get the full context (colors, directions, other arrivals)
-            // If that fails or isn't implemented, we fall back to a minimal group.
+            // Attempt to fetch fresh data for this route to get
+            // the full context (colors, directions, other arrivals)
+            // If that fails or isn't implemented, we fall back
+            // to a minimal group.
 
-            // Note: Currently we don't have a direct "fetch single route group" endpoint that aligns perfectly
-            // with GroupedNearbyTransitResponse structure without fetching *all* nearby routes.
-            // However, we can construct a better "mock" group if we had more info, or we could trigger a refresh.
+            // Note: Currently we don't have a direct
+            // "fetch single route group" endpoint that aligns
+            // perfectly
+            // with GroupedNearbyTransitResponse structure
+            // without fetching *all* nearby routes.
+            // However, we can construct a better "mock" group
+            // if we had more info, or we could trigger a refresh.
             // For now, we use the minimal group to immediately show the user what they tapped,
             // but we ensure the route logic (shape, vehicles) is triggered by selectGroupedRoute.
 
@@ -172,8 +173,12 @@ extension HomeViewModel {
     /// Computes the synced bus group from live vehicle onwardCalls WITHOUT
     /// touching any @Published properties.  Returns the updated group, or nil
     /// if there were no onwardCalls to process.
-    private func buildSyncedBusGroup(_ vehicles: [BusVehicleResponse]) async -> GroupedNearbyTransitResponse? {
-        guard let currentGroup = await MainActor.run(body: { selectedGroupedRoute }) else { return nil }
+    private func buildSyncedBusGroup(
+        _ vehicles: [BusVehicleResponse]
+    ) async -> GroupedNearbyTransitResponse? {
+        guard let currentGroup = await MainActor.run(
+            body: { selectedGroupedRoute }
+        ) else { return nil }
 
         // Build a mapping from numeric directionRef (0/1) to the existing
         // group direction key (e.g. "Inbound", "EAST NEW YORK", etc.).
@@ -233,16 +238,22 @@ extension HomeViewModel {
                     let sid = call.stopId
                     if !sid.isEmpty {
                         let normalized = normalizeStopId(sid)
-                        let candidates = directionStopSets.filter { $0.stopIds.contains(normalized) }
+                        let candidates = directionStopSets.filter {
+                            $0.stopIds.contains(normalized)
+                        }
                         if candidates.count == 1 {
                             return candidates[0].dirKey
                         }
                     }
 
                     // 2) Destination/headsign text matching
-                    if let destName = (call.destinationName ?? vehicle.statusText)?.uppercased(), !destName.isEmpty {
+                    if let destName = (call.destinationName ?? vehicle.statusText)?
+                        .uppercased(), !destName.isEmpty
+                    {
                         for (dirKey, dests) in directionDestinations {
-                            if dests.contains(where: { destName.contains($0) || $0.contains(destName) }) {
+                            if dests.contains(where: {
+                                destName.contains($0) || $0.contains(destName)
+                            }) {
                                 return dirKey
                             }
                         }
@@ -315,7 +326,13 @@ extension HomeViewModel {
 
         #if DEBUG
         let uniqueStopIds = Set(newArrivals.compactMap(\.stopId))
-        print("[HomeVM] syncBusArrivals: \(newArrivals.count) arrivals, \(uniqueStopIds.count) unique stops. Sample IDs: \(Array(uniqueStopIds.prefix(5)))")
+        print(
+            "[HomeVM] syncBusArrivals:"
+            + " \(newArrivals.count) arrivals,"
+            + " \(uniqueStopIds.count) unique stops."
+            + " Sample IDs:"
+            + " \(Array(uniqueStopIds.prefix(5)))"
+        )
         print("[HomeVM] syncBusArrivals: selectedStopId = '\(selectedStopId ?? "nil")'")
         #endif
 
@@ -327,7 +344,10 @@ extension HomeViewModel {
         // stop-monitoring (nearby API) and must be carried forward —
         // otherwise the user-selected stop loses its live data every
         // time the vehicle-monitoring sync fires.
-        let coveredStopIds: Set<String> = Set(newArrivals.compactMap(\.stopId).filter { !$0.isEmpty })
+        let coveredStopIds: Set<String> = Set(
+            newArrivals.compactMap(\.stopId)
+                .filter { !$0.isEmpty }
+        )
 
         for oldDir in currentGroup.directions {
             let liveArrivals = grouped[oldDir.direction] ?? []
@@ -379,7 +399,11 @@ extension HomeViewModel {
                 if let vid = arr.vehicleId, liveVehicleIds.contains(vid) { return false }
                 // Drop arrivals that have already passed (negative ETA)
                 if let ts = arr.arrivalTs, ts > 0 {
-                    let remaining = TrackingTimeSync.remainingMinutes(until: Date(timeIntervalSince1970: TimeInterval(ts)))
+                    let remaining = TrackingTimeSync.remainingMinutes(
+                        until: Date(
+                            timeIntervalSince1970: TimeInterval(ts)
+                        )
+                    )
                     if remaining < -2 { return false }
                 }
                 return true
@@ -412,7 +436,10 @@ extension HomeViewModel {
         AppLogger.shared.log(
             "SYNC_BUS",
             message:
-                "route=\(currentGroup.routeId) vehicles=\(vehicles.count) calls=\(newArrivals.count) snapshot=\(debugDirectionSnapshot(updatedGroup))"
+                "route=\(currentGroup.routeId)"
+                + " vehicles=\(vehicles.count)"
+                + " calls=\(newArrivals.count)"
+                + " snapshot=\(debugDirectionSnapshot(updatedGroup))"
         )
         #endif
 
@@ -506,8 +533,13 @@ extension HomeViewModel {
     /// Computes the synced train group from GTFS-RT arrivals WITHOUT
     /// touching any @Published properties. Returns the updated group, or nil
     /// if there were no arrivals to process.
-    private func buildSyncedTrainGroup(_ arrivals: [TrainArrival], mode: String = "subway") async -> GroupedNearbyTransitResponse? {
-        guard let currentGroup = await MainActor.run(body: { selectedGroupedRoute }) else { return nil }
+    private func buildSyncedTrainGroup(
+        _ arrivals: [TrainArrival],
+        mode: String = "subway"
+    ) async -> GroupedNearbyTransitResponse? {
+        guard let currentGroup = await MainActor.run(
+            body: { selectedGroupedRoute }
+        ) else { return nil }
         
         // Get the user's selected stop — arrivals at THIS stop are protected
         // from being overwritten by route-specific API data
@@ -593,7 +625,11 @@ extension HomeViewModel {
             }
 
             // Add direction label
-            if let label = dir.directionLabel?.uppercased().replacingOccurrences(of: "→ ", with: ""), !label.isEmpty {
+            if let label = dir.directionLabel?
+                .uppercased()
+                .replacingOccurrences(of: "→ ", with: ""),
+               !label.isEmpty
+            {
                 matches.insert(label)
             }
 
@@ -621,7 +657,9 @@ extension HomeViewModel {
 
             // Try destination-based match
             for (dirKey, matches) in directionMatchSets {
-                if !arrDest.isEmpty && matches.contains(where: { arrDest.contains($0) || $0.contains(arrDest) }) {
+                if !arrDest.isEmpty && matches.contains(where: {
+                    arrDest.contains($0) || $0.contains(arrDest)
+                }) {
                     return dirKey
                 }
             }
@@ -660,7 +698,10 @@ extension HomeViewModel {
         // CRITICAL: For the user's selected stop, KEEP the nearby API data.
         // The route-specific API may show fewer arrivals at that stop because
         // it wasn't filtered for proximity. This prevents chip count drops.
-        func mergeArrivals(existing: [NearbyTransitResponse], new: [NearbyTransitResponse]) -> [NearbyTransitResponse] {
+        func mergeArrivals(
+            existing: [NearbyTransitResponse],
+            new: [NearbyTransitResponse]
+        ) -> [NearbyTransitResponse] {
             let now = Date()
             let expiryThreshold = now.addingTimeInterval(-60) // 1 min grace
 
@@ -716,7 +757,13 @@ extension HomeViewModel {
                             // Old ETA expired or protected too long — accept API update
                             #if DEBUG
                             let reason = oldAlreadyPast ? "old ETA in past" : "protected >30s"
-                            print("[MERGE_ARRIVAL] ✅ Released latch for \(key): old=\(oldTs) new=\(newTs) diff=+\(timeDiff/60)min — \(reason)")
+                            print(
+                                "[MERGE_ARRIVAL] ✅ Released latch"
+                                + " for \(key):"
+                                + " old=\(oldTs) new=\(newTs)"
+                                + " diff=+\(timeDiff/60)min"
+                                + " — \(reason)"
+                            )
                             #endif
                             // Don't remove from _mergeProtectionStarts here;
                             // end-of-merge cleanup handles it.  Removing mid-loop
@@ -727,7 +774,13 @@ extension HomeViewModel {
                         }
 
                         #if DEBUG
-                        print("[MERGE_ARRIVAL] ⚠️ Suspicious ETA jump for \(key): old=\(oldTs) new=\(newTs) diff=+\(timeDiff/60)min — keeping old")
+                        print(
+                            "[MERGE_ARRIVAL] ⚠️ Suspicious ETA jump"
+                            + " for \(key):"
+                            + " old=\(oldTs) new=\(newTs)"
+                            + " diff=+\(timeDiff/60)min"
+                            + " — keeping old"
+                        )
                         #endif
                         merged[key] = existing
                         continue
@@ -761,7 +814,9 @@ extension HomeViewModel {
 
             #if DEBUG
             if !validProtected.isEmpty {
-                print("[MERGE_ARRIVAL] 🛡️ Protected \(validProtected.count) arrivals at stop \(protectedStopId ?? "nil")")
+                print("[MERGE_ARRIVAL] 🛡️ Protected "
+                    + "\(validProtected.count) arrivals "
+                    + "at stop \(protectedStopId ?? "nil")")
             }
             #endif
 
@@ -818,7 +873,10 @@ extension HomeViewModel {
         AppLogger.shared.log(
             "SYNC_TRAIN",
             message:
-                "route=\(currentGroup.routeId) mode=\(mode) arrivals=\(newArrivals.count) snapshot=\(debugDirectionSnapshot(updatedGroup))"
+                "route=\(currentGroup.routeId)"
+                + " mode=\(mode)"
+                + " arrivals=\(newArrivals.count)"
+                + " snapshot=\(debugDirectionSnapshot(updatedGroup))"
         )
         #endif
 
@@ -842,7 +900,9 @@ extension HomeViewModel {
             // Staleness guard: only publish if the user is still on the same route.
             guard selectedRouteId == (expectedRouteId ?? routeId) else {
                 #if DEBUG
-                print("[SCHEDULE] Discarding stale schedule for \(routeId) — user moved to \(selectedRouteId ?? "nil")")
+                print("[SCHEDULE] Discarding stale schedule "
+                    + "for \(routeId) — user moved "
+                    + "to \(selectedRouteId ?? "nil")")
                 #endif
                 // Still cache it so re-opening this route later is instant.
                 busScheduleByRoute[routeId] = schedule
@@ -851,8 +911,11 @@ extension HomeViewModel {
             busSchedule = schedule
             busScheduleByRoute[routeId] = schedule
             #if DEBUG
-            let dirSummary = schedule.directions.map { "\($0.direction): \($0.departures.count) deps" }.joined(separator: ", ")
-            print("[SCHEDULE] Loaded schedule for \(routeId): \(schedule.directions.count) dirs [\(dirSummary)]")
+            let dirSummary = schedule.directions
+                .map { "\($0.direction): \($0.departures.count) deps" }
+                .joined(separator: ", ")
+            print("[SCHEDULE] Loaded schedule for \(routeId): "
+                + "\(schedule.directions.count) dirs [\(dirSummary)]")
             #endif
         } catch {
             AppLogger.shared.logError("fetchBusSchedule(\(routeId))", error: error)
@@ -922,14 +985,20 @@ extension HomeViewModel {
 
     func updateNearestStop(userLocation: CLLocation?) {
         let refLocation = effectiveLocation(userLocation: userLocation)
-        let dirStops = routeShape?.stopsForDirection(index: selectedDirectionIndex, name: selectedDirectionName) ?? []
+        let dirStops = routeShape?.stopsForDirection(
+            index: selectedDirectionIndex,
+            name: selectedDirectionName
+        ) ?? []
 
         guard !dirStops.isEmpty, let userLoc = refLocation else {
             // Fallback: try first arrival's stop
             if let group = selectedGroupedRoute {
                 let safeIdx = min(selectedDirectionIndex, group.directions.count - 1)
-                let dir = group.directions.indices.contains(safeIdx) ? group.directions[safeIdx] : nil
-                if let first = dir?.arrivals.first, let lat = first.stopLat, let lon = first.stopLon {
+                let dir = group.directions.indices.contains(safeIdx)
+                    ? group.directions[safeIdx] : nil
+                if let first = dir?.arrivals.first,
+                   let lat = first.stopLat,
+                   let lon = first.stopLon {
                     nearestStopCoordinate = CLLocationCoordinate2D(latitude: lat, longitude: lon)
                     selectedStopId = first.stopId
                 }
@@ -953,10 +1022,15 @@ extension HomeViewModel {
             // Skip redundant updates — multiple triggers (direction change,
             // GPS callback, walking refresh) can fire within the same frame.
             guard closest.id != selectedStopId else { return }
-            nearestStopCoordinate = CLLocationCoordinate2D(latitude: closest.lat, longitude: closest.lon)
+            nearestStopCoordinate = CLLocationCoordinate2D(
+                latitude: closest.lat,
+                longitude: closest.lon
+            )
             selectedStopId = closest.id
             #if DEBUG
-            print("[HomeVM] updateNearestStop → selectedStopId = '\(closest.id)' (stop: \(closest.name))")
+            print("[HomeVM] updateNearestStop → "
+                + "selectedStopId = '\(closest.id)' "
+                + "(stop: \(closest.name))")
             #endif
         }
     }
@@ -1085,15 +1159,22 @@ extension HomeViewModel {
         var trips: [String: [TrainArrival]] = [:]
 
         for arrival in arrivals {
+            let ts = arrival.scheduledTime
+                .timeIntervalSince1970
             let key =
                 arrival.tripId
-                ?? "\(arrival.direction)-\(arrival.destination ?? "unk")-\(arrival.scheduledTime.timeIntervalSince1970)"
+                ?? "\(arrival.direction)"
+                + "-\(arrival.destination ?? "unk")"
+                + "-\(ts)"
             trips[key, default: []].append(arrival)
         }
 
         // Snapshot current display positions before rebuilding.
         for v in trainVehicles {
-            _previousTrainPositions[v.id] = CLLocationCoordinate2D(latitude: v.lat, longitude: v.lon)
+            _previousTrainPositions[v.id] = CLLocationCoordinate2D(
+                latitude: v.lat,
+                longitude: v.lon
+            )
         }
 
         var newVehicles: [TrainVehicle] = []
@@ -1150,13 +1231,19 @@ extension HomeViewModel {
                             if let prevArrival = sorted.first(where: {
                                 $0.stationID.hasPrefix(prevStopIdBase)
                             }) {
-                                let gap = nextStop.estimatedTime.timeIntervalSince(prevArrival.estimatedTime) / 60.0
+                                let gap = nextStop.estimatedTime
+                                    .timeIntervalSince(
+                                        prevArrival.estimatedTime
+                                    ) / 60.0
                                 if gap > 0.5 && gap < 20 { return gap }
                             }
                         }
                         // Fallback: estimate from haversine distance
                         let dist = CLLocation(latitude: prevStop.lat, longitude: prevStop.lon)
-                            .distance(from: CLLocation(latitude: targetStop.lat, longitude: targetStop.lon))
+                            .distance(from: CLLocation(
+                                latitude: targetStop.lat,
+                                longitude: targetStop.lon
+                            ))
                         // ~30 km/h = 500 m/min for local, slightly faster for express
                         let speedMpm: Double = dist > 2000 ? 750 : 500
                         return max(1.0, dist / speedMpm)
@@ -1324,7 +1411,11 @@ extension HomeViewModel {
     ///   skips alerts and accessibility fetches since those are location-independent
     ///   and are loaded during the initial app refresh. This makes area scanning
     ///   noticeably faster.
-    func refreshNearbyTransit(location: CLLocation?, skipGlobalFeeds: Bool = false, silent: Bool = false) async {
+    func refreshNearbyTransit(
+        location: CLLocation?,
+        skipGlobalFeeds: Bool = false,
+        silent: Bool = false
+    ) async {
         guard let location = location else {
             errorMessage = "Location required"
             return
@@ -1346,7 +1437,12 @@ extension HomeViewModel {
         let lat = location.coordinate.latitude
         let lon = location.coordinate.longitude
 
-        AppLogger.shared.log("TIMING", message: "refreshNearbyTransit START (T+\(AppLogger.formatDuration(launchElapsed)) since launch, silent=\(silent))")
+        AppLogger.shared.log(
+            "TIMING",
+            message: "refreshNearbyTransit START "
+                + "(T+\(AppLogger.formatDuration(launchElapsed)) "
+                + "since launch, silent=\(silent))"
+        )
 
         // ── Health gate: wait for backend before firing requests ────
         // When Render is cold-starting (after a crash/deploy/idle), the
@@ -1448,7 +1544,13 @@ extension HomeViewModel {
             let groupedElapsed = Date().timeIntervalSince(groupedStart)
             let subwayCount = newGrouped.filter { $0.mode == "subway" }.count
             let busCount = newGrouped.filter { $0.mode == "bus" }.count
-            AppLogger.shared.log("TIMING", message: "  nearby/grouped → \(newGrouped.count) groups (\(subwayCount) subway, \(busCount) bus) in \(AppLogger.formatDuration(groupedElapsed))")
+            AppLogger.shared.log(
+                "TIMING",
+                message: "  nearby/grouped → \(newGrouped.count) "
+                    + "groups (\(subwayCount) subway, "
+                    + "\(busCount) bus) in "
+                    + "\(AppLogger.formatDuration(groupedElapsed))"
+            )
 
             let rawTransit = newGrouped
                 .flatMap(\ .directions)
@@ -1486,7 +1588,9 @@ extension HomeViewModel {
             } else {
                 AppLogger.shared.log(
                     "REFRESH",
-                    message: "API returned 0 flat arrivals but we had \(nearbyTransit.count) — keeping previous data"
+                    message: "API returned 0 flat arrivals "
+                        + "but we had \(nearbyTransit.count) "
+                        + "— keeping previous data"
                 )
             }
 
@@ -1519,7 +1623,12 @@ extension HomeViewModel {
 
             let stations = (try? await stationsTask) ?? nearbyStations
             let stationsElapsed = Date().timeIntervalSince(groupedStart)
-            AppLogger.shared.log("TIMING", message: "  stations → \(stations.count) stations in \(AppLogger.formatDuration(stationsElapsed))")
+            AppLogger.shared.log(
+                "TIMING",
+                message: "  stations → \(stations.count) "
+                    + "stations in "
+                    + "\(AppLogger.formatDuration(stationsElapsed))"
+            )
             // Augment nearbyStations with LIRR/MNR station data extracted from
             // grouped arrivals. The subway-only /stations/nearby endpoint never
             // returns commuter rail stations, so this keeps the primary
@@ -1532,11 +1641,30 @@ extension HomeViewModel {
             let finalSubwayCount = newGrouped.filter { $0.mode == "subway" }.count
             let finalBusCount = newGrouped.filter { $0.isBus }.count
             let commuterCount = newGrouped.filter { $0.isCommuterRail }.count
-            AppLogger.shared.log("TIMING", message: "refreshNearbyTransit DONE in \(AppLogger.formatDuration(refreshElapsed)) — \(newGrouped.count) groups (\(finalSubwayCount) subway, \(finalBusCount) bus, \(commuterCount) commuter) T+\(AppLogger.formatDuration(totalFromLaunch)) since launch")
+            let launchDur = AppLogger.formatDuration(
+                totalFromLaunch
+            )
+            let doneMsg = "refreshNearbyTransit DONE in "
+                + "\(AppLogger.formatDuration(refreshElapsed))"
+                + " — \(newGrouped.count) groups"
+                + " (\(finalSubwayCount) subway,"
+                + " \(finalBusCount) bus,"
+                + " \(commuterCount) commuter)"
+                + " T+\(launchDur) since launch"
+            AppLogger.shared.log("TIMING", message: doneMsg)
 
         } catch {
             let refreshElapsed = Date().timeIntervalSince(refreshStart)
-            AppLogger.shared.log("TIMING", message: "refreshNearbyTransit FAILED after \(AppLogger.formatDuration(refreshElapsed)) — \(error.localizedDescription) (T+\(AppLogger.shared.timeSinceLaunchFormatted) since launch)")
+            let elapsedStr = AppLogger.formatDuration(
+                refreshElapsed
+            )
+            let launchFmt = AppLogger.shared
+                .timeSinceLaunchFormatted
+            let failMsg = "refreshNearbyTransit FAILED"
+                + " after \(elapsedStr)"
+                + " — \(error.localizedDescription)"
+                + " (T+\(launchFmt) since launch)"
+            AppLogger.shared.log("TIMING", message: failMsg)
             AppLogger.shared.logError("fetchNearbyTransit", error: error)
             errorMessage = (error as? TransitError)?.description ?? error.localizedDescription
 
@@ -1558,11 +1686,23 @@ extension HomeViewModel {
             if isServerError && _coldStartRetryTask == nil {
                 let attempt = _coldStartRetryAttempt
                 guard attempt < Self.maxColdStartRetries else {
-                    AppLogger.shared.log("REFRESH", message: "⛔ Cold-start retry limit reached (\(attempt)/\(Self.maxColdStartRetries)) — waiting for timer")
+                    AppLogger.shared.log(
+                        "REFRESH",
+                        message: "⛔ Cold-start retry limit "
+                            + "reached (\(attempt)"
+                            + "/\(Self.maxColdStartRetries)) "
+                            + "— waiting for timer"
+                    )
                     return
                 }
                 let delay = min(3.0 * pow(2.0, Double(attempt)), 20.0) // 3, 6, 12, 20, 20
-                AppLogger.shared.log("REFRESH", message: "⏳ Cold-start retry #\(attempt + 1)/\(Self.maxColdStartRetries) scheduled (\(Int(delay)) s)")
+                AppLogger.shared.log(
+                    "REFRESH",
+                    message: "⏳ Cold-start retry "
+                        + "#\(attempt + 1)"
+                        + "/\(Self.maxColdStartRetries) "
+                        + "scheduled (\(Int(delay)) s)"
+                )
                 let retryLocation = location
                 _coldStartRetryTask = Task { @MainActor [weak self] in
                     try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
@@ -1619,12 +1759,20 @@ extension HomeViewModel {
                     await MainActor.run {
                         self.cacheRouteShape(shape, for: group.routeId)
                     }
-                    AppLogger.shared.log("SHAPE_PREFETCH", message: "\(group.routeId) cached (\(shape.stops.count) stops)")
+                    AppLogger.shared.log(
+                        "SHAPE_PREFETCH",
+                        message: "\(group.routeId) cached "
+                            + "(\(shape.stops.count) stops)"
+                    )
                     // Small yield to avoid hogging the event loop
                     try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
                 } catch {
                     // Prefetch is best-effort — never propagate errors
-                    AppLogger.shared.log("SHAPE_PREFETCH", message: "\(group.routeId) failed: \(error.localizedDescription)")
+                    AppLogger.shared.log(
+                        "SHAPE_PREFETCH",
+                        message: "\(group.routeId) failed: "
+                            + "\(error.localizedDescription)"
+                    )
                 }
             }
         }
@@ -1652,7 +1800,10 @@ extension HomeViewModel {
         guard !new.isEmpty || existing.isEmpty else {
             AppLogger.shared.log(
                 "REFRESH",
-                message: "[\(source)] API returned 0 grouped routes but we had \(existing.count) — keeping previous data"
+                message: "[\(source)] API returned 0 "
+                    + "grouped routes but we had "
+                    + "\(existing.count) — keeping "
+                    + "previous data"
             )
             return existing
         }
@@ -1673,7 +1824,10 @@ extension HomeViewModel {
                     // since that's the canonical display name.
                     var winner = result[existing]
                     let extra = group.directions.filter { newDir in
-                        !winner.directions.contains { $0.direction.uppercased() == newDir.direction.uppercased() }
+                        !winner.directions.contains {
+                            $0.direction.uppercased()
+                                == newDir.direction.uppercased()
+                        }
                     }
                     if !extra.isEmpty {
                         winner.directions.append(contentsOf: extra)
@@ -1748,7 +1902,10 @@ extension HomeViewModel {
             merged.append(oldGroup)
             AppLogger.shared.log(
                 "REFRESH",
-                message: "[\(source)] Grace \(count)/\(maxGraceCycles) for \(oldGroup.routeId) — keeping visible"
+                message: "[\(source)] Grace "
+                    + "\(count)/\(maxGraceCycles) "
+                    + "for \(oldGroup.routeId) "
+                    + "— keeping visible"
             )
         }
 
@@ -2334,14 +2491,20 @@ extension HomeViewModel {
             // arrivals and update metadata (colorHex etc).
             var mergedDirections: [DirectionArrivalsResponse] = []
             for currentDir in current.directions {
-                let matchDir = match.directions.first(where: { $0.direction == currentDir.direction })
+                let matchDir = match.directions.first(
+                    where: { $0.direction == currentDir.direction }
+                )
                 guard let matchDir else {
                     mergedDirections.append(currentDir)
                     continue
                 }
                 // Find nearby arrivals not already covered by the current set
                 let existingKeys = Set(currentDir.arrivals.compactMap { $0.vehicleId ?? $0.tripId })
-                let existingStopTs = Set(currentDir.arrivals.map { "\($0.stopId ?? "")_\($0.arrivalTs ?? 0)" })
+                let existingStopTs = Set(
+                    currentDir.arrivals.map {
+                        "\($0.stopId ?? "")_\($0.arrivalTs ?? 0)"
+                    }
+                )
                 let newFromNearby = matchDir.arrivals.filter { arrival in
                     if let key = arrival.vehicleId ?? arrival.tripId, existingKeys.contains(key) {
                         return false
@@ -2373,22 +2536,42 @@ extension HomeViewModel {
         if let shape = self.routeShape {
             self.enrichGroupWithShapeDirections(shape)
         }
-        AppLogger.shared.log("SYNC", message: "Updated selected route: \(match.routeId)\(isBusWithActiveSync ? " (merged, kept \(currentTotal) arrivals)" : "")")
+        let syncSuffix = isBusWithActiveSync
+            ? " (merged, kept \(currentTotal) arrivals)"
+            : ""
+        AppLogger.shared.log(
+            "SYNC",
+            message: "Updated selected route: "
+                + "\(match.routeId)\(syncSuffix)"
+        )
         #if DEBUG
         if let selected = self.selectedGroupedRoute {
+            let snap = self.debugDirectionSnapshot(
+                selected
+            )
             AppLogger.shared.log(
                 "SYNC",
-                message:
-                    "Persist route=\(selected.routeId) mode=\(selected.mode) selectedDirIdx=\(self.selectedDirectionIndex) snapshot=\(self.debugDirectionSnapshot(selected))"
+                message: "Persist "
+                    + "route=\(selected.routeId) "
+                    + "mode=\(selected.mode) "
+                    + "selectedDirIdx="
+                    + "\(self.selectedDirectionIndex) "
+                    + "snapshot=\(snap)"
             )
         }
         #endif
     }
 
-    func debugDirectionSnapshot(_ group: GroupedNearbyTransitResponse) -> String {
+    func debugDirectionSnapshot(
+        _ group: GroupedNearbyTransitResponse
+    ) -> String {
         group.directions.enumerated().map { index, direction in
-            let rtCount = direction.arrivals.filter { $0.isRealTime }.count
-            return "#\(index):\(direction.direction){all:\(direction.arrivals.count),live:\(direction.liveArrivals.count),rt:\(rtCount)}"
+            let rtCount = direction.arrivals
+                .filter { $0.isRealTime }.count
+            return "#\(index):\(direction.direction)"
+                + "{all:\(direction.arrivals.count)"
+                + ",live:\(direction.liveArrivals.count)"
+                + ",rt:\(rtCount)}"
         }.joined(separator: " | ")
     }
 
@@ -2423,9 +2606,13 @@ extension HomeViewModel {
     /// This method extracts unique stop coordinates from commuter-rail arrivals
     /// and appends them with proper route IDs so the primary matching path works.
     static func augmentStations(
-        _ subwayStations: [(stationID: String, name: String, lat: Double, lon: Double, routeIDs: [String])],
+        _ subwayStations: [(stationID: String, name: String,
+                           lat: Double, lon: Double,
+                           routeIDs: [String])],
         from groups: [GroupedNearbyTransitResponse]
-    ) -> [(stationID: String, name: String, lat: Double, lon: Double, routeIDs: [String])] {
+    ) -> [(stationID: String, name: String,
+           lat: Double, lon: Double,
+           routeIDs: [String])] {
         // Collect commuter rail stops: keyed by stopId (or lat/lon fallback)
         // so a station served by multiple branches accumulates all route IDs.
         var crStops: [String: (name: String, lat: Double, lon: Double, routeIDs: Set<String>)] = [:]
@@ -2441,7 +2628,12 @@ extension HomeViewModel {
                     existing.routeIDs.insert(group.routeId)
                     crStops[key] = existing
                 } else {
-                    crStops[key] = (name: arrival.stopName, lat: lat, lon: lon, routeIDs: [group.routeId])
+                    crStops[key] = (
+                        name: arrival.stopName,
+                        lat: lat,
+                        lon: lon,
+                        routeIDs: [group.routeId]
+                    )
                 }
             }
         }
@@ -2451,7 +2643,13 @@ extension HomeViewModel {
         var result = subwayStations
         let existingIDs = Set(subwayStations.map(\.stationID))
         for (key, data) in crStops where !existingIDs.contains(key) {
-            result.append((stationID: key, name: data.name, lat: data.lat, lon: data.lon, routeIDs: Array(data.routeIDs)))
+            result.append((
+                stationID: key,
+                name: data.name,
+                lat: data.lat,
+                lon: data.lon,
+                routeIDs: Array(data.routeIDs)
+            ))
         }
         return result
     }
@@ -2485,7 +2683,11 @@ extension HomeViewModel {
                 if var existing = stopMap[key] {
                     // Stop exists in OBA data — ensure it lists this route too
                     var routes = existing.routeIds ?? []
-                    if !routes.contains(where: { normalizeMTARouteToken($0) == normalizeMTARouteToken(group.routeId) }) {
+                    if !routes.contains(where: {
+                        normalizeMTARouteToken($0)
+                            == normalizeMTARouteToken(
+                                group.routeId)
+                    }) {
                         routes.append(group.routeId)
                         existing.routeIds = routes
                         stopMap[key] = existing
@@ -2494,7 +2696,11 @@ extension HomeViewModel {
                 } else if var pending = newStops[key] {
                     // Already queued from a different arrival — add route ID
                     var routes = pending.routeIds ?? []
-                    if !routes.contains(where: { normalizeMTARouteToken($0) == normalizeMTARouteToken(group.routeId) }) {
+                    if !routes.contains(where: {
+                        normalizeMTARouteToken($0)
+                            == normalizeMTARouteToken(
+                                group.routeId)
+                    }) {
                         routes.append(group.routeId)
                         pending.routeIds = routes
                         newStops[key] = pending

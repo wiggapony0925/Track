@@ -1,21 +1,14 @@
-//
-//  MapStyleLoader.swift
-//  Track
-//
-//  Loads and parses the JSON-driven map style customizations from
-//  Resources/MapStyles/. Provides a clean data model that
-//  `MapLibreStyleConfig.customizeBaseStyle` uses instead of
-//  hardcoded Swift constants.
-//
-//  File layout:
-//    Resources/MapStyles/map_style_light.json
-//    Resources/MapStyles/map_style_dark.json
-//
-//  Each JSON defines:
-//    - strippedLayerPatterns  → layers to remove entirely
-//    - dimmedLayers           → layers to reduce opacity on
-//    - colors                 → base-map tint overrides
-//
+// Loads and parses the JSON-driven map style customizations from
+// Resources/MapStyles/. Provides a clean data model that
+// `MapLibreStyleConfig.customizeBaseStyle` uses instead of
+// hardcoded Swift constants.
+// File layout:
+//   Resources/MapStyles/map_style_light.json
+//   Resources/MapStyles/map_style_dark.json
+// Each JSON defines:
+//   - strippedLayerPatterns  → layers to remove entirely
+//   - dimmedLayers           → layers to reduce opacity on
+//   - colors                 → base-map tint overrides
 
 import UIKit
 
@@ -140,7 +133,10 @@ enum MapStyleLoader {
             parkColor: color(from: colors, key: "park"),
             landColor: color(from: colors, key: "land"),
             roadColor: color(from: colors, key: "road"),
-            roadCasingColor: color(from: colors, key: "roadCasing", fallback: color(from: colors, key: "road")),
+            roadCasingColor: color(
+                from: colors, key: "roadCasing",
+                fallback: color(from: colors, key: "road")
+            ),
             roadLabelColor: color(from: colors, key: "roadLabel"),
             roadLabelHaloColor: color(from: colors, key: "roadLabelHalo"),
             roadLabelHaloWidth: cgFloat(from: colors, key: "roadLabelHaloWidth", fallback: 1.5),
@@ -174,7 +170,10 @@ enum MapStyleLoader {
         return parseHex(hex)
     }
 
-    private static func cgFloat(from dict: [String: Any], key: String, fallback: CGFloat) -> CGFloat {
+    private static func cgFloat(
+        from dict: [String: Any], key: String,
+        fallback: CGFloat
+    ) -> CGFloat {
         guard let num = dict[key] as? NSNumber else { return fallback }
         return CGFloat(num.doubleValue)
     }

@@ -1,30 +1,22 @@
-//
-//  MapLibreMapView.swift
-//  Track
-//
-//  UIViewRepresentable bridge wrapping MapLibre GL Native's `MLNMapView`
-//  for SwiftUI. Uses OpenStreetMap vector tiles via MapTiler for the base map.
-//
-//  Architecture:
-//  ┌──────────────────────────────────────────────┐
-//  │  SwiftUI (MapLibreTrackMapView)              │
-//  │    ↓ bindings                                │
-//  │  MapLibreMapView (UIViewRepresentable)       │
-//  │    ↓ manages                                 │
-//  │  MLNMapView (UIKit — GPU-accelerated GL)     │
-//  │    ↓ tile source                             │
-//  │  MapTiler / OpenStreetMap vector tiles        │
-//  └──────────────────────────────────────────────┘
-//
-//  Performance Notes:
-//  - polyline/annotation updates are O(n) where n = number of features
-//  - Camera sync is O(1) per frame
-//  - Style layers use MapLibre's GPU pipeline (no CPU-side drawing)
-//
-//  References:
-//  - MapLibre iOS: https://maplibre.org/maplibre-native/ios/latest/
-//  - MLNMapView: MLNMapView class in MapLibre Native
-//
+// UIViewRepresentable bridge wrapping MapLibre GL Native's `MLNMapView`
+// for SwiftUI. Uses OpenStreetMap vector tiles via MapTiler for the base map.
+// Architecture:
+// ┌──────────────────────────────────────────────┐
+// │  SwiftUI (MapLibreTrackMapView)              │
+// │    ↓ bindings                                │
+// │  MapLibreMapView (UIViewRepresentable)       │
+// │    ↓ manages                                 │
+// │  MLNMapView (UIKit — GPU-accelerated GL)     │
+// │    ↓ tile source                             │
+// │  MapTiler / OpenStreetMap vector tiles        │
+// └──────────────────────────────────────────────┘
+// Performance Notes:
+// - polyline/annotation updates are O(n) where n = number of features
+// - Camera sync is O(1) per frame
+// - Style layers use MapLibre's GPU pipeline (no CPU-side drawing)
+// References:
+// - MapLibre iOS: https://maplibre.org/maplibre-native/ios/latest/
+// - MLNMapView: MLNMapView class in MapLibre Native
 
 import CoreLocation
 import MapLibre
@@ -279,7 +271,11 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             let wantsTint = hasActiveRoute
             let tintChanged: Bool = {
                 if wantsTint != coordinator.lastRouteTintActive { return true }
-                if wantsTint, !MapLibreStyleConfig.colorsEqualRGBA(routeColor, coordinator.lastRouteTintColor) { return true }
+                if wantsTint,
+                   !MapLibreStyleConfig.colorsEqualRGBA(
+                    routeColor,
+                    coordinator.lastRouteTintColor
+                   ) { return true }
                 return false
             }()
 
@@ -310,7 +306,12 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 // Mark programmatic animation in flight so syncCameraToBinding
                 // doesn't overwrite cameraPosition with intermediate frames.
                 coordinator.programmaticCameraInFlight = true
-                mapView.setCenter(state.center, zoomLevel: state.zoom, direction: state.bearing, animated: true)
+                mapView.setCenter(
+                    state.center,
+                    zoomLevel: state.zoom,
+                    direction: state.bearing,
+                    animated: true
+                )
                 let pitchDiff: Double = abs(state.pitch - Double(mapView.camera.pitch))
                 if pitchDiff > 1.0 {
                     let camera = mapView.camera
@@ -525,7 +526,10 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
 
         // MARK: - Delegate: Annotation Handling
 
-        func mapView(_ mapView: MLNMapView, viewFor annotation: MLNAnnotation) -> MLNAnnotationView? {
+        func mapView(
+            _ mapView: MLNMapView,
+            viewFor annotation: MLNAnnotation
+        ) -> MLNAnnotationView? {
             return nil  // All annotations use GL layers or SwiftUI overlays
         }
 
@@ -546,14 +550,22 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 setup3DBuildings(style: style, isDarkMode: representable.isDarkMode)
             }
 
-            updateSystemMapIfNeeded(style: style, representable: representable, darkChanged: darkChanged)
+            updateSystemMapIfNeeded(
+                style: style,
+                representable: representable,
+                darkChanged: darkChanged
+            )
             updateStationDotsIfNeeded(
                 mapView: mapView,
                 style: style,
                 representable: representable,
                 darkChanged: darkChanged
             )
-            updateRouteIfNeeded(style: style, representable: representable, darkChanged: darkChanged)
+            updateRouteIfNeeded(
+                style: style,
+                representable: representable,
+                darkChanged: darkChanged
+            )
             updateWalkingIfNeeded(style: style, representable: representable)
             updateTransferIfNeeded(style: style, representable: representable)
         }
@@ -561,7 +573,11 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         // MARK: - Hash-gated layer update helpers
         // Split out of updateAllLayers to keep each expression under the type-checker limit.
 
-        private func updateSystemMapIfNeeded(style: MLNStyle, representable: MapLibreMapView, darkChanged: Bool) {
+        private func updateSystemMapIfNeeded(
+            style: MLNStyle,
+            representable: MapLibreMapView,
+            darkChanged: Bool
+        ) {
             let a: Int = representable.subwayPolylines.count
             let b: Int = representable.commuterRailPolylines.count &* 31
             let c: Int = representable.hasActiveRoute ? 0x1 : 0x0
@@ -599,9 +615,14 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             }
         }
 
-        private func updateRouteIfNeeded(style: MLNStyle, representable: MapLibreMapView, darkChanged: Bool) {
+        private func updateRouteIfNeeded(
+            style: MLNStyle,
+            representable: MapLibreMapView,
+            darkChanged: Bool
+        ) {
             let splitContentHash: Int = computeSplitContentHash(representable)
-            let splitDirHash: Int = representable.directionalSplit.map { $0.ahead.count ^ $0.behind.count } ?? 0
+            let splitDirHash: Int = representable.directionalSplit
+                .map { $0.ahead.count ^ $0.behind.count } ?? 0
             let routeHash: Int = representable.routePolylines.count
                 ^ (representable.inactivePolylines.count &* 31)
                 ^ splitDirHash
@@ -654,13 +675,17 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
 
             // Default base opacities depending on dimmed state (active route selected)
             var subwayOpacity: NSExpression = NSExpression(forConstantValue: dimmed ? 0.10 : 1.0)
-            var subwayCasingOpacity: NSExpression = NSExpression(forConstantValue: dimmed ? 0.05 : 0.45)
+            var subwayCasingOpacity: NSExpression =
+                NSExpression(forConstantValue: dimmed ? 0.05 : 0.45)
             
             let isDark = representable.isDarkMode
-            var elevatedShadowOpacity: NSExpression = NSExpression(forConstantValue: dimmed ? 0.02 : (isDark ? 0.20 : 0.12))
+            var elevatedShadowOpacity: NSExpression = NSExpression(
+                forConstantValue: dimmed ? 0.02 : (isDark ? 0.20 : 0.12)
+            )
             
             var commuterOpacity: NSExpression = NSExpression(forConstantValue: dimmed ? 0.08 : 0.65)
-            var commuterCasingOpacity: NSExpression = NSExpression(forConstantValue: dimmed ? 0.03 : 0.20)
+            var commuterCasingOpacity: NSExpression =
+                NSExpression(forConstantValue: dimmed ? 0.03 : 0.20)
 
             // Override with global mode filtering if no route is actively selected
             if !dimmed {
@@ -712,7 +737,11 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 features: commuterFeatures,
                 width: MapLibreStyleConfig.commuterCasingWidth,
                 opacity: commuterCasingOpacity,
-                color: .constant(isDark ? UIColor(red: 0.75, green: 0.72, blue: 0.88, alpha: 0.18) : UIColor.white),
+                color: .constant(
+                    isDark
+                        ? UIColor(red: 0.75, green: 0.72, blue: 0.88, alpha: 0.18)
+                        : UIColor.white
+                ),
                 cap: "butt", join: "round",
                 dashPattern: [3, 2],
                 blur: MapLibreStyleConfig.commuterCasingBlur
@@ -741,7 +770,10 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 !isEffectivelyElevated($0, reroutedRouteIDs: representable.reroutedRouteIDs)
             }
             let subwayFeatures = buildPolylineFeatures(subwayOnly)
-            let subwayCasingFeatures = buildCasingFeatures(subwayOnly, crossings: representable.crossings)
+            let subwayCasingFeatures = buildCasingFeatures(
+                subwayOnly,
+                crossings: representable.crossings
+            )
 
             ensureLineLayer(
                 style: style,
@@ -750,7 +782,11 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 features: subwayCasingFeatures,
                 width: MapLibreStyleConfig.subwayCasingWidth,
                 opacity: subwayCasingOpacity,
-                color: .constant(isDark ? UIColor(red: 0.78, green: 0.74, blue: 0.95, alpha: 0.28) : UIColor.white),
+                color: .constant(
+                    isDark
+                        ? UIColor(red: 0.78, green: 0.74, blue: 0.95, alpha: 0.28)
+                        : UIColor.white
+                ),
                 cap: "round", join: "round",
                 applyLaneOffset: true,
                 sortByTrunkIndex: true,
@@ -774,7 +810,10 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 isEffectivelyElevated($0, reroutedRouteIDs: representable.reroutedRouteIDs)
             }
             let elevatedFeatures = buildPolylineFeatures(elevated)
-            let elevatedCasingFeatures = buildCasingFeatures(elevated, crossings: representable.crossings)
+            let elevatedCasingFeatures = buildCasingFeatures(
+                elevated,
+                crossings: representable.crossings
+            )
 
             ensureLineLayer(
                 style: style,
@@ -795,7 +834,11 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 features: elevatedCasingFeatures,
                 width: MapLibreStyleConfig.elevatedCasingWidth,
                 opacity: subwayCasingOpacity,
-                color: .constant(isDark ? UIColor(red: 0.78, green: 0.74, blue: 0.95, alpha: 0.32) : UIColor.white),
+                color: .constant(
+                    isDark
+                        ? UIColor(red: 0.78, green: 0.74, blue: 0.95, alpha: 0.32)
+                        : UIColor.white
+                ),
                 cap: "round", join: "round",
                 applyLaneOffset: true,
                 sortByTrunkIndex: true,
@@ -913,7 +956,9 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         ) {
             guard !representable.hasActiveRoute else {
                 // Hide system station dots when a route is selected
-                if let src = style.source(withIdentifier: MapLibreStyleConfig.srcStations) as? MLNShapeSource {
+                if let src = style.source(
+                    withIdentifier: MapLibreStyleConfig.srcStations
+                ) as? MLNShapeSource {
                     src.shape = MLNShapeCollectionFeature(shapes: [])
                 }
                 return
@@ -974,7 +1019,9 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 singleLayer.circleRadius = MapLibreStyleConfig.stationDotRadius
                 singleLayer.circleColor = NSExpression(forKeyPath: "color")
                 singleLayer.circleStrokeColor = NSExpression(
-                    forConstantValue: isDark ? UIColor(red: 0.85, green: 0.82, blue: 1.0, alpha: 0.50) : UIColor.white
+                    forConstantValue: isDark
+                        ? UIColor(red: 0.85, green: 0.82, blue: 1.0, alpha: 0.50)
+                        : UIColor.white
                 )
                 singleLayer.circleStrokeWidth = MapLibreStyleConfig.stationDotStrokeWidth
                 singleLayer.predicate = NSPredicate(format: "isTransfer == NO")
@@ -1035,9 +1082,18 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 )
                 labelLayer.textHaloWidth = NSExpression(forConstantValue: 2.5)
                 labelLayer.textHaloBlur = NSExpression(forConstantValue: 0.3)
-                labelLayer.textOffset = NSExpression(forConstantValue: NSValue(cgVector: CGVector(dx: 0, dy: 1.3)))
+                labelLayer.textOffset = NSExpression(
+                    forConstantValue: NSValue(
+                        cgVector: CGVector(dx: 0, dy: 1.3)
+                    )
+                )
                 labelLayer.textAnchor = NSExpression(forConstantValue: "top")
-                labelLayer.textFontNames = NSExpression(forConstantValue: ["Open Sans Semibold", "Arial Unicode MS Bold"])
+                labelLayer.textFontNames = NSExpression(
+                    forConstantValue: [
+                        "Open Sans Semibold",
+                        "Arial Unicode MS Bold",
+                    ]
+                )
                 labelLayer.textLetterSpacing = NSExpression(forConstantValue: 0.02)
                 labelLayer.minimumZoomLevel = 14
                 // Fade in labels
@@ -1056,12 +1112,18 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             }
 
             // Update colors for dark/light mode on existing layers
-            if let single = style.layer(withIdentifier: MapLibreStyleConfig.layerStationDotsSingle) as? MLNCircleStyleLayer {
+            if let single = style.layer(
+                withIdentifier: MapLibreStyleConfig.layerStationDotsSingle
+            ) as? MLNCircleStyleLayer {
                 single.circleStrokeColor = NSExpression(
-                    forConstantValue: isDark ? UIColor(red: 0.85, green: 0.82, blue: 1.0, alpha: 0.50) : UIColor.white
+                    forConstantValue: isDark
+                        ? UIColor(red: 0.85, green: 0.82, blue: 1.0, alpha: 0.50)
+                        : UIColor.white
                 )
             }
-            if let labels = style.layer(withIdentifier: MapLibreStyleConfig.layerStationLabels) as? MLNSymbolStyleLayer {
+            if let labels = style.layer(
+                withIdentifier: MapLibreStyleConfig.layerStationLabels
+            ) as? MLNSymbolStyleLayer {
                 labels.textColor = NSExpression(
                     forConstantValue: isDark
                         ? UIColor(red: 0.94, green: 0.93, blue: 1.0, alpha: 1.0)
@@ -1145,7 +1207,8 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 fillLayerID: "route-inactive-fill",
                 coordinates: representable.inactivePolylines,
                 color: routeColor.withAlphaComponent(0.15),
-                casingColor: (isDark ? UIColor(white: 0.7, alpha: 1) : UIColor.white).withAlphaComponent(0.15 * (isBus ? 0.6 : 1.0)),
+                casingColor: (isDark ? UIColor(white: 0.7, alpha: 1) : UIColor.white)
+                    .withAlphaComponent(0.15 * (isBus ? 0.6 : 1.0)),
                 fillWidth: MapLibreStyleConfig.routeFillWidth,
                 casingWidth: MapLibreStyleConfig.routeCasingWidth
             )
@@ -1163,7 +1226,8 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                     fillLayerID: "route-behind-fill",
                     coordinates: split.behind,
                     color: routeColor.withAlphaComponent(behindAlpha),
-                    casingColor: (isDark ? UIColor(white: 0.7, alpha: 1) : UIColor.white).withAlphaComponent(behindCasingAlpha * (isBus ? 0.6 : 1.0)),
+                    casingColor: (isDark ? UIColor(white: 0.7, alpha: 1) : UIColor.white)
+                        .withAlphaComponent(behindCasingAlpha * (isBus ? 0.6 : 1.0)),
                     fillWidth: MapLibreStyleConfig.routeFillWidth,
                     casingWidth: MapLibreStyleConfig.routeCasingWidth
                 )
@@ -1174,7 +1238,8 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                     fillLayerID: "route-ahead-fill",
                     coordinates: split.ahead,
                     color: routeColor,
-                    casingColor: (isDark ? UIColor(white: 0.7, alpha: 1) : UIColor.white).withAlphaComponent(0.8 * (isBus ? 0.6 : 1.0)),
+                    casingColor: (isDark ? UIColor(white: 0.7, alpha: 1) : UIColor.white)
+                        .withAlphaComponent(0.8 * (isBus ? 0.6 : 1.0)),
                     fillWidth: MapLibreStyleConfig.routeFillWidth,
                     casingWidth: MapLibreStyleConfig.routeCasingWidth
                 )
@@ -1186,7 +1251,8 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                     fillLayerID: "route-active-fill",
                     coordinates: representable.routePolylines,
                     color: routeColor,
-                    casingColor: (isDark ? UIColor(white: 0.7, alpha: 1) : UIColor.white).withAlphaComponent(0.8 * (isBus ? 0.6 : 1.0)),
+                    casingColor: (isDark ? UIColor(white: 0.7, alpha: 1) : UIColor.white)
+                        .withAlphaComponent(0.8 * (isBus ? 0.6 : 1.0)),
                     fillWidth: MapLibreStyleConfig.routeFillWidth,
                     casingWidth: MapLibreStyleConfig.routeCasingWidth
                 )
@@ -1221,7 +1287,10 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 : UIColor.black.withAlphaComponent(0.12)
 
             var mutableCoords = coords
-            let feature = MLNPolylineFeature(coordinates: &mutableCoords, count: UInt(mutableCoords.count))
+            let feature = MLNPolylineFeature(
+                coordinates: &mutableCoords,
+                count: UInt(mutableCoords.count)
+            )
             let shape = MLNShapeCollectionFeature(shapes: [feature])
 
             if let existing = style.source(withIdentifier: sourceID) as? MLNShapeSource {
@@ -1342,7 +1411,9 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
 
             // Insert below our transit layers — find the lowest transit layer
             // (commuter casing) and insert buildings right before it.
-            if let commuterLayer = style.layer(withIdentifier: MapLibreStyleConfig.layerCommRailCasing) {
+            if let commuterLayer = style.layer(
+                withIdentifier: MapLibreStyleConfig.layerCommRailCasing
+            ) {
                 style.insertLayer(layer, below: commuterLayer)
             } else {
                 // Transit layers not yet added — just add; they'll be placed above later
@@ -1363,9 +1434,14 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             for polyline in polylines {
                 guard polyline.coordinates.count >= 2 else { continue }
                 var coords = polyline.coordinates
-                let feature = MLNPolylineFeature(coordinates: &coords, count: UInt(coords.count))
+                let feature = MLNPolylineFeature(
+                    coordinates: &coords,
+                    count: UInt(coords.count)
+                )
                 
-                let isLIRR = polyline.routeIds.contains(where: { $0.uppercased().hasPrefix("LIRR") })
+                let isLIRR = polyline.routeIds.contains(
+                    where: { $0.uppercased().hasPrefix("LIRR") }
+                )
                 let isMNR = polyline.routeIds.contains(where: { $0.uppercased().hasPrefix("MNR") })
                 
                 feature.attributes = [
@@ -1398,7 +1474,9 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             for polyline in polylines {
                 guard polyline.coordinates.count >= 2 else { continue }
 
-                let isLIRR = polyline.routeIds.contains(where: { $0.uppercased().hasPrefix("LIRR") })
+                let isLIRR = polyline.routeIds.contains(
+                    where: { $0.uppercased().hasPrefix("LIRR") }
+                )
                 let isMNR = polyline.routeIds.contains(where: { $0.uppercased().hasPrefix("MNR") })
                 let attrs: [String: Any] = [
                     "color": polyline.color.toHex(),
@@ -1416,7 +1494,8 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                     guard crossing.trunkIndices.count >= 2 else { continue }
                     let myTrunk = polyline.trunkIndex
                     guard crossing.trunkIndices.contains(myTrunk) else { continue }
-                    let otherTrunk = crossing.trunkIndices.first(where: { $0 != myTrunk }) ?? myTrunk
+                    let otherTrunk = crossing.trunkIndices
+                        .first(where: { $0 != myTrunk }) ?? myTrunk
                     // Only break the LOWER trunk's casing
                     guard myTrunk < otherTrunk else { continue }
 
@@ -1445,7 +1524,10 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 if breakIndices.isEmpty {
                     // No breaks — emit full polyline
                     var mutableCoords = coords
-                    let feature = MLNPolylineFeature(coordinates: &mutableCoords, count: UInt(mutableCoords.count))
+                    let feature = MLNPolylineFeature(
+                        coordinates: &mutableCoords,
+                        count: UInt(mutableCoords.count)
+                    )
                     feature.attributes = attrs
                     features.append(feature)
                 } else {
@@ -1458,7 +1540,10 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                         let segEnd = max(segStart, breakIdx - gapSize)
                         if segEnd > segStart + 1 {
                             var segment = Array(coords[segStart...segEnd])
-                            let feature = MLNPolylineFeature(coordinates: &segment, count: UInt(segment.count))
+                            let feature = MLNPolylineFeature(
+                                coordinates: &segment,
+                                count: UInt(segment.count)
+                            )
                             feature.attributes = attrs
                             features.append(feature)
                         }
@@ -1468,7 +1553,10 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                     // Emit trailing segment
                     if segStart < coords.count - 1 {
                         var segment = Array(coords[segStart...])
-                        let feature = MLNPolylineFeature(coordinates: &segment, count: UInt(segment.count))
+                        let feature = MLNPolylineFeature(
+                            coordinates: &segment,
+                            count: UInt(segment.count)
+                        )
                         feature.attributes = attrs
                         features.append(feature)
                     }
@@ -1534,7 +1622,12 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
 
                 if let translate = translatePixels {
                     layer.lineTranslation = NSExpression(
-                        forConstantValue: NSValue(cgVector: CGVector(dx: translate.x, dy: translate.y))
+                        forConstantValue: NSValue(
+                            cgVector: CGVector(
+                                dx: translate.x,
+                                dy: translate.y
+                            )
+                        )
                     )
                 }
 

@@ -1,11 +1,6 @@
-//
-//  NearbyTransitRow.swift
-//  Track
-//
-//  Displays a single nearby transit arrival (bus or train) in the unified list.
-//  Tapping expands the row to show arrival details, direction, and status.
-//  Extracted from HomeView for reusability and to keep HomeView focused on layout.
-//
+// Displays a single nearby transit arrival (bus or train) in the unified list.
+// Tapping expands the row to show arrival details, direction, and status.
+// Extracted from HomeView for reusability and to keep HomeView focused on layout.
 
 import CoreLocation
 import SwiftUI
@@ -95,7 +90,9 @@ struct NearbyTransitRow: View {
         .accessibilityLabel({
             let eta = resolvedETA(for: arrival)
             let timeText = eta.isAtStop ? "arriving now" : "\(eta.minutesRemaining) minutes away"
-            return "\(arrival.isBus ? "Bus" : "Train") \(arrival.displayName), \(arrival.stopName), \(timeText)"
+            let mode = arrival.isBus ? "Bus" : "Train"
+            return "\(mode) \(arrival.displayName), "
+                + "\(arrival.stopName), \(timeText)"
         }())
         .accessibilityHint(
             isExpanded ? "Expanded. Shows arrival details." : "Tap to see arrival details")

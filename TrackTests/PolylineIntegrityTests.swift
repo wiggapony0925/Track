@@ -66,7 +66,10 @@ private enum PolylineFixtures {
             CLLocationCoordinate2D(latitude: 40.7000 + Double($0) * 0.002, longitude: -73.9900)
         }
         let diverged = (0..<10).map {
-            CLLocationCoordinate2D(latitude: 40.7080 + Double($0) * 0.001, longitude: -73.9900 + Double($0) * 0.003)
+            CLLocationCoordinate2D(
+                latitude: 40.7080 + Double($0) * 0.001,
+                longitude: -73.9900 + Double($0) * 0.003
+            )
         }
         return shared + diverged
     }()
@@ -130,7 +133,9 @@ struct PolylineIntegrityTests {
             [PolylineFixtures.segmentA, PolylineFixtures.segmentB],
             gapThreshold: 0.002
         )
-        #expect(merged.count == 1, "Adjacent segments should merge into 1 chain, got \(merged.count)")
+        #expect(
+            merged.count == 1,
+            "Adjacent segments should merge into 1 chain, got \(merged.count)")
     }
 
     @Test func mergePreservesContinuity_noTeleports() {
@@ -187,7 +192,9 @@ struct PolylineIntegrityTests {
         let backward = Array(forward.reversed())
         let unified = unifyTrainPolylines([forward, backward])
         let unifiedCount = unified.count
-        #expect(unifiedCount == 1, "Forward + reverse should unify to 1 line, got \(String(unifiedCount))")
+        #expect(
+            unifiedCount == 1,
+            "Forward + reverse should unify to 1 line, got \(String(unifiedCount))")
     }
 
     @Test func unifyKeepsBranches() {
@@ -198,7 +205,9 @@ struct PolylineIntegrityTests {
         #expect(unified.count >= 1, "Should keep at least the trunk")
         // Total point coverage: all trunk points + branch-unique points should be represented
         let totalPoints = unified.reduce(0) { $0 + $1.count }
-        #expect(totalPoints >= PolylineFixtures.trunk.count, "Unified should cover at least the trunk length")
+        #expect(
+            totalPoints >= PolylineFixtures.trunk.count,
+            "Unified should cover at least the trunk length")
     }
 
     @Test func unifyOutputIsContinuous() {
@@ -221,7 +230,9 @@ struct PolylineIntegrityTests {
             PolylineFixtures.lexingtonAve,
             PolylineFixtures.statenIsland,
         ])
-        #expect(unified.count == 2, "Distant routes should stay as 2 separate polylines, got \(unified.count)")
+        #expect(
+            unified.count == 2,
+            "Distant routes should stay as 2 separate polylines, got \(unified.count)")
     }
 
     @Test func unifySingleInputPassesThrough() {
@@ -238,7 +249,10 @@ struct PolylineIntegrityTests {
         // Every simplified point must lie within tolerance of the original.
         let tolerance = 0.00015  // ~17m at NYC latitude
         let simplified = simplifyPolyline(PolylineFixtures.lShape, tolerance: tolerance)
-        let deviation = maxDeviationFromOriginal(simplified: simplified, original: PolylineFixtures.lShape)
+        let deviation = maxDeviationFromOriginal(
+            simplified: simplified,
+            original: PolylineFixtures.lShape
+        )
         // Simplified points are a subset of originals in RDP, so deviation should be 0
         #expect(deviation < 1e-8, "Simplified point deviated \(deviation)° from original path")
     }
@@ -255,7 +269,8 @@ struct PolylineIntegrityTests {
         // The L-shape has 8 points; a generous tolerance should reduce it.
         let simplified = simplifyPolyline(PolylineFixtures.lShape, tolerance: 0.0005)
         #expect(simplified.count < PolylineFixtures.lShape.count,
-                "Expected fewer points: got \(simplified.count) vs original \(PolylineFixtures.lShape.count)")
+                "Expected fewer points: got \(simplified.count)" +
+                " vs original \(PolylineFixtures.lShape.count)")
         #expect(simplified.count >= 2, "Must keep at least start + end")
     }
 
@@ -265,7 +280,10 @@ struct PolylineIntegrityTests {
         // The corner is around index 3-4: (40.6930, -73.9850) → (40.6930, -73.9840)
         // At least one point near the corner should be retained.
         let cornerLat = 40.6930
-        let hasCorner = simplified.contains { abs($0.latitude - cornerLat) < 0.001 && $0.longitude < -73.9840 }
+        let hasCorner = simplified.contains {
+            abs($0.latitude - cornerLat) < 0.001
+                && $0.longitude < -73.9840
+        }
         #expect(hasCorner, "L-shape corner should be preserved")
     }
 
@@ -274,7 +292,9 @@ struct PolylineIntegrityTests {
         let straight = PolylineFixtures.lexingtonAve  // nearly straight N-S
         let simplified = simplifyPolyline(straight, tolerance: 0.0005)
         // Lex Ave has very slight longitude drift, so with generous tolerance → 2 points
-        #expect(simplified.count <= 3, "Straight line should simplify to ~2 points, got \(simplified.count)")
+        #expect(
+            simplified.count <= 3,
+            "Straight line should simplify to ~2 points, got \(simplified.count)")
     }
 
     @Test func simplifyTwoPointsUntouched() {
@@ -357,7 +377,9 @@ struct PolylineIntegrityTests {
             #expect(simplified.count >= 2, "Simplified output \(idx) has < 2 points")
 
             let deviation = maxDeviationFromOriginal(simplified: simplified, original: polyline)
-            #expect(deviation < 1e-8, "Simplified output \(idx) deviated \(deviation)° from unified path")
+            #expect(
+                deviation < 1e-8,
+                "Simplified output \(idx) deviated \(deviation)° from unified path")
         }
     }
 
@@ -581,7 +603,9 @@ struct BranchAndCurveTests {
 
         // Far Rockaway terminal: ~(40.603, -73.755)
         let farRockawayTerminal = CLLocationCoordinate2D(latitude: 40.603, longitude: -73.755)
-        let anyReaches = unified.contains { polylineReaches($0, target: farRockawayTerminal, threshold: 0.01) }
+        let anyReaches = unified.contains {
+            polylineReaches($0, target: farRockawayTerminal, threshold: 0.01)
+        }
         #expect(anyReaches, "A train polylines must reach Far Rockaway terminal")
     }
 
@@ -595,7 +619,9 @@ struct BranchAndCurveTests {
 
         // Lefferts Blvd terminal: ~(40.686, -73.808)
         let leffertsTerminal = CLLocationCoordinate2D(latitude: 40.686, longitude: -73.808)
-        let anyReaches = unified.contains { polylineReaches($0, target: leffertsTerminal, threshold: 0.01) }
+        let anyReaches = unified.contains {
+            polylineReaches($0, target: leffertsTerminal, threshold: 0.01)
+        }
         #expect(anyReaches, "A train polylines must reach Lefferts Blvd terminal")
     }
 
@@ -660,8 +686,12 @@ struct BranchAndCurveTests {
         let coneyIsland = CLLocationCoordinate2D(latitude: 40.576, longitude: -73.969)
         let bayRidge = CLLocationCoordinate2D(latitude: 40.620, longitude: -74.031)
 
-        let reachesConey = unified.contains { polylineReaches($0, target: coneyIsland, threshold: 0.01) }
-        let reachesBayRidge = unified.contains { polylineReaches($0, target: bayRidge, threshold: 0.01) }
+        let reachesConey = unified.contains {
+            polylineReaches($0, target: coneyIsland, threshold: 0.01)
+        }
+        let reachesBayRidge = unified.contains {
+            polylineReaches($0, target: bayRidge, threshold: 0.01)
+        }
 
         #expect(reachesConey, "Yellow group must reach Coney Island (Q/Brighton)")
         #expect(reachesBayRidge, "Yellow group must reach Bay Ridge (R/4th Ave)")
@@ -780,7 +810,9 @@ struct BranchAndCurveTests {
         for pt in smoothed {
             #expect(pt.latitude >= rawBox.minLat - margin && pt.latitude <= rawBox.maxLat + margin,
                     "Smoothed point lat \(pt.latitude) outside S-curve bounds")
-            #expect(pt.longitude >= rawBox.minLon - margin && pt.longitude <= rawBox.maxLon + margin,
+            #expect(
+                pt.longitude >= rawBox.minLon - margin
+                    && pt.longitude <= rawBox.maxLon + margin,
                     "Smoothed point lon \(pt.longitude) outside S-curve bounds")
         }
     }
@@ -790,7 +822,8 @@ struct BranchAndCurveTests {
         let raw = NYCSubwayFixtures.queensBlvdCurve
         let smoothed = smoothPolyline(raw, segmentsPerCurve: 4)
         #expect(smoothed.count > raw.count * 2,
-                "Smoothing should significantly increase point count: \(smoothed.count) vs \(raw.count)")
+                "Smoothing should significantly increase point count: "
+                + "\(smoothed.count) vs \(raw.count)")
     }
 
     @Test func smoothedCurveIsContinuous() {
@@ -826,7 +859,9 @@ struct BranchAndCurveTests {
         let safeIndices = [0] + Array(2..<(raw.count - 1))
         for i in safeIndices {
             let rawPt = raw[i]
-            let closestDist = smoothed.map { degreeDistance($0, rawPt) }.min() ?? .greatestFiniteMagnitude
+            let closestDist = smoothed
+                .map { degreeDistance($0, rawPt) }
+                .min() ?? .greatestFiniteMagnitude
             #expect(closestDist < 1e-6,
                     "Original point \(i) not found in smoothed output (closest: \(closestDist)°)")
         }
@@ -910,7 +945,8 @@ struct BranchAndCurveTests {
                 let isOnTrunk = nearestTrunkDist < 0.0005
                 let isDiverged = nearestTrunkDist > 0.002
                 #expect(isOnTrunk || isDiverged,
-                        "Stub point at \(pt.latitude), \(pt.longitude) is \(nearestTrunkDist)° from trunk — close-but-offset double line")
+                        "Stub point at \(pt.latitude), \(pt.longitude) is "
+                        + "\(nearestTrunkDist)° from trunk — close-but-offset double line")
             }
         }
     }
@@ -1031,8 +1067,12 @@ struct BranchAndCurveTests {
         let coneyIsland = CLLocationCoordinate2D(latitude: 40.576, longitude: -73.969)
         let bayRidge = CLLocationCoordinate2D(latitude: 40.620, longitude: -74.031)
 
-        let reachesConey = unified.contains { polylineReaches($0, target: coneyIsland, threshold: 0.01) }
-        let reachesBayRidge = unified.contains { polylineReaches($0, target: bayRidge, threshold: 0.01) }
+        let reachesConey = unified.contains {
+            polylineReaches($0, target: coneyIsland, threshold: 0.01)
+        }
+        let reachesBayRidge = unified.contains {
+            polylineReaches($0, target: bayRidge, threshold: 0.01)
+        }
 
         #expect(reachesConey, "Full pipeline: yellow group must reach Coney Island")
         #expect(reachesBayRidge, "Full pipeline: yellow group must reach Bay Ridge")
@@ -1134,7 +1174,8 @@ struct CorridorDriftTests {
         let firstName = farStops.first?.name ?? "none"
         let firstDist = String(format: "%.0f", (farStops.first?.dist ?? 0) * 84400)
         #expect(farRate < 0.10,
-                "\(farStops.count)/\(allStops.count) stops (\(pct)%) exceed 300m from nearest polyline. First: \(firstName) at \(firstDist)m")
+                "\(farStops.count)/\(allStops.count) stops (\(pct)%) exceed 300m"
+                + " from nearest polyline. First: \(firstName) at \(firstDist)m")
     }
 
     // MARK: - Polyline Duplication Tests
@@ -1299,12 +1340,18 @@ struct CorridorDriftTests {
             guard indices.count >= 2 else { continue }
             for i in 0..<indices.count {
                 for j in (i + 1)..<indices.count {
-                    let a = polylines[indices[i]].original  // use pre-offset (same group gets same offset)
+                    // use pre-offset (same group gets same offset)
+                    let a = polylines[indices[i]].original
                     let b = polylines[indices[j]].original
 
                     let overlap = Self.overlapFraction(a, b, threshold: threshold)
                     if overlap > maxAllowedOverlap {
-                        duplicates.append((group: groupIdx, idxA: indices[i], idxB: indices[j], overlap: overlap))
+                        duplicates.append((
+                            group: groupIdx,
+                            idxA: indices[i],
+                            idxB: indices[j],
+                            overlap: overlap
+                        ))
                     }
                 }
             }
@@ -1314,7 +1361,10 @@ struct CorridorDriftTests {
         let routes = first.map { polylines[$0.idxA].routeIds.joined(separator: "/") } ?? ""
         let pct = String(format: "%.0f", (first?.overlap ?? 0) * 100)
         #expect(duplicates.isEmpty,
-                "\(duplicates.count) within-group duplicate(s). Worst: group \(first?.group ?? -1) (\(routes)) branches \(first?.idxA ?? -1) & \(first?.idxB ?? -1) overlap \(pct)%")
+                "\(duplicates.count) within-group duplicate(s). "
+                + "Worst: group \(first?.group ?? -1) (\(routes)) "
+                + "branches \(first?.idxA ?? -1) & \(first?.idxB ?? -1) "
+                + "overlap \(pct)%")
     }
 }
 
@@ -1355,7 +1405,8 @@ struct LaneOffsetSpacingTests {
             let fill = Self.fillWidthStops[i].width
             let mult = Self.offsetMultiplierStops[i].multiplier
             #expect(mult <= fill * 1.01,
-                    "z\(Int(zoom)): offset multiplier \(mult) > fill width \(fill) — visible gap would open")
+                    "z\(Int(zoom)): offset multiplier \(mult) > fill width "
+                    + "\(fill) — visible gap would open")
         }
     }
 
@@ -1366,7 +1417,8 @@ struct LaneOffsetSpacingTests {
             let fill = Self.fillWidthStops[i].width
             let mult = Self.offsetMultiplierStops[i].multiplier
             #expect(mult >= fill * 0.92,
-                    "z\(Int(zoom)): offset multiplier \(mult) << fill width \(fill) — lanes would visibly collapse")
+                    "z\(Int(zoom)): offset multiplier \(mult) << fill width "
+                    + "\(fill) — lanes would visibly collapse")
         }
     }
 
@@ -1379,21 +1431,26 @@ struct LaneOffsetSpacingTests {
             let ratio = mult / fill
             let deviation = abs(ratio - Self.targetRatio)
             #expect(deviation <= Self.tolerance,
-                    "z\(Int(zoom)): ratio \(String(format: "%.3f", ratio)) deviates from target \(Self.targetRatio) by \(String(format: "%.3f", deviation)) (max \(Self.tolerance))")
+                    "z\(Int(zoom)): ratio \(String(format: "%.3f", ratio)) "
+                    + "deviates from target \(Self.targetRatio) "
+                    + "by \(String(format: "%.3f", deviation)) "
+                    + "(max \(Self.tolerance))")
         }
     }
 
     @Test("Stop count matches between fill width and offset multiplier")
     func stopCountsMatch() {
         #expect(Self.fillWidthStops.count == Self.offsetMultiplierStops.count,
-                "Fill width has \(Self.fillWidthStops.count) stops but offset has \(Self.offsetMultiplierStops.count)")
+                "Fill width has \(Self.fillWidthStops.count) stops "
+                + "but offset has \(Self.offsetMultiplierStops.count)")
     }
 
     @Test("Zoom levels match between fill width and offset multiplier")
     func zoomLevelsMatch() {
         for i in 0..<Self.fillWidthStops.count {
             #expect(Self.fillWidthStops[i].zoom == Self.offsetMultiplierStops[i].zoom,
-                    "Stop \(i): fill zoom \(Self.fillWidthStops[i].zoom) ≠ offset zoom \(Self.offsetMultiplierStops[i].zoom)")
+                    "Stop \(i): fill zoom \(Self.fillWidthStops[i].zoom) "
+                    + "≠ offset zoom \(Self.offsetMultiplierStops[i].zoom)")
         }
     }
 
@@ -1407,7 +1464,8 @@ struct LaneOffsetSpacingTests {
         let span = 3.0 * z10Mult + z10Fill  // center-to-center + line edges
         // At z10 a phone screen is ~350-400 pt → corridor should be << 50 pt
         #expect(span < 30.0,
-                "4-line corridor at z10 spans \(String(format: "%.1f", span))pt — too wide for overview zoom")
+                "4-line corridor at z10 spans "
+                + "\(String(format: "%.1f", span))pt — too wide for overview zoom")
     }
 
     @Test("Station helper uses the exact same spacing stops as the line layer")
@@ -1416,7 +1474,8 @@ struct LaneOffsetSpacingTests {
             let resolved = MapLibreStyleConfig.laneOffsetMultiplier(at: stop.zoom)
             let delta = abs(resolved - stop.multiplier)
             #expect(delta < 0.0001,
-                    "z\(Int(stop.zoom)): laneOffsetMultiplier resolved \(resolved) but stop is \(stop.multiplier)")
+                    "z\(Int(stop.zoom)): laneOffsetMultiplier resolved "
+                    + "\(resolved) but stop is \(stop.multiplier)")
         }
     }
 

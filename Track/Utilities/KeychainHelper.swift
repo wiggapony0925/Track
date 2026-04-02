@@ -1,11 +1,6 @@
-//
-//  KeychainHelper.swift
-//  Track
-//
-//  Lightweight wrapper around the Security framework for
-//  storing and retrieving sensitive tokens in the Keychain
-//  instead of UserDefaults.
-//
+// Lightweight wrapper around the Security framework for
+// storing and retrieving sensitive tokens in the Keychain
+// instead of UserDefaults.
 
 import Foundation
 import Security

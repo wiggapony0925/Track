@@ -1,10 +1,5 @@
-//
-//  ThemeModifiers.swift
-//  Shared
-//
-//  Reusable surface and background helpers powered by AppTheme.
-//  Transit 6.0–inspired: layered glass, refined borders, deeper shadows.
-//
+// Reusable surface and background helpers powered by AppTheme.
+// Transit 6.0–inspired: layered glass, refined borders, deeper shadows.
 
 import SwiftUI
 

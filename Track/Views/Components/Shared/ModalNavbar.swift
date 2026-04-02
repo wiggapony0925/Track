@@ -1,11 +1,6 @@
-//
-//  ModalNavbar.swift
-//  Track
-//
-//  Modal navbar component displayed at the top of the dashboard sheet.
-//  Contains search bar, transport mode filter icons, and settings button.
-//  Styled to match Apple Maps modal design.
-//
+// Modal navbar component displayed at the top of the dashboard sheet.
+// Contains search bar, transport mode filter icons, and settings button.
+// Styled to match Apple Maps modal design.
 
 import SwiftUI
 import CoreLocation
@@ -154,7 +149,11 @@ struct ModalNavbar: View {
                 .frame(width: 6, height: 6)
                 .shadow(color: AppTheme.Colors.successGreen.opacity(0.4), radius: 4, x: 0, y: 0)
 
-            Text("Updated \(RelativeDateTimeFormatter().localizedString(for: date, relativeTo: .now))")
+            let formatter = RelativeDateTimeFormatter()
+            let relative = formatter.localizedString(
+                for: date, relativeTo: .now
+            )
+            Text("Updated \(relative)")
                 .font(.system(size: 11, weight: .semibold, design: .rounded))
                 .foregroundColor(AppTheme.Colors.textTertiary)
         }

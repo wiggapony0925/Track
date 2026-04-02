@@ -57,7 +57,10 @@ struct ColdStartFlowTests {
     // ── Helpers ────────────────────────────────────────────────────
 
     /// Measures wall-clock time of a throwing async closure, returning (result, seconds).
-    private func timed<T>(_ label: String, _ work: () async throws -> T) async throws -> (T, TimeInterval) {
+    private func timed<T>(
+        _ label: String,
+        _ work: () async throws -> T
+    ) async throws -> (T, TimeInterval) {
         let start = Date()
         let result = try await work()
         let elapsed = Date().timeIntervalSince(start)
@@ -86,18 +89,25 @@ struct ColdStartFlowTests {
             if ping.ok {
                 let elapsed = Date().timeIntervalSince(start)
                 if attempt > 0 {
-                    print("✅ Server awake after \(attempt + 1) attempt(s) (\(String(format: "%.1f", elapsed))s)")
+                    let t = String(format: "%.1f", elapsed)
+                    print("✅ Server awake after "
+                        + "\(attempt + 1) attempt(s) (\(t)s)")
                 }
                 return elapsed
             }
             attempt += 1
             if attempt < maxAttempts {
-                print("⏳ Wake attempt \(attempt)/\(maxAttempts) failed (\(ping.error ?? "unknown")) — retrying in 5 s…")
+                let err = ping.error ?? "unknown"
+                print("⏳ Wake attempt "
+                    + "\(attempt)/\(maxAttempts) "
+                    + "failed (\(err)) — retrying in 5 s…")
                 try? await Task.sleep(nanoseconds: 5_000_000_000)
             }
         }
         let elapsed = Date().timeIntervalSince(start)
-        print("⚠️ Server did not wake after \(maxAttempts) attempts (\(String(format: "%.1f", elapsed))s)")
+        let t = String(format: "%.1f", elapsed)
+        print("⚠️ Server did not wake after "
+            + "\(maxAttempts) attempts (\(t)s)")
         return elapsed
     }
 
@@ -112,9 +122,13 @@ struct ColdStartFlowTests {
         #expect(ping.ok, "Server health check failed after wake-up: \(ping.error ?? "unknown")")
         #expect(ping.statusCode == 200)
 
-        print("📊 Server wake time: \(String(format: "%.1f", wakeTime))s (budget: \(Self.wakeUpBudget)s)")
+        let wt = String(format: "%.1f", wakeTime)
+        print("📊 Server wake time: \(wt)s "
+            + "(budget: \(Self.wakeUpBudget)s)")
+        let wtInt = String(format: "%.0f", wakeTime)
         #expect(wakeTime < Self.wakeUpBudget,
-                "Server took \(String(format: "%.0f", wakeTime))s to wake — exceeds \(Self.wakeUpBudget)s budget")
+                "Server took \(wtInt)s to wake "
+                + "— exceeds \(Self.wakeUpBudget)s budget")
     }
 
     // ── Phase 1: Nearby Grouped (Critical Path) ──────────────────
@@ -134,7 +148,9 @@ struct ColdStartFlowTests {
         // Must return data — this is what populates the home screen
         #expect(!groups.isEmpty, "No grouped transit returned — user sees empty skeleton")
         #expect(elapsed < Self.singleEndpointBudget,
-                "nearby/grouped took \(String(format: "%.1f", elapsed))s — exceeds \(Self.singleEndpointBudget)s budget")
+                "nearby/grouped took "
+                + "\(String(format: "%.1f", elapsed))s "
+                + "— exceeds \(Self.singleEndpointBudget)s budget")
 
         // Validate structure
         let withArrivals = groups.filter { $0.hasRealArrivals }
@@ -152,7 +168,10 @@ struct ColdStartFlowTests {
         }
 
         let totalArrivals = groups.flatMap(\.directions).flatMap(\.arrivals).count
-        print("  ↳ \(groups.count) groups, \(withArrivals.count) with arrivals, \(totalArrivals) total arrivals, modes: \(modes)")
+        print("  ↳ \(groups.count) groups, "
+            + "\(withArrivals.count) with arrivals, "
+            + "\(totalArrivals) total arrivals, "
+            + "modes: \(modes)")
     }
 
     // ── Phase 2: Subway System Map Shapes ────────────────────────
@@ -167,7 +186,9 @@ struct ColdStartFlowTests {
 
         #expect(!response.lines.isEmpty, "No subway lines returned")
         #expect(elapsed < Self.shapeEndpointBudget,
-                "subway/shapes/all took \(String(format: "%.1f", elapsed))s — exceeds \(Self.shapeEndpointBudget)s budget")
+                "subway/shapes/all took "
+                + "\(String(format: "%.1f", elapsed))s "
+                + "— exceeds \(Self.shapeEndpointBudget)s budget")
 
         // MTA has ~27 subway routes (including express variants)
         #expect(response.lines.count >= 20,
@@ -188,9 +209,13 @@ struct ColdStartFlowTests {
         // Trunk polylines (corridor pipeline) should be present
         if let trunks = response.trunkPolylines {
             #expect(!trunks.isEmpty, "trunkPolylines array is empty")
-            print("  ↳ \(response.lines.count) lines, \(trunks.count) trunk groups (corridor pipeline active)")
+            print("  ↳ \(response.lines.count) lines, "
+                + "\(trunks.count) trunk groups "
+                + "(corridor pipeline active)")
         } else {
-            print("  ↳ \(response.lines.count) lines, no trunk polylines (corridor pipeline inactive)")
+            print("  ↳ \(response.lines.count) lines, "
+                + "no trunk polylines "
+                + "(corridor pipeline inactive)")
         }
     }
 
@@ -248,7 +273,10 @@ struct ColdStartFlowTests {
 
         for line in response.lines.prefix(3) {
             #expect(!line.polylines.isEmpty, "LIRR \(line.routeId) has no polylines")
-            #expect(line.mode == "lirr", "Line \(line.routeId) mode is '\(line.mode)', expected 'lirr'")
+            #expect(
+                line.mode == "lirr",
+                "Line \(line.routeId) mode is "
+                + "'\(line.mode)', expected 'lirr'")
         }
 
         let totalStops = response.lines.reduce(0) { $0 + $1.stops.count }
@@ -273,7 +301,10 @@ struct ColdStartFlowTests {
 
         for line in response.lines.prefix(3) {
             #expect(!line.polylines.isEmpty, "MNR \(line.routeId) has no polylines")
-            #expect(line.mode == "mnr", "Line \(line.routeId) mode is '\(line.mode)', expected 'mnr'")
+            #expect(
+                line.mode == "mnr",
+                "Line \(line.routeId) mode is "
+                + "'\(line.mode)', expected 'mnr'")
         }
 
         let totalStops = response.lines.reduce(0) { $0 + $1.stops.count }
@@ -396,17 +427,39 @@ struct ColdStartFlowTests {
         print("  COLD START FLOW RESULTS")
         print("═══════════════════════════════════════════════════════════")
         print("  Server wake:        \(String(format: "%6.2f", wakeTime))s")
-        print("  ─────────────────────────────────────────────────────────")
-        print("  Nearby arrivals:    \(String(format: "%6.2f", nearbyElapsed))s  → \(nearby?.count ?? 0) groups")
-        print("  Subway shapes:      \(subwayShapes != nil ? "✅" : "❌")  \(subwayShapes?.lines.count ?? 0) lines")
+        print("  ──────────────────────────────────────────")
+        let naStr = String(format: "%6.2f", nearbyElapsed)
+        let naCt = nearby?.count ?? 0
+        print("  Nearby arrivals:    \(naStr)s"
+            + "  → \(naCt) groups")
+        let ssIcon = subwayShapes != nil ? "✅" : "❌"
+        let ssCt = subwayShapes?.lines.count ?? 0
+        print("  Subway shapes:      \(ssIcon)"
+            + "  \(ssCt) lines")
         if let trunks = subwayShapes?.trunkPolylines {
-            print("    Trunk polylines:  ✅  \(trunks.count) groups")
+            print("    Trunk polylines:  ✅"
+                + "  \(trunks.count) groups")
         }
-        print("  Stations:           \(stations != nil ? "✅" : "❌")  \(stations?.stations.count ?? 0) stations")
-        print("  LIRR:               \(lirrShapes != nil ? "✅" : "❌")  \(lirrShapes?.lines.count ?? 0) branches")
-        print("  MNR:                \(mnrShapes != nil ? "✅" : "❌")  \(mnrShapes?.lines.count ?? 0) lines")
-        print("  Alerts:             \(alerts != nil ? "✅" : "❌")  \(alerts?.count ?? 0) alerts")
-        print("  Accessibility:      \(accessibility != nil ? "✅" : "❌")  \(accessibility?.count ?? 0) outages")
+        let stIcon = stations != nil ? "✅" : "❌"
+        let stCt = stations?.stations.count ?? 0
+        print("  Stations:           \(stIcon)"
+            + "  \(stCt) stations")
+        let lrIcon = lirrShapes != nil ? "✅" : "❌"
+        let lrCt = lirrShapes?.lines.count ?? 0
+        print("  LIRR:               \(lrIcon)"
+            + "  \(lrCt) branches")
+        let mnIcon = mnrShapes != nil ? "✅" : "❌"
+        let mnCt = mnrShapes?.lines.count ?? 0
+        print("  MNR:                \(mnIcon)"
+            + "  \(mnCt) lines")
+        let alIcon = alerts != nil ? "✅" : "❌"
+        let alCt = alerts?.count ?? 0
+        print("  Alerts:             \(alIcon)"
+            + "  \(alCt) alerts")
+        let acIcon = accessibility != nil ? "✅" : "❌"
+        let acCt = accessibility?.count ?? 0
+        print("  Accessibility:      \(acIcon)"
+            + "  \(acCt) outages")
         print("  ─────────────────────────────────────────────────────────")
         print("  Parallel data load: \(String(format: "%6.2f", flowElapsed))s")
         print("  ═══════════════════════")
@@ -432,11 +485,15 @@ struct ColdStartFlowTests {
 
         // Warm-server data load should be fast
         #expect(flowElapsed < Self.warmFlowBudget,
-                "Warm-server data load took \(String(format: "%.1f", flowElapsed))s — exceeds \(Self.warmFlowBudget)s budget")
+                "Warm-server data load took "
+                + "\(String(format: "%.1f", flowElapsed))s"
+                + " — exceeds \(Self.warmFlowBudget)s budget")
 
         // Nearby arrivals should resolve quickly (user stuck on skeletons until this returns)
         #expect(nearbyElapsed < 15,
-                "Nearby arrivals took \(String(format: "%.1f", nearbyElapsed))s — user stuck on skeletons too long")
+                "Nearby arrivals took "
+                + "\(String(format: "%.1f", nearbyElapsed))s"
+                + " — user stuck on skeletons too long")
     }
 
     // ── Data Consistency Test ────────────────────────────────────
@@ -510,11 +567,15 @@ struct ColdStartFlowTests {
         if let trunks = shapes.trunkPolylines, !trunks.isEmpty {
             let withOffsets = trunks.filter { abs($0.laneOffset) > 0.01 }
             #expect(!withOffsets.isEmpty,
-                    "All \(trunks.count) trunk groups have laneOffset=0 — corridor pipeline may have failed")
+                    "All \(trunks.count) trunk groups "
+                    + "have laneOffset=0 — corridor "
+                    + "pipeline may have failed")
             print("  ↳ \(trunks.count) trunk groups, \(withOffsets.count) with lane offsets")
         }
 
-        print("  ↳ \(shapes.lines.count) lines × \(stations.stations.count) stations — integration valid")
+        print("  ↳ \(shapes.lines.count) lines "
+            + "× \(stations.stations.count) stations "
+            + "— integration valid")
     }
 
     // ── Retry Resilience ─────────────────────────────────────────
@@ -532,9 +593,13 @@ struct ColdStartFlowTests {
         #expect(response.lines.count >= 20,
                 "Expected ≥20 lines, got \(response.lines.count)")
 
-        print("⏱️ Extended timeout shape fetch: \(String(format: "%.2f", elapsed))s — \(response.lines.count) lines")
+        let etStr = String(format: "%.2f", elapsed)
+        print("⏱️ Extended timeout shape fetch: "
+            + "\(etStr)s — \(response.lines.count) lines")
 
         #expect(elapsed < Self.shapeEndpointBudget,
-                "Shapes took \(String(format: "%.1f", elapsed))s — exceeds \(Self.shapeEndpointBudget)s budget")
+                "Shapes took "
+                + "\(String(format: "%.1f", elapsed))s "
+                + "— exceeds \(Self.shapeEndpointBudget)s budget")
     }
 }

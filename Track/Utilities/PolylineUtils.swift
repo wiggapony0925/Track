@@ -1,11 +1,6 @@
-//
-//  PolylineUtils.swift
-//  Track
-//
-//  Google-encoded polyline encoding and decoding utilities.
-//  Used by TrackAPI response types and HomeViewModel to convert
-//  between encoded polyline strings and coordinate arrays.
-//
+// Google-encoded polyline encoding and decoding utilities.
+// Used by TrackAPI response types and HomeViewModel to convert
+// between encoded polyline strings and coordinate arrays.
 
 import CoreLocation
 
@@ -138,7 +133,10 @@ nonisolated func consolidateIntoSinglePolyline(
 
             // result.last → seg.first  (append, normal order)
             let d1 = distSq(rLast, sFirst)
-            if d1 < bestDist { bestDist = d1; bestIdx = i; bestReverse = false; bestPrepend = false }
+            if d1 < bestDist {
+                bestDist = d1; bestIdx = i
+                bestReverse = false; bestPrepend = false
+            }
 
             // result.last → seg.last   (append, reversed)
             let d2 = distSq(rLast, sLast)

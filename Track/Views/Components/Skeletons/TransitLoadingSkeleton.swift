@@ -1,12 +1,7 @@
-//
-//  TransitLoadingSkeleton.swift
-//  Track
-//
-//  Shimmer skeleton shown in the dashboard while transit arrivals
-//  are being fetched. Shows all three distance-tier sections
-//  (Near You / A Bit Farther / Much Farther) with skeleton
-//  section headers and route rows for a seamless swap.
-//
+// Shimmer skeleton shown in the dashboard while transit arrivals
+// are being fetched. Shows all three distance-tier sections
+// (Near You / A Bit Farther / Much Farther) with skeleton
+// section headers and route rows for a seamless swap.
 
 import SwiftUI
 
@@ -121,7 +116,10 @@ private struct SkeletonRouteRows: View {
                 .padding(.horizontal, AppTheme.Layout.margin)
                 .padding(.vertical, 12)
                 .background(AppTheme.Colors.cardBackground)
-                .clipShape(RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius, style: .continuous))
+                .clipShape(RoundedRectangle(
+                    cornerRadius: AppTheme.Layout.cornerRadius,
+                    style: .continuous
+                ))
             }
         }
         .padding(.horizontal, AppTheme.Layout.margin)

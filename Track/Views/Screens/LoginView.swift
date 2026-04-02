@@ -1,11 +1,6 @@
-//
-//  LoginView.swift
-//  Track
-//
-//  Authentication screen shown before onboarding.
-//  Uses Sign in with Apple as the primary login method.
-//  Integrates with Supabase for cloud sync and user management.
-//
+// Authentication screen shown before onboarding.
+// Uses Sign in with Apple as the primary login method.
+// Integrates with Supabase for cloud sync and user management.
 
 import SwiftUI
 import AuthenticationServices
@@ -90,9 +85,21 @@ struct LoginView: View {
 
     private var featureHighlights: some View {
         VStack(spacing: 12) {
-            featureRow(icon: "location.fill", color: AppTheme.Colors.mtaBlue, text: "Real-time subway, bus & rail arrivals")
-            featureRow(icon: "bell.badge.fill", color: AppTheme.Colors.warningYellow, text: "Live service alerts & delay notifications")
-            featureRow(icon: "map.fill", color: AppTheme.Colors.successGreen, text: "Transit map with live vehicle tracking")
+            featureRow(
+                icon: "location.fill",
+                color: AppTheme.Colors.mtaBlue,
+                text: "Real-time subway, bus & rail arrivals"
+            )
+            featureRow(
+                icon: "bell.badge.fill",
+                color: AppTheme.Colors.warningYellow,
+                text: "Live service alerts & delay notifications"
+            )
+            featureRow(
+                icon: "map.fill",
+                color: AppTheme.Colors.successGreen,
+                text: "Transit map with live vehicle tracking"
+            )
         }
         .padding(18)
         .trackCardBackground(cornerRadius: 24)
@@ -195,7 +202,8 @@ struct LoginView: View {
         
         switch result {
         case .success(let authorization):
-            if let appleIDCredential = authorization.credential as? ASAuthorizationAppleIDCredential {
+            if let appleIDCredential = authorization.credential
+                as? ASAuthorizationAppleIDCredential {
                 // Extract credentials
                 let credentials = AppleSignInCredentials(
                     userId: appleIDCredential.user,
@@ -240,14 +248,19 @@ struct LoginView: View {
             print("║ Desc   : \(nsError.localizedDescription)")
             print("║ Info   : \(nsError.userInfo)")
             if let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError {
-                print("║ Underlying: domain=\(underlying.domain) code=\(underlying.code) \(underlying.localizedDescription)")
+                print("║ Underlying:"
+                    + " domain=\(underlying.domain)"
+                    + " code=\(underlying.code)"
+                    + " \(underlying.localizedDescription)")
             }
             print("╚══════════════════════════════════════════════")
             #endif
 
             switch ASAuthorizationError.Code(rawValue: nsError.code) {
             case .unknown:
-                errorMessage = "Apple Sign-In couldn't connect. Make sure you're signed into an Apple ID in Settings and try again."
+                errorMessage = "Apple Sign-In couldn't connect."
+                    + " Make sure you're signed into an Apple ID"
+                    + " in Settings and try again."
             case .invalidResponse:
                 errorMessage = "Apple returned an invalid response. Please try again."
             case .notHandled:
@@ -270,7 +283,9 @@ struct LoginView: View {
 // MARK: - Apple Sign-In Delegate
 
 /// Handles ASAuthorizationController callbacks with proper presentation context.
-class AppleSignInDelegate: NSObject, ASAuthorizationControllerDelegate, ASAuthorizationControllerPresentationContextProviding {
+class AppleSignInDelegate: NSObject,
+    ASAuthorizationControllerDelegate,
+    ASAuthorizationControllerPresentationContextProviding {
     var presentationAnchor: UIWindow?
     private let completion: (Result<ASAuthorization, Error>) -> Void
     
@@ -292,11 +307,17 @@ class AppleSignInDelegate: NSObject, ASAuthorizationControllerDelegate, ASAuthor
         return UIWindow(windowScene: scene!)
     }
     
-    func authorizationController(controller: ASAuthorizationController, didCompleteWithAuthorization authorization: ASAuthorization) {
+    func authorizationController(
+        controller: ASAuthorizationController,
+        didCompleteWithAuthorization authorization: ASAuthorization
+    ) {
         completion(.success(authorization))
     }
     
-    func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: Error) {
+    func authorizationController(
+        controller: ASAuthorizationController,
+        didCompleteWithError error: Error
+    ) {
         completion(.failure(error))
     }
 }

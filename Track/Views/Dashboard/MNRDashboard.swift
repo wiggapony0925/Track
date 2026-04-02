@@ -1,10 +1,5 @@
-//
-//  MNRDashboard.swift
-//  Track
-//
-//  Dashboard content for the "Metro-North" transport mode.
-//  Shows Metro-North Railroad departures grouped by timing.
-//
+// Dashboard content for the "Metro-North" transport mode.
+// Shows Metro-North Railroad departures grouped by timing.
 
 import SwiftUI
 import CoreLocation
@@ -36,7 +31,11 @@ struct MNRDashboard: View {
     
     /// Arrivals within 15 minutes (soon)
     private var soonArrivals: [TrainArrival] {
-        displayArrivals.filter { $0.minutesAway <= 15 && ($0.minutesAway > 0 || $0.estimatedTime > Date()) }
+        displayArrivals.filter {
+            $0.minutesAway <= 15
+                && ($0.minutesAway > 0
+                    || $0.estimatedTime > Date())
+        }
     }
     
     /// Check if user is likely far from Metro-North service area
@@ -53,7 +52,10 @@ struct MNRDashboard: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            let refLocation: CLLocation? = viewModel.effectiveLocation(userLocation: locationManager.currentLocation)
+            let refLocation: CLLocation? = viewModel
+                .effectiveLocation(
+                    userLocation: locationManager.currentLocation
+                )
 
             if !groupedArrivals.isEmpty {
                 // MARK: - Far From Service Hero
@@ -61,7 +63,9 @@ struct MNRDashboard: View {
                     FarFromTransitView(
                         icon: "train.side.rear.car",
                         title: "You're far from Metro-North",
-                        subtitle: "No Metro-North stations close by, but here are the nearest departures we found for you.",
+                        subtitle: "No Metro-North stations close"
+                            + " by, but here are the nearest"
+                            + " departures we found for you.",
                         accentColor: AppTheme.CommuterRailColors.mnrBlue
                     )
                 }
@@ -121,7 +125,11 @@ struct MNRDashboard: View {
                         .noService(
                             icon: "train.side.rear.car",
                             title: "No Metro-North Service",
-                            message: "We couldn't find any Metro-North departures right now. Try searching for a specific station or check back later.",
+                            message: "We couldn't find any"
+                                + " Metro-North departures right"
+                                + " now. Try searching for a"
+                                + " specific station or check"
+                                + " back later.",
                             brandColor: AppTheme.CommuterRailColors.mnrBlue
                         ),
                         compact: true

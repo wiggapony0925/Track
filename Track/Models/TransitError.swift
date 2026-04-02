@@ -1,10 +1,5 @@
-//
-//  TransitError.swift
-//  Track
-//
-//  Error types for transit data fetching operations.
-//  Provides user-friendly error descriptions for display.
-//
+// Error types for transit data fetching operations.
+// Provides user-friendly error descriptions for display.
 
 import Foundation
 

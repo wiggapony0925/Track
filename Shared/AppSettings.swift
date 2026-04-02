@@ -1,19 +1,14 @@
-//
-//  AppSettings.swift
-//  Shared
-//
-//  Loads settings.json from the app bundle and exposes typed,
-//  centralized configuration values. Change a single value in
-//  settings.json to adjust behavior across the entire app —
-//  search radius, refresh interval, map bounds, etc.
-//
+// Loads settings.json from the app bundle and exposes typed,
+// centralized configuration values. Change a single value in
+// settings.json to adjust behavior across the entire app —
+// search radius, refresh interval, map bounds, etc.
 
 import Foundation
 
 // MARK: - App Group Constant
 
 /// Shared App Group identifier used across main app and widgets
-let kAppGroupIdentifier = "group.JFMCAPITALGROUP.Track"
+let appGroupIdentifier = "group.JFMCAPITALGROUP.Track"
 
 struct AppSettings {
     static let shared = AppSettings()
@@ -28,7 +23,9 @@ struct AppSettings {
     /// Overridable via remote /config so the backend can throttle clients.
     private let _refreshIntervalSeconds: Int
     var refreshIntervalSeconds: Int {
-        UserDefaults.standard.object(forKey: "rc_refresh_interval_seconds") as? Int ?? _refreshIntervalSeconds
+        UserDefaults.standard.object(
+            forKey: "rc_refresh_interval_seconds"
+        ) as? Int ?? _refreshIntervalSeconds
     }
     /// Minimum seconds before a background-return triggers a new fetch.
     /// If the user comes back within this window, the previous data is reused.
@@ -76,17 +73,24 @@ struct AppSettings {
     
     /// Radius in meters for "Near You" transit section (user-configurable via Settings).
     var nearYouRadiusMeters: Double {
-        UserDefaults.standard.object(forKey: "near_you_radius_meters") as? Double ?? _nearYouRadiusMeters
+        UserDefaults.standard.object(
+            forKey: "near_you_radius_meters"
+        ) as? Double ?? _nearYouRadiusMeters
     }
     
-    /// Radius in meters for "A Little Farther Away" transit section (user-configurable via Settings).
+    /// Radius in meters for "A Little Farther Away" transit
+    /// section (user-configurable via Settings).
     var fartherAwayRadiusMeters: Double {
-        UserDefaults.standard.object(forKey: "farther_away_radius_meters") as? Double ?? _fartherAwayRadiusMeters
+        UserDefaults.standard.object(
+            forKey: "farther_away_radius_meters"
+        ) as? Double ?? _fartherAwayRadiusMeters
     }
     
     /// Radius in meters for "Much Farther Away" transit section (user-configurable via Settings).
     var muchFartherAwayRadiusMeters: Double {
-        UserDefaults.standard.object(forKey: "much_farther_away_radius_meters") as? Double ?? _muchFartherAwayRadiusMeters
+        UserDefaults.standard.object(
+            forKey: "much_farther_away_radius_meters"
+        ) as? Double ?? _muchFartherAwayRadiusMeters
     }
 
     /// The effective API search radius — always at least as large as the user's
@@ -162,12 +166,16 @@ struct AppSettings {
     
     /// Station max zoom-out distance (user-configurable via Settings, falls back to settings.json).
     var stationMaxZoomOutMeters: Double {
-        UserDefaults.standard.object(forKey: "station_max_zoom_out_meters") as? Double ?? _stationMaxZoomOutMeters
+        UserDefaults.standard.object(
+            forKey: "station_max_zoom_out_meters"
+        ) as? Double ?? _stationMaxZoomOutMeters
     }
 
     /// Subway line offset (user-configurable via Settings, falls back to settings.json value).
     var subwayLineOffsetMeters: Double {
-        UserDefaults.standard.object(forKey: "subway_line_offset_meters") as? Double ?? _subwayLineOffsetMeters
+        UserDefaults.standard.object(
+            forKey: "subway_line_offset_meters"
+        ) as? Double ?? _subwayLineOffsetMeters
     }
     
     /// Tolerance in degrees for polyline simplification (Ramer-Douglas-Peucker algorithm).
@@ -213,7 +221,11 @@ struct AppSettings {
         // the old pushUserSettings() bug (store.double returns 0 for absent
         // keys, which got synced to cloud and pulled back as explicit 0.0).
         let store = UserDefaults.standard
-        for key in ["near_you_radius_meters", "farther_away_radius_meters", "much_farther_away_radius_meters"] {
+        for key in [
+            "near_you_radius_meters",
+            "farther_away_radius_meters",
+            "much_farther_away_radius_meters",
+        ] {
             if store.object(forKey: key) != nil && store.double(forKey: key) <= 0 {
                 store.removeObject(forKey: key)
                 #if DEBUG
@@ -227,7 +239,10 @@ struct AppSettings {
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             // Fall back to hardcoded defaults if settings.json is missing
             #if DEBUG
-            print("[AppSettings] WARNING: settings.json not found in bundle — using hardcoded defaults")
+            print(
+                "[AppSettings] WARNING: settings.json not found in bundle"
+                + " — using hardcoded defaults"
+            )
             #endif
             self.defaultSearchRadiusMeters = 8047
             self.nearestMetroFallbackRadiusMeters = 8047
@@ -291,7 +306,8 @@ struct AppSettings {
         let map = json["map"] as? [String: Any] ?? [:]
 
         self.defaultSearchRadiusMeters = api["default_search_radius_meters"] as? Int ?? 8047
-        self.nearestMetroFallbackRadiusMeters = api["nearest_metro_fallback_radius_meters"] as? Int ?? 8047
+        self.nearestMetroFallbackRadiusMeters =
+            api["nearest_metro_fallback_radius_meters"] as? Int ?? 8047
         self._refreshIntervalSeconds = api["refresh_interval_seconds"] as? Int ?? 30
         self._refreshCooldownSeconds = api["refresh_cooldown_seconds"] as? Int ?? 20
         self.significantMovementMeters = api["significant_movement_meters"] as? Double ?? 150
@@ -303,16 +319,21 @@ struct AppSettings {
         self.maxServiceAlerts = display["max_service_alerts"] as? Int ?? 3
         self.maxElevatorOutages = display["max_elevator_outages"] as? Int ?? 5
         self.maxLirrArrivals = display["max_lirr_arrivals"] as? Int ?? 15
-        self.stationVisibilityZoomMeters = display["station_visibility_zoom_meters"] as? Double ?? 3500
-        self.liveActivityStaleDateSeconds = display["live_activity_stale_date_seconds"] as? Double ?? 3600
-        self.liveActivityDismissalSeconds = display["live_activity_dismissal_seconds"] as? Double ?? 120
+        self.stationVisibilityZoomMeters =
+            display["station_visibility_zoom_meters"] as? Double ?? 3500
+        self.liveActivityStaleDateSeconds =
+            display["live_activity_stale_date_seconds"] as? Double ?? 3600
+        self.liveActivityDismissalSeconds =
+            display["live_activity_dismissal_seconds"] as? Double ?? 120
         self._nearYouRadiusMeters = display["near_you_radius_meters"] as? Double ?? 2414
         self._fartherAwayRadiusMeters = display["farther_away_radius_meters"] as? Double ?? 4023
-        self._muchFartherAwayRadiusMeters = display["much_farther_away_radius_meters"] as? Double ?? 8047
+        self._muchFartherAwayRadiusMeters =
+            display["much_farther_away_radius_meters"] as? Double ?? 8047
 
 
         self.distanceFilterMeters = location["distance_filter_meters"] as? Double ?? 50
-        self.commutePatternMatchRadiusMeters = location["commute_pattern_match_radius_meters"] as? Double ?? 200
+        self.commutePatternMatchRadiusMeters =
+            location["commute_pattern_match_radius_meters"] as? Double ?? 200
         self.stopPassedThresholdMeters = location["stop_passed_threshold_meters"] as? Double ?? 100
 
         self.userZoomDistance = map["user_zoom_distance"] as? Double ?? 3000
@@ -336,7 +357,8 @@ struct AppSettings {
         self.showMNRByDefault = map["show_mnr_by_default"] as? Bool ?? true
         self._stationMaxZoomOutMeters = map["station_max_zoom_out_meters"] as? Double ?? 50_000
         self._subwayLineOffsetMeters = map["subway_line_offset_meters"] as? Double ?? 12.0
-        self.polylineSimplificationTolerance = map["polyline_simplification_tolerance"] as? Double ?? 0.00006
+        self.polylineSimplificationTolerance =
+            map["polyline_simplification_tolerance"] as? Double ?? 0.00006
         self.vehicleFocusDistance = map["vehicle_focus_distance"] as? Double ?? 1500
         self.explorerDistanceMultiplier = map["explorer_distance_multiplier"] as? Double ?? 1.5
         self.walkingZoomMinAltitude = map["walking_zoom_min_altitude"] as? Double ?? 600

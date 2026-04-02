@@ -1,10 +1,5 @@
-//
-//  TrackAPI.swift
-//  Track
-//
-//  Unified network client that communicates with the TrackBackend proxy API.
-//  All MTA data flows through the backend — the iOS app never calls MTA directly.
-//
+// Unified network client that communicates with the TrackBackend proxy API.
+// All MTA data flows through the backend — the iOS app never calls MTA directly.
 
 import CoreLocation
 import Foundation
@@ -70,7 +65,7 @@ struct TrackAPI {
             memoryCapacity: 10 * 1024 * 1024,   // 10 MB RAM
             diskCapacity:   50 * 1024 * 1024,    // 50 MB disk
             directory: FileManager.default
-                .containerURL(forSecurityApplicationGroupIdentifier: kAppGroupIdentifier)?
+                .containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier)?
                 .appendingPathComponent("URLCache")
         )
         // Use the protocol's cache policy (honors Cache-Control headers).
@@ -98,7 +93,10 @@ struct TrackAPI {
     // MARK: - Connection Warm-Up
 
     /// Thread-safe lock protecting `_healthGateTask`.
-    nonisolated private static let _healthGateLock = OSAllocatedUnfairLock<Task<Bool, Never>?>(initialState: nil)
+    nonisolated private static let _healthGateLock =
+        OSAllocatedUnfairLock<Task<Bool, Never>?>(
+            initialState: nil
+        )
 
     /// In-flight health-gate task so multiple callers coalesce onto one probe.
     /// Thread-safe: reads/writes go through `_healthGateLock`.
@@ -133,7 +131,15 @@ struct TrackAPI {
                     if let http = response as? HTTPURLResponse, http.statusCode == 200 {
                         serverWarmedUp = true
                         await MainActor.run {
-                            AppLogger.shared.log("API_HEALTH", message: "Backend healthy (attempt \(attempt + 1), T+\(AppLogger.shared.timeSinceLaunchFormatted))")
+                            let ts = AppLogger.shared
+                                .timeSinceLaunchFormatted
+                            let msg = "Backend healthy "
+                                + "(attempt \(attempt + 1), "
+                                + "T+\(ts))"
+                            AppLogger.shared.log(
+                                "API_HEALTH",
+                                message: msg
+                            )
                         }
                         return true
                     }
@@ -143,7 +149,11 @@ struct TrackAPI {
                 try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
             }
             await MainActor.run {
-                AppLogger.shared.log("API_HEALTH", message: "⚠️ Backend not healthy after 90s — proceeding anyway")
+                let msg = "⚠️ Backend not healthy "
+                    + "after 90s — proceeding anyway"
+                AppLogger.shared.log(
+                    "API_HEALTH", message: msg
+                )
             }
             return false
         }
@@ -192,8 +202,12 @@ struct TrackAPI {
         invalidateBaseURL()
 
         // Read MainActor-isolated values before entering the detached task.
-        let storedIP = UserDefaults.standard.string(forKey: "dev_custom_ip")?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let resolvedIP = (storedIP?.isEmpty == false) ? storedIP! : AppSettings.shared.defaultDeviceIP
+        let storedIP = UserDefaults.standard
+            .string(forKey: "dev_custom_ip")?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedIP = (storedIP?.isEmpty == false)
+            ? storedIP!
+            : AppSettings.shared.defaultDeviceIP
         let port = AppSettings.shared.localPort
         let localURL = "http://\(resolvedIP):\(port)/health"
         let logger = AppLogger.shared       // capture on caller's actor
@@ -217,7 +231,10 @@ struct TrackAPI {
                 }
             } catch {
                 // Server unreachable — flag already cleared, nothing to do
-                logger.log("API_CONFIG", message: "Local server unreachable (\(error.localizedDescription)) — staying on production")
+                let msg = "Local server unreachable "
+                    + "(\(error.localizedDescription))"
+                    + " — staying on production"
+                logger.log("API_CONFIG", message: msg)
             }
         }
         #endif
@@ -280,8 +297,12 @@ struct TrackAPI {
 
         if useLocalhost {
             // Physical device local mode: use configured IP (or default fallback)
-            let storedIP = UserDefaults.standard.string(forKey: "dev_custom_ip")?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let resolvedIP = (storedIP?.isEmpty == false) ? storedIP! : settings.defaultDeviceIP
+            let storedIP = UserDefaults.standard
+                .string(forKey: "dev_custom_ip")?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let resolvedIP = (storedIP?.isEmpty == false)
+                ? storedIP!
+                : settings.defaultDeviceIP
             let url = "http://\(resolvedIP):\(settings.localPort)"
             AppLogger.shared.log("API_CONFIG", message: "baseURL (dev): \(url)")
             _cachedBaseURL = url
@@ -474,19 +495,36 @@ struct TrackAPI {
             let detail: String
             switch decodingError {
             case .keyNotFound(let key, let ctx):
-                detail = "keyNotFound '\(key.stringValue)' at \(ctx.codingPath.map(\.stringValue).joined(separator: "."))"
+                let path = ctx.codingPath
+                    .map(\.stringValue)
+                    .joined(separator: ".")
+                detail = "keyNotFound "
+                    + "'\(key.stringValue)' at \(path)"
             case .typeMismatch(let type, let ctx):
-                detail = "typeMismatch \(type) at \(ctx.codingPath.map(\.stringValue).joined(separator: "."))"
+                let path = ctx.codingPath
+                    .map(\.stringValue)
+                    .joined(separator: ".")
+                detail = "typeMismatch \(type) at \(path)"
             case .valueNotFound(let type, let ctx):
-                detail = "valueNotFound \(type) at \(ctx.codingPath.map(\.stringValue).joined(separator: "."))"
+                let path = ctx.codingPath
+                    .map(\.stringValue)
+                    .joined(separator: ".")
+                detail = "valueNotFound \(type) at \(path)"
             case .dataCorrupted(let ctx):
-                detail = "dataCorrupted at \(ctx.codingPath.map(\.stringValue).joined(separator: "."))"
+                let path = ctx.codingPath
+                    .map(\.stringValue)
+                    .joined(separator: ".")
+                detail = "dataCorrupted at \(path)"
             @unknown default:
                 detail = decodingError.localizedDescription
             }
             let preview = String(data: data.prefix(500), encoding: .utf8) ?? "<binary>"
             AppLogger.shared.logError("fetchNearbyGrouped DECODE", error: decodingError)
-            AppLogger.shared.log("DECODE", message: "Detail: \(detail) | Response preview: \(preview)")
+            AppLogger.shared.log(
+                "DECODE",
+                message: "Detail: \(detail)"
+                    + " | Response preview: \(preview)"
+            )
             throw decodingError
         }
     }
@@ -816,7 +854,7 @@ struct TrackAPI {
             memoryCapacity: 10 * 1024 * 1024,
             diskCapacity: 50 * 1024 * 1024,
             directory: FileManager.default
-                .containerURL(forSecurityApplicationGroupIdentifier: kAppGroupIdentifier)?
+                .containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier)?
                 .appendingPathComponent("URLCache")
         )
         config.requestCachePolicy = .useProtocolCachePolicy
@@ -868,7 +906,14 @@ struct TrackAPI {
                         ? UInt64(min(5 + (attempt - 1) * 5, 15)) * 1_000_000_000
                         : 3_000_000_000
                     let delaySec = Double(delay) / 1_000_000_000
-                    AppLogger.shared.log("API_RETRY", message: "\(endpointPath) attempt \(attempt + 1)/\(maxAttempts) — waiting \(String(format: "%.0f", delaySec))s (T+\(AppLogger.formatDuration(AppLogger.shared.timeSinceLaunch)))")
+                    let waitSec = String(format: "%.0f", delaySec)
+                    let tPlus = AppLogger.formatDuration(
+                        AppLogger.shared.timeSinceLaunch
+                    )
+                    let msg = "\(endpointPath) "
+                        + "attempt \(attempt + 1)/\(maxAttempts) "
+                        + "— waiting \(waitSec)s (T+\(tPlus))"
+                    AppLogger.shared.log("API_RETRY", message: msg)
                     try await Task.sleep(nanoseconds: delay)
                 }
                 do {
@@ -881,12 +926,20 @@ struct TrackAPI {
                     let (data, response) = try await extendedSession.data(for: request)
                     let attemptElapsed = Date().timeIntervalSince(attemptStart)
                     guard let http = response as? HTTPURLResponse else {
-                        AppLogger.shared.log("API_RETRY", message: "\(endpointPath) attempt \(attempt + 1) → no HTTP response (\(AppLogger.formatDuration(attemptElapsed)))")
+                        let dur = AppLogger.formatDuration(attemptElapsed)
+                        let msg = "\(endpointPath) "
+                            + "attempt \(attempt + 1) "
+                            + "→ no HTTP response (\(dur))"
+                        AppLogger.shared.log("API_RETRY", message: msg)
                         lastError = TrackAPIError.networkError
                         continue
                     }
                     guard (200...299).contains(http.statusCode) else {
-                        AppLogger.shared.log("API_RETRY", message: "\(endpointPath) attempt \(attempt + 1) → HTTP \(http.statusCode) (\(AppLogger.formatDuration(attemptElapsed)))")
+                        let dur = AppLogger.formatDuration(attemptElapsed)
+                        let msg = "\(endpointPath) "
+                            + "attempt \(attempt + 1) "
+                            + "→ HTTP \(http.statusCode) (\(dur))"
+                        AppLogger.shared.log("API_RETRY", message: msg)
                         let serverErr = TrackAPIError.serverError(statusCode: http.statusCode)
                         if http.statusCode < 500 { throw serverErr }
                         // Respect Retry-After header from 503 (shapes building)
@@ -895,14 +948,28 @@ struct TrackAPI {
                            let retryAfterSec = Double(retryAfterStr),
                            retryAfterSec > 0, retryAfterSec <= 30
                         {
-                            AppLogger.shared.log("API_RETRY", message: "\(endpointPath) server said Retry-After: \(retryAfterStr)s")
+                            let retryMsg = "\(endpointPath) "
+                                + "server said Retry-After: "
+                                + "\(retryAfterStr)s"
+                            AppLogger.shared.log(
+                                "API_RETRY",
+                                message: retryMsg
+                            )
                             try await Task.sleep(nanoseconds: UInt64(retryAfterSec * 1_000_000_000))
                         }
                         lastError = serverErr
                         continue
                     }
                     let totalRetryElapsed = Date().timeIntervalSince(retryStart)
-                    AppLogger.shared.log("API_RETRY", message: "\(endpointPath) attempt \(attempt + 1) → ✅ \(http.statusCode) (\(AppLogger.formatDuration(attemptElapsed)), total \(AppLogger.formatDuration(totalRetryElapsed)))")
+                    let dur = AppLogger.formatDuration(attemptElapsed)
+                    let total = AppLogger.formatDuration(
+                        totalRetryElapsed
+                    )
+                    let msg = "\(endpointPath) "
+                        + "attempt \(attempt + 1) "
+                        + "→ ✅ \(http.statusCode) "
+                        + "(\(dur), total \(total))"
+                    AppLogger.shared.log("API_RETRY", message: msg)
                     serverWarmedUp = true
                     return data
                 } catch is CancellationError {
@@ -910,12 +977,24 @@ struct TrackAPI {
                 } catch let error as TrackAPIError {
                     throw error
                 } catch {
-                    AppLogger.shared.log("API_RETRY", message: "\(endpointPath) attempt \(attempt + 1) → \(error.localizedDescription)")
+                    let msg = "\(endpointPath) "
+                        + "attempt \(attempt + 1) "
+                        + "→ \(error.localizedDescription)"
+                    AppLogger.shared.log("API_RETRY", message: msg)
                     lastError = error
                 }
             }
             let totalRetryElapsed = Date().timeIntervalSince(retryStart)
-            AppLogger.shared.log("API_RETRY", message: "\(endpointPath) ALL \(maxAttempts) attempts FAILED after \(AppLogger.formatDuration(totalRetryElapsed)) (T+\(AppLogger.formatDuration(AppLogger.shared.timeSinceLaunch)))")
+            let failDur = AppLogger.formatDuration(
+                totalRetryElapsed
+            )
+            let tPlus = AppLogger.formatDuration(
+                AppLogger.shared.timeSinceLaunch
+            )
+            let msg = "\(endpointPath) ALL "
+                + "\(maxAttempts) attempts FAILED "
+                + "after \(failDur) (T+\(tPlus))"
+            AppLogger.shared.log("API_RETRY", message: msg)
             throw lastError
         }
 

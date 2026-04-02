@@ -1,11 +1,6 @@
-//
-//  SheetPage.swift
-//  Track
-//
-//  Defines the navigation pages that can be displayed within the
-//  universal bottom sheet. This enum-based approach provides type-safe
-//  navigation throughout the app's single-sheet interface.
-//
+// Defines the navigation pages that can be displayed within the
+// universal bottom sheet. This enum-based approach provides type-safe
+// navigation throughout the app's single-sheet interface.
 
 import SwiftUI
 
@@ -16,7 +11,11 @@ enum SheetPage: Equatable, Identifiable {
     case dashboard
     
     /// Route detail view for a specific transit route
-    case routeDetail(group: GroupedNearbyTransitResponse, directionIndex: Int, initialTab: RouteDetailSheet.RouteDetailTab? = nil)
+    case routeDetail(
+        group: GroupedNearbyTransitResponse,
+        directionIndex: Int,
+        initialTab: RouteDetailSheet.RouteDetailTab? = nil
+    )
     
     /// Settings and preferences
     case settings

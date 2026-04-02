@@ -1,10 +1,5 @@
-//
-//  SmartSuggester.swift
-//  Shared
-//
-//  Predicts the user's likely destination using a Frequency-Recency Heuristic.
-//  Aggregates current context (location, time) to produce route suggestions.
-//
+// Predicts the user's likely destination using a Frequency-Recency Heuristic.
+// Aggregates current context (location, time) to produce route suggestions.
 
 import Foundation
 import SwiftData
@@ -83,7 +78,11 @@ struct SmartSuggester {
         startLocation: CLLocation,
         destinationStationID: String,
         destinationName: String,
-        cloudSyncHandler: (@Sendable (String, String, Double, Double, String, String, Int, Int, Int) async -> Void)? = nil
+        cloudSyncHandler: (
+            @Sendable (String, String, Double, Double,
+                       String, String, Int, Int, Int)
+                async -> Void
+        )? = nil
     ) {
         let calendar = Calendar.current
         let now = Date()

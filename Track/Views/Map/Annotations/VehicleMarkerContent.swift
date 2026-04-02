@@ -1,11 +1,6 @@
-//
-//  VehicleMarkerContent.swift
-//  Track
-//
-//  Shared annotation content view for all live vehicle markers
-//  (bus, subway, LIRR, MNR). Eliminates duplicate rendering code
-//  across BusVehicleMarker, SubwayTrainMarker, LIRRMarker, MNRMarker.
-//
+// Shared annotation content view for all live vehicle markers
+// (bus, subway, LIRR, MNR). Eliminates duplicate rendering code
+// across BusVehicleMarker, SubwayTrainMarker, LIRRMarker, MNRMarker.
 
 import SwiftUI
 

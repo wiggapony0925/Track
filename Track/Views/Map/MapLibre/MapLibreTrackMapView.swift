@@ -1,31 +1,23 @@
-//
-//  MapLibreTrackMapView.swift
-//  Track
-//
-//  Drop-in replacement for `TrackMapView` that renders the transit map
-//  using MapLibre GL Native with OpenStreetMap vector tiles instead of
-//  Apple MapKit.
-//
-//  Architecture:
-//  ┌─────────────────────────────────────────────────────┐
-//  │  MapLibreTrackMapView (this file)                   │
-//  │  ├── MapLibreMapView (UIViewRepresentable)          │
-//  │  │   └── MLNMapView (GPU-accelerated OSM tiles)     │
-//  │  ├── MapLibreVehicleOverlay (bus/train markers)     │
-//  │  ├── MapLibreRouteStopOverlay (route stop markers)  │
-//  │  ├── MapLibreRouteLabelOverlay (trunk labels)       │
-//  │  └── MapLibreSearchPinOverlay (drag-search dot)     │
-//  └─────────────────────────────────────────────────────┘
-//
-//  The same bindings and data flow from HomeView → TrackMapView are
-//  preserved so this is a zero-change swap at the call site.
-//
-//  Transit app inspiration:
-//  Like the Transit app described in their technical blog, we use OSM
-//  data as the base map and overlay our own transit polylines with
-//  parallel offset rendering, z-ordered elevated/subway layers, and
-//  transfer connectors between station complexes.
-//
+// Drop-in replacement for `TrackMapView` that renders the transit map
+// using MapLibre GL Native with OpenStreetMap vector tiles instead of
+// Apple MapKit.
+// Architecture:
+// ┌─────────────────────────────────────────────────────┐
+// │  MapLibreTrackMapView (this file)                   │
+// │  ├── MapLibreMapView (UIViewRepresentable)          │
+// │  │   └── MLNMapView (GPU-accelerated OSM tiles)     │
+// │  ├── MapLibreVehicleOverlay (bus/train markers)     │
+// │  ├── MapLibreRouteStopOverlay (route stop markers)  │
+// │  ├── MapLibreRouteLabelOverlay (trunk labels)       │
+// │  └── MapLibreSearchPinOverlay (drag-search dot)     │
+// └─────────────────────────────────────────────────────┘
+// The same bindings and data flow from HomeView → TrackMapView are
+// preserved so this is a zero-change swap at the call site.
+// Transit app inspiration:
+// Like the Transit app described in their technical blog, we use OSM
+// data as the base map and overlay our own transit polylines with
+// parallel offset rendering, z-ordered elevated/subway layers, and
+// transfer connectors between station complexes.
 
 import CoreLocation
 import MapKit
@@ -109,7 +101,10 @@ struct MapLibreTrackMapView: View {
         guard let polyline = route?.polyline else { return nil }
         let count = polyline.pointCount
         guard count >= 2 else { return nil }
-        var coords = [CLLocationCoordinate2D](repeating: kCLLocationCoordinate2DInvalid, count: count)
+        var coords = [CLLocationCoordinate2D](
+            repeating: kCLLocationCoordinate2DInvalid,
+            count: count
+        )
         polyline.getCoordinates(&coords, range: NSRange(location: 0, length: count))
         return coords
     }
@@ -350,12 +345,18 @@ struct MapLibreTrackMapView: View {
         // by finding the nearest stop's position in the ordered stop list.
         let behindStopIds: Set<String>
         if let nearestCoord = viewModel.nearestStopCoordinate {
-            let nearestLoc = CLLocation(latitude: nearestCoord.latitude, longitude: nearestCoord.longitude)
+            let nearestLoc = CLLocation(
+                latitude: nearestCoord.latitude,
+                longitude: nearestCoord.longitude
+            )
             // Find the index of the stop closest to nearestStopCoordinate
             var bestIdx = 0
             var bestDist: CLLocationDistance = .greatestFiniteMagnitude
             for (i, stop) in allStops.enumerated() {
-                let d = CLLocation(latitude: stop.lat, longitude: stop.lon).distance(from: nearestLoc)
+                let d = CLLocation(
+                    latitude: stop.lat,
+                    longitude: stop.lon
+                ).distance(from: nearestLoc)
                 if d < bestDist { bestDist = d; bestIdx = i }
             }
             // All stops before the nearest stop index are "behind"

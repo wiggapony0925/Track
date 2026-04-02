@@ -16,13 +16,19 @@ struct SettingsView: View {
     private var currentProfile: UserProfile? { supabase.currentUser }
 
     private var displayNameForWelcome: String {
-        if let fullName = currentProfile?.fullName?.trimmingCharacters(in: .whitespacesAndNewlines), !fullName.isEmpty {
+        if let fullName = currentProfile?.fullName?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !fullName.isEmpty {
             return fullName
         }
-        if let givenName = currentProfile?.givenName?.trimmingCharacters(in: .whitespacesAndNewlines), !givenName.isEmpty {
+        if let givenName = currentProfile?.givenName?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !givenName.isEmpty {
             return givenName
         }
-        if let username = currentProfile?.username?.trimmingCharacters(in: .whitespacesAndNewlines), !username.isEmpty {
+        if let username = currentProfile?.username?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !username.isEmpty {
             return username
         }
         if let email = currentProfile?.email, !email.isEmpty {
@@ -76,7 +82,11 @@ struct SettingsView: View {
     }
 
     private var profileSection: some View {
-        settingsSection(title: "Profile", icon: "person.crop.circle.fill", iconColor: AppTheme.Colors.mtaBlue) {
+        settingsSection(
+            title: "Profile",
+            icon: "person.crop.circle.fill",
+            iconColor: AppTheme.Colors.mtaBlue
+        ) {
             VStack(spacing: 0) {
                 HStack(spacing: 10) {
                     ZStack {
@@ -191,7 +201,10 @@ struct SettingsView: View {
                 SupabaseManager.shared.signOut()
             } label: {
                 HStack {
-                    settingsIcon("rectangle.portrait.and.arrow.right", color: AppTheme.Colors.alertRed)
+                    settingsIcon(
+                        "rectangle.portrait.and.arrow.right",
+                        color: AppTheme.Colors.alertRed
+                    )
                     Text("Sign Out")
                         .font(.custom("Helvetica", size: 15))
                         .foregroundColor(AppTheme.Colors.alertRed)
@@ -259,7 +272,9 @@ struct SettingsView: View {
                         .fill(
                             backendPingIsHealthy == nil
                                 ? AppTheme.Colors.textSecondary.opacity(0.4)
-                                : (backendPingIsHealthy == true ? AppTheme.Colors.successGreen : AppTheme.Colors.alertRed)
+                                : (backendPingIsHealthy == true
+                                    ? AppTheme.Colors.successGreen
+                                    : AppTheme.Colors.alertRed)
                         )
                         .frame(width: 8, height: 8)
 
@@ -291,7 +306,11 @@ struct SettingsView: View {
 #endif
 
     private var aboutSection: some View {
-        settingsSection(title: "About", icon: "info.circle.fill", iconColor: AppTheme.Colors.mtaBlue) {
+        settingsSection(
+            title: "About",
+            icon: "info.circle.fill",
+            iconColor: AppTheme.Colors.mtaBlue
+        ) {
             VStack(spacing: 0) {
                 VStack(spacing: 12) {
                     Image("AppIconImage")
@@ -311,8 +330,9 @@ struct SettingsView: View {
                             .foregroundColor(AppTheme.Colors.textSecondary)
                     }
 
-                    if let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
-                       let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String {
+                    if let info = Bundle.main.infoDictionary,
+                       let version = info["CFBundleShortVersionString"] as? String,
+                       let build = info["CFBundleVersion"] as? String {
                         Text("v\(version) (\(build))")
                             .font(.system(size: 11, weight: .medium, design: .monospaced))
                             .foregroundColor(AppTheme.Colors.mtaBlue)
@@ -335,9 +355,12 @@ struct SettingsView: View {
 
                     HStack(spacing: 0) {
                         transitModeBadge("🚇", "Subway", AppTheme.Colors.mtaBlue)
-                        transitModeBadge("🚌", "Bus", Color(red: 0/255, green: 57/255, blue: 166/255))
-                        transitModeBadge("🚂", "LIRR", Color(red: 0/255, green: 115/255, blue: 191/255))
-                        transitModeBadge("🚆", "MNR", Color(red: 0/255, green: 90/255, blue: 140/255))
+                        transitModeBadge("🚌", "Bus",
+                            Color(red: 0/255, green: 57/255, blue: 166/255))
+                        transitModeBadge("🚂", "LIRR",
+                            Color(red: 0/255, green: 115/255, blue: 191/255))
+                        transitModeBadge("🚆", "MNR",
+                            Color(red: 0/255, green: 90/255, blue: 140/255))
                     }
                 }
                 .frame(maxWidth: .infinity)

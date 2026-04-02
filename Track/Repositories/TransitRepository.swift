@@ -1,10 +1,5 @@
-//
-//  TransitRepository.swift
-//  Track
-//
-//  Handles fetching transit data from the TrackAPI backend.
-//  Bridges the API layer to the ViewModel layer.
-//
+// Handles fetching transit data from the TrackAPI backend.
+// Bridges the API layer to the ViewModel layer.
 
 import Foundation
 import CoreLocation
@@ -21,11 +16,15 @@ final class TransitRepository {
         // Extract the line letter from the station ID (e.g. "L01" → "L")
         let lineID = extractLineID(from: stationID)
 
-        AppLogger.shared.log("TRANSIT", message: "Fetching arrivals for line \(lineID) (station: \(stationID))")
+        AppLogger.shared.log(
+            "TRANSIT",
+            message: "Fetching arrivals for line \(lineID) (station: \(stationID))")
 
         do {
             let arrivals = try await TrackAPI.fetchSubwayArrivals(lineID: lineID)
-            AppLogger.shared.log("TRANSIT", message: "Got \(arrivals.count) arrivals for line \(lineID)")
+            AppLogger.shared.log(
+                "TRANSIT",
+                message: "Got \(arrivals.count) arrivals for line \(lineID)")
             return arrivals
         } catch {
             AppLogger.shared.logError("fetchArrivals(\(lineID))", error: error)
@@ -44,10 +43,15 @@ final class TransitRepository {
         latitude: Double,
         longitude: Double,
         radius: Double? = nil
-    ) async throws -> [(stationID: String, name: String, lat: Double, lon: Double, routeIDs: [String])] {
+    ) async throws -> [
+        (stationID: String, name: String,
+         lat: Double, lon: Double, routeIDs: [String])
+    ] {
         let effectiveRadius = radius ?? Double(AppSettings.shared.effectiveAPISearchRadius)
         
-        AppLogger.shared.log("TRANSIT", message: "Fetching nearby stations for (\(latitude), \(longitude))")
+        AppLogger.shared.log(
+            "TRANSIT",
+            message: "Fetching nearby stations for (\(latitude), \(longitude))")
 
         do {
             // Use server-side proximity filtering instead of downloading all stations
@@ -58,8 +62,19 @@ final class TransitRepository {
             )
             let userLoc = CLLocation(latitude: latitude, longitude: longitude)
             
-            let nearby = response.stations.map { station -> (stationID: String, name: String, lat: Double, lon: Double, routeIDs: [String]) in
-                return (stationID: station.id, name: station.name, lat: station.lat, lon: station.lon, routeIDs: station.routes)
+            typealias StationTuple = (
+                stationID: String, name: String,
+                lat: Double, lon: Double,
+                routeIDs: [String]
+            )
+            let nearby = response.stations.map { station -> StationTuple in
+                return (
+                    stationID: station.id,
+                    name: station.name,
+                    lat: station.lat,
+                    lon: station.lon,
+                    routeIDs: station.routes
+                )
             }.sorted {
                 let d0 = userLoc.distance(from: CLLocation(latitude: $0.lat, longitude: $0.lon))
                 let d1 = userLoc.distance(from: CLLocation(latitude: $1.lat, longitude: $1.lon))

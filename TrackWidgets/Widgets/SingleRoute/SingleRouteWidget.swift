@@ -1,10 +1,5 @@
-//
-//  SingleRouteWidget.swift
-//  Widgets
-//
-//  Widget for tracking a single user-selected route.
-//  Shows the next 3 arrivals for the tracked route.
-//
+// Widget for tracking a single user-selected route.
+// Shows the next 3 arrivals for the tracked route.
 
 import SwiftUI
 @preconcurrency import WidgetKit
@@ -32,7 +27,10 @@ struct SingleRouteProvider: TimelineProvider {
         }
     }
 
-    func getTimeline(in context: Context, completion: @escaping (Timeline<SingleRouteEntry>) -> Void) {
+    func getTimeline(
+        in context: Context,
+        completion: @escaping (Timeline<SingleRouteEntry>) -> Void
+    ) {
         guard let trackedRoute = TrackedRoute.load() else {
             // No route tracked - show empty state, no refresh needed
             let entry = SingleRouteEntry.empty()
@@ -55,8 +53,11 @@ struct SingleRouteProvider: TimelineProvider {
     }
 
     /// Fetch arrivals for the tracked route from the /nearby API
-    private func fetchTrackedRouteEntry(trackedRoute: TrackedRoute, completion: @Sendable @escaping (SingleRouteEntry?) -> Void) {
-        let defaults = UserDefaults(suiteName: kAppGroupIdentifier) ?? UserDefaults.standard
+    private func fetchTrackedRouteEntry(
+        trackedRoute: TrackedRoute,
+        completion: @Sendable @escaping (SingleRouteEntry?) -> Void
+    ) {
+        let defaults = UserDefaults(suiteName: appGroupIdentifier) ?? UserDefaults.standard
         let lat = defaults.double(forKey: "lastLatitude")
         let lon = defaults.double(forKey: "lastLongitude")
         let hasLocation = defaults.bool(forKey: "hasLastLocation")
@@ -193,9 +194,24 @@ struct SingleRouteEntry: TimelineEntry {
                 trackedAt: Date()
             ),
             arrivals: [
-                NearbyArrival(routeId: "L", stopName: "1st Avenue", direction: "Manhattan", minutesAway: 2, status: "Arriving", mode: "subway", arrivalTime: Date().addingTimeInterval(120)),
-                NearbyArrival(routeId: "L", stopName: "1st Avenue", direction: "Manhattan", minutesAway: 8, status: "On Time", mode: "subway", arrivalTime: Date().addingTimeInterval(480)),
-                NearbyArrival(routeId: "L", stopName: "1st Avenue", direction: "Manhattan", minutesAway: 15, status: "On Time", mode: "subway", arrivalTime: Date().addingTimeInterval(900)),
+                NearbyArrival(
+                    routeId: "L", stopName: "1st Avenue",
+                    direction: "Manhattan", minutesAway: 2,
+                    status: "Arriving", mode: "subway",
+                    arrivalTime: Date().addingTimeInterval(120)
+                ),
+                NearbyArrival(
+                    routeId: "L", stopName: "1st Avenue",
+                    direction: "Manhattan", minutesAway: 8,
+                    status: "On Time", mode: "subway",
+                    arrivalTime: Date().addingTimeInterval(480)
+                ),
+                NearbyArrival(
+                    routeId: "L", stopName: "1st Avenue",
+                    direction: "Manhattan", minutesAway: 15,
+                    status: "On Time", mode: "subway",
+                    arrivalTime: Date().addingTimeInterval(900)
+                ),
             ]
         ),
         relevance: TimelineEntryRelevance(score: 80)
@@ -258,7 +274,8 @@ struct SingleRouteWidgetView: View {
                 if let firstArrival = arrivals.first {
                     // Convert widget state into Live Activity banner data
                     let progress = calculateProgress(arrival: firstArrival)
-                    let firstMinutes = TrackingTimeSync.remainingMinutes(until: firstArrival.arrivalTime)
+                    let firstMinutes = TrackingTimeSync
+                        .remainingMinutes(until: firstArrival.arrivalTime)
                     let nextArrivals = arrivals
                         .dropFirst()
                         .map { TrackingTimeSync.remainingMinutes(until: $0.arrivalTime) }
@@ -272,7 +289,8 @@ struct SingleRouteWidgetView: View {
                             isBus: route.isBus,
                             isLIRR: route.isLIRR,
                             arrivalTime: firstArrival.arrivalTime,
-                            proximityText: TrackingTimeSync.proximityText(minutesAway: firstMinutes),
+                            proximityText: TrackingTimeSync
+                                .proximityText(minutesAway: firstMinutes),
                             minutesAway: firstMinutes,
                             walkMinutes: nil,
                             isHurryUp: firstMinutes <= 2,
@@ -489,12 +507,22 @@ struct SingleRouteWidgetView: View {
             .frame(minWidth: size, minHeight: size)
             .background(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(route.isLIRR ? AppTheme.CommuterRailColors.lirrBlue : AppTheme.CommuterRailColors.mnrBlue)
+                    .fill(
+                        route.isLIRR
+                        ? AppTheme.CommuterRailColors.lirrBlue
+                        : AppTheme.CommuterRailColors.mnrBlue
+                    )
             )
         } else {
             ZStack {
                 Circle()
-                    .fill(route.isBus ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: route.cleanDisplayName))
+                    .fill(
+                        route.isBus
+                        ? AppTheme.Colors.mtaBlue
+                        : AppTheme.SubwayColors.color(
+                            for: route.cleanDisplayName
+                        )
+                    )
                     .frame(width: size, height: size)
 
                 if route.isBus {
@@ -504,7 +532,10 @@ struct SingleRouteWidgetView: View {
                 } else {
                     Text(route.cleanDisplayName)
                         .font(.system(size: size * 0.45, weight: .heavy, design: .rounded))
-                        .foregroundColor(AppTheme.SubwayColors.textColor(for: route.cleanDisplayName))
+                        .foregroundColor(
+                            AppTheme.SubwayColors
+                                .textColor(for: route.cleanDisplayName)
+                        )
                         .minimumScaleFactor(0.4)
                         .lineLimit(1)
                 }

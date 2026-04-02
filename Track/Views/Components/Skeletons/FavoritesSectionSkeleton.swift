@@ -1,10 +1,5 @@
-//
-//  FavoritesSectionSkeleton.swift
-//  Track
-//
-//  Shimmer skeleton for the entire Favorites section while data loads from Supabase.
-//  Shown at the same time as TransitLoadingSkeleton on initial app load.
-//
+// Shimmer skeleton for the entire Favorites section while data loads from Supabase.
+// Shown at the same time as TransitLoadingSkeleton on initial app load.
 
 import SwiftUI
 

@@ -1,19 +1,11 @@
-//
-//  GoModeAnnotations.swift
-//  Track
-//
-//  Map annotations used during "GO" mode live tracking.
-//
-//  - ``GoModeUserAnnotation``: Replaces the standard blue dot with a
-//    pulsing vehicle icon that visually "snaps" to the route line.
-//    Emits an expanding radar-like pulse to indicate the user is
-//    broadcasting live position data (crowdsourcing visual).
-//
-//  - ``GoModeStopAnnotation``: A stop dot that dims when the user
-//    passes it, creating a live checklist effect on the map.
-//
-//  Inspired by Transit app's "GO" mode cockpit animations.
-//
+// Map annotations used during "GO" mode live tracking.
+// - ``GoModeUserAnnotation``: Replaces the standard blue dot with a
+//   pulsing vehicle icon that visually "snaps" to the route line.
+//   Emits an expanding radar-like pulse to indicate the user is
+//   broadcasting live position data (crowdsourcing visual).
+// - ``GoModeStopAnnotation``: A stop dot that dims when the user
+//   passes it, creating a live checklist effect on the map.
+// Inspired by Transit app's "GO" mode cockpit animations.
 
 import SwiftUI
 
@@ -90,7 +82,11 @@ struct GoModeStopAnnotation: View {
 
             Text(stopName)
                 .font(.system(size: 9, weight: isPassed ? .regular : .semibold))
-                .foregroundColor(isPassed ? AppTheme.Colors.textSecondary.opacity(0.4) : AppTheme.Colors.textPrimary)
+                .foregroundColor(
+                    isPassed
+                        ? AppTheme.Colors.textSecondary.opacity(0.4)
+                        : AppTheme.Colors.textPrimary
+                )
                 .lineLimit(1)
                 .frame(maxWidth: 60)
         }

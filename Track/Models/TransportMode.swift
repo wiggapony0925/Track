@@ -1,10 +1,5 @@
-//
-//  TransportMode.swift
-//  Track
-//
-//  Defines the transport modes supported by Track.
-//  Used by HomeViewModel and TransportModeToggle.
-//
+// Defines the transport modes supported by Track.
+// Used by HomeViewModel and TransportModeToggle.
 
 import Foundation
 

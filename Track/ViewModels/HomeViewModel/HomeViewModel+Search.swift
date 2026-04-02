@@ -1,10 +1,5 @@
-//
-//  HomeViewModel+Search.swift
-//  Track
-//
-//  Search filtering computed properties extracted from HomeViewModel.
-//  Contains all filteredXxx computed vars and their private search helper methods.
-//
+// Search filtering computed properties extracted from HomeViewModel.
+// Contains all filteredXxx computed vars and their private search helper methods.
 
 import Foundation
 

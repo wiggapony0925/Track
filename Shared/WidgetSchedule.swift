@@ -1,11 +1,6 @@
-//
-//  WidgetSchedule.swift
-//  Shared
-//
-//  Codable struct for widget activation schedules.
-//  Persisted to UserDefaults in App Group for widget access.
-//  Also syncs to Supabase for cross-device sync.
-//
+// Codable struct for widget activation schedules.
+// Persisted to UserDefaults in App Group for widget access.
+// Also syncs to Supabase for cross-device sync.
 
 import Foundation
 
@@ -39,7 +34,9 @@ struct WidgetSchedule: Codable, Identifiable, Equatable {
     
     // MARK: - Persistence
     
-    private nonisolated(unsafe) static let defaults = UserDefaults(suiteName: "group.JFMCAPITALGROUP.Track")!
+    private nonisolated(unsafe) static let defaults = UserDefaults(
+        suiteName: "group.JFMCAPITALGROUP.Track"
+    )!
     private static let storageKey = "widget_schedules"
     
     /// Load all schedules from UserDefaults
@@ -112,7 +109,9 @@ struct WidgetSchedule: Codable, Identifiable, Equatable {
 
         // Look ahead up to 7 days
         for dayOffset in 1...7 {
-            guard let futureDate = calendar.date(byAdding: .day, value: dayOffset, to: date) else { continue }
+            guard let futureDate = calendar.date(
+                byAdding: .day, value: dayOffset, to: date
+            ) else { continue }
             let futureWeekday = calendar.component(.weekday, from: futureDate) - 1
 
             if days.contains(futureWeekday), let activation = startTimeAsDate(on: futureDate) {

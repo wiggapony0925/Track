@@ -1,21 +1,14 @@
-//
-//  MTAPrefixes.swift
-//  Shared
-//
-//  Single source of truth for MTA agency prefix stripping.
-//  Used by both the main app and widget extension.
-//
-//  MTA agencies and their route ID prefixes:
-//    • MTA NYCT_   — NYC Transit (Manhattan, Brooklyn, SI buses + subway)
-//    • MTABC_      — MTA Bus Company (Queens, Bronx, Express buses)
-//    • MTA BUS_    — MTA Bus (some SIRI/OBA edge cases)
-//    • LIRR_       — Long Island Rail Road
-//    • MNR_        — Metro-North Railroad
-//    • MTA_        — Shared stop ID prefix (e.g. "MTA_308214")
-//
-//  If the MTA introduces a new agency prefix, add it here once
-//  and every callsite across the app + widgets picks it up.
-//
+// Single source of truth for MTA agency prefix stripping.
+// Used by both the main app and widget extension.
+// MTA agencies and their route ID prefixes:
+//   • MTA NYCT_   — NYC Transit (Manhattan, Brooklyn, SI buses + subway)
+//   • MTABC_      — MTA Bus Company (Queens, Bronx, Express buses)
+//   • MTA BUS_    — MTA Bus (some SIRI/OBA edge cases)
+//   • LIRR_       — Long Island Rail Road
+//   • MNR_        — Metro-North Railroad
+//   • MTA_        — Shared stop ID prefix (e.g. "MTA_308214")
+// If the MTA introduces a new agency prefix, add it here once
+// and every callsite across the app + widgets picks it up.
 
 import Foundation
 
