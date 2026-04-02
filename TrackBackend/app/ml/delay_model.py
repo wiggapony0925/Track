@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+from datetime import datetime as _dt
 from pathlib import Path
 from typing import Any
 
@@ -175,8 +176,10 @@ _RUSH_EVENING = range(17, 20)
 # Used to build a named DataFrame at inference time so LightGBM doesn't emit
 # "X does not have valid feature names" warnings on every prediction.
 #
-# v2 features add month + season for better seasonal delay patterns.
-# Backward-compatible: old models receive truncated vectors via n_features_in_.
+# v3 features add cyclical time encoding so that hour 23→0 and day Sat→Sun
+# are treated as neighbours (not maximally distant), plus month & season.
+# Backward-compatible: old v1/v2 models receive truncated vectors via
+# n_features_in_.
 FEATURE_NAMES: list[str] = [
     "route_reliability",
     "hour",
@@ -186,9 +189,17 @@ FEATURE_NAMES: list[str] = [
     "is_rush",
     "is_weekend",
     "delay_minutes",
+    # ── v2: calendar ──
     "month",
-    "season",  # v2 features
+    "season",
+    # ── v3: cyclical encoding ──
+    "hour_sin",
+    "hour_cos",
+    "dow_sin",
+    "dow_cos",
 ]
+
+_TWO_PI = 2.0 * 3.141592653589793
 
 # ── Singleton ──────────────────────────────────────────────────────────────
 _model: Any | None = None
@@ -252,13 +263,19 @@ def encode_features(
     """Convert inputs → numeric feature vector.
 
     Feature order (must match train_model.py exactly):
-      [route_reliability, hour, dow, weather_enc, mode_enc, is_rush, is_weekend,
-       delay_minutes]  ← 8th feature: live schedule deviation (0.0 for bootstrap)
+      v1 [0-7]:  route_reliability, hour, dow, weather, mode, is_rush,
+                  is_weekend, delay_minutes
+      v2 [8-9]:  month, season
+      v3 [10-13]: hour_sin, hour_cos, dow_sin, dow_cos
+
+    Backward-compatible: older models truncate via n_features_in_.
 
     route_reliability is a float 0.0–4.0.  When OTP JSON files are present it
     is derived from real MTA on-time performance data; otherwise it falls back
     to the hard-coded integer tier in ROUTE_RELIABILITY.
     """
+    import math
+
     _load_otp_reliability()
 
     key = route_id.upper().strip()
@@ -282,12 +299,17 @@ def encode_features(
     is_weekend = int(not is_weekday)
     delay_minutes = max(-10.0, min(10.0, current_delay_s / 60.0))
 
-    # v2 features — month + season (backward-compatible: truncated by n_features_in_)
-    from datetime import datetime as _dt
-
+    # v2 features — month + season
     now = _dt.now()
     month = float(now.month)
     season = float(SEASON_ENCODING.get(now.month, 0))
+
+    # v3 features — cyclical encoding so that periodically adjacent values
+    # (hour 23→0, Sat→Sun) are treated as neighbours by the tree splits.
+    hour_sin = math.sin(_TWO_PI * hour / 24.0)
+    hour_cos = math.cos(_TWO_PI * hour / 24.0)
+    dow_sin = math.sin(_TWO_PI * dow / 7.0)
+    dow_cos = math.cos(_TWO_PI * dow / 7.0)
 
     return [
         reliability,
@@ -300,6 +322,10 @@ def encode_features(
         delay_minutes,
         month,
         season,
+        hour_sin,
+        hour_cos,
+        dow_sin,
+        dow_cos,
     ]
 
 

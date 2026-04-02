@@ -1,7 +1,9 @@
 """Bootstrap + train the LightGBM delay factor model.
 
 Run from the TrackBackend directory:
-python -m app.ml.train_model
+    python -m app.ml.train_model               # standard training
+    python -m app.ml.train_model --tune         # + Optuna hyperparam search
+    python -m app.ml.train_model --real-data X  # blend real observations
 
 ── What this does ─────────────────────────────────────────────────────────
 
@@ -20,15 +22,20 @@ delay_factor = base_for_route
 + weather_effect
 + Gaussian noise (σ=0.03)
 
-This is NOT making things up — it is encoding domain knowledge as a prior
-so the model starts better than pure heuristics from day one.
+Phase 2 — MTA open data (30 JSON files, 5M+ rows of real performance data)
+bus_segment_speeds (1M rows), subway OTP, delay incidents, service alerts,
+customer journey times, bus wait assessments, and more.
 
-Phase 2 — Real data (automatic over time)
+Phase 3 — Real Redis observations (automatic over time)
 Once the app is running, recency_model.py records actual vs. MTA-predicted
 errors per stop into Redis.  Periodically export those to a CSV and rerun
-this script with --real-data path/to/observations.csv to blend real and
-bootstrapped samples.  The bootstrapped rows are down-weighted so real
-data quickly dominates.
+this script with --real-data path/to/observations.csv.
+
+── Feature vector (v3) ───────────────────────────────────────────────────
+14 features: route_reliability, hour, dow, weather, mode, is_rush,
+is_weekend, delay_minutes, month, season, hour_sin, hour_cos, dow_sin,
+dow_cos.  Cyclical encoding ensures midnight→1am and Sat→Sun are
+treated as neighbours by the tree splits.
 
 ── Why LightGBM instead of sklearn GradientBoostingRegressor? ────────────
 • 10–50× faster training on the same data (leaf-wise growth vs level-wise)
@@ -36,7 +43,6 @@ data quickly dominates.
 validation error stops improving, preventing overfitting
 • Handles large datasets (millions of rows) without OOM issues
 • Same sklearn-compatible API: .fit() / .predict() / sample_weight
-• Same .pkl output — no changes needed to delay_model.py or the API
 
 ── Output ─────────────────────────────────────────────────────────────────
 app/data/delay_model.pkl  — joblib-serialised LightGBM ready to load."""
@@ -44,23 +50,33 @@ app/data/delay_model.pkl  — joblib-serialised LightGBM ready to load."""
 from __future__ import annotations
 
 import argparse
-import contextlib
+import json
 import random
 import sqlite3
 import sys
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import numpy as np  # type: ignore
+
+from app.ml.data_loaders import load_mta_open_data, load_real_observations
 from app.ml.delay_model import (
+    FEATURE_NAMES,
     ROUTE_RELIABILITY,
     encode_features,
+)
+from app.ml.eta_accuracy_benchmark import (
+    PredictionSample,
+    run_benchmark,
 )
 
 # ── Paths ──────────────────────────────────────────────────────────────────
 _ROOT = Path(__file__).resolve().parent.parent.parent  # TrackBackend/
 _DB = _ROOT / "app" / "data" / "transit_schedule.db"
 _OUT = _ROOT / "app" / "data" / "delay_model.pkl"
+_RUNS_LOG = _ROOT / "app" / "data" / "training_runs.jsonl"
 
 # ── Feature encoding (must match delay_model.py exactly) ──────────────────
 
@@ -257,423 +273,209 @@ def generate_bootstrap_samples(
     return X, y, w
 
 
-def load_mta_open_data() -> tuple[list[list[float]], list[float], list[float]]:
-    """Load all available MTA open JSON files from app/data/training/ and
-    generate high-quality training samples.
+def train(
+    X: list[list[float]],
+    y: list[float],
+    w: list[float],
+    tune: bool = False,
+) -> tuple[Any, dict[str, Any]]:
+    """Train a LightGBM regressor with optional Optuna hyperparam search.
 
-    Sample weights:
-      0.8 — MTA open data (real per-line measurements, better than bootstrap)
-      0.6 — incident-derived samples (less direct signal)
-      0.5 — bootstrap (synthetic priors, fallback when JSON missing)
+    Pipeline:
+      1. Hold out 15% as a TRUE test set (never seen during training/tuning).
+      2. If --tune: run Optuna on 3-fold CV over a 500K subsample.
+      3. Train final model on 85% using best hyperparams + early stopping.
+      4. Report MAE + R² on the held-out 15%.
 
-    Feature order must match encode_features():
-      [route_reliability, hour, dow, weather_enc, mode_enc,
-       is_rush, is_weekend, delay_minutes]
-    """
-    import json
-    from collections import defaultdict
+    Args:
+        X: Feature matrix (list of 14-element v3 vectors).
+        y: Target delay factors.
+        w: Sample weights.
+        tune: Whether to run Optuna hyperparameter search.
 
-    TRAINING_DIR = _ROOT / "app" / "data" / "training"
-    X: list[list[float]] = []
-    y: list[float] = []
-    w: list[float] = []
-
-    if not TRAINING_DIR.exists():
-        print("  No training/ directory — skipping MTA open data.", flush=True)
-        return X, y, w
-
-    # ── Helpers ────────────────────────────────────────────────────────────
-    def _period_hours(period: str) -> list[int]:
-        """Map a Socrata 'period' string to representative hour integers."""
-        p = (period or "").lower()
-        if "am peak" in p or ("peak" in p and "am" in p):
-            return [7, 8, 9]
-        if "pm peak" in p or ("peak" in p and "pm" in p):
-            return [17, 18, 19]
-        if "peak" in p:
-            return [7, 8, 9, 17, 18, 19]
-        return [6, 10, 12, 14, 20, 22]  # off-peak
-
-    def _dow_for_day_type(day_type: str) -> list[int]:
-        """day_type '1'=weekday '2'=weekend → list of dow values."""
-        return [2, 3, 4, 5, 6] if str(day_type) == "1" else [1, 7]
-
-    def _clamp(v: float, lo: float = 1.0, hi: float = 2.0) -> float:
-        return max(lo, min(hi, v))
-
-    def _feats(
-        reliability: float, hour: int, dow: int, weather: float, mode: float
-    ) -> list[float]:
-        is_weekday = 2 <= dow <= 6
-        is_rush = float(is_weekday and (hour in range(7, 10) or hour in range(17, 20)))
-        return [
-            reliability,
-            float(hour),
-            float(dow),
-            weather,
-            mode,
-            is_rush,
-            float(not is_weekday),
-            0.0,
-        ]
-
-    # ── Step 1: Build per-line OTP reliability from subway OTP JSON files ──
-    # Accumulate as running totals so we can average across all three files
-    otp_accum: dict[str, list[float]] = defaultdict(list)
-    for fname in [
-        "subway_otp_2015_2019.json",
-        "subway_otp_2020_2024.json",
-        "subway_otp_2025.json",
-    ]:
-        p = TRAINING_DIR / fname
-        if not p.exists():
-            continue
-        for row in json.loads(p.read_text()):
-            line = (row.get("line") or "").upper().strip()
-            with contextlib.suppress(KeyError, ValueError, TypeError):
-                otp_accum[line].append(float(row["terminal_on_time_performance"]))
-
-    # Map OTP → reliability float  (0 = perfect, 4 = very unreliable)
-    # 100% OTP → 0.0,  75% OTP → 2.0,  50% OTP → 4.0
-    line_reliability: dict[str, float] = {}
-    for line, vals in otp_accum.items():
-        avg_otp = sum(vals) / len(vals)
-        line_reliability[line] = _clamp((1.0 - avg_otp) * 8.0, 0.0, 4.0)
-    print(
-        f"  OTP reliability built for {len(line_reliability)} subway lines", flush=True
-    )
-
-    # ── Step 2: Subway customer journey — best per-line delay signal ───────
-    # additional_platform_time (APT) = avg extra wait minutes above schedule
-    # additional_train_time   (ATT) = avg extra ride minutes above schedule
-    # factor = 1 + (apt + att) / 15  (15 min is a typical short-trip baseline)
-    cj_count = 0
-    for fname in [
-        "subway_customer_journey_2015_2019.json",
-        "subway_customer_journey_2020_2024.json",
-        "subway_customer_journey_2025.json",
-    ]:
-        p = TRAINING_DIR / fname
-        if not p.exists():
-            continue
-        for row in json.loads(p.read_text()):
-            line = (row.get("line") or "").upper().strip()
-            try:
-                apt = float(row.get("additional_platform_time") or 0)
-                att = float(row.get("additional_train_time") or 0)
-            except (ValueError, TypeError):
-                continue
-            factor = _clamp(1.0 + (apt + att) / 15.0)
-            rel = line_reliability.get(line, 2.0)
-            period = row.get("period", "")
-            day_type = str(row.get("day_type", "1"))
-            for hr in _period_hours(period):
-                for dow in _dow_for_day_type(day_type):
-                    X.append(
-                        _feats(rel, hr, dow, 0.0, 0.0)
-                    )  # mode=subway, weather=clear
-                    y.append(factor)
-                    w.append(0.8)
-                    cj_count += 1
-    print(f"  Subway customer journey: {cj_count:,} samples", flush=True)
-
-    # ── Step 3: LIRR OTP — per-branch, per-period ─────────────────────────
-    lirr_count = 0
-    p = TRAINING_DIR / "lirr_otp.json"
-    if p.exists():
-        for row in json.loads(p.read_text()):
-            try:
-                overall_otp = float(row.get("otp") or 0)
-            except (ValueError, TypeError):
-                continue
-            for col, hours_list in [
-                ("am_peak", [7, 8, 9]),
-                ("pm_peak", [17, 18, 19]),
-                ("off_peak", [12, 19, 20, 22]),
-            ]:
-                try:
-                    period_otp = float(row.get(col) or overall_otp)
-                except (ValueError, TypeError):
-                    period_otp = overall_otp
-                factor = _clamp(1.0 + (1.0 - period_otp) * 0.5)
-                is_peak = col != "off_peak"
-                for hr in hours_list:
-                    for dow in ([2, 3, 4, 5, 6] if is_peak else [2, 3, 4, 5, 6, 1, 7]):
-                        X.append(
-                            _feats(2.0, hr, dow, 0.0, 2.0)
-                        )  # mode=lirr, weather=clear
-                        y.append(factor)
-                        w.append(0.8)
-                        lirr_count += 1
-    print(f"  LIRR OTP: {lirr_count:,} samples", flush=True)
-
-    # ── Step 4: Metro-North OTP ────────────────────────────────────────────
-    mnr_count = 0
-    p = TRAINING_DIR / "metro_north_otp.json"
-    if p.exists():
-        for row in json.loads(p.read_text()):
-            try:
-                overall_otp = float(row.get("otp") or 0)
-            except (ValueError, TypeError):
-                continue
-            for col, hours_list in [
-                ("am_peak", [7, 8, 9]),
-                ("pm_peak", [17, 18, 19]),
-                ("off_peak", [12, 19, 20, 22]),
-            ]:
-                try:
-                    period_otp = float(row.get(col) or overall_otp)
-                except (ValueError, TypeError):
-                    period_otp = overall_otp
-                factor = _clamp(1.0 + (1.0 - period_otp) * 0.5)
-                for hr in hours_list:
-                    for dow in [2, 3, 4, 5, 6]:
-                        X.append(_feats(2.0, hr, dow, 0.0, 3.0))  # mode=mnr
-                        y.append(factor)
-                        w.append(0.8)
-                        mnr_count += 1
-    print(f"  Metro-North OTP: {mnr_count:,} samples", flush=True)
-
-    # ── Step 5: Bus customer journey — extra travel time above schedule ────
-    bus_cj_count = 0
-    p = TRAINING_DIR / "bus_customer_journey.json"
-    if p.exists():
-        for row in json.loads(p.read_text()):
-            try:
-                att = float(row.get("additional_travel_time") or 0)
-            except (ValueError, TypeError):
-                continue
-            # 10 min baseline for a city bus trip; att is extra minutes
-            factor = _clamp(1.0 + att / 10.0)
-            period = row.get("period", "")
-            trip_type = (row.get("trip_type") or "").lower()
-            day_type = (
-                "1" if ("weekday" in trip_type or "peak" in period.lower()) else "2"
-            )
-            for hr in _period_hours(period):
-                for dow in _dow_for_day_type(day_type):
-                    X.append(_feats(2.0, hr, dow, 0.0, 1.0))  # mode=bus
-                    y.append(factor)
-                    w.append(0.8)
-                    bus_cj_count += 1
-    print(f"  Bus customer journey: {bus_cj_count:,} samples", flush=True)
-
-    # ── Step 6: Bus wait assessment — bunching rate per route ─────────────
-    # wait_assessment < 1.0 means buses bunch; use as reliability factor
-    bus_wa_count = 0
-    p = TRAINING_DIR / "bus_wait_assessment.json"
-    if p.exists():
-        wa_accum: dict[str, list[float]] = defaultdict(list)
-        for row in json.loads(p.read_text()):
-            route = (row.get("route_id") or "").upper().strip()
-            with contextlib.suppress(KeyError, ValueError, TypeError):
-                wa_accum[route].append(float(row["wait_assessment"]))
-        for _route, vals in wa_accum.items():
-            avg_wa = sum(vals) / len(vals)
-            # Low wait_assessment = bunching = higher delay factor for bus
-            factor = _clamp(1.0 + (1.0 - avg_wa) * 0.25)
-            for hr in [8, 9, 12, 17, 18]:
-                for dow in [2, 3, 4, 5, 6]:
-                    is_rush = float(hr in range(7, 10) or hr in range(17, 20))
-                    X.append([2.0, float(hr), float(dow), 0.0, 1.0, is_rush, 0.0, 0.0])
-                    y.append(factor)
-                    w.append(0.7)
-                    bus_wa_count += 1
-    print(f"  Bus wait assessment: {bus_wa_count:,} samples", flush=True)
-
-    # ── Step 7: Subway delay incidents — monthly incident rate ────────────
-    # incident rate → line gets a reliability penalty on peak hour weekdays
-    inc_count = 0
-    p = TRAINING_DIR / "subway_delay_incidents.json"
-    if p.exists():
-        inc_accum: dict[tuple, dict] = defaultdict(
-            lambda: {"total": 0.0, "months": set()}
-        )
-        for row in json.loads(p.read_text()):
-            line = (row.get("line") or "").upper().strip()
-            try:
-                count = float(row.get("incidents") or 0)
-                month = row.get("month", "")
-                day_type = str(row.get("day_type", "1"))
-            except (ValueError, TypeError):
-                continue
-            key = (line, day_type)
-            inc_accum[key]["total"] += count
-            inc_accum[key]["months"].add(month)
-        for (line, day_type), d in inc_accum.items():
-            months = max(1, len(d["months"]))
-            monthly_rate = d["total"] / months
-            # 0 incidents/month → 0 boost; ~130/month (high) → +0.15 boost
-            boost = min(0.20, monthly_rate / 130.0)
-            base_rel = line_reliability.get(line, 2.0)
-            factor = _clamp(1.05 + boost + base_rel * 0.03)
-            for hr in [8, 9, 17, 18, 19]:
-                for dow in _dow_for_day_type(day_type):
-                    is_rush = float(hr in range(7, 10) or hr in range(17, 20))
-                    X.append(
-                        [
-                            base_rel,
-                            float(hr),
-                            float(dow),
-                            0.0,
-                            0.0,
-                            is_rush,
-                            float(1 - (2 <= dow <= 6)),
-                            0.0,
-                        ]
-                    )
-                    y.append(factor)
-                    w.append(0.6)
-                    inc_count += 1
-    print(f"  Subway delay incidents: {inc_count:,} samples", flush=True)
-
-    # ── Step 8: Subway trains delayed — total delay counts ────────────────
-    delayed_count = 0
-    p = TRAINING_DIR / "subway_trains_delayed.json"
-    if p.exists():
-        del_accum: dict[tuple, dict] = defaultdict(
-            lambda: {"total": 0.0, "months": set()}
-        )
-        for row in json.loads(p.read_text()):
-            line = (row.get("line") or "").upper().strip()
-            try:
-                delays = float(row.get("delays") or 0)
-                month = row.get("month", "")
-                day_type = str(row.get("day_type", "1"))
-            except (ValueError, TypeError):
-                continue
-            key = (line, day_type)
-            del_accum[key]["total"] += delays
-            del_accum[key]["months"].add(month)
-        for (line, day_type), d in del_accum.items():
-            months = max(1, len(d["months"]))
-            monthly_delays = d["total"] / months
-            # Normalize: ~2000 delays/month for heavily delayed lines → boost 0.10
-            boost = min(0.15, monthly_delays / 20000.0)
-            base_rel = line_reliability.get(line, 2.0)
-            factor = _clamp(1.03 + boost + base_rel * 0.02)
-            for hr in _HOUR_BUCKETS:
-                for dow in _dow_for_day_type(day_type):
-                    is_rush = float(
-                        (2 <= dow <= 6) and (hr in range(7, 10) or hr in range(17, 20))
-                    )
-                    X.append(
-                        [
-                            base_rel,
-                            float(hr),
-                            float(dow),
-                            0.0,
-                            0.0,
-                            is_rush,
-                            float(1 - (2 <= dow <= 6)),
-                            0.0,
-                        ]
-                    )
-                    y.append(factor)
-                    w.append(0.6)
-                    delayed_count += 1
-    print(f"  Subway trains delayed: {delayed_count:,} samples", flush=True)
-
-    # ── Step 9: Bus service delivered — ghost bus / cancelled trips ────────
-    bus_sd_count = 0
-    p = TRAINING_DIR / "bus_service_delivered.json"
-    if p.exists():
-        sd_accum: dict[str, list[float]] = defaultdict(list)
-        for row in json.loads(p.read_text()):
-            route = (row.get("route_id") or "").upper().strip()
-            with contextlib.suppress(KeyError, ValueError, TypeError):
-                sd_accum[route].append(float(row["service_delivered"]))
-        for _route, vals in sd_accum.items():
-            avg_sd = sum(vals) / len(vals)
-            # service_delivered < 1.0 → ghost buses → riders wait longer
-            factor = _clamp(1.0 + (1.0 - avg_sd) * 0.4)
-            for hr in [8, 12, 17]:
-                for dow in [2, 3, 4, 5, 6]:
-                    is_rush = float(hr in range(7, 10) or hr in range(17, 20))
-                    X.append([2.0, float(hr), float(dow), 0.0, 1.0, is_rush, 0.0, 0.0])
-                    y.append(factor)
-                    w.append(0.7)
-                    bus_sd_count += 1
-    print(f"  Bus service delivered: {bus_sd_count:,} samples", flush=True)
-
-    print(
-        f"\n  MTA open data total: {len(X):,} samples across all datasets", flush=True
-    )
-    return X, y, w
-
-
-def load_real_observations(
-    csv_path: Path,
-) -> tuple[list[list[float]], list[float], list[float]]:
-    """Load real observation CSV produced by export_observations.py.
-
-    Expected columns:
-      route_id, stop_id, hour, dow, weather, mode, actual_factor
-    """
-    import csv as _csv
-
-    X, y, w = [], [], []
-    with open(csv_path, newline="", encoding="utf-8") as f:
-        reader = _csv.DictReader(f)
-        for row in reader:
-            try:
-                factor = float(row["actual_factor"])
-                feats = encode_features(
-                    route_id=row["route_id"],
-                    hour=int(row["hour"]),
-                    dow=int(row["dow"]),
-                    weather=row.get("weather", "clear"),
-                    mode=row.get("mode", "subway"),
-                    current_delay_s=float(row.get("deviation_s", 0.0)),
-                )
-                X.append(feats)
-                y.append(max(1.0, min(2.0, factor)))
-                w.append(1.0)  # real data gets full weight
-            except (ValueError, KeyError):
-                continue
-    print(f"  Loaded {len(X):,} real observation samples from {csv_path}", flush=True)
-    return X, y, w
-
-
-def train(X: list[list[float]], y: list[float], w: list[float]) -> Any:
-    """Train a LightGBM regressor and return the fitted estimator.
-
-    Uses early stopping on a 15% validation split so the model automatically
-    stops adding trees when improvements stall — no manual n_estimators tuning
-    needed.  The full model is then re-fitted on 100% of the data using the
-    optimal tree count found by early stopping.
+    Returns:
+        A tuple of (fitted LGBMRegressor, metrics dict).
     """
     import lightgbm as lgb  # type: ignore
-    import numpy as np  # type: ignore
-    from sklearn.metrics import mean_absolute_error  # type: ignore
-    from sklearn.model_selection import train_test_split  # type: ignore
+    from sklearn.metrics import mean_absolute_error, r2_score  # type: ignore
+    from sklearn.model_selection import (  # type: ignore
+        KFold,
+        train_test_split,
+    )
 
     X_arr = np.array(X, dtype=float)
     y_arr = np.array(y, dtype=float)
     w_arr = np.array(w, dtype=float)
 
-    # ── Split for early-stopping validation ───────────────────────────
-    X_tr, X_val, y_tr, y_val, w_tr, w_val = train_test_split(
-        X_arr, y_arr, w_arr, test_size=0.15, random_state=42
+    n_features = X_arr.shape[1]
+    feat_names = FEATURE_NAMES[:n_features]
+
+    # Wrap as a named DataFrame so LightGBM doesn't emit
+    # "X does not have valid feature names" warnings.
+    import pandas as pd  # type: ignore[import-untyped]
+
+    X_df = pd.DataFrame(X_arr, columns=feat_names)
+
+    print(
+        f"  Dataset: {len(X_df):,} samples × {n_features} features",
+        flush=True,
     )
 
-    print("  Fitting LightGBM (early stopping on 15% val split) ...", flush=True)
+    # ── Hold out 15% as a TRUE test set ───────────────────────────────
+    X_train, X_test, y_train, y_test, w_train, w_test = train_test_split(
+        X_df, y_arr, w_arr, test_size=0.15, random_state=42
+    )
+    print(
+        f"  Train: {len(X_train):,}  Holdout test: {len(X_test):,}",
+        flush=True,
+    )
+
+    # ── Default hyperparams (proven good baseline) ────────────────────
+    best_params: dict[str, Any] = {
+        "n_estimators": 2000,
+        "num_leaves": 63,
+        "learning_rate": 0.05,
+        "subsample": 0.8,
+        "colsample_bytree": 0.8,
+        "min_child_samples": 20,
+        "reg_alpha": 0.1,
+        "reg_lambda": 0.1,
+    }
+
+    # ── Optuna hyperparameter search (optional) ───────────────────────
+    if tune:
+        try:
+            import optuna  # type: ignore
+
+            optuna.logging.set_verbosity(optuna.logging.WARNING)
+
+            # Subsample for speed: hyperparams don't need the full
+            # dataset.  500K samples × 3-fold is plenty for Bayesian
+            # search while keeping wall-clock under 5 minutes.
+            _TUNE_CAP = 500_000
+            if len(X_train) > _TUNE_CAP:
+                rng = np.random.default_rng(42)
+                idx = rng.choice(
+                    len(X_train), size=_TUNE_CAP, replace=False
+                )
+                X_tune = X_train.iloc[idx].reset_index(drop=True)
+                y_tune = y_train[idx]
+                w_tune = w_train[idx]
+            else:
+                X_tune = X_train
+                y_tune = y_train
+                w_tune = w_train
+
+            def _objective(trial: Any) -> float:
+                params = {
+                    "n_estimators": 2000,
+                    "num_leaves": trial.suggest_int(
+                        "num_leaves", 15, 127
+                    ),
+                    "learning_rate": trial.suggest_float(
+                        "learning_rate", 0.01, 0.2, log=True
+                    ),
+                    "subsample": trial.suggest_float(
+                        "subsample", 0.5, 1.0
+                    ),
+                    "colsample_bytree": trial.suggest_float(
+                        "colsample_bytree", 0.5, 1.0
+                    ),
+                    "min_child_samples": trial.suggest_int(
+                        "min_child_samples", 5, 100
+                    ),
+                    "reg_alpha": trial.suggest_float(
+                        "reg_alpha", 1e-3, 10.0, log=True
+                    ),
+                    "reg_lambda": trial.suggest_float(
+                        "reg_lambda", 1e-3, 10.0, log=True
+                    ),
+                }
+
+                kf = KFold(n_splits=3, shuffle=True, random_state=42)
+                fold_maes: list[float] = []
+
+                for train_idx, val_idx in kf.split(X_tune):
+                    X_f_tr = X_tune.iloc[train_idx]
+                    X_f_val = X_tune.iloc[val_idx]
+                    y_f_tr = y_tune[train_idx]
+                    y_f_val = y_tune[val_idx]
+                    w_f_tr = w_tune[train_idx]
+                    w_f_val = w_tune[val_idx]
+
+                    m = lgb.LGBMRegressor(
+                        **params,
+                        random_state=42,
+                        verbose=-1,
+                    )
+                    m.fit(
+                        X_f_tr,
+                        y_f_tr,
+                        sample_weight=w_f_tr,
+                        eval_set=[(X_f_val, y_f_val)],
+                        eval_sample_weight=[w_f_val],
+                        callbacks=[
+                            lgb.early_stopping(
+                                stopping_rounds=30, verbose=False
+                            ),
+                            lgb.log_evaluation(period=0),
+                        ],
+                    )
+                    preds = m.predict(X_f_val)
+                    fold_maes.append(
+                        mean_absolute_error(
+                            y_f_val, preds, sample_weight=w_f_val
+                        )
+                    )
+
+                return float(np.mean(fold_maes))
+
+            n_trials = 30
+            print(
+                f"\n  ┌─ Optuna: searching {n_trials} hyperparameter"
+                f" combinations (3-fold CV on"
+                f" {len(X_tune):,} samples) ...",
+                flush=True,
+            )
+            t_opt = time.perf_counter()
+            study = optuna.create_study(direction="minimize")
+            study.optimize(
+                _objective, n_trials=n_trials, show_progress_bar=False
+            )
+
+            best_params.update(study.best_params)
+            best_params["n_estimators"] = 2000
+
+            elapsed_opt = time.perf_counter() - t_opt
+            print(
+                f"  └─ Best CV MAE: {study.best_value:.5f}  "
+                f"({elapsed_opt:.0f}s, {len(study.trials)} trials)",
+                flush=True,
+            )
+            print(f"  Best params: {study.best_params}", flush=True)
+
+        except ImportError:
+            print(
+                "  ⚠  Optuna not installed — using default hyperparams.\n"
+                "     Install: pip install optuna>=3.5",
+                flush=True,
+            )
+
+    # ── Train with early stopping on val split from training data ─────
+    X_tr, X_val, y_tr, y_val, w_tr, w_val = train_test_split(
+        X_train, y_train, w_train, test_size=0.15, random_state=99
+    )
+
+    print(
+        "\n  Fitting LightGBM (early stopping on internal val split) ...",
+        flush=True,
+    )
     t0 = time.perf_counter()
 
-    # LightGBM leaf-wise model — faster and more accurate than level-wise GBR
-    # num_leaves=63 ≈ max_depth=6 but LightGBM grows leaves not levels, so it
-    # finds better splits without adding depth overhead.
     val_model = lgb.LGBMRegressor(
-        n_estimators=2000,  # upper bound — early stopping will cut this down
-        num_leaves=63,  # 2^6-1: expressive but not overfit
-        learning_rate=0.05,
-        subsample=0.8,  # row-level bagging per tree
-        colsample_bytree=0.8,  # feature-level bagging per tree
-        min_child_samples=20,  # leaf must have ≥20 samples (regularisation)
-        reg_alpha=0.1,  # L1 — sparsifies feature use
-        reg_lambda=0.1,  # L2 — smooths leaf values
+        **best_params,
         random_state=42,
-        verbose=-1,  # suppress LightGBM's per-iteration output
+        verbose=-1,
     )
     val_model.fit(
         X_tr,
@@ -683,85 +485,195 @@ def train(X: list[list[float]], y: list[float], w: list[float]) -> Any:
         eval_sample_weight=[w_val],
         callbacks=[
             lgb.early_stopping(stopping_rounds=50, verbose=False),
-            lgb.log_evaluation(period=0),  # silent
+            lgb.log_evaluation(period=0),
         ],
     )
 
     best_n = val_model.best_iteration_
-    mae = mean_absolute_error(y_val, val_model.predict(X_val))
     elapsed = time.perf_counter() - t0
-    print(f"  Early stopping: best iteration = {best_n}  (of 2000 max)", flush=True)
     print(
-        f"  Validation MAE: {mae:.4f} delay_factor units "
-        f"({mae * 10:.2f} min on a 10-min trip)",
+        f"  Early stopping: best iteration = {best_n}  (of 2000 max)",
         flush=True,
     )
     print(f"  Val fit time: {elapsed:.1f}s", flush=True)
 
-    # ── Re-fit on 100% of data using the optimal tree count ───────────
-    print(f"  Re-fitting on full dataset with n_estimators={best_n} ...", flush=True)
+    # ── Re-fit on full training data using optimal tree count ─────────
+    final_params = {k: v for k, v in best_params.items() if k != "n_estimators"}
+    final_params["n_estimators"] = max(best_n, 10)
+
+    print(
+        f"  Re-fitting on full training set with "
+        f"n_estimators={final_params['n_estimators']} ...",
+        flush=True,
+    )
     t1 = time.perf_counter()
     model = lgb.LGBMRegressor(
-        n_estimators=best_n,
-        num_leaves=63,
-        learning_rate=0.05,
-        subsample=0.8,
-        colsample_bytree=0.8,
-        min_child_samples=20,
-        reg_alpha=0.1,
-        reg_lambda=0.1,
+        **final_params,
         random_state=42,
         verbose=-1,
     )
-    model.fit(X_arr, y_arr, sample_weight=w_arr)
+    model.fit(X_train, y_train, sample_weight=w_train)
     print(f"  Full fit time:  {time.perf_counter() - t1:.1f}s", flush=True)
 
+    # ── Evaluate on TRUE HOLDOUT (never seen during training) ─────────
+    holdout_preds = model.predict(X_test)
+    holdout_mae = mean_absolute_error(y_test, holdout_preds, sample_weight=w_test)
+    holdout_r2 = r2_score(y_test, holdout_preds, sample_weight=w_test)
+    print("\n  ╔══ HOLDOUT EVALUATION (15% never-seen test set) ══╗")
+    print(
+        f"  ║  MAE:  {holdout_mae:.5f}  "
+        f"({holdout_mae * 10:.2f} min on a 10-min trip)    ║"
+    )
+    print(f"  ║  R²:   {holdout_r2:.5f}                              ║")
+    print("  ╚═══════════════════════════════════════════════════╝\n")
+
     # ── Feature importances (gain-based) ─────────────────────────────
-    feature_names = [
-        "route_reliability",
-        "hour",
-        "dow",
-        "weather",
-        "mode",
-        "is_rush",
-        "is_weekend",
-        "delay_minutes",
-    ]
     importances = sorted(
-        zip(feature_names, model.feature_importances_, strict=False),
+        zip(feat_names, model.feature_importances_, strict=False),
         key=lambda x: -x[1],
     )
     total_imp = sum(imp for _, imp in importances) or 1
     print("  Feature importances (gain):")
+    importance_dict: dict[str, float] = {}
     for name, imp in importances:
         pct = imp / total_imp
+        importance_dict[name] = round(pct, 4)
         bar = "█" * int(pct * 40)
         print(f"    {name:<20} {pct:.3f}  {bar}")
 
-    return model
+    metrics = {
+        "holdout_mae": round(holdout_mae, 5),
+        "holdout_r2": round(holdout_r2, 5),
+        "n_estimators": final_params["n_estimators"],
+        "n_features": n_features,
+        "n_train": len(X_train),
+        "n_test": len(X_test),
+        "best_params": best_params,
+        "feature_importances": importance_dict,
+        "tuned": tune,
+    }
+    return model, metrics
 
 
-def main(real_data_csv: Path | None = None) -> None:
+def _run_post_train_benchmark(
+    model: Any,
+    X: list[list[float]],
+    y: list[float],
+) -> float:
+    """Run Transit App–style ETA benchmark on a HOLDOUT sample.
+
+    Splits off 20% of the data that was NOT used for the holdout test set
+    (so this benchmark sees different samples than training or the R²/MAE
+    evaluation).  Converts (predicted, actual) into PredictionSamples.
+
+    Returns:
+        Overall accuracy (0.0–1.0).
+    """
+    import pandas as pd  # type: ignore[import-untyped]
+
+    print("Step 6/6  ETA Accuracy Benchmark (Transit App methodology)")
+
+    X_arr = np.array(X, dtype=float)
+    y_arr = np.array(y, dtype=float)
+
+    # Use a different random seed so this holdout is independent
+    from sklearn.model_selection import train_test_split  # type: ignore
+
+    _, X_bench, _, y_bench = train_test_split(
+        X_arr, y_arr, test_size=0.20, random_state=77
+    )
+    n_feat = X_bench.shape[1]
+    X_bench_df = pd.DataFrame(
+        X_bench, columns=FEATURE_NAMES[:n_feat]
+    )
+    preds = model.predict(X_bench_df)
+
+    # Synthesise PredictionSamples:
+    #   sample_ts     = 0  (arbitrary reference)
+    #   predicted_ts  = factor_predicted * baseline_seconds
+    #   actual_ts     = factor_actual    * baseline_seconds
+    # We use a 10-min baseline so factor differences map directly to seconds.
+    baseline_s = 600.0  # 10 minutes
+    samples: list[PredictionSample] = []
+    for pred_factor, actual_factor in zip(preds, y_bench, strict=False):
+        predicted_ts = pred_factor * baseline_s
+        actual_ts = actual_factor * baseline_s
+        samples.append(
+            PredictionSample(
+                predicted_arrival_ts=predicted_ts,
+                actual_arrival_ts=actual_ts,
+                sample_ts=0.0,
+                source="model",
+            )
+        )
+
+    result = run_benchmark(samples)
+    overall = result.overall_accuracy
+    print(f"  Overall accuracy: {overall:.1%}")
+    for br in result.bucket_results:
+        if br.total:
+            print(
+                f"    {br.bucket_name:>10}  "
+                f"{br.accuracy:.1%} accurate  "
+                f"({br.total:,} samples, "
+                f"{br.early_miss} early / {br.late_miss} late misses)"
+            )
+    if overall < 0.50:
+        print(
+            "  ⚠  Accuracy below 50% — consider adding more real observations.",
+            flush=True,
+        )
+    print()
+    return overall
+
+
+def _log_training_run(metrics: dict[str, Any]) -> None:
+    """Append a training run record to the JSONL log.
+
+    Each line is a self-contained JSON object with a UTC timestamp.
+    Read back with: ``[json.loads(l) for l in open(path)]``
+    """
+    record = {
+        "timestamp": datetime.now(UTC).isoformat(),
+        **metrics,
+    }
+    _RUNS_LOG.parent.mkdir(parents=True, exist_ok=True)
+    with open(_RUNS_LOG, "a", encoding="utf-8") as f:
+        f.write(json.dumps(record, default=str) + "\n")
+    print(f"  Training run logged → {_RUNS_LOG}", flush=True)
+
+
+def main(
+    real_data_csv: Path | None = None,
+    tune: bool = False,
+) -> None:
+    """End-to-end training pipeline.
+
+    Args:
+        real_data_csv: Optional path to real observations CSV.
+        tune: When True, run Optuna hyperparameter search (slower but
+            usually produces a better model).
+    """
     print("\n━━━  Track ML — Delay Model Training  ━━━\n")
 
-    # ── Load GTFS ──────────────────────────────────────────────────────
+    # ── Step 1: Load GTFS ──────────────────────────────────────────────
     if not _DB.exists():
         print(f"ERROR: GTFS database not found at {_DB}", file=sys.stderr)
         sys.exit(1)
 
-    print(f"Step 1/4  Reading GTFS database: {_DB}")
+    print(f"Step 1/6  Reading GTFS database: {_DB}")
     conn = sqlite3.connect(_DB)
     route_table = _build_route_table(conn)
     conn.close()
 
-    # ── Bootstrap samples ──────────────────────────────────────────────
-    print("\nStep 2/5  Generating bootstrap training data from GTFS")
+    # ── Step 2: Bootstrap samples ──────────────────────────────────────
+    print("\nStep 2/6  Generating bootstrap training data from GTFS")
     X_boot, y_boot, w_boot = generate_bootstrap_samples(route_table)
 
     X, y, w = X_boot[:], y_boot[:], w_boot[:]
 
-    # ── MTA open data (downloaded JSON files) ─────────────────────────
-    print("\nStep 3/5  Loading MTA open datasets from app/data/training/")
+    # ── Step 3: MTA open data ─────────────────────────────────────────
+    print("\nStep 3/6  Loading MTA open datasets from app/data/training/")
     X_mta, y_mta, w_mta = load_mta_open_data()
     if X_mta:
         X += X_mta
@@ -773,54 +685,91 @@ def main(real_data_csv: Path | None = None) -> None:
         )
     else:
         print("  No MTA open data found — bootstrap only.")
-        print("  Run: python scripts/fetch_mta_training_data.py  to download datasets.")
+        print(
+            "  Run: python scripts/fetch_mta_training_data.py"
+            "  to download datasets."
+        )
 
-    # ── Real observations (optional) ───────────────────────────────────
+    # ── Step 3b: Real observations (optional) ─────────────────────────
     if real_data_csv and real_data_csv.exists():
-        print(f"\nStep 3b   Loading real observations: {real_data_csv}")
+        print(f"\n  Loading real observations: {real_data_csv}")
         X_real, y_real, w_real = load_real_observations(real_data_csv)
         X += X_real
         y += y_real
         w += w_real
         print(
-            f"  Total samples: {len(X):,} ({len(X_real):,} real + {len(X_mta):,} MTA + {len(X_boot):,} bootstrap)"
+            f"  Total samples: {len(X):,} "
+            f"({len(X_real):,} real + {len(X_mta):,} MTA"
+            f" + {len(X_boot):,} bootstrap)"
         )
     else:
         print(
-            f"\n  (No real-observations CSV — using bootstrap + MTA open data.  "
-            f"Total: {len(X):,} samples)"
+            f"\n  (No real-observations CSV — using bootstrap"
+            f" + MTA open data.  Total: {len(X):,} samples)"
         )
-        print("  As users ride trains, recency_model.py logs errors to Redis.")
-        print("  Export them with:  python -m app.ml.export_observations")
         print(
-            "  Then retrain with: python -m app.ml.train_model --real-data observations.csv"
+            "  As users ride trains, recency_model.py logs"
+            " errors to Redis."
+        )
+        print(
+            "  Export them with:  python -m"
+            " app.ml.export_observations"
+        )
+        print(
+            "  Then retrain with: python -m app.ml.train_model"
+            " --real-data observations.csv"
         )
 
-    # ── Train ──────────────────────────────────────────────────────────
-    print("\nStep 4/5  Training LightGBM")
-    model = train(X, y, w)
+    # ── Step 4: Train ─────────────────────────────────────────────────
+    mode_label = "LightGBM + Optuna" if tune else "LightGBM"
+    print(f"\nStep 4/6  Training {mode_label}")
+    model, metrics = train(X, y, w, tune=tune)
 
-    # ── Save ───────────────────────────────────────────────────────────
-    print(f"\nStep 5/5  Saving model → {_OUT}")
-    import joblib  # type: ignore
+    # ── Step 5: Save ──────────────────────────────────────────────────
+    print(f"\nStep 5/6  Saving model → {_OUT}")
+    import joblib  # type: ignore[import-untyped]
 
     _OUT.parent.mkdir(parents=True, exist_ok=True)
     joblib.dump(model, _OUT)
     size_kb = _OUT.stat().st_size / 1024
     print(f"  Saved ({size_kb:.0f} KB)\n")
 
+    # ── Step 6: ETA Accuracy Benchmark ────────────────────────────────
+    eta_accuracy = _run_post_train_benchmark(model, X, y)
+
+    # ── Log training run ──────────────────────────────────────────────
+    metrics["eta_accuracy"] = round(eta_accuracy, 4)
+    metrics["model_size_kb"] = round(size_kb, 1)
+    metrics["total_samples"] = len(X)
+    _log_training_run(metrics)
+
     print(
-        "━━━  Done.  Call POST /predict/reload-model to hot-swap on a live server.  ━━━\n"
+        "━━━  Done.  Call POST /predict/reload-model to"
+        " hot-swap on a live server.  ━━━\n"
     )
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Train the Track delay model.")
+    parser = argparse.ArgumentParser(
+        description="Train the Track delay model."
+    )
     parser.add_argument(
         "--real-data",
         type=Path,
         default=None,
-        help="Path to real observations CSV (route_id,stop_id,hour,dow,weather,mode,actual_factor)",
+        help=(
+            "Path to real observations CSV"
+            " (route_id,stop_id,hour,dow,weather,mode,actual_factor)"
+        ),
+    )
+    parser.add_argument(
+        "--tune",
+        action="store_true",
+        help=(
+            "Run Optuna Bayesian hyperparameter search"
+            " (50 trials × 5-fold CV).  Slower, but usually"
+            " produces a stronger model."
+        ),
     )
     args = parser.parse_args()
-    main(real_data_csv=args.real_data)
+    main(real_data_csv=args.real_data, tune=args.tune)
