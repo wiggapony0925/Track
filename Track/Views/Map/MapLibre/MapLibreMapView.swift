@@ -323,7 +323,9 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         coordinator.shouldSyncCamera = true
 
         // ── Layer updates (all GL layers managed by coordinator) ──
-        if coordinator.styleLoaded {
+        // Gate on initialTilesRendered so transit lines don't pop in
+        // before the basemap tiles are visible.
+        if coordinator.styleLoaded && coordinator.initialTilesRendered {
             coordinator.updateAllLayers(mapView: mapView, representable: self)
         }
     }
@@ -400,6 +402,13 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         private var cachedElevatedShape: MLNShapeCollectionFeature?
         private var cachedStationShape: MLNShapeCollectionFeature?
 
+        /// Prevents transit layers from rendering before basemap tiles are
+        /// visible — avoids the "floating lines on blank background" flash
+        /// that occurs because local GeoJSON renders instantly while remote
+        /// tiles are still downloading from the CDN.
+        var initialTilesRendered = false
+        private var pendingLayerTimer: DispatchWorkItem?
+
         init(_ parent: MapLibreMapView) {
             self.parent = parent
         }
@@ -424,7 +433,44 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             lastRouteTintColor = parent.hasActiveRoute ? parent.routeColor : nil
 
             setup3DBuildings(style: style, isDarkMode: parent.isDarkMode)
-            updateAllLayers(mapView: mapView, representable: parent)
+
+            if initialTilesRendered {
+                // Subsequent style loads (e.g. dark ↔ light switch) —
+                // basemap is already primed, add transit layers immediately.
+                updateAllLayers(mapView: mapView, representable: parent)
+            } else {
+                // First load — defer transit layers until basemap tiles
+                // render so lines don't float on a blank background.
+                // Safety fallback: show layers after 0.6s even if tiles
+                // haven't fully loaded (slow connection graceful degradation).
+                pendingLayerTimer?.cancel()
+                let work = DispatchWorkItem { [weak self] in
+                    guard let self, !self.initialTilesRendered else { return }
+                    self.initialTilesRendered = true
+                    self.updateAllLayers(
+                        mapView: mapView,
+                        representable: self.parent
+                    )
+                }
+                pendingLayerTimer = work
+                DispatchQueue.main.asyncAfter(
+                    deadline: .now() + 0.6, execute: work
+                )
+            }
+        }
+
+        // MARK: - Delegate: Map Rendered
+
+        func mapViewDidFinishRenderingMap(
+            _ mapView: MLNMapView,
+            fullyRendered: Bool
+        ) {
+            guard fullyRendered, !initialTilesRendered else { return }
+            initialTilesRendered = true
+            pendingLayerTimer?.cancel()
+            if styleLoaded {
+                updateAllLayers(mapView: mapView, representable: parent)
+            }
         }
 
         /// Resets all dirty-flag hashes so the next `updateAllLayers` call
