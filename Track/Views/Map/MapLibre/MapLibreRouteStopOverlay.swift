@@ -71,7 +71,8 @@ struct MapLibreRouteStopOverlay: View {
                 isBehind: displayedStop.isBehind,
                 routeColor: routeColor,
                 stopName: stop.name,
-                showLabel: showLabel || isSelected
+                showLabel: showLabel || isSelected,
+                transferRouteIds: stop.routeIds ?? []
             )
             .position(point)
             .onTapGesture { onStopTap(stop) }

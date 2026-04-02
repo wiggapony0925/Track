@@ -2346,10 +2346,10 @@ _all_trunk_lane_offsets_cache: dict[int, float] | None = None
 # calls in this process.  Invalidated only on process restart (deploy).
 _pipeline_result_cache: list | None = None
 
-_EXPORT_LANE_OFFSET_STEP: float = 0.25
-_EXPORT_LANE_OFFSET_EPSILON: float = 0.12
-_EXPORT_TRANSITION_MAX_POINTS: int = 6
-_EXPORT_TRANSITION_MAX_LENGTH_M: float = 90.0
+_EXPORT_LANE_OFFSET_STEP: float = 0.50
+_EXPORT_LANE_OFFSET_EPSILON: float = 0.20
+_EXPORT_TRANSITION_MAX_POINTS: int = 20
+_EXPORT_TRANSITION_MAX_LENGTH_M: float = 700.0  # EPSG:3857 units (~530m real)
 _EXPORT_Y_TRANSITION_MIN_POINTS: int = 5
 _EXPORT_RUN_LENDER_MIN_POINTS: int = 2
 
@@ -2732,16 +2732,90 @@ def _segment_export_path_by_lane_offset(
         prev_coords, prev_offset = merged[-1]
         # Smooth tiny transition runs back into the neighbouring segment so
         # the client doesn't render dozens of one-hop offset features.
+        seg_len = sum(
+            _point_dist(coords[i], coords[i + 1])
+            for i in range(len(coords) - 1)
+        ) if len(coords) >= 2 else 0.0
         if (
-            len(coords) <= 3
-            and abs(prev_offset - lane_offset) <= _EXPORT_LANE_OFFSET_STEP
-            and not _is_visual_transition_offset_value(prev_offset)
-            and not _is_visual_transition_offset_value(lane_offset)
+            (len(coords) <= 3 or seg_len < 200.0)
+            and abs(prev_offset - lane_offset) <= _EXPORT_LANE_OFFSET_STEP * 2
         ):
             merged[-1] = (prev_coords + coords[1:], prev_offset)
             continue
 
         merged.append((coords, lane_offset))
+
+    # ── Second pass: absorb any remaining micro-fragments (< 120m) into
+    # their longer neighbour.  Walk backwards so absorbed indices stay
+    # valid.  This catches fragments that couldn't merge in the forward
+    # pass because the preceding segment was also short.
+    _ABSORB_THRESHOLD_M: float = 700.0  # EPSG:3857 units (~530m real at NYC lat)
+    changed = True
+    while changed:
+        changed = False
+        for idx in range(len(merged) - 1, -1, -1):
+            c, _o = merged[idx]
+            seg_len = (
+                sum(_point_dist(c[i], c[i + 1]) for i in range(len(c) - 1))
+                if len(c) >= 2 else 0.0
+            )
+            if seg_len >= _ABSORB_THRESHOLD_M:
+                continue
+            # Absorb into whichever neighbour is longer
+            left = merged[idx - 1] if idx > 0 else None
+            right = merged[idx + 1] if idx < len(merged) - 1 else None
+            if left is None and right is None:
+                continue
+            left_len = (
+                sum(_point_dist(left[0][i], left[0][i + 1])
+                    for i in range(len(left[0]) - 1))
+                if left and len(left[0]) >= 2 else 0.0
+            )
+            right_len = (
+                sum(_point_dist(right[0][i], right[0][i + 1])
+                    for i in range(len(right[0]) - 1))
+                if right and len(right[0]) >= 2 else 0.0
+            )
+            if left and (right is None or left_len >= right_len):
+                merged[idx - 1] = (left[0] + c[1:], left[1])
+                merged.pop(idx)
+                changed = True
+                break
+            if right:
+                merged[idx + 1] = (c + right[0][1:], right[1])
+                merged.pop(idx)
+                changed = True
+                break
+
+    # ── Third pass: sandwich collapse ──
+    # If segment[i] sits between two segments sharing the SAME offset and
+    # the middle segment is < 800m, absorb it into the left neighbour.
+    # This eliminates "offset oscillation" patterns like +0.5 → +1.0 → +0.5.
+    _SANDWICH_THRESHOLD_M: float = 2600.0  # EPSG:3857 units (~2000m real at NYC lat)
+    sandwich_changed = True
+    while sandwich_changed:
+        sandwich_changed = False
+        for idx in range(1, len(merged) - 1):
+            left_c, left_o = merged[idx - 1]
+            mid_c, mid_o = merged[idx]
+            right_c, right_o = merged[idx + 1]
+            if abs(left_o - right_o) > 1e-9:
+                continue  # neighbours don't share offset
+            if abs(mid_o - left_o) < 1e-9:
+                continue  # already same offset
+            mid_len = (
+                sum(_point_dist(mid_c[i], mid_c[i + 1])
+                    for i in range(len(mid_c) - 1))
+                if len(mid_c) >= 2 else 0.0
+            )
+            if mid_len >= _SANDWICH_THRESHOLD_M:
+                continue
+            # Absorb into left, then merge right into left
+            merged[idx - 1] = (left_c + mid_c[1:] + right_c[1:], left_o)
+            merged.pop(idx + 1)
+            merged.pop(idx)
+            sandwich_changed = True
+            break
 
     return merged
 
@@ -2998,9 +3072,21 @@ def get_trunk_polylines() -> list[dict]:
 
         encoded: list[str] = []
         polyline_lane_offsets: list[float] = []
+        # Process each segment, collecting WGS84 coords for stitching.
+        wgs_segments: list[tuple[list[tuple[float, float]], float]] = []
         for ls, local_lane_offset in line_strings:
             coords_m = list(ls.coords)
             if len(coords_m) < 2:
+                continue
+
+            # Skip degenerate polylines with near-zero physical length.
+            # These are artefacts of corridor offset segmentation where
+            # a handful of vertices collapse to the same point.
+            total_m = sum(
+                _point_dist(coords_m[i], coords_m[i + 1])
+                for i in range(len(coords_m) - 1)
+            )
+            if total_m < 10.0:
                 continue
 
             try:
@@ -3017,10 +3103,36 @@ def get_trunk_polylines() -> list[dict]:
                         scale_factor=0.00030,
                         arc_points=16,
                     )
-                encoded.append(encode_polyline(coords_wgs))
-                polyline_lane_offsets.append(local_lane_offset)
+                wgs_segments.append((coords_wgs, local_lane_offset))
             except Exception:
                 continue
+
+        # ── Stitch consecutive segment endpoints ──
+        # After fillet, consecutive segments from the same raw trunk path
+        # may have drifted at the split point.  Snap them back together
+        # so the client renders a seamless polyline chain.
+        _STITCH_THRESHOLD_DEG = 0.003  # ~330m at NYC latitude
+        for i in range(1, len(wgs_segments)):
+            prev_coords, _ = wgs_segments[i - 1]
+            curr_coords, _ = wgs_segments[i]
+            if not prev_coords or not curr_coords:
+                continue
+            prev_end = prev_coords[-1]
+            curr_start = curr_coords[0]
+            dlat = abs(prev_end[0] - curr_start[0])
+            dlon = abs(prev_end[1] - curr_start[1])
+            if dlat < _STITCH_THRESHOLD_DEG and dlon < _STITCH_THRESHOLD_DEG:
+                # Average the two points and snap both to the midpoint
+                mid = (
+                    (prev_end[0] + curr_start[0]) / 2.0,
+                    (prev_end[1] + curr_start[1]) / 2.0,
+                )
+                prev_coords[-1] = mid
+                curr_coords[0] = mid
+
+        for coords_wgs, local_lane_offset in wgs_segments:
+            encoded.append(encode_polyline(coords_wgs))
+            polyline_lane_offsets.append(local_lane_offset)
 
         if encoded:
             result.append(

@@ -674,11 +674,11 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             let mode = representable.selectedMode
 
             // Default base opacities depending on dimmed state (active route selected)
+            let isDark = representable.isDarkMode
             var subwayOpacity: NSExpression = NSExpression(forConstantValue: dimmed ? 0.10 : 1.0)
             var subwayCasingOpacity: NSExpression =
-                NSExpression(forConstantValue: dimmed ? 0.05 : 0.45)
+                NSExpression(forConstantValue: dimmed ? 0.05 : (isDark ? 0.45 : 0.55))
             
-            let isDark = representable.isDarkMode
             var elevatedShadowOpacity: NSExpression = NSExpression(
                 forConstantValue: dimmed ? 0.02 : (isDark ? 0.20 : 0.12)
             )
@@ -740,7 +740,7 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 color: .constant(
                     isDark
                         ? UIColor(red: 0.75, green: 0.72, blue: 0.88, alpha: 0.18)
-                        : UIColor.white
+                        : UIColor(red: 0.70, green: 0.68, blue: 0.78, alpha: 0.25)
                 ),
                 cap: "butt", join: "round",
                 dashPattern: [3, 2],
@@ -785,7 +785,7 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 color: .constant(
                     isDark
                         ? UIColor(red: 0.78, green: 0.74, blue: 0.95, alpha: 0.28)
-                        : UIColor.white
+                        : UIColor(red: 0.82, green: 0.80, blue: 0.88, alpha: 0.35)
                 ),
                 cap: "round", join: "round",
                 applyLaneOffset: true,
@@ -837,7 +837,7 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 color: .constant(
                     isDark
                         ? UIColor(red: 0.78, green: 0.74, blue: 0.95, alpha: 0.32)
-                        : UIColor.white
+                        : UIColor(red: 0.82, green: 0.80, blue: 0.88, alpha: 0.35)
                 ),
                 cap: "round", join: "round",
                 applyLaneOffset: true,
@@ -1021,23 +1021,24 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 singleLayer.circleStrokeColor = NSExpression(
                     forConstantValue: isDark
                         ? UIColor(red: 0.85, green: 0.82, blue: 1.0, alpha: 0.50)
-                        : UIColor.white
+                        : UIColor(white: 0.25, alpha: 0.70)
                 )
                 singleLayer.circleStrokeWidth = MapLibreStyleConfig.stationDotStrokeWidth
                 singleLayer.predicate = NSPredicate(format: "isTransfer == NO")
                 singleLayer.minimumZoomLevel = 11
-                // Fade in smoothly from zoom 11
+                // Fade in smoothly from zoom 11 — reach full opacity by zoom 12
+                // for strong visibility on light basemaps.
                 singleLayer.circleOpacity = NSExpression(
                     forMLNInterpolating: .zoomLevelVariable,
                     curveType: .linear,
                     parameters: nil,
-                    stops: NSExpression(forConstantValue: [11: 0.0, 11.5: 0.3, 12: 0.6, 13: 1.0])
+                    stops: NSExpression(forConstantValue: [11: 0.0, 11.5: 0.5, 12: 0.85, 13: 1.0])
                 )
                 singleLayer.circleStrokeOpacity = NSExpression(
                     forMLNInterpolating: .zoomLevelVariable,
                     curveType: .linear,
                     parameters: nil,
-                    stops: NSExpression(forConstantValue: [11: 0.0, 11.5: 0.3, 12: 0.6, 13: 1.0])
+                    stops: NSExpression(forConstantValue: [11: 0.0, 11.5: 0.5, 12: 0.85, 13: 1.0])
                 )
                 style.addLayer(singleLayer)
 

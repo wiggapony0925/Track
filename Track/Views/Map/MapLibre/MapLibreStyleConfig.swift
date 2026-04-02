@@ -222,21 +222,22 @@ enum MapLibreStyleConfig {
     // translucent casings, with buttery exponential zoom scaling.
 
     /// Subway fill line width — bold and prominent at every zoom.
-    /// Wider than Apple Maps for better readability with dense NYC coverage.
+    /// Tuned to match MTA app visual weight on both light and dark basemaps.
+    /// Slightly wider than before at medium zooms (10–13) for better
+    /// readability on light OSM tiles where contrast is lower.
     /// Exponential base 1.6 gives a natural acceleration curve.
-    /// Includes stops from zoom 8 so lines remain visible at city-overview level.
     static let subwayFillWidthStops: [(zoom: Double, width: Double)] = [
-        (8,  0.8),
-        (9,  1.1),
-        (10, 1.6),
-        (11, 2.0),
-        (12, 2.6),
-        (13, 3.2),
-        (14, 4.0),
-        (15, 4.8),
-        (16, 5.6),
-        (17, 6.5),
-        (18, 7.5),
+        (8,  1.0),
+        (9,  1.3),
+        (10, 1.8),
+        (11, 2.4),
+        (12, 3.0),
+        (13, 3.6),
+        (14, 4.2),
+        (15, 5.0),
+        (16, 5.8),
+        (17, 6.8),
+        (18, 7.8),
     ]
 
     static let subwayFillWidth = zoomInterpolate(
@@ -245,14 +246,14 @@ enum MapLibreStyleConfig {
     )
 
     /// Subway casing width — soft border that gives lines a floating-above-map feel.
-    /// The casing-to-fill ratio is ~1.6×, creating a subtle halo rather than a harsh edge.
-    /// Extended to zoom 8 to match fill width coverage.
+    /// The casing-to-fill ratio is ~1.6×, creating a subtle halo.
+    /// Slightly wider to complement the increased fill widths.
     static let subwayCasingWidth = zoomInterpolate(
         base: subwayLineInterpolationBase,
         stops: [
-            8: 1.5, 9: 2.0, 10: 3.0, 11: 3.6,
-            12: 4.6, 13: 5.6, 14: 7.0, 15: 8.0,
-            16: 9.5, 17: 11.0, 18: 13.0
+            8: 1.8, 9: 2.4, 10: 3.4, 11: 4.2,
+            12: 5.2, 13: 6.2, 14: 7.2, 15: 8.4,
+            16: 10.0, 17: 11.5, 18: 13.5
         ]
     )
 
@@ -329,16 +330,16 @@ enum MapLibreStyleConfig {
     )
 
     /// Station circle dot radius — single-line stops, visible from zoom 11.
-    /// Scaled to not be dwarfed by the now-thicker subway fill lines.
+    /// Scaled to match MTA app station dot prominence on both light and dark basemaps.
     static let stationDotRadius = zoomInterpolate(
         base: 1.4,
-        stops: [11: 1.0, 12: 2.0, 13: 2.8, 14: 3.6, 15: 4.5, 16: 6.0, 17: 7.5, 18: 9.0]
+        stops: [11: 2.0, 12: 3.0, 13: 3.8, 14: 4.5, 15: 5.5, 16: 7.0, 17: 8.5, 18: 10.0]
     )
 
-    /// Station dot stroke width — thin crisp border.
+    /// Station dot stroke width — bold enough to be visible on light basemaps.
     static let stationDotStrokeWidth = zoomInterpolate(
         base: 1.3,
-        stops: [11: 0.3, 12: 0.6, 13: 0.8, 15: 1.1, 17: 1.6, 18: 2.0]
+        stops: [11: 0.8, 12: 1.0, 13: 1.2, 15: 1.5, 17: 2.0, 18: 2.4]
     )
 
     /// Transfer pill icon size — zoom-interpolated scale factor applied to
@@ -348,9 +349,9 @@ enum MapLibreStyleConfig {
     static let transferPillIconSize = zoomInterpolate(
         base: 1.0,
         stops: [
-            10: 0.08, 11: 0.13, 12: 0.18,
-            13: 0.22, 14: 0.27, 15: 0.33,
-            16: 0.43, 17: 0.53, 18: 0.67
+            10: 0.12, 11: 0.18, 12: 0.25,
+            13: 0.32, 14: 0.38, 15: 0.45,
+            16: 0.55, 17: 0.65, 18: 0.80
         ]
     )
 
@@ -364,8 +365,8 @@ enum MapLibreStyleConfig {
 
     /// Base pill height in points (short axis of the capsule).
     static let transferPillHeight: CGFloat = 10
-    /// Border thickness for pill images.
-    static let transferPillStroke: CGFloat = 1.2
+    /// Border thickness for pill images — bolder for light-mode visibility.
+    static let transferPillStroke: CGFloat = 1.8
     /// Pill widths keyed by colorGroupCount (number of distinct trunk-color groups).
     static let transferPillWidths: [Int: CGFloat] = [
         2: 18,
@@ -856,10 +857,10 @@ enum MapLibreStyleConfig {
             path.fill()
             cgCtx.restoreGState()
 
-            // Refined stroke — softer than before
+            // Refined stroke — high-contrast on light mode for basemap visibility
             let stroke: UIColor = isDark
                 ? UIColor(white: 0.72, alpha: 0.85)
-                : UIColor(white: 0.25, alpha: 0.55)
+                : UIColor(white: 0.15, alpha: 0.70)
             stroke.setStroke()
             path.lineWidth = sw
             path.stroke()
