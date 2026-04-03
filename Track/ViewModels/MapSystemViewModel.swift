@@ -1280,14 +1280,22 @@ final class MapSystemViewModel {
 
         // Server polylines pass through station coordinates.
         // After simplification, high-density arc fillets smooth all bends.
+        /// Returns the lane offset for a specific branch within a trunk group.
+        ///
+        /// **Always returns the trunk-level global offset** so every segment
+        /// of the same colour trunk renders at one consistent pixel position.
+        /// Per-segment offsets (`polylineLaneOffsets`) cause MapLibre's
+        /// `lineOffset` to shift segments differently, creating visible
+        /// "branching" artefacts at corridor transitions — e.g. a yellow
+        /// trunk appearing as two parallel lines, or a red trunk showing
+        /// two segments connecting at an unnatural junction.  Using the
+        /// trunk average eliminates these artefacts while still keeping
+        /// different-colour trunks properly separated in shared corridors.
         func localLaneOffset(
             for groupResult: ColorGroupResult,
             branchIndex: Int
         ) -> CGFloat {
-            guard branchIndex < groupResult.polylineLaneOffsets.count else {
-                return groupResult.laneOffset
-            }
-            return groupResult.polylineLaneOffsets[branchIndex]
+            return groupResult.laneOffset
         }
 
         func isTransitionRampOffset(_ value: CGFloat) -> Bool {
