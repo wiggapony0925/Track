@@ -1453,6 +1453,35 @@ struct RouteDetailSheet: View {
         }
         #endif
 
+        // ── Nearest-stop anchor ─────────────────────────────────────────
+        // Bus schedules return departures from every stop on the route.  When
+        // live arrivals are present we know which stop the user is at, so we
+        // discard schedule chips from any other stop.  Without this guard,
+        // upstream stops (e.g. "130 PL/BERGEN RD") produce phantom chips that
+        // appear earlier than the user's real next bus.
+        // When *no* live arrivals exist there is no anchor and all schedule
+        // chips pass through (so the departure board still fills for untracked
+        // service).
+        let anchorStopName: String? =
+            baseChips.first(where: { $0.isRealTime })?.stopName
+            ?? baseChips.first?.stopName
+
+        func schedItemMatchesAnchor(_ itemStop: String) -> Bool {
+            guard let anchor = anchorStopName else { return true }
+            let a = anchor.lowercased()
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let b = itemStop.lowercased()
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            // Normalize common punctuation differences ("130 ST /135 AV"
+            // vs "130 ST/135 AV") before comparing.
+            let aNorm = a.replacingOccurrences(of: " /", with: "/")
+                         .replacingOccurrences(of: "/ ", with: "/")
+            let bNorm = b.replacingOccurrences(of: " /", with: "/")
+                         .replacingOccurrences(of: "/ ", with: "/")
+            return aNorm == bNorm
+                || aNorm.contains(bNorm) || bNorm.contains(aNorm)
+        }
+
         var schedChips: [NearbyTransitResponse] = []
         for item in schedItems {
             let ts = Int(item.departureDate.timeIntervalSince1970)
@@ -1460,7 +1489,9 @@ struct RouteDetailSheet: View {
             // Don't filter by timestamp exact match too aggressively, just trip IDs.
             // But if we have no trip ID, timestamp collision check is useful.
             if existingTimestamps.contains(ts) { continue }
-            
+            // Drop schedule chips from a different stop than the user's nearest stop.
+            if !schedItemMatchesAnchor(item.stopName) { continue }
+
             schedChips.append(NearbyTransitResponse(
                 routeId: group.routeId,
                 stopName: item.stopName,

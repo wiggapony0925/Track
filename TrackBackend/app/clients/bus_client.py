@@ -1362,10 +1362,11 @@ async def get_nearby_stops(
 ) -> list[BusStop]:
     """Fetch bus stops near a GPS coordinate using OBA ``stops-for-location``.
 
-    *radius_m* is the search radius in meters.  It is converted to a
-    degree-based bounding box (``latSpan`` / ``lonSpan``) for the OBA
-    API.  One degree of latitude ≈ 111 km; one degree of longitude ≈
-    85 km at NYC's latitude.
+    *radius_m* is the search radius in meters, passed directly to the OBA
+    ``radius`` parameter.  This is more accurate than the bounding-box
+    ``latSpan``/``lonSpan`` approach: OBA returns a true circular set of
+    stops within *radius_m* meters, whereas the bounding-box query
+    under-selects stops near the corners of the box.
 
     Includes retry logic and a 60-second TTL cache to avoid rate limiting.
     """
@@ -1386,21 +1387,13 @@ async def get_nearby_stops(
     if eps is None:
         return []
 
-    # Convert meters → degrees.
-    from app.providers import get_provider as _get_provider
-
-    _prov = _get_provider()
-
-    lat_span = max(0.005, effective_radius / _prov.meters_per_deg_lat)
-    lon_span = max(0.005, effective_radius / _prov.meters_per_deg_lon)
-
     url = settings.urls.bus_oba_base + eps.stops_near_location
     params = {
         "key": settings.api_keys.mta_bus_key,
         "lat": str(lat),
         "lon": str(lon),
-        "latSpan": f"{lat_span:.6f}",
-        "lonSpan": f"{lon_span:.6f}",
+        "radius": str(effective_radius),
+        "maxCount": "100",
     }
 
     # Retry logic driven by settings
