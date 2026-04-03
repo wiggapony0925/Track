@@ -16,12 +16,70 @@ from app.clients.mta_client import fetch_json, fetch_protobuf
 from app.config import get_feed_url, get_settings
 from app.ml.recency_model import observe_siri_delays_batch, observe_trip_updates_batch
 from app.models import ElevatorStatus, TrackArrival, TransitAlert
+from app.services.mapping.shape_utils import haversine_km as _haversine_km
 from app.services.transit.station_lookup import get_stop_info, get_stop_name
 from app.utils.geo_utils import minutes_until as _minutes_until
 from app.utils.logger import TrackLogger
 
 # Strong references to fire-and-forget tasks so the GC won't collect them.
 _background_tasks: set[asyncio.Task[Any]] = set()
+
+# ---------------------------------------------------------------------------
+# Fast-travel detection — mirrors ext/bestpractices/fast_travel.go
+# ---------------------------------------------------------------------------
+
+# Maximum plausible speeds (km/h) per GTFS route_type.  Arrivals implying
+# higher speeds are phantom predictions and should be discarded.
+_MAX_SPEEDS_KMH: dict[int, float] = {
+    0: 200.0,   # tram
+    1: 200.0,   # metro / subway
+    2: 500.0,   # rail
+    3: 200.0,   # bus
+    4: 100.0,   # ferry
+    5: 100.0,   # cable car
+    6: 100.0,   # gondola
+    7: 100.0,   # funicular
+    11: 100.0,  # trolleybus
+    12: 100.0,  # monorail
+}
+_DEFAULT_MAX_SPEED_KMH = 200.0   # subway / metro default
+_FAST_TRAVEL_MIN_SECS = 30       # ignore segments < 30 s (noise guard)
+
+
+def _is_fast_travel(
+    lat1: float,
+    lon1: float,
+    t1: int,
+    lat2: float,
+    lon2: float,
+    t2: int,
+    max_speed_kmh: float = _DEFAULT_MAX_SPEED_KMH,
+) -> bool:
+    """Return True if travel between two stops implies an impossible speed.
+
+    Mirrors ``StopTimeFastTravelCheck.Validate`` from transitland-lib's
+    ``ext/bestpractices/fast_travel.go``.  Only triggers when the
+    inter-stop time exceeds :data:`_FAST_TRAVEL_MIN_SECS` to exclude
+    precision noise on very short segments.
+
+    Args:
+        lat1, lon1:    Coordinates of the first (earlier) stop.
+        t1:            Predicted Unix arrival timestamp at the first stop.
+        lat2, lon2:    Coordinates of the second (later) stop.
+        t2:            Predicted Unix arrival timestamp at the second stop.
+        max_speed_kmh: Speed ceiling in km/h.
+
+    Returns:
+        True if the implied travel speed exceeds *max_speed_kmh*.
+    """
+    dt = t2 - t1
+    if dt <= _FAST_TRAVEL_MIN_SECS:
+        return False
+    dist_km = _haversine_km(lat1, lon1, lat2, lon2)
+    if dist_km == 0.0:
+        return False
+    speed_kmh = dist_km / (dt / 3600.0)
+    return speed_kmh > max_speed_kmh
 
 # ---------------------------------------------------------------------------
 # Parsed-arrivals cache — avoid re-parsing protobuf entities on cache hits.
@@ -36,9 +94,9 @@ _background_tasks: set[asyncio.Task[Any]] = set()
 # With this cache, the second+ call within the TTL returns the pre-parsed
 # list in <1 µs — zero thread pool, zero CPU, zero GIL pressure.
 # ---------------------------------------------------------------------------
-_PARSED_CACHE: dict[str, tuple[float, list, list, int]] = (
+_PARSED_CACHE: dict[str, tuple[float, list, list, int, dict]] = (
     {}
-)  # url → (ts, arrivals, siri_obs, entity_count)
+)  # url → (ts, arrivals, siri_obs, entity_count, trip_index)
 _PARSED_CACHE_TTL = 120.0  # 2 min — outlive request interval so subway hits warm cache
 
 
@@ -57,6 +115,17 @@ def _parse_feed_sync(
     """
     feed = gtfs_realtime_pb2.FeedMessage()
     feed.ParseFromString(raw)
+
+    # Header timestamp staleness guard — warn if the feed header is more than
+    # 5 minutes behind wall clock.  This catches partial MTA RT outages where
+    # the server returns a cached (stale) protobuf with no HTTP error.
+    header_ts = feed.header.timestamp
+    if header_ts > 0 and (_time.time() - header_ts) > 300:
+        TrackLogger.warning(
+            f"[RT] {line_id} feed is stale: header.timestamp is "
+            f"{int(_time.time() - header_ts)}s old",
+            tag="RT",
+        )
 
     arrivals: list[TrackArrival] = []
     siri_obs: list[tuple[str, str, float]] = []
@@ -162,7 +231,7 @@ async def get_arrivals_for_line(
     if not force_refresh:
         cached = _PARSED_CACHE.get(url)
         if cached is not None:
-            ts, cached_arrivals, _cached_siri_obs, _cached_entity_count = cached
+            ts, cached_arrivals, _cached_siri_obs, _cached_entity_count, _trip_idx = cached
             if _time.time() - ts < _PARSED_CACHE_TTL:
                 TrackLogger.cache(f"PARSED HIT {line_id}")
                 return list(cached_arrivals)  # shallow copy — caller may sort/filter
@@ -179,8 +248,54 @@ async def get_arrivals_for_line(
 
     arrivals.sort(key=lambda a: a.minutes_away)
 
+    # Build trip_id → arrivals index for O(1) live-activity lookups
+    trip_index: dict[str, list[TrackArrival]] = {}
+    for _a in arrivals:
+        if _a.trip_id:
+            trip_index.setdefault(_a.trip_id, []).append(_a)
+
+    # ── Fast-travel filter ───────────────────────────────────────────────
+    # Drop trips whose predicted arrival sequence implies physically
+    # impossible speeds (e.g. ghost arrivals from MTA feed glitches).
+    # Mirrors transitland-lib ext/bestpractices/fast_travel.go: default
+    # ceiling is 200 km/h for subway, with a 30-second minimum window.
+    bad_trips: set[str] = set()
+    for trip_id, trip_arrivals in trip_index.items():
+        prev = None
+        for arr in trip_arrivals:
+            if (
+                prev is not None
+                and arr.stop_lat is not None
+                and arr.stop_lon is not None
+                and prev.stop_lat is not None
+                and prev.stop_lon is not None
+                and arr.arrival_ts
+                and prev.arrival_ts
+                and _is_fast_travel(
+                    prev.stop_lat,
+                    prev.stop_lon,
+                    prev.arrival_ts,
+                    arr.stop_lat,
+                    arr.stop_lon,
+                    arr.arrival_ts,
+                )
+            ):
+                TrackLogger.warning(
+                    f"[RT] Fast-travel on trip {trip_id}: "
+                    f"{prev.station}→{arr.station} — dropping",
+                    tag="RT",
+                )
+                bad_trips.add(trip_id)
+                break
+            prev = arr
+
+    if bad_trips:
+        arrivals = [a for a in arrivals if a.trip_id not in bad_trips]
+        for _bad in bad_trips:
+            trip_index.pop(_bad, None)
+
     # Cache the parsed result so subsequent calls skip all CPU work
-    _PARSED_CACHE[url] = (_time.time(), arrivals, siri_obs, entity_count)
+    _PARSED_CACHE[url] = (_time.time(), arrivals, siri_obs, entity_count, trip_index)
 
     TrackLogger.subway(
         f"Feed {line_id}: {len(arrivals)} arrivals from {entity_count} entities"

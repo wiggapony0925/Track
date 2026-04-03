@@ -561,12 +561,21 @@ class TestNearbyGroupedEndpoint:
 
     @patch("app.routers.nearby._compute_and_cache_grouped", new_callable=AsyncMock)
     def test_grouped_uses_neighbor_cell_cache_on_gps_jitter(self, mock_compute):
+        import json as _json
+
         cached_group = _cached_group("A")
         cached_key = nearby_router._nearby_cache_key(40.7000, -73.9000, 1000, None)
         jitter_key = nearby_router._nearby_cache_key(40.70009, -73.9000, 1000, None)
         assert jitter_key != cached_key
 
-        nearby_router._nearby_resp_cache[cached_key] = (0.0, [cached_group])
+        _json_bytes = _json.dumps(
+            [cached_group.model_dump()], default=str
+        ).encode()
+        nearby_router._nearby_resp_cache[cached_key] = (
+            0.0,
+            [cached_group],
+            _json_bytes,
+        )
 
         with patch("time.time", return_value=5.0):
             response = client.get(
@@ -580,9 +589,18 @@ class TestNearbyGroupedEndpoint:
 
     @patch("app.routers.nearby._compute_and_cache_grouped", new_callable=AsyncMock)
     def test_grouped_serves_cached_response_when_refresh_errors(self, mock_compute):
+        import json as _json
+
         cached_group = _cached_group("L")
         cache_key = nearby_router._nearby_cache_key(40.7000, -73.9000, 1000, None)
-        nearby_router._nearby_resp_cache[cache_key] = (25.0, [cached_group])
+        _json_bytes = _json.dumps(
+            [cached_group.model_dump()], default=str
+        ).encode()
+        nearby_router._nearby_resp_cache[cache_key] = (
+            25.0,
+            [cached_group],
+            _json_bytes,
+        )
         mock_compute.side_effect = RuntimeError("upstream unavailable")
 
         with patch("time.time", return_value=80.0):

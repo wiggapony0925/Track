@@ -19,6 +19,9 @@ from app.services.mapping.shape_utils import (
     pack_coords as _pack_coords,
 )
 from app.services.mapping.shape_utils import (
+    shape_passes_quality as _shape_passes_quality,
+)
+from app.services.mapping.shape_utils import (
     unpack_coords as _unpack_coords,
 )
 from app.services.mapping.shape_utils import (
@@ -127,6 +130,11 @@ def _parse_shapes(shapes_path: Path) -> dict[str, bytes]:
     result: dict[str, bytes] = {}
     for shape_id, pts in raw.items():
         pts.sort(key=lambda p: p.sequence)
+        if not _shape_passes_quality(shape_id, pts):
+            TrackLogger.warning(
+                f"[DATA] Skipping corrupt shape {shape_id}", tag="DATA"
+            )
+            continue
         result[shape_id] = _pack_coords(pts)
 
     return result

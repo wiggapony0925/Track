@@ -84,11 +84,13 @@ class TestConfigEndpoint:
 class TestSubwayShapesAll:
     """GET /subway/shapes/all — full system map overlay."""
 
+    @patch("app.routers.subway._save_shapes_disk_cache")
+    @patch("app.routers.subway._load_shapes_disk_cache", return_value=None)
     @patch("app.routers.subway.get_all_subway_lines", return_value=["A", "L"])
     @patch("app.services.mapping.subway_shapes._load_route_shapes")
     @patch("app.services.mapping.subway_shapes._load_shapes")
     def test_shapes_all_returns_overlays(
-        self, mock_shapes, mock_route_shapes, mock_lines
+        self, mock_shapes, mock_route_shapes, mock_lines, mock_disk_load, mock_disk_save
     ):
         import struct
 
@@ -437,7 +439,7 @@ class TestLIRRShape:
 class TestLIRRArrivals:
     """GET /lirr — upcoming LIRR arrivals."""
 
-    @patch("app.routers.lirr.fetch_rail_arrivals", new_callable=AsyncMock)
+    @patch("app.routers.lirr.fetch_arrivals", new_callable=AsyncMock)
     def test_arrivals_returns_fresh(self, mock_arrivals):
         import time
 
@@ -459,7 +461,7 @@ class TestLIRRArrivals:
         assert len(data) == 1
         assert data[0]["route_id"] == "5"
 
-    @patch("app.routers.lirr.fetch_rail_arrivals", new_callable=AsyncMock)
+    @patch("app.routers._commuter_rail.fetch_rail_arrivals", new_callable=AsyncMock)
     def test_arrivals_graceful_fallback_on_error(self, mock_arrivals):
         mock_arrivals.side_effect = Exception("LIRR feed timeout")
         response = client.get("/lirr")
@@ -533,7 +535,7 @@ class TestMNRShape:
 class TestMNRArrivals:
     """GET /mnr — upcoming Metro-North arrivals."""
 
-    @patch("app.routers.mnr.fetch_rail_arrivals", new_callable=AsyncMock)
+    @patch("app.routers.mnr.fetch_arrivals", new_callable=AsyncMock)
     def test_arrivals_returns_fresh(self, mock_arrivals):
         import time
 
@@ -555,7 +557,7 @@ class TestMNRArrivals:
         assert len(data) == 1
         assert data[0]["destination"] == "Poughkeepsie"
 
-    @patch("app.routers.mnr.fetch_rail_arrivals", new_callable=AsyncMock)
+    @patch("app.routers._commuter_rail.fetch_rail_arrivals", new_callable=AsyncMock)
     def test_arrivals_graceful_fallback_on_error(self, mock_arrivals):
         mock_arrivals.side_effect = Exception("MNR feed timeout")
         response = client.get("/mnr")

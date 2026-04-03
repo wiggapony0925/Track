@@ -87,7 +87,7 @@ _shapes_all_building = False  # True while pipeline is running
 # Bump this whenever corridor_pipeline.py changes affect polyline output.
 # The persistent Render disk survives deploys, so without a version tag
 # the stale cached pipeline result would be served forever.
-_SHAPES_DISK_CACHE_VERSION = 2  # v2: coarser quantization + sandwich collapse
+_SHAPES_DISK_CACHE_VERSION = 3  # v3: standard precision-5 polyline encoding
 _SHAPES_DISK_CACHE_PATH = (
     _Path(__file__).resolve().parent.parent
     / "data"
@@ -97,6 +97,7 @@ _SHAPES_DISK_CACHE_PATH = (
 for _old in (
     _Path(__file__).resolve().parent.parent / "data" / "_cache_shapes_all.json",
     _Path(__file__).resolve().parent.parent / "data" / "_cache_shapes_all_v1.json",
+    _Path(__file__).resolve().parent.parent / "data" / "_cache_shapes_all_v2.json",
 ):
     if _old.exists():
         _old.unlink(missing_ok=True)

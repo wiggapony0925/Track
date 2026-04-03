@@ -34,7 +34,7 @@ def decode_polyline(encoded: str) -> list[tuple[float, float]]:
                 lng += delta
             else:
                 lat += delta
-        coords.append((lat / 1e6, lng / 1e6))
+        coords.append((lat / 1e5, lng / 1e5))
     return coords
 
 
@@ -52,11 +52,11 @@ def encode_polyline(coords: list[tuple[float, float]]) -> str:
     result: list[str] = []
     prev_lat, prev_lng = 0, 0
     for lat, lng in coords:
-        lat_e6 = round(lat * 1e6)
-        lng_e6 = round(lng * 1e6)
-        _encode_value(lat_e6 - prev_lat, result)
-        _encode_value(lng_e6 - prev_lng, result)
-        prev_lat, prev_lng = lat_e6, lng_e6
+        lat_e5 = round(lat * 1e5)
+        lng_e5 = round(lng * 1e5)
+        _encode_value(lat_e5 - prev_lat, result)
+        _encode_value(lng_e5 - prev_lng, result)
+        prev_lat, prev_lng = lat_e5, lng_e5
     return "".join(result)
 
 

@@ -25,16 +25,16 @@ def _clear_caches():
 def _pretend_warmed_up():
     """Mark the backend as warmed-up for tests.
 
-    The /nearby/grouped endpoint now returns 503 when _warmup_complete
+    The /nearby/grouped endpoint returns 503 when _app_state.warmup_complete
     is False. In tests, feeds aren't loaded; setting this flag lets
     endpoint tests run against mocked data without hitting the gate.
     """
     import app.main as _main
 
-    orig = _main._warmup_complete
-    _main._warmup_complete = True
+    orig = _main._app_state.warmup_complete
+    _main._app_state.warmup_complete = True
     yield
-    _main._warmup_complete = orig
+    _main._app_state.warmup_complete = orig
 
 
 def _do_clear():
@@ -51,5 +51,27 @@ def _do_clear():
         from app.clients.bus_client import clear_bus_cache
 
         clear_bus_cache()
+    except Exception:
+        pass
+
+    # Reset the corridor pipeline result cache so tests that call
+    # apply_topological_offsets() with small synthetic overlays get a
+    # fresh result instead of the cached full-subway-system output.
+    try:
+        import app.services.mapping.corridor_pipeline as _cp
+
+        _cp._pipeline_result_cache = None
+    except Exception:
+        pass
+
+    # Reset the subway shapes/all in-memory cache so a test that injects
+    # mock data (e.g. TestSubwayShapesAll.test_shapes_all_returns_overlays)
+    # does not pollute subsequent tests that expect real pipeline data.
+    try:
+        import app.routers.subway as _subway
+
+        _subway._shapes_all_cache = None
+        _subway._shapes_all_json_bytes = None
+        _subway._shapes_all_building = False
     except Exception:
         pass

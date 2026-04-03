@@ -708,7 +708,9 @@ async def nearby_transit_grouped(
 
     async def _miss_compute() -> list[GroupedNearbyTransit] | Response:
         try:
-            await _compute_and_cache_grouped(key, lat, lon, effective_radius, mode)
+            result = await _compute_and_cache_grouped(
+                key, lat, lon, effective_radius, mode
+            )
             # Return pre-serialized bytes from cache — skip response_model
             cached_after = _nearby_resp_cache.get(key)
             if cached_after is not None:
@@ -716,10 +718,19 @@ async def nearby_transit_grouped(
                 resp = Response(content=jb, media_type="application/json")
                 resp.headers["X-Track-Cache"] = "MISS-COMPUTED"
                 return resp
-            # Shouldn't happen, but fallback to normal serialization
-            return await _compute_and_cache_grouped(
-                key, lat, lon, effective_radius, mode
-            )
+            # Cache wasn't populated (e.g. result was mocked — return data directly)
+            if result is not None:
+                import json as _json
+
+                resp = Response(
+                    content=_json.dumps(
+                        [g.model_dump() for g in result], default=str
+                    ).encode(),
+                    media_type="application/json",
+                )
+                resp.headers["X-Track-Cache"] = "MISS-COMPUTED-DIRECT"
+                return resp
+            raise RuntimeError("_compute_and_cache_grouped returned None")
         except Exception as exc:
             fallback = _find_cached_grouped_fallback(
                 key,

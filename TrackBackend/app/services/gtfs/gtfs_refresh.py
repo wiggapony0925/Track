@@ -1,7 +1,7 @@
 """Automatic GTFS static data refresh.  Detects when the MTA has published
 updated GTFS feeds by checking HTTP Last-Modified headers, then:
 
-1. Downloads new .zip files from web.mta.info
+1. Downloads new .zip files from rrgtfsfeeds.s3.amazonaws.com
 2. Extracts into app/data/
 3. Rebuilds transit_schedule.db (if bus/schedule feeds changed)
 4. Uploads changed archives to Supabase Storage
@@ -14,7 +14,10 @@ Can be run:
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import csv
+import hashlib
 import io
 import os
 import shutil
@@ -39,56 +42,56 @@ _META_DIR = _DATA_DIR / ".gtfs_meta"
 GTFS_FEEDS: dict[str, dict[str, Any]] = {
     # ---- Feeds that affect shapes / routes / stops (uploaded to Supabase) ----
     "subway": {
-        "url": "http://web.mta.info/developers/data/nyct/subway/google_transit.zip",
+        "url": "https://rrgtfsfeeds.s3.amazonaws.com/gtfs_subway.zip",
         "extract_to": _DATA_DIR / "subway" / "supplemented_GTFS",
         "supabase_archives": ["subway_core", "subway_routes", "subway_supplemented"],
         "rebuilds_db": True,
     },
     "lirr": {
-        "url": "http://web.mta.info/developers/data/lirr/google_transit.zip",
+        "url": "https://rrgtfsfeeds.s3.amazonaws.com/gtfslirr.zip",
         "extract_to": _DATA_DIR / "lirr" / "gtfslirr",
         "supabase_archives": ["lirr"],
         "rebuilds_db": True,
     },
     "metro_north": {
-        "url": "http://web.mta.info/developers/data/mnr/google_transit.zip",
+        "url": "https://rrgtfsfeeds.s3.amazonaws.com/gtfsmnr.zip",
         "extract_to": _DATA_DIR / "metro_north" / "gtfsmnr",
         "supabase_archives": ["mnr"],
         "rebuilds_db": True,
     },
     # ---- Bus feeds (only used for transit_schedule.db, not Supabase) ----
     "bus_bronx": {
-        "url": "http://web.mta.info/developers/data/nyct/bus/google_transit_bronx.zip",
+        "url": "https://rrgtfsfeeds.s3.amazonaws.com/gtfs_bx.zip",
         "extract_to": _DATA_DIR / "bus" / "Bronx",
         "supabase_archives": [],
         "rebuilds_db": True,
     },
     "bus_brooklyn": {
-        "url": "http://web.mta.info/developers/data/nyct/bus/google_transit_brooklyn.zip",
+        "url": "https://rrgtfsfeeds.s3.amazonaws.com/gtfs_b.zip",
         "extract_to": _DATA_DIR / "bus" / "Brooklyn",
         "supabase_archives": [],
         "rebuilds_db": True,
     },
     "bus_manhattan": {
-        "url": "http://web.mta.info/developers/data/nyct/bus/google_transit_manhattan.zip",
+        "url": "https://rrgtfsfeeds.s3.amazonaws.com/gtfs_m.zip",
         "extract_to": _DATA_DIR / "bus" / "Manhattan",
         "supabase_archives": [],
         "rebuilds_db": True,
     },
     "bus_queens": {
-        "url": "http://web.mta.info/developers/data/nyct/bus/google_transit_queens.zip",
+        "url": "https://rrgtfsfeeds.s3.amazonaws.com/gtfs_q.zip",
         "extract_to": _DATA_DIR / "bus" / "Queens",
         "supabase_archives": [],
         "rebuilds_db": True,
     },
     "bus_staten_island": {
-        "url": "http://web.mta.info/developers/data/nyct/bus/google_transit_staten_island.zip",
+        "url": "https://rrgtfsfeeds.s3.amazonaws.com/gtfs_si.zip",
         "extract_to": _DATA_DIR / "bus" / "Staten Island",
         "supabase_archives": [],
         "rebuilds_db": True,
     },
     "bus_mta": {
-        "url": "http://web.mta.info/developers/data/busco/google_transit.zip",
+        "url": "https://rrgtfsfeeds.s3.amazonaws.com/gtfs_busco.zip",
         "extract_to": _DATA_DIR / "MTA Bus Company",
         "supabase_archives": [],
         "rebuilds_db": True,
@@ -119,6 +122,27 @@ def _read_last_modified(feed_name: str) -> str | None:
 def _write_last_modified(feed_name: str, value: str) -> None:
     _META_DIR.mkdir(parents=True, exist_ok=True)
     _last_modified_path(feed_name).write_text(value)
+
+
+# ---------------------------------------------------------------------------
+# SHA1 tracking — skip re-extract if file content is unchanged
+# ---------------------------------------------------------------------------
+
+
+def _sha1_path(feed_name: str) -> Path:
+    return _META_DIR / f"{feed_name}.sha1"
+
+
+def _read_sha1(feed_name: str) -> str | None:
+    p = _sha1_path(feed_name)
+    if p.exists():
+        return p.read_text().strip()
+    return None
+
+
+def _write_sha1(feed_name: str, value: str) -> None:
+    _META_DIR.mkdir(parents=True, exist_ok=True)
+    _sha1_path(feed_name).write_text(value)
 
 
 # ---------------------------------------------------------------------------
@@ -178,9 +202,22 @@ def _download_feed(client: httpx.Client, feed_name: str) -> bool:
         elapsed = time.monotonic() - t0
         size_mb = len(resp.content) / (1024 * 1024)
 
+        # SHA1 dedup — skip re-extraction when content is byte-for-byte
+        # identical to the last successful download.  S3 can serve unchanged
+        # files with a fresh Last-Modified timestamp when bucket ACLs reset.
+        content_sha1 = hashlib.sha1(resp.content).hexdigest()
+        if content_sha1 == _read_sha1(feed_name):
+            TrackLogger.info(
+                f"[GTFS] {feed_name}: SHA1 unchanged — skipping extraction",
+                tag="GTFS",
+            )
+            return True
+
         dest.mkdir(parents=True, exist_ok=True)
         with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
             zf.extractall(dest)
+
+        _write_sha1(feed_name, content_sha1)
 
         TrackLogger.info(
             f"[GTFS] {feed_name}: {size_mb:.1f} MB downloaded + extracted in {elapsed:.1f}s",
@@ -322,6 +359,11 @@ def _rebuild_schedule_db() -> bool:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_stop_times_arrival ON stop_times(arrival_time)"
         )
+        # Composite index for the "departures from stop X after time T" hot path
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_stop_times_stop_dept "
+            "ON stop_times(stop_id, departure_time)"
+        )
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_trips_service ON trips(service_id)"
         )
@@ -336,6 +378,23 @@ def _rebuild_schedule_db() -> bool:
 
         # Atomic swap
         shutil.move(str(db_tmp), str(db_path))
+
+        # Enable WAL mode on the swapped-in database so concurrent readers
+        # and the next rebuild cycle do not block each other.
+        with sqlite3.connect(db_path) as wal_conn:
+            wal_conn.execute("PRAGMA journal_mode=WAL")
+            wal_conn.execute("PRAGMA synchronous=NORMAL")
+
+        # Log the feed date range and warn if the schedule has expired.
+        _compute_service_window(db_path)
+
+        # Invalidate the lazy-loaded ServiceCalendar so rt_health.py picks
+        # up the new calendar data on its next call.
+        with contextlib.suppress(Exception):
+            from app.services.gtfs.rt_health import (
+                _invalidate_service_calendar,
+            )
+            _invalidate_service_calendar()
 
         elapsed = time.monotonic() - t0
         size_mb = db_path.stat().st_size / (1024 * 1024)
@@ -353,6 +412,65 @@ def _rebuild_schedule_db() -> bool:
         if db_tmp.exists():
             db_tmp.unlink(missing_ok=True)
         return False
+
+
+def _compute_service_window(db_path: Path) -> None:
+    """Log the valid date range of the freshly rebuilt GTFS schedule.
+
+    Reads ``start_date``/``end_date`` from the ``calendar`` table and
+    warns when the data has already expired or starts in the future.
+    Mirrors the ``FeedVersionServiceWindowBuilder`` concept from
+    transitland-lib's ``stats/fvsw.go``.
+
+    Args:
+        db_path: Absolute path to the newly swapped-in transit_schedule.db.
+    """
+    try:
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        row = conn.execute(
+            "SELECT MIN(start_date) AS earliest, MAX(end_date) AS latest "
+            "FROM calendar"
+        ).fetchone()
+        conn.close()
+    except Exception as exc:  # pragma: no cover
+        TrackLogger.warning(
+            f"[GTFS] Could not compute service window: {exc}", tag="GTFS"
+        )
+        return
+
+    if row is None or row[0] is None:
+        return
+
+    earliest_str, latest_str = str(row[0]).replace("-", ""), str(row[1]).replace("-", "")
+    try:
+        from datetime import date
+
+        today = date.today()
+        earliest = date(int(earliest_str[:4]), int(earliest_str[4:6]), int(earliest_str[6:]))
+        latest = date(int(latest_str[:4]), int(latest_str[4:6]), int(latest_str[6:]))
+
+        if latest < today:
+            TrackLogger.warning(
+                f"[GTFS] Schedule EXPIRED — valid {earliest} to {latest} "
+                f"(today is {today})",
+                tag="GTFS",
+            )
+        elif earliest > today:
+            TrackLogger.warning(
+                f"[GTFS] Schedule starts in future — valid {earliest} to "
+                f"{latest} (today is {today})",
+                tag="GTFS",
+            )
+        else:
+            TrackLogger.info(
+                f"[GTFS] Schedule window: {earliest} → {latest}",
+                tag="GTFS",
+            )
+    except (ValueError, IndexError) as exc:
+        TrackLogger.warning(
+            f"[GTFS] Could not parse service window dates: {exc}",
+            tag="GTFS",
+        )
 
 
 def _create_db_schema(conn: sqlite3.Connection) -> None:
@@ -627,6 +745,16 @@ def _clear_gtfs_caches() -> None:
 # ---------------------------------------------------------------------------
 
 
+_gtfs_refresh_lock: asyncio.Lock | None = None
+
+
+def _get_gtfs_refresh_lock() -> asyncio.Lock:
+    global _gtfs_refresh_lock
+    if _gtfs_refresh_lock is None:
+        _gtfs_refresh_lock = asyncio.Lock()
+    return _gtfs_refresh_lock
+
+
 async def check_and_refresh_gtfs(full_check: bool = False) -> dict[str, str]:
     """Check if MTA GTFS feeds have been updated and refresh if needed.
 
@@ -638,10 +766,16 @@ async def check_and_refresh_gtfs(full_check: bool = False) -> dict[str, str]:
         Dict of {feed_name: status} where status is one of:
         "up-to-date", "updated", "failed", "skipped"
     """
-    import asyncio
-
-    loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(None, _sync_check_and_refresh, full_check)
+    lock = _get_gtfs_refresh_lock()
+    if lock.locked():
+        TrackLogger.info(
+            "[GTFS] Refresh already in progress — skipping concurrent request",
+            tag="GTFS",
+        )
+        return {"skipped": "refresh-in-progress"}
+    async with lock:
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, _sync_check_and_refresh, full_check)
 
 
 def _sync_check_and_refresh(full_check: bool) -> dict[str, str]:

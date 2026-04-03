@@ -161,7 +161,7 @@ async def fetch_arrivals(
     """
     try:
         return filter_fresh_arrivals(await fetch_rail_arrivals(feed_name))
-    except (httpx.HTTPError, OSError, ValueError, KeyError) as exc:
+    except Exception as exc:
         TrackLogger.warning(
             f"[{tag}] arrivals: feed error ({exc}) — returning empty fallback",
             tag=tag,
