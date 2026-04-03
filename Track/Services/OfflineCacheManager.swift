@@ -303,6 +303,32 @@ final class OfflineCacheManager: ObservableObject {
         return dir
     }
 
+    // MARK: - Baked GeoJSON Tile Cache
+
+    /// Directory for baked GeoJSON vector tile files.
+    /// These are pre-built FeatureCollection files that MapLibre loads
+    /// directly via its C++ parser, bypassing all Swift feature-building.
+    func bakedTilesDirectory() -> URL? {
+        guard let container = FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: appGroupIdentifier
+        ) else { return nil }
+        let dir = container.appendingPathComponent("BakedTransitTiles", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
+    /// Returns a previously baked tile set (nil if files are missing).
+    func getCachedBakedTiles() -> TransitTileBaker.BakedTileSet? {
+        guard let dir = bakedTilesDirectory() else { return nil }
+        return TransitTileBaker.loadExisting(from: dir)
+    }
+
+    /// Removes all baked tile files (called from clearCache).
+    func clearBakedTiles() {
+        guard let dir = bakedTilesDirectory() else { return }
+        try? FileManager.default.removeItem(at: dir)
+    }
+
     // MARK: - Helpers
     
     private func cacheKey(forMode mode: String) -> String {
@@ -338,6 +364,7 @@ final class OfflineCacheManager: ObservableObject {
         if let dir = flattenedCacheDirectory() {
             try? FileManager.default.removeItem(at: dir)
         }
+        clearBakedTiles()
         lastFetchTime = nil
     }
 }

@@ -170,6 +170,12 @@ final class MapSystemViewModel {
     /// Pre-computed flattened commuter rail (LIRR/MNR) polylines for the system map view.
     var flattenedCommuterRailPolylines: [FlattenedMapPolyline] = []
 
+    /// Pre-baked GeoJSON tile set for instant MapLibre rendering.
+    /// When available, MapLibre loads these files directly via its C++
+    /// GeoJSON parser, bypassing all Swift feature-building loops.
+    /// Set during cold-start (from disk) and after each network refresh.
+    var bakedTileSet: TransitTileBaker.BakedTileSet?
+
     /// Route IDs whose service is currently rerouted or suspended,
     /// according to live MTA alerts.  When a normally-elevated route
     /// appears in this set, its polylines are demoted to subway-level
@@ -1834,6 +1840,16 @@ final class MapSystemViewModel {
         flattenedSubwayPolylines = subway
         flattenedCommuterRailPolylines = commuter
 
+        // Try to load baked GeoJSON tiles from disk (even faster path —
+        // MapLibre loads the file directly via C++ parser, zero Swift
+        // feature-building overhead).
+        bakedTileSet = OfflineCacheManager.shared.getCachedBakedTiles()
+        if bakedTileSet != nil {
+            AppLogger.shared.log(
+                "BAKE",
+                message: "Loaded baked GeoJSON tiles from disk")
+        }
+
         let totalPoints = subway.reduce(0) { $0 + $1.coordinates.count }
             + commuter.reduce(0) { $0 + $1.coordinates.count }
         AppLogger.shared.log(
@@ -1873,7 +1889,57 @@ final class MapSystemViewModel {
             )
         }
         let bundle = OfflineCacheManager.CachedFlattenedBundle(subway: subway, commuter: commuter)
-        Task.detached(priority: .utility) {
+
+        // ── Prepare bake input on @MainActor ──
+        // Color.toHex() touches UIColor which is @MainActor-isolated,
+        // so we do all the conversion here before handing off to a
+        // detached task.  Everything below is pure Sendable value types.
+        let nonElevated = flattenedSubwayPolylines.filter { !$0.isElevated }
+        let elevated = flattenedSubwayPolylines.filter { $0.isElevated }
+
+        func toPolylineData(
+            _ polys: [FlattenedMapPolyline]
+        ) -> [TransitTileBaker.PolylineData] {
+            polys.map {
+                TransitTileBaker.PolylineData(
+                    coordinates: $0.coordinates,
+                    colorHex: $0.color.toHex(),
+                    trunkIndex: $0.trunkIndex,
+                    laneOffset: Double($0.laneOffset),
+                    routeIds: $0.routeIds,
+                    isElevated: $0.isElevated
+                )
+            }
+        }
+
+        let subwayFillData = toPolylineData(nonElevated)
+        let elevatedFillData = toPolylineData(elevated)
+        let commuterData = toPolylineData(flattenedCommuterRailPolylines)
+
+        let crossingData = cachedCrossings.map {
+            TransitTileBaker.CrossingData(
+                lat: $0.lat, lng: $0.lng,
+                trunkIndices: $0.trunkIndices
+            )
+        }
+
+        // Pre-compute crossing gaps for casing layers
+        let subwayCasingData = TransitTileBaker.buildCasingPolylines(
+            from: subwayFillData, crossings: crossingData
+        )
+        let elevatedCasingData = TransitTileBaker.buildCasingPolylines(
+            from: elevatedFillData, crossings: crossingData
+        )
+
+        let bakeInput = TransitTileBaker.BakeInput(
+            subwayFill: subwayFillData,
+            subwayCasing: subwayCasingData,
+            elevatedFill: elevatedFillData,
+            elevatedCasing: elevatedCasingData,
+            commuter: commuterData
+        )
+
+        Task.detached(priority: .utility) { [weak self] in
             await OfflineCacheManager.shared.cacheFlattenedPolylines(bundle)
             await MainActor.run {
                 AppLogger.shared.log(
@@ -1881,7 +1947,48 @@ final class MapSystemViewModel {
                     message: "Persisted flattened"
                         + " polylines to disk cache")
             }
+            // Bake GeoJSON tile files (pure I/O, no @MainActor dependencies)
+            let tiles = await Self.bakeGeoJSONTiles(input: bakeInput)
+            if let tiles {
+                await MainActor.run { [weak self] in
+                    self?.bakedTileSet = tiles
+                }
+            }
         }
+    }
+
+    /// Bakes pre-built input into GeoJSON files for MapLibre.
+    /// Runs off the main actor — pure CPU + I/O, no UIKit or SwiftUI calls.
+    nonisolated private static func bakeGeoJSONTiles(
+        input: TransitTileBaker.BakeInput
+    ) async -> TransitTileBaker.BakedTileSet? {
+        guard let dir = await OfflineCacheManager.shared.bakedTilesDirectory()
+        else { return nil }
+
+        let start = CFAbsoluteTimeGetCurrent()
+        guard let tileSet = TransitTileBaker.bake(input, to: dir) else {
+            await MainActor.run {
+                AppLogger.shared.log(
+                    "BAKE",
+                    message: "Failed to bake GeoJSON tiles")
+            }
+            return nil
+        }
+
+        let elapsed = CFAbsoluteTimeGetCurrent() - start
+        let totalFeatures = input.subwayFill.count
+            + input.subwayCasing.count
+            + input.elevatedFill.count
+            + input.elevatedCasing.count
+            + input.commuter.count
+        await MainActor.run {
+            AppLogger.shared.log(
+                "BAKE",
+                message: "Baked \(totalFeatures) features"
+                    + " into 5 GeoJSON files"
+                    + " in \(String(format: "%.0f", elapsed * 1000))ms")
+        }
+        return tileSet
     }
 
     // MARK: - Station Loading

@@ -132,6 +132,7 @@ struct MapLibreTrackMapView: View {
                 trainVehicles: viewModel.filteredTrainVehicles,
                 transferConnectors: _cachedTransferConnectors,
                 crossings: viewModel.mapSystem.cachedCrossings,
+                bakedTileSet: viewModel.mapSystem.bakedTileSet,
                 hasActiveRoute: viewModel.routeShape != nil,
                 reroutedRouteIDs: viewModel.mapSystem.reroutedRouteIDs,
                 isDarkMode: colorScheme == .dark,

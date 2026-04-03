@@ -63,8 +63,10 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         let trainCntEq: Bool = lhs.trainVehicles.count == rhs.trainVehicles.count
         let routeCntEq: Bool = lhs.routePolylines.count == rhs.routePolylines.count
         let xferCntEq: Bool = lhs.transferConnectors.count == rhs.transferConnectors.count
+        let bakedEq: Bool = lhs.bakedTileSet?.isValid == rhs.bakedTileSet?.isValid
 
-        guard subwayEq, commuterEq, stationCntEq, busCntEq, trainCntEq, routeCntEq, xferCntEq else {
+        guard subwayEq, commuterEq, stationCntEq, busCntEq, trainCntEq, routeCntEq,
+              xferCntEq, bakedEq else {
             return false
         }
 
@@ -126,6 +128,11 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
 
     /// Crossing points for casing-break rendering.
     var crossings: [CrossingPoint]
+
+    /// Pre-baked GeoJSON tile files for instant system map rendering.
+    /// When available, MapLibre loads these files directly via its C++
+    /// GeoJSON parser — no Swift `buildPolylineFeatures()` loop.
+    var bakedTileSet: TransitTileBaker.BakedTileSet?
 
     /// Whether a route is currently selected (dims system map).
     var hasActiveRoute: Bool
@@ -629,7 +636,10 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             let c: Int = representable.hasActiveRoute ? 0x1 : 0x0
             let d: Int = representable.reroutedRouteIDs.count &* 127
             let e: Int = representable.selectedMode.hashValue
-            let subwayHash: Int = a ^ b ^ c ^ d ^ e
+            // Include baked tile availability — triggers re-render when
+            // baked files become ready after initial cold-start launch.
+            let f: Int = (representable.bakedTileSet?.isValid == true) ? 0x8000 : 0x0
+            let subwayHash: Int = a ^ b ^ c ^ d ^ e ^ f
             if subwayHash != lastSubwayHash || darkChanged {
                 updateSystemMapLayers(style: style, representable: representable)
                 lastSubwayHash = subwayHash
@@ -714,6 +724,11 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         //   3. Elevated gets an additional shadow layer underneath for depth
         //
         // All widths use `mgl_interpolate` for buttery-smooth zoom scaling.
+        //
+        // Fast path: When baked GeoJSON files are available and no reroute
+        // alerts are active, we load the pre-serialized FeatureCollections
+        // directly into MLNShapeSources via MapLibre's C++ JSON parser.
+        // This skips all Swift-side feature building and is ~10x faster.
 
         func updateSystemMapLayers(style: MLNStyle, representable: MapLibreMapView) {
             let dimmed = representable.hasActiveRoute
@@ -774,13 +789,77 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 }
             }
 
+            // ── Decide baked vs dynamic path ──
+            // Baked path: pre-serialized GeoJSON → MLNShape(data:) → C++ parser.
+            // Dynamic path: Swift loops → MLNPolylineFeature → MLNShapeCollectionFeature.
+            // Rerouted routes change elevated/subway classification so we must
+            // fall back to dynamic building when MTA reroute alerts are active.
+            let useBaked = representable.bakedTileSet?.isValid == true
+                && representable.reroutedRouteIDs.isEmpty
+
+            if useBaked, let tiles = representable.bakedTileSet {
+                // ── BAKED FAST PATH ──
+                // Load all 5 GeoJSON sources from disk. MapLibre's C++ JSON
+                // parser handles coordinate arrays ~10x faster than building
+                // MLNPolylineFeature objects one-by-one in Swift.
+                loadBakedSource(style: style, sourceID: MapLibreStyleConfig.srcCommRail, url: tiles.commuterURL)
+                loadBakedSource(style: style, sourceID: MapLibreStyleConfig.srcSubwayCasing, url: tiles.subwayCasingURL)
+                loadBakedSource(style: style, sourceID: MapLibreStyleConfig.srcSubway, url: tiles.subwayFillURL)
+                loadBakedSource(style: style, sourceID: MapLibreStyleConfig.srcElevated, url: tiles.elevatedFillURL)
+                loadBakedSource(style: style, sourceID: MapLibreStyleConfig.srcElevatedCasing, url: tiles.elevatedCasingURL)
+            } else {
+                // ── DYNAMIC FALLBACK ──
+                // Build features in Swift (reroute alerts active, or baked files not yet ready).
+
+                // COMMUTER RAIL
+                let commuterFeatures = buildPolylineFeatures(representable.commuterRailPolylines)
+                if let shape = MLNShapeCollectionFeature(shapes: commuterFeatures) as MLNShape? {
+                    loadOrCreateSource(style: style, sourceID: MapLibreStyleConfig.srcCommRail, shape: shape)
+                }
+
+                // SUBWAY
+                let subwayOnly = representable.subwayPolylines.filter {
+                    !isEffectivelyElevated($0, reroutedRouteIDs: representable.reroutedRouteIDs)
+                }
+                let subwayFeatures = buildPolylineFeatures(subwayOnly)
+                let subwayCasingFeatures = buildCasingFeatures(
+                    subwayOnly,
+                    crossings: representable.crossings
+                )
+                if let shape = MLNShapeCollectionFeature(shapes: subwayCasingFeatures) as MLNShape? {
+                    loadOrCreateSource(style: style, sourceID: MapLibreStyleConfig.srcSubwayCasing, shape: shape)
+                }
+                if let shape = MLNShapeCollectionFeature(shapes: subwayFeatures) as MLNShape? {
+                    loadOrCreateSource(style: style, sourceID: MapLibreStyleConfig.srcSubway, shape: shape)
+                }
+
+                // ELEVATED
+                let elevated = representable.subwayPolylines.filter {
+                    isEffectivelyElevated($0, reroutedRouteIDs: representable.reroutedRouteIDs)
+                }
+                let elevatedFeatures = buildPolylineFeatures(elevated)
+                let elevatedCasingFeatures = buildCasingFeatures(
+                    elevated,
+                    crossings: representable.crossings
+                )
+                if let shape = MLNShapeCollectionFeature(shapes: elevatedFeatures) as MLNShape? {
+                    loadOrCreateSource(style: style, sourceID: MapLibreStyleConfig.srcElevated, shape: shape)
+                }
+                if let shape = MLNShapeCollectionFeature(shapes: elevatedCasingFeatures) as MLNShape? {
+                    loadOrCreateSource(style: style, sourceID: MapLibreStyleConfig.srcElevatedCasing, shape: shape)
+                }
+            }
+
+            // ── Layer styling (shared — same for baked & dynamic) ──
+            // Sources are populated above; layers below use features: nil
+            // so ensureLineLayer only creates/updates the layer styling.
+
         // ── COMMUTER RAIL (below subway) ──
-            let commuterFeatures = buildPolylineFeatures(representable.commuterRailPolylines)
             ensureLineLayer(
                 style: style,
                 sourceID: MapLibreStyleConfig.srcCommRail,
                 layerID: MapLibreStyleConfig.layerCommRailCasing,
-                features: commuterFeatures,
+                features: nil,
                 width: MapLibreStyleConfig.commuterCasingWidth,
                 opacity: commuterCasingOpacity,
                 color: .constant(
@@ -804,28 +883,12 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 dashPattern: [3, 2]
             )
 
-            // ── SUBWAY (shared source — lightweight, 2 GL layers) ──
-            //
-            // All subway polylines go into a single source with trunk_index
-            // sorted features.  Parallel corridor separation is handled by
-            // MapLibre's lineOffset (pixel-space). The multiplier tapers
-            // down at close zoom, but no longer collapses to zero; station
-            // markers inherit the same camera-aware shift so shared trunks
-            // stay parallel without visually separating from their stops.
-            let subwayOnly = representable.subwayPolylines.filter {
-                !isEffectivelyElevated($0, reroutedRouteIDs: representable.reroutedRouteIDs)
-            }
-            let subwayFeatures = buildPolylineFeatures(subwayOnly)
-            let subwayCasingFeatures = buildCasingFeatures(
-                subwayOnly,
-                crossings: representable.crossings
-            )
-
+            // ── SUBWAY ──
             ensureLineLayer(
                 style: style,
                 sourceID: MapLibreStyleConfig.srcSubwayCasing,
                 layerID: MapLibreStyleConfig.layerSubwayCasing,
-                features: subwayCasingFeatures,
+                features: nil,
                 width: MapLibreStyleConfig.subwayCasingWidth,
                 opacity: subwayCasingOpacity,
                 color: .constant(
@@ -842,7 +905,7 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 style: style,
                 sourceID: MapLibreStyleConfig.srcSubway,
                 layerID: MapLibreStyleConfig.layerSubwayFill,
-                features: subwayFeatures,
+                features: nil,
                 width: MapLibreStyleConfig.subwayFillWidth,
                 opacity: subwayOpacity,
                 color: .dataDriven,
@@ -851,21 +914,12 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 sortByTrunkIndex: true
             )
 
-            // ── ELEVATED (separate casing source for crossing breaks) ──
-            let elevated = representable.subwayPolylines.filter {
-                isEffectivelyElevated($0, reroutedRouteIDs: representable.reroutedRouteIDs)
-            }
-            let elevatedFeatures = buildPolylineFeatures(elevated)
-            let elevatedCasingFeatures = buildCasingFeatures(
-                elevated,
-                crossings: representable.crossings
-            )
-
+            // ── ELEVATED ──
             ensureLineLayer(
                 style: style,
                 sourceID: MapLibreStyleConfig.srcElevated,
                 layerID: MapLibreStyleConfig.layerElevatedShadow,
-                features: elevatedFeatures,
+                features: nil,
                 width: MapLibreStyleConfig.elevatedCasingWidth,
                 opacity: elevatedShadowOpacity,
                 color: .constant(UIColor.black),
@@ -877,7 +931,7 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 style: style,
                 sourceID: MapLibreStyleConfig.srcElevatedCasing,
                 layerID: MapLibreStyleConfig.layerElevatedCasing,
-                features: elevatedCasingFeatures,
+                features: nil,
                 width: MapLibreStyleConfig.elevatedCasingWidth,
                 opacity: subwayCasingOpacity,
                 color: .constant(
@@ -1468,6 +1522,44 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             }
 
             buildings3DAdded = true
+        }
+
+        // MARK: - Helpers: Baked GeoJSON Source Loading
+
+        /// Loads a pre-baked GeoJSON file into an MLNShapeSource.
+        ///
+        /// Uses `MLNShape(data:encoding:)` which invokes MapLibre's C++ JSON
+        /// parser — roughly 10x faster than building MLNPolylineFeature arrays
+        /// in Swift because it avoids Obj-C bridging and runs on the GL thread.
+        @discardableResult
+        private func loadBakedSource(
+            style: MLNStyle,
+            sourceID: String,
+            url: URL
+        ) -> Bool {
+            guard let data = try? Data(contentsOf: url),
+                  let shape = try? MLNShape(data: data, encoding: String.Encoding.utf8.rawValue)
+            else {
+                print("⚠️ [BakedTiles] Failed to load \(url.lastPathComponent) for \(sourceID)")
+                return false
+            }
+            loadOrCreateSource(style: style, sourceID: sourceID, shape: shape)
+            return true
+        }
+
+        /// Creates or updates an MLNShapeSource with the given shape.
+        private func loadOrCreateSource(
+            style: MLNStyle,
+            sourceID: String,
+            shape: MLNShape
+        ) {
+            if let existing = style.source(withIdentifier: sourceID) as? MLNShapeSource {
+                existing.shape = shape
+            } else {
+                let source = MLNShapeSource(identifier: sourceID, shape: shape, options: nil)
+                style.addSource(source)
+                sourcesCreated.insert(sourceID)
+            }
         }
 
         // MARK: - Helpers: Feature Building
