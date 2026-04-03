@@ -45,6 +45,14 @@ _MAX_SPEEDS_KMH: dict[int, float] = {
 _DEFAULT_MAX_SPEED_KMH = 200.0   # subway / metro default
 _FAST_TRAVEL_MIN_SECS = 30       # ignore segments < 30 s (noise guard)
 
+# Rate-limit fast-travel log spam: the same (trip_id, stop_pair) key is
+# suppressed for this many seconds so a persistently glitchy MTA feed
+# doesn't emit an identical warning on every 10-second poll cycle.
+# Dict values are the Unix timestamp of the last emitted warning.
+# GIL-protected dict operations are safe for this cross-thread use.
+_fast_travel_warn_ts: dict[str, float] = {}
+_FAST_TRAVEL_WARN_COOLDOWN_SECS = 60.0
+
 
 def _is_fast_travel(
     lat1: float,
@@ -255,13 +263,18 @@ async def get_arrivals_for_line(
             trip_index.setdefault(_a.trip_id, []).append(_a)
 
     # ── Fast-travel filter ───────────────────────────────────────────────
-    # Drop trips whose predicted arrival sequence implies physically
-    # impossible speeds (e.g. ghost arrivals from MTA feed glitches).
-    # Mirrors transitland-lib ext/bestpractices/fast_travel.go: default
-    # ceiling is 200 km/h for subway, with a 30-second minimum window.
-    bad_trips: set[str] = set()
+    # Prune specific stop entries that imply physically impossible speeds
+    # rather than dropping the whole trip.  When stop B implies teleportation
+    # from stop A, B is removed and the scan continues from A against the
+    # next stop — multi-hop glitches are all caught while the rest of the
+    # trip's valid arrivals remain visible to users.
+    #
+    # Repeat warnings for the same (trip_id, stop_pair) are rate-limited to
+    # once per _FAST_TRAVEL_WARN_COOLDOWN_SECS so a persistently glitchy
+    # feed doesn't flood the log on every 10-second poll cycle.
+    bad_stop_ids: set[int] = set()  # id() of TrackArrival objects to prune
     for trip_id, trip_arrivals in trip_index.items():
-        prev = None
+        prev: TrackArrival | None = None
         for arr in trip_arrivals:
             if (
                 prev is not None
@@ -280,19 +293,31 @@ async def get_arrivals_for_line(
                     arr.arrival_ts,
                 )
             ):
-                TrackLogger.warning(
-                    f"[RT] Fast-travel on trip {trip_id}: "
-                    f"{prev.station}→{arr.station} — dropping",
-                    tag="RT",
-                )
-                bad_trips.add(trip_id)
-                break
-            prev = arr
+                _warn_key = f"{trip_id}:{prev.station}→{arr.station}"
+                _now = _time.time()
+                if (
+                    _now - _fast_travel_warn_ts.get(_warn_key, 0.0)
+                    >= _FAST_TRAVEL_WARN_COOLDOWN_SECS
+                ):
+                    TrackLogger.warning(
+                        f"[RT] Fast-travel on trip {trip_id}: "
+                        f"{prev.station}→{arr.station} — dropping",
+                        tag="RT",
+                    )
+                    _fast_travel_warn_ts[_warn_key] = _now
+                # Prune the offending arrival; keep prev as the anchor so
+                # subsequent stops are validated against the last known good.
+                bad_stop_ids.add(id(arr))
+            else:
+                prev = arr
 
-    if bad_trips:
-        arrivals = [a for a in arrivals if a.trip_id not in bad_trips]
-        for _bad in bad_trips:
-            trip_index.pop(_bad, None)
+    if bad_stop_ids:
+        arrivals = [a for a in arrivals if id(a) not in bad_stop_ids]
+        # Rebuild trip index to match the pruned arrivals list.
+        trip_index = {}
+        for _a in arrivals:
+            if _a.trip_id:
+                trip_index.setdefault(_a.trip_id, []).append(_a)
 
     # Cache the parsed result so subsequent calls skip all CPU work
     _PARSED_CACHE[url] = (_time.time(), arrivals, siri_obs, entity_count, trip_index)
