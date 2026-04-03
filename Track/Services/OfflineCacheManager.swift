@@ -39,10 +39,10 @@ final class OfflineCacheManager: ObservableObject {
         static let stationCacheVersion = "cached_stations_version"
         static let lirrShapes = "cached_lirr_shapes"
         static let mnrShapes = "cached_mnr_shapes"
-        static let subwayShapes = "cached_subway_shapes_v2"
-        static let subwayShapesCachedAt = "cached_subway_shapes_timestamp_v2"
+        static let subwayShapes = "cached_subway_shapes_v3"
+        static let subwayShapesCachedAt = "cached_subway_shapes_timestamp_v3"
         static let flattenedPolylines = "cached_flattened_polylines"
-        static let flattenedPolylinesCachedAt = "cached_flattened_polylines_timestamp_v11"
+        static let flattenedPolylinesCachedAt = "cached_flattened_polylines_timestamp_v12"
     }
 
     /// Bump this whenever the station consolidation logic or hash
@@ -70,6 +70,9 @@ final class OfflineCacheManager: ObservableObject {
             "cached_subway_shapes",
             "cached_subway_shapes_timestamp",
             "cached_flattened_polylines_timestamp_v10",
+            "cached_flattened_polylines_timestamp_v11",
+            "cached_subway_shapes_v2",
+            "cached_subway_shapes_timestamp_v2",
         ] {
             userDefaults.removeObject(forKey: legacyKey)
         }
@@ -256,7 +259,7 @@ final class OfflineCacheManager: ObservableObject {
         guard let data = try? JSONEncoder().encode(bundle) else { return }
         // Use file-based cache for large data instead of UserDefaults
         guard let dir = flattenedCacheDirectory() else { return }
-        let fileURL = dir.appendingPathComponent("flattened_polylines_v11.json")
+        let fileURL = dir.appendingPathComponent("flattened_polylines_v12.json")
         try? data.write(to: fileURL, options: .atomic)
         userDefaults.set(Date(), forKey: CacheKey.flattenedPolylinesCachedAt)
         // Clean up old cache versions
@@ -268,6 +271,7 @@ final class OfflineCacheManager: ObservableObject {
             "flattened_polylines_v8.json",
             "flattened_polylines_v9.json",
             "flattened_polylines_v10.json",
+            "flattened_polylines_v11.json",
         ]
         for old in oldFiles {
             try? FileManager.default.removeItem(at: dir.appendingPathComponent(old))
@@ -277,7 +281,7 @@ final class OfflineCacheManager: ObservableObject {
     /// Get pre-computed flattened polylines (nil if never cached).
     func getCachedFlattenedPolylines() -> CachedFlattenedBundle? {
         guard let dir = flattenedCacheDirectory() else { return nil }
-        let fileURL = dir.appendingPathComponent("flattened_polylines_v11.json")
+        let fileURL = dir.appendingPathComponent("flattened_polylines_v12.json")
         guard let data = try? Data(contentsOf: fileURL) else { return nil }
         return try? JSONDecoder().decode(CachedFlattenedBundle.self, from: data)
     }

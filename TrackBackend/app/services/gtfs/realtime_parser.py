@@ -45,13 +45,18 @@ _MAX_SPEEDS_KMH: dict[int, float] = {
 _DEFAULT_MAX_SPEED_KMH = 200.0   # subway / metro default
 _FAST_TRAVEL_MIN_SECS = 30       # ignore segments < 30 s (noise guard)
 
-# Rate-limit fast-travel log spam: the same (trip_id, stop_pair) key is
-# suppressed for this many seconds so a persistently glitchy MTA feed
-# doesn't emit an identical warning on every 10-second poll cycle.
-# Dict values are the Unix timestamp of the last emitted warning.
-# GIL-protected dict operations are safe for this cross-thread use.
-_fast_travel_warn_ts: dict[str, float] = {}
-_FAST_TRAVEL_WARN_COOLDOWN_SECS = 60.0
+# Rate-limit fast-travel log spam: keyed by trip_id so all dropped stops
+# within one trip are batched into a single log entry.  After the first
+# warning for a trip, subsequent occurrences are suppressed for
+# _FAST_TRAVEL_WARN_COOLDOWN_SECS so a persistently glitchy MTA feed
+# doesn't flood the log on every 10-second poll cycle.
+#
+# Entries older than the cooldown are pruned every
+# _FAST_TRAVEL_CLEANUP_INTERVAL_SECS to prevent unbounded growth.
+_fast_travel_warn_ts: dict[str, float] = {}  # trip_id → last warn timestamp
+_FAST_TRAVEL_WARN_COOLDOWN_SECS = 300.0       # 5 min per trip
+_fast_travel_cleanup_at: float = 0.0
+_FAST_TRAVEL_CLEANUP_INTERVAL_SECS = 600.0    # prune stale entries every 10 min
 
 
 def _is_fast_travel(
@@ -263,16 +268,26 @@ async def get_arrivals_for_line(
             trip_index.setdefault(_a.trip_id, []).append(_a)
 
     # ── Fast-travel filter ───────────────────────────────────────────────
-    # Prune specific stop entries that imply physically impossible speeds
-    # rather than dropping the whole trip.  When stop B implies teleportation
-    # from stop A, B is removed and the scan continues from A against the
-    # next stop — multi-hop glitches are all caught while the rest of the
-    # trip's valid arrivals remain visible to users.
+    # Prune stop entries that imply physically impossible speeds rather than
+    # dropping the whole trip.  When stop B teleports from stop A, B is
+    # removed and the scan continues from A — multi-hop glitches are all
+    # caught while the rest of the trip's valid arrivals stay visible.
     #
-    # Repeat warnings for the same (trip_id, stop_pair) are rate-limited to
-    # once per _FAST_TRAVEL_WARN_COOLDOWN_SECS so a persistently glitchy
-    # feed doesn't flood the log on every 10-second poll cycle.
-    bad_stop_ids: set[int] = set()  # id() of TrackArrival objects to prune
+    # All drops within one trip are batched into a single log entry, keyed
+    # by trip_id with a 5-minute cooldown, so a persistently glitchy feed
+    # does not flood the log on every 10-second poll cycle.
+    # Periodic dict cleanup prevents unbounded growth over long uptimes.
+    _now = _time.time()
+    global _fast_travel_cleanup_at
+    if _now - _fast_travel_cleanup_at > _FAST_TRAVEL_CLEANUP_INTERVAL_SECS:
+        _cutoff = _now - _FAST_TRAVEL_WARN_COOLDOWN_SECS
+        stale_keys = [k for k, t in _fast_travel_warn_ts.items() if t < _cutoff]
+        for _k in stale_keys:
+            del _fast_travel_warn_ts[_k]
+        _fast_travel_cleanup_at = _now
+
+    bad_stop_ids: set[int] = set()        # id() of TrackArrival objects to prune
+    trip_drops: dict[str, list[str]] = {}  # trip_id → dropped pair strings
     for trip_id, trip_arrivals in trip_index.items():
         prev: TrackArrival | None = None
         for arr in trip_arrivals:
@@ -293,23 +308,26 @@ async def get_arrivals_for_line(
                     arr.arrival_ts,
                 )
             ):
-                _warn_key = f"{trip_id}:{prev.station}→{arr.station}"
-                _now = _time.time()
-                if (
-                    _now - _fast_travel_warn_ts.get(_warn_key, 0.0)
-                    >= _FAST_TRAVEL_WARN_COOLDOWN_SECS
-                ):
-                    TrackLogger.warning(
-                        f"[RT] Fast-travel on trip {trip_id}: "
-                        f"{prev.station}→{arr.station} — dropping",
-                        tag="RT",
-                    )
-                    _fast_travel_warn_ts[_warn_key] = _now
+                trip_drops.setdefault(trip_id, []).append(
+                    f"{prev.station}→{arr.station}"
+                )
                 # Prune the offending arrival; keep prev as the anchor so
                 # subsequent stops are validated against the last known good.
                 bad_stop_ids.add(id(arr))
             else:
                 prev = arr
+
+    # Emit at most one log per trip per cooldown window.
+    for trip_id, pairs in trip_drops.items():
+        if _now - _fast_travel_warn_ts.get(trip_id, 0.0) >= _FAST_TRAVEL_WARN_COOLDOWN_SECS:
+            summary = pairs[0]
+            if len(pairs) > 1:
+                summary += f" (+{len(pairs) - 1} more)"
+            TrackLogger.warning(
+                f"[RT] Fast-travel on trip {trip_id}: {summary} — dropping",
+                tag="RT",
+            )
+            _fast_travel_warn_ts[trip_id] = _now
 
     if bad_stop_ids:
         arrivals = [a for a in arrivals if id(a) not in bad_stop_ids]

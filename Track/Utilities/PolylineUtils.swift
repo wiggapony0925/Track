@@ -44,8 +44,8 @@ nonisolated func decodePolyline(_ encoded: String) -> [CLLocationCoordinate2D] {
 
         coordinates.append(
             CLLocationCoordinate2D(
-                latitude: Double(lat) / 1e6,
-                longitude: Double(lon) / 1e6
+                latitude: Double(lat) / 1e5,
+                longitude: Double(lon) / 1e5
             )
         )
     }
@@ -62,8 +62,8 @@ nonisolated func encodePolyline(_ coordinates: [CLLocationCoordinate2D]) -> Stri
     var prevLon: Int64 = 0
 
     for coord in coordinates {
-        let lat = Int64(round(coord.latitude * 1e6))
-        let lon = Int64(round(coord.longitude * 1e6))
+        let lat = Int64(round(coord.latitude * 1e5))
+        let lon = Int64(round(coord.longitude * 1e5))
 
         encodeValue(lat - prevLat, into: &encoded)
         encodeValue(lon - prevLon, into: &encoded)

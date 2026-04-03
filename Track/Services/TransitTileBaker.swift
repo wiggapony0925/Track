@@ -83,7 +83,8 @@ nonisolated enum TransitTileBaker {
 
     /// Current bake version — bump when the GeoJSON schema changes.
     /// Old versions are cleaned up automatically.
-    private static let bakeVersion = 1
+    /// v2: Fixed polyline precision (1e6 → 1e5) so coordinates are correct.
+    private static let bakeVersion = 2
 
     private static let subwayFillFile = "baked_subway_fill_v\(bakeVersion).geojson"
     private static let subwayCasingFile = "baked_subway_casing_v\(bakeVersion).geojson"
