@@ -4,8 +4,10 @@
 import Foundation
 
 /// Represents a single upcoming train arrival at a station.
-struct TrainArrival: Identifiable, Equatable {
-    let id = UUID()
+struct TrainArrival: Identifiable, Equatable, Hashable {
+    /// Deterministic identity so SwiftUI can diff arrivals across polls
+    /// without destroying and recreating every row each time.
+    let id: String
     let routeID: String
     let stationID: String
     let stationName: String
@@ -21,7 +23,8 @@ struct TrainArrival: Identifiable, Equatable {
     /// True when GTFS-RT reports this trip/stop as cancelled.
     var isCancelled: Bool = false
 
-    /// Custom Equatable — compare by data fields, not the auto-generated UUID.
+    /// Custom Equatable — compare by data fields so SwiftUI skips re-renders
+    /// when only minutesAway (countdown) drifts but the train hasn't changed.
     static func == (lhs: TrainArrival, rhs: TrainArrival) -> Bool {
         lhs.routeID == rhs.routeID
             && lhs.stationID == rhs.stationID
@@ -29,5 +32,15 @@ struct TrainArrival: Identifiable, Equatable {
             && lhs.scheduledTime == rhs.scheduledTime
             && lhs.tripId == rhs.tripId
             && lhs.isCancelled == rhs.isCancelled
+    }
+
+    /// Must be consistent with custom == above.
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(routeID)
+        hasher.combine(stationID)
+        hasher.combine(direction)
+        hasher.combine(scheduledTime)
+        hasher.combine(tripId)
+        hasher.combine(isCancelled)
     }
 }

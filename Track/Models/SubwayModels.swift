@@ -47,7 +47,17 @@ struct TransitArrivalResponse: Codable {
             arrivalDate = now.addingTimeInterval(Double(minutesAway) * 60)
         }
         
+        // Build a deterministic identity from trip + stop + time so SwiftUI
+        // can diff arrivals across API polls without re-creating every row.
+        let stableId: String
+        if let tripId {
+            stableId = "\(tripId)_\(station)"
+        } else {
+            stableId = "\(routeId)_\(station)_\(direction)_\(Int(arrivalDate.timeIntervalSince1970))"
+        }
+
         return TrainArrival(
+            id: stableId,
             routeID: routeId,
             stationID: station,
             stationName: stationName ?? station,

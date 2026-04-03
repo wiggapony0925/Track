@@ -26,11 +26,21 @@ struct SmartSuggester {
     ) -> RouteSuggestion? {
         let calendar = Calendar.current
         let currentHour = calendar.component(.hour, from: currentTime)
-        let minHour = max(0, currentHour - 1)
-        let maxHour = min(23, currentHour + 1)
+        // Wrap around midnight: hour 0 should match 23-1, hour 23 should match 22-0
+        let minHour = (currentHour - 1 + 24) % 24
+        let maxHour = (currentHour + 1) % 24
 
-        let predicate = #Predicate<CommutePattern> { pattern in
-            pattern.timeOfDay >= minHour && pattern.timeOfDay <= maxHour
+        let predicate: Predicate<CommutePattern>
+        if minHour <= maxHour {
+            // Normal range (e.g. 9..11)
+            predicate = #Predicate<CommutePattern> { pattern in
+                pattern.timeOfDay >= minHour && pattern.timeOfDay <= maxHour
+            }
+        } else {
+            // Wraps midnight (e.g. 23..1 means hour >= 23 OR hour <= 1)
+            predicate = #Predicate<CommutePattern> { pattern in
+                pattern.timeOfDay >= minHour || pattern.timeOfDay <= maxHour
+            }
         }
 
         let descriptor = FetchDescriptor<CommutePattern>(

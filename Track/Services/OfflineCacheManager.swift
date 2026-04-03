@@ -33,6 +33,7 @@ final class OfflineCacheManager: ObservableObject {
         static let subwayArrivals = "cached_subway_arrivals"
         static let busArrivals = "cached_bus_arrivals"
         static let lirrArrivals = "cached_lirr_arrivals"
+        static let mnrArrivals = "cached_mnr_arrivals"
         static let lastFetchTime = "cached_last_fetch_time"
         static let cachedStations = "cached_stations"
         static let stationCacheVersion = "cached_stations_version"
@@ -314,6 +315,8 @@ final class OfflineCacheManager: ObservableObject {
             return CacheKey.busArrivals
         case "lirr":
             return CacheKey.lirrArrivals
+        case "mnr":
+            return CacheKey.mnrArrivals
         default:
             return CacheKey.nearbyArrivals
         }

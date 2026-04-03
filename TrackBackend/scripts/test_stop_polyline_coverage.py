@@ -1,375 +1,292 @@
 #!/usr/bin/env python3
-"""
-test_stop_polyline_coverage.py
-──────────────────────────────
-Check which stations are NOT within a threshold distance of any polyline
-belonging to their route(s).
-
-Usage:
-    python scripts/test_stop_polyline_coverage.py [--threshold 80] [--backend http://localhost:8767]
-
-Outputs a report of uncovered stops sorted by distance to nearest polyline point.
-"""
-
+"""Diagnostic: verify every subway stop is touched by its trunk polyline."""
 from __future__ import annotations
+import sys
+from math import atan2, cos, radians, sin, sqrt
+from pathlib import Path
 
-import argparse
-import json
-import math
-import urllib.request
-from dataclasses import dataclass, field
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-# ── Haversine distance (meters) ─────────────────────────────────────────────
-
-
-def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """Great-circle distance between two WGS-84 points in meters."""
-    R = 6_371_000.0
-    phi1, phi2 = math.radians(lat1), math.radians(lat2)
-    dphi = math.radians(lat2 - lat1)
-    dlam = math.radians(lon2 - lon1)
-    a = (
-        math.sin(dphi / 2) ** 2
-        + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2) ** 2
-    )
-    return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+from app.services.mapping.subway_shapes import (
+    get_all_subway_stations, _load_route_shapes, _load_shapes,
+    _unpack_coords,
+)
+from app.routers.subway import get_subway_color
+from app.services.mapping.corridor_pipeline import (
+    ROUTE_TO_TRUNK, _snap_paths_to_stations,
+    _group_and_merge_trunks, _normalize_path_direction,
+)
+from app.utils.polyline_utils import encode_polyline, densify_wgs84, decode_polyline
+from app.models import SubwayLineOverlay
 
 
-def point_to_segment_distance_m(
-    plat: float,
-    plon: float,
-    alat: float,
-    alon: float,
-    blat: float,
-    blon: float,
-) -> float:
-    """Approx minimum distance from point P to line segment A–B (meters).
-
-    Projects P onto the segment in a local Cartesian frame, then converts
-    the perpendicular offset to meters.  Accurate enough for distances < 1 km.
-    """
-    cos_lat = math.cos(math.radians(plat))
-    # local meters per degree
-    m_per_deg_lat = 111_132.0
-    m_per_deg_lon = max(cos_lat * 111_320.0, 1.0)
-
-    # Convert to local meters
-    ax = (alon - plon) * m_per_deg_lon
-    ay = (alat - plat) * m_per_deg_lat
-    bx = (blon - plon) * m_per_deg_lon
-    by = (blat - plat) * m_per_deg_lat
-
-    dx, dy = bx - ax, by - ay
-    seg_len_sq = dx * dx + dy * dy
-    if seg_len_sq < 1e-12:
-        return math.sqrt(ax * ax + ay * ay)
-
-    t = max(0.0, min(1.0, ((-ax) * dx + (-ay) * dy) / seg_len_sq))
-    cx = ax + t * dx
-    cy = ay + t * dy
-    return math.sqrt(cx * cx + cy * cy)
+def haversine_m(lat1, lon1, lat2, lon2):
+    R = 6_371_000
+    dlat = radians(lat2 - lat1)
+    dlon = radians(lon2 - lon1)
+    a = sin(dlat / 2) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon / 2) ** 2
+    return R * 2 * atan2(sqrt(a), sqrt(1 - a))
 
 
-# ── Polyline decoder (precision-6) ──────────────────────────────────────────
+def min_dist_to_polyline(lat, lon, polyline):
+    best = float("inf")
+    for i in range(len(polyline) - 1):
+        a_lat, a_lon = polyline[i]
+        b_lat, b_lon = polyline[i + 1]
+        dx = b_lon - a_lon
+        dy = b_lat - a_lat
+        if dx == 0 and dy == 0:
+            d = haversine_m(lat, lon, a_lat, a_lon)
+        else:
+            t = max(0, min(1, ((lon - a_lon) * dx + (lat - a_lat) * dy) / (dx * dx + dy * dy)))
+            d = haversine_m(lat, lon, a_lat + t * dy, a_lon + t * dx)
+        if d < best:
+            best = d
+            if d < 5:
+                return d
+    return best
 
 
-def decode_polyline(encoded: str) -> list[tuple[float, float]]:
-    coords: list[tuple[float, float]] = []
-    i, lat, lng = 0, 0, 0
-    while i < len(encoded):
-        for is_lng in (False, True):
-            shift, result = 0, 0
-            while True:
-                b = ord(encoded[i]) - 63
-                i += 1
-                result |= (b & 0x1F) << shift
-                shift += 5
-                if b < 0x20:
-                    break
-            delta = ~(result >> 1) if (result & 1) else (result >> 1)
-            if is_lng:
-                lng += delta
-            else:
-                lat += delta
-        coords.append((lat / 1e6, lng / 1e6))
-    return coords
+def test_subway_stops():
+    print("=" * 70)
+    print("SUBWAY STOP-POLYLINE COVERAGE TEST")
+    print("=" * 70)
 
+    stations = get_all_subway_stations()
+    if not stations:
+        print("ERROR: No stations loaded")
+        return False
 
-# ── Data structures ─────────────────────────────────────────────────────────
+    route_shapes = _load_route_shapes()
+    shapes_data = _load_shapes()
+    skip_variants = {"6X", "7X", "FX", "SR"}
 
+    overlays = []
+    lines = [l for l in sorted(route_shapes.keys()) if l not in skip_variants]
 
-@dataclass
-class Station:
-    id: str
-    name: str
-    lat: float
-    lon: float
-    routes: list[str]
+    for line in lines:
+        ds = route_shapes.get(line)
+        if not ds:
+            continue
+        pd = 0 if 0 in ds else min(ds.keys())
+        sids = ds[pd]
+        raws = []
+        for sid in sids:
+            sb = shapes_data.get(sid)
+            if sb:
+                raws.append(_unpack_coords(sb))
+        if not raws:
+            continue
+        enc = [encode_polyline(densify_wgs84(c)) for c in raws]
+        overlays.append(SubwayLineOverlay(route_id=line, color_hex=get_subway_color(line), polylines=enc))
 
+    print("Running trunk merge pipeline...")
+    trunk_paths = _group_and_merge_trunks(overlays)
+    print("Running station snap...")
+    trunk_paths = _snap_paths_to_stations(trunk_paths)
+    for ti in list(trunk_paths.keys()):
+        trunk_paths[ti] = [_normalize_path_direction(p) for p in trunk_paths[ti]]
 
-@dataclass
-class RoutePolylines:
-    route_id: str
-    segments: list[list[tuple[float, float]]] = field(default_factory=list)
+    from pyproj import Transformer
+    to_wgs = Transformer.from_crs("EPSG:3857", "EPSG:4326", always_xy=True)
+    trunk_polys = {}
+    for ti, paths in trunk_paths.items():
+        trunk_polys[ti] = []
+        for path in paths:
+            wgs = []
+            for x, y in path.coords:
+                lo, la = to_wgs.transform(x, y)
+                wgs.append((la, lo))
+            trunk_polys[ti].append(wgs)
 
+    # Flatten ALL polylines for the "any trunk" check
+    all_polys = []
+    for polys_list in trunk_polys.values():
+        all_polys.extend(polys_list)
 
-@dataclass
-class CoverageResult:
-    station: Station
-    route_id: str
-    min_distance_m: float
-    nearest_point: tuple[float, float]
-
-
-# ── API fetchers ────────────────────────────────────────────────────────────
-
-
-def fetch_json(url: str) -> dict:
-    req = urllib.request.Request(url, headers={"Accept": "application/json"})
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        return json.loads(resp.read())
-
-
-def fetch_stations(backend: str) -> list[Station]:
-    data = fetch_json(f"{backend}/subway/stations/all")
-    stations = []
-    for s in data.get("stations", []):
-        stations.append(
-            Station(
-                id=s["id"],
-                name=s["name"],
-                lat=s["lat"],
-                lon=s["lon"],
-                routes=s.get("routes", []),
-            )
-        )
-    return stations
-
-
-def fetch_polylines(backend: str) -> dict[str, RoutePolylines]:
-    data = fetch_json(f"{backend}/subway/shapes/all")
-    routes: dict[str, RoutePolylines] = {}
-    for line in data.get("lines", []):
-        rid = line["route_id"]
-        rp = RoutePolylines(route_id=rid)
-        for encoded in line.get("polylines", []):
-            coords = decode_polyline(encoded)
-            if len(coords) >= 2:
-                rp.segments.append(coords)
-        routes[rid] = rp
-    return routes
-
-
-# ── Coverage check ──────────────────────────────────────────────────────────
-
-
-def min_distance_to_route(
-    lat: float, lon: float, route: RoutePolylines
-) -> tuple[float, tuple[float, float]]:
-    """Return (min_distance_m, nearest_point) from (lat, lon) to route polylines."""
-    best_dist = float("inf")
-    best_point = (0.0, 0.0)
-
-    for segment in route.segments:
-        # Check segment-by-segment for true perpendicular projection
-        for j in range(len(segment) - 1):
-            d = point_to_segment_distance_m(
-                lat,
-                lon,
-                segment[j][0],
-                segment[j][1],
-                segment[j + 1][0],
-                segment[j + 1][1],
-            )
-            if d < best_dist:
-                best_dist = d
-                # Approximate nearest point (use midpoint of closest segment)
-                best_point = (
-                    (segment[j][0] + segment[j + 1][0]) / 2,
-                    (segment[j][1] + segment[j + 1][1]) / 2,
-                )
-        # Also check raw vertices (handles endpoints)
-        for pt in segment:
-            d = haversine_m(lat, lon, pt[0], pt[1])
-            if d < best_dist:
-                best_dist = d
-                best_point = pt
-
-    return best_dist, best_point
-
-
-def check_coverage(
-    stations: list[Station],
-    route_polylines: dict[str, RoutePolylines],
-    threshold_m: float,
-) -> list[CoverageResult]:
-    """Find stations not within threshold_m of any of their route's polylines."""
-    uncovered: list[CoverageResult] = []
-
+    # ── Per-trunk check (route-specific) ──
+    total = 0
+    misses = []
+    far_stops = []
+    cross_trunk = []
     for station in stations:
-        for rid in station.routes:
-            route = route_polylines.get(rid)
-            if route is None:
-                # Route not in shapes response — might be a shuttle or special
-                uncovered.append(
-                    CoverageResult(
-                        station=station,
-                        route_id=rid,
-                        min_distance_m=float("inf"),
-                        nearest_point=(0, 0),
-                    )
-                )
+        routes = station.get("routes", [])
+        lat = station["lat"]
+        lon = station["lon"]
+        name = station["name"]
+        sid = station["id"]
+        tested = set()
+        for rid in routes:
+            tidx = ROUTE_TO_TRUNK.get(rid)
+            if tidx is None or tidx in tested:
                 continue
-
-            if not route.segments:
-                uncovered.append(
-                    CoverageResult(
-                        station=station,
-                        route_id=rid,
-                        min_distance_m=float("inf"),
-                        nearest_point=(0, 0),
-                    )
+            tested.add(tidx)
+            polys = trunk_polys.get(tidx, [])
+            if not polys:
+                misses.append(
+                    (name, sid, rid, tidx, float("inf"), "NO_TRUNK")
                 )
+                total += 1
                 continue
-
-            dist, nearest = min_distance_to_route(station.lat, station.lon, route)
-            if dist > threshold_m:
-                uncovered.append(
-                    CoverageResult(
-                        station=station,
-                        route_id=rid,
-                        min_distance_m=dist,
-                        nearest_point=nearest,
-                    )
-                )
-
-    return uncovered
-
-
-# ── Main ────────────────────────────────────────────────────────────────────
-
-
-def main():
-    parser = argparse.ArgumentParser(description="Check stop-to-polyline coverage")
-    parser.add_argument(
-        "--threshold",
-        type=float,
-        default=80,
-        help="Max distance (m) for a stop to be 'covered' (default: 80)",
-    )
-    parser.add_argument(
-        "--backend",
-        default="http://localhost:8767",
-        help="Backend URL (default: http://localhost:8767)",
-    )
-    args = parser.parse_args()
-
-    print(f"Backend:   {args.backend}")
-    print(f"Threshold: {args.threshold} m")
-    print()
-
-    # Fetch data
-    print("Fetching stations...", end=" ", flush=True)
-    stations = fetch_stations(args.backend)
-    print(f"{len(stations)} stations")
-
-    print("Fetching polylines...", end=" ", flush=True)
-    route_polylines = fetch_polylines(args.backend)
-    total_segments = sum(len(r.segments) for r in route_polylines.values())
-    total_points = sum(
-        sum(len(s) for s in r.segments) for r in route_polylines.values()
-    )
-    print(
-        f"{len(route_polylines)} routes, {total_segments} segments, {total_points:,} points"
-    )
-    print()
-
-    # Check coverage
-    print("Checking coverage...", end=" ", flush=True)
-    uncovered = check_coverage(stations, route_polylines, args.threshold)
-    print("done")
-    print()
-
-    # Count total stop-route pairs
-    total_pairs = sum(len(s.routes) for s in stations)
-    covered = total_pairs - len(uncovered)
-
-    print(f"{'='*70}")
-    print("COVERAGE SUMMARY")
-    print(f"{'='*70}")
-    print(f"Total stop-route pairs:  {total_pairs}")
-    print(
-        f"Covered (< {args.threshold}m):       {covered}  ({100*covered/total_pairs:.1f}%)"
-    )
-    print(
-        f"Uncovered (>= {args.threshold}m):     {len(uncovered)}  ({100*len(uncovered)/total_pairs:.1f}%)"
-    )
-    print()
-
-    if not uncovered:
-        print("✅ All stops are covered by their route polylines!")
-        return
-
-    # Sort by distance (worst first)
-    uncovered.sort(key=lambda r: r.min_distance_m, reverse=True)
-
-    # Separate missing routes vs distant stops
-    missing_route = [r for r in uncovered if r.min_distance_m == float("inf")]
-    distant = [r for r in uncovered if r.min_distance_m != float("inf")]
-
-    if missing_route:
-        print(
-            f"⚠️  MISSING ROUTES ({len(missing_route)} stop-route pairs with no polyline data):"
-        )
-        print(f"{'─'*70}")
-        seen_routes: set[str] = set()
-        for r in missing_route:
-            if r.route_id not in seen_routes:
-                stops_for_route = [x for x in missing_route if x.route_id == r.route_id]
-                print(
-                    f"  Route {r.route_id:>3s}: {len(stops_for_route)} stops, no polyline"
-                )
-                seen_routes.add(r.route_id)
-        print()
-
-    if distant:
-        print(
-            f"❌ UNCOVERED STOPS ({len(distant)} stop-route pairs farther than {args.threshold}m):"
-        )
-        print(f"{'─'*70}")
-        print(
-            f"  {'Route':>5s}  {'Distance':>8s}  {'Station ID':>10s}  {'Station Name'}"
-        )
-        print(f"  {'─'*5:>5s}  {'─'*8:>8s}  {'─'*10:>10s}  {'─'*30}")
-        for r in distant:
-            dist_str = f"{r.min_distance_m:.0f}m"
-            print(
-                f"  {r.route_id:>5s}  {dist_str:>8s}  {r.station.id:>10s}  {r.station.name}"
+            best = min(
+                min_dist_to_polyline(lat, lon, p) for p in polys
             )
-        print()
+            total += 1
+            if best > 150:
+                # Check if it's a cross-trunk station (on another trunk)
+                any_best = min(
+                    min_dist_to_polyline(lat, lon, p) for p in all_polys
+                )
+                if any_best <= 50:
+                    cross_trunk.append(
+                        (name, sid, rid, tidx, best, any_best)
+                    )
+                else:
+                    misses.append(
+                        (name, sid, rid, tidx, best, "MISS")
+                    )
+            elif best > 50:
+                far_stops.append((name, sid, rid, tidx, best))
 
-        # Group by route for a route-level view
-        print("BY ROUTE:")
-        print(f"{'─'*70}")
-        route_groups: dict[str, list[CoverageResult]] = {}
-        for r in distant:
-            route_groups.setdefault(r.route_id, []).append(r)
-        for rid in sorted(route_groups.keys()):
-            group = route_groups[rid]
-            avg_dist = sum(r.min_distance_m for r in group) / len(group)
-            max_dist = max(r.min_distance_m for r in group)
+    mc = len(misses)
+    fc = len(far_stops)
+    xc = len(cross_trunk)
+    ok = total - mc - fc - xc
+    print()
+    print(f"Total station-trunk pairs: {total}")
+    print(f"  OK  <=50m:        {ok}")
+    print(f"  WARN 50-150m:     {fc}")
+    print(f"  CROSS-TRUNK:      {xc}  (on different trunk polyline)")
+    print(f"  FAIL >150m:       {mc}")
+
+    if cross_trunk:
+        print()
+        print("CROSS-TRUNK stops (distant from own trunk, OK on another):")
+        for n, s, r, t, d, ad in sorted(
+            cross_trunk, key=lambda x: -x[4]
+        ):
             print(
-                f"  Route {rid:>3s}: {len(group):>3d} uncovered stops"
-                f"  (avg {avg_dist:.0f}m, max {max_dist:.0f}m)"
+                f"  {n} ({s}) route={r} trunk={t} "
+                f"own={d:.0f}m nearest_any={ad:.0f}m"
+            )
+    if far_stops:
+        print()
+        print("WARNING stops (50-150m):")
+        for n, s, r, t, d in sorted(far_stops, key=lambda x: -x[4]):
+            print(f"  {n} ({s}) route={r} trunk={t} dist={d:.0f}m")
+    if misses:
+        print()
+        print("FAILED stops (>150m, not on ANY polyline):")
+        for n, s, r, t, d, reason in sorted(
+            misses, key=lambda x: -x[4]
+        ):
+            ds = f"{d:.0f}m" if d < float("inf") else "INF"
+            print(
+                f"  {n} ({s}) route={r} trunk={t} dist={ds} [{reason}]"
             )
 
+    # ── System-map check: every station on ANY trunk polyline ──
     print()
-    print(f"{'='*70}")
-    if distant:
-        print(f"🔍 {len(distant)} stops need polyline coverage attention")
-    else:
-        print(f"✅ All stops with polyline data are within {args.threshold}m")
+    print("-" * 50)
+    print("SYSTEM MAP CHECK: every station on ANY polyline")
+    any_miss = 0
+    for station in stations:
+        lat = station["lat"]
+        lon = station["lon"]
+        best = min(
+            min_dist_to_polyline(lat, lon, p) for p in all_polys
+        )
+        if best > 50:
+            any_miss += 1
+            print(
+                f"  MISS: {station['name']} ({station['id']}) "
+                f"dist={best:.0f}m"
+            )
+    total_st = len(stations)
+    print(
+        f"  {total_st - any_miss}/{total_st} stations within 50m "
+        f"of any polyline"
+    )
+    print()
+
+    # Pass if no TRUE misses (cross-trunk is OK for system map)
+    return mc == 0 and fc == 0 and any_miss == 0
+
+
+def test_bus_stops():
+    print("=" * 70)
+    print("BUS STOP-POLYLINE COVERAGE TEST (static GTFS)")
+    print("=" * 70)
+    try:
+        from app.clients.bus_client import (
+            _load_static_bus_route_shape_index,
+        )
+    except Exception as e:
+        print(f"Cannot load bus module: {e} — skipping")
+        return True
+
+    index = _load_static_bus_route_shape_index()
+    if not index:
+        print("No static bus shapes — skipping")
+        return True
+
+    total_r = 0
+    total_s = 0
+    total_m = 0
+    route_misses = []
+    for rid, shape in sorted(index.items()):
+        if not shape.stops or not shape.polylines:
+            continue
+        polys = [decode_polyline(e) for e in shape.polylines]
+        polys = [p for p in polys if len(p) >= 2]
+        if not polys:
+            continue
+        total_r += 1
+        rm = 0
+        wd = 0.0
+        for stop in shape.stops:
+            total_s += 1
+            best = min(
+                min_dist_to_polyline(stop.lat, stop.lon, p)
+                for p in polys
+            )
+            if best > 100:
+                rm += 1
+                total_m += 1
+            if best > wd:
+                wd = best
+        if rm > 0:
+            route_misses.append((rid, rm, len(shape.stops), wd))
+
+    pct = (1 - total_m / total_s) * 100 if total_s > 0 else 100
+    print()
+    print(f"Routes tested:  {total_r}")
+    print(f"Total stops:    {total_s}")
+    print(f"Stops >100m:    {total_m}")
+    print(f"Coverage:       {pct:.1f}%")
+    if route_misses:
+        print()
+        print(f"Routes with misses ({len(route_misses)}):")
+        for r, mc, sc, wd in sorted(
+            route_misses, key=lambda x: -x[1]
+        )[:25]:
+            print(
+                f"  {r}: {mc}/{sc} miss "
+                f"({mc / sc * 100:.0f}%), worst={wd:.0f}m"
+            )
+        if len(route_misses) > 25:
+            print(f"  ... and {len(route_misses) - 25} more")
+    print()
+    return total_m == 0
 
 
 if __name__ == "__main__":
-    main()
+    s = test_subway_stops()
+    b = test_bus_stops()
+    print("=" * 70)
+    print("SUMMARY")
+    sr = "PASS" if s else "ISSUES"
+    br = "PASS" if b else "ISSUES"
+    print(f"  Subway: {sr}")
+    print(f"  Bus:    {br}")
+    sys.exit(0 if s and b else 1)

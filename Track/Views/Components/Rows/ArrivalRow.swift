@@ -213,6 +213,7 @@ struct ArrivalRow: View {
     VStack {
         ArrivalRow(
             arrival: TrainArrival(
+                id: "preview_L_L01",
                 routeID: "L",
                 stationID: "L01",
                 stationName: "1 Av",
@@ -230,6 +231,7 @@ struct ArrivalRow: View {
         )
         ArrivalRow(
             arrival: TrainArrival(
+                id: "preview_G_G29",
                 routeID: "G",
                 stationID: "G29",
                 stationName: "Church Av",

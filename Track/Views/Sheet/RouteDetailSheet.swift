@@ -689,6 +689,15 @@ struct RouteDetailSheet: View {
         selectedChipId = nil
         onFocusVehicle?(nil)
         onStopSelected?(nil)
+
+        // Keep the locked headsign in sync with the new direction so that
+        // safeDirection doesn't return an empty shell (arrivals: []).
+        // The direction-picker button already sets this, but the swipe
+        // DragGesture only mutates selectedDirectionIndex — this covers both.
+        if selectedDirectionIndex < group.directions.count {
+            lockedDirectionHeadsign = group.directions[selectedDirectionIndex].direction
+        }
+
         rebuildCachedPolyline()
         let freshArrivals = nearestStopArrivals
         stableNearestArrivals = freshArrivals
