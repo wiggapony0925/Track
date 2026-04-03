@@ -3094,6 +3094,16 @@ def get_trunk_polylines() -> list[dict]:
                 # v5: Server-side fillet — client no longer needs to
                 # process geometry at all (decode → render).
                 coords_wgs = _remove_near_duplicates_wgs84(coords_wgs)
+                # v6: Remove backtrack artefacts introduced by station
+                # re-snap.  Snapping can create micro-reversals where a
+                # vertex is placed slightly "behind" the path's direction
+                # of travel.  These survive into the export and cause
+                # MapLibre's line-offset to momentarily flip sides,
+                # producing a zig-zag / scribble effect on the rendered
+                # trunk (most visible on the 1/2/3 red line near Sugar
+                # Hill and the N/Q/R/W yellow trunk in Yorkville).
+                if len(coords_wgs) >= 3:
+                    coords_wgs = _despike_coords(coords_wgs)
                 if len(coords_wgs) >= 3:
                     coords_wgs = _junction_fillet_wgs84(
                         coords_wgs,
