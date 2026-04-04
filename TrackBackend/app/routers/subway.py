@@ -87,7 +87,7 @@ _shapes_all_building = False  # True while pipeline is running
 # Bump this whenever corridor_pipeline.py changes affect polyline output.
 # The persistent Render disk survives deploys, so without a version tag
 # the stale cached pipeline result would be served forever.
-_SHAPES_DISK_CACHE_VERSION = 4  # v4: despike + tighter thresholds
+_SHAPES_DISK_CACHE_VERSION = 5  # v5: guard against empty-build poison
 _SHAPES_DISK_CACHE_PATH = (
     _Path(__file__).resolve().parent.parent
     / "data"
@@ -99,6 +99,7 @@ for _old in (
     _Path(__file__).resolve().parent.parent / "data" / "_cache_shapes_all_v1.json",
     _Path(__file__).resolve().parent.parent / "data" / "_cache_shapes_all_v2.json",
     _Path(__file__).resolve().parent.parent / "data" / "_cache_shapes_all_v3.json",
+    _Path(__file__).resolve().parent.parent / "data" / "_cache_shapes_all_v4.json",
 ):
     if _old.exists():
         _old.unlink(missing_ok=True)
@@ -111,6 +112,15 @@ def _load_shapes_disk_cache() -> AllSubwayLinesResponse | None:
             return None
         raw = json.loads(_SHAPES_DISK_CACHE_PATH.read_text())
         resp = AllSubwayLinesResponse(**raw)
+        if not resp.lines:
+            # Disk cache was written during an incomplete cold start —
+            # treat it as missing so the pipeline rebuilds correctly.
+            TrackLogger.warning(
+                "[SHAPES_DISK] Disk cache has 0 lines — deleting and rebuilding",
+                tag="SHAPES",
+            )
+            _SHAPES_DISK_CACHE_PATH.unlink(missing_ok=True)
+            return None
         TrackLogger.info(
             f"[SHAPES_DISK] Loaded shapes/all disk cache "
             f"({len(resp.lines)} lines, {len(resp.trunk_polylines)} trunks)",
@@ -130,6 +140,14 @@ def _save_shapes_disk_cache(resp: AllSubwayLinesResponse) -> None:
     Uses atomic write (tmp file + rename) so a crash mid-write can't
     leave a corrupted JSON file that breaks the next cold start.
     """
+    if not resp.lines:
+        # Never persist an empty result — it would poison the disk cache
+        # and cause every subsequent cold start to return 0 lines forever.
+        TrackLogger.warning(
+            "[SHAPES_DISK] Skipping disk cache write — 0 lines (GTFS not ready)",
+            tag="SHAPES",
+        )
+        return
     try:
         _SHAPES_DISK_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
         data = resp.model_dump(mode="json")
@@ -418,6 +436,15 @@ def _build_shapes_all_sync() -> AllSubwayLinesResponse:
 def set_shapes_all_cache(resp: AllSubwayLinesResponse) -> None:
     """Set the in-memory shapes cache (called by warmup to avoid a second
     CPU-heavy computation when the first client request arrives)."""
+    if not resp.lines:
+        # Refuse to cache an empty result — this happens when the pipeline
+        # runs before GTFS data finishes loading.  Keeping _shapes_all_json_bytes
+        # as None forces every subsequent request to rebuild until data is ready.
+        TrackLogger.warning(
+            "[SHAPES] set_shapes_all_cache called with 0 lines — skipping",
+            tag="SHAPES",
+        )
+        return
     global _shapes_all_cache, _shapes_all_json_bytes
     _shapes_all_cache = resp
     # Pre-serialize to JSON bytes so the endpoint skips Pydantic serialization.
@@ -490,6 +517,17 @@ async def subway_shapes_all() -> Response:
             _save_shapes_disk_cache(result)
         finally:
             _shapes_all_building = False
+
+        # If the pipeline returned 0 lines (GTFS not yet loaded), return the
+        # empty result but explicitly tell all caches not to store it — the
+        # client must retry and hit the network rather than caching the miss.
+        if _shapes_all_json_bytes is None:
+            empty_bytes = json.dumps(result.model_dump(mode="json")).encode("utf-8")
+            return Response(
+                content=empty_bytes,
+                media_type="application/json",
+                headers={"Cache-Control": "no-store"},
+            )
 
         return Response(
             content=_shapes_all_json_bytes,

@@ -538,7 +538,14 @@ final class MapSystemViewModel {
                     )
                 }
                 commuterLines.append(contentsOf: lirrLines)
-                OfflineCacheManager.shared.cacheLIRRShapes(lirrResponse)
+                if !lirrLines.isEmpty {
+                    OfflineCacheManager.shared.cacheLIRRShapes(lirrResponse)
+                } else {
+                    // Backend returned 0 lines (still cold-starting) — evict
+                    // the memoizer entry so the commuter-rail retry hits the
+                    // network instead of getting the cached empty payload.
+                    await TrackAPI.invalidateCachedPath("/lirr/shapes/all")
+                }
                 for line in lirrResponse.lines {
                     for stop in line.stops {
                         let coord = CLLocationCoordinate2D(
@@ -567,7 +574,11 @@ final class MapSystemViewModel {
                     )
                 }
                 commuterLines.append(contentsOf: mnrLines)
-                OfflineCacheManager.shared.cacheMNRShapes(mnrResponse)
+                if !mnrLines.isEmpty {
+                    OfflineCacheManager.shared.cacheMNRShapes(mnrResponse)
+                } else {
+                    await TrackAPI.invalidateCachedPath("/mnr/shapes/all")
+                }
                 for line in mnrResponse.lines {
                     for stop in line.stops {
                         let coord = CLLocationCoordinate2D(
@@ -639,7 +650,13 @@ final class MapSystemViewModel {
                     + " \(response.lines.count) lines"
                     + " in \(elapsed)")
 
-            OfflineCacheManager.shared.cacheSubwayShapes(response)
+            if response.lines.isEmpty {
+                // Backend was mid-cold-start — evict the memoizer entry so
+                // the shapes retry loop hits the network, not the cached empty.
+                await TrackAPI.invalidateCachedPath("/subway/shapes/all")
+            } else {
+                OfflineCacheManager.shared.cacheSubwayShapes(response)
+            }
 
             var decoded: [CachedTransitLine] = response.lines.map { line in
                 CachedTransitLine(
@@ -713,7 +730,11 @@ final class MapSystemViewModel {
                                     mode: .lirr)
                             }
                             addedLines.append(contentsOf: lines)
-                            OfflineCacheManager.shared.cacheLIRRShapes(lirrResp)
+                            if !lines.isEmpty {
+                                OfflineCacheManager.shared.cacheLIRRShapes(lirrResp)
+                            } else {
+                                await TrackAPI.invalidateCachedPath("/lirr/shapes/all")
+                            }
                             for line in lirrResp.lines {
                                 for stop in line.stops {
                                     let coord = CLLocationCoordinate2D(
@@ -739,7 +760,11 @@ final class MapSystemViewModel {
                                     mode: .mnr)
                             }
                             addedLines.append(contentsOf: lines)
-                            OfflineCacheManager.shared.cacheMNRShapes(mnrResp)
+                            if !lines.isEmpty {
+                                OfflineCacheManager.shared.cacheMNRShapes(mnrResp)
+                            } else {
+                                await TrackAPI.invalidateCachedPath("/mnr/shapes/all")
+                            }
                             for line in mnrResp.lines {
                                 for stop in line.stops {
                                     let coord = CLLocationCoordinate2D(

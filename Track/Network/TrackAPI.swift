@@ -33,6 +33,13 @@ private actor APIRequestMemoizer {
     func clearInflight(for key: String) {
         inflight.removeValue(forKey: key)
     }
+
+    /// Removes a cached entry so the next request hits the network.
+    /// Use when a successful 200 response decoded to empty data (backend
+    /// was mid-cold-start) so retries don't serve the stale empty result.
+    func invalidateCached(for key: String) {
+        cache.removeValue(forKey: key)
+    }
 }
 
 /// Centralized API client for the Track backend.
@@ -270,6 +277,15 @@ struct TrackAPI {
     }
     
     /// Invalidate the cached URL when developer settings change.
+    /// Evicts a path from the in-memory memoizer so the next call for that
+    /// path hits the network rather than returning stale cached data.
+    ///
+    /// Call this immediately after decoding a successful 200 response whose
+    /// payload turned out to be empty (e.g. `lines: []`), so retries go live.
+    static func invalidateCachedPath(_ path: String) async {
+        await memoizer.invalidateCached(for: path)
+    }
+
     static func invalidateBaseURL() {
         _cachedBaseURL = nil
     }
@@ -844,20 +860,21 @@ struct TrackAPI {
     /// the server's corridor pipeline on cold start.  Uses a dedicated
     /// URLSession with a 90 s resource timeout so the request survives
     /// Render.com's free-tier cold boot (30-60 s) + pipeline execution.
+    ///
+    /// Uses `.reloadIgnoringLocalCacheData` so URLSession never serves a
+    /// stale HTTP-cached response — the app-level memoizer (30 s TTL) and
+    /// `OfflineCacheManager` provide all the caching we need.  This prevents
+    /// the poisoned-empty-shapes bug where `Cache-Control: max-age=3600` causes
+    /// URLSession to return a cached empty 200 for up to 1 hour after a bad
+    /// cold-start response.
     private static let extendedSession: URLSession = {
         let config = URLSessionConfiguration.default
         config.waitsForConnectivity = true
         config.timeoutIntervalForRequest = 45
         config.timeoutIntervalForResource = 60
         config.httpMaximumConnectionsPerHost = 4
-        config.urlCache = URLCache(
-            memoryCapacity: 10 * 1024 * 1024,
-            diskCapacity: 50 * 1024 * 1024,
-            directory: FileManager.default
-                .containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier)?
-                .appendingPathComponent("URLCache")
-        )
-        config.requestCachePolicy = .useProtocolCachePolicy
+        config.urlCache = nil  // app-level memoizer + OfflineCache handle caching
+        config.requestCachePolicy = .reloadIgnoringLocalCacheData
         return URLSession(configuration: config)
     }()
 
