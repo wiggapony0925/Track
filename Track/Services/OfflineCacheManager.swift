@@ -39,16 +39,21 @@ final class OfflineCacheManager: ObservableObject {
         static let stationCacheVersion = "cached_stations_version"
         static let lirrShapes = "cached_lirr_shapes"
         static let mnrShapes = "cached_mnr_shapes"
-        static let subwayShapes = "cached_subway_shapes_v3"
-        static let subwayShapesCachedAt = "cached_subway_shapes_timestamp_v3"
+        static let subwayShapes = "cached_subway_shapes_v4"
+        static let subwayShapesCachedAt = "cached_subway_shapes_timestamp_v4"
         static let flattenedPolylines = "cached_flattened_polylines"
-        static let flattenedPolylinesCachedAt = "cached_flattened_polylines_timestamp_v13"
+        static let flattenedPolylinesCachedAt = "cached_flattened_polylines_timestamp_v14"
     }
 
     /// Bump this whenever the station consolidation logic or hash
     /// algorithm changes.  On mismatch the stale cache is discarded
     /// so users never see leftover wrong-coordinate centroids.
-    private static let currentStationCacheVersion = 2
+    private static let currentStationCacheVersion = 3
+
+    /// File version for the pre-flattened subway geometry cache.
+    /// Bump whenever rendered subway polyline geometry changes so the app
+    /// cannot restore old linework before the network refresh lands.
+    private static let currentFlattenedPolylineCacheVersion = 13
     
     // MARK: - Initialization
     
@@ -71,8 +76,12 @@ final class OfflineCacheManager: ObservableObject {
             "cached_subway_shapes_timestamp",
             "cached_flattened_polylines_timestamp_v10",
             "cached_flattened_polylines_timestamp_v11",
+            "cached_flattened_polylines_timestamp_v12",
+            "cached_flattened_polylines_timestamp_v13",
             "cached_subway_shapes_v2",
             "cached_subway_shapes_timestamp_v2",
+            "cached_subway_shapes_v3",
+            "cached_subway_shapes_timestamp_v3",
         ] {
             userDefaults.removeObject(forKey: legacyKey)
         }
@@ -259,7 +268,7 @@ final class OfflineCacheManager: ObservableObject {
         guard let data = try? JSONEncoder().encode(bundle) else { return }
         // Use file-based cache for large data instead of UserDefaults
         guard let dir = flattenedCacheDirectory() else { return }
-        let fileURL = dir.appendingPathComponent("flattened_polylines_v12.json")
+        let fileURL = dir.appendingPathComponent(flattenedPolylineCacheFileName())
         try? data.write(to: fileURL, options: .atomic)
         userDefaults.set(Date(), forKey: CacheKey.flattenedPolylinesCachedAt)
         // Clean up old cache versions
@@ -272,6 +281,7 @@ final class OfflineCacheManager: ObservableObject {
             "flattened_polylines_v9.json",
             "flattened_polylines_v10.json",
             "flattened_polylines_v11.json",
+            "flattened_polylines_v12.json",
         ]
         for old in oldFiles {
             try? FileManager.default.removeItem(at: dir.appendingPathComponent(old))
@@ -281,7 +291,7 @@ final class OfflineCacheManager: ObservableObject {
     /// Get pre-computed flattened polylines (nil if never cached).
     func getCachedFlattenedPolylines() -> CachedFlattenedBundle? {
         guard let dir = flattenedCacheDirectory() else { return nil }
-        let fileURL = dir.appendingPathComponent("flattened_polylines_v12.json")
+        let fileURL = dir.appendingPathComponent(flattenedPolylineCacheFileName())
         guard let data = try? Data(contentsOf: fileURL) else { return nil }
         return try? JSONDecoder().decode(CachedFlattenedBundle.self, from: data)
     }
@@ -305,6 +315,10 @@ final class OfflineCacheManager: ObservableObject {
         let dir = container.appendingPathComponent("FlattenedPolylineCache", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
+    }
+
+    private func flattenedPolylineCacheFileName() -> String {
+        "flattened_polylines_v\(Self.currentFlattenedPolylineCacheVersion).json"
     }
 
     // MARK: - Baked GeoJSON Tile Cache
@@ -358,8 +372,10 @@ final class OfflineCacheManager: ObservableObject {
         userDefaults.removeObject(forKey: CacheKey.subwayArrivals)
         userDefaults.removeObject(forKey: CacheKey.busArrivals)
         userDefaults.removeObject(forKey: CacheKey.lirrArrivals)
+        userDefaults.removeObject(forKey: CacheKey.mnrArrivals)
         userDefaults.removeObject(forKey: CacheKey.lastFetchTime)
         userDefaults.removeObject(forKey: CacheKey.cachedStations)
+        userDefaults.removeObject(forKey: CacheKey.stationCacheVersion)
         userDefaults.removeObject(forKey: CacheKey.lirrShapes)
         userDefaults.removeObject(forKey: CacheKey.mnrShapes)
         userDefaults.removeObject(forKey: CacheKey.subwayShapes)

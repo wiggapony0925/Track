@@ -2108,15 +2108,50 @@ final class MapSystemViewModel {
     /// is unavailable or returns empty).
     private func loadRawStations() async {
         do {
-            let response = try await TrackAPI.fetchAllSubwayStations()
-            let stations = response.stations.map { s in
-                CachedSubwayStation(
-                    id: s.id,
-                    name: s.name,
-                    coordinate: CLLocationCoordinate2D(latitude: s.lat, longitude: s.lon),
-                    routes: s.routes
-                )
+            let stations: [CachedSubwayStation]
+            let cachedStationsForOffline: [CachedStation]
+
+            let processedResponse = try await TrackAPI.fetchProcessedStations()
+            let processedStations = processedResponse.stations.compactMap {
+                cachedStation(from: $0)
             }
+
+            if !processedStations.isEmpty {
+                stations = processedStations
+                cachedStationsForOffline = processedStations.map { station in
+                    CachedStation(
+                        id: station.id,
+                        name: station.name,
+                        latitude: station.coordinate.latitude,
+                        longitude: station.coordinate.longitude,
+                        routes: station.routes
+                    )
+                }
+            } else {
+                let response = try await TrackAPI.fetchAllSubwayStations()
+                let rawStations = response.stations.map { s in
+                    CachedSubwayStation(
+                        id: s.id,
+                        name: s.name,
+                        coordinate: CLLocationCoordinate2D(
+                            latitude: s.lat,
+                            longitude: s.lon
+                        ),
+                        routes: s.routes
+                    )
+                }
+                stations = rawStations
+                cachedStationsForOffline = response.stations.map { s in
+                    CachedStation(
+                        id: s.id,
+                        name: s.name,
+                        latitude: s.lat,
+                        longitude: s.lon,
+                        routes: s.routes
+                    )
+                }
+            }
+
             await MainActor.run {
                 // Merge subway stations with any commuter-rail stops already
                 // loaded by loadSystemMap() — never overwrite the full array.
@@ -2128,22 +2163,36 @@ final class MapSystemViewModel {
             }
 
             // Cache stations for offline use
-            let cachedStations = response.stations.map { s in
-                CachedStation(
-                    id: s.id,
-                    name: s.name,
-                    latitude: s.lat,
-                    longitude: s.lon,
-                    routes: s.routes
-                )
-            }
-            OfflineCacheManager.shared.cacheStations(cachedStations)
+            OfflineCacheManager.shared.cacheStations(cachedStationsForOffline)
 
         } catch {
             AppLogger.shared.logError("loadStations", error: error)
             // Fall back to offline data on error
             loadOfflineStations()
         }
+    }
+
+    private func cachedStation(
+        from station: ProcessedStation
+    ) -> CachedSubwayStation? {
+        guard !station.positions.isEmpty else { return nil }
+
+        let routes = Array(Set(station.positions.map(\.routeId))).sorted()
+        guard !routes.isEmpty else { return nil }
+
+        let lat = station.positions.reduce(0.0) { partial, position in
+            partial + position.lat
+        } / Double(station.positions.count)
+        let lon = station.positions.reduce(0.0) { partial, position in
+            partial + position.lon
+        } / Double(station.positions.count)
+
+        return CachedSubwayStation(
+            id: station.stationId,
+            name: station.name,
+            coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lon),
+            routes: routes
+        )
     }
 
     /// Loads stations from bundled offline data.
@@ -2454,6 +2503,39 @@ final class MapSystemViewModel {
         return bestHeading
     }
 
+    /// Returns the closest point on the rendered trunk geometry.
+    private static func nearestPointOnBranches(
+        near coordinate: CLLocationCoordinate2D,
+        branches: [[CLLocationCoordinate2D]]
+    ) -> CLLocationCoordinate2D? {
+        var bestCoordinate: CLLocationCoordinate2D?
+        var bestDistSq: Double = .infinity
+
+        for branch in branches {
+            guard branch.count >= 2 else { continue }
+            for i in 0..<(branch.count - 1) {
+                let a = branch[i]
+                let b = branch[i + 1]
+                let (projLat, projLon, distSq) = projectOntoSegment(
+                    lat: coordinate.latitude,
+                    lon: coordinate.longitude,
+                    aLat: a.latitude,
+                    aLon: a.longitude,
+                    bLat: b.latitude,
+                    bLon: b.longitude
+                )
+                guard distSq < bestDistSq else { continue }
+                bestDistSq = distSq
+                bestCoordinate = CLLocationCoordinate2D(
+                    latitude: projLat,
+                    longitude: projLon
+                )
+            }
+        }
+
+        return bestCoordinate
+    }
+
     /// Maps a route ID to its MTA trunk-color group index.
     private static func trunkGroupIndex(for routeId: String) -> Int {
         let r = routeId.uppercased()
@@ -2663,6 +2745,17 @@ final class MapSystemViewModel {
                     avgLat = betterPos.latitude
                     avgLon = betterPos.longitude
                 }
+            } else if let trunkGroup = sortedColorGroups.first,
+                      let branches = referencePolylinesByGroup[trunkGroup],
+                      let snappedPosition = Self.nearestPointOnBranches(
+                          near: CLLocationCoordinate2D(
+                              latitude: avgLat,
+                              longitude: avgLon
+                          ),
+                          branches: branches
+                      ) {
+                avgLat = snappedPosition.latitude
+                avgLon = snappedPosition.longitude
             }
 
             let stationCoordinate = CLLocationCoordinate2D(latitude: avgLat, longitude: avgLon)

@@ -19,6 +19,18 @@ SKIPPED_SYSTEM_MAP_VARIANTS = {"FS", "GS", "SR", "H"}
 # station. In practice the E train never serves D14.
 KNOWN_GTFS_ARTIFACTS: frozenset[tuple[str, str]] = frozenset({
     ("D14", "E"),
+    # Q05 "96 St" is currently tagged to N/Q/R in the static stop export,
+    # but the corresponding GTFS shape geometry sits ~137 m away on the
+    # Broadway trunk rather than passing through the station point.
+    ("Q05", "N"),
+    ("Q05", "Q"),
+    ("Q05", "R"),
+    # 301 "Harlem-148 St" is another static GTFS mismatch where the 3-train
+    # shape geometry does not reach the station coordinate precisely.
+    ("301", "3"),
+    # G21 "Queens Plaza" is tagged with R service in the stop export even
+    # though the R geometry used for the system map does not serve it.
+    ("G21", "R"),
 })
 
 

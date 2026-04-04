@@ -2736,19 +2736,21 @@ async def _fetch_nearby_buses(
 
         # Determine the opposite direction key
         upper = existing_dir.upper()
-        if upper in _OPPOSITE_COMPASS:
-            new_dir = _OPPOSITE_COMPASS[upper]
-        elif upper in _NUMERIC_DIR_KEYS:
+        if upper in _NUMERIC_DIR_KEYS:
             new_dir = "1" if existing_dir == "0" else "0"
         else:
-            # Destination-name direction — try GTFS headsign for the
-            # opposite direction first, fall back to compass / generic.
+            # Prefer a real GTFS opposite headsign whenever possible,
+            # even if the existing direction key is a fallback compass /
+            # Inbound label. This avoids generic placeholder tabs like
+            # "Outbound" for routes whose opposite terminal is known.
             existing_arrivals = [r for r in results if r.route_id == route_id]
             headsign = _resolve_opposite_headsign(
                 route_id, existing_dir, existing_arrivals
             )
             if headsign:
                 new_dir = headsign
+            elif upper in _OPPOSITE_COMPASS:
+                new_dir = _OPPOSITE_COMPASS[upper]
             else:
                 # Try to find the compass direction from nearby stops
                 stop_compass = None
@@ -2905,12 +2907,11 @@ async def _fetch_nearby_buses(
     # -----------------------------------------------------------------
     # Phase E: Static GTFS fallback (guarantee route visibility in radius)
     # -----------------------------------------------------------------
-    # When both live SIRI and OBA stop routeIds are sparse, some valid nearby
-    # routes can still be missed. Use local GTFS bus stop-times to ensure any
-    # route with a stop inside the radius is represented with a placeholder.
-    # Only run broad static fallback during degraded upstream conditions
-    # to avoid over-inflating direction/tab expectations in normal mode.
-    run_phase_e = fail_count > 0 or any(not s.route_ids for s in stops)
+    # When live SIRI and OBA stop metadata miss a route, local GTFS stop-times
+    # are the most reliable completeness backstop. Run this unconditionally so
+    # routes with real nearby stops (for example M11 near Penn Station) are not
+    # omitted simply because the upstream nearby-stop sample was incomplete.
+    run_phase_e = True
     if run_phase_e:
         static_routes = await asyncio.to_thread(
             _nearby_static_bus_routes, lat, lon, effective_radius

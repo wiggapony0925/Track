@@ -48,6 +48,25 @@ _alert_state = _AlertState()
 _refresh_lock: asyncio.Lock | None = None  # created lazily inside event loop
 
 
+def _format_index_refresh_message(
+    severe_count: int,
+    advisory_count: int,
+) -> str:
+    """Return the alert-index refresh summary line.
+
+    Args:
+        severe_count: Number of routes with severe active alerts.
+        advisory_count: Number of routes with warning-severity alerts.
+
+    Returns:
+        Human-readable refresh summary for structured info logging.
+    """
+    return (
+        f"[ALERTS] Index refreshed — {severe_count} severe, "
+        f"{advisory_count} advisory routes affected"
+    )
+
+
 def _get_lock() -> asyncio.Lock:
     global _refresh_lock
     if _refresh_lock is None:
@@ -121,10 +140,9 @@ async def _do_refresh() -> None:
         _alert_state.boost_by_route = new_index
         _alert_state.last_refresh = _time.time()
         severe_count = sum(1 for v in new_index.values() if v >= _SEVERE_BOOST)
-        warning_count = sum(1 for v in new_index.values() if v < _SEVERE_BOOST)
+        advisory_count = sum(1 for v in new_index.values() if v < _SEVERE_BOOST)
         TrackLogger.info(
-            f"[ALERTS] Index refreshed — {severe_count} SEVERE, "
-            f"{warning_count} WARNING routes affected",
+            _format_index_refresh_message(severe_count, advisory_count),
             tag="ML",
         )
     except TimeoutError:

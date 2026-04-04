@@ -59,6 +59,29 @@ _fast_travel_cleanup_at: float = 0.0
 _FAST_TRAVEL_CLEANUP_INTERVAL_SECS = 600.0    # prune stale entries every 10 min
 
 
+def _log_fast_travel_drop(
+    trip_id: str,
+    pairs: list[str],
+) -> None:
+    """Log a rate-limited fast-travel prune at debug level.
+
+    These drops are expected feed-hygiene behavior, not an operator-facing
+    warning. Keep them available for local debugging without polluting
+    production warning logs.
+
+    Args:
+        trip_id: Trip identifier associated with the dropped predictions.
+        pairs: Ordered list of offending stop-pair summaries.
+    """
+    summary = pairs[0]
+    if len(pairs) > 1:
+        summary += f" (+{len(pairs) - 1} more)"
+    TrackLogger.debug(
+        f"[RT] Fast-travel on trip {trip_id}: {summary} — dropping",
+        tag="RT",
+    )
+
+
 def _is_fast_travel(
     lat1: float,
     lon1: float,
@@ -319,14 +342,11 @@ async def get_arrivals_for_line(
 
     # Emit at most one log per trip per cooldown window.
     for trip_id, pairs in trip_drops.items():
-        if _now - _fast_travel_warn_ts.get(trip_id, 0.0) >= _FAST_TRAVEL_WARN_COOLDOWN_SECS:
-            summary = pairs[0]
-            if len(pairs) > 1:
-                summary += f" (+{len(pairs) - 1} more)"
-            TrackLogger.warning(
-                f"[RT] Fast-travel on trip {trip_id}: {summary} — dropping",
-                tag="RT",
-            )
+        if (
+            _now - _fast_travel_warn_ts.get(trip_id, 0.0)
+            >= _FAST_TRAVEL_WARN_COOLDOWN_SECS
+        ):
+            _log_fast_travel_drop(trip_id, pairs)
             _fast_travel_warn_ts[trip_id] = _now
 
     if bad_stop_ids:

@@ -1388,12 +1388,24 @@ async def get_nearby_stops(
         return []
 
     url = settings.urls.bus_oba_base + eps.stops_near_location
+    # OBA's ``stops-for-location`` response is not reliably distance-sorted.
+    # In dense searches (e.g. a multi-mile Manhattan radius), requesting only
+    # 100 stops can exclude legitimately closer routes before we sort client-
+    # side. Use a larger cap for bigger radii so nearby routes like M11 are
+    # not omitted simply because they fell outside the upstream truncation.
+    if effective_radius >= 5000:
+        max_count = "300"
+    elif effective_radius >= 2500:
+        max_count = "200"
+    else:
+        max_count = "100"
+
     params = {
         "key": settings.api_keys.mta_bus_key,
         "lat": str(lat),
         "lon": str(lon),
         "radius": str(effective_radius),
-        "maxCount": "100",
+        "maxCount": max_count,
     }
 
     # Retry logic driven by settings
