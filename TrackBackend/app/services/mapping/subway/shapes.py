@@ -33,7 +33,7 @@ from app.services.mapping.shared.coords import (
 from app.services.transit.station_lookup import get_stop_info
 from app.utils.logger import TrackLogger
 
-_DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
+_DATA_DIR = Path(__file__).resolve().parents[3] / "data"
 _SHAPES_PATH = _DATA_DIR / "shapes.txt"
 _TRIPS_PATH = _DATA_DIR / "trips.txt"
 _SHAPE_STOPS_PATH = _DATA_DIR / "shape_stops.json"

@@ -10,8 +10,9 @@ URL:     https://data.ny.gov/Transportation/MTA-Current-Bus-Routes/h2wf-afav
 API:     https://data.ny.gov/resource/h2wf-afav.json
 
 Each row represents one unique route shape (route_id + direction_id +
-shape_id + trip_type).  Geometry is stored as WKT MULTILINESTRING in
-EPSG:4326 with **longitude-first** coordinate order (WKT standard).
+shape_id + trip_type). Geometry is returned by Socrata as GeoJSON and may
+also appear as legacy WKT in older exports. Coordinates use EPSG:4326 with
+**longitude-first** order.
 
 Usage::
 
@@ -51,7 +52,7 @@ _PAGE_SIZE = 50_000
 
 # Disk cache keeps the processed index so server restarts are instant.
 _CACHE_VERSION = 1
-_DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
+_DATA_DIR = Path(__file__).resolve().parents[3] / "data"
 _CACHE_PATH = _DATA_DIR / f"_cache_bus_shapes_v{_CACHE_VERSION}.json"
 
 # Preferred trip_type for picking the canonical shape per route+direction.
@@ -86,23 +87,59 @@ _fetch_lock = asyncio.Lock()
 _COORD_PAIR_RE = re.compile(r"(-?\d+\.\d+)\s+(-?\d+\.\d+)")
 
 
-def _parse_wkt_geometry(wkt: str) -> list[list[tuple[float, float]]]:
-    """Parse a WKT MULTILINESTRING (or LINESTRING) into lat/lon lists.
+def _parse_wkt_geometry(geometry_raw: Any) -> list[list[tuple[float, float]]]:
+    """Parse Socrata geometry into lat/lon polyline lists.
 
-    WKT stores coordinates as "longitude latitude" (X Y), so this function
-    swaps them to the (lat, lon) convention used everywhere else in the
+    Socrata currently returns GeoJSON geometry objects for this dataset, but
+    older exports may still surface WKT strings. This function accepts both
+    forms and converts them to the (lat, lon) convention used elsewhere in the
     codebase.
 
     Args:
-        wkt: WKT geometry string from the Socrata API.
+        geometry_raw: Geometry payload from the Socrata API.
 
     Returns:
         A list of polylines; each polyline is a list of (lat, lon) tuples.
-        Returns an empty list if the WKT is malformed or empty.
+        Returns an empty list if the geometry is malformed or empty.
     """
-    if not wkt:
+    if not geometry_raw:
         return []
 
+    if isinstance(geometry_raw, dict):
+        geometry_type = str(geometry_raw.get("type") or "").strip().upper()
+        coordinates = geometry_raw.get("coordinates")
+        if not isinstance(coordinates, list):
+            return []
+
+        if geometry_type == "LINESTRING":
+            raw_segments = [coordinates]
+        elif geometry_type == "MULTILINESTRING":
+            raw_segments = coordinates
+        else:
+            return []
+
+        polylines: list[list[tuple[float, float]]] = []
+        for segment in raw_segments:
+            if not isinstance(segment, list):
+                continue
+            coords = []
+            for pair in segment:
+                if not isinstance(pair, list) or len(pair) < 2:
+                    continue
+                try:
+                    lon = float(pair[0])
+                    lat = float(pair[1])
+                except (TypeError, ValueError):
+                    continue
+                coords.append((lat, lon))
+            if len(coords) >= 2:  # noqa: PLR2004 — minimum viable polyline
+                polylines.append(coords)
+        return polylines
+
+    if not isinstance(geometry_raw, str):
+        return []
+
+    wkt = geometry_raw
     wkt = wkt.strip()
 
     if wkt.upper().startswith("MULTILINESTRING"):

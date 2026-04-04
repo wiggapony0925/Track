@@ -371,7 +371,12 @@ def _download_and_extract(
                 if docker_ok:
                     return True, True
                 fallback_ok = _has_required_files(entry)
-                TrackLogger.warning(
+                log_fn = (
+                    TrackLogger.info
+                    if is_not_found and not entry.get("critical", True)
+                    else TrackLogger.warning
+                )
+                log_fn(
                     f"[DATA] {desc}: {status_label} — {err_msg}"
                     + (" — using local fallback" if fallback_ok else ""),
                     tag="DATA",
