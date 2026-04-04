@@ -267,6 +267,11 @@ def _save_disk_cache(
             },
         }
         _CACHE_PATH.write_text(json.dumps(payload))
+        # Upload to Supabase in the background — eliminates the Socrata
+        # rate-limit warmup on cold starts.
+        from app.services.gtfs.bus_cache_sync import upload_bus_cache
+
+        upload_bus_cache("bus_stops_cache.tar.gz", _CACHE_PATH)
     except Exception as exc:
         TrackLogger.warning(
             f"[BUS_STOPS] Disk cache write failed ({exc}).",

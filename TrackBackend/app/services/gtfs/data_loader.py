@@ -125,6 +125,24 @@ DOWNLOAD_MANIFEST: list[dict[str, Any]] = [
         "required_files": ["delay_model.pkl"],
         "critical": False,  # heuristic factor used if missing
     },
+    {
+        # Bus Socrata caches — uploaded by bus/routes.py after each fresh
+        # rebuild from NYS Open Data.  Eliminates the Socrata rate-limit
+        # warmup penalty on cold starts (avoids the 20–30 min index rebuild).
+        "object": "bus_shapes_cache.tar.gz",
+        "extract_to": "",  # extracts _cache_bus_shapes_v1.json to app/data/
+        "description": "Bus route shapes Socrata cache",
+        "required_files": ["_cache_bus_shapes_v1.json"],
+        "critical": False,  # degrades to live Socrata fetch if missing
+    },
+    {
+        # Bus stop index — uploaded by bus/stops.py after each fresh rebuild.
+        "object": "bus_stops_cache.tar.gz",
+        "extract_to": "",  # extracts _cache_bus_stops_v1.json to app/data/
+        "description": "Bus stops Socrata cache",
+        "required_files": ["_cache_bus_stops_v1.json"],
+        "critical": False,  # degrades to live Socrata fetch if missing
+    },
 ]
 
 # transit_schedule.db is Docker-bundled only (863 MB raw, 170 MB gzipped —

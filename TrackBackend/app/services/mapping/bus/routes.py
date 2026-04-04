@@ -322,6 +322,9 @@ def _load_disk_cache() -> dict[str, RouteShape] | None:
 def _save_disk_cache(index: dict[str, RouteShape]) -> None:
     """Persist the processed index to disk for fast subsequent restarts.
 
+    Also triggers a background upload to Supabase Storage so the next cold
+    start can skip the Socrata fetch entirely.
+
     Args:
         index: The built route index to cache.
     """
@@ -332,6 +335,11 @@ def _save_disk_cache(index: dict[str, RouteShape]) -> None:
             json.dumps(payload, separators=(",", ":")), encoding="utf-8"
         )
         TrackLogger.bus(f"Bus shapes disk cache written: {len(index)} routes")
+        # Upload to Supabase in the background so the next cold start warms
+        # the index instantly instead of burning Socrata rate-limit budget.
+        from app.services.gtfs.bus_cache_sync import upload_bus_cache
+
+        upload_bus_cache("bus_shapes_cache.tar.gz", _CACHE_PATH)
     except Exception as exc:  # noqa: BLE001 — non-fatal
         TrackLogger.bus(f"Bus shapes disk cache write failed: {exc}")
 
