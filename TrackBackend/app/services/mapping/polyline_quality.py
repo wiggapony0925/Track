@@ -12,6 +12,7 @@ import app.services.mapping.subway.corridor as corridor_pipeline
 from app.models import SubwayLineOverlay
 from app.routers.subway import get_all_subway_lines, get_subway_color
 from app.services.mapping.subway.shapes import (
+    _haversine,
     _load_route_shapes,
     _load_shapes,
     _unpack_coords,
@@ -417,6 +418,95 @@ def _lane_neighbor_deltas(trunk_polylines: list[dict]) -> list[dict]:
     return deltas
 
 
+def _merged_path_count() -> int:
+    raw_paths = corridor_pipeline._trunk_raw_paths_cache or {}
+    return sum(len(paths) for paths in raw_paths.values())
+
+
+def _endpoint_gap_outliers(trunk_polylines: list[dict]) -> list[dict]:
+    """Find suspicious export gaps between nearby polyline endpoints.
+
+    If two endpoints from the same trunk are close enough to plausibly
+    continue the same corridor (< 500 m) but still stop more than 100 m
+    apart, the export is likely fragmented. That is exactly the artifact
+    the system-map client renders as broken or strangely kinked trunks.
+    """
+    outliers: list[dict] = []
+    gap_threshold_m = 100.0
+    near_threshold_m = 500.0
+
+    for trunk in trunk_polylines:
+        decoded: list[list[tuple[float, float]]] = []
+        for encoded in trunk.get("polylines", []):
+            coords = _decode_polyline(encoded)
+            if len(coords) >= 2:
+                decoded.append(coords)
+        if len(decoded) < 2:
+            continue
+
+        endpoints: list[tuple[int, str, tuple[float, float]]] = []
+        for idx, coords in enumerate(decoded):
+            endpoints.append((idx, "start", coords[0]))
+            endpoints.append((idx, "end", coords[-1]))
+
+        def _nearest_opposite_endpoint(
+            polyline_index: int,
+            endpoint_tag: str,
+            point: tuple[float, float],
+        ) -> tuple[int, str, tuple[float, float], float] | None:
+            target_tag = "end" if endpoint_tag == "start" else "start"
+            best: tuple[int, str, tuple[float, float], float] | None = None
+            for other_idx, other_tag, other_point in endpoints:
+                if other_idx == polyline_index or other_tag != target_tag:
+                    continue
+                dist = _haversine(
+                    point[0], point[1], other_point[0], other_point[1]
+                )
+                if best is None or dist < best[3]:
+                    best = (other_idx, other_tag, other_point, dist)
+            return best
+
+        seen_pairs: set[frozenset[tuple[int, str]]] = set()
+
+        for idx, coords in enumerate(decoded):
+            for endpoint_tag, point in (("start", coords[0]), ("end", coords[-1])):
+                nearest = _nearest_opposite_endpoint(idx, endpoint_tag, point)
+                if nearest is None:
+                    continue
+
+                other_idx, other_tag, other_point, distance_m = nearest
+                if not (gap_threshold_m < distance_m < near_threshold_m):
+                    continue
+
+                reverse = _nearest_opposite_endpoint(
+                    other_idx, other_tag, other_point
+                )
+                if reverse is None:
+                    continue
+                if reverse[0] != idx or reverse[1] != endpoint_tag:
+                    continue
+
+                pair_key = frozenset({(idx, endpoint_tag), (other_idx, other_tag)})
+                if pair_key in seen_pairs:
+                    continue
+                seen_pairs.add(pair_key)
+
+                outliers.append(
+                    {
+                        "trunk_index": trunk["trunk_index"],
+                        "route_ids": trunk["route_ids"],
+                        "polyline_index": idx,
+                        "endpoint": endpoint_tag,
+                        "distance_m": distance_m,
+                        "nearest_polyline_index": other_idx,
+                        "nearest_endpoint": other_tag,
+                    }
+                )
+
+    outliers.sort(key=lambda item: item["distance_m"], reverse=True)
+    return outliers
+
+
 def _scene_summaries(
     trunk_polylines: list[dict],
     processed_stops: list[dict],
@@ -475,9 +565,11 @@ def build_subway_quality_snapshot() -> dict:
     segment_lengths = _segment_lengths_m(trunk_polylines)
     lane_neighbor_deltas = _lane_neighbor_deltas(trunk_polylines)
     lane_delta_values = [item["delta"] for item in lane_neighbor_deltas]
+    endpoint_gap_outliers = _endpoint_gap_outliers(trunk_polylines)
 
     return {
         "trunk_count": len(trunk_polylines),
+        "merged_path_count": _merged_path_count(),
         "polyline_count": sum(
             len(trunk.get("polylines", [])) for trunk in trunk_polylines
         ),
@@ -495,6 +587,7 @@ def build_subway_quality_snapshot() -> dict:
         "zoom_quality": zoom_quality,
         "segment_lengths_m": segment_lengths,
         "segment_length_summary": summarize_distribution(segment_lengths),
+        "endpoint_gap_outliers": endpoint_gap_outliers,
         "lane_neighbor_deltas": lane_neighbor_deltas,
         "lane_neighbor_delta_summary": summarize_distribution(lane_delta_values),
         "scene_summaries": _scene_summaries(trunk_polylines, processed_stops),

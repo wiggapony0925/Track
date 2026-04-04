@@ -81,25 +81,35 @@ nonisolated enum TransitTileBaker {
 
     // MARK: - File Names
 
-    /// Current bake version — bump when the GeoJSON schema changes.
-    /// Old versions are cleaned up automatically.
-    /// v2: Fixed polyline precision (1e6 → 1e5) so coordinates are correct.
-    /// v3: Client applies Catmull-Rom smoothing to server trunk polylines;
-    ///     regenerate baked tiles to store the smoothed geometry.
-    private static let bakeVersion = 3
+    /// Bake version tag — combines a manual schema version with the
+    /// pipeline fingerprint hash so baked tiles auto-invalidate whenever
+    /// any flattening constant changes.  No manual bumps needed for
+    /// algorithm tweaks; only bump `schemaVersion` when the GeoJSON
+    /// *structure* changes (new properties, coordinate encoding, etc.).
+    ///
+    /// History:
+    /// v2: Fixed polyline precision (1e6 → 1e5).
+    /// v3: Client applies Catmull-Rom smoothing to server trunk polylines.
+    /// v4: Tied to PipelineFingerprint — auto-invalidates on constant changes.
+    private static let schemaVersion = 4
+    private static var bakeTag: String {
+        "v\(schemaVersion)_\(PipelineFingerprint.shortHash)"
+    }
 
-    private static let subwayFillFile = "baked_subway_fill_v\(bakeVersion).geojson"
-    private static let subwayCasingFile = "baked_subway_casing_v\(bakeVersion).geojson"
-    private static let elevatedFillFile = "baked_elevated_fill_v\(bakeVersion).geojson"
-    private static let elevatedCasingFile = "baked_elevated_casing_v\(bakeVersion).geojson"
-    private static let commuterFile = "baked_commuter_v\(bakeVersion).geojson"
+    private static var subwayFillFile: String { "baked_subway_fill_\(bakeTag).geojson" }
+    private static var subwayCasingFile: String { "baked_subway_casing_\(bakeTag).geojson" }
+    private static var elevatedFillFile: String { "baked_elevated_fill_\(bakeTag).geojson" }
+    private static var elevatedCasingFile: String { "baked_elevated_casing_\(bakeTag).geojson" }
+    private static var commuterFile: String { "baked_commuter_\(bakeTag).geojson" }
 
     /// All file names for the current version.
-    static let allFileNames: [String] = [
-        subwayFillFile, subwayCasingFile,
-        elevatedFillFile, elevatedCasingFile,
-        commuterFile,
-    ]
+    static var allFileNames: [String] {
+        [
+            subwayFillFile, subwayCasingFile,
+            elevatedFillFile, elevatedCasingFile,
+            commuterFile,
+        ]
+    }
 
     // MARK: - Bake
 

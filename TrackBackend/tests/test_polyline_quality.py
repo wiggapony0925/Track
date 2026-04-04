@@ -23,6 +23,10 @@ def test_quality_snapshot_covers_full_system(quality_snapshot: dict):
     assert quality_snapshot["station_count"] >= 490
 
 
+def test_export_has_no_nearby_endpoint_gaps(quality_snapshot: dict):
+    assert quality_snapshot["endpoint_gap_outliers"] == []
+
+
 def test_station_attachment_stays_tight(quality_snapshot: dict):
     summary = quality_snapshot["station_attachment_summary"]
     assert summary["p95"] <= 1.0

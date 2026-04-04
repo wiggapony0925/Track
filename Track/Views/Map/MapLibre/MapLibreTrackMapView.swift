@@ -122,6 +122,7 @@ struct MapLibreTrackMapView: View {
                 subwayPolylines: viewModel.flattenedSubwayPolylines,
                 commuterRailPolylines: viewModel.flattenedCommuterRailPolylines,
                 stations: viewModel.consolidatedStations,
+                stationResnapGeneration: viewModel.mapSystem.stationResnapGeneration,
                 routePolylines: viewModel.cachedRoutePolylines,
                 inactivePolylines: viewModel.cachedInactivePolylines,
                 routeColor: UIColor(selectedRouteColor),

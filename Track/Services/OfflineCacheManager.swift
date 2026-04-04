@@ -42,7 +42,8 @@ final class OfflineCacheManager: ObservableObject {
         static let subwayShapes = "cached_subway_shapes_v4"
         static let subwayShapesCachedAt = "cached_subway_shapes_timestamp_v4"
         static let flattenedPolylines = "cached_flattened_polylines"
-        static let flattenedPolylinesCachedAt = "cached_flattened_polylines_timestamp_v14"
+        static let flattenedPolylinesCachedAt = "cached_flattened_polylines_timestamp"
+        static let flattenedPipelineHash = "cached_flattened_pipeline_hash"
     }
 
     /// Bump this whenever the station consolidation logic or hash
@@ -50,10 +51,11 @@ final class OfflineCacheManager: ObservableObject {
     /// so users never see leftover wrong-coordinate centroids.
     private static let currentStationCacheVersion = 3
 
-    /// File version for the pre-flattened subway geometry cache.
-    /// Bump whenever rendered subway polyline geometry changes so the app
-    /// cannot restore old linework before the network refresh lands.
-    private static let currentFlattenedPolylineCacheVersion = 13
+    /// Auto-computed fingerprint of every algorithm constant that
+    /// affects flattened polyline geometry.  When any constant changes
+    /// the hash changes automatically — no manual version bumps needed.
+    /// See `PipelineFingerprint` for the full parameter registry.
+    private static let pipelineHash: String = PipelineFingerprint.shortHash
     
     // MARK: - Initialization
     
@@ -71,19 +73,20 @@ final class OfflineCacheManager: ObservableObject {
         }
 
         // Remove legacy cache keys from previous versions
-        for legacyKey in [
+        let legacyKeys = [
             "cached_subway_shapes",
             "cached_subway_shapes_timestamp",
-            "cached_flattened_polylines_timestamp_v10",
-            "cached_flattened_polylines_timestamp_v11",
-            "cached_flattened_polylines_timestamp_v12",
-            "cached_flattened_polylines_timestamp_v13",
             "cached_subway_shapes_v2",
             "cached_subway_shapes_timestamp_v2",
             "cached_subway_shapes_v3",
             "cached_subway_shapes_timestamp_v3",
-        ] {
-            userDefaults.removeObject(forKey: legacyKey)
+        ]
+        // Legacy per-version timestamp keys (v10–v14)
+        let legacyTimestamps = (10...14).map {
+            "cached_flattened_polylines_timestamp_v\($0)"
+        }
+        for key in legacyKeys + legacyTimestamps {
+            userDefaults.removeObject(forKey: key)
         }
         
         startNetworkMonitoring()
@@ -268,28 +271,32 @@ final class OfflineCacheManager: ObservableObject {
         guard let data = try? JSONEncoder().encode(bundle) else { return }
         // Use file-based cache for large data instead of UserDefaults
         guard let dir = flattenedCacheDirectory() else { return }
-        let fileURL = dir.appendingPathComponent(flattenedPolylineCacheFileName())
+        let currentFile = flattenedPolylineCacheFileName()
+        let fileURL = dir.appendingPathComponent(currentFile)
         try? data.write(to: fileURL, options: .atomic)
         userDefaults.set(Date(), forKey: CacheKey.flattenedPolylinesCachedAt)
-        // Clean up old cache versions
-        let oldFiles = [
-            "flattened_polylines.json",
-            "flattened_polylines_v5.json",
-            "flattened_polylines_v6.json",
-            "flattened_polylines_v7.json",
-            "flattened_polylines_v8.json",
-            "flattened_polylines_v9.json",
-            "flattened_polylines_v10.json",
-            "flattened_polylines_v11.json",
-            "flattened_polylines_v12.json",
-        ]
-        for old in oldFiles {
-            try? FileManager.default.removeItem(at: dir.appendingPathComponent(old))
-        }
+        userDefaults.set(Self.pipelineHash, forKey: CacheKey.flattenedPipelineHash)
+        // Remove stale files from previous pipeline hashes / versions
+        cleanStalePolylineFiles(in: dir, keeping: currentFile)
     }
 
-    /// Get pre-computed flattened polylines (nil if never cached).
+    /// Get pre-computed flattened polylines (nil if never cached or
+    /// if the pipeline hash has changed since the cache was written).
     func getCachedFlattenedPolylines() -> CachedFlattenedBundle? {
+        // Fast-reject: if the stored pipeline hash doesn't match the
+        // current one, the geometry was built by outdated code.
+        let storedHash = userDefaults.string(
+            forKey: CacheKey.flattenedPipelineHash
+        ) ?? ""
+        guard storedHash == Self.pipelineHash else {
+            // Wipe stale files eagerly so disk doesn't accumulate.
+            if let dir = flattenedCacheDirectory() {
+                cleanStalePolylineFiles(in: dir, keeping: nil)
+            }
+            userDefaults.removeObject(forKey: CacheKey.flattenedPipelineHash)
+            userDefaults.removeObject(forKey: CacheKey.flattenedPolylinesCachedAt)
+            return nil
+        }
         guard let dir = flattenedCacheDirectory() else { return nil }
         let fileURL = dir.appendingPathComponent(flattenedPolylineCacheFileName())
         guard let data = try? Data(contentsOf: fileURL) else { return nil }
@@ -318,7 +325,24 @@ final class OfflineCacheManager: ObservableObject {
     }
 
     private func flattenedPolylineCacheFileName() -> String {
-        "flattened_polylines_v\(Self.currentFlattenedPolylineCacheVersion).json"
+        "flattened_polylines_\(Self.pipelineHash).json"
+    }
+
+    /// Removes all `flattened_polylines_*.json` files except the
+    /// one matching `keeping`.  Pass `nil` to remove everything.
+    private func cleanStalePolylineFiles(
+        in dir: URL,
+        keeping currentFile: String?
+    ) {
+        guard let contents = try? FileManager.default.contentsOfDirectory(
+            atPath: dir.path
+        ) else { return }
+        for file in contents where file.hasPrefix("flattened_polylines") {
+            if file == currentFile { continue }
+            try? FileManager.default.removeItem(
+                at: dir.appendingPathComponent(file)
+            )
+        }
     }
 
     // MARK: - Baked GeoJSON Tile Cache
@@ -381,6 +405,7 @@ final class OfflineCacheManager: ObservableObject {
         userDefaults.removeObject(forKey: CacheKey.subwayShapes)
         userDefaults.removeObject(forKey: CacheKey.subwayShapesCachedAt)
         userDefaults.removeObject(forKey: CacheKey.flattenedPolylinesCachedAt)
+        userDefaults.removeObject(forKey: CacheKey.flattenedPipelineHash)
         if let dir = flattenedCacheDirectory() {
             try? FileManager.default.removeItem(at: dir)
         }

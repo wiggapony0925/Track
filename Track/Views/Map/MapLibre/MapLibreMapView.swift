@@ -59,6 +59,7 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         let subwayEq: Bool = lhs.subwayPolylines.count == rhs.subwayPolylines.count
         let commuterEq: Bool = lhs.commuterRailPolylines.count == rhs.commuterRailPolylines.count
         let stationCntEq: Bool = lhs.stations.count == rhs.stations.count
+            && lhs.stationResnapGeneration == rhs.stationResnapGeneration
         let busCntEq: Bool = lhs.busVehicles.count == rhs.busVehicles.count
         let trainCntEq: Bool = lhs.trainVehicles.count == rhs.trainVehicles.count
         let routeCntEq: Bool = lhs.routePolylines.count == rhs.routePolylines.count
@@ -98,6 +99,11 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
 
     /// Consolidated station markers.
     var stations: [MapSystemViewModel.ConsolidatedStation]
+
+    /// Generation counter — bumped when station coordinates are re-snapped
+    /// to smoothed polylines.  Included in the station-dot hash so the
+    /// GeoJSON layer rebuilds after coordinate changes.
+    var stationResnapGeneration: Int = 0
 
     /// Active route polyline coordinates (when a route is selected).
     var routePolylines: [[CLLocationCoordinate2D]]
@@ -654,13 +660,12 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         ) {
             let stationCount: Int = representable.stations.count
             let activeFlag: Int = representable.hasActiveRoute ? 0x2 : 0x0
-            // Zoom bucket intentionally excluded — station dots/pills use
-            // zoom-interpolated GL expressions (circleRadius, iconScale,
-            // opacity) so the GPU handles smooth transitions natively.
-            // Including zoomBucket was rebuilding the full GeoJSON (thousands
-            // of point features) on every small pinch gesture, causing the
-            // visible stutter/pause during zoom.
+            // No zoom-bucket needed: station dots use the same line-offset
+            // expression as trunk polylines, so they move in perfect lockstep
+            // at every zoom level without GeoJSON rebuilds.
+            let resnapGen: Int = representable.stationResnapGeneration
             let stationHash: Int = stationCount ^ activeFlag
+                ^ (resnapGen << 20)
             if stationHash != lastStationHash || darkChanged {
                 updateStationDotLayers(
                     mapView: mapView,
@@ -963,8 +968,10 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         // Premium station rendering pipeline:
         //
         // Layer stack (bottom to top):
-        //   1. Single-line dots — route-colored fill with crisp white stroke
-        //      (visible only from zoom 12+, stays unobtrusive)
+        //   1. Single-line dots — rendered as micro line-segments with
+        //      round caps + the SAME line-offset expression as trunk
+        //      polylines.  Dots track the rendered lane perfectly at
+        //      every zoom level — zero drift, zero jumping.
         //   2. Transfer pills — white capsule icons with dark outline that
         //      visually span across all lines sharing a station. Rotated
         //      perpendicular to the track bearing so the pill crosses the
@@ -974,62 +981,19 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         // All properties zoom-interpolated for buttery-smooth transitions.
         // Thousands of stations rendered at zero CPU cost (GL batches).
 
-        private func displayedStationCoordinate(
-            for station: MapSystemViewModel.ConsolidatedStation,
-            on mapView: MLNMapView
-        ) -> CLLocationCoordinate2D {
-            station.coordinate
-        }
-
-        private func stationScreenOffsetNormal(
-            coordinate: CLLocationCoordinate2D,
-            heading: Double,
-            mapView: MLNMapView
-        ) -> CGVector? {
-            // A tiny fixed sample works up close, but at overview zoom the
-            // projected screen span can collapse toward 0 px and produce an
-            // unstable normal. Grow the sample until we have a reliable on-
-            // screen tangent, then derive the same screen-space side MapLibre
-            // uses for positive lineOffset so dots sit on the rendered lane.
-            let sampleDistances: [CLLocationDistance] = [18, 30, 48, 72, 108, 162, 243, 364]
-            let preferredScreenSpan: CGFloat = 8.0
-            let minimumReliableSpan: CGFloat = 1.5
-
-            var bestNormal: CGVector?
-            var bestSpan: CGFloat = 0
-
-            for sampleMeters in sampleDistances {
-                let backward = Self.coordinate(
-                    from: coordinate,
-                    distanceMeters: sampleMeters,
-                    bearingDegrees: heading + 180
-                )
-                let forward = Self.coordinate(
-                    from: coordinate,
-                    distanceMeters: sampleMeters,
-                    bearingDegrees: heading
-                )
-
-                let p0 = mapView.convert(backward, toPointTo: mapView)
-                let p1 = mapView.convert(forward, toPointTo: mapView)
-                let dx = p1.x - p0.x
-                let dy = p1.y - p0.y
-                let length = sqrt(dx * dx + dy * dy)
-                guard length > 0.001 else { continue }
-
-                let normal = CGVector(dx: -dy / length, dy: dx / length)
-                if length > bestSpan {
-                    bestSpan = length
-                    bestNormal = normal
-                }
-                if length >= preferredScreenSpan {
-                    return normal
-                }
-            }
-
-            guard bestSpan >= minimumReliableSpan else { return nil }
-            return bestNormal
-        }
+        /// Length (metres) of the micro line-segment used to render each
+        /// single-line station dot.  Must be long enough for MapLibre's
+        /// internal tile generation to preserve a non-zero-length line
+        /// segment at all zoom levels (≥ zoom 11).  If the segment
+        /// collapses to zero length in tile coordinates, the line
+        /// direction becomes undefined, `line-offset` cannot compute a
+        /// perpendicular, and the dot disappears or renders without
+        /// offset.
+        ///
+        /// 5 m at zoom 14 ≈ 0.4 px (< 9 px lineWidth → perfect circle).
+        /// 5 m at zoom 18 ≈ 6 px (20 px lineWidth → slight oval, barely
+        /// noticeable under round caps that add 10 px each end).
+        private static let stationDotSegmentMeters: Double = 5.0
 
         private static func coordinate(
             from coordinate: CLLocationCoordinate2D,
@@ -1066,41 +1030,33 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
 
             let stations = representable.stations
             let isDark = representable.isDarkMode
-            var singleFeatures: [MLNPointFeature] = []
+            // Single-line dots: micro line-segments with round caps.
+            // The `lane_offset` property drives `line-offset` so each dot
+            // tracks its trunk polyline perfectly at every zoom level.
+            var dotSegmentFeatures: [MLNPolylineFeature] = []
+            // Transfer pills + label anchor points: standard point features.
             var transferFeatures: [MLNPointFeature] = []
-            singleFeatures.reserveCapacity(stations.count)
+            // Label points for ALL stations (separate so the symbol layer
+            // can place text at the geographic centroid regardless of
+            // the dot's visual line-offset).
+            var labelFeatures: [MLNPointFeature] = []
+            dotSegmentFeatures.reserveCapacity(stations.count)
+            labelFeatures.reserveCapacity(stations.count)
+
+            let halfSeg = Self.stationDotSegmentMeters / 2.0
 
             for station in stations {
-                let feature = MLNPointFeature()
+                let coord = station.coordinate
 
-                // For single-line stations in a shared corridor, pre-offset
-                // the geographic coordinate perpendicular to the track so the
-                // dot sits on the visually offset polyline rather than floating
-                // on the raw centerline between two parallel rendered lanes.
-                // Transfer pills already span the full corridor width, so they
-                // don't need pre-offsetting.
-                let baseCoord = displayedStationCoordinate(for: station, on: mapView)
-                if !station.isTransfer,
-                   abs(station.laneOffset) > 0.01,
-                   let heading = station.laneHeading {
-                    // Perpendicular = 90° right of direction of travel,
-                    // matching MapLibre's positive line-offset direction.
-                    let dispMeters = Double(station.laneOffset)
-                        * MapLibreStyleConfig.stationDotOffsetMetersPerUnit
-                    let perpBearing = (heading + 90.0).truncatingRemainder(dividingBy: 360.0)
-                    let absBearing = dispMeters >= 0
-                        ? perpBearing
-                        : (perpBearing + 180.0).truncatingRemainder(dividingBy: 360.0)
-                    feature.coordinate = Self.coordinate(
-                        from: baseCoord,
-                        distanceMeters: abs(dispMeters),
-                        bearingDegrees: absBearing
-                    )
-                } else {
-                    feature.coordinate = baseCoord
-                }
+                // Label point for every station (both single + transfer).
+                let labelPt = MLNPointFeature()
+                labelPt.coordinate = coord
+                labelPt.attributes = ["name": station.name]
+                labelFeatures.append(labelPt)
 
                 if station.isTransfer {
+                    let feature = MLNPointFeature()
+                    feature.coordinate = coord
                     feature.attributes = [
                         "name": station.name,
                         "pillIcon": MapLibreStyleConfig.transferPillImageName(
@@ -1112,19 +1068,41 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                     ]
                     transferFeatures.append(feature)
                 } else {
-                    feature.attributes = [
-                        "name": station.name,
+                    // Build a micro line-segment along the polyline heading.
+                    // `line-offset` will push it perpendicular — the same
+                    // expression used for trunk polylines — so the dot
+                    // sits on the rendered lane at every zoom level.
+                    let heading = station.laneHeading ?? station.trackBearing
+                    let p0 = Self.coordinate(
+                        from: coord,
+                        distanceMeters: halfSeg,
+                        bearingDegrees: heading
+                    )
+                    let p1 = Self.coordinate(
+                        from: coord,
+                        distanceMeters: halfSeg,
+                        bearingDegrees: heading + 180.0
+                    )
+                    var coords = [p0, p1]
+                    let seg = MLNPolylineFeature(
+                        coordinates: &coords,
+                        count: UInt(coords.count)
+                    )
+                    seg.attributes = [
                         "color": station.routes.first.map {
                             UIColor(AppTheme.SubwayColors.color(for: $0)).toHex()
                         } ?? "#999999",
+                        "lane_offset": Double(station.laneOffset),
                         "isTransfer": false,
-                        "colorGroupCount": 1,
                     ]
-                    singleFeatures.append(feature)
+                    dotSegmentFeatures.append(seg)
                 }
             }
 
-            let allFeatures = singleFeatures + transferFeatures
+            let allFeatures: [MLNShape] =
+                dotSegmentFeatures as [MLNShape]
+                + transferFeatures as [MLNShape]
+                + labelFeatures as [MLNShape]
             let shape = MLNShapeCollectionFeature(shapes: allFeatures)
             let sourceID = MapLibreStyleConfig.srcStations
 
@@ -1134,40 +1112,77 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             if let existing = style.source(withIdentifier: sourceID) as? MLNShapeSource {
                 existing.shape = shape
             } else {
-                let source = MLNShapeSource(identifier: sourceID, shape: shape, options: nil)
+                // Zero simplification tolerance — station dot micro-segments
+                // are short (5 m) and must survive MapLibre's internal tile
+                // generation without being collapsed to zero-length lines.
+                let source = MLNShapeSource(
+                    identifier: sourceID,
+                    shape: shape,
+                    options: [.simplificationTolerance: 0.0]
+                )
                 style.addSource(source)
                 sourcesCreated.insert(sourceID)
 
-                // ── Single-line station dots — small route-colored circles ──
-                let singleLayer = MLNCircleStyleLayer(
-                    identifier: MapLibreStyleConfig.layerStationDotsSingle,
+                // ── Remove legacy circle layer if present (migration) ──
+                if style.layer(
+                    withIdentifier: MapLibreStyleConfig.layerStationDotsSingle
+                ) != nil {
+                    style.removeLayer(
+                        style.layer(
+                            withIdentifier: MapLibreStyleConfig.layerStationDotsSingle
+                        )!
+                    )
+                }
+
+                // ── Station dot casing — subtle border ring ──
+                // Rendered as a wider line beneath the fill to create
+                // a stroke effect via the casing-over-fill pattern.
+                let casingLayer = MLNLineStyleLayer(
+                    identifier: MapLibreStyleConfig.layerStationDotCasing,
                     source: source
                 )
-                singleLayer.circleRadius = MapLibreStyleConfig.stationDotRadius
-                singleLayer.circleColor = NSExpression(forKeyPath: "color")
-                singleLayer.circleStrokeColor = NSExpression(
+                casingLayer.lineWidth = MapLibreStyleConfig.stationDotCasingLineWidth
+                casingLayer.lineColor = NSExpression(
                     forConstantValue: isDark
                         ? UIColor(red: 0.85, green: 0.82, blue: 1.0, alpha: 0.50)
                         : UIColor(white: 0.25, alpha: 0.70)
                 )
-                singleLayer.circleStrokeWidth = MapLibreStyleConfig.stationDotStrokeWidth
-                singleLayer.predicate = NSPredicate(format: "isTransfer == NO")
-                singleLayer.minimumZoomLevel = 11
-                // Fade in smoothly from zoom 11 — reach full opacity by zoom 12
-                // for strong visibility on light basemaps.
-                singleLayer.circleOpacity = NSExpression(
+                casingLayer.lineCap = NSExpression(forConstantValue: "round")
+                casingLayer.lineOffset = MapLibreStyleConfig.laneOffsetExpression
+                casingLayer.predicate = NSPredicate(format: "isTransfer == NO")
+                casingLayer.minimumZoomLevel = 11
+                casingLayer.lineOpacity = NSExpression(
                     forMLNInterpolating: .zoomLevelVariable,
                     curveType: .linear,
                     parameters: nil,
-                    stops: NSExpression(forConstantValue: [11: 0.0, 11.5: 0.5, 12: 0.85, 13: 1.0])
+                    stops: NSExpression(forConstantValue: [
+                        11: 0.0, 11.5: 0.5, 12: 0.85, 13: 1.0,
+                    ])
                 )
-                singleLayer.circleStrokeOpacity = NSExpression(
+                style.addLayer(casingLayer)
+
+                // ── Station dot fill — route-colored circle ──
+                let fillLayer = MLNLineStyleLayer(
+                    identifier: MapLibreStyleConfig.layerStationDotFill,
+                    source: source
+                )
+                fillLayer.lineWidth = MapLibreStyleConfig.stationDotLineWidth
+                fillLayer.lineColor = NSExpression(forKeyPath: "color")
+                fillLayer.lineCap = NSExpression(forConstantValue: "round")
+                fillLayer.lineOffset = MapLibreStyleConfig.laneOffsetExpression
+                fillLayer.predicate = NSPredicate(format: "isTransfer == NO")
+                fillLayer.minimumZoomLevel = 11
+                // Fade in smoothly from zoom 11 — reach full opacity by
+                // zoom 12 for strong visibility on light basemaps.
+                fillLayer.lineOpacity = NSExpression(
                     forMLNInterpolating: .zoomLevelVariable,
                     curveType: .linear,
                     parameters: nil,
-                    stops: NSExpression(forConstantValue: [11: 0.0, 11.5: 0.5, 12: 0.85, 13: 1.0])
+                    stops: NSExpression(forConstantValue: [
+                        11: 0.0, 11.5: 0.5, 12: 0.85, 13: 1.0,
+                    ])
                 )
-                style.addLayer(singleLayer)
+                style.addLayer(fillLayer)
 
                 // ── Transfer station pills — capsule icons ──
                 let transferLayer = MLNSymbolStyleLayer(
@@ -1187,7 +1202,9 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                     forMLNInterpolating: .zoomLevelVariable,
                     curveType: .linear,
                     parameters: nil,
-                    stops: NSExpression(forConstantValue: [11: 0.0, 11.5: 0.5, 12: 0.85, 13: 1.0])
+                    stops: NSExpression(forConstantValue: [
+                        11: 0.0, 11.5: 0.5, 12: 0.85, 13: 1.0,
+                    ])
                 )
                 style.addLayer(transferLayer)
 
@@ -1240,10 +1257,10 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             }
 
             // Update colors for dark/light mode on existing layers
-            if let single = style.layer(
-                withIdentifier: MapLibreStyleConfig.layerStationDotsSingle
-            ) as? MLNCircleStyleLayer {
-                single.circleStrokeColor = NSExpression(
+            if let casing = style.layer(
+                withIdentifier: MapLibreStyleConfig.layerStationDotCasing
+            ) as? MLNLineStyleLayer {
+                casing.lineColor = NSExpression(
                     forConstantValue: isDark
                         ? UIColor(red: 0.85, green: 0.82, blue: 1.0, alpha: 0.50)
                         : UIColor.white

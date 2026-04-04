@@ -98,8 +98,7 @@ struct ArrivalConsistencyTests {
         #expect(result != nil)
         #expect(
             result?.stopName == stopAName,
-            "Should pick nearest stop W 25 ST,"
-                + " not upstream W 30 ST"
+            "Should pick nearest stop W 25 ST, not upstream W 30 ST"
         )
         #expect(result?.minutesAway == 6, "Should show 6 min (nearest stop), not 2 min (upstream)")
     }
@@ -130,8 +129,7 @@ struct ArrivalConsistencyTests {
         #expect(result?.stopName == stopAName)
         #expect(
             result?.minutesAway == 6,
-            "Should pick soonest (6 min) at nearest"
-                + " stop, not 1 min at far stop"
+            "Should pick soonest (6 min) at nearest stop, not 1 min at far stop"
         )
     }
 
@@ -300,8 +298,7 @@ struct ArrivalConsistencyTests {
 
         #expect(
             sorted.first?.isRealTime == true,
-            "Realtime should sort before scheduled"
-                + " even with higher minutes"
+            "Realtime should sort before scheduled even with higher minutes"
         )
     }
 

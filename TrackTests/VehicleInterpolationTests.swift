@@ -257,9 +257,7 @@ struct VehicleInterpolatorCoreTests {
                 progress: p,
                 along: NYCFixtures.seventhAvenue)
             #expect(result.coordinate.latitude >= prevLat,
-                    "At progress=\(p) "
-                    + "lat=\(result.coordinate.latitude) "
-                    + "should be >= prevLat=\(prevLat)")
+                    "At progress=\(p) lat=\(result.coordinate.latitude) should be >= prevLat=\(prevLat)")
             prevLat = result.coordinate.latitude
         }
     }
@@ -302,8 +300,7 @@ struct SpanGuardTests {
         #expect(snapResult != nil)
         // The interpolated point should be very close to the polyline (< 10m)
         #expect(snapResult!.distanceFromPolyline < 10,
-                "Express route midpoint should be "
-                + "on-polyline, got \(snapResult!.distanceFromPolyline)m off")
+                "Express route midpoint should be on-polyline, got \(snapResult!.distanceFromPolyline)m off")
     }
 
     @Test func expressRouteSpan90PercentStillFollowsPolyline() {
@@ -874,8 +871,7 @@ struct MultipleVehiclesTests {
                 ))
                 #expect(
                     dist > 1,
-                    "Buses at different progress should have "
-                    + "different positions (\(i) vs \(j))"
+                    "Buses at different progress should have different positions (\(i) vs \(j))"
                 )
             }
         }
@@ -934,8 +930,7 @@ struct MultipleVehiclesTests {
             ))
             #expect(
                 finalDist < 50,
-                "Train \(i) should converge within 50m "
-                + "after 3 ticks, got \(finalDist)m"
+                "Train \(i) should converge within 50m after 3 ticks, got \(finalDist)m"
             )
         }
     }
@@ -1345,16 +1340,13 @@ struct FullTickSimulationTests {
                 // Verify the position is on or near the polyline
                 let snap = VehicleInterpolator.snap(coordinate: finalPos, to: polyline)!
                 #expect(snap.distanceFromPolyline < 100,
-                        "Train \(configIdx) tick \(tick): "
-                        + "should be near polyline, "
-                        + "got \(snap.distanceFromPolyline)m off")
+                        "Train \(configIdx) tick \(tick): should be near polyline, got \(snap.distanceFromPolyline)m off")
 
                 // Verify monotonic progress along polyline
                 if prevFraction >= 0 {
                     // Allow tiny regression from blend smoothing, but not large backwards jumps
                     #expect(snap.fractionAlongPolyline >= prevFraction - 0.02,
-                            "Train \(configIdx) tick \(tick): "
-                            + "should not jump backwards significantly")
+                            "Train \(configIdx) tick \(tick): should not jump backwards significantly")
                 }
 
                 prevPosition = finalPos
@@ -1441,8 +1433,7 @@ struct FullTickSimulationTests {
             ))
             #expect(
                 distAfterPoll < 30,
-                "Should be within 30m of target after 6 ticks, "
-                + "got \(distAfterPoll)m"
+                "Should be within 30m of target after 6 ticks, got \(distAfterPoll)m"
             )
 
             // New target 200m further north

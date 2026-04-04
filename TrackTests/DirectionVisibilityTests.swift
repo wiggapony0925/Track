@@ -201,8 +201,7 @@ struct DirectionVisibilityTests {
             ]),
         ]
         let visible = ArrivalHelpers.visibleDirections(for: directions)
-        let msg = "SW compass placeholder with no real arrivals should be dropped"
-        #expect(visible.count == 1, msg)
+        #expect(visible.count == 1, "SW compass placeholder with no real arrivals should be dropped")
     }
 
     @Test func compassCodePlaceholders_allDropped() {

@@ -116,19 +116,19 @@ final class MapSystemViewModel {
     struct ConsolidatedStation: Identifiable, Equatable {
         let id: String
         let name: String
-        let coordinate: CLLocationCoordinate2D
+        var coordinate: CLLocationCoordinate2D
         let routes: [String]           // All route IDs merged from the group
         let colorGroupCount: Int       // Distinct MTA trunk-color groups
         let trackBearing: Double       // Degrees from north (0-180), track direction
         /// Direction-preserving tangent heading from the nearest rendered
         /// trunk segment. Used so station dots can inherit the same visual
         /// lane offset direction as the MapLibre line layer.
-        let laneHeading: Double?
+        var laneHeading: Double?
         /// Signed pixel-lane offset for single-group stations. This matches
         /// the trunk feature's `lane_offset` attribute so station dots can
         /// move with the shared corridor at low zoom without collapsing the
         /// rendered parallel lines.
-        let laneOffset: CGFloat
+        var laneOffset: CGFloat
         let structure: StationStructure // Physical structure (subway, elevated, etc.)
         let complexID: Int             // MTA station complex group
         /// All GTFS stop IDs that were merged into this consolidated marker.
@@ -142,6 +142,20 @@ final class MapSystemViewModel {
         static func == (lhs: ConsolidatedStation, rhs: ConsolidatedStation) -> Bool {
             lhs.id == rhs.id && lhs.routes == rhs.routes
         }
+    }
+
+    /// Reference branch geometry plus the exact lane offset that MapLibre
+    /// should apply when this branch renders.
+    private struct StationReferenceBranch {
+        let coordinates: [CLLocationCoordinate2D]
+        let laneOffset: CGFloat
+    }
+
+    /// Best branch match for a station projection.
+    private struct StationReferenceProjection {
+        let coordinate: CLLocationCoordinate2D
+        let heading: Double?
+        let laneOffset: CGFloat
     }
 
     // MARK: - Properties
@@ -236,6 +250,12 @@ final class MapSystemViewModel {
     /// and track-aligned bearing.  Used by the map view for capsule markers.
     var consolidatedStations: [ConsolidatedStation] = []
 
+    /// Monotonically increasing counter bumped each time
+    /// `resnapStationsToSmoothedPolylines()` modifies station coordinates.
+    /// Included in the GL station-dot hash so the GeoJSON source is
+    /// rebuilt when coordinates change (count-only checks miss this).
+    private(set) var stationResnapGeneration: Int = 0
+
     /// Guards against redundant network fetches when the ViewModel is
     /// re-created (e.g. HomeView structural identity changes).
     /// MUST be static — an instance-level flag only guards the single instance
@@ -297,6 +317,12 @@ final class MapSystemViewModel {
                     + " + \(commuterCount) commuter polylines,"
                     + " \(stationCount) stations"
                     + " (T+\(sinceL))")
+
+            // Wait for the flatten task to finish so smoothed
+            // polylines are available before consolidation + snapshot.
+            if let flattenTask = self.activeFlattenTask {
+                await flattenTask.value
+            }
 
             // Both tasks ran in parallel so stations may have been
             // consolidated before offset polylines were ready.
@@ -1139,8 +1165,9 @@ final class MapSystemViewModel {
         var originalSubwayPoints: Int = 0
 
         // When the server provides pre-merged trunk polylines, use them
-        // directly — they are the Phase 1+3 output of the corridor pipeline
-        // and are the SAME geometry that station dots were snapped to.
+        // directly — they are the Phase 1+3 output of the corridor pipeline.
+        // Station dots are initially snapped to these raw polylines, then
+        // re-snapped to the smoothed output after Catmull-Rom below.
         // This eliminates overlapping same-colour lines and ensures polylines
         // pass through station positions.
         let useTrunkPolylines: Bool = !(cachedTrunkPolylines?.isEmpty ?? true)
@@ -1307,20 +1334,20 @@ final class MapSystemViewModel {
         // After simplification, high-density arc fillets smooth all bends.
         /// Returns the lane offset for a specific branch within a trunk group.
         ///
-        /// **Always returns the trunk-level global offset** so every segment
-        /// of the same colour trunk renders at one consistent pixel position.
-        /// Per-segment offsets (`polylineLaneOffsets`) cause MapLibre's
-        /// `lineOffset` to shift segments differently, creating visible
-        /// "branching" artefacts at corridor transitions — e.g. a yellow
-        /// trunk appearing as two parallel lines, or a red trunk showing
-        /// two segments connecting at an unnatural junction.  Using the
-        /// trunk average eliminates these artefacts while still keeping
-        /// different-colour trunks properly separated in shared corridors.
+        /// Server trunk exports include `polylineLaneOffsets` aligned 1:1
+        /// with the exported polylines. Those branch-level offsets are the
+        /// geometry the backend quality checks validate, so the renderer
+        /// should use them whenever available. Older cached payloads and the
+        /// client-side fallback still degrade gracefully to the trunk-wide
+        /// offset.
         func localLaneOffset(
             for groupResult: ColorGroupResult,
             branchIndex: Int
         ) -> CGFloat {
-            return groupResult.laneOffset
+            guard branchIndex < groupResult.polylineLaneOffsets.count else {
+                return groupResult.laneOffset
+            }
+            return groupResult.polylineLaneOffsets[branchIndex]
         }
 
         func isTransitionRampOffset(_ value: CGFloat) -> Bool {
@@ -1528,6 +1555,26 @@ final class MapSystemViewModel {
                     + " — all lines will overlap!")
         }
         #endif
+
+        // Re-snap station dots to the now-available smoothed polylines.
+        // Initial consolidation used raw server polylines; Catmull-Rom
+        // shifts curves away from those straight segments, so dots need
+        // to be projected onto the final rendered geometry.
+        resnapStationsToSmoothedPolylines()
+
+        // Refresh the shared snapshot so subsequent view-model inits
+        // (e.g. HomeView re-creation) start with re-snapped stations
+        // and the latest smoothed polylines.
+        Self.sharedSnapshot = SharedSnapshot(
+            systemMap: cachedSystemMap,
+            offsetSubwayLines: cachedOffsetSubwayLines,
+            trunkPolylines: cachedTrunkPolylines,
+            flattenedSubway: flattenedSubwayPolylines,
+            flattenedCommuter: flattenedCommuterRailPolylines,
+            stations: cachedStations,
+            consolidatedStations: consolidatedStations,
+            routeLabels: trunkRouteLabels
+        )
 
         // Yield after subway polylines are set so the map can start rendering them
         await Task.yield()
@@ -2252,6 +2299,78 @@ final class MapSystemViewModel {
         return (projLat, projLon, eLat * eLat + eLon * eLon)
     }
 
+    private static func coordinatesNearlyEqual(
+        _ lhs: CLLocationCoordinate2D,
+        _ rhs: CLLocationCoordinate2D,
+        epsilon: Double = 1e-10
+    ) -> Bool {
+        abs(lhs.latitude - rhs.latitude) <= epsilon
+            && abs(lhs.longitude - rhs.longitude) <= epsilon
+    }
+
+    private static func headingDifferenceDegrees(_ lhs: Double?, _ rhs: Double?) -> Double {
+        switch (lhs, rhs) {
+        case (nil, nil):
+            return 0.0
+        case let (.some(a), .some(b)):
+            let raw = abs(a - b).truncatingRemainder(dividingBy: 360.0)
+            return min(raw, 360.0 - raw)
+        default:
+            return .infinity
+        }
+    }
+
+    /// Returns the nearest branch projection together with the branch's
+    /// rendered lane offset.
+    private static func nearestProjectionOnReferenceBranches(
+        near coordinate: CLLocationCoordinate2D,
+        branches: [StationReferenceBranch]
+    ) -> StationReferenceProjection? {
+        var bestProjection: StationReferenceProjection?
+        var bestDistSq: Double = .infinity
+
+        for branch in branches {
+            guard branch.coordinates.count >= 2 else { continue }
+            for i in 0..<(branch.coordinates.count - 1) {
+                let a = branch.coordinates[i]
+                let b = branch.coordinates[i + 1]
+                let (projLat, projLon, distSq) = projectOntoSegment(
+                    lat: coordinate.latitude,
+                    lon: coordinate.longitude,
+                    aLat: a.latitude,
+                    aLon: a.longitude,
+                    bLat: b.latitude,
+                    bLon: b.longitude
+                )
+                guard distSq < bestDistSq else { continue }
+
+                let cosNYC: Double = 0.76
+                let dx: Double = (b.longitude - a.longitude) * cosNYC
+                let dy: Double = b.latitude - a.latitude
+                let heading: Double?
+                if dx * dx + dy * dy > 1e-12 {
+                    var value: Double = atan2(dx, dy) * 180.0 / .pi
+                    if value < 0 { value += 360.0 }
+                    heading = value
+                } else {
+                    heading = nil
+                }
+
+                bestDistSq = distSq
+                bestProjection = StationReferenceProjection(
+                    coordinate: CLLocationCoordinate2D(
+                        latitude: projLat,
+                        longitude: projLon
+                    ),
+                    heading: heading,
+                    laneOffset: branch.laneOffset
+                )
+            }
+        }
+
+        return bestProjection
+    }
+
     /// Find the intersection point of two line segments (if any).
     /// Returns nil if segments don't intersect or are nearly parallel.
     private static func segmentIntersection(
@@ -2421,43 +2540,46 @@ final class MapSystemViewModel {
         return CLLocationCoordinate2D(latitude: avgLat2, longitude: avgLon2)
     }
 
-    /// Returns the rendered trunk geometry keyed by trunk group index.
+    /// Returns the **raw** (pre-smoothing) trunk branches keyed by trunk
+    /// group index, including the lane offset for each exported branch.
     ///
-    /// When server-provided trunk polylines are available, these are the
-    /// exact branches MapLibre draws. Otherwise, we fall back to the
-    /// per-route offset lines grouped by trunk colour.
-    private func stationReferencePolylinesByGroup() -> [Int: [[CLLocationCoordinate2D]]] {
+    /// These are used for initial single-line station snapping during
+    /// consolidation. After `computeFlattenedPolylinesAsync()` applies
+    /// Catmull-Rom smoothing, stations are re-snapped to the smoothed
+    /// curves via `resnapStationsToSmoothedPolylines()`.
+    private func stationReferenceBranchesByGroup() -> [Int: [StationReferenceBranch]] {
         if let trunkPolylines = cachedTrunkPolylines, !trunkPolylines.isEmpty {
-            var result: [Int: [[CLLocationCoordinate2D]]] = [:]
+            var result: [Int: [StationReferenceBranch]] = [:]
             for trunk in trunkPolylines {
-                let decoded = trunk.decodedPolylines.filter { $0.count >= 2 }
-                guard !decoded.isEmpty else { continue }
-                result[trunk.trunkIndex, default: []].append(contentsOf: decoded)
+                for (index, coords) in trunk.decodedPolylines.enumerated() {
+                    guard coords.count >= 2 else { continue }
+                    let laneOffset = index < trunk.polylineLaneOffsets.count
+                        ? trunk.polylineLaneOffsets[index]
+                        : trunk.laneOffset
+                    result[trunk.trunkIndex, default: []].append(
+                        StationReferenceBranch(
+                            coordinates: coords,
+                            laneOffset: laneOffset
+                        )
+                    )
+                }
             }
             if !result.isEmpty {
                 return result
             }
         }
 
-        var result: [Int: [[CLLocationCoordinate2D]]] = [:]
+        var result: [Int: [StationReferenceBranch]] = [:]
         for line in cachedOffsetSubwayLines {
             let trunkIndex = Self.trunkGroupIndex(for: line.id)
-            let valid = line.coordinates.filter { $0.count >= 2 }
-            guard !valid.isEmpty else { continue }
-            result[trunkIndex, default: []].append(contentsOf: valid)
-        }
-        return result
-    }
-
-    /// Returns low-zoom corridor lane offsets keyed by trunk group index.
-    private func stationReferenceLaneOffsetsByGroup() -> [Int: CGFloat] {
-        guard let trunkPolylines = cachedTrunkPolylines, !trunkPolylines.isEmpty else {
-            return [:]
-        }
-
-        var result: [Int: CGFloat] = [:]
-        for trunk in trunkPolylines {
-            result[trunk.trunkIndex] = trunk.laneOffset
+            for coords in line.coordinates where coords.count >= 2 {
+                result[trunkIndex, default: []].append(
+                    StationReferenceBranch(
+                        coordinates: coords,
+                        laneOffset: 0
+                    )
+                )
+            }
         }
         return result
     }
@@ -2560,6 +2682,91 @@ final class MapSystemViewModel {
         }
     }
 
+    /// Re-snaps consolidated station dots to the **smoothed** (Catmull-Rom)
+    /// polylines so dots sit visually centered on the rendered lines.
+    ///
+    /// Initial consolidation uses raw server polylines for snapping because
+    /// the smoothed geometry is computed asynchronously and may not be ready
+    /// yet.  Once `flattenedSubwayPolylines` is populated, this method
+    /// projects each single-group station onto the smoothed curves and
+    /// recomputes the perpendicular `laneHeading` plus branch-level
+    /// `laneOffset` from the nearest rendered segment.
+    ///
+    /// This eliminates the visual offset caused by Catmull-Rom interpolation
+    /// shifting the rendered line away from the raw straight segments.
+    private func resnapStationsToSmoothedPolylines() {
+        guard !flattenedSubwayPolylines.isEmpty,
+              !consolidatedStations.isEmpty else { return }
+
+        // Build lookup: trunk group index → smoothed branches.
+        var smoothedByGroup: [Int: [StationReferenceBranch]] = [:]
+        for poly in flattenedSubwayPolylines {
+            guard poly.coordinates.count >= 2 else { continue }
+            smoothedByGroup[poly.trunkIndex, default: []]
+                .append(
+                    StationReferenceBranch(
+                        coordinates: poly.coordinates,
+                        laneOffset: poly.laneOffset
+                    )
+                )
+        }
+        guard !smoothedByGroup.isEmpty else { return }
+
+        var coordinateUpdates = 0
+        var headingUpdates = 0
+        var laneOffsetUpdates = 0
+        for i in consolidatedStations.indices {
+            let station = consolidatedStations[i]
+
+            // Only re-snap single-group (non-transfer) stations — transfer
+            // stations sit at polyline intersections, not on a single line.
+            guard station.colorGroupCount == 1 else { continue }
+
+            let trunkGroup = Self.trunkGroupIndex(
+                for: station.routes.first ?? "")
+            guard let branches = smoothedByGroup[trunkGroup] else { continue }
+
+            if let projection = Self.nearestProjectionOnReferenceBranches(
+                near: station.coordinate,
+                branches: branches
+            ) {
+                if !Self.coordinatesNearlyEqual(
+                    consolidatedStations[i].coordinate,
+                    projection.coordinate
+                ) {
+                    consolidatedStations[i].coordinate = projection.coordinate
+                    coordinateUpdates += 1
+                }
+
+                if Self.headingDifferenceDegrees(
+                    consolidatedStations[i].laneHeading,
+                    projection.heading
+                ) > 1e-6 {
+                    consolidatedStations[i].laneHeading = projection.heading
+                    headingUpdates += 1
+                }
+
+                if abs(consolidatedStations[i].laneOffset - projection.laneOffset) > 1e-6 {
+                    consolidatedStations[i].laneOffset = projection.laneOffset
+                    laneOffsetUpdates += 1
+                }
+            }
+        }
+
+        if coordinateUpdates > 0 || headingUpdates > 0 || laneOffsetUpdates > 0 {
+            stationResnapGeneration += 1
+        }
+
+        AppLogger.shared.log(
+            "STATIONS",
+            message: "Re-snapped stations to smoothed polylines"
+                + " (coords=\(coordinateUpdates),"
+                + " headings=\(headingUpdates),"
+                + " laneOffsets=\(laneOffsetUpdates))"
+                + " (\(consolidatedStations.count) total,"
+                + " gen \(stationResnapGeneration))")
+    }
+
     /// Groups stations by **complex ID + structure type** (hierarchical
     /// clustering), then falls back to proximity-based merge (20 m) for
     /// stations not in the lookup table.
@@ -2574,8 +2781,12 @@ final class MapSystemViewModel {
     private func consolidateStations() {
         let stations = cachedStations
         guard !stations.isEmpty else { return }
-        let referencePolylinesByGroup = stationReferencePolylinesByGroup()
-        let referenceLaneOffsetsByGroup = stationReferenceLaneOffsetsByGroup()
+        let referenceBranchesByGroup = stationReferenceBranchesByGroup()
+        let referencePolylinesByGroup: [Int: [[CLLocationCoordinate2D]]] = Dictionary(
+            uniqueKeysWithValues: referenceBranchesByGroup.map { entry in
+                (entry.key, entry.value.map(\.coordinates))
+            }
+        )
 
         // ── Phase 1: Assign each station a (complexID, structure) key ──
         //
@@ -2727,10 +2938,20 @@ final class MapSystemViewModel {
             for r in routes { colorGroups.insert(Self.trunkGroupIndex(for: r)) }
             let groupCount: Int = max(colorGroups.count, 1)
             let sortedColorGroups = colorGroups.sorted()
-            let stationLaneOffset: CGFloat = {
-                guard groupCount == 1, let trunkGroup = sortedColorGroups.first else { return 0 }
-                return referenceLaneOffsetsByGroup[trunkGroup] ?? 0
+            let centroid = CLLocationCoordinate2D(latitude: avgLat, longitude: avgLon)
+            let singleGroupProjection: StationReferenceProjection? = {
+                guard groupCount == 1, let trunkGroup = sortedColorGroups.first else {
+                    return nil
+                }
+                guard let branches = referenceBranchesByGroup[trunkGroup] else {
+                    return nil
+                }
+                return Self.nearestProjectionOnReferenceBranches(
+                    near: centroid,
+                    branches: branches
+                )
             }()
+            let stationLaneOffset: CGFloat = singleGroupProjection?.laneOffset ?? 0
 
             // ── Transfer stop: snap to polyline intersection/projection ──
             // For stops served by ≥ 2 trunk color groups, position the
@@ -2738,32 +2959,20 @@ final class MapSystemViewModel {
             // (or the average of nearest projections if no intersection).
             if groupCount >= 2 {
                 if let betterPos = transferPolylinePosition(
-                    centroid: CLLocationCoordinate2D(latitude: avgLat, longitude: avgLon),
-                    trunkGroups: colorGroups,
-                    referencePolylinesByGroup: referencePolylinesByGroup
+                        centroid: CLLocationCoordinate2D(latitude: avgLat, longitude: avgLon),
+                        trunkGroups: colorGroups,
+                        referencePolylinesByGroup: referencePolylinesByGroup
                 ) {
                     avgLat = betterPos.latitude
                     avgLon = betterPos.longitude
                 }
-            } else if let trunkGroup = sortedColorGroups.first,
-                      let branches = referencePolylinesByGroup[trunkGroup],
-                      let snappedPosition = Self.nearestPointOnBranches(
-                          near: CLLocationCoordinate2D(
-                              latitude: avgLat,
-                              longitude: avgLon
-                          ),
-                          branches: branches
-                      ) {
-                avgLat = snappedPosition.latitude
-                avgLon = snappedPosition.longitude
+            } else if let projection = singleGroupProjection {
+                avgLat = projection.coordinate.latitude
+                avgLon = projection.coordinate.longitude
             }
 
             let stationCoordinate = CLLocationCoordinate2D(latitude: avgLat, longitude: avgLon)
-            let laneHeading: Double? = {
-                guard groupCount == 1, let trunkGroup = sortedColorGroups.first else { return nil }
-                guard let branches = referencePolylinesByGroup[trunkGroup] else { return nil }
-                return Self.nearestSegmentHeading(near: stationCoordinate, branches: branches)
-            }()
+            let laneHeading: Double? = singleGroupProjection?.heading
 
             // Track bearing from polyline tangents in 3×3 neighborhood
             let gx: Int32 = Int32(avgLat / cellSize)
@@ -2825,5 +3034,10 @@ final class MapSystemViewModel {
         AppLogger.shared.log(
             "STATIONS",
             message: "Consolidated \(stations.count) stations → \(result.count) groups")
+
+        // If smoothed polylines are already available, immediately re-snap
+        // stations so dots sit on the visible (Catmull-Rom) curves instead
+        // of the raw server segments.
+        resnapStationsToSmoothedPolylines()
     }
 }

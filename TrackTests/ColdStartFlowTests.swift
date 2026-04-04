@@ -127,8 +127,7 @@ struct ColdStartFlowTests {
             + "(budget: \(Self.wakeUpBudget)s)")
         let wtInt = String(format: "%.0f", wakeTime)
         #expect(wakeTime < Self.wakeUpBudget,
-                "Server took \(wtInt)s to wake "
-                + "— exceeds \(Self.wakeUpBudget)s budget")
+                "Server took \(wtInt)s to wake — exceeds \(Self.wakeUpBudget)s budget")
     }
 
     // ── Phase 1: Nearby Grouped (Critical Path) ──────────────────
@@ -148,9 +147,7 @@ struct ColdStartFlowTests {
         // Must return data — this is what populates the home screen
         #expect(!groups.isEmpty, "No grouped transit returned — user sees empty skeleton")
         #expect(elapsed < Self.singleEndpointBudget,
-                "nearby/grouped took "
-                + "\(String(format: "%.1f", elapsed))s "
-                + "— exceeds \(Self.singleEndpointBudget)s budget")
+                "nearby/grouped took \(String(format: "%.1f", elapsed))s — exceeds \(Self.singleEndpointBudget)s budget")
 
         // Validate structure
         let withArrivals = groups.filter { $0.hasRealArrivals }
@@ -186,9 +183,7 @@ struct ColdStartFlowTests {
 
         #expect(!response.lines.isEmpty, "No subway lines returned")
         #expect(elapsed < Self.shapeEndpointBudget,
-                "subway/shapes/all took "
-                + "\(String(format: "%.1f", elapsed))s "
-                + "— exceeds \(Self.shapeEndpointBudget)s budget")
+                "subway/shapes/all took \(String(format: "%.1f", elapsed))s — exceeds \(Self.shapeEndpointBudget)s budget")
 
         // MTA has ~27 subway routes (including express variants)
         #expect(response.lines.count >= 20,
@@ -275,8 +270,7 @@ struct ColdStartFlowTests {
             #expect(!line.polylines.isEmpty, "LIRR \(line.routeId) has no polylines")
             #expect(
                 line.mode == "lirr",
-                "Line \(line.routeId) mode is "
-                + "'\(line.mode)', expected 'lirr'")
+                "Line \(line.routeId) mode is '\(line.mode)', expected 'lirr'")
         }
 
         let totalStops = response.lines.reduce(0) { $0 + $1.stops.count }
@@ -303,8 +297,7 @@ struct ColdStartFlowTests {
             #expect(!line.polylines.isEmpty, "MNR \(line.routeId) has no polylines")
             #expect(
                 line.mode == "mnr",
-                "Line \(line.routeId) mode is "
-                + "'\(line.mode)', expected 'mnr'")
+                "Line \(line.routeId) mode is '\(line.mode)', expected 'mnr'")
         }
 
         let totalStops = response.lines.reduce(0) { $0 + $1.stops.count }
@@ -485,15 +478,11 @@ struct ColdStartFlowTests {
 
         // Warm-server data load should be fast
         #expect(flowElapsed < Self.warmFlowBudget,
-                "Warm-server data load took "
-                + "\(String(format: "%.1f", flowElapsed))s"
-                + " — exceeds \(Self.warmFlowBudget)s budget")
+                "Warm-server data load took \(String(format: "%.1f", flowElapsed))s — exceeds \(Self.warmFlowBudget)s budget")
 
         // Nearby arrivals should resolve quickly (user stuck on skeletons until this returns)
         #expect(nearbyElapsed < 15,
-                "Nearby arrivals took "
-                + "\(String(format: "%.1f", nearbyElapsed))s"
-                + " — user stuck on skeletons too long")
+                "Nearby arrivals took \(String(format: "%.1f", nearbyElapsed))s — user stuck on skeletons too long")
     }
 
     // ── Data Consistency Test ────────────────────────────────────
@@ -567,9 +556,7 @@ struct ColdStartFlowTests {
         if let trunks = shapes.trunkPolylines, !trunks.isEmpty {
             let withOffsets = trunks.filter { abs($0.laneOffset) > 0.01 }
             #expect(!withOffsets.isEmpty,
-                    "All \(trunks.count) trunk groups "
-                    + "have laneOffset=0 — corridor "
-                    + "pipeline may have failed")
+                    "All \(trunks.count) trunk groups have laneOffset=0 — corridor pipeline may have failed")
             print("  ↳ \(trunks.count) trunk groups, \(withOffsets.count) with lane offsets")
         }
 
@@ -598,8 +585,6 @@ struct ColdStartFlowTests {
             + "\(etStr)s — \(response.lines.count) lines")
 
         #expect(elapsed < Self.shapeEndpointBudget,
-                "Shapes took "
-                + "\(String(format: "%.1f", elapsed))s "
-                + "— exceeds \(Self.shapeEndpointBudget)s budget")
+                "Shapes took \(String(format: "%.1f", elapsed))s — exceeds \(Self.shapeEndpointBudget)s budget")
     }
 }

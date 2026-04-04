@@ -1893,6 +1893,83 @@ def _junction_fillet_wgs84(
     return result
 
 
+def _stitch_nearby_segment_endpoints_wgs84(
+    segments: list[list[tuple[float, float]]],
+    threshold_m: float = 250.0,
+) -> None:
+    """Snap mutually-nearest opposite endpoints to a shared midpoint."""
+    if len(segments) < 2:
+        return
+
+    endpoints: list[tuple[int, str, tuple[float, float]]] = []
+    for idx, coords in enumerate(segments):
+        if len(coords) < 2:
+            continue
+        endpoints.append((idx, "start", coords[0]))
+        endpoints.append((idx, "end", coords[-1]))
+
+    def _endpoint_distance_m(
+        a: tuple[float, float],
+        b: tuple[float, float],
+    ) -> float:
+        ax, ay = _to_meters.transform(a[1], a[0])
+        bx, by = _to_meters.transform(b[1], b[0])
+        return math.hypot(ax - bx, ay - by)
+
+    def _nearest_opposite_endpoint(
+        seg_idx: int,
+        tag: str,
+        point: tuple[float, float],
+    ) -> tuple[int, str, tuple[float, float], float] | None:
+        target_tag = "end" if tag == "start" else "start"
+        best: tuple[int, str, tuple[float, float], float] | None = None
+        for other_idx, other_tag, other_point in endpoints:
+            if other_idx == seg_idx or other_tag != target_tag:
+                continue
+            dist_m = _endpoint_distance_m(point, other_point)
+            if best is None or dist_m < best[3]:
+                best = (other_idx, other_tag, other_point, dist_m)
+        return best
+
+    stitched_pairs: set[frozenset[tuple[int, str]]] = set()
+
+    for seg_idx, tag, point in endpoints:
+        nearest = _nearest_opposite_endpoint(seg_idx, tag, point)
+        if nearest is None or nearest[3] > threshold_m:
+            continue
+
+        other_idx, other_tag, other_point, dist_m = nearest
+        reverse = _nearest_opposite_endpoint(other_idx, other_tag, other_point)
+        if reverse is None:
+            continue
+        if reverse[0] != seg_idx or reverse[1] != tag or reverse[3] > threshold_m:
+            continue
+
+        pair_key = frozenset({(seg_idx, tag), (other_idx, other_tag)})
+        if pair_key in stitched_pairs:
+            continue
+        stitched_pairs.add(pair_key)
+
+        midpoint = (
+            (point[0] + other_point[0]) / 2.0,
+            (point[1] + other_point[1]) / 2.0,
+        )
+        if tag == "start":
+            segments[seg_idx][0] = midpoint
+        else:
+            segments[seg_idx][-1] = midpoint
+
+        if other_tag == "start":
+            segments[other_idx][0] = midpoint
+        else:
+            segments[other_idx][-1] = midpoint
+
+        TrackLogger.info(
+            f"[TrunkExport] Stitched endpoint gap {dist_m:.0f} m "
+            f"between segment {seg_idx}.{tag} and {other_idx}.{other_tag}"
+        )
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # Trunk Crossing Detection
 #
@@ -3077,10 +3154,11 @@ def get_trunk_polylines() -> list[dict]:
             continue
         group = TRUNK_GROUPS[trunk_idx]
         color = get_subway_color(group[0])
+        trunk_lane_offset = separated_offsets.get(trunk_idx, 0.0)
 
         encoded: list[str] = []
         polyline_lane_offsets: list[float] = []
-        # Process each segment, collecting WGS84 coords for stitching.
+        # Process each segment, collecting WGS84 coords for endpoint stitching.
         wgs_segments: list[tuple[list[tuple[float, float]], float]] = []
         for ls, local_lane_offset in line_strings:
             coords_m = list(ls.coords)
@@ -3125,28 +3203,9 @@ def get_trunk_polylines() -> list[dict]:
             except Exception:
                 continue
 
-        # ── Stitch consecutive segment endpoints ──
-        # After fillet, consecutive segments from the same raw trunk path
-        # may have drifted at the split point.  Snap them back together
-        # so the client renders a seamless polyline chain.
-        _STITCH_THRESHOLD_DEG = 0.003  # ~330m at NYC latitude
-        for i in range(1, len(wgs_segments)):
-            prev_coords, _ = wgs_segments[i - 1]
-            curr_coords, _ = wgs_segments[i]
-            if not prev_coords or not curr_coords:
-                continue
-            prev_end = prev_coords[-1]
-            curr_start = curr_coords[0]
-            dlat = abs(prev_end[0] - curr_start[0])
-            dlon = abs(prev_end[1] - curr_start[1])
-            if dlat < _STITCH_THRESHOLD_DEG and dlon < _STITCH_THRESHOLD_DEG:
-                # Average the two points and snap both to the midpoint
-                mid = (
-                    (prev_end[0] + curr_start[0]) / 2.0,
-                    (prev_end[1] + curr_start[1]) / 2.0,
-                )
-                prev_coords[-1] = mid
-                curr_coords[0] = mid
+        _stitch_nearby_segment_endpoints_wgs84(
+            [coords for coords, _ in wgs_segments]
+        )
 
         for coords_wgs, local_lane_offset in wgs_segments:
             encoded.append(encode_polyline(coords_wgs))
@@ -3159,7 +3218,7 @@ def get_trunk_polylines() -> list[dict]:
                     "color_hex": color,
                     "route_ids": group,
                     "polylines": encoded,
-                    "lane_offset": separated_offsets.get(trunk_idx, 0.0),
+                    "lane_offset": trunk_lane_offset,
                     "polyline_lane_offsets": polyline_lane_offsets,
                 }
             )
