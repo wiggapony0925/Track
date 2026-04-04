@@ -341,8 +341,6 @@ async def startup_event():
     TrackLogger.startup()
     # ── Phase 1: GTFS static data sync ───────────────────────────────────────
     TrackLogger.section("DATA SYNC")
-    # ── Phase 1: GTFS static data sync ───────────────────────────────────────
-    TrackLogger.section("DATA SYNC")
     # Download fresh GTFS data from Supabase (falls back to Docker-bundled files)
     await ensure_data_available()
     # On first boot with a fresh Render Disk, rebuild transit_schedule.db from

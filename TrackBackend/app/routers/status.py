@@ -116,6 +116,74 @@ async def alerts(
 
 
 @router.get(
+    "/alerts/status",
+    response_model=dict[str, str],
+    summary="Per-route service status",
+    description=(
+        "Returns the worst active alert type for every affected route, "
+        "keyed by route_id.  "
+        "Routes absent from the response have no active alerts — treat them "
+        "as 'No Active Alerts' (subway/bus) or 'On or Close to Schedule' "
+        "(LIRR/MNR).  "
+        "When a route has multiple active alerts the one with the highest "
+        "sort_order wins, matching the MTA Status Box specification."
+    ),
+)
+async def route_status(
+    mode: str | None = Query(
+        default=None,
+        description="Filter by transit mode. Omit for all modes.",
+        examples=["subway", "bus", "lirr", "mnr"],
+    ),
+) -> dict[str, str]:
+    """Return worst active alert_type per route_id.
+
+    Follows the MTA 'Status Box' algorithm:
+    1. Fetch all currently active alerts (honouring display_before_active).
+    2. For each route_id collect every matching alert.
+    3. Pick the alert with the highest sort_order (most severe).
+    4. Return its alert_type string as that route's status label.
+
+    Routes not present in the response have no active alerts.
+    """
+    try:
+        alerts_list = await asyncio.wait_for(
+            get_alerts(mode=mode), timeout=_ALERTS_TIMEOUT
+        )
+    except TimeoutError:
+        TrackLogger.info(
+            f"[ALERTS] /alerts/status timed out after 8s (mode={mode}) "
+            "-- returning empty",
+            tag="ALERTS",
+        )
+        return {}
+    except (OSError, ConnectionError, Exception) as exc:
+        TrackLogger.warning(
+            f"[ALERTS] /alerts/status error (mode={mode}): "
+            f"{type(exc).__name__}: {exc}",
+            tag="ALERTS",
+        )
+        return {}
+
+    # worst[route_id] = (sort_order, alert_type)
+    worst: dict[str, tuple[int, str]] = {}
+    for alert in alerts_list:
+        if not alert.alert_type:
+            continue
+        for route_id in alert.route_ids:
+            current = worst.get(route_id)
+            if current is None or alert.sort_order > current[0]:
+                worst[route_id] = (alert.sort_order, alert.alert_type)
+
+    result = {rid: label for rid, (_, label) in worst.items()}
+    TrackLogger.info(
+        f"[ALERTS] /alerts/status → {len(result)} routes affected (mode={mode})",
+        tag="ALERTS",
+    )
+    return result
+
+
+@router.get(
     "/accessibility",
     response_model=list[ElevatorStatus],
     summary="Get elevator & escalator outages",
