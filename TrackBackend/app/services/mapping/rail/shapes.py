@@ -29,7 +29,7 @@ from app.services.mapping.shared.coords import (
 )
 from app.utils.logger import TrackLogger
 
-_DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
+_DATA_DIR = Path(__file__).resolve().parent.parent.parent.parent / "data"
 
 
 # ---------------------------------------------------------------------------

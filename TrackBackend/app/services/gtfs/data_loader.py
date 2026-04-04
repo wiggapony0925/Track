@@ -463,12 +463,27 @@ async def ensure_data_available() -> dict[str, bool]:
 
     ready = sum(1 for v in results.values() if v)
     total = len(results)
-    failed = [k for k, v in results.items() if not v]
 
-    if failed:
+    # Separate critical failures (block server function) from non-critical ones
+    # (optional caches that degrade gracefully when absent).
+    critical_map = {
+        entry["description"]: entry.get("critical", True)
+        for entry in DOWNLOAD_MANIFEST
+    }
+    failed_critical = [k for k, v in results.items() if not v and critical_map.get(k, True)]
+    failed_optional = [k for k, v in results.items() if not v and not critical_map.get(k, True)]
+
+    if failed_critical:
         TrackLogger.error(
             f"[DATA] GTFS sync done in {elapsed:.1f}s — {ready}/{total} ready. "
-            f"MISSING: {', '.join(failed)}",
+            f"MISSING (critical): {', '.join(failed_critical)}"
+            + (f" | optional: {', '.join(failed_optional)}" if failed_optional else ""),
+            tag="DATA",
+        )
+    elif failed_optional:
+        TrackLogger.info(
+            f"[DATA] GTFS sync done in {elapsed:.1f}s — {ready}/{total} ready. "
+            f"Optional caches not yet in Supabase: {', '.join(failed_optional)}",
             tag="DATA",
         )
     else:
