@@ -19,6 +19,7 @@ import os
 import tarfile
 import tempfile
 import threading
+import time
 from pathlib import Path
 
 import httpx
@@ -95,12 +96,15 @@ def _do_upload(object_name: str, cache_path: Path) -> None:
             "x-upsert": "true",
         }
 
+        t_upload = time.monotonic()
         with httpx.Client(timeout=_UPLOAD_TIMEOUT) as client:
             resp = client.post(url, headers=headers, content=data)
+        upload_s = time.monotonic() - t_upload
 
         if resp.status_code in (200, 201):
             TrackLogger.info(
-                f"[BUS_CACHE] Uploaded {object_name} → Supabase ({size_kb} KB)",
+                f"[BUS_CACHE] Uploaded {object_name} → Supabase"
+                f" ({size_kb} KB, {upload_s:.1f}s)",
                 tag="BUS_CACHE",
             )
         else:

@@ -339,11 +339,17 @@ async def startup_event():
     tasks for GTFS freshness and feed caching.
     """
     TrackLogger.startup()
+    # ── Phase 1: GTFS static data sync ───────────────────────────────────────
+    TrackLogger.section("DATA SYNC")
+    # ── Phase 1: GTFS static data sync ───────────────────────────────────────
+    TrackLogger.section("DATA SYNC")
     # Download fresh GTFS data from Supabase (falls back to Docker-bundled files)
     await ensure_data_available()
     # On first boot with a fresh Render Disk, rebuild transit_schedule.db from
     # the GTFS files we just downloaded.  No-op if the DB already exists.
     await rebuild_schedule_db_if_missing()
+    # ── Phase 2: Services (Redis, weather, ML model) ──────────────────────────
+    TrackLogger.section("SERVICES")
     await _redis.init_redis()
     # Pre-fetch weather from Open-Meteo so the first ML prediction has real data
     from app.clients.weather_client import get_current_weather
@@ -371,12 +377,9 @@ async def startup_event():
     _ml_flag = os.environ.get("ARRIVING_PREDICTION_MODEL", "true").strip().lower()
     _ml_on = _ml_flag not in ("false", "0", "off", "no", "disabled")
     _ml_label = "ENABLED" if _ml_on else f"*** DISABLED *** (env={_ml_flag})"
-    TrackLogger.info(
-        f"[STARTUP] Track backend ready | "
-        f"Redis={redis_status} | "
-        f"ML={_ml_label} | "
-        f"env=production",
-        tag="STARTUP",
+    TrackLogger.ready(
+        f"Services initialized | Redis={redis_status} | ML={_ml_label}"
+        " -- starting warmup"
     )
     # Start background GTFS freshness checker.
     # If an arq worker is running separately (arq app.worker.WorkerSettings),
@@ -550,6 +553,8 @@ async def _warmup_caches():
     from app.clients.bus_client import get_routes as get_bus_routes
     from app.services.gtfs.realtime_parser import get_arrivals_for_line
 
+    # ── Phase 3: Feed warmup ──────────────────────────────────────────────────
+    TrackLogger.section("WARMUP")
     t0 = time.perf_counter()
     TrackLogger.info(
         "[WARMUP] Priming subway GTFS-RT feeds + bus routes (sequential)...",
@@ -710,6 +715,7 @@ async def _periodic_feed_refresh():
     # Previously included "7" separately, but it resolves to the same
     # subway_123456 URL as "1", causing duplicate protobuf parsing
     # every refresh cycle (wasting ~200ms of CPU on 1-CPU Render plan).
+    _cycle = 0
     while True:
         await asyncio.sleep(_FEED_REFRESH_INTERVAL)
         try:
@@ -756,11 +762,20 @@ async def _periodic_feed_refresh():
             )
             ok = sum(1 for r in feed_results if r)
             ACTIVE_FEEDS.set(ok)
+            _cycle += 1
 
             elapsed = time.perf_counter() - t0
             if elapsed > 5.0 or ok < total:
                 TrackLogger.info(
                     f"[FEED_REFRESH] {ok}/{total} feeds OK in {elapsed:.1f}s",
+                    tag="FEED_REFRESH",
+                )
+            elif _cycle % 30 == 0:
+                # Heartbeat every ~5 min (30 x 10s) — confirms feeds are alive
+                # even when everything runs perfectly and the log would be silent.
+                TrackLogger.info(
+                    f"[FEED_REFRESH] feeds healthy {ok}/{total}"
+                    f" (cycle #{_cycle}, {elapsed:.1f}s)",
                     tag="FEED_REFRESH",
                 )
         except asyncio.CancelledError:

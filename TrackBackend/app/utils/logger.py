@@ -452,6 +452,32 @@ class TrackLogger:
         """
         return _TimedContext(tag)
 
+    @staticmethod
+    def section(title: str) -> None:
+        """Emit a visible section separator — makes startup phases easy to scan.
+
+        Each call emits one INFO line acting as a clear boundary between
+        cold-start phases (DATA SYNC -> SERVICES -> WARMUP).  Always at INFO
+        so it appears in Render logs regardless of LOG_LEVEL.
+
+        Args:
+            title: Short label for the phase, e.g. ``"DATA SYNC"``.
+        """
+        bar = "-" * max(0, 52 - len(title) - 4)
+        _logger.info(f"-- {title} {bar}", extra={"tag": "STARTUP"})
+
+    @staticmethod
+    def ready(msg: str) -> None:
+        """Emit a READY line to signal a phase completed successfully.
+
+        Stands out in Render logs as the clear "this phase is done" marker.
+
+        Args:
+            msg: Short description of what is ready, e.g.
+                ``"Redis connected -- 128 keys"``.
+        """
+        _logger.info(f"[READY] {msg}", extra={"tag": "READY"})
+
 
 class _TimedContext:
     """Context manager for ``TrackLogger.timed()``."""

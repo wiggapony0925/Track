@@ -883,7 +883,10 @@ async def _collect_all(
             _mode_times[label] = "CANCELLED"
         elif task.exception() is not None:
             exc = task.exception()
-            TrackLogger.info(f"{label.upper()} feed failed: {_describe_exception(exc)}")
+            TrackLogger.info(
+                f"{label.upper()} feed failed: {_describe_exception(exc)}",
+                tag="NEARBY",
+            )
             _mode_times[label] = "FAILED"
         else:
             result = task.result()
@@ -894,8 +897,9 @@ async def _collect_all(
                 _mode_times[label] = "empty"
 
     TrackLogger.info(
-        f"⏱ _collect_all wall={_elapsed:.3f}s radius={effective_radius}m "
-        f"mode={mode_filter or 'all'} → {_mode_times}"
+        f"[COLLECT] {_elapsed:.3f}s r={effective_radius}m "
+        f"mode={mode_filter or 'all'} {_mode_times}",
+        tag="NEARBY",
     )
 
     # Guardrail: never return empty route IDs to clients.
