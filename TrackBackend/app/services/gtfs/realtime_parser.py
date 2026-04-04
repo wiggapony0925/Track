@@ -16,7 +16,7 @@ from app.clients.mta_client import fetch_json, fetch_protobuf
 from app.config import get_feed_url, get_settings
 from app.ml.recency_model import observe_siri_delays_batch, observe_trip_updates_batch
 from app.models import ElevatorStatus, TrackArrival, TransitAlert
-from app.services.mapping.shape_utils import haversine_km as _haversine_km
+from app.services.mapping.shared.coords import haversine_km as _haversine_km
 from app.services.transit.station_lookup import get_stop_info, get_stop_name
 from app.utils.geo_utils import minutes_until as _minutes_until
 from app.utils.logger import TrackLogger

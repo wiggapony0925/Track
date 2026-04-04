@@ -87,8 +87,8 @@ class TestSubwayShapesAll:
     @patch("app.routers.subway._save_shapes_disk_cache")
     @patch("app.routers.subway._load_shapes_disk_cache", return_value=None)
     @patch("app.routers.subway.get_all_subway_lines", return_value=["A", "L"])
-    @patch("app.services.mapping.subway_shapes._load_route_shapes")
-    @patch("app.services.mapping.subway_shapes._load_shapes")
+    @patch("app.services.mapping.subway.shapes._load_route_shapes")
+    @patch("app.services.mapping.subway.shapes._load_shapes")
     def test_shapes_all_returns_overlays(
         self, mock_shapes, mock_route_shapes, mock_lines, mock_disk_load, mock_disk_save
     ):
@@ -159,7 +159,7 @@ class TestSubwayShape:
                 self.lat = lat
                 self.lon = lon
 
-        from app.services.mapping.subway_shapes import DirectionData
+        from app.services.mapping.subway.shapes import DirectionData
 
         stops = [
             FakeStop("L01", "8 Av", 40.74, -74.0),
@@ -674,10 +674,11 @@ class TestNearbyGrouped:
         assert data[0]["route_id"] == "A"
         assert len(data[0]["directions"]) == 2
 
+    @patch("app.routers.nearby.get_lirr_route_name", return_value="Montauk Branch")
     @patch("app.routers.nearby._fetch_nearby_rail", new_callable=AsyncMock)
     @patch("app.routers.nearby._fetch_nearby_subway", new_callable=AsyncMock)
     @patch("app.routers.nearby._fetch_nearby_buses", new_callable=AsyncMock)
-    def test_grouped_lirr_has_prefixed_id_and_name(self, mock_bus, mock_sub, mock_rail):
+    def test_grouped_lirr_has_prefixed_id_and_name(self, mock_bus, mock_sub, mock_rail, _mock_name):
         mock_rail.side_effect = [
             [
                 NearbyTransitArrival(
@@ -702,10 +703,11 @@ class TestNearbyGrouped:
             "Branch" in data[0]["display_name"] or "Service" in data[0]["display_name"]
         )
 
+    @patch("app.routers.nearby.get_mnr_route_name", return_value="Hudson Line")
     @patch("app.routers.nearby._fetch_nearby_rail", new_callable=AsyncMock)
     @patch("app.routers.nearby._fetch_nearby_subway", new_callable=AsyncMock)
     @patch("app.routers.nearby._fetch_nearby_buses", new_callable=AsyncMock)
-    def test_grouped_mnr_has_prefixed_id_and_name(self, mock_bus, mock_sub, mock_rail):
+    def test_grouped_mnr_has_prefixed_id_and_name(self, mock_bus, mock_sub, mock_rail, _mock_name):
         mock_rail.side_effect = [
             [],  # LIRR returns nothing
             [
@@ -895,12 +897,14 @@ class TestDisplayName:
     def test_strips_mta_bus_prefix(self):
         assert _display_name("MTA BUS_Q10") == "Q10"
 
-    def test_resolves_lirr_prefix(self):
+    @patch("app.routers.nearby.get_lirr_route_name", return_value="Montauk Branch")
+    def test_resolves_lirr_prefix(self, _mock):
         name = _display_name("LIRR_5")
         assert name != "5"  # Should be a real branch name
         assert "Montauk" in name or "Branch" in name
 
-    def test_resolves_mnr_prefix(self):
+    @patch("app.routers.nearby.get_mnr_route_name", return_value="Hudson Line")
+    def test_resolves_mnr_prefix(self, _mock):
         name = _display_name("MNR_1")
         assert name != "1"
         assert "Hudson" in name or "Line" in name
@@ -966,7 +970,9 @@ class TestGroupArrivals:
         groups = _group_arrivals(flat)
         assert groups[0].color_hex == "#0039A6"
 
-    def test_lirr_gets_branch_color(self):
+    @patch("app.routers.nearby.get_lirr_route_name", return_value="Port Washington Branch")
+    @patch("app.routers.nearby.get_lirr_route_color", return_value="#C60C30")
+    def test_lirr_gets_branch_color(self, _mock_color, _mock_name):
         flat = [
             NearbyTransitArrival(
                 route_id="LIRR_9",
@@ -980,7 +986,9 @@ class TestGroupArrivals:
         assert groups[0].color_hex is not None
         assert groups[0].color_hex != "#4D5357"  # Should not be fallback grey
 
-    def test_mnr_gets_line_color(self):
+    @patch("app.routers.nearby.get_mnr_route_name", return_value="Hudson Line")
+    @patch("app.routers.nearby.get_mnr_route_color", return_value="#009B3A")
+    def test_mnr_gets_line_color(self, _mock_color, _mock_name):
         flat = [
             NearbyTransitArrival(
                 route_id="MNR_1",

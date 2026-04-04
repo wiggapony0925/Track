@@ -683,7 +683,7 @@ def _clear_gtfs_caches() -> None:
         registry_cleared = 0
 
     # ── Phase 2: legacy manual list (safe to double-clear; .cache_clear is idempotent) ──
-    from app.services.mapping.commuter_rail_shapes import (
+    from app.services.mapping.rail.shapes import (
         _lirr_routes,
         _lirr_shape_stop_map,
         _lirr_shapes,
@@ -695,7 +695,7 @@ def _clear_gtfs_caches() -> None:
         _mnr_stops,
         _mnr_trips,
     )
-    from app.services.mapping.subway_shapes import (
+    from app.services.mapping.subway.shapes import (
         _get_stops_for_shape,
         _load_direction_headsigns,
         _load_route_shapes,

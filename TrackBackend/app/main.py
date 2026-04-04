@@ -581,9 +581,31 @@ async def _warmup_caches():
     except Exception:
         pass
 
+    # Prime the MTA open-data bus shapes cache so the first /bus/route-shape
+    # request returns instantly instead of blocking 3-5s on a cold HTTP fetch.
+    bus_shapes_ok = "FAIL"
+    try:
+        from app.services.mapping.bus.routes import get_bus_open_data_shapes
+
+        await get_bus_open_data_shapes()
+        bus_shapes_ok = "OK"
+    except Exception:
+        pass
+
+    # Prime the MTA open-data bus stops cache so stop enrichment is instant.
+    bus_stops_ok = "FAIL"
+    try:
+        from app.services.mapping.bus.stops import get_bus_stop_index
+
+        await get_bus_stop_index()
+        bus_stops_ok = "OK"
+    except Exception:
+        pass
+
     feed_elapsed = time.perf_counter() - t0
     TrackLogger.info(
-        f"[WARMUP] Feeds done in {feed_elapsed:.1f}s — subway: {feed_ok}/{len(_FEED_LINES)}, bus: {bus_ok}",
+        f"[WARMUP] Feeds done in {feed_elapsed:.1f}s — subway: {feed_ok}/{len(_FEED_LINES)}, "
+        f"bus routes: {bus_ok}, bus shapes: {bus_shapes_ok}",
         tag="WARMUP",
     )
 
@@ -629,7 +651,7 @@ async def _warmup_caches():
         await asyncio.sleep(0.05)  # yield
 
         t_stations = time.perf_counter()
-        from app.services.mapping.subway_shapes import get_all_subway_stations
+        from app.services.mapping.subway.shapes import get_all_subway_stations
 
         get_all_subway_stations()  # populates the module-level cache
         stations_ok = f"OK ({time.perf_counter() - t_stations:.1f}s)"
@@ -643,7 +665,8 @@ async def _warmup_caches():
     elapsed = time.perf_counter() - t0
     TrackLogger.info(
         f"[WARMUP] Full warmup done in {elapsed:.1f}s — subway feeds: {feed_ok}/{len(_FEED_LINES)}, "
-        f"bus routes: {bus_ok}, shapes: {shapes_ok}, stations: {stations_ok}",
+        f"bus routes: {bus_ok}, bus shapes: {bus_shapes_ok}, bus stops: {bus_stops_ok}, "
+        f"shapes: {shapes_ok}, stations: {stations_ok}",
         tag="WARMUP",
     )
 

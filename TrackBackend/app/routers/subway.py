@@ -29,14 +29,14 @@ from app.models import (
     TrunkGroupPolylines,
 )
 from app.services.gtfs.realtime_parser import get_arrivals_for_line
-from app.services.mapping.corridor_pipeline import (
+from app.services.mapping.subway.corridor import (
     ROUTE_TO_TRUNK,
     apply_topological_offsets,
     get_processed_stops,
     get_trunk_crossings,
     get_trunk_polylines,
 )
-from app.services.mapping.subway_shapes import (
+from app.services.mapping.subway.shapes import (
     enrich_stops_with_transfers,
     get_all_subway_stations,
     get_subway_route_shape,
@@ -87,7 +87,7 @@ _shapes_all_building = False  # True while pipeline is running
 # Bump this whenever corridor_pipeline.py changes affect polyline output.
 # The persistent Render disk survives deploys, so without a version tag
 # the stale cached pipeline result would be served forever.
-_SHAPES_DISK_CACHE_VERSION = 3  # v3: standard precision-5 polyline encoding
+_SHAPES_DISK_CACHE_VERSION = 4  # v4: despike + tighter thresholds
 _SHAPES_DISK_CACHE_PATH = (
     _Path(__file__).resolve().parent.parent
     / "data"
@@ -98,6 +98,7 @@ for _old in (
     _Path(__file__).resolve().parent.parent / "data" / "_cache_shapes_all.json",
     _Path(__file__).resolve().parent.parent / "data" / "_cache_shapes_all_v1.json",
     _Path(__file__).resolve().parent.parent / "data" / "_cache_shapes_all_v2.json",
+    _Path(__file__).resolve().parent.parent / "data" / "_cache_shapes_all_v3.json",
 ):
     if _old.exists():
         _old.unlink(missing_ok=True)
@@ -162,7 +163,7 @@ def _save_shapes_disk_cache(resp: AllSubwayLinesResponse) -> None:
 
 def _build_shapes_all_sync() -> AllSubwayLinesResponse:
     """Build the full subway system map response — CPU-bound, runs in thread pool."""
-    from app.services.mapping.subway_shapes import (
+    from app.services.mapping.subway.shapes import (
         _load_route_shapes,
         _load_shape_stops,
         _load_shapes,

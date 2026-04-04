@@ -16,7 +16,7 @@ from app.routers._commuter_rail import (
     build_single_line,
     fetch_arrivals,
 )
-from app.services.mapping.commuter_rail_shapes import (
+from app.services.mapping.rail.shapes import (
     get_all_mnr_lines,
     get_single_mnr_line,
 )

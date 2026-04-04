@@ -1337,7 +1337,18 @@ final class MapSystemViewModel {
             let finalCoordinates: [CLLocationCoordinate2D]
 
             if useTrunkPolylines {
-                // Server trunk path: zero processing — decode → render
+                // Server trunk path: the backend ran the full geometry
+                // pipeline (merge → station-snap → dedup → despike →
+                // arc-fillet). RDP/backtrack/spike removal is SKIPPED
+                // here to preserve the server's precision-6 coordinates.
+                //
+                // Catmull-Rom smoothing (4 subdivisions, centripetal) is
+                // applied to increase vertex density around bends so
+                // MapLibre's line-offset produces smooth arcs instead of
+                // faceted polygon corners at turns.  Catmull-Rom is safe
+                // here — it only interpolates between existing points and
+                // does not lose detail on straight sections (collinear
+                // points produce collinear interpolants).
                 guard item.coordinates.count >= 2 else {
                     AppLogger.shared.log(
                         "POLYLINE_DROP",
@@ -1348,7 +1359,9 @@ final class MapSystemViewModel {
                             + " (\(item.coordinates.count))")
                     continue
                 }
-                finalCoordinates = item.coordinates
+                finalCoordinates = item.coordinates.count >= 3
+                    ? smoothPolyline(item.coordinates, segmentsPerCurve: 4)
+                    : item.coordinates
             } else {
                 // Legacy client fallback: full processing chain
                 let simplified: [CLLocationCoordinate2D]

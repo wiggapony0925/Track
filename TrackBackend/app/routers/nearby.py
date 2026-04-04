@@ -62,13 +62,13 @@ from app.models import (
     NearbyTransitArrival,
 )
 from app.services.gtfs.realtime_parser import get_arrivals_for_line
-from app.services.mapping.commuter_rail_shapes import (
+from app.services.mapping.rail.shapes import (
     get_lirr_route_color,
     get_lirr_route_name,
     get_mnr_route_color,
     get_mnr_route_name,
 )
-from app.services.mapping.subway_shapes import (
+from app.services.mapping.subway.shapes import (
     get_stops_for_route as get_subway_stops_for_route,
 )
 from app.services.transit.alert_service import (

@@ -1072,7 +1072,34 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
 
             for station in stations {
                 let feature = MLNPointFeature()
-                feature.coordinate = displayedStationCoordinate(for: station, on: mapView)
+
+                // For single-line stations in a shared corridor, pre-offset
+                // the geographic coordinate perpendicular to the track so the
+                // dot sits on the visually offset polyline rather than floating
+                // on the raw centerline between two parallel rendered lanes.
+                // Transfer pills already span the full corridor width, so they
+                // don't need pre-offsetting.
+                let baseCoord = displayedStationCoordinate(for: station, on: mapView)
+                if !station.isTransfer,
+                   abs(station.laneOffset) > 0.01,
+                   let heading = station.laneHeading {
+                    // Perpendicular = 90° right of direction of travel,
+                    // matching MapLibre's positive line-offset direction.
+                    let dispMeters = Double(station.laneOffset)
+                        * MapLibreStyleConfig.stationDotOffsetMetersPerUnit
+                    let perpBearing = (heading + 90.0).truncatingRemainder(dividingBy: 360.0)
+                    let absBearing = dispMeters >= 0
+                        ? perpBearing
+                        : (perpBearing + 180.0).truncatingRemainder(dividingBy: 360.0)
+                    feature.coordinate = Self.coordinate(
+                        from: baseCoord,
+                        distanceMeters: abs(dispMeters),
+                        bearingDegrees: absBearing
+                    )
+                } else {
+                    feature.coordinate = baseCoord
+                }
+
                 if station.isTransfer {
                     feature.attributes = [
                         "name": station.name,

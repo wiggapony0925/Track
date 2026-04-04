@@ -443,6 +443,43 @@ enum MapLibreStyleConfig {
         return NSExpression(mglJSONObject: json)
     }()
 
+    // MARK: - Station Dot Geographic Pre-Offset
+    //
+    // MapLibre's `line-offset` pushes polylines in SCREEN SPACE (pixels).
+    // Station dots are anchored to their raw WGS84 coordinate, which sits
+    // at the line's geographic centerline — NOT on the offset visual line.
+    //
+    // For single-line stops in shared corridors, the dot can float between
+    // two parallel lines rather than sitting clearly on one.  The fix:
+    // compute a geographic pre-offset calibrated for the mid-visibility
+    // zoom range (zoom ~13.5) so the dot rides on the correct displayed
+    // lane at the zoom levels where station dots are most prominent.
+    //
+    // Error budget across the full zoom range:
+    //   z11: ~15% short    — negligible; dots nearly invisible
+    //   z13:  ~7% short    — dot clearly on the line
+    //   z14:  ~8% over     — dot center 0.3px past line center; invisible
+    //   z16: ~49% over     — dot still within expanded line stroke (fill
+    //                         half-width 2.9px; error 1.5px; dot radius 7px)
+    // The dot is always visually touching its line at station-visible zooms.
+
+    /// Geographic displacement (metres) per lane-offset unit at the
+    /// calibration zoom of 13.5.  Applied perpendicular-right of the
+    /// track heading so that station dots pre-match the visual lane.
+    ///
+    /// Derivation:
+    ///   mult₁₃.₅  = laneOffsetMultiplier(at: 13.5)                 ≈ 3.79 px
+    ///   m/px₁₃.₅  = 40 075 017 × cos(40.7°) / (256 × 2^13.5)      ≈ 10.23 m
+    ///   reference  = mult₁₃.₅ × m/px₁₃.₅                          ≈ 38.8 m
+    static let stationDotOffsetMetersPerUnit: Double = {
+        let calibrationZoom: Double = 13.5
+        let mult = laneOffsetMultiplier(at: calibrationZoom)
+        // NYC reference latitude (degrees → radians)
+        let latRad = 40.7 * Double.pi / 180.0
+        let metersPerPixel = 40_075_017.0 * cos(latRad) / (256.0 * pow(2.0, calibrationZoom))
+        return mult * metersPerPixel
+    }()
+
     // MARK: - Base Style Cleanup
     //
     // MapTiler streets-v2 styles ship with hundreds of layers including

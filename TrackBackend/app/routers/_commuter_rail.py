@@ -21,7 +21,7 @@ from app.models import (
     RouteShape,
     TrackArrival,
 )
-from app.services.mapping.subway_shapes import enrich_stops_with_transfers
+from app.services.mapping.subway.shapes import enrich_stops_with_transfers
 from app.utils.logger import TrackLogger
 from app.utils.polyline_utils import encode_polyline as _encode_polyline
 

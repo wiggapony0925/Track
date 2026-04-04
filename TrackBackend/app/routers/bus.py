@@ -35,16 +35,34 @@ from app.models import (
     BusVehicle,
     RouteShape,
 )
+from app.services.mapping.bus.routes import get_bus_open_data_shapes
+from app.services.mapping.bus.stops import get_bus_route_stops
 from app.services.transit.schedule_service import schedule_service
 from app.utils.logger import TrackLogger
 
 router = APIRouter(prefix="/bus", tags=["bus"])
 
 
-def _fallback_route_shape(route_id: str) -> RouteShape:
+async def _fallback_route_shape(route_id: str) -> RouteShape:
+    # Normalise: "MTA NYCT_B63" → "B63".
+    short = route_id.split("_", 1)[-1].strip() if "_" in route_id else route_id
+
+    # Tier 1: open data (clean street geometry + live stop list per bundle).
+    open_data_index = await get_bus_open_data_shapes()
+    od_shape = open_data_index.get(short)
+    if od_shape is not None:
+        # Enrich each direction with stop locations from the stops dataset.
+        enriched = []
+        for direction in od_shape.directions:
+            stops = await get_bus_route_stops(short, direction.direction_id)
+            enriched.append(direction.model_copy(update={"stops": stops}))
+        return od_shape.model_copy(update={"directions": enriched})
+
+    # Tier 2: GTFS static shapes (raw, updated 4×/year).
     static_shape = get_static_route_shape(route_id)
     if static_shape is not None:
         return static_shape
+
     return RouteShape(
         route_id=route_id,
         polylines=[],
@@ -684,7 +702,7 @@ async def bus_route_shape(
                 tag="BUS",
             )
             response.headers["X-Track-Degraded"] = "shape-fallback"
-            return _fallback_route_shape(route_id)
+            return await _fallback_route_shape(route_id)
         _raise_bus_upstream_http_error(exc)
     except Exception as exc:
         TrackLogger.warning(
@@ -693,4 +711,4 @@ async def bus_route_shape(
             exc_info=True,
         )
         response.headers["X-Track-Degraded"] = "shape-fallback"
-        return _fallback_route_shape(route_id)
+        return await _fallback_route_shape(route_id)
