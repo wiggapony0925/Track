@@ -92,6 +92,55 @@ _MAX_SCHEDULE_PER_DORMANT: int = get_settings().app_settings.max_schedule_per_do
 
 _BUS_STATIC_GTFS_ROOT = Path(__file__).resolve().parent.parent / "data" / "bus"
 
+# ---------------------------------------------------------------------------
+# Express / Limited service classifier
+# ---------------------------------------------------------------------------
+# Subway routes that run express service (skip stops a local wouldn't serve).
+# Sourced from MTA GTFS routes.txt route_long_name.
+# NOTE: These routes run express on *some* segments / *some* times of day,
+# but the route itself is classified as express.  The E runs express in
+# Queens, A/B/D/2/3/4/5/N/Q run express in Manhattan, etc.
+_SUBWAY_EXPRESS_ROUTES: frozenset[str] = frozenset({
+    "A", "B", "D", "E", "F",       # 8th/6th Av express & Queens Blvd
+    "N", "Q", "Z",                  # Broadway express, Nassau express
+    "2", "3", "4", "5",            # 7th Av / Lex express
+    "6X", "7X", "FX",              # Dedicated express variants
+})
+
+# Bus route-name patterns that indicate express / limited / SBS service.
+_BUS_EXPRESS_PREFIX_RE = re.compile(
+    r"^(SIM|BxM|BM\d|QM)\d",
+    re.IGNORECASE,
+)
+
+
+def _is_express_service(route_id: str, mode: str) -> bool:
+    """Classify whether a route_id represents express/limited service.
+
+    Subway: route is in the express set (A, B, D, 2-5, etc.) or is
+    an explicit express variant (6X, 7X, FX).
+
+    Bus: route name contains "-SBS" (Select Bus Service), matches an
+    express bus prefix (SIM, BxM, BM, QM), or ends with "+" (SBS
+    alternate notation).
+
+    LIRR/MNR: always False (no express/local distinction at route level).
+    """
+    if mode == "subway":
+        # Strip any agency prefix (shouldn't exist for subway but be safe)
+        name = route_id.upper().strip()
+        return name in _SUBWAY_EXPRESS_ROUTES
+    if mode == "bus":
+        name = route_id.upper().strip()
+        # SBS routes: "B44-SBS", "M34-SBS", "M15+"
+        if "-SBS" in name or name.endswith("+"):
+            return True
+        # Express bus prefixes: SIM*, BxM*, BM1-9, QM*
+        if _BUS_EXPRESS_PREFIX_RE.match(name):
+            return True
+        return False
+    return False
+
 
 async def _schedule_arrivals_for_stop(
     stop_id: str,
@@ -146,6 +195,7 @@ async def _schedule_arrivals_for_stop(
                     vehicle_id=None,
                     destination=s.destination,
                     trip_id=s.trip_id,
+                    is_express=_is_express_service(route_id, "bus"),
                 )
             )
         return out
@@ -165,6 +215,7 @@ async def _schedule_arrivals_for_stop(
             stop_id=stop_id,
             vehicle_id=None,
             destination=None,
+            is_express=_is_express_service(route_id, "bus"),
         )
     ]
 
@@ -1649,6 +1700,7 @@ def _group_arrivals(
                     vehicle_id=None,
                     trip_id=None,
                     distance_m=exemplar.distance_m if exemplar else None,
+                    is_express=_is_express_service(route_id, mode),
                 )
                 directions.append(
                     DirectionArrivals(
@@ -1862,6 +1914,9 @@ async def _fetch_nearby_subway(
                 trip_id=arrival.trip_id,
                 is_real_time=arrival.status != "Scheduled",
                 is_cancelled=arrival.is_cancelled,
+                is_express=_is_express_service(
+                    arrival.route_id or line, "subway",
+                ),
             )
         )
 
@@ -1949,6 +2004,9 @@ async def _fetch_nearby_subway(
                             stop_lon=sinfo.lon if sinfo else None,
                             stop_id=s.station,
                             trip_id=s.trip_id,
+                            is_express=_is_express_service(
+                                s.route_id, "subway",
+                            ),
                         )
                     )
                     backfill_count += 1
@@ -2032,6 +2090,9 @@ async def _fetch_nearby_subway(
                         stop_lon=info.lon,
                         stop_id=best_stop_id,
                         trip_id=None,
+                        is_express=_is_express_service(
+                            route_id, "subway",
+                        ),
                     )
                 )
                 route_stop_ids[route_id].add(best_stop_id)
@@ -2272,6 +2333,7 @@ async def _fetch_nearby_buses(
                 vehicle_id=arrival.vehicle_id,
                 destination=arrival.destination_name or arrival.status_text,
                 is_real_time=arrival.is_realtime,
+                is_express=_is_express_service(normalised_route, "bus"),
             )
         )
 
@@ -2371,6 +2433,7 @@ async def _fetch_nearby_buses(
                         stop_id=_sid,
                         vehicle_id=None,
                         trip_id=_s.trip_id,
+                        is_express=_is_express_service(_s_rid, "bus"),
                     )
                 )
                 _added += 1
@@ -2703,6 +2766,7 @@ async def _fetch_nearby_buses(
                     stop_id=stop.id,
                     vehicle_id=None,
                     destination=None,
+                    is_express=_is_express_service(short, "bus"),
                 )
             )
             live_route_dirs[short].add(new_dir)
@@ -2818,6 +2882,7 @@ async def _fetch_nearby_buses(
                 stop_id=rep_stop.id,
                 vehicle_id=None,
                 destination=ph_destination,
+                is_express=_is_express_service(route_id, "bus"),
             )
         )
         phase_c_count += 1
@@ -2918,6 +2983,7 @@ async def _fetch_nearby_buses(
                     stop_id=best_stop.id,
                     vehicle_id=None,
                     destination=None,
+                    is_express=_is_express_service(rid, "bus"),
                 )
             )
             nearest_entry_dist[rid] = best_dist
@@ -2970,6 +3036,7 @@ async def _fetch_nearby_buses(
                     stop_id=f"MTA_{stop_id}",
                     vehicle_id=None,
                     destination=None,
+                    is_express=_is_express_service(route_id, "bus"),
                 )
             )
             existing_routes.add(route_id)
@@ -3068,6 +3135,7 @@ async def _fetch_nearby_buses(
                         stop_id=best_stop.id,
                         vehicle_id=None,
                         destination=None,
+                        is_express=_is_express_service(route_id, "bus"),
                     )
                 )
                 existing_routes.add(route_id)

@@ -188,6 +188,7 @@ class TestNearbyTransitArrivalContract:
         "distance_m",
         "is_real_time",
         "is_cancelled",
+        "is_express",
     ]
 
     def _make(self, **overrides) -> dict:
@@ -208,6 +209,7 @@ class TestNearbyTransitArrivalContract:
             "distance_m": 150.0,
             "is_real_time": True,
             "is_cancelled": False,
+            "is_express": False,
         }
         defaults.update(overrides)
         return _json(NearbyTransitArrival(**defaults))
@@ -234,6 +236,7 @@ class TestNearbyTransitArrivalContract:
         _assert_type(data, "distance_m", (int, float), nullable=True)
         _assert_type(data, "is_real_time", bool)
         _assert_type(data, "is_cancelled", bool)
+        _assert_type(data, "is_express", bool)
 
     def test_subway_arrival(self):
         data = self._make(mode="subway", vehicle_id=None, stop_lat=40.7, stop_lon=-74.0)

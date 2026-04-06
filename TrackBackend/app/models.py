@@ -250,6 +250,15 @@ class NearbyTransitArrival(BaseModel):
         False, description="True when backed by live GTFS-RT or SIRI data."
     )
     is_cancelled: bool = Field(False, description="True when GTFS-RT reports CANCELED.")
+    is_express: bool = Field(
+        False,
+        description=(
+            "True when this trip runs express/limited service — "
+            "i.e. it skips stops that a local trip on the same corridor "
+            "would serve.  Covers subway express routes (A, B, D, E, 2-5, "
+            "N, Q, Z, 6X, 7X, FX), SBS/express/limited buses."
+        ),
+    )
 
 
 class DirectionArrivals(BaseModel):
