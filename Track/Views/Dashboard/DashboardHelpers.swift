@@ -277,10 +277,6 @@ struct OutOfAreaNoticeView: View {
         .background(
             RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius)
                 .fill(AppTheme.Gradients.tintWash(AppTheme.Colors.warningYellow, intensity: 0.14))
-                .overlay(
-                    RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius)
-                        .strokeBorder(AppTheme.Colors.warningYellow.opacity(0.3), lineWidth: 1)
-                )
         )
         .cornerRadius(AppTheme.Layout.cornerRadius)
         .padding(.horizontal, AppTheme.Layout.margin)
@@ -345,10 +341,6 @@ struct FarFromTransitView: View {
         .background(
             RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius)
                 .fill(AppTheme.Gradients.tintWash(accentColor, intensity: 0.08))
-                .overlay(
-                    RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius)
-                        .strokeBorder(accentColor.opacity(0.12), lineWidth: 1)
-                )
         )
         .padding(.horizontal, AppTheme.Layout.margin)
     }

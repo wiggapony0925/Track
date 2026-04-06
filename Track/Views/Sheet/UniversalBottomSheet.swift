@@ -50,12 +50,8 @@ struct UniversalBottomSheet<Content: View>: View {
         content(navigator.currentPage)
             .id(navigator.currentPage.id)
             .background {
-                ZStack {
-                    AppTheme.Gradients.screen
-                    AppTheme.Gradients.screenSheen
-                    AppTheme.Gradients.screenGlow.opacity(0.72)
-                }
-                .ignoresSafeArea()
+                AppTheme.Colors.background
+                    .ignoresSafeArea()
             }
             .transition(.asymmetric(
                 insertion: .move(edge: .trailing).combined(with: .opacity),

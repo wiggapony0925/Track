@@ -62,10 +62,6 @@ struct WeatherChipView: View {
         .background {
             Capsule()
                 .fill(chipBackground)
-                .overlay {
-                    Capsule()
-                        .stroke(chipBorder, lineWidth: 0.5)
-                }
         }
         .opacity(appeared ? 1.0 : 0.0)
         .onAppear {

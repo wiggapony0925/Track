@@ -244,41 +244,13 @@ struct  GroupedRouteRow: View {
 
     @ViewBuilder
     private var rowBackground: some View {
-        let shape = RoundedRectangle(cornerRadius: containerCornerRadius, style: .continuous)
-        shape
+        RoundedRectangle(cornerRadius: containerCornerRadius, style: .continuous)
             .fill(AppTheme.Colors.cardBackground)
-            .overlay {
-                shape.fill(
-                    AppTheme.Gradients.tintWash(
-                        routeColor,
-                        intensity: isFavoritePresentation ? 0.10 : 0.04
-                    )
-                )
-            }
-            .overlay {
-                // Top-left chrome highlight for glass depth
-                shape.fill(
-                    LinearGradient(
-                        colors: [AppTheme.Colors.glassHighlight.opacity(0.08), Color.clear],
-                        startPoint: .topLeading,
-                        endPoint: .center
-                    )
-                )
-            }
-            .overlay {
-                shape.stroke(AppTheme.Colors.borderSubtle, lineWidth: 0.5)
-            }
             .shadow(
-                color: AppTheme.Colors.shadow.opacity(isFavoritePresentation ? 0.08 : 0.05),
-                radius: isFavoritePresentation ? 14 : 10,
+                color: AppTheme.Colors.shadow.opacity(0.06),
+                radius: 8,
                 x: 0,
-                y: 5
-            )
-            .shadow(
-                color: routeColor.opacity(isFavoritePresentation ? 0.06 : 0.03),
-                radius: isFavoritePresentation ? 24 : 18,
-                x: 0,
-                y: 10
+                y: 3
             )
     }
 
@@ -363,7 +335,7 @@ struct  GroupedRouteRow: View {
 
                     VStack(alignment: .leading, spacing: 5) {
                         Text(label)
-                            .font(.system(size: 15, weight: .bold, design: .rounded))
+                            .font(.system(size: 15, weight: .bold))
                             .foregroundColor(AppTheme.Colors.textPrimary)
                             .lineLimit(2)
                             .minimumScaleFactor(0.4)
@@ -562,8 +534,7 @@ struct  GroupedRouteRow: View {
         .padding(.vertical, 8)
         .background(
             Capsule()
-                .fill(AppTheme.Gradients.accent)
-                .shadow(color: AppTheme.Colors.accentGlow.opacity(0.55), radius: 12, x: 0, y: 4)
+                .fill(AppTheme.Colors.accent)
         )
     }
 
@@ -722,7 +693,6 @@ struct  GroupedRouteRow: View {
             .background {
                 Capsule()
                     .fill(AppTheme.Colors.successGreen)
-                    .shadow(color: AppTheme.Colors.successGreen.opacity(0.3), radius: 4, x: 0, y: 1)
             }
             .clipShape(Capsule())
         } else {

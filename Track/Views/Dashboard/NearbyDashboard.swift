@@ -239,7 +239,6 @@ struct ClosestToYouSectionHeader: View {
             .background {
                 Capsule()
                     .fill(badgeColor)
-                    .shadow(color: badgeColor.opacity(0.25), radius: 6, x: 0, y: 2)
             }
 
             Spacer()
@@ -290,9 +289,6 @@ struct NearYouSectionHeader: View {
             .background {
                 Capsule()
                     .fill(AppTheme.Colors.successGreen)
-                    .shadow(
-                        color: AppTheme.Colors.successGreen.opacity(0.25),
-                        radius: 6, x: 0, y: 2)
             }
 
             Spacer()
@@ -342,7 +338,6 @@ struct FartherAwaySectionHeader: View {
             .background {
                 Capsule()
                     .fill(AppTheme.Colors.accent)
-                    .shadow(color: AppTheme.Colors.accent.opacity(0.20), radius: 6, x: 0, y: 2)
             }
 
             Spacer()
@@ -385,9 +380,6 @@ struct MuchFartherAwaySectionHeader: View {
             .background {
                 Capsule()
                     .fill(AppTheme.Colors.warningYellow)
-                    .shadow(
-                        color: AppTheme.Colors.warningYellow.opacity(0.20),
-                        radius: 6, x: 0, y: 2)
             }
 
             Spacer()

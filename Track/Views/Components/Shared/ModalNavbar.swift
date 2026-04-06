@@ -49,21 +49,12 @@ struct ModalNavbar: View {
                 Button {
                     showSettings = true
                 } label: {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(AppTheme.Gradients.controlSurface)
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                    .stroke(AppTheme.Colors.borderSubtle, lineWidth: 1)
-                            }
-
-                        Image(systemName: "gearshape.fill")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(AppTheme.Colors.mtaBlue)
-                    }
-                    .frame(width: 40, height: 40)
+                    Image(systemName: "gearshape.fill")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+                        .frame(width: 40, height: 40)
+                        .trackInsetBackground(cornerRadius: 14)
                 }
-                .trackInsetBackground(cornerRadius: 18)
                 .accessibilityLabel("Settings")
             }
             .padding(.horizontal, AppTheme.Layout.margin)
@@ -114,19 +105,9 @@ struct ModalNavbar: View {
     }
 
     private var clearGlyph: some View {
-        ZStack {
-            Circle()
-                .fill(AppTheme.Colors.cardInset)
-                .overlay {
-                    Circle()
-                        .stroke(AppTheme.Colors.borderSubtle, lineWidth: 0.5)
-                }
-
-            Image(systemName: "xmark")
-                .font(.system(size: 10, weight: .bold))
-                .foregroundColor(AppTheme.Colors.textSecondary)
-        }
-        .frame(width: 26, height: 26)
+        Image(systemName: "xmark.circle.fill")
+            .font(.system(size: 18, weight: .medium))
+            .foregroundColor(AppTheme.Colors.textTertiary)
     }
 
     private var micGlyph: some View {
@@ -147,19 +128,15 @@ struct ModalNavbar: View {
             Circle()
                 .fill(AppTheme.Colors.successGreen)
                 .frame(width: 6, height: 6)
-                .shadow(color: AppTheme.Colors.successGreen.opacity(0.4), radius: 4, x: 0, y: 0)
 
             let formatter = RelativeDateTimeFormatter()
             let relative = formatter.localizedString(
                 for: date, relativeTo: .now
             )
             Text("Updated \(relative)")
-                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .font(.system(size: 11, weight: .medium))
                 .foregroundColor(AppTheme.Colors.textTertiary)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .trackInsetBackground(cornerRadius: 999)
     }
 
     private var refreshingBadge: some View {
@@ -169,12 +146,9 @@ struct ModalNavbar: View {
                 .tint(AppTheme.Colors.accent)
 
             Text("Updating\u{2026}")
-                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .font(.system(size: 11, weight: .medium))
                 .foregroundColor(AppTheme.Colors.textTertiary)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .trackInsetBackground(cornerRadius: 999)
     }
 }
 
@@ -206,23 +180,7 @@ struct ModeFilterStrip: View {
             ZStack {
                 if isActive {
                     RoundedRectangle(cornerRadius: 13, style: .continuous)
-                        .fill(AppTheme.Gradients.accent)
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 13, style: .continuous)
-                                .fill(
-                                    LinearGradient(
-                                        colors: [Color.white.opacity(0.15), Color.clear],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                )
-                        }
-                        .shadow(
-                            color: AppTheme.Colors.accentGlow.opacity(0.30),
-                            radius: 10,
-                            x: 0,
-                            y: 4
-                        )
+                        .fill(AppTheme.Colors.accent)
                         .matchedGeometryEffect(id: "modeHighlight", in: modeNamespace)
                 }
 

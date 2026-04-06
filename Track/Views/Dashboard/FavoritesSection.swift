@@ -78,28 +78,17 @@ struct FavoritesSection: View {
             // Custom header row: FAVORITES title + Manage button
             HStack {
                 Text("Favorites")
-                    .font(.system(size: 13, weight: .heavy, design: .rounded))
+                    .font(.system(size: 13, weight: .bold))
                     .foregroundColor(AppTheme.Colors.textTertiary)
                     .textCase(.uppercase)
-                    .tracking(0.6)
                     .lineLimit(1)
                 Spacer()
                 if !sortedFavorites.isEmpty || selectedMode != .nearby {
                     Button("Manage") {
                         sheetNavigator.navigate(to: .manageFavorites)
                     }
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(AppTheme.Colors.accent)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background {
-                        Capsule()
-                            .fill(AppTheme.Colors.accentTint)
-                            .overlay {
-                                Capsule()
-                                    .stroke(AppTheme.Colors.borderSubtle, lineWidth: 0.5)
-                            }
-                    }
                 }
             }
             .padding(.horizontal, AppTheme.Layout.margin)
@@ -139,8 +128,6 @@ struct FavoritesSection: View {
 private struct FavoritesEmptyCard: View {
     let mode: TransportMode
 
-    @State private var pulse = false
-
     private var modeIcon: String { mode.icon }
 
     private var accentColor: Color {
@@ -175,7 +162,7 @@ private struct FavoritesEmptyCard: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            // Mode icon with a pulsing heart badge
+            // Mode icon with heart badge
             ZStack(alignment: .bottomTrailing) {
                 Image(systemName: modeIcon)
                     .font(.system(size: 22, weight: .semibold))
@@ -185,13 +172,12 @@ private struct FavoritesEmptyCard: View {
                 Image(systemName: "heart.fill")
                     .font(.system(size: 10, weight: .bold))
                     .foregroundColor(.red)
-                    .scaleEffect(pulse ? 1.2 : 1.0)
                     .offset(x: 4, y: 4)
             }
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(nudgeText)
-                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .font(.system(size: 13, weight: .bold))
                     .foregroundColor(AppTheme.Colors.textPrimary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
@@ -206,23 +192,7 @@ private struct FavoritesEmptyCard: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 13)
-        .background {
-            RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius, style: .continuous)
-                .fill(AppTheme.Gradients.floating)
-                .overlay {
-                    RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius, style: .continuous)
-                        .strokeBorder(accentColor.opacity(0.22), lineWidth: 1)
-                }
-                .shadow(color: accentColor.opacity(0.10), radius: 12, x: 0, y: 6)
-        }
-        .onAppear {
-            withAnimation(
-                .easeInOut(duration: 1.0)
-                .repeatForever(autoreverses: true)
-            ) {
-                pulse = true
-            }
-        }
+        .trackCardBackground(cornerRadius: AppTheme.Layout.cornerRadius)
     }
 }
 
@@ -559,27 +529,9 @@ struct FavoriteCard: View {
     }
 
     private var cardChrome: some View {
-        let shape = RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius, style: .continuous)
-        return ZStack {
-            shape
-                .fill(AppTheme.Colors.cardBackground)
-            shape
-                .fill(
-                    AppTheme.Gradients.tintWash(routeColor, intensity: 0.06)
-                )
-            shape
-                .fill(
-                    LinearGradient(
-                        colors: [AppTheme.Colors.glassHighlight.opacity(0.08), Color.clear],
-                        startPoint: .topLeading,
-                        endPoint: .center
-                    )
-                )
-            shape
-                .stroke(AppTheme.Colors.borderSubtle, lineWidth: 0.5)
-        }
-        .shadow(color: AppTheme.Colors.shadow.opacity(0.08), radius: 12, x: 0, y: 5)
-        .shadow(color: routeColor.opacity(0.04), radius: 16, x: 0, y: 6)
+        RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius, style: .continuous)
+            .fill(AppTheme.Colors.cardBackground)
+        .shadow(color: AppTheme.Colors.shadow.opacity(0.06), radius: 8, x: 0, y: 3)
     }
 
     private var favoriteModeIcon: String {
