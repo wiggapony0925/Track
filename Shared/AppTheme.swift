@@ -297,18 +297,18 @@ enum AppTheme {
             switch routeID.uppercased() {
             case "1", "2", "3":
                 return Color(red: 216 / 255, green: 34 / 255, blue: 51 / 255)     // Red #D82233
-            case "4", "5", "6":
+            case "4", "5", "6", "6X":
                 // Dark Green #009952
                 return Color(
                     red: 0 / 255,
                     green: 153 / 255,
                     blue: 82 / 255
                 )
-            case "7":
+            case "7", "7X":
                 return Color(red: 154 / 255, green: 56 / 255, blue: 161 / 255)    // Purple #9A38A1
             case "A", "C", "E":
                 return Color(red: 0 / 255, green: 98 / 255, blue: 207 / 255)      // Blue #0062CF
-            case "B", "D", "F", "M":
+            case "B", "D", "F", "FX", "M":
                 return Color(red: 235 / 255, green: 104 / 255, blue: 0 / 255)     // Orange #EB6800
             case "G":
                 // Light Green #799534

@@ -37,6 +37,8 @@ struct StopsListView: View {
     var userLocation: CLLocationCoordinate2D? = nil
     var onStopTapped: ((StopRowData) -> Void)?
 
+    @State private var showPreviousStops = false
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             // Header
@@ -123,28 +125,76 @@ struct StopsListView: View {
 
     private var stopsContent: some View {
         let nearest = nearestStopIndex
+        let firstUpcomingIndex = stops.firstIndex(where: { !$0.isPassed })
+            ?? stops.count
+        let passedCount = firstUpcomingIndex
+
         return VStack(spacing: 0) {
-            ForEach(Array(stops.enumerated()), id: \.element.id) { index, stop in
-                // Walking time badge above the nearest stop
-                if index == nearest, let loc = userLocation {
-                    let d = CLLocation(latitude: loc.latitude, longitude: loc.longitude)
-                        .distance(from: CLLocation(latitude: stop.lat, longitude: stop.lon))
-                    let walkMin = max(1, Int((d / 80.0).rounded()))  // ~80m/min walk
+            // ── Collapsible previous stops ──
+            if passedCount > 0 {
+                previousStopsToggle(count: passedCount)
+
+                if showPreviousStops {
+                    ForEach(
+                        Array(stops.prefix(passedCount).enumerated()),
+                        id: \.element.id
+                    ) { index, stop in
+                        if index == nearest, let loc = userLocation {
+                            let d = CLLocation(
+                                latitude: loc.latitude,
+                                longitude: loc.longitude
+                            ).distance(from: CLLocation(
+                                latitude: stop.lat,
+                                longitude: stop.lon
+                            ))
+                            let walkMin = max(1, Int((d / 80.0).rounded()))
+                            walkingTimeBadge(minutes: walkMin)
+                        }
+
+                        StopRowView(
+                            stop: stop,
+                            routeColor: routeColor,
+                            showTopLine: !stop.isFirst,
+                            showBottomLine: !stop.isLast,
+                            lineFaded: true
+                        )
+                        .opacity(0.5)
+                        .contentShape(Rectangle())
+                        .onTapGesture { onStopTapped?(stop) }
+                    }
+                }
+            }
+
+            // ── Current + upcoming stops (always visible) ──
+            ForEach(
+                Array(stops.suffix(from: passedCount).enumerated()),
+                id: \.element.id
+            ) { offset, stop in
+                let globalIndex = passedCount + offset
+
+                if globalIndex == nearest, let loc = userLocation {
+                    let d = CLLocation(
+                        latitude: loc.latitude,
+                        longitude: loc.longitude
+                    ).distance(from: CLLocation(
+                        latitude: stop.lat,
+                        longitude: stop.lon
+                    ))
+                    let walkMin = max(1, Int((d / 80.0).rounded()))
                     walkingTimeBadge(minutes: walkMin)
                 }
 
                 StopRowView(
                     stop: stop,
                     routeColor: routeColor,
-                    showTopLine: !stop.isFirst,
+                    showTopLine: (passedCount > 0 && !showPreviousStops && offset == 0)
+                        ? false : !stop.isFirst,
                     showBottomLine: !stop.isLast,
                     lineFaded: stop.isPassed
                 )
                 .opacity(stop.isPassed ? 0.5 : 1.0)
                 .contentShape(Rectangle())
-                .onTapGesture {
-                    onStopTapped?(stop)
-                }
+                .onTapGesture { onStopTapped?(stop) }
             }
         }
         .padding(.vertical, 8)
@@ -154,6 +204,54 @@ struct StopsListView: View {
                 .strokeBorder(routeColor.opacity(0.06), lineWidth: 1)
         )
         .padding(.horizontal, AppTheme.Layout.margin)
+    }
+
+    /// MTA-style collapsible toggle for previous (passed) stops.
+    private func previousStopsToggle(count: Int) -> some View {
+        Button {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                showPreviousStops.toggle()
+            }
+        } label: {
+            HStack(spacing: 0) {
+                // Dot-dot-dot indicator aligned with the route timeline
+                ZStack {
+                    VStack(spacing: 2) {
+                        ForEach(0..<3, id: \.self) { _ in
+                            Circle()
+                                .fill(routeColor.opacity(0.25))
+                                .frame(width: 4, height: 4)
+                        }
+                    }
+                }
+                .frame(width: 30)
+
+                HStack(spacing: 6) {
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 10, weight: .bold))
+                        .rotationEffect(
+                            .degrees(showPreviousStops ? 180 : 0)
+                        )
+
+                    Text(
+                        showPreviousStops
+                            ? "Hide previous stops"
+                            : "Show previous stops (\(count))"
+                    )
+                    .font(.system(
+                        size: 12, weight: .semibold, design: .rounded
+                    ))
+                }
+                .foregroundColor(routeColor)
+                .padding(.leading, 10)
+
+                Spacer()
+            }
+            .padding(.leading, AppTheme.Layout.cardPadding)
+            .padding(.vertical, 10)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     /// Walking time pill shown above the nearest stop.

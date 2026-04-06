@@ -1289,14 +1289,17 @@ _MTA_SUBWAY_SORT: dict[str, str] = {
     "4": "020",
     "5": "021",
     "6": "022",
+    "6X": "023",
     "7": "030",
+    "7X": "031",
     "A": "040",
     "C": "041",
     "E": "042",
     "B": "050",
     "D": "051",
     "F": "052",
-    "M": "053",
+    "FX": "053",
+    "M": "054",
     "G": "060",
     "J": "070",
     "Z": "071",
@@ -1392,22 +1395,45 @@ def _group_arrivals(
     raw ``route_id`` so that GTFS-static IDs (e.g. ``MTABC_Q07``) and
     real-time IDs (e.g. ``MTA NYCT_Q7``) that refer to the same physical
     route are merged into a single card instead of appearing twice.
+
+    Express subway variants (6X, 7X, FX) are merged into their local
+    counterpart's group (6, 7, F) so a single card shows combined
+    arrivals with an ``express_routes`` list indicating active express
+    service.
     """
+    # Express subway variants → local base route for merge grouping.
+    _express_to_local: dict[str, str] = {"6X": "6", "7X": "7", "FX": "F"}
+
     by_route: dict[str, dict[str, list[NearbyTransitArrival]]] = defaultdict(
         lambda: defaultdict(list),
     )
     # merge_key → (mode, display_name, canonical_route_id)
     route_meta: dict[str, tuple[str, str, str]] = {}
+    # merge_key → set of express variant display names seen
+    express_seen: dict[str, set[str]] = defaultdict(set)
 
     for a in flat:
         display = _display_name(a.route_id)  # already normalised
-        merge_key = f"{a.mode}:{display.upper()}"  # case-insensitive grouping
+        upper = display.upper()
+
+        # Merge express subway variants into the local base route's group.
+        base = _express_to_local.get(upper)
+        if base and a.mode == "subway":
+            merge_display = base
+            express_seen_key = f"{a.mode}:{base.upper()}"
+            express_seen[express_seen_key].add(upper)
+        else:
+            merge_display = display
+
+        merge_key = f"{a.mode}:{merge_display.upper()}"
         by_route[merge_key][a.direction].append(a)
         if merge_key not in route_meta:
             # Keep the first-seen raw route_id as the canonical identifier
             # so the client's favourite-matching logic (which uses route_id)
             # continues to work with whichever ID was stored first.
-            route_meta[merge_key] = (a.mode, display, a.route_id)
+            # For express merges, use the local base as canonical.
+            canonical_id = base if base and a.mode == "subway" else a.route_id
+            route_meta[merge_key] = (a.mode, merge_display, canonical_id)
 
     groups: list[GroupedNearbyTransit] = []
     single_direction_before = 0
@@ -1643,7 +1669,15 @@ def _group_arrivals(
         route_alerts: list[InlineAlert] = []
         if alert_index:
             key = display.upper().strip()
-            route_alerts = alert_index.get(key, [])
+            route_alerts = list(alert_index.get(key, []))
+            # Also pull in alerts for express variants merged into this group.
+            for ev in express_seen.get(merge_key, set()):
+                for a in alert_index.get(ev.upper().strip(), []):
+                    if a not in route_alerts:
+                        route_alerts.append(a)
+
+        # Collect express variant IDs active in this merged group.
+        active_express = sorted(express_seen.get(merge_key, set()))
 
         groups.append(
             GroupedNearbyTransit(
@@ -1654,6 +1688,7 @@ def _group_arrivals(
                 directions=directions,
                 sorting_key=_sorting_key(mode, display),
                 alerts=route_alerts,
+                express_routes=active_express,
             )
         )
 

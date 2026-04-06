@@ -60,10 +60,13 @@ struct RouteAlertBanner: View {
                 .foregroundColor(.white)
                 .shadow(color: .black.opacity(0.2), radius: 2, y: 1)
 
-            Text(title)
-                .font(.custom("Helvetica-Bold", size: 12))
-                .foregroundColor(.white)
-                .lineLimit(1)
+            AlertRichText(
+                text: title,
+                font: .custom("Helvetica-Bold", size: 12),
+                color: .white,
+                alertMode: alert.mode,
+                lineLimit: 1
+            )
 
             Spacer(minLength: 0)
 
@@ -111,6 +114,7 @@ struct RouteAlertBanner: View {
 struct InlineAlertBannerView: View {
     let alert: InlineAlertResponse
     let totalAlertCount: Int
+    var mode: String = "subway"
 
     private var bannerColor: Color {
         alert.severity == "severe" ? AppTheme.Colors.alertRed : AppTheme.Colors.warningYellow
@@ -122,10 +126,13 @@ struct InlineAlertBannerView: View {
                 .font(.system(size: 12, weight: .bold))
                 .foregroundColor(.white)
 
-            Text(alert.title)
-                .font(.custom("Helvetica-Bold", size: 12))
-                .foregroundColor(.white)
-                .lineLimit(1)
+            AlertRichText(
+                text: alert.title,
+                font: .custom("Helvetica-Bold", size: 12),
+                color: .white,
+                alertMode: mode,
+                lineLimit: 1
+            )
 
             Spacer(minLength: 0)
 
@@ -290,15 +297,21 @@ struct RouteDetailAlertRow: View {
                     .frame(width: 26, height: 26)
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(alert.title)
-                        .font(.custom("Helvetica-Bold", size: 13))
-                        .foregroundColor(AppTheme.Colors.textPrimary)
-                        .lineLimit(isExpanded ? nil : 2)
+                    AlertRichText(
+                        text: alert.title,
+                        font: .custom("Helvetica-Bold", size: 13),
+                        color: AppTheme.Colors.textPrimary,
+                        alertMode: alert.mode,
+                        lineLimit: isExpanded ? nil : 2
+                    )
 
                     if isExpanded && !alert.description.isEmpty {
-                        Text(alert.description)
-                            .font(.custom("Helvetica", size: 12))
-                            .foregroundColor(AppTheme.Colors.textSecondary)
+                        AlertRichText(
+                            text: alert.description,
+                            font: .custom("Helvetica", size: 12),
+                            color: AppTheme.Colors.textSecondary,
+                            alertMode: alert.mode
+                        )
                     }
 
                     HStack(spacing: 8) {

@@ -46,6 +46,9 @@ struct RouteDetailSheet: View {
     /// Called when the user taps the center button — HomeView provides
     /// the route-fitting camera that shows both user + nearest stop.
     var onRecenter: (() -> Void)?
+    /// Called when the user taps again on an already-selected stop to open
+    /// the full stop-detail sheet for that stop.
+    var onStopDetailRequested: ((StopDetailSelection) -> Void)? = nil
 
     // Map controls (shown in header when sheet is expanded)
     var isSheetExpanded: Bool = false
@@ -149,6 +152,10 @@ struct RouteDetailSheet: View {
     /// and scales the chip up slightly.
     @State private var selectedChipId: String?
 
+    /// The raw route ID of the currently selected chip (e.g. "7X").
+    /// Used to dynamically switch the header badge to diamond for express.
+    @State private var selectedChipRouteId: String?
+
     /// True when an API poll arrived while a chip was selected and we
     /// deferred the `stableNearestArrivals` refresh to avoid visual
     /// disruption.  Cleared when the chip is deselected.
@@ -238,7 +245,8 @@ struct RouteDetailSheet: View {
         tappedVehicleId: String? = nil,
         onDismiss: (() -> Void)? = nil,
         onStopSelected: ((CLLocationCoordinate2D?) -> Void)? = nil,
-        onRecenter: (() -> Void)? = nil
+        onRecenter: (() -> Void)? = nil,
+        onStopDetailRequested: ((StopDetailSelection) -> Void)? = nil
     ) {
         self.group = group
         self.vehicleCoordinateLookup = vehicleCoordinateLookup
@@ -264,6 +272,7 @@ struct RouteDetailSheet: View {
         self.onDismiss = onDismiss
         self.onStopSelected = onStopSelected
         self.onRecenter = onRecenter
+        self.onStopDetailRequested = onStopDetailRequested
         self.isSheetExpanded = isSheetExpanded
         self._is3DMode = is3DMode
         self._cameraPosition = cameraPosition
@@ -649,6 +658,7 @@ struct RouteDetailSheet: View {
 
     private func handleStopSelectionChange() {
         selectedChipId = nil
+        selectedChipRouteId = nil
         onFocusVehicle?(nil)
         let fresh = nearestStopArrivals
         stableNearestArrivals = fresh
@@ -687,6 +697,7 @@ struct RouteDetailSheet: View {
     private func handleDirectionChange() {
         inSheetSelectedStopId = nil
         selectedChipId = nil
+        selectedChipRouteId = nil
         onFocusVehicle?(nil)
         onStopSelected?(nil)
 
@@ -805,14 +816,16 @@ struct RouteDetailSheet: View {
         VStack(alignment: .leading, spacing: 10) {
             // ── Top row: badge + name/direction + action buttons ──
             HStack(spacing: 16) {
-                // Route badge with ambient glow
+                // Route badge with ambient glow — switches to diamond
+                // when the user selects an express arrival chip.
+                let badgeRouteID = selectedChipRouteId ?? group.displayName
                 ZStack {
                     Circle()
                         .fill(routeColor.opacity(0.15))
                         .frame(width: 72, height: 72)
                         .blur(radius: 16)
                     RouteBadge(
-                        routeID: group.displayName,
+                        routeID: badgeRouteID,
                         size: .large,
                         hexColor: group.colorHex,
                         mode: group.mode
@@ -827,6 +840,7 @@ struct RouteDetailSheet: View {
                         radius: 18, x: 0, y: 10
                     )
                 }
+                .animation(.spring(response: 0.35, dampingFraction: 0.7), value: badgeRouteID)
 
                 VStack(alignment: .leading, spacing: 5) {
                     Text(group.displayName)
@@ -1990,7 +2004,8 @@ struct RouteDetailSheet: View {
             isScheduled: isSched,
             arrivalTimestamp: arrival.arrivalTs,
             vehicleId: arrival.vehicleId,
-            tripId: arrival.tripId
+            tripId: arrival.tripId,
+            routeId: arrival.routeId
         )
     }
 
@@ -2015,9 +2030,11 @@ struct RouteDetailSheet: View {
             let vehicleKey = arrival.vehicleId ?? arrival.tripId
             if selectedChipId == arrival.id {
                 selectedChipId = nil
+                selectedChipRouteId = nil
                 onFocusVehicle?(nil)
             } else {
                 selectedChipId = arrival.id
+                selectedChipRouteId = arrival.routeId
                 if let key = vehicleKey {
                     onFocusVehicle?(key)
                 }
@@ -2895,8 +2912,18 @@ struct RouteDetailSheet: View {
         ) { stop in
             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                 if inSheetSelectedStopId == stop.id {
-                    inSheetSelectedStopId = nil
-                    onStopSelected?(nil)
+                    // Already selected — open full stop detail
+                    let dirStops = routeShape?.stopsForDirection(
+                        index: selectedDirectionIndex,
+                        name: selectedDirectionName
+                    ) ?? []
+                    if let busStop = dirStops.first(where: { $0.id == stop.id }) {
+                        let selection = StopDetailSelection.routeStop(
+                            busStop, mode: group.mode,
+                            fallbackRouteID: group.displayName
+                        )
+                        onStopDetailRequested?(selection)
+                    }
                 } else {
                     inSheetSelectedStopId = stop.id
                     selectedTab = .departures
@@ -3069,7 +3096,7 @@ struct RouteDetailSheet: View {
     }
 
     private func inlineAlertBanner(_ alert: InlineAlertResponse) -> some View {
-        InlineAlertBannerView(alert: alert, totalAlertCount: group.alerts.count)
+        InlineAlertBannerView(alert: alert, totalAlertCount: group.alerts.count, mode: group.mode)
     }
 
     // MARK: - Route Alerts Section

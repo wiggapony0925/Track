@@ -657,6 +657,9 @@ struct HomeView: View {
                         }
                     }
                     HapticManager.impact(.light)
+                },
+                onStopDetailRequested: { selection in
+                    presentStopDetail(selection)
                 }
             )
 

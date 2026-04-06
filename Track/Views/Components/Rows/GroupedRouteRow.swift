@@ -282,13 +282,25 @@ struct  GroupedRouteRow: View {
     }
 
     private var routeBadgeView: some View {
-        RouteBadge(
-            routeID: group.displayName,
-            size: .medium,
-            isBus: group.isBus,
-            hexColor: group.colorHex,
-            mode: group.mode
-        )
+        HStack(spacing: 4) {
+            RouteBadge(
+                routeID: group.displayName,
+                size: .medium,
+                isBus: group.isBus,
+                hexColor: group.colorHex,
+                mode: group.mode
+            )
+
+            // Show diamond badge for each active express variant.
+            ForEach(group.expressRoutes, id: \.self) { variant in
+                RouteBadge(
+                    routeID: variant,
+                    size: .medium,
+                    hexColor: group.colorHex,
+                    mode: group.mode
+                )
+            }
+        }
         .padding(.horizontal, group.isCommuterRail ? 6 : 8)
         .padding(.vertical, 8)
         .accessibilityHidden(true)
@@ -311,11 +323,31 @@ struct  GroupedRouteRow: View {
         VStack(alignment: .leading, spacing: 8) {
             directionTabView
             HStack(spacing: 8) {
+                if group.hasExpressService {
+                    expressServiceTag
+                }
                 walkingDistanceLabel
                 paginationDots
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Small "Express" capsule tag shown when express service is active.
+    private var expressServiceTag: some View {
+        HStack(spacing: 3) {
+            Image(systemName: "bolt.fill")
+                .font(.system(size: 8, weight: .bold))
+            Text("Express")
+                .font(.system(size: 10, weight: .bold))
+        }
+        .foregroundColor(.white)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 3)
+        .background(
+            Capsule()
+                .fill(AppTheme.Colors.successGreen)
+        )
     }
 
     private var directionTabView: some View {
@@ -451,10 +483,13 @@ struct  GroupedRouteRow: View {
                             .clipShape(Capsule())
                     }
 
-                    Text(topAlert.title)
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundColor(AppTheme.Colors.textPrimary)
-                        .lineLimit(1)
+                    AlertRichText(
+                        text: topAlert.title,
+                        font: .system(size: 13, weight: .bold),
+                        color: AppTheme.Colors.textPrimary,
+                        alertMode: group.mode,
+                        lineLimit: 1
+                    )
 
                     Spacer(minLength: 8)
 

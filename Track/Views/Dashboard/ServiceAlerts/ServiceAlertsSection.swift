@@ -427,17 +427,23 @@ struct ServiceAlertRow: View {
                 
                 VStack(alignment: .leading, spacing: 4) {
                     // Title
-                    Text(alert.title)
-                        .font(.custom("Helvetica-Bold", size: 13))
-                        .foregroundColor(AppTheme.Colors.textPrimary)
-                        .lineLimit(showFullDescription ? nil : 2)
+                    AlertRichText(
+                        text: alert.title,
+                        font: .custom("Helvetica-Bold", size: 13),
+                        color: AppTheme.Colors.textPrimary,
+                        alertMode: mode,
+                        lineLimit: showFullDescription ? nil : 2
+                    )
                     
                     // Description
                     if !alert.description.isEmpty {
-                        Text(alert.description)
-                            .font(.custom("Helvetica", size: 12))
-                            .foregroundColor(AppTheme.Colors.textSecondary)
-                            .lineLimit(showFullDescription ? nil : 2)
+                        AlertRichText(
+                            text: alert.description,
+                            font: .custom("Helvetica", size: 12),
+                            color: AppTheme.Colors.textSecondary,
+                            alertMode: mode,
+                            lineLimit: showFullDescription ? nil : 2
+                        )
                     }
                     
                     // Severity badge + timestamp

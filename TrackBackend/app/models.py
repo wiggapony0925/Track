@@ -340,6 +340,13 @@ class GroupedNearbyTransit(BaseModel):
     alerts: list[InlineAlert] = Field(
         [], description="Active service alerts for this route."
     )
+    express_routes: list[str] = Field(
+        [],
+        description=(
+            "Express subway variants merged into this group "
+            "(e.g. ['7X']).  Empty for non-express routes."
+        ),
+    )
 
 
 class BusVehicle(BaseModel):

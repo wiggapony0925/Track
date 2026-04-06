@@ -539,18 +539,22 @@ private struct StopAlertRow: View {
                         .tracking(0.6)
                 }
 
-                Text(alert.title)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(AppTheme.Colors.textPrimary)
-                    .fixedSize(horizontal: false, vertical: true)
+                AlertRichText(
+                    text: alert.title,
+                    font: .system(size: 14, weight: .semibold),
+                    color: AppTheme.Colors.textPrimary,
+                    alertMode: alert.mode
+                )
 
                 if !alert.description.isEmpty,
                    alert.description != alert.title {
-                    Text(alert.description)
-                        .font(.system(size: 13, weight: .regular))
-                        .foregroundColor(AppTheme.Colors.textSecondary)
-                        .lineLimit(3)
-                        .fixedSize(horizontal: false, vertical: true)
+                    AlertRichText(
+                        text: alert.description,
+                        font: .system(size: 13, weight: .regular),
+                        color: AppTheme.Colors.textSecondary,
+                        alertMode: alert.mode,
+                        lineLimit: 3
+                    )
                 }
 
                 if let ts = alert.updatedAt {

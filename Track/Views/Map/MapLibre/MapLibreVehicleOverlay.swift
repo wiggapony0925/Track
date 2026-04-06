@@ -104,10 +104,13 @@ struct MapLibreVehicleOverlay: View {
                     isHighlighted: isHighlighted
                 ) { toggleVehicle(vehicleKey) }
             } else {
+                let expressVariants: Set<String> = ["6X", "7X", "FX"]
+                let isExpress = expressVariants.contains(train.routeId.uppercased())
                 VehicleMarkerContent(
                     icon: TransportMode.subway.icon,
-                    color: UIColor(AppTheme.SubwayColors.color(for: train.routeId)),
-                    isHighlighted: isHighlighted
+                    color: AppTheme.SubwayColors.color(for: train.routeId),
+                    isHighlighted: isHighlighted,
+                    isExpress: isExpress
                 ) { toggleVehicle(vehicleKey) }
             }
         }
@@ -122,7 +125,7 @@ struct MapLibreVehicleOverlay: View {
 
 extension VehicleMarkerContent {
     /// Convenience initializer accepting UIColor for MapLibre bridge.
-    init(icon: String, color: UIColor, isHighlighted: Bool, onTap: (() -> Void)? = nil) {
-        self.init(icon: icon, color: Color(color), isHighlighted: isHighlighted, onTap: onTap)
+    init(icon: String, color: UIColor, isHighlighted: Bool, isExpress: Bool = false, onTap: (() -> Void)? = nil) {
+        self.init(icon: icon, color: Color(color), isHighlighted: isHighlighted, isExpress: isExpress, onTap: onTap)
     }
 }

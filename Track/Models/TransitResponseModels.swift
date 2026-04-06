@@ -253,6 +253,8 @@ struct GroupedNearbyTransitResponse: Codable, Identifiable, Equatable {
     var sortingKey: String = ""
     /// Active service alerts for this route.
     var alerts: [InlineAlertResponse] = []
+    /// Express subway variants merged into this group (e.g. ["7X"]).
+    var expressRoutes: [String] = []
 
     var isBus: Bool { mode == "bus" }
     var isLIRR: Bool { mode == "lirr" }
@@ -293,6 +295,9 @@ struct GroupedNearbyTransitResponse: Codable, Identifiable, Equatable {
     /// True when at least one direction has a severe or warning alert.
     var hasAlert: Bool { !alerts.isEmpty }
 
+    /// True when express subway service is active for this route.
+    var hasExpressService: Bool { !expressRoutes.isEmpty }
+
     enum CodingKeys: String, CodingKey {
         case routeId = "route_id"
         case displayName = "display_name"
@@ -301,5 +306,6 @@ struct GroupedNearbyTransitResponse: Codable, Identifiable, Equatable {
         case directions
         case sortingKey = "sorting_key"
         case alerts
+        case expressRoutes = "express_routes"
     }
 }

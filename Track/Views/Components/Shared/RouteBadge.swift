@@ -59,6 +59,18 @@ struct RouteBadge: View {
     private var isSBS: Bool {
         routeID.uppercased().contains("SBS")
     }
+
+    /// Express subway variants use a diamond-shaped badge (MTA standard).
+    private static let expressVariants: Set<String> = ["6X", "7X", "FX"]
+
+    private var isExpressSubway: Bool {
+        Self.expressVariants.contains(routeID.uppercased())
+    }
+
+    /// The base route number shown inside the diamond (e.g., "7" for "7X").
+    private var expressBaseRoute: String {
+        String(routeID.uppercased().dropLast())
+    }
     
     /// Bus background color: Purple for SBS, Blue for local buses
     private var busBackgroundColor: Color {
@@ -91,6 +103,9 @@ struct RouteBadge: View {
         } else if resolvedIsBus {
             // Bus Style: Rounded rectangle/pill with distinct colors
             busBadge
+        } else if isExpressSubway {
+            // Express Subway: Diamond shape (MTA standard for 6X, 7X, FX)
+            expressDiamondBadge
         } else {
             // Subway Style: Official Circle
             subwayBadge
@@ -110,6 +125,33 @@ struct RouteBadge: View {
             .clipShape(Circle())
             .dynamicTypeSize(...DynamicTypeSize.accessibility1)
             .accessibilityLabel("Subway Route \(routeID)")
+    }
+
+    // MARK: - Express Diamond Badge
+
+    /// Diamond-shaped badge for express subway variants (6X, 7X, FX).
+    /// Shows the base route number inside a 45° rotated square.
+    private var expressDiamondBadge: some View {
+        let base = expressBaseRoute
+        let dim = size.dimension
+        return Text(base)
+            .font(.system(
+                size: size.fontSize * 0.85,
+                weight: .heavy,
+                design: .rounded
+            ))
+            .foregroundColor(AppTheme.SubwayColors.textColor(for: base))
+            .minimumScaleFactor(0.4)
+            .lineLimit(1)
+            .frame(width: dim * 0.72, height: dim * 0.72)
+            .background(
+                RoundedRectangle(cornerRadius: dim * 0.12, style: .continuous)
+                    .fill(backgroundColor)
+                    .rotationEffect(.degrees(45))
+            )
+            .frame(width: dim, height: dim)
+            .dynamicTypeSize(...DynamicTypeSize.accessibility1)
+            .accessibilityLabel("Express Subway Route \(routeID)")
     }
     
     // MARK: - Bus Badge (Pill)
@@ -198,6 +240,13 @@ struct RouteBadge: View {
             RouteBadge(routeID: "4", size: .medium)
             RouteBadge(routeID: "A", size: .large)
             RouteBadge(routeID: "N", size: .medium)
+        }
+        
+        // Express subway (diamonds)
+        HStack(spacing: 16) {
+            RouteBadge(routeID: "6X", size: .small)
+            RouteBadge(routeID: "7X", size: .medium)
+            RouteBadge(routeID: "FX", size: .large)
         }
         
         // Bus routes (rounded rectangles)

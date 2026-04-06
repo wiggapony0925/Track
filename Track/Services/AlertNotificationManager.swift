@@ -68,7 +68,7 @@ final class AlertNotificationManager {
         if let route = alert.routeId {
             content.subtitle = "\(route) — \(alert.severity == "severe" ? "⚠️ Severe" : "Warning")"
         }
-        content.body = alert.title
+        content.body = AlertRichText.plainText(alert.title)
         content.sound = alert.severity == "severe"
             ? .defaultCritical
             : .default

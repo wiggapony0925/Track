@@ -481,6 +481,315 @@ class TestGroupingLogic:
         assert groups[0].display_name == "B63"
 
 
+class TestExpressMerge:
+    """Tests for express subway variant merging (6X, 7X, FX)."""
+
+    def test_7x_merges_into_7(self):
+        """7X arrivals should merge into the 7 group."""
+        flat = [
+            NearbyTransitArrival(
+                route_id="7",
+                stop_name="Times Sq",
+                direction="E",
+                minutes_away=3,
+                mode="subway",
+            ),
+            NearbyTransitArrival(
+                route_id="7X",
+                stop_name="Times Sq",
+                direction="E",
+                minutes_away=5,
+                mode="subway",
+            ),
+        ]
+        groups = _group_arrivals(flat)
+        assert len(groups) == 1, (
+            f"Expected 1 merged group, got {len(groups)}"
+        )
+        assert groups[0].display_name == "7"
+        assert groups[0].route_id == "7"
+
+    def test_express_routes_field_populated(self):
+        """The express_routes field should list active express variants."""
+        flat = [
+            NearbyTransitArrival(
+                route_id="7",
+                stop_name="Times Sq",
+                direction="E",
+                minutes_away=3,
+                mode="subway",
+            ),
+            NearbyTransitArrival(
+                route_id="7X",
+                stop_name="Times Sq",
+                direction="E",
+                minutes_away=5,
+                mode="subway",
+            ),
+        ]
+        groups = _group_arrivals(flat)
+        assert groups[0].express_routes == ["7X"]
+
+    def test_express_routes_empty_when_no_express(self):
+        """Groups without express variants should have empty express_routes."""
+        flat = [
+            NearbyTransitArrival(
+                route_id="A",
+                stop_name="34 St",
+                direction="N",
+                minutes_away=2,
+                mode="subway",
+            ),
+        ]
+        groups = _group_arrivals(flat)
+        assert groups[0].express_routes == []
+
+    def test_6x_merges_into_6(self):
+        """6X arrivals should merge into the 6 group."""
+        flat = [
+            NearbyTransitArrival(
+                route_id="6",
+                stop_name="51 St",
+                direction="N",
+                minutes_away=4,
+                mode="subway",
+            ),
+            NearbyTransitArrival(
+                route_id="6X",
+                stop_name="51 St",
+                direction="N",
+                minutes_away=7,
+                mode="subway",
+            ),
+        ]
+        groups = _group_arrivals(flat)
+        assert len(groups) == 1
+        assert groups[0].display_name == "6"
+        assert groups[0].express_routes == ["6X"]
+
+    def test_fx_merges_into_f(self):
+        """FX arrivals should merge into the F group."""
+        flat = [
+            NearbyTransitArrival(
+                route_id="F",
+                stop_name="Jay St",
+                direction="N",
+                minutes_away=2,
+                mode="subway",
+            ),
+            NearbyTransitArrival(
+                route_id="FX",
+                stop_name="Jay St",
+                direction="N",
+                minutes_away=6,
+                mode="subway",
+            ),
+        ]
+        groups = _group_arrivals(flat)
+        assert len(groups) == 1
+        assert groups[0].display_name == "F"
+        assert groups[0].express_routes == ["FX"]
+
+    def test_express_only_no_local_arrivals(self):
+        """When only express arrivals exist, group still uses base route."""
+        flat = [
+            NearbyTransitArrival(
+                route_id="7X",
+                stop_name="Times Sq",
+                direction="E",
+                minutes_away=4,
+                mode="subway",
+            ),
+        ]
+        groups = _group_arrivals(flat)
+        assert len(groups) == 1
+        assert groups[0].display_name == "7"
+        assert groups[0].express_routes == ["7X"]
+
+    def test_express_arrivals_sorted_with_local(self):
+        """Express and local arrivals should be sorted by minutes_away."""
+        flat = [
+            NearbyTransitArrival(
+                route_id="7X",
+                stop_name="Times Sq",
+                direction="E",
+                minutes_away=2,
+                mode="subway",
+            ),
+            NearbyTransitArrival(
+                route_id="7",
+                stop_name="Times Sq",
+                direction="E",
+                minutes_away=5,
+                mode="subway",
+            ),
+            NearbyTransitArrival(
+                route_id="7X",
+                stop_name="Times Sq",
+                direction="E",
+                minutes_away=8,
+                mode="subway",
+            ),
+        ]
+        groups = _group_arrivals(flat)
+        assert len(groups) == 1
+        etas = [
+            a.minutes_away
+            for a in groups[0].directions[0].arrivals
+        ]
+        assert etas == [2, 5, 8], f"Expected sorted ETAs, got {etas}"
+
+    def test_express_alerts_merged(self):
+        """Alerts for express routes should merge into the base group."""
+        from app.models import InlineAlert
+
+        alert_7 = InlineAlert(title="7 delay", severity="severe")
+        alert_7x = InlineAlert(title="7X suspension", severity="severe")
+        alert_index = {"7": [alert_7], "7X": [alert_7x]}
+
+        flat = [
+            NearbyTransitArrival(
+                route_id="7",
+                stop_name="Times Sq",
+                direction="E",
+                minutes_away=3,
+                mode="subway",
+            ),
+            NearbyTransitArrival(
+                route_id="7X",
+                stop_name="Times Sq",
+                direction="E",
+                minutes_away=5,
+                mode="subway",
+            ),
+        ]
+        groups = _group_arrivals(flat, alert_index=alert_index)
+        assert len(groups) == 1
+        alert_titles = {a.title for a in groups[0].alerts}
+        assert "7 delay" in alert_titles
+        assert "7X suspension" in alert_titles
+
+    def test_express_does_not_merge_non_subway(self):
+        """Express-like IDs in non-subway modes should NOT merge."""
+        flat = [
+            NearbyTransitArrival(
+                route_id="7X",
+                stop_name="Somewhere",
+                direction="N",
+                minutes_away=5,
+                mode="bus",
+            ),
+        ]
+        groups = _group_arrivals(flat)
+        assert len(groups) == 1
+        # Should keep original display name, not merge
+        assert groups[0].display_name == "7X"
+        assert groups[0].express_routes == []
+
+    def test_multiple_express_variants(self):
+        """Multiple express variants active at the same time."""
+        flat = [
+            NearbyTransitArrival(
+                route_id="6",
+                stop_name="51 St",
+                direction="N",
+                minutes_away=3,
+                mode="subway",
+            ),
+            NearbyTransitArrival(
+                route_id="6X",
+                stop_name="51 St",
+                direction="N",
+                minutes_away=5,
+                mode="subway",
+            ),
+            NearbyTransitArrival(
+                route_id="7",
+                stop_name="Times Sq",
+                direction="E",
+                minutes_away=4,
+                mode="subway",
+            ),
+            NearbyTransitArrival(
+                route_id="7X",
+                stop_name="Times Sq",
+                direction="E",
+                minutes_away=6,
+                mode="subway",
+            ),
+        ]
+        groups = _group_arrivals(flat)
+        names = {g.display_name for g in groups}
+        assert names == {"6", "7"}
+        for g in groups:
+            if g.display_name == "6":
+                assert g.express_routes == ["6X"]
+            elif g.display_name == "7":
+                assert g.express_routes == ["7X"]
+
+    def test_express_color_uses_base_route(self):
+        """Merged group should use the base route's subway color."""
+        flat = [
+            NearbyTransitArrival(
+                route_id="7X",
+                stop_name="Times Sq",
+                direction="E",
+                minutes_away=3,
+                mode="subway",
+            ),
+        ]
+        groups = _group_arrivals(flat)
+        # 7 train color is purple: #9A38A1
+        assert groups[0].color_hex == "#9A38A1"
+
+    def test_express_sorting_key_uses_base(self):
+        """Merged express group should sort by the base route's key."""
+        flat = [
+            NearbyTransitArrival(
+                route_id="7X",
+                stop_name="Times Sq",
+                direction="E",
+                minutes_away=3,
+                mode="subway",
+            ),
+            NearbyTransitArrival(
+                route_id="A",
+                stop_name="34 St",
+                direction="N",
+                minutes_away=2,
+                mode="subway",
+            ),
+        ]
+        groups = _group_arrivals(flat)
+        # 7 sorts at "030", A sorts at "040"
+        assert groups[0].display_name == "7"
+        assert groups[1].display_name == "A"
+
+    def test_express_bidirectional_merge(self):
+        """Express arrivals in different directions merge correctly."""
+        flat = [
+            NearbyTransitArrival(
+                route_id="7",
+                stop_name="Times Sq",
+                direction="E",
+                minutes_away=3,
+                mode="subway",
+            ),
+            NearbyTransitArrival(
+                route_id="7X",
+                stop_name="Times Sq",
+                direction="W",
+                minutes_away=5,
+                mode="subway",
+            ),
+        ]
+        groups = _group_arrivals(flat)
+        assert len(groups) == 1
+        dir_keys = {d.direction for d in groups[0].directions}
+        assert dir_keys == {"E", "W"}
+        assert groups[0].express_routes == ["7X"]
+
+
 class TestNearbyGroupedEndpoint:
     """Tests for the GET /nearby/grouped endpoint."""
 

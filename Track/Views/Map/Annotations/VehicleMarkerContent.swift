@@ -11,6 +11,8 @@ struct VehicleMarkerContent: View {
     let icon: String
     let color: Color
     let isHighlighted: Bool
+    /// When true, the marker uses a diamond shape instead of circle (express subway).
+    var isExpress: Bool = false
     var onTap: (() -> Void)? = nil
 
     var body: some View {
@@ -19,9 +21,9 @@ struct VehicleMarkerContent: View {
             .foregroundStyle(.white)
             .frame(width: 28, height: 28)
             .background(color)
-            .clipShape(Circle())
+            .clipShape(AnyShape(isExpress ? AnyShape(RotatedDiamondShape()) : AnyShape(Circle())))
             .overlay(
-                Circle()
+                AnyShape(isExpress ? AnyShape(RotatedDiamondShape()) : AnyShape(Circle()))
                     .stroke(isHighlighted ? Color.white : Color.clear, lineWidth: 3)
             )
             .shadow(
@@ -33,5 +35,24 @@ struct VehicleMarkerContent: View {
             .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isHighlighted)
             .drawingGroup()
             .onTapGesture { onTap?() }
+    }
+}
+
+/// A diamond shape (rotated rounded rectangle) for express subway markers.
+struct RotatedDiamondShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        let inset = rect.width * 0.08
+        let r = rect.insetBy(dx: inset, dy: inset)
+        let cx = r.midX
+        let cy = r.midY
+        let hw = r.width / 2
+        let hh = r.height / 2
+        var path = Path()
+        path.move(to: CGPoint(x: cx, y: cy - hh))
+        path.addLine(to: CGPoint(x: cx + hw, y: cy))
+        path.addLine(to: CGPoint(x: cx, y: cy + hh))
+        path.addLine(to: CGPoint(x: cx - hw, y: cy))
+        path.closeSubpath()
+        return path
     }
 }

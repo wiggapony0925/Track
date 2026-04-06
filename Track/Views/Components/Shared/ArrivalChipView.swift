@@ -20,6 +20,15 @@ struct ArrivalChipData: Identifiable {
     let arrivalTimestamp: Int?
     let vehicleId: String?
     let tripId: String?
+    /// Raw route ID from the arrival (e.g. "7X", "6X") — used to detect express.
+    var routeId: String? = nil
+
+    /// Express subway variants end in "X" (6X, 7X, FX).
+    private static let expressVariants: Set<String> = ["6X", "7X", "FX"]
+    var isExpress: Bool {
+        guard let rid = routeId?.uppercased() else { return false }
+        return Self.expressVariants.contains(rid)
+    }
 
     /// Convenience: departure date derived from timestamp or projected.
     var departureDate: Date {
@@ -88,6 +97,9 @@ struct ArrivalChipView: View {
         VStack(spacing: 0) {
             accentBar
             statusTag
+            if chip.isExpress {
+                expressIndicator
+            }
             Spacer(minLength: 4)
             etaCounter
             Spacer(minLength: 4)
@@ -185,6 +197,21 @@ struct ArrivalChipView: View {
         )
         .padding(.bottom, 12)
         .dynamicTypeSize(...DynamicTypeSize.large)
+    }
+
+    /// Small "Exp" diamond indicator for express arrivals.
+    private var expressIndicator: some View {
+        HStack(spacing: 2) {
+            // Mini diamond shape
+            RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                .fill(chipAccent)
+                .frame(width: 7, height: 7)
+                .rotationEffect(.degrees(45))
+            Text("Exp")
+                .font(.system(size: 7.5, weight: .heavy, design: .rounded))
+                .foregroundStyle(chipAccent)
+        }
+        .padding(.top, 2)
     }
 
     private var cardBackground: some View {
