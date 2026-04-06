@@ -461,9 +461,53 @@ struct StopDetailSheet: View {
     private var alertsSection: some View {
         let alerts = relevantAlerts
         if !alerts.isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
-                ForEach(alerts) { alert in
-                    StopAlertRow(alert: alert)
+            CollapsibleAlertsView(alerts: alerts)
+        }
+    }
+}
+
+/// Shows the first alert always, with a "View X more" button
+/// that expands to reveal the rest.
+private struct CollapsibleAlertsView: View {
+    let alerts: [TransitAlert]
+    @State private var isExpanded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            // Always show the first alert.
+            StopAlertRow(alert: alerts[0])
+
+            if alerts.count > 1 {
+                if isExpanded {
+                    ForEach(alerts.dropFirst()) { alert in
+                        StopAlertRow(alert: alert)
+                    }
+                }
+
+                Button {
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        isExpanded.toggle()
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: isExpanded
+                              ? "chevron.up"
+                              : "chevron.down")
+                            .font(.system(size: 11, weight: .semibold))
+                        Text(isExpanded
+                             ? "Show less"
+                             : "View \(alerts.count - 1) more alert\(alerts.count - 1 == 1 ? "" : "s")")
+                            .font(.system(size: 13, weight: .semibold))
+                    }
+                    .foregroundColor(AppTheme.Colors.accent)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(
+                            cornerRadius: 10, style: .continuous
+                        )
+                        .fill(AppTheme.Colors.accent.opacity(0.08))
+                    )
                 }
             }
         }

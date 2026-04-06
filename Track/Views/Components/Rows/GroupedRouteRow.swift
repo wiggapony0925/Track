@@ -58,15 +58,15 @@ struct  GroupedRouteRow: View {
     }
 
     private var containerCornerRadius: CGFloat {
-        isFavoritePresentation ? 26 : 24
+        14
     }
 
     private var rowHorizontalPadding: CGFloat {
-        isFavoritePresentation ? 18 : 18
+        14
     }
 
     private var rowVerticalPadding: CGFloat {
-        isFavoritePresentation ? 18 : 16
+        12
     }
 
     /// Distance from user to the closest stop in this group (meters).
@@ -246,12 +246,6 @@ struct  GroupedRouteRow: View {
     private var rowBackground: some View {
         RoundedRectangle(cornerRadius: containerCornerRadius, style: .continuous)
             .fill(AppTheme.Colors.cardBackground)
-            .shadow(
-                color: AppTheme.Colors.shadow.opacity(0.06),
-                radius: 8,
-                x: 0,
-                y: 3
-            )
     }
 
     private var mainRowAccessibilityLabel: String {
@@ -378,7 +372,7 @@ struct  GroupedRouteRow: View {
                 Image(systemName: "figure.walk")
                     .font(.system(size: 11, weight: .semibold))
                 Text(formatDistanceImperial(dist))
-                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .font(.system(size: 12, weight: .medium))
             }
             .foregroundColor(AppTheme.Colors.textTertiary)
             .padding(.trailing, 4)
@@ -448,7 +442,7 @@ struct  GroupedRouteRow: View {
 
                     if let alertType = topAlert.alertType {
                         Text(alertType)
-                            .font(.system(size: 10, weight: .heavy, design: .rounded))
+                            .font(.system(size: 10, weight: .heavy))
                             .textCase(.uppercase)
                             .foregroundColor(severityColor)
                             .padding(.horizontal, 6)
@@ -458,7 +452,7 @@ struct  GroupedRouteRow: View {
                     }
 
                     Text(topAlert.title)
-                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .font(.system(size: 13, weight: .bold))
                         .foregroundColor(AppTheme.Colors.textPrimary)
                         .lineLimit(1)
 
@@ -466,7 +460,7 @@ struct  GroupedRouteRow: View {
 
                     if extraCount > 0 {
                         Text("+\(extraCount)")
-                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                            .font(.system(size: 10, weight: .bold))
                             .foregroundColor(severityColor)
                             .padding(.horizontal, 7)
                             .padding(.vertical, 4)
@@ -526,7 +520,7 @@ struct  GroupedRouteRow: View {
                 .foregroundColor(.white)
 
             Text(trackingBannerText)
-                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .font(.system(size: 12, weight: .bold))
                 .foregroundColor(.white)
                 .lineLimit(1)
         }
@@ -564,7 +558,7 @@ struct  GroupedRouteRow: View {
 
                     if eta.isPastArrival {
                         Text("--")
-                            .font(.system(size: 20, weight: .heavy, design: .rounded))
+                            .font(.system(size: 20, weight: .heavy))
                             .foregroundColor(AppTheme.Colors.textTertiary.opacity(0.4))
                     } else {
                         let mins = eta.minutesRemaining
@@ -574,8 +568,7 @@ struct  GroupedRouteRow: View {
                             Text(isNow ? "Now" : "\(mins)")
                                 .font(.system(
                                     size: isNow ? 20 : 26,
-                                    weight: .heavy,
-                                    design: .rounded))
+                                    weight: .heavy))
                                 .foregroundColor(
                                     isSched
                                     ? AppTheme.Colors.textSecondary.opacity(0.55)
@@ -584,7 +577,7 @@ struct  GroupedRouteRow: View {
 
                             if !isNow {
                                 Text("min")
-                                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                                    .font(.system(size: 10, weight: .bold))
                                     .foregroundColor(
                                         isSched
                                         ? AppTheme.Colors.textTertiary.opacity(0.5)
@@ -608,7 +601,7 @@ struct  GroupedRouteRow: View {
                 VStack(alignment: .trailing, spacing: 2) {
                     HStack(alignment: .firstTextBaseline, spacing: 2) {
                         Text("\(mins)")
-                            .font(.system(size: 24, weight: .heavy, design: .rounded))
+                            .font(.system(size: 24, weight: .heavy))
                             .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
                             .contentTransition(.numericText())
                         Text("min")
@@ -619,7 +612,7 @@ struct  GroupedRouteRow: View {
                         Image(systemName: "calendar.badge.clock")
                             .font(.system(size: 9, weight: .bold))
                         Text("Sched")
-                            .font(.system(size: 10, weight: .heavy, design: .rounded))
+                            .font(.system(size: 10, weight: .heavy))
                     }
                     .foregroundColor(AppTheme.Colors.textPrimary)
                     .padding(.horizontal, 6)
@@ -637,7 +630,7 @@ struct  GroupedRouteRow: View {
         } else {
             // No arrivals at all
             Text("--")
-                .font(.system(size: 20, weight: .heavy, design: .rounded))
+                .font(.system(size: 20, weight: .heavy))
                 .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.4))
         }
     }
@@ -659,7 +652,7 @@ struct  GroupedRouteRow: View {
                 Image(systemName: "xmark.circle.fill")
                     .font(.system(size: 8, weight: .bold))
                 Text("Cancelled")
-                    .font(.system(size: 10, weight: .heavy, design: .rounded))
+                    .font(.system(size: 10, weight: .heavy))
             }
             .foregroundColor(.white)
             .padding(.horizontal, 7)
@@ -671,7 +664,7 @@ struct  GroupedRouteRow: View {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 8, weight: .bold))
                 Text("Delayed")
-                    .font(.system(size: 10, weight: .heavy, design: .rounded))
+                    .font(.system(size: 10, weight: .heavy))
             }
             .foregroundColor(.white)
             .padding(.horizontal, 7)
@@ -685,7 +678,7 @@ struct  GroupedRouteRow: View {
                     .fill(.white)
                     .frame(width: 4, height: 4)
                 Text("Live")
-                    .font(.system(size: 10, weight: .heavy, design: .rounded))
+                    .font(.system(size: 10, weight: .heavy))
                     .foregroundColor(.white)
             }
             .padding(.horizontal, 7)
@@ -701,7 +694,7 @@ struct  GroupedRouteRow: View {
                 Image(systemName: "calendar.badge.clock")
                     .font(.system(size: 8, weight: .bold))
                 Text("Sched")
-                    .font(.system(size: 10, weight: .heavy, design: .rounded))
+                    .font(.system(size: 10, weight: .heavy))
             }
             .foregroundColor(AppTheme.Colors.textSecondary)
             .padding(.horizontal, 7)

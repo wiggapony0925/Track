@@ -159,13 +159,12 @@ struct ModeFilterStrip: View {
     @Binding var selectedMode: TransportMode
     
     var body: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: 4) {
             ForEach(TransportMode.allCases, id: \.self) { mode in
                 modeButton(for: mode)
             }
         }
-        .padding(5)
-        .trackFloatingChrome(cornerRadius: 16)
+        .padding(.horizontal, 4)
     }
 
     private func modeButton(for mode: TransportMode) -> some View {
@@ -179,7 +178,7 @@ struct ModeFilterStrip: View {
         } label: {
             ZStack {
                 if isActive {
-                    RoundedRectangle(cornerRadius: 13, style: .continuous)
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
                         .fill(AppTheme.Colors.accent)
                         .matchedGeometryEffect(id: "modeHighlight", in: modeNamespace)
                 }
@@ -189,7 +188,7 @@ struct ModeFilterStrip: View {
                     .foregroundColor(isActive ? .white : AppTheme.Colors.textSecondary)
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 40)
+            .frame(height: 36)
         }
         .accessibilityLabel(mode.label)
         .accessibilityAddTraits(traits)

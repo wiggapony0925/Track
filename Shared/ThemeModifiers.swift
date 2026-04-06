@@ -18,7 +18,6 @@ extension View {
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .fill(AppTheme.Colors.cardBackground)
         }
-        .shadow(color: AppTheme.Colors.shadow.opacity(0.06), radius: 8, x: 0, y: 3)
     }
 
     func trackFloatingChrome(
@@ -28,7 +27,6 @@ extension View {
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .fill(AppTheme.Colors.cardFloating)
         }
-        .shadow(color: AppTheme.Colors.shadow.opacity(0.08), radius: 10, x: 0, y: 4)
     }
 
     func trackAccentBackground(
@@ -38,7 +36,6 @@ extension View {
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .fill(AppTheme.Gradients.accent)
         }
-        .shadow(color: AppTheme.Colors.accent.opacity(0.20), radius: 8, x: 0, y: 4)
     }
 
     func trackInsetBackground(
@@ -62,7 +59,6 @@ extension View {
                         .fill(tint.opacity(0.04))
                 }
         }
-        .shadow(color: AppTheme.Colors.shadow.opacity(0.06), radius: 8, x: 0, y: 3)
     }
 
     // MARK: - Stale / Refreshing State
@@ -95,6 +91,5 @@ extension View {
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .fill(AppTheme.Colors.cardElevated)
         }
-        .shadow(color: AppTheme.Colors.shadow.opacity(0.10), radius: 12, x: 0, y: 6)
     }
 }

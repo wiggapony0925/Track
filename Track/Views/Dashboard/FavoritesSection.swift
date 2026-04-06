@@ -74,7 +74,7 @@ struct FavoritesSection: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
             // Custom header row: FAVORITES title + Manage button
             HStack {
                 Text("Favorites")
@@ -92,10 +92,10 @@ struct FavoritesSection: View {
                 }
             }
             .padding(.horizontal, AppTheme.Layout.margin)
-            .padding(.top, 10)
+            .padding(.top, 14)
 
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
+                HStack(spacing: 14) {
                     if sortedFavorites.isEmpty {
                         FavoritesEmptyCard(mode: selectedMode)
                     } else {
@@ -115,6 +115,7 @@ struct FavoritesSection: View {
                 }
                 .padding(.horizontal, AppTheme.Layout.margin)
             }
+            .padding(.bottom, 6)
         }
     }
 }
@@ -331,7 +332,7 @@ struct FavoriteCard: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(favorite.routeDisplayName)
-                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .font(.system(size: 15, weight: .bold))
                     .foregroundColor(AppTheme.Colors.textPrimary)
                     .lineLimit(1)
                 Text(displayStopName)
@@ -346,7 +347,7 @@ struct FavoriteCard: View {
                 }
                 if let dist = walkingDistanceMeters {
                     Text(formatWalkingDistance(dist, suffix: "walk"))
-                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .font(.system(size: 10, weight: .semibold))
                         .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
                 }
             }
@@ -433,7 +434,7 @@ struct FavoriteCard: View {
             // Bottom row: Text Info
             VStack(alignment: .leading, spacing: 2) {
                 Text(displayStopName)
-                    .font(.system(size: 13, weight: .heavy, design: .rounded))
+                    .font(.system(size: 13, weight: .heavy))
                     .foregroundColor(AppTheme.Colors.textPrimary)
                     .lineLimit(2)
                     .minimumScaleFactor(0.7)
@@ -451,14 +452,14 @@ struct FavoriteCard: View {
                 // Walking distance
                 if let dist = walkingDistanceMeters {
                     Text(formatWalkingDistance(dist, suffix: "walk"))
-                        .font(.system(size: 9, weight: .semibold, design: .rounded))
+                        .font(.system(size: 9, weight: .semibold))
                         .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
                 }
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 12)
-        .frame(width: 135, height: 135, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 10)
+        .frame(width: 120, height: 120, alignment: .leading)
         .background { cardChrome }
     }
 
@@ -476,7 +477,7 @@ struct FavoriteCard: View {
                 let eta = resolvedETA(for: arrival)
                 let isNow = eta.isAtStop || eta.secondsRemaining <= 30
                 Text(isNow ? "Now" : "\(eta.minutesRemaining) min")
-                    .font(.system(size: 14, weight: .heavy, design: .rounded))
+                    .font(.system(size: 14, weight: .heavy))
                     .foregroundColor(
                         eta.minutesRemaining <= 2
                             ? AppTheme.Colors.alertRed
@@ -485,7 +486,7 @@ struct FavoriteCard: View {
             }
         } else {
             Text("—")
-                .font(.system(size: 14, weight: .heavy, design: .rounded))
+                .font(.system(size: 14, weight: .heavy))
                 .foregroundColor(AppTheme.Colors.textSecondary)
         }
     }
@@ -499,11 +500,11 @@ struct FavoriteCard: View {
                 VStack(alignment: .trailing, spacing: -2) {
                     if isNow {
                         Text("Now")
-                            .font(.system(size: 18, weight: .heavy, design: .rounded))
+                            .font(.system(size: 18, weight: .heavy))
                             .foregroundColor(AppTheme.Colors.alertRed)
                     } else {
                         Text("\(eta.minutesRemaining)")
-                            .font(.system(size: 22, weight: .heavy, design: .rounded))
+                            .font(.system(size: 22, weight: .heavy))
                             .foregroundColor(AppTheme.Colors.countdown(eta.minutesRemaining))
                             .contentTransition(.numericText())
                         Text("MIN")
@@ -512,7 +513,7 @@ struct FavoriteCard: View {
                     }
                     // Live / Scheduled label
                     Text(arrival.isScheduledOnly ? "Sched" : "Live")
-                        .font(.system(size: 7, weight: .heavy, design: .rounded))
+                        .font(.system(size: 7, weight: .heavy))
                         .textCase(.uppercase)
                         .foregroundColor(
                             arrival.isScheduledOnly
@@ -523,7 +524,7 @@ struct FavoriteCard: View {
             }
         } else {
             Text("—")
-                .font(.system(size: 24, weight: .heavy, design: .rounded))
+                .font(.system(size: 24, weight: .heavy))
                 .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.3))
         }
     }
@@ -531,7 +532,6 @@ struct FavoriteCard: View {
     private var cardChrome: some View {
         RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius, style: .continuous)
             .fill(AppTheme.Colors.cardBackground)
-        .shadow(color: AppTheme.Colors.shadow.opacity(0.06), radius: 8, x: 0, y: 3)
     }
 
     private var favoriteModeIcon: String {

@@ -53,7 +53,7 @@ struct WeatherChipView: View {
                 .scaleEffect(appeared ? 1.0 : 0.4)
 
             Text(snapshot.temperatureFormatted)
-                .font(.system(size: textSize, weight: .bold, design: .rounded))
+                .font(.system(size: textSize, weight: .bold))
                 .foregroundColor(AppTheme.Colors.textSecondary)
                 .contentTransition(.numericText())
         }

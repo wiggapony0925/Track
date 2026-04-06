@@ -223,7 +223,7 @@ struct ClosestToYouSectionHeader: View {
                     .foregroundColor(.white)
 
                 Text("Closest")
-                    .font(.system(size: 11, weight: .heavy, design: .rounded))
+                    .font(.system(size: 11, weight: .heavy))
                     .foregroundColor(.white)
 
                 Text("\u{00b7}")
@@ -231,7 +231,7 @@ struct ClosestToYouSectionHeader: View {
                     .foregroundColor(.white.opacity(0.6))
 
                 Text(distanceDisplay)
-                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .font(.system(size: 10, weight: .bold))
                     .foregroundColor(.white.opacity(0.85))
             }
             .padding(.horizontal, 10)
@@ -245,7 +245,7 @@ struct ClosestToYouSectionHeader: View {
 
             if let updated = updated {
                 Text(updated, style: .time)
-                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundColor(AppTheme.Colors.textTertiary)
             }
         }
@@ -273,7 +273,7 @@ struct NearYouSectionHeader: View {
                     .foregroundColor(.white)
 
                 Text("Near You")
-                    .font(.system(size: 11, weight: .heavy, design: .rounded))
+                    .font(.system(size: 11, weight: .heavy))
                     .foregroundColor(.white)
 
                 Text("·")
@@ -281,7 +281,7 @@ struct NearYouSectionHeader: View {
                     .foregroundColor(.white.opacity(0.6))
 
                 Text(radiusDisplay)
-                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .font(.system(size: 10, weight: .bold))
                     .foregroundColor(.white.opacity(0.85))
             }
             .padding(.horizontal, 10)
@@ -295,7 +295,7 @@ struct NearYouSectionHeader: View {
 
             if let updated = updated {
                 Text(updated, style: .time)
-                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundColor(AppTheme.Colors.textTertiary)
             }
         }
@@ -322,7 +322,7 @@ struct FartherAwaySectionHeader: View {
                     .foregroundColor(.white)
 
                 Text("A Bit Farther")
-                    .font(.system(size: 11, weight: .heavy, design: .rounded))
+                    .font(.system(size: 11, weight: .heavy))
                     .foregroundColor(.white)
 
                 Text("·")
@@ -330,7 +330,7 @@ struct FartherAwaySectionHeader: View {
                     .foregroundColor(.white.opacity(0.6))
 
                 Text(radiusDisplay)
-                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .font(.system(size: 10, weight: .bold))
                     .foregroundColor(.white.opacity(0.85))
             }
             .padding(.horizontal, 10)
@@ -364,7 +364,7 @@ struct MuchFartherAwaySectionHeader: View {
                     .foregroundColor(.white)
 
                 Text("Much Farther")
-                    .font(.system(size: 11, weight: .heavy, design: .rounded))
+                    .font(.system(size: 11, weight: .heavy))
                     .foregroundColor(.white)
 
                 Text("·")
@@ -372,7 +372,7 @@ struct MuchFartherAwaySectionHeader: View {
                     .foregroundColor(.white.opacity(0.6))
 
                 Text(radiusDisplay)
-                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .font(.system(size: 10, weight: .bold))
                     .foregroundColor(.white.opacity(0.85))
             }
             .padding(.horizontal, 10)
@@ -400,7 +400,7 @@ struct EmptyTierHint: View {
                 .foregroundColor(AppTheme.Colors.textTertiary.opacity(0.3))
 
             Text("Nothing in this range")
-                .font(.system(size: 12, weight: .medium, design: .rounded))
+                .font(.system(size: 12, weight: .medium))
                 .foregroundColor(AppTheme.Colors.textTertiary.opacity(0.4))
 
             Spacer()

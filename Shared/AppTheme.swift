@@ -369,7 +369,7 @@ enum AppTheme {
 
     struct Layout {
         static let margin: CGFloat = 16.0
-        static let cornerRadius: CGFloat = 20.0
+        static let cornerRadius: CGFloat = 14.0
         static let shadowRadius: CGFloat = 4.0
 
         /// Inner padding for card-style containers.
