@@ -108,7 +108,7 @@ enum DirectionConstants {
 ///
 /// - Parameter direction: Raw direction string from the backend.
 /// - Returns: e.g. "Northbound", "Southbound", or the original string if not a compass code.
-func directionLabel(_ direction: String) -> String {
+nonisolated func directionLabel(_ direction: String) -> String {
     DirectionConstants.labels[direction.uppercased()] ?? direction
 }
 
@@ -116,6 +116,6 @@ func directionLabel(_ direction: String) -> String {
 ///
 /// - Parameter direction: Raw direction string from the backend.
 /// - Returns: e.g. "↑ North", "↓ South", or the original string.
-func shortDirectionLabel(_ direction: String) -> String {
+nonisolated func shortDirectionLabel(_ direction: String) -> String {
     DirectionConstants.shortLabels[direction.uppercased()] ?? direction
 }

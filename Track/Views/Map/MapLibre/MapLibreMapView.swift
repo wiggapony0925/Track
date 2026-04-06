@@ -32,6 +32,18 @@ import UIKit
 /// stations, vehicles — and renders them using MapLibre's GL pipeline
 /// with OpenStreetMap tiles.
 struct MapLibreMapView: UIViewRepresentable, Equatable {
+
+    private static func stationsRenderSignature(
+        _ stations: [MapSystemViewModel.ConsolidatedStation]
+    ) -> Int {
+        stations.reduce(into: 0) { signature, station in
+            signature ^= station.id.hashValue &* 16777619
+            signature ^= station.complexID &* 257
+            signature ^= station.routes.count &* 31
+            signature ^= station.isTransfer ? 0x9e37_79b9 : 0
+            signature ^= Int((Double(station.transferCorridorSpan) * 100).rounded()) &* 131
+        }
+    }
     
     // MARK: - Equatable Fast-Path
     //
@@ -60,6 +72,7 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         let commuterEq: Bool = lhs.commuterRailPolylines.count == rhs.commuterRailPolylines.count
         let stationCntEq: Bool = lhs.stations.count == rhs.stations.count
             && lhs.stationResnapGeneration == rhs.stationResnapGeneration
+            && stationsRenderSignature(lhs.stations) == stationsRenderSignature(rhs.stations)
         let busCntEq: Bool = lhs.busVehicles.count == rhs.busVehicles.count
         let trainCntEq: Bool = lhs.trainVehicles.count == rhs.trainVehicles.count
         let routeCntEq: Bool = lhs.routePolylines.count == rhs.routePolylines.count
@@ -660,12 +673,25 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         ) {
             let stationCount: Int = representable.stations.count
             let activeFlag: Int = representable.hasActiveRoute ? 0x2 : 0x0
-            // No zoom-bucket needed: station dots use the same line-offset
-            // expression as trunk polylines, so they move in perfect lockstep
-            // at every zoom level without GeoJSON rebuilds.
             let resnapGen: Int = representable.stationResnapGeneration
+            let stationStyleSignature = MapLibreMapView.stationsRenderSignature(representable.stations)
+            // Single-line dots do not need zoom-bucket rebuilds because
+            // MapLibre applies their `line-offset` in the paint pipeline.
+            // Transfer pills are point icons, so shared-corridor pills need
+            // a small zoom bucket to keep their source coordinates visually
+            // centred as the corridor lane spacing scales with zoom.
+            let hasTransferLaneOffsets = representable.stations.contains {
+                $0.isTransfer
+                    && $0.laneHeading != nil
+                    && abs($0.laneOffset) > 1e-6
+            }
+            let transferZoomBucket: Int = hasTransferLaneOffsets
+                ? Int(floor(mapView.zoomLevel * 4.0))
+                : 0
             let stationHash: Int = stationCount ^ activeFlag
                 ^ (resnapGen << 20)
+                ^ stationStyleSignature
+                ^ (transferZoomBucket << 8)
             if stationHash != lastStationHash || darkChanged {
                 updateStationDotLayers(
                     mapView: mapView,
@@ -973,9 +999,10 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         //      polylines.  Dots track the rendered lane perfectly at
         //      every zoom level — zero drift, zero jumping.
         //   2. Transfer pills — white capsule icons with dark outline that
-        //      visually span across all lines sharing a station. Rotated
-        //      perpendicular to the track bearing so the pill crosses the
-        //      colored lines. Width scales with colorGroupCount.
+        //      mark local shared-station footprints. Rotated perpendicular
+        //      to the track bearing so the pill crosses the served lines.
+        //      Width only expands when the local stop actually spans a
+        //      shared parallel corridor.
         //   3. Station labels — semibold text with thick halo for readability
         //
         // All properties zoom-interpolated for buttery-smooth transitions.
@@ -1013,6 +1040,45 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             )
         }
 
+        private static func metersPerPixel(
+            at zoom: Double,
+            latitude: Double
+        ) -> Double {
+            let earthCircumferenceMeters: Double = 40_075_016.686
+            let latitudeScale = max(cos(latitude * .pi / 180.0), 0.01)
+            return earthCircumferenceMeters * latitudeScale
+                / (256.0 * pow(2.0, zoom))
+        }
+
+        static func visuallyOffsetTransferCoordinate(
+            _ coordinate: CLLocationCoordinate2D,
+            headingDegrees: Double?,
+            laneOffset: CGFloat,
+            zoom: Double
+        ) -> CLLocationCoordinate2D {
+            guard let headingDegrees,
+                  abs(laneOffset) > 1e-6 else {
+                return coordinate
+            }
+
+            let offsetPixels = Double(MapLibreStyleConfig.laneOffsetPixels(
+                for: laneOffset,
+                at: zoom
+            ))
+            guard abs(offsetPixels) > 1e-6 else { return coordinate }
+
+            let offsetMeters = abs(offsetPixels) * metersPerPixel(
+                at: zoom,
+                latitude: coordinate.latitude
+            )
+            let perpendicularBearing = headingDegrees + (offsetPixels >= 0 ? -90.0 : 90.0)
+            return Self.coordinate(
+                from: coordinate,
+                distanceMeters: offsetMeters,
+                bearingDegrees: perpendicularBearing
+            )
+        }
+
         func updateStationDotLayers(
             mapView: MLNMapView,
             style: MLNStyle,
@@ -1030,6 +1096,7 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
 
             let stations = representable.stations
             let isDark = representable.isDarkMode
+            let zoom = mapView.zoomLevel
             // Single-line dots: micro line-segments with round caps.
             // The `lane_offset` property drives `line-offset` so each dot
             // tracks its trunk polyline perfectly at every zoom level.
@@ -1047,20 +1114,30 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
 
             for station in stations {
                 let coord = station.coordinate
+                let transferCoord: CLLocationCoordinate2D = station.isTransfer
+                    ? Self.visuallyOffsetTransferCoordinate(
+                        coord,
+                        headingDegrees: station.laneHeading,
+                        laneOffset: station.laneOffset,
+                        zoom: zoom
+                    )
+                    : coord
 
                 // Label point for every station (both single + transfer).
                 let labelPt = MLNPointFeature()
-                labelPt.coordinate = coord
+                labelPt.coordinate = station.isTransfer ? transferCoord : coord
                 labelPt.attributes = ["name": station.name]
                 labelFeatures.append(labelPt)
 
                 if station.isTransfer {
                     let feature = MLNPointFeature()
-                    feature.coordinate = coord
+                    feature.coordinate = transferCoord
                     feature.attributes = [
                         "name": station.name,
                         "pillIcon": MapLibreStyleConfig.transferPillImageName(
-                            colorGroupCount: station.colorGroupCount
+                            colorGroupCount: station.colorGroupCount,
+                            corridorSpan: station.transferCorridorSpan,
+                            zoom: zoom
                         ),
                         "bearing": station.trackBearing,
                         "isTransfer": true,

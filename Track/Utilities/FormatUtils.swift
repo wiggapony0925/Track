@@ -210,7 +210,7 @@ func formatDistanceImperial(_ meters: Double, suffix: String = "") -> String {
 /// Strips any MTA agency prefix from a route or stop ID.
 /// Delegates to the shared `stripMTAAgencyPrefix` in `Shared/MTAPrefixes.swift`
 /// so all prefix definitions live in one place.
-func stripMTAPrefix(_ routeId: String) -> String {
+nonisolated func stripMTAPrefix(_ routeId: String) -> String {
     stripMTAAgencyPrefix(routeId)
 }
 

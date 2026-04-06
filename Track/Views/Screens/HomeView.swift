@@ -168,6 +168,8 @@ struct HomeView: View {
                     showStations: $showStations,
                     currentMapCenter: $currentMapCenter,
                     currentMapDistance: $currentMapDistance,
+                    onRouteStopTap: presentRouteStopDetail,
+                    onSystemStationTap: presentTrainStopDetail,
                     isDragSearchActive: isDragSearchActive,
                     dragSearchSettledCenter: dragSearchSettledCenter
                 )
@@ -657,6 +659,16 @@ struct HomeView: View {
                     HapticManager.impact(.light)
                 }
             )
+
+        case .stopDetail(let selection):
+            StopDetailSheet(
+                selection: selection,
+                sheetNavigator: sheetNavigator,
+                currentLocation: effectiveCoordinate,
+                elevatorOutages: viewModel.elevatorOutages,
+                serviceAlerts: viewModel.serviceAlerts
+            )
+            .id(selection.id)
             
         case .settings:
             SettingsContentView(sheetNavigator: sheetNavigator)
@@ -725,6 +737,35 @@ struct HomeView: View {
                 WidgetCenter.shared.reloadAllTimelines()
                 sheetNavigator.goBack()
             }
+        }
+    }
+
+    private func presentRouteStopDetail(_ stop: BusStop) {
+        let mode = viewModel.selectedGroupedRoute?.mode ?? "bus"
+        let fallbackRouteID = viewModel.selectedGroupedRoute?.routeId
+        presentStopDetail(.routeStop(stop, mode: mode, fallbackRouteID: fallbackRouteID))
+    }
+
+    private func presentTrainStopDetail(
+        _ station: MapSystemViewModel.ConsolidatedStation
+    ) {
+        presentStopDetail(.station(station))
+    }
+
+    private func presentStopDetail(_ selection: StopDetailSelection) {
+        if case .stopDetail(let currentSelection) = sheetNavigator.currentPage,
+           currentSelection == selection {
+            return
+        }
+
+        if case .stopDetail = sheetNavigator.currentPage {
+            sheetNavigator.replace(with: .stopDetail(selection: selection))
+        } else {
+            sheetNavigator.navigate(to: .stopDetail(selection: selection))
+        }
+
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+            sheetDetent = .large
         }
     }
     
@@ -851,14 +892,13 @@ struct HomeView: View {
     /// `onDismiss`, but this handler catches edge cases (e.g., mode switch,
     /// programmatic navigation, or SwiftUI lifecycle glitches) where onDismiss
     /// might not fire but the page has already changed.
-    private func handleSheetPageChange(from oldPage: SheetPage, to newPage: SheetPage) {
-        guard case .routeDetail(_, _, _) = oldPage else { return }
-        
-        // If the new page is also routeDetail, do not animate out
-        // Navigating from one routeDetail to another (e.g. favorites → different route)
-        // is fine — don't clear in that case.
-        if case .routeDetail(_, _, _) = newPage { return }
-        // Only clean up if onDismiss hasn't already done so.
+    private func handleSheetPageChange(from _: SheetPage, to _: SheetPage) {
+        let routeDetailStillInStack = sheetNavigator.pageStack.contains { page in
+            if case .routeDetail = page { return true }
+            return false
+        }
+
+        guard !routeDetailStillInStack else { return }
         guard viewModel.isRouteDetailPresented else { return }
         viewModel.isRouteDetailPresented = false
         viewModel.selectedGroupedRoute = nil

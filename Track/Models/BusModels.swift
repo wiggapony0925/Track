@@ -23,7 +23,7 @@ struct BusStop: Identifiable, Codable, Sendable {
 /// A real-time bus arrival returned by the backend (from the SIRI API).
 struct BusArrival: Identifiable, Codable, Equatable {
     /// Computed ID for SwiftUI list identity.
-    var id: String { vehicleId + stopId }
+    nonisolated var id: String { vehicleId + stopId }
 
     let routeId: String
     let vehicleId: String

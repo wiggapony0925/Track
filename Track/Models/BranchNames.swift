@@ -39,7 +39,7 @@ enum BranchNames {
     /// Resolves a route ID to a user-facing display name.
     /// For LIRR/MNR, maps numeric IDs to branch/line names.
     /// For subway/bus, strips the MTA prefix via `stripMTAPrefix()` from FormatUtils.swift.
-    static func resolveDisplayName(routeId: String, mode: String) -> String {
+    nonisolated static func resolveDisplayName(routeId: String, mode: String) -> String {
         if mode == "lirr" {
             let numeric = normalizeMTARouteToken(routeId)
             return lirr[numeric] ?? stripMTAPrefix(routeId)

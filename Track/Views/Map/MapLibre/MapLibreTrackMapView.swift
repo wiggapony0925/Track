@@ -35,6 +35,8 @@ struct MapLibreTrackMapView: View {
     @Binding var showStations: Bool
     @Binding var currentMapCenter: CLLocationCoordinate2D?
     @Binding var currentMapDistance: Double?
+    var onRouteStopTap: ((BusStop) -> Void)? = nil
+    var onSystemStationTap: ((MapSystemViewModel.ConsolidatedStation) -> Void)? = nil
 
     /// Whether drag-to-search is currently active.
     var isDragSearchActive: Bool = false
@@ -57,6 +59,7 @@ struct MapLibreTrackMapView: View {
 
     @State private var _cachedTransferConnectors: [TransferConnector] = []
     @State private var _cachedVisibleStops: [DisplayedRouteStop] = []
+    @State private var _cachedVisibleSystemStations: [MapSystemViewModel.ConsolidatedStation] = []
     @State private var _lastViewportCenter: CLLocationCoordinate2D?
     @State private var _lastViewportDistance: Double?
 
@@ -186,6 +189,18 @@ struct MapLibreTrackMapView: View {
             )
         }
 
+        if viewModel.routeShape == nil,
+           showStations,
+           let onSystemStationTap
+        {
+            MapLibreSystemStationTapOverlay(
+                mapView: mapViewRef,
+                stations: _cachedVisibleSystemStations,
+                onStationTap: onSystemStationTap,
+                cameraChangeToken: cameraChangeToken
+            )
+        }
+
         // Vehicle markers
         MapLibreVehicleOverlay(
             mapView: mapViewRef,
@@ -237,6 +252,7 @@ struct MapLibreTrackMapView: View {
                 from: viewModel.consolidatedStations, center: center, distance: d
             )
             _cachedVisibleStops = computeVisibleDirectionStops(center: center, distance: d)
+            _cachedVisibleSystemStations = computeVisibleSystemStations(center: center, distance: d)
         }
     }
 
@@ -388,17 +404,27 @@ struct MapLibreTrackMapView: View {
         }
     }
 
+    private func computeVisibleSystemStations(
+        center: CLLocationCoordinate2D,
+        distance: Double
+    ) -> [MapSystemViewModel.ConsolidatedStation] {
+        let zoomThreshold = AppSettings.shared.stationVisibilityZoomMeters
+        guard distance < zoomThreshold else { return [] }
+
+        let latSpan = (distance / 111_000) * 1.5
+        let lonSpan = (distance / (111_000 * cos(center.latitude * .pi / 180))) * 1.5
+
+        return viewModel.consolidatedStations.filter { station in
+            abs(station.coordinate.latitude - center.latitude) <= latSpan
+                && abs(station.coordinate.longitude - center.longitude) <= lonSpan
+        }
+    }
+
     // MARK: - Tap Handlers
 
     private func handleStopTap(_ stop: BusStop) {
         withAnimation {
-            if viewModel.selectedStopId == stop.id {
-                viewModel.selectedStopId = nil
-                viewModel.isStopManuallySelected = false
-                if let userLoc = locationManager.currentLocation {
-                    Task { await viewModel.refreshWalkingState(userLocation: userLoc) }
-                }
-            } else {
+            if viewModel.selectedStopId != stop.id {
                 viewModel.selectedStopId = stop.id
                 viewModel.isStopManuallySelected = true
                 let stopCoord = CLLocationCoordinate2D(latitude: stop.lat, longitude: stop.lon)
@@ -410,6 +436,8 @@ struct MapLibreTrackMapView: View {
                 }
             }
         }
+
+        onRouteStopTap?(stop)
     }
 
     private func handleVehicleTap(_ vehicleId: String) {
@@ -419,6 +447,55 @@ struct MapLibreTrackMapView: View {
             } else {
                 viewModel.tappedVehicleId = vehicleId
             }
+        }
+    }
+}
+
+private struct MapLibreSystemStationTapOverlay: View {
+    let mapView: MLNMapView?
+    let stations: [MapSystemViewModel.ConsolidatedStation]
+    let onStationTap: (MapSystemViewModel.ConsolidatedStation) -> Void
+    let cameraChangeToken: UInt64
+
+    var body: some View {
+        let zoom = mapView?.zoomLevel ?? 0
+
+        GeometryReader { _ in
+            ZStack {
+                ForEach(stations) { station in
+                    stationTapTarget(for: station, zoom: zoom)
+                }
+            }
+        }
+        .allowsHitTesting(true)
+    }
+
+    @ViewBuilder
+    private func stationTapTarget(
+        for station: MapSystemViewModel.ConsolidatedStation,
+        zoom: Double
+    ) -> some View {
+        let heading = station.laneHeading ?? station.trackBearing
+        let displayCoordinate = MapLibreMapView.Coordinator.visuallyOffsetTransferCoordinate(
+            station.coordinate,
+            headingDegrees: heading,
+            laneOffset: station.laneOffset,
+            zoom: zoom
+        )
+
+        if let point = projectToScreen(displayCoordinate, mapView: mapView, margin: 40) {
+            let width: CGFloat = station.isTransfer ? 46 : 30
+            let height: CGFloat = station.isTransfer ? 30 : 30
+
+            Capsule()
+                .fill(Color.white)
+                .opacity(0.001)
+                .frame(width: width, height: height)
+                .contentShape(Rectangle())
+                .position(point)
+                .onTapGesture {
+                    onStationTap(station)
+                }
         }
     }
 }

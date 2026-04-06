@@ -12,7 +12,11 @@ import Foundation
 ///
 /// To add a new constant: append it to `allParameters` and the
 /// cache file will self-invalidate on the next build.
-enum PipelineFingerprint {
+///
+/// Explicitly `nonisolated` — pure computation, no UI work.
+/// Referenced from both `@MainActor` and `nonisolated` contexts
+/// (e.g. `TransitTileBaker`).
+nonisolated enum PipelineFingerprint {
 
     // MARK: - Public API
 

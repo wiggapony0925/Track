@@ -16,6 +16,9 @@ enum SheetPage: Equatable, Identifiable {
         directionIndex: Int,
         initialTab: RouteDetailSheet.RouteDetailTab? = nil
     )
+
+    /// Stop-level information for a tapped bus stop or train station
+    case stopDetail(selection: StopDetailSelection)
     
     /// Settings and preferences
     case settings
@@ -48,6 +51,8 @@ enum SheetPage: Equatable, Identifiable {
             return "dashboard"
         case .routeDetail(let group, _, _):
             return "routeDetail-\(group.routeId)"
+        case .stopDetail(let selection):
+            return "stopDetail-\(selection.id)"
         case .settings:
             return "settings"
         case .profileSettings:
@@ -75,6 +80,8 @@ enum SheetPage: Equatable, Identifiable {
             return true
         case (.routeDetail(let g1, let d1, let tab1), .routeDetail(let g2, let d2, let tab2)):
             return g1.routeId == g2.routeId && d1 == d2 && tab1 == tab2
+        case (.stopDetail(let lhsSelection), .stopDetail(let rhsSelection)):
+            return lhsSelection == rhsSelection
         case (.settings, .settings):
             return true
         case (.profileSettings, .profileSettings):

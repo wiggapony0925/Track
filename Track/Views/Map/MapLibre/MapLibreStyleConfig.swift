@@ -371,13 +371,17 @@ enum MapLibreStyleConfig {
     /// the runtime-generated capsule image. Images are rendered at 3x the
     /// display size so GL always scales *down* (crisp, no pixelation).
     /// `base: 1.0` (linear) gives visually uniform scaling across zooms.
+    private static let transferPillIconScaleStops: [(zoom: Double, scale: Double)] = [
+        (10, 0.12), (11, 0.18), (12, 0.25),
+        (13, 0.32), (14, 0.38), (15, 0.45),
+        (16, 0.55), (17, 0.65), (18, 0.80),
+    ]
+
     static let transferPillIconSize = zoomInterpolate(
         base: 1.0,
-        stops: [
-            10: 0.12, 11: 0.18, 12: 0.25,
-            13: 0.32, 14: 0.38, 15: 0.45,
-            16: 0.55, 17: 0.65, 18: 0.80
-        ]
+        stops: Dictionary(
+            uniqueKeysWithValues: transferPillIconScaleStops.map { ($0.zoom, $0.scale) }
+        )
     )
 
     /// Station label font size — legible from zoom 14.
@@ -392,13 +396,19 @@ enum MapLibreStyleConfig {
     static let transferPillHeight: CGFloat = 10
     /// Border thickness for pill images — bolder for light-mode visibility.
     static let transferPillStroke: CGFloat = 1.8
-    /// Pill widths keyed by colorGroupCount (number of distinct trunk-color groups).
-    static let transferPillWidths: [Int: CGFloat] = [
-        2: 18,
-        3: 24,
-        4: 30,
-        5: 36,
-    ]
+    /// Base image widths used for transfer pill variants.
+    /// The rendered on-screen width is this base width multiplied by the
+    /// zoom-dependent `transferPillIconSize`.
+    ///
+    /// One-point buckets let the capsule track the actual rendered corridor
+    /// width closely, which prevents pills from visibly extending past the
+    /// subway lines they are marking.
+    static let transferPillWidthBuckets: [CGFloat] = Array(10...34).map(CGFloat.init)
+    /// Smallest base width that still reads visually as a transfer pill.
+    /// Single-line stations own the true circle shape; multi-line stops
+    /// should never collapse into circles even when the shared corridor is
+    /// very tight or coincident.
+    static let transferPillMinimumBaseWidth: CGFloat = 13
 
     /// Walking route width — dashed line for pedestrian directions.
     static let walkingRouteWidth = zoomInterpolate(
@@ -827,21 +837,109 @@ enum MapLibreStyleConfig {
 
     // MARK: - Transfer Pill Image Factory
 
+    static func subwayFillWidth(at zoom: Double) -> CGFloat {
+        CGFloat(
+            interpolatedStopValue(
+                at: zoom,
+                base: subwayLineInterpolationBase,
+                stops: subwayFillWidthStops.map { (zoom: $0.zoom, value: $0.width) }
+            )
+        )
+    }
+
+    static func transferPillScale(at zoom: Double) -> CGFloat {
+        CGFloat(
+            interpolatedStopValue(
+                at: zoom,
+                base: 1.0,
+                stops: transferPillIconScaleStops.map { (zoom: $0.zoom, value: $0.scale) }
+            )
+        )
+    }
+
+    static func transferPillMinimumWidthPoints(at zoom: Double) -> CGFloat {
+        max(
+            subwayFillWidth(at: zoom),
+            transferPillMinimumBaseWidth * transferPillScale(at: zoom)
+        )
+    }
+
+    static func transferPillCorridorWidthPoints(
+        corridorSpan: CGFloat,
+        zoom: Double
+    ) -> CGFloat {
+        subwayFillWidth(at: zoom)
+            + abs(laneOffsetPixels(for: corridorSpan, at: zoom))
+    }
+
+    /// Returns the desired rendered pill width in screen points.
+    /// Compact pills stay small, but never collapse into single-line
+    /// circles. Wider pills are used only when multiple parallel lines
+    /// truly share one local stop footprint, and the pill never grows past
+    /// the corridor it is representing.
+    static func transferPillDisplayWidthPoints(
+        colorGroupCount: Int,
+        corridorSpan: CGFloat,
+        zoom: Double
+    ) -> CGFloat {
+        let _ = colorGroupCount
+        let compactWidth = transferPillMinimumWidthPoints(at: zoom)
+        guard corridorSpan > 0.01 else {
+            return compactWidth
+        }
+
+        return max(
+            compactWidth,
+            transferPillCorridorWidthPoints(
+                corridorSpan: corridorSpan,
+                zoom: zoom
+            )
+        )
+    }
+
+    static func transferPillRenderedWidthPoints(
+        colorGroupCount: Int,
+        corridorSpan: CGFloat,
+        zoom: Double
+    ) -> CGFloat {
+        transferPillBaseWidthBucket(
+            colorGroupCount: colorGroupCount,
+            corridorSpan: corridorSpan,
+            zoom: zoom
+        ) * transferPillScale(at: zoom)
+    }
+
+    static func transferPillBaseWidthBucket(
+        colorGroupCount: Int,
+        corridorSpan: CGFloat,
+        zoom: Double
+    ) -> CGFloat {
+        let scale = max(transferPillScale(at: zoom), 0.01)
+        let desiredBaseWidth = transferPillDisplayWidthPoints(
+            colorGroupCount: colorGroupCount,
+            corridorSpan: corridorSpan,
+            zoom: zoom
+        ) / scale
+
+        return transferPillWidthBuckets.last(where: { $0 <= desiredBaseWidth })
+            ?? transferPillWidthBuckets.first
+            ?? 12
+    }
+
     /// Generates a capsule/pill `UIImage` for transfer station markers.
     ///
     /// The image is horizontal (wider than tall) so MapLibre's
     /// `iconRotation` can orient it perpendicular to the track.
     ///
     /// - Parameters:
-    ///   - colorGroupCount: Number of distinct trunk-color groups (determines width).
+    ///   - widthPoints: Base image width bucket in points before zoom scaling.
     ///   - isDark: Whether to render for dark mode.
     /// - Returns: A `UIImage` suitable for `style.setImage(_:forName:)`.
-    static func transferPillImage(colorGroupCount: Int, isDark: Bool) -> UIImage {
-        let clamped = min(max(colorGroupCount, 2), 5)
+    static func transferPillImage(widthPoints: CGFloat, isDark: Bool) -> UIImage {
         // Render at 3× the logical size so MapLibre always scales DOWN,
         // producing crisp pills at every zoom level without pixelation.
         let scale: CGFloat = 3.0
-        let w = (transferPillWidths[clamped] ?? 18) * scale
+        let w = widthPoints * scale
         let h = transferPillHeight * scale
         let sw = transferPillStroke * scale
         // Extra padding for the subtle outer shadow
@@ -895,16 +993,30 @@ enum MapLibreStyleConfig {
     }
 
     /// Style-image name for a given transfer pill variant.
-    static func transferPillImageName(colorGroupCount: Int) -> String {
-        "transfer-pill-\(min(max(colorGroupCount, 2), 5))"
+    static func transferPillImageName(widthPoints: CGFloat) -> String {
+        "transfer-pill-w\(Int(widthPoints.rounded()))"
+    }
+
+    static func transferPillImageName(
+        colorGroupCount: Int,
+        corridorSpan: CGFloat,
+        zoom: Double
+    ) -> String {
+        transferPillImageName(
+            widthPoints: transferPillBaseWidthBucket(
+                colorGroupCount: colorGroupCount,
+                corridorSpan: corridorSpan,
+                zoom: zoom
+            )
+        )
     }
 
     /// Registers all transfer pill images into the given MapLibre style.
     /// Call once on first setup, and again when dark mode changes.
     static func registerTransferPillImages(style: MLNStyle, isDark: Bool) {
-        for count in 2...5 {
-            let name = transferPillImageName(colorGroupCount: count)
-            let img = transferPillImage(colorGroupCount: count, isDark: isDark)
+        for width in transferPillWidthBuckets {
+            let name = transferPillImageName(widthPoints: width)
+            let img = transferPillImage(widthPoints: width, isDark: isDark)
             style.setImage(img, forName: name)
         }
     }

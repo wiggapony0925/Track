@@ -39,7 +39,7 @@ let mtaAgencyPrefixes: [(prefix: String, length: Int)] = [
 ///
 /// Also strips stray `+` characters that occasionally appear in
 /// GTFS-RT feeds (e.g. `_L+"` → `"L"`).
-func stripMTAAgencyPrefix(_ id: String) -> String {
+nonisolated func stripMTAAgencyPrefix(_ id: String) -> String {
     for (prefix, length) in mtaAgencyPrefixes {
         if id.hasPrefix(prefix) {
             return String(id.dropFirst(length)).replacingOccurrences(of: "+", with: "")
@@ -59,7 +59,7 @@ func stripMTAAgencyPrefix(_ id: String) -> String {
 ///   - `"MTA NYCT_305423"` → `"305423"`
 ///   - `"MTA_308214"`      → `"308214"`
 ///   - `"MTABC_550042"`    → `"550042"`
-func stripMTAStopPrefix(_ id: String) -> String {
+nonisolated func stripMTAStopPrefix(_ id: String) -> String {
     var result = id
     // Order matters: strip longest prefixes first
     for (prefix, _) in mtaAgencyPrefixes {
@@ -88,7 +88,7 @@ func stripMTAStopPrefix(_ id: String) -> String {
 ///   - "M14A-SBS"           -> "M14A"
 ///   - "LIRR_9"             -> "9"
 ///   - "mnr_1"              -> "1"
-func normalizeMTARouteToken(_ id: String) -> String {
+nonisolated func normalizeMTARouteToken(_ id: String) -> String {
     var result = stripMTAAgencyPrefix(id)
         .replacingOccurrences(of: "-SBS", with: "", options: .caseInsensitive)
         .replacingOccurrences(of: " ", with: "")
@@ -131,7 +131,7 @@ func normalizeMTARouteToken(_ id: String) -> String {
 ///   - `"MTA_305423"`    → `"305423"`
 ///   - `"A31S"`          → `"A31"`
 ///   - `"GS"`            → `"GS"` (unchanged — not a direction suffix)
-func normalizeStopId(_ raw: String) -> String {
+nonisolated func normalizeStopId(_ raw: String) -> String {
     let stripped = stripMTAStopPrefix(raw)
     guard stripped.count > 1, let last = stripped.last, last == "N" || last == "S" else {
         return stripped

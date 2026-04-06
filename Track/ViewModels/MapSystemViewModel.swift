@@ -119,16 +119,20 @@ final class MapSystemViewModel {
         var coordinate: CLLocationCoordinate2D
         let routes: [String]           // All route IDs merged from the group
         let colorGroupCount: Int       // Distinct MTA trunk-color groups
-        let trackBearing: Double       // Degrees from north (0-180), track direction
+        var trackBearing: Double       // Degrees from north (0-180), track direction
         /// Direction-preserving tangent heading from the nearest rendered
         /// trunk segment. Used so station dots can inherit the same visual
         /// lane offset direction as the MapLibre line layer.
         var laneHeading: Double?
-        /// Signed pixel-lane offset for single-group stations. This matches
-        /// the trunk feature's `lane_offset` attribute so station dots can
-        /// move with the shared corridor at low zoom without collapsing the
-        /// rendered parallel lines.
+        /// Signed pixel-lane offset for the rendered corridor lane. Single-
+        /// group station dots and transfer pills both use this to stay
+        /// visually centered on shared corridors at low zoom.
         var laneOffset: CGFloat
+        /// Unsigned span (in lane-offset units) between the outermost
+        /// served corridor lanes at this local station footprint.
+        /// Zero means the pill should render as a compact transfer marker
+        /// rather than trying to span a shared parallel corridor.
+        var transferCorridorSpan: CGFloat = 0
         let structure: StationStructure // Physical structure (subway, elevated, etc.)
         let complexID: Int             // MTA station complex group
         /// All GTFS stop IDs that were merged into this consolidated marker.
@@ -156,6 +160,7 @@ final class MapSystemViewModel {
         let coordinate: CLLocationCoordinate2D
         let heading: Double?
         let laneOffset: CGFloat
+        let laneSpan: CGFloat
     }
 
     // MARK: - Properties
@@ -2320,6 +2325,64 @@ final class MapSystemViewModel {
         }
     }
 
+    /// A single white transfer pill should mean "these routes share one
+    /// local station footprint". Longer same-complex walks stay separate
+    /// and are linked by transfer connectors instead.
+    nonisolated static let sameStructureComplexMergeRadiusMeters: CLLocationDistance = 110.0
+
+    nonisolated static func sameStructureComplexStationsShouldMerge(
+        _ lhs: CLLocationCoordinate2D,
+        _ rhs: CLLocationCoordinate2D
+    ) -> Bool {
+        CLLocation(latitude: lhs.latitude, longitude: lhs.longitude)
+            .distance(from: CLLocation(latitude: rhs.latitude, longitude: rhs.longitude))
+            <= sameStructureComplexMergeRadiusMeters
+    }
+
+    private static func normalizedTrackBearing(from heading: Double?) -> Double? {
+        guard var heading else { return nil }
+        heading.formTruncatingRemainder(dividingBy: 360.0)
+        if heading < 0 {
+            heading += 360.0
+        }
+        if heading >= 180.0 {
+            heading -= 180.0
+        }
+        return heading
+    }
+
+    private static func averageCoordinate(
+        _ coordinates: [CLLocationCoordinate2D]
+    ) -> CLLocationCoordinate2D? {
+        guard !coordinates.isEmpty else { return nil }
+        let avgLat = coordinates.reduce(0.0) { $0 + $1.latitude } / Double(coordinates.count)
+        let avgLon = coordinates.reduce(0.0) { $0 + $1.longitude } / Double(coordinates.count)
+        return CLLocationCoordinate2D(latitude: avgLat, longitude: avgLon)
+    }
+
+    /// Circular average of direction-preserving headings. Returns `nil`
+    /// when the headings are too divergent to represent a single corridor.
+    private static func averageHeadingDegrees(_ headings: [Double]) -> Double? {
+        guard !headings.isEmpty else { return nil }
+
+        var sumX = 0.0
+        var sumY = 0.0
+        for heading in headings {
+            let radians = heading * .pi / 180.0
+            sumX += sin(radians)
+            sumY += cos(radians)
+        }
+
+        let strength = sqrt(sumX * sumX + sumY * sumY) / Double(headings.count)
+        guard strength >= 0.82 else { return nil }
+
+        var average = atan2(sumX, sumY) * 180.0 / .pi
+        if average < 0 {
+            average += 360.0
+        }
+        return average
+    }
+
     /// Returns the nearest branch projection together with the branch's
     /// rendered lane offset.
     private static func nearestProjectionOnReferenceBranches(
@@ -2363,12 +2426,70 @@ final class MapSystemViewModel {
                         longitude: projLon
                     ),
                     heading: heading,
-                    laneOffset: branch.laneOffset
+                    laneOffset: branch.laneOffset,
+                    laneSpan: 0
                 )
             }
         }
 
         return bestProjection
+    }
+
+    /// Projects a transfer station onto the nearest branch of each serving
+    /// trunk group, then averages those projections to recover the visual
+    /// centre of the shared corridor bundle.
+    private static func transferProjectionOnReferenceBranches(
+        near coordinate: CLLocationCoordinate2D,
+        trunkGroups: [Int],
+        referenceBranchesByGroup: [Int: [StationReferenceBranch]]
+    ) -> StationReferenceProjection? {
+        var projections: [StationReferenceProjection] = []
+        projections.reserveCapacity(trunkGroups.count)
+
+        for trunkGroup in trunkGroups {
+            guard let branches = referenceBranchesByGroup[trunkGroup],
+                  let projection = nearestProjectionOnReferenceBranches(
+                    near: coordinate,
+                    branches: branches
+                  ) else {
+                continue
+            }
+            projections.append(projection)
+        }
+
+        guard projections.count >= 2,
+              let averagedCoordinate = averageCoordinate(
+                projections.map(\.coordinate)
+              ) else {
+            return nil
+        }
+
+        let averagedHeading = averageHeadingDegrees(projections.compactMap(\.heading))
+        let laneOffsets = projections.map(\.laneOffset)
+        let averagedLaneOffset: CGFloat
+        if averagedHeading != nil {
+            let total = projections.reduce(0.0) { partialResult, projection in
+                partialResult + Double(projection.laneOffset)
+            }
+            averagedLaneOffset = CGFloat(total / Double(projections.count))
+        } else {
+            averagedLaneOffset = 0.0
+        }
+        let laneSpan: CGFloat
+        if averagedHeading != nil,
+           let minOffset = laneOffsets.min(),
+           let maxOffset = laneOffsets.max() {
+            laneSpan = max(0.0, maxOffset - minOffset)
+        } else {
+            laneSpan = 0.0
+        }
+
+        return StationReferenceProjection(
+            coordinate: averagedCoordinate,
+            heading: averagedHeading,
+            laneOffset: averagedLaneOffset,
+            laneSpan: laneSpan
+        )
     }
 
     /// Find the intersection point of two line segments (if any).
@@ -2687,10 +2808,11 @@ final class MapSystemViewModel {
     ///
     /// Initial consolidation uses raw server polylines for snapping because
     /// the smoothed geometry is computed asynchronously and may not be ready
-    /// yet.  Once `flattenedSubwayPolylines` is populated, this method
-    /// projects each single-group station onto the smoothed curves and
-    /// recomputes the perpendicular `laneHeading` plus branch-level
-    /// `laneOffset` from the nearest rendered segment.
+    /// yet. Once `flattenedSubwayPolylines` is populated, this method
+    /// re-projects stations onto the smoothed curves and recomputes the
+    /// perpendicular `laneHeading` plus branch-level `laneOffset` from the
+    /// nearest rendered segment. Single-line dots snap to one branch;
+    /// transfer pills re-centre themselves across all serving branches.
     ///
     /// This eliminates the visual offset caused by Catmull-Rom interpolation
     /// shifting the rendered line away from the raw straight segments.
@@ -2715,45 +2837,70 @@ final class MapSystemViewModel {
         var coordinateUpdates = 0
         var headingUpdates = 0
         var laneOffsetUpdates = 0
+        var transferSpanUpdates = 0
+        var trackBearingUpdates = 0
         for i in consolidatedStations.indices {
             let station = consolidatedStations[i]
 
-            // Only re-snap single-group (non-transfer) stations — transfer
-            // stations sit at polyline intersections, not on a single line.
-            guard station.colorGroupCount == 1 else { continue }
+            let trunkGroups = Array(Set(station.routes.map(Self.trunkGroupIndex(for:)))).sorted()
+            let projection: StationReferenceProjection?
+            if station.colorGroupCount >= 2 {
+                projection = Self.transferProjectionOnReferenceBranches(
+                    near: station.coordinate,
+                    trunkGroups: trunkGroups,
+                    referenceBranchesByGroup: smoothedByGroup
+                )
+            } else if let trunkGroup = trunkGroups.first,
+                      let branches = smoothedByGroup[trunkGroup] {
+                projection = Self.nearestProjectionOnReferenceBranches(
+                    near: station.coordinate,
+                    branches: branches
+                )
+            } else {
+                projection = nil
+            }
 
-            let trunkGroup = Self.trunkGroupIndex(
-                for: station.routes.first ?? "")
-            guard let branches = smoothedByGroup[trunkGroup] else { continue }
+            guard let projection else { continue }
 
-            if let projection = Self.nearestProjectionOnReferenceBranches(
-                near: station.coordinate,
-                branches: branches
+            if !Self.coordinatesNearlyEqual(
+                consolidatedStations[i].coordinate,
+                projection.coordinate
             ) {
-                if !Self.coordinatesNearlyEqual(
-                    consolidatedStations[i].coordinate,
-                    projection.coordinate
-                ) {
-                    consolidatedStations[i].coordinate = projection.coordinate
-                    coordinateUpdates += 1
-                }
+                consolidatedStations[i].coordinate = projection.coordinate
+                coordinateUpdates += 1
+            }
 
-                if Self.headingDifferenceDegrees(
-                    consolidatedStations[i].laneHeading,
-                    projection.heading
-                ) > 1e-6 {
-                    consolidatedStations[i].laneHeading = projection.heading
-                    headingUpdates += 1
-                }
+            if Self.headingDifferenceDegrees(
+                consolidatedStations[i].laneHeading,
+                projection.heading
+            ) > 1e-6 {
+                consolidatedStations[i].laneHeading = projection.heading
+                headingUpdates += 1
+            }
 
-                if abs(consolidatedStations[i].laneOffset - projection.laneOffset) > 1e-6 {
-                    consolidatedStations[i].laneOffset = projection.laneOffset
-                    laneOffsetUpdates += 1
-                }
+            if abs(consolidatedStations[i].laneOffset - projection.laneOffset) > 1e-6 {
+                consolidatedStations[i].laneOffset = projection.laneOffset
+                laneOffsetUpdates += 1
+            }
+
+            if abs(consolidatedStations[i].transferCorridorSpan - projection.laneSpan) > 1e-6 {
+                consolidatedStations[i].transferCorridorSpan = projection.laneSpan
+                transferSpanUpdates += 1
+            }
+
+            if station.colorGroupCount >= 2,
+               let trackBearing = Self.normalizedTrackBearing(from: projection.heading),
+               abs(consolidatedStations[i].trackBearing - trackBearing) > 1e-6 {
+                consolidatedStations[i].trackBearing = trackBearing
+                trackBearingUpdates += 1
             }
         }
 
-        if coordinateUpdates > 0 || headingUpdates > 0 || laneOffsetUpdates > 0 {
+        if coordinateUpdates > 0
+            || headingUpdates > 0
+            || laneOffsetUpdates > 0
+            || transferSpanUpdates > 0
+            || trackBearingUpdates > 0 {
             stationResnapGeneration += 1
         }
 
@@ -2762,18 +2909,21 @@ final class MapSystemViewModel {
             message: "Re-snapped stations to smoothed polylines"
                 + " (coords=\(coordinateUpdates),"
                 + " headings=\(headingUpdates),"
-                + " laneOffsets=\(laneOffsetUpdates))"
+                + " laneOffsets=\(laneOffsetUpdates),"
+                + " spans=\(transferSpanUpdates),"
+                + " bearings=\(trackBearingUpdates))"
                 + " (\(consolidatedStations.count) total,"
                 + " gen \(stationResnapGeneration))")
     }
 
-    /// Groups stations by **complex ID + structure type** (hierarchical
-    /// clustering), then falls back to proximity-based merge (20 m) for
-    /// stations not in the lookup table.
+    /// Groups stations by **complex ID + structure type** and then limits
+    /// merges to one local station footprint, falling back to proximity-
+    /// based merge (20 m) for stations not in the lookup table.
     ///
     /// This produces separate capsule annotations for platforms on different
     /// physical levels (e.g., elevated 7 vs underground E/F/M/R at 74 St),
-    /// while still merging co-located same-level stops into single capsules.
+    /// while also splitting long same-structure complexes into multiple
+    /// local markers linked by transfer connectors.
     ///
     /// Stations that share a `complexID` but have different `structure`
     /// values produce linked markers — the renderer can draw a transfer
@@ -2831,15 +2981,12 @@ final class MapSystemViewModel {
         }
 
         // Merge stations that either:
-        //   (a) share a curated complexID + structure AND are within 500 m, OR
+        //   (a) share a curated complexID + structure AND occupy the same
+        //       local station footprint (~110 m), OR
         //   (b) are within 20 m AND have the same structure type
         //
-        // The 500 m cap on (a) is a safety net: if two distant stations
-        // ever share a complex ID due to hash collision or JSON error,
-        // we refuse to merge them rather than averaging their coordinates
-        // into the East River.  No real NYC complex spans more than ~350 m.
-        let complexMergeRadiusDeg: Double = 0.006   // ~500 m at NYC latitude
-        let complexMergeRadiusSq: Double = complexMergeRadiusDeg * complexMergeRadiusDeg
+        // This keeps long in-complex passageways as separate markers with
+        // transfer connectors instead of one oversized white pill.
 
         for i in 0..<stations.count {
             for j in (i + 1)..<stations.count {
@@ -2847,13 +2994,10 @@ final class MapSystemViewModel {
 
                 // Same complex + same structure → merge only if close enough
                 if ki.complexID == kj.complexID && ki.structure == kj.structure {
-                    let dx: Double =
-                        stations[i].coordinate.longitude
-                        - stations[j].coordinate.longitude
-                    let dy: Double =
-                        stations[i].coordinate.latitude
-                        - stations[j].coordinate.latitude
-                    if dx * dx + dy * dy <= complexMergeRadiusSq {
+                    if Self.sameStructureComplexStationsShouldMerge(
+                        stations[i].coordinate,
+                        stations[j].coordinate
+                    ) {
                         union(i, j)
                     }
                     continue
@@ -2951,7 +3095,7 @@ final class MapSystemViewModel {
                     branches: branches
                 )
             }()
-            let stationLaneOffset: CGFloat = singleGroupProjection?.laneOffset ?? 0
+            var transferProjection: StationReferenceProjection?
 
             // ── Transfer stop: snap to polyline intersection/projection ──
             // For stops served by ≥ 2 trunk color groups, position the
@@ -2966,13 +3110,30 @@ final class MapSystemViewModel {
                     avgLat = betterPos.latitude
                     avgLon = betterPos.longitude
                 }
+                transferProjection = Self.transferProjectionOnReferenceBranches(
+                    near: CLLocationCoordinate2D(latitude: avgLat, longitude: avgLon),
+                    trunkGroups: sortedColorGroups,
+                    referenceBranchesByGroup: referenceBranchesByGroup
+                )
+                if let projection = transferProjection {
+                    avgLat = projection.coordinate.latitude
+                    avgLon = projection.coordinate.longitude
+                }
             } else if let projection = singleGroupProjection {
                 avgLat = projection.coordinate.latitude
                 avgLon = projection.coordinate.longitude
             }
 
             let stationCoordinate = CLLocationCoordinate2D(latitude: avgLat, longitude: avgLon)
-            let laneHeading: Double? = singleGroupProjection?.heading
+            let laneHeading: Double? = groupCount >= 2
+                ? transferProjection?.heading
+                : singleGroupProjection?.heading
+            let stationLaneOffset: CGFloat = groupCount >= 2
+                ? (transferProjection?.laneOffset ?? 0)
+                : (singleGroupProjection?.laneOffset ?? 0)
+            let transferCorridorSpan: CGFloat = groupCount >= 2
+                ? (transferProjection?.laneSpan ?? 0)
+                : 0
 
             // Track bearing from polyline tangents in 3×3 neighborhood
             let gx: Int32 = Int32(avgLat / cellSize)
@@ -3009,6 +3170,10 @@ final class MapSystemViewModel {
                 bearing = 0
             }
 
+            let trackBearing = groupCount >= 2
+                ? (Self.normalizedTrackBearing(from: laneHeading) ?? bearing)
+                : bearing
+
             // Use structure and complexID from the first member
             let firstKey: GroupKey = keyForStation[memberIndices[0]]
             let allStopIDs: Set<String> = Set(memberIndices.map { stations[$0].id })
@@ -3020,9 +3185,10 @@ final class MapSystemViewModel {
                 coordinate: stationCoordinate,
                 routes: routes,
                 colorGroupCount: groupCount,
-                trackBearing: bearing,
+                trackBearing: trackBearing,
                 laneHeading: laneHeading,
                 laneOffset: stationLaneOffset,
+                transferCorridorSpan: transferCorridorSpan,
                 structure: firstKey.structure,
                 complexID: firstKey.complexID,
                 sourceStopIDs: allStopIDs,
