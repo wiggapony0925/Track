@@ -188,26 +188,23 @@ struct RouteDetailSheet: View {
     /// Convenience: locked stop key for the currently-displayed direction.
     private var lockedNearestStopKey: String? { lockedStopKeyPerDirection[selectedDirectionIndex] }
 
-    /// Two-tier chip status tied directly to map markers.
-    ///  • `.onRoute`   – vehicle has a live marker on the map (green)
-    ///  • `.scheduled`  – no live marker / GTFS-static only (grey)
+    /// Three-tier chip status for clarity:
+    ///  • `.live`      – vehicle has a visible GPS marker on the map (tappable)
+    ///  • `.tracked`   – real-time feed is tracking this trip, but no GPS
+    ///                   marker is on the map yet (not tappable for zoom)
+    ///  • `.scheduled` – static GTFS schedule only, no live data
     private enum ChipStatus {
-        case onRoute, scheduled
+        case live, tracked, scheduled
     }
 
-    /// Derives the chip status from the backend `isRealTime` flag — the
-    /// single source of truth for whether a prediction is backed by live
-    /// telemetry (SIRI, GTFS-RT, OBA) vs purely static GTFS.
-    ///
-    /// Previous logic used `isLiveOnMap` (vehicle GPS marker on the map),
-    /// which caused SIRI-tracked buses to show "Scheduled" until their
-    /// GPS loaded — contradicting the home-row "Live" pill.
+    /// Derives chip status by combining the backend `isRealTime` flag with
+    /// actual map-marker presence.  This prevents the confusing scenario
+    /// where a chip says "Live" but tapping it reveals no bus on the map.
     private func chipStatus(for arrival: NearbyTransitResponse) -> ChipStatus {
-        // Backend says real-time → live, regardless of map marker state
-        if arrival.isRealTime { return .onRoute }
-        // Fallback: if somehow isRealTime is false but it IS on the map,
-        // still treat it as live (belt-and-suspenders).
-        if isLiveOnMap?(arrival) == true { return .onRoute }
+        // Vehicle has a visible marker on the map → full Live
+        if isLiveOnMap?(arrival) == true { return .live }
+        // Backend says real-time (SIRI/GTFS-RT tracking) but no marker → Tracked
+        if arrival.isRealTime { return .tracked }
         return .scheduled
     }
 
@@ -655,12 +652,22 @@ struct RouteDetailSheet: View {
         // on the map), defer chip-list updates so the strip doesn't
         // visually shift underneath them.  We catch up as soon as the
         // chip is deselected (see handleChipSelectionChange).
+        // TIME LIMIT: If the chip has been selected for >20s, allow the
+        // refresh anyway — the user needs fresh data even while interacting.
+        // This prevents the sheet from going stale if the user stares at
+        // a selected chip while the bus is stuck in traffic for minutes.
         if selectedChipId != nil {
-            chipRefreshDeferred = true
+            let timeSinceLastRefresh = Date.now.timeIntervalSince(lastStableRefreshDate)
+            if timeSinceLastRefresh < 20 {
+                chipRefreshDeferred = true
+                #if DEBUG
+                print("[STABLE_CHIPS] ⏸ DEFERRED — chip selected, skipping refresh")
+                #endif
+                return
+            }
             #if DEBUG
-            print("[STABLE_CHIPS] ⏸ DEFERRED — chip selected, skipping refresh")
+            print("[STABLE_CHIPS] ⏰ CHIP TIMEOUT — refreshing despite chip selection (\(String(format: "%.0f", timeSinceLastRefresh))s)")
             #endif
-            return
         }
 
         if shouldRefreshStableArrivals(fresh) {
@@ -1297,7 +1304,14 @@ struct RouteDetailSheet: View {
         // status string.  This keeps chips in sync with what the user sees
         // on the route line.
         let raw = safeDirection.liveArrivals
-        guard !raw.isEmpty else { return [] }
+
+        // When the backend returns no arrivals at all, still try to show
+        // scheduled departures from the bus schedule / GTFS data.
+        // This fills the chip scroller for untracked late-night or
+        // infrequent service where zero live vehicles exist.
+        guard !raw.isEmpty else {
+            return appendScheduledDepartures(to: [], direction: safeDirection)
+        }
 
         // ── Pre-filter: remove vehicles that have passed the stop ──
         let (polyline, stopFraction) = directionPolylineAndStopFraction
@@ -1737,7 +1751,7 @@ struct RouteDetailSheet: View {
         let oldCount = stableNearestArrivals.count
         let newCount = new.count
         if newCount < oldCount / 2 && oldCount >= 4 {
-            if elapsed < 30 {
+            if elapsed < 45 {
                 #if DEBUG
                 print(
                     "[STABLE_CHIPS] ⏳ ANTI-FLAP:"
@@ -1763,10 +1777,11 @@ struct RouteDetailSheet: View {
 
         // Vehicles vanished but none appeared → likely a SIRI feed dropout
         // or the nearby API replaced the enriched vehicle-sync data with
-        // its sparse 2-arrival response.  Block for 25s (2-3 poll cycles)
-        // to let the feed recover.
+        // its sparse 2-arrival response.  Block for 45s (4-5 poll cycles)
+        // to let the feed recover.  Extended from 25s to handle congested
+        // corridors (e.g. Jamaica) where SIRI drops are frequent.
         if !vanished.isEmpty && appeared.isEmpty {
-            if elapsed < 25 {
+            if elapsed < 45 {
                 #if DEBUG
                 print(
                     "[STABLE_CHIPS] ⏳ ANTI-FLAP:"
@@ -2033,6 +2048,7 @@ struct RouteDetailSheet: View {
     private func makeChipData(arrival: NearbyTransitResponse, eta: SmartETA) -> ArrivalChipData {
         let status = chipStatus(for: arrival)
         let isSched = !arrival.isCancelled && status == .scheduled
+        let isTrackedOnly = !arrival.isCancelled && status == .tracked
         return ArrivalChipData(
             id: arrival.id,
             minutesRemaining: eta.minutesRemaining,
@@ -2041,6 +2057,7 @@ struct RouteDetailSheet: View {
             isRealTime: arrival.isRealTime,
             isCancelled: arrival.isCancelled,
             isScheduled: isSched,
+            isTrackedOnly: isTrackedOnly,
             arrivalTimestamp: arrival.arrivalTs,
             vehicleId: arrival.vehicleId,
             tripId: arrival.tripId,
@@ -2060,13 +2077,16 @@ struct RouteDetailSheet: View {
             ? AppTheme.Colors.alertRed
             : isSched ? AppTheme.Colors.textSecondary : routeColor
 
+        let isChipLive = !chip.isScheduled && !chip.isTrackedOnly
         return ArrivalChipView(
             chip: chip,
             index: index,
             accentColor: accent,
             isSelected: selectedChipId == arrival.id
         ) {
-            guard !isSched else { return }
+            // Scheduled and tracked-only chips are informational — not tappable
+            // for map zoom because there's no marker to show.
+            guard isChipLive else { return }
             let vehicleKey = arrival.vehicleId ?? arrival.tripId
             if selectedChipId == arrival.id {
                 selectedChipId = nil
@@ -2944,9 +2964,12 @@ struct RouteDetailSheet: View {
                     $0.equipmentType.lowercased()
                         .contains("elevator")
                 },
-                nextArrivalMinutes: nextArrival.flatMap { $0.isPlaceholder ? nil : $0.minutesAway },
+                nextArrivalMinutes: nextArrival.flatMap { a -> Int? in
+                    guard !a.isPlaceholder else { return nil }
+                    return smartETA(for: a).minutesRemaining
+                },
                 nextArrivalIsScheduled: nextArrival?.isScheduledOnly ?? true,
-                nextArrivalIsAtStop: (nextArrival?.minutesAway ?? 1) <= 0,
+                nextArrivalIsAtStop: nextArrival.map { smartETA(for: $0).isAtStop } ?? false,
                 nextArrivalTimestamp: nextArrival?.arrivalTs,
                 isFirst: index == 0,
                 isLast: index == dirStops.count - 1,

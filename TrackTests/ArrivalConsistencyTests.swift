@@ -265,17 +265,18 @@ struct ArrivalConsistencyTests {
     }
 
     @Test func resolvedETAIsPastForExpiredArrival() async throws {
+        // Bus grace period is 180s — so use 200s in the past to ensure isPast
         let arrival = NearbyTransitResponse(
             routeId: "M11", stopName: stopAName, direction: "South",
             destination: "East Village", minutesAway: 0, status: "OK",
             mode: "bus", stopLat: stopALat, stopLon: stopALon,
-            arrivalTs: Int(Date.now.timeIntervalSince1970) - 120,
+            arrivalTs: Int(Date.now.timeIntervalSince1970) - 200,
             vehicleId: "V1", tripId: "T1", stopId: stopAId,
             isRealTime: true
         )
 
         let eta = ArrivalHelpers.resolvedETA(for: arrival)
-        #expect(eta.isPastArrival, "Arrival 2 min in the past should be past")
+        #expect(eta.isPastArrival, "Arrival 200s in the past (beyond 180s bus grace) should be past")
     }
 
     // MARK: - sortedByETA puts realtime before scheduled

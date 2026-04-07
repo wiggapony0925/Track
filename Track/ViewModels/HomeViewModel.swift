@@ -1694,13 +1694,10 @@ final class HomeViewModel {
         }) {
             return CLLocationCoordinate2D(latitude: train.lat, longitude: train.lon)
         }
-        // Fallback: full index (vehicle may not be filtered yet after a refresh)
-        if let bus = _busVehicleIndex[vehicleId] {
-            return CLLocationCoordinate2D(latitude: bus.lat, longitude: bus.lon)
-        }
-        if let train = _trainVehicleByTrip[vehicleId] ?? _trainVehicleById[vehicleId] {
-            return CLLocationCoordinate2D(latitude: train.lat, longitude: train.lon)
-        }
+        // NOTE: Do NOT fall back to the unfiltered _busVehicleIndex / _trainVehicle*
+        // indices.  If the vehicle isn't in the direction-filtered set, it has no
+        // visible marker on the map — zooming to its coordinate would fly the
+        // camera to an empty location, confusing the user.
         return nil
     }
 
@@ -1791,6 +1788,10 @@ final class HomeViewModel {
         // 3. Vehicle key for speed history
         let vehicleKey = arrival.vehicleId ?? arrival.tripId
 
+        // NOTE: Do NOT pass delayFactor here. The backend's /nearby/grouped
+        // endpoint already ML-corrects minutesAway (LightGBM + recency + alerts).
+        // Applying the frontend's /predict/delay factor on top would double-dip,
+        // inflating or deflating ETAs well beyond the backend's ±2–4 min cap.
         return ArrivalETAEngine.computeETA(
             vehicleCoord: vehicleCoord,
             vehicleKey: vehicleKey,
@@ -1798,10 +1799,7 @@ final class HomeViewModel {
             polyline: cachedInterpolationPolyline.count >= 2 ? cachedInterpolationPolyline : nil,
             arrivalTs: arrival.arrivalTs,
             staticMinutes: arrival.minutesAway,
-            mode: arrival.mode,
-            delayFactor: ArrivalETAEngine.cachedDelayFactor(
-                routeId: arrival.routeId,
-                mode: arrival.mode)
+            mode: arrival.mode
         )
     }
 

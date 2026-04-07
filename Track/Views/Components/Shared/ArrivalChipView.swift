@@ -17,6 +17,10 @@ struct ArrivalChipData: Identifiable {
     let isRealTime: Bool
     let isCancelled: Bool
     let isScheduled: Bool
+    /// True when the backend is tracking this trip in real-time (SIRI/GTFS-RT)
+    /// but no GPS marker is visible on the map yet.  Distinct from `isScheduled`
+    /// (no real-time data at all) and full live (marker on map, tappable).
+    var isTrackedOnly: Bool = false
     let arrivalTimestamp: Int?
     let vehicleId: String?
     let tripId: String?
@@ -47,11 +51,17 @@ struct ArrivalChipData: Identifiable {
     /// Show "NOW" only when the vehicle is genuinely at the stop.
     /// Using 15 s (not 30 s) prevents multiple chips from flipping
     /// to "NOW" prematurely when arrivals are close together.
+    /// CRITICAL: When the vehicle has GPS data (non-nil vehicleId),
+    /// only show NOW when isAtStop is true (GPS confirms < 50m).
+    /// This prevents buses stuck in traffic from showing NOW just
+    /// because the feed timestamp counted down to 0.
     var isNow: Bool {
         guard !isScheduled, !isCancelled else { return false }
         if isAtStop { return true }
-        // Only count down to NOW when the arrival timestamp is very close
-        // AND the prediction is backed by a live vehicle (not purely static).
+        // If we have a live vehicle with GPS, require isAtStop — the feed
+        // timer alone is unreliable in congested corridors.
+        if vehicleId != nil { return false }
+        // No vehicle GPS → use feed countdown as before (scheduled/static only)
         return isRealTime && secondsRemaining <= 15
     }
 }
@@ -80,12 +90,15 @@ struct ArrivalChipView: View {
             ? AppTheme.Colors.alertRed
             : isSched
                 ? AppTheme.Colors.textSecondary
-                : accentColor
+                : chip.isTrackedOnly
+                    ? accentColor.opacity(0.55)
+                    : accentColor
     }
 
     private var tagLabel: String {
         isCancelled ? "Cancelled"
             : isSched ? "Sched"
+            : chip.isTrackedOnly ? "Tracked"
             : chip.isRealTime ? "Live"
             : "En Route"
     }
@@ -93,6 +106,7 @@ struct ArrivalChipView: View {
     private var tagIcon: String {
         isCancelled ? "xmark.circle.fill"
             : isSched ? "calendar.circle"
+            : chip.isTrackedOnly ? "dot.radiowaves.up.forward"
             : chip.isRealTime ? "antenna.radiowaves.left.and.right"
             : "location.circle"
     }

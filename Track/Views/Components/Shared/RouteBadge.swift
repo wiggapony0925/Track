@@ -63,11 +63,12 @@ struct RouteBadge: View {
     }
 
     /// Express subway variants use a diamond-shaped badge (MTA standard).
+    /// Only these three variant route IDs get a diamond — regular express
+    /// routes (A, B, D, E, 2-5, N, Q, Z) keep their standard circle badge.
     private static let expressVariants: Set<String> = ["6X", "7X", "FX"]
 
     private var isExpressSubway: Bool {
-        if isExpressOverride && mode == "subway" { return true }
-        return Self.expressVariants.contains(routeID.uppercased())
+        Self.expressVariants.contains(routeID.uppercased())
     }
 
     /// The base route number shown inside the diamond (e.g., "7" for "7X").

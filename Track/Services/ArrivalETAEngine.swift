@@ -79,67 +79,7 @@ enum ArrivalETAEngine {
     /// Keyed by vehicleKey. Value is (seconds remaining, wall-clock timestamp).
     private static var smoothedETA: [String: (seconds: Double, timestamp: Date)] = [:]
 
-    // MARK: - ML Delay Factor Cache
 
-    /// Cached delay factors from `/predict/delay`, keyed by "routeId_mode".
-    /// Each entry expires after `delayFactorTTL` seconds to stay current
-    /// with changing traffic / weather patterns.
-    private static var delayFactorCache: [String: (factor: Double, fetchedAt: Date)] = [:]
-    /// How long a cached delay factor remains valid (5 minutes).
-    private static let delayFactorTTL: TimeInterval = 300
-
-    /// Returns the cached ML delay factor for a route+mode, or 1.0 if none/stale.
-    static func cachedDelayFactor(routeId: String, mode: String) -> Double {
-        let key = "\(routeId)_\(mode)"
-        guard let entry = delayFactorCache[key],
-              Date.now.timeIntervalSince(entry.fetchedAt) < delayFactorTTL
-        else { return 1.0 }
-        return entry.factor
-    }
-
-    /// Stores a freshly-fetched delay factor in the cache.
-    static func cacheDelayFactor(routeId: String, mode: String, factor: Double) {
-        let key = "\(routeId)_\(mode)"
-        delayFactorCache[key] = (factor, .now)
-    }
-
-    /// Fetches delay factors for a batch of arrivals and caches them.
-    /// De-duplicates by (routeId, mode) so each unique pair is fetched once.
-    /// Non-throwing — failures are silently ignored (factor defaults to 1.0).
-    static func prefetchDelayFactors(for arrivals: [NearbyTransitResponse]) async {
-        // Collect unique (routeId, mode) pairs that are not already cached
-        var seen = Set<String>()
-        var toFetch: [(routeId: String, mode: String, minutesAway: Int, stopId: String?)] = []
-        for a in arrivals {
-            let key = "\(a.routeId)_\(a.mode)"
-            guard !seen.contains(key) else { continue }
-            seen.insert(key)
-            // Skip if we have a fresh cached value
-            if let entry = delayFactorCache[key],
-               Date.now.timeIntervalSince(entry.fetchedAt) < delayFactorTTL { continue }
-            toFetch.append((a.routeId, a.mode, a.minutesAway, a.stopId))
-        }
-        guard !toFetch.isEmpty else { return }
-
-        // Fetch up to 6 concurrently to avoid flooding the backend
-        await withTaskGroup(of: Void.self) { group in
-            for item in toFetch.prefix(6) {
-                group.addTask { @MainActor in
-                    if let prediction = await TrackAPI.fetchDelayPrediction(
-                        minutesAway: item.minutesAway,
-                        routeId: item.routeId,
-                        mode: item.mode,
-                        stopId: item.stopId
-                    ) {
-                        cacheDelayFactor(
-                            routeId: item.routeId,
-                            mode: item.mode,
-                            factor: prediction.delayFactor)
-                    }
-                }
-            }
-        }
-    }
 
     struct PositionSample {
         let coordinate: CLLocationCoordinate2D
@@ -216,12 +156,6 @@ enum ArrivalETAEngine {
             )
         }
 
-        // ── delayFactorCache ──
-        // Already has a TTL check in `cachedDelayFactor`, but entries are
-        // never removed — do it here.
-        delayFactorCache = delayFactorCache.filter { _, entry in
-            now.timeIntervalSince(entry.fetchedAt) < delayFactorTTL
-        }
     }
 
     // MARK: - Compute Smart ETA
@@ -247,9 +181,11 @@ enum ArrivalETAEngine {
     ///   - arrivalTs: The feed's predicted arrival epoch (if available).
     ///   - staticMinutes: The feed's minutesAway value (last resort).
     ///   - mode: Transit mode — affects default speed assumptions.
-    ///   - delayFactor: ML-predicted multiplicative delay factor (1.0 = no change).
-    ///     Applied only when falling back to staticMinutes (path 5) where no live
-    ///     vehicle data exists.  Pass 1.0 or omit to skip ML adjustment.
+    ///   - delayFactor: **DEPRECATED — do not pass.** The backend already
+    ///     ML-corrects `minutesAway` via LightGBM + recency + alerts before
+    ///     sending it to the client.  Applying a frontend delay factor on top
+    ///     causes double-dipping.  Defaults to 1.0 (no-op).  Retained for
+    ///     backward compatibility; will be removed in a future release.
     static func computeETA(
         vehicleCoord: CLLocationCoordinate2D?,
         vehicleKey: String?,
@@ -262,11 +198,14 @@ enum ArrivalETAEngine {
     ) -> SmartETA {
 
         // Check if arrivalTs is in the past (vehicle already came and went).
-        // 90-second grace period allows for brief dwell time / door open.
+        // 180-second grace period for buses (traffic delays can cause the feed
+        // timestamp to expire well before the vehicle physically arrives).
+        // 90-second grace for rail (more predictable).
         let isPast: Bool = {
             guard let ts = arrivalTs else { return false }
             let elapsed = Date.now.timeIntervalSince1970 - Double(ts)
-            return elapsed > 90  // More than 90s past → gone
+            let grace: Double = mode.lowercased() == "bus" ? 180 : 90
+            return elapsed > grace
         }()
 
         // ── 1. Try vehicle-position-based ETA ──
@@ -316,21 +255,29 @@ enum ArrivalETAEngine {
             // If completely stopped but not near the destination stop, fall
             // back to the feed timestamp (the driver / operator determines
             // when they leave the current stop).
+            // IMPORTANT: Use distance-based ETA as a FLOOR so the feed can't
+            // drag the countdown to 0 while the vehicle is visibly far away
+            // (e.g. bus stuck in traffic 500m from stop).  This prevents
+            // premature "NOW" → next-bus transitions.
             if speedEstimate.isStopped {
+                let distanceFloor = routeDistance / defaultSpeed(for: mode)
                 if let ts = arrivalTs {
                     let feedSeconds = max(0, Double(ts) - Date.now.timeIntervalSince1970)
+                    // When bus is far (>200m), don't let feed go below distance estimate
+                    let effective = routeDistance > 200
+                        ? max(feedSeconds, distanceFloor * 0.6)
+                        : feedSeconds
                     return smoothed(
                         vehicleKey: vehicleKey,
                         raw: SmartETA(
-                            secondsRemaining: feedSeconds, isAtStop: false,
+                            secondsRemaining: effective, isAtStop: false,
                             isPastArrival: isPast,
                             source: .feedTimestamp, estimatedSpeedMps: 0))
                 }
-                let eta = routeDistance / defaultSpeed(for: mode)
                 return smoothed(
                     vehicleKey: vehicleKey,
                     raw: SmartETA(
-                        secondsRemaining: eta, isAtStop: false, isPastArrival: isPast,
+                        secondsRemaining: distanceFloor, isAtStop: false, isPastArrival: isPast,
                         source: .vehiclePosition, estimatedSpeedMps: defaultSpeed(for: mode)))
             }
 

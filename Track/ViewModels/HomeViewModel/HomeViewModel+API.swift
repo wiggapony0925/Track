@@ -1050,12 +1050,12 @@ extension HomeViewModel {
     /// and smoothly moves the display positions in `busVehicles` toward
     /// them, producing glitch-free gliding along the polyline.
     func updateBusSimulation() {
-        guard !busVehicles.isEmpty, routeShape != nil else { return }
+        guard !busVehicles.isEmpty else { return }
         let elapsed = Date().timeIntervalSince(lastBusUpdateTime)
         let duration: TimeInterval = 10.0  // seconds between GPS poll
 
         let polyline = cachedInterpolationPolyline
-        guard polyline.count >= 2 else { return }
+        let hasPolyline = polyline.count >= 2
 
         var updated = busVehicles
         var anyMoved = false
@@ -1071,27 +1071,45 @@ extension HomeViewModel {
                 latitude: target?.lat ?? updated[i].lat,
                 longitude: target?.lon ?? updated[i].lon
             )
-            let result = VehicleInterpolator.smoothBusPosition(
-                previous: CLLocationCoordinate2D(latitude: prev.lat, longitude: prev.lon),
-                current: targetCoord,
-                elapsed: elapsed,
-                duration: duration,
-                along: polyline
-            )
+
+            let newCoord: CLLocationCoordinate2D
+            let newBearing: Double?
+            if hasPolyline {
+                // Polyline-snapped interpolation (preferred)
+                let result = VehicleInterpolator.smoothBusPosition(
+                    previous: CLLocationCoordinate2D(latitude: prev.lat, longitude: prev.lon),
+                    current: targetCoord,
+                    elapsed: elapsed,
+                    duration: duration,
+                    along: polyline
+                )
+                newCoord = result.coordinate
+                newBearing = result.bearing
+            } else {
+                // ── Direct linear interpolation fallback ──
+                // When route shape hasn't loaded yet, still move markers
+                // toward the target GPS so they don't freeze on the map.
+                let t = min(1.0, elapsed / duration)
+                let lat = prev.lat + (targetCoord.latitude - prev.lat) * t
+                let lon = prev.lon + (targetCoord.longitude - prev.lon) * t
+                newCoord = CLLocationCoordinate2D(latitude: lat, longitude: lon)
+                newBearing = nil
+            }
+
             let currentLoc = CLLocation(latitude: updated[i].lat, longitude: updated[i].lon)
             let newLoc = CLLocation(
-                latitude: result.coordinate.latitude, longitude: result.coordinate.longitude)
+                latitude: newCoord.latitude, longitude: newCoord.longitude)
             if newLoc.distance(from: currentLoc) >= moveThreshold {
                 updated[i] = updated[i].withInterpolatedPosition(
-                    lat: result.coordinate.latitude,
-                    lon: result.coordinate.longitude,
-                    bearing: result.bearing
+                    lat: newCoord.latitude,
+                    lon: newCoord.longitude,
+                    bearing: newBearing ?? updated[i].bearing ?? 0
                 )
                 anyMoved = true
             }
             ArrivalETAEngine.recordPosition(
                 vehicleKey: vid,
-                coordinate: result.coordinate)
+                coordinate: newCoord)
         }
         guard anyMoved else { return }
         // Duration < tick interval (1 s) so the animation completes before
@@ -1594,13 +1612,11 @@ extension HomeViewModel {
                 )
             }
 
-            // Pre-fetch ML delay factors for arrivals that lack live vehicle
-            // positions. Runs in the background so it doesn't block rendering.
-            if !rawTransit.isEmpty {
-                Task {
-                    await ArrivalETAEngine.prefetchDelayFactors(for: rawTransit)
-                }
-            }
+            // NOTE: Frontend ML delay-factor prefetch removed. The backend's
+            // /nearby/grouped endpoint already ML-corrects minutesAway via
+            // LightGBM + recency + alert boost. Calling /predict/delay here
+            // was redundant (same model) and caused double-dipping in
+            // computeETA path 3. This saves ~6 HTTP requests per refresh cycle.
 
             // ── Shape prefetch: Transit-app-level instant opens ────────
             // Fire-and-forget background tasks to prefetch route shapes for

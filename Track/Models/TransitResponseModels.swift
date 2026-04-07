@@ -91,6 +91,67 @@ struct NearbyTransitResponse: Codable, Identifiable, Equatable {
         case isCancelled = "is_cancelled"
         case isExpress = "is_express"
     }
+
+    /// Memberwise initializer (restores the auto-generated one that the
+    /// custom `init(from:)` below suppresses).
+    init(
+        routeId: String,
+        stopName: String,
+        direction: String,
+        destination: String? = nil,
+        minutesAway: Int = 99,
+        status: String,
+        mode: String,
+        stopLat: Double? = nil,
+        stopLon: Double? = nil,
+        arrivalTs: Int? = nil,
+        vehicleId: String? = nil,
+        tripId: String? = nil,
+        stopId: String? = nil,
+        distanceM: Double? = nil,
+        isRealTime: Bool = false,
+        isCancelled: Bool = false,
+        isExpress: Bool = false
+    ) {
+        self.routeId = routeId
+        self.stopName = stopName
+        self.direction = direction
+        self.destination = destination
+        self.minutesAway = minutesAway
+        self.status = status
+        self.mode = mode
+        self.stopLat = stopLat
+        self.stopLon = stopLon
+        self.arrivalTs = arrivalTs
+        self.vehicleId = vehicleId
+        self.tripId = tripId
+        self.stopId = stopId
+        self.distanceM = distanceM
+        self.isRealTime = isRealTime
+        self.isCancelled = isCancelled
+        self.isExpress = isExpress
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        routeId = try c.decode(String.self, forKey: .routeId)
+        stopName = try c.decode(String.self, forKey: .stopName)
+        direction = try c.decode(String.self, forKey: .direction)
+        destination = try c.decodeIfPresent(String.self, forKey: .destination)
+        minutesAway = try c.decodeIfPresent(Int.self, forKey: .minutesAway) ?? 99
+        status = try c.decode(String.self, forKey: .status)
+        mode = try c.decode(String.self, forKey: .mode)
+        stopLat = try c.decodeIfPresent(Double.self, forKey: .stopLat)
+        stopLon = try c.decodeIfPresent(Double.self, forKey: .stopLon)
+        arrivalTs = try c.decodeIfPresent(Int.self, forKey: .arrivalTs)
+        vehicleId = try c.decodeIfPresent(String.self, forKey: .vehicleId)
+        tripId = try c.decodeIfPresent(String.self, forKey: .tripId)
+        stopId = try c.decodeIfPresent(String.self, forKey: .stopId)
+        distanceM = try c.decodeIfPresent(Double.self, forKey: .distanceM)
+        isRealTime = try c.decodeIfPresent(Bool.self, forKey: .isRealTime) ?? false
+        isCancelled = try c.decodeIfPresent(Bool.self, forKey: .isCancelled) ?? false
+        isExpress = try c.decodeIfPresent(Bool.self, forKey: .isExpress) ?? false
+    }
 }
 
 /// Arrivals for a single direction within a grouped route.
@@ -312,5 +373,38 @@ struct GroupedNearbyTransitResponse: Codable, Identifiable, Equatable {
         case sortingKey = "sorting_key"
         case alerts
         case expressRoutes = "express_routes"
+    }
+
+    /// Memberwise initializer.
+    init(
+        routeId: String,
+        displayName: String,
+        mode: String,
+        colorHex: String? = nil,
+        directions: [DirectionArrivalsResponse],
+        sortingKey: String = "",
+        alerts: [InlineAlertResponse] = [],
+        expressRoutes: [String] = []
+    ) {
+        self.routeId = routeId
+        self.displayName = displayName
+        self.mode = mode
+        self.colorHex = colorHex
+        self.directions = directions
+        self.sortingKey = sortingKey
+        self.alerts = alerts
+        self.expressRoutes = expressRoutes
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        routeId = try c.decode(String.self, forKey: .routeId)
+        displayName = try c.decode(String.self, forKey: .displayName)
+        mode = try c.decode(String.self, forKey: .mode)
+        colorHex = try c.decodeIfPresent(String.self, forKey: .colorHex)
+        directions = try c.decode([DirectionArrivalsResponse].self, forKey: .directions)
+        sortingKey = try c.decodeIfPresent(String.self, forKey: .sortingKey) ?? ""
+        alerts = try c.decodeIfPresent([InlineAlertResponse].self, forKey: .alerts) ?? []
+        expressRoutes = try c.decodeIfPresent([String].self, forKey: .expressRoutes) ?? []
     }
 }

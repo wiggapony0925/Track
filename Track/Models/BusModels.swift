@@ -59,6 +59,51 @@ struct BusArrival: Identifiable, Codable, Equatable {
         case destinationName = "destination_name"
         case isRealtime = "is_realtime"
     }
+
+    /// Memberwise initializer.
+    init(
+        routeId: String,
+        vehicleId: String,
+        stopId: String,
+        stopName: String? = nil,
+        statusText: String,
+        status: String,
+        expectedArrival: Date? = nil,
+        distanceMeters: Double? = nil,
+        bearing: Double? = nil,
+        directionRef: Int? = nil,
+        destinationName: String? = nil,
+        isRealtime: Bool = true
+    ) {
+        self.routeId = routeId
+        self.vehicleId = vehicleId
+        self.stopId = stopId
+        self.stopName = stopName
+        self.statusText = statusText
+        self.status = status
+        self.expectedArrival = expectedArrival
+        self.distanceMeters = distanceMeters
+        self.bearing = bearing
+        self.directionRef = directionRef
+        self.destinationName = destinationName
+        self.isRealtime = isRealtime
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        routeId = try c.decode(String.self, forKey: .routeId)
+        vehicleId = try c.decode(String.self, forKey: .vehicleId)
+        stopId = try c.decode(String.self, forKey: .stopId)
+        stopName = try c.decodeIfPresent(String.self, forKey: .stopName)
+        statusText = try c.decode(String.self, forKey: .statusText)
+        status = try c.decode(String.self, forKey: .status)
+        expectedArrival = try c.decodeIfPresent(Date.self, forKey: .expectedArrival)
+        distanceMeters = try c.decodeIfPresent(Double.self, forKey: .distanceMeters)
+        bearing = try c.decodeIfPresent(Double.self, forKey: .bearing)
+        directionRef = try c.decodeIfPresent(Int.self, forKey: .directionRef)
+        destinationName = try c.decodeIfPresent(String.self, forKey: .destinationName)
+        isRealtime = try c.decodeIfPresent(Bool.self, forKey: .isRealtime) ?? true
+    }
 }
 
 /// Matches the backend's `BusVehicle` JSON schema.
@@ -119,6 +164,51 @@ struct BusVehicleResponse: Codable, Identifiable, Equatable {
         case onwardCalls = "onward_calls"
         case isRealtime = "is_realtime"
         case positionRecordedAt = "position_recorded_at"
+    }
+
+    /// Memberwise initializer.
+    init(
+        vehicleId: String,
+        routeId: String,
+        lat: Double,
+        lon: Double,
+        bearing: Double? = nil,
+        nextStop: String? = nil,
+        statusText: String? = nil,
+        directionRef: Int? = nil,
+        expectedArrival: Date? = nil,
+        onwardCalls: [BusArrival]? = [],
+        isRealtime: Bool = true,
+        positionRecordedAt: Date? = nil
+    ) {
+        self.vehicleId = vehicleId
+        self.routeId = routeId
+        self.lat = lat
+        self.lon = lon
+        self.bearing = bearing
+        self.nextStop = nextStop
+        self.statusText = statusText
+        self.directionRef = directionRef
+        self.expectedArrival = expectedArrival
+        self.onwardCalls = onwardCalls
+        self.isRealtime = isRealtime
+        self.positionRecordedAt = positionRecordedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        vehicleId = try c.decode(String.self, forKey: .vehicleId)
+        routeId = try c.decode(String.self, forKey: .routeId)
+        lat = try c.decode(Double.self, forKey: .lat)
+        lon = try c.decode(Double.self, forKey: .lon)
+        bearing = try c.decodeIfPresent(Double.self, forKey: .bearing)
+        nextStop = try c.decodeIfPresent(String.self, forKey: .nextStop)
+        statusText = try c.decodeIfPresent(String.self, forKey: .statusText)
+        directionRef = try c.decodeIfPresent(Int.self, forKey: .directionRef)
+        expectedArrival = try c.decodeIfPresent(Date.self, forKey: .expectedArrival)
+        onwardCalls = try c.decodeIfPresent([BusArrival].self, forKey: .onwardCalls) ?? []
+        isRealtime = try c.decodeIfPresent(Bool.self, forKey: .isRealtime) ?? true
+        positionRecordedAt = try c.decodeIfPresent(Date.self, forKey: .positionRecordedAt)
     }
 
     /// Returns a copy with an interpolated position for smooth map animation.
