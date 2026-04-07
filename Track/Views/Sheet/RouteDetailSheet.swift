@@ -89,6 +89,10 @@ struct RouteDetailSheet: View {
     /// Selected direction index - bound to viewModel so map can filter polylines
     @Binding var selectedDirectionIndex: Int
 
+    /// Bound to viewModel so map and stops list grey out local-only stops
+    /// when the currently-displayed arrival is express.
+    @Binding var isSelectedArrivalExpress: Bool
+
     /// Which content tab is active: arrivals, departures, or alerts.
     @State private var selectedTab: RouteDetailTab = .stops
 
@@ -220,6 +224,7 @@ struct RouteDetailSheet: View {
         trainVehicles: [TrainVehicle] = [],
         routeShape: Binding<RouteShapeResponse?>,
         selectedDirectionIndex: Binding<Int>,
+        isSelectedArrivalExpress: Binding<Bool> = .constant(false),
         serviceAlerts: [TransitAlert] = [],
         busSchedule: BusScheduleResponse? = nil,
         cachedTrainArrivals: [TrainArrival] = [],
@@ -253,6 +258,7 @@ struct RouteDetailSheet: View {
         self.trainVehicles = trainVehicles
         self._routeShape = routeShape
         self._selectedDirectionIndex = selectedDirectionIndex
+        self._isSelectedArrivalExpress = isSelectedArrivalExpress
         self.serviceAlerts = serviceAlerts
         self.busSchedule = busSchedule
         self.cachedTrainArrivals = cachedTrainArrivals
@@ -459,6 +465,13 @@ struct RouteDetailSheet: View {
             .background(AppTheme.Colors.background)
             .onAppear(perform: handleOnAppear)
             .onChange(of: group) { _, _ in handleGroupChange() }
+            .onChange(of: stableNearestArrivals) { _, _ in
+                // When no chip is manually selected, derive express state
+                // from the nearest (first) arrival so stop greying follows.
+                if selectedChipRouteId == nil {
+                    syncExpressState()
+                }
+            }
             .task(id: group.id) { await handleLoadingTimeout() }
     }
 
@@ -572,6 +585,19 @@ struct RouteDetailSheet: View {
         }
     }
 
+    /// Updates the bound `isSelectedArrivalExpress` from the currently
+    /// active arrival: user-selected chip → that chip's express flag,
+    /// otherwise the nearest (first) arrival's express flag.
+    private func syncExpressState() {
+        if let selId = selectedChipRouteId {
+            isSelectedArrivalExpress = stableNearestArrivals
+                .first { $0.routeId == selId }?.isExpress ?? false
+        } else {
+            isSelectedArrivalExpress = stableNearestArrivals
+                .first?.isExpress ?? false
+        }
+    }
+
     private func handleOnAppear() {
         rebuildCachedPolyline()
         isFavorited = favoritesManager.isFavorite(routeId: group.routeId, mode: group.mode)
@@ -581,6 +607,8 @@ struct RouteDetailSheet: View {
         if !cachedTrainArrivals.isEmpty { stableTrainArrivals = cachedTrainArrivals }
         stableNearestArrivals = nearestStopArrivals
         lastStableRefreshDate = .distantPast
+        // Sync express state so map + stops list start with correct skip state.
+        syncExpressState()
         refreshDirectionBadgeCounts()
         refreshArrivalByStopCache()
         if lockedDirectionHeadsign == nil {
@@ -818,7 +846,17 @@ struct RouteDetailSheet: View {
             HStack(spacing: 16) {
                 // Route badge with ambient glow — switches to diamond
                 // when the user selects an express arrival chip.
-                let badgeRouteID = selectedChipRouteId ?? group.displayName
+                // Badge reflects: 1) user-selected chip, 2) nearest/leftmost chip, 3) group name
+                let autoRouteId = stableNearestArrivals.first?.routeId
+                let badgeRouteID = selectedChipRouteId ?? autoRouteId ?? group.displayName
+                let badgeIsExpress: Bool = {
+                    // If user selected a chip, use that chip's express flag
+                    if let selId = selectedChipRouteId {
+                        return stableNearestArrivals.first(where: { $0.routeId == selId })?.isExpress ?? false
+                    }
+                    // Otherwise use the nearest/leftmost chip
+                    return stableNearestArrivals.first?.isExpress ?? false
+                }()
                 ZStack {
                     Circle()
                         .fill(routeColor.opacity(0.15))
@@ -828,7 +866,8 @@ struct RouteDetailSheet: View {
                         routeID: badgeRouteID,
                         size: .large,
                         hexColor: group.colorHex,
-                        mode: group.mode
+                        mode: group.mode,
+                        isExpressOverride: badgeIsExpress
                     )
                     .shadow(
                         color: routeColor.opacity(0.45),
@@ -2005,7 +2044,8 @@ struct RouteDetailSheet: View {
             arrivalTimestamp: arrival.arrivalTs,
             vehicleId: arrival.vehicleId,
             tripId: arrival.tripId,
-            routeId: arrival.routeId
+            routeId: arrival.routeId,
+            isExpressFromServer: arrival.isExpress
         )
     }
 
@@ -2031,10 +2071,12 @@ struct RouteDetailSheet: View {
             if selectedChipId == arrival.id {
                 selectedChipId = nil
                 selectedChipRouteId = nil
+                isSelectedArrivalExpress = stableNearestArrivals.first?.isExpress ?? false
                 onFocusVehicle?(nil)
             } else {
                 selectedChipId = arrival.id
                 selectedChipRouteId = arrival.routeId
+                isSelectedArrivalExpress = arrival.isExpress
                 if let key = vehicleKey {
                     onFocusVehicle?(key)
                 }
@@ -2867,6 +2909,16 @@ struct RouteDetailSheet: View {
         let currentIdx = currentStopIndex(in: dirStops)
         let arrivalByStop = cachedArrivalByStop
 
+        // Express skip: grey out stops that only appear on local shapes.
+        let localOnlyIds: Set<String> = {
+            guard isSelectedArrivalExpress else { return [] }
+            let ids = routeShape?.matchedDirection(
+                index: selectedDirectionIndex,
+                name: selectedDirectionName
+            )?.localOnlyStopIds ?? []
+            return Set(ids)
+        }()
+
         return dirStops.enumerated().map { index, stop in
             let isPassed = currentIdx.map { index < $0 } ?? false
             let isCurrent = currentIdx == index
@@ -2897,7 +2949,8 @@ struct RouteDetailSheet: View {
                 nextArrivalIsAtStop: (nextArrival?.minutesAway ?? 1) <= 0,
                 nextArrivalTimestamp: nextArrival?.arrivalTs,
                 isFirst: index == 0,
-                isLast: index == dirStops.count - 1
+                isLast: index == dirStops.count - 1,
+                isSkipped: localOnlyIds.contains(stop.id)
             )
         }
     }
@@ -2910,26 +2963,17 @@ struct RouteDetailSheet: View {
             selectedStopId: inSheetSelectedStopId,
             userLocation: currentLocation
         ) { stop in
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                if inSheetSelectedStopId == stop.id {
-                    // Already selected — open full stop detail
-                    let dirStops = routeShape?.stopsForDirection(
-                        index: selectedDirectionIndex,
-                        name: selectedDirectionName
-                    ) ?? []
-                    if let busStop = dirStops.first(where: { $0.id == stop.id }) {
-                        let selection = StopDetailSelection.routeStop(
-                            busStop, mode: group.mode,
-                            fallbackRouteID: group.displayName
-                        )
-                        onStopDetailRequested?(selection)
-                    }
-                } else {
-                    inSheetSelectedStopId = stop.id
-                    selectedTab = .departures
-                    onStopSelected?(CLLocationCoordinate2D(
-                        latitude: stop.lat, longitude: stop.lon))
-                }
+            // Single tap → navigate to full stop detail sheet
+            let dirStops = routeShape?.stopsForDirection(
+                index: selectedDirectionIndex,
+                name: selectedDirectionName
+            ) ?? []
+            if let busStop = dirStops.first(where: { $0.id == stop.id }) {
+                let selection = StopDetailSelection.routeStop(
+                    busStop, mode: group.mode,
+                    fallbackRouteID: group.displayName
+                )
+                onStopDetailRequested?(selection)
             }
             HapticManager.impact(.light)
         }

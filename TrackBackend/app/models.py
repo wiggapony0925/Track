@@ -404,6 +404,14 @@ class DirectionShape(BaseModel):
     service_type: str | None = Field(
         None, description="Service pattern: 'express', 'local', 'mixed', or null."
     )
+    local_only_stop_ids: list[str] = Field(
+        [],
+        description=(
+            "Stop IDs that only appear in the local (longer) shapes for this "
+            "direction.  Express trains skip these stops.  Empty when the route "
+            "has no express/local split or only one shape per direction."
+        ),
+    )
 
 
 class RouteShape(BaseModel):
@@ -425,7 +433,8 @@ class RouteShape(BaseModel):
         [], description="Per-direction shapes when available."
     )
     service_type: str | None = Field(
-        None, description="Service pattern: 'express', 'local', 'mixed', or null."
+        None,
+        description="Service pattern: 'express', 'local', 'mixed', or null.",
     )
 
 

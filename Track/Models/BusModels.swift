@@ -145,11 +145,44 @@ struct DirectionShapeResponse: Codable, Identifiable, Sendable {
     /// Express/local service classification from GTFS routes.txt.
     /// Values: "express", "local", "mixed", or nil (buses, shuttles, crosstown, etc.)
     let serviceType: String?
+    /// Stop IDs that only appear in the longer (local) shapes for this
+    /// direction.  Express trains skip these stops.
+    var localOnlyStopIds: [String] = []
 
     enum CodingKeys: String, CodingKey {
         case directionId = "direction_id"
         case headsign, polylines, stops
         case serviceType = "service_type"
+        case localOnlyStopIds = "local_only_stop_ids"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        directionId = try container.decode(Int.self, forKey: .directionId)
+        headsign = try container.decode(String.self, forKey: .headsign)
+        polylines = try container.decode([String].self, forKey: .polylines)
+        stops = try container.decode([BusStop].self, forKey: .stops)
+        serviceType = try container.decodeIfPresent(String.self, forKey: .serviceType)
+        localOnlyStopIds = try container.decodeIfPresent(
+            [String].self, forKey: .localOnlyStopIds
+        ) ?? []
+    }
+
+    /// Memberwise initializer for programmatic construction.
+    init(
+        directionId: Int,
+        headsign: String,
+        polylines: [String],
+        stops: [BusStop],
+        serviceType: String? = nil,
+        localOnlyStopIds: [String] = []
+    ) {
+        self.directionId = directionId
+        self.headsign = headsign
+        self.polylines = polylines
+        self.stops = stops
+        self.serviceType = serviceType
+        self.localOnlyStopIds = localOnlyStopIds
     }
 
     /// Decodes all Google-encoded polylines for this direction.

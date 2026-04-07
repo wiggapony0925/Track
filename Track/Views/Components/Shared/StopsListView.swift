@@ -22,6 +22,8 @@ struct StopRowData: Identifiable {
     let nextArrivalTimestamp: Int?
     let isFirst: Bool
     let isLast: Bool
+    /// True when an express train skips this stop.
+    var isSkipped: Bool = false
 }
 
 // MARK: - Stops List View
@@ -187,8 +189,10 @@ struct StopsListView: View {
                 StopRowView(
                     stop: stop,
                     routeColor: routeColor,
-                    showTopLine: (passedCount > 0 && !showPreviousStops && offset == 0)
-                        ? false : !stop.isFirst,
+                    // When collapsed with previous stops, the toggle's line
+                    // connects into the first upcoming stop — always show top line.
+                    showTopLine: (passedCount > 0 && offset == 0)
+                        ? true : !stop.isFirst,
                     showBottomLine: !stop.isLast,
                     lineFaded: stop.isPassed
                 )
@@ -207,24 +211,23 @@ struct StopsListView: View {
     }
 
     /// MTA-style collapsible toggle for previous (passed) stops.
+    /// Keeps the route line running through the toggle — matching the
+    /// continuous-line aesthetic in the MTA app screenshot.
     private func previousStopsToggle(count: Int) -> some View {
         Button {
             withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                 showPreviousStops.toggle()
             }
         } label: {
-            HStack(spacing: 0) {
-                // Dot-dot-dot indicator aligned with the route timeline
+            HStack(alignment: .center, spacing: 0) {
+                // Continuous route-colored line segment with a gap for the label
                 ZStack {
-                    VStack(spacing: 2) {
-                        ForEach(0..<3, id: \.self) { _ in
-                            Circle()
-                                .fill(routeColor.opacity(0.25))
-                                .frame(width: 4, height: 4)
-                        }
-                    }
+                    // Vertical line (faded, same as passed-stop line)
+                    Rectangle()
+                        .fill(routeColor.opacity(0.25))
+                        .frame(width: 3)
                 }
-                .frame(width: 30)
+                .frame(width: 30, height: 40)
 
                 HStack(spacing: 6) {
                     Image(systemName: "chevron.down")
@@ -248,33 +251,44 @@ struct StopsListView: View {
                 Spacer()
             }
             .padding(.leading, AppTheme.Layout.cardPadding)
-            .padding(.vertical, 10)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
 
-    /// Walking time pill shown above the nearest stop.
+    /// Walking time pill shown above the nearest stop — includes a
+    /// continuous route-colored line segment on the left so the vertical
+    /// timeline is never broken.
     private func walkingTimeBadge(minutes: Int) -> some View {
-        HStack(spacing: 5) {
-            Image(systemName: "figure.walk")
-                .font(.system(size: 10, weight: .semibold))
-            Text("\(minutes) min walk")
-                .font(.system(size: 11, weight: .bold, design: .rounded))
+        HStack(alignment: .center, spacing: 0) {
+            // Continuous line segment matching the stop row line
+            Rectangle()
+                .fill(routeColor.opacity(0.5))
+                .frame(width: 3, height: 32)
+                .frame(width: 30)
+
+            HStack(spacing: 5) {
+                Image(systemName: "figure.walk")
+                    .font(.system(size: 10, weight: .semibold))
+                Text("\(minutes) min walk")
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+            }
+            .foregroundColor(AppTheme.Colors.mtaBlue)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(
+                Capsule()
+                    .fill(AppTheme.Colors.mtaBlue.opacity(0.08))
+                    .overlay(
+                        Capsule()
+                            .strokeBorder(AppTheme.Colors.mtaBlue.opacity(0.15), lineWidth: 0.5)
+                    )
+            )
+            .padding(.leading, 10)
+
+            Spacer()
         }
-        .foregroundColor(AppTheme.Colors.mtaBlue)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
-        .background(
-            Capsule()
-                .fill(AppTheme.Colors.mtaBlue.opacity(0.08))
-                .overlay(
-                    Capsule()
-                        .strokeBorder(AppTheme.Colors.mtaBlue.opacity(0.15), lineWidth: 0.5)
-                )
-        )
-        .padding(.leading, 40)
-        .padding(.vertical, 4)
+        .padding(.leading, AppTheme.Layout.cardPadding)
     }
 }
 
@@ -290,7 +304,10 @@ struct StopRowView: View {
     var lineFaded: Bool = false
 
     private var lineColor: Color {
-        lineFaded
+        if stop.isSkipped {
+            return AppTheme.Colors.textSecondary.opacity(0.10)
+        }
+        return lineFaded
             ? AppTheme.Colors.textSecondary.opacity(0.15)
             : routeColor.opacity(0.5)
     }
@@ -304,38 +321,53 @@ struct StopRowView: View {
         stop.isCurrent ? 14 : (isTerminal ? 14 : 10)
     }
 
+    /// Bottom-half line color — transitions from faded to route color at the
+    /// current stop so the line below the current stop is always bright.
+    private var bottomLineColor: Color {
+        if stop.isSkipped {
+            return AppTheme.Colors.textSecondary.opacity(0.10)
+        }
+        return stop.isPassed
+            ? AppTheme.Colors.textSecondary.opacity(0.15)
+            : routeColor.opacity(0.5)
+    }
+
     var body: some View {
-        HStack(alignment: .top, spacing: 0) {
+        HStack(alignment: .center, spacing: 0) {
 
             // ── Left column: continuous line + dot ──
-            ZStack(alignment: .center) {
-                // Top line segment
+            // Uses two Rectangles in a single VStack so both halves always
+            // claim equal space — no pixel gaps between adjacent rows.
+            ZStack {
                 VStack(spacing: 0) {
-                    if showTopLine {
+                    if stop.isSkipped {
+                        // Dashed line for skipped stops — visual "gap" effect
                         Rectangle()
-                            .fill(lineColor)
-                            .frame(width: 3)
-                    } else {
-                        Color.clear.frame(width: 3)
-                    }
-                    Color.clear.frame(width: 3)   // space for bottom half
-                }
-
-                // Bottom line segment
-                VStack(spacing: 0) {
-                    Color.clear.frame(width: 3)   // space for top half
-                    if showBottomLine {
-                        Rectangle()
-                            .fill(
-                                stop.isPassed
-                                    ? AppTheme.Colors.textSecondary.opacity(0.15)
-                                    : routeColor.opacity(0.5)
+                            .fill(showTopLine ? lineColor : Color.clear)
+                            .mask(
+                                VStack(spacing: 2) {
+                                    ForEach(0..<12, id: \.self) { _ in
+                                        Rectangle().frame(height: 3)
+                                    }
+                                }
                             )
-                            .frame(width: 3)
+                        Rectangle()
+                            .fill(showBottomLine ? bottomLineColor : Color.clear)
+                            .mask(
+                                VStack(spacing: 2) {
+                                    ForEach(0..<12, id: \.self) { _ in
+                                        Rectangle().frame(height: 3)
+                                    }
+                                }
+                            )
                     } else {
-                        Color.clear.frame(width: 3)
+                        Rectangle()
+                            .fill(showTopLine ? lineColor : Color.clear)
+                        Rectangle()
+                            .fill(showBottomLine ? bottomLineColor : Color.clear)
                     }
                 }
+                .frame(width: 3)
 
                 // Stop dot
                 stopDot
@@ -343,18 +375,25 @@ struct StopRowView: View {
             .frame(width: 30)
 
             // ── Right column: name, transfers, accessibility ──
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 5) {
-                    Text(stop.name)
-                        .font(.system(
-                            size: (stop.isCurrent || isTerminal) ? 14 : 13,
-                            weight: (stop.isCurrent || isTerminal) ? .bold : .medium,
-                            design: .rounded
-                        ))
-                        .foregroundColor(stop.isCurrent ? routeColor : AppTheme.Colors.textPrimary)
-                        .lineLimit(1)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(stop.name)
+                    .font(.system(
+                        size: stop.isSkipped ? 12
+                            : (stop.isCurrent || isTerminal) ? 14 : 13,
+                        weight: stop.isSkipped ? .regular
+                            : (stop.isCurrent || isTerminal) ? .bold : .medium,
+                        design: .rounded
+                    ))
+                    .foregroundColor(
+                        stop.isSkipped
+                            ? AppTheme.Colors.textSecondary.opacity(0.4)
+                            : (stop.isCurrent ? routeColor : AppTheme.Colors.textPrimary)
+                    )
+                    .strikethrough(stop.isSkipped, color: AppTheme.Colors.textSecondary.opacity(0.3))
+                    .lineLimit(1)
 
-                    if !stop.accessibilityOutages.isEmpty {
+                if !stop.accessibilityOutages.isEmpty && !stop.isSkipped {
+                    HStack(spacing: 5) {
                         Image(systemName: stop.hasElevatorOutage
                               ? "arrow.up.arrow.down.circle.fill" : "stairs")
                             .font(.system(size: 11, weight: .semibold))
@@ -366,20 +405,22 @@ struct StopRowView: View {
                     }
                 }
 
-                // Transfer badges
-                if !stop.transfers.isEmpty {
+                // Transfer badges — hidden for skipped stops
+                if !stop.transfers.isEmpty && !stop.isSkipped {
                     transferBadgeRow
                 }
             }
             .padding(.leading, 10)
-            .padding(.vertical, 10)
+            .padding(.vertical, stop.isSkipped ? 5 : 10)
 
             Spacer(minLength: 4)
 
-            // ── Arrival ETA column ──
-            arrivalColumn
-                .padding(.trailing, AppTheme.Layout.cardPadding)
-                .padding(.vertical, 10)
+            // ── Arrival ETA column — hidden for skipped stops ──
+            if !stop.isSkipped {
+                arrivalColumn
+                    .padding(.trailing, AppTheme.Layout.cardPadding)
+                    .padding(.vertical, 10)
+            }
         }
         .padding(.leading, AppTheme.Layout.cardPadding)
         .background(
@@ -387,14 +428,23 @@ struct StopRowView: View {
                 .fill(stop.isSelected ? routeColor.opacity(0.08) : Color.clear)
                 .padding(.horizontal, 4)
         )
-        .animation(.easeInOut(duration: 0.2), value: stop.isSelected)
+        .animation(.easeInOut(duration: 0.25), value: stop.isSelected)
+        .animation(.easeInOut(duration: 0.3), value: stop.isSkipped)
     }
 
     // MARK: - Stop Dot
 
     @ViewBuilder
     private var stopDot: some View {
-        if stop.isCurrent {
+        if stop.isSkipped {
+            // Skipped (express) stop: tiny hollow ring, barely visible
+            Circle()
+                .strokeBorder(
+                    AppTheme.Colors.textSecondary.opacity(0.20),
+                    lineWidth: 1
+                )
+                .frame(width: 6, height: 6)
+        } else if stop.isCurrent {
             // Current stop: bright dot with glowing halo
             ZStack {
                 Circle()

@@ -9,6 +9,8 @@ struct RouteStopMarker: View, Equatable {
     let isSelected: Bool
     /// When true the bus has already passed this stop — render dimmed.
     var isBehind: Bool = false
+    /// When true an express service skips this stop — render very faint.
+    var isSkipped: Bool = false
     let routeColor: Color
     let stopName: String
     /// Show the stop name label below the dot.
@@ -21,6 +23,7 @@ struct RouteStopMarker: View, Equatable {
         lhs.isBusRoute == rhs.isBusRoute
             && lhs.isSelected == rhs.isSelected
             && lhs.isBehind == rhs.isBehind
+            && lhs.isSkipped == rhs.isSkipped
             && lhs.stopName == rhs.stopName
             && lhs.showLabel == rhs.showLabel
             && lhs.transferRouteIds == rhs.transferRouteIds
@@ -87,7 +90,7 @@ struct RouteStopMarker: View, Equatable {
             }
         }
         .drawingGroup()
-        .opacity(isBehind && !isSelected ? 0.30 : 1.0)
+        .opacity(isSkipped ? 0.15 : (isBehind && !isSelected ? 0.30 : 1.0))
         .scaleEffect(isSelected ? 1.1 : 1.0)
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isSelected)
         .accessibilityLabel(stopName)

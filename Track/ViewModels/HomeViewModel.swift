@@ -804,6 +804,10 @@ final class HomeViewModel {
     /// back to the auto-nearest stop on the next GPS update.
     var isStopManuallySelected = false
 
+    /// True when the nearest/selected arrival chip is an express service.
+    /// Drives skipped-stop greying on both the map and stop list.
+    var isSelectedArrivalExpress = false
+
     // Live bus/train tracking on map
     var selectedRouteId: String?
     var highlightedVehicleId: String?
@@ -1056,6 +1060,17 @@ final class HomeViewModel {
             schedulePolylineRebuild()
             rebuildDirectionalSplit()
         }
+    }
+
+    /// Stop IDs that only appear in the local (longer) shapes for the
+    /// currently selected direction. Express trains skip these stops.
+    var localOnlyStopIds: Set<String> {
+        guard let shape = routeShape else { return [] }
+        let dir = shape.matchedDirection(
+            index: selectedDirectionIndex,
+            name: selectedDirectionName
+        )
+        return Set(dir?.localOnlyStopIds ?? [])
     }
 
     /// Pre-decoded polylines for the currently selected route direction.

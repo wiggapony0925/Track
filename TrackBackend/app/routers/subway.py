@@ -729,6 +729,7 @@ async def subway_shape(
                 polylines=dir_encoded,
                 stops=dir_stops,
                 service_type=get_subway_service_type(clean_id),
+                local_only_stop_ids=dd.local_only_stop_ids,
             )
         )
 

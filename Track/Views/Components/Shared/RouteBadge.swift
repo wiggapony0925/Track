@@ -40,6 +40,8 @@ struct RouteBadge: View {
     var hexColor: String? = nil
     /// Transit mode: "subway", "bus", "lirr", "mnr". Determines badge style.
     var mode: String? = nil
+    /// Server-provided express flag — overrides client-side detection when true.
+    var isExpressOverride: Bool = false
     
     // MARK: - Derived State
     
@@ -64,7 +66,8 @@ struct RouteBadge: View {
     private static let expressVariants: Set<String> = ["6X", "7X", "FX"]
 
     private var isExpressSubway: Bool {
-        Self.expressVariants.contains(routeID.uppercased())
+        if isExpressOverride && mode == "subway" { return true }
+        return Self.expressVariants.contains(routeID.uppercased())
     }
 
     /// The base route number shown inside the diamond (e.g., "7" for "7X").

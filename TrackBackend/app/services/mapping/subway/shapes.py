@@ -55,6 +55,7 @@ class DirectionData(NamedTuple):
     headsign: str
     polylines: list[list[tuple[float, float]]]
     stops: list[RouteStopEntry]
+    local_only_stop_ids: list[str] = []
 
 
 # ---------------------------------------------------------------------------
@@ -302,6 +303,9 @@ def get_subway_route_shape(
         dir_stops: list[RouteStopEntry] = []
         dir_seen: set[str] = set()
 
+        # Track per-shape stop sets for express/local classification.
+        per_shape_stop_names: list[set[str]] = []
+
         for shape_id in shape_ids:
             shape_buf = shapes_data.get(shape_id)
             if shape_buf:
@@ -311,13 +315,31 @@ def get_subway_route_shape(
 
             # Collect unique stops from all shapes to ensure branches are covered
             current_shape_stops = _get_stops_for_shape(shape_id)
+            shape_name_set: set[str] = set()
             for stop in current_shape_stops:
+                shape_name_set.add(stop.name)
                 if stop.stop_id not in seen_stop_ids:
                     all_stops.append(stop)
                     seen_stop_ids.add(stop.stop_id)
                 if stop.stop_id not in dir_seen:
                     dir_stops.append(stop)
                     dir_seen.add(stop.stop_id)
+            if shape_name_set:
+                per_shape_stop_names.append(shape_name_set)
+
+        # Determine local-only stop IDs: stops that only appear in the
+        # longer (local) shapes but not in the shortest (express) shape.
+        # When express trains run, they skip these stops.
+        local_only: list[str] = []
+        if len(per_shape_stop_names) >= 2:
+            shortest = min(per_shape_stop_names, key=len)
+            all_names = set().union(*per_shape_stop_names)
+            local_only_names = all_names - shortest
+            if local_only_names:
+                local_only = [
+                    s.stop_id for s in dir_stops
+                    if s.name in local_only_names
+                ]
 
         if dir_polylines:
             direction_data.append(
@@ -326,6 +348,7 @@ def get_subway_route_shape(
                     headsign=headsigns.get(direction_id, ""),
                     polylines=dir_polylines,
                     stops=dir_stops,
+                    local_only_stop_ids=local_only,
                 )
             )
 

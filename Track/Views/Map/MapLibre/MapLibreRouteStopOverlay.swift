@@ -18,6 +18,8 @@ struct DisplayedRouteStop: Identifiable {
     let displayCoordinate: CLLocationCoordinate2D
     /// True when this stop is behind the nearest stop (already passed by the bus).
     let isBehind: Bool
+    /// True when the currently-selected express arrival skips this stop.
+    var isSkipped: Bool = false
 
     var id: String { stop.id }
 }
@@ -69,6 +71,7 @@ struct MapLibreRouteStopOverlay: View {
                 isBusRoute: isBusRoute,
                 isSelected: isSelected,
                 isBehind: displayedStop.isBehind,
+                isSkipped: displayedStop.isSkipped,
                 routeColor: routeColor,
                 stopName: stop.name,
                 showLabel: showLabel || isSelected,

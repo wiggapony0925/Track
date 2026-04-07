@@ -22,10 +22,16 @@ struct ArrivalChipData: Identifiable {
     let tripId: String?
     /// Raw route ID from the arrival (e.g. "7X", "6X") — used to detect express.
     var routeId: String? = nil
+    /// Server-provided express flag — true for subway express routes
+    /// (A, B, D, E, 2-5, N, Q, Z, 6X, 7X, FX) and SBS/express/limited buses.
+    /// Falls back to client-side detection for backward compat.
+    var isExpressFromServer: Bool = false
 
     /// Express subway variants end in "X" (6X, 7X, FX).
     private static let expressVariants: Set<String> = ["6X", "7X", "FX"]
     var isExpress: Bool {
+        if isExpressFromServer { return true }
+        // Fallback: client-side detection for older backends
         guard let rid = routeId?.uppercased() else { return false }
         return Self.expressVariants.contains(rid)
     }

@@ -42,6 +42,10 @@ struct NearbyTransitResponse: Codable, Identifiable, Equatable {
     var isRealTime: Bool = false
     /// True when GTFS-RT reports this trip/stop as CANCELED or SKIPPED.
     var isCancelled: Bool = false
+    /// True when this trip runs express/limited service (skips stops).
+    /// Set by the backend for subway express routes (A, B, D, E, 2-5, N, Q, Z,
+    /// 6X, 7X, FX) and SBS/express/limited buses.
+    var isExpress: Bool = false
 
     var isBus: Bool { mode == "bus" }
     var isLIRR: Bool { mode == "lirr" }
@@ -85,6 +89,7 @@ struct NearbyTransitResponse: Codable, Identifiable, Equatable {
         case distanceM = "distance_m"
         case isRealTime = "is_real_time"
         case isCancelled = "is_cancelled"
+        case isExpress = "is_express"
     }
 }
 

@@ -383,6 +383,11 @@ struct MapLibreTrackMapView: View {
             behindStopIds = []
         }
 
+        // Express-skipped stops — local-only stops greyed when express is selected
+        let skippedIds = viewModel.isSelectedArrivalExpress
+            ? viewModel.localOnlyStopIds
+            : Set<String>()
+
         let maxDisplaySnapDistance: Double =
             viewModel.selectedGroupedRoute?.isBus == true ? 100.0 : 160.0
 
@@ -399,7 +404,8 @@ struct MapLibreTrackMapView: View {
             return DisplayedRouteStop(
                 stop: stop,
                 displayCoordinate: displayCoordinate,
-                isBehind: behindStopIds.contains(stop.id)
+                isBehind: behindStopIds.contains(stop.id),
+                isSkipped: skippedIds.contains(stop.id)
             )
         }
     }

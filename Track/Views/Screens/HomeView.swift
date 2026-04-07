@@ -519,6 +519,7 @@ struct HomeView: View {
                 trainVehicles: viewModel.filteredTrainVehicles,
                 routeShape: $viewModel.routeShape,
                 selectedDirectionIndex: $viewModel.selectedDirectionIndex,
+                isSelectedArrivalExpress: $viewModel.isSelectedArrivalExpress,
                 serviceAlerts: viewModel.serviceAlerts,
                 busSchedule: viewModel.busSchedule,
                 cachedTrainArrivals: viewModel.cachedTrainArrivals,
