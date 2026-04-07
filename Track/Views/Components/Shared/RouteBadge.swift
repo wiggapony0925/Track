@@ -119,13 +119,33 @@ struct RouteBadge: View {
     // MARK: - Subway Badge (Circle)
     
     private var subwayBadge: some View {
-        Text(routeID)
+        let dim = size.dimension
+        return Text(routeID)
             .font(.system(size: size.fontSize, weight: .heavy, design: .rounded))
             .foregroundColor(AppTheme.SubwayColors.textColor(for: routeID))
             .minimumScaleFactor(0.4)
             .lineLimit(1)
-            .frame(width: size.dimension, height: size.dimension)
-            .background(backgroundColor)
+            .frame(width: dim, height: dim)
+            .background(
+                ZStack {
+                    Circle().fill(backgroundColor)
+                    // Subtle top-lit gradient for depth
+                    Circle().fill(
+                        LinearGradient(
+                            stops: [
+                                .init(color: .white.opacity(0.18), location: 0),
+                                .init(color: .clear, location: 0.45),
+                                .init(color: .black.opacity(0.12), location: 1),
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    // Thin inner highlight ring
+                    Circle()
+                        .strokeBorder(.white.opacity(0.15), lineWidth: 0.5)
+                }
+            )
             .clipShape(Circle())
             .dynamicTypeSize(...DynamicTypeSize.accessibility1)
             .accessibilityLabel("Subway Route \(routeID)")
@@ -138,6 +158,7 @@ struct RouteBadge: View {
     private var expressDiamondBadge: some View {
         let base = expressBaseRoute
         let dim = size.dimension
+        let cr = dim * 0.12
         return Text(base)
             .font(.system(
                 size: size.fontSize * 0.85,
@@ -149,9 +170,24 @@ struct RouteBadge: View {
             .lineLimit(1)
             .frame(width: dim * 0.72, height: dim * 0.72)
             .background(
-                RoundedRectangle(cornerRadius: dim * 0.12, style: .continuous)
-                    .fill(backgroundColor)
-                    .rotationEffect(.degrees(45))
+                ZStack {
+                    RoundedRectangle(cornerRadius: cr, style: .continuous)
+                        .fill(backgroundColor)
+                        .rotationEffect(.degrees(45))
+                    RoundedRectangle(cornerRadius: cr, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                stops: [
+                                    .init(color: .white.opacity(0.18), location: 0),
+                                    .init(color: .clear, location: 0.45),
+                                    .init(color: .black.opacity(0.12), location: 1),
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .rotationEffect(.degrees(45))
+                }
             )
             .frame(width: dim, height: dim)
             .dynamicTypeSize(...DynamicTypeSize.accessibility1)
@@ -170,8 +206,21 @@ struct RouteBadge: View {
             .padding(.vertical, 4)
             .frame(minWidth: size.dimension, minHeight: size.dimension)
             .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(backgroundColor)
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            stops: [
+                                .init(color: backgroundColor, location: 0),
+                                .init(color: backgroundColor.opacity(0.85), location: 1),
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .strokeBorder(.white.opacity(0.12), lineWidth: 0.5)
+                    )
             )
             .dynamicTypeSize(...DynamicTypeSize.accessibility1)
             .accessibilityLabel("\(isSBS ? "Select Bus Service" : "Bus") Route \(routeID)")
@@ -180,11 +229,10 @@ struct RouteBadge: View {
     // MARK: - Commuter Rail Badge (Rounded Rect + Train Icon)
     
     private var commuterRailBadge: some View {
-        HStack(spacing: size == .small ? 2 : 4) {
-            // LIRR: front-facing train icon | MNR: rear-facing train icon
+        HStack(spacing: size == .small ? 3 : 5) {
             Image(systemName: isLIRR ? "train.side.front.car" : "train.side.rear.car")
-                .font(.system(size: commuterIconSize, weight: .bold))
-                .foregroundColor(.white)
+                .font(.system(size: commuterIconSize, weight: .semibold))
+                .foregroundColor(.white.opacity(0.9))
             
             Text(commuterDisplayText)
                 .font(.system(size: commuterFontSize, weight: .heavy, design: .rounded))
@@ -192,12 +240,25 @@ struct RouteBadge: View {
                 .minimumScaleFactor(0.4)
                 .lineLimit(1)
         }
-        .padding(.horizontal, size == .small ? 6 : 8)
-        .padding(.vertical, size == .small ? 3 : 5)
+        .padding(.horizontal, size == .small ? 7 : 10)
+        .padding(.vertical, size == .small ? 4 : 6)
         .frame(minHeight: size.dimension)
         .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(backgroundColor)
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        stops: [
+                            .init(color: backgroundColor, location: 0),
+                            .init(color: backgroundColor.opacity(0.82), location: 1),
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(.white.opacity(0.12), lineWidth: 0.5)
+                )
         )
         .dynamicTypeSize(...DynamicTypeSize.accessibility1)
         .accessibilityLabel("\(isLIRR ? "LIRR" : "Metro-North") \(routeID)")

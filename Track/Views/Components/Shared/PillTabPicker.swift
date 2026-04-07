@@ -1,8 +1,7 @@
-// A generic horizontal pill-style tab picker. Each tab shows an icon,
-// label, and optional badge count. The active tab fills with a provided
-// accent color; inactive tabs use a card background with a light border.
-// Designed to be reused anywhere a segmented-style picker is needed
-// (route detail sheet, settings, future screens).
+// A clean segmented tab picker with icons, labels, and optional badge
+// counts. Active tab uses a filled capsule with accent color; inactive
+// tabs are transparent. Designed for the route detail sheet and reusable
+// across the app.
 
 import SwiftUI
 
@@ -25,67 +24,39 @@ struct PillTabPicker: View {
     var accentColor: Color = AppTheme.Colors.mtaBlue
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(tabs) { tab in
-                    let isActive: Bool = selectedId == tab.id
-                    Button {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                            selectedId = tab.id
-                        }
-                    } label: {
-                        pillLabel(tab: tab, isActive: isActive)
+        HStack(spacing: 4) {
+            ForEach(tabs) { tab in
+                let isActive: Bool = selectedId == tab.id
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                        selectedId = tab.id
                     }
-                    .sensoryFeedback(.selection, trigger: selectedId)
-                    .accessibilityLabel(Text("\(tab.label) tab"))
+                } label: {
+                    pillLabel(tab: tab, isActive: isActive)
                 }
+                .sensoryFeedback(.selection, trigger: selectedId)
+                .accessibilityLabel(Text("\(tab.label) tab"))
             }
-            .padding(.horizontal, AppTheme.Layout.margin)
         }
+        .padding(3)
+        .background(
+            Capsule()
+                .fill(AppTheme.Colors.cardBackground.opacity(0.6))
+        )
+        .padding(.horizontal, AppTheme.Layout.margin)
     }
 
     // MARK: - Pill label
 
     private func pillLabel(tab: PillTab, isActive: Bool) -> some View {
-        // Pre-compute themed values to reduce type-checker workload.
-        let fillStyle: AnyShapeStyle = isActive
-            ? AnyShapeStyle(AppTheme.Gradients.accent)
-            : AnyShapeStyle(AppTheme.Gradients.controlSurface)
-        let borderColor: Color = isActive
-            ? AppTheme.Colors.textOnColor.opacity(0.18)
-            : AppTheme.Colors.borderSubtle
-        let iconColor: Color = isActive ? .white : AppTheme.Colors.textSecondary
-        let textColor: Color = isActive
-            ? AppTheme.Colors.textPrimary
-            : AppTheme.Colors.textSecondary
-        let bgColor: Color = isActive
-            ? AppTheme.Colors.glassHighlight.opacity(0.07)
-            : AppTheme.Colors.cardBackground
-        let overlayBorder: Color = isActive
-            ? AppTheme.Colors.borderSubtle
-            : accentColor.opacity(0.10)
-        let shadowColor: Color = isActive ? accentColor.opacity(0.12) : .black.opacity(0.03)
-        let shadowRadius: CGFloat = isActive ? 8 : 3
-        let shadowY: CGFloat = isActive ? 4 : 2
-
-        return HStack(spacing: 8) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .fill(fillStyle)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 9, style: .continuous)
-                            .stroke(borderColor, lineWidth: 1)
-                    }
-
-                Image(systemName: tab.icon)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(iconColor)
-            }
-            .frame(width: 28, height: 28)
+        HStack(spacing: 5) {
+            Image(systemName: tab.icon)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(isActive ? .white : AppTheme.Colors.textSecondary)
 
             Text(tab.label)
-                .font(.custom("Helvetica-Bold", size: 13))
-                .foregroundColor(textColor)
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .foregroundColor(isActive ? .white : AppTheme.Colors.textSecondary)
                 .lineLimit(1)
 
             if tab.badgeCount > 0 {
@@ -95,14 +66,33 @@ struct PillTabPicker: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
         .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(bgColor)
+            Capsule()
+                .fill(
+                    isActive
+                        ? AnyShapeStyle(
+                            LinearGradient(
+                                stops: [
+                                    .init(color: accentColor, location: 0),
+                                    .init(color: accentColor.opacity(0.85), location: 1),
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                          )
+                        : AnyShapeStyle(Color.clear)
+                )
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(overlayBorder, lineWidth: 1)
+            Capsule()
+                .strokeBorder(
+                    isActive ? .white.opacity(0.12) : .clear,
+                    lineWidth: 0.5
+                )
         )
-        .shadow(color: shadowColor, radius: shadowRadius, x: 0, y: shadowY)
+        .shadow(
+            color: isActive ? accentColor.opacity(0.2) : .clear,
+            radius: 4, x: 0, y: 2
+        )
         .dynamicTypeSize(...DynamicTypeSize.accessibility1)
     }
 
@@ -111,15 +101,13 @@ struct PillTabPicker: View {
     private func badgeView(count: Int, isActive: Bool) -> some View {
         let label = count > 99 ? "99+" : "\(count)"
         return Text(label)
-            .font(.custom("Helvetica-Bold", size: 11))
-            .foregroundColor(isActive ? accentColor : AppTheme.Colors.textSecondary)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
+            .font(.system(size: 10, weight: .bold, design: .rounded))
+            .foregroundColor(isActive ? .white : accentColor)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1)
             .background(
-                isActive
-                    ? AnyShapeStyle(accentColor.opacity(0.14))
-                    : AnyShapeStyle(AppTheme.Gradients.controlSurface)
+                Capsule()
+                    .fill(isActive ? .white.opacity(0.2) : accentColor.opacity(0.12))
             )
-            .clipShape(Capsule())
     }
 }

@@ -80,9 +80,9 @@ struct ArrivalChipView: View {
     private var isCancelled: Bool { chip.isCancelled }
 
     // MARK: Derived layout
-    private var chipWidth: CGFloat { isFirst ? 96 : 78 }
-    private var chipHeight: CGFloat { isFirst ? 140 : 122 }
-    private let cornerR: CGFloat = 20
+    private var chipWidth: CGFloat { isFirst ? 94 : 76 }
+    private var chipHeight: CGFloat { isFirst ? 136 : 118 }
+    private let cornerR: CGFloat = 16
 
     // MARK: Derived colors
     private var chipAccent: Color {
@@ -137,20 +137,13 @@ struct ArrivalChipView: View {
     // MARK: – Subviews
 
     private var accentBar: some View {
-        RoundedRectangle(cornerRadius: 2)
+        Capsule()
             .fill(
                 isSched
-                    ? AnyShapeStyle(chipAccent.opacity(0.2))
-                    : AnyShapeStyle(LinearGradient(
-                        colors: [
-                            chipAccent.opacity(isFirst ? 0.9 : 0.65),
-                            chipAccent.opacity(isFirst ? 0.5 : 0.3)
-                        ],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                      ))
+                    ? chipAccent.opacity(0.15)
+                    : chipAccent.opacity(isFirst ? 0.75 : 0.5)
             )
-            .frame(width: isFirst ? 40 : 30, height: 3)
+            .frame(width: isFirst ? 36 : 26, height: 2.5)
             .padding(.top, 10)
     }
 
@@ -237,19 +230,11 @@ struct ArrivalChipView: View {
     private var cardBackground: some View {
         RoundedRectangle(cornerRadius: cornerR, style: .continuous)
             .fill(AppTheme.Gradients.floating)
-            .overlay(
-                RoundedRectangle(cornerRadius: cornerR, style: .continuous)
-                    .fill(isFirst && !isSched ? chipAccent.opacity(0.03) : Color.clear)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: cornerR, style: .continuous)
-                    .stroke(AppTheme.Colors.borderSubtle, lineWidth: 1)
-            )
             .shadow(
                 color: isSched
                     ? .clear
-                    : chipAccent.opacity(isFirst && !isSelected ? 0.18 : 0.08),
-                radius: isFirst ? 16 : 8, x: 0, y: isFirst ? 8 : 6
+                    : chipAccent.opacity(isFirst && !isSelected ? 0.15 : 0.06),
+                radius: isFirst ? 12 : 6, x: 0, y: isFirst ? 6 : 4
             )
     }
 
@@ -257,11 +242,11 @@ struct ArrivalChipView: View {
         RoundedRectangle(cornerRadius: cornerR, style: .continuous)
             .strokeBorder(
                 isSelected
-                    ? chipAccent.opacity(0.8)
+                    ? chipAccent.opacity(0.75)
                     : isSched
-                        ? AppTheme.Colors.textSecondary.opacity(0.10)
-                        : chipAccent.opacity(isFirst ? 0.25 : 0.12),
-                lineWidth: isSelected ? 2.0 : 0.8
+                        ? AppTheme.Colors.textSecondary.opacity(0.08)
+                        : chipAccent.opacity(isFirst ? 0.2 : 0.1),
+                lineWidth: isSelected ? 1.8 : 0.6
             )
     }
 }
@@ -361,21 +346,17 @@ struct ScheduledChipView: View {
             secondaryCapsule
         }
         .monospacedDigit()
-        .frame(width: 78)
-        .frame(minHeight: 122)
+        .frame(width: 76)
+        .frame(minHeight: 118)
         .background {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .fill(AppTheme.Gradients.floating)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .stroke(AppTheme.Colors.borderSubtle, lineWidth: 1)
-                )
         }
         .overlay {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .strokeBorder(
-                    AppTheme.Colors.textSecondary.opacity(0.10),
-                    lineWidth: 0.8
+                    AppTheme.Colors.textSecondary.opacity(0.08),
+                    lineWidth: 0.6
                 )
         }
     }
@@ -383,9 +364,9 @@ struct ScheduledChipView: View {
     // MARK: - Sub-views (extracted to reduce body type-check)
 
     private var accentBar: some View {
-        RoundedRectangle(cornerRadius: 2)
-            .fill(AppTheme.Colors.textSecondary.opacity(0.18))
-            .frame(width: 28, height: 3)
+        Capsule()
+            .fill(AppTheme.Colors.textSecondary.opacity(0.15))
+            .frame(width: 24, height: 2.5)
             .padding(.top, 10)
     }
 

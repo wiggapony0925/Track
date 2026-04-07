@@ -14,98 +14,94 @@ struct DirectionPillData: Identifiable {
 
 // MARK: - Direction Picker View
 
-/// Reusable horizontal direction picker with route-colored pills,
-/// service-type badges (Exp/Lcl), and vehicle count badges.
+/// Reusable horizontal direction picker with route-colored capsule pills,
+/// service-type badges, and vehicle count badges.
 struct DirectionPickerView: View {
     let directions: [DirectionPillData]
     let routeColor: Color
     var onSelect: ((Int) -> Void)?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                RoundedRectangle(cornerRadius: 2)
-                    .fill(routeColor)
-                    .frame(width: 3, height: 18)
-                Text("Direction")
-                    .font(.custom("Helvetica-Bold", size: 14))
-                    .foregroundColor(AppTheme.Colors.textPrimary)
-                    .textCase(.uppercase)
-                    .tracking(0.8)
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(directions) { dir in
+                    Button {
+                        onSelect?(dir.index)
+                    } label: {
+                        directionPillLabel(dir)
+                    }
+                    .accessibilityLabel(
+                        "\(dir.label), \(dir.vehicleCount) vehicles"
+                    )
+                }
             }
             .padding(.horizontal, AppTheme.Layout.margin)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(directions) { dir in
-                        Button {
-                            onSelect?(dir.index)
-                        } label: {
-                            directionPillLabel(dir)
-                        }
-                        .accessibilityLabel(
-                            "\(dir.label), \(dir.vehicleCount) vehicles"
-                        )
-                    }
-                }
-                .padding(.horizontal, AppTheme.Layout.margin)
-            }
         }
     }
 
     // MARK: - Pill Label
 
     private func directionPillLabel(_ dir: DirectionPillData) -> some View {
-        HStack(spacing: 6) {
-            // Direction arrow
+        HStack(spacing: 5) {
+            // Direction arrow — smaller and more subtle
             Image(systemName: directionIcon(for: dir.index, total: directions.count))
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(dir.isActive ? .white : routeColor)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(dir.isActive ? .white : routeColor.opacity(0.7))
 
-            // Label — show the full MTA direction name; the pill
-            // scrolls horizontally so there is room for it.
             Text(dir.label)
-                .font(.custom("Helvetica-Bold", size: 13))
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
                 .foregroundColor(dir.isActive ? .white : AppTheme.Colors.textPrimary)
-                .lineLimit(2)
-                .minimumScaleFactor(0.75)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
 
-            // Express / Local badge
+            // Express / Local badge — compact
             if let sType = dir.serviceType, !sType.isEmpty {
                 serviceTypePill(sType, isActive: dir.isActive)
             }
 
-            // Vehicle count badge
+            // Vehicle count — minimal dot-number style
             if dir.vehicleCount > 0 {
-                Text("\(dir.vehicleCount)")
-                    .font(.custom("Helvetica-Bold", size: 11))
-                    .foregroundColor(dir.isActive ? routeColor : .white)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(
-                        dir.isActive
-                            ? AppTheme.Colors.cardFloating.opacity(0.9)
-                            : routeColor
-                    )
-                    .clipShape(Capsule())
+                HStack(spacing: 3) {
+                    Circle()
+                        .fill(dir.isActive ? .white.opacity(0.7) : routeColor.opacity(0.5))
+                        .frame(width: 4, height: 4)
+                    Text("\(dir.vehicleCount)")
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .foregroundColor(dir.isActive ? .white.opacity(0.85) : AppTheme.Colors.textSecondary)
+                }
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
         .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(dir.isActive ? routeColor : AppTheme.Colors.cardBackground)
+            Capsule()
+                .fill(
+                    dir.isActive
+                        ? AnyShapeStyle(
+                            LinearGradient(
+                                stops: [
+                                    .init(color: routeColor, location: 0),
+                                    .init(color: routeColor.opacity(0.85), location: 1),
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                          )
+                        : AnyShapeStyle(AppTheme.Colors.cardBackground)
+                )
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(
-                    dir.isActive ? Color.clear : routeColor.opacity(0.25),
-                    lineWidth: 1)
+            Capsule()
+                .strokeBorder(
+                    dir.isActive
+                        ? .white.opacity(0.15)
+                        : routeColor.opacity(0.18),
+                    lineWidth: dir.isActive ? 0.5 : 1
+                )
         )
         .shadow(
-            color: dir.isActive ? routeColor.opacity(0.3) : AppTheme.Colors.shadow.opacity(0.08),
-            radius: dir.isActive ? 4 : 2,
-            x: 0, y: dir.isActive ? 2 : 1
+            color: dir.isActive ? routeColor.opacity(0.25) : .clear,
+            radius: 6, x: 0, y: 3
         )
         .dynamicTypeSize(...DynamicTypeSize.accessibility1)
     }
@@ -115,10 +111,10 @@ struct DirectionPickerView: View {
     private func serviceTypePill(_ serviceType: String, isActive: Bool) -> some View {
         let badgeLabel: String = {
             switch serviceType.lowercased() {
-            case "express": return "Exp"
-            case "local": return "Lcl"
-            case "mixed": return "Exp/Lcl"
-            default: return String(serviceType.prefix(3)).capitalized
+            case "express": return "EXP"
+            case "local": return "LCL"
+            case "mixed": return "E/L"
+            default: return String(serviceType.prefix(3)).uppercased()
             }
         }()
         let badgeColor: Color = {
@@ -130,13 +126,14 @@ struct DirectionPickerView: View {
         }()
 
         return Text(badgeLabel)
-            .font(.custom("Helvetica-Bold", size: 9))
-            .foregroundColor(badgeColor)
+            .font(.system(size: 9, weight: .heavy, design: .rounded))
+            .tracking(0.3)
+            .foregroundColor(isActive ? .white.opacity(0.9) : badgeColor)
             .padding(.horizontal, 5)
             .padding(.vertical, 2)
             .background(
                 isActive
-                    ? AppTheme.Colors.cardFloating.opacity(0.85)
+                    ? Color.white.opacity(0.18)
                     : badgeColor.opacity(0.12)
             )
             .clipShape(Capsule())
@@ -173,7 +170,7 @@ struct ServiceTypeBadge: View {
         case "local":
             return ("Local", "circle.fill", AppTheme.Colors.textSecondary)
         case "mixed":
-            return ("Express/Local", "bolt.horizontal.fill", AppTheme.Colors.warningYellow)
+            return ("Exp / Local", "bolt.horizontal.fill", AppTheme.Colors.warningYellow)
         default:
             return (serviceType.capitalized, "tram.fill", AppTheme.Colors.textSecondary)
         }
@@ -183,14 +180,14 @@ struct ServiceTypeBadge: View {
         let r = resolved
         HStack(spacing: 3) {
             Image(systemName: r.icon)
-                .font(.system(size: 7, weight: .bold))
+                .font(.system(size: 8, weight: .semibold))
             Text(r.label)
-                .font(.custom("Helvetica-Bold", size: 10))
+                .font(.system(size: 10, weight: .bold, design: .rounded))
                 .textCase(.uppercase)
-                .tracking(0.8)
+                .tracking(0.5)
         }
         .foregroundColor(r.color)
-        .padding(.horizontal, 8)
+        .padding(.horizontal, 7)
         .padding(.vertical, 3)
         .background(r.color.opacity(0.1))
         .clipShape(Capsule())

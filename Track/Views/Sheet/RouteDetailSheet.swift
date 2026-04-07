@@ -499,7 +499,6 @@ struct RouteDetailSheet: View {
 
                 Spacer().frame(height: 50)
             }
-            .padding(.top, AppTheme.Layout.margin)
         }
     }
 
@@ -521,6 +520,7 @@ struct RouteDetailSheet: View {
             directionPickerContent
                 .padding(.bottom, 8)
         }
+        .padding(.top, AppTheme.Layout.margin)
         .padding(.vertical, 4)
         .background(
             // Subtle route-colored gradient wash
@@ -537,21 +537,18 @@ struct RouteDetailSheet: View {
         )
     }
 
-    /// Smooth gradient separator replacing the hard accent line.
+    /// Subtle gradient separator between hero zone and content.
     private var heroSeparator: some View {
-        HStack(spacing: 0) {
-            // Leading accent dot
-            Circle()
-                .fill(routeColor)
-                .frame(width: 5, height: 5)
-            // Fading gradient line
-            LinearGradient(
-                colors: [routeColor.opacity(0.3), routeColor.opacity(0.03)],
-                startPoint: .leading,
-                endPoint: .trailing
-            )
-            .frame(height: 1)
-        }
+        LinearGradient(
+            stops: [
+                .init(color: routeColor.opacity(0.25), location: 0),
+                .init(color: routeColor.opacity(0.06), location: 0.5),
+                .init(color: .clear, location: 1),
+            ],
+            startPoint: .leading,
+            endPoint: .trailing
+        )
+        .frame(height: 0.5)
         .padding(.horizontal, AppTheme.Layout.margin)
     }
 
@@ -865,10 +862,6 @@ struct RouteDetailSheet: View {
                     return stableNearestArrivals.first?.isExpress ?? false
                 }()
                 ZStack {
-                    Circle()
-                        .fill(routeColor.opacity(0.15))
-                        .frame(width: 72, height: 72)
-                        .blur(radius: 16)
                     RouteBadge(
                         routeID: badgeRouteID,
                         size: .large,
@@ -877,13 +870,8 @@ struct RouteDetailSheet: View {
                         isExpressOverride: badgeIsExpress
                     )
                     .shadow(
-                        color: routeColor.opacity(0.45),
-                        radius: 12, x: 0, y: 6
-                    )
-                    .shadow(
-                        color: AppTheme.Colors.shadowStrong
-                            .opacity(0.10),
-                        radius: 18, x: 0, y: 10
+                        color: routeColor.opacity(0.3),
+                        radius: 8, x: 0, y: 4
                     )
                 }
                 .animation(.spring(response: 0.35, dampingFraction: 0.7), value: badgeRouteID)
@@ -927,14 +915,13 @@ struct RouteDetailSheet: View {
                         ZStack {
                         Circle()
                             .fill(AppTheme.Gradients.controlSurface)
-                            .overlay { Circle().stroke(AppTheme.Colors.borderSubtle, lineWidth: 1) }
+                            .overlay { Circle().strokeBorder(AppTheme.Colors.borderSubtle, lineWidth: 0.5) }
                         Image(systemName: is3DMode ? "view.2d" : "view.3d")
                             .font(.system(size: 15, weight: .bold))
                             .foregroundColor(AppTheme.Colors.textSecondary)
                     }
-                    .frame(width: 34, height: 34)
-                    .shadow(color: AppTheme.Colors.shadow.opacity(0.16), radius: 6, y: 2)
-                    .shadow(color: AppTheme.Colors.shadowStrong.opacity(0.08), radius: 2, y: 1)
+                    .frame(width: 32, height: 32)
+                    .shadow(color: AppTheme.Colors.shadow.opacity(0.12), radius: 4, y: 2)
                     }
                     .accessibilityLabel(is3DMode ? "Switch to 2D" : "Switch to 3D")
 
@@ -946,25 +933,20 @@ struct RouteDetailSheet: View {
                         Circle()
                             .fill(AppTheme.Gradients.accentSurface)
                             .overlay {
-                                Circle().stroke(
+                                Circle().strokeBorder(
                                     AppTheme.Colors.borderAccent
-                                        .opacity(0.42),
-                                    lineWidth: 1
+                                        .opacity(0.35),
+                                    lineWidth: 0.5
                                 )
                             }
                         Image(systemName: "location.fill")
                             .font(.system(size: 14, weight: .bold))
                             .foregroundColor(AppTheme.Colors.mtaBlue)
                     }
-                    .frame(width: 34, height: 34)
-                    .shadow(
-                        color: AppTheme.Colors.shadow
-                            .opacity(0.16),
-                        radius: 6, y: 2
-                    )
+                    .frame(width: 32, height: 32)
                     .shadow(
                         color: AppTheme.Colors.mtaBlue
-                            .opacity(0.12),
+                            .opacity(0.1),
                         radius: 4, y: 2
                     )
                     }
@@ -1015,9 +997,8 @@ struct RouteDetailSheet: View {
                             .foregroundColor(isFavorited ? .red : AppTheme.Colors.textSecondary)
                             .symbolEffect(.bounce, value: isFavorited)
                     }
-                    .frame(width: 34, height: 34)
-                    .shadow(color: AppTheme.Colors.shadow.opacity(0.16), radius: 6, y: 2)
-                    .shadow(color: AppTheme.Colors.shadowStrong.opacity(0.08), radius: 2, y: 1)
+                    .frame(width: 32, height: 32)
+                    .shadow(color: AppTheme.Colors.shadow.opacity(0.12), radius: 4, y: 2)
                 }
                 .accessibilityLabel(isFavorited ? "Remove from favorites" : "Add to favorites")
 
@@ -1028,32 +1009,31 @@ struct RouteDetailSheet: View {
                     ZStack {
                         Circle()
                             .fill(AppTheme.Gradients.controlSurface)
-                            .overlay { Circle().stroke(AppTheme.Colors.borderSubtle, lineWidth: 1) }
+                            .overlay { Circle().strokeBorder(AppTheme.Colors.borderSubtle, lineWidth: 0.5) }
                         Image(systemName: "xmark")
-                            .font(.system(size: 14, weight: .bold))
+                            .font(.system(size: 13, weight: .bold))
                             .foregroundColor(AppTheme.Colors.textSecondary)
                     }
-                    .frame(width: 34, height: 34)
-                    .shadow(color: AppTheme.Colors.shadow.opacity(0.16), radius: 6, y: 2)
-                    .shadow(color: AppTheme.Colors.shadowStrong.opacity(0.08), radius: 2, y: 1)
+                    .frame(width: 32, height: 32)
+                    .shadow(color: AppTheme.Colors.shadow.opacity(0.12), radius: 4, y: 2)
                 }
                 .accessibilityLabel("Close")
             }
         }
 
             // ── Tags row: mode + service type + walking + weather ──
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 Text(
                     group.isCommuterRail
                         ? (group.isLIRR ? "LIRR" : "Metro-North") : group.isBus ? "Bus" : "Subway"
                 )
-                .font(.custom("Helvetica-Bold", size: 11))
+                .font(.system(size: 10, weight: .bold, design: .rounded))
                 .foregroundColor(routeColor)
                 .textCase(.uppercase)
-                .tracking(0.8)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 4)
-                .background(routeColor.opacity(0.10))
+                .tracking(0.6)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(routeColor.opacity(0.08))
                 .clipShape(Capsule())
                 .dynamicTypeSize(...DynamicTypeSize.accessibility1)
 
@@ -1068,16 +1048,16 @@ struct RouteDetailSheet: View {
 
                 // Walking distance to nearest stop
                 if let dist = nearestStopWalkingDistance {
-                    HStack(spacing: 4) {
+                    HStack(spacing: 3) {
                         Image(systemName: "figure.walk")
-                            .font(.system(size: 9, weight: .bold))
+                            .font(.system(size: 9, weight: .semibold))
                         Text(formatWalkingDistance(dist))
-                            .font(.custom("Helvetica-Bold", size: 11))
+                            .font(.system(size: 10, weight: .bold, design: .rounded))
                     }
-                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 4)
-                    .background(AppTheme.Colors.textSecondary.opacity(0.06))
+                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(AppTheme.Colors.textSecondary.opacity(0.05))
                     .clipShape(Capsule())
                     .dynamicTypeSize(...DynamicTypeSize.accessibility1)
                 }
