@@ -215,43 +215,37 @@ struct ClosestToYouSectionHeader: View {
     }
 
     var body: some View {
-        HStack(spacing: 8) {
-            // Closest-to-you badge with walking icon
+        HStack(spacing: 0) {
             HStack(spacing: 5) {
                 Image(systemName: "figure.walk")
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.system(size: 9, weight: .bold))
                     .foregroundColor(.white)
 
                 Text("Closest")
-                    .font(.system(size: 11, weight: .heavy))
+                    .font(.system(size: 11, weight: .bold))
                     .foregroundColor(.white)
 
-                Text("\u{00b7}")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(.white.opacity(0.6))
-
-                Text(distanceDisplay)
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(.white.opacity(0.85))
+                Text("· \(distanceDisplay)")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.7))
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
             .background {
-                Capsule()
-                    .fill(badgeColor)
+                Capsule().fill(badgeColor)
             }
 
             Spacer()
 
             if let updated = updated {
                 Text(updated, style: .time)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.system(size: 11, weight: .regular))
                     .foregroundColor(AppTheme.Colors.textTertiary)
             }
         }
         .padding(.horizontal, AppTheme.Layout.margin)
-        .padding(.top, 8)
-        .padding(.bottom, 6)
+        .padding(.top, 6)
+        .padding(.bottom, 4)
     }
 }
 
@@ -265,43 +259,37 @@ struct NearYouSectionHeader: View {
     }
 
     var body: some View {
-        HStack(spacing: 8) {
-            // Location indicator with distance badge
+        HStack(spacing: 0) {
             HStack(spacing: 5) {
                 Image(systemName: "location.fill")
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.system(size: 9, weight: .bold))
                     .foregroundColor(.white)
 
                 Text("Near You")
-                    .font(.system(size: 11, weight: .heavy))
+                    .font(.system(size: 11, weight: .bold))
                     .foregroundColor(.white)
 
-                Text("·")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(.white.opacity(0.6))
-
-                Text(radiusDisplay)
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(.white.opacity(0.85))
+                Text("· \(radiusDisplay)")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.7))
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
             .background {
-                Capsule()
-                    .fill(AppTheme.Colors.successGreen)
+                Capsule().fill(AppTheme.Colors.successGreen)
             }
 
             Spacer()
 
             if let updated = updated {
                 Text(updated, style: .time)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.system(size: 11, weight: .regular))
                     .foregroundColor(AppTheme.Colors.textTertiary)
             }
         }
         .padding(.horizontal, AppTheme.Layout.margin)
-        .padding(.top, 8)
-        .padding(.bottom, 6)
+        .padding(.top, 6)
+        .padding(.bottom, 4)
     }
 }
 
@@ -314,37 +302,31 @@ struct FartherAwaySectionHeader: View {
     }
 
     var body: some View {
-        HStack(spacing: 8) {
-            // Walking indicator with distance badge
+        HStack(spacing: 0) {
             HStack(spacing: 5) {
                 Image(systemName: "figure.walk")
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.system(size: 9, weight: .bold))
                     .foregroundColor(.white)
 
                 Text("A Bit Farther")
-                    .font(.system(size: 11, weight: .heavy))
+                    .font(.system(size: 11, weight: .bold))
                     .foregroundColor(.white)
 
-                Text("·")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(.white.opacity(0.6))
-
-                Text(radiusDisplay)
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(.white.opacity(0.85))
+                Text("· \(radiusDisplay)")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.7))
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
             .background {
-                Capsule()
-                    .fill(AppTheme.Colors.accent)
+                Capsule().fill(AppTheme.Colors.accent)
             }
 
             Spacer()
         }
         .padding(.horizontal, AppTheme.Layout.margin)
-        .padding(.top, 12)
-        .padding(.bottom, 6)
+        .padding(.top, 10)
+        .padding(.bottom, 4)
     }
 }
 
@@ -357,36 +339,31 @@ struct MuchFartherAwaySectionHeader: View {
     }
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 0) {
             HStack(spacing: 5) {
                 Image(systemName: "car.fill")
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.system(size: 9, weight: .bold))
                     .foregroundColor(.white)
 
                 Text("Much Farther")
-                    .font(.system(size: 11, weight: .heavy))
+                    .font(.system(size: 11, weight: .bold))
                     .foregroundColor(.white)
 
-                Text("·")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(.white.opacity(0.6))
-
-                Text(radiusDisplay)
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(.white.opacity(0.85))
+                Text("· \(radiusDisplay)")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.7))
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
             .background {
-                Capsule()
-                    .fill(AppTheme.Colors.warningYellow)
+                Capsule().fill(AppTheme.Colors.warningYellow)
             }
 
             Spacer()
         }
         .padding(.horizontal, AppTheme.Layout.margin)
-        .padding(.top, 12)
-        .padding(.bottom, 6)
+        .padding(.top, 10)
+        .padding(.bottom, 4)
     }
 }
 

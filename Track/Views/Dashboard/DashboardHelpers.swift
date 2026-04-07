@@ -18,22 +18,22 @@ struct DashboardSectionHeader: View {
     var body: some View {
         HStack {
             Text(title)
-                .font(AppTheme.Typography.sectionHeader)
-                .foregroundColor(AppTheme.Colors.textSecondary)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(AppTheme.Colors.textTertiary)
                 .textCase(.uppercase)
-                .lineLimit(1)
+                .tracking(0.5)
             
             if let updated = updated {
                 Spacer()
                 Text("Updated \(updated, style: .time)")
-                    .font(.custom("Helvetica", size: 12))
-                    .foregroundColor(AppTheme.Colors.textSecondary)
+                    .font(.system(size: 11, weight: .regular))
+                    .foregroundColor(AppTheme.Colors.textTertiary)
             } else {
                 Spacer()
             }
         }
         .padding(.horizontal, AppTheme.Layout.margin)
-        .padding(.top, 8)
+        .padding(.top, 6)
     }
 }
 

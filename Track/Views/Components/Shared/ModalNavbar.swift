@@ -1,6 +1,6 @@
 // Modal navbar component displayed at the top of the dashboard sheet.
 // Contains search bar, transport mode filter icons, and settings button.
-// Styled to match Apple Maps modal design.
+// Design: clean, Apple-native feel with generous whitespace.
 
 import SwiftUI
 import CoreLocation
@@ -17,78 +17,65 @@ struct ModalNavbar: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            // Search bar + buttons row
-            HStack(spacing: 8) {
-                // Search bar
-                HStack(spacing: 8) {
-                    searchGlyph
+            // ── Search bar + settings ──
+            HStack(spacing: 10) {
+                HStack(spacing: 10) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(AppTheme.Colors.textTertiary)
                     
                     TextField("Search trains, buses, stations…", text: $searchText)
-                        .font(AppTheme.Typography.searchInput)
+                        .font(.system(size: 16, weight: .regular))
                         .foregroundColor(AppTheme.Colors.textPrimary)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
                     
-                    // Clear button when text is present
                     if !searchText.isEmpty {
                         Button {
                             searchText = ""
                         } label: {
-                            clearGlyph
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 16))
+                                .foregroundColor(AppTheme.Colors.textTertiary)
                         }
                     }
                     
-                    // Mic button (inside search bar)
-                    micGlyph
+                    micButton
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 11)
-                .trackFloatingChrome(cornerRadius: AppTheme.Layout.searchBarCornerRadius)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(AppTheme.Colors.cardInset.opacity(0.5))
+                }
                 
-                // Settings button
                 Button {
                     showSettings = true
                 } label: {
                     Image(systemName: "gearshape.fill")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(AppTheme.Colors.textSecondary)
-                        .frame(width: 40, height: 40)
-                        .trackInsetBackground(cornerRadius: 14)
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundColor(AppTheme.Colors.textTertiary)
+                        .frame(width: 38, height: 38)
+                        .background {
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(AppTheme.Colors.cardInset.opacity(0.5))
+                        }
                 }
                 .accessibilityLabel("Settings")
             }
             .padding(.horizontal, AppTheme.Layout.margin)
-            .padding(.top, 16)
+            .padding(.top, 14)
             .padding(.bottom, 10)
             
-            // MARK: - Transport Mode Filter Icons
+            // ── Transport mode strip ──
             ModeFilterStrip(selectedMode: $selectedMode)
                 .padding(.horizontal, AppTheme.Layout.margin)
-                .padding(.bottom, 12)
+                .padding(.bottom, 10)
 
-            if isRefreshing {
-                HStack(spacing: 6) {
-                    refreshingBadge
-                    Spacer()
-                    if let weather = weatherSnapshot {
-                        WeatherChipView(snapshot: weather, style: .compact)
-                    }
-                }
+            // ── Status row ──
+            statusRow
                 .padding(.horizontal, AppTheme.Layout.margin)
-                .padding(.bottom, 12)
-                .transition(.opacity)
-            } else if let lastUpdated {
-                HStack(spacing: 6) {
-                    updateBadge(for: lastUpdated)
-                    Spacer()
-                    if let weather = weatherSnapshot {
-                        WeatherChipView(snapshot: weather, style: .compact)
-                    }
-                }
-                .padding(.horizontal, AppTheme.Layout.margin)
-                .padding(.bottom, 12)
-                .transition(.opacity)
-            }
+                .padding(.bottom, 10)
         }
         .onAppear {
             speechManager.onTranscription = { text in
@@ -97,104 +84,100 @@ struct ModalNavbar: View {
         }
     }
 
-    private var searchGlyph: some View {
-        Image(systemName: "magnifyingglass")
-            .font(.system(size: 15, weight: .semibold))
-            .foregroundColor(AppTheme.Colors.accent)
-            .padding(.leading, 2)
-    }
+    // MARK: - Mic Button
 
-    private var clearGlyph: some View {
-        Image(systemName: "xmark.circle.fill")
-            .font(.system(size: 18, weight: .medium))
-            .foregroundColor(AppTheme.Colors.textTertiary)
-    }
-
-    private var micGlyph: some View {
+    private var micButton: some View {
         let isRecording = speechManager.isRecording
-
         return Button {
             speechManager.toggle()
         } label: {
             Image(systemName: isRecording ? "mic.fill" : "mic")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundColor(isRecording ? AppTheme.Colors.alertRed : AppTheme.Colors.accent)
-                .padding(.trailing, 2)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(
+                    isRecording
+                        ? AppTheme.Colors.alertRed
+                        : AppTheme.Colors.textTertiary
+                )
         }
     }
 
-    private func updateBadge(for date: Date) -> some View {
-        HStack(spacing: 6) {
-            Circle()
-                .fill(AppTheme.Colors.successGreen)
-                .frame(width: 6, height: 6)
+    // MARK: - Status Row
 
-            let formatter = RelativeDateTimeFormatter()
-            let relative = formatter.localizedString(
-                for: date, relativeTo: .now
-            )
-            Text("Updated \(relative)")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(AppTheme.Colors.textTertiary)
-        }
-    }
-
-    private var refreshingBadge: some View {
-        HStack(spacing: 6) {
-            ProgressView()
-                .controlSize(.mini)
-                .tint(AppTheme.Colors.accent)
-
-            Text("Updating\u{2026}")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(AppTheme.Colors.textTertiary)
+    @ViewBuilder
+    private var statusRow: some View {
+        HStack(spacing: 0) {
+            if isRefreshing {
+                HStack(spacing: 5) {
+                    ProgressView()
+                        .controlSize(.mini)
+                        .tint(AppTheme.Colors.textTertiary)
+                    Text("Updating…")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(AppTheme.Colors.textTertiary)
+                }
+            } else if let lastUpdated {
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(AppTheme.Colors.successGreen)
+                        .frame(width: 5, height: 5)
+                    let formatter = RelativeDateTimeFormatter()
+                    Text("Updated \(formatter.localizedString(for: lastUpdated, relativeTo: .now))")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(AppTheme.Colors.textTertiary)
+                }
+            }
+            Spacer()
+            if let weather = weatherSnapshot {
+                WeatherChipView(snapshot: weather, style: .compact)
+            }
         }
     }
 }
 
 // MARK: - Mode Filter Strip
 
-/// Compact icon-only transport mode filter strip
 struct ModeFilterStrip: View {
     @Binding var selectedMode: TransportMode
+    @Namespace private var modeNamespace
     
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 0) {
             ForEach(TransportMode.allCases, id: \.self) { mode in
                 modeButton(for: mode)
             }
         }
-        .padding(.horizontal, 4)
+        .padding(3)
+        .background {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(AppTheme.Colors.cardInset.opacity(0.4))
+        }
     }
 
     private func modeButton(for mode: TransportMode) -> some View {
-        let isActive: Bool = selectedMode == mode
-        let traits: AccessibilityTraits = isActive ? .isSelected : []
+        let isActive = selectedMode == mode
         return Button {
-            withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                 selectedMode = mode
             }
             HapticManager.impact(.light)
         } label: {
             ZStack {
                 if isActive {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
                         .fill(AppTheme.Colors.accent)
                         .matchedGeometryEffect(id: "modeHighlight", in: modeNamespace)
                 }
 
                 Image(systemName: mode.icon)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(isActive ? .white : AppTheme.Colors.textSecondary)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(isActive ? .white : AppTheme.Colors.textTertiary)
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 36)
+            .frame(height: 34)
         }
         .accessibilityLabel(mode.label)
-        .accessibilityAddTraits(traits)
+        .accessibilityAddTraits(isActive ? .isSelected : [])
     }
-
-    @Namespace private var modeNamespace
 }
 
 #Preview {

@@ -74,28 +74,28 @@ struct FavoritesSection: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            // Custom header row: FAVORITES title + Manage button
+        VStack(alignment: .leading, spacing: 10) {
+            // Header
             HStack {
                 Text("Favorites")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(AppTheme.Colors.textTertiary)
                     .textCase(.uppercase)
-                    .lineLimit(1)
+                    .tracking(0.5)
                 Spacer()
                 if !sortedFavorites.isEmpty || selectedMode != .nearby {
                     Button("Manage") {
                         sheetNavigator.navigate(to: .manageFavorites)
                     }
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: 12, weight: .medium))
                     .foregroundColor(AppTheme.Colors.accent)
                 }
             }
             .padding(.horizontal, AppTheme.Layout.margin)
-            .padding(.top, 14)
+            .padding(.top, 10)
 
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 14) {
+                HStack(spacing: 10) {
                     if sortedFavorites.isEmpty {
                         FavoritesEmptyCard(mode: selectedMode)
                     } else {
@@ -115,7 +115,7 @@ struct FavoritesSection: View {
                 }
                 .padding(.horizontal, AppTheme.Layout.margin)
             }
-            .padding(.bottom, 6)
+            .padding(.bottom, 4)
         }
     }
 }
@@ -497,40 +497,39 @@ struct FavoriteCard: View {
             TimelineView(.periodic(from: .now, by: 1.0)) { _ in
                 let eta = resolvedETA(for: arrival)
                 let isNow = eta.isAtStop || eta.secondsRemaining <= 30
-                VStack(alignment: .trailing, spacing: -2) {
+                VStack(alignment: .trailing, spacing: -1) {
                     if isNow {
                         Text("Now")
-                            .font(.system(size: 18, weight: .heavy))
+                            .font(.system(size: 16, weight: .bold, design: .rounded))
                             .foregroundColor(AppTheme.Colors.alertRed)
                     } else {
                         Text("\(eta.minutesRemaining)")
-                            .font(.system(size: 22, weight: .heavy))
+                            .font(.system(size: 20, weight: .bold, design: .rounded))
                             .foregroundColor(AppTheme.Colors.countdown(eta.minutesRemaining))
                             .contentTransition(.numericText())
-                        Text("MIN")
-                            .font(.system(size: 8, weight: .bold))
-                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.8))
+                        Text("min")
+                            .font(.system(size: 8, weight: .semibold))
+                            .foregroundColor(AppTheme.Colors.textTertiary)
                     }
-                    // Live / Scheduled label
                     Text(arrival.isScheduledOnly ? "Sched" : "Live")
-                        .font(.system(size: 7, weight: .heavy))
+                        .font(.system(size: 7, weight: .bold))
                         .textCase(.uppercase)
                         .foregroundColor(
                             arrival.isScheduledOnly
-                                ? AppTheme.Colors.textSecondary.opacity(0.6)
+                                ? AppTheme.Colors.textTertiary
                                 : AppTheme.Colors.successGreen
                         )
                 }
             }
         } else {
             Text("—")
-                .font(.system(size: 24, weight: .heavy))
-                .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.3))
+                .font(.system(size: 20, weight: .bold, design: .rounded))
+                .foregroundColor(AppTheme.Colors.textTertiary.opacity(0.4))
         }
     }
 
     private var cardChrome: some View {
-        RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius, style: .continuous)
+        RoundedRectangle(cornerRadius: 14, style: .continuous)
             .fill(AppTheme.Colors.cardBackground)
     }
 
