@@ -1,7 +1,7 @@
-// A clean segmented tab picker with icons, labels, and optional badge
-// counts. Active tab uses a filled capsule with accent color; inactive
-// tabs are transparent. Designed for the route detail sheet and reusable
-// across the app.
+// A premium segmented tab picker with a sliding glass indicator,
+// icons, labels, and optional badge counts. The active tab slides
+// with a matched geometry capsule. Designed for the route detail
+// sheet and reusable across the app.
 
 import SwiftUI
 
@@ -23,12 +23,14 @@ struct PillTabPicker: View {
     @Binding var selectedId: String
     var accentColor: Color = AppTheme.Colors.mtaBlue
 
+    @Namespace private var tabNamespace
+
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 0) {
             ForEach(tabs) { tab in
                 let isActive: Bool = selectedId == tab.id
                 Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                         selectedId = tab.id
                     }
                 } label: {
@@ -40,8 +42,12 @@ struct PillTabPicker: View {
         }
         .padding(3)
         .background(
-            Capsule()
-                .fill(AppTheme.Colors.cardBackground.opacity(0.6))
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(AppTheme.Colors.cardBackground.opacity(0.5))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.5), lineWidth: 0.5)
+                )
         )
         .padding(.horizontal, AppTheme.Layout.margin)
     }
@@ -51,48 +57,42 @@ struct PillTabPicker: View {
     private func pillLabel(tab: PillTab, isActive: Bool) -> some View {
         HStack(spacing: 5) {
             Image(systemName: tab.icon)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(isActive ? .white : AppTheme.Colors.textSecondary)
+                .font(.system(size: 12, weight: .semibold))
+                .symbolEffect(.bounce, value: isActive)
 
             Text(tab.label)
-                .font(.system(size: 13, weight: .semibold, design: .rounded))
-                .foregroundColor(isActive ? .white : AppTheme.Colors.textSecondary)
+                .font(.system(size: 13, weight: isActive ? .bold : .semibold, design: .rounded))
                 .lineLimit(1)
 
             if tab.badgeCount > 0 {
                 badgeView(count: tab.badgeCount, isActive: isActive)
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .background(
-            Capsule()
-                .fill(
-                    isActive
-                        ? AnyShapeStyle(
-                            LinearGradient(
-                                stops: [
-                                    .init(color: accentColor, location: 0),
-                                    .init(color: accentColor.opacity(0.85), location: 1),
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                          )
-                        : AnyShapeStyle(Color.clear)
-                )
-        )
-        .overlay(
-            Capsule()
-                .strokeBorder(
-                    isActive ? .white.opacity(0.12) : .clear,
-                    lineWidth: 0.5
-                )
-        )
-        .shadow(
-            color: isActive ? accentColor.opacity(0.2) : .clear,
-            radius: 4, x: 0, y: 2
-        )
+        .foregroundColor(isActive ? .white : AppTheme.Colors.textSecondary)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 9)
+        .background {
+            if isActive {
+                Capsule()
+                    .fill(
+                        LinearGradient(
+                            stops: [
+                                .init(color: accentColor, location: 0),
+                                .init(color: accentColor.opacity(0.82), location: 1),
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .overlay(
+                        Capsule()
+                            .strokeBorder(.white.opacity(0.15), lineWidth: 0.5)
+                    )
+                    .shadow(color: accentColor.opacity(0.3), radius: 8, x: 0, y: 3)
+                    .shadow(color: accentColor.opacity(0.1), radius: 16, x: 0, y: 6)
+                    .matchedGeometryEffect(id: "activeTab", in: tabNamespace)
+            }
+        }
         .dynamicTypeSize(...DynamicTypeSize.accessibility1)
     }
 
@@ -101,13 +101,13 @@ struct PillTabPicker: View {
     private func badgeView(count: Int, isActive: Bool) -> some View {
         let label = count > 99 ? "99+" : "\(count)"
         return Text(label)
-            .font(.system(size: 10, weight: .bold, design: .rounded))
-            .foregroundColor(isActive ? .white : accentColor)
+            .font(.system(size: 10, weight: .heavy, design: .rounded))
+            .foregroundColor(isActive ? accentColor : .white)
             .padding(.horizontal, 5)
-            .padding(.vertical, 1)
+            .padding(.vertical, 2)
             .background(
                 Capsule()
-                    .fill(isActive ? .white.opacity(0.2) : accentColor.opacity(0.12))
+                    .fill(isActive ? .white.opacity(0.9) : accentColor.opacity(0.8))
             )
     }
 }

@@ -43,13 +43,14 @@ struct DirectionPickerView: View {
 
     private func directionPillLabel(_ dir: DirectionPillData) -> some View {
         HStack(spacing: 5) {
-            // Direction arrow — smaller and more subtle
+            // Direction arrow
             Image(systemName: directionIcon(for: dir.index, total: directions.count))
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(dir.isActive ? .white : routeColor.opacity(0.7))
+                .font(.system(size: 11, weight: .bold))
+                .foregroundColor(dir.isActive ? .white : routeColor.opacity(0.65))
+                .symbolEffect(.bounce, value: dir.isActive)
 
             Text(dir.label)
-                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .font(.system(size: 13, weight: dir.isActive ? .bold : .semibold, design: .rounded))
                 .foregroundColor(dir.isActive ? .white : AppTheme.Colors.textPrimary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
@@ -59,49 +60,78 @@ struct DirectionPickerView: View {
                 serviceTypePill(sType, isActive: dir.isActive)
             }
 
-            // Vehicle count — minimal dot-number style
+            // Vehicle count — dot-number
             if dir.vehicleCount > 0 {
                 HStack(spacing: 3) {
                     Circle()
-                        .fill(dir.isActive ? .white.opacity(0.7) : routeColor.opacity(0.5))
+                        .fill(dir.isActive ? .white.opacity(0.7) : routeColor.opacity(0.45))
                         .frame(width: 4, height: 4)
                     Text("\(dir.vehicleCount)")
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .font(.system(size: 11, weight: .heavy, design: .rounded))
                         .foregroundColor(dir.isActive ? .white.opacity(0.85) : AppTheme.Colors.textSecondary)
                 }
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 9)
         .background(
-            Capsule()
-                .fill(
-                    dir.isActive
-                        ? AnyShapeStyle(
+            ZStack {
+                if dir.isActive {
+                    Capsule()
+                        .fill(
                             LinearGradient(
                                 stops: [
                                     .init(color: routeColor, location: 0),
-                                    .init(color: routeColor.opacity(0.85), location: 1),
+                                    .init(color: routeColor.opacity(0.8), location: 1),
                                 ],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             )
-                          )
-                        : AnyShapeStyle(AppTheme.Colors.cardBackground)
-                )
+                        )
+                    // Glass highlight on active
+                    Capsule()
+                        .fill(
+                            LinearGradient(
+                                stops: [
+                                    .init(color: .white.opacity(0.12), location: 0),
+                                    .init(color: .clear, location: 0.4),
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                } else {
+                    Capsule()
+                        .fill(AppTheme.Colors.cardBackground)
+                }
+            }
         )
         .overlay(
             Capsule()
                 .strokeBorder(
-                    dir.isActive
-                        ? .white.opacity(0.15)
-                        : routeColor.opacity(0.18),
-                    lineWidth: dir.isActive ? 0.5 : 1
+                    LinearGradient(
+                        stops: dir.isActive
+                            ? [
+                                .init(color: .white.opacity(0.25), location: 0),
+                                .init(color: .white.opacity(0.05), location: 1),
+                              ]
+                            : [
+                                .init(color: routeColor.opacity(0.15), location: 0),
+                                .init(color: routeColor.opacity(0.06), location: 1),
+                              ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ),
+                    lineWidth: dir.isActive ? 0.5 : 0.8
                 )
         )
         .shadow(
-            color: dir.isActive ? routeColor.opacity(0.25) : .clear,
-            radius: 6, x: 0, y: 3
+            color: dir.isActive ? routeColor.opacity(0.3) : .clear,
+            radius: 8, x: 0, y: 4
+        )
+        .shadow(
+            color: dir.isActive ? routeColor.opacity(0.1) : .clear,
+            radius: 16, x: 0, y: 6
         )
         .dynamicTypeSize(...DynamicTypeSize.accessibility1)
     }

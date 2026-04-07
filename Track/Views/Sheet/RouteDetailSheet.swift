@@ -523,32 +523,60 @@ struct RouteDetailSheet: View {
         .padding(.top, AppTheme.Layout.margin)
         .padding(.vertical, 4)
         .background(
-            // Subtle route-colored gradient wash
-            LinearGradient(
-                stops: [
-                    .init(color: routeColor.opacity(0.04), location: 0),
-                    .init(color: routeColor.opacity(0.015), location: 0.7),
-                    .init(color: Color.clear, location: 1),
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
+            ZStack {
+                // Deep route-colored gradient wash
+                LinearGradient(
+                    stops: [
+                        .init(color: routeColor.opacity(0.08), location: 0),
+                        .init(color: routeColor.opacity(0.03), location: 0.4),
+                        .init(color: routeColor.opacity(0.01), location: 0.7),
+                        .init(color: Color.clear, location: 1),
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                // Radial glow emanating from badge area
+                RadialGradient(
+                    colors: [
+                        routeColor.opacity(0.06),
+                        routeColor.opacity(0.02),
+                        .clear,
+                    ],
+                    center: .init(x: 0.12, y: 0.15),
+                    startRadius: 0,
+                    endRadius: 250
+                )
+            }
             .ignoresSafeArea(edges: .top)
         )
     }
 
-    /// Subtle gradient separator between hero zone and content.
+    /// Elegant gradient separator between hero zone and content.
     private var heroSeparator: some View {
-        LinearGradient(
-            stops: [
-                .init(color: routeColor.opacity(0.25), location: 0),
-                .init(color: routeColor.opacity(0.06), location: 0.5),
-                .init(color: .clear, location: 1),
-            ],
-            startPoint: .leading,
-            endPoint: .trailing
-        )
-        .frame(height: 0.5)
+        HStack(spacing: 0) {
+            // Leading accent dot
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [routeColor.opacity(0.6), routeColor.opacity(0.15)],
+                        center: .center,
+                        startRadius: 0,
+                        endRadius: 4
+                    )
+                )
+                .frame(width: 4, height: 4)
+            // Fading gradient line
+            LinearGradient(
+                stops: [
+                    .init(color: routeColor.opacity(0.3), location: 0),
+                    .init(color: routeColor.opacity(0.05), location: 0.6),
+                    .init(color: .clear, location: 1),
+                ],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+            .frame(height: 0.5)
+        }
         .padding(.horizontal, AppTheme.Layout.margin)
     }
 
@@ -862,6 +890,22 @@ struct RouteDetailSheet: View {
                     return stableNearestArrivals.first?.isExpress ?? false
                 }()
                 ZStack {
+                    // Ambient glow ring behind badge
+                    Circle()
+                        .fill(
+                            RadialGradient(
+                                colors: [
+                                    routeColor.opacity(0.12),
+                                    routeColor.opacity(0.03),
+                                    .clear,
+                                ],
+                                center: .center,
+                                startRadius: 18,
+                                endRadius: 40
+                            )
+                        )
+                        .frame(width: 80, height: 80)
+                        .blur(radius: 6)
                     RouteBadge(
                         routeID: badgeRouteID,
                         size: .large,
@@ -870,8 +914,12 @@ struct RouteDetailSheet: View {
                         isExpressOverride: badgeIsExpress
                     )
                     .shadow(
-                        color: routeColor.opacity(0.3),
-                        radius: 8, x: 0, y: 4
+                        color: routeColor.opacity(0.35),
+                        radius: 10, x: 0, y: 5
+                    )
+                    .shadow(
+                        color: routeColor.opacity(0.1),
+                        radius: 20, x: 0, y: 10
                     )
                 }
                 .animation(.spring(response: 0.35, dampingFraction: 0.7), value: badgeRouteID)
@@ -899,8 +947,8 @@ struct RouteDetailSheet: View {
 
                 Spacer()
 
-            // Favorite + Close buttons — frosted circle style
-            HStack(spacing: 10) {
+            // Favorite + Close buttons — glass circle style
+            HStack(spacing: 8) {
                 // Map controls (shown when sheet is expanded)
                 if isSheetExpanded {
                     // 3D / 2D Toggle
@@ -912,16 +960,12 @@ struct RouteDetailSheet: View {
                             }
                         }
                     } label: {
-                        ZStack {
-                        Circle()
-                            .fill(AppTheme.Gradients.controlSurface)
-                            .overlay { Circle().strokeBorder(AppTheme.Colors.borderSubtle, lineWidth: 0.5) }
-                        Image(systemName: is3DMode ? "view.2d" : "view.3d")
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundColor(AppTheme.Colors.textSecondary)
-                    }
-                    .frame(width: 32, height: 32)
-                    .shadow(color: AppTheme.Colors.shadow.opacity(0.12), radius: 4, y: 2)
+                        actionCircle(
+                            icon: is3DMode ? "view.2d" : "view.3d",
+                            iconColor: AppTheme.Colors.textSecondary,
+                            fill: AnyShapeStyle(AppTheme.Gradients.controlSurface),
+                            borderColor: AppTheme.Colors.borderSubtle
+                        )
                     }
                     .accessibilityLabel(is3DMode ? "Switch to 2D" : "Switch to 3D")
 
@@ -929,26 +973,13 @@ struct RouteDetailSheet: View {
                     Button {
                         onRecenter?()
                     } label: {
-                        ZStack {
-                        Circle()
-                            .fill(AppTheme.Gradients.accentSurface)
-                            .overlay {
-                                Circle().strokeBorder(
-                                    AppTheme.Colors.borderAccent
-                                        .opacity(0.35),
-                                    lineWidth: 0.5
-                                )
-                            }
-                        Image(systemName: "location.fill")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundColor(AppTheme.Colors.mtaBlue)
-                    }
-                    .frame(width: 32, height: 32)
-                    .shadow(
-                        color: AppTheme.Colors.mtaBlue
-                            .opacity(0.1),
-                        radius: 4, y: 2
-                    )
+                        actionCircle(
+                            icon: "location.fill",
+                            iconColor: AppTheme.Colors.mtaBlue,
+                            fill: AnyShapeStyle(AppTheme.Gradients.accentSurface),
+                            borderColor: AppTheme.Colors.borderAccent.opacity(0.35),
+                            glowColor: AppTheme.Colors.mtaBlue.opacity(0.08)
+                        )
                     }
                     .accessibilityLabel("Recenter on my location")
                 }
@@ -976,29 +1007,37 @@ struct RouteDetailSheet: View {
                             .fill(
                                 isFavorited
                                     ? AnyShapeStyle(
-                                        AppTheme.Gradients.tintWash(
-                                            .red, intensity: 0.22))
-                                    : AnyShapeStyle(
-                                        AppTheme.Gradients.controlSurface)
+                                        RadialGradient(
+                                            colors: [
+                                                .red.opacity(0.18),
+                                                .red.opacity(0.06),
+                                                .clear,
+                                            ],
+                                            center: .center,
+                                            startRadius: 0,
+                                            endRadius: 20
+                                        )
+                                      )
+                                    : AnyShapeStyle(AppTheme.Gradients.controlSurface)
                             )
                             .overlay {
-                                Circle().stroke(
+                                Circle().strokeBorder(
                                     isFavorited
-                                        ? Color.red.opacity(0.28)
+                                        ? Color.red.opacity(0.25)
                                         : AppTheme.Colors.borderSubtle,
-                                    lineWidth: 1
+                                    lineWidth: 0.5
                                 )
                             }
                         Image(
                             systemName: isFavorited
                                 ? "heart.fill" : "heart"
                         )
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(.system(size: 15, weight: .semibold))
                             .foregroundColor(isFavorited ? .red : AppTheme.Colors.textSecondary)
                             .symbolEffect(.bounce, value: isFavorited)
                     }
-                    .frame(width: 32, height: 32)
-                    .shadow(color: AppTheme.Colors.shadow.opacity(0.12), radius: 4, y: 2)
+                    .frame(width: 34, height: 34)
+                    .shadow(color: isFavorited ? .red.opacity(0.15) : AppTheme.Colors.shadow.opacity(0.1), radius: 6, y: 2)
                 }
                 .accessibilityLabel(isFavorited ? "Remove from favorites" : "Add to favorites")
 
@@ -1006,16 +1045,12 @@ struct RouteDetailSheet: View {
                 Button {
                     onDismiss?()
                 } label: {
-                    ZStack {
-                        Circle()
-                            .fill(AppTheme.Gradients.controlSurface)
-                            .overlay { Circle().strokeBorder(AppTheme.Colors.borderSubtle, lineWidth: 0.5) }
-                        Image(systemName: "xmark")
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundColor(AppTheme.Colors.textSecondary)
-                    }
-                    .frame(width: 32, height: 32)
-                    .shadow(color: AppTheme.Colors.shadow.opacity(0.12), radius: 4, y: 2)
+                    actionCircle(
+                        icon: "xmark",
+                        iconColor: AppTheme.Colors.textSecondary,
+                        fill: AnyShapeStyle(AppTheme.Gradients.controlSurface),
+                        borderColor: AppTheme.Colors.borderSubtle
+                    )
                 }
                 .accessibilityLabel("Close")
             }
@@ -1027,14 +1062,20 @@ struct RouteDetailSheet: View {
                     group.isCommuterRail
                         ? (group.isLIRR ? "LIRR" : "Metro-North") : group.isBus ? "Bus" : "Subway"
                 )
-                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .font(.system(size: 10, weight: .heavy, design: .rounded))
                 .foregroundColor(routeColor)
                 .textCase(.uppercase)
-                .tracking(0.6)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
-                .background(routeColor.opacity(0.08))
-                .clipShape(Capsule())
+                .tracking(0.8)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 4)
+                .background(
+                    Capsule()
+                        .fill(routeColor.opacity(0.06))
+                        .overlay(
+                            Capsule()
+                                .strokeBorder(routeColor.opacity(0.12), lineWidth: 0.5)
+                        )
+                )
                 .dynamicTypeSize(...DynamicTypeSize.accessibility1)
 
                 // Express / Local / Mixed service type (route-level, from GTFS)
@@ -1074,6 +1115,42 @@ struct RouteDetailSheet: View {
             .padding(.leading, 4)
         }
         .padding(.horizontal, AppTheme.Layout.margin)
+    }
+
+    // MARK: - Action Circle Button
+
+    /// Reusable glass-style circular action button used in the header.
+    private func actionCircle(
+        icon: String,
+        iconColor: Color,
+        fill: AnyShapeStyle,
+        borderColor: Color,
+        glowColor: Color = .clear
+    ) -> some View {
+        ZStack {
+            Circle()
+                .fill(fill)
+                .overlay(
+                    Circle()
+                        .strokeBorder(
+                            LinearGradient(
+                                stops: [
+                                    .init(color: .white.opacity(0.12), location: 0),
+                                    .init(color: borderColor, location: 1),
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
+                            lineWidth: 0.5
+                        )
+                )
+            Image(systemName: icon)
+                .font(.system(size: 14, weight: .bold))
+                .foregroundColor(iconColor)
+        }
+        .frame(width: 34, height: 34)
+        .shadow(color: glowColor, radius: 8, y: 2)
+        .shadow(color: AppTheme.Colors.shadow.opacity(0.1), radius: 4, y: 2)
     }
 
     // MARK: - Passed-Stop Filter

@@ -128,22 +128,46 @@ struct RouteBadge: View {
             .frame(width: dim, height: dim)
             .background(
                 ZStack {
+                    // Base fill
                     Circle().fill(backgroundColor)
-                    // Subtle top-lit gradient for depth
+                    // Top-lit specular highlight
+                    Circle().fill(
+                        RadialGradient(
+                            colors: [
+                                .white.opacity(0.28),
+                                .white.opacity(0.08),
+                                .clear,
+                            ],
+                            center: .init(x: 0.35, y: 0.2),
+                            startRadius: 0,
+                            endRadius: dim * 0.6
+                        )
+                    )
+                    // Bottom shadow for 3D curvature
                     Circle().fill(
                         LinearGradient(
                             stops: [
-                                .init(color: .white.opacity(0.18), location: 0),
-                                .init(color: .clear, location: 0.45),
-                                .init(color: .black.opacity(0.12), location: 1),
+                                .init(color: .clear, location: 0.5),
+                                .init(color: .black.opacity(0.18), location: 1),
                             ],
                             startPoint: .top,
                             endPoint: .bottom
                         )
                     )
-                    // Thin inner highlight ring
+                    // Inner highlight ring
                     Circle()
-                        .strokeBorder(.white.opacity(0.15), lineWidth: 0.5)
+                        .strokeBorder(
+                            LinearGradient(
+                                stops: [
+                                    .init(color: .white.opacity(0.3), location: 0),
+                                    .init(color: .white.opacity(0.05), location: 0.5),
+                                    .init(color: .clear, location: 1),
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
+                            lineWidth: size == .large ? 1.5 : 0.8
+                        )
                 }
             )
             .clipShape(Circle())
@@ -159,6 +183,7 @@ struct RouteBadge: View {
         let base = expressBaseRoute
         let dim = size.dimension
         let cr = dim * 0.12
+        let innerDim = dim * 0.72
         return Text(base)
             .font(.system(
                 size: size.fontSize * 0.85,
@@ -168,7 +193,7 @@ struct RouteBadge: View {
             .foregroundColor(AppTheme.SubwayColors.textColor(for: base))
             .minimumScaleFactor(0.4)
             .lineLimit(1)
-            .frame(width: dim * 0.72, height: dim * 0.72)
+            .frame(width: innerDim, height: innerDim)
             .background(
                 ZStack {
                     RoundedRectangle(cornerRadius: cr, style: .continuous)
@@ -176,15 +201,41 @@ struct RouteBadge: View {
                         .rotationEffect(.degrees(45))
                     RoundedRectangle(cornerRadius: cr, style: .continuous)
                         .fill(
+                            RadialGradient(
+                                colors: [
+                                    .white.opacity(0.25),
+                                    .white.opacity(0.06),
+                                    .clear,
+                                ],
+                                center: .init(x: 0.35, y: 0.2),
+                                startRadius: 0,
+                                endRadius: innerDim * 0.55
+                            )
+                        )
+                        .rotationEffect(.degrees(45))
+                    RoundedRectangle(cornerRadius: cr, style: .continuous)
+                        .fill(
                             LinearGradient(
                                 stops: [
-                                    .init(color: .white.opacity(0.18), location: 0),
-                                    .init(color: .clear, location: 0.45),
-                                    .init(color: .black.opacity(0.12), location: 1),
+                                    .init(color: .clear, location: 0.5),
+                                    .init(color: .black.opacity(0.16), location: 1),
                                 ],
                                 startPoint: .top,
                                 endPoint: .bottom
                             )
+                        )
+                        .rotationEffect(.degrees(45))
+                    RoundedRectangle(cornerRadius: cr, style: .continuous)
+                        .strokeBorder(
+                            LinearGradient(
+                                stops: [
+                                    .init(color: .white.opacity(0.3), location: 0),
+                                    .init(color: .clear, location: 0.6),
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
+                            lineWidth: 0.8
                         )
                         .rotationEffect(.degrees(45))
                 }
@@ -206,21 +257,50 @@ struct RouteBadge: View {
             .padding(.vertical, 4)
             .frame(minWidth: size.dimension, minHeight: size.dimension)
             .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            stops: [
-                                .init(color: backgroundColor, location: 0),
-                                .init(color: backgroundColor.opacity(0.85), location: 1),
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(backgroundColor)
+                    // Specular highlight
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(
+                            RadialGradient(
+                                colors: [
+                                    .white.opacity(0.22),
+                                    .white.opacity(0.04),
+                                    .clear,
+                                ],
+                                center: .init(x: 0.3, y: 0.15),
+                                startRadius: 0,
+                                endRadius: 40
+                            )
                         )
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .strokeBorder(.white.opacity(0.12), lineWidth: 0.5)
-                    )
+                    // Bottom darkening
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                stops: [
+                                    .init(color: .clear, location: 0.55),
+                                    .init(color: .black.opacity(0.12), location: 1),
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                    // Top-lit border
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(
+                            LinearGradient(
+                                stops: [
+                                    .init(color: .white.opacity(0.25), location: 0),
+                                    .init(color: .white.opacity(0.04), location: 0.5),
+                                    .init(color: .clear, location: 1),
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
+                            lineWidth: 0.8
+                        )
+                }
             )
             .dynamicTypeSize(...DynamicTypeSize.accessibility1)
             .accessibilityLabel("\(isSBS ? "Select Bus Service" : "Bus") Route \(routeID)")
@@ -232,7 +312,7 @@ struct RouteBadge: View {
         HStack(spacing: size == .small ? 3 : 5) {
             Image(systemName: isLIRR ? "train.side.front.car" : "train.side.rear.car")
                 .font(.system(size: commuterIconSize, weight: .semibold))
-                .foregroundColor(.white.opacity(0.9))
+                .foregroundColor(.white.opacity(0.92))
             
             Text(commuterDisplayText)
                 .font(.system(size: commuterFontSize, weight: .heavy, design: .rounded))
@@ -244,21 +324,47 @@ struct RouteBadge: View {
         .padding(.vertical, size == .small ? 4 : 6)
         .frame(minHeight: size.dimension)
         .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        stops: [
-                            .init(color: backgroundColor, location: 0),
-                            .init(color: backgroundColor.opacity(0.82), location: 1),
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
+            ZStack {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(backgroundColor)
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(
+                        RadialGradient(
+                            colors: [
+                                .white.opacity(0.20),
+                                .white.opacity(0.04),
+                                .clear,
+                            ],
+                            center: .init(x: 0.25, y: 0.15),
+                            startRadius: 0,
+                            endRadius: 50
+                        )
                     )
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .strokeBorder(.white.opacity(0.12), lineWidth: 0.5)
-                )
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            stops: [
+                                .init(color: .clear, location: 0.55),
+                                .init(color: .black.opacity(0.12), location: 1),
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(
+                        LinearGradient(
+                            stops: [
+                                .init(color: .white.opacity(0.25), location: 0),
+                                .init(color: .white.opacity(0.04), location: 0.5),
+                                .init(color: .clear, location: 1),
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        ),
+                        lineWidth: 0.8
+                    )
+            }
         )
         .dynamicTypeSize(...DynamicTypeSize.accessibility1)
         .accessibilityLabel("\(isLIRR ? "LIRR" : "Metro-North") \(routeID)")

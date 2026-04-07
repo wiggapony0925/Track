@@ -80,9 +80,9 @@ struct ArrivalChipView: View {
     private var isCancelled: Bool { chip.isCancelled }
 
     // MARK: Derived layout
-    private var chipWidth: CGFloat { isFirst ? 94 : 76 }
-    private var chipHeight: CGFloat { isFirst ? 136 : 118 }
-    private let cornerR: CGFloat = 16
+    private var chipWidth: CGFloat { isFirst ? 98 : 76 }
+    private var chipHeight: CGFloat { isFirst ? 142 : 118 }
+    private let cornerR: CGFloat = 18
 
     // MARK: Derived colors
     private var chipAccent: Color {
@@ -129,6 +129,7 @@ struct ArrivalChipView: View {
         .frame(minHeight: chipHeight)
         .background { cardBackground }
         .overlay { cardBorder }
+        .overlay { glassHighlight }
         .scaleEffect(isSelected ? 1.06 : 1.0)
         .animation(.spring(response: 0.28, dampingFraction: 0.72), value: isSelected)
         .onTapGesture { onTap?() }
@@ -140,10 +141,19 @@ struct ArrivalChipView: View {
         Capsule()
             .fill(
                 isSched
-                    ? chipAccent.opacity(0.15)
-                    : chipAccent.opacity(isFirst ? 0.75 : 0.5)
+                    ? AnyShapeStyle(chipAccent.opacity(0.12))
+                    : AnyShapeStyle(
+                        LinearGradient(
+                            colors: [
+                                chipAccent.opacity(isFirst ? 0.9 : 0.6),
+                                chipAccent.opacity(isFirst ? 0.4 : 0.2),
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                      )
             )
-            .frame(width: isFirst ? 36 : 26, height: 2.5)
+            .frame(width: isFirst ? 40 : 26, height: isFirst ? 3 : 2.5)
             .padding(.top, 10)
     }
 
@@ -228,26 +238,81 @@ struct ArrivalChipView: View {
     }
 
     private var cardBackground: some View {
-        RoundedRectangle(cornerRadius: cornerR, style: .continuous)
-            .fill(AppTheme.Gradients.floating)
-            .shadow(
-                color: isSched
-                    ? .clear
-                    : chipAccent.opacity(isFirst && !isSelected ? 0.15 : 0.06),
-                radius: isFirst ? 12 : 6, x: 0, y: isFirst ? 6 : 4
-            )
+        ZStack {
+            // Base glass fill
+            RoundedRectangle(cornerRadius: cornerR, style: .continuous)
+                .fill(AppTheme.Gradients.floating)
+            // Accent tint wash for first/live chip
+            if isFirst && !isSched {
+                RoundedRectangle(cornerRadius: cornerR, style: .continuous)
+                    .fill(
+                        RadialGradient(
+                            colors: [
+                                chipAccent.opacity(0.06),
+                                chipAccent.opacity(0.02),
+                                .clear,
+                            ],
+                            center: .top,
+                            startRadius: 0,
+                            endRadius: chipHeight * 0.8
+                        )
+                    )
+            }
+        }
+        .shadow(
+            color: isSched
+                ? .clear
+                : chipAccent.opacity(isFirst ? 0.18 : 0.06),
+            radius: isFirst ? 14 : 6, x: 0, y: isFirst ? 8 : 4
+        )
+        .shadow(
+            color: isFirst && !isSched
+                ? chipAccent.opacity(0.06) : .clear,
+            radius: 24, x: 0, y: 12
+        )
     }
 
     private var cardBorder: some View {
         RoundedRectangle(cornerRadius: cornerR, style: .continuous)
             .strokeBorder(
-                isSelected
-                    ? chipAccent.opacity(0.75)
-                    : isSched
-                        ? AppTheme.Colors.textSecondary.opacity(0.08)
-                        : chipAccent.opacity(isFirst ? 0.2 : 0.1),
+                LinearGradient(
+                    stops: [
+                        .init(
+                            color: isSelected
+                                ? chipAccent.opacity(0.8)
+                                : isSched
+                                    ? AppTheme.Colors.textSecondary.opacity(0.06)
+                                    : chipAccent.opacity(isFirst ? 0.22 : 0.1),
+                            location: 0
+                        ),
+                        .init(
+                            color: isSelected
+                                ? chipAccent.opacity(0.4)
+                                : .clear,
+                            location: 1
+                        ),
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                ),
                 lineWidth: isSelected ? 1.8 : 0.6
             )
+    }
+
+    /// Glass highlight — subtle top-edge shine
+    private var glassHighlight: some View {
+        RoundedRectangle(cornerRadius: cornerR, style: .continuous)
+            .fill(
+                LinearGradient(
+                    stops: [
+                        .init(color: .white.opacity(isSched ? 0.02 : 0.06), location: 0),
+                        .init(color: .clear, location: 0.35),
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+            .allowsHitTesting(false)
     }
 }
 
@@ -278,11 +343,21 @@ struct ArrivalChipETA: View {
 
     private var nowLabel: some View {
         Text("NOW")
-            .font(.system(size: isFirst ? 28 : 22, weight: .heavy, design: .rounded))
+            .font(.system(size: isFirst ? 30 : 22, weight: .heavy, design: .rounded))
             .lineLimit(1)
             .minimumScaleFactor(0.7)
-            .foregroundStyle(AppTheme.Colors.countdown(0))
-            .shadow(color: AppTheme.Colors.countdown(0).opacity(0.35), radius: 8, x: 0, y: 2)
+            .foregroundStyle(
+                LinearGradient(
+                    colors: [
+                        AppTheme.Colors.countdown(0),
+                        AppTheme.Colors.countdown(0).opacity(0.75),
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+            .shadow(color: AppTheme.Colors.countdown(0).opacity(0.5), radius: 12, x: 0, y: 2)
+            .shadow(color: AppTheme.Colors.countdown(0).opacity(0.15), radius: 24, x: 0, y: 4)
             .contentTransition(.numericText(countsDown: true))
             .animation(.spring(response: 0.4, dampingFraction: 0.8), value: mins)
             .dynamicTypeSize(...DynamicTypeSize.large)
@@ -303,27 +378,43 @@ struct ArrivalChipETA: View {
     }
 
     private var minutesLabel: some View {
-        VStack(spacing: 2) {
+        let countdownColor = isSched
+            ? AppTheme.Colors.textSecondary.opacity(0.4)
+            : AppTheme.Colors.countdown(mins)
+        return VStack(spacing: 1) {
             Text("\(mins)")
-                .font(.system(size: isFirst ? 38 : 30, weight: .heavy, design: .rounded))
+                .font(.system(size: isFirst ? 42 : 30, weight: .heavy, design: .rounded))
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
                 .foregroundStyle(
                     isSched
-                        ? AppTheme.Colors.textSecondary.opacity(0.4)
-                        : AppTheme.Colors.countdown(mins)
+                        ? AnyShapeStyle(countdownColor)
+                        : AnyShapeStyle(
+                            LinearGradient(
+                                colors: [
+                                    countdownColor,
+                                    countdownColor.opacity(0.7),
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                          )
+                )
+                .shadow(
+                    color: isSched ? .clear : countdownColor.opacity(0.2),
+                    radius: 6, x: 0, y: 2
                 )
                 .contentTransition(.numericText(countsDown: true))
                 .animation(.spring(response: 0.4, dampingFraction: 0.8), value: mins)
             Text("MIN")
-                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .font(.system(size: isFirst ? 11 : 9.5, weight: .bold, design: .rounded))
                 .lineLimit(1)
                 .foregroundStyle(
                     isSched
                         ? AppTheme.Colors.textSecondary.opacity(0.3)
-                        : AppTheme.Colors.textSecondary.opacity(0.7)
+                        : AppTheme.Colors.textSecondary.opacity(0.5)
                 )
-                .tracking(0.5)
+                .tracking(1.2)
         }
         .dynamicTypeSize(...DynamicTypeSize.large)
     }
@@ -335,6 +426,8 @@ struct ArrivalChipETA: View {
 /// live NearbyTransitResponse behind them.
 struct ScheduledChipView: View {
     let departure: ScheduledItem
+
+    private let cornerR: CGFloat = 18
 
     var body: some View {
         VStack(spacing: 0) {
@@ -349,13 +442,35 @@ struct ScheduledChipView: View {
         .frame(width: 76)
         .frame(minHeight: 118)
         .background {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: cornerR, style: .continuous)
                 .fill(AppTheme.Gradients.floating)
         }
         .overlay {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            // Glass highlight
+            RoundedRectangle(cornerRadius: cornerR, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        stops: [
+                            .init(color: .white.opacity(0.03), location: 0),
+                            .init(color: .clear, location: 0.3),
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .allowsHitTesting(false)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: cornerR, style: .continuous)
                 .strokeBorder(
-                    AppTheme.Colors.textSecondary.opacity(0.08),
+                    LinearGradient(
+                        stops: [
+                            .init(color: AppTheme.Colors.textSecondary.opacity(0.08), location: 0),
+                            .init(color: .clear, location: 1),
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ),
                     lineWidth: 0.6
                 )
         }
@@ -440,15 +555,26 @@ struct ScheduledChipStrip: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 6) {
+            HStack(spacing: 5) {
                 Image(systemName: "calendar.badge.clock")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(AppTheme.Colors.textSecondary)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(AppTheme.Colors.textSecondary.opacity(0.6))
                 Text("Scheduled Departures")
-                    .font(.system(size: 11, weight: .bold, design: .rounded))
-                    .foregroundStyle(AppTheme.Colors.textSecondary)
+                    .font(.system(size: 10, weight: .heavy, design: .rounded))
+                    .foregroundStyle(AppTheme.Colors.textSecondary.opacity(0.5))
                     .textCase(.uppercase)
-                    .tracking(0.6)
+                    .tracking(1.0)
+
+                // Fading line after label
+                LinearGradient(
+                    colors: [
+                        AppTheme.Colors.textSecondary.opacity(0.1),
+                        .clear,
+                    ],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+                .frame(height: 0.5)
             }
             .padding(.horizontal, AppTheme.Layout.margin)
 
