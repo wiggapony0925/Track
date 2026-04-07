@@ -36,6 +36,7 @@ router = APIRouter(tags=["mnr"])
         "the full MNR system map. Each line includes station markers with "
         "coordinates."
     ),
+    responses={**RESP_502},
 )
 async def mnr_shapes_all() -> AllCommuterRailLinesResponse:
     """Return polylines for ALL Metro-North lines."""

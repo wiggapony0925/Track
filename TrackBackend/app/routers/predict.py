@@ -48,7 +48,7 @@ from app.cache_config import PREDICT_FACTOR_MAX_SIZE, PREDICT_FACTOR_TTL
 from app.clients import redis_client as _redis
 from app.ml.delay_model import predict_factor
 from app.ml.recency_model import get_weighted_error
-from app.models import ReloadModelResponse
+from app.models import RESP_400, RESP_403, ReloadModelResponse
 from app.utils.logger import TrackLogger
 from app.utils.metrics import ML_PREDICTION_FACTOR, ML_PREDICTIONS_TOTAL
 
@@ -183,6 +183,7 @@ class DelayPrediction(BaseModel):
         "The response includes the adjusted minutes, the multiplicative delay factor, "
         "and the model source used."
     ),
+    responses={**RESP_400},
 )
 async def predict_delay(
     minutes_away: int = Query(
@@ -422,9 +423,10 @@ def _is_rush(hour: int, dow: int) -> bool:
 
 @router.post(
     "/predict/reload-model",
+    response_model=ReloadModelResponse,
     summary="Reload ML model",
     description="Hot-reloads the LightGBM delay model from disk without restarting the server. Localhost only.",
-    responses={403: {"description": "Forbidden — endpoint restricted to localhost."}},
+    responses={**RESP_403},
 )
 async def reload_model_endpoint(request: Request) -> ReloadModelResponse:
     """Hot-reload the delay prediction model from disk.

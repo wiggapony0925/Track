@@ -128,6 +128,7 @@ async def alerts(
         "When a route has multiple active alerts the one with the highest "
         "sort_order wins, matching the MTA Status Box specification."
     ),
+    responses={**RESP_502},
 )
 async def route_status(
     mode: str | None = Query(

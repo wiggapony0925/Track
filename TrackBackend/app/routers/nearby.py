@@ -541,6 +541,7 @@ router = APIRouter(tags=["nearby"])
         "**Deprecated** — use `/nearby/grouped` instead, which groups arrivals by route, "
         "includes ML delay corrections, and benefits from response-level caching."
     ),
+    responses={**RESP_503},
 )
 async def nearby_transit(
     response: Response,

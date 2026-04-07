@@ -543,6 +543,7 @@ async def subway_shapes_all() -> Response:
         "Returns all 470+ unique subway stations with the route IDs that serve each — "
         "for rendering map markers with multi-line badges."
     ),
+    responses={**RESP_503},
 )
 async def subway_stations_all() -> AllSubwayStationsResponse:
     """Return all unique subway stations with the lines that serve them.
@@ -590,6 +591,7 @@ async def subway_stations_processed() -> ProcessedStationsResponse:
         "Returns subway stations within a given radius of a GPS coordinate, sorted by distance. "
         "Lighter than downloading all 470+ stations when only nearby ones are needed."
     ),
+    responses={**RESP_503},
 )
 async def subway_stations_nearby(
     lat: float = Query(

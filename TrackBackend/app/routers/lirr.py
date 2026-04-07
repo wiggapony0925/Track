@@ -40,6 +40,7 @@ def _normalise_lirr_name(name: str) -> str:
         "full LIRR system map. Each branch includes station markers with "
         "coordinates."
     ),
+    responses={**RESP_502},
 )
 async def lirr_shapes_all() -> AllCommuterRailLinesResponse:
     """Return polylines for ALL LIRR branches."""
