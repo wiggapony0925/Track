@@ -143,21 +143,6 @@ enum MapCameraPresets {
         )
     }
 
-    // MARK: - Sheet Latitude Shift (shared formula)
-
-    /// Computes the southward latitude shift needed to move the camera's
-    /// visible center into the unobscured area above the bottom sheet.
-    private static func sheetLatitudeShift(
-        distance: Double,
-        pitch: Double,
-        sheetFraction: Double
-    ) -> Double {
-        let pitchRad = pitch * .pi / 180.0
-        let altitude = distance * max(cos(pitchRad), 0.3)
-        let halfFOV: Double = .pi / 8.0
-        let fullSpanDeg = (2.0 * altitude * tan(halfFOV)) / 111_000.0
-        return fullSpanDeg * sheetFraction * 0.5
-    }
 
     // MARK: - Walking Path Fit
 
@@ -213,36 +198,20 @@ enum MapCameraPresets {
         ))
     }
 
-    // MARK: - Walking Path + Sheet Integration
+    // MARK: - Walking Route Bounding-Box Fit
 
-    /// Fits user and stop in the visible map area **above** the bottom sheet.
-    static func fitWalkingPathAboveSheet(
-        user userCoord: CLLocationCoordinate2D,
-        stop stopCoord: CLLocationCoordinate2D,
-        is3D: Bool,
-        sheetFraction: Double
-    ) -> TrackCameraPosition {
-        return fitTwoPoints(from: userCoord, to: stopCoord, is3D: is3D)
-    }
-
-    // MARK: - Actual Walking Route Fit
-
-    /// Fits a walking route bounding box in the visible map area **above** the bottom sheet.
-    /// This provides a perfect fit for the actual walking path (including city block corners)
-    /// rather than just drawing a straight line.
+    /// Fits a walking route bounding box in the visible map area.
     ///
     /// - Parameters:
     ///   - latSpanMeters: North-south span of the route bounding box in meters.
     ///   - lonSpanMeters: East-west span of the route bounding box in meters.
     ///   - center: Geographic center of the bounding box.
     ///   - is3D: Whether 3D perspective is active.
-    ///   - sheetFraction: Fraction of the screen covered by the bottom sheet.
-    static func fitWalkingRouteAboveSheet(
+    static func fitWalkingRoute(
         latSpanMeters: Double,
         lonSpanMeters: Double,
         center: CLLocationCoordinate2D,
-        is3D: Bool,
-        sheetFraction: Double
+        is3D: Bool
     ) -> TrackCameraPosition {
         let maxSpanMeters = max(latSpanMeters, lonSpanMeters)
         let distance = max(walkingMinAltitude, min(maxSpanMeters * 3.2, walkingMaxAltitude))
@@ -252,34 +221,6 @@ enum MapCameraPresets {
             distance: distance,
             heading: 0,
             pitch: is3D ? 60 : 0
-        ))
-    }
-
-    // MARK: - Sheet Compensation
-
-    /// Adjusts any camera position so the focal point appears in the visible
-    /// area ABOVE the bottom sheet rather than behind it.
-    static func sheetCompensated(
-        _ position: TrackCameraPosition,
-        sheetFraction: Double
-    ) -> TrackCameraPosition {
-        guard sheetFraction > 0.05 && sheetFraction < 0.95 else { return position }
-        guard let camera = position.camera else { return position }
-
-        let latShift = sheetLatitudeShift(
-            distance: camera.distance,
-            pitch: camera.pitch,
-            sheetFraction: sheetFraction
-        )
-
-        return .camera(TrackCamera(
-            centerCoordinate: CLLocationCoordinate2D(
-                latitude: camera.centerCoordinate.latitude - latShift,
-                longitude: camera.centerCoordinate.longitude
-            ),
-            distance: camera.distance,
-            heading: camera.heading,
-            pitch: camera.pitch
         ))
     }
 }

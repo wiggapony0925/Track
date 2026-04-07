@@ -16,7 +16,6 @@ struct MapControlsOverlay: View {
     @Binding var sheetDetent: PresentationDetent
     let currentMapCenter: CLLocationCoordinate2D?
     let currentMapDistance: Double?
-    let sheetHeightFraction: CGFloat
     
     /// Called when the user taps the recenter button — HomeView uses this
     /// to dismiss drag-to-search and snap back to the real GPS location.
@@ -162,7 +161,7 @@ struct MapControlsOverlay: View {
         
         // Collapse the sheet to half-height to reveal the map
         withAnimation(MapCameraPresets.snapAnimation) {
-            sheetDetent = .fraction(0.4)
+            sheetDetent = SheetConstants.defaultDetent
         }
 
         // If a route is currently selected, re-invoke the fit algorithm
@@ -171,8 +170,7 @@ struct MapControlsOverlay: View {
         if viewModel.selectedRouteId != nil,
            let fitCamera = viewModel.cameraPositionFittingRoute(
                userLocation: locationManager.currentLocation,
-               is3D: is3DMode,
-               sheetFraction: sheetHeightFraction
+               is3D: is3DMode
            ) {
             withAnimation(MapCameraPresets.flyAnimation) {
                 cameraPosition = fitCamera
@@ -299,7 +297,7 @@ struct MapControlsOverlay: View {
     let camPos: TrackCameraPosition = .userLocation
     let cameraBinding: Binding<TrackCameraPosition> = .constant(camPos)
     let is3DBinding: Binding<Bool> = .constant(false)
-    let fraction: PresentationDetent = .fraction(0.4)
+    let fraction: PresentationDetent = SheetConstants.defaultDetent
     let detentBinding: Binding<PresentationDetent> = .constant(fraction)
     let alertsClosure: () -> Void = {}
     ZStack {
@@ -312,7 +310,6 @@ struct MapControlsOverlay: View {
             sheetDetent: detentBinding,
             currentMapCenter: nil,
             currentMapDistance: nil,
-            sheetHeightFraction: 0.42,
             onAlertsTapped: alertsClosure
         )
     }

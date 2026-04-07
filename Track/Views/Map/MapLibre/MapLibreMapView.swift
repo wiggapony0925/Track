@@ -177,6 +177,10 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
     /// their data inputs change, causing markers to "stick" to the screen.
     var onCameraMove: (() -> Void)?
 
+    /// Bridges real-time sheet height → contentInset.bottom (bypasses SwiftUI).
+    /// Wired once in makeUIView; not included in Equatable check.
+    var sheetHeightObserver: SheetHeightObserver?
+
     // MARK: - UIViewRepresentable
 
     func makeUIView(context: Context) -> MLNMapView {
@@ -197,6 +201,7 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         // Core configuration
         mapView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         mapView.automaticallyAdjustsContentInset = false
+        mapView.isRotateEnabled = false
         mapView.showsUserLocation = showUserLocation
         mapView.minimumZoomLevel = MapLibreStyleConfig.minZoom
         mapView.maximumZoomLevel = MapLibreStyleConfig.maxZoom
@@ -208,7 +213,7 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         mapView.preferredFramesPerSecond = .maximum
 
         // Attribution (required by OSM/MapTiler ToS)
-        mapView.attributionButton.isHidden = false
+        mapView.attributionButton.isHidden = true
         mapView.logoView.isHidden = true
 
         // Compass
@@ -224,6 +229,24 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
 
         // Delegate
         mapView.delegate = context.coordinator
+
+        // Wire interactive sheet height → map content inset.
+        // This closure fires on every drag frame (via SheetHeightObserver)
+        // and sets contentInset directly in UIKit — zero SwiftUI re-renders.
+        if let observer = sheetHeightObserver {
+            observer.onHeightChanged = { [weak mapView] height in
+                mapView?.contentInset = UIEdgeInsets(
+                    top: 0, left: 0, bottom: height, right: 0
+                )
+            }
+            // Apply current height immediately (sheet may already be visible)
+            let initial = observer.currentHeight
+            if initial > 0 {
+                mapView.contentInset = UIEdgeInsets(
+                    top: 0, left: 0, bottom: initial, right: 0
+                )
+            }
+        }
 
         // Pass reference back for overlay coordinate projection
         DispatchQueue.main.async {

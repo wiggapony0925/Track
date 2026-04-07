@@ -21,8 +21,11 @@ struct HomeView: View {
     @State private var viewModel = HomeViewModel()
     var locationManager: LocationManager
     @State private var sheetNavigator = SheetNavigator()
-    @State private var sheetDetent: PresentationDetent = .fraction(0.4)
+    @State private var sheetDetent: PresentationDetent = SheetConstants.defaultDetent
     @State private var cameraPosition: TrackCameraPosition = .userLocation
+    /// Bridges sheet pixel height to the map's UIKit contentInset in
+    /// real-time (60fps) without SwiftUI re-renders.
+    @State private var sheetHeightObserver = SheetHeightObserver()
     @State private var lastUpdated: Date?
     @State private var refreshTimer: Timer?
     @State private var vehiclePollTimer: Timer?
@@ -75,21 +78,6 @@ struct HomeView: View {
     /// a separate flag — reuses the existing loading infrastructure.
     private var isDragSearching: Bool {
         viewModel.isLoading && viewModel.isSearchPinActive
-    }
-
-    /// The fraction of the screen currently covered by the bottom sheet.
-    /// Returns 0 when no route detail is open or when the sheet is fully expanded
-    /// (map barely visible — no compensation needed).
-    private var sheetCoverFraction: Double {
-        guard viewModel.selectedRouteId != nil else { return 0 }
-        if sheetDetent == .large { return 0 }  // map barely visible, skip offset
-        return 0.4  // .fraction(0.4) is the default route-detail detent
-    }
-
-    /// Wraps a camera position with sheet-height compensation so the
-    /// target coordinate appears above the bottom sheet, not behind it.
-    private func aboveSheet(_ position: TrackCameraPosition) -> TrackCameraPosition {
-        MapCameraPresets.sheetCompensated(position, sheetFraction: sheetCoverFraction)
     }
     
     // MARK: - Effective Location
@@ -171,7 +159,8 @@ struct HomeView: View {
                     onRouteStopTap: presentRouteStopDetail,
                     onSystemStationTap: presentTrainStopDetail,
                     isDragSearchActive: isDragSearchActive,
-                    dragSearchSettledCenter: dragSearchSettledCenter
+                    dragSearchSettledCenter: dragSearchSettledCenter,
+                    sheetHeightObserver: sheetHeightObserver
                 )
                 
                 // MARK: - Floating Controls
@@ -183,7 +172,6 @@ struct HomeView: View {
                     sheetDetent: $sheetDetent,
                     currentMapCenter: currentMapCenter,
                     currentMapDistance: currentMapDistance,
-                    sheetHeightFraction: 0.42,
                     onRecenter: {
                         // Dismiss drag-to-search state without camera snap —
                         // MapControlsOverlay.centerMap() handles camera positioning
@@ -215,7 +203,8 @@ struct HomeView: View {
             .sheet(isPresented: .constant(true)) {
                 UniversalBottomSheet(
                     navigator: sheetNavigator,
-                    sheetDetent: $sheetDetent
+                    sheetDetent: $sheetDetent,
+                    sheetHeightObserver: sheetHeightObserver
                 ) { page in
                     sheetContent(for: page)
                 }
@@ -393,7 +382,7 @@ struct HomeView: View {
         // cameraPositionFittingRoute would fall back to a generic
         // user-location zoom that misses the stop entirely.
         withAnimation(MapCameraPresets.snapAnimation) {
-            sheetDetent = .fraction(0.4)
+            sheetDetent = SheetConstants.defaultDetent
         }
     }
     
@@ -404,14 +393,13 @@ struct HomeView: View {
         // are comfortably visible above the sheet.
         if let fitCamera = viewModel.cameraPositionFittingRoute(
             userLocation: locationManager.currentLocation,
-            is3D: is3DMode,
-            sheetFraction: sheetCoverFraction
+            is3D: is3DMode
         ) {
             withAnimation(MapCameraPresets.snapAnimation) {
-                sheetDetent = .fraction(0.4)
+                sheetDetent = SheetConstants.defaultDetent
             }
             withAnimation(MapCameraPresets.smoothAnimation) {
-                cameraPosition = fitCamera   // already sheet-compensated
+                cameraPosition = fitCamera
             }
         } else if let coordinate = viewModel.nearestStopCoordinate {
             centerMap(on: coordinate)
@@ -442,11 +430,10 @@ struct HomeView: View {
         
         if let fitCamera = viewModel.cameraPositionFittingRoute(
             userLocation: locationManager.currentLocation,
-            is3D: is3DMode,
-            sheetFraction: sheetCoverFraction
+            is3D: is3DMode
         ) {
             withAnimation(MapCameraPresets.flyAnimation) {
-                cameraPosition = fitCamera   // already sheet-compensated
+                cameraPosition = fitCamera
             }
         }
     }
@@ -544,9 +531,8 @@ struct HomeView: View {
                     if viewModel.isVehicleLiveOnMap(arrival),
                        let coord = viewModel.trackedVehicleCoordinate {
                         withAnimation(MapCameraPresets.flyAnimation) {
-                            let preset = MapCameraPresets
+                            cameraPosition = MapCameraPresets
                                 .focusVehicle(at: coord, is3D: is3DMode)
-                            cameraPosition = aboveSheet(preset)
                         }
                     }
                 },
@@ -570,15 +556,14 @@ struct HomeView: View {
                     
                     // Collapse the sheet so the user can see the focused vehicle
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                        sheetDetent = .fraction(0.4)
+                        sheetDetent = SheetConstants.defaultDetent
                     }
                     
                     // Zoom to the marker if a key was provided
                     if let key, let coord = viewModel.coordinateForTappedVehicle(key) {
                         withAnimation(MapCameraPresets.flyAnimation) {
-                            let preset = MapCameraPresets
+                            cameraPosition = MapCameraPresets
                                 .focusVehicle(at: coord, is3D: is3DMode)
-                            cameraPosition = aboveSheet(preset)
                         }
                     }
                 },
@@ -641,11 +626,10 @@ struct HomeView: View {
                     // the initial route-open zoom.
                     if let fitCamera = viewModel.cameraPositionFittingRoute(
                         userLocation: locationManager.currentLocation,
-                        is3D: is3DMode,
-                        sheetFraction: sheetCoverFraction
+                        is3D: is3DMode
                     ) {
                         withAnimation(MapCameraPresets.snapAnimation) {
-                            sheetDetent = .fraction(0.4)
+                            sheetDetent = SheetConstants.defaultDetent
                         }
                         withAnimation(MapCameraPresets.flyAnimation) {
                             cameraPosition = fitCamera
@@ -1148,6 +1132,35 @@ struct HomeView: View {
     
     // MARK: - Map Centering
     
+    /// Re-adjusts the camera whenever the sheet detent changes so the
+    /// user's location or route focus stays visible above the sheet.
+    /// Mirrors the Apple Transit behaviour where the map center shifts
+    /// as the sheet height changes.
+    private func handleSheetDetentChanged() {
+        // Don't fight with drag-to-search camera positioning
+        guard !isDragSearchActive else { return }
+
+        // When sheet goes full-screen, map is barely visible — skip
+        guard sheetDetent != .large else { return }
+
+        if viewModel.selectedRouteId != nil {
+            // Route is open — re-fit using the existing algorithm
+            if let fitCamera = viewModel.cameraPositionFittingRoute(
+                userLocation: locationManager.currentLocation,
+                is3D: is3DMode
+            ) {
+                withAnimation(MapCameraPresets.smoothAnimation) {
+                    cameraPosition = fitCamera
+                }
+            }
+        } else if let coordinate = locationManager.currentLocation?.coordinate {
+            // Dashboard — keep user dot visible above sheet
+            withAnimation(MapCameraPresets.smoothAnimation) {
+                cameraPosition = MapCameraPresets.center(on: coordinate, is3D: is3DMode)
+            }
+        }
+    }
+
     /// Centers the map on the user's current location (no route selected)
     /// or gently tracks the user at transit speed even when a route detail
     /// is open, so the map follows the train.
@@ -1180,7 +1193,7 @@ struct HomeView: View {
     
     private func centerMap(on target: CLLocationCoordinate2D? = nil) {
         withAnimation(MapCameraPresets.snapAnimation) {
-            sheetDetent = .fraction(0.4)
+            sheetDetent = SheetConstants.defaultDetent
         }
         
         // Use effective location (search pin center during drag-to-search,
@@ -1190,15 +1203,13 @@ struct HomeView: View {
         
         if let destination = target, let ref = refCoord {
             withAnimation(MapCameraPresets.smoothAnimation) {
-                let preset = MapCameraPresets.fitTwoPoints(
+                cameraPosition = MapCameraPresets.fitTwoPoints(
                     from: ref, to: destination, is3D: is3DMode)
-                cameraPosition = aboveSheet(preset)
             }
         } else {
             withAnimation(MapCameraPresets.smoothAnimation) {
-                let preset = MapCameraPresets.center(
+                cameraPosition = MapCameraPresets.center(
                     on: finalTarget, is3D: is3DMode)
-                cameraPosition = aboveSheet(preset)
             }
         }
     }
@@ -1233,7 +1244,7 @@ struct HomeView: View {
             )
         )
         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-            sheetDetent = .fraction(0.4)
+            sheetDetent = SheetConstants.defaultDetent
         }
         
         Task {

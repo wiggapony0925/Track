@@ -3196,16 +3196,11 @@ final class HomeViewModel {
     /// users can pan to explore it — so we zoom to what matters most:
     /// seeing yourself and how to get to the station/stop.
     ///
-    /// When `sheetFraction > 0` the returned camera already accounts for
-    /// the bottom sheet — callers should **not** wrap the result in
-    /// `aboveSheet()` to avoid double-compensation.
-    ///
-    /// Delegates to `MapCameraPresets.fitWalkingPathAboveSheet` when a
-    /// sheet is visible, or `fitWalkingPath` otherwise.
+    /// Sheet compensation is handled by `MLNMapView.contentInset` via the
+    /// `SheetHeightObserver` — no latitude shifts needed here.
     func cameraPositionFittingRoute(
         userLocation: CLLocation?,
-        is3D: Bool,
-        sheetFraction: Double = 0
+        is3D: Bool
     ) -> TrackCameraPosition? {
         guard routeShape != nil else { return nil }
 
@@ -3221,12 +3216,11 @@ final class HomeViewModel {
                 .distance(to: MKMapPoint(x: rect.maxX, y: rect.midY))
             let center = MKMapPoint(x: rect.midX, y: rect.midY).coordinate
 
-            let routeCamera = MapCameraPresets.fitWalkingRouteAboveSheet(
+            let routeCamera = MapCameraPresets.fitWalkingRoute(
                 latSpanMeters: latSpan,
                 lonSpanMeters: lonSpan,
                 center: center,
-                is3D: is3D,
-                sheetFraction: sheetFraction
+                is3D: is3D
             )
             // The MKRoute bounding box can be very tight for short walks.
             // Enforce a minimum distance that guarantees both the user's
@@ -3256,24 +3250,20 @@ final class HomeViewModel {
 
         // ── Primary: fit user → nearest stop (straight-line fallback) ──────────
         if let nearestCoord = nearestStopCoordinate, let userLoc = refLocation {
-            return MapCameraPresets.fitWalkingPathAboveSheet(
+            return MapCameraPresets.fitWalkingPath(
                 user: userLoc.coordinate,
                 stop: nearestCoord,
-                is3D: is3D,
-                sheetFraction: sheetFraction
+                is3D: is3D
             )
         }
 
         // ── Secondary: nearest stop known but no user location ───────
         if let nearestCoord = nearestStopCoordinate {
-            let base = MapCameraPresets.center(
+            return MapCameraPresets.center(
                 on: nearestCoord,
                 distance: 1200,
                 is3D: is3D
             )
-            return sheetFraction > 0.05
-                ? MapCameraPresets.sheetCompensated(base, sheetFraction: sheetFraction)
-                : base
         }
 
         // ── Fallback: center on user at a comfortable zoom ──────────

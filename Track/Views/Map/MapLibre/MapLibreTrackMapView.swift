@@ -44,6 +44,9 @@ struct MapLibreTrackMapView: View {
     /// The settled drag-search coordinate.
     var dragSearchSettledCenter: CLLocationCoordinate2D?
 
+    /// Bridges real-time sheet height → map contentInset (bypasses SwiftUI).
+    var sheetHeightObserver: SheetHeightObserver?
+
     // MARK: - Environment
 
     @Environment(\.colorScheme) private var colorScheme
@@ -154,7 +157,8 @@ struct MapLibreTrackMapView: View {
                         _lastCameraTokenTime = now
                         cameraChangeToken &+= 1
                     }
-                }
+                },
+                sheetHeightObserver: sheetHeightObserver
             )
             .equatable() // Bypass deep structural array equality check
 
