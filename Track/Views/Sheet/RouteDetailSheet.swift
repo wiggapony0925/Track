@@ -114,6 +114,7 @@ struct RouteDetailSheet: View {
     /// Favorites manager for heart button
     @State private var isFavorited = false
     @State private var showSignInPrompt = false
+    @State private var showLostAndFound = false
     @ObservedObject private var supabase = SupabaseManager.shared
     @ObservedObject private var favoritesManager = FavoritesManager.shared
 
@@ -421,6 +422,7 @@ struct RouteDetailSheet: View {
         switch selectedTab {
         case .stops:
             stopsListSection
+            lostAndFoundPrompt
         case .departures:
             arrivalsList
         case .alerts:
@@ -446,6 +448,19 @@ struct RouteDetailSheet: View {
                     + " your favorite routes and access"
                     + " them across all your devices."
                 )
+            }
+            .sheet(isPresented: $showLostAndFound) {
+                LostAndFoundSheet(tripContext: TripContext(
+                    routeName: group.displayName,
+                    mode: group.mode,
+                    direction: selectedDirectionName,
+                    vehicleId: stableNearestArrivals.first?.vehicleId,
+                    nearestStop: stableNearestArrivals.first?.stopName
+                ))
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.hidden)
+                .presentationBackgroundInteraction(.disabled)
+                .presentationCornerRadius(24)
             }
     }
 
@@ -1017,90 +1032,75 @@ struct RouteDetailSheet: View {
 
     @ViewBuilder
     private var supplementalHeaderChips: some View {
-        let hasSupplementalChips =
-            (routeShape?.serviceType?.isEmpty == false)
-            || (routeShape == nil && !group.isBus)
-            || nearestStopWalkingDistance != nil
-            || weatherSnapshot != nil
-            || true  // always show — favorite button lives here
-
-        if hasSupplementalChips {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    // Favorite heart
-                    Button {
-                        guard supabase.isAuthenticated else {
-                            showSignInPrompt = true
-                            return
-                        }
-                        Task {
-                            let nowFav = await FavoritesManager.shared.toggleFavorite(
-                                routeId: group.routeId,
-                                routeDisplayName: group.displayName,
-                                mode: group.mode
-                            )
-                            withAnimation(.spring(response: 0.3)) {
-                                isFavorited = nowFav
-                            }
-                            HapticManager.notification(isFavorited ? .success : .warning)
-                        }
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: isFavorited ? "heart.fill" : "heart")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundColor(isFavorited ? .red : AppTheme.Colors.textSecondary)
-                                .symbolEffect(.bounce, value: isFavorited)
-                            if isFavorited {
-                                Text("Saved")
-                                    .font(.system(size: 11, weight: .bold, design: .rounded))
-                                    .foregroundColor(.red)
-                            }
-                        }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 7)
-                        .trackOverlayGlass(
-                            tint: isFavorited ? .red : routeColor,
-                            cornerRadius: 999,
-                            tintOpacity: isFavorited ? 0.08 : 0.05
+            HStack(spacing: 8) {
+                // Favorite heart
+                Button {
+                    guard supabase.isAuthenticated else {
+                        showSignInPrompt = true
+                        return
+                    }
+                    Task {
+                        let nowFav = await FavoritesManager.shared.toggleFavorite(
+                            routeId: group.routeId,
+                            routeDisplayName: group.displayName,
+                            mode: group.mode
                         )
+                        withAnimation(.spring(response: 0.3)) {
+                            isFavorited = nowFav
+                        }
+                        HapticManager.notification(isFavorited ? .success : .warning)
                     }
-                    .accessibilityLabel(isFavorited ? "Remove from favorites" : "Add to favorites")
-
-                    if let serviceType = routeShape?.serviceType, !serviceType.isEmpty {
-                        ServiceTypeBadge(serviceType: serviceType)
-                    } else if routeShape == nil && !group.isBus {
-                        SkeletonBar(width: 52, height: 22, opacity: 0.08)
-                            .clipShape(Capsule())
-                            .shimmer()
-                    }
-
-                    if let dist = nearestStopWalkingDistance {
-                        HStack(spacing: 4) {
-                            Image(systemName: "figure.walk")
-                                .font(.system(size: 10, weight: .semibold))
-                            Text(formatWalkingDistance(dist))
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: isFavorited ? "heart.fill" : "heart")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(isFavorited ? .red : AppTheme.Colors.textSecondary)
+                            .symbolEffect(.bounce, value: isFavorited)
+                        if isFavorited {
+                            Text("Saved")
                                 .font(.system(size: 11, weight: .bold, design: .rounded))
+                                .foregroundColor(.red)
                         }
-                        .foregroundColor(AppTheme.Colors.textSecondary)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 7)
-                        .trackOverlayGlass(
-                            tint: routeColor,
-                            cornerRadius: 999,
-                            tintOpacity: 0.05
-                        )
                     }
-
-                    if let weather = weatherSnapshot {
-                        WeatherChipView(snapshot: weather, style: .standard)
-                            .transition(.opacity.combined(with: .scale(scale: 0.8)))
-                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .trackOverlayGlass(
+                        tint: isFavorited ? .red : routeColor,
+                        cornerRadius: 999,
+                        tintOpacity: isFavorited ? 0.08 : 0.05
+                    )
                 }
-                .padding(.horizontal, 1)
+                .accessibilityLabel(isFavorited ? "Remove from favorites" : "Add to favorites")
+
+                // Lost something?
+                Button {
+                    showLostAndFound = true
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "bag.fill.badge.questionmark")
+                            .font(.system(size: 10, weight: .semibold))
+                        Text("Lost something?")
+                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                    }
+                    .foregroundColor(.orange)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .trackOverlayGlass(
+                        tint: .orange,
+                        cornerRadius: 999,
+                        tintOpacity: 0.06
+                    )
+                }
+
+                Spacer()
+
+                // Weather — pushed to trailing edge
+                if let weather = weatherSnapshot {
+                    WeatherChipView(snapshot: weather, style: .standard)
+                        .transition(.opacity.combined(with: .scale(scale: 0.8)))
+                }
             }
-            .scrollClipDisabled()
             .animation(.easeInOut(duration: 0.3), value: weatherSnapshot != nil)
-        }
     }
 
     private var routeHeaderActionRail: some View {
@@ -3178,7 +3178,8 @@ struct RouteDetailSheet: View {
                 estimatedTimestamp: estimatedTs,
                 isFirst: index == 0,
                 isLast: index == dirStops.count - 1,
-                isSkipped: localOnlyIds.contains(stop.id)
+                isSkipped: localOnlyIds.contains(stop.id),
+                vehicleId: nextArrival?.vehicleId
             )
         }
 
@@ -3215,6 +3216,51 @@ struct RouteDetailSheet: View {
             inSheetSelectedStopId = nil
             onStopSelected?(nil)
         }
+    }
+
+    /// "Leave something behind?" prompt shown below the stops list.
+    private var lostAndFoundPrompt: some View {
+        Button {
+            showLostAndFound = true
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "bag.fill")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(AppTheme.Colors.mtaBlue)
+                    .frame(width: 32, height: 32)
+                    .background(
+                        Circle()
+                            .fill(AppTheme.Colors.mtaBlue.opacity(0.08))
+                    )
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Leave something behind?")
+                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                        .foregroundColor(AppTheme.Colors.textPrimary)
+                    Text("Learn how to recover lost items on the MTA")
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(AppTheme.Colors.textTertiary)
+            }
+            .padding(14)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(AppTheme.Colors.cardFloating.opacity(0.5))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .strokeBorder(AppTheme.Colors.borderSubtle, lineWidth: 0.5)
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, AppTheme.Layout.margin)
+        .padding(.top, 16)
     }
 
     /// Finds transfer routes at a given stop.

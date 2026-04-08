@@ -27,6 +27,8 @@ struct StopRowData: Identifiable {
     let isLast: Bool
     /// True when an express train skips this stop.
     var isSkipped: Bool = false
+    /// MTA vehicle/fleet identifier (e.g. "MTA NYCT_7560") — bus only.
+    var vehicleId: String? = nil
 }
 
 // MARK: - Stops List View
@@ -165,7 +167,7 @@ struct StopsListView: View {
                                 longitude: stop.lon
                             ))
                             let walkMin = max(1, Int((d / 80.0).rounded()))
-                            walkingTimeBadge(minutes: walkMin)
+                            walkingTimeBadge(minutes: walkMin, meters: d)
                         }
 
                         StopRowView(
@@ -200,7 +202,7 @@ struct StopsListView: View {
                         longitude: stop.lon
                     ))
                     let walkMin = max(1, Int((d / 80.0).rounded()))
-                    walkingTimeBadge(minutes: walkMin)
+                    walkingTimeBadge(minutes: walkMin, meters: d)
                 }
 
                 StopRowView(
@@ -285,8 +287,16 @@ struct StopsListView: View {
     /// Walking time pill shown above the nearest stop — includes a
     /// continuous route-colored line segment on the left so the vertical
     /// timeline is never broken.
-    private func walkingTimeBadge(minutes: Int) -> some View {
-        HStack(alignment: .center, spacing: 0) {
+    private func walkingTimeBadge(minutes: Int, meters: Double) -> some View {
+        let distText: String = {
+            if meters >= 1000 {
+                return String(format: "%.1f km", meters / 1000)
+            } else {
+                return "\(Int(meters.rounded()))m"
+            }
+        }()
+
+        return HStack(alignment: .center, spacing: 0) {
             // Continuous line segment matching the stop row line
             Rectangle()
                 .fill(routeColor.opacity(0.5))
@@ -298,6 +308,12 @@ struct StopsListView: View {
                     .font(.system(size: 10, weight: .semibold))
                 Text("\(minutes) min walk")
                     .font(.system(size: 11, weight: .bold, design: .rounded))
+                Text("·")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(AppTheme.Colors.mtaBlue.opacity(0.4))
+                Text(distText)
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundColor(AppTheme.Colors.mtaBlue.opacity(0.7))
             }
             .foregroundColor(AppTheme.Colors.mtaBlue)
             .padding(.horizontal, 10)
@@ -572,14 +588,18 @@ struct StopRowView: View {
     private var arrivalColumn: some View {
         if let minutes = stop.nextArrivalMinutes, !stop.nextArrivalIsScheduled || minutes >= 0 {
             if stop.nextArrivalIsAtStop {
-                // ── At stop / Now ──
-                Text("Now")
-                    .font(.system(size: 13, weight: .heavy, design: .rounded))
-                    .foregroundColor(AppTheme.Colors.successGreen)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(AppTheme.Colors.successGreen.opacity(0.10))
-                    .clipShape(Capsule())
+                VStack(alignment: .trailing, spacing: 3) {
+                    // ── At stop / Now ──
+                    Text("Now")
+                        .font(.system(size: 13, weight: .heavy, design: .rounded))
+                        .foregroundColor(AppTheme.Colors.successGreen)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(AppTheme.Colors.successGreen.opacity(0.10))
+                        .clipShape(Capsule())
+
+                    vehicleIdLabel
+                }
             } else {
                 VStack(alignment: .trailing, spacing: 2) {
                     // Absolute timestamp — primary (like Transit app)
@@ -593,7 +613,6 @@ struct StopRowView: View {
                             )
                     }
 
-                    // Relative ETA — secondary with live dot
                     HStack(spacing: 3) {
                         if !stop.nextArrivalIsScheduled {
                             Circle()
@@ -610,6 +629,8 @@ struct StopRowView: View {
                                        : AppTheme.Colors.successGreen)
                             )
                     }
+
+                    vehicleIdLabel
                 }
             }
         } else if let est = stop.estimatedTimestamp {
@@ -623,6 +644,21 @@ struct StopRowView: View {
                 )
         } else {
             EmptyView()
+        }
+    }
+
+    /// Small vehicle fleet-number label (e.g. "#7560") — bus only.
+    @ViewBuilder
+    private var vehicleIdLabel: some View {
+        if let raw = stop.vehicleId, !raw.isEmpty {
+            // Strip "MTA NYCT_" / "MTABC_" prefix to get the fleet number
+            let fleet = raw
+                .replacingOccurrences(of: "MTA NYCT_", with: "")
+                .replacingOccurrences(of: "MTABC_", with: "")
+                .replacingOccurrences(of: "MTA_", with: "")
+            Text("#\(fleet)")
+                .font(.system(size: 9, weight: .medium, design: .monospaced))
+                .foregroundColor(AppTheme.Colors.textTertiary)
         }
     }
 }
