@@ -321,7 +321,8 @@ struct GroupedNearbyTransitResponse: Codable, Identifiable, Equatable {
     var alerts: [InlineAlertResponse] = []
     /// Express subway variants merged into this group (e.g. ["7X"]).
     var expressRoutes: [String] = []
-    /// Bus service classification: "Local", "Limited", "Select Bus Service", "Express", or nil.
+    /// Bus service classification: "Local", "Limited", "Local / Limited",
+    /// "Select Bus Service", "Express", "School", or nil for non-bus routes.
     var busServiceType: String?
 
     var isBus: Bool { mode == "bus" }
