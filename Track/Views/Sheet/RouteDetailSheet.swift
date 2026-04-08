@@ -96,6 +96,10 @@ struct RouteDetailSheet: View {
     /// Which content tab is active: arrivals, departures, or alerts.
     @State private var selectedTab: RouteDetailTab = .stops
 
+    /// Current drag offset for the floating panel.
+    /// Negative = dragged up (expanded), 0 = resting position.
+    @State private var panelDragOffset: CGFloat = 0
+
     /// Stop ID selected by tapping a stop row — filters the Departures tab.
     @State private var inSheetSelectedStopId: String?
 
@@ -459,7 +463,6 @@ struct RouteDetailSheet: View {
 
     private var bodyWithLifecycle: some View {
         bodyContent
-            .background(AppTheme.Colors.background)
             .onAppear(perform: handleOnAppear)
             .onChange(of: group) { _, _ in handleGroupChange() }
             .onChange(of: stableNearestArrivals) { _, _ in
@@ -474,81 +477,197 @@ struct RouteDetailSheet: View {
 
     // MARK: - Body Content
 
-    private var bodyContent: some View {
-        ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 0) {
-                // ── Hero zone: header + alert + countdown + direction ──
-                // Wrapped in a tinted backdrop that visually groups the
-                // "at a glance" info and creates route-colored identity.
-                heroZone
-                    .padding(.bottom, 8)
+    /// Whether the panel is fully expanded (scroll content enabled).
+    /// Updated dynamically in bodyContent via GeometryReader.
+    @State private var isPanelFullyExpanded: Bool = false
 
-                // ── Gradient fade separator ──
-                heroSeparator
-                    .padding(.bottom, 16)
-
-                // ── Tab navigation & content ──
-                contentTabPicker
-                    .padding(.bottom, 18)
-
-                tabContent
-                    .padding(.bottom, 24)
-
-                // ── Footer metadata ──
-                routeInfoFooter
-
-                Spacer().frame(height: 50)
-            }
+    /// Compute expansion state from geometry size instead of deprecated UIScreen.main.
+    private func updatePanelExpanded(totalHeight: CGFloat) {
+        let threshold = -(totalHeight * 0.45 * 0.95)
+        let expanded = panelDragOffset <= threshold
+        if expanded != isPanelFullyExpanded {
+            DispatchQueue.main.async { isPanelFullyExpanded = expanded }
         }
     }
 
-    // MARK: - Hero Zone
+    private var bodyContent: some View {
+        GeometryReader { proxy in
+            let safeTop = proxy.safeAreaInsets.top
+            let totalHeight = proxy.size.height + safeTop
+            let minPanelHeight = totalHeight * 0.45
+            let maxPanelHeight = totalHeight
+            let _ = updatePanelExpanded(totalHeight: totalHeight)
+            let range = maxPanelHeight - minPanelHeight
+            // Clamp panel height between min and max
+            let panelHeight = min(max(minPanelHeight - panelDragOffset, minPanelHeight), maxPanelHeight)
+            // How far expanded: 0 = resting, 1 = fully open
+            let expandProgress = (panelHeight - minPanelHeight) / max(range, 1)
 
-    /// Groups header, alert, countdown, and direction picker into a visually
-    /// cohesive "hero" area with a subtle route-colored backdrop.
-    private var heroZone: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            routeHeader
-                .padding(.bottom, 14)
+            ZStack(alignment: .top) {
+                // ── Map-floating action rail (sits on the map area, right side) ──
+                HStack {
+                    Spacer()
+                    routeHeaderActionRail
+                }
+                .padding(.top, safeTop + 8)
+                .padding(.horizontal, AppTheme.Layout.margin)
+                .opacity(1.0 - expandProgress * 1.5)
+                .allowsHitTesting(expandProgress < 0.4)
 
-            alertBannerContent
-                .padding(.bottom, 16)
+                // ── Bottom floating panel ──
+                VStack(spacing: 0) {
+                    Spacer(minLength: 0)
 
-            countdownSection
-                .padding(.bottom, 12)
+                    panelContent(
+                        safeBottom: proxy.safeAreaInsets.bottom,
+                        isExpanded: expandProgress > 0.95,
+                        expandRange: range
+                    )
+                    .frame(height: panelHeight)
+                    .background {
+                        // Always a gradient: transparent top → opaque bottom
+                        ZStack {
+                            // Frosted material masked to fade in from top
+                            Rectangle()
+                                .fill(.ultraThinMaterial)
+                                .mask(
+                                    LinearGradient(
+                                        stops: [
+                                            .init(color: .clear, location: 0),
+                                            .init(color: .white.opacity(0.25), location: 0.06),
+                                            .init(color: .white.opacity(0.6), location: 0.14),
+                                            .init(color: .white, location: 0.25),
+                                        ],
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    )
+                                )
 
-            directionPickerContent
-                .padding(.bottom, 8)
+                            // Opaque background fading in from ~30% down
+                            LinearGradient(
+                                stops: [
+                                    .init(color: AppTheme.Colors.background.opacity(0), location: 0),
+                                    .init(color: AppTheme.Colors.background.opacity(0.3), location: 0.12),
+                                    .init(color: AppTheme.Colors.background.opacity(0.7), location: 0.22),
+                                    .init(color: AppTheme.Colors.background, location: 0.35),
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+
+                            // Subtle route-color wash at the top
+                            LinearGradient(
+                                stops: [
+                                    .init(color: routeColor.opacity(0.05), location: 0),
+                                    .init(color: routeColor.opacity(0.02), location: 0.10),
+                                    .init(color: .clear, location: 0.20),
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        }
+                        .clipShape(
+                            UnevenRoundedRectangle(
+                                topLeadingRadius: 28 * (1.0 - expandProgress),
+                                topTrailingRadius: 28 * (1.0 - expandProgress)
+                            )
+                        )
+                    }
+                }
+                .ignoresSafeArea(edges: .bottom)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .padding(.top, AppTheme.Layout.margin)
-        .padding(.vertical, 4)
-        .background(
-            ZStack {
-                // Deep route-colored gradient wash
+    }
+
+    // NOTE: mapFloatingHeader, unifiedRouteHeroCard, routeTerminals removed —
+    // the route identity is now shown by the MapControlsOverlay's selectedRouteBanner.
+
+    /// Interior content of the floating bottom panel — direction, countdowns, tabs, content.
+    private func panelContent(
+        safeBottom: CGFloat,
+        isExpanded: Bool,
+        expandRange: CGFloat
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 0) {
+                    // Direction picker + destination label
+                    directionPickerContent
+                        .padding(.horizontal, AppTheme.Layout.margin)
+                        .padding(.top, 14)
+
+                    // Supplemental chips (walk distance, weather)
+                    supplementalHeaderChips
+                        .padding(.horizontal, AppTheme.Layout.margin)
+                        .padding(.top, 10)
+
+                    // Countdown chips
+                    countdownSection
+                        .padding(.top, 14)
+
+                    // Tab picker + divider
+                    contentTabPicker
+                        .padding(.top, 16)
+
+                    contentDeckDivider
+                        .padding(.top, 12)
+
+                    // Tab content
+                    VStack(alignment: .leading, spacing: 18) {
+                        tabContent
+                        if selectedTab != .stops {
+                            routeInfoFooter
+                        }
+                    }
+                    .padding(.top, 14)
+                    .padding(.bottom, safeBottom + 20)
+                }
+            }
+            .scrollDisabled(!isExpanded)
+            // When scroll is disabled (panel collapsed), drag gestures
+            // on the content move the panel up/down instead.
+            .simultaneousGesture(
+                isExpanded
+                    ? nil
+                    : DragGesture()
+                        .onChanged { value in
+                            panelDragOffset = value.translation.height
+                        }
+                        .onEnded { value in
+                            let velocity = value.predictedEndTranslation.height
+                                - value.translation.height
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) {
+                                if velocity < -100 || value.translation.height < -80 {
+                                    panelDragOffset = -expandRange
+                                } else if velocity > 100 || value.translation.height > 80 {
+                                    panelDragOffset = 0
+                                } else {
+                                    let mid = -expandRange / 2
+                                    panelDragOffset = panelDragOffset < mid
+                                        ? -expandRange : 0
+                                }
+                            }
+                        }
+            )
+        }
+    }
+
+    private var contentDeckDivider: some View {
+        Rectangle()
+            .fill(
                 LinearGradient(
-                    stops: [
-                        .init(color: routeColor.opacity(0.08), location: 0),
-                        .init(color: routeColor.opacity(0.03), location: 0.4),
-                        .init(color: routeColor.opacity(0.01), location: 0.7),
-                        .init(color: Color.clear, location: 1),
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                // Radial glow emanating from badge area
-                RadialGradient(
                     colors: [
-                        routeColor.opacity(0.06),
-                        routeColor.opacity(0.02),
+                        .clear,
+                        routeColor.opacity(0.10),
                         .clear,
                     ],
-                    center: .init(x: 0.12, y: 0.15),
-                    startRadius: 0,
-                    endRadius: 250
+                    startPoint: .leading,
+                    endPoint: .trailing
                 )
-            }
-            .ignoresSafeArea(edges: .top)
-        )
+            )
+            .frame(height: 1)
+            .padding(.horizontal, AppTheme.Layout.margin)
     }
 
     /// Elegant gradient separator between hero zone and content.
@@ -872,249 +991,237 @@ struct RouteDetailSheet: View {
         return best < .greatestFiniteMagnitude ? best : nil
     }
 
-    private var routeHeader: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            // ── Top row: badge + name/direction + action buttons ──
-            HStack(spacing: 16) {
-                // Route badge with ambient glow — switches to diamond
-                // when the user selects an express arrival chip.
-                // Badge reflects: 1) user-selected chip, 2) nearest/leftmost chip, 3) group name
-                let autoRouteId = stableNearestArrivals.first?.routeId
-                let badgeRouteID = selectedChipRouteId ?? autoRouteId ?? group.displayName
-                let badgeIsExpress: Bool = {
-                    // If user selected a chip, use that chip's express flag
-                    if let selId = selectedChipRouteId {
-                        return stableNearestArrivals.first(where: { $0.routeId == selId })?.isExpress ?? false
-                    }
-                    // Otherwise use the nearest/leftmost chip
-                    return stableNearestArrivals.first?.isExpress ?? false
-                }()
-                ZStack {
-                    // Ambient glow ring behind badge
-                    Circle()
-                        .fill(
-                            RadialGradient(
-                                colors: [
-                                    routeColor.opacity(0.12),
-                                    routeColor.opacity(0.03),
-                                    .clear,
-                                ],
-                                center: .center,
-                                startRadius: 18,
-                                endRadius: 40
-                            )
-                        )
-                        .frame(width: 80, height: 80)
-                        .blur(radius: 6)
-                    RouteBadge(
-                        routeID: badgeRouteID,
-                        size: .large,
-                        hexColor: group.colorHex,
-                        mode: group.mode,
-                        isExpressOverride: badgeIsExpress
-                    )
-                    .shadow(
-                        color: routeColor.opacity(0.35),
-                        radius: 10, x: 0, y: 5
-                    )
-                    .shadow(
-                        color: routeColor.opacity(0.1),
-                        radius: 20, x: 0, y: 10
-                    )
-                }
-                .animation(.spring(response: 0.35, dampingFraction: 0.7), value: badgeRouteID)
-
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(group.displayName)
-                        .font(AppTheme.Typography.sheetTitle)
-                        .foregroundColor(AppTheme.Colors.textPrimary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-
-                    if group.directions.indices.contains(selectedDirectionIndex) {
-                        let dir = group.directions[selectedDirectionIndex]
-                        let label = resolvedDirectionLabel(
-                            for: dir,
-                            at: selectedDirectionIndex
-                        )
-                        let subtitle = "→ \(label)"
-                        Text(subtitle)
-                            .font(AppTheme.Typography.cardSubtitle)
-                            .foregroundColor(AppTheme.Colors.textSecondary)
-                            .lineLimit(1)
-                    }
-                }
-
-                Spacer()
-
-            // Favorite + Close buttons — glass circle style
-            HStack(spacing: 8) {
-                // Map controls (shown when sheet is expanded)
-                if isSheetExpanded {
-                    // 3D / 2D Toggle
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.5)) {
-                            is3DMode.toggle()
-                            if let loc = currentLocation {
-                                cameraPosition = MapCameraPresets.center(on: loc, is3D: is3DMode)
-                            }
-                        }
-                    } label: {
-                        actionCircle(
-                            icon: is3DMode ? "view.2d" : "view.3d",
-                            iconColor: AppTheme.Colors.textSecondary,
-                            fill: AnyShapeStyle(AppTheme.Gradients.controlSurface),
-                            borderColor: AppTheme.Colors.borderSubtle
-                        )
-                    }
-                    .accessibilityLabel(is3DMode ? "Switch to 2D" : "Switch to 3D")
-
-                    // Recenter / Location Button
-                    Button {
-                        onRecenter?()
-                    } label: {
-                        actionCircle(
-                            icon: "location.fill",
-                            iconColor: AppTheme.Colors.mtaBlue,
-                            fill: AnyShapeStyle(AppTheme.Gradients.accentSurface),
-                            borderColor: AppTheme.Colors.borderAccent.opacity(0.35),
-                            glowColor: AppTheme.Colors.mtaBlue.opacity(0.08)
-                        )
-                    }
-                    .accessibilityLabel("Recenter on my location")
-                }
-
-                // Heart button
-                Button {
-                    guard supabase.isAuthenticated else {
-                        showSignInPrompt = true
-                        return
-                    }
-                    Task {
-                        let nowFav = await FavoritesManager.shared.toggleFavorite(
-                            routeId: group.routeId,
-                            routeDisplayName: group.displayName,
-                            mode: group.mode
-                        )
-                        withAnimation(.spring(response: 0.3)) {
-                            isFavorited = nowFav
-                        }
-                        HapticManager.notification(isFavorited ? .success : .warning)
-                    }
-                } label: {
-                    ZStack {
-                        Circle()
-                            .fill(
-                                isFavorited
-                                    ? AnyShapeStyle(
-                                        RadialGradient(
-                                            colors: [
-                                                .red.opacity(0.18),
-                                                .red.opacity(0.06),
-                                                .clear,
-                                            ],
-                                            center: .center,
-                                            startRadius: 0,
-                                            endRadius: 20
-                                        )
-                                      )
-                                    : AnyShapeStyle(AppTheme.Gradients.controlSurface)
-                            )
-                            .overlay {
-                                Circle().strokeBorder(
-                                    isFavorited
-                                        ? Color.red.opacity(0.25)
-                                        : AppTheme.Colors.borderSubtle,
-                                    lineWidth: 0.5
-                                )
-                            }
-                        Image(
-                            systemName: isFavorited
-                                ? "heart.fill" : "heart"
-                        )
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundColor(isFavorited ? .red : AppTheme.Colors.textSecondary)
-                            .symbolEffect(.bounce, value: isFavorited)
-                    }
-                    .frame(width: 34, height: 34)
-                    .shadow(color: isFavorited ? .red.opacity(0.15) : AppTheme.Colors.shadow.opacity(0.1), radius: 6, y: 2)
-                }
-                .accessibilityLabel(isFavorited ? "Remove from favorites" : "Add to favorites")
-
-                // Close button
-                Button {
-                    onDismiss?()
-                } label: {
-                    actionCircle(
-                        icon: "xmark",
-                        iconColor: AppTheme.Colors.textSecondary,
-                        fill: AnyShapeStyle(AppTheme.Gradients.controlSurface),
-                        borderColor: AppTheme.Colors.borderSubtle
-                    )
-                }
-                .accessibilityLabel("Close")
-            }
+    private var routeModeLabel: String {
+        if group.isCommuterRail {
+            return group.isLIRR ? "LIRR" : "Metro-North"
         }
+        return group.isBus ? "Bus" : "Subway"
+    }
 
-            // ── Tags row: mode + service type + walking + weather ──
-            HStack(spacing: 6) {
-                Text(
-                    group.isCommuterRail
-                        ? (group.isLIRR ? "LIRR" : "Metro-North") : group.isBus ? "Bus" : "Subway"
-                )
-                .font(.system(size: 10, weight: .heavy, design: .rounded))
-                .foregroundColor(routeColor)
-                .textCase(.uppercase)
-                .tracking(0.8)
-                .padding(.horizontal, 9)
-                .padding(.vertical, 4)
-                .background(
-                    Capsule()
-                        .fill(routeColor.opacity(0.06))
-                        .overlay(
-                            Capsule()
-                                .strokeBorder(routeColor.opacity(0.12), lineWidth: 0.5)
+    private var headerDisplayRouteID: String {
+        let preferredRoute = selectedChipRouteId
+            ?? stableNearestArrivals.first?.displayName
+            ?? (!group.displayName.isEmpty ? group.displayName : group.routeId)
+        return BranchNames.resolveDisplayName(routeId: preferredRoute, mode: group.mode)
+    }
+
+    private var headerBadgeIsExpress: Bool {
+        if let selId = selectedChipRouteId {
+            return stableNearestArrivals.first(where: { $0.routeId == selId })?.isExpress ?? false
+        }
+        return stableNearestArrivals.first?.isExpress ?? false
+    }
+
+    // NOTE: routeHeader, routeIdentityPill, liveStatusPill, currentDirectionLabel,
+    // headerTitleFontSize removed — replaced by `unifiedRouteHeroCard`.
+
+    @ViewBuilder
+    private var supplementalHeaderChips: some View {
+        let hasSupplementalChips =
+            (routeShape?.serviceType?.isEmpty == false)
+            || (routeShape == nil && !group.isBus)
+            || nearestStopWalkingDistance != nil
+            || weatherSnapshot != nil
+            || true  // always show — favorite button lives here
+
+        if hasSupplementalChips {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    // Favorite heart
+                    Button {
+                        guard supabase.isAuthenticated else {
+                            showSignInPrompt = true
+                            return
+                        }
+                        Task {
+                            let nowFav = await FavoritesManager.shared.toggleFavorite(
+                                routeId: group.routeId,
+                                routeDisplayName: group.displayName,
+                                mode: group.mode
+                            )
+                            withAnimation(.spring(response: 0.3)) {
+                                isFavorited = nowFav
+                            }
+                            HapticManager.notification(isFavorited ? .success : .warning)
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: isFavorited ? "heart.fill" : "heart")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(isFavorited ? .red : AppTheme.Colors.textSecondary)
+                                .symbolEffect(.bounce, value: isFavorited)
+                            if isFavorited {
+                                Text("Saved")
+                                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                                    .foregroundColor(.red)
+                            }
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .trackOverlayGlass(
+                            tint: isFavorited ? .red : routeColor,
+                            cornerRadius: 999,
+                            tintOpacity: isFavorited ? 0.08 : 0.05
                         )
-                )
-                .dynamicTypeSize(...DynamicTypeSize.accessibility1)
-
-                // Express / Local / Mixed service type (route-level, from GTFS)
-                if let serviceType = routeShape?.serviceType, !serviceType.isEmpty {
-                    ServiceTypeBadge(serviceType: serviceType)
-                } else if routeShape == nil && !group.isBus {
-                    SkeletonBar(width: 52, height: 22, opacity: 0.08)
-                        .clipShape(Capsule())
-                        .shimmer()
-                }
-
-                // Walking distance to nearest stop
-                if let dist = nearestStopWalkingDistance {
-                    HStack(spacing: 3) {
-                        Image(systemName: "figure.walk")
-                            .font(.system(size: 9, weight: .semibold))
-                        Text(formatWalkingDistance(dist))
-                            .font(.system(size: 10, weight: .bold, design: .rounded))
                     }
-                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
-                    .background(AppTheme.Colors.textSecondary.opacity(0.05))
-                    .clipShape(Capsule())
-                    .dynamicTypeSize(...DynamicTypeSize.accessibility1)
-                }
+                    .accessibilityLabel(isFavorited ? "Remove from favorites" : "Add to favorites")
 
-                // Inline weather indicator
-                if let weather = weatherSnapshot {
-                    WeatherChipView(snapshot: weather, style: .standard)
-                        .transition(.opacity.combined(with: .scale(scale: 0.8)))
-                }
+                    if let serviceType = routeShape?.serviceType, !serviceType.isEmpty {
+                        ServiceTypeBadge(serviceType: serviceType)
+                    } else if routeShape == nil && !group.isBus {
+                        SkeletonBar(width: 52, height: 22, opacity: 0.08)
+                            .clipShape(Capsule())
+                            .shimmer()
+                    }
 
-                Spacer()
+                    if let dist = nearestStopWalkingDistance {
+                        HStack(spacing: 4) {
+                            Image(systemName: "figure.walk")
+                                .font(.system(size: 10, weight: .semibold))
+                            Text(formatWalkingDistance(dist))
+                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                        }
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .trackOverlayGlass(
+                            tint: routeColor,
+                            cornerRadius: 999,
+                            tintOpacity: 0.05
+                        )
+                    }
+
+                    if let weather = weatherSnapshot {
+                        WeatherChipView(snapshot: weather, style: .standard)
+                            .transition(.opacity.combined(with: .scale(scale: 0.8)))
+                    }
+                }
+                .padding(.horizontal, 1)
             }
+            .scrollClipDisabled()
             .animation(.easeInOut(duration: 0.3), value: weatherSnapshot != nil)
-            .padding(.leading, 4)
         }
-        .padding(.horizontal, AppTheme.Layout.margin)
+    }
+
+    private var routeHeaderActionRail: some View {
+        VStack(spacing: 10) {
+            closeRouteButton
+            if isSheetExpanded {
+                recenterRouteButton
+            }
+        }
+    }
+
+    private var perspectiveRouteButton: some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.5)) {
+                is3DMode.toggle()
+                if let loc = currentLocation {
+                    cameraPosition = MapCameraPresets.center(on: loc, is3D: is3DMode)
+                }
+            }
+        } label: {
+            actionCircle(
+                icon: is3DMode ? "view.2d" : "view.3d",
+                iconColor: AppTheme.Colors.textSecondary,
+                fill: AnyShapeStyle(AppTheme.Gradients.controlSurface),
+                borderColor: AppTheme.Colors.borderSubtle,
+                size: 42
+            )
+        }
+        .accessibilityLabel(is3DMode ? "Switch to 2D" : "Switch to 3D")
+    }
+
+    private var recenterRouteButton: some View {
+        Button {
+            onRecenter?()
+        } label: {
+            actionCircle(
+                icon: "location.fill",
+                iconColor: AppTheme.Colors.mtaBlue,
+                fill: AnyShapeStyle(AppTheme.Gradients.accentSurface),
+                borderColor: AppTheme.Colors.borderAccent.opacity(0.35),
+                glowColor: AppTheme.Colors.mtaBlue.opacity(0.08),
+                size: 42
+            )
+        }
+        .accessibilityLabel("Recenter on my location")
+    }
+
+    private var favoriteRouteButton: some View {
+        Button {
+            guard supabase.isAuthenticated else {
+                showSignInPrompt = true
+                return
+            }
+            Task {
+                let nowFav = await FavoritesManager.shared.toggleFavorite(
+                    routeId: group.routeId,
+                    routeDisplayName: group.displayName,
+                    mode: group.mode
+                )
+                withAnimation(.spring(response: 0.3)) {
+                    isFavorited = nowFav
+                }
+                HapticManager.notification(isFavorited ? .success : .warning)
+            }
+        } label: {
+            ZStack {
+                Circle()
+                    .fill(
+                        isFavorited
+                            ? AnyShapeStyle(
+                                RadialGradient(
+                                    colors: [
+                                        .red.opacity(0.18),
+                                        .red.opacity(0.06),
+                                        .clear,
+                                    ],
+                                    center: .center,
+                                    startRadius: 0,
+                                    endRadius: 20
+                                )
+                              )
+                            : AnyShapeStyle(AppTheme.Gradients.controlSurface)
+                    )
+                    .overlay {
+                        Circle().strokeBorder(
+                            isFavorited
+                                ? Color.red.opacity(0.25)
+                                : AppTheme.Colors.borderSubtle,
+                            lineWidth: 0.5
+                        )
+                    }
+                Image(systemName: isFavorited ? "heart.fill" : "heart")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundColor(isFavorited ? .red : AppTheme.Colors.textSecondary)
+                    .symbolEffect(.bounce, value: isFavorited)
+            }
+            .frame(width: 42, height: 42)
+            .shadow(
+                color: isFavorited
+                    ? .red.opacity(0.15)
+                    : AppTheme.Colors.shadow.opacity(0.1),
+                radius: 6,
+                y: 2
+            )
+        }
+        .accessibilityLabel(isFavorited ? "Remove from favorites" : "Add to favorites")
+    }
+
+    private var closeRouteButton: some View {
+        Button {
+            onDismiss?()
+        } label: {
+            actionCircle(
+                icon: "xmark",
+                iconColor: AppTheme.Colors.textSecondary,
+                fill: AnyShapeStyle(AppTheme.Gradients.controlSurface),
+                borderColor: AppTheme.Colors.borderSubtle,
+                size: 42
+            )
+        }
+        .accessibilityLabel("Close")
     }
 
     // MARK: - Action Circle Button
@@ -1125,7 +1232,8 @@ struct RouteDetailSheet: View {
         iconColor: Color,
         fill: AnyShapeStyle,
         borderColor: Color,
-        glowColor: Color = .clear
+        glowColor: Color = .clear,
+        size: CGFloat = 34
     ) -> some View {
         ZStack {
             Circle()
@@ -1145,10 +1253,10 @@ struct RouteDetailSheet: View {
                         )
                 )
             Image(systemName: icon)
-                .font(.system(size: 14, weight: .bold))
+                .font(.system(size: max(14.0, size * 0.38), weight: .bold))
                 .foregroundColor(iconColor)
         }
-        .frame(width: 34, height: 34)
+        .frame(width: size, height: size)
         .shadow(color: glowColor, radius: 8, y: 2)
         .shadow(color: AppTheme.Colors.shadow.opacity(0.1), radius: 4, y: 2)
     }
@@ -2438,13 +2546,14 @@ struct RouteDetailSheet: View {
         chips: [(arrival: NearbyTransitResponse, eta: SmartETA)]
     ) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(alignment: .top, spacing: 10) {
+            LazyHStack(alignment: .top, spacing: 10) {
                 ForEach(Array(chips.enumerated()), id: \.element.arrival.id) { index, pair in
                     arrivalCard(arrival: pair.arrival, index: index, eta: pair.eta)
                 }
             }
             .padding(.horizontal, AppTheme.Layout.margin)
-            .padding(.vertical, 8)
+            .padding(.top, 8)
+            .padding(.bottom, 4)
             .onAppear { logChips(chips) }
             .onChange(of: chips.map(\.arrival.id)) { _, _ in logChips(chips) }
         }
@@ -2823,7 +2932,8 @@ struct RouteDetailSheet: View {
                 departures: departures,
                 routeColor: routeColor,
                 isLoading: isLoadingArrivals,
-                hasScheduleData: busSchedule != nil || !cachedTrainArrivals.isEmpty
+                hasScheduleData: busSchedule != nil || !cachedTrainArrivals.isEmpty,
+                showsHeader: false
             )
         }
         .gesture(
@@ -2996,7 +3106,35 @@ struct RouteDetailSheet: View {
             return Set(ids)
         }()
 
-        return dirStops.enumerated().map { index, stop in
+        // ── Anchor time for interpolation ──
+        // Use the soonest live arrival's timestamp as the departure time
+        // from that stop, then estimate subsequent stops using average
+        // inter-stop travel time (~2 min for subway, ~3 min for bus).
+        let anchorArrival = stableNearestArrivals.first(where: {
+            !$0.isPlaceholder && $0.arrivalTs != nil
+        })
+        let anchorTs: Int? = anchorArrival?.arrivalTs
+        let anchorStopId: String? = anchorArrival?.stopId.map { normalizeStopId($0) }
+            ?? anchorArrival?.stopId
+        let anchorStopName: String? = anchorArrival?.stopName
+            .lowercased().trimmingCharacters(in: .whitespaces)
+
+        // Find which index in dirStops the anchor corresponds to
+        let anchorIndex: Int? = {
+            guard anchorTs != nil else { return nil }
+            for (i, s) in dirStops.enumerated() {
+                let normId = normalizeStopId(s.id)
+                if let aid = anchorStopId, (normId == aid || s.id == aid) { return i }
+                let nameKey = s.name.lowercased().trimmingCharacters(in: .whitespaces)
+                if let aName = anchorStopName, nameKey == aName { return i }
+            }
+            // Fallback: use first non-passed stop
+            return currentIdx ?? 0
+        }()
+
+        let intervalSec: Int = group.isBus ? 180 : 120  // 3 min bus, 2 min subway
+
+        let rows = dirStops.enumerated().map { index, stop -> StopRowData in
             let isPassed = currentIdx.map { index < $0 } ?? false
             let isCurrent = currentIdx == index
             let normId = normalizeStopId(stop.id)
@@ -3006,6 +3144,15 @@ struct RouteDetailSheet: View {
                 ?? arrivalByStop[stop.name.lowercased().trimmingCharacters(in: .whitespaces)]
             let transfers = transferRoutes(for: stop)
             let outages = accessibilityOutages(at: stop)
+
+            // Estimate arrival time if no live data for this stop
+            let estimatedTs: Int? = {
+                guard nextArrival == nil || nextArrival?.isPlaceholder == true,
+                      let aTs = anchorTs, let aIdx = anchorIndex else { return nil }
+                let stopsAway = index - aIdx
+                guard stopsAway >= 0 else { return nil }  // don't estimate for passed stops
+                return aTs + (stopsAway * intervalSec)
+            }()
 
             return StopRowData(
                 id: stop.id,
@@ -3028,11 +3175,14 @@ struct RouteDetailSheet: View {
                 nextArrivalIsScheduled: nextArrival?.isScheduledOnly ?? true,
                 nextArrivalIsAtStop: nextArrival.map { smartETA(for: $0).isAtStop } ?? false,
                 nextArrivalTimestamp: nextArrival?.arrivalTs,
+                estimatedTimestamp: estimatedTs,
                 isFirst: index == 0,
                 isLast: index == dirStops.count - 1,
                 isSkipped: localOnlyIds.contains(stop.id)
             )
         }
+
+        return rows
     }
 
     private var stopsListSection: some View {
@@ -3041,7 +3191,11 @@ struct RouteDetailSheet: View {
             routeColor: routeColor,
             isLoading: routeShape == nil,
             selectedStopId: inSheetSelectedStopId,
-            userLocation: currentLocation
+            currentRouteID: group.displayName,
+            currentRouteMode: group.mode,
+            userLocation: currentLocation,
+            showsHeader: false,
+            usesEmbeddedSurface: true
         ) { stop in
             // Single tap → navigate to full stop detail sheet
             let dirStops = routeShape?.stopsForDirection(
@@ -3354,4 +3508,3 @@ struct RouteDetailSheet: View {
         }
     }
 }
-

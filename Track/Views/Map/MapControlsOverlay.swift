@@ -31,7 +31,7 @@ struct MapControlsOverlay: View {
                 if viewModel.selectedRouteId != nil {
                     VStack {
                         selectedRouteBanner
-                            .padding(.trailing, 60) // Leave room for control cluster
+                            .padding(.trailing, viewModel.isRouteDetailPresented ? AppTheme.Layout.margin : 60)
                             .padding(.leading, AppTheme.Layout.margin)
                             .padding(.top, 8)
                         Spacer()
@@ -39,7 +39,9 @@ struct MapControlsOverlay: View {
                 }
                 
                 // MARK: - Map Control Cluster (top-right, below compass)
-                if sheetDetent != .large {
+                // Hidden when route detail sheet is open — the sheet's own
+                // action rail provides close, 3D, recenter, and favorite buttons.
+                if sheetDetent != .large && !viewModel.isRouteDetailPresented {
                     VStack {
                         HStack {
                             Spacer()
@@ -189,105 +191,177 @@ struct MapControlsOverlay: View {
     
     // MARK: - Selected Route Banner
     
-    private var selectedRouteBanner: some View {
-        HStack(spacing: 8) {
-            let group = viewModel.selectedGroupedRoute
-            
-            // Mode-specific icon
-            let iconName: String = {
-                if group?.isBus == true { return "bus.fill" }
-                if group?.isLIRR == true { return "train.side.front.car" }
-                if group?.isMNR == true { return "train.side.rear.car" }
-                return "tram.fill" // subway default
-            }()
-            
-            ZStack {
-                Circle()
-                    .fill(selectedRouteColor)
-                    .frame(width: 28, height: 28)
-                    .shadow(color: selectedRouteColor.opacity(0.30), radius: 10, x: 0, y: 4)
-                Image(systemName: iconName)
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(AppTheme.Colors.textOnColor)
+    /// Live vehicle count for the currently filtered direction.
+    private var bannerLiveCount: Int {
+        if viewModel.selectedGroupedRoute?.isBus == true {
+            return viewModel.filteredBusVehicles.count
+        }
+        return viewModel.filteredTrainVehicles.count
+    }
+
+    /// Route mode label for the banner.
+    private var bannerModeLabel: String {
+        guard let g = viewModel.selectedGroupedRoute else { return "" }
+        if g.isLIRR { return "LIRR" }
+        if g.isMNR { return "Metro-North" }
+        return g.isBus ? "BUS" : "SUBWAY"
+    }
+
+    /// Terminal pair from direction headsigns (or first/last stops fallback).
+    private var bannerTerminalPair: (String, String)? {
+        // Try direction headsigns first (always reliable)
+        if let shape = viewModel.routeShape, shape.directions.count >= 2 {
+            let a = shape.directions[0].headsign
+            let b = shape.directions[1].headsign
+            if !a.isEmpty && !b.isEmpty && a != b {
+                return (a, b)
             }
-            
-            if let routeId = viewModel.selectedRouteId {
-                let name: String = {
-                    if let g = group {
-                        if g.isLIRR { return "LIRR \(g.displayName)" }
-                        if g.isMNR { return "MNR \(g.displayName)" }
-                    }
-                    return stripMTAPrefix(routeId)
-                }()
+        }
+        // Fallback to first/last stop in the combined stops list
+        if let first = viewModel.routeShape?.stops.first?.name,
+           let last = viewModel.routeShape?.stops.last?.name,
+           first != last {
+            return (first, last)
+        }
+        return nil
+    }
+
+
+
+    /// Route alerts matching the selected route.
+    private var bannerRouteAlerts: [TransitAlert] {
+        guard let g = viewModel.selectedGroupedRoute else { return [] }
+        let byId = viewModel.serviceAlerts.matching(routeId: g.routeId, mode: g.mode)
+        let byName = viewModel.serviceAlerts.matching(routeId: g.displayName, mode: g.mode)
+        var seen = Set<String>()
+        return (byId + byName).filter { seen.insert($0.id).inserted }
+    }
+
+    /// Severity color for the most urgent alert.
+    private var bannerAlertColor: Color {
+        bannerRouteAlerts.contains(where: { $0.severity == "severe" })
+            ? AppTheme.Colors.alertRed
+            : AppTheme.Colors.warningYellow
+    }
+
+    private var selectedRouteBanner: some View {
+        VStack(spacing: 0) {
+            // ── Compact route pill ──
+            HStack(spacing: 8) {
+                if let group = viewModel.selectedGroupedRoute {
+                    RouteBadge(
+                        routeID: group.displayName.isEmpty
+                            ? stripMTAPrefix(group.routeId)
+                            : group.displayName,
+                        size: .medium,
+                        hexColor: group.colorHex,
+                        mode: group.mode
+                    )
+                }
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(name)
-                        .font(.custom("Helvetica-Bold", size: 13))
-                        .foregroundColor(AppTheme.Colors.textPrimary)
+                    // Mode label
+                    Text(bannerModeLabel)
+                        .font(.system(size: 10, weight: .heavy, design: .rounded))
+                        .foregroundColor(selectedRouteColor)
+                        .tracking(0.5)
 
-                    if let firstStop = viewModel.routeShape?.stops.first?.name,
-                       let lastStop = viewModel.routeShape?.stops.last?.name {
-                        Text("\(firstStop) to \(lastStop)")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(selectedRouteColor.opacity(0.84))
-                            .lineLimit(1)
+                    // Terminal names — arrow separator
+                    if let pair = bannerTerminalPair {
+                        HStack(spacing: 3) {
+                            Text(pair.0)
+                                .lineLimit(1)
+                            Image(systemName: "arrow.right")
+                                .font(.system(size: 7, weight: .bold))
+                                .foregroundColor(AppTheme.Colors.textTertiary)
+                            Text(pair.1)
+                                .lineLimit(1)
+                        }
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .foregroundColor(AppTheme.Colors.textSecondary)
                     } else if viewModel.routeShape == nil {
-                        // Shape hasn't loaded yet (still fetching or failed)
-                        Text("Loading route…")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(selectedRouteColor.opacity(0.55))
-                    } else {
-                        let stopsCount = viewModel.routeShape?.stops.count ?? 0
-                        Text("\(stopsCount) stops on route")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(selectedRouteColor.opacity(0.84))
+                        Text("Loading…")
+                            .font(.system(size: 11, weight: .medium, design: .rounded))
+                            .foregroundColor(AppTheme.Colors.textTertiary)
                     }
                 }
-            }
-            
-            Spacer()
-            
-            if viewModel.selectedGroupedRoute?.isBus == true {
-                Button {
-                    Task { await viewModel.refreshBusVehicles() }
-                } label: {
-                    Circle()
-                        .fill(AppTheme.Gradients.controlSurface)
-                        .overlay {
-                            Circle()
-                                .stroke(selectedRouteColor.opacity(0.22), lineWidth: 1)
-                        }
-                        .overlay {
-                            Image(systemName: "arrow.clockwise")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundColor(selectedRouteColor)
-                        }
-                        .frame(width: 30, height: 30)
-                }
-                .accessibilityLabel("Refresh bus positions")
-            }
-            
-            Button {
-                viewModel.clearRoute()
-            } label: {
-                Circle()
-                    .fill(AppTheme.Gradients.controlSurface)
-                    .overlay {
+
+                Spacer(minLength: 4)
+
+                // Live count — trailing
+                if bannerLiveCount > 0 {
+                    HStack(spacing: 3) {
                         Circle()
-                            .stroke(AppTheme.Colors.borderSubtle, lineWidth: 1)
+                            .fill(AppTheme.Colors.successGreen)
+                            .frame(width: 5, height: 5)
+                        Text("\(bannerLiveCount) live")
+                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                            .foregroundColor(AppTheme.Colors.successGreen)
                     }
-                    .overlay {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(AppTheme.Colors.textSecondary)
-                    }
-                    .frame(width: 30, height: 30)
+                }
+
             }
-            .accessibilityLabel("Close route view")
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+
+            // ── Alert strip ──
+            if let topAlert = bannerRouteAlerts.first {
+                alertStripContent(
+                    title: topAlert.title,
+                    color: bannerAlertColor,
+                    extraCount: bannerRouteAlerts.count - 1
+                )
+            } else if let inlineAlert = viewModel.selectedGroupedRoute?.alerts.first {
+                alertStripContent(
+                    title: inlineAlert.title,
+                    color: AppTheme.Colors.warningYellow,
+                    extraCount: 0
+                )
+            }
         }
-        .padding(.horizontal, AppTheme.Layout.cardPadding)
-        .padding(.vertical, 10)
-        .trackTintedChrome(tint: selectedRouteColor, cornerRadius: AppTheme.Layout.cornerRadius)
+        .trackOverlayGlass(
+            tint: selectedRouteColor,
+            cornerRadius: 18,
+            tintOpacity: 0.04
+        )
+        .shadow(color: .black.opacity(0.08), radius: 8, x: 0, y: 3)
+        .transition(.asymmetric(
+            insertion: .move(edge: .top).combined(with: .opacity),
+            removal: .opacity
+        ))
+    }
+
+    /// Reusable alert strip row for the banner footer.
+    private func alertStripContent(title: String, color: Color, extraCount: Int) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundColor(.white)
+
+            Text(title)
+                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .foregroundColor(.white)
+                .lineLimit(1)
+
+            Spacer(minLength: 0)
+
+            if extraCount > 0 {
+                Text("+\(extraCount)")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundColor(color)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(.white.opacity(0.9)))
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(color.opacity(0.9))
+        )
+        .padding(.horizontal, 6)
+        .padding(.bottom, 6)
     }
 }
 

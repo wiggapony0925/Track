@@ -43,10 +43,10 @@ struct PillTabPicker: View {
         .padding(3)
         .background(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(AppTheme.Colors.cardBackground.opacity(0.5))
+                .fill(AppTheme.Colors.cardInset.opacity(0.92))
                 .overlay(
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.5), lineWidth: 0.5)
+                        .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.28), lineWidth: 0.5)
                 )
         )
         .padding(.horizontal, AppTheme.Layout.margin)

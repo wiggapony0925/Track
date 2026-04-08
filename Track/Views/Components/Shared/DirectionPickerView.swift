@@ -21,6 +21,10 @@ struct DirectionPickerView: View {
     let routeColor: Color
     var onSelect: ((Int) -> Void)?
 
+    private var labelWidthLimit: CGFloat {
+        directions.count <= 2 ? 150 : 126
+    }
+
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
@@ -54,6 +58,8 @@ struct DirectionPickerView: View {
                 .foregroundColor(dir.isActive ? .white : AppTheme.Colors.textPrimary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
+                .truncationMode(.tail)
+                .frame(maxWidth: labelWidthLimit, alignment: .leading)
 
             // Express / Local badge — compact
             if let sType = dir.serviceType, !sType.isEmpty {
@@ -72,7 +78,7 @@ struct DirectionPickerView: View {
                 }
             }
         }
-        .padding(.horizontal, 14)
+        .padding(.horizontal, 12)
         .padding(.vertical, 9)
         .background(
             ZStack {

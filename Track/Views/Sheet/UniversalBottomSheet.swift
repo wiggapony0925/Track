@@ -136,7 +136,7 @@ struct UniversalBottomSheet<Content: View>: View {
                     .ignoresSafeArea()
             }
             .transition(.asymmetric(
-                insertion: .move(edge: .trailing).combined(with: .opacity),
+                  insertion: .move(edge: .trailing).combined(with: .opacity),
                 removal: .move(edge: .leading).combined(with: .opacity)
             ))
             .presentationDetents([.fraction(SheetConstants.defaultFraction), .large], selection: $sheetDetent)

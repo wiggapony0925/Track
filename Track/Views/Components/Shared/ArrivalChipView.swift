@@ -80,9 +80,13 @@ struct ArrivalChipView: View {
     private var isCancelled: Bool { chip.isCancelled }
 
     // MARK: Derived layout
-    private var chipWidth: CGFloat { isFirst ? 98 : 76 }
-    private var chipHeight: CGFloat { isFirst ? 142 : 118 }
-    private let cornerR: CGFloat = 18
+    private var chipWidth: CGFloat { isFirst ? 108 : 86 }
+    private var chipHeight: CGFloat { isFirst ? 152 : 124 }
+    private var cornerR: CGFloat { isFirst ? 20 : 18 }
+
+    private var usesSolidAccentCard: Bool {
+        isFirst && !isSched && !isCancelled
+    }
 
     // MARK: Derived colors
     private var chipAccent: Color {
@@ -120,13 +124,12 @@ struct ArrivalChipView: View {
             if chip.isExpress {
                 expressIndicator
             }
-            Spacer(minLength: 4)
+            Spacer(minLength: 6)
             etaCounter
-            Spacer(minLength: 4)
+            Spacer(minLength: 5)
             secondaryLabel
         }
-        .frame(width: chipWidth)
-        .frame(minHeight: chipHeight)
+        .frame(width: chipWidth, height: chipHeight, alignment: .top)
         .background { cardBackground }
         .overlay { cardBorder }
         .overlay { glassHighlight }
@@ -140,40 +143,42 @@ struct ArrivalChipView: View {
     private var accentBar: some View {
         Capsule()
             .fill(
-                isSched
+                usesSolidAccentCard
+                    ? AnyShapeStyle(.white.opacity(0.45))
+                    : isSched
                     ? AnyShapeStyle(chipAccent.opacity(0.12))
                     : AnyShapeStyle(
                         LinearGradient(
                             colors: [
-                                chipAccent.opacity(isFirst ? 0.9 : 0.6),
-                                chipAccent.opacity(isFirst ? 0.4 : 0.2),
+                                chipAccent.opacity(isFirst ? 0.95 : 0.72),
+                                chipAccent.opacity(isFirst ? 0.42 : 0.26),
                             ],
                             startPoint: .leading,
                             endPoint: .trailing
                         )
                       )
             )
-            .frame(width: isFirst ? 40 : 26, height: isFirst ? 3 : 2.5)
-            .padding(.top, 10)
+            .frame(width: isFirst ? 46 : 32, height: isFirst ? 3.5 : 3)
+            .padding(.top, 11)
     }
 
     private var statusTag: some View {
         HStack(spacing: 3) {
             Image(systemName: tagIcon)
-                .font(.system(size: 7, weight: .semibold))
+                .font(.system(size: 7.5, weight: .bold))
             Text(tagLabel)
-                .font(.system(size: 8, weight: .bold, design: .rounded))
+                .font(.system(size: 8.5, weight: .bold, design: .rounded))
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
         }
-        .foregroundStyle(
-            isCancelled
-                ? AppTheme.Colors.alertRed
-                : isSched
-                    ? AppTheme.Colors.textSecondary.opacity(0.55)
-                    : chipAccent
+        .foregroundStyle(statusForeground)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 4)
+        .background(
+            Capsule()
+                .fill(statusBackground)
         )
-        .padding(.top, 6)
+        .padding(.top, 7)
         .dynamicTypeSize(...DynamicTypeSize.large)
     }
 
@@ -184,7 +189,8 @@ struct ArrivalChipView: View {
             isSched: isSched,
             isFirst: isFirst,
             departureDate: chip.departureDate,
-            accentColor: chipAccent
+            accentColor: chipAccent,
+            usesAccentCard: usesSolidAccentCard
         )
     }
 
@@ -192,10 +198,14 @@ struct ArrivalChipView: View {
     private var secondaryLabel: some View {
         let foreColor: Color = isSched
             ? AppTheme.Colors.textSecondary.opacity(0.45)
-            : chipAccent.opacity(0.8)
+            : usesSolidAccentCard
+                ? .white.opacity(0.92)
+                : chipAccent.opacity(0.8)
         let bgColor: Color = isSched
             ? AppTheme.Colors.textSecondary.opacity(0.06)
-            : chipAccent.opacity(0.1)
+            : usesSolidAccentCard
+                ? .white.opacity(0.18)
+                : chipAccent.opacity(0.1)
 
         Group {
             if chip.minutesRemaining > 75 {
@@ -214,11 +224,11 @@ struct ArrivalChipView: View {
         .minimumScaleFactor(0.75)
         .foregroundStyle(foreColor)
         .padding(.horizontal, 8)
-        .padding(.vertical, 3.5)
+        .padding(.vertical, 4)
         .background(
             Capsule().fill(bgColor)
         )
-        .padding(.bottom, 12)
+        .padding(.bottom, 11)
         .dynamicTypeSize(...DynamicTypeSize.large)
     }
 
@@ -227,32 +237,65 @@ struct ArrivalChipView: View {
         HStack(spacing: 2) {
             // Mini diamond shape
             RoundedRectangle(cornerRadius: 1.5, style: .continuous)
-                .fill(chipAccent)
+                .fill(usesSolidAccentCard ? Color.white.opacity(0.9) : chipAccent)
                 .frame(width: 7, height: 7)
                 .rotationEffect(.degrees(45))
             Text("Exp")
                 .font(.system(size: 7.5, weight: .heavy, design: .rounded))
-                .foregroundStyle(chipAccent)
+                .foregroundStyle(usesSolidAccentCard ? .white.opacity(0.92) : chipAccent)
         }
         .padding(.top, 2)
     }
 
     private var cardBackground: some View {
         ZStack {
-            // Base glass fill
-            RoundedRectangle(cornerRadius: cornerR, style: .continuous)
-                .fill(AppTheme.Gradients.floating)
-            // Accent tint wash for first/live chip
-            if isFirst && !isSched {
+            if usesSolidAccentCard {
+                RoundedRectangle(cornerRadius: cornerR, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            stops: [
+                                .init(color: chipAccent.opacity(0.96), location: 0.0),
+                                .init(color: chipAccent.opacity(0.88), location: 0.68),
+                                .init(color: chipAccent.opacity(0.80), location: 1.0),
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+            } else {
+                RoundedRectangle(cornerRadius: cornerR, style: .continuous)
+                    .fill(.ultraThinMaterial)
+
+                RoundedRectangle(cornerRadius: cornerR, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            stops: [
+                                .init(color: .white.opacity(isSched ? 0.92 : 0.84), location: 0.0),
+                                .init(
+                                    color: AppTheme.Colors.cardBackground.opacity(isSched ? 0.94 : 0.82),
+                                    location: 0.28
+                                ),
+                                .init(
+                                    color: AppTheme.Colors.cardFloating.opacity(isSched ? 0.98 : 0.90),
+                                    location: 1.0
+                                ),
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+            }
+
+            if !isSched && !usesSolidAccentCard {
                 RoundedRectangle(cornerRadius: cornerR, style: .continuous)
                     .fill(
                         RadialGradient(
                             colors: [
-                                chipAccent.opacity(0.06),
-                                chipAccent.opacity(0.02),
+                                chipAccent.opacity(isFirst ? 0.12 : 0.06),
+                                chipAccent.opacity(isFirst ? 0.05 : 0.02),
                                 .clear,
                             ],
-                            center: .top,
+                            center: .topLeading,
                             startRadius: 0,
                             endRadius: chipHeight * 0.8
                         )
@@ -262,11 +305,15 @@ struct ArrivalChipView: View {
         .shadow(
             color: isSched
                 ? .clear
-                : chipAccent.opacity(isFirst ? 0.18 : 0.06),
-            radius: isFirst ? 14 : 6, x: 0, y: isFirst ? 8 : 4
+                : chipAccent.opacity(usesSolidAccentCard ? 0.24 : (isFirst ? 0.16 : 0.08)),
+            radius: usesSolidAccentCard ? 18 : (isFirst ? 14 : 8),
+            x: 0,
+            y: usesSolidAccentCard ? 10 : (isFirst ? 8 : 5)
         )
         .shadow(
-            color: isFirst && !isSched
+            color: usesSolidAccentCard
+                ? .white.opacity(0.06)
+                : isFirst && !isSched
                 ? chipAccent.opacity(0.06) : .clear,
             radius: 24, x: 0, y: 12
         )
@@ -280,6 +327,8 @@ struct ArrivalChipView: View {
                         .init(
                             color: isSelected
                                 ? chipAccent.opacity(0.8)
+                                : usesSolidAccentCard
+                                    ? .white.opacity(0.28)
                                 : isSched
                                     ? AppTheme.Colors.textSecondary.opacity(0.06)
                                     : chipAccent.opacity(isFirst ? 0.22 : 0.1),
@@ -305,14 +354,33 @@ struct ArrivalChipView: View {
             .fill(
                 LinearGradient(
                     stops: [
-                        .init(color: .white.opacity(isSched ? 0.02 : 0.06), location: 0),
-                        .init(color: .clear, location: 0.35),
+                        .init(
+                            color: .white.opacity(
+                                usesSolidAccentCard ? 0.14 : (isSched ? 0.02 : 0.06)
+                            ),
+                            location: 0
+                        ),
+                        .init(color: .clear, location: 0.42),
                     ],
                     startPoint: .top,
                     endPoint: .bottom
                 )
             )
             .allowsHitTesting(false)
+    }
+
+    private var statusForeground: Color {
+        if isCancelled { return AppTheme.Colors.alertRed }
+        if isSched { return AppTheme.Colors.textSecondary.opacity(0.60) }
+        if usesSolidAccentCard { return .white.opacity(0.92) }
+        return chipAccent
+    }
+
+    private var statusBackground: Color {
+        if isCancelled { return AppTheme.Colors.alertRed.opacity(0.10) }
+        if isSched { return AppTheme.Colors.textSecondary.opacity(0.07) }
+        if usesSolidAccentCard { return .white.opacity(0.18) }
+        return chipAccent.opacity(0.11)
     }
 }
 
@@ -325,6 +393,7 @@ struct ArrivalChipETA: View {
     let isFirst: Bool
     var departureDate: Date?
     var accentColor: Color = AppTheme.Colors.textPrimary
+    var usesAccentCard: Bool = false
 
     var body: some View {
         VStack(spacing: 2) {
@@ -343,21 +412,39 @@ struct ArrivalChipETA: View {
 
     private var nowLabel: some View {
         Text("NOW")
-            .font(.system(size: isFirst ? 30 : 22, weight: .heavy, design: .rounded))
+            .font(.system(size: isFirst ? 28 : 22, weight: .heavy, design: .rounded))
             .lineLimit(1)
             .minimumScaleFactor(0.7)
             .foregroundStyle(
-                LinearGradient(
-                    colors: [
-                        AppTheme.Colors.countdown(0),
-                        AppTheme.Colors.countdown(0).opacity(0.75),
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
+                usesAccentCard
+                    ? AnyShapeStyle(.white)
+                    : AnyShapeStyle(
+                        LinearGradient(
+                            colors: [
+                                AppTheme.Colors.countdown(0),
+                                AppTheme.Colors.countdown(0).opacity(0.75),
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
             )
-            .shadow(color: AppTheme.Colors.countdown(0).opacity(0.5), radius: 12, x: 0, y: 2)
-            .shadow(color: AppTheme.Colors.countdown(0).opacity(0.15), radius: 24, x: 0, y: 4)
+            .shadow(
+                color: usesAccentCard
+                    ? .white.opacity(0.18)
+                    : AppTheme.Colors.countdown(0).opacity(0.5),
+                radius: 12,
+                x: 0,
+                y: 2
+            )
+            .shadow(
+                color: usesAccentCard
+                    ? .clear
+                    : AppTheme.Colors.countdown(0).opacity(0.15),
+                radius: 24,
+                x: 0,
+                y: 4
+            )
             .contentTransition(.numericText(countsDown: true))
             .animation(.spring(response: 0.4, dampingFraction: 0.8), value: mins)
             .dynamicTypeSize(...DynamicTypeSize.large)
@@ -365,14 +452,16 @@ struct ArrivalChipETA: View {
 
     private func clockLabel(_ date: Date) -> some View {
         Text(date, format: .dateTime.hour().minute())
-            .font(.system(size: isFirst ? 22 : 17, weight: .heavy, design: .rounded))
+            .font(.system(size: isFirst ? 21 : 16, weight: .heavy, design: .rounded))
             .lineLimit(1)
             .fixedSize(horizontal: true, vertical: false)
             .minimumScaleFactor(0.65)
             .foregroundStyle(
-                isSched
-                    ? AppTheme.Colors.textSecondary.opacity(0.4)
-                    : accentColor
+                usesAccentCard
+                    ? .white.opacity(0.96)
+                    : isSched
+                        ? AppTheme.Colors.textSecondary.opacity(0.4)
+                        : accentColor
             )
             .dynamicTypeSize(...DynamicTypeSize.large)
     }
@@ -383,11 +472,13 @@ struct ArrivalChipETA: View {
             : AppTheme.Colors.countdown(mins)
         return VStack(spacing: 1) {
             Text("\(mins)")
-                .font(.system(size: isFirst ? 42 : 30, weight: .heavy, design: .rounded))
+                .font(.system(size: isFirst ? 38 : 31, weight: .heavy, design: .rounded))
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
                 .foregroundStyle(
-                    isSched
+                    usesAccentCard
+                        ? AnyShapeStyle(.white)
+                        : isSched
                         ? AnyShapeStyle(countdownColor)
                         : AnyShapeStyle(
                             LinearGradient(
@@ -401,16 +492,18 @@ struct ArrivalChipETA: View {
                           )
                 )
                 .shadow(
-                    color: isSched ? .clear : countdownColor.opacity(0.2),
+                    color: usesAccentCard ? .white.opacity(0.14) : (isSched ? .clear : countdownColor.opacity(0.2)),
                     radius: 6, x: 0, y: 2
                 )
                 .contentTransition(.numericText(countsDown: true))
                 .animation(.spring(response: 0.4, dampingFraction: 0.8), value: mins)
             Text("MIN")
-                .font(.system(size: isFirst ? 11 : 9.5, weight: .bold, design: .rounded))
+                .font(.system(size: isFirst ? 11 : 10, weight: .bold, design: .rounded))
                 .lineLimit(1)
                 .foregroundStyle(
-                    isSched
+                    usesAccentCard
+                        ? .white.opacity(0.82)
+                        : isSched
                         ? AppTheme.Colors.textSecondary.opacity(0.3)
                         : AppTheme.Colors.textSecondary.opacity(0.5)
                 )

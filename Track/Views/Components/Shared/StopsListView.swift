@@ -20,6 +20,9 @@ struct StopRowData: Identifiable {
     let nextArrivalIsScheduled: Bool
     let nextArrivalIsAtStop: Bool      // minutesAway <= 0
     let nextArrivalTimestamp: Int?
+    /// Estimated clock time for the soonest vehicle to reach this stop.
+    /// Interpolated from the first departure when no per-stop live data exists.
+    var estimatedTimestamp: Int? = nil
     let isFirst: Bool
     let isLast: Bool
     /// True when an express train skips this stop.
@@ -36,48 +39,23 @@ struct StopsListView: View {
     let routeColor: Color
     let isLoading: Bool               // shape == nil → show skeleton
     let selectedStopId: String?
+    /// Display name of the currently viewed route (e.g. "7", "M11").
+    /// Used to show a highlighted badge in each stop's transfer row.
+    var currentRouteID: String? = nil
+    /// Mode of the currently viewed route ("subway", "bus", etc.).
+    var currentRouteMode: String? = nil
     var userLocation: CLLocationCoordinate2D? = nil
+    var showsHeader: Bool = true
+    var usesEmbeddedSurface: Bool = false
     var onStopTapped: ((StopRowData) -> Void)?
 
     @State private var showPreviousStops = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            // Header
-            HStack(spacing: 8) {
-                // Left accent bar
-                RoundedRectangle(cornerRadius: 2)
-                    .fill(routeColor)
-                    .frame(width: 3, height: 18)
-
-                Image(systemName: "mappin.and.ellipse")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(routeColor)
-
-                Text("Stops")
-                    .font(.custom("Helvetica-Bold", size: 14))
-                    .foregroundColor(AppTheme.Colors.textPrimary)
-                    .textCase(.uppercase)
-                    .tracking(0.8)
-
-                Spacer()
-
-                if !stops.isEmpty {
-                    HStack(spacing: 3) {
-                        Text("\(stops.count)")
-                            .font(.custom("Helvetica-Bold", size: 12))
-                            .foregroundColor(routeColor)
-                        Text("stop\(stops.count == 1 ? "" : "s")")
-                            .font(.custom("Helvetica", size: 12))
-                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(routeColor.opacity(0.06))
-                    .clipShape(Capsule())
-                }
+            if showsHeader {
+                headerRow
             }
-            .padding(.horizontal, AppTheme.Layout.margin)
 
             if stops.isEmpty {
                 if isLoading {
@@ -89,6 +67,42 @@ struct StopsListView: View {
                 stopsContent
             }
         }
+    }
+
+    private var headerRow: some View {
+        HStack(spacing: 8) {
+            RoundedRectangle(cornerRadius: 2)
+                .fill(routeColor)
+                .frame(width: 3, height: 18)
+
+            Image(systemName: "mappin.and.ellipse")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(routeColor)
+
+            Text("Stops")
+                .font(.custom("Helvetica-Bold", size: 14))
+                .foregroundColor(AppTheme.Colors.textPrimary)
+                .textCase(.uppercase)
+                .tracking(0.8)
+
+            Spacer()
+
+            if !stops.isEmpty {
+                HStack(spacing: 3) {
+                    Text("\(stops.count)")
+                        .font(.custom("Helvetica-Bold", size: 12))
+                        .foregroundColor(routeColor)
+                    Text("stop\(stops.count == 1 ? "" : "s")")
+                        .font(.custom("Helvetica", size: 12))
+                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(routeColor.opacity(0.06))
+                .clipShape(Capsule())
+            }
+        }
+        .padding(.horizontal, AppTheme.Layout.margin)
     }
 
     // MARK: - Nearest Stop
@@ -125,13 +139,14 @@ struct StopsListView: View {
         .padding(.horizontal, AppTheme.Layout.margin)
     }
 
+    @ViewBuilder
     private var stopsContent: some View {
         let nearest = nearestStopIndex
         let firstUpcomingIndex = stops.firstIndex(where: { !$0.isPassed })
             ?? stops.count
         let passedCount = firstUpcomingIndex
 
-        return VStack(spacing: 0) {
+        let content = VStack(spacing: 0) {
             // ── Collapsible previous stops ──
             if passedCount > 0 {
                 previousStopsToggle(count: passedCount)
@@ -156,6 +171,8 @@ struct StopsListView: View {
                         StopRowView(
                             stop: stop,
                             routeColor: routeColor,
+                            currentRouteID: currentRouteID,
+                            currentRouteMode: currentRouteMode,
                             showTopLine: !stop.isFirst,
                             showBottomLine: !stop.isLast,
                             lineFaded: true
@@ -189,6 +206,8 @@ struct StopsListView: View {
                 StopRowView(
                     stop: stop,
                     routeColor: routeColor,
+                    currentRouteID: currentRouteID,
+                    currentRouteMode: currentRouteMode,
                     // When collapsed with previous stops, the toggle's line
                     // connects into the first upcoming stop — always show top line.
                     showTopLine: (passedCount > 0 && offset == 0)
@@ -201,13 +220,20 @@ struct StopsListView: View {
                 .onTapGesture { onStopTapped?(stop) }
             }
         }
-        .padding(.vertical, 8)
-        .trackCardBackground(cornerRadius: AppTheme.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius)
-                .strokeBorder(routeColor.opacity(0.06), lineWidth: 1)
-        )
-        .padding(.horizontal, AppTheme.Layout.margin)
+        .padding(.vertical, usesEmbeddedSurface ? 2 : 8)
+
+        if usesEmbeddedSurface {
+            content
+                .padding(.horizontal, AppTheme.Layout.margin + 2)
+        } else {
+            content
+                .trackCardBackground(cornerRadius: AppTheme.Layout.cornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius)
+                        .strokeBorder(routeColor.opacity(0.06), lineWidth: 1)
+                )
+                .padding(.horizontal, AppTheme.Layout.margin)
+        }
     }
 
     /// MTA-style collapsible toggle for previous (passed) stops.
@@ -299,6 +325,10 @@ struct StopsListView: View {
 struct StopRowView: View {
     let stop: StopRowData
     let routeColor: Color
+    /// Display name of the route being viewed (e.g. "7", "M11").
+    var currentRouteID: String? = nil
+    /// Mode of the route being viewed ("subway", "bus", etc.).
+    var currentRouteMode: String? = nil
     var showTopLine: Bool = true
     var showBottomLine: Bool = true
     var lineFaded: Bool = false
@@ -309,7 +339,7 @@ struct StopRowView: View {
         }
         return lineFaded
             ? AppTheme.Colors.textSecondary.opacity(0.15)
-            : routeColor.opacity(0.5)
+            : routeColor.opacity(0.76)
     }
 
     private var isTerminal: Bool {
@@ -329,7 +359,7 @@ struct StopRowView: View {
         }
         return stop.isPassed
             ? AppTheme.Colors.textSecondary.opacity(0.15)
-            : routeColor.opacity(0.5)
+            : routeColor.opacity(0.82)
     }
 
     var body: some View {
@@ -379,9 +409,9 @@ struct StopRowView: View {
                 Text(stop.name)
                     .font(.system(
                         size: stop.isSkipped ? 12
-                            : (stop.isCurrent || isTerminal) ? 14 : 13,
+                            : (stop.isCurrent || isTerminal) ? 15 : 14,
                         weight: stop.isSkipped ? .regular
-                            : (stop.isCurrent || isTerminal) ? .bold : .medium,
+                            : (stop.isCurrent || isTerminal) ? .bold : .semibold,
                         design: .rounded
                     ))
                     .foregroundColor(
@@ -405,8 +435,8 @@ struct StopRowView: View {
                     }
                 }
 
-                // Transfer badges — hidden for skipped stops
-                if !stop.transfers.isEmpty && !stop.isSkipped {
+                // Transfer badges — show when we have current route or transfers
+                if (!stop.transfers.isEmpty || currentRouteID != nil) && !stop.isSkipped {
                     transferBadgeRow
                 }
             }
@@ -488,15 +518,25 @@ struct StopRowView: View {
         }
     }
 
-    /// Compact transfer badge row — subway circles and bus pills properly sized.
+    /// Compact transfer badge row — current route highlighted, then transfers.
     private var transferBadgeRow: some View {
         HStack(spacing: 3) {
             Image(systemName: "arrow.left.arrow.right")
                 .font(.system(size: 8, weight: .medium))
                 .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.5))
 
-            // Show up to 8 transfers inline, then "+N"
-            let visible = Array(stop.transfers.prefix(8))
+            // Current route badge — always shown first, highlighted
+            if let routeID = currentRouteID {
+                RouteBadge(
+                    routeID: routeID,
+                    size: .custom(18, 10),
+                    isBus: currentRouteMode == "bus",
+                    mode: currentRouteMode
+                )
+            }
+
+            // Show up to 6 transfer badges, then "+N"
+            let visible = Array(stop.transfers.prefix(6))
             let overflow = stop.transfers.count - visible.count
 
             ForEach(visible, id: \.self) { route in
@@ -534,14 +574,26 @@ struct StopRowView: View {
             if stop.nextArrivalIsAtStop {
                 // ── At stop / Now ──
                 Text("Now")
-                    .font(.system(size: 12, weight: .heavy, design: .rounded))
+                    .font(.system(size: 13, weight: .heavy, design: .rounded))
                     .foregroundColor(AppTheme.Colors.successGreen)
                     .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(AppTheme.Colors.successGreen.opacity(0.12))
+                    .padding(.vertical, 3)
+                    .background(AppTheme.Colors.successGreen.opacity(0.10))
                     .clipShape(Capsule())
             } else {
-                VStack(alignment: .trailing, spacing: 1) {
+                VStack(alignment: .trailing, spacing: 2) {
+                    // Absolute timestamp — primary (like Transit app)
+                    if let ts = stop.nextArrivalTimestamp {
+                        Text(Date(timeIntervalSince1970: Double(ts)), style: .time)
+                            .font(.system(size: 14, weight: .bold, design: .rounded))
+                            .foregroundColor(
+                                stop.isPassed
+                                    ? AppTheme.Colors.textSecondary.opacity(0.35)
+                                    : AppTheme.Colors.textPrimary
+                            )
+                    }
+
+                    // Relative ETA — secondary with live dot
                     HStack(spacing: 3) {
                         if !stop.nextArrivalIsScheduled {
                             Circle()
@@ -549,25 +601,26 @@ struct StopRowView: View {
                                 .frame(width: 5, height: 5)
                         }
                         Text("\(minutes) min")
-                            .font(.system(size: 12, weight: .bold, design: .rounded))
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
                             .foregroundColor(
                                 stop.isPassed
-                                    ? AppTheme.Colors.textSecondary.opacity(0.35)
+                                    ? AppTheme.Colors.textSecondary.opacity(0.3)
                                     : (stop.nextArrivalIsScheduled
-                                       ? AppTheme.Colors.textSecondary
-                                       : routeColor)
-                            )
-                    }
-                    if let ts = stop.nextArrivalTimestamp {
-                        Text(Date(timeIntervalSince1970: Double(ts)), style: .time)
-                            .font(.system(size: 10, weight: .medium, design: .rounded))
-                            .foregroundColor(
-                                AppTheme.Colors.textSecondary
-                                    .opacity(stop.isPassed ? 0.3 : 0.5)
+                                       ? AppTheme.Colors.textTertiary
+                                       : AppTheme.Colors.successGreen)
                             )
                     }
                 }
             }
+        } else if let est = stop.estimatedTimestamp {
+            // Estimated clock time (interpolated from soonest departure)
+            Text(Date(timeIntervalSince1970: Double(est)), style: .time)
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .foregroundColor(
+                    stop.isPassed
+                        ? AppTheme.Colors.textSecondary.opacity(0.3)
+                        : AppTheme.Colors.textSecondary
+                )
         } else {
             EmptyView()
         }

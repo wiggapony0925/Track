@@ -91,6 +91,27 @@ struct HomeView: View {
     private var effectiveCoordinate: CLLocationCoordinate2D? {
         effectiveLocation?.coordinate
     }
+
+    private var activeRouteDetailPage: (
+        group: GroupedNearbyTransitResponse,
+        initialTab: RouteDetailSheet.RouteDetailTab?
+    )? {
+        guard case let .routeDetail(group, _, initialTab) = sheetNavigator.currentPage else {
+            return nil
+        }
+        return (group, initialTab)
+    }
+
+    private var isRouteDetailOverlayPresented: Bool {
+        activeRouteDetailPage != nil
+    }
+
+    private var bottomSheetPresentation: Binding<Bool> {
+        Binding(
+            get: { !isRouteDetailOverlayPresented },
+            set: { _ in }
+        )
+    }
     
     var body: some View {
         dataObservedContent
@@ -146,7 +167,7 @@ struct HomeView: View {
     // MARK: - Map & Sheet Content (extracted to reduce body complexity)
     
     private var mapAndSheetContent: some View {
-        GeometryReader { geometry in
+        GeometryReader { _ in
             ZStack {
                 // MARK: - Map Layer
                 MapLibreTrackMapView(
@@ -165,32 +186,33 @@ struct HomeView: View {
                 
                 // MARK: - Floating Controls
                 MapControlsOverlay(
-                    viewModel: viewModel,
-                    locationManager: locationManager,
-                    cameraPosition: $cameraPosition,
-                    is3DMode: $is3DMode,
-                    sheetDetent: $sheetDetent,
-                    currentMapCenter: currentMapCenter,
-                    currentMapDistance: currentMapDistance,
-                    onRecenter: {
-                        // Dismiss drag-to-search state without camera snap —
-                        // MapControlsOverlay.centerMap() handles camera positioning
-                        // so we avoid competing animations.
-                        if isDragSearchActive {
-                            dismissDragSearchState()
+                        viewModel: viewModel,
+                        locationManager: locationManager,
+                        cameraPosition: $cameraPosition,
+                        is3DMode: $is3DMode,
+                        sheetDetent: $sheetDetent,
+                        currentMapCenter: currentMapCenter,
+                        currentMapDistance: currentMapDistance,
+                        onRecenter: {
+                            // Dismiss drag-to-search state without camera snap —
+                            // MapControlsOverlay.centerMap() handles camera positioning
+                            // so we avoid competing animations.
+                            if isDragSearchActive {
+                                dismissDragSearchState()
+                            }
+                        },
+                        onAlertsTapped: {
+                            // Navigate to the full alerts page and expand the sheet
+                            sheetNavigator.navigate(to: .serviceAlerts)
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                sheetDetent = .large
+                            }
                         }
-                    },
-                    onAlertsTapped: {
-                        // Navigate to the full alerts page and expand the sheet
-                        sheetNavigator.navigate(to: .serviceAlerts)
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                            sheetDetent = .large
-                        }
-                    }
-                )
+                    )
                 
                 // MARK: - Drag-to-Search Overlay
-                if dragToSearchEnabled && viewModel.selectedRouteId == nil {
+                if dragToSearchEnabled
+                    && viewModel.selectedRouteId == nil {
                     DragSearchOverlay(
                         isActive: isDragSearchActive,
                         isSearching: isDragSearching,
@@ -198,15 +220,34 @@ struct HomeView: View {
                         onDismiss: { dismissDragSearch() }
                     )
                 }
+
             }
             // MARK: - Universal Bottom Sheet
-            .sheet(isPresented: .constant(true)) {
+            .sheet(isPresented: bottomSheetPresentation) {
                 UniversalBottomSheet(
                     navigator: sheetNavigator,
                     sheetDetent: $sheetDetent,
                     sheetHeightObserver: sheetHeightObserver
                 ) { page in
                     sheetContent(for: page)
+                }
+            }
+            // MARK: - Route Detail Floating Panel
+            .overlay {
+                if let routeDetailPage = activeRouteDetailPage {
+                    routeDetailScreen(
+                        routeGroup: routeDetailPage.group,
+                        initialTab: routeDetailPage.initialTab,
+                        isExpanded: true,
+                        collapseSheetOnFocus: false
+                    )
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
+            .animation(.spring(response: 0.4, dampingFraction: 0.88), value: isRouteDetailOverlayPresented)
+            .onChange(of: isRouteDetailOverlayPresented) { _, isPresented in
+                if isPresented {
+                    sheetHeightObserver.report(0)
                 }
             }
         }
@@ -478,174 +519,11 @@ struct HomeView: View {
             )
             
         case .routeDetail(let group, _, let initialTab):
-            // Pass the effective location (search pin center when drag-to-search
-            // is active, otherwise the real GPS location) so that distance display,
-            // walking directions, and map centering all work from the explored area.
-            let effectiveCoord = viewModel.referenceLocation?.coordinate
-            
-            // Use the enriched group from the viewModel (which may have
-            // additional directions added by enrichGroupWithShapeDirections)
-            // instead of the stale group captured at navigation time.
-            let enrichedGroup = viewModel.selectedGroupedRoute ?? group
-            
-            // Compute direction-filtered vehicle count (bus + train) from the
-            // ViewModel's already-filtered collections so we don't duplicate
-            // direction-filtering logic inside the sheet.
-            let vehicleCount = enrichedGroup.isBus
-                ? viewModel.filteredBusVehicles.count
-                : viewModel.filteredTrainVehicles.count
-            
-            RouteDetailSheet(
-                group: enrichedGroup,
-                vehicleCoordinateLookup: { vid in
-                    if let bus = viewModel.busVehicles.first(where: { $0.vehicleId == vid }) {
-                        return CLLocationCoordinate2D(latitude: bus.lat, longitude: bus.lon)
-                    }
-                    return nil
-                },
-                trainVehicles: viewModel.filteredTrainVehicles,
-                routeShape: $viewModel.routeShape,
-                selectedDirectionIndex: $viewModel.selectedDirectionIndex,
-                isSelectedArrivalExpress: $viewModel.isSelectedArrivalExpress,
-                serviceAlerts: viewModel.serviceAlerts,
-                busSchedule: viewModel.busSchedule,
-                cachedTrainArrivals: viewModel.cachedTrainArrivals,
-                cachedStations: viewModel.cachedStations,
-                smartETAProvider: { viewModel.smartETA(for: $0) },
-                liveVehicleCount: vehicleCount,
-                elevatorOutages: viewModel.elevatorOutages,
-                weatherSnapshot: viewModel.weatherSnapshot,
+            routeDetailScreen(
+                routeGroup: group,
                 initialTab: initialTab,
-                isSheetExpanded: sheetDetent == .large,
-                is3DMode: $is3DMode,
-                cameraPosition: $cameraPosition,
-                currentLocation: effectiveCoord,
-                selectedStopId: viewModel.selectedStopId,
-                isStopManuallySelected: viewModel.isStopManuallySelected,
-                onTrack: { arrival in
-                    viewModel.trackNearbyArrival(arrival, location: locationManager.currentLocation)
-                    
-                    // Only zoom when the vehicle is actually live on the map.
-                    // Falling back to stop coordinates would pan to an empty
-                    // spot with no bus marker — confusing the user.
-                    if viewModel.isVehicleLiveOnMap(arrival),
-                       let coord = viewModel.trackedVehicleCoordinate {
-                        withAnimation(MapCameraPresets.flyAnimation) {
-                            cameraPosition = MapCameraPresets
-                                .focusVehicle(at: coord, is3D: is3DMode)
-                        }
-                    }
-                },
-                isTracking: { viewModel.isTracking($0) },
-                isTrackingAny: viewModel.isTrackingAny,
-                isLiveOnMap: { viewModel.isVehicleLiveOnMap($0) },
-                onClearHighlight: {   // the user taps a highlighted row
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                        viewModel.tappedVehicleId = nil
-                    }
-                },
-                onFocusVehicle: { key in
-                    // Mark that this focus came from a chip so handleTappedVehicle
-                    // collapses the sheet instead of expanding it.
-                    focusFromChip = true
-                    
-                    // Highlight the matching marker on the map
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                        viewModel.tappedVehicleId = key
-                    }
-                    
-                    // Collapse the sheet so the user can see the focused vehicle
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                        sheetDetent = SheetConstants.defaultDetent
-                    }
-                    
-                    // Zoom to the marker if a key was provided
-                    if let key, let coord = viewModel.coordinateForTappedVehicle(key) {
-                        withAnimation(MapCameraPresets.flyAnimation) {
-                            cameraPosition = MapCameraPresets
-                                .focusVehicle(at: coord, is3D: is3DMode)
-                        }
-                    }
-                },
-                tappedVehicleId: viewModel.tappedVehicleId,
-                onDismiss: {
-                    withAnimation(.easeInOut(duration: 0.25)) {
-                        viewModel.isRouteDetailPresented = false
-                        viewModel.selectedGroupedRoute = nil
-                        viewModel.clearRoute()
-                        sheetNavigator.popToRoot()
-                    }
-                    
-                    // Restore drag-search overlay if the user had an active
-                    // search center before opening the route detail.
-                    if viewModel.isSearchPinActive, let settled = dragSearchSettledCenter {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                            isDragSearchActive = true
-                        }
-                        // Fly back to the drag search center
-                        withAnimation(MapCameraPresets.flyAnimation) {
-                            cameraPosition = MapCameraPresets.center(on: settled, is3D: is3DMode)
-                        }
-                    } else {
-                        recenterOnUser()
-                    }
-                },
-                onStopSelected: { coord in
-                    // Update the polyline split anchor so behind/ahead
-                    // coloring follows the stop the user tapped.
-                    // nil = user deselected → clear split (full-color polyline).
-                    viewModel.nearestStopCoordinate = coord
-
-                    // Track whether the user manually picked a stop so that
-                    // GPS-driven refreshWalkingState doesn't overwrite it.
-                    viewModel.isStopManuallySelected = (coord != nil)
-
-                    // Re-fetch the walking route to the newly selected stop
-                    // so the dashed walking polyline updates on the map.
-                    if let stopCoord = coord {
-                        let origin = viewModel.referenceLocation?.coordinate
-                                     ?? locationManager.currentLocation?.coordinate
-                        if let from = origin {
-                            suppressWalkingRouteZoom = true
-                            Task {
-                                await viewModel.fetchWalkingRoute(
-                                    from: from, to: stopCoord)
-                            }
-                        }
-                    } else if let userLoc = locationManager.currentLocation {
-                        // Deselected — revert to auto-nearest stop & its walking route
-                        suppressWalkingRouteZoom = true
-                        Task {
-                            await viewModel.refreshWalkingState(userLocation: userLoc)
-                        }
-                    }
-                },
-                onRecenter: {
-                    // Re-invoke the route-fitting camera that shows both
-                    // user location and the nearest stop — same logic as
-                    // the initial route-open zoom.
-                    if let fitCamera = viewModel.cameraPositionFittingRoute(
-                        userLocation: locationManager.currentLocation,
-                        is3D: is3DMode
-                    ) {
-                        withAnimation(MapCameraPresets.snapAnimation) {
-                            sheetDetent = SheetConstants.defaultDetent
-                        }
-                        withAnimation(MapCameraPresets.flyAnimation) {
-                            cameraPosition = fitCamera
-                        }
-                    } else {
-                        // No route context — fall back to user location
-                        let target = effectiveCoordinate ?? AppTheme.MapConfig.nycCenter
-                        withAnimation(MapCameraPresets.flyAnimation) {
-                            cameraPosition = MapCameraPresets.center(on: target, is3D: is3DMode)
-                        }
-                    }
-                    HapticManager.impact(.light)
-                },
-                onStopDetailRequested: { selection in
-                    presentStopDetail(selection)
-                }
+                isExpanded: sheetDetent == .large,
+                collapseSheetOnFocus: true
             )
 
         case .stopDetail(let selection):
@@ -726,6 +604,184 @@ struct HomeView: View {
                 sheetNavigator.goBack()
             }
         }
+    }
+
+    private func routeDetailScreen(
+        routeGroup: GroupedNearbyTransitResponse,
+        initialTab: RouteDetailSheet.RouteDetailTab?,
+        isExpanded: Bool,
+        collapseSheetOnFocus: Bool
+    ) -> some View {
+        // Pass the effective location (search pin center when drag-to-search
+        // is active, otherwise the real GPS location) so that distance display,
+        // walking directions, and map centering all work from the explored area.
+        let effectiveCoord = viewModel.referenceLocation?.coordinate
+
+        // Use the enriched group from the viewModel (which may have
+        // additional directions added by enrichGroupWithShapeDirections)
+        // instead of the stale group captured at navigation time.
+        let enrichedGroup = viewModel.selectedGroupedRoute ?? routeGroup
+
+        // Compute direction-filtered vehicle count (bus + train) from the
+        // ViewModel's already-filtered collections so we don't duplicate
+        // direction-filtering logic inside the sheet.
+        let vehicleCount = enrichedGroup.isBus
+            ? viewModel.filteredBusVehicles.count
+            : viewModel.filteredTrainVehicles.count
+
+        return RouteDetailSheet(
+            group: enrichedGroup,
+            vehicleCoordinateLookup: { vid in
+                if let bus = viewModel.busVehicles.first(where: { $0.vehicleId == vid }) {
+                    return CLLocationCoordinate2D(latitude: bus.lat, longitude: bus.lon)
+                }
+                return nil
+            },
+            trainVehicles: viewModel.filteredTrainVehicles,
+            routeShape: $viewModel.routeShape,
+            selectedDirectionIndex: $viewModel.selectedDirectionIndex,
+            isSelectedArrivalExpress: $viewModel.isSelectedArrivalExpress,
+            serviceAlerts: viewModel.serviceAlerts,
+            busSchedule: viewModel.busSchedule,
+            cachedTrainArrivals: viewModel.cachedTrainArrivals,
+            cachedStations: viewModel.cachedStations,
+            smartETAProvider: { viewModel.smartETA(for: $0) },
+            liveVehicleCount: vehicleCount,
+            elevatorOutages: viewModel.elevatorOutages,
+            weatherSnapshot: viewModel.weatherSnapshot,
+            initialTab: initialTab,
+            isSheetExpanded: isExpanded,
+            is3DMode: $is3DMode,
+            cameraPosition: $cameraPosition,
+            currentLocation: effectiveCoord,
+            selectedStopId: viewModel.selectedStopId,
+            isStopManuallySelected: viewModel.isStopManuallySelected,
+            onTrack: { arrival in
+                viewModel.trackNearbyArrival(arrival, location: locationManager.currentLocation)
+
+                // Only zoom when the vehicle is actually live on the map.
+                // Falling back to stop coordinates would pan to an empty
+                // spot with no bus marker — confusing the user.
+                if viewModel.isVehicleLiveOnMap(arrival),
+                   let coord = viewModel.trackedVehicleCoordinate {
+                    withAnimation(MapCameraPresets.flyAnimation) {
+                        cameraPosition = MapCameraPresets
+                            .focusVehicle(at: coord, is3D: is3DMode)
+                    }
+                }
+            },
+            isTracking: { viewModel.isTracking($0) },
+            isTrackingAny: viewModel.isTrackingAny,
+            isLiveOnMap: { viewModel.isVehicleLiveOnMap($0) },
+            onClearHighlight: {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                    viewModel.tappedVehicleId = nil
+                }
+            },
+            onFocusVehicle: { key in
+                // Mark that this focus came from a chip so handleTappedVehicle
+                // doesn't reopen the dashboard sheet while we are focusing a marker.
+                focusFromChip = true
+
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                    viewModel.tappedVehicleId = key
+                }
+
+                if collapseSheetOnFocus {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                        sheetDetent = SheetConstants.defaultDetent
+                    }
+                }
+
+                if let key, let coord = viewModel.coordinateForTappedVehicle(key) {
+                    withAnimation(MapCameraPresets.flyAnimation) {
+                        cameraPosition = MapCameraPresets
+                            .focusVehicle(at: coord, is3D: is3DMode)
+                    }
+                }
+            },
+            tappedVehicleId: viewModel.tappedVehicleId,
+            onDismiss: {
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    viewModel.isRouteDetailPresented = false
+                    viewModel.selectedGroupedRoute = nil
+                    viewModel.clearRoute()
+                    sheetNavigator.popToRoot()
+                }
+
+                // Restore drag-search overlay if the user had an active
+                // search center before opening the route detail.
+                if viewModel.isSearchPinActive, let settled = dragSearchSettledCenter {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        isDragSearchActive = true
+                    }
+                    withAnimation(MapCameraPresets.flyAnimation) {
+                        cameraPosition = MapCameraPresets.center(on: settled, is3D: is3DMode)
+                    }
+                } else {
+                    recenterOnUser()
+                }
+            },
+            onStopSelected: { coord in
+                // Update the polyline split anchor so behind/ahead
+                // coloring follows the stop the user tapped.
+                // nil = user deselected -> clear split (full-color polyline).
+                viewModel.nearestStopCoordinate = coord
+
+                // Track whether the user manually picked a stop so that
+                // GPS-driven refreshWalkingState doesn't overwrite it.
+                viewModel.isStopManuallySelected = (coord != nil)
+
+                // Re-fetch the walking route to the newly selected stop
+                // so the dashed walking polyline updates on the map.
+                if let stopCoord = coord {
+                    let origin = viewModel.referenceLocation?.coordinate
+                        ?? locationManager.currentLocation?.coordinate
+                    if let from = origin {
+                        suppressWalkingRouteZoom = true
+                        Task {
+                            await viewModel.fetchWalkingRoute(
+                                from: from,
+                                to: stopCoord
+                            )
+                        }
+                    }
+                } else if let userLoc = locationManager.currentLocation {
+                    // Deselected -> revert to auto-nearest stop and its walking route.
+                    suppressWalkingRouteZoom = true
+                    Task {
+                        await viewModel.refreshWalkingState(userLocation: userLoc)
+                    }
+                }
+            },
+            onRecenter: {
+                // Re-invoke the route-fitting camera that shows both user
+                // location and the nearest stop — same logic as the initial
+                // route-open zoom.
+                if let fitCamera = viewModel.cameraPositionFittingRoute(
+                    userLocation: locationManager.currentLocation,
+                    is3D: is3DMode
+                ) {
+                    if collapseSheetOnFocus {
+                        withAnimation(MapCameraPresets.snapAnimation) {
+                            sheetDetent = SheetConstants.defaultDetent
+                        }
+                    }
+                    withAnimation(MapCameraPresets.flyAnimation) {
+                        cameraPosition = fitCamera
+                    }
+                } else {
+                    let target = effectiveCoordinate ?? AppTheme.MapConfig.nycCenter
+                    withAnimation(MapCameraPresets.flyAnimation) {
+                        cameraPosition = MapCameraPresets.center(on: target, is3D: is3DMode)
+                    }
+                }
+                HapticManager.impact(.light)
+            },
+            onStopDetailRequested: { selection in
+                presentStopDetail(selection)
+            }
+        )
     }
 
     private func presentRouteStopDetail(_ stop: BusStop) {

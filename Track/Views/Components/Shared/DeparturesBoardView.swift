@@ -9,10 +9,13 @@ struct DeparturesBoardView: View {
     let routeColor: Color
     let isLoading: Bool          // busSchedule == nil && trainArrivals empty
     let hasScheduleData: Bool    // busSchedule != nil || trainArrivals non-empty
+    var showsHeader: Bool = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            departuresHeader
+            if showsHeader {
+                departuresHeader
+            }
 
             if departures.isEmpty {
                 departuresEmptyState
