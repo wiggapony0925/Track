@@ -86,6 +86,43 @@ from app.utils.transit_utils import get_subway_color
 # Default bus color (MTA blue) — used when bus routes don't provide one
 _BUS_DEFAULT_COLOR = "#0039A6"
 
+# MTA bus service-type color palette (matches official MTA Bus Routes map).
+# Source: MTA open data — route_type field + official palette.
+_BUS_SERVICE_COLORS: dict[str, str] = {
+    "Local": "#0078C6",           # Blue
+    "Limited": "#6E3FA3",         # Purple
+    "Select Bus Service": "#00B2E3",  # Cyan / light blue
+    "Express": "#3D9B35",         # Green
+    "School": "#F7931E",          # Orange
+}
+
+
+def _classify_bus_service_type(display_name: str) -> str:
+    """Derive MTA bus service classification from the display name.
+
+    Rules (in order of specificity):
+    - Contains '-SBS' or '+SBS' → Select Bus Service
+    - Starts with 'X' or 'BXM' or 'QM' or 'SIM' → Express
+    - Contains '+' (OBA limited indicator) → Limited
+    - Everything else → Local
+    """
+    upper = display_name.upper().strip()
+    # SBS routes: M34-SBS, M15-SBS, etc.
+    if "-SBS" in upper or "+SBS" in upper:
+        return "Select Bus Service"
+    # Express bus prefixes (NYC express buses)
+    if upper.startswith(("BXM", "QM", "SIM", "X")):
+        return "Express"
+    # Limited-stop services (OBA marks these with +)
+    if "+" in upper:
+        return "Limited"
+    return "Local"
+
+
+def _bus_color_for_service_type(service_type: str) -> str:
+    """Return the MTA-standard hex color for a bus service type."""
+    return _BUS_SERVICE_COLORS.get(service_type, _BUS_DEFAULT_COLOR)
+
 # Load tunable constants from settings.json → app_settings
 _PLACEHOLDER_MINUTES: int = get_settings().app_settings.placeholder_minutes
 _MAX_SCHEDULE_PER_DORMANT: int = get_settings().app_settings.max_schedule_per_dormant
@@ -592,7 +629,9 @@ async def nearby_transit(
     description=(
         "The primary endpoint for the Track home screen. Returns nearby transit arrivals "
         "grouped by route with direction sub-groups, ML delay corrections, inline service alerts, "
-        "and MTA canonical ordering. Supports filtering by transit mode."
+        "and MTA canonical ordering. Supports filtering by transit mode.\n\n"
+        "Bus routes include a `bus_service_type` field (Local, Limited, Select Bus Service, "
+        "Express) and a `color_hex` matching the official MTA Bus Routes map palette."
     ),
     responses={**RESP_503},
 )
@@ -636,6 +675,8 @@ async def nearby_transit_grouped(
     - Groups arrivals by route with direction sub-groups
     - Applies ML delay corrections (LightGBM + recency model)
     - Embeds inline service alerts per route
+    - Bus routes include ``bus_service_type`` (Local / Limited / Select Bus Service / Express)
+      and ``color_hex`` matching the official MTA Bus Routes map palette
     - Response-level caching (5 s fresh / 30 s stale-while-revalidate)
 
     **Modes:** `subway`, `bus`, `lirr`, `mnr` — omit for all modes.
@@ -1511,9 +1552,10 @@ def _group_arrivals(
 
     for merge_key, dir_map in by_route.items():
         mode, display, route_id = route_meta[merge_key]
+        bus_svc: str | None = None  # set only for bus routes
         # Assign color: subway lines use the official palette,
         # LIRR/MNR use per-branch colors from routes.txt,
-        # bus routes get the default MTA blue
+        # bus routes use MTA service-type colors
         if mode == "subway":
             color = get_subway_color(display)
         elif mode == "lirr":
@@ -1524,7 +1566,8 @@ def _group_arrivals(
             numeric_id = route_id[4:] if route_id.startswith("MNR_") else route_id
             color = get_mnr_route_color(numeric_id)
         else:
-            color = _BUS_DEFAULT_COLOR
+            bus_svc = _classify_bus_service_type(display)
+            color = _bus_color_for_service_type(bus_svc)
 
         directions: list[DirectionArrivals] = []
         for direction, arrivals in dir_map.items():
@@ -1742,6 +1785,7 @@ def _group_arrivals(
                 sorting_key=_sorting_key(mode, display),
                 alerts=route_alerts,
                 express_routes=active_express,
+                bus_service_type=bus_svc if mode == "bus" else None,
             )
         )
 

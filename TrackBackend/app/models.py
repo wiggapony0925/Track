@@ -329,7 +329,43 @@ class GroupedNearbyTransit(BaseModel):
                     ],
                     "sorting_key": "A",
                     "alerts": [],
-                }
+                    "bus_service_type": None,
+                },
+                {
+                    "route_id": "MTA NYCT_M34+",
+                    "display_name": "M34-SBS",
+                    "mode": "bus",
+                    "color_hex": "#00B2E3",
+                    "directions": [
+                        {
+                            "direction": "0",
+                            "direction_label": "Eastbound",
+                            "arrivals": [
+                                {
+                                    "route_id": "MTA NYCT_M34+",
+                                    "stop_name": "W 34 St / 8 Av",
+                                    "direction": "Eastbound",
+                                    "destination": "Waterside",
+                                    "minutes_away": 5,
+                                    "arrival_ts": 1719500520,
+                                    "status": "On Time",
+                                    "mode": "bus",
+                                    "stop_lat": 40.7527,
+                                    "stop_lon": -73.9934,
+                                    "stop_id": "MTA_400878",
+                                    "vehicle_id": "MTA NYCT_7432",
+                                    "trip_id": None,
+                                    "distance_m": 82.1,
+                                    "is_real_time": True,
+                                    "is_cancelled": False,
+                                }
+                            ],
+                        }
+                    ],
+                    "sorting_key": "M034",
+                    "alerts": [],
+                    "bus_service_type": "Select Bus Service",
+                },
             ]
         }
     )
@@ -354,6 +390,13 @@ class GroupedNearbyTransit(BaseModel):
         description=(
             "Express subway variants merged into this group "
             "(e.g. ['7X']).  Empty for non-express routes."
+        ),
+    )
+    bus_service_type: str | None = Field(
+        None,
+        description=(
+            "Bus service classification: 'Local', 'Limited', "
+            "'Select Bus Service', 'Express', or null for non-bus routes."
         ),
     )
 

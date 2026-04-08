@@ -199,12 +199,18 @@ struct MapControlsOverlay: View {
         return viewModel.filteredTrainVehicles.count
     }
 
-    /// Route mode label for the banner.
+    /// Route mode label for the banner — shows service type for buses.
     private var bannerModeLabel: String {
         guard let g = viewModel.selectedGroupedRoute else { return "" }
         if g.isLIRR { return "LIRR" }
         if g.isMNR { return "Metro-North" }
-        return g.isBus ? "BUS" : "SUBWAY"
+        if g.isBus {
+            if let svc = g.busServiceType, svc != "Local" {
+                return svc.uppercased()
+            }
+            return "BUS"
+        }
+        return "SUBWAY"
     }
 
     /// Terminal pair from direction headsigns (or first/last stops fallback).

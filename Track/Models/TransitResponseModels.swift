@@ -321,6 +321,8 @@ struct GroupedNearbyTransitResponse: Codable, Identifiable, Equatable {
     var alerts: [InlineAlertResponse] = []
     /// Express subway variants merged into this group (e.g. ["7X"]).
     var expressRoutes: [String] = []
+    /// Bus service classification: "Local", "Limited", "Select Bus Service", "Express", or nil.
+    var busServiceType: String?
 
     var isBus: Bool { mode == "bus" }
     var isLIRR: Bool { mode == "lirr" }
@@ -373,6 +375,7 @@ struct GroupedNearbyTransitResponse: Codable, Identifiable, Equatable {
         case sortingKey = "sorting_key"
         case alerts
         case expressRoutes = "express_routes"
+        case busServiceType = "bus_service_type"
     }
 
     /// Memberwise initializer.
@@ -384,7 +387,8 @@ struct GroupedNearbyTransitResponse: Codable, Identifiable, Equatable {
         directions: [DirectionArrivalsResponse],
         sortingKey: String = "",
         alerts: [InlineAlertResponse] = [],
-        expressRoutes: [String] = []
+        expressRoutes: [String] = [],
+        busServiceType: String? = nil
     ) {
         self.routeId = routeId
         self.displayName = displayName
@@ -394,6 +398,7 @@ struct GroupedNearbyTransitResponse: Codable, Identifiable, Equatable {
         self.sortingKey = sortingKey
         self.alerts = alerts
         self.expressRoutes = expressRoutes
+        self.busServiceType = busServiceType
     }
 
     init(from decoder: Decoder) throws {
@@ -406,5 +411,6 @@ struct GroupedNearbyTransitResponse: Codable, Identifiable, Equatable {
         sortingKey = try c.decodeIfPresent(String.self, forKey: .sortingKey) ?? ""
         alerts = try c.decodeIfPresent([InlineAlertResponse].self, forKey: .alerts) ?? []
         expressRoutes = try c.decodeIfPresent([String].self, forKey: .expressRoutes) ?? []
+        busServiceType = try c.decodeIfPresent(String.self, forKey: .busServiceType)
     }
 }

@@ -86,7 +86,7 @@ Polyline geometry for a specific branch (e.g. `LIRR_9` for Port Washington).
 ### 🚌 3. Bus Endpoints (OBA + SIRI)
 
 #### `GET /bus/routes`
-Returns all MTA bus routes.
+Returns all MTA bus routes with per-route brand colors from OBA.
 - **Response `200 OK`**: `[{"id": "MTA NYCT_B63", "short_name": "B63", "long_name": "Atlantic Av", "color": "0039A6"}]`
 
 #### `GET /bus/stops/{route_id}`
@@ -110,6 +110,17 @@ Returns encoded polylines to draw the bus path on Apple/Google Maps.
 
 #### `GET /nearby/grouped`
 The flagship endpoint. Combines **Subway, Bus, LIRR, and MNR** into a single grouped response, sorted by the absolute fastest arriving trains or buses near the user. Returns cleanly formatted JSON designed for multi-tab UI cards.
+
+Bus routes include a `bus_service_type` field (`"Local"`, `"Limited"`, `"Select Bus Service"`, `"Express"`, or `null` for non-bus) and a `color_hex` that matches the official MTA Bus Routes map palette:
+
+| Service Type | Color | Hex |
+|---|---|---|
+| Local | Blue | `#0078C6` |
+| Limited | Purple | `#6E3FA3` |
+| Select Bus Service (SBS) | Cyan | `#00B2E3` |
+| Express | Green | `#3D9B35` |
+| School | Orange | `#F7931E` |
+
 - **Parameters**: `lat` (required), `lon` (required), `radius` (optional, default 500m), `mode` (optional filter)
 - **Response `200 OK`**:
 ```json
@@ -117,14 +128,47 @@ The flagship endpoint. Combines **Subway, Bus, LIRR, and MNR** into a single gro
   {
     "route_id": "L",
     "display_name": "L",
-    "color_hex": "A7A9AC",
+    "color_hex": "#A7A9AC",
     "mode": "subway",
+    "bus_service_type": null,
     "directions": [
       {
-        "headsign": "8 Av",
-        "direction": "N",
+        "direction": "0",
+        "direction_label": "Westbound",
         "arrivals": [
-          { "minutes_away": 2, "destination": "8 Av", "status": "On Time" }
+          { "minutes_away": 2, "destination": "8 Av", "status": "On Time", "is_real_time": true }
+        ]
+      }
+    ]
+  },
+  {
+    "route_id": "MTA NYCT_M34+",
+    "display_name": "M34-SBS",
+    "color_hex": "#00B2E3",
+    "mode": "bus",
+    "bus_service_type": "Select Bus Service",
+    "directions": [
+      {
+        "direction": "0",
+        "direction_label": "Eastbound",
+        "arrivals": [
+          { "minutes_away": 5, "destination": "Waterside", "status": "On Time", "is_real_time": true }
+        ]
+      }
+    ]
+  },
+  {
+    "route_id": "MTABC_SIM1C",
+    "display_name": "SIM1C",
+    "color_hex": "#3D9B35",
+    "mode": "bus",
+    "bus_service_type": "Express",
+    "directions": [
+      {
+        "direction": "0",
+        "direction_label": "Northbound",
+        "arrivals": [
+          { "minutes_away": 12, "destination": "Bay Ridge", "status": "On Time", "is_real_time": true }
         ]
       }
     ]
