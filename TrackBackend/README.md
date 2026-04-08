@@ -111,15 +111,18 @@ Returns encoded polylines to draw the bus path on Apple/Google Maps.
 #### `GET /nearby/grouped`
 The flagship endpoint. Combines **Subway, Bus, LIRR, and MNR** into a single grouped response, sorted by the absolute fastest arriving trains or buses near the user. Returns cleanly formatted JSON designed for multi-tab UI cards.
 
-Bus routes include a `bus_service_type` field (`"Local"`, `"Limited"`, `"Select Bus Service"`, `"Express"`, or `null` for non-bus) and a `color_hex` that matches the official MTA Bus Routes map palette:
+Bus routes include a `bus_service_type` field (`"Local"`, `"Limited"`, `"Local / Limited"`, `"Select Bus Service"`, `"Express"`, `"School"`, or `null` for non-bus) and a `color_hex` that matches the official MTA Bus Routes map palette:
 
 | Service Type | Color | Hex |
 |---|---|---|
 | Local | Blue | `#0078C6` |
 | Limited | Purple | `#6E3FA3` |
+| Local / Limited | Purple | `#6E3FA3` |
 | Select Bus Service (SBS) | Cyan | `#00B2E3` |
 | Express | Green | `#3D9B35` |
 | School | Orange | `#F7931E` |
+
+> **Dynamic detection:** Limited and Local / Limited types are detected automatically from GTFS `trips.txt` headsign prefixes ("RUSH" / "LIMITED"). The sets refresh whenever GTFS feeds are re-downloaded.
 
 - **Parameters**: `lat` (required), `lon` (required), `radius` (optional, default 500m), `mode` (optional filter)
 - **Response `200 OK`**:

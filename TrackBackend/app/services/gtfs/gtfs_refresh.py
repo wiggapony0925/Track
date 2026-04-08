@@ -733,6 +733,16 @@ def _clear_gtfs_caches() -> None:
             fn.cache_clear()
             legacy_cleared += 1
 
+    # ── Phase 3: re-scan bus GTFS for LIMITED/RUSH service types ──
+    try:
+        from app.routers.nearby import refresh_limited_route_set
+
+        refresh_limited_route_set()
+    except Exception as exc:
+        TrackLogger.warning(
+            f"[GTFS] Failed to refresh limited route set: {exc}", tag="GTFS"
+        )
+
     TrackLogger.info(
         f"[GTFS] Cleared caches: {registry_cleared} via registry, "
         f"{legacy_cleared} via legacy imports",

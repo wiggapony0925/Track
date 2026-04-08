@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import csv
 import re
 from collections import defaultdict
 from datetime import UTC, datetime
@@ -91,20 +92,119 @@ _BUS_DEFAULT_COLOR = "#0039A6"
 _BUS_SERVICE_COLORS: dict[str, str] = {
     "Local": "#0078C6",           # Blue
     "Limited": "#6E3FA3",         # Purple
+    "Local / Limited": "#6E3FA3", # Purple (dual-service: some trips local, some limited)
     "Select Bus Service": "#00B2E3",  # Cyan / light blue
     "Express": "#3D9B35",         # Green
     "School": "#F7931E",          # Orange
 }
+
+# ---------------------------------------------------------------------------
+# Dynamic limited-route detection from GTFS trip headsigns
+# ---------------------------------------------------------------------------
+# MTA marks limited-stop trips with "LIMITED …" or "RUSH …" prefixes in the
+# trip_headsign field of trips.txt.  Scanning at import time means the set
+# auto-updates whenever the GTFS refresh service pulls new feeds — no
+# hardcoded route lists to maintain.
+
+_GTFS_DATA_ROOT = Path(__file__).resolve().parent.parent / "data"
+
+# Regex to strip the leading-zero route IDs in GTFS (Q09 → Q9)
+_GTFS_ROUTE_ZERO_RE = re.compile(r"^([A-Za-z]+)0+(\d+)$")
+
+
+def _build_limited_route_sets() -> tuple[frozenset[str], frozenset[str]]:
+    """Scan all local GTFS trips.txt for LIMITED / RUSH headsigns.
+
+    Returns two frozensets of **normalised, upper-case** route short-names:
+
+    1. **limited_only** — routes where **all** trips are LIMITED/RUSH
+       (e.g. Q9, Q10).  Classified as ``"Limited"``.
+    2. **limited_mixed** — routes where **some** (but not all) trips are
+       LIMITED/RUSH (e.g. M5, BX15).  Classified as ``"Local / Limited"``
+       so the user knows both service patterns exist.
+
+    The scan covers:
+    - ``app/data/bus/{Borough}/trips.txt``  (MTA NYCT bus feeds)
+    - ``app/data/MTA Bus Company/trips.txt`` (MTABC feed — Queens redesign)
+    """
+    # route → [total_trips, limited_trips]
+    route_counts: dict[str, list[int]] = {}
+    search_dirs: list[Path] = []
+
+    # Borough-level NYCT feeds
+    bus_dir = _GTFS_DATA_ROOT / "bus"
+    if bus_dir.is_dir():
+        search_dirs.extend(d for d in bus_dir.iterdir() if d.is_dir())
+    # MTABC (MTA Bus Company) feed
+    mtabc_dir = _GTFS_DATA_ROOT / "MTA Bus Company"
+    if mtabc_dir.is_dir():
+        search_dirs.append(mtabc_dir)
+
+    for directory in search_dirs:
+        trips_file = directory / "trips.txt"
+        if not trips_file.exists():
+            continue
+        try:
+            with trips_file.open(encoding="utf-8-sig") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    route_id = row.get("route_id", "").strip().upper()
+                    # Normalise: Q09 → Q9
+                    m = _GTFS_ROUTE_ZERO_RE.match(route_id)
+                    norm = (m.group(1) + m.group(2)).upper() if m else route_id
+                    if norm not in route_counts:
+                        route_counts[norm] = [0, 0]
+                    route_counts[norm][0] += 1
+                    headsign = (row.get("trip_headsign") or "").strip().upper()
+                    if headsign.startswith(("LIMITED ", "RUSH ")):
+                        route_counts[norm][1] += 1
+        except Exception:
+            continue
+
+    limited_only: set[str] = set()
+    limited_mixed: set[str] = set()
+    for route, (total, ltd) in route_counts.items():
+        if ltd == 0:
+            continue
+        if ltd == total:
+            limited_only.add(route)
+        else:
+            limited_mixed.add(route)
+
+    TrackLogger.info(
+        f"🚌 Dynamic limited routes: {len(limited_only)} limited-only, "
+        f"{len(limited_mixed)} mixed  "
+        f"(only: {', '.join(sorted(limited_only)[:8])}{'…' if len(limited_only) > 8 else ''})  "
+        f"(mixed: {', '.join(sorted(limited_mixed)[:8])}{'…' if len(limited_mixed) > 8 else ''})"
+    )
+    return frozenset(limited_only), frozenset(limited_mixed)
+
+
+_GTFS_LIMITED_ONLY: frozenset[str]
+_GTFS_LIMITED_MIXED: frozenset[str]
+_GTFS_LIMITED_ONLY, _GTFS_LIMITED_MIXED = _build_limited_route_sets()
+
+
+def refresh_limited_route_set() -> None:
+    """Re-scan GTFS data and update the limited route sets.
+
+    Called by the GTFS refresh service after downloading new feeds so
+    the classifier picks up changes without a server restart.
+    """
+    global _GTFS_LIMITED_ONLY, _GTFS_LIMITED_MIXED  # noqa: PLW0603
+    _GTFS_LIMITED_ONLY, _GTFS_LIMITED_MIXED = _build_limited_route_sets()
 
 
 def _classify_bus_service_type(display_name: str) -> str:
     """Derive MTA bus service classification from the display name.
 
     Rules (in order of specificity):
-    - Contains '-SBS' or '+SBS' → Select Bus Service
-    - Starts with 'X' or 'BXM' or 'QM' or 'SIM' → Express
-    - Contains '+' (OBA limited indicator) → Limited
-    - Everything else → Local
+    1. Contains '-SBS' or '+SBS' → Select Bus Service
+    2. Starts with 'X' or 'BXM' or 'QM' or 'SIM' → Express
+    3. Contains '+' (OBA limited indicator) → Limited
+    4. Route has ALL trips LIMITED/RUSH in GTFS → Limited
+    5. Route has SOME trips LIMITED/RUSH in GTFS → Local / Limited
+    6. Everything else → Local
     """
     upper = display_name.upper().strip()
     # SBS routes: M34-SBS, M15-SBS, etc.
@@ -116,6 +216,12 @@ def _classify_bus_service_type(display_name: str) -> str:
     # Limited-stop services (OBA marks these with +)
     if "+" in upper:
         return "Limited"
+    # Dynamic: 100% limited/rush trips
+    if upper in _GTFS_LIMITED_ONLY:
+        return "Limited"
+    # Dynamic: mixed local + limited/rush
+    if upper in _GTFS_LIMITED_MIXED:
+        return "Local / Limited"
     return "Local"
 
 
@@ -630,8 +736,8 @@ async def nearby_transit(
         "The primary endpoint for the Track home screen. Returns nearby transit arrivals "
         "grouped by route with direction sub-groups, ML delay corrections, inline service alerts, "
         "and MTA canonical ordering. Supports filtering by transit mode.\n\n"
-        "Bus routes include a `bus_service_type` field (Local, Limited, Select Bus Service, "
-        "Express) and a `color_hex` matching the official MTA Bus Routes map palette."
+        "Bus routes include a `bus_service_type` field (Local, Limited, Local / Limited, "
+        "Select Bus Service, Express, School) and a `color_hex` matching the official MTA Bus Routes map palette."
     ),
     responses={**RESP_503},
 )
@@ -675,7 +781,7 @@ async def nearby_transit_grouped(
     - Groups arrivals by route with direction sub-groups
     - Applies ML delay corrections (LightGBM + recency model)
     - Embeds inline service alerts per route
-    - Bus routes include ``bus_service_type`` (Local / Limited / Select Bus Service / Express)
+    - Bus routes include ``bus_service_type`` (Local / Limited / Local·Limited / Select Bus Service / Express / School)
       and ``color_hex`` matching the official MTA Bus Routes map palette
     - Response-level caching (5 s fresh / 30 s stale-while-revalidate)
 

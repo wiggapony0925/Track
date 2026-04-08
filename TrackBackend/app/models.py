@@ -396,7 +396,8 @@ class GroupedNearbyTransit(BaseModel):
         None,
         description=(
             "Bus service classification: 'Local', 'Limited', "
-            "'Select Bus Service', 'Express', or null for non-bus routes."
+            "'Local / Limited', 'Select Bus Service', 'Express', "
+            "'School', or null for non-bus routes."
         ),
     )
 
