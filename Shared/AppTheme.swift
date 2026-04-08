@@ -46,6 +46,18 @@ enum AppTheme {
         static let glassHighlight = AppThemeUtilities.adaptiveColor(\.glassHighlight)
         static let mapScrim = AppThemeUtilities.adaptiveColor(\.mapScrim)
 
+        // Chip Design Tokens
+        /// Neutral chip surface — semi-transparent dark fill for inactive/container chips.
+        static let chipSurface = AppThemeUtilities.adaptiveColor(\.chipSurface)
+        /// Very subtle chip border for inactive states.
+        static let chipBorder = AppThemeUtilities.adaptiveColor(\.chipBorder)
+        /// Glass highlight for chip top-edge shine.
+        static let chipGlassHighlight = AppThemeUtilities.adaptiveColor(\.chipGlassHighlight)
+        /// Warm orange tint for Lost & Found chip.
+        static let lostItemTint = AppThemeUtilities.adaptiveColor(\.lostItemTint)
+        /// Red tint for favorited heart chip.
+        static let favoriteTint = AppThemeUtilities.adaptiveColor(\.favoriteTint)
+
         /// White text used on colored badges, buttons, and banners.
         static let textOnColor = Color.white
 

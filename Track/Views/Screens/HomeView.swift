@@ -515,7 +515,8 @@ struct HomeView: View {
                 sheetNavigator: sheetNavigator,
                 lastUpdated: $lastUpdated,
                 cameraPosition: $cameraPosition,
-                is3DMode: $is3DMode
+                is3DMode: $is3DMode,
+                sheetDetent: $sheetDetent
             )
             
         case .routeDetail(let group, _, let initialTab):

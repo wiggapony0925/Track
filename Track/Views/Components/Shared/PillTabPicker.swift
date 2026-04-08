@@ -43,10 +43,23 @@ struct PillTabPicker: View {
         .padding(3)
         .background(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(AppTheme.Colors.cardInset.opacity(0.92))
+                .fill(AppTheme.Colors.chipSurface)
                 .overlay(
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.28), lineWidth: 0.5)
+                        .fill(
+                            LinearGradient(
+                                stops: [
+                                    .init(color: AppTheme.Colors.chipGlassHighlight.opacity(0.03), location: 0.0),
+                                    .init(color: .clear, location: 0.5),
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .strokeBorder(AppTheme.Colors.chipBorder, lineWidth: 0.5)
                 )
         )
         .padding(.horizontal, AppTheme.Layout.margin)
@@ -86,7 +99,30 @@ struct PillTabPicker: View {
                     )
                     .overlay(
                         Capsule()
-                            .strokeBorder(.white.opacity(0.15), lineWidth: 0.5)
+                            .fill(
+                                LinearGradient(
+                                    stops: [
+                                        .init(color: AppTheme.Colors.chipGlassHighlight.opacity(0.14), location: 0),
+                                        .init(color: .clear, location: 0.4),
+                                    ],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            )
+                    )
+                    .overlay(
+                        Capsule()
+                            .strokeBorder(
+                                LinearGradient(
+                                    stops: [
+                                        .init(color: .white.opacity(0.18), location: 0),
+                                        .init(color: .white.opacity(0.03), location: 1),
+                                    ],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                ),
+                                lineWidth: 0.5
+                            )
                     )
                     .shadow(color: accentColor.opacity(0.3), radius: 8, x: 0, y: 3)
                     .shadow(color: accentColor.opacity(0.1), radius: 16, x: 0, y: 6)

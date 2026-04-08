@@ -132,7 +132,7 @@ struct UniversalBottomSheet<Content: View>: View {
         content(navigator.currentPage)
             .id(navigator.currentPage.id)
             .background {
-                AppTheme.Colors.background
+                AppTheme.Colors.cardBackground
                     .ignoresSafeArea()
             }
             .transition(.asymmetric(
@@ -143,8 +143,21 @@ struct UniversalBottomSheet<Content: View>: View {
             .presentationDragIndicator(.visible)
             .presentationBackgroundInteraction(.enabled)
             .presentationBackground {
-                AppTheme.Colors.cardElevated
-                    .ignoresSafeArea()
+                ZStack {
+                    AppTheme.Colors.cardBackground
+                    // Gentle accent wash — keeps the sheet warm,
+                    // not dead-dark. Matches Transit-style treatment.
+                    LinearGradient(
+                        stops: [
+                            .init(color: AppTheme.Colors.accent.opacity(0.08), location: 0.0),
+                            .init(color: AppTheme.Colors.accent.opacity(0.04), location: 0.25),
+                            .init(color: AppTheme.Colors.cardBackground.opacity(0.0), location: 0.5),
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                }
+                .ignoresSafeArea()
             }
             .presentationCornerRadius(32)
             .interactiveDismissDisabled()

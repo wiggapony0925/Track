@@ -88,7 +88,7 @@ struct DirectionPickerView: View {
                             LinearGradient(
                                 stops: [
                                     .init(color: routeColor, location: 0),
-                                    .init(color: routeColor.opacity(0.8), location: 1),
+                                    .init(color: routeColor.opacity(0.82), location: 1),
                                 ],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
@@ -99,7 +99,7 @@ struct DirectionPickerView: View {
                         .fill(
                             LinearGradient(
                                 stops: [
-                                    .init(color: .white.opacity(0.12), location: 0),
+                                    .init(color: AppTheme.Colors.chipGlassHighlight.opacity(0.18), location: 0),
                                     .init(color: .clear, location: 0.4),
                                 ],
                                 startPoint: .top,
@@ -108,27 +108,38 @@ struct DirectionPickerView: View {
                         )
                 } else {
                     Capsule()
-                        .fill(AppTheme.Colors.cardBackground)
+                        .fill(AppTheme.Colors.chipSurface)
+                    // Subtle glass highlight on inactive
+                    Capsule()
+                        .fill(
+                            LinearGradient(
+                                stops: [
+                                    .init(color: AppTheme.Colors.chipGlassHighlight.opacity(0.04), location: 0),
+                                    .init(color: .clear, location: 0.5),
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
                 }
             }
         )
         .overlay(
             Capsule()
                 .strokeBorder(
-                    LinearGradient(
-                        stops: dir.isActive
-                            ? [
-                                .init(color: .white.opacity(0.25), location: 0),
-                                .init(color: .white.opacity(0.05), location: 1),
-                              ]
-                            : [
-                                .init(color: routeColor.opacity(0.15), location: 0),
-                                .init(color: routeColor.opacity(0.06), location: 1),
-                              ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    ),
-                    lineWidth: dir.isActive ? 0.5 : 0.8
+                    dir.isActive
+                        ? AnyShapeStyle(
+                            LinearGradient(
+                                stops: [
+                                    .init(color: .white.opacity(0.22), location: 0),
+                                    .init(color: .white.opacity(0.04), location: 1),
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                          )
+                        : AnyShapeStyle(AppTheme.Colors.chipBorder),
+                    lineWidth: dir.isActive ? 0.5 : 0.5
                 )
         )
         .shadow(

@@ -31,6 +31,13 @@ struct AppThemePalette {
     let accentGlow: UIColor
     let glassHighlight: UIColor
     let mapScrim: UIColor
+
+    // Chip Design Tokens
+    let chipSurface: UIColor
+    let chipBorder: UIColor
+    let chipGlassHighlight: UIColor
+    let lostItemTint: UIColor
+    let favoriteTint: UIColor
 }
 
 enum AppThemeUtilities {

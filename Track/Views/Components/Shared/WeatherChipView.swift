@@ -61,7 +61,24 @@ struct WeatherChipView: View {
         .padding(.vertical, vPadding)
         .background {
             Capsule()
-                .fill(chipBackground)
+                .fill(AppTheme.Colors.chipSurface)
+                .overlay {
+                    Capsule()
+                        .fill(
+                            LinearGradient(
+                                stops: [
+                                    .init(color: AppTheme.Colors.chipGlassHighlight.opacity(0.06), location: 0.0),
+                                    .init(color: .clear, location: 0.5),
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                }
+        }
+        .overlay {
+            Capsule()
+                .strokeBorder(AppTheme.Colors.chipBorder, lineWidth: 0.5)
         }
         .opacity(appeared ? 1.0 : 0.0)
         .onAppear {
@@ -111,19 +128,6 @@ struct WeatherChipView: View {
     }
 
     // MARK: - Appearance
-
-    private var chipBackground: some ShapeStyle {
-        switch style {
-        case .compact:
-            return AnyShapeStyle(AppTheme.Colors.cardInset.opacity(0.6))
-        case .standard:
-            return AnyShapeStyle(AppTheme.Colors.cardInset.opacity(0.45))
-        }
-    }
-
-    private var chipBorder: some ShapeStyle {
-        AppTheme.Colors.borderSubtle.opacity(0.5)
-    }
 }
 
 // MARK: - Previews

@@ -100,6 +100,25 @@ struct RouteDetailSheet: View {
     /// Negative = dragged up (expanded), 0 = resting position.
     @State private var panelDragOffset: CGFloat = 0
 
+    /// Remembered offset from the last completed drag so the
+    /// panel stays wherever the user left it.
+    @State private var panelRestingOffset: CGFloat = 0
+
+    /// Whether the scroll view is at the very top.
+    /// When true and user drags down, the panel collapses.
+    @State private var scrollAtTop: Bool = true
+
+    /// True while the user is actively pulling the panel down from scroll-top.
+    @State private var isDraggingPanel: Bool = false
+
+    /// Once the first meaningful drag movement occurs, we lock in
+    /// whether this gesture moves the panel or scrolls content.
+    /// Prevents per-frame re-evaluation that caused jitter.
+    @State private var gestureDecided: Bool = false
+
+    /// Cached expand range so drag closure doesn't rely on GeometryReader.
+    @State private var cachedExpandRange: CGFloat = 400
+
     /// Stop ID selected by tapping a stop row — filters the Departures tab.
     @State private var inSheetSelectedStopId: String?
 
@@ -493,17 +512,8 @@ struct RouteDetailSheet: View {
     // MARK: - Body Content
 
     /// Whether the panel is fully expanded (scroll content enabled).
-    /// Updated dynamically in bodyContent via GeometryReader.
-    @State private var isPanelFullyExpanded: Bool = false
-
-    /// Compute expansion state from geometry size instead of deprecated UIScreen.main.
-    private func updatePanelExpanded(totalHeight: CGFloat) {
-        let threshold = -(totalHeight * 0.45 * 0.95)
-        let expanded = panelDragOffset <= threshold
-        if expanded != isPanelFullyExpanded {
-            DispatchQueue.main.async { isPanelFullyExpanded = expanded }
-        }
-    }
+    /// Only updated on drag-end to avoid mid-gesture layout thrashing.
+    @State private var panelScrollEnabled: Bool = false
 
     private var bodyContent: some View {
         GeometryReader { proxy in
@@ -511,7 +521,6 @@ struct RouteDetailSheet: View {
             let totalHeight = proxy.size.height + safeTop
             let minPanelHeight = totalHeight * 0.45
             let maxPanelHeight = totalHeight
-            let _ = updatePanelExpanded(totalHeight: totalHeight)
             let range = maxPanelHeight - minPanelHeight
             // Clamp panel height between min and max
             let panelHeight = min(max(minPanelHeight - panelDragOffset, minPanelHeight), maxPanelHeight)
@@ -519,15 +528,28 @@ struct RouteDetailSheet: View {
             let expandProgress = (panelHeight - minPanelHeight) / max(range, 1)
 
             ZStack(alignment: .top) {
-                // ── Map-floating action rail (sits on the map area, right side) ──
+                // ── X button — always visible, top-right, directly under banner ──
+                // Safe area is already respected so we only offset from safe-area top.
+                // Banner ≈ 8pt top pad + ~78pt body = ~86pt. 8pt gap → 94pt.
                 HStack {
                     Spacer()
-                    routeHeaderActionRail
+                    closeRouteButton
                 }
-                .padding(.top, safeTop + 8)
+                .padding(.top, 94)
                 .padding(.horizontal, AppTheme.Layout.margin)
-                .opacity(1.0 - expandProgress * 1.5)
-                .allowsHitTesting(expandProgress < 0.4)
+
+                // ── Center button — fades smoothly as panel expands ──
+                if isSheetExpanded {
+                    HStack {
+                        Spacer()
+                        recenterRouteButton
+                    }
+                    .padding(.top, 146) // 94 + 42 (X height) + 10 gap
+                    .padding(.horizontal, AppTheme.Layout.margin)
+                    .opacity(max(1.0 - expandProgress * 2.5, 0))
+                    .allowsHitTesting(expandProgress < 0.3)
+                    .transition(.opacity.combined(with: .scale(scale: 0.8)))
+                }
 
                 // ── Bottom floating panel ──
                 VStack(spacing: 0) {
@@ -535,63 +557,94 @@ struct RouteDetailSheet: View {
 
                     panelContent(
                         safeBottom: proxy.safeAreaInsets.bottom,
-                        isExpanded: expandProgress > 0.95,
                         expandRange: range
                     )
                     .frame(height: panelHeight)
                     .background {
-                        // Always a gradient: transparent top → opaque bottom
-                        ZStack {
-                            // Frosted material masked to fade in from top
-                            Rectangle()
-                                .fill(.ultraThinMaterial)
-                                .mask(
-                                    LinearGradient(
-                                        stops: [
-                                            .init(color: .clear, location: 0),
-                                            .init(color: .white.opacity(0.25), location: 0.06),
-                                            .init(color: .white.opacity(0.6), location: 0.14),
-                                            .init(color: .white, location: 0.25),
-                                        ],
-                                        startPoint: .top,
-                                        endPoint: .bottom
+                        // Transit-style panel: frosted glass with a rich
+                        // route-color gradient that carries the line's
+                        // identity from top to bottom. Strong at the top
+                        // (where the direction picker sits), gracefully
+                        // fading into the base background lower down.
+                        ZStack(alignment: .bottom) {
+                            // Frosted glass — the very tip of the panel is
+                            // transparent so the map bleeds through, then
+                            // material density ramps up quickly around the
+                            // direction picker for a rich frosted-glass look.
+                            GeometryReader { bg in
+                                Rectangle()
+                                    .fill(.ultraThinMaterial)
+                                    .mask(
+                                        VStack(spacing: 0) {
+                                            LinearGradient(
+                                                stops: [
+                                                    .init(color: .clear, location: 0),
+                                                    .init(color: .white.opacity(0.10), location: 0.08),
+                                                    .init(color: .white.opacity(0.45), location: 0.22),
+                                                    .init(color: .white.opacity(0.75), location: 0.38),
+                                                    .init(color: .white.opacity(0.92), location: 0.52),
+                                                    .init(color: .white, location: 0.65),
+                                                ],
+                                                startPoint: .top,
+                                                endPoint: .bottom
+                                            )
+                                            .frame(height: bg.size.height * 0.30)
+
+                                            Color.white
+                                        }
                                     )
+                            }
+
+                            // Route-color gradient — transparent at the top
+                            // so the map bleeds through, builds intensity
+                            // toward the bottom so the sheet base carries
+                            // the line's identity color (blue for A, purple
+                            // for 7, etc.). Creates a rich colored floor.
+                            GeometryReader { _ in
+                                LinearGradient(
+                                    stops: [
+                                        .init(color: routeColor.opacity(0), location: 0),
+                                        .init(color: routeColor.opacity(0.03), location: 0.10),
+                                        .init(color: routeColor.opacity(0.06), location: 0.20),
+                                        .init(color: routeColor.opacity(0.10), location: 0.30),
+                                        .init(color: routeColor.opacity(0.16), location: 0.42),
+                                        .init(color: routeColor.opacity(0.22), location: 0.55),
+                                        .init(color: routeColor.opacity(0.28), location: 0.68),
+                                        .init(color: routeColor.opacity(0.32), location: 0.80),
+                                        .init(color: routeColor.opacity(0.36), location: 0.92),
+                                        .init(color: routeColor.opacity(0.38), location: 1.0),
+                                    ],
+                                    startPoint: .top,
+                                    endPoint: .bottom
                                 )
+                            }
 
-                            // Opaque background fading in from ~30% down
-                            LinearGradient(
-                                stops: [
-                                    .init(color: AppTheme.Colors.background.opacity(0), location: 0),
-                                    .init(color: AppTheme.Colors.background.opacity(0.3), location: 0.12),
-                                    .init(color: AppTheme.Colors.background.opacity(0.7), location: 0.22),
-                                    .init(color: AppTheme.Colors.background, location: 0.35),
-                                ],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-
-                            // Subtle route-color wash at the top
-                            LinearGradient(
-                                stops: [
-                                    .init(color: routeColor.opacity(0.05), location: 0),
-                                    .init(color: routeColor.opacity(0.02), location: 0.10),
-                                    .init(color: .clear, location: 0.20),
-                                ],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
+                            // Background fill — gentle base that keeps the
+                            // upper portion clean and lets route color own
+                            // the lower half of the panel.
+                            GeometryReader { _ in
+                                LinearGradient(
+                                    stops: [
+                                        .init(color: AppTheme.Colors.cardBackground.opacity(0), location: 0),
+                                        .init(color: AppTheme.Colors.cardBackground.opacity(0), location: 0.25),
+                                        .init(color: AppTheme.Colors.cardBackground.opacity(0.12), location: 0.40),
+                                        .init(color: AppTheme.Colors.cardBackground.opacity(0.30), location: 0.55),
+                                        .init(color: AppTheme.Colors.cardBackground.opacity(0.50), location: 0.70),
+                                        .init(color: AppTheme.Colors.cardBackground.opacity(0.65), location: 0.85),
+                                        .init(color: AppTheme.Colors.cardBackground.opacity(0.75), location: 1.0),
+                                    ],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            }
                         }
-                        .clipShape(
-                            UnevenRoundedRectangle(
-                                topLeadingRadius: 28 * (1.0 - expandProgress),
-                                topTrailingRadius: 28 * (1.0 - expandProgress)
-                            )
-                        )
                     }
                 }
                 .ignoresSafeArea(edges: .bottom)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .onAppear { cachedExpandRange = range }
+            .onChange(of: range) { _, newRange in cachedExpandRange = newRange }
         }
     }
 
@@ -601,7 +654,6 @@ struct RouteDetailSheet: View {
     /// Interior content of the floating bottom panel — direction, countdowns, tabs, content.
     private func panelContent(
         safeBottom: CGFloat,
-        isExpanded: Bool,
         expandRange: CGFloat
     ) -> some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -639,31 +691,50 @@ struct RouteDetailSheet: View {
                     .padding(.bottom, safeBottom + 20)
                 }
             }
-            .scrollDisabled(!isExpanded)
-            // When scroll is disabled (panel collapsed), drag gestures
-            // on the content move the panel up/down instead.
+            .scrollDisabled(!panelScrollEnabled)
+            .onScrollGeometryChange(for: Bool.self) { geo in
+                geo.contentOffset.y <= geo.contentInsets.top + 1
+            } action: { _, atTop in
+                scrollAtTop = atTop
+            }
             .simultaneousGesture(
-                isExpanded
-                    ? nil
-                    : DragGesture()
-                        .onChanged { value in
-                            panelDragOffset = value.translation.height
+                DragGesture(minimumDistance: 8)
+                    .onChanged { value in
+                        let dy = value.translation.height
+
+                        // Decide once per gesture, then lock in.
+                        if !gestureDecided {
+                            gestureDecided = true
+                            if panelScrollEnabled && !scrollAtTop {
+                                // User is mid-scroll — let ScrollView own it.
+                                isDraggingPanel = false
+                                return
+                            }
+                            if panelScrollEnabled && dy < 0 {
+                                // At top but swiping up — let scroll handle.
+                                isDraggingPanel = false
+                                return
+                            }
+                            isDraggingPanel = true
                         }
-                        .onEnded { value in
-                            let velocity = value.predictedEndTranslation.height
-                                - value.translation.height
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) {
-                                if velocity < -100 || value.translation.height < -80 {
-                                    panelDragOffset = -expandRange
-                                } else if velocity > 100 || value.translation.height > 80 {
-                                    panelDragOffset = 0
-                                } else {
-                                    let mid = -expandRange / 2
-                                    panelDragOffset = panelDragOffset < mid
-                                        ? -expandRange : 0
-                                }
+
+                        guard isDraggingPanel else { return }
+                        panelDragOffset = panelRestingOffset + dy
+                    }
+                    .onEnded { _ in
+                        gestureDecided = false
+                        guard isDraggingPanel else { return }
+                        isDraggingPanel = false
+                        let clamped = min(max(panelDragOffset, -cachedExpandRange), 0)
+                        panelRestingOffset = clamped
+                        let shouldScroll = clamped <= -(cachedExpandRange * 0.95)
+                        withAnimation(.interpolatingSpring(stiffness: 300, damping: 30)) {
+                            panelDragOffset = clamped
+                            if shouldScroll != panelScrollEnabled {
+                                panelScrollEnabled = shouldScroll
                             }
                         }
+                    }
             )
         }
     }
@@ -1054,18 +1125,18 @@ struct RouteDetailSheet: View {
                     HStack(spacing: 4) {
                         Image(systemName: isFavorited ? "heart.fill" : "heart")
                             .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(isFavorited ? .red : AppTheme.Colors.textSecondary)
+                            .foregroundColor(isFavorited ? AppTheme.Colors.favoriteTint : AppTheme.Colors.textSecondary)
                             .symbolEffect(.bounce, value: isFavorited)
                         if isFavorited {
                             Text("Saved")
                                 .font(.system(size: 11, weight: .bold, design: .rounded))
-                                .foregroundColor(.red)
+                                .foregroundColor(AppTheme.Colors.favoriteTint)
                         }
                     }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 7)
                     .trackOverlayGlass(
-                        tint: isFavorited ? .red : routeColor,
+                        tint: isFavorited ? AppTheme.Colors.favoriteTint : routeColor,
                         cornerRadius: 999,
                         tintOpacity: isFavorited ? 0.08 : 0.05
                     )
@@ -1082,11 +1153,11 @@ struct RouteDetailSheet: View {
                         Text("Lost something?")
                             .font(.system(size: 11, weight: .bold, design: .rounded))
                     }
-                    .foregroundColor(.orange)
+                    .foregroundColor(AppTheme.Colors.lostItemTint)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 7)
                     .trackOverlayGlass(
-                        tint: .orange,
+                        tint: AppTheme.Colors.lostItemTint,
                         cornerRadius: 999,
                         tintOpacity: 0.06
                     )
@@ -2370,7 +2441,7 @@ struct RouteDetailSheet: View {
             Image(systemName: "mappin.circle.fill")
                 .font(.system(size: 10, weight: .semibold))
             Text(stopName)
-                .font(.custom("Helvetica-Bold", size: 11))
+                .font(.custom("Helvetica-Bold", fixedSize: 11))
                 .lineLimit(1)
             Button {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
@@ -2405,7 +2476,7 @@ struct RouteDetailSheet: View {
                 .frame(width: 3, height: 18)
 
             Text("Next Arrivals")
-                .font(.custom("Helvetica-Bold", size: 14))
+                .font(.custom("Helvetica-Bold", fixedSize: 14))
                 .foregroundColor(AppTheme.Colors.textPrimary)
                 .textCase(.uppercase)
                 .tracking(0.8)
@@ -2418,7 +2489,7 @@ struct RouteDetailSheet: View {
                         Image(systemName: "mappin.circle.fill")
                             .font(.system(size: 9, weight: .semibold))
                         Text(stopName)
-                            .font(.custom("Helvetica-Bold", size: 11))
+                            .font(.custom("Helvetica-Bold", fixedSize: 11))
                             .lineLimit(1)
                     }
                     .foregroundColor(routeColor)

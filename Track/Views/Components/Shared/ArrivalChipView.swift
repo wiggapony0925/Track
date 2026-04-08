@@ -270,13 +270,13 @@ struct ArrivalChipView: View {
                     .fill(
                         LinearGradient(
                             stops: [
-                                .init(color: .white.opacity(isSched ? 0.92 : 0.84), location: 0.0),
+                                .init(color: AppTheme.Colors.chipGlassHighlight.opacity(isSched ? 0.72 : 0.58), location: 0.0),
                                 .init(
-                                    color: AppTheme.Colors.cardBackground.opacity(isSched ? 0.94 : 0.82),
-                                    location: 0.28
+                                    color: AppTheme.Colors.cardBackground.opacity(isSched ? 0.78 : 0.62),
+                                    location: 0.32
                                 ),
                                 .init(
-                                    color: AppTheme.Colors.cardFloating.opacity(isSched ? 0.98 : 0.90),
+                                    color: AppTheme.Colors.cardFloating.opacity(isSched ? 0.85 : 0.72),
                                     location: 1.0
                                 ),
                             ],
@@ -328,9 +328,9 @@ struct ArrivalChipView: View {
                             color: isSelected
                                 ? chipAccent.opacity(0.8)
                                 : usesSolidAccentCard
-                                    ? .white.opacity(0.28)
+                                    ? AppTheme.Colors.chipGlassHighlight.opacity(0.28)
                                 : isSched
-                                    ? AppTheme.Colors.textSecondary.opacity(0.06)
+                                    ? AppTheme.Colors.chipBorder
                                     : chipAccent.opacity(isFirst ? 0.22 : 0.1),
                             location: 0
                         ),
@@ -355,8 +355,8 @@ struct ArrivalChipView: View {
                 LinearGradient(
                     stops: [
                         .init(
-                            color: .white.opacity(
-                                usesSolidAccentCard ? 0.14 : (isSched ? 0.02 : 0.06)
+                            color: AppTheme.Colors.chipGlassHighlight.opacity(
+                                usesSolidAccentCard ? 0.18 : (isSched ? 0.02 : 0.08)
                             ),
                             location: 0
                         ),
@@ -544,7 +544,7 @@ struct ScheduledChipView: View {
                 .fill(
                     LinearGradient(
                         stops: [
-                            .init(color: .white.opacity(0.03), location: 0),
+                            .init(color: AppTheme.Colors.chipGlassHighlight.opacity(0.04), location: 0),
                             .init(color: .clear, location: 0.3),
                         ],
                         startPoint: .top,
@@ -558,7 +558,7 @@ struct ScheduledChipView: View {
                 .strokeBorder(
                     LinearGradient(
                         stops: [
-                            .init(color: AppTheme.Colors.textSecondary.opacity(0.08), location: 0),
+                            .init(color: AppTheme.Colors.chipBorder, location: 0),
                             .init(color: .clear, location: 1),
                         ],
                         startPoint: .top,

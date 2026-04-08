@@ -30,6 +30,13 @@ enum AppThemeLight {
         shadowStrong: AppThemeUtilities.rgba(14, 16, 28, alpha: 0.16),
         accentGlow: AppThemeUtilities.rgba(155, 72, 240, alpha: 0.20),
         glassHighlight: AppThemeUtilities.rgba(255, 255, 255, alpha: 0.88),
-        mapScrim: AppThemeUtilities.rgba(14, 16, 28, alpha: 0.06)
+        mapScrim: AppThemeUtilities.rgba(14, 16, 28, alpha: 0.06),
+
+        // Chip Design Tokens
+        chipSurface: AppThemeUtilities.rgba(236, 236, 242, alpha: 0.82),
+        chipBorder: AppThemeUtilities.rgba(0, 0, 0, alpha: 0.04),
+        chipGlassHighlight: AppThemeUtilities.rgba(255, 255, 255, alpha: 0.92),
+        lostItemTint: AppThemeUtilities.rgba(235, 142, 24),
+        favoriteTint: AppThemeUtilities.rgba(232, 48, 52)
     )
 }

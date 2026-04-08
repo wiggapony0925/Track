@@ -15,8 +15,14 @@ struct DashboardView: View {
     @Binding var lastUpdated: Date?
     @Binding var cameraPosition: TrackCameraPosition
     @Binding var is3DMode: Bool
+    @Binding var sheetDetent: PresentationDetent
 
     @ObservedObject private var favoritesManager = FavoritesManager.shared
+
+    /// Whether the sheet is at its smallest resting position.
+    private var isCollapsed: Bool {
+        sheetDetent == SheetConstants.defaultDetent
+    }
 
     private var searchTextBinding: Binding<String> {
         Binding(get: { viewModel.searchText }, set: { viewModel.searchText = $0 })
@@ -42,6 +48,20 @@ struct DashboardView: View {
             
             // MARK: - Scrollable Content
             scrollableContent
+                .scrollDisabled(isCollapsed)
+                .simultaneousGesture(
+                    isCollapsed
+                        ? DragGesture(minimumDistance: 12)
+                            .onEnded { value in
+                                // Upward swipe → expand the sheet
+                                if value.translation.height < -20 {
+                                    withAnimation(.spring(response: 0.4, dampingFraction: 0.86)) {
+                                        sheetDetent = .large
+                                    }
+                                }
+                            }
+                        : nil
+                )
         }
         .trackScreenBackground()
     }
@@ -204,6 +224,7 @@ struct DashboardView: View {
     @Previewable @State var lastUpdated: Date? = Date()
     @Previewable @State var cameraPosition: TrackCameraPosition = .automatic
     @Previewable @State var is3DMode: Bool = false
+    @Previewable @State var detent: PresentationDetent = SheetConstants.defaultDetent
     let vm: HomeViewModel = HomeViewModel()
     let lm: LocationManager = LocationManager()
     let sn: SheetNavigator = SheetNavigator()
@@ -214,6 +235,7 @@ struct DashboardView: View {
         sheetNavigator: sn,
         lastUpdated: $lastUpdated,
         cameraPosition: $cameraPosition,
-        is3DMode: $is3DMode
+        is3DMode: $is3DMode,
+        sheetDetent: $detent
     )
 }

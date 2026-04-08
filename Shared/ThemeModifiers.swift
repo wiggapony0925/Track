@@ -297,7 +297,7 @@ struct TrackFogSheetSurface: View {
 extension View {
     func trackScreenBackground() -> some View {
         background {
-            AppTheme.Colors.background
+            AppTheme.Colors.cardBackground
                 .ignoresSafeArea()
         }
     }
