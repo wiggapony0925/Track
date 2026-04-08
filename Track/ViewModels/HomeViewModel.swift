@@ -1870,25 +1870,12 @@ final class HomeViewModel {
         _geocodeTask?.cancel()
         _geocodeTask = Task { [weak self] in
             do {
-                // CLGeocoder is deprecated in iOS 26 in favor of MapKit,
-                // but MKLocalSearch doesn't support pure reverse-geocoding.
-                // Silence the warning until Apple ships a direct replacement.
-                let placemarks = try await {
-                    nonisolated(unsafe) let loc = loc
-                    return try await CLGeocoder().reverseGeocodeLocation(loc)
-                }()
-                guard !Task.isCancelled, let pm = placemarks.first else { return }
-                // Prefer street address for specificity
-                let street: String? = {
-                    if let num = pm.subThoroughfare, let road = pm.thoroughfare {
-                        return "\(num) \(road)"
-                    }
-                    return pm.thoroughfare
-                }()
-                let name = street
-                    ?? pm.subLocality
-                    ?? pm.locality
-                    ?? pm.name
+                guard let request = MKReverseGeocodingRequest(location: loc) else { return }
+                let mapItems = try await request.mapItems
+                guard !Task.isCancelled, let item = mapItems.first else { return }
+                let name = item.address?.shortAddress
+                    ?? item.name
+                    ?? item.address?.fullAddress
                     ?? "New York"
                 await MainActor.run {
                     self?._lastGeocodedLocation = loc
