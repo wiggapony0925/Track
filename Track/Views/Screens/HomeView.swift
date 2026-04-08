@@ -1090,6 +1090,11 @@ struct HomeView: View {
         // Cancel any pending debounce
         dragSearchDebounce?.cancel()
         
+        // Fire a live geocode of the current map center so the sheet
+        // header updates in real-time as the user drags.
+        let dragLoc = CLLocation(latitude: center.latitude, longitude: center.longitude)
+        viewModel.updateLocationName(for: dragLoc)
+        
         // Mark as actively panning — dims the map and shows "Release to search".
         // The radius circles now track currentMapCenter live, so we don't need
         // to clear dragSearchSettledCenter during panning.
@@ -1116,8 +1121,8 @@ struct HomeView: View {
         }
         
         dragSearchDebounce = Task { @MainActor in
-            // Wait for the user to stop panning (500ms of stillness)
-            try? await Task.sleep(for: .milliseconds(500))
+            // Wait for the user to stop panning (150ms of stillness)
+            try? await Task.sleep(for: .milliseconds(150))
             guard !Task.isCancelled else { return }
             
             guard let userCoord = locationManager.currentLocation?.coordinate else { return }

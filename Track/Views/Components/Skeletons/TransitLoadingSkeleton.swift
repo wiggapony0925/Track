@@ -42,7 +42,7 @@ struct TransitLoadingSkeleton: View {
 // MARK: - Tier Header Skeleton
 
 /// Matches the layout of NearYouSectionHeader / FartherAwaySectionHeader /
-/// MuchFartherAwaySectionHeader — icon + distance capsule, optional timestamp.
+/// MuchFartherAwaySectionHeader — colored dot + text label.
 private struct TierHeaderSkeleton: View {
     let icon: String
     let color: Color
@@ -50,17 +50,12 @@ private struct TierHeaderSkeleton: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            // Icon + distance capsule placeholder
-            HStack(spacing: 4) {
-                Image(systemName: icon)
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(.white)
+            Circle()
+                .fill(color)
+                .frame(width: 8, height: 8)
 
-                SkeletonBar(width: 30, height: 10, opacity: 0.25)
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(Capsule().fill(color))
+            SkeletonBar(width: 70, height: 14, opacity: 0.12)
+            SkeletonBar(width: 40, height: 12, opacity: 0.08)
 
             Spacer()
 
@@ -69,7 +64,7 @@ private struct TierHeaderSkeleton: View {
             }
         }
         .padding(.horizontal, AppTheme.Layout.margin)
-        .padding(.top, 6)
+        .padding(.top, 8)
         .padding(.bottom, 4)
     }
 }

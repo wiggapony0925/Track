@@ -209,31 +209,23 @@ struct ClosestToYouSectionHeader: View {
         return formatDistanceImperial(meters, suffix: "away")
     }
 
-    /// Green when showing normal nearby results, yellow when promoted from farther away.
     private var badgeColor: Color {
         isPromoted ? AppTheme.Colors.warningYellow : AppTheme.Colors.successGreen
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            HStack(spacing: 5) {
-                Image(systemName: "figure.walk")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundColor(.white)
+        HStack(spacing: 6) {
+            Circle()
+                .fill(badgeColor)
+                .frame(width: 8, height: 8)
 
-                Text("Closest")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(.white)
+            Text("Closest")
+                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .foregroundColor(AppTheme.Colors.textPrimary)
 
-                Text("· \(distanceDisplay)")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.7))
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background {
-                Capsule().fill(badgeColor)
-            }
+            Text("· \(distanceDisplay)")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(AppTheme.Colors.textTertiary)
 
             Spacer()
 
@@ -244,12 +236,12 @@ struct ClosestToYouSectionHeader: View {
             }
         }
         .padding(.horizontal, AppTheme.Layout.margin)
-        .padding(.top, 6)
+        .padding(.top, 8)
         .padding(.bottom, 4)
     }
 }
 
-/// "Near You" section header - compact icon-based indicator
+/// "Near You" section header - minimal dot indicator
 struct NearYouSectionHeader: View {
     let radiusMeters: Double
     let updated: Date?
@@ -259,25 +251,18 @@ struct NearYouSectionHeader: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            HStack(spacing: 5) {
-                Image(systemName: "location.fill")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundColor(.white)
+        HStack(spacing: 6) {
+            Circle()
+                .fill(AppTheme.Colors.successGreen)
+                .frame(width: 8, height: 8)
 
-                Text("Near You")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(.white)
+            Text("Near You")
+                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .foregroundColor(AppTheme.Colors.textPrimary)
 
-                Text("· \(radiusDisplay)")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.7))
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background {
-                Capsule().fill(AppTheme.Colors.successGreen)
-            }
+            Text("· \(radiusDisplay)")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(AppTheme.Colors.textTertiary)
 
             Spacer()
 
@@ -288,12 +273,12 @@ struct NearYouSectionHeader: View {
             }
         }
         .padding(.horizontal, AppTheme.Layout.margin)
-        .padding(.top, 6)
+        .padding(.top, 8)
         .padding(.bottom, 4)
     }
 }
 
-/// "A Little Farther Away" section header - compact icon-based indicator
+/// "A Little Farther Away" section header - minimal dot indicator
 struct FartherAwaySectionHeader: View {
     let radiusMeters: Double
 
@@ -302,25 +287,18 @@ struct FartherAwaySectionHeader: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            HStack(spacing: 5) {
-                Image(systemName: "figure.walk")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundColor(.white)
+        HStack(spacing: 6) {
+            Circle()
+                .fill(AppTheme.Colors.accent)
+                .frame(width: 8, height: 8)
 
-                Text("A Bit Farther")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(.white)
+            Text("A Bit Farther")
+                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .foregroundColor(AppTheme.Colors.textPrimary)
 
-                Text("· \(radiusDisplay)")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.7))
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background {
-                Capsule().fill(AppTheme.Colors.accent)
-            }
+            Text("· \(radiusDisplay)")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(AppTheme.Colors.textTertiary)
 
             Spacer()
         }
@@ -330,7 +308,7 @@ struct FartherAwaySectionHeader: View {
     }
 }
 
-/// "Much Farther Away" section header - compact icon-based indicator with car icon
+/// "Much Farther Away" section header - minimal dot indicator
 struct MuchFartherAwaySectionHeader: View {
     let radiusMeters: Double
 
@@ -339,25 +317,18 @@ struct MuchFartherAwaySectionHeader: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            HStack(spacing: 5) {
-                Image(systemName: "car.fill")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundColor(.white)
+        HStack(spacing: 6) {
+            Circle()
+                .fill(AppTheme.Colors.warningYellow)
+                .frame(width: 8, height: 8)
 
-                Text("Much Farther")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(.white)
+            Text("Much Farther")
+                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .foregroundColor(AppTheme.Colors.textPrimary)
 
-                Text("· \(radiusDisplay)")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.7))
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background {
-                Capsule().fill(AppTheme.Colors.warningYellow)
-            }
+            Text("· \(radiusDisplay)")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(AppTheme.Colors.textTertiary)
 
             Spacer()
         }
@@ -371,19 +342,11 @@ struct MuchFartherAwaySectionHeader: View {
 /// fall within that ring.  Always visible so all 3 tiers are present.
 struct EmptyTierHint: View {
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "minus")
-                .font(.system(size: 10, weight: .medium))
-                .foregroundColor(AppTheme.Colors.textTertiary.opacity(0.3))
-
-            Text("Nothing in this range")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundColor(AppTheme.Colors.textTertiary.opacity(0.4))
-
-            Spacer()
-        }
-        .padding(.horizontal, AppTheme.Layout.margin + 4)
-        .padding(.vertical, 6)
+        Text("Nothing in this range")
+            .font(.system(size: 12, weight: .medium))
+            .foregroundColor(AppTheme.Colors.textTertiary.opacity(0.35))
+            .padding(.horizontal, AppTheme.Layout.margin + 14)
+            .padding(.vertical, 6)
     }
 }
 

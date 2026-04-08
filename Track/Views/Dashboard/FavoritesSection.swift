@@ -77,18 +77,38 @@ struct FavoritesSection: View {
         VStack(alignment: .leading, spacing: 10) {
             // Header
             HStack {
-                Text("Favorites")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(AppTheme.Colors.textTertiary)
-                    .textCase(.uppercase)
-                    .tracking(0.5)
+                HStack(spacing: 6) {
+                    Image(systemName: "heart.fill")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(AppTheme.Colors.accent)
+                    Text("Favorites")
+                        .font(.system(size: 16, weight: .bold, design: .rounded))
+                        .foregroundColor(AppTheme.Colors.textPrimary)
+                    if !sortedFavorites.isEmpty {
+                        Text("\(sortedFavorites.count)")
+                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                            .foregroundColor(AppTheme.Colors.accent)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background {
+                                Capsule()
+                                    .fill(AppTheme.Colors.accent.opacity(0.12))
+                            }
+                    }
+                }
                 Spacer()
                 if !sortedFavorites.isEmpty || selectedMode != .nearby {
-                    Button("Manage") {
+                    Button {
                         sheetNavigator.navigate(to: .manageFavorites)
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text("Manage")
+                                .font(.system(size: 12, weight: .semibold))
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 9, weight: .bold))
+                        }
+                        .foregroundColor(AppTheme.Colors.accent)
                     }
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(AppTheme.Colors.accent)
                 }
             }
             .padding(.horizontal, AppTheme.Layout.margin)
@@ -369,7 +389,7 @@ struct FavoriteCard: View {
     @ViewBuilder
     private var countdownPill: some View {
         if let arrival = nextArrival {
-            TimelineView(.periodic(from: .now, by: 1.0)) { _ in
+            TimelineView(.periodic(from: .now, by: 15.0)) { _ in
                 let eta = resolvedETA(for: arrival)
                 let isNow = eta.isAtStop || eta.secondsRemaining <= 30
                 HStack(spacing: 5) {
@@ -457,9 +477,9 @@ struct FavoriteCard: View {
                 }
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 10)
-        .frame(width: 120, height: 120, alignment: .leading)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 12)
+        .frame(width: 145, height: 120, alignment: .leading)
         .background { cardChrome }
     }
 
@@ -470,31 +490,9 @@ struct FavoriteCard: View {
     }
 
     @ViewBuilder
-    private var countdownLabel: some View {
-        if let arrival = nextArrival {
-            // Per-second countdown — consistent with all other countdown views
-            TimelineView(.periodic(from: .now, by: 1.0)) { _ in
-                let eta = resolvedETA(for: arrival)
-                let isNow = eta.isAtStop || eta.secondsRemaining <= 30
-                Text(isNow ? "Now" : "\(eta.minutesRemaining) min")
-                    .font(.system(size: 14, weight: .heavy))
-                    .foregroundColor(
-                        eta.minutesRemaining <= 2
-                            ? AppTheme.Colors.alertRed
-                            : AppTheme.Colors.textPrimary
-                    )
-            }
-        } else {
-            Text("—")
-                .font(.system(size: 14, weight: .heavy))
-                .foregroundColor(AppTheme.Colors.textSecondary)
-        }
-    }
-
-    @ViewBuilder
     private var countdownChip: some View {
         if let arrival = nextArrival {
-            TimelineView(.periodic(from: .now, by: 1.0)) { _ in
+            TimelineView(.periodic(from: .now, by: 15.0)) { _ in
                 let eta = resolvedETA(for: arrival)
                 let isNow = eta.isAtStop || eta.secondsRemaining <= 30
                 VStack(alignment: .trailing, spacing: -1) {

@@ -43,7 +43,9 @@ struct DashboardView: View {
                 selectedMode: selectedModeBinding,
                 lastUpdated: lastUpdated,
                 isRefreshing: viewModel.isRefreshing,
-                weatherSnapshot: viewModel.weatherSnapshot
+                weatherSnapshot: viewModel.weatherSnapshot,
+                locationName: viewModel.currentLocationName,
+                isDragSearchActive: viewModel.isSearchPinActive
             )
             
             // MARK: - Scrollable Content

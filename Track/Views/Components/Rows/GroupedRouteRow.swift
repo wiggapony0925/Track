@@ -320,10 +320,11 @@ struct  GroupedRouteRow: View {
     }
 
     private var directionInfoColumn: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
             directionTabView
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 walkingDistanceLabel
+                Spacer(minLength: 0)
                 paginationDots
             }
         }
@@ -339,26 +340,25 @@ struct  GroupedRouteRow: View {
                 ) { index, direction in
                     let label: String = ArrivalHelpers.resolveDirectionLabel(for: direction)
 
-                    VStack(alignment: .leading, spacing: 5) {
+                    VStack(alignment: .leading, spacing: 4) {
                         Text(label)
                             .font(.system(size: 15, weight: .bold))
                             .foregroundColor(AppTheme.Colors.textPrimary)
                             .lineLimit(2)
-                            .minimumScaleFactor(0.4)
+                            .minimumScaleFactor(0.5)
                             .fixedSize(horizontal: false, vertical: true)
-                            .padding(.vertical, 2)
 
                         if let arrival = countdownArrival(for: direction) {
                             HStack(spacing: 4) {
-                                Image(systemName: "mappin.circle.fill")
-                                    .font(.system(size: 10, weight: .semibold))
+                                Circle()
+                                    .fill(routeColor.opacity(0.5))
+                                    .frame(width: 5, height: 5)
                                 Text(arrival.stopName)
-                                    .font(.system(size: 11, weight: .medium))
+                                    .font(.system(size: 11, weight: .semibold))
                                     .lineLimit(1)
                                     .minimumScaleFactor(0.6)
                             }
-                            .foregroundColor(AppTheme.Colors.textTertiary)
-                            .padding(.top, 1)
+                            .foregroundColor(AppTheme.Colors.textSecondary)
                         }
                     }
                     .id(index) // Essential for scrollPosition binding
@@ -382,12 +382,11 @@ struct  GroupedRouteRow: View {
         {
             HStack(spacing: 3) {
                 Image(systemName: "figure.walk")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 9, weight: .semibold))
                 Text(formatDistanceImperial(dist))
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.system(size: 11, weight: .medium))
             }
-            .foregroundColor(AppTheme.Colors.textTertiary)
-            .padding(.trailing, 4)
+            .foregroundColor(AppTheme.Colors.textTertiary.opacity(0.7))
         }
     }
 
@@ -568,7 +567,7 @@ struct  GroupedRouteRow: View {
             
             // ETA IGLOO CARD
             VStack(alignment: .trailing, spacing: 3) {
-                TimelineView(.periodic(from: .now, by: 1.0)) { _ in
+                TimelineView(.periodic(from: .now, by: 15.0)) { _ in
                     let eta = resolvedETA(for: first)
 
                     if eta.isPastArrival {

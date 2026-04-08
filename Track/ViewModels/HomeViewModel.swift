@@ -780,6 +780,13 @@ final class HomeViewModel {
     /// Updated after each `WeatherService.shared.update(for:)` resolves.
     var weatherSnapshot: WeatherSnapshot?
 
+    /// Human-readable neighborhood / area name resolved from the user's
+    /// current location via reverse geocoding.  Updated whenever the
+    /// reference location moves significantly (> 200 m).
+    var currentLocationName: String?
+    @ObservationIgnored private var _lastGeocodedLocation: CLLocation?
+    @ObservationIgnored private var _geocodeTask: Task<Void, Never>?
+
     /// In-flight weather observation polling task. Cancelled on each
     /// `refresh()` so only one polling loop runs at a time.
     @ObservationIgnored private var _weatherPollTask: Task<Void, Never>?
@@ -1847,6 +1854,52 @@ final class HomeViewModel {
         return CLLocation(latitude: nyc.latitude, longitude: nyc.longitude)
     }
 
+    // MARK: - Reverse Geocoding
+
+    /// Resolve the user's location to a human-readable place name.
+    /// Shows the street address (e.g. "117-13 125th St") when available,
+    /// falling back to neighborhood → city → "New York".
+    /// Throttled: only fires when the reference location moves > 50 m
+    /// from the last resolved point.
+    func updateLocationName(for location: CLLocation?) {
+        guard let loc = location else { return }
+        if let last = _lastGeocodedLocation,
+           loc.distance(from: last) < 50 {
+            return // hasn't moved enough
+        }
+        _geocodeTask?.cancel()
+        _geocodeTask = Task { [weak self] in
+            do {
+                // CLGeocoder is deprecated in iOS 26 in favor of MapKit,
+                // but MKLocalSearch doesn't support pure reverse-geocoding.
+                // Silence the warning until Apple ships a direct replacement.
+                let placemarks = try await {
+                    nonisolated(unsafe) let loc = loc
+                    return try await CLGeocoder().reverseGeocodeLocation(loc)
+                }()
+                guard !Task.isCancelled, let pm = placemarks.first else { return }
+                // Prefer street address for specificity
+                let street: String? = {
+                    if let num = pm.subThoroughfare, let road = pm.thoroughfare {
+                        return "\(num) \(road)"
+                    }
+                    return pm.thoroughfare
+                }()
+                let name = street
+                    ?? pm.subLocality
+                    ?? pm.locality
+                    ?? pm.name
+                    ?? "New York"
+                await MainActor.run {
+                    self?._lastGeocodedLocation = loc
+                    self?.currentLocationName = name
+                }
+            } catch {
+                // Silently fail — header will fall back to default text
+            }
+        }
+    }
+
     // MARK: - Staleness / Distance Guards
 
     /// Returns `true` when recent data is fresh enough AND the user
@@ -2092,17 +2145,20 @@ final class HomeViewModel {
         // Keep the raw GPS location up-to-date so `referenceLocation` can
         // resolve pin vs GPS without needing a parameter at call sites.
         if let location { lastKnownUserLocation = location }
+        // Resolve human-readable location name (throttled to 200 m moves)
+        updateLocationName(for: referenceLocation)
         // Update weather in the background (WeatherService caches for 10 min)
         if let location {
             WeatherService.shared.update(for: location)
-            // Observe the result — poll briefly so the stored property
+            // Observe the result — poll with back-off so the stored property
             // picks up the snapshot once the async fetch resolves.
             // Cancel any previous polling task so only one loop runs.
             _weatherPollTask?.cancel()
             _weatherPollTask = Task { @MainActor [weak self] in
-                // Wait up to 6 seconds for weather to resolve (covers backend fallback)
-                for _ in 0..<30 {
-                    try? await Task.sleep(nanoseconds: 200_000_000) // 200ms
+                // 5 checks with exponential back-off: 0.5s, 1s, 2s, 4s, 4s  (≈11.5s total)
+                let delays: [UInt64] = [500_000_000, 1_000_000_000, 2_000_000_000, 4_000_000_000, 4_000_000_000]
+                for delay in delays {
+                    try? await Task.sleep(nanoseconds: delay)
                     guard !Task.isCancelled else { return }
                     if let fresh = WeatherService.shared.current,
                        fresh != self?.weatherSnapshot {
@@ -2366,8 +2422,10 @@ final class HomeViewModel {
         expireAllGraceCounters()
         // Use the full mode-aware refresh so bus/subway/LIRR/MNR tabs
         // all get correct data at the drag-search location.
+        // Force=true bypasses the cooldown guard — the user explicitly
+        // dragged to a new spot so data MUST refresh immediately.
         let loc = effectiveLocation(userLocation: userLocation)
-        await refresh(location: loc)
+        await refresh(location: loc, force: true)
     }
 
     /// Deactivates the search pin and returns to user location.

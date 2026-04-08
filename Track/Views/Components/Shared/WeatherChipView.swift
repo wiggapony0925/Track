@@ -57,29 +57,6 @@ struct WeatherChipView: View {
                 .foregroundColor(AppTheme.Colors.textSecondary)
                 .contentTransition(.numericText())
         }
-        .padding(.horizontal, hPadding)
-        .padding(.vertical, vPadding)
-        .background {
-            Capsule()
-                .fill(AppTheme.Colors.chipSurface)
-                .overlay {
-                    Capsule()
-                        .fill(
-                            LinearGradient(
-                                stops: [
-                                    .init(color: AppTheme.Colors.chipGlassHighlight.opacity(0.06), location: 0.0),
-                                    .init(color: .clear, location: 0.5),
-                                ],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                        )
-                }
-        }
-        .overlay {
-            Capsule()
-                .strokeBorder(AppTheme.Colors.chipBorder, lineWidth: 0.5)
-        }
         .opacity(appeared ? 1.0 : 0.0)
         .onAppear {
             withAnimation(.spring(response: 0.5, dampingFraction: 0.7)) {

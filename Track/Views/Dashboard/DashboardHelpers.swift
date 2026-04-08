@@ -18,10 +18,8 @@ struct DashboardSectionHeader: View {
     var body: some View {
         HStack {
             Text(title)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(AppTheme.Colors.textTertiary)
-                .textCase(.uppercase)
-                .tracking(0.5)
+                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .foregroundColor(AppTheme.Colors.textPrimary)
             
             if let updated = updated {
                 Spacer()
@@ -33,7 +31,7 @@ struct DashboardSectionHeader: View {
             }
         }
         .padding(.horizontal, AppTheme.Layout.margin)
-        .padding(.top, 6)
+        .padding(.top, 8)
     }
 }
 
@@ -143,32 +141,24 @@ struct CommuterRailSectionHeader: View {
     
     var body: some View {
         HStack(spacing: 6) {
-            HStack(spacing: 4) {
-                Image(systemName: iconName)
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(.white)
-                
-                Text(title)
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(.white)
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(
-                Capsule()
-                    .fill(color)
-            )
+            Circle()
+                .fill(color)
+                .frame(width: 8, height: 8)
+
+            Text(title)
+                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .foregroundColor(AppTheme.Colors.textPrimary)
             
             Spacer()
             
             if let updated = updated {
                 Text(updated, style: .time)
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(AppTheme.Colors.textSecondary)
+                    .foregroundColor(AppTheme.Colors.textTertiary)
             }
         }
         .padding(.horizontal, AppTheme.Layout.margin)
-        .padding(.top, 6)
+        .padding(.top, 8)
         .padding(.bottom, 4)
     }
 }

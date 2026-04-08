@@ -39,9 +39,9 @@ struct ServiceAlertsSection: View {
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundColor(AppTheme.Colors.warningYellow)
                         
-                        Text("SERVICE ALERTS")
-                            .font(AppTheme.Typography.sectionHeader)
-                            .foregroundColor(AppTheme.Colors.textSecondary)
+                        Text("Service Alerts")
+                            .font(.system(size: 14, weight: .bold, design: .rounded))
+                            .foregroundColor(AppTheme.Colors.textPrimary)
                     }
                     
                     Spacer()

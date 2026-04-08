@@ -175,7 +175,7 @@ struct NearbyTransitRow: View {
                     .foregroundColor(AppTheme.Colors.textSecondary)
                     .textCase(.uppercase)
                 // Smart ETA for expanded detail — consistent with main countdown
-                TimelineView(.periodic(from: .now, by: 1.0)) { _ in
+                TimelineView(.periodic(from: .now, by: 15.0)) { _ in
                     let eta: SmartETA = resolvedETA(for: arrival)
                     let mins: Int = eta.minutesRemaining
                     let isNow: Bool = eta.isAtStop || eta.secondsRemaining <= 30
@@ -285,7 +285,7 @@ struct NearbyTransitRow: View {
                 .font(.system(size: 20, weight: .medium))
                 .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.4))
         } else {
-            TimelineView(.periodic(from: .now, by: 1.0)) { _ in
+            TimelineView(.periodic(from: .now, by: 15.0)) { _ in
                 let eta: SmartETA = resolvedETA(for: arrival)
                 let mins: Int = eta.minutesRemaining
                 let isNow: Bool = !arrival.isScheduledOnly

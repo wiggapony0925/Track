@@ -12,52 +12,54 @@ struct ModalNavbar: View {
     var lastUpdated: Date?
     var isRefreshing: Bool = false
     var weatherSnapshot: WeatherSnapshot? = nil
+    var locationName: String? = nil
+    var isDragSearchActive: Bool = false
+
+    /// Shared across renders — avoids re-allocating every body evaluation.
+    private static let relativeFormatter: RelativeDateTimeFormatter = {
+        let f = RelativeDateTimeFormatter()
+        f.unitsStyle = .abbreviated
+        return f
+    }()
     
     @State private var speechManager = SpeechRecognitionManager()
     
     var body: some View {
         VStack(spacing: 0) {
-            // ── Search bar + settings ──
-            HStack(spacing: 10) {
-                HStack(spacing: 10) {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(AppTheme.Colors.textTertiary)
-                    
-                    TextField("Search trains, buses, stations…", text: $searchText)
-                        .font(.system(size: 16, weight: .regular))
-                        .foregroundColor(AppTheme.Colors.textPrimary)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                    
-                    if !searchText.isEmpty {
-                        Button {
-                            searchText = ""
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 16))
-                                .foregroundColor(AppTheme.Colors.textTertiary)
-                        }
+            // ── Location header + weather + settings ──
+            HStack(alignment: .center, spacing: 10) {
+                VStack(alignment: .leading, spacing: 3) {
+                    if isDragSearchActive {
+                        Text("Options near")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
+                            .textCase(.uppercase)
                     }
-                    
-                    micButton
+                    HStack(spacing: 6) {
+                        Image(systemName: isDragSearchActive ? "mappin.and.ellipse" : "location.fill")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(isDragSearchActive ? AppTheme.Colors.mtaBlue : AppTheme.Colors.accent)
+                        Text(locationName ?? "Locating…")
+                            .font(.system(size: 22, weight: .bold, design: .rounded))
+                            .foregroundColor(AppTheme.Colors.textPrimary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.6)
+                    }
+                    statusInline
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .background {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(AppTheme.Colors.cardInset.opacity(0.5))
+                Spacer(minLength: 4)
+                if let weather = weatherSnapshot {
+                    WeatherChipView(snapshot: weather, style: .compact)
                 }
-                
                 Button {
                     showSettings = true
                 } label: {
                     Image(systemName: "gearshape.fill")
-                        .font(.system(size: 15, weight: .medium))
+                        .font(.system(size: 14, weight: .medium))
                         .foregroundColor(AppTheme.Colors.textTertiary)
-                        .frame(width: 38, height: 38)
+                        .frame(width: 36, height: 36)
                         .background {
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            Circle()
                                 .fill(AppTheme.Colors.cardInset.opacity(0.5))
                         }
                 }
@@ -66,15 +68,39 @@ struct ModalNavbar: View {
             .padding(.horizontal, AppTheme.Layout.margin)
             .padding(.top, 14)
             .padding(.bottom, 10)
-            
-            // ── Transport mode strip ──
-            ModeFilterStrip(selectedMode: $selectedMode)
-                .padding(.horizontal, AppTheme.Layout.margin)
-                .padding(.bottom, 10)
 
-            // ── Status row ──
-            statusRow
-                .padding(.horizontal, AppTheme.Layout.margin)
+            // ── Search bar ──
+            HStack(spacing: 10) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundColor(AppTheme.Colors.textTertiary)
+                TextField("Search trains, buses, stations…", text: $searchText)
+                    .font(.system(size: 15, weight: .regular))
+                    .foregroundColor(AppTheme.Colors.textPrimary)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                if !searchText.isEmpty {
+                    Button {
+                        searchText = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 15))
+                            .foregroundColor(AppTheme.Colors.textTertiary)
+                    }
+                }
+                micButton
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 11)
+            .background {
+                Capsule()
+                    .fill(AppTheme.Colors.cardInset.opacity(0.5))
+            }
+            .padding(.horizontal, AppTheme.Layout.margin)
+            .padding(.bottom, 12)
+
+            // ── Mode chips ──
+            ModeFilterStrip(selectedMode: $selectedMode)
                 .padding(.bottom, 10)
         }
         .onAppear {
@@ -101,34 +127,28 @@ struct ModalNavbar: View {
         }
     }
 
-    // MARK: - Status Row
+    // MARK: - Status Inline
 
     @ViewBuilder
-    private var statusRow: some View {
-        HStack(spacing: 0) {
-            if isRefreshing {
-                HStack(spacing: 5) {
-                    ProgressView()
-                        .controlSize(.mini)
-                        .tint(AppTheme.Colors.textTertiary)
-                    Text("Updating…")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(AppTheme.Colors.textTertiary)
-                }
-            } else if let lastUpdated {
-                HStack(spacing: 5) {
-                    Circle()
-                        .fill(AppTheme.Colors.successGreen)
-                        .frame(width: 5, height: 5)
-                    let formatter = RelativeDateTimeFormatter()
-                    Text("Updated \(formatter.localizedString(for: lastUpdated, relativeTo: .now))")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(AppTheme.Colors.textTertiary)
-                }
+    private var statusInline: some View {
+        if isRefreshing {
+            HStack(spacing: 5) {
+                ProgressView()
+                    .controlSize(.mini)
+                    .tint(AppTheme.Colors.textTertiary)
+                Text("Updating…")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(AppTheme.Colors.textTertiary)
             }
-            Spacer()
-            if let weather = weatherSnapshot {
-                WeatherChipView(snapshot: weather, style: .compact)
+        } else if let lastUpdated {
+            HStack(spacing: 5) {
+                Circle()
+                    .fill(AppTheme.Colors.successGreen)
+                    .frame(width: 5, height: 5)
+                let formatter = Self.relativeFormatter
+                Text("Updated \(formatter.localizedString(for: lastUpdated, relativeTo: .now))")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(AppTheme.Colors.textTertiary)
             }
         }
     }
@@ -141,19 +161,17 @@ struct ModeFilterStrip: View {
     @Namespace private var modeNamespace
     
     var body: some View {
-        HStack(spacing: 0) {
-            ForEach(TransportMode.allCases, id: \.self) { mode in
-                modeButton(for: mode)
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(TransportMode.allCases, id: \.self) { mode in
+                    modeChip(for: mode)
+                }
             }
-        }
-        .padding(3)
-        .background {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(AppTheme.Colors.cardInset.opacity(0.4))
+            .padding(.horizontal, AppTheme.Layout.margin)
         }
     }
 
-    private func modeButton(for mode: TransportMode) -> some View {
+    private func modeChip(for mode: TransportMode) -> some View {
         let isActive = selectedMode == mode
         return Button {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
@@ -161,20 +179,30 @@ struct ModeFilterStrip: View {
             }
             HapticManager.impact(.light)
         } label: {
-            ZStack {
-                if isActive {
-                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .fill(AppTheme.Colors.accent)
-                        .matchedGeometryEffect(id: "modeHighlight", in: modeNamespace)
-                }
-
+            HStack(spacing: 5) {
                 Image(systemName: mode.icon)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(isActive ? .white : AppTheme.Colors.textTertiary)
+                    .font(.system(size: 11, weight: .semibold))
+                Text(mode.label)
+                    .font(.system(size: 13, weight: .semibold))
             }
-            .frame(maxWidth: .infinity)
-            .frame(height: 34)
+            .foregroundColor(isActive ? .white : AppTheme.Colors.textSecondary)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background {
+                ZStack {
+                    if isActive {
+                        Capsule()
+                            .fill(AppTheme.Colors.accent)
+                            .matchedGeometryEffect(id: "modeHighlight", in: modeNamespace)
+                    } else {
+                        Capsule()
+                            .strokeBorder(AppTheme.Colors.borderSubtle, lineWidth: 1)
+                            .background(Capsule().fill(AppTheme.Colors.cardInset.opacity(0.3)))
+                    }
+                }
+            }
         }
+        .buttonStyle(.plain)
         .accessibilityLabel(mode.label)
         .accessibilityAddTraits(isActive ? .isSelected : [])
     }
@@ -186,7 +214,8 @@ struct ModeFilterStrip: View {
         showSettings: .constant(false),
         selectedMode: .constant(.nearby),
         lastUpdated: Date(),
-        weatherSnapshot: .preview(.clear)
+        weatherSnapshot: .preview(.clear),
+        locationName: "Chelsea"
     )
     .background(AppTheme.Colors.background)
 }
