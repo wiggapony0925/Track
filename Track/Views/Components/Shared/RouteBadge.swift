@@ -62,6 +62,18 @@ struct RouteBadge: View {
         routeID.uppercased().contains("SBS")
     }
 
+    /// Display text for bus badges — strips "-SBS" / "+SBS" suffixes
+    /// so the pill reads "M23" instead of "M23-SBS".
+    private var busDisplayText: String {
+        var text = routeID
+        for suffix in ["-SBS", "+SBS"] {
+            if let range = text.range(of: suffix, options: .caseInsensitive) {
+                text.removeSubrange(range)
+            }
+        }
+        return text
+    }
+
     /// Express subway variants use a diamond-shaped badge (MTA standard).
     /// Only these three variant route IDs get a diamond — regular express
     /// routes (A, B, D, E, 2-5, N, Q, Z) keep their standard circle badge.
@@ -248,7 +260,7 @@ struct RouteBadge: View {
     // MARK: - Bus Badge (Pill)
     
     private var busBadge: some View {
-        Text(routeID)
+        Text(busDisplayText)
             .font(.system(size: size.fontSize, weight: .heavy, design: .rounded))
             .foregroundColor(.white)
             .minimumScaleFactor(0.4)

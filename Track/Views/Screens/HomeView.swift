@@ -579,6 +579,13 @@ struct HomeView: View {
                     ) else { return }
                     viewModel.trackNearbyArrival(arrival, location: locationManager.currentLocation)
                 },
+                onAlertSelect: { group in
+                    Task {
+                        await viewModel.handleRouteSelection(
+                            group, directionIndex: 0,
+                            userLocation: locationManager.currentLocation)
+                    }
+                },
                 isStale: viewModel.showStaleRows
             )
 

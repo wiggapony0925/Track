@@ -18,6 +18,9 @@ struct ManageFavoritesView: View {
     var onSelect: ((GroupedNearbyTransitResponse, Int) -> Void)? = nil
     /// Called when the track button is tapped inside a row.
     var onTrack: ((GroupedNearbyTransitResponse, Int) -> Void)? = nil
+    /// Called when an alert banner is tapped — triggers route selection
+    /// (map polyline, banner, vehicles) without duplicating sheet navigation.
+    var onAlertSelect: ((GroupedNearbyTransitResponse) -> Void)? = nil
     /// When true, route rows render desaturated and non-interactive during refresh.
     var isStale: Bool = false
     @ObservedObject private var favoritesManager = FavoritesManager.shared
@@ -363,6 +366,8 @@ struct ManageFavoritesView: View {
                             onTrack?(group, directionIndex)
                         },
                         onAlertTapped: isEditing ? nil : {
+                            // Navigate to alerts tab, then trigger route
+                            // selection so the map banner + polyline appear.
                             sheetNavigator.navigate(
                                 to: .routeDetail(
                                     group: group,
@@ -370,6 +375,7 @@ struct ManageFavoritesView: View {
                                     initialTab: .alerts
                                 )
                             )
+                            onAlertSelect?(group)
                         },
                         presentation: .favorite,
                         isStale: isStale

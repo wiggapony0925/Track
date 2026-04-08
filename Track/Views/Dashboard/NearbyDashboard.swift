@@ -451,6 +451,11 @@ struct GroupedRouteList: View {
                                 group: group,
                                 directionIndex: directionIndex,
                                 initialTab: .alerts))
+                        Task {
+                            await viewModel.handleRouteSelection(
+                                group, directionIndex: directionIndex,
+                                userLocation: locationManager.currentLocation)
+                        }
                     },
                     isStale: isStale
                 )

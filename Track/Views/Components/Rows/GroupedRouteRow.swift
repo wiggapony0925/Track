@@ -323,74 +323,11 @@ struct  GroupedRouteRow: View {
         VStack(alignment: .leading, spacing: 8) {
             directionTabView
             HStack(spacing: 8) {
-                if group.hasExpressService {
-                    expressServiceTag
-                }
-                if let tag = busServiceTag {
-                    tag
-                }
                 walkingDistanceLabel
                 paginationDots
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    /// Small "Express" capsule tag shown when express service is active.
-    private var expressServiceTag: some View {
-        HStack(spacing: 3) {
-            Image(systemName: "bolt.fill")
-                .font(.system(size: 8, weight: .bold))
-            Text("Express")
-                .font(.system(size: 10, weight: .bold))
-        }
-        .foregroundColor(.white)
-        .padding(.horizontal, 6)
-        .padding(.vertical, 3)
-        .background(
-            Capsule()
-                .fill(AppTheme.Colors.successGreen)
-        )
-    }
-
-    /// Capsule tag for bus service type (Limited, SBS, Express, etc.).
-    /// Returns nil for plain "Local" routes — they need no extra label.
-    @ViewBuilder
-    private var busServiceTag: (some View)? {
-        if let svc = group.busServiceType, svc != "Local" {
-            let (label, icon) = busServiceTagContent(svc)
-            HStack(spacing: 3) {
-                Image(systemName: icon)
-                    .font(.system(size: 8, weight: .bold))
-                Text(label)
-                    .font(.system(size: 10, weight: .bold))
-            }
-            .foregroundColor(.white)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 3)
-            .background(
-                Capsule()
-                    .fill(routeColor)
-            )
-        }
-    }
-
-    /// Map a bus service type string to a short label + SF Symbol.
-    private func busServiceTagContent(_ serviceType: String) -> (String, String) {
-        switch serviceType {
-        case "Limited":
-            return ("Limited", "hare.fill")
-        case "Local / Limited":
-            return ("Ltd", "hare.fill")
-        case "Select Bus Service":
-            return ("SBS", "bolt.fill")
-        case "Express":
-            return ("Express", "bolt.fill")
-        case "School":
-            return ("School", "graduationcap.fill")
-        default:
-            return (serviceType, "bus.fill")
-        }
     }
 
     private var directionTabView: some View {
