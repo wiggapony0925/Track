@@ -78,13 +78,14 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         let routeCntEq: Bool = lhs.routePolylines.count == rhs.routePolylines.count
         let xferCntEq: Bool = lhs.transferConnectors.count == rhs.transferConnectors.count
         let bakedEq: Bool = lhs.bakedTileSet?.isValid == rhs.bakedTileSet?.isValid
+        let bakedBusEq: Bool = lhs.bakedBusTileSet?.isValid == rhs.bakedBusTileSet?.isValid
         let radiusEq: Bool = lhs.showSearchRadius == rhs.showSearchRadius
             && lhs.searchRadiusNear == rhs.searchRadiusNear
             && lhs.searchRadiusFarther == rhs.searchRadiusFarther
             && lhs.searchRadiusMuch == rhs.searchRadiusMuch
 
         guard subwayEq, commuterEq, stationCntEq, busCntEq, trainCntEq, routeCntEq,
-              xferCntEq, bakedEq, radiusEq else {
+              xferCntEq, bakedEq, bakedBusEq, radiusEq else {
             return false
         }
 
@@ -156,6 +157,11 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
     /// When available, MapLibre loads these files directly via its C++
     /// GeoJSON parser — no Swift `buildPolylineFeatures()` loop.
     var bakedTileSet: TransitTileBaker.BakedTileSet?
+
+    /// Pre-baked GeoJSON tile files for the bus system map.
+    /// When available in Bus mode, MapLibre loads bus route and stop
+    /// GeoJSON directly for zero-lag rendering of the entire NYC bus network.
+    var bakedBusTileSet: TransitTileBaker.BakedBusTileSet?
 
     /// Whether a route is currently selected (dims system map).
     var hasActiveRoute: Bool
@@ -461,6 +467,7 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         private var lastWalkingHash: Int = -1
         private var lastTransferHash: Int = -1
         private var lastRadiusHash: Int = -1
+        private var lastBusHash: Int = -1
         private var lastDarkMode: Bool?
 
         /// Route-colour tint tracking — detects when the tint should
@@ -689,6 +696,10 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             updateSearchRadiusIfNeeded(
                 mapView: mapView, style: style, representable: representable
             )
+            updateBusMapIfNeeded(
+                style: style,
+                representable: representable
+            )
         }
 
         // MARK: - Hash-gated layer update helpers
@@ -737,10 +748,12 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             let transferZoomBucket: Int = hasTransferLaneOffsets
                 ? Int(floor(mapView.zoomLevel * 4.0))
                 : 0
+            let modeFlag: Int = representable.selectedMode.hashValue << 4
             let stationHash: Int = stationCount ^ activeFlag
                 ^ (resnapGen << 20)
                 ^ stationStyleSignature
                 ^ (transferZoomBucket << 8)
+                ^ modeFlag
             if stationHash != lastStationHash || darkChanged {
                 updateStationDotLayers(
                     mapView: mapView,
@@ -789,7 +802,8 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         private func updateTransferIfNeeded(style: MLNStyle, representable: MapLibreMapView) {
             let connCount: Int = representable.transferConnectors.count
             let activeFlag: Int = representable.hasActiveRoute ? 0x4 : 0x0
-            let transferHash: Int = connCount ^ activeFlag
+            let modeFlag: Int = representable.selectedMode.hashValue << 8
+            let transferHash: Int = connCount ^ activeFlag ^ modeFlag
             if transferHash != lastTransferHash {
                 updateTransferConnectors(style: style, representable: representable)
                 lastTransferHash = transferHash
@@ -822,6 +836,20 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 muchFartherRadius: representable.searchRadiusMuch,
                 visible: representable.showSearchRadius
             )
+        }
+
+        private func updateBusMapIfNeeded(
+            style: MLNStyle,
+            representable: MapLibreMapView
+        ) {
+            let hasBusTiles: Int = (representable.bakedBusTileSet?.isValid == true) ? 1 : 0
+            let modeHash: Int = representable.selectedMode.hashValue
+            let activeRoute: Int = representable.hasActiveRoute ? 0x4 : 0x0
+            let darkFlag: Int = representable.isDarkMode ? 0x8 : 0x0
+            let busHash: Int = hasBusTiles ^ modeHash ^ activeRoute ^ darkFlag
+            guard busHash != lastBusHash else { return }
+            lastBusHash = busHash
+            updateBusMapLayers(style: style, representable: representable)
         }
 
         // MARK: - System Map Layers (Subway + Commuter + Elevated)
@@ -892,8 +920,17 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                         trueExpression: NSExpression(forConstantValue: 0.20),
                         falseExpression: NSExpression(forConstantValue: 0.03)
                     )
-                case .nearby, .bus:
-                    break // Keep default opacities
+                case .nearby:
+                    break // Show all train polylines at full opacity
+                case .bus:
+                    // Dim train lines so the bus network is the star.
+                    // Not fully hidden — just soft enough that the bus
+                    // layer reads as the primary system map.
+                    subwayOpacity = NSExpression(forConstantValue: 0.18)
+                    subwayCasingOpacity = NSExpression(forConstantValue: 0.08)
+                    elevatedShadowOpacity = NSExpression(forConstantValue: 0.03)
+                    commuterOpacity = NSExpression(forConstantValue: 0.12)
+                    commuterCasingOpacity = NSExpression(forConstantValue: 0.04)
                 }
             }
 
@@ -1064,6 +1101,186 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 applyLaneOffset: true,
                 sortByTrunkIndex: true
             )
+        }
+
+        // MARK: - Bus System Map Layers
+        //
+        // Renders the entire NYC bus network as pre-baked GeoJSON tiles.
+        // Visible only in Bus mode — shows all ~330 bus routes and
+        // ~16,000 bus stops as GL layers for zero-lag rendering.
+        //
+        // Layer stack:
+        //   1. Bus route casing — subtle border for contrast
+        //   2. Bus route fill — thin colored lines showing the bus network
+        //   3. Bus stop dots — small circles at higher zoom levels
+
+        func updateBusMapLayers(style: MLNStyle, representable: MapLibreMapView) {
+            let mode = representable.selectedMode
+            let isDark = representable.isDarkMode
+            let hasActiveRoute = representable.hasActiveRoute
+
+            // Bus layers only visible in Bus or Nearby mode (and no route selected)
+            let busVisible = (mode == .bus) && !hasActiveRoute
+            let busOpacity: Double = busVisible ? 1.0 : 0.0
+            let busCasingOpacity: Double = busVisible ? (isDark ? 0.25 : 0.20) : 0.0
+            let busStopOpacity: Double = busVisible ? 1.0 : 0.0
+
+            // Load baked bus tile data if available
+            if let busTiles = representable.bakedBusTileSet, busTiles.isValid {
+                loadBakedSource(
+                    style: style,
+                    sourceID: MapLibreStyleConfig.srcBusRoutes,
+                    url: busTiles.routesURL
+                )
+                loadBakedSource(
+                    style: style,
+                    sourceID: MapLibreStyleConfig.srcBusStops,
+                    url: busTiles.stopsURL
+                )
+            } else {
+                // No bus tiles available yet — ensure empty sources exist
+                // so layers don't crash when referenced before baking completes.
+                if style.source(withIdentifier: MapLibreStyleConfig.srcBusRoutes) == nil {
+                    let emptyShape = MLNShapeCollectionFeature(shapes: [])
+                    let src = MLNShapeSource(
+                        identifier: MapLibreStyleConfig.srcBusRoutes,
+                        shape: emptyShape,
+                        options: nil
+                    )
+                    style.addSource(src)
+                    sourcesCreated.insert(MapLibreStyleConfig.srcBusRoutes)
+                }
+                if style.source(withIdentifier: MapLibreStyleConfig.srcBusStops) == nil {
+                    let emptyShape = MLNShapeCollectionFeature(shapes: [])
+                    let src = MLNShapeSource(
+                        identifier: MapLibreStyleConfig.srcBusStops,
+                        shape: emptyShape,
+                        options: nil
+                    )
+                    style.addSource(src)
+                    sourcesCreated.insert(MapLibreStyleConfig.srcBusStops)
+                }
+            }
+
+            // ── Bus route casing (subtle border) ──
+            let busRouteColor = isDark
+                ? UIColor(red: 0.10, green: 0.45, blue: 0.91, alpha: 1.0)
+                : UIColor(red: 0.10, green: 0.45, blue: 0.91, alpha: 1.0)
+
+            if let existingCasing = style.layer(
+                withIdentifier: MapLibreStyleConfig.layerBusRoutesCasing
+            ) as? MLNLineStyleLayer {
+                existingCasing.lineOpacity = NSExpression(forConstantValue: busCasingOpacity)
+            } else if let source = style.source(
+                withIdentifier: MapLibreStyleConfig.srcBusRoutes
+            ) {
+                let casing = MLNLineStyleLayer(
+                    identifier: MapLibreStyleConfig.layerBusRoutesCasing,
+                    source: source
+                )
+                casing.lineWidth = MapLibreStyleConfig.busRouteCasingWidth
+                casing.lineOpacity = NSExpression(forConstantValue: busCasingOpacity)
+                casing.lineColor = NSExpression(
+                    forConstantValue: isDark
+                        ? UIColor(white: 0.15, alpha: 1.0)
+                        : UIColor(white: 0.92, alpha: 1.0)
+                )
+                casing.lineCap = NSExpression(forConstantValue: "round")
+                casing.lineJoin = NSExpression(forConstantValue: "round")
+                // Insert below subway layers
+                if let commCasing = style.layer(
+                    withIdentifier: MapLibreStyleConfig.layerCommRailCasing
+                ) {
+                    style.insertLayer(casing, below: commCasing)
+                } else {
+                    style.addLayer(casing)
+                }
+            }
+
+            // ── Bus route fill (colored lines) ──
+            if let existingFill = style.layer(
+                withIdentifier: MapLibreStyleConfig.layerBusRoutesFill
+            ) as? MLNLineStyleLayer {
+                existingFill.lineOpacity = NSExpression(forConstantValue: busOpacity)
+                existingFill.lineColor = NSExpression(forConstantValue: busRouteColor)
+            } else if let source = style.source(
+                withIdentifier: MapLibreStyleConfig.srcBusRoutes
+            ) {
+                let fill = MLNLineStyleLayer(
+                    identifier: MapLibreStyleConfig.layerBusRoutesFill,
+                    source: source
+                )
+                fill.lineWidth = MapLibreStyleConfig.busRouteWidth
+                fill.lineOpacity = NSExpression(forConstantValue: busOpacity)
+                fill.lineColor = NSExpression(forConstantValue: busRouteColor)
+                fill.lineCap = NSExpression(forConstantValue: "round")
+                fill.lineJoin = NSExpression(forConstantValue: "round")
+                // Insert above casing
+                if let casingLayer = style.layer(
+                    withIdentifier: MapLibreStyleConfig.layerBusRoutesCasing
+                ) {
+                    style.insertLayer(fill, above: casingLayer)
+                } else {
+                    style.addLayer(fill)
+                }
+            }
+
+            // ── Bus stop dots (small circles at higher zoom) ──
+            if let existingDots = style.layer(
+                withIdentifier: MapLibreStyleConfig.layerBusStopsDots
+            ) as? MLNCircleStyleLayer {
+                // Use the same zoom-interpolated fade expression as creation
+                existingDots.circleOpacity = NSExpression(
+                    forMLNInterpolating: .zoomLevelVariable,
+                    curveType: .linear,
+                    parameters: nil,
+                    stops: NSExpression(forConstantValue: [
+                        13: 0.0,
+                        13.5: busStopOpacity * 0.5,
+                        14: busStopOpacity,
+                    ])
+                )
+            } else if let source = style.source(
+                withIdentifier: MapLibreStyleConfig.srcBusStops
+            ) {
+                let dots = MLNCircleStyleLayer(
+                    identifier: MapLibreStyleConfig.layerBusStopsDots,
+                    source: source
+                )
+                dots.circleRadius = MapLibreStyleConfig.busStopDotRadius
+                dots.circleColor = NSExpression(
+                    forConstantValue: isDark
+                        ? UIColor(red: 0.40, green: 0.65, blue: 1.0, alpha: 1.0)
+                        : UIColor(red: 0.10, green: 0.45, blue: 0.91, alpha: 1.0)
+                )
+                dots.circleStrokeWidth = NSExpression(forConstantValue: 0.5)
+                dots.circleStrokeColor = NSExpression(
+                    forConstantValue: isDark
+                        ? UIColor(white: 0.2, alpha: 0.8)
+                        : UIColor.white
+                )
+                dots.circleOpacity = NSExpression(forConstantValue: busStopOpacity)
+                dots.minimumZoomLevel = 13
+                // Fade in smoothly from zoom 13
+                dots.circleOpacity = NSExpression(
+                    forMLNInterpolating: .zoomLevelVariable,
+                    curveType: .linear,
+                    parameters: nil,
+                    stops: NSExpression(forConstantValue: [
+                        13: 0.0,
+                        13.5: busStopOpacity * 0.5,
+                        14: busStopOpacity,
+                    ])
+                )
+                // Insert above bus route fill
+                if let fillLayer = style.layer(
+                    withIdentifier: MapLibreStyleConfig.layerBusRoutesFill
+                ) {
+                    style.insertLayer(dots, above: fillLayer)
+                } else {
+                    style.addLayer(dots)
+                }
+            }
         }
 
         // MARK: - GL Station Dot Layers
@@ -1434,6 +1651,60 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                         : UIColor.white.withAlphaComponent(0.97)
                 )
             }
+
+            // ── Mode-based station dot opacity ──
+            // In bus mode, dim train station dots so the bus network is the star.
+            // In subway/nearby, keep station dots fully visible.
+            // In LIRR/MNR, dim station dots slightly (commuter focus).
+            let mode = representable.selectedMode
+            let stationDimFactor: Double = {
+                switch mode {
+                case .bus: return 0.15
+                case .lirr, .mnr: return 0.5
+                case .subway, .nearby: return 1.0
+                }
+            }()
+
+            // Scale the existing zoom-interpolated opacity by the dim factor
+            let dotFadeStops: [Double: Double] = [
+                11: 0.0, 11.5: 0.5 * stationDimFactor,
+                12: 0.85 * stationDimFactor, 13: 1.0 * stationDimFactor,
+            ]
+            let dotFadeExpr = NSExpression(
+                forMLNInterpolating: .zoomLevelVariable,
+                curveType: .linear,
+                parameters: nil,
+                stops: NSExpression(forConstantValue: dotFadeStops)
+            )
+
+            if let dotCasing = style.layer(
+                withIdentifier: MapLibreStyleConfig.layerStationDotCasing
+            ) as? MLNLineStyleLayer {
+                dotCasing.lineOpacity = dotFadeExpr
+            }
+            if let dotFill = style.layer(
+                withIdentifier: MapLibreStyleConfig.layerStationDotFill
+            ) as? MLNLineStyleLayer {
+                dotFill.lineOpacity = dotFadeExpr
+            }
+            if let transfer = style.layer(
+                withIdentifier: MapLibreStyleConfig.layerStationDotsTransfer
+            ) as? MLNSymbolStyleLayer {
+                transfer.iconOpacity = dotFadeExpr
+            }
+            if let labels = style.layer(
+                withIdentifier: MapLibreStyleConfig.layerStationLabels
+            ) as? MLNSymbolStyleLayer {
+                let labelFadeStops: [Double: Double] = [
+                    14: 0.0, 14.5: 1.0 * stationDimFactor,
+                ]
+                labels.textOpacity = NSExpression(
+                    forMLNInterpolating: .zoomLevelVariable,
+                    curveType: .linear,
+                    parameters: nil,
+                    stops: NSExpression(forConstantValue: labelFadeStops)
+                )
+            }
         }
 
         // MARK: - Transfer Connectors
@@ -1450,6 +1721,9 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 return
             }
 
+            // In bus mode, dim transfer connectors so the bus network dominates.
+            let transferDim: Double = representable.selectedMode == .bus ? 0.15 : 1.0
+
             var features: [MLNPolylineFeature] = []
             for connector in representable.transferConnectors {
                 guard connector.coordinates.count >= 2 else { continue }
@@ -1458,9 +1732,10 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 let d = connector.distanceMeters
                 // Shorter transfers (vertical, same complex) get slightly thicker,
                 // longer walking transfers fade to a thinner, subtler line.
+                let baseOpacity = max(0.25, 0.55 - (d / 150.0) * 0.3)
                 feature.attributes = [
                     "width": max(1.2, 2.2 - (d / 150.0) * 1.0),
-                    "opacity": max(0.25, 0.55 - (d / 150.0) * 0.3),
+                    "opacity": baseOpacity * transferDim,
                 ]
                 features.append(feature)
             }

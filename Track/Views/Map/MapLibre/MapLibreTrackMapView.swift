@@ -140,6 +140,7 @@ struct MapLibreTrackMapView: View {
                 transferConnectors: _cachedTransferConnectors,
                 crossings: viewModel.mapSystem.cachedCrossings,
                 bakedTileSet: viewModel.mapSystem.bakedTileSet,
+                bakedBusTileSet: viewModel.mapSystem.bakedBusTileSet,
                 hasActiveRoute: viewModel.routeShape != nil,
                 reroutedRouteIDs: viewModel.mapSystem.reroutedRouteIDs,
                 isDarkMode: colorScheme == .dark,

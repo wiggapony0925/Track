@@ -793,6 +793,11 @@ enum MapLibreStyleConfig {
     static let layerStationDotsTransfer = "station-dots-transfer"
     static let layerStationLabels = "station-labels"
 
+    // Bus System Map Layer IDs
+    static let layerBusRoutesCasing = "bus-routes-casing"
+    static let layerBusRoutesFill = "bus-routes-fill"
+    static let layerBusStopsDots = "bus-stops-dots"
+
     // 3D Building Layer
     static let layerBuilding3D = "building-3d-extrusion"
 
@@ -804,6 +809,29 @@ enum MapLibreStyleConfig {
     static let srcElevatedCasing = "elevated-casing-src"
     static let srcTransferConn = "transfer-conn-src"
     static let srcStations = "stations-src"
+    static let srcBusRoutes = "bus-routes-src"
+    static let srcBusStops = "bus-stops-src"
+
+    // MARK: - Bus System Map Styles
+
+    /// Bus route line width — thinner than subway to show the dense
+    /// network without overwhelming the map.
+    static let busRouteWidth = zoomInterpolate(
+        base: 1.4,
+        stops: [8: 0.4, 10: 0.8, 12: 1.4, 14: 2.0, 16: 3.0]
+    )
+
+    /// Bus route casing width — subtle border for contrast on the basemap.
+    static let busRouteCasingWidth = zoomInterpolate(
+        base: 1.4,
+        stops: [8: 1.0, 10: 1.8, 12: 2.8, 14: 3.6, 16: 5.0]
+    )
+
+    /// Bus stop dot radius — small dots visible at street-level zoom.
+    static let busStopDotRadius = zoomInterpolate(
+        base: 1.5,
+        stops: [12: 1.0, 13: 1.5, 14: 2.5, 16: 4.0, 18: 6.0]
+    )
 
     // MARK: - 3D Buildings
 

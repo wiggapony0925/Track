@@ -195,6 +195,11 @@ final class MapSystemViewModel {
     /// Set during cold-start (from disk) and after each network refresh.
     var bakedTileSet: TransitTileBaker.BakedTileSet?
 
+    /// Pre-baked GeoJSON tile set for bus routes and stops.
+    /// When available, MapLibre loads these files directly for the bus
+    /// system map — zero-lag rendering of the entire NYC bus network.
+    var bakedBusTileSet: TransitTileBaker.BakedBusTileSet?
+
     /// Route IDs whose service is currently rerouted or suspended,
     /// according to live MTA alerts.  When a normally-elevated route
     /// appears in this set, its polylines are demoted to subway-level
@@ -305,9 +310,12 @@ final class MapSystemViewModel {
             // blocks the other. Map lines render the instant they arrive;
             // station dots appear independently as soon as the processed
             // station endpoint resolves.
+            // Bus tile data loads in parallel too — pre-bakes the entire
+            // NYC bus network so Bus tab renders with zero lag.
             async let mapTask: Void = loadSystemMap()
             async let stationsTask: Void = loadStations()
-            _ = await (mapTask, stationsTask)
+            async let busTask: Void = loadBusTileData()
+            _ = await (mapTask, stationsTask, busTask)
 
             let mapLoadElapsed = Date().timeIntervalSince(mapLoadStart)
             let subwayCount = flattenedSubwayPolylines.count
@@ -2087,6 +2095,105 @@ final class MapSystemViewModel {
                     + " in \(String(format: "%.0f", elapsed * 1000))ms")
         }
         return tileSet
+    }
+
+    // MARK: - Bus Tile Data Loading
+
+    /// Fetches all bus route shapes and stops, bakes them into GeoJSON
+    /// files for instant MapLibre rendering in Bus mode.
+    ///
+    /// **Fast-path**: On subsequent launches, baked bus tiles are loaded
+    /// from disk in < 10 ms.  A background network refresh keeps them fresh.
+    func loadBusTileData() async {
+        // Try loading existing baked tiles from disk first
+        if let dir = OfflineCacheManager.shared.bakedTilesDirectory() {
+            if let existing = TransitTileBaker.loadExistingBus(from: dir) {
+                bakedBusTileSet = existing
+                AppLogger.shared.log(
+                    "BUS_TILES",
+                    message: "Loaded baked bus tiles from disk")
+                // Still refresh in the background after a delay
+                try? await Task.sleep(nanoseconds: 5_000_000_000)  // 5s
+            }
+        }
+
+        // Fetch fresh data from the backend
+        guard OfflineCacheManager.shared.isOnline else {
+            if bakedBusTileSet == nil {
+                AppLogger.shared.log(
+                    "BUS_TILES",
+                    message: "Offline with no cached bus tiles — skipping")
+            }
+            return
+        }
+
+        do {
+            let t0 = CFAbsoluteTimeGetCurrent()
+            let tileData = try await TrackAPI.fetchBusTileData()
+            let fetchElapsed = CFAbsoluteTimeGetCurrent() - t0
+
+            AppLogger.shared.log(
+                "BUS_TILES",
+                message: "Fetched \(tileData.routes.count) bus routes"
+                    + " + \(tileData.stops.count) stops"
+                    + " in \(String(format: "%.0f", fetchElapsed * 1000))ms")
+
+            // Convert to bake-ready data — decode Google polylines to coordinates
+            let routes: [TransitTileBaker.BusRouteData] = tileData.routes.map { route in
+                let coords = route.polylines.map { decodePolyline($0) }
+                return TransitTileBaker.BusRouteData(
+                    routeId: route.routeId,
+                    coordinates: coords,
+                    colorHex: route.color
+                )
+            }
+
+            let stops: [TransitTileBaker.BusStopData] = tileData.stops.map { stop in
+                TransitTileBaker.BusStopData(
+                    stopId: stop.id,
+                    name: stop.name,
+                    coordinate: CLLocationCoordinate2D(
+                        latitude: stop.lat,
+                        longitude: stop.lon
+                    )
+                )
+            }
+
+            // Bake on a background thread (pure I/O, no @MainActor)
+            Task.detached(priority: .utility) { [weak self] in
+                guard let dir = await OfflineCacheManager.shared.bakedTilesDirectory()
+                else { return }
+
+                let start = CFAbsoluteTimeGetCurrent()
+                guard let tileSet = TransitTileBaker.bakeBus(
+                    routes: routes,
+                    stops: stops,
+                    to: dir
+                ) else {
+                    await MainActor.run {
+                        AppLogger.shared.log(
+                            "BUS_TILES",
+                            message: "Failed to bake bus GeoJSON tiles")
+                    }
+                    return
+                }
+
+                let elapsed = CFAbsoluteTimeGetCurrent() - start
+                await MainActor.run { [weak self] in
+                    self?.bakedBusTileSet = tileSet
+                    AppLogger.shared.log(
+                        "BUS_TILES",
+                        message: "Baked \(routes.count) bus routes"
+                            + " + \(stops.count) stops"
+                            + " into GeoJSON files"
+                            + " in \(String(format: "%.0f", elapsed * 1000))ms")
+                }
+            }
+        } catch {
+            AppLogger.shared.log(
+                "BUS_TILES",
+                message: "Bus tile data fetch failed: \(error.localizedDescription)")
+        }
     }
 
     // MARK: - Station Loading

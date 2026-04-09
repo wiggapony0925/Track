@@ -32,11 +32,15 @@ from app.models import (
     BusScheduleDirection,
     BusScheduleResponse,
     BusStop,
+    BusTileData,
+    BusTileRoute,
+    BusTileStop,
     BusVehicle,
     RouteShape,
 )
+from app.routers.nearby import _bus_color_for_service_type, _classify_bus_service_type
 from app.services.mapping.bus.routes import get_bus_open_data_shapes
-from app.services.mapping.bus.stops import get_bus_route_stops
+from app.services.mapping.bus.stops import get_bus_route_stops, get_bus_stop_index
 from app.services.transit.schedule_service import schedule_service
 from app.utils.logger import TrackLogger
 
@@ -83,6 +87,86 @@ def _raise_bus_upstream_http_error(exc: httpx.HTTPStatusError) -> None:
     if status == 404:
         raise HTTPException(status_code=404, detail="Route not found") from exc
     raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+# ── In-memory TTL cache for tile data ─────────────────────────────────
+# Pre-built response is heavy (~1 MB) but changes only on schedule bundle
+# updates.  Cache for 6 hours in-memory to avoid rebuilding on every call.
+_tile_data_cache: BusTileData | None = None
+_tile_data_cache_ts: float = 0.0
+_TILE_DATA_TTL = 6 * 3_600  # 6 hours
+
+
+@router.get(
+    "/tile-data",
+    response_model=BusTileData,
+    summary="All bus shapes and stops for map tile baking",
+    description=(
+        "Returns every NYC bus route polyline and every revenue stop in a "
+        "single compact payload. Designed for the iOS app to download once, "
+        "bake into GeoJSON tile files, and render as MapLibre GL layers."
+    ),
+)
+async def bus_tile_data(response: Response) -> BusTileData:
+    """Return all bus route shapes and stops for pre-baked tile rendering.
+
+    The payload is cached aggressively (6 h in-memory, 24 h HTTP) because
+    the underlying open data datasets update only with MTA schedule bundles
+    (roughly monthly).
+
+    Cached for 24 hours — bus network topology rarely changes.
+    """
+    global _tile_data_cache, _tile_data_cache_ts  # noqa: PLW0603
+
+    response.headers["Cache-Control"] = (
+        "public, max-age=86400, stale-while-revalidate=604800"
+    )
+
+    now = _time.time()
+    if _tile_data_cache is not None and (now - _tile_data_cache_ts) < _TILE_DATA_TTL:
+        return _tile_data_cache
+
+    t0 = _time.perf_counter()
+
+    # Fetch shapes and stops concurrently.
+    shapes_task = get_bus_open_data_shapes()
+    stops_task = get_bus_stop_index()
+    shapes_index, stop_index = await _asyncio.gather(shapes_task, stops_task)
+
+    # Build compact route list — color-coded by service type.
+    tile_routes: list[BusTileRoute] = []
+    for route_id, shape in sorted(shapes_index.items()):
+        if not shape.polylines:
+            continue
+        service_type = _classify_bus_service_type(route_id)
+        color = _bus_color_for_service_type(service_type).lstrip("#")
+        tile_routes.append(
+            BusTileRoute(
+                route_id=route_id,
+                short_name=route_id,
+                color=color,
+                polylines=shape.polylines,
+            )
+        )
+
+    # Build compact stop list (deduplicated by stop ID).
+    tile_stops: list[BusTileStop] = []
+    for stop_id, stop in sorted(stop_index.items()):
+        tile_stops.append(
+            BusTileStop(id=stop_id, name=stop.name, lat=stop.lat, lon=stop.lon)
+        )
+
+    result = BusTileData(routes=tile_routes, stops=tile_stops)
+    _tile_data_cache = result
+    _tile_data_cache_ts = now
+
+    elapsed = _time.perf_counter() - t0
+    TrackLogger.info(
+        f"[BUS] /tile-data: built {len(tile_routes)} routes, "
+        f"{len(tile_stops)} stops in {elapsed:.1f}s",
+        tag="BUS",
+    )
+    return result
 
 
 # ── In-memory TTL cache for bus schedules ──────────────────────────────

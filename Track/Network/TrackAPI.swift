@@ -610,6 +610,19 @@ struct TrackAPI {
         return try decoder.decode(RouteShapeResponse.self, from: data)
     }
 
+    /// Fetches all bus route shapes and stops for map tile baking.
+    ///
+    /// Returns every NYC bus route polyline and every revenue stop in a
+    /// single compact payload.  The iOS app downloads this once, bakes
+    /// it into GeoJSON tile files, and renders as MapLibre GL layers
+    /// for zero-lag bus mode rendering.
+    ///
+    /// - Returns: A `BusTileDataResponse` with all routes and stops.
+    static func fetchBusTileData() async throws -> BusTileDataResponse {
+        let data = try await get(path: "/bus/tile-data")
+        return try decoder.decode(BusTileDataResponse.self, from: data)
+    }
+
     /// Fetches the full route geometry for a subway line (e.g. the entire C train).
     ///
     /// - Parameter routeID: Subway line letter/number (e.g. "C", "L", "1").

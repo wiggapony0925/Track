@@ -753,6 +753,45 @@ class ReloadModelResponse(BaseModel):
     message: str = Field(..., description="Human-readable status message.")
 
 
+# ---------------------------------------------------------------------------
+# Bus Tile Data (pre-baked system map)
+# ---------------------------------------------------------------------------
+
+
+class BusTileRoute(BaseModel):
+    """Compact bus route representation for tile baking."""
+
+    route_id: str = Field(..., description="Short route ID (e.g. 'B63').")
+    short_name: str = Field(..., description="Display name (e.g. 'B63').")
+    color: str = Field(
+        "1A73E8",
+        description="Hex color for map rendering (no '#' prefix).",
+    )
+    polylines: list[str] = Field(
+        ..., description="Google-encoded polylines (all directions merged)."
+    )
+
+
+class BusTileStop(BaseModel):
+    """Compact bus stop representation for tile baking."""
+
+    id: str = Field(..., description="Stop ID.")
+    name: str = Field(..., description="Human-readable stop name.")
+    lat: float = Field(..., description="Latitude (WGS 84).")
+    lon: float = Field(..., description="Longitude (WGS 84).")
+
+
+class BusTileData(BaseModel):
+    """All NYC bus route shapes and stops for pre-baked map tile rendering."""
+
+    routes: list[BusTileRoute] = Field(
+        ..., description="All bus route polylines."
+    )
+    stops: list[BusTileStop] = Field(
+        ..., description="All bus stops."
+    )
+
+
 # Pre-built response dicts — import these in router files to avoid repetition.
 # Usage:  @router.get("/path", responses={**RESP_404, **RESP_502})
 

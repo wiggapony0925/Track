@@ -438,3 +438,34 @@ struct BusScheduledDeparture: Codable, Identifiable, Equatable {
         return Int(ceil(seconds / 60))
     }
 }
+
+// MARK: - Bus Tile Data (pre-baked system map)
+
+/// Compact bus route representation for map tile baking.
+struct BusTileRoute: Codable, Sendable {
+    let routeId: String
+    let shortName: String
+    let color: String
+    let polylines: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case routeId = "route_id"
+        case shortName = "short_name"
+        case color
+        case polylines
+    }
+}
+
+/// Compact bus stop representation for tile baking.
+struct BusTileStop: Codable, Sendable {
+    let id: String
+    let name: String
+    let lat: Double
+    let lon: Double
+}
+
+/// All NYC bus route shapes and stops for pre-baked map tile rendering.
+struct BusTileDataResponse: Codable, Sendable {
+    let routes: [BusTileRoute]
+    let stops: [BusTileStop]
+}

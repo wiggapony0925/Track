@@ -79,6 +79,35 @@ nonisolated enum TransitTileBaker {
         }
     }
 
+    // MARK: - Bus Tile Types
+
+    /// Minimal bus route data for baking — coordinates + color.
+    struct BusRouteData {
+        let routeId: String
+        let coordinates: [[CLLocationCoordinate2D]]
+        let colorHex: String
+    }
+
+    /// Minimal bus stop data for baking — position + name.
+    struct BusStopData {
+        let stopId: String
+        let name: String
+        let coordinate: CLLocationCoordinate2D
+    }
+
+    /// Result of a bus tile bake — GeoJSON file URLs for routes and stops.
+    struct BakedBusTileSet {
+        let routesURL: URL
+        let stopsURL: URL
+
+        /// Whether all bus tile files exist on disk.
+        var isValid: Bool {
+            let fm = FileManager.default
+            return fm.fileExists(atPath: routesURL.path)
+                && fm.fileExists(atPath: stopsURL.path)
+        }
+    }
+
     // MARK: - File Names
 
     /// Bake version tag — combines a manual schema version with the
@@ -101,6 +130,8 @@ nonisolated enum TransitTileBaker {
     private static var elevatedFillFile: String { "baked_elevated_fill_\(bakeTag).geojson" }
     private static var elevatedCasingFile: String { "baked_elevated_casing_\(bakeTag).geojson" }
     private static var commuterFile: String { "baked_commuter_\(bakeTag).geojson" }
+    private static var busRoutesFile: String { "baked_bus_routes_\(bakeTag).geojson" }
+    private static var busStopsFile: String { "baked_bus_stops_\(bakeTag).geojson" }
 
     /// All file names for the current version.
     static var allFileNames: [String] {
@@ -108,6 +139,7 @@ nonisolated enum TransitTileBaker {
             subwayFillFile, subwayCasingFile,
             elevatedFillFile, elevatedCasingFile,
             commuterFile,
+            busRoutesFile, busStopsFile,
         ]
     }
 
@@ -168,6 +200,123 @@ nonisolated enum TransitTileBaker {
             commuterURL: directory.appendingPathComponent(commuterFile)
         )
         return tileSet.isValid ? tileSet : nil
+    }
+
+    // MARK: - Bus Tile Baking
+
+    /// Bakes all bus route polylines and stops into GeoJSON files.
+    ///
+    /// Designed for the bus system map: when the user switches to the
+    /// Bus tab, MapLibre loads these files directly via its C++ parser
+    /// for zero-lag rendering of the entire NYC bus network.
+    ///
+    /// - Parameters:
+    ///   - routes: All bus route data (decoded polylines).
+    ///   - stops: All bus stop data.
+    ///   - directory: The directory to write GeoJSON files into.
+    /// - Returns: A `BakedBusTileSet` with file URLs, or `nil` on failure.
+    static func bakeBus(
+        routes: [BusRouteData],
+        stops: [BusStopData],
+        to directory: URL
+    ) -> BakedBusTileSet? {
+        let fm = FileManager.default
+        try? fm.createDirectory(at: directory, withIntermediateDirectories: true)
+
+        let routesURL = directory.appendingPathComponent(busRoutesFile)
+        let stopsURL = directory.appendingPathComponent(busStopsFile)
+
+        // Build bus routes GeoJSON
+        let routesGeoJSON = buildBusRoutesGeoJSON(from: routes)
+        guard writeJSON(routesGeoJSON, to: routesURL) else { return nil }
+
+        // Build bus stops GeoJSON
+        let stopsGeoJSON = buildBusStopsGeoJSON(from: stops)
+        guard writeJSON(stopsGeoJSON, to: stopsURL) else { return nil }
+
+        return BakedBusTileSet(routesURL: routesURL, stopsURL: stopsURL)
+    }
+
+    /// Returns file URLs for previously baked bus tiles (nil if any file missing).
+    static func loadExistingBus(from directory: URL) -> BakedBusTileSet? {
+        let tileSet = BakedBusTileSet(
+            routesURL: directory.appendingPathComponent(busRoutesFile),
+            stopsURL: directory.appendingPathComponent(busStopsFile)
+        )
+        return tileSet.isValid ? tileSet : nil
+    }
+
+    // MARK: - Bus GeoJSON Building
+
+    /// Builds a GeoJSON FeatureCollection for bus routes.
+    ///
+    /// Each route's polyline segments become LineString features with
+    /// properties: `route_id`, `color`.
+    private static func buildBusRoutesGeoJSON(
+        from routes: [BusRouteData]
+    ) -> [String: Any] {
+        var features: [[String: Any]] = []
+
+        for route in routes {
+            for polyline in route.coordinates {
+                guard polyline.count >= 2 else { continue }
+
+                let coords: [[Double]] = polyline.map {
+                    [$0.longitude, $0.latitude]
+                }
+
+                let feature: [String: Any] = [
+                    "type": "Feature",
+                    "properties": [
+                        "route_id": route.routeId,
+                        "color": "#\(route.colorHex)",
+                    ] as [String: Any],
+                    "geometry": [
+                        "type": "LineString",
+                        "coordinates": coords,
+                    ] as [String: Any],
+                ]
+                features.append(feature)
+            }
+        }
+
+        return [
+            "type": "FeatureCollection",
+            "features": features,
+        ]
+    }
+
+    /// Builds a GeoJSON FeatureCollection for bus stops.
+    ///
+    /// Each stop becomes a Point feature with properties: `stop_id`, `name`.
+    private static func buildBusStopsGeoJSON(
+        from stops: [BusStopData]
+    ) -> [String: Any] {
+        var features: [[String: Any]] = []
+        features.reserveCapacity(stops.count)
+
+        for stop in stops {
+            let feature: [String: Any] = [
+                "type": "Feature",
+                "properties": [
+                    "stop_id": stop.stopId,
+                    "name": stop.name,
+                ] as [String: Any],
+                "geometry": [
+                    "type": "Point",
+                    "coordinates": [
+                        stop.coordinate.longitude,
+                        stop.coordinate.latitude,
+                    ],
+                ] as [String: Any],
+            ]
+            features.append(feature)
+        }
+
+        return [
+            "type": "FeatureCollection",
+            "features": features,
+        ]
     }
 
     // MARK: - GeoJSON Building
