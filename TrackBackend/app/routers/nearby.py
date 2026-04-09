@@ -1086,8 +1086,14 @@ async def nearby_inactive_routes(
             # Filter by current active_routes before returning
             return _filter_inactive_json(jb, active_routes)
 
-    # Discover all routes serving nearby stops via GTFS static data
-    all_routes_in_area = _discover_routes_in_area(lat, lon, effective_radius)
+    # Discover all routes serving nearby stops via GTFS static data.
+    # Use a wider radius (2x) for inactive discovery — express buses (QM, BxM,
+    # SIM) often have their nearest stop 1–2 km away but still serve the area.
+    # The active endpoint already handles the tight radius; the inactive list
+    # benefits from being more inclusive so users see routes like QM1/QM17
+    # which have stops ~1.3 km away.
+    discovery_radius = min(effective_radius * 2, 5000)
+    all_routes_in_area = _discover_routes_in_area(lat, lon, discovery_radius)
 
     # Build InactiveRoute objects (before filtering by active — cache the full set)
     inactive_list: list[InactiveRoute] = []
